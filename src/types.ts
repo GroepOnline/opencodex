@@ -345,6 +345,21 @@ export interface OcxClaudeCodeConfig {
   webSearchSidecar?: { backend?: "openai" | "anthropic"; model?: string };
   /** Claude-originated vision override. Unset fields inherit the global sidecar settings. */
   visionSidecar?: { backend?: "openai" | "anthropic"; model?: string };
+  /** Persisted Claude Desktop four-family routing profile. */
+  desktopProfile?: OcxClaudeDesktopProfile;
+}
+
+export type OcxClaudeDesktopFamily = "opus" | "fable" | "sonnet" | "haiku";
+
+export interface OcxClaudeDesktopAssignment {
+  family: OcxClaudeDesktopFamily;
+  alias: string;
+}
+
+export interface OcxClaudeDesktopProfile {
+  version: 1;
+  assignments: Record<string, OcxClaudeDesktopAssignment>;
+  defaults: Record<OcxClaudeDesktopFamily, string | null>;
 }
 
 /** 사용자가 대시보드에서 직접 추가한 커스텀 모델 정의. */
