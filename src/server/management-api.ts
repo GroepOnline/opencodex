@@ -1194,7 +1194,9 @@ export async function handleManagementAPI(req: Request, url: URL, config: OcxCon
   // Claude Code inbound settings (GUI "Claude ON" toggle + Claude page).
   if (url.pathname === "/api/claude-desktop" && req.method === "GET") {
     try {
-      return jsonResponse(await buildClaudeDesktopState(config));
+      const state = await buildClaudeDesktopState(config);
+      const runtimePort = Number(url.port) || config.port;
+      return jsonResponse({ ...state, port: runtimePort });
     } catch (error) {
       return jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 400);
     }
@@ -1223,7 +1225,9 @@ export async function handleManagementAPI(req: Request, url: URL, config: OcxCon
       const state = await buildClaudeDesktopState(config, parsed);
       config.claudeCode = { ...(config.claudeCode ?? {}), desktopProfile: reconcileDesktopProfile(state.profile, state.models) };
       saveConfig(config);
-      return jsonResponse({ ok: true, ...await buildClaudeDesktopState(config) });
+      const saved = await buildClaudeDesktopState(config);
+      const runtimePort = Number(url.port) || config.port;
+      return jsonResponse({ ok: true, ...saved, port: runtimePort });
     } catch (error) {
       return jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 400);
     }
@@ -1242,7 +1246,7 @@ export async function handleManagementAPI(req: Request, url: URL, config: OcxCon
           return { provider: model.route.slice(0, slash), id: model.route.slice(slash + 1), contextWindow: model.contextWindow };
         });
       const result = writeDesktop3pConfig(
-        config.port,
+        Number(url.port) || config.port,
         [...visibleNativeSlugs(config)],
         routed,
         config.apiKeys?.[0]?.key,
@@ -1850,6 +1854,7 @@ function stripRegistryOnlyStaticHeaders(name: string, provider: OcxProviderConfi
   if (!matchesRegistryStaticHeaders) return provider;
   const { headers: _headers, ...rest } = provider;
   return rest;
+}
 
 /** Shared Desktop profile DTO builder for the management API and CLI. */
 export async function buildClaudeDesktopState(config: OcxConfig, stored?: OcxClaudeDesktopProfile) {
