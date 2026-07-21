@@ -360,6 +360,10 @@ export interface OcxClaudeDesktopProfile {
   version: 1;
   assignments: Record<string, OcxClaudeDesktopAssignment>;
   defaults: Record<OcxClaudeDesktopFamily, string | null>;
+  /** SHA-256 fingerprint of the last successfully applied 3P config content. */
+  appliedFingerprint?: string;
+  /** ISO timestamp of the last successful apply. */
+  appliedAt?: string;
 }
 
 /** 사용자가 대시보드에서 직접 추가한 커스텀 모델 정의. */
