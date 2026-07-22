@@ -5,34 +5,34 @@
 | Upstream | https://github.com/lidge-jun/opencodex |
 | Org fork | https://github.com/OnlineChefGroep/opencodex |
 | npm package | `@bitkyc08/opencodex` |
-| **Pinned host version (joep)** | **2.7.31** |
-| Pin tag | `v2.7.31` |
-| Pin commit | `304a1eab28cc114c182399db39ba91fb5af19d9d` |
+| **Pinned host version (joep)** | **2.7.33** |
+| Pin tag | `v2.7.33` |
+| Pin commit | `6d6bef8b98d762ff9679916546cb44e8e3effebc` |
 | Verified | 2026-07-22 on `joep` (Ubuntu) |
 
 ## Host install (joep)
 
 ```text
-CLI:     ~/.local/bin/ocx  →  @bitkyc08/opencodex@2.7.31
+CLI:     ~/.local/bin/ocx  →  @bitkyc08/opencodex@2.7.33
 Config:  ~/.opencodex/config.json
 Proxy:   http://127.0.0.1:10100
 Usage:   ~/.opencodex/usage.jsonl
 ```
 
-Do **not** auto-upgrade past the pin without an explicit fleet decision. Latest npm may be newer; this host stays on 2.7.31 until bumped here and in chefgroep-vault `PROVIDERS.md`.
+Do **not** auto-upgrade past the pin without an explicit fleet decision. Latest npm may be newer; this host stays on 2.7.33 until bumped here and in chefgroep-vault `PROVIDERS.md`.
 
 ## Pin / reinstall
 
 ```bash
-npm install -g @bitkyc08/opencodex@2.7.31
-ocx --version   # expect: opencodex 2.7.31
+npm install -g @bitkyc08/opencodex@2.7.33
+ocx --version   # expect: opencodex 2.7.33
 ```
 
 Checkout this tag in the fork:
 
 ```bash
 git fetch --tags
-git checkout v2.7.31
+git checkout v2.7.33
 ```
 
 ## Role in the ChefGroep stack

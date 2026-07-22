@@ -232,7 +232,10 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [hRes, pRes, sRes, scRes, shRes, uRes] = await Promise.all([
+        // Panels settle independently: one failing endpoint keeps its last-good
+        // data instead of taking down the whole dashboard. Only /healthz decides
+        // the "cannot connect" state.
+        const [hSet, pSet, sSet, scSet, shSet, uSet] = await Promise.allSettled([
           fetch(`${apiBase}/healthz`),
           fetch(`${apiBase}/api/providers`),
           fetch(`${apiBase}/api/settings`),
@@ -240,14 +243,15 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
           fetch(`${apiBase}/api/shadow-call-settings`),
           fetch(`${apiBase}/api/usage?range=30d`),
         ]);
-        setHealth(await hRes.json());
-        setProviders(await pRes.json());
-        setSettings(await sRes.json());
-        setSidecar(await scRes.json());
+        if (hSet.status === "rejected") throw hSet.reason;
+        setHealth(await hSet.value.json());
+        try { if (pSet.status === "fulfilled") setProviders(await pSet.value.json()); } catch { /* keep last-good */ }
+        try { if (sSet.status === "fulfilled") setSettings(await sSet.value.json()); } catch { /* keep last-good */ }
+        try { if (scSet.status === "fulfilled") setSidecar(await scSet.value.json()); } catch { /* keep last-good */ }
         // Old servers fall through to the SPA HTML for this route; don't let a parse
         // failure here take down the whole dashboard.
-        try { if (shRes.ok) setShadowCall(await shRes.json()); } catch { setShadowCall(null); }
-        try { setUsage30d(uRes.ok ? await uRes.json() : null); } catch { setUsage30d(null); }
+        try { if (shSet.status === "fulfilled" && shSet.value.ok) setShadowCall(await shSet.value.json()); } catch { setShadowCall(null); }
+        try { setUsage30d(uSet.status === "fulfilled" && uSet.value.ok ? await uSet.value.json() : null); } catch { setUsage30d(null); }
         setError(false);
         // Best-effort v2 mode fetch (independent of core health)
         try {

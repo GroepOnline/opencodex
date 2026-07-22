@@ -1,347 +1,149 @@
-import { useEffect, useRef, useState } from "react";
-import Dashboard from "./pages/Dashboard";
+import { useEffect, useState } from "react";
 import Providers from "./pages/Providers";
-import Models from "./pages/Models";
-import Combos from "./pages/Combos";
-import Subagents from "./pages/Subagents";
-import Logs from "./pages/Logs";
-import Usage from "./pages/Usage";
-import Storage from "./pages/Storage";
-import CodexAuth from "./pages/CodexAuth";
-import ApiKeys from "./pages/ApiKeys";
-import ClaudeCode from "./pages/ClaudeCode";
-import { IconGrid, IconServer, IconBoxes, IconBot, IconList, IconActivity, IconHardDrive, IconKey, IconGithub, IconMenu, IconSun, IconMoon, IconMonitor, IconGlobe, IconPower, IconSparkle, IconX } from "./icons";
-import { useI18n, useT, LOCALES, type Locale, type TKey } from "./i18n";
-import { Select } from "./ui";
+import Modellen from "./pages/Modellen";
+import Verkeer from "./pages/Verkeer";
+import Systeem from "./pages/Systeem";
+import InstellingenSheet from "./pages/Instellingen";
+import { IconSettings } from "./icons";
 import { installApiAuthFetch } from "./api";
 
 installApiAuthFetch();
 
-type Page = "dashboard" | "providers" | "models" | "combos" | "subagents" | "logs" | "usage" | "storage" | "codex-auth" | "api" | "claude";
-type Theme = "light" | "dark" | "system";
+type Page = "leveranciers" | "modellen" | "verkeer" | "systeem";
 
-const VALID_PAGES = new Set<Page>(["dashboard", "providers", "models", "combos", "subagents", "logs", "usage", "storage", "codex-auth", "api", "claude"]);
+const VALID_PAGES = new Set<Page>(["leveranciers", "modellen", "verkeer", "systeem"]);
+
+/** Legacy deep links from the old 11-page shell land on the view that absorbed them. */
+const LEGACY_ROUTES: Record<string, Page> = {
+  dashboard: "systeem",
+  providers: "leveranciers",
+  models: "modellen",
+  combos: "modellen",
+  subagents: "modellen",
+  logs: "verkeer",
+  debug: "verkeer",
+  usage: "verkeer",
+  storage: "systeem",
+  "codex-auth": "systeem",
+  api: "systeem",
+  claude: "systeem",
+};
 
 function readPageFromHash(): Page {
   const raw = location.hash.replace(/^#\/?/, "");
-  // Sub-views use a "/" suffix (e.g. #providers/workspace); the first segment is the page id.
-  const pageId = raw.split("/")[0] as Page;
-  // Legacy: Debug used to be a standalone page; it now lives as a tab on Logs.
-  if (pageId === ("debug" as Page)) return "logs";
-  return VALID_PAGES.has(pageId) ? pageId : "dashboard";
-}
-
-function hashBelongsToPage(rawHash: string, page: Page): boolean {
-  return rawHash === page
-    || (page === "providers" && rawHash === "providers/workspace")
-    || (page === "logs" && rawHash === "logs/debug");
+  const head = raw.split("/")[0];
+  if (VALID_PAGES.has(head as Page)) return head as Page;
+  return LEGACY_ROUTES[head] ?? "leveranciers";
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
-const THEME_KEY = "ocx-theme";
-const PROVIDERS_VIEW_KEY = "ocx-providers-view";
 
-function readProvidersViewPreference(): "classic" | "workspace" {
-  try {
-    return localStorage.getItem(PROVIDERS_VIEW_KEY) === "workspace" ? "workspace" : "classic";
-  } catch {
-    return "classic";
-  }
-}
-
-function writeProvidersViewPreference(view: "classic" | "workspace"): void {
-  try {
-    localStorage.setItem(PROVIDERS_VIEW_KEY, view);
-  } catch {
-    /* ignore quota / private-mode failures */
-  }
-}
-
-function providersHashForPage(): string {
-  return readProvidersViewPreference() === "workspace" ? "providers/workspace" : "providers";
-}
-
-const NAV: { id: Page; tkey: TKey; Icon: typeof IconGrid }[] = [
-  { id: "dashboard", tkey: "nav.dashboard", Icon: IconGrid },
-  { id: "providers", tkey: "nav.providers", Icon: IconServer },
-  { id: "models", tkey: "nav.models", Icon: IconBoxes },
-  { id: "subagents", tkey: "nav.subagents", Icon: IconBot },
-  { id: "logs", tkey: "nav.logs", Icon: IconList },
-  { id: "usage", tkey: "nav.usage", Icon: IconActivity },
-  { id: "storage", tkey: "nav.storage", Icon: IconHardDrive },
-  { id: "codex-auth", tkey: "nav.codexAuth", Icon: IconKey },
-  { id: "api", tkey: "nav.api", Icon: IconGlobe },
-  { id: "claude", tkey: "nav.claude", Icon: IconSparkle },
+const NAV: { id: Page; label: string }[] = [
+  { id: "leveranciers", label: "Leveranciers" },
+  { id: "modellen", label: "Modellen" },
+  { id: "verkeer", label: "Verkeer" },
+  { id: "systeem", label: "Systeem" },
 ];
 
-const THEME_ICON = { light: IconSun, dark: IconMoon, system: IconMonitor } as const;
-const THEME_TKEY: Record<Theme, TKey> = { light: "theme.light", dark: "theme.dark", system: "theme.system" };
-
-function readRuntimeVersion(data: unknown): string | null {
-  if (!data || typeof data !== "object" || !("version" in data)) return null;
-  const version = (data as { version?: unknown }).version;
-  return typeof version === "string" && version.length > 0 ? version : null;
-}
-
-function readStoredTheme(): Theme {
-  const t = localStorage.getItem(THEME_KEY);
-  return t === "light" || t === "dark" ? t : "system";
-}
+interface HealthData { status: string; version: string; uptime: number }
 
 export default function App() {
   const [page, setPageState] = useState<Page>(readPageFromHash);
-  const [theme, setTheme] = useState<Theme>(readStoredTheme);
-  const [runtimeVersion, setRuntimeVersion] = useState<string | null>(null);
-  const { locale, setLocale } = useI18n();
-  const t = useT();
+  const [health, setHealth] = useState<HealthData | null>(null);
+  const [healthFailed, setHealthFailed] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
-  // Narrow screens: the sidebar becomes an off-canvas drawer behind a hamburger toggle.
-  const [navOpen, setNavOpen] = useState(false);
-  const menuBtnRef = useRef<HTMLButtonElement>(null);
-  const sidebarRef = useRef<HTMLElement>(null);
-  const navWasOpen = useRef(false);
+  // One identity: the old dark theme attribute no longer applies.
+  useEffect(() => {
+    document.documentElement.removeAttribute("data-theme");
+  }, []);
 
   useEffect(() => {
-    // External navigation (hash edit, back/forward) also dismisses the mobile drawer.
     const onHash = () => {
-      const nextPage = readPageFromHash();
-      const rawHash = window.location.hash.replace(/^#\/?/, "");
-      setNavOpen(false);
-      // Legacy #debug deep links → the Debug tab on Logs.
-      if (rawHash === "debug" || rawHash.startsWith("debug/")) {
-        window.location.hash = "logs/debug";
+      const next = readPageFromHash();
+      const raw = location.hash.replace(/^#\/?/, "");
+      if (raw.split("/")[0] !== next) {
+        location.hash = next;
         return;
       }
-      if (!hashBelongsToPage(rawHash, nextPage)) {
-        window.location.hash = nextPage === "providers" ? providersHashForPage() : nextPage;
-        return;
-      }
-      // Preference is source of truth for Classic/Workspace. Bare #providers must not
-      // wipe a saved workspace choice (that regressed when leaving Providers and returning).
-      if (nextPage === "providers") {
-        const preferred = readProvidersViewPreference();
-        if (rawHash === "providers/workspace") {
-          writeProvidersViewPreference("workspace");
-        } else if (rawHash === "providers" && preferred === "workspace") {
-          window.location.hash = "providers/workspace";
-          return;
-        } else if (rawHash === "providers") {
-          writeProvidersViewPreference("classic");
-        }
-      }
-      setPageState(nextPage);
+      setPageState(next);
     };
+    onHash();
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
   useEffect(() => {
-    const rawHash = window.location.hash.replace(/^#\/?/, "");
-    // Legacy #debug deep links must resolve before generic normalization
-    // (otherwise the hash collapses to bare #logs and the tab choice is lost).
-    if (rawHash === "debug" || rawHash.startsWith("debug/")) {
-      window.location.hash = "logs/debug";
-      return;
-    }
-    if (page === "providers") {
-      // Honor an explicit workspace deep link on first load before normalizing
-      // to the saved preference (bookmarks/shared links must not open Classic).
-      if (rawHash === "providers/workspace") {
-        writeProvidersViewPreference("workspace");
-        return;
-      }
-      const wanted = providersHashForPage();
-      if (rawHash !== wanted) window.location.hash = wanted;
-      return;
-    }
-    if (!hashBelongsToPage(rawHash, page)) {
-      window.location.hash = page;
-    }
-  }, [page]);
-
-  useEffect(() => {
-    const el = document.documentElement;
-    if (theme === "system") { el.removeAttribute("data-theme"); localStorage.removeItem(THEME_KEY); }
-    else { el.setAttribute("data-theme", theme); localStorage.setItem(THEME_KEY, theme); }
-  }, [theme]);
-
-  useEffect(() => {
     let cancelled = false;
-    const fetchRuntimeVersion = async () => {
+    const poll = async () => {
       try {
         const res = await fetch(`${API_BASE}/healthz`);
-        if (!res.ok) return;
-        const version = readRuntimeVersion(await res.json());
-        if (!cancelled && version) setRuntimeVersion(version);
+        if (!res.ok) throw new Error(String(res.status));
+        const data = await res.json() as HealthData;
+        if (!cancelled) { setHealth(data); setHealthFailed(false); }
       } catch {
-        // Keep the build-time fallback when the proxy is unavailable.
+        if (!cancelled) setHealthFailed(true);
       }
     };
-    fetchRuntimeVersion();
-    const interval = setInterval(fetchRuntimeVersion, 30000);
-    return () => { cancelled = true; clearInterval(interval); };
+    void poll();
+    const iv = setInterval(() => void poll(), 5000);
+    return () => { cancelled = true; clearInterval(iv); };
   }, []);
 
-  const cycleTheme = () => setTheme(t => (t === "light" ? "dark" : t === "dark" ? "system" : "light"));
-  const ThemeIcon = THEME_ICON[theme];
-  const displayedVersion = runtimeVersion ?? __APP_VERSION__;
-
-  const [stopping, setStopping] = useState(false);
-  // Sidebar "Claude ON" toggle — literal label in every locale (product name).
-  const [claudeEnabled, setClaudeEnabled] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (!navOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setNavOpen(false); };
-    window.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";         // no background scroll behind the drawer
-    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prevOverflow; };
-  }, [navOpen]);
-
-  // Move focus into the drawer on open; hand it back to the toggle on close.
-  useEffect(() => {
-    if (navOpen) {
-      navWasOpen.current = true;
-      // after the 180ms slide-in: while visibility is transitioning, focus() no-ops
-      const timer = setTimeout(() => sidebarRef.current?.focus(), 200);
-      return () => clearTimeout(timer);
-    }
-    if (navWasOpen.current) { navWasOpen.current = false; menuBtnRef.current?.focus(); }
-  }, [navOpen]);
-
-  // Growing the window past the breakpoint dismisses the drawer state.
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 761px)");
-    const onChange = () => { if (mq.matches) setNavOpen(false); };
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`${API_BASE}/api/claude-code`)
-      .then(res => res.json())
-      .then(d => { if (!cancelled && typeof d.enabled === "boolean") setClaudeEnabled(d.enabled); })
-      .catch(() => { /* toggle stays hidden until the API answers */ });
-    return () => { cancelled = true; };
-  }, []);
-
-  const toggleClaude = async () => {
-    if (claudeEnabled === null) return;
-    const next = !claudeEnabled;
-    setClaudeEnabled(next); // optimistic
-    try {
-      const res = await fetch(`${API_BASE}/api/claude-code`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: next }),
-      });
-      if (!res.ok) setClaudeEnabled(!next);
-    } catch {
-      setClaudeEnabled(!next);
-    }
-  };
-  const handleStop = async () => {
-    if (!confirm(t("dash.stopConfirm"))) return;
-    setStopping(true);
-    try { await fetch(`${API_BASE}/api/stop`, { method: "POST" }); } catch { /* connection drops */ }
-  };
-
-  const brand = (
-    <div className="brand">
-      <span className="brand-logo" role="img" aria-label={t("app.logoAria")} />
-      <span className="name">opencodex</span>
-      <span className="ver">v{displayedVersion}</span>
-    </div>
-  );
+  const online = !healthFailed && health?.status === "ok";
 
   return (
-    <div className="app">
-      {/* inert while the drawer is open: keeps focus and assistive tech inside the drawer */}
-      <header className="mobile-topbar" inert={navOpen}>
-        <button ref={menuBtnRef} type="button" className="menu-toggle" onClick={() => setNavOpen(o => !o)}
-          aria-expanded={navOpen} aria-controls="app-sidebar"
-          aria-label={t(navOpen ? "nav.closeMenu" : "nav.openMenu")} title={t(navOpen ? "nav.closeMenu" : "nav.openMenu")}>
-          <IconMenu />
-        </button>
-        {brand}
-        <button type="button" className="theme-toggle stop-toggle" onClick={handleStop} disabled={stopping}
-          aria-label={t("dash.stop")} title={t("dash.stop")}>
-          <IconPower />
-        </button>
-      </header>
-      {navOpen && <div className="drawer-scrim" onClick={() => setNavOpen(false)} aria-hidden="true" />}
-      <aside id="app-sidebar" className={`sidebar${navOpen ? " open" : ""}`} ref={sidebarRef} tabIndex={-1}>
-        <div className="drawer-head">
-          {brand}
-          <button type="button" className="menu-toggle drawer-close" onClick={() => setNavOpen(false)}
-            aria-label={t("nav.closeMenu")} title={t("nav.closeMenu")}>
-            <IconX />
-          </button>
+    <div className="depas-app">
+      <header className="depas-topbar">
+        <div className="depas-brand">
+          <span className="depas-brand-name">opencodex</span>
+          {health?.version && <span className="depas-brand-ver">v{health.version}</span>}
         </div>
-        <nav>
-          {NAV.map(({ id, tkey, Icon }) => (
-            <button key={id} className={`nav-item${page === id ? " active" : ""}`} data-page={id}
-              onClick={() => {
-                // Always sync the hash on nav click so Providers restores Classic/Workspace preference.
-                window.location.hash = id === "providers" ? providersHashForPage() : id;
-                setPageState(id);
-                setNavOpen(false);
-              }}
-              aria-current={page === id ? "page" : undefined}>
-              <Icon /> {t(tkey)}
+        <nav className="depas-nav" aria-label="Hoofdnavigatie">
+          {NAV.map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              className={`depas-nav-item${page === id ? " active" : ""}`}
+              aria-current={page === id ? "page" : undefined}
+              onClick={() => { location.hash = id; }}
+            >
+              {label}
             </button>
           ))}
         </nav>
-        <div className="sidebar-foot">
-          {claudeEnabled !== null && (
-            <button type="button" className="theme-toggle" onClick={toggleClaude}
-              aria-pressed={claudeEnabled} aria-label={t("claude.toggleAria")} title={t("claude.toggleAria")}
-              style={claudeEnabled ? { color: "var(--accent)" } : undefined}>
-              <IconSparkle /> <span className="mode">{claudeEnabled ? t("app.claudeOn") : t("app.claudeOff")}</span>
-            </button>
-          )}
-          <div className="lang-toggle">
-            <IconGlobe aria-hidden />
-            <Select
-              value={locale}
-              options={LOCALES.map(l => ({ value: l.code, label: l.name }))}
-              onChange={v => setLocale(v as Locale)}
-              label={t("lang.label")}
-              placement="right"
-              style={{ flex: 1, minWidth: 0, width: "100%" }}
-            />
-          </div>
-          <button type="button" className="theme-toggle" onClick={cycleTheme}
-            aria-label={`${t("theme.label")}: ${t(THEME_TKEY[theme])}`} title={`${t("theme.label")}: ${t(THEME_TKEY[theme])}`}>
-            <ThemeIcon /> <span className="mode">{t(THEME_TKEY[theme])}</span>
+        <div className="depas-topbar-actions">
+          <span className={`stempel ${online ? "stempel--online" : "stempel--offline"}`} aria-live="polite">
+            {online ? "Online" : "Offline"}
+          </span>
+          <button
+            type="button"
+            className="btn btn-ghost btn-icon"
+            onClick={() => setSheetOpen(true)}
+            aria-label="Instellingen"
+            aria-haspopup="dialog"
+            aria-expanded={sheetOpen}
+            title="Instellingen"
+          >
+            <IconSettings />
           </button>
-          <button type="button" className="theme-toggle stop-toggle" onClick={handleStop} disabled={stopping}
-            aria-label={t("dash.stop")} title={t("dash.stop")}>
-            <IconPower /> <span className="mode">{stopping ? t("dash.stopping") : t("dash.stop")}</span>
-          </button>
-          <a className="sidebar-link" href="https://github.com/lidge-jun/opencodex" target="_blank" rel="noreferrer">
-            <IconGithub /> {t("common.github")}
-          </a>
         </div>
-      </aside>
+      </header>
 
-      <main className="main" inert={navOpen}>
-        <div className={`main-inner${page === "combos" ? " main-inner--combos" : ""}`}>
-          {page === "dashboard" && <Dashboard apiBase={API_BASE} />}
-          {page === "providers" && <Providers apiBase={API_BASE} />}
-          {page === "models" && <Models apiBase={API_BASE} />}
-          {page === "combos" && <Combos apiBase={API_BASE} />}
-          {page === "subagents" && <Subagents apiBase={API_BASE} />}
-          {page === "logs" && <Logs apiBase={API_BASE} />}
-          {page === "usage" && <Usage apiBase={API_BASE} />}
-          {page === "storage" && <Storage apiBase={API_BASE} />}
-          {page === "codex-auth" && <CodexAuth apiBase={API_BASE} />}
-          {page === "api" && <ApiKeys apiBase={API_BASE} />}
-          {page === "claude" && <ClaudeCode apiBase={API_BASE} />}
+      {!online && health !== null && (
+        <div className="depas-offline-banner" role="alert">
+          Proxy offline. Codex en Cursor kunnen niet routeren.
         </div>
+      )}
+
+      <main className="depas-main">
+        {page === "leveranciers" && <Providers apiBase={API_BASE} />}
+        {page === "modellen" && <Modellen apiBase={API_BASE} />}
+        {page === "verkeer" && <Verkeer apiBase={API_BASE} />}
+        {page === "systeem" && <Systeem apiBase={API_BASE} health={health} healthFailed={healthFailed} />}
       </main>
+
+      {sheetOpen && <InstellingenSheet apiBase={API_BASE} onClose={() => setSheetOpen(false)} />}
     </div>
   );
 }

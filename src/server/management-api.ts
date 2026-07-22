@@ -26,7 +26,7 @@ import { enrichProviderFromCatalog, listKeyLoginProviders } from "../oauth/key-p
 import { deriveProviderPresets } from "../providers/derive";
 import { providerCodexAccountMode } from "../providers/registry";
 import { routedSlug, slugEquals } from "../providers/slug-codec";
-import { clearProviderQuotaCache, fetchProviderQuotaReports } from "../providers/quota";
+import { clearProviderQuotaCache, fetchProviderQuotaReports, fetchSingleProviderQuotaReport } from "../providers/quota";
 import { isCanonicalOpenAiForwardProvider } from "../providers/openai-tiers";
 import { clearThreadAccountMap } from "../codex/routing";
 import { primeCodexPoolQuotas } from "../codex/auth-api";
@@ -517,6 +517,14 @@ export async function handleManagementAPI(req: Request, url: URL, config: OcxCon
 
   if (url.pathname === "/api/provider-quotas" && req.method === "GET") {
     const forceRefresh = url.searchParams.get("refresh") === "1" || url.searchParams.get("refresh") === "true";
+    // ?provider=<name> probes only that provider's upstream — same reports[] shape,
+    // so clients merge single-provider and full responses identically.
+    const providerName = url.searchParams.get("provider")?.trim();
+    if (providerName) {
+      if (!hasOwnProvider(config.providers, providerName)) return jsonResponse({ error: "unknown provider" }, 404);
+      const { generatedAt, report } = await fetchSingleProviderQuotaReport(config, providerName);
+      return jsonResponse({ generatedAt, reports: report ? [report] : [] });
+    }
     return jsonResponse(await fetchProviderQuotaReports(config, forceRefresh));
   }
 
@@ -787,6 +795,14 @@ export async function handleManagementAPI(req: Request, url: URL, config: OcxCon
   }
 
   if (url.pathname === "/api/models" && req.method === "GET") {
+    // Per-provider scoping for the dashboard: ?provider=<name> filters the response to one
+    // provider, ?refresh=1 drops that provider's TTL cache first so the fetch is live. Other
+    // providers keep serving from their cache, so one slow/broken upstream never blocks the rest.
+    const providerFilter = url.searchParams.get("provider")?.trim() || null;
+    if (url.searchParams.get("refresh") === "1") {
+      const { clearModelCache } = await import("../codex/model-cache");
+      clearModelCache(providerFilter ?? undefined);
+    }
     const models = await fetchAllModels(config);
     const disabled = new Set(config.disabledModels ?? []);
     // Native GPT passthrough rows lead (provider "openai", bare-slug namespaced ids): sourced
@@ -827,7 +843,8 @@ export async function handleManagementAPI(req: Request, url: URL, config: OcxCon
         ...(contextCap !== undefined ? { contextCap, contextCapped: m.contextCapped === true } : {}),
       };
     }).filter(Boolean);
-    return jsonResponse([...native, ...dedupedRouted, ...customModels]);
+    const rows = [...native, ...dedupedRouted, ...customModels];
+    return jsonResponse(providerFilter ? rows.filter(row => row?.provider === providerFilter) : rows);
   }
 
   if (url.pathname === "/api/provider-context-caps" && req.method === "GET") {

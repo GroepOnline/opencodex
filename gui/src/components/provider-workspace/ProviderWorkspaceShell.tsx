@@ -34,11 +34,22 @@ export interface DetailSlotData {
   usageTotals?: import("./types").ProviderUsageTotals;
   modelUsage?: ProviderModelUsageRow[];
   quotaReport?: ProviderQuotaReportView;
+  quotaRefreshing?: boolean;
+  quotaFailed?: boolean;
+  onRefreshQuota?: () => void;
   availableModels: string[];
   selectedModels: string[];
   modelsLoading: boolean;
   modelsLoadFailed: boolean;
   onRetryModels?: () => void;
+}
+
+/** Quota state owned by the page (single useProviderQuotas instance; the shell never fetches quotas). */
+export interface WorkspaceQuotaState {
+  reports: Record<string, ProviderQuotaReportView>;
+  refreshing: Record<string, boolean>;
+  failed: Record<string, boolean>;
+  refreshProvider: (name: string) => Promise<boolean>;
 }
 
 const SORT_DEFS: { id: ProviderSortMode; labelKey: "pws.sort.az" | "pws.sort.za" | "pws.sort.freePaid" | "pws.sort.paidFree" | "pws.sort.accountsFirst" }[] = [
@@ -61,6 +72,7 @@ export default function ProviderWorkspaceShell({
   jsonSaving = false,
   modelsRefreshToken = 0,
   activeAccountNeedsReauth,
+  quotas,
   detail,
 }: {
   providers: Record<string, WorkspaceProvider>;
@@ -75,6 +87,7 @@ export default function ProviderWorkspaceShell({
   /** Bump after login/config changes so /api/selected-models is refetched. */
   modelsRefreshToken?: number;
   activeAccountNeedsReauth?: Record<string, boolean>;
+  quotas: WorkspaceQuotaState;
   /** Detail body for the selected provider (WP090); a placeholder renders when absent. */
   detail?: (item: WorkspaceItem, data: DetailSlotData) => ReactNode;
 }) {
@@ -93,7 +106,7 @@ export default function ProviderWorkspaceShell({
   const [modelsLoadFailed, setModelsLoadFailed] = useState(false);
   const [usageTotals, setUsageTotals] = useState<Record<string, ProviderUsageTotals>>({});
   const [usageModels, setUsageModels] = useState<Record<string, ProviderModelUsageRow[]>>({});
-  const [quotaReports, setQuotaReports] = useState<Record<string, ProviderQuotaReportView>>({});
+  const quotaReports = quotas.reports;
   const [modelsLoadEpoch, setModelsLoadEpoch] = useState(0);
   const filterWrapRef = useRef<HTMLDivElement>(null);
 
@@ -165,31 +178,6 @@ export default function ProviderWorkspaceShell({
         setUsageModels(byProviderModels);
       })
       .catch(() => {});
-    return () => { cancelled = true; };
-  }, [apiBase]);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`${apiBase}/api/provider-quotas`)
-      .then(r => r.ok ? r.json() : null)
-      .then((data: { reports?: Array<{ provider: string; label?: string; source?: string; updatedAt?: number; quota?: unknown }> } | null) => {
-        if (cancelled || !data) return;
-        // Merge so a partial/failed probe cannot wipe a previously good provider row.
-        setQuotaReports(prev => {
-          const next = { ...prev };
-          for (const report of data.reports ?? []) {
-            if (!report?.provider) continue;
-            next[report.provider] = {
-              label: report.label,
-              source: report.source,
-              updatedAt: typeof report.updatedAt === "number" ? report.updatedAt : Date.now(),
-              quota: report.quota,
-            };
-          }
-          return next;
-        });
-      })
-      .catch(() => { /* keep last-good */ });
     return () => { cancelled = true; };
   }, [apiBase]);
 
@@ -445,6 +433,9 @@ export default function ProviderWorkspaceShell({
             usageTotals: usageTotals[selectedItem.name],
             modelUsage: usageModels[selectedItem.name],
             quotaReport: quotaReports[selectedItem.name],
+            quotaRefreshing: quotas.refreshing[selectedItem.name] === true,
+            quotaFailed: quotas.failed[selectedItem.name] === true,
+            onRefreshQuota: () => { void quotas.refreshProvider(selectedItem.name); },
             availableModels: availableModels[selectedItem.name] ?? [],
             selectedModels: selectedModels[selectedItem.name] ?? [],
             modelsLoading,

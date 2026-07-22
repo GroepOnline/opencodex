@@ -8,7 +8,10 @@
 export type OAuthTosRiskLevel = "high" | "elevated";
 
 const HIGH_RISK = new Set(["anthropic", "google-antigravity"]);
-const ELEVATED_RISK = new Set(["github-copilot", "cursor"]);
+// ChefGroep host patch: "cursor" removed so the OAuth ToS warning modal never blocks the
+// multi-account Cursor login flow (previously applied as a minified-dist patch, see
+// gui/dist/assets/*.pre-oauth-tos-cursor.bak on the joep host).
+const ELEVATED_RISK = new Set(["github-copilot"]);
 
 export function oauthTosRisk(providerId: string): OAuthTosRiskLevel | null {
   const id = providerId.trim().toLowerCase();
