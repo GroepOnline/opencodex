@@ -32,6 +32,32 @@ export function initPostHog(): void {
   window.addEventListener("hashchange", captureHashPageview);
 }
 
+/** Known hash routes; anything else is treated as sensitive/unknown and dropped. */
+const KNOWN_HASH_ROUTES = new Set([
+  "dashboard",
+  "providers",
+  "providers/workspace",
+  "models",
+  "combos",
+  "subagents",
+  "logs",
+  "logs/debug",
+  "usage",
+  "storage",
+  "codex-auth",
+  "api",
+  "claude",
+]);
+
+/** Minimized $current_url: origin + pathname + only a known hash route.
+ *  Drops the query string and any unknown hash contents so auth codes,
+ *  invitation tokens, or emails never reach PostHog. */
+function sanitizedCurrentUrl(loc: Location): string {
+  const base = `${loc.origin}${loc.pathname}`;
+  const hashRoute = loc.hash.replace(/^#\/?(.*)$/, "$1").replace(/^\/+/, "");
+  return KNOWN_HASH_ROUTES.has(hashRoute) ? `${base}#${hashRoute}` : base;
+}
+
 /** Manual $pageview for hash routes (e.g. #leveranciers). */
 export function captureHashPageview(): void {
   if (!posthogKey() || !posthog.__loaded) {
@@ -39,6 +65,6 @@ export function captureHashPageview(): void {
   }
 
   posthog.capture("$pageview", {
-    $current_url: window.location.href,
+    $current_url: sanitizedCurrentUrl(window.location),
   });
 }
