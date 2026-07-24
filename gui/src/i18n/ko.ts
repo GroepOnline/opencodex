@@ -1095,4 +1095,9 @@ export const ko: Record<TKey, string> = {
   "vk.stampBusy": "진행 중",
   "vk.detailError": "오류: {code}",
   "vk.detailInOut": "입력 {in} · 출력 {out}",
+  "vk.rowTokens": "{n} 토큰",
+  "vk.rowDuration": "{s}초",
+  "vk.detailStatus": "상태 {status}",
+  "vk.detailUpstream": "업스트림: {error}",
+  "vk.detailId": "ID {id}",
 };

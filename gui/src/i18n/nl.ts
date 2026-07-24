@@ -190,6 +190,11 @@ const overrides: Partial<Record<TKey, string>> = {
   "vk.stampBusy": "Bezig",
   "vk.detailError": "fout: {code}",
   "vk.detailInOut": "in {in} · uit {out}",
+  "vk.rowTokens": "{n} tok",
+  "vk.rowDuration": "{s}s",
+  "vk.detailStatus": "status {status}",
+  "vk.detailUpstream": "upstream: {error}",
+  "vk.detailId": "id {id}",
 };
 
 export const nl: Record<TKey, string> = { ...en, ...overrides };

@@ -1097,6 +1097,11 @@ export const en = {
   "vk.stampBusy": "Busy",
   "vk.detailError": "error: {code}",
   "vk.detailInOut": "in {in} · out {out}",
+  "vk.rowTokens": "{n} tok",
+  "vk.rowDuration": "{s}s",
+  "vk.detailStatus": "status {status}",
+  "vk.detailUpstream": "upstream: {error}",
+  "vk.detailId": "id {id}",
 } as const;
 
 export type TKey = keyof typeof en;

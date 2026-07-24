@@ -3,9 +3,10 @@ import Providers from "./pages/Providers";
 import Modellen from "./pages/Modellen";
 import Verkeer from "./pages/Verkeer";
 import Systeem from "./pages/Systeem";
-import InstellingenSheet, { applyTheme, readTheme } from "./pages/Instellingen";
+import InstellingenSheet from "./pages/Instellingen";
 import { IconSettings } from "./icons";
 import { installApiAuthFetch } from "./api";
+import { applyTheme, readTheme } from "./theme";
 import { useT, type TKey } from "./i18n/shared";
 
 installApiAuthFetch();

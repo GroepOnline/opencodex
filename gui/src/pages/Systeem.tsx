@@ -34,9 +34,12 @@ function Sectie({ id, label, waarde, acties, children, activeTarget }: {
   const t = useT();
   const [open, setOpen] = useState(() => !!id && id === activeTarget);
   // A legacy deep link (#storage / #api / #codex-auth / #claude) opens its section on landing.
-  useEffect(() => {
+  // Adjust during render when the routed target changes (React's documented alternative to an effect).
+  const [seenTarget, setSeenTarget] = useState(activeTarget);
+  if (activeTarget !== seenTarget) {
+    setSeenTarget(activeTarget);
     if (id && id === activeTarget) setOpen(true);
-  }, [id, activeTarget]);
+  }
   return (
     <>
       <div className="voegen-rij">

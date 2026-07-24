@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Models from "./Models";
 import Combos from "./Combos";
 import Subagents from "./Subagents";
@@ -18,10 +18,13 @@ const TAB_IDS = new Set<Tab>(["modellen", "combos", "subagents"]);
 export default function Modellen({ apiBase, target }: { apiBase: string; target?: string }) {
   const t = useT();
   const [tab, setTab] = useState<Tab>(() => TAB_IDS.has(target as Tab) ? target as Tab : "modellen");
-  // Deep links like #combos / #subagents open the matching tab straight away.
-  useEffect(() => {
+  // Deep links like #combos / #subagents open the matching tab straight away. Adjust during render
+  // when the routed target changes (React's documented alternative to syncing state in an effect).
+  const [seenTarget, setSeenTarget] = useState(target);
+  if (target !== seenTarget) {
+    setSeenTarget(target);
     if (TAB_IDS.has(target as Tab)) setTab(target as Tab);
-  }, [target]);
+  }
   return (
     <>
       <div className="depas-viewkop">

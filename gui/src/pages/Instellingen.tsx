@@ -1,27 +1,6 @@
 import { useI18n, LOCALES } from "../i18n/shared";
 import { IconX } from "../icons";
-
-export type Theme = "light" | "dark" | "system";
-
-export function readTheme(): Theme {
-  try {
-    const t = localStorage.getItem("ocx-theme");
-    if (t === "light" || t === "dark") return t;
-  } catch { /* ignore */ }
-  return "system";
-}
-
-export function applyTheme(next: Theme) {
-  try {
-    if (next === "system") {
-      localStorage.removeItem("ocx-theme");
-      document.documentElement.removeAttribute("data-theme");
-    } else {
-      localStorage.setItem("ocx-theme", next);
-      document.documentElement.setAttribute("data-theme", next);
-    }
-  } catch { /* ignore */ }
-}
+import { applyTheme, readTheme, type Theme } from "../theme";
 
 const THEMES: { value: Theme; labelNl: string; labelEn: string }[] = [
   { value: "light", labelNl: "Licht", labelEn: "Light" },

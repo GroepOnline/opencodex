@@ -1095,4 +1095,9 @@ export const zh: Record<TKey, string> = {
   "vk.stampBusy": "进行中",
   "vk.detailError": "错误:{code}",
   "vk.detailInOut": "输入 {in} · 输出 {out}",
+  "vk.rowTokens": "{n} 令牌",
+  "vk.rowDuration": "{s} 秒",
+  "vk.detailStatus": "状态 {status}",
+  "vk.detailUpstream": "上游：{error}",
+  "vk.detailId": "ID {id}",
 };

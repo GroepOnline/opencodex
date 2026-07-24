@@ -1096,6 +1096,11 @@ export const ru: Record<TKey, string> = {
   "vk.stampBusy": "Выполняется",
   "vk.detailError": "ошибка: {code}",
   "vk.detailInOut": "вход {in} · выход {out}",
+  "vk.rowTokens": "{n} ток",
+  "vk.rowDuration": "{s} с",
+  "vk.detailStatus": "статус {status}",
+  "vk.detailUpstream": "upstream: {error}",
+  "vk.detailId": "id {id}",
 
 
 };

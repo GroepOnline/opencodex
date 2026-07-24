@@ -1096,4 +1096,9 @@ export const ja: Record<TKey, string> = {
   "vk.stampBusy": "処理中",
   "vk.detailError": "エラー: {code}",
   "vk.detailInOut": "入力 {in} · 出力 {out}",
+  "vk.rowTokens": "{n} トークン",
+  "vk.rowDuration": "{s} 秒",
+  "vk.detailStatus": "ステータス {status}",
+  "vk.detailUpstream": "アップストリーム: {error}",
+  "vk.detailId": "ID {id}",
 };

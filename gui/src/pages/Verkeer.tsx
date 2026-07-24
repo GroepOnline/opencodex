@@ -56,10 +56,15 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
   const [openBon, setOpenBon] = useState<string | null>(null);
   const [analyseOpen, setAnalyseOpen] = useState(target === "usage");
   const pausedRef = useRef(paused);
-  pausedRef.current = paused;
+  useEffect(() => { pausedRef.current = paused; }, [paused]);
 
-  // The legacy #usage deep link opens the full analysis section on landing.
-  useEffect(() => { if (target === "usage") setAnalyseOpen(true); }, [target]);
+  // The legacy #usage deep link opens the full analysis section on landing. Adjust during render
+  // when the routed target changes (React's documented alternative to syncing state in an effect).
+  const [seenTarget, setSeenTarget] = useState(target);
+  if (target !== seenTarget) {
+    setSeenTarget(target);
+    if (target === "usage") setAnalyseOpen(true);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -193,19 +198,19 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
                 <span className="bon-tijd">{tijd(entry.timestamp, locale)}</span>
                 <span className="bon-titel">{modelLabel(entry.model)}</span>
                 <span className="bon-meta">{entry.provider}</span>
-                {tokens !== undefined && <span className="bon-meta">{formatTokens(tokens, locale)} tok</span>}
-                <span className="bon-meta">{(entry.durationMs / 1000).toFixed(1)}s</span>
+                {tokens !== undefined && <span className="bon-meta">{t("vk.rowTokens", { n: formatTokens(tokens, locale) })}</span>}
+                <span className="bon-meta">{t("vk.rowDuration", { s: (entry.durationMs / 1000).toFixed(1) })}</span>
                 <span className={`stempel ${stempel.cls}`}>{t(stempel.labelKey)}</span>
               </button>
               {isOpen && (
                 <div className="bon-detail">
-                  <div>status {entry.status}{statusInfo ? ` · ${statusInfo.label}` : ""}</div>
+                  <div>{t("vk.detailStatus", { status: entry.status })}{statusInfo ? ` · ${statusInfo.label}` : ""}</div>
                   {entry.errorCode && <div>{t("vk.detailError", { code: entry.errorCode })}</div>}
-                  {entry.upstreamError && <div>upstream: {entry.upstreamError}</div>}
+                  {entry.upstreamError && <div>{t("vk.detailUpstream", { error: entry.upstreamError })}</div>}
                   {entry.usage && (
                     <div>{t("vk.detailInOut", { in: entry.usage.inputTokens, out: entry.usage.outputTokens })}</div>
                   )}
-                  {entry.requestId && <div>id {entry.requestId}</div>}
+                  {entry.requestId && <div>{t("vk.detailId", { id: entry.requestId })}</div>}
                 </div>
               )}
             </div>
