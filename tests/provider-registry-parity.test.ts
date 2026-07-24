@@ -35,6 +35,7 @@ const EXPECTED_KEY_PROVIDER_IDS = [
   "qianfan", "alibaba", "alibaba-token-plan", "alibaba-token-plan-intl", "parallel", "zenmux", "litellm", "ollama-cloud", "mistral",
   "minimax", "minimax-cn", "kimi-code", "opencode-zen", "vercel-ai-gateway",
   "opencode-free", "xiaomi", "kilo", "mimo-free", "cloudflare-ai-gateway", "cloudflare-workers-ai", "gitlab-duo",
+  "omniroute",
 ];
 
 describe("provider registry parity", () => {
@@ -392,7 +393,7 @@ describe("provider registry parity", () => {
     expect(nvidia?.freeTier).toBe(true);
     expect(nvidia?.authKind).toBe("key");
     expect(nvidia?.keyOptional).toBeUndefined();
-    expect(freeTierProviders).toEqual(["nvidia", "cloudflare-workers-ai"]);
+    expect(freeTierProviders).toEqual(["nvidia", "cloudflare-workers-ai", "omniroute"]);
   });
 
   test("freeTier propagates through config seed, enrich backfill, and presets without overwriting user config", async () => {
@@ -425,7 +426,7 @@ describe("provider registry parity", () => {
   test("base URL override permission is registry-only and limited to opted-in providers", () => {
     const optedIn = PROVIDER_REGISTRY.filter(entry => entry.allowBaseUrlOverride);
 
-    expect(optedIn.map(entry => entry.id)).toEqual(["ollama", "vllm", "lm-studio", "qwen-cloud", "alibaba-token-plan-intl", "litellm"]);
+    expect(optedIn.map(entry => entry.id)).toEqual(["ollama", "vllm", "lm-studio", "qwen-cloud", "alibaba-token-plan-intl", "litellm", "omniroute"]);
     for (const entry of optedIn) {
       expect(providerConfigSeed(entry)).not.toHaveProperty("allowBaseUrlOverride");
     }
@@ -595,6 +596,7 @@ describe("provider registry parity", () => {
       "openai", "xai", "anthropic", "anthropic-apikey", "kimi", "openai-apikey", "umans", "opencode-go", "openrouter",
       "groq", "google", "azure-openai", "ollama", "vllm", "lm-studio", "opencode-free",
       "mimo-free",
+      "omniroute",
     ]);
 
     const presets = deriveProviderPresets();
