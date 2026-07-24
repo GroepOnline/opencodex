@@ -97,7 +97,9 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderDef> = {
     defaultModel: oauthDefaultModel("google-antigravity"),
   },
   cursor: {
-    login: (ctrl) => loginCursor(ctrl),
+    // forceLogin (GUI "Add account" / reauth) opens the browser account picker so a second
+    // Cursor identity can be appended under multiauth instead of refreshing the active row.
+    login: (ctrl, opts) => loginCursor(ctrl, { forceAccountSelect: opts?.forceLogin === true }),
     refresh: refreshCursorToken,
     providerConfig: oauthConfig("cursor"),
     defaultModel: oauthDefaultModel("cursor"),

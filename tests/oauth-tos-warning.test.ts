@@ -15,10 +15,12 @@ describe("oauth ToS risk map", () => {
 
   test("flags elevated unofficial bridges", () => {
     expect(oauthTosRisk("github-copilot")).toBe("elevated");
-    expect(oauthTosRisk("cursor")).toBe("elevated");
   });
 
   test("leaves lower-risk OAuth providers unmarked", () => {
+    // ChefGroep host patch: "cursor" is intentionally dropped from the elevated set so the ToS
+    // warning modal never blocks the multi-account Cursor login flow (see gui/src/oauth-tos-risk.ts).
+    expect(oauthTosRisk("cursor")).toBeNull();
     expect(oauthTosRisk("xai")).toBeNull();
     expect(oauthTosRisk("kimi")).toBeNull();
     expect(oauthTosRisk("kiro")).toBeNull();

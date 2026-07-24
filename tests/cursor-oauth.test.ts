@@ -30,8 +30,16 @@ describe("Cursor OAuth core flow", () => {
     expect(url.searchParams.get("challenge")).toBe(p.challenge);
     expect(url.searchParams.get("mode")).toBe("login");
     expect(url.searchParams.get("redirectTarget")).toBe("cli");
+    expect(url.searchParams.has("prompt")).toBe(false);
     expect(url.searchParams.has("verifier")).toBe(false);
     expect(p.loginUrl).not.toContain(p.verifier);
+  });
+
+  test("generateCursorAuthParams adds prompt=select_account when forceAccountSelect is set", async () => {
+    const p = await generateCursorAuthParams({ forceAccountSelect: true });
+    const url = new URL(p.loginUrl);
+    expect(url.searchParams.get("prompt")).toBe("select_account");
+    expect(url.searchParams.has("verifier")).toBe(false);
   });
 
   test("pollCursorAuth returns tokens after a 404 (pending) then 200", async () => {
@@ -132,10 +140,33 @@ describe("Cursor OAuth core flow", () => {
         JSON.stringify({ accessToken: jwtWithExp(Math.floor(Date.now() / 1000) + 3600), refreshToken: "ref" }),
         { status: 200 },
       )) as typeof fetch;
-    const creds = await loginCursor({ onAuth: ({ url }) => { authedUrl = url; }, onProgress: () => {} }, 1);
+    const creds = await loginCursor({ onAuth: ({ url }) => { authedUrl = url; }, onProgress: () => {} }, { pollBaseDelayMs: 1 });
     expect(authedUrl).toContain("cursor.com/loginDeepControl");
+    expect(new URL(authedUrl).searchParams.has("prompt")).toBe(false);
     expect(creds.access).toBeTruthy();
     expect(creds.refresh).toBe("ref");
+  });
+
+  test("loginCursor with forceAccountSelect asks the browser to pick an account", async () => {
+    let authedUrl = "";
+    let instructions = "";
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({ accessToken: jwtWithExp(Math.floor(Date.now() / 1000) + 3600), refreshToken: "ref" }),
+        { status: 200 },
+      )) as typeof fetch;
+    await loginCursor(
+      {
+        onAuth: ({ url, instructions: text }) => {
+          authedUrl = url;
+          instructions = text ?? "";
+        },
+        onProgress: () => {},
+      },
+      { forceAccountSelect: true, pollBaseDelayMs: 1 },
+    );
+    expect(new URL(authedUrl).searchParams.get("prompt")).toBe("select_account");
+    expect(instructions.toLowerCase()).toContain("choose");
   });
 
   test("credentialsFromCursorTokens extracts JWT sub as accountId for multiauth", () => {

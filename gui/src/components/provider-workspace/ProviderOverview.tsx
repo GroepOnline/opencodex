@@ -4,7 +4,7 @@
  */
 import { useCallback, useState } from "react";
 import { useT, useI18n } from "../../i18n";
-import { IconAlert, IconCheck } from "../../icons";
+import { IconAlert, IconCheck, IconRefresh } from "../../icons";
 import { binProviderStatus, type WorkspaceItem } from "../../provider-workspace/catalog";
 import { formatRelativeTime, relativeTimeLabelsFromT, formatRequestCount, formatTokenCount } from "../../provider-workspace/usage";
 import { accountQuotaFromReport, formatQuotaSourceLabel, type ProviderQuotaReportView } from "../../provider-workspace/report";
@@ -13,13 +13,16 @@ import { authModeLabel } from "./ProviderRail";
 import type { ProviderUpdatePatch } from "./types";
 
 export default function ProviderOverview({
-  item, usageTotals, quotaReport, oauthEmail,
+  item, usageTotals, quotaReport, quotaRefreshing, quotaFailed, onRefreshQuota, oauthEmail,
   onEditSettings, onViewUsage, onUpdateProvider,
   onReauthenticate, onCancelLogin, reauthBusy = false,
 }: {
   item: WorkspaceItem;
   usageTotals?: ProviderUsageTotals;
   quotaReport?: ProviderQuotaReportView;
+  quotaRefreshing?: boolean;
+  quotaFailed?: boolean;
+  onRefreshQuota?: () => void;
   oauthEmail?: string;
   onEditSettings?: () => void;
   onViewUsage?: () => void;
@@ -145,14 +148,28 @@ export default function ProviderOverview({
               <dd className="pws-kv-mono">{formatTokenCount(tokens, locale)}</dd>
             </div>
           )}
-          {quotaReport && (
+          {(quotaReport || onRefreshQuota) && (
             <div className="pws-kv-row">
               <dt>{t("pws.stats.quotaUpdated")}</dt>
               <dd
-                className="pws-kv-mono"
-                title={quotaReport.source ? formatQuotaSourceLabel(quotaReport.source) : undefined}
+                className="pws-kv-mono pws-quota-updated"
+                title={quotaReport?.source ? formatQuotaSourceLabel(quotaReport.source) : undefined}
               >
-                {formatRelativeTime(quotaReport.updatedAt, timeLabels)}
+                {quotaFailed
+                  ? <span style={{ color: "var(--amber)" }} role="status">{t("prov.quotaRefreshFailed")}</span>
+                  : formatRelativeTime(quotaReport?.updatedAt, timeLabels)}
+                {onRefreshQuota && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-icon btn-sm"
+                    onClick={onRefreshQuota}
+                    disabled={quotaRefreshing}
+                    aria-label={t("prov.quotaRefreshAria", { name: item.name })}
+                    title={t("prov.quotaRefresh")}
+                  >
+                    {quotaRefreshing ? <span className="spin" /> : <IconRefresh width={13} height={13} />}
+                  </button>
+                )}
               </dd>
             </div>
           )}

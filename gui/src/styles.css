@@ -13,6 +13,8 @@
 @import "./styles/provider-workspace-settings.css";
 @import "./styles/provider-overview-dashboard.css";
 @import "./styles-combos-workspace.css";
+/* De Pas re-skin: loaded last so its token overrides win over the legacy layer. */
+@import "./styles/depas.css";
 
 :root {
   /* default: follow the OS; [data-theme] below pins color-scheme so light-dark() obeys it */

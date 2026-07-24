@@ -11,10 +11,12 @@ import type { AccountLoadState } from "../components/provider-workspace/types";
 import { oauthAccountDisplayLabel } from "../provider-workspace/auth";
 import { oauthTosRisk } from "../oauth-tos-risk";
 import { Notice } from "../ui";
-import { IconPlus, IconTrash, IconLock, IconExternal, IconPower, IconChevron, IconLink } from "../icons";
+import { IconPlus, IconTrash, IconLock, IconExternal, IconPower, IconChevron, IconLink, IconRefresh } from "../icons";
 import { useT } from "../i18n";
-import type { AccountQuota } from "../codex-quota-utils";
 import QuotaBars from "../components/QuotaBars";
+import { useProviderQuotas } from "../use-provider-quotas";
+import { accountQuotaFromReport } from "../provider-workspace/report";
+import { formatRelativeTime, relativeTimeLabelsFromT } from "../provider-workspace/usage";
 import { providerIconSrc, formatProviderDisplayName } from "../provider-icons";
 import { apiErrorMessage } from "../api-error";
 
@@ -25,7 +27,6 @@ interface Config {
 }
 
 interface OAuthStatus { loggedIn: boolean; email?: string; error?: string; done?: boolean; needsReauth?: boolean; activeAccountId?: string | null }
-interface ProviderQuotaReport { provider: string; quota: AccountQuota; source: string; updatedAt: number }
 interface OAuthAccount { id: string; alias?: string; email?: string; active: boolean; needsReauth?: boolean; expiresAt?: number }
 interface ApiKeyEntry { id: string; label?: string; masked: string; active: boolean }
 type OpenAiAccountMode = "pool" | "direct";
@@ -47,6 +48,7 @@ const oauthLabel = (id: string) => OAUTH_LABELS[id] ?? id;
 
 export default function Providers({ apiBase }: { apiBase: string }) {
   const t = useT();
+  const timeLabels = relativeTimeLabelsFromT(t);
   const [config, setConfig] = useState<Config | null>(null);
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -55,7 +57,8 @@ export default function Providers({ apiBase }: { apiBase: string }) {
   const [statusOk, setStatusOk] = useState(false);
   const [oauthProviders, setOauthProviders] = useState<string[]>([]);
   const [oauthStatus, setOauthStatus] = useState<Record<string, OAuthStatus>>({});
-  const [quotaReports, setQuotaReports] = useState<Record<string, ProviderQuotaReport>>({});
+  const quotas = useProviderQuotas(apiBase);
+  const { refreshProvider: refreshProviderQuota, refreshAll: refreshAllQuotas } = quotas;
   const [busy, setBusy] = useState<string | null>(null);
   const [modeBusy, setModeBusy] = useState(false);
   const [loginInfo, setLoginInfo] = useState<{ provider: string; url?: string; instructions?: string; deviceCode?: string } | null>(null);
@@ -214,23 +217,6 @@ export default function Providers({ apiBase }: { apiBase: string }) {
     } catch { /* ignore */ }
   }, [apiBase]);
 
-  const fetchProviderQuotas = useCallback(async (refresh = false) => {
-    try {
-      const res = await fetch(`${apiBase}/api/provider-quotas${refresh ? "?refresh=1" : ""}`);
-      if (!res.ok) return;
-      const data = await res.json() as { reports?: ProviderQuotaReport[] };
-      setQuotaReports(prev => {
-        const next = { ...prev };
-        for (const report of data.reports ?? []) {
-          if (report?.provider) next[report.provider] = report;
-        }
-        return next;
-      });
-    } catch {
-      /* keep last-good */
-    }
-  }, [apiBase]);
-
   const fetchCodexActiveReauth = useCallback(async () => {
     const generation = ++codexReauthGenerationRef.current;
     try {
@@ -303,7 +289,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
         return;
       }
       const refreshed = await fetchAccountSets([provider]);
-      await Promise.all([fetchOauth(), fetchProviderQuotas(true)]);
+      await Promise.all([fetchOauth(), refreshProviderQuota(provider)]);
       if (!refreshed) {
         notify(t("pws.accountsLoadFailed"), false);
         return;
@@ -338,7 +324,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
     if (res.ok) {
       notify(t("prov.keySwitched", { key: entry.label ?? entry.masked }), true);
       fetchKeyPools(Object.keys(keyPools));
-      fetchProviderQuotas(true);
+      void refreshProviderQuota(provider);
     } else {
       const data = await res.json().catch(() => ({}));
       notify(data.error || t("prov.keySwitchFail"), false);
@@ -352,7 +338,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
       notify(t("prov.keyRemoved", { key: entry.label ?? entry.masked }), true);
       fetchKeyPools(Object.keys(keyPools));
       fetchConfig();
-      fetchProviderQuotas(true);
+      void refreshProviderQuota(provider);
     }
   };
 
@@ -371,7 +357,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
         await Promise.all([
           fetchKeyPools(Object.keys(keyPools).includes(provider) ? Object.keys(keyPools) : [...Object.keys(keyPools), provider]),
           fetchConfig(),
-          fetchProviderQuotas(true),
+          refreshProviderQuota(provider),
         ]);
         return true;
       }
@@ -419,7 +405,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
       }
       notify(t("prov.accountRemoved", { email: label }), true);
       await fetchAccountSets([provider]);
-      await Promise.all([fetchOauth(), fetchProviderQuotas(true)]);
+      await Promise.all([fetchOauth(), refreshProviderQuota(provider)]);
     } catch {
       notify(t("prov.accountRemoveFail", { email: label }), false);
     }
@@ -429,7 +415,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
     const timeout = window.setTimeout(() => {
       void fetchConfig();
       void fetchOauth();
-      void fetchProviderQuotas();
+      void refreshAllQuotas();
       void fetchCodexActiveReauth();
     }, 0);
     const iv = window.setInterval(() => { void fetchCodexActiveReauth(); }, 30_000);
@@ -437,7 +423,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
       window.clearTimeout(timeout);
       window.clearInterval(iv);
     };
-  }, [fetchConfig, fetchOauth, fetchProviderQuotas, fetchCodexActiveReauth]);
+  }, [fetchConfig, fetchOauth, refreshAllQuotas, fetchCodexActiveReauth]);
 
   // Load account sets once config tells us which providers are oauth-backed.
   const oauthCardProviders = useMemo(
@@ -496,7 +482,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
         setJsonLeaveOpen(false);
         setJsonBaseline(JSON.stringify(parsed, null, 2));
         fetchConfig();
-        fetchProviderQuotas(true);
+        void refreshAllQuotas(true);
         setModelsRefreshToken(n => n + 1);
         return true;
       }
@@ -639,7 +625,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
           setManualCodeMsg("");
           fetchConfig();
           fetchAccountSets(Object.keys(accountSets).includes(provider) ? Object.keys(accountSets) : [...Object.keys(accountSets), provider]);
-          fetchProviderQuotas(true);
+          void refreshProviderQuota(provider);
           setModelsRefreshToken(n => n + 1);
           finished = true;
           break;
@@ -711,7 +697,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
         fetchAccountSets([provider]),
         fetchOauth(),
         fetchConfig(),
-        fetchProviderQuotas(true),
+        refreshProviderQuota(provider),
       ]);
       setModelsRefreshToken(n => n + 1);
       notify(t("prov.logoutOk", { provider: oauthLabel(provider) }), true);
@@ -737,7 +723,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
         if (workspaceSelected === name) setWorkspaceSelected(null);
         fetchConfig();
         fetchOauth();
-        fetchProviderQuotas(true);
+        void refreshAllQuotas();
       } else {
         notify(await apiErrorMessage(res, fallback), false);
       }
@@ -758,7 +744,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
       notify(disabled ? t("prov.disabled", { name }) : t("prov.enabled", { name }), true);
       fetchConfig();
       fetchOauth();
-      fetchProviderQuotas(true);
+      void refreshAllQuotas();
       return;
     }
     const data = await res.json().catch(() => ({}));
@@ -805,7 +791,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
         },
       } : current);
       notify(t("prov.openaiModeSaved", { mode: t(next === "pool" ? "prov.openaiModePool" : "prov.openaiModeDirect") }), true);
-      if (next === "pool") void fetchProviderQuotas(true);
+      if (next === "pool") void refreshProviderQuota("openai");
     } catch {
       notify(t("prov.openaiModeSaveFailed"), false);
     } finally {
@@ -877,7 +863,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
         setCodexLoginOpen(false);
         notify(t("prov.loginOk", { provider: formatProviderDisplayName("openai"), cmd: "ocx sync" }), true);
         void fetchOauth();
-        void fetchProviderQuotas(true);
+        void refreshProviderQuota("openai");
         bumpModelsRefresh();
       }}
     />
@@ -914,6 +900,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
           jsonSaving={jsonSaving}
           modelsRefreshToken={modelsRefreshToken}
           activeAccountNeedsReauth={activeAccountNeedsReauth}
+          quotas={quotas}
           detail={(item, data) => {
             const loginStatus = accountLoginStatus[item.name] ?? oauthStatus[item.name];
             return (
@@ -923,6 +910,9 @@ export default function Providers({ apiBase }: { apiBase: string }) {
               usageTotals={data.usageTotals}
               modelUsage={data.modelUsage}
               quotaReport={data.quotaReport}
+              quotaRefreshing={data.quotaRefreshing}
+              quotaFailed={data.quotaFailed}
+              onRefreshQuota={data.onRefreshQuota}
               availableModels={data.availableModels}
               selectedModels={data.selectedModels}
               modelsLoading={data.modelsLoading}
@@ -971,7 +961,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
               setAdding(false);
               setAddIntent(null);
             }}
-            onAdded={(name) => { setAdding(false); setAddIntent(null); notify(t("prov.added", { name, cmd: "ocx sync" }), true); fetchConfig(); fetchOauth(); fetchProviderQuotas(true); bumpModelsRefresh(); }}
+            onAdded={(name) => { setAdding(false); setAddIntent(null); notify(t("prov.added", { name, cmd: "ocx sync" }), true); fetchConfig(); fetchOauth(); void refreshProviderQuota(name); bumpModelsRefresh(); }}
             accountRows={addModalAccountRows}
             accountStatus={accountLoginStatus}
             accountBusy={busy}
@@ -1179,7 +1169,12 @@ export default function Providers({ apiBase }: { apiBase: string }) {
           {Object.entries(config.providers).map(([name, prov]) => {
             const isDefault = name === config.defaultProvider;
             const isDisabled = prov.disabled === true;
-            const quota = quotaReports[name]?.quota ?? null;
+            const quotaReport = quotas.reports[name];
+            const quota = accountQuotaFromReport(quotaReport);
+            const quotaBusy = quotas.refreshing[name] === true;
+            const quotaFailed = quotas.failed[name] === true;
+            // Refresh makes sense where a quota source can exist (oauth/forward) or one already reported.
+            const canRefreshQuota = !isDisabled && (prov.authMode === "oauth" || prov.authMode === "forward" || !!quotaReport);
             const icon = providerIconSrc(name);
             const accountSet = prov.authMode === "oauth" ? accountSets[name] : undefined;
             const isKeyAuth = prov.authMode !== "oauth" && prov.authMode !== "forward";
@@ -1273,6 +1268,26 @@ export default function Providers({ apiBase }: { apiBase: string }) {
                   </div>
                 </div>
                 {quota && <QuotaBars quota={quota} threshold={80} t={t} className="provider-quota" />}
+                {canRefreshQuota && (
+                  <div className="provider-quota-meta">
+                    {quotaReport?.updatedAt !== undefined && (
+                      <span className="muted text-caption" title={quotaReport.source}>{formatRelativeTime(quotaReport.updatedAt, timeLabels)}</span>
+                    )}
+                    {quotaFailed && (
+                      <span className="text-caption" style={{ color: "var(--amber)" }} role="status">{t("prov.quotaRefreshFailed")}</span>
+                    )}
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => void refreshProviderQuota(name)}
+                      disabled={quotaBusy}
+                      aria-label={t("prov.quotaRefreshAria", { name })}
+                    >
+                      {quotaBusy ? <span className="spin" /> : <IconRefresh />}
+                      {quotaBusy ? t("prov.quotaRefreshing") : quotaFailed ? t("pws.retry") : t("prov.quotaRefresh")}
+                    </button>
+                  </div>
+                )}
                 {showAccounts && (
                   <>
                     <button
@@ -1389,7 +1404,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
             if (busy) void cancelLoginOAuth(busy);
             setAdding(false);
           }}
-          onAdded={(name) => { setAdding(false); notify(t("prov.added", { name, cmd: "ocx sync" }), true); fetchConfig(); fetchOauth(); fetchProviderQuotas(true); setModelsRefreshToken(n => n + 1); }}
+          onAdded={(name) => { setAdding(false); notify(t("prov.added", { name, cmd: "ocx sync" }), true); fetchConfig(); fetchOauth(); void refreshProviderQuota(name); setModelsRefreshToken(n => n + 1); }}
           accountRows={addModalAccountRows}
           accountStatus={accountLoginStatus}
           accountBusy={busy}

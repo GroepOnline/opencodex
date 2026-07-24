@@ -893,6 +893,24 @@
   border-top: 1px solid color-mix(in oklab, var(--border) 45%, transparent);
 }
 
+.pws-usage-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pws-usage-block-head .pws-section-title {
+  margin-bottom: 0;
+}
+
+/* "Quota updated" stat with its inline per-provider refresh button. */
+.pws-quota-updated {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .pws-usage-metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
