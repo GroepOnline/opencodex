@@ -55,6 +55,7 @@ import {
   recordCodexUpstreamOutcome,
   type CodexUpstreamOutcome,
 } from "../codex/routing";
+import { codexPaceBeforeSend } from "../codex/pacer";
 import { fetchWithResetRetry, fetchWithTransientRetry, applyUpstreamRecoveryInit } from "../lib/upstream-retry";
 import { ForwardAdmissionCredentialError, validateForwardAdmissionCredential } from "./auth-cors";
 import { listOpenAiForwardSidecarCandidates, resolveFirstUsableOpenAiSidecar, type ResolvedOpenAiForwardSidecar } from "../providers/openai-sidecar";
@@ -1122,6 +1123,11 @@ export async function handleResponses(
     const upstream = new AbortController();
     linkAbortSignal(upstream, options.abortSignal);
     const connectMs = config.connectTimeoutMs ?? 200_000;
+    // Jittered inter-request pacing for outbound Codex pool calls. No-op when
+    // disabled (default) or for non-pool auth (main passthrough / other providers).
+    if (usesCodexForwardPoolAuth(authCtx, route.provider)) {
+      await codexPaceBeforeSend(config, authCtx.accountId);
+    }
     let upstreamResponse: Response;
     try {
       // Transient-5xx pre-stream retry (devlog/_plan/260716_claudecode_hardening/010):

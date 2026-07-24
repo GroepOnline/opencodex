@@ -23,6 +23,16 @@ export type CodexThreadResolution =
   | { status: "expired"; accountId: string };
 
 const threadAccountMap = new Map<string, ThreadAffinityEntry>();
+
+// Round-robin rotation cursor (per-process, in-memory). Only consulted when
+// config.codexRotationMode === "round-robin"; advances once per NEW (non-affined)
+// conversation selection. Left untouched by the default failover path.
+let rrCursor = 0;
+
+/** Reset the round-robin cursor. Intended for deterministic tests. */
+export function resetCodexRoundRobinCursor(): void {
+  rrCursor = 0;
+}
 type CodexUpstreamHealth = {
   consecutiveFailures: number;
   /** Consecutive healthy terminals observed while recovering from escalation level 2+. */
@@ -416,6 +426,21 @@ export function resolveCodexAccountForThreadDetailed(
       return { status: "selected", accountId: entry.accountId };
     }
     threadAccountMap.delete(threadId);
+  }
+  // Opt-in round-robin: rotate NEW (non-affined) conversations across the usable
+  // pool. getEligiblePoolAccounts already filters reauth / cooldown / soft-avoid /
+  // unusable accounts and returns a deterministic order (main unshifted first,
+  // then config order), so the cursor yields a stable rotation. activeCodexAccountId
+  // is intentionally left untouched (no setActiveCodexAccount / saveConfig). With a
+  // single usable account this collapses to that account (no-op). Runs before the
+  // sticky failover path so thread affinity established elsewhere is preserved.
+  if (config.codexRotationMode === "round-robin") {
+    const pool = getEligiblePoolAccounts(config);
+    if (pool.length) {
+      const pick = pool[rrCursor % pool.length]!;
+      rrCursor = (rrCursor + 1) % Math.max(pool.length, 1);
+      return { status: "selected", accountId: pick };
+    }
   }
   let active = config.activeCodexAccountId;
   if (!active) {
