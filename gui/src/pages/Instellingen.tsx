@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useI18n, LOCALES } from "../i18n/shared";
 import { IconX } from "../icons";
 import { applyTheme, readTheme, type Theme } from "../theme";
@@ -10,7 +11,7 @@ const THEMES: { value: Theme; labelNl: string; labelEn: string }[] = [
 
 export default function Instellingen({ onClose }: { apiBase: string; onClose: () => void }) {
   const { locale, setLocale, t } = useI18n();
-  const theme = readTheme();
+  const [theme, setTheme] = useState<Theme>(() => readTheme());
 
   return (
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -54,7 +55,7 @@ export default function Instellingen({ onClose }: { apiBase: string; onClose: ()
               <button
                 key={th.value}
                 className={`usage-segmented-btn${theme === th.value ? " active" : ""}`}
-                onClick={() => applyTheme(th.value)}
+                onClick={() => { applyTheme(th.value); setTheme(th.value); }}
               >
                 {locale === "nl" ? th.labelNl : th.labelEn}
               </button>

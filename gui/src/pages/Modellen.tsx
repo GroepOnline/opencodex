@@ -23,7 +23,9 @@ export default function Modellen({ apiBase, target }: { apiBase: string; target?
   const [seenTarget, setSeenTarget] = useState(target);
   if (target !== seenTarget) {
     setSeenTarget(target);
-    if (TAB_IDS.has(target as Tab)) setTab(target as Tab);
+    // Reset to the default tab when the routed target is absent or invalid, so navigating
+    // #modellen/combos -> #modellen doesn't leave the URL and the shown tab disagreeing.
+    setTab(TAB_IDS.has(target as Tab) ? target as Tab : "modellen");
   }
   return (
     <>

@@ -30,6 +30,7 @@ export function detectInitial(): Locale {
     if (stored === "en" || stored === "nl" || stored === "de" || stored === "ko" || stored === "zh" || stored === "ru" || stored === "ja") return stored;
   } catch { /* ignore */ }
   const nav = typeof navigator !== "undefined" ? navigator.language.toLowerCase() : "nl";
+  if (nav.startsWith("en")) return "en";
   if (nav.startsWith("de")) return "de";
   if (nav.startsWith("ko")) return "ko";
   if (nav.startsWith("zh")) return "zh";

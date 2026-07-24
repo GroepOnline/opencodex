@@ -8,46 +8,11 @@ import { IconSettings } from "./icons";
 import { installApiAuthFetch } from "./api";
 import { applyTheme, readTheme } from "./theme";
 import { useT, type TKey } from "./i18n/shared";
+import { canonicalHash, parseHash, type Page, type Route } from "./route";
 
 installApiAuthFetch();
 
-type Page = "leveranciers" | "modellen" | "verkeer" | "systeem";
-
-const VALID_PAGES = new Set<Page>(["leveranciers", "modellen", "verkeer", "systeem"]);
-
-interface Route { page: Page; target?: string }
-
-/**
- * Legacy deep links from the old 11-page shell land on the view that absorbed them, carrying a
- * sub-target so the destination opens the right tab/section instead of its default. Old bookmarks
- * to #codex-auth / #api / #claude / #combos / #subagents used to collapse to just the parent page;
- * threading the target keeps them landing where the user expects. Canonical form: #/<page>[/<target>].
- */
-const LEGACY_ROUTES: Record<string, Route> = {
-  dashboard: { page: "systeem" },
-  providers: { page: "leveranciers" },
-  models: { page: "modellen", target: "modellen" },
-  combos: { page: "modellen", target: "combos" },
-  subagents: { page: "modellen", target: "subagents" },
-  logs: { page: "verkeer" },
-  debug: { page: "verkeer" },
-  usage: { page: "verkeer", target: "usage" },
-  storage: { page: "systeem", target: "storage" },
-  "codex-auth": { page: "systeem", target: "codex-auth" },
-  api: { page: "systeem", target: "api" },
-  claude: { page: "systeem", target: "claude" },
-};
-
-function readRouteFromHash(): Route {
-  const raw = location.hash.replace(/^#\/?/, "");
-  const [head, sub] = raw.split("/");
-  if (VALID_PAGES.has(head as Page)) return { page: head as Page, target: sub || undefined };
-  return LEGACY_ROUTES[head] ?? { page: "leveranciers" };
-}
-
-function canonicalHash(route: Route): string {
-  return route.target ? `${route.page}/${route.target}` : route.page;
-}
+const readRouteFromHash = (): Route => parseHash(location.hash);
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 

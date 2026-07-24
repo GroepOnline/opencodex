@@ -4,7 +4,8 @@
  * Per-provider refresh (`refreshProvider`) hits `?provider=<name>` so one
  * provider's probe never touches other upstreams. Rows merge by provider and
  * a stale response can never overwrite a newer row (generation-guarded).
- * Concurrent refreshes of the same scope join the in-flight request.
+ * Concurrent refreshes of the same request (URL) join the in-flight request;
+ * a forced `refreshAll(true)` (`?refresh=1`) never joins a non-forced one.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProviderQuotaReportView } from "./provider-workspace/report";
@@ -61,7 +62,10 @@ export function useProviderQuotas(apiBase: string): ProviderQuotasApi {
   }, []);
 
   const runScoped = useCallback((scope: string, url: string): Promise<boolean> => {
-    const joinable = inflightRef.current.get(scope);
+    // Dedupe by URL, not scope: a forced refresh (`?refresh=1`) and a plain one both
+    // target scope ALL but carry different URLs, so the forced call must not join
+    // (and lose its re-probe intent to) an in-flight non-forced call.
+    const joinable = inflightRef.current.get(url);
     if (joinable) return joinable;
 
     const generation = (generationRef.current[scope] ?? 0) + 1;
@@ -87,12 +91,12 @@ export function useProviderQuotas(apiBase: string): ProviderQuotasApi {
         if (isCurrent() && scope !== ALL) setFailed(prev => ({ ...prev, [scope]: true }));
         return false;
       } finally {
-        inflightRef.current.delete(scope);
+        inflightRef.current.delete(url);
         if (isCurrent() && scope !== ALL) setRefreshing(prev => ({ ...prev, [scope]: false }));
       }
     })();
 
-    inflightRef.current.set(scope, promise);
+    inflightRef.current.set(url, promise);
     return promise;
   }, [mergeReports]);
 

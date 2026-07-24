@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { railStatusCls, statusLabel } from "../gui/src/components/provider-workspace/ProviderRail";
 import type { WorkspaceItem } from "../gui/src/provider-workspace/catalog";
 import type { TFn } from "../gui/src/i18n";
+import { canonicalHash, parseHash } from "../gui/src/route";
 
 const t = ((key: string) => ({
   "prov.disabledBadge": "Disabled",
@@ -72,14 +73,43 @@ describe("provider rail source contract", () => {
     expect((css.match(/\.providers-workspace-rail-row\s*\{/g) ?? []).length).toBe(1);
   });
 
-  test("canonicalizes the hash route and threads the subroute target on synchronization", async () => {
+  test("App threads the parsed sub-target down to each page component", async () => {
+    // This host localizes the shell to Dutch page ids and models routing as { page, target };
+    // the wiring contract is that App passes the deep-link sub-target to each page.
     const app = await Bun.file("gui/src/App.tsx").text();
-    // This host localizes the shell to Dutch page ids and models routing as { page, target } via
-    // readRouteFromHash/canonicalHash instead of the upstream hashBelongsToPage helper. Page sync
-    // preserves the deep-link sub-target (the target is threaded down to each page component).
-    expect(app).toContain("function readRouteFromHash()");
-    expect(app).toContain("function canonicalHash(");
     expect(app).toContain("target={route.target}");
     expect(app).not.toContain("window.location.hash !== nextHash");
+  });
+});
+
+describe("hash routing (parseHash / canonicalHash)", () => {
+  test("parses canonical page hashes with and without a sub-target", () => {
+    expect(parseHash("#modellen")).toEqual({ page: "modellen", target: undefined });
+    expect(parseHash("#/modellen")).toEqual({ page: "modellen", target: undefined });
+    expect(parseHash("#modellen/combos")).toEqual({ page: "modellen", target: "combos" });
+    expect(parseHash("#systeem/codex-auth")).toEqual({ page: "systeem", target: "codex-auth" });
+  });
+
+  test("maps legacy deep links onto the absorbing page and threads their sub-target", () => {
+    expect(parseHash("#combos")).toEqual({ page: "modellen", target: "combos" });
+    expect(parseHash("#subagents")).toEqual({ page: "modellen", target: "subagents" });
+    expect(parseHash("#usage")).toEqual({ page: "verkeer", target: "usage" });
+    expect(parseHash("#codex-auth")).toEqual({ page: "systeem", target: "codex-auth" });
+    expect(parseHash("#providers")).toEqual({ page: "leveranciers", target: undefined });
+  });
+
+  test("falls back to the providers page for empty or unknown hashes", () => {
+    expect(parseHash("")).toEqual({ page: "leveranciers", target: undefined });
+    expect(parseHash("#")).toEqual({ page: "leveranciers", target: undefined });
+    expect(parseHash("#nonsense")).toEqual({ page: "leveranciers", target: undefined });
+    expect(parseHash("#modellen-typo/combos")).toEqual({ page: "leveranciers", target: undefined });
+  });
+
+  test("canonicalizes a route back to its #/<page>[/<target>] hash body", () => {
+    expect(canonicalHash({ page: "modellen" })).toBe("modellen");
+    expect(canonicalHash({ page: "modellen", target: "combos" })).toBe("modellen/combos");
+    // Legacy alias -> parse -> canonicalize collapses to the canonical form the router rewrites to.
+    expect(canonicalHash(parseHash("#combos"))).toBe("modellen/combos");
+    expect(canonicalHash(parseHash("#nonsense"))).toBe("leveranciers");
   });
 });
