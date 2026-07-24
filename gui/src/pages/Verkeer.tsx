@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Usage from "./Usage";
-import { useI18n } from "../i18n/shared";
+import { useI18n, type TKey } from "../i18n/shared";
 import { formatTokens } from "../format-tokens";
 import { statusCodeInfo } from "../status-codes";
 import { modelLabel } from "../model-display";
@@ -30,11 +30,11 @@ function bonTokens(entry: BonEntry): number | undefined {
   return entry.totalTokens;
 }
 
-function bonStempel(entry: BonEntry): { label: string; cls: string } {
-  if (entry.status >= 200 && entry.status < 300) return { label: "Klaar", cls: "stempel--klaar" };
-  if (entry.status === 0) return { label: "Fout", cls: "stempel--fout" };
-  if (entry.status >= 400) return { label: "Fout", cls: "stempel--fout" };
-  return { label: "Bezig", cls: "" };
+function bonStempel(entry: BonEntry): { labelKey: TKey; cls: string } {
+  if (entry.status >= 200 && entry.status < 300) return { labelKey: "vk.stampDone", cls: "stempel--klaar" };
+  if (entry.status === 0) return { labelKey: "vk.stampError", cls: "stempel--fout" };
+  if (entry.status >= 400) return { labelKey: "vk.stampError", cls: "stempel--fout" };
+  return { labelKey: "vk.stampBusy", cls: "" };
 }
 
 function tijd(ts: number, locale: string): string {
@@ -46,17 +46,20 @@ function vandaagKey(): string {
 }
 
 /** Verkeer: stat-strip + de bonnenrail met recente requests, met de volledige analyse eronder. */
-export default function Verkeer({ apiBase }: { apiBase: string }) {
-  const { locale } = useI18n();
+export default function Verkeer({ apiBase, target }: { apiBase: string; target?: string }) {
+  const { locale, t } = useI18n();
   const [summary30d, setSummary30d] = useState<UsageSummary | null>(null);
   const [logs, setLogs] = useState<BonEntry[]>([]);
   const [logsFailed, setLogsFailed] = useState(false);
   const [providerFilter, setProviderFilter] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   const [openBon, setOpenBon] = useState<string | null>(null);
-  const [analyseOpen, setAnalyseOpen] = useState(false);
+  const [analyseOpen, setAnalyseOpen] = useState(target === "usage");
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+
+  // The legacy #usage deep link opens the full analysis section on landing.
+  useEffect(() => { if (target === "usage") setAnalyseOpen(true); }, [target]);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,33 +114,33 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
   return (
     <>
       <div className="depas-viewkop">
-        <h2>Verkeer</h2>
+        <h2>{t("shell.navTraffic")}</h2>
       </div>
-      <p className="depas-viewsub">Wat er door de proxy gaat: elke request is een bon.</p>
+      <p className="depas-viewsub">{t("vk.subtitle")}</p>
 
-      <div className="stat-strip" role="group" aria-label="Verkeerscijfers">
+      <div className="stat-strip" role="group" aria-label={t("vk.statsAria")}>
         <div className="stat-strip-item">
           <span className="stat-strip-waarde">{formatTokens(tokens30d, locale)}</span>
-          <span className="stat-strip-label">tokens (30d)</span>
+          <span className="stat-strip-label">{t("vk.tokens30d")}</span>
         </div>
         <div className="stat-strip-item">
           <span className="stat-strip-waarde">{requestsVandaag.toLocaleString(locale)}</span>
-          <span className="stat-strip-label">requests vandaag</span>
+          <span className="stat-strip-label">{t("vk.requestsToday")}</span>
         </div>
         <div className="stat-strip-item">
           <span className="stat-strip-waarde">{requests30d.toLocaleString(locale)}</span>
-          <span className="stat-strip-label">requests (30d)</span>
+          <span className="stat-strip-label">{t("vk.requests30d")}</span>
         </div>
       </div>
 
       <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-        <div className="usage-segmented" role="group" aria-label="Filter op provider">
+        <div className="usage-segmented" role="group" aria-label={t("vk.filterAria")}>
           <button
             type="button"
             className={`usage-segmented-btn${providerFilter === null ? " active" : ""}`}
             onClick={() => setProviderFilter(null)}
           >
-            Alles
+            {t("vk.all")}
           </button>
           {providers.map(p => (
             <button
@@ -157,20 +160,20 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
           onClick={() => setPaused(p => !p)}
           aria-pressed={paused}
         >
-          {paused ? "Volg live" : "Pauzeer"}
+          {paused ? t("vk.follow") : t("vk.pause")}
         </button>
       </div>
 
       {logsFailed && (
         <p className="text-caption" style={{ color: "var(--wijn)" }} role="status">
-          Verkeer laden lukt niet. Laatste bekende bonnen blijven staan.
+          {t("vk.loadFailed")}
         </p>
       )}
 
       <div className="rail" aria-live="polite" onFocus={() => setPaused(true)}>
         {zichtbaar.length === 0 ? (
           <p className="muted" style={{ fontFamily: "var(--font-code)", fontSize: "0.875rem" }}>
-            Nog geen verkeer vandaag.
+            {t("vk.empty")}
           </p>
         ) : zichtbaar.map(entry => {
           const id = entry.requestId ?? `${entry.timestamp}-${entry.provider}-${entry.model}`;
@@ -192,15 +195,15 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
                 <span className="bon-meta">{entry.provider}</span>
                 {tokens !== undefined && <span className="bon-meta">{formatTokens(tokens, locale)} tok</span>}
                 <span className="bon-meta">{(entry.durationMs / 1000).toFixed(1)}s</span>
-                <span className={`stempel ${stempel.cls}`}>{stempel.label}</span>
+                <span className={`stempel ${stempel.cls}`}>{t(stempel.labelKey)}</span>
               </button>
               {isOpen && (
                 <div className="bon-detail">
                   <div>status {entry.status}{statusInfo ? ` · ${statusInfo.label}` : ""}</div>
-                  {entry.errorCode && <div>fout: {entry.errorCode}</div>}
+                  {entry.errorCode && <div>{t("vk.detailError", { code: entry.errorCode })}</div>}
                   {entry.upstreamError && <div>upstream: {entry.upstreamError}</div>}
                   {entry.usage && (
-                    <div>in {entry.usage.inputTokens} · uit {entry.usage.outputTokens}</div>
+                    <div>{t("vk.detailInOut", { in: entry.usage.inputTokens, out: entry.usage.outputTokens })}</div>
                   )}
                   {entry.requestId && <div>id {entry.requestId}</div>}
                 </div>
@@ -217,7 +220,7 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
           onClick={() => setAnalyseOpen(open => !open)}
           aria-expanded={analyseOpen}
         >
-          {analyseOpen ? "Verberg analyse" : "Volledige analyse"}
+          {analyseOpen ? t("vk.hideAnalysis") : t("vk.showAnalysis")}
         </button>
         {analyseOpen && (
           <div style={{ marginTop: 16 }}>

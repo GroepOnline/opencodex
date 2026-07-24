@@ -5,7 +5,7 @@ import CodexAuth from "./CodexAuth";
 import ClaudeCode from "./ClaudeCode";
 import { formatUptime } from "../formatUptime";
 import { formatBytes } from "../format-bytes";
-import { useI18n } from "../i18n/shared";
+import { useI18n, useT } from "../i18n/shared";
 import { IconChevron, IconRefresh } from "../icons";
 
 interface HealthData { status: string; version: string; uptime: number }
@@ -23,13 +23,20 @@ interface UpdateCheckData {
 
 interface StorageSummary { total?: { bytes: number; fileCount: number } }
 
-function Sectie({ label, waarde, acties, children }: {
+function Sectie({ id, label, waarde, acties, children, activeTarget }: {
+  id?: string;
   label: string;
   waarde?: ReactNode;
   acties?: ReactNode;
   children?: ReactNode;
+  activeTarget?: string;
 }) {
-  const [open, setOpen] = useState(false);
+  const t = useT();
+  const [open, setOpen] = useState(() => !!id && id === activeTarget);
+  // A legacy deep link (#storage / #api / #codex-auth / #claude) opens its section on landing.
+  useEffect(() => {
+    if (id && id === activeTarget) setOpen(true);
+  }, [id, activeTarget]);
   return (
     <>
       <div className="voegen-rij">
@@ -45,7 +52,7 @@ function Sectie({ label, waarde, acties, children }: {
               aria-expanded={open}
             >
               <IconChevron style={{ transform: open ? "rotate(90deg)" : undefined }} />
-              {open ? "Sluit" : "Beheer"}
+              {open ? t("common.close") : t("sys.manage")}
             </button>
           )}
         </span>
@@ -58,12 +65,13 @@ function Sectie({ label, waarde, acties, children }: {
 }
 
 /** Systeem: proxy-status, versie/update, opslag, API-info, Codex Auth en de gevarenzone. */
-export default function Systeem({ apiBase, health, healthFailed }: {
+export default function Systeem({ apiBase, health, healthFailed, target }: {
   apiBase: string;
   health: HealthData | null;
   healthFailed: boolean;
+  target?: string;
 }) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const online = !healthFailed && health?.status === "ok";
 
   const [updateCheck, setUpdateCheck] = useState<UpdateCheckData | null>(null);
@@ -100,9 +108,9 @@ export default function Systeem({ apiBase, health, healthFailed }: {
     try {
       const res = await fetch(`${apiBase}/api/update/check?tag=${channel}`);
       const data = await res.json() as UpdateCheckData & { error?: string };
-      if (!res.ok) throw new Error(data.error ?? "update check mislukt");
+      if (!res.ok) throw new Error(data.error ?? t("sys.updateCheckFailed"));
       setUpdateCheck(data);
-      if (!data.updateAvailable) setUpdateMsg("Je draait de nieuwste versie.");
+      if (!data.updateAvailable) setUpdateMsg(t("sys.upToDate"));
     } catch (err) {
       setUpdateMsg(err instanceof Error ? err.message : String(err));
     } finally {
@@ -122,8 +130,8 @@ export default function Systeem({ apiBase, health, healthFailed }: {
         body: JSON.stringify({ tag: channel, restart: true }),
       });
       const data = await res.json() as { job?: unknown; error?: string };
-      if (!res.ok || !data.job) throw new Error(data.error ?? "update starten mislukt");
-      setUpdateMsg("Update draait. De proxy herstart zichzelf zo.");
+      if (!res.ok || !data.job) throw new Error(data.error ?? t("sys.updateStartFailed"));
+      setUpdateMsg(t("sys.updateRunning"));
     } catch (err) {
       setUpdateMsg(err instanceof Error ? err.message : String(err));
     } finally {
@@ -137,8 +145,8 @@ export default function Systeem({ apiBase, health, healthFailed }: {
     try {
       const res = await fetch(`${apiBase}/api/sync`, { method: "POST" });
       const data = await res.json() as { added?: number; message?: string; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "sync mislukt");
-      setSyncMsg(`Klaar. ${data.added ?? 0} modellen toegevoegd.`);
+      if (!res.ok) throw new Error(data.error ?? t("sys.syncFailed"));
+      setSyncMsg(t("dash.syncOk", { count: data.added ?? 0 }));
     } catch (err) {
       setSyncMsg(err instanceof Error ? err.message : String(err));
     } finally {
@@ -164,35 +172,35 @@ export default function Systeem({ apiBase, health, healthFailed }: {
   return (
     <>
       <div className="depas-viewkop">
-        <h2>Systeem</h2>
+        <h2>{t("shell.navSystem")}</h2>
       </div>
-      <p className="depas-viewsub">De proxy zelf: status, versie, opslag en beheer.</p>
+      <p className="depas-viewsub">{t("sys.subtitle")}</p>
 
       <dl className="voegen-lijst" style={{ margin: 0 }}>
         <div className="voegen-rij">
-          <dt className="voegen-label">Proxy</dt>
+          <dt className="voegen-label">{t("sys.proxy")}</dt>
           <dd>
             <span className={`stempel ${online ? "stempel--online" : "stempel--offline"}`}>
-              {online ? "Online" : "Offline"}
+              {online ? t("dash.online") : t("dash.offline")}
             </span>
           </dd>
           {health && (
             <dd className="voegen-waarde" style={{ marginLeft: "auto" }}>
-              {formatUptime(health.uptime, locale)} in dienst
+              {t("sys.uptime", { uptime: formatUptime(health.uptime, locale) })}
             </dd>
           )}
         </div>
         <div className="voegen-rij">
-          <dt className="voegen-label">Versie</dt>
+          <dt className="voegen-label">{t("dash.version")}</dt>
           <dd className="voegen-waarde">v{health?.version ?? "—"}</dd>
           <dd className="voegen-rij-acties">
             {updateCheck?.canUpdate && updateCheck.updateAvailable ? (
               <button type="button" className="btn btn-primary btn-sm" onClick={() => void runUpdate()} disabled={updateBusy}>
-                Update naar {updateCheck.latestVersion}
+                {t("sys.updateTo", { version: updateCheck.latestVersion ?? "" })}
               </button>
             ) : (
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => void checkUpdate()} disabled={updateBusy} aria-busy={updateBusy}>
-                {updateBusy ? <span className="spin" /> : <IconRefresh />} Check update
+                {updateBusy ? <span className="spin" /> : <IconRefresh />} {t("dash.checkUpdate")}
               </button>
             )}
           </dd>
@@ -203,49 +211,53 @@ export default function Systeem({ apiBase, health, healthFailed }: {
           </div>
         )}
         <div className="voegen-rij">
-          <dt className="voegen-label">Modellencatalogus</dt>
-          <dd className="voegen-waarde">{syncMsg ?? "Sync haalt de nieuwste modellen op bij elke leverancier."}</dd>
+          <dt className="voegen-label">{t("sys.catalog")}</dt>
+          <dd className="voegen-waarde">{syncMsg ?? t("sys.catalogDesc")}</dd>
           <dd className="voegen-rij-acties">
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => void runSync()} disabled={syncBusy} aria-busy={syncBusy}>
-              {syncBusy ? <span className="spin" /> : <IconRefresh />} Sync modellen
+              {syncBusy ? <span className="spin" /> : <IconRefresh />} {t("dash.syncModels")}
             </button>
           </dd>
         </div>
       </dl>
 
       <Sectie
-        label="Opslag"
-        waarde={storage?.total ? `${formatBytes(storage.total.bytes, locale)} · ${storage.total.fileCount} bestanden` : "—"}
+        id="storage"
+        activeTarget={target}
+        label={t("sys.storage")}
+        waarde={storage?.total ? t("sys.storageValue", { size: formatBytes(storage.total.bytes, locale), count: storage.total.fileCount }) : "—"}
       >
         <Storage apiBase={apiBase} />
       </Sectie>
 
       <Sectie
-        label="API-endpoint"
+        id="api"
+        activeTarget={target}
+        label={t("sys.apiEndpoint")}
         waarde={endpoint}
         acties={
           <button type="button" className="btn btn-ghost btn-sm" onClick={copyEndpoint}>
-            {copied ? "Gekopieerd" : "Kopieer"}
+            {copied ? t("sys.copied") : t("sys.copy")}
           </button>
         }
       >
         <ApiKeys apiBase={apiBase} />
       </Sectie>
 
-      <Sectie label="Codex Auth" waarde="ChatGPT-accountpool voor de openai-leverancier">
+      <Sectie id="codex-auth" activeTarget={target} label="Codex Auth" waarde={t("sys.codexAuthDesc")}>
         <CodexAuth apiBase={apiBase} />
       </Sectie>
 
-      <Sectie label="Claude Code" waarde="Claude-integratie en agent-injectie">
+      <Sectie id="claude" activeTarget={target} label="Claude Code" waarde={t("sys.claudeCodeDesc")}>
         <ClaudeCode apiBase={apiBase} />
       </Sectie>
 
       <div className="gevarenzone">
-        <div className="gevarenzone-kop">Gevarenzone</div>
+        <div className="gevarenzone-kop">{t("sys.dangerZone")}</div>
         <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-          <span className="text-control muted">Stopt de proxy volledig. Codex en Cursor verliezen hun verbinding.</span>
+          <span className="text-control muted">{t("sys.stopDesc")}</span>
           <button type="button" className="btn btn-wijn btn-sm" onClick={() => setStopOpen(true)} disabled={stopping}>
-            Stop proxy
+            {t("dash.stop")}
           </button>
         </div>
       </div>
@@ -259,13 +271,13 @@ export default function Systeem({ apiBase, health, healthFailed }: {
       >
         <div className="modal-card">
           <div className="modal-head">
-            <h3 id="stop-proxy-title">Proxy stoppen?</h3>
+            <h3 id="stop-proxy-title">{t("sys.stopConfirmTitle")}</h3>
           </div>
-          <div className="modal-desc">Codex en Cursor verliezen hun verbinding.</div>
+          <div className="modal-desc">{t("sys.stopConfirmDesc")}</div>
           <div className="modal-actions">
-            <button type="button" className="btn btn-ghost" onClick={() => setStopOpen(false)}>Laat draaien</button>
+            <button type="button" className="btn btn-ghost" onClick={() => setStopOpen(false)}>{t("sys.keepRunning")}</button>
             <button type="button" className="btn btn-wijn" onClick={() => void stopProxy()} disabled={stopping}>
-              {stopping ? "Stopt…" : "Stop proxy"}
+              {stopping ? t("dash.stopping") : t("dash.stop")}
             </button>
           </div>
         </div>

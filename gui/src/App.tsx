@@ -3,9 +3,10 @@ import Providers from "./pages/Providers";
 import Modellen from "./pages/Modellen";
 import Verkeer from "./pages/Verkeer";
 import Systeem from "./pages/Systeem";
-import InstellingenSheet from "./pages/Instellingen";
+import InstellingenSheet, { applyTheme, readTheme } from "./pages/Instellingen";
 import { IconSettings } from "./icons";
 import { installApiAuthFetch } from "./api";
+import { useT, type TKey } from "./i18n/shared";
 
 installApiAuthFetch();
 
@@ -13,60 +14,75 @@ type Page = "leveranciers" | "modellen" | "verkeer" | "systeem";
 
 const VALID_PAGES = new Set<Page>(["leveranciers", "modellen", "verkeer", "systeem"]);
 
-/** Legacy deep links from the old 11-page shell land on the view that absorbed them. */
-const LEGACY_ROUTES: Record<string, Page> = {
-  dashboard: "systeem",
-  providers: "leveranciers",
-  models: "modellen",
-  combos: "modellen",
-  subagents: "modellen",
-  logs: "verkeer",
-  debug: "verkeer",
-  usage: "verkeer",
-  storage: "systeem",
-  "codex-auth": "systeem",
-  api: "systeem",
-  claude: "systeem",
+interface Route { page: Page; target?: string }
+
+/**
+ * Legacy deep links from the old 11-page shell land on the view that absorbed them, carrying a
+ * sub-target so the destination opens the right tab/section instead of its default. Old bookmarks
+ * to #codex-auth / #api / #claude / #combos / #subagents used to collapse to just the parent page;
+ * threading the target keeps them landing where the user expects. Canonical form: #/<page>[/<target>].
+ */
+const LEGACY_ROUTES: Record<string, Route> = {
+  dashboard: { page: "systeem" },
+  providers: { page: "leveranciers" },
+  models: { page: "modellen", target: "modellen" },
+  combos: { page: "modellen", target: "combos" },
+  subagents: { page: "modellen", target: "subagents" },
+  logs: { page: "verkeer" },
+  debug: { page: "verkeer" },
+  usage: { page: "verkeer", target: "usage" },
+  storage: { page: "systeem", target: "storage" },
+  "codex-auth": { page: "systeem", target: "codex-auth" },
+  api: { page: "systeem", target: "api" },
+  claude: { page: "systeem", target: "claude" },
 };
 
-function readPageFromHash(): Page {
+function readRouteFromHash(): Route {
   const raw = location.hash.replace(/^#\/?/, "");
-  const head = raw.split("/")[0];
-  if (VALID_PAGES.has(head as Page)) return head as Page;
-  return LEGACY_ROUTES[head] ?? "leveranciers";
+  const [head, sub] = raw.split("/");
+  if (VALID_PAGES.has(head as Page)) return { page: head as Page, target: sub || undefined };
+  return LEGACY_ROUTES[head] ?? { page: "leveranciers" };
+}
+
+function canonicalHash(route: Route): string {
+  return route.target ? `${route.page}/${route.target}` : route.page;
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
-const NAV: { id: Page; label: string }[] = [
-  { id: "leveranciers", label: "Leveranciers" },
-  { id: "modellen", label: "Modellen" },
-  { id: "verkeer", label: "Verkeer" },
-  { id: "systeem", label: "Systeem" },
+const NAV: { id: Page; labelKey: TKey }[] = [
+  { id: "leveranciers", labelKey: "nav.providers" },
+  { id: "modellen", labelKey: "nav.models" },
+  { id: "verkeer", labelKey: "shell.navTraffic" },
+  { id: "systeem", labelKey: "shell.navSystem" },
 ];
 
 interface HealthData { status: string; version: string; uptime: number }
 
 export default function App() {
-  const [page, setPageState] = useState<Page>(readPageFromHash);
+  const t = useT();
+  const [route, setRoute] = useState<Route>(readRouteFromHash);
   const [health, setHealth] = useState<HealthData | null>(null);
   const [healthFailed, setHealthFailed] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const page = route.page;
 
-  // One identity: the old dark theme attribute no longer applies.
+  // Re-apply the theme the user saved in Settings (persisted in localStorage) on mount. The old
+  // code blindly removed data-theme, which wiped the persisted choice and reset to system on load.
   useEffect(() => {
-    document.documentElement.removeAttribute("data-theme");
+    applyTheme(readTheme());
   }, []);
 
   useEffect(() => {
     const onHash = () => {
-      const next = readPageFromHash();
+      const next = readRouteFromHash();
       const raw = location.hash.replace(/^#\/?/, "");
-      if (raw.split("/")[0] !== next) {
-        location.hash = next;
+      const canonical = canonicalHash(next);
+      if (raw !== canonical) {
+        location.hash = canonical;
         return;
       }
-      setPageState(next);
+      setRoute(next);
     };
     onHash();
     window.addEventListener("hashchange", onHash);
@@ -99,8 +115,8 @@ export default function App() {
           <span className="depas-brand-name">opencodex</span>
           {health?.version && <span className="depas-brand-ver">v{health.version}</span>}
         </div>
-        <nav className="depas-nav" aria-label="Hoofdnavigatie">
-          {NAV.map(({ id, label }) => (
+        <nav className="depas-nav" aria-label={t("shell.navAria")}>
+          {NAV.map(({ id, labelKey }) => (
             <button
               key={id}
               type="button"
@@ -108,22 +124,22 @@ export default function App() {
               aria-current={page === id ? "page" : undefined}
               onClick={() => { location.hash = id; }}
             >
-              {label}
+              {t(labelKey)}
             </button>
           ))}
         </nav>
         <div className="depas-topbar-actions">
           <span className={`stempel ${online ? "stempel--online" : "stempel--offline"}`} aria-live="polite">
-            {online ? "Online" : "Offline"}
+            {online ? t("dash.online") : t("dash.offline")}
           </span>
           <button
             type="button"
             className="btn btn-ghost btn-icon"
             onClick={() => setSheetOpen(true)}
-            aria-label="Instellingen"
+            aria-label={t("dash.settingsSection")}
             aria-haspopup="dialog"
             aria-expanded={sheetOpen}
-            title="Instellingen"
+            title={t("dash.settingsSection")}
           >
             <IconSettings />
           </button>
@@ -132,15 +148,15 @@ export default function App() {
 
       {!online && health !== null && (
         <div className="depas-offline-banner" role="alert">
-          Proxy offline. Codex en Cursor kunnen niet routeren.
+          {t("shell.offlineBanner")}
         </div>
       )}
 
       <main className="depas-main">
         {page === "leveranciers" && <Providers apiBase={API_BASE} />}
-        {page === "modellen" && <Modellen apiBase={API_BASE} />}
-        {page === "verkeer" && <Verkeer apiBase={API_BASE} />}
-        {page === "systeem" && <Systeem apiBase={API_BASE} health={health} healthFailed={healthFailed} />}
+        {page === "modellen" && <Modellen apiBase={API_BASE} target={route.target} />}
+        {page === "verkeer" && <Verkeer apiBase={API_BASE} target={route.target} />}
+        {page === "systeem" && <Systeem apiBase={API_BASE} health={health} healthFailed={healthFailed} target={route.target} />}
       </main>
 
       {sheetOpen && <InstellingenSheet apiBase={API_BASE} onClose={() => setSheetOpen(false)} />}

@@ -1,9 +1,9 @@
 import { useI18n, LOCALES } from "../i18n/shared";
 import { IconX } from "../icons";
 
-type Theme = "light" | "dark" | "system";
+export type Theme = "light" | "dark" | "system";
 
-function readTheme(): Theme {
+export function readTheme(): Theme {
   try {
     const t = localStorage.getItem("ocx-theme");
     if (t === "light" || t === "dark") return t;
@@ -11,7 +11,7 @@ function readTheme(): Theme {
   return "system";
 }
 
-function applyTheme(next: Theme) {
+export function applyTheme(next: Theme) {
   try {
     if (next === "system") {
       localStorage.removeItem("ocx-theme");

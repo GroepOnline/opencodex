@@ -523,7 +523,11 @@ export async function handleManagementAPI(req: Request, url: URL, config: OcxCon
     if (providerName) {
       if (!hasOwnProvider(config.providers, providerName)) return jsonResponse({ error: "unknown provider" }, 404);
       const { generatedAt, report } = await fetchSingleProviderQuotaReport(config, providerName);
-      return jsonResponse({ generatedAt, reports: report ? [report] : [] });
+      // A failed probe yields report === null. Returning 200 with an empty reports[] made the
+      // client treat the refresh as a success (its failure path only triggers on non-OK HTTP),
+      // so the "refresh failed" UI never showed. Signal the failure with a non-OK status.
+      if (!report) return jsonResponse({ generatedAt, reports: [], error: "probe_failed" }, 502);
+      return jsonResponse({ generatedAt, reports: [report] });
     }
     return jsonResponse(await fetchProviderQuotaReports(config, forceRefresh));
   }
