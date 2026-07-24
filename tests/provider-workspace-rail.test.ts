@@ -72,11 +72,14 @@ describe("provider rail source contract", () => {
     expect((css.match(/\.providers-workspace-rail-row\s*\{/g) ?? []).length).toBe(1);
   });
 
-  test("preserves only the exact workspace subroute on page synchronization", async () => {
+  test("canonicalizes the hash route and threads the subroute target on synchronization", async () => {
     const app = await Bun.file("gui/src/App.tsx").text();
-    expect(app).toContain('rawHash === "providers/workspace"');
-    expect(app).toContain("hashBelongsToPage(rawHash, nextPage)");
-    expect(app).toContain("hashBelongsToPage(rawHash, page)");
+    // This host localizes the shell to Dutch page ids and models routing as { page, target } via
+    // readRouteFromHash/canonicalHash instead of the upstream hashBelongsToPage helper. Page sync
+    // preserves the deep-link sub-target (the target is threaded down to each page component).
+    expect(app).toContain("function readRouteFromHash()");
+    expect(app).toContain("function canonicalHash(");
+    expect(app).toContain("target={route.target}");
     expect(app).not.toContain("window.location.hash !== nextHash");
   });
 });
