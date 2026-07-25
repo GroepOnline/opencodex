@@ -922,7 +922,7 @@ describe("GitHub Actions hardening", () => {
         "issues.updateComment",
       ]));
       expect(callsTo(result, "pulls.update")).toEqual([
-        { owner: "lidge-jun", repo: "opencodex", pull_number: 42, title: "Port the runtime entry" },
+        { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "Port the runtime entry" },
       ]);
       const [cleared] = callsTo(result, "issues.updateComment") as [{ body: string }];
       expect(cleared.body).toContain('"active":false');
@@ -949,7 +949,7 @@ describe("GitHub Actions hardening", () => {
         "issues.updateComment",
       ]));
       expect(callsTo(result, "pulls.update")).toEqual([
-        { owner: "lidge-jun", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] Port the runtime entry" },
+        { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] Port the runtime entry" },
       ]);
       expect(lastEnforcerCommentBody(result)).toContain('"active":true');
       expect(lastEnforcerCommentBody(result)).toContain('"autoDraftedByBot":true');
@@ -991,7 +991,7 @@ describe("GitHub Actions hardening", () => {
       // and `body` are all accepted by this endpoint; an audit round added
       // `base: "main"` here and no static assertion caught it.
       expect(callsTo(result, "pulls.update")).toEqual([
-        { owner: "lidge-jun", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] Add a thing" },
+        { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] Add a thing" },
       ]);
 
       // The first comment create addresses this PR, by its own number.
@@ -1019,7 +1019,7 @@ describe("GitHub Actions hardening", () => {
           number: 42,
           base: {
             ref: parentHead,
-            repo: { name: "opencodex", owner: { login: "lidge-jun" } },
+            repo: { name: "opencodex", owner: { login: "OnlineChefGroep" } },
           },
           title: "Stacked child",
           draft: false,
@@ -1029,7 +1029,7 @@ describe("GitHub Actions hardening", () => {
             number: 41,
             head: {
               ref: parentHead,
-              repo: { name: "opencodex", owner: { login: "lidge-jun" } },
+              repo: { name: "opencodex", owner: { login: "OnlineChefGroep" } },
             },
           },
         ],
@@ -1049,7 +1049,7 @@ describe("GitHub Actions hardening", () => {
         number: 1000 + i,
         head: {
           ref: `feature/filler-${i}`,
-          repo: { name: "opencodex", owner: { login: "lidge-jun" } },
+          repo: { name: "opencodex", owner: { login: "OnlineChefGroep" } },
         },
       }));
       const result = await run({
@@ -1057,7 +1057,7 @@ describe("GitHub Actions hardening", () => {
           number: 42,
           base: {
             ref: parentHead,
-            repo: { name: "opencodex", owner: { login: "lidge-jun" } },
+            repo: { name: "opencodex", owner: { login: "OnlineChefGroep" } },
           },
           title: "Stacked child beyond page one",
           draft: false,
@@ -1069,7 +1069,7 @@ describe("GitHub Actions hardening", () => {
               number: 41,
               head: {
                 ref: parentHead,
-                repo: { name: "opencodex", owner: { login: "lidge-jun" } },
+                repo: { name: "opencodex", owner: { login: "OnlineChefGroep" } },
               },
             },
           ],
@@ -1094,7 +1094,7 @@ describe("GitHub Actions hardening", () => {
             number: 99,
             head: {
               ref: "feature/other",
-              repo: { name: "opencodex", owner: { login: "lidge-jun" } },
+              repo: { name: "opencodex", owner: { login: "OnlineChefGroep" } },
             },
           },
         ],
@@ -1110,7 +1110,7 @@ describe("GitHub Actions hardening", () => {
       ]));
       expect(callsTo(result, "pulls.update")).toEqual([
         {
-          owner: "lidge-jun",
+          owner: "OnlineChefGroep",
           repo: "opencodex",
           pull_number: 42,
           title: "[WRONG BRANCH] Orphan stack",
@@ -1147,7 +1147,7 @@ describe("GitHub Actions hardening", () => {
         "issues.updateComment",
       ]));
       expect(callsTo(restored, "pulls.update")).toEqual([
-        { owner: "lidge-jun", repo: "opencodex", pull_number: 42, title: "Add a thing" },
+        { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "Add a thing" },
       ]);
     });
 
@@ -1163,7 +1163,7 @@ describe("GitHub Actions hardening", () => {
         "issues.updateComment",
       ]));
       expect(callsTo(result, "pulls.update")).toEqual([
-        { owner: "lidge-jun", repo: "opencodex", pull_number: 42, title: "Add a thing" },
+        { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "Add a thing" },
       ]);
       const [ready] = callsTo(result, "graphql") as [{ query: string }];
       expect(ready.query).toContain("markPullRequestReadyForReview");
@@ -1183,7 +1183,7 @@ describe("GitHub Actions hardening", () => {
       });
 
       expect(callsTo(result, "pulls.update")).toEqual([
-        { owner: "lidge-jun", repo: "opencodex", pull_number: 42, title: "Add a thing (v2)" },
+        { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "Add a thing (v2)" },
       ]);
     });
 
@@ -1222,7 +1222,7 @@ describe("GitHub Actions hardening", () => {
         "issues.updateComment",
       ]));
       expect(callsTo(wentWrong, "pulls.update")).toEqual([
-        { owner: "lidge-jun", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] Add a thing" },
+        { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] Add a thing" },
       ]);
 
       // …and the reverse: the event says main, the live PR says dev. No writes.
@@ -1405,7 +1405,7 @@ describe("GitHub Actions hardening", () => {
       expect(commentBody).toContain("`main`");
       expect(commentBody).toContain("`dev`");
       // Points at the documentation rather than assuming the reader knows.
-      expect(commentBody).toContain("https://lidge-jun.github.io/opencodex/contributing/");
+      expect(commentBody).toContain("https://github.com/OnlineChefGroep/opencodex/contributing/");
       // And carries the state the next run needs.
       expect(commentBody).toContain(MARKER);
       expect(commentBody).toContain('"version":1');
@@ -1467,7 +1467,7 @@ describe("GitHub Actions hardening", () => {
           "issues.updateComment",
         ]));
         expect(callsTo(restored, "pulls.update")).toEqual([
-          { owner: "lidge-jun", repo: "opencodex", pull_number: 42, title: "Add a thing" },
+          { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "Add a thing" },
         ]);
         const [cleared] = callsTo(restored, "issues.updateComment") as [{ body: string }];
         expect(cleared.body).toContain('"version":1');
@@ -1517,7 +1517,7 @@ describe("GitHub Actions hardening", () => {
         "issues.updateComment",
       ]));
       expect(callsTo(loose, "pulls.update")).toEqual([
-        { owner: "lidge-jun", repo: "opencodex", pull_number: 42, title: "Add a thing" },
+        { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "Add a thing" },
       ]);
 
       // And the falsy side is symmetric: `null` and `0` skip their own
@@ -1582,7 +1582,7 @@ describe("GitHub Actions hardening", () => {
       });
 
       expect(callsTo(result, "pulls.update")).toEqual([
-        { owner: "lidge-jun", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] " },
+        { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] " },
       ]);
       expect(methodsOf(result)).toEqual(readsWrongBase([
         "issues.createComment",

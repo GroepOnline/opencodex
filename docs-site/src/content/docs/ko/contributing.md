@@ -6,7 +6,7 @@ description: opencodex 개발 환경, 구조, 컨벤션, 프로바이더와 어�
 ## 설정
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # 개발 모드 프록시 API
@@ -87,7 +87,7 @@ bun run release:watch               # 가장 최근 Release workflow run 감시
 
 Go 네이티브 포트를 담당했던 `dev2-go`는 정리했고, 두 라인을 동시에 유지하던 정책도
 함께 끝났습니다. 히스토리는
-[lidge-jun/opencodex-go-archive](https://github.com/lidge-jun/opencodex-go-archive)에
+[OnlineChefGroep/opencodex-go-archive](https://github.com/OnlineChefGroep/opencodex-go-archive)에
 읽기 전용으로 남아 있습니다. 지금은 `dev`의 Bun 네이티브 TypeScript가 단일 런타임입니다.
 
 리베이스 PR은 환영합니다. 오래된 브랜치를 현재 head 위로 리베이스하는 것은 잡음이 아니라

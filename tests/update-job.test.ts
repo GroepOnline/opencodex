@@ -776,7 +776,7 @@ describe("GUI update execution decisions", () => {
       installer: "npm",
       restart: true,
       command: "node /pkg/bin/ocx.mjs update --tag latest",
-      releaseNotesUrl: "https://github.com/lidge-jun/opencodex/releases/latest",
+      releaseNotesUrl: "https://github.com/OnlineChefGroep/opencodex/releases/latest",
       log: [],
     };
     writeFileSync(updateJobPath(), `${JSON.stringify(job)}\n`);
@@ -812,7 +812,7 @@ describe("GUI update execution decisions", () => {
       installer: "bun",
       restart: true,
       command: "bun add -g @bitkyc08/opencodex@2.7.41",
-      releaseNotesUrl: "https://github.com/lidge-jun/opencodex/releases/latest",
+      releaseNotesUrl: "https://github.com/OnlineChefGroep/opencodex/releases/latest",
       log: [],
       pid: 777,
     };
@@ -830,7 +830,7 @@ describe("GUI update execution decisions", () => {
         updateAvailable: true,
         canUpdate: true,
         command: "bun add -g @bitkyc08/opencodex@2.7.41",
-        releaseNotesUrl: "https://github.com/lidge-jun/opencodex/releases/latest",
+        releaseNotesUrl: "https://github.com/OnlineChefGroep/opencodex/releases/latest",
       }),
       spawnWorkerFn: () => ({
         pid: 888,
@@ -855,7 +855,7 @@ describe("GUI update execution decisions", () => {
         updateAvailable: true,
         canUpdate: true,
         command: "bun add -g @bitkyc08/opencodex@2.7.41",
-        releaseNotesUrl: "https://github.com/lidge-jun/opencodex/releases/latest",
+        releaseNotesUrl: "https://github.com/OnlineChefGroep/opencodex/releases/latest",
       }),
       spawnWorkerFn: () => { throw new Error("spawn denied"); },
     })).toThrow("Could not start update worker");

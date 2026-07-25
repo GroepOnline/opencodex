@@ -58,7 +58,7 @@ ocx update --tag preview
 若要对 opencodex 本身进行开发:
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy   # 以开发模式启动代理 API (src/cli/index.ts start)

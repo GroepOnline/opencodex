@@ -169,7 +169,7 @@ provider terms of service.
 ### anthropicAccountPool (experimental)
 
 Opt-in routing across **multiple Anthropic OAuth accounts** already stored in `auth.json`
-(issue [#294](https://github.com/lidge-jun/opencodex/issues/294)). **Default off.** This is
+(issue [#294](https://github.com/OnlineChefGroep/opencodex/issues/294)). **Default off.** This is
 experimental and not battle-tested — enable only if you accept the risk that Anthropic may
 restrict accounts that look like automated multi-account rotation. Accounts under the same
 organization can share quota; pooling those will not help.
