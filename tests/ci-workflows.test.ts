@@ -119,10 +119,11 @@ describe("GitHub Actions hardening", () => {
     expect(gate.test("src/router.ts")).toBe(false);
     expect(gate.test("docs-site/src/pages/index.astro")).toBe(false);
 
-    // Channel guards stay branch-exact.
-    expect(workflow).toContain("Release must run from main or preview");
-    expect(workflow).toContain("main releases must use a stable semver version");
-    expect(workflow).toContain("preview releases must use a preview prerelease version");
+    // Channel guards stay branch-exact. Fork model: all releases run from main;
+    // stable versions get dist-tag "latest", pre-release versions get "preview".
+    expect(workflow).toContain("Release must run from main;");
+    expect(workflow).toContain("Pre-release versions");
+    expect(workflow).toContain("Stable releases");
   });
 
   test("docs deployment is pinned, bounded, and scoped to Pages", async () => {

@@ -40,17 +40,43 @@ export function resetCodexPacerState(): void {
 }
 
 /**
+ * Resolve the EFFECTIVE pacing config, accounting for auto-enable:
+ * when codexRotationMode === "round-robin" and >1 pool account is configured,
+ * pacing defaults to ON (with default bounds) even if codexRequestPacing is unset.
+ * Explicit config always wins.
+ */
+export function resolveEffectivePacing(
+  config: Pick<OcxConfig, "codexRequestPacing" | "codexRotationMode">,
+  poolSize: number,
+): NonNullable<OcxConfig["codexRequestPacing"]> | null {
+  const explicit = config.codexRequestPacing;
+  if (explicit) {
+    // Explicit config wins — respect enabled: true OR false.
+    if (!explicit.enabled) return null;
+    return { minMs: PACE_DEFAULT_MIN_MS, maxMs: PACE_DEFAULT_MAX_MS, ...explicit };
+  }
+  // No explicit config: auto-enable for multi-account round-robin pools
+  // (reduces ban-prone cadence alignment across accounts).
+  if (config.codexRotationMode === "round-robin" && poolSize > 1) {
+    return { enabled: true, minMs: PACE_DEFAULT_MIN_MS, maxMs: PACE_DEFAULT_MAX_MS };
+  }
+  return null;
+}
+
+/**
  * Await the per-account jittered gap before an outbound Codex pool send.
  * No-op (no await) when pacing is disabled or no account id is supplied.
  */
-export async function codexPaceBeforeSend(config: OcxConfig, accountId: string | null): Promise<void> {
-  const pacing = config.codexRequestPacing;
-  if (!pacing?.enabled) return;
+export async function codexPaceBeforeSend(config: OcxConfig, accountId: string | null, poolSize?: number): Promise<void> {
+  const effective = poolSize !== undefined
+    ? resolveEffectivePacing(config, poolSize)
+    : (config.codexRequestPacing?.enabled ? { enabled: true, minMs: PACE_DEFAULT_MIN_MS, maxMs: PACE_DEFAULT_MAX_MS, ...config.codexRequestPacing } : null);
+  if (!effective) return;
   if (!accountId) return;
   const now = Date.now();
   const last = lastSendAtByAccount.get(accountId);
   if (last !== undefined) {
-    const wait = Math.max(0, paceGapMs(pacing) - (now - last));
+    const wait = Math.max(0, paceGapMs(effective) - (now - last));
     if (wait > 0) await new Promise<void>(resolve => setTimeout(resolve, wait));
   }
   // Record the actual send time (after any wait) so the next gap measures from

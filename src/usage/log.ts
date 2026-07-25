@@ -2,6 +2,8 @@ import { chmodSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readF
 import { join } from "node:path";
 import { getConfigDir } from "../config";
 import { usageDisplayTotalTokens } from "./totals";
+import { getBudgetTracker } from "./budgets";
+import { getServerPosthog, TELEMETRY_EVENTS } from "../telemetry/posthog-server";
 import type { OcxUsage } from "../types";
 
 export type UsageStatus = "reported" | "unreported" | "unsupported" | "estimated";
@@ -268,6 +270,30 @@ export function appendUsageEntry(entry: PersistedUsageEntry): void {
   const path = usageLogPath();
   appendFileSync(path, `${JSON.stringify(normalizeUsageEntry(entry))}\n`, { encoding: "utf-8", mode: 0o600 });
   try { chmodSync(path, 0o600); } catch { /* best-effort on platforms that ignore chmod */ }
+
+  // Side-effect hooks: budget tracking + telemetry. Both are fire-and-forget and
+  // never throw — wrapped internally. Kept after the persist so a throw here can
+  // never lose the usage row.
+  try { getBudgetTracker().recordUsage(entry.provider, entry.resolvedModel ?? entry.model, entry.usage); } catch { /* budget tracking is best-effort */ }
+  try {
+    const ph = getServerPosthog();
+    if (ph) {
+      ph.capture(TELEMETRY_EVENTS.REQUEST_TERMINAL, {
+        provider: entry.provider,
+        model: entry.resolvedModel ?? entry.model,
+        status: entry.status,
+        durationMs: entry.durationMs,
+        firstOutputMs: entry.firstOutputMs,
+        inputTokens: entry.usage?.inputTokens,
+        outputTokens: entry.usage?.outputTokens,
+        cachedInputTokens: entry.usage?.cachedInputTokens,
+        reasoningOutputTokens: entry.usage?.reasoningOutputTokens,
+        usageStatus: entry.usageStatus,
+        surface: entry.surface,
+        errorCode: entry.errorCode,
+      });
+    }
+  } catch { /* telemetry is best-effort */ }
 }
 
 export function readUsageEntries(): PersistedUsageEntry[] {

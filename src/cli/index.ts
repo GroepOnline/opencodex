@@ -463,6 +463,14 @@ async function handleStatus() {
   for (const e of oauthLoginSummary()) {
     console.log(`     ${e.provider.padEnd(10)} ${e.loggedIn ? `✓ logged in${e.email ? ` (${e.email})` : ""}` : "✗ not logged in"}`);
   }
+  const u = status.json.usage;
+  if (u && (u.todayProcessed > 0 || u.todayRequests > 0)) {
+    console.log(`   Today: ${u.todayProcessed.toLocaleString()} tokens across ${u.todayRequests} request(s)`);
+    if (u.limits.tokenDaily) {
+      console.log(`          budget ${u.todayProcessed.toLocaleString()} / ${u.limits.tokenDaily.toLocaleString()} tokens`);
+    }
+    if (u.todayCostEur > 0) console.log(`          ~€${u.todayCostEur.toFixed(2)} est. cost`);
+  }
 }
 
 function handleRecoverHistory() {

@@ -468,6 +468,38 @@ ocx recover-history --legacy-openai
 
 See the **[Configuration reference](https://github.com/OnlineChefGroep/opencodex)** for every field.
 
+### Telemetry (opt-in)
+
+Server-side observability via **PostHog (EU)** is opt-in. Set `OCX_POSTHOG_KEY` to enable:
+
+```bash
+export OCX_POSTHOG_KEY="phc_your_key"
+ocx start
+```
+
+Collected: request status, provider, model, latency (TTFT), token counts, error codes, account-pool outcomes. **Never collected:** prompts, messages, headers, auth tokens, filenames. An anonymous machine ID is stored in `~/.opencodex/telemetry-id.txt`.
+
+### Budgets & alerts
+
+Track token/cost usage and get alerts when thresholds are crossed:
+
+```json
+{
+  "budgets": {
+    "tokenDaily": 2000000,
+    "costDailyEur": 5,
+    "alertActions": ["log", "posthog", "webhook"],
+    "webhookUrl": "https://your-webhook.example.com/budget"
+  }
+}
+```
+
+Rolling windows (daily + weekly) persist across restarts via `~/.opencodex/budget-state.json`. Query current usage at `GET /api/budgets/summary`.
+
+### Latency stats
+
+`GET /api/latency-stats?window=24h` returns per-provider p50/p95/p99 percentiles for TTFT and total request duration.
+
 ## Documentation
 
 The public docs — install, providers, routing, sidecars, Codex integration, Codex App model picker, and CLI/config reference — are built from [`docs-site/`](./docs-site) and published to **[github.com/OnlineChefGroep/opencodex](https://github.com/OnlineChefGroep/opencodex/)**.

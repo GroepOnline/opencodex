@@ -4,6 +4,8 @@ import { diagnoseCodexBundledPlugins, type CodexPluginsDiagnostic } from "../cod
 import { isOpencodexHealthz, probeHostname } from "../server/proxy-liveness";
 import type { OcxConfig } from "../types";
 import { serviceStatusSummary } from "../service";
+import { readRecentUsageEntries } from "../usage/log";
+import { getBudgetTracker } from "../usage/budgets";
 
 type HealthCheck = {
   ok: boolean;
@@ -47,6 +49,12 @@ export type CliStatusJson = {
   service: { summary: string };
   codexShim: { summary: string };
   codexPlugins: CodexPluginsDiagnostic;
+  usage: {
+    todayProcessed: number;
+    todayCostEur: number;
+    todayRequests: number;
+    limits: { tokenDaily?: number; tokenWeekly?: number; costDailyEur?: number };
+  };
 };
 
 export type CliStatusView = {
@@ -108,6 +116,33 @@ async function checkProxyHealth(target: ListenTarget): Promise<HealthCheck> {
   }
 }
 
+/** Local usage aggregation for `ocx status` — works even when the proxy is down. */
+function collectUsageSummary(config: OcxConfig): {
+  todayProcessed: number;
+  todayCostEur: number;
+  todayRequests: number;
+  limits: { tokenDaily?: number; tokenWeekly?: number; costDailyEur?: number };
+} {
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const since = startOfToday.getTime();
+  try {
+    const entries = readRecentUsageEntries(500).filter((e) => e.timestamp >= since);
+    let todayProcessed = 0;
+    for (const e of entries) {
+      if (e.usage) todayProcessed += (e.usage.inputTokens ?? 0) + (e.usage.outputTokens ?? 0);
+    }
+    const summary = getBudgetTracker(config.budgets).getUsageSummary();
+    return {
+      todayProcessed,
+      todayCostEur: summary.todayCostEur,
+      todayRequests: entries.length,
+      limits: summary.limits,
+    };
+  } catch {
+    return { todayProcessed: 0, todayCostEur: 0, todayRequests: 0, limits: {} };
+  }
+}
 export async function collectStatus(): Promise<CliStatusView> {
   const configDiagnostics = readConfigDiagnostics();
   const config = configDiagnostics.config;
@@ -165,6 +200,7 @@ export async function collectStatus(): Promise<CliStatusView> {
       service: { summary: serviceSummary },
       codexShim: { summary: codexShimSummary },
       codexPlugins,
+      usage: collectUsageSummary(config),
     },
   };
 }

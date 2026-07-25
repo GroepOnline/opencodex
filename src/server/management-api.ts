@@ -34,6 +34,8 @@ import { DEFAULT_PROVIDER_CONTEXT_CAP, globalContextCapValue, providerContextCap
 import { resolveCodexHomeDir } from "../codex/home";
 import { scanStorage } from "../storage/scanner";
 import { readUsageEntries } from "../usage/log";
+import { getBudgetTracker, resetBudgetTracker } from "../usage/budgets";
+import { groupByProvider, type LatencyStats } from "../usage/percentiles";
 import { getUsageDebugLogEntries } from "../usage/debug";
 import { parseRange, parseUsageSurface, summarizeUsage } from "../usage/summary";
 import { stripCodexRuntimeProviderFields } from "../codex/auth-context";
@@ -537,6 +539,47 @@ export async function handleManagementAPI(req: Request, url: URL, config: OcxCon
         buckets: [],
         error: "scan_failed",
       });
+    }
+  }
+
+  // --- Budgets & usage alerts (action #2) ---
+  if (url.pathname === "/api/budgets/summary" && req.method === "GET") {
+    return jsonResponse(getBudgetTracker(config.budgets).getUsageSummary());
+  }
+
+  if (url.pathname === "/api/budgets" && req.method === "PUT") {
+    try {
+      const body = await req.json();
+      if (!body || typeof body !== "object") return jsonResponse({ error: "invalid_body" }, 400);
+      config.budgets = body;
+      saveConfig(config);
+      resetBudgetTracker();
+      return jsonResponse({ ok: true, budgets: config.budgets });
+    } catch {
+      return jsonResponse({ error: "invalid_json" }, 400);
+    }
+  }
+
+  // --- Latency percentiles (action #4) ---
+  if (url.pathname === "/api/latency-stats" && req.method === "GET") {
+    const windowParam = url.searchParams.get("window") ?? "24h";
+    const now = Date.now();
+    const windowMs = windowParam === "1h" ? 3_600_000 : windowParam === "7d" ? 7 * 86_400_000 : 86_400_000;
+    const since = now - windowMs;
+    try {
+      const entries = readUsageEntries().filter((e) => e.timestamp >= since);
+      const samples = entries.map((e) => ({
+        provider: e.provider,
+        firstOutputMs: e.firstOutputMs,
+        durationMs: e.durationMs,
+      }));
+      const providers: Record<string, { ttft: LatencyStats; total: LatencyStats }> = {};
+      for (const [provider, stats] of groupByProvider(samples)) {
+        providers[provider] = stats;
+      }
+      return jsonResponse({ providers, window: windowParam, generatedAt: now });
+    } catch {
+      return jsonResponse({ providers: {}, window: windowParam, generatedAt: now, error: "compute_failed" });
     }
   }
 
