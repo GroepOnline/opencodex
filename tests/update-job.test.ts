@@ -225,7 +225,7 @@ describe("GUI update execution decisions", () => {
       installer: "npm",
       restart: true,
       command: "node /pkg/bin/ocx.mjs update --tag latest",
-      releaseNotesUrl: "https://github.com/lidge-jun/opencodex/releases/latest",
+      releaseNotesUrl: "https://github.com/OnlineChefGroep/opencodex/releases/latest",
       log: [],
     };
     writeFileSync(updateJobPath(), `${JSON.stringify(job)}\n`);

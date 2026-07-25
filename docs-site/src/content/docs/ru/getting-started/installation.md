@@ -62,7 +62,7 @@ ocx update --tag preview
 Чтобы работать над самим opencodex:
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy   # запускает API прокси в режиме разработки (src/cli/index.ts start)

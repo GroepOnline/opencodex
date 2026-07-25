@@ -6,7 +6,7 @@ description: 全局控制 Codex 在所有模型上生成和管理子代理的方
 opencodex 允许你为目录中的所有模型选择多代理协作界面。仪表盘和 Models 页面中的 **Sub-agent** 开关会全局控制这一设置。
 
 :::note
-在 v2 界面（`multi_agent_v2`）上，子代理**默认**继承父会话的模型：`fork_turns` 默认为 `all`，而全量历史 fork 会拒绝覆盖。自 v2.7.2 起，opencodex 注入的指引会教模型如何打破继承 —— 将 `fork_turns` 设为 `"none"`（或如 `"3"` 的部分 fork）的 `spawn_agent` 调用可以传入 `model` / `reasoning_effort` 参数；即使公开的工具 schema 中看不到这些参数，Codex 运行时也会解析并应用。已知限制：当**原生**父代理 spawn 一个路由到**非原生** provider 的子代理时，Codex 客户端可能只以后端加密的 `encrypted_content` 发送 `NEW_TASK` 载荷，路由子代理会收到空的任务正文（[#92](https://github.com/lidge-jun/opencodex/issues/92)）。模型覆盖仍会生效，但任务文本可能丢失 —— 异构 provider 委派请使用更可靠的 v1 界面。
+在 v2 界面（`multi_agent_v2`）上，子代理**默认**继承父会话的模型：`fork_turns` 默认为 `all`，而全量历史 fork 会拒绝覆盖。自 v2.7.2 起，opencodex 注入的指引会教模型如何打破继承 —— 将 `fork_turns` 设为 `"none"`（或如 `"3"` 的部分 fork）的 `spawn_agent` 调用可以传入 `model` / `reasoning_effort` 参数；即使公开的工具 schema 中看不到这些参数，Codex 运行时也会解析并应用。已知限制：当**原生**父代理 spawn 一个路由到**非原生** provider 的子代理时，Codex 客户端可能只以后端加密的 `encrypted_content` 发送 `NEW_TASK` 载荷，路由子代理会收到空的任务正文（[#92](https://github.com/OnlineChefGroep/opencodex/issues/92)）。模型覆盖仍会生效，但任务文本可能丢失 —— 异构 provider 委派请使用更可靠的 v1 界面。
 :::
 
 ## 模式
@@ -15,7 +15,7 @@ opencodex 允许你为目录中的所有模型选择多代理协作界面。仪�
 | --- | --- | --- |
 | **v1** | `multi_agent_v1` | 使用经典的命名空间代理工具，以及 `send_input` / `close_agent` / `resume_agent`。`spawn_agent` 的模型覆盖可以在其他模型上生成子代理。 |
 | **base**（默认） | 上游固定值 | 恢复上游模型的固定值：gpt-5.6-sol 和 gpt-5.6-terra 使用 v2，gpt-5.6-luna 使用 v1；未固定的模型遵循 Codex 的 `multi_agent_v2` 功能开关。生成行为取决于该模型最终使用的界面。 |
-| **v2** | `multi_agent_v2` | 使用扁平的 `spawn_agent` 工具、并发会话，以及 `send_message` / `followup_task` / `wait_agent` / `interrupt_agent`。全量历史 fork 时子代理继承父模型；`fork_turns: "none"`（或部分 fork）时接受 `model` / `reasoning_effort` 覆盖。原生→路由子代理的任务正文可能以加密形式到达（[#92](https://github.com/lidge-jun/opencodex/issues/92)）。 |
+| **v2** | `multi_agent_v2` | 使用扁平的 `spawn_agent` 工具、并发会话，以及 `send_message` / `followup_task` / `wait_agent` / `interrupt_agent`。全量历史 fork 时子代理继承父模型；`fork_turns: "none"`（或部分 fork）时接受 `model` / `reasoning_effort` 覆盖。原生→路由子代理的任务正文可能以加密形式到达（[#92](https://github.com/OnlineChefGroep/opencodex/issues/92)）。 |
 
 ## 工作原理
 
@@ -46,7 +46,7 @@ opencodex 允许你为目录中的所有模型选择多代理协作界面。仪�
 - **Dashboard** → 第一个状态单元：选择 **v1**、**base** 或 **v2**。
 - **Models** 页面 → 使用顶部的分段控件。
 - 两个页面都有 **?** 按钮，可打开帮助弹窗并返回本文。
-- **Dashboard** → **子代理委托**：选择首选模型和可选的推理强度。在 v2 上，注入的指引会要求以 `fork_turns: "none"` 生成，使模型覆盖得以应用 —— 但原生→路由子代理的任务正文可能以加密形式到达（[#92](https://github.com/lidge-jun/opencodex/issues/92)）。
+- **Dashboard** → **子代理委托**：选择首选模型和可选的推理强度。在 v2 上，注入的指引会要求以 `fork_turns: "none"` 生成，使模型覆盖得以应用 —— 但原生→路由子代理的任务正文可能以加密形式到达（[#92](https://github.com/OnlineChefGroep/opencodex/issues/92)）。
 
 ### CLI
 

@@ -244,7 +244,7 @@ next Codex session. opencodex keeps these behaviors:
 - **Log in once, skip the API key.** OAuth support for xAI, Anthropic, and Kimi means you can authenticate with your existing account. Tokens auto-refresh. Or forward your `codex login`, paste an API key, or use `${ENV_VAR}` references — your call.
 - **Works everywhere Codex does.** Injects into Codex CLI, TUI, App, and SDK automatically. Routed models show up in Codex's model picker just like native ones.
 - **History-safe injection.** On local installs the proxy points Codex's own built-in `openai` provider at itself via a single `openai_base_url` line — new threads keep their native provider tag, so ongoing chat history is never remapped and an unclean shutdown can't hide it. (Threads re-tagged by older versions are migrated back once on the first start; remote/LAN binds use a dedicated provider entry instead, since they need an API-key header.)
-- **Delegate to the right model.** Feature up to five routed or native models in Codex's subagent picker from the dashboard or config — route complex tasks to a reasoning model, fast tasks to a cheap one. On the v2 multi-agent surface (GPT-5.6 Sol/Terra) the proxy injects compact delegation guidance: a preferred sub-agent model and effort (`injectionModel` / `injectionEffort`), the featured-model roster with the effort ladder each supports, and the `fork_turns` rules that let cross-model `spawn_agent` calls apply their overrides. Known limitation: when a native parent spawns a routed child, the task body can currently arrive backend-encrypted and be lost ([#92](https://github.com/lidge-jun/opencodex/issues/92)) — use the v1 surface for reliable cross-provider delegation. Want your own wording? Set `injectionPrompt` with `{{model}}` / `{{effort}}` / `{{roster}}` placeholders.
+- **Delegate to the right model.** Feature up to five routed or native models in Codex's subagent picker from the dashboard or config — route complex tasks to a reasoning model, fast tasks to a cheap one. On the v2 multi-agent surface (GPT-5.6 Sol/Terra) the proxy injects compact delegation guidance: a preferred sub-agent model and effort (`injectionModel` / `injectionEffort`), the featured-model roster with the effort ladder each supports, and the `fork_turns` rules that let cross-model `spawn_agent` calls apply their overrides. Known limitation: when a native parent spawns a routed child, the task body can currently arrive backend-encrypted and be lost ([#92](https://github.com/OnlineChefGroep/opencodex/issues/92)) — use the v1 surface for reliable cross-provider delegation. Want your own wording? Set `injectionPrompt` with `{{model}}` / `{{effort}}` / `{{roster}}` placeholders.
 - **Prepare for preview-gated OpenAI rollouts.** GPT-5.6 Sol/Terra/Luna entries preserve the upstream effort ladders. Direct/Multi use the 372k Codex contract; OpenAI API and OpenRouter use 1.05M metadata when upstream access is available.
 - **Give any model superpowers.** Non-OpenAI models get real web search and image understanding via a `gpt-5.4-mini` sidecar over your ChatGPT login.
 - **Generate images natively.** Codex's standalone `image_gen` tool uses `POST /v1/images/generations` for generation and `POST /v1/images/edits` for edits; it is separate from the hosted Responses `image_generation` tool.
@@ -269,7 +269,7 @@ next Codex session. opencodex keeps these behaviors:
 | Ollama / vLLM / LM Studio (local) | `openai-chat` | key (usually blank) |
 | Any OpenAI-compatible endpoint | `openai-chat` | key |
 
-Plus DeepSeek, Groq, OpenRouter, Together, Fireworks, Cerebras, Mistral, Hugging Face, NVIDIA NIM, MiniMax, Qwen Cloud, Tencent Cloud Coding Plan, SiliconFlow, and more. See the full list with `ocx init` or in the [provider docs](https://lidge-jun.github.io/opencodex/reference/configuration/).
+Plus DeepSeek, Groq, OpenRouter, Together, Fireworks, Cerebras, Mistral, Hugging Face, NVIDIA NIM, MiniMax, Qwen Cloud, Tencent Cloud Coding Plan, SiliconFlow, and more. See the full list with `ocx init` or in the [provider docs](https://github.com/OnlineChefGroep/opencodex).
 
 Cursor support is a staged experimental bridge: it appears in `ocx init` and the dashboard Add
 Provider picker as a local config with Cursor's static public model catalog. Live
@@ -466,11 +466,11 @@ backup support existed, you can also run the explicit recovery command:
 ocx recover-history --legacy-openai
 ```
 
-See the **[Configuration reference](https://lidge-jun.github.io/opencodex/reference/configuration/)** for every field.
+See the **[Configuration reference](https://github.com/OnlineChefGroep/opencodex)** for every field.
 
 ## Documentation
 
-The public docs — install, providers, routing, sidecars, Codex integration, Codex App model picker, and CLI/config reference — are built from [`docs-site/`](./docs-site) and published to **[lidge-jun.github.io/opencodex](https://lidge-jun.github.io/opencodex/)**.
+The public docs — install, providers, routing, sidecars, Codex integration, Codex App model picker, and CLI/config reference — are built from [`docs-site/`](./docs-site) and published to **[github.com/OnlineChefGroep/opencodex](https://github.com/OnlineChefGroep/opencodex/)**.
 
 Maintainer source-of-truth notes live under [`structure/`](./structure). Historical investigations remain under [`docs/`](./docs).
 Contributor setup lives in [`CONTRIBUTING.md`](./CONTRIBUTING.md), and security reporting guidance
@@ -479,7 +479,7 @@ lives in [`SECURITY.md`](./SECURITY.md).
 ## Development
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # start the proxy API in dev mode

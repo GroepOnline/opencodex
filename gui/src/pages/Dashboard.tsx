@@ -1104,7 +1104,7 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
               {t("models.v2Help")}
             </div>
             <div style={{ marginTop: 12 }}>
-              <a className="text-control" href="https://lidge-jun.github.io/opencodex/guides/sub-agent-surface/" target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>
+              <a className="text-control" href="https://github.com/OnlineChefGroep/opencodex/tree/main/docs-site" target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>
                 {t("models.v2DocsLink")}
               </a>
             </div>

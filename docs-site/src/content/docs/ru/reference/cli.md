@@ -461,7 +461,7 @@ ocx update
 ocx update --tag preview
 ```
 
-Новые версии становятся доступны в момент, когда [workflow Release](https://github.com/lidge-jun/opencodex/actions/workflows/release.yml)
+Новые версии становятся доступны в момент, когда [workflow Release](https://github.com/OnlineChefGroep/opencodex/actions/workflows/release.yml)
 публикует их в npm.
 
 ## Справка

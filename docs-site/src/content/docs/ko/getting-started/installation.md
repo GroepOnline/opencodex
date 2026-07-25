@@ -59,7 +59,7 @@ ocx update --tag preview
 opencodex 자체를 직접 수정하며 작업하려면:
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy   # 개발 모드로 프록시 API 시작 (src/cli/index.ts start)

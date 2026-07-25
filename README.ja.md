@@ -210,7 +210,7 @@ opencodex は 2 つの動作を分離して保持します:
 - **一度ログインすれば API キーは省略可。** xAI、Anthropic、Kimi は OAuth をサポートするので既存アカウントで認証でき、トークンは自動更新されます。または `codex login` を転送、API キーを貼り付け、`${ENV_VAR}` 参照を使えます — 自由に選べます。
 - **Codex が動くすべての場所で。** Codex CLI、TUI、App、SDK に自動で注入されます。ルーティングモデルはネイティブモデルと同様に Codex モデルピッカーに表示されます。
 - **履歴セーフな注入。** ローカルインストールではプロキシは Codex 自身の組み込み `openai` プロバイダーを単一の `openai_base_url` 行で自身に向けるため、新しいスレッドはネイティブのプロバイダータグを維持し、進行中のチャット履歴が再マッピングされることはなく、クリーンでないシャットダウンでも隠せません。(古いバージョンで再タグ付けされたスレッドは初回起動時に一度だけマイグレートされます; リモート/LAN バインドは API キーヘッダーが必要なため、専用のプロバイダーエントリを使用します。)
-- **適切なモデルに委任。** ダッシュボードや config から最大 5 つのルーティング/ネイティブモデルを Codex サブエージェントピッカーに公開し、複雑なタスクは推論モデルへ、高速なタスクは安価なモデルへ送れます。v2 マルチエージェントサーフェス(GPT-5.6 Sol/Terra)ではプロキシが簡潔な委任ガイダンスを注入します。推奨サブエージェントモデル・負荷(`injectionModel` / `injectionEffort`)、公開モデルロスターと各モデルが対応する負荷ラダー、そしてクロスモデル `spawn_agent` オーバーライドを適用する `fork_turns` ルールまで。既知の制限: ネイティブの親がルーティング子をスポーンすると、タスク本文がバックエンド暗号化状態で到着し失われることがあります([#92](https://github.com/lidge-jun/opencodex/issues/92)) — 安定したクロスプロバイダー委任には v1 サーフェスを使ってください。表現を自分で書きたい場合は `injectionPrompt` に `{{model}}` / `{{effort}}` / `{{roster}}` プレースホルダーを入れてください。
+- **適切なモデルに委任。** ダッシュボードや config から最大 5 つのルーティング/ネイティブモデルを Codex サブエージェントピッカーに公開し、複雑なタスクは推論モデルへ、高速なタスクは安価なモデルへ送れます。v2 マルチエージェントサーフェス(GPT-5.6 Sol/Terra)ではプロキシが簡潔な委任ガイダンスを注入します。推奨サブエージェントモデル・負荷(`injectionModel` / `injectionEffort`)、公開モデルロスターと各モデルが対応する負荷ラダー、そしてクロスモデル `spawn_agent` オーバーライドを適用する `fork_turns` ルールまで。既知の制限: ネイティブの親がルーティング子をスポーンすると、タスク本文がバックエンド暗号化状態で到着し失われることがあります([#92](https://github.com/OnlineChefGroep/opencodex/issues/92)) — 安定したクロスプロバイダー委任には v1 サーフェスを使ってください。表現を自分で書きたい場合は `injectionPrompt` に `{{model}}` / `{{effort}}` / `{{roster}}` プレースホルダーを入れてください。
 - **preview gate された OpenAI ロールアウトに備える。** GPT-5.6 Sol/Terra/Luna の負荷ラダーを保存します。Direct/Multi は 372k Codex 契約を、OpenAI API と OpenRouter は 1.05M メタデータを使います。
 - **任意のモデルに超能力を。** OpenAI 以外のモデルも ChatGPT ログイン上で動く `gpt-5.4-mini` サイドカーで本当のウェブ検索と画像理解を得られます。
 - **画像をネイティブに生成。** Codex の独立型 `image_gen` ツールは生成時に `POST /v1/images/generations`、編集時に `POST /v1/images/edits` を使います。Responses のホスト型 `image_generation` ツールとは別物です。
@@ -234,7 +234,7 @@ opencodex は 2 つの動作を分離して保持します:
 | Ollama / vLLM / LM Studio(ローカル) | `openai-chat` | key(通常は空欄) |
 | 任意の OpenAI 互換エンドポイント | `openai-chat` | key |
 
-このほか DeepSeek、Groq、OpenRouter、Together、Fireworks、Cerebras、Mistral、Hugging Face、NVIDIA NIM、MiniMax、Qwen Cloud、Tencent Cloud Coding Plan、SiliconFlow などがあります。完全な一覧は `ocx init` または[プロバイダードキュメント](https://lidge-jun.github.io/opencodex/ja/reference/configuration/)で確認してください。
+このほか DeepSeek、Groq、OpenRouter、Together、Fireworks、Cerebras、Mistral、Hugging Face、NVIDIA NIM、MiniMax、Qwen Cloud、Tencent Cloud Coding Plan、SiliconFlow などがあります。完全な一覧は `ocx init` または[プロバイダードキュメント](reference/configuration/)で確認してください。
 
 Cursor サポートは段階的な実験的ブリッジです: `ocx init` とダッシュボードの Add Provider ピッカーに Cursor の静的公開モデルカタログを持つローカル config として表示されます。Cursor アクセストークンを設定するとライブ
 HTTP/2 トランスポートが有効になります。Cursor サーバー駆動のネイティブ
@@ -397,19 +397,19 @@ OpenAI に復元し、残った opencodex ユーザースレッドも OpenAI に
 ocx recover-history --legacy-openai
 ```
 
-全フィールドの詳細は **[設定リファレンス](https://lidge-jun.github.io/opencodex/ja/reference/configuration/)** を参照してください。
+全フィールドの詳細は **[設定リファレンス](reference/configuration/)** を参照してください。
 
 ## ドキュメント
 
 公開ドキュメント(インストール、プロバイダー、ルーティング、サイドカー、Codex 統合、Codex App モデルピッカー、CLI/設定リファレンス)は [`docs-site/`](./docs-site) の Astro サイトとしてビルドされ
-**[lidge-jun.github.io/opencodex](https://lidge-jun.github.io/opencodex/ja/)** に公開されます。
+**[github.com/OnlineChefGroep/opencodex]()** に公開されます。
 
 メンテナ用の source of truth は [`structure/`](./structure) に、過去の調査/診断ノートは [`docs/`](./docs) にあります。
 
 ## 開発
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # dev モードでプロキシ API を起動
@@ -426,7 +426,7 @@ API は `/healthz`、`/v1/responses`、`POST /v1/images/generations`、`POST /v1
 bun run dev:gui
 ```
 
-**[コントリビュート](https://lidge-jun.github.io/opencodex/ja/contributing/)** を参照してください。
+**[コントリビュート](contributing/)** を参照してください。
 
 ## 免責事項
 

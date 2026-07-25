@@ -6,7 +6,7 @@ description: Develop opencodex — setup, layout, conventions, and how to add a 
 ## Setup
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # proxy API in dev mode
@@ -45,7 +45,7 @@ cd docs-site && bun install && bun dev
 
 ## Docs publishing
 
-The public docs publish to GitHub Pages at <https://lidge-jun.github.io/opencodex/>. The
+The public docs publish to GitHub Pages at <https://github.com/OnlineChefGroep/opencodex/>. The
 `.github/workflows/deploy-docs.yml` workflow runs on `main` pushes that touch `docs-site/**` or the
 workflow itself, builds `docs-site`, and deploys the generated site. Before pushing docs changes,
 run:
@@ -80,7 +80,7 @@ bun run release:watch               # watch the newest Release workflow run
 ## Project maintainers
 
 The current maintainers, their responsibilities, and the review and merge policy are documented in
-[`MAINTAINERS.md`](https://github.com/lidge-jun/opencodex/blob/main/MAINTAINERS.md). GitHub review
+[`MAINTAINERS.md`](https://github.com/OnlineChefGroep/opencodex/blob/main/MAINTAINERS.md). GitHub review
 ownership for the repository and security-sensitive paths is declared in `.github/CODEOWNERS`.
 
 ## Conventions

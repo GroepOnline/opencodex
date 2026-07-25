@@ -6,7 +6,7 @@ description: Разработка opencodex — настройка окруже�
 ## Настройка окружения
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # прокси-API в режиме разработки
@@ -45,7 +45,7 @@ cd docs-site && bun install && bun dev
 
 ## Публикация документации
 
-Публичная документация публикуется на GitHub Pages по адресу <https://lidge-jun.github.io/opencodex/ru/>.
+Публичная документация публикуется на GitHub Pages по адресу <https://github.com/OnlineChefGroep/opencodex/ru/>.
 Воркфлоу `.github/workflows/deploy-docs.yml` запускается на push в `main`, затрагивающих
 `docs-site/**` или сам воркфлоу, собирает `docs-site` и разворачивает сгенерированный сайт. Перед
 push изменений документации выполните:

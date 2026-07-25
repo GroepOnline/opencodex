@@ -112,7 +112,7 @@ npm 警告里给出的缩写命令缺少包名，会把当前目录重新安装�
 - **安全地池化 ChatGPT 账户。** 现有 Codex 线程保持在一个账户上，而新会话可以从池中自动挑选使用量更低的账户，并带有配额刷新和非 PII 请求标签。
 - **登录一次，免填 API key。** xAI、Anthropic、Kimi 支持 OAuth，可用现有账户认证，token 自动刷新。也可以转发 `codex login`、粘贴 API key，或使用 `${ENV_VAR}` 引用 —— 随你选择。
 - **Codex 在哪里能用，它就在哪里能用。** 自动注入 Codex CLI、TUI、App 和 SDK。路由模型像原生模型一样出现在 Codex 的模型选择器里。
-- **委派给合适的模型。** 在仪表盘或 config 中把最多 5 个路由/原生模型放进 Codex 的 subagent 选择器 —— 复杂任务交给 reasoning 模型，快速任务交给便宜模型。在 v2 多智能体表面（GPT-5.6 Sol/Terra）上，代理会注入精简的委派指引：首选子智能体模型与 effort（`injectionModel` / `injectionEffort`）、featured 模型清单及各自支持的 effort 阶梯，以及让跨模型 `spawn_agent` 覆盖得以应用的 `fork_turns` 规则。已知限制：原生父代理 spawn 路由子代理时，任务正文可能以后端加密形式到达而丢失（[#92](https://github.com/lidge-jun/opencodex/issues/92)）—— 需要可靠的跨 provider 委派请使用 v1 表面。想自定义文案，可在 `injectionPrompt` 中使用 `{{model}}` / `{{effort}}` / `{{roster}}` 占位符。
+- **委派给合适的模型。** 在仪表盘或 config 中把最多 5 个路由/原生模型放进 Codex 的 subagent 选择器 —— 复杂任务交给 reasoning 模型，快速任务交给便宜模型。在 v2 多智能体表面（GPT-5.6 Sol/Terra）上，代理会注入精简的委派指引：首选子智能体模型与 effort（`injectionModel` / `injectionEffort`）、featured 模型清单及各自支持的 effort 阶梯，以及让跨模型 `spawn_agent` 覆盖得以应用的 `fork_turns` 规则。已知限制：原生父代理 spawn 路由子代理时，任务正文可能以后端加密形式到达而丢失（[#92](https://github.com/OnlineChefGroep/opencodex/issues/92)）—— 需要可靠的跨 provider 委派请使用 v1 表面。想自定义文案，可在 `injectionPrompt` 中使用 `{{model}}` / `{{effort}}` / `{{roster}}` 占位符。
 - **为 preview-gated OpenAI rollout 做好准备。** GPT-5.6 Sol/Terra/Luna 保留 upstream effort 阶梯。Direct/Multi 使用 372k Codex 契约，OpenAI API 与 OpenRouter 使用 1.05M 元数据。
 - **给任意模型超能力。** 非 OpenAI 模型也能通过你的 ChatGPT 登录上运行的 `gpt-5.4-mini` sidecar 获得真正的网页搜索和图片理解。
 - **原生生成图片。** Codex 的独立 `image_gen` 工具通过 `POST /v1/images/generations` 生成图片、通过 `POST /v1/images/edits` 编辑图片；它独立于 hosted Responses 的 `image_generation` 工具。
@@ -226,7 +226,7 @@ opencodex 保持两种独立行为：
 | Ollama / vLLM / LM Studio（本地） | `openai-chat` | key（通常留空） |
 | 任意 OpenAI 兼容端点 | `openai-chat` | key |
 
-此外还有 DeepSeek、Groq、OpenRouter、Together、Fireworks、Cerebras、Mistral、Hugging Face、NVIDIA NIM、MiniMax、Qwen Cloud、腾讯云 Coding Plan、SiliconFlow 等等。完整列表可通过 `ocx init` 查看，或参阅 [provider 文档](https://lidge-jun.github.io/opencodex/zh-cn/reference/configuration/)。
+此外还有 DeepSeek、Groq、OpenRouter、Together、Fireworks、Cerebras、Mistral、Hugging Face、NVIDIA NIM、MiniMax、Qwen Cloud、腾讯云 Coding Plan、SiliconFlow 等等。完整列表可通过 `ocx init` 查看，或参阅 [provider 文档](reference/configuration/)。
 
 ## CLI
 
@@ -389,18 +389,18 @@ Codex 不会尝试 resume 一个其 provider 已不在 `config.toml` 中的线�
 ocx recover-history --legacy-openai
 ```
 
-每个字段的详细说明参阅 **[配置参考](https://lidge-jun.github.io/opencodex/zh-cn/reference/configuration/)**。
+每个字段的详细说明参阅 **[配置参考](reference/configuration/)**。
 
 ## 文档
 
-完整文档——安装、provider 配置、路由、sidecar、Codex 集成、Codex App 模型选择器、CLI/配置参考——由 [`docs-site/`](./docs-site) 目录下的 Astro 站点构建，发布在 **[lidge-jun.github.io/opencodex](https://lidge-jun.github.io/opencodex/zh-cn/)**。
+完整文档——安装、provider 配置、路由、sidecar、Codex 集成、Codex App 模型选择器、CLI/配置参考——由 [`docs-site/`](./docs-site) 目录下的 Astro 站点构建，发布在 **[github.com/OnlineChefGroep/opencodex]()**。
 
 维护者 source of truth 位于 [`structure/`](./structure)，历史调查和诊断笔记保留在 [`docs/`](./docs)。
 
 ## 开发
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # 以开发模式启动代理 API
@@ -416,7 +416,7 @@ bun x tsc --noEmit   # 类型检查
 bun run dev:gui
 ```
 
-参阅 **[贡献指南](https://lidge-jun.github.io/opencodex/zh-cn/contributing/)**。
+参阅 **[贡献指南](contributing/)**。
 
 ## 免责声明
 

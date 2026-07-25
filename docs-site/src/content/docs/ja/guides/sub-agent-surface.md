@@ -6,7 +6,7 @@ description: すべてのモデルの Codex サブエージェント生成・管
 opencodex ではカタログの全モデルが使うマルチエージェントコラボサーフェスを選択できます。ダッシュボードとモデルページの **サブエージェント** トグルがこの値をグローバルに制御します。
 
 :::note
-v2 サーフェス(`multi_agent_v2`)のサブエージェントは**デフォルトで**親モデルを継承します。`fork_turns` のデフォルトが `all` で、全体履歴 fork がオーバーライドを拒否するためです。v2.7.2 から opencodex が継承を破る方法をガイドとして注入します。`fork_turns` を `"none"`(または `"3"` のような部分 fork)に指定した `spawn_agent` 呼び出しは `model` / `reasoning_effort` 引数を渡せ、公開されたツールスキーマにこの引数が見えなくても Codex ランタイムはパースして適用します。既知の制限:**ネイティブ**の親が**非ネイティブ**(ルーティング)プロバイダーの子をスポーンすると Codex クライアントが `NEW_TASK` ペイロードをバックエンド暗号化の `encrypted_content` でのみ送れず、子が空のタスク本文を受け取る可能性があります([#92](https://github.com/lidge-jun/opencodex/issues/92))。モデルオーバーライドは適用されますがタスクテキストが失われる可能性があるため、異種プロバイダー委任には v1 サーフェスが安定です。
+v2 サーフェス(`multi_agent_v2`)のサブエージェントは**デフォルトで**親モデルを継承します。`fork_turns` のデフォルトが `all` で、全体履歴 fork がオーバーライドを拒否するためです。v2.7.2 から opencodex が継承を破る方法をガイドとして注入します。`fork_turns` を `"none"`(または `"3"` のような部分 fork)に指定した `spawn_agent` 呼び出しは `model` / `reasoning_effort` 引数を渡せ、公開されたツールスキーマにこの引数が見えなくても Codex ランタイムはパースして適用します。既知の制限:**ネイティブ**の親が**非ネイティブ**(ルーティング)プロバイダーの子をスポーンすると Codex クライアントが `NEW_TASK` ペイロードをバックエンド暗号化の `encrypted_content` でのみ送れず、子が空のタスク本文を受け取る可能性があります([#92](https://github.com/OnlineChefGroep/opencodex/issues/92))。モデルオーバーライドは適用されますがタスクテキストが失われる可能性があるため、異種プロバイダー委任には v1 サーフェスが安定です。
 :::
 
 ## モード
@@ -15,7 +15,7 @@ v2 サーフェス(`multi_agent_v2`)のサブエージェントは**デフォル
  --- | --- | --- |
 | **v1** | `multi_agent_v1` | 名前空間方式のクラシックエージェントツールと `send_input` / `close_agent` / `resume_agent` を使います。`spawn_agent` モデルオーバーライドで別モデルのサブエージェントを起動できます。 |
 | **base**(デフォルト) | 上流 pin | 上流モデル pin を復元します。gpt-5.6-sol と gpt-5.6-terra は v2、gpt-5.6-luna は v1 を使い、pin のないモデルは Codex `multi_agent_v2` 機能フラグに従います。実際のスポーン動作は各モデルに決定されたサーフェスに従います。 |
-| **v2** | `multi_agent_v2` | フラット `spawn_agent` ツールと同時セッション、`send_message` / `followup_task` / `wait_agent` / `interrupt_agent` を使います。全体履歴 fork では子が親モデルを継承し、`fork_turns: "none"`(または部分 fork)では `model` / `reasoning_effort` オーバーライドが適用されます。ネイティブ→ルーティング子はタスク本文が暗号化状態で到着する可能性があります([#92](https://github.com/lidge-jun/opencodex/issues/92))。 |
+| **v2** | `multi_agent_v2` | フラット `spawn_agent` ツールと同時セッション、`send_message` / `followup_task` / `wait_agent` / `interrupt_agent` を使います。全体履歴 fork では子が親モデルを継承し、`fork_turns: "none"`(または部分 fork)では `model` / `reasoning_effort` オーバーライドが適用されます。ネイティブ→ルーティング子はタスク本文が暗号化状態で到着する可能性があります([#92](https://github.com/OnlineChefGroep/opencodex/issues/92))。 |
 
 ## 動作方式
 
@@ -46,7 +46,7 @@ v2 サーフェス(`multi_agent_v2`)のサブエージェントは**デフォル
 - **ダッシュボード** → 最初のスタットセルで **v1**、**base**、**v2** を選択します。
 - **モデル** ページ → 上部セグメントコントロールで選択します。
 - 両ページとも **?** ボタンを押すとこのドキュメントに繋がるヘルプモーダルが開きます。
-- **ダッシュボード** → **サブエージェント委任** で推奨モデルとオプションの推論強度を選びます。v2 では注入ガイドが `fork_turns: "none"` スポーンを指示しモデルオーバーライドを適用させます — ただしネイティブ→ルーティング子はタスク本文が暗号化状態で到着する可能性があります([#92](https://github.com/lidge-jun/opencodex/issues/92))。
+- **ダッシュボード** → **サブエージェント委任** で推奨モデルとオプションの推論強度を選びます。v2 では注入ガイドが `fork_turns: "none"` スポーンを指示しモデルオーバーライドを適用させます — ただしネイティブ→ルーティング子はタスク本文が暗号化状態で到着する可能性があります([#92](https://github.com/OnlineChefGroep/opencodex/issues/92))。
 
 ### CLI
 

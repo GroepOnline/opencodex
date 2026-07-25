@@ -6,7 +6,7 @@ description: opencodex 的开发环境、结构、约定，以及添加 provider
 ## 环境搭建
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # 开发模式代理 API
@@ -44,7 +44,7 @@ cd docs-site && bun install && bun dev
 
 ## 文档发布
 
-公开文档发布到 GitHub Pages：<https://lidge-jun.github.io/opencodex/zh-cn/>。
+公开文档发布到 GitHub Pages：<https://github.com/OnlineChefGroep/opencodex/zh-cn/>。
 `.github/workflows/deploy-docs.yml` 会在 `main` push 中 `docs-site/**` 或 workflow 本身发生变化时
 运行，构建 `docs-site` 并部署生成的网站。推送文档变更前请运行：
 

@@ -6,7 +6,7 @@ description: opencodex 개발 환경, 구조, 컨벤션, 프로바이더와 어�
 ## 설정
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # 개발 모드 프록시 API
@@ -46,7 +46,7 @@ cd docs-site && bun install && bun dev
 
 ## 문서 배포
 
-공개 문서는 GitHub Pages의 <https://lidge-jun.github.io/opencodex/ko/>에 게시됩니다.
+공개 문서는 GitHub Pages의 <https://github.com/OnlineChefGroep/opencodex/ko/>에 게시됩니다.
 `.github/workflows/deploy-docs.yml`은 `main` push에서 `docs-site/**`나 워크플로 자체가 바뀌면
 실행됩니다. `docs-site`를 빌드한 뒤 생성된 사이트를 배포합니다. 문서 변경을 push하기 전에 다음을
 실행하세요.

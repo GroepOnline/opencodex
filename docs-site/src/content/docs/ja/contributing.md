@@ -6,7 +6,7 @@ description: opencodex の開発環境、構成、規約、プロバイダーと
 ## セットアップ
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # 開発モードのプロキシ API
@@ -46,7 +46,7 @@ cd docs-site && bun install && bun dev
 
 ## ドキュメントのデプロイ
 
-公開ドキュメントは GitHub Pages の <https://lidge-jun.github.io/opencodex/ja/> に公開されます。
+公開ドキュメントは GitHub Pages の <https://github.com/OnlineChefGroep/opencodex/ja/> に公開されます。
 `.github/workflows/deploy-docs.yml` は `main` push で `docs-site/**` またはワークフロー自体が変わると
 実行されます。`docs-site` をビルドした後、生成されたサイトをデプロイします。ドキュメント変更を push する前に以下を
 実行してください。
