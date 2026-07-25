@@ -1,7 +1,7 @@
 {
   "name": "@bitkyc08/opencodex",
   "version": "2.7.43",
-  "description": "Universal provider proxy for OpenAI Codex & Claude Code — use any LLM with Codex CLI/App/SDK and Claude Code",
+  "description": "OnlineChefGroep fork — Universal provider proxy for OpenAI Codex & Claude Code. Use any LLM with Codex CLI/App/SDK and Claude Code.",
   "type": "module",
   "main": "./bin/package-main.mjs",
   "exports": {
@@ -88,11 +88,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lidge-jun/opencodex.git"
+    "url": "git+https://github.com/OnlineChefGroep/opencodex.git"
   },
-  "homepage": "https://lidge-jun.github.io/opencodex/",
+  "homepage": "https://github.com/OnlineChefGroep/opencodex",
   "bugs": {
-    "url": "https://github.com/lidge-jun/opencodex/issues"
+    "url": "https://github.com/OnlineChefGroep/opencodex/issues"
   },
   "license": "MIT"
 }
