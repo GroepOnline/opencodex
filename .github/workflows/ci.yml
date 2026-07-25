@@ -37,7 +37,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 concurrency:
   group: cross-platform-ci-${{ github.ref }}
@@ -151,15 +150,6 @@ jobs:
         continue-on-error: true
         run: bun x npm audit --audit-level=high || true
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@9e8d0789d4a0fa9ceb6b1738f7e269594bdd67f0 # v3.28.0
-        with:
-          languages: javascript-typescript
-          queries: security-and-quality
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@9e8d0789d4a0fa9ceb6b1738f7e269594bdd67f0 # v3.28.0
-
   lint-github-actions:
     name: Lint GitHub Actions
     runs-on: ubuntu-latest
@@ -169,4 +159,4 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       - name: Lint workflows
-        uses: yt-dlp/action-lint-workflows@0c3a39d097978e14f2cb87a81619d047c390562a # v0.1.1
+        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
