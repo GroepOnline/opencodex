@@ -23,7 +23,7 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
-            const EXPECTED_BASE = "dev";
+            const EXPECTED_BASE = "main";
             const TITLE_PREFIX = "[WRONG BRANCH] ";
             const COMMENT_MARKER = "<!-- wrong-branch-enforcer -->";
             const STATE_PATTERN =
@@ -195,7 +195,7 @@ jobs:
                   "",
                   `Its title has been prefixed with ${inlineCode(TITLE_PREFIX.trim())}.`,
                   "",
-                  `@${pr.user.login} Please retarget this PR to the \`dev\` branch. All contributions go to \`dev\` first, and \`main\` receives only release promotions. See our [Contributing guide](https://lidge-jun.github.io/opencodex/contributing/) for details. Thanks! 🙏`,
+                  `@${pr.user.login} Please retarget this PR to the \`main\` branch. All contributions go directly to \`main\`. See our [README](https://github.com/OnlineChefGroep/opencodex) for details. Thanks! 🙏`,
                   "",
                   draftExplanation
                 ].join("\n")

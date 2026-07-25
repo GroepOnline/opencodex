@@ -260,7 +260,7 @@ jobs:
               "",
               guidanceList,
               "",
-              "See the [Contributing guide](https://lidge-jun.github.io/opencodex/contributing/) for details.",
+              "See the [README](https://github.com/OnlineChefGroep/opencodex) for details.",
               "",
               "Once the report passes the automated checks, it will be reopened automatically unless a maintainer has changed its state.",
             ].join("\n"));
