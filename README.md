@@ -4,8 +4,9 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@bitkyc08/opencodex"><img src="https://img.shields.io/npm/v/@bitkyc08/opencodex?color=cb3837&label=npm&logo=npm" alt="npm version"></a>
-  <a href="https://github.com/lidge-jun/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@bitkyc08/opencodex?color=blue" alt="license"></a>
+  <a href="https://github.com/OnlineChefGroep/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@bitkyc08/opencodex?color=blue" alt="license"></a>
   <img src="https://img.shields.io/node/v/@bitkyc08/opencodex?logo=node.js&label=node" alt="node version">
+  <a href="https://github.com/OnlineChefGroep/opencodex/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/OnlineChefGroep/opencodex/ci.yml?branch=main&label=CI&logo=github" alt="CI status"></a>
 </p>
 
 <p align="center">
@@ -13,8 +14,13 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.ru.md">Русский</a> · <a href="README.ja.md">日本語</a> · 📖 <a href="https://lidge-jun.github.io/opencodex/"><b>Full documentation →</b></a>
+  <a href="README.md">English</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.ru.md">Русский</a> · <a href="README.ja.md">日本語</a>
 </p>
+
+<blockquote align="center">
+  <b>🏠 OnlineChefGroep maintained fork</b> — fully independent versioning, CI, and releases.<br>
+  <a href="https://github.com/OnlineChefGroep/opencodex">github.com/OnlineChefGroep/opencodex</a>
+</blockquote>
 
 <p align="center">
   <img src="assets/architecture.png" alt="opencodex architecture — Codex CLI routes through opencodex proxy to any LLM provider" width="820">
@@ -113,6 +119,10 @@ unblocks that prefix — but prefer migrating to a user-owned Node (nvm, fnm, or
 a user npm prefix) when you can.
 
 </details>
+
+> **🏠 This is the [OnlineChefGroep](https://github.com/OnlineChefGroep/opencodex) fork**
+> with independent versioning, CI, and releases.
+> See [VERSIONING.md](./VERSIONING.md) and [CHANGELOG.md](./CHANGELOG.md).
 
 ## Add a provider
 
