@@ -331,6 +331,11 @@ const providerConfigSchema = z.object({
   baseUrl: z.string().min(1),
   allowPrivateNetwork: z.boolean().optional(),
   codexAccountMode: z.enum(["pool", "direct"]).optional(),
+  responsesItemIdRepair: z.object({
+    message: z.array(z.string().min(1)).optional(),
+    reasoning: z.array(z.string().min(1)).optional(),
+    repairMissingTerminalIds: z.boolean().optional(),
+  }).strict().optional(),
 }).passthrough();
 
 const RESERVED_PROVIDER_NAMES = new Set(["__proto__", "prototype", "constructor"]);
@@ -392,6 +397,14 @@ export function positiveIntegerRecordConfigError(value: unknown, field: string):
     if (typeof entry !== "number" || !Number.isFinite(entry) || !Number.isInteger(entry) || entry <= 0) {
       return `${field}.${key} must be a positive finite integer`;
     }
+  }
+  return null;
+}
+
+export function positiveIntegerConfigError(value: unknown, field: string): string | null {
+  if (value === undefined) return null;
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value) || value <= 0) {
+    return `${field} must be a positive finite integer`;
   }
   return null;
 }
@@ -470,6 +483,28 @@ const configSchema = z.object({
         message: maxInputError,
       });
     }
+    const defaultMaxOutputError = positiveIntegerConfigError(
+      (provider as { defaultMaxOutputTokens?: unknown }).defaultMaxOutputTokens,
+      "defaultMaxOutputTokens",
+    );
+    if (defaultMaxOutputError) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["providers", name, "defaultMaxOutputTokens"],
+        message: defaultMaxOutputError,
+      });
+    }
+    const maxOutputError = positiveIntegerRecordConfigError(
+      (provider as { modelMaxOutputTokens?: unknown }).modelMaxOutputTokens,
+      "modelMaxOutputTokens",
+    );
+    if (maxOutputError) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["providers", name, "modelMaxOutputTokens"],
+        message: maxOutputError,
+      });
+    }
     if (Object.hasOwn(provider, "codexAccountMode") && provider.codexAccountMode !== undefined) {
       // Persisted account mode is valid ONLY on the canonical built-in `openai` forward provider.
       // Old openai-multi rows stay parseable (they never carry a mode) so startup can migrate them.
@@ -500,7 +535,12 @@ const configSchema = z.object({
       ctx.addIssue({ code: "custom", path: ["combos"], message: "combos must be an object" });
     } else {
       for (const [id, raw] of Object.entries(combos as Record<string, unknown>)) {
-        for (const issue of comboConfigIssues(id, raw, config.providers)) {
+        // Pass the full map so cross-combo rules (alias uniqueness) apply at load time
+        // too, not just via the management API; each combo is excluded from its own check.
+        for (const issue of comboConfigIssues(id, raw, config.providers, {
+          combos: combos as Record<string, import("./types").OcxComboConfig>,
+          excludeComboId: id,
+        })) {
           ctx.addIssue({
             code: "custom",
             path: ["combos", id, ...issue.path],

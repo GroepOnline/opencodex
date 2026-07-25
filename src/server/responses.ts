@@ -92,6 +92,7 @@ import {
   relayWithAbort,
   sanitizePassthroughHeaders,
 } from "./relay";
+import { hasResponsesItemIdRepair, relaySseWithResponsesItemIdRepair } from "./responses-item-id-repair";
 
 export function buildToolBridgeMaps(parsed: OcxParsedRequest): {
   toolNsMap: Map<string, { namespace: string; name: string }>;
@@ -608,10 +609,14 @@ async function handleComboResponses(
   logCtx: RequestLogContext,
   options: HandleResponsesOptions,
 ): Promise<Response> {
+  const requestedModel = typeof (rawBody as { model?: unknown } | null)?.model === "string"
+    ? (rawBody as { model: string }).model
+    : `combo/${comboId}`;
   Object.assign(logCtx, {
-    requestedModel: `combo/${comboId}`,
-    model: `combo/${comboId}`,
+    requestedModel,
+    model: requestedModel,
     provider: "combo",
+    comboId,
   });
   const combo = getCombo(config, comboId);
   if (!combo) {
@@ -714,9 +719,10 @@ async function handleComboResponses(
       attemptRetained = true;
       noteComboSuccess(comboId, combo, pick.target);
       Object.assign(logCtx, childLog, {
-        requestedModel: `combo/${comboId}`,
-        model: `combo/${comboId}`,
+        requestedModel,
+        model: requestedModel,
         provider: "combo",
+        comboId,
         attempts: logCtx.attempts,
         activeAttempt: attempt,
         activeAttemptStartedAt: started,
@@ -764,9 +770,10 @@ async function handleComboResponses(
     lastFailure = failure.response;
     if (comboFailureDecision(response.status, failure.classificationText) === "stop") {
       Object.assign(logCtx, childLog, {
-        requestedModel: `combo/${comboId}`,
-        model: `combo/${comboId}`,
+        requestedModel,
+        model: requestedModel,
         provider: "combo",
+        comboId,
         attempts: logCtx.attempts,
         activeAttempt: undefined,
         activeAttemptStartedAt: undefined,
@@ -796,7 +803,7 @@ export async function handleResponses(
   } catch (err) {
     return decodeRequestErrorResponse(err, "responses");
   }
-  const comboId = !options.comboAttempt ? comboIdFromRawBody(body) : null;
+  const comboId = !options.comboAttempt ? comboIdFromRawBody(body, config) : null;
   if (comboId && Object.hasOwn(config.combos ?? {}, comboId)) {
     return handleComboResponses(req, body, comboId, config, logCtx, options);
   }
@@ -936,16 +943,17 @@ export async function handleResponses(
   // receive `max` when the user picks Ultra (codex converts ultra->max client-side).
   // Clamp to the model's highest real effort BEFORE any adapter — the ChatGPT
   // passthrough serializes _rawBody verbatim, so both shapes must be rewritten.
-  // GUARD: judge nativeness by the ORIGINALLY REQUESTED id (logCtx.requestedModel),
-  // never by route.modelId — routing strips the "<provider>/" namespace, so a routed
-  // model (anthropic/claude-opus-4-6, real max) would masquerade as an off-snapshot
-  // bare native and get wrongly clamped. Routed efforts belong to their adapters.
+  // GUARD: judge nativeness by BOTH the originally requested id (logCtx.requestedModel)
+  // and the resolved provider identity. Routing strips the "<provider>/" namespace, and
+  // some third-party providers expose bare `defaultModel` selectors, so route.modelId
+  // alone can make a routed model masquerade as an off-snapshot native. Only the
+  // canonical built-in ChatGPT forward provider should receive the native clamp.
   {
     const requestedModelId = logCtx.requestedModel ?? route.modelId;
-    const { nativeEffortClamp } = await import("../codex/catalog");
-    const clamped = requestedModelId.includes("/")
-      ? null
-      : nativeEffortClamp(route.modelId, parsed.options.reasoning);
+    const { nativeEffortClamp, shouldApplyNativeEffortClamp } = await import("../codex/catalog");
+    const clamped = shouldApplyNativeEffortClamp(route.providerName, route.provider, requestedModelId)
+      ? nativeEffortClamp(route.modelId, parsed.options.reasoning)
+      : null;
     if (clamped) {
       parsed.options.reasoning = clamped;
       const raw = parsed._rawBody as { reasoning?: { effort?: string } } | undefined;
@@ -1221,6 +1229,7 @@ export async function handleResponses(
     // background for terminal-outcome/quota inspection only.
     if (upstreamResponse.ok && isEventStream && upstreamResponse.body) {
       const [nativeBody, inspectBody] = upstreamResponse.body.tee();
+      const repairConfig = route.provider.responsesItemIdRepair;
       const turnAc = new AbortController();
       linkAbortSignal(upstream, turnAc.signal);
       registerTurn(turnAc);
@@ -1257,9 +1266,12 @@ export async function handleResponses(
       // win32 must keep the pure native relay (Bun#32111 JS-sink segfault); elsewhere a JS pull
       // relay is established practice (relayWithAbort, relaySseWithHeartbeat) and lets a
       // mid-stream reset end with a clean response.failed terminal instead of a raw socket error.
-      const clientBody = process.platform === "win32"
+      const repairedBody = hasResponsesItemIdRepair(repairConfig)
+        ? relaySseWithResponsesItemIdRepair(nativeBody, repairConfig!)
+        : nativeBody;
+      const clientBody = process.platform === "win32" && !hasResponsesItemIdRepair(repairConfig)
         ? nativeBody
-        : relaySseWithFailedTail(nativeBody, upstream);
+        : relaySseWithFailedTail(repairedBody, upstream);
       return markNativePassthroughSseResponse(new Response(clientBody, {
         status: upstreamResponse.status,
         headers,

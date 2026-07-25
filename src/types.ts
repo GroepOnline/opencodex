@@ -28,6 +28,12 @@ export interface OcxParsedRequest {
    * (see src/responses/compaction.ts).
    */
   _compactionRequest?: boolean;
+  /**
+   * True when the current request newly introduced a stored compaction summary/marker. Historical
+   * markers restored by previous_response_id expansion were already acknowledged and do not reset
+   * provider-private continuation caches again on every later turn.
+   */
+  _contextCompactionBoundary?: boolean;
 }
 
 export interface OcxContext {
@@ -549,6 +555,12 @@ export interface OcxComboConfig {
   stickyLimit?: number;
   /** Used when the client omits reasoning.effort. null/omitted leaves the target default unchanged. */
   defaultEffort?: OcxComboDefaultEffort | null;
+  /**
+   * Optional public model name replacing the default `combo/<id>` slug. Bare names
+   * without "/" are allowed (e.g. "deepseek-v4-flash") so the combo can answer to a
+   * mandated model id; exact-match requests route here before any provider resolution.
+   */
+  alias?: string;
 }
 
 /**
@@ -643,6 +655,15 @@ export interface OpenRouterProviderRouting {
   allowFallbacks?: boolean;
 }
 
+export interface ResponsesItemIdRepairConfig {
+  /** Exact `message` item ids that the proxy should rewrite to request-local canonical ids. */
+  message?: string[];
+  /** Exact `reasoning` item ids that the proxy should rewrite to request-local canonical ids. */
+  reasoning?: string[];
+  /** Backfill missing `output_item.done` / terminal snapshot ids from the matching output_index. */
+  repairMissingTerminalIds?: boolean;
+}
+
 export interface OcxProviderConfig {
   adapter: string;
   baseUrl: string;
@@ -690,6 +711,13 @@ export interface OcxProviderConfig {
   modelInputModalities?: Record<string, string[]>;
   /** Model-specific max input token limits. Values cap auto_compact_token_limit. */
   modelMaxInputTokens?: Record<string, number>;
+  /**
+   * Provider-wide fallback for chat-completions `max_tokens` when the caller omits
+   * Responses `max_output_tokens`. Adapters still let an explicit request win.
+   */
+  defaultMaxOutputTokens?: number;
+  /** Model-specific fallback output token budgets. Exact/model-pattern entries beat the provider default. */
+  modelMaxOutputTokens?: Record<string, number>;
   headers?: Record<string, string>;
   /** Default provider-routing preferences for models sent through the canonical OpenRouter API. */
   openRouterRouting?: OpenRouterProviderRouting;
@@ -760,6 +788,12 @@ export interface OcxProviderConfig {
    * fields. Default off; only enable for providers that document this parameter.
    */
   promptCacheKey?: boolean;
+  /**
+   * Provider-local passthrough SSE repair for broken openai-responses gateways that reuse exact
+   * placeholder message/reasoning ids or omit the terminal id after a stable added event.
+   * Disabled by default; function_call ids and call_id pairing are never rewritten.
+   */
+  responsesItemIdRepair?: ResponsesItemIdRepairConfig;
   /** Model ids whose tool_choice only accepts `auto` or `none`; forced/named choices are downgraded. */
   autoToolChoiceOnlyModels?: string[];
   /** Model ids that expect prior assistant `reasoning_content` to be preserved in chat history. */

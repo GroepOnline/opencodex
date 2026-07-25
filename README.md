@@ -158,6 +158,11 @@ codex -m "ollama/llama3" "Refactor this function"
 
 When you omit the `provider/` prefix, opencodex routes to the default provider — or auto-matches based on the model name pattern (e.g., `claude-*` routes to Anthropic, `gpt-*` routes to OpenAI).
 
+Combo aliases are exact public model ids and may be bare names or use a custom namespace. If a
+combo alias exactly matches a configured non-OpenAI `provider/model` selector, the combo
+intentionally takes precedence in routing, `/v1/models`, and the Codex catalog. Renaming that
+alias or deleting the combo immediately restores the physical provider selector.
+
 Routed models also appear in the **Codex App** model picker with per-model reasoning effort controls:
 
 Current Codex builds can expose `low`, `medium`, `high`, `xhigh`, `max`, and `ultra` reasoning
@@ -345,13 +350,16 @@ Here's a typical multi-provider setup:
 }
 ```
 
-Provider entries can also annotate routed catalog metadata. Use `contextWindow` for a provider-wide
-Codex-visible context cap, `modelContextWindows` for model-specific caps, and
+Provider entries can also annotate routed catalog metadata and output defaults. Use `contextWindow`
+for a provider-wide Codex-visible context cap, `modelContextWindows` for model-specific caps, and
 `modelInputModalities` for model-specific catalog input hints such as `["text"]` or
-`["text", "image"]`. Context values cap live `/models` metadata; they never raise a smaller live
-context window. The bundled GPT-5.6 Sol/Terra/Luna fallback metadata uses a 1,050,000-token context
-window for OpenAI API key and OpenRouter catalog entries; it does not bypass upstream preview
-access. See the configuration reference for the full field list.
+`["text", "image"]`. For OpenAI-compatible chat providers whose upstream default response budget is
+too small, set `defaultMaxOutputTokens` or per-model `modelMaxOutputTokens`; explicit
+`max_output_tokens` from the client still wins, and unset configs still omit `max_tokens`. Context
+values cap live `/models` metadata; they never raise a smaller live context window. The bundled
+GPT-5.6 Sol/Terra/Luna fallback metadata uses a 1,050,000-token context window for OpenAI API key
+and OpenRouter catalog entries; it does not bypass upstream preview access. See the configuration
+reference for the full field list.
 
 > **GLM-5.2 1M context via Z.AI:** through the `openai-chat` adapter, both `glm-5.2`
 > and `glm-5.2[1m]` work — opencodex strips the trailing `[1m]` suffix before
