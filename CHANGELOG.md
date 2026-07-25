@@ -10,10 +10,36 @@ All notable changes to the OnlineChefGroep fork of **opencondex** are documented
 
 ---
 
-## [1.0.0] — Fork inaugural release
+## [1.0.0-alpha.1] — Fork inaugural pre-release
 
-*No release yet.*  
-Next release will mark the first independent fork version.
+First independent fork release — fully detached from upstream.
+
+### Added
+
+- **Claude Desktop integration** — full Claude Desktop profile management via GUI and CLI
+- **Combo rename & public aliases** — rename combos and expose public aliases
+- **Output defaults & web-search replay markers** — custom output defaults
+- **Response item ID repair** — opt-in repair for unstable passthrough IDs
+- **Cursor context usage** — accurate context usage reporting across tool turns
+- **Cursor cache telemetry** — clarify missing cache telemetry with GUI indicators
+- **Native effort clamp** — gate native effort clamp by route identity
+- **Dutch GUI localization** — full Dutch translation for the dashboard
+- **Provider workspace shell** — dedicated dashboard panel for per-provider workspace
+- **Quota bars** — visual quota display in the dashboard
+
+### Changed
+
+- **Independent versioning** — fully detached from upstream with own semver scheme (v1.0.0-alpha.1)
+- **CI pipeline** — enhanced with CodeQL, dependabot, security audit, workflow linting
+- **All upstream references removed** — code, docs, configs, URLs all point to OnlineChefGroep
+- **Release workflow** — adapted for fork's branch model (main-only, alpha/preview tags)
+
+### Fixed
+
+- Theme state: properly read `ocx-theme` from localStorage
+- Stale theme button: React state now updates on theme selection
+- Legacy hash links: restore `#combos`, `#subagents`, `#debug`, `#usage` routing
+- Merge conflict markers removed from Claude Desktop i18n files
 
 ### Merged since fork
 
