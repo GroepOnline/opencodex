@@ -1,18 +1,18 @@
 # Changelog
 
-All notable changes to the OnlineChefGroep fork of **opencondex** are documented here.
+All notable changes to the OnlineChefGroep fork of **opencodex** are documented here.
 
 **Repository:** [OnlineChefGroep/opencodex](https://github.com/OnlineChefGroep/opencodex)  
 **Package:** `@bitkyc08/opencodex`
 
-> This fork uses **independent semantic versioning** starting at v1.0.0.  
+> This fork uses **independent semantic versioning** starting at `v1.0.0-alpha.1`.  
 > See [VERSIONING.md](./VERSIONING.md) for details.
 
 ---
 
-## [1.0.0-alpha.1] — Fork inaugural pre-release
+## [1.0.0-alpha.1] — Planned inaugural fork pre-release
 
-First independent fork release — fully detached from upstream.
+Prepared as the first independent fork release, fully detached from upstream release numbering.
 
 ### Added
 
@@ -29,10 +29,10 @@ First independent fork release — fully detached from upstream.
 
 ### Changed
 
-- **Independent versioning** — fully detached from upstream with own semver scheme (v1.0.0-alpha.1)
-- **CI pipeline** — enhanced with CodeQL, dependabot, security audit, workflow linting
-- **All upstream references removed** — code, docs, configs, URLs all point to OnlineChefGroep
-- **Release workflow** — adapted for fork's branch model (main-only, alpha/preview tags)
+- **Independent versioning** — detached from upstream version numbers with the fork's own semver scheme
+- **CI pipeline** — enhanced with CodeQL, Dependabot, security audit, workflow linting, and cross-platform package smoke tests
+- **Canonical fork references** — active project, release, documentation, and support URLs point to OnlineChefGroep; historical upstream links remain where attribution or tracking requires them
+- **Release workflow** — adapted for the fork's main-branch release model and prerelease tags
 
 ### Fixed
 
@@ -41,7 +41,7 @@ First independent fork release — fully detached from upstream.
 - Legacy hash links: restore `#combos`, `#subagents`, `#debug`, `#usage` routing
 - Merge conflict markers removed from Claude Desktop i18n files
 
-### Merged since fork
+### Integrated since fork
 
 - **Claude Desktop integration** — full Claude Desktop profile management via GUI and CLI, family
   editor, health monitoring, auto-apply, and effort transparency.
@@ -65,14 +65,14 @@ First independent fork release — fully detached from upstream.
 
 ### Infrastructure
 
-- **Independent versioning** — fully detached from upstream with our own scheme.
-- **Enhanced CI** — added security audit, CodeQL analysis, GitHub Actions linting.
+- **Independent versioning** — fully detached from upstream release numbering.
+- **Enhanced CI** — added security audit, CodeQL analysis, GitHub Actions linting, and package-install smoke coverage.
 - **Dependabot** — automated weekly dependency updates.
-- **Release documentation** — VERSIONING.md and RELEASE_PROCESS.md for easy releases.
+- **Release documentation** — `VERSIONING.md` and `RELEASE_PROCESS.md` for repeatable releases.
 
 ---
 
 ## Earlier versions (upstream tracking)
 
-Versions v2.7.26 through v2.7.39 (and earlier) track the upstream
+Versions `v2.7.26` through `v2.7.39` (and earlier) track the upstream
 [lidge-jun/opencodex](https://github.com/lidge-jun/opencodex) releases.
