@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { getConfigDir } from "../config";
 
-const REPO = "lidge-jun/opencodex";
+const REPO = "OnlineChefGroep/opencodex";
 /** Fires exactly once from the first interactive `ocx start`. */
 const MARKER = ".star-prompted";
 

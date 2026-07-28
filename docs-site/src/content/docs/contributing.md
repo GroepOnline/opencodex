@@ -5,11 +5,8 @@ description: Develop opencodex — setup, layout, conventions, and how to add a 
 
 ## Setup
 
-Source development requires the `bun` CLI on your `PATH`. The published npm package bundles its own
-Bun runtime for users, but this checkout's scripts run through your local Bun installation.
-
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # proxy API in dev mode
@@ -48,7 +45,7 @@ cd docs-site && bun install && bun dev
 
 ## Docs publishing
 
-The public docs publish to GitHub Pages at <https://opencodex.me/>. The
+The public docs publish to GitHub Pages at <https://github.com/OnlineChefGroep/opencodex/>. The
 `.github/workflows/deploy-docs.yml` workflow runs on `main` pushes that touch `docs-site/**` or the
 workflow itself, builds `docs-site`, and deploys the generated site. Before pushing docs changes,
 run:
@@ -71,10 +68,6 @@ GitHub Actions intentionally stay small:
 - **Release** (`.github/workflows/release.yml`) is manual. It does not act as a second full CI
   pipeline; before dry-run or publish it requires the exact release commit (`GITHUB_SHA`) to already
   have a successful Cross-platform CI run.
-- **Stale needs-info** (`.github/workflows/stale-needs-info.yml`) runs daily on the default branch.
-  Open issues labeled `needs-info` with no activity for 14 days get a warning; after 7 more idle
-  days they close as not planned. Any update clears the stale warning. To keep long-lived work open,
-  remove `needs-info` (for example when promoting an issue to `roadmap`).
 
 Use the helper for releases:
 
@@ -84,29 +77,10 @@ bun run release <version> --publish # publish after the CI-gated dry run is unde
 bun run release:watch               # watch the newest Release workflow run
 ```
 
-## Branches
-
-- `dev` — the default integration target. Open your pull request here unless it
-  belongs to a scoped line below.
-- `dev2-go` — parallel integration line for the Go native port (`go/`, the
-  native runtime entrypoint, and the Go release-asset tooling). Open for pull
-  requests alongside `dev`. Send work here only when it belongs to the Go port;
-  everything else goes to `dev`. The automated target-branch check accepts both
-  and cannot tell them apart, so scope is settled in review — a maintainer may
-  ask you to retarget.
-- `main` — releases only. It moves by maintainer-controlled promotion from
-  `dev`; do not open feature pull requests against it.
-- `preview` — the prerelease train.
-
-Porting and rebase pull requests are welcome. Carrying a fix from one
-integration line to another, or rebasing a stale branch onto the current head,
-is normal contribution rather than noise — note the source commits in the
-description.
-
 ## Project maintainers
 
 The current maintainers, their responsibilities, and the review and merge policy are documented in
-[`MAINTAINERS.md`](https://github.com/lidge-jun/opencodex/blob/main/MAINTAINERS.md). GitHub review
+[`MAINTAINERS.md`](https://github.com/OnlineChefGroep/opencodex/blob/main/MAINTAINERS.md). GitHub review
 ownership for the repository and security-sensitive paths is declared in `.github/CODEOWNERS`.
 
 ## Conventions
@@ -145,7 +119,7 @@ live in `src/oauth/`; registry metadata alone is not an OAuth flow.
 
 ## Adding an adapter
 
-Implement `ProviderAdapter` (see [Adapters](/reference/adapters/)) in `src/adapters/`,
+Implement `ProviderAdapter` (see [Adapters](/opencodex/reference/adapters/)) in `src/adapters/`,
 register its name in `src/server/adapter-resolve.ts`, and bridge its output to internal
 `AdapterEvent`s. Reuse `image.ts` for image handling and follow `openai-chat.ts` for ordinary
 streaming/tool calls; use `fetchResponse` only when the adapter owns transport retries, or `runTurn`

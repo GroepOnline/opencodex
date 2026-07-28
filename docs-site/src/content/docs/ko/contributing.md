@@ -6,7 +6,7 @@ description: opencodex 개발 환경, 구조, 컨벤션, 프로바이더와 어�
 ## 설정
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # 개발 모드 프록시 API
@@ -46,7 +46,7 @@ cd docs-site && bun install && bun dev
 
 ## 문서 배포
 
-공개 문서는 GitHub Pages의 <https://opencodex.me/ko/>에 게시됩니다.
+공개 문서는 GitHub Pages의 <https://github.com/OnlineChefGroep/opencodex/ko/>에 게시됩니다.
 `.github/workflows/deploy-docs.yml`은 `main` push에서 `docs-site/**`나 워크플로 자체가 바뀌면
 실행됩니다. `docs-site`를 빌드한 뒤 생성된 사이트를 배포합니다. 문서 변경을 push하기 전에 다음을
 실행하세요.
@@ -77,21 +77,6 @@ bun run release <version>           # 버전 bump를 commit/push, publish workfl
 bun run release <version> --publish # CI-gated dry-run을 확인한 뒤 실제 publish
 bun run release:watch               # 가장 최근 Release workflow run 감시
 ```
-
-## 브랜치
-
-- `dev` — 기본 통합 대상. 아래 범위 브랜치에 해당하지 않으면 여기로 PR을 올립니다.
-- `dev2-go` — Go 네이티브 포트(`go/`, 네이티브 런타임 진입점, Go 릴리즈 자산 도구)를 위한
-  병렬 통합선입니다. `dev`와 함께 PR을 받습니다. Go 포트에 속하는 작업만 여기로 보내고,
-  나머지는 `dev`로 보내세요. 타깃 브랜치 검사는 두 브랜치를 모두 허용하지만 둘을 구분하지
-  못하므로, 범위는 리뷰에서 정합니다. 메인테이너가 `dev`로 옮겨달라고 요청할 수 있습니다.
-- `main` — 릴리즈 전용. `dev`에서 메인테이너가 승격시킬 때만 움직이며, 기능 PR을 직접
-  올리지 않습니다.
-- `preview` — 프리릴리즈 트레인.
-
-포팅 PR과 리베이스 PR을 환영합니다. 한 통합선의 수정을 다른 쪽으로 옮기거나, 오래된
-브랜치를 현재 head 위로 리베이스하는 것은 잡음이 아니라 정상적인 기여입니다. 설명란에
-출처 커밋을 적어주세요.
 
 ## 컨벤션
 
@@ -130,7 +115,7 @@ OAuth 설정 seed에 공급합니다. `enrichProviderFromCatalog()`는 모델 �
 
 ## 어댑터 추가하기
 
-`src/adapters/`에 `ProviderAdapter`([어댑터](/ko/reference/adapters/) 참조)를 구현하고,
+`src/adapters/`에 `ProviderAdapter`([어댑터](/opencodex/ko/reference/adapters/) 참조)를 구현하고,
 `src/server/adapter-resolve.ts`에 이름을 등록한 뒤 출력을 내부 `AdapterEvent`로 브리징하세요. 이미지
 처리에는 `image.ts`를 재사용하고, 일반적인 스트리밍/툴 호출은 `openai-chat.ts`를 참고합니다.
 어댑터가 전송 재시도를 직접 맡을 때만 `fetchResponse`를 사용하고, Cursor처럼 실제 양방향 전송에는

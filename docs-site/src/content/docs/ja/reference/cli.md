@@ -429,7 +429,7 @@ ocx update
 ocx update --tag preview
 ```
 
-[Release ワークフロー](https://github.com/lidge-jun/opencodex/actions/workflows/release.yml) が npm に
+[Release ワークフロー](https://github.com/OnlineChefGroep/opencodex/actions/workflows/release.yml) が npm に
 公開した直後に新しいバージョンが使えるようになります。
 
 ## ヘルプ

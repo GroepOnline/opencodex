@@ -6,7 +6,7 @@ description: opencodex の開発環境、構成、規約、プロバイダーと
 ## セットアップ
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # 開発モードのプロキシ API
@@ -46,7 +46,7 @@ cd docs-site && bun install && bun dev
 
 ## ドキュメントのデプロイ
 
-公開ドキュメントは GitHub Pages の <https://opencodex.me/ja/> に公開されます。
+公開ドキュメントは GitHub Pages の <https://github.com/OnlineChefGroep/opencodex/ja/> に公開されます。
 `.github/workflows/deploy-docs.yml` は `main` push で `docs-site/**` またはワークフロー自体が変わると
 実行されます。`docs-site` をビルドした後、生成されたサイトをデプロイします。ドキュメント変更を push する前に以下を
 実行してください。
@@ -77,22 +77,6 @@ bun run release <version>           # バージョン bump を commit/push、pub
 bun run release <version> --publish # CI-gated dry-run を確認した後、実際の publish
 bun run release:watch               # 直近の Release ワークフロー run を監視
 ```
-
-## ブランチ
-
-- `dev` — 既定の統合先。下のスコープ付きブランチに該当しない限り、ここに PR を出します。
-- `dev2-go` — Go ネイティブポート（`go/`、ネイティブランタイムのエントリポイント、Go
-  リリースアセットのツール）向けの並行統合ラインです。`dev` と並んで PR を受け付けます。
-  Go ポートに属する作業だけをここに出し、それ以外は `dev` に出してください。ターゲット
-  ブランチ検査は両方を許可しますが、両者を区別できません。スコープはレビューで決まり、
-  メンテナーが `dev` への変更を依頼することがあります。
-- `main` — リリース専用。`dev` からメンテナーが昇格させるときだけ動きます。機能 PR を直接
-  出さないでください。
-- `preview` — プレリリーストレイン。
-
-ポーティング PR とリベース PR を歓迎します。ある統合ラインの修正を別のラインへ運ぶこと、
-古いブランチを現在の head にリベースすることは、ノイズではなく通常の貢献です。説明欄に
-元のコミットを記載してください。
 
 ## 規約
 
@@ -131,7 +115,7 @@ OAuth 設定 seed に供給します。`enrichProviderFromCatalog()` はモデ�
 
 ## アダプターを追加
 
-`src/adapters/` に `ProviderAdapter`([アダプター](/ja/reference/adapters/)参照)を実装し、
+`src/adapters/` に `ProviderAdapter`([アダプター](/opencodex/ja/reference/adapters/)参照)を実装し、
 `src/server/adapter-resolve.ts` に名前を登録した後、出力を内部 `AdapterEvent` にブリッジしてください。画像
 処理には `image.ts` を再利用し、一般的なストリーミング/ツール呼び出しは `openai-chat.ts` を参考にしてください。
 アダプターが送信再試行を自ら担う場合のみ `fetchResponse` を使い、Cursor のような実際の双方向転送には

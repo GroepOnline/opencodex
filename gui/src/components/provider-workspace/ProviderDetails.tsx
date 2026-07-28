@@ -29,6 +29,9 @@ export default function ProviderDetails({
   usageTotals,
   modelUsage,
   quotaReport,
+  quotaRefreshing,
+  quotaFailed,
+  onRefreshQuota,
   availableModels,
   hasLiveModels,
   selectedModels,
@@ -57,6 +60,9 @@ export default function ProviderDetails({
   usageTotals?: ProviderUsageTotals;
   modelUsage?: ProviderModelUsageRow[];
   quotaReport?: ProviderQuotaReportView;
+  quotaRefreshing?: boolean;
+  quotaFailed?: boolean;
+  onRefreshQuota?: () => void;
   availableModels: string[];
   /** Server-reported live-catalog provenance; see filterModels(). */
   hasLiveModels: boolean;
@@ -225,6 +231,9 @@ export default function ProviderDetails({
             item={item}
             usageTotals={usageTotals}
             quotaReport={quotaReport}
+            quotaRefreshing={quotaRefreshing}
+            quotaFailed={quotaFailed}
+            onRefreshQuota={onRefreshQuota}
             oauthEmail={oauthEmail}
             onEditSettings={() => switchTab("settings")}
             onViewUsage={() => switchTab("usage")}
@@ -267,7 +276,15 @@ export default function ProviderDetails({
           />
         )}
         {tab === "usage" && (
-          <ProviderUsage item={item} usageTotals={usageTotals} quotaReport={quotaReport} modelUsage={modelUsage} />
+          <ProviderUsage
+            item={item}
+            usageTotals={usageTotals}
+            quotaReport={quotaReport}
+            modelUsage={modelUsage}
+            quotaRefreshing={quotaRefreshing}
+            quotaFailed={quotaFailed}
+            onRefreshQuota={onRefreshQuota}
+          />
         )}
         {tab === "accounts" && (
           <ProviderAuthPanel

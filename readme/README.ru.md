@@ -1,40 +1,34 @@
 <h3 align="center">make codex open!</h3>
-<p align="center"><b>Универсальный прокси провайдеров для OpenAI Codex &amp; Claude Code</b><br>
-Две команды — и Codex, и Claude Code работают на любой LLM, которую вы укажете.</p>
+<p align="center"><b>Универсальный прокси провайдеров для OpenAI Codex &amp; Claude Code</b> — используйте любую LLM с Codex CLI, App, SDK и Claude Code.</p>
+<p align="center"><code>npm install -g @bitkyc08/opencodex</code> · <code>ocx start</code> · <b>localhost:10100</b></p>
 
 <p align="center">
-  <a href="https://x.com/claudeebum"><img src="https://img.shields.io/badge/%40claudeebum-000000?logo=x&logoColor=white" alt="Подписывайтесь на @claudeebum в X"></a>
   <a href="https://www.npmjs.com/package/@bitkyc08/opencodex"><img src="https://img.shields.io/npm/v/@bitkyc08/opencodex?color=cb3837&label=npm&logo=npm" alt="npm version"></a>
-  <a href="https://github.com/lidge-jun/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@bitkyc08/opencodex?color=blue" alt="license"></a>
+  <a href="https://github.com/OnlineChefGroep/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@bitkyc08/opencodex?color=blue" alt="license"></a>
   <img src="https://img.shields.io/node/v/@bitkyc08/opencodex?logo=node.js&label=node" alt="node version">
-</p>
-
-```bash
-npm install -g @bitkyc08/opencodex
-ocx start        # прокси + дашборд: localhost:10100
-```
-
-<p align="center">
-  <img src="../assets/claude-code-models.gif" alt="Claude Code работает на маршрутизированной модели через opencodex — в строке состояния активна gpt-5.6-luna-medium" width="820"><br>
-  <sub><b>Claude Code на любой модели.</b> Селектор — обычный Claude Code, а вот модель за ним — какую захотите.</sub>
+  <a href="https://github.com/OnlineChefGroep/opencodex/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/OnlineChefGroep/opencodex/ci.yml?branch=main&label=CI&logo=github" alt="CI status"></a>
 </p>
 
 <p align="center">
-  <img src="../assets/demo.gif" alt="Демонстрация opencodex — выполнение задачи в приложении Codex на маршрутизируемой модели не от OpenAI" width="820"><br>
-  <sub><b>Codex на любой модели.</b> Выберите провайдера — и вперёд: тот же рабочий процесс Codex, другой «мозг».</sub>
+  <img src="assets/banner.png" alt="opencodex — универсальный прокси провайдеров для Codex, используйте любую LLM" width="820">
 </p>
 
 <p align="center">
-  <a href="../README.md">English</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">简体中文</a> · <b>Русский</b> · <a href="README.ja.md">日本語</a> · 📖 <a href="https://opencodex.me/ru/"><b>Полная документация →</b></a>
+  <a href="README.md">English</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">简体中文</a> · <b>Русский</b> · <a href="README.ja.md">日本語</a>
 </p>
 
 <p align="center">
-  <img src="../assets/architecture.png" alt="Архитектура opencodex — Codex CLI направляет запросы через прокси opencodex к любому LLM-провайдеру" width="820">
+  <img src="assets/architecture.png" alt="Архитектура opencodex — Codex CLI направляет запросы через прокси opencodex к любому LLM-провайдеру" width="820">
 </p>
 
 Используйте Claude, Gemini, Grok, GLM, DeepSeek, Kimi, Qwen, Ollama или любую другую LLM с Codex — и с **Claude Code** — не дожидаясь, пока кто-нибудь добавит поддержку.
 
 opencodex — это лёгкий локальный прокси, который транслирует Responses API Codex в протокол, понятный вашему провайдеру. Потоковая передача, вызовы инструментов, токены рассуждений, изображения — всё работает в обе стороны.
+
+<p align="center">
+  <img src="assets/demo.gif" alt="Демонстрация opencodex — выполнение задачи в приложении Codex на маршрутизируемой модели не от OpenAI" width="820">
+</p>
+<p align="center"><sub><b>Codex на любой модели.</b> Выберите провайдера — и вперёд: тот же рабочий процесс Codex, другой «мозг».</sub></p>
 
 Кроме того, opencodex умеет управлять **пулом аккаунтов ChatGPT** для аутентификации Codex. Добавьте
 несколько аккаунтов ChatGPT / Codex, обновляйте их квоты (5 ч / неделя / 30 дней) в панели управления —
@@ -153,7 +147,7 @@ ocx gui
 
 ```bash
 # Claude Opus через Anthropic
-codex -m "anthropic/claude-opus-5" "Explain this stack trace"
+codex -m "anthropic/claude-opus-4-8" "Explain this stack trace"
 
 # Gemini через Google
 codex -m "google/gemini-3-pro" "Write unit tests for auth.ts"
@@ -184,7 +178,7 @@ OpenAI API-ключа и OpenRouter (`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-lu
 провайдеров, которые могут их обслуживать.
 
 <p align="center">
-  <img src="../assets/codex-app-picker.png" alt="Codex App с маршрутизируемыми моделями opencodex и селектором уровня рассуждений" width="480">
+  <img src="assets/codex-app-picker.png" alt="Codex App с маршрутизируемыми моделями opencodex и селектором уровня рассуждений" width="480">
 </p>
 
 ## Режимы аккаунтов провайдера OpenAI
@@ -244,7 +238,7 @@ OpenAI API-ключа и OpenRouter (`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-lu
 - **Один вход — и никаких API-ключей.** Поддержка OAuth для xAI, Anthropic и Kimi позволяет аутентифицироваться существующим аккаунтом; токены обновляются автоматически. Либо пробросьте свой `codex login`, вставьте API-ключ или используйте ссылки вида `${ENV_VAR}` — как вам удобнее.
 - **Работает везде, где работает Codex.** Автоматически встраивается в Codex CLI, TUI, App и SDK. Маршрутизируемые модели отображаются в селекторе моделей Codex наравне с нативными.
 - **Встраивание без риска для истории.** При локальной установке прокси перенаправляет встроенный провайдер Codex `openai` на себя одной строкой `openai_base_url` — новые треды сохраняют нативный тег провайдера, поэтому текущая история чатов никогда не перепривязывается, и даже некорректное завершение работы не может её скрыть. (Треды, перетегированные старыми версиями, однократно мигрируются обратно при первом запуске; при удалённой/LAN-привязке вместо этого используется отдельная запись провайдера, поскольку ей нужен заголовок с API-ключом.)
-- **Делегируйте задачи подходящей модели.** Через панель управления или конфигурацию можно вывести до пяти маршрутизируемых или нативных моделей в селектор подагентов Codex — сложные задачи отправляйте модели с развитыми рассуждениями, быстрые — дешёвой. На мультиагентной поверхности v2 (GPT-5.6 Sol/Terra) прокси внедряет компактные указания по делегированию: предпочтительную модель и уровень рассуждений подагента (`injectionModel` / `injectionEffort`), список отобранных моделей со шкалой уровней, которую поддерживает каждая из них, и правила `fork_turns`, позволяющие кросс-модельным вызовам `spawn_agent` применять свои переопределения. Известное ограничение: когда нативный родитель порождает маршрутизируемого потомка, тело задачи в настоящий момент может прийти зашифрованным на бэкенде и потеряться ([#92](https://github.com/lidge-jun/opencodex/issues/92)) — для надёжного делегирования между провайдерами используйте поверхность v1. Хотите свои формулировки? Задайте `injectionPrompt` с плейсхолдерами `{{model}}` / `{{effort}}` / `{{roster}}`.
+- **Делегируйте задачи подходящей модели.** Через панель управления или конфигурацию можно вывести до пяти маршрутизируемых или нативных моделей в селектор подагентов Codex — сложные задачи отправляйте модели с развитыми рассуждениями, быстрые — дешёвой. На мультиагентной поверхности v2 (GPT-5.6 Sol/Terra) прокси внедряет компактные указания по делегированию: предпочтительную модель и уровень рассуждений подагента (`injectionModel` / `injectionEffort`), список отобранных моделей со шкалой уровней, которую поддерживает каждая из них, и правила `fork_turns`, позволяющие кросс-модельным вызовам `spawn_agent` применять свои переопределения. Известное ограничение: когда нативный родитель порождает маршрутизируемого потомка, тело задачи в настоящий момент может прийти зашифрованным на бэкенде и потеряться ([#92](https://github.com/OnlineChefGroep/opencodex/issues/92)) — для надёжного делегирования между провайдерами используйте поверхность v1. Хотите свои формулировки? Задайте `injectionPrompt` с плейсхолдерами `{{model}}` / `{{effort}}` / `{{roster}}`.
 - **Готовность к превью-релизам OpenAI.** Записи GPT-5.6 Sol/Terra/Luna сохраняют исходные шкалы уровней рассуждений. Direct/Multi используют контракт Codex на 372k токенов; OpenAI API и OpenRouter — метаданные на 1.05M, когда открыт вышестоящий доступ.
 - **Суперспособности для любой модели.** Модели не от OpenAI получают настоящий веб-поиск и понимание изображений через сайдкар `gpt-5.4-mini`, работающий поверх вашего входа ChatGPT.
 - **Нативная генерация изображений.** Автономный инструмент Codex `image_gen` использует `POST /v1/images/generations` для генерации и `POST /v1/images/edits` для правок; он не связан с размещённым инструментом Responses `image_generation`.
@@ -269,7 +263,7 @@ OpenAI API-ключа и OpenRouter (`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-lu
 | Ollama / vLLM / LM Studio (локально) | `openai-chat` | key (обычно пустой) |
 | Любой OpenAI-совместимый эндпоинт | `openai-chat` | key |
 
-А также DeepSeek, Groq, OpenRouter, Together, Fireworks, Cerebras, Mistral, Hugging Face, NVIDIA NIM, MiniMax, Qwen Cloud, Tencent Cloud Coding Plan, SiliconFlow и другие. Полный список — в `ocx init` или в [документации по провайдерам](https://opencodex.me/reference/configuration/).
+А также DeepSeek, Groq, OpenRouter, Together, Fireworks, Cerebras, Mistral, Hugging Face, NVIDIA NIM, MiniMax, Qwen Cloud, Tencent Cloud Coding Plan, SiliconFlow и другие. Полный список — в `ocx init` или в [документации по провайдерам](https://github.com/OnlineChefGroep/opencodex).
 
 Поддержка Cursor — поэтапный экспериментальный мост: он появляется в `ocx init` и в селекторе
 Add Provider панели управления как локальная конфигурация со статическим публичным каталогом
@@ -312,16 +306,10 @@ ocx update [--tag preview]     # обновить opencodex; preview-устан�
 | **Как** | Менеджер служб ОС (launchd / systemd / schtasks) | Оборачивает скриптовые лончеры `codex`; настоящий `codex.exe` не затрагивается |
 | **Когда** | Всегда работает после входа в систему | По требованию — выполняет `ocx ensure` при запуске `codex` |
 | **Перезапуск** | Автоматический перезапуск при сбое | Запускается один раз на каждый вызов `codex` |
-| **Обновления Codex** | Не влияют | Стабильно заменённый лончер восстанавливается следующей обычной командой `ocx` |
+| **Обновления Codex** | Не влияют | Восстанавливается при следующем `ocx codex-shim install` или `ocx update` |
 | **Удаление** | `ocx service uninstall` | `ocx codex-shim uninstall` |
 
 Используйте **службу**, если прокси должен работать постоянно (рекомендуется для машин разработчиков).
-Если внешнее обновление Codex перезапишет установленный shim, следующая обычная команда `ocx`
-сохранит стабильный новый лончер в резервную копию и восстановит shim. Лончер, который ещё меняется,
-остаётся нетронутым до следующей команды. Ошибка восстановления выдаёт предупреждение, но не приводит
-к сбою запрошенной команды; ручной вариант — `ocx codex-shim install`. Для отключения установите
-`codexShimAutoRestore` в `false` или задайте процессу
-`OPENCODEX_CODEX_SHIM_AUTO_RESTORE=0`.
 Используйте **shim** для лёгкого запуска прокси по требованию без фонового демона. Автозапуск через
 shim включён по умолчанию и отключается в GUI-панели управления. Если настроенный порт прокси уже
 занят, `ocx start` автоматически выберет другой свободный локальный порт и обновит настройки Codex.
@@ -450,20 +438,20 @@ opencodex автоматически перепривязывает истори
 ocx recover-history --legacy-openai
 ```
 
-Описание всех полей — в **[справочнике по конфигурации](https://opencodex.me/reference/configuration/)**.
+Описание всех полей — в **[справочнике по конфигурации](https://github.com/OnlineChefGroep/opencodex)**.
 
 ## Документация
 
-Публичная документация — установка, провайдеры, маршрутизация, сайдкары, интеграция с Codex, селектор моделей Codex App и справочник по CLI/конфигурации — собирается из [`docs-site/`](../docs-site) и публикуется на **[opencodex.me](https://opencodex.me/)**.
+Публичная документация — установка, провайдеры, маршрутизация, сайдкары, интеграция с Codex, селектор моделей Codex App и справочник по CLI/конфигурации — собирается из [`docs-site/`](./docs-site) и публикуется на **[github.com/OnlineChefGroep/opencodex](https://github.com/OnlineChefGroep/opencodex/)**.
 
-Заметки мейнтейнеров, служащие источником истины, находятся в [`structure/`](../structure). Материалы прошлых исследований хранятся в [`docs/`](../docs).
-Инструкции для контрибьюторов — в [`CONTRIBUTING.md`](../CONTRIBUTING.md), а порядок сообщений
-о проблемах безопасности — в [`SECURITY.md`](../SECURITY.md).
+Заметки мейнтейнеров, служащие источником истины, находятся в [`structure/`](./structure). Материалы прошлых исследований хранятся в [`docs/`](./docs).
+Инструкции для контрибьюторов — в [`CONTRIBUTING.md`](./CONTRIBUTING.md), а порядок сообщений
+о проблемах безопасности — в [`SECURITY.md`](./SECURITY.md).
 
 ## Разработка
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # запустить API прокси в dev-режиме
@@ -480,7 +468,7 @@ bun x tsc --noEmit   # проверка типов
 bun run dev:gui
 ```
 
-См. **[руководство для контрибьюторов](../CONTRIBUTING.md)**.
+См. **[руководство для контрибьюторов](./CONTRIBUTING.md)**.
 
 ## Отказ от ответственности
 

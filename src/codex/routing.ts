@@ -24,6 +24,54 @@ export type CodexThreadResolution =
   | { status: "expired"; accountId: string };
 
 const threadAccountMap = new Map<string, ThreadAffinityEntry>();
+
+// Round-robin rotation cursor — persisted to ~/.opencodex/rotation-state.json so a
+// process restart does not reset rotation back to account 0. Only consulted when
+// config.codexRotationMode === "round-robin"; advances once per NEW (non-affined)
+// conversation selection. Left untouched by the default failover path.
+let rrCursor = loadPersistedRotationCursor();
+let rrCursorDirty = false;
+
+/** Reset the round-robin cursor. Intended for deterministic tests. */
+export function resetCodexRoundRobinCursor(): void {
+  rrCursor = 0;
+  rrCursorDirty = true;
+  persistRotationCursor(rrCursor);
+}
+
+function rotationStatePath(): string {
+  const { join } = require("node:path") as typeof import("node:path");
+  const { getConfigDir } = require("../config") as typeof import("../config");
+  return join(getConfigDir(), "rotation-state.json");
+}
+
+function loadPersistedRotationCursor(): number {
+  try {
+    const { existsSync, readFileSync } = require("node:fs") as typeof import("node:fs");
+    const path = rotationStatePath();
+    if (!existsSync(path)) return 0;
+    const parsed = JSON.parse(readFileSync(path, "utf-8")) as { rrCursor?: unknown };
+    const n = Number(parsed.rrCursor);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Debounced write (writes immediately for now — cursor advances are rare, once per new conversation). */
+function persistRotationCursor(value: number): void {
+  try {
+    const { writeFileSync, mkdirSync, chmodSync } = require("node:fs") as typeof import("node:fs");
+    const { getConfigDir } = require("../config") as typeof import("../config");
+    const dir = getConfigDir();
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const path = rotationStatePath();
+    writeFileSync(path, JSON.stringify({ rrCursor: value }), { mode: 0o600 });
+    try { chmodSync(path, 0o600); } catch { /* best-effort */ }
+  } catch {
+    /* persistence is best-effort */
+  }
+}
 type CodexUpstreamHealth = {
   consecutiveFailures: number;
   /** Consecutive healthy terminals observed while recovering from escalation level 2+. */
@@ -658,6 +706,22 @@ export function resolveCodexAccountForThreadDetailed(
       return { status: "selected", accountId: entry.accountId };
     }
     threadAccountMap.delete(threadId);
+  }
+  // Opt-in round-robin: rotate NEW (non-affined) conversations across the usable
+  // pool. getEligiblePoolAccounts already filters reauth / cooldown / soft-avoid /
+  // unusable accounts and returns a deterministic order (main unshifted first,
+  // then config order), so the cursor yields a stable rotation. activeCodexAccountId
+  // is intentionally left untouched (no setActiveCodexAccount / saveConfig). With a
+  // single usable account this collapses to that account (no-op). Runs before the
+  // sticky failover path so thread affinity established elsewhere is preserved.
+  if (config.codexRotationMode === "round-robin") {
+    const pool = getEligiblePoolAccounts(config);
+    if (pool.length) {
+      const pick = pool[rrCursor % pool.length]!;
+      rrCursor = (rrCursor + 1) % Math.max(pool.length, 1);
+      persistRotationCursor(rrCursor);
+      return { status: "selected", accountId: pick };
+    }
   }
   let active = config.activeCodexAccountId;
   if (!active) {

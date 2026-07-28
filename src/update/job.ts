@@ -22,7 +22,7 @@ import {
 import { isNewer } from "./notify";
 import { handoffWindowsTrayForUpdate, planWindowsTrayUpdate } from "./tray-update-plan.mjs";
 
-const RELEASE_NOTES_URL = "https://github.com/lidge-jun/opencodex/releases/latest";
+const RELEASE_NOTES_URL = "https://github.com/OnlineChefGroep/opencodex/releases/latest";
 const UPDATE_JOB_FILENAME = "update-job.json";
 const UPDATE_TIMEOUT_MS = 180_000;
 const RESTART_TIMEOUT_MS = 60_000;

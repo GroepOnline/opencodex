@@ -594,6 +594,14 @@ export interface OcxConfig {
   providerContextCaps?: Record<string, number>;
   /** Global Codex-visible context cap value (tokens). Falls back to DEFAULT_PROVIDER_CONTEXT_CAP. */
   contextCapValue?: number;
+  /** Token/cost budget thresholds for usage alerts (see src/usage/budgets.ts). */
+  budgets?: {
+    tokenDaily?: number;
+    tokenWeekly?: number;
+    costDailyEur?: number;
+    alertActions?: Array<"log" | "posthog" | "webhook">;
+    webhookUrl?: string;
+  };
   /** Bind hostname. Default "127.0.0.1" (loopback only). Set "0.0.0.0" to expose on all interfaces. */
   hostname?: string;
   /**
@@ -646,6 +654,26 @@ export interface OcxConfig {
   autoSwitchThreshold?: number;
   /** Consecutive non-2xx upstream responses before switching future new threads. Default 3. 0 = disabled. */
   upstreamFailoverThreshold?: number;
+  /**
+   * Codex pool selection strategy for new (non-affined) conversations.
+   * - "failover" (default): a single sticky `activeCodexAccountId` serves all traffic and only
+   *   switches on a quota-threshold breach, cooldown (429/reauth), or failure streak. Multiple free
+   *   accounts act purely as failover reserves — they do NOT multiply throughput under healthy load.
+   * - "round-robin": each NEW conversation rotates across all usable pool accounts so a multi-account
+   *   free pool actually multiplies throughput. Thread affinity (conversation continuity) still pins a
+   *   conversation to one account; accounts in cooldown / soft-avoid / reauth are skipped automatically.
+   *   The round-robin cursor is per-process and in-memory; `activeCodexAccountId` is left untouched.
+   *   With a single account configured this is a no-op (rotation collapses to that one account).
+   */
+  codexRotationMode?: "failover" | "round-robin";
+  /**
+   * Jittered inter-request pacer for outbound Codex pool calls. Off by default.
+   * When enabled, each pool account waits a randomized delay in [minMs, maxMs] between consecutive
+   * sends (per-account state, so concurrent accounts desync instead of aligning into a fixed
+   * interval) so a multi-account pool never emits a regular, ban-prone request pattern. Disabled
+   * by default for backward compatibility; single-account setups are unaffected while disabled.
+   */
+  codexRequestPacing?: OcxCodexRequestPacing;
   /** Virtual `combo/<id>` models spanning concrete provider/model targets (issue #133). */
   combos?: Record<string, OcxComboConfig>;
   /** Background proactive token refresh ("Token Guardian"). Off by default; see OcxTokenGuardianConfig. */
@@ -656,6 +684,15 @@ export interface OcxConfig {
 
 export type OcxComboStrategy = "failover" | "round-robin";
 export type OcxComboDefaultEffort = "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+
+export interface OcxCodexRequestPacing {
+  /** Master switch. Default false. */
+  enabled?: boolean;
+  /** Inclusive lower bound of the randomized inter-request gap (ms). Default 150. */
+  minMs?: number;
+  /** Inclusive upper bound of the randomized inter-request gap (ms). Default 900. */
+  maxMs?: number;
+}
 
 export interface OcxComboTarget {
   provider: string;

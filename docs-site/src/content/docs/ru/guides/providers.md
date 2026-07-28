@@ -20,11 +20,6 @@ description: Все способы, которыми opencodex аутентиф�
 виртуальные id `sol-pro`, `terra-pro` и `luna-pro` сохраняют выбранную публичную идентичность, тогда
 как в фактическом запросе используется базовая модель плюс `reasoning.mode: "pro"`.
 
-Если встроенный провайдер `openai` отсутствует или отключён, его можно восстановить из выбора Accounts
-на панели и со страницы Codex Auth: отсутствующие записи создаются из канонического пресета, отключённые
-канонические записи включаются без замены сохранённого режима и настроек моделей, а неканонические
-записи `openai` этот путь восстановления не получают.
-
 Поставляемые v1-конфигурации автоматически мигрируют на маркер 2 и одну строку с поддержкой опций.
 Исходная конфигурация один раз сохраняется в `~/.opencodex/config.json.pre-openai-tiers-v2.bak`;
 восстановить её можно командой
@@ -58,8 +53,8 @@ description: Все способы, которыми opencodex аутентиф�
 ```
 
 Пересылается только ограниченный набор заголовков (`FORWARD_HEADERS`: authorization, ChatGPT
-account id, OpenAI beta/originator/session — см. [Адаптеры](/ru/reference/adapters/)).
-Этот же путь обеспечивает работу [сайдкаров веб-поиска и vision](/ru/guides/sidecars/).
+account id, OpenAI beta/originator/session — см. [Адаптеры](/opencodex/ru/reference/adapters/)).
+Этот же путь обеспечивает работу [сайдкаров веб-поиска и vision](/opencodex/ru/guides/sidecars/).
 
 Каталог сквозного режима ChatGPT дополнительно включает «голые» слаги GPT-5.6 Sol/Terra/Luna
 (`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`) для аккаунтов, которым они доступны.
@@ -88,12 +83,12 @@ ocx logout <provider>
 | `xai` | `openai-chat` | `https://api.x.ai/v1` | Каталог Grok загружается в реальном времени; фолбэк по умолчанию — `grok-4.5`. |
 | `anthropic` | `anthropic` | `https://api.anthropic.com` | Модели Claude; актуальный список моделей загружается из `/v1/models`. |
 | `kimi` | `openai-chat` | `https://api.kimi.com/coding/v1` | Модели Kimi K2.7/K2.6/K2.5 для кодинга. |
-| `kiro` | `kiro` | `https://runtime.us-east-1.kiro.dev` | Вход сначала импортирует и переиспользует сессию установленного `kiro-cli`. Требуется установленный Kiro CLI (`curl -fsSL https://cli.kiro.dev/install | bash`) и вход через `kiro-cli login`. |
+| `kiro` | `kiro` | `https://runtime.us-east-1.kiro.dev` | Вход сначала импортирует и переиспользует сессию установленного `kiro-cli`. |
 | `google-antigravity` | `google` | `https://daily-cloudcode-pa.googleapis.com` | Google OAuth поверх протокола Cloud Code Assist. |
 | `cursor` | `cursor` | `https://api2.cursor.sh` | Экспериментальный PKCE-вход, живой транспорт HTTP/2 и обнаружение моделей с фильтрацией по аккаунту. |
 | `github-copilot` | `openai-chat` | `https://api.githubcopilot.com` | Экспериментально. Device flow GitHub + обмен `copilot_internal` (OAuth-клиент VS Code). Требуется активная подписка Copilot; это не официальный сторонний API. |
 
-OAuth можно запустить и из [веб-дашборда](/ru/guides/web-dashboard/).
+OAuth можно запустить и из [веб-дашборда](/opencodex/ru/guides/web-dashboard/).
 
 ### Несколько OAuth-аккаунтов
 
@@ -129,7 +124,6 @@ opencodex поставляется с 53 встроенными пресетам
 | Hugging Face | `https://router.huggingface.co/v1` |
 | NVIDIA NIM | `https://integrate.api.nvidia.com/v1` |
 | Z.AI (GLM Coding) | `https://api.z.ai/api/coding/paas/v4` |
-| Zhipu AI (BigModel) | `https://open.bigmodel.cn/api/paas/v4` |
 | Qwen Cloud | Token plan (по умолчанию): `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1` · Pay as you go: `https://dashscope.aliyuncs.com/compatible-mode/v1` · или Custom |
 | Tencent Cloud Coding Plan | `https://api.lkeap.cloud.tencent.com/coding/v3` |
 | SiliconFlow | `https://api.siliconflow.cn/v1` |
@@ -147,10 +141,6 @@ opencodex поставляется с 53 встроенными пресетам
 > в интерактивных инструментах программирования. Автоматизация общего API, серверы пользовательских
 > приложений и неинтерактивные пакетные вызовы запрещены и могут привести к блокировке ключа плана.
 
-> **Два маршрута GLM:** `zai` — это международная подписка Z.AI на coding-план, а `zhipu-bigmodel` —
-> внутренняя китайская конечная точка BigModel с оплатой по факту использования. Разные хосты,
-> разные ключи, разная тарификация: ключ от одного сервиса не подойдёт к другому.
-
 ### Несколько API-ключей
 
 Провайдеры на основе ключей тоже могут хранить несколько ключей. Ключ, добавленный через страницу
@@ -164,7 +154,7 @@ Providers, сохраняется в `provider.apiKeyPool`, становится
 Используйте `ocx account list`, `ocx account current` и `ocx account use`, чтобы просматривать и
 переключать те же пулы Codex, OAuth и API-ключей, не открывая дашборд. Команды, JSON-вывод и
 поведение в новых сессиях описаны в разделе
-[Справочник CLI](/ru/reference/cli/#ocx-account-subcommand).
+[Справочник CLI](/opencodex/ru/reference/cli/#ocx-account-subcommand).
 
 ### Превью-маршруты GPT-5.6
 
@@ -205,7 +195,7 @@ opencodex использует живой транспорт HTTP/2 Cursor. Ег
 обходит путь одобрений и песочницу Codex; устанавливайте `unsafeAllowNativeLocalExec: true` в
 объекте `providers.cursor` файла `~/.opencodex/config.json` только для доверенных локальных
 экспериментов (или через **Providers → Cursor → Edit JSON** в дашборде). Полный пример см. в
-[справочнике по конфигурации](/ru/reference/configuration/#cursor-provider-adapter-cursor).
+[справочнике по конфигурации](/opencodex/ru/reference/configuration/#cursor-provider-adapter-cursor).
 MCP, запись экрана и computer-use доступны как хуки исполнителя; без настроенного локального
 исполнителя opencodex возвращает типизированные результаты «нет исполнителя», а не блокирует запрос
 политикой. Для этого экспериментального адаптера включены Cursor OAuth и живое обнаружение моделей;
@@ -217,7 +207,7 @@ MCP, запись экрана и computer-use доступны как хуки 
 Ollama Cloud — это размещённая в облаке (не локальная) Ollama, OpenAI-совместимая по адресу
 `https://ollama.com/v1`, с ключом со страницы
 [ollama.com/settings/keys](https://ollama.com/settings/keys). opencodex классифицирует её облачную
-линейку по поддержке изображений, чтобы [vision-сайдкар](/ru/guides/sidecars/) включался
+линейку по поддержке изображений, чтобы [vision-сайдкар](/opencodex/ru/guides/sidecars/) включался
 только для текстовых моделей. Текстовые модели (например, `glm-5.2`, `deepseek-v4-pro`, `gpt-oss`,
 `qwen3-coder`, `minimax-m2.x`, `nemotron-3-*`) перечислены в `noVisionModels`; модели с нативной
 поддержкой изображений (например, `kimi-k2.6`, `minimax-m3`, `gemma4`, `qwen3.5`,
@@ -239,4 +229,4 @@ Ollama Cloud — это размещённая в облаке (не локал�
 Если провайдер поддерживает Chat Completions, с ним справится адаптер `openai-chat` — выберите
 **Custom** в дашборде или `custom` в `ocx init` и введите базовый URL. Все поля провайдера
 (`headers`, `noReasoningModels`, `noVisionModels`, `models`, …) описаны в
-[справочнике по конфигурации](/ru/reference/configuration/).
+[справочнике по конфигурации](/opencodex/ru/reference/configuration/).

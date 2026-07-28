@@ -1,40 +1,34 @@
 <h3 align="center">make codex open!</h3>
-<p align="center"><b>面向 OpenAI Codex 与 Claude Code 的通用 provider 代理</b><br>
-两条命令，Codex 和 Claude Code 就能用任何 LLM 跑起来。</p>
+<p align="center"><b>面向 OpenAI Codex 与 Claude Code 的通用 provider 代理</b> —— 在 Codex CLI、App、SDK 和 Claude Code 中使用任意 LLM。</p>
+<p align="center"><code>npm install -g @bitkyc08/opencodex</code> · <code>ocx start</code> · <b>localhost:10100</b></p>
 
 <p align="center">
-  <a href="https://x.com/claudeebum"><img src="https://img.shields.io/badge/%40claudeebum-000000?logo=x&logoColor=white" alt="在 X 上关注 @claudeebum"></a>
   <a href="https://www.npmjs.com/package/@bitkyc08/opencodex"><img src="https://img.shields.io/npm/v/@bitkyc08/opencodex?color=cb3837&label=npm&logo=npm" alt="npm version"></a>
-  <a href="https://github.com/lidge-jun/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@bitkyc08/opencodex?color=blue" alt="license"></a>
+  <a href="https://github.com/OnlineChefGroep/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@bitkyc08/opencodex?color=blue" alt="license"></a>
   <img src="https://img.shields.io/node/v/@bitkyc08/opencodex?logo=node.js&label=node" alt="node version">
-</p>
-
-```bash
-npm install -g @bitkyc08/opencodex
-ocx start        # 代理 + 仪表盘: localhost:10100
-```
-
-<p align="center">
-  <img src="../assets/claude-code-models.gif" alt="通过 opencodex 运行路由模型的 Claude Code —— 状态栏显示 gpt-5.6-luna-medium 为当前模型" width="820"><br>
-  <sub><b>Claude Code 可以用任何模型。</b>选择器是原生 Claude Code，跑起来的模型随你挑。</sub>
+  <a href="https://github.com/OnlineChefGroep/opencodex/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/OnlineChefGroep/opencodex/ci.yml?branch=main&label=CI&logo=github" alt="CI status"></a>
 </p>
 
 <p align="center">
-  <img src="../assets/demo.gif" alt="opencodex 演示 —— 在 Codex 应用中用路由的非 OpenAI 模型执行任务" width="820"><br>
-  <sub><b>Codex 可以用任何模型。</b>选好 provider 直接开跑 —— 同样的 Codex 工作流，换个大脑。</sub>
+  <img src="assets/banner.png" alt="opencodex — 让 Codex 接入任意 LLM" width="820">
 </p>
 
 <p align="center">
-  <a href="../README.md">English</a> · <a href="README.ko.md">한국어</a> · <b>简体中文</b> · <a href="README.ru.md">Русский</a> · <a href="README.ja.md">日本語</a> · 📖 <a href="https://opencodex.me/zh-cn/"><b>完整文档 →</b></a>
+  <a href="README.md">English</a> · <a href="README.ko.md">한국어</a> · <b>简体中文</b> · <a href="README.ru.md">Русский</a> · <a href="README.ja.md">日本語</a>
 </p>
 
 <p align="center">
-  <img src="../assets/architecture.png" alt="opencodex 架构 — Codex CLI 通过 opencodex 代理路由到任意 LLM 提供商" width="820">
+  <img src="assets/architecture.png" alt="opencodex 架构 — Codex CLI 通过 opencodex 代理路由到任意 LLM 提供商" width="820">
 </p>
 
 在 Codex 中 —— 以及在 **Claude Code** 中 —— 使用 Claude、Gemini、Grok、GLM、DeepSeek、Kimi、Qwen、Ollama 或任意其他 LLM，无需等待官方添加支持。
 
 opencodex 是一个轻量级本地代理，把 Codex 的 Responses API 翻译成你的 provider 所讲的协议。streaming、tool 调用、reasoning token、图片 —— 全部双向工作。
+
+<p align="center">
+  <img src="assets/demo.gif" alt="opencodex 演示 —— 在 Codex 应用中用路由的非 OpenAI 模型执行任务" width="820">
+</p>
+<p align="center"><sub><b>在 Codex 里运行任意模型。</b>选好 provider 即可 —— 同样的 Codex 工作流，不同的大脑。</sub></p>
 
 它还能为 Codex 认证管理一个 **ChatGPT 账户池**。添加多个 ChatGPT / Codex 账户，在仪表盘中刷新它们的
 5 小时 / 每周 / 30 天配额，并让新会话自动路由到使用量最低的健康账户。现有 Codex 线程会固定在启动它的
@@ -118,7 +112,7 @@ npm 警告里给出的缩写命令缺少包名，会把当前目录重新安装�
 - **安全地池化 ChatGPT 账户。** 现有 Codex 线程保持在一个账户上，而新会话可以从池中自动挑选使用量更低的账户，并带有配额刷新和非 PII 请求标签。
 - **登录一次，免填 API key。** xAI、Anthropic、Kimi 支持 OAuth，可用现有账户认证，token 自动刷新。也可以转发 `codex login`、粘贴 API key，或使用 `${ENV_VAR}` 引用 —— 随你选择。
 - **Codex 在哪里能用，它就在哪里能用。** 自动注入 Codex CLI、TUI、App 和 SDK。路由模型像原生模型一样出现在 Codex 的模型选择器里。
-- **委派给合适的模型。** 在仪表盘或 config 中把最多 5 个路由/原生模型放进 Codex 的 subagent 选择器 —— 复杂任务交给 reasoning 模型，快速任务交给便宜模型。在 v2 多智能体表面（GPT-5.6 Sol/Terra）上，代理会注入精简的委派指引：首选子智能体模型与 effort（`injectionModel` / `injectionEffort`）、featured 模型清单及各自支持的 effort 阶梯，以及让跨模型 `spawn_agent` 覆盖得以应用的 `fork_turns` 规则。已知限制：原生父代理 spawn 路由子代理时，任务正文可能以后端加密形式到达而丢失（[#92](https://github.com/lidge-jun/opencodex/issues/92)）—— 需要可靠的跨 provider 委派请使用 v1 表面。想自定义文案，可在 `injectionPrompt` 中使用 `{{model}}` / `{{effort}}` / `{{roster}}` 占位符。
+- **委派给合适的模型。** 在仪表盘或 config 中把最多 5 个路由/原生模型放进 Codex 的 subagent 选择器 —— 复杂任务交给 reasoning 模型，快速任务交给便宜模型。在 v2 多智能体表面（GPT-5.6 Sol/Terra）上，代理会注入精简的委派指引：首选子智能体模型与 effort（`injectionModel` / `injectionEffort`）、featured 模型清单及各自支持的 effort 阶梯，以及让跨模型 `spawn_agent` 覆盖得以应用的 `fork_turns` 规则。已知限制：原生父代理 spawn 路由子代理时，任务正文可能以后端加密形式到达而丢失（[#92](https://github.com/OnlineChefGroep/opencodex/issues/92)）—— 需要可靠的跨 provider 委派请使用 v1 表面。想自定义文案，可在 `injectionPrompt` 中使用 `{{model}}` / `{{effort}}` / `{{roster}}` 占位符。
 - **为 preview-gated OpenAI rollout 做好准备。** GPT-5.6 Sol/Terra/Luna 保留 upstream effort 阶梯。Direct/Multi 使用 372k Codex 契约，OpenAI API 与 OpenRouter 使用 1.05M 元数据。
 - **给任意模型超能力。** 非 OpenAI 模型也能通过你的 ChatGPT 登录上运行的 `gpt-5.4-mini` sidecar 获得真正的网页搜索和图片理解。
 - **原生生成图片。** Codex 的独立 `image_gen` 工具通过 `POST /v1/images/generations` 生成图片、通过 `POST /v1/images/edits` 编辑图片；它独立于 hosted Responses 的 `image_generation` 工具。
@@ -151,7 +145,7 @@ ocx gui
 
 ```bash
 # 通过 Anthropic 使用 Claude Opus
-codex -m "anthropic/claude-opus-5" "解释这个 stack trace"
+codex -m "anthropic/claude-opus-4-8" "解释这个 stack trace"
 
 # 通过 Google 使用 Gemini
 codex -m "google/gemini-3-pro" "为 auth.ts 写单元测试"
@@ -180,7 +174,7 @@ reasoning 为 `low`。可用性仍受上游
 preview gate 限制；opencodex 只是准备好你的账户/provider 可访问时所需的路由和目录元数据。
 
 <p align="center">
-  <img src="../assets/codex-app-picker.png" alt="Codex App 展示 opencodex 路由模型及 reasoning effort 选择器" width="480">
+  <img src="assets/codex-app-picker.png" alt="Codex App 展示 opencodex 路由模型及 reasoning effort 选择器" width="480">
 </p>
 
 ## OpenAI provider 账户模式
@@ -232,7 +226,7 @@ opencodex 保持两种独立行为：
 | Ollama / vLLM / LM Studio（本地） | `openai-chat` | key（通常留空） |
 | 任意 OpenAI 兼容端点 | `openai-chat` | key |
 
-此外还有 DeepSeek、Groq、OpenRouter、Together、Fireworks、Cerebras、Mistral、Hugging Face、NVIDIA NIM、MiniMax、Qwen Cloud、腾讯云 Coding Plan、SiliconFlow 等等。完整列表可通过 `ocx init` 查看，或参阅 [provider 文档](https://opencodex.me/zh-cn/reference/configuration/)。
+此外还有 DeepSeek、Groq、OpenRouter、Together、Fireworks、Cerebras、Mistral、Hugging Face、NVIDIA NIM、MiniMax、Qwen Cloud、腾讯云 Coding Plan、SiliconFlow 等等。完整列表可通过 `ocx init` 查看，或参阅 [provider 文档](reference/configuration/)。
 
 ## CLI
 
@@ -287,16 +281,10 @@ opencodex 提供两种自动启动代理的方式：
 | **方式** | OS 服务管理器（launchd / systemd / schtasks） | 包装 `codex` 脚本启动器；不会改动真实 `codex.exe` |
 | **时机** | 登录后始终运行 | 按需 — 仅在运行 `codex` 时启动 |
 | **重启** | 崩溃后自动重启 | 每次调用 `codex` 时启动一次 |
-| **Codex 更新** | 不受影响 | 稳定完成的启动器替换会在下一条普通 `ocx` 命令中修复 |
+| **Codex 更新** | 不受影响 | 下次运行 `ocx codex-shim install` 或 `ocx update` 时修复 |
 | **移除** | `ocx service uninstall` | `ocx codex-shim uninstall` |
 
 如需常驻代理，使用 **service**（推荐开发环境）。轻量按需启动使用 **shim**。
-
-如果外部 Codex 更新覆盖了已安装的 shim，下一条普通 `ocx` 命令会备份已稳定的新启动器并恢复
-shim。仍在变化的启动器不会被改动，而会在后续命令中重试。修复失败只会警告，不会让请求的命令
-失败；手动备用命令为 `ocx codex-shim install`。若要关闭自动恢复，请将
-`codexShimAutoRestore` 设为 `false`，或为进程设置
-`OPENCODEX_CODEX_SHIM_AUTO_RESTORE=0`。
 如果配置的代理端口已被占用，`ocx start` 会自动选择另一个空闲本地端口并更新 Codex 使用它。
 
 ### 卸载
@@ -401,18 +389,18 @@ Codex 不会尝试 resume 一个其 provider 已不在 `config.toml` 中的线�
 ocx recover-history --legacy-openai
 ```
 
-每个字段的详细说明参阅 **[配置参考](https://opencodex.me/zh-cn/reference/configuration/)**。
+每个字段的详细说明参阅 **[配置参考](reference/configuration/)**。
 
 ## 文档
 
-完整文档——安装、provider 配置、路由、sidecar、Codex 集成、Codex App 模型选择器、CLI/配置参考——由 [`docs-site/`](../docs-site) 目录下的 Astro 站点构建，发布在 **[opencodex.me](https://opencodex.me/zh-cn/)**。
+完整文档——安装、provider 配置、路由、sidecar、Codex 集成、Codex App 模型选择器、CLI/配置参考——由 [`docs-site/`](./docs-site) 目录下的 Astro 站点构建，发布在 **[github.com/OnlineChefGroep/opencodex]()**。
 
-维护者 source of truth 位于 [`structure/`](../structure)，历史调查和诊断笔记保留在 [`docs/`](../docs)。
+维护者 source of truth 位于 [`structure/`](./structure)，历史调查和诊断笔记保留在 [`docs/`](./docs)。
 
 ## 开发
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # 以开发模式启动代理 API
@@ -428,7 +416,7 @@ bun x tsc --noEmit   # 类型检查
 bun run dev:gui
 ```
 
-参阅 **[贡献指南](https://opencodex.me/zh-cn/contributing/)**。
+参阅 **[贡献指南](contributing/)**。
 
 ## 免责声明
 

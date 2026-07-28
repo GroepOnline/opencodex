@@ -60,7 +60,7 @@ ocx update --tag preview
 To hack on opencodex itself:
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy   # starts the proxy API in dev mode (src/cli/index.ts start)

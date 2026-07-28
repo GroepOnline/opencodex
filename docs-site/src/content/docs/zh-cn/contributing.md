@@ -6,7 +6,7 @@ description: opencodex 的开发环境、结构、约定，以及添加 provider
 ## 环境搭建
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # 开发模式代理 API
@@ -44,7 +44,7 @@ cd docs-site && bun install && bun dev
 
 ## 文档发布
 
-公开文档发布到 GitHub Pages：<https://opencodex.me/zh-cn/>。
+公开文档发布到 GitHub Pages：<https://github.com/OnlineChefGroep/opencodex/zh-cn/>。
 `.github/workflows/deploy-docs.yml` 会在 `main` push 中 `docs-site/**` 或 workflow 本身发生变化时
 运行，构建 `docs-site` 并部署生成的网站。推送文档变更前请运行：
 
@@ -73,19 +73,6 @@ bun run release <version>           # commit/push 版本 bump；publish workflow
 bun run release <version> --publish # 确认 CI-gated dry-run 后真正 publish
 bun run release:watch               # 观察最新的 Release workflow run
 ```
-
-## 分支
-
-- `dev` — 默认的集成目标。除非属于下面的专用分支，否则请把 PR 提到这里。
-- `dev2-go` — Go 原生移植（`go/`、原生运行时入口、Go 发布产物工具链）的并行集成线。
-  与 `dev` 一样接受 pull request。只把属于 Go 移植的改动提到这里，其余都提到 `dev`。
-  目标分支检查同时接受这两个分支，但无法区分二者，因此范围由 review 决定：维护者可能会
-  请你把目标分支改成 `dev`。
-- `main` — 仅用于发布。只有维护者从 `dev` 提升时才会变动，请勿直接提功能 PR。
-- `preview` — 预发布通道。
-
-欢迎移植 PR 和变基 PR。把一条集成线上的修复带到另一条线，或把陈旧分支变基到当前 head，
-都是正常的贡献而非噪音。请在描述中注明来源提交。
 
 ## 约定
 
@@ -124,7 +111,7 @@ bun run release:watch               # 观察最新的 Release workflow run
 ## 添加 adapter
 
 在 `src/adapters/` 中实现 `ProviderAdapter`（参见
-[Adapters](/zh-cn/reference/adapters/)），在 `src/server/adapter-resolve.ts` 注册其名称，
+[Adapters](/opencodex/zh-cn/reference/adapters/)），在 `src/server/adapter-resolve.ts` 注册其名称，
 并把输出桥接成内部 `AdapterEvent`。图像处理请复用 `image.ts`；普通 streaming/tool call 以
 `openai-chat.ts` 为参考。只有 adapter 自己负责 transport retry 时才使用 `fetchResponse`；Cursor
 这类真正的双向 transport 应使用 `runTurn`。在 `tests/` 中添加聚焦测试；如果 factory 属于 public

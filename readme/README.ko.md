@@ -1,40 +1,34 @@
 <h3 align="center">make codex open!</h3>
-<p align="center"><b>OpenAI Codex &amp; Claude Code를 위한 범용 프로바이더 프록시</b><br>
-명령어 두 줄이면 Codex와 Claude Code가 원하는 LLM으로 돌아갑니다.</p>
+<p align="center"><b>OpenAI Codex &amp; Claude Code를 위한 범용 프로바이더 프록시</b> — Codex CLI·App·SDK와 Claude Code에서 어떤 LLM이든 사용하세요.</p>
+<p align="center"><code>npm install -g @bitkyc08/opencodex</code> · <code>ocx start</code> · <b>localhost:10100</b></p>
 
 <p align="center">
-  <a href="https://x.com/claudeebum"><img src="https://img.shields.io/badge/%40claudeebum-000000?logo=x&logoColor=white" alt="X에서 @claudeebum 팔로우"></a>
   <a href="https://www.npmjs.com/package/@bitkyc08/opencodex"><img src="https://img.shields.io/npm/v/@bitkyc08/opencodex?color=cb3837&label=npm&logo=npm" alt="npm version"></a>
-  <a href="https://github.com/lidge-jun/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@bitkyc08/opencodex?color=blue" alt="license"></a>
+  <a href="https://github.com/OnlineChefGroep/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@bitkyc08/opencodex?color=blue" alt="license"></a>
   <img src="https://img.shields.io/node/v/@bitkyc08/opencodex?logo=node.js&label=node" alt="node version">
-</p>
-
-```bash
-npm install -g @bitkyc08/opencodex
-ocx start        # 프록시 + 대시보드: localhost:10100
-```
-
-<p align="center">
-  <img src="../assets/claude-code-models.gif" alt="opencodex로 라우팅된 모델에서 돌아가는 Claude Code — 상태 표시줄에 gpt-5.6-luna-medium이 활성 모델로 표시됨" width="820"><br>
-  <sub><b>Claude Code에서 어떤 모델이든.</b> 선택기는 Claude Code 그대로, 돌아가는 모델은 원하는 대로.</sub>
+  <a href="https://github.com/OnlineChefGroep/opencodex/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/OnlineChefGroep/opencodex/ci.yml?branch=main&label=CI&logo=github" alt="CI status"></a>
 </p>
 
 <p align="center">
-  <img src="../assets/demo.gif" alt="opencodex 데모 — Codex 앱에서 비-OpenAI 라우팅 모델로 작업 실행" width="820"><br>
-  <sub><b>Codex에서 어떤 모델이든.</b> 프로바이더만 고르면 끝 — 같은 Codex 워크플로, 다른 두뇌.</sub>
+  <img src="assets/banner.png" alt="opencodex — 어떤 LLM이든 Codex에서 사용" width="820">
 </p>
 
 <p align="center">
-  <a href="../README.md">English</a> · <b>한국어</b> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.ru.md">Русский</a> · <a href="README.ja.md">日本語</a> · 📖 <a href="https://opencodex.me/ko/"><b>전체 문서 →</b></a>
+  <a href="README.md">English</a> · <b>한국어</b> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.ru.md">Русский</a> · <a href="README.ja.md">日本語</a>
 </p>
 
 <p align="center">
-  <img src="../assets/architecture.png" alt="opencodex 아키텍처 — Codex CLI가 opencodex 프록시를 통해 모든 LLM 프로바이더로 라우팅" width="820">
+  <img src="assets/architecture.png" alt="opencodex 아키텍처 — Codex CLI가 opencodex 프록시를 통해 모든 LLM 프로바이더로 라우팅" width="820">
 </p>
 
 Claude, Gemini, Grok, GLM, DeepSeek, Kimi, Qwen, Ollama 등 어떤 LLM이든 Codex에서 — 그리고 **Claude Code**에서도 — 사용하세요. 누군가 지원을 추가해 주길 기다릴 필요 없이.
 
 opencodex는 Codex의 Responses API를 프로바이더가 쓰는 프로토콜로 변환해 주는 가벼운 로컬 프록시입니다. streaming, tool 호출, reasoning 토큰, 이미지까지 양방향으로 모두 동작합니다.
+
+<p align="center">
+  <img src="assets/demo.gif" alt="opencodex 데모 — Codex 앱에서 비-OpenAI 라우팅 모델로 작업 실행" width="820">
+</p>
+<p align="center"><sub><b>Codex에서 어떤 모델이든.</b> 프로바이더만 고르면 끝 — 같은 Codex 워크플로, 다른 두뇌.</sub></p>
 
 또한 Codex 인증을 위한 **ChatGPT 계정 풀**을 관리할 수 있습니다. 여러 ChatGPT / Codex 계정을 추가하고,
 대시보드에서 5시간 / 주간 / 30일 쿼터를 갱신하며, 새 세션을 사용량이 가장 적은 정상 계정으로 자동
@@ -140,7 +134,7 @@ ocx gui
 
 ```bash
 # Anthropic을 통해 Claude Opus 사용
-codex -m "anthropic/claude-opus-5" "이 스택 트레이스를 설명해 줘"
+codex -m "anthropic/claude-opus-4-8" "이 스택 트레이스를 설명해 줘"
 
 # Google을 통해 Gemini 사용
 codex -m "google/gemini-3-pro" "auth.ts의 유닛 테스트를 작성해 줘"
@@ -171,7 +165,7 @@ seed됩니다(`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`; OpenRouter는 `ope
 routing/catalog metadata를 준비해 둡니다.
 
 <p align="center">
-  <img src="../assets/codex-app-picker.png" alt="opencodex 라우팅 모델을 reasoning effort 선택기와 함께 보여주는 Codex App" width="480">
+  <img src="assets/codex-app-picker.png" alt="opencodex 라우팅 모델을 reasoning effort 선택기와 함께 보여주는 Codex App" width="480">
 </p>
 
 ## OpenAI 프로바이더 계정 모드
@@ -215,7 +209,7 @@ opencodex는 두 가지 동작을 분리해서 유지합니다:
 - **ChatGPT 계정을 안전하게 풀링.** 기존 Codex 스레드는 한 계정에 유지하면서, 새 세션은 쿼터 갱신과 비-PII 요청 라벨과 함께 풀에서 사용량이 낮은 계정을 자동 선택할 수 있습니다.
 - **한 번 로그인하면 API 키는 생략.** xAI, Anthropic, Kimi는 OAuth를 지원하므로 기존 계정으로 인증할 수 있고 토큰은 자동 갱신됩니다. 또는 `codex login`을 forward 하거나, API 키를 붙여넣거나, `${ENV_VAR}` 참조를 쓸 수 있습니다 — 선택은 자유입니다.
 - **Codex가 동작하는 모든 곳에서.** Codex CLI, TUI, App, SDK에 자동으로 주입됩니다. 라우팅된 모델이 네이티브 모델처럼 Codex 모델 선택기에 나타납니다.
-- **알맞은 모델에 위임.** 대시보드나 config에서 최대 5개의 라우팅/네이티브 모델을 Codex 서브에이전트 선택기에 노출해, 복잡한 작업은 reasoning 모델로, 빠른 작업은 저렴한 모델로 보낼 수 있습니다. v2 멀티에이전트 표면(GPT-5.6 Sol/Terra)에서는 프록시가 간결한 위임 가이드를 주입합니다. 선호 서브에이전트 모델·effort(`injectionModel` / `injectionEffort`), 노출된 모델 로스터와 각 모델이 지원하는 effort 사다리, 그리고 크로스모델 `spawn_agent` 오버라이드를 적용하는 `fork_turns` 규칙까지. 알려진 제한: 네이티브 부모가 라우팅 자식을 스폰하면 작업 본문이 백엔드 암호화 상태로 도착해 유실될 수 있습니다([#92](https://github.com/lidge-jun/opencodex/issues/92)) — 안정적인 크로스 프로바이더 위임에는 v1 표면을 쓰세요. 문구를 직접 쓰고 싶다면 `injectionPrompt`에 `{{model}}` / `{{effort}}` / `{{roster}}` 플레이스홀더를 넣으면 됩니다.
+- **알맞은 모델에 위임.** 대시보드나 config에서 최대 5개의 라우팅/네이티브 모델을 Codex 서브에이전트 선택기에 노출해, 복잡한 작업은 reasoning 모델로, 빠른 작업은 저렴한 모델로 보낼 수 있습니다. v2 멀티에이전트 표면(GPT-5.6 Sol/Terra)에서는 프록시가 간결한 위임 가이드를 주입합니다. 선호 서브에이전트 모델·effort(`injectionModel` / `injectionEffort`), 노출된 모델 로스터와 각 모델이 지원하는 effort 사다리, 그리고 크로스모델 `spawn_agent` 오버라이드를 적용하는 `fork_turns` 규칙까지. 알려진 제한: 네이티브 부모가 라우팅 자식을 스폰하면 작업 본문이 백엔드 암호화 상태로 도착해 유실될 수 있습니다([#92](https://github.com/OnlineChefGroep/opencodex/issues/92)) — 안정적인 크로스 프로바이더 위임에는 v1 표면을 쓰세요. 문구를 직접 쓰고 싶다면 `injectionPrompt`에 `{{model}}` / `{{effort}}` / `{{roster}}` 플레이스홀더를 넣으면 됩니다.
 - **프리뷰 게이트된 OpenAI rollout에 대비.** GPT-5.6 Sol/Terra/Luna의 effort 사다리를 보존합니다. Direct/Multi는 372k Codex 계약을, OpenAI API와 OpenRouter는 1.05M metadata를 사용합니다.
 - **어떤 모델에도 초능력을.** OpenAI가 아닌 모델도 ChatGPT 로그인 위에서 도는 `gpt-5.4-mini` sidecar로 실제 웹 검색과 이미지 이해를 사용합니다.
 - **이미지를 네이티브로 생성.** Codex의 독립형 `image_gen` 도구는 생성할 때 `POST /v1/images/generations`, 편집할 때 `POST /v1/images/edits`를 사용합니다. Responses의 hosted `image_generation` 도구와는 별개입니다.
@@ -239,7 +233,7 @@ opencodex는 두 가지 동작을 분리해서 유지합니다:
 | Ollama / vLLM / LM Studio (로컬) | `openai-chat` | key (보통 비워둠) |
 | 모든 OpenAI 호환 엔드포인트 | `openai-chat` | key |
 
-그 외에 DeepSeek, Groq, OpenRouter, Together, Fireworks, Cerebras, Mistral, Hugging Face, NVIDIA NIM, MiniMax, Qwen Cloud, Tencent Cloud Coding Plan, SiliconFlow 등이 있습니다. 전체 목록은 `ocx init` 또는 [프로바이더 문서](https://opencodex.me/ko/reference/configuration/)에서 확인하세요.
+그 외에 DeepSeek, Groq, OpenRouter, Together, Fireworks, Cerebras, Mistral, Hugging Face, NVIDIA NIM, MiniMax, Qwen Cloud, Tencent Cloud Coding Plan, SiliconFlow 등이 있습니다. 전체 목록은 `ocx init` 또는 [프로바이더 문서](reference/configuration/)에서 확인하세요.
 
 ## CLI
 
@@ -295,16 +289,10 @@ opencodex에는 프록시를 자동 시작하는 두 가지 방법이 있습니�
 | **방식** | OS 서비스 관리자 (launchd / systemd / schtasks) | `codex` 스크립트 런처를 래핑하며 실제 `codex.exe`는 건드리지 않음 |
 | **시점** | 로그인 후 항상 실행 | 온디맨드 — `codex` 실행 시 `ocx ensure` 실행 |
 | **재시작** | 크래시 시 자동 재시작 | `codex` 호출마다 한 번 시작 |
-| **Codex 업데이트** | 영향 없음 | 안정적으로 교체가 끝난 런처는 다음 일반 `ocx` 명령에서 복구 |
+| **Codex 업데이트** | 영향 없음 | `ocx codex-shim install` 또는 `ocx update` 시 복구 |
 | **제거** | `ocx service uninstall` | `ocx codex-shim uninstall` |
 
 항상 프록시를 켜두려면 **service** (개발 머신 권장), 가볍게 온디맨드로 쓰려면 **shim**을 사용하세요.
-
-외부 Codex 업데이트가 설치된 shim을 덮어쓰면 다음 일반 `ocx` 명령이 안정화된 새 런처를 백업하고
-shim을 복구합니다. 아직 변경 중인 런처는 건드리지 않고 이후 명령에서 다시 시도합니다. 복구 실패는
-요청한 명령을 실패시키지 않고 경고만 출력하며, 수동 대체 명령은 `ocx codex-shim install`입니다.
-자동 복구를 끄려면 `codexShimAutoRestore`를 `false`로 설정하거나 프로세스에
-`OPENCODEX_CODEX_SHIM_AUTO_RESTORE=0`을 설정하세요.
 shim 자동 시작은 기본으로 켜져 있으며 GUI 대시보드에서 끌 수 있습니다. 설정된 프록시 포트가 이미 사용
 중이면 `ocx start`가 자동으로 다른 빈 로컬 포트를 고르고 Codex 설정도 그 포트로 갱신합니다.
 
@@ -424,19 +412,19 @@ OpenAI로 복원하고, 남은 opencodex 유저 스레드도 OpenAI로 eject 하
 ocx recover-history --legacy-openai
 ```
 
-모든 필드에 대한 자세한 내용은 **[설정 레퍼런스](https://opencodex.me/ko/reference/configuration/)** 를 참고하세요.
+모든 필드에 대한 자세한 내용은 **[설정 레퍼런스](reference/configuration/)** 를 참고하세요.
 
 ## 문서
 
-공개 문서(설치, 프로바이더, 라우팅, sidecar, Codex 통합, Codex App 모델 선택기, CLI/설정 레퍼런스)는 [`docs-site/`](../docs-site)의 Astro 사이트로 빌드되어
-**[opencodex.me](https://opencodex.me/ko/)** 에 게시됩니다.
+공개 문서(설치, 프로바이더, 라우팅, sidecar, Codex 통합, Codex App 모델 선택기, CLI/설정 레퍼런스)는 [`docs-site/`](./docs-site)의 Astro 사이트로 빌드되어
+**[github.com/OnlineChefGroep/opencodex]()** 에 게시됩니다.
 
-유지보수용 source of truth는 [`structure/`](../structure)에, 과거 조사/진단 노트는 [`docs/`](../docs)에 있습니다.
+유지보수용 source of truth는 [`structure/`](./structure)에, 과거 조사/진단 노트는 [`docs/`](./docs)에 있습니다.
 
 ## 개발
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # dev 모드로 프록시 API 시작
@@ -453,7 +441,7 @@ API는 `/healthz`, `/v1/responses`, `POST /v1/images/generations`, `POST /v1/ima
 bun run dev:gui
 ```
 
-**[기여하기](https://opencodex.me/ko/contributing/)** 를 참고하세요.
+**[기여하기](contributing/)** 를 참고하세요.
 
 ## 면책 조항
 

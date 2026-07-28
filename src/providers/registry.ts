@@ -162,6 +162,38 @@ const OPENROUTER_GPT56_CONTEXT_WINDOWS = {
 };
 
 /**
+ * OmniRoute (https://github.com/diegosouzapw/OmniRoute) — open-source OpenAI-compatible gateway
+ * that aggregates 250+ providers (90+ free) behind one /v1 endpoint. Cloud API lives at
+ * https://api.omniroute.online/v1; self-host via the `diegosouzapw/omniroute` Docker image
+ * (default port 20128) and point the provider base URL at it.
+ *
+ * Default model catalog mirrors the curated set shipped by OmniRoute's own
+ * @omniroute/opencode-provider package, plus the `auto` virtual combo router. The live
+ * `GET /v1/models` is the source of truth — this array is only an offline fallback seed.
+ */
+const OMNIROUTE_MODELS = [
+  "auto",
+  "cc/claude-opus-4-8",
+  "cc/claude-opus-4-7",
+  "cc/claude-sonnet-4-6",
+  "cc/claude-haiku-4-5-20251001",
+  "claude-opus-4-5-thinking",
+  "claude-sonnet-4-5-thinking",
+  "gemini-3.1-pro-high",
+  "gemini-3-flash",
+];
+const OMNIROUTE_MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+  "cc/claude-opus-4-8": 1_000_000,
+  "cc/claude-opus-4-7": 1_000_000,
+  "cc/claude-sonnet-4-6": 200_000,
+  "cc/claude-haiku-4-5-20251001": 200_000,
+  "claude-opus-4-5-thinking": 200_000,
+  "claude-sonnet-4-5-thinking": 200_000,
+  "gemini-3.1-pro-high": 1_000_000,
+  "gemini-3-flash": 1_000_000,
+};
+
+/**
  * Vendor thinking-toggle models (MiMo v2.x, GLM 5/5.1 on Zen Go): the wire knob is
  * `thinking: {type: enabled|disabled}` — a binary. Advertise the full Codex picker ladder
  * and map efforts onto the toggle. Zen Go
@@ -1106,6 +1138,27 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
   },
   // FREEZE 2026-07-10: no public OpenAI-compatible endpoint is documented. Evidence: devlog/_plan/260710_provider_hardening/003_research_aggregators.md.
   { id: "gitlab-duo", label: "GitLab Duo", baseUrl: "https://cloud.gitlab.com/ai/v1/proxy/openai/v1", adapter: "openai-chat", authKind: "key", dashboardUrl: "https://gitlab.com/-/user_settings/personal_access_tokens" },
+  {
+    // OmniRoute: open-source OpenAI-compatible gateway (https://github.com/diegosouzapw/OmniRoute).
+    // Aggregates 250+ providers (90+ free) behind one endpoint. Cloud: api.omniroute.online;
+    // self-host via the `diegosouzapw/omniroute` Docker image (default :20128) and override baseUrl.
+    // Auth: Authorization: Bearer $OCX_OMNIROUTE_KEY. Model seed mirrors @omniroute/opencode-provider;
+    // the live /v1/models is the source of truth.
+    id: "omniroute",
+    label: "OmniRoute",
+    adapter: "openai-chat",
+    baseUrl: "https://api.omniroute.online/v1",
+    authKind: "key",
+    featured: true,
+    freeTier: true,
+    allowBaseUrlOverride: true,
+    dashboardUrl: "https://omniroute.online",
+    defaultModel: "claude-sonnet-4-5-thinking",
+    models: OMNIROUTE_MODELS,
+    modelContextWindows: OMNIROUTE_MODEL_CONTEXT_WINDOWS,
+    noReasoningModels: ["auto", "cc/claude-haiku-4-5-20251001", "gemini-3-flash"],
+    note: "Free gateway — 90+ free models behind one key. Self-host with diegosouzapw/omniroute and point the base URL at your instance.",
+  },
 ];
 
 export function getProviderRegistryEntry(id: string): ProviderRegistryEntry | undefined {

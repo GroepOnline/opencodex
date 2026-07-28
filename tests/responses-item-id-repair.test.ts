@@ -79,6 +79,44 @@ describe("Responses passthrough item-id repair", () => {
     expect(completed.output[2].call_id).toBe("call_redacted");
   });
 
+  test("mints and reuses canonical ids when terminal items omit ids", async () => {
+    const upstream = [
+      'event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning"}}\n\n',
+      'event: response.reasoning_summary_text.done\ndata: {"type":"response.reasoning_summary_text.done","output_index":0,"summary_index":0,"text":"done"}\n\n',
+      'event: response.output_item.done\ndata: {"type":"response.output_item.done","output_index":1,"item":{"type":"message","role":"assistant"}}\n\n',
+      'event: response.output_text.done\ndata: {"type":"response.output_text.done","output_index":1,"content_index":0,"text":"hello"}\n\n',
+      'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_gateway","status":"completed","output":[{"type":"reasoning"},{"type":"message","role":"assistant"}]}}\n\n',
+      "data: [DONE]\n\n",
+    ].join("");
+
+    const events = await parseSse(await readAll(relaySseWithResponsesItemIdRepair(streamFromText(upstream), {
+      repairMissingTerminalIds: true,
+    })));
+    const reasoningDone = events[0].item as Record<string, unknown>;
+    const messageDone = events[2].item as Record<string, unknown>;
+    const completed = events[4].response as { output: Record<string, unknown>[] };
+
+    expect(reasoningDone.id).toMatch(/^rs_ocx_[0-9a-f]+_0$/);
+    expect(events[1].item_id).toBe(reasoningDone.id);
+    expect(messageDone.id).toMatch(/^msg_ocx_[0-9a-f]+_1$/);
+    expect(events[3].item_id).toBe(messageDone.id);
+    expect(completed.output[0].id).toBe(reasoningDone.id);
+    expect(completed.output[1].id).toBe(messageDone.id);
+  });
+
+  test("leaves missing ids untouched when terminal-id repair is disabled", async () => {
+    const upstream = [
+      'data: {"type":"response.output_item.done","output_index":0,"item":{"type":"message","role":"assistant"}}\n\n',
+      'data: {"type":"response.completed","response":{"id":"resp_gateway","status":"completed","output":[{"type":"message","role":"assistant"}]}}\n\n',
+    ].join("");
+
+    const repaired = await readAll(relaySseWithResponsesItemIdRepair(streamFromText(upstream), {
+      message: ["msg_0"],
+    }));
+
+    expect(repaired).toBe(upstream);
+  });
+
   test("mints unique canonical ids across sequential passthrough streams", async () => {
     const upstream = [
       'event: response.output_item.added\ndata: {"type":"response.output_item.added","output_index":0,"item":{"type":"reasoning","id":"rs_0"}}\n\n',

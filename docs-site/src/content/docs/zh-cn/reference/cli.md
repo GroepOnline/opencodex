@@ -430,7 +430,7 @@ ocx update
 ocx update --tag preview
 ```
 
-[Release workflow](https://github.com/lidge-jun/opencodex/actions/workflows/release.yml) 发布到 npm
+[Release workflow](https://github.com/OnlineChefGroep/opencodex/actions/workflows/release.yml) 发布到 npm
 后，新版本会立即可用。
 
 ## 帮助

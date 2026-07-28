@@ -18,8 +18,6 @@ bare `gpt-5.6-sol`은 Providers 페이지의 Pool/Direct 옵션을 따르고,
 max input 922,000이며 `*-pro` virtual id는 공개 상태에 유지되고 wire에서 base 모델과
 `reasoning.mode: "pro"`로 바뀝니다.
 
-내장 `openai` 제공자가 없거나 비활성화된 경우 대시보드 Accounts 선택기와 Codex Auth 페이지에서 복구할 수 있습니다. 없는 항목은 정규 프리셋으로 만들고, 비활성화된 정규 항목은 저장된 모드/모델 설정을 바꾸지 않고 다시 켜며, 비정규 `openai` 항목에는 그 복구 경로를 제공하지 않습니다.
-
 shipped v1 config는 marker 2의 단일 옵션 행으로 자동 이관됩니다. 원본은
 `~/.opencodex/config.json.pre-openai-tiers-v2.bak`에 한 번 보존되며 다음 명령으로 복원합니다:
 `cp ~/.opencodex/config.json.pre-openai-tiers-v2.bak ~/.opencodex/config.json`.
@@ -51,8 +49,8 @@ shipped v1 config는 marker 2의 단일 옵션 행으로 자동 이관됩니다.
 ```
 
 엄선된 헤더 집합만 포워딩됩니다(`FORWARD_HEADERS`: authorization, ChatGPT account id,
-OpenAI beta/originator/session — [어댑터](/ko/reference/adapters/) 참고). 이 경로는
-[웹 검색 및 비전 사이드카](/ko/guides/sidecars/)를 구동하는 경로이기도 합니다.
+OpenAI beta/originator/session — [어댑터](/opencodex/ko/reference/adapters/) 참고). 이 경로는
+[웹 검색 및 비전 사이드카](/opencodex/ko/guides/sidecars/)를 구동하는 경로이기도 합니다.
 
 ChatGPT 패스스루 카탈로그에는 GPT-5.6 Sol/Terra/Luna의 네임스페이스 없는 slug
 (`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`)도 들어갑니다. 실제 호출 가능 여부는 계정 권한에
@@ -80,11 +78,11 @@ ocx logout <provider>
 | `xai` | `openai-chat` | `https://api.x.ai/v1` | 실시간 목록을 우선 사용하며, 폴백 기본 모델은 `grok-4.5`입니다. |
 | `anthropic` | `anthropic` | `https://api.anthropic.com` | Claude 모델; 실시간 모델 목록은 `/v1/models`에서 가져옵니다. |
 | `kimi` | `openai-chat` | `https://api.kimi.com/coding/v1` | Kimi K2.7/K2.6/K2.5 코딩 모델. |
-| `kiro` | `kiro` | `https://runtime.us-east-1.kiro.dev` | 설치된 `kiro-cli` 로그인을 먼저 가져옵니다. Kiro CLI 설치(`curl -fsSL https://cli.kiro.dev/install | bash`)와 `kiro-cli login`이 필요합니다. |
+| `kiro` | `kiro` | `https://runtime.us-east-1.kiro.dev` | 설치된 `kiro-cli` 로그인을 먼저 가져옵니다. |
 | `google-antigravity` | `google` | `https://daily-cloudcode-pa.googleapis.com` | Google OAuth를 Cloud Code Assist wire로 사용합니다. |
 | `cursor` | `cursor` | `https://api2.cursor.sh` | 실험적 PKCE 로그인, HTTP/2 전송, 계정별 모델 탐색을 지원합니다. |
 
-[웹 대시보드](/ko/guides/web-dashboard/)에서도 OAuth를 시작할 수 있습니다.
+[웹 대시보드](/opencodex/ko/guides/web-dashboard/)에서도 OAuth를 시작할 수 있습니다.
 
 ### 여러 OAuth 계정
 
@@ -119,7 +117,6 @@ opencodex v2.7.1에는 빌트인 프리셋이 50개 들어 있습니다. 키 방
 | Hugging Face | `https://router.huggingface.co/v1` |
 | NVIDIA NIM | `https://integrate.api.nvidia.com/v1` |
 | Z.AI (GLM Coding) | `https://api.z.ai/api/coding/paas/v4` |
-| Zhipu AI (BigModel) | `https://open.bigmodel.cn/api/paas/v4` |
 | Qwen Cloud | Token plan(기본): `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1` · 종량제: `https://dashscope.aliyuncs.com/compatible-mode/v1` · 또는 사용자 지정 |
 | Tencent Cloud Coding Plan | `https://api.lkeap.cloud.tencent.com/coding/v3` |
 | SiliconFlow | `https://api.siliconflow.cn/v1` |
@@ -136,10 +133,6 @@ opencodex v2.7.1에는 빌트인 프리셋이 50개 들어 있습니다. 키 방
 > 안내합니다. 일반 API 자동화, 사용자 애플리케이션 백엔드 및 비대화형 일괄 호출은 금지되며
 > 플랜 키가 정지될 수 있습니다.
 
-> **GLM 경로는 두 개입니다:** `zai`는 Z.AI 국제 코딩 플랜 구독이고, `zhipu-bigmodel`은
-> Zhipu의 중국 내수 BigModel 종량제 엔드포인트입니다. 호스트도 키도 과금도 다르며, 한쪽에서
-> 발급한 키는 다른 쪽에서 인증되지 않습니다.
-
 ### 여러 API 키
 
 키 기반 프로바이더도 여러 키를 보관할 수 있습니다. Providers 페이지에서 키를 추가하면
@@ -151,7 +144,7 @@ opencodex v2.7.1에는 빌트인 프리셋이 50개 들어 있습니다. 키 방
 
 대시보드를 열지 않고도 `ocx account list`, `ocx account current`, `ocx account use`로 같은 Codex,
 OAuth, API-key pool을 확인하고 전환할 수 있습니다. 전체 명령, JSON 출력, 새 세션 적용 방식은
-[CLI 레퍼런스](/ko/reference/cli/#ocx-account-subcommand)를 참고하세요.
+[CLI 레퍼런스](/opencodex/ko/reference/cli/#ocx-account-subcommand)를 참고하세요.
 
 ### GPT-5.6 프리뷰 경로
 
@@ -191,7 +184,7 @@ metadata를 저장합니다. Cursor access token이 설정되면 opencodex는 Cu
 승인 및 sandbox 경로를 우회하므로 기본적으로 비활성화되어 있습니다. 신뢰한 로컬 실험에서만
 `~/.opencodex/config.json`의 `providers.cursor`에 `unsafeAllowNativeLocalExec: true`를 설정하세요.
 대시보드에서는 **Providers → Cursor → Edit JSON**에서 설정할 수 있습니다. 전체 예시는
-[설정 레퍼런스](/ko/reference/configuration/#cursor-provider-adapter-cursor)를 참고하세요.
+[설정 레퍼런스](/opencodex/ko/reference/configuration/#cursor-provider-adapter-cursor)를 참고하세요.
 MCP, 화면 녹화, computer-use는 executor hook으로 열려 있으며, 로컬
 executor가 없으면 정책 차단이 아니라 typed no-executor 결과를 반환합니다. Cursor OAuth와 live
 model discovery는 이 실험적 어댑터에서 활성화되어 있으며, Cursor는 여전히 key-login 목록에는
@@ -202,7 +195,7 @@ model discovery는 이 실험적 어댑터에서 활성화되어 있으며, Curs
 
 Ollama Cloud는 호스팅형(로컬이 아님) Ollama로, `https://ollama.com/v1`에서 OpenAI 호환이며 키는
 [ollama.com/settings/keys](https://ollama.com/settings/keys)에서 발급받습니다. opencodex는 클라우드
-라인업을 비전 기능에 따라 분류하여 [비전 사이드카](/ko/guides/sidecars/)가 텍스트 전용 모델에만
+라인업을 비전 기능에 따라 분류하여 [비전 사이드카](/opencodex/ko/guides/sidecars/)가 텍스트 전용 모델에만
 작동하도록 합니다. 텍스트 전용 모델(예: `glm-5.2`, `deepseek-v4-pro`, `gpt-oss`, `qwen3-coder`,
 `minimax-m2.x`, `nemotron-3-*`)은 `noVisionModels`에 나열되며, 비전 네이티브 모델(예:
 `kimi-k2.6`, `minimax-m3`, `gemma4`, `qwen3.5`, `gemini-3-flash-preview`)은 포함되지 않습니다. 매칭은
@@ -223,4 +216,4 @@ opencodex를 로컬 OpenAI 호환 서버로 향하게 하세요 — 보통은 �
 프로바이더가 Chat Completions를 사용한다면 `openai-chat` 어댑터가 이를 처리합니다 — 대시보드에서
 **Custom**을 선택하거나 `ocx init`에서 `custom`을 선택한 뒤 베이스 URL을 입력하세요. 모든 프로바이더 필드
 (`headers`, `noReasoningModels`, `noVisionModels`, `models`, …)는
-[설정 레퍼런스](/ko/reference/configuration/)를 참고하세요.
+[설정 레퍼런스](/opencodex/ko/reference/configuration/)를 참고하세요.
