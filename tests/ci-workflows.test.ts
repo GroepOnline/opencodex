@@ -265,10 +265,12 @@ describe("GitHub Actions hardening", () => {
     expect(gate.test("src/router.ts")).toBe(false);
     expect(gate.test("docs-site/src/pages/index.astro")).toBe(false);
 
-    // Channel guards stay branch-exact.
-    expect(workflow).toContain("Release must run from main or preview");
-    expect(workflow).toContain("main releases must use a stable semver version");
-    expect(workflow).toContain("preview releases must use a preview prerelease version");
+    // Fork release model: everything publishes from main; prerelease semver
+    // (any `-*` suffix) must use dist-tag preview, stable must use latest.
+    expect(workflow).toContain("Release must run from main;");
+    expect(workflow).toContain("Pre-release versions (${RELEASE_VERSION}) must use dist-tag 'preview'");
+    expect(workflow).toContain("Stable releases (${RELEASE_VERSION}) must use dist-tag 'latest'");
+    expect(workflow).not.toContain("refs/heads/preview)");
 
     // Release notes must include PR categories and the full channel commit range
     // (branch merges + direct commits). Preflight forbids an existing release, so
@@ -1405,7 +1407,9 @@ describe("GitHub Actions hardening", () => {
       expect(commentBody).toContain("`main`");
       expect(commentBody).toContain("`dev`");
       // Points at the documentation rather than assuming the reader knows.
-      expect(commentBody).toContain("https://github.com/OnlineChefGroep/opencodex/contributing/");
+      expect(commentBody).toContain(
+        "https://github.com/OnlineChefGroep/opencodex/blob/dev/CONTRIBUTING.md",
+      );
       // And carries the state the next run needs.
       expect(commentBody).toContain(MARKER);
       expect(commentBody).toContain('"version":1');
