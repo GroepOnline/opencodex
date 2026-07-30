@@ -19,6 +19,32 @@ async function geminiBody(parsed: OcxParsedRequest): Promise<Record<string, unkn
   return JSON.parse(body);
 }
 
+describe("google adapter — strict tool calling", () => {
+  const tool = { name: "bash", description: "Run", parameters: { type: "object" } };
+
+  test("Gemini 3 strict tools use VALIDATED mode", async () => {
+    const body = await geminiBody(parsedWith(
+      [{ role: "user", content: "hi" }],
+      [{ ...tool, strict: true }],
+    ));
+
+    expect(body).toMatchObject({
+      toolConfig: { functionCallingConfig: { mode: "VALIDATED" } },
+    });
+  });
+
+  test("unsupported models fall back without VALIDATED mode", async () => {
+    const request = parsedWith(
+      [{ role: "user", content: "hi" }],
+      [{ ...tool, strict: true }],
+    );
+    request.modelId = "gemini-2.5-pro";
+    const body = await geminiBody(request);
+
+    expect(body.toolConfig).toBeUndefined();
+  });
+});
+
 describe("google adapter — tool result images", () => {
   test("tool-result screenshots ride along as inline_data beside the functionResponse", async () => {
     const contents = await geminiContents(parsedWith([

@@ -9,6 +9,7 @@ import type {
   OcxParsedRequest,
   OcxProviderConfig,
   OcxTextContent,
+  OcxTool,
   OcxToolCall,
   OcxUsage,
 } from "../types";
@@ -206,14 +207,17 @@ function messagesToGeminiFormat(parsed: OcxParsedRequest): { systemInstruction?:
   return { systemInstruction, contents };
 }
 
-function toolsToGeminiFormat(parsed: OcxParsedRequest): unknown[] | undefined {
-  if (!parsed.context.tools?.length) return undefined;
+function selectedGeminiTools(parsed: OcxParsedRequest): OcxTool[] {
+  if (!parsed.context.tools?.length) return [];
   const allowed = isAllowedToolChoice(parsed.options.toolChoice)
     ? new Set(parsed.options.toolChoice.allowedTools)
     : undefined;
-  const tools = allowed
+  return allowed
     ? parsed.context.tools.filter(t => toolAllowedByChoice(t, allowed))
     : parsed.context.tools;
+}
+
+function toolsToGeminiFormat(tools: readonly OcxTool[]): unknown[] | undefined {
   if (tools.length === 0) return undefined;
   return [{
     functionDeclarations: tools.map(t => ({
@@ -222,6 +226,10 @@ function toolsToGeminiFormat(parsed: OcxParsedRequest): unknown[] | undefined {
       parameters: t.parameters,
     })),
   }];
+}
+
+function supportsValidatedFunctionCalling(modelId: string): boolean {
+  return /^gemini-3(?:[.-]|$)/i.test(modelId) || modelId === "gemini-pro-agent";
 }
 
 function usageFromGemini(usage: Record<string, number> | undefined): OcxUsage | undefined {
@@ -288,11 +296,15 @@ export function createGoogleAdapter(provider: OcxProviderConfig): ProviderAdapte
 
     async buildRequest(parsed: OcxParsedRequest) {
       const { systemInstruction, contents } = messagesToGeminiFormat(parsed);
-      const tools = toolsToGeminiFormat(parsed);
+      const selectedTools = selectedGeminiTools(parsed);
+      const tools = toolsToGeminiFormat(selectedTools);
 
       const body: Record<string, unknown> = { contents };
       if (systemInstruction) body.systemInstruction = systemInstruction;
       if (tools) body.tools = tools;
+      if (tools && selectedTools.some(tool => tool.strict === true) && supportsValidatedFunctionCalling(parsed.modelId)) {
+        body.toolConfig = { functionCallingConfig: { mode: "VALIDATED" } };
+      }
 
       const generationConfig: Record<string, unknown> = {};
       if (parsed.options.maxOutputTokens) generationConfig.maxOutputTokens = parsed.options.maxOutputTokens;
