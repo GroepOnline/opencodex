@@ -15,6 +15,8 @@
  * the shared abort helpers from here).
  */
 import { clearableDeadline } from "./abort";
+import type { UpstreamAttemptBudget } from "./upstream-attempt-budget";
+import { classifyUpstreamResponse, upstreamOutcomePolicy } from "./upstream-outcome";
 
 // 1 initial + 2 retries: the pool may hold more than one stale socket.
 const RESET_RETRY_MAX_ATTEMPTS = 3;
@@ -28,6 +30,7 @@ const TRANSIENT_RETRY_MAX_DELAY_MS = 5_000;
 // A failed attempt slower than this is the "slow 502" incident shape (191s observed on
 // 2026-07-15): retrying it only duplicates upstream load past client timeouts — return it.
 const TRANSIENT_RETRY_SLOW_ATTEMPT_MS = 15_000;
+export const MAX_INTERNAL_RETRY_AFTER_MS = 60_000;
 
 /**
  * Upstream statuses treated as transient: gateway errors and Cloudflare 52x.
@@ -82,7 +85,7 @@ export function isConnectionResetError(err: unknown): boolean {
     || msg.includes("connection reset by peer");
 }
 
-function retryAfterDelayMs(headers: Headers): number | undefined {
+export function retryAfterDelayMs(headers: Headers): number | undefined {
   const raw = headers.get("retry-after")?.trim();
   if (!raw) return undefined;
   const seconds = Number(raw);
@@ -90,6 +93,11 @@ function retryAfterDelayMs(headers: Headers): number | undefined {
   const dateMs = Date.parse(raw);
   if (!Number.isFinite(dateMs)) return undefined;
   return Math.max(0, dateMs - Date.now());
+}
+
+export function retryAfterExceedsInternalLimit(headers: Headers): boolean {
+  const delay = retryAfterDelayMs(headers);
+  return delay !== undefined && delay > MAX_INTERNAL_RETRY_AFTER_MS;
 }
 
 export function retryBackoffDelayMs(attempt: number, opts: RetryBackoffOptions): number {
@@ -138,6 +146,8 @@ export interface ResetRetryOptions {
   /** Short host/path label for the retry warn log (no secrets/query strings). */
   label?: string;
   attempts?: number;
+  /** Request-scoped physical upstream-send budget shared by every recovery layer. */
+  attemptBudget?: UpstreamAttemptBudget;
 }
 
 export interface TransientRetryOptions extends ResetRetryOptions {
@@ -183,6 +193,10 @@ export async function fetchWithResetRetry(
   let lastError: unknown;
   for (let attempt = 0; attempt < attempts; attempt++) {
     if (opts.abortSignal?.aborted) throw abortError(opts.abortSignal);
+    if (opts.attemptBudget && !opts.attemptBudget.tryBegin()) {
+      if (lastError !== undefined) throw lastError;
+      throw new Error("OCX upstream attempt budget exhausted");
+    }
     try {
       return await doFetch(attempt === 0 ? firstRecovery : "connection-reset");
     } catch (err) {
@@ -222,6 +236,10 @@ export async function fetchWithTransientRetry(
     if (res.ok || !isTransientUpstreamStatus(res.status)) return res;
     if (opts.abortSignal?.aborted) return res;
     if (Date.now() - attemptStart > slowAttemptMs) return res;
+    if (opts.attemptBudget?.remaining === 0) return res;
+    if (retryAfterExceedsInternalLimit(res.headers)) return res;
+    const outcome = await classifyUpstreamResponse("generic", res, opts.abortSignal);
+    if (!upstreamOutcomePolicy(outcome).sameAccountRetry) return res;
     console.warn(
       `[upstream-retry] transient ${res.status}${opts.label ? ` (${opts.label})` : ""} — retrying (${attempt + 2}/${attempts})`,
     );

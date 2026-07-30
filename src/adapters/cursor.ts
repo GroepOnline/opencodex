@@ -139,6 +139,7 @@ export function createCursorAdapter(provider: OcxProviderConfig, deps: CursorAda
                 emit(event);
               }
             },
+            incoming.attemptBudget,
           );
         };
 

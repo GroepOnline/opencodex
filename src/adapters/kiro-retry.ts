@@ -9,6 +9,7 @@ import {
   cancelResponseBodyBestEffort,
   fetchWithAttemptDeadline,
   isConnectionResetError,
+  MAX_INTERNAL_RETRY_AFTER_MS,
   retryBackoffDelayMs,
   sleepWithAbort,
 } from "../lib/upstream-retry";
@@ -162,6 +163,9 @@ async function fetchWithResetRecovery(
   let lastError: unknown;
   for (let attempt = 0; attempt < RESET_ATTEMPTS; attempt++) {
     if (ctx.abortSignal?.aborted) throw abortError(ctx.abortSignal);
+    if (ctx.attemptBudget && !ctx.attemptBudget.tryBegin()) {
+      throw lastError ?? new Error("OCX upstream attempt budget exhausted");
+    }
     try {
       const headers = new Headers(request.headers);
       const recovered = attempt > 0;
@@ -286,6 +290,15 @@ export async function fetchKiroWithRetry(request: AdapterRequest, ctx: AdapterFe
         return ctx.returnRawErrors
           ? finalResponse
           : normalizeFinalKiroHttpError(finalResponse, ctx.abortSignal);
+      }
+      if (
+        throttle.delayMs > MAX_INTERNAL_RETRY_AFTER_MS
+        || ctx.attemptBudget?.remaining === 0
+      ) {
+        releaseKiroThrottleProbe(probeToken);
+        return ctx.returnRawErrors
+          ? throttle.response
+          : normalizeFinalKiroHttpError(throttle.response, ctx.abortSignal);
       }
 
       const claim = claimKiroThrottleProbe(throttle.delayMs, probeToken);
