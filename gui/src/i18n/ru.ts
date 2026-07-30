@@ -446,6 +446,8 @@ export const ru: Record<TKey, string> = {
   "models.discoveryFailedNetwork": "Обнаружение моделей не удалось из-за сетевой ошибки.",
   "models.discoveryFailedProvider": "Провайдер сообщил об ошибке обнаружения моделей.",
   "models.discoveryFailedGeneric": "Не удалось обнаружить модели.",
+  "models.clientHiddenBadge": "Скрыто от клиентов",
+  "models.clientDegradedBadge": "Недоступно для новых сессий",
   "models.openProviderSettings": "Открыть настройки провайдера",
   "models.loading": "Загрузка…",
   "models.search": "Поиск моделей…",

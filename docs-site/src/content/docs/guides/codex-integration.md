@@ -250,6 +250,11 @@ If a model is missing from Codex, or the catalog order/visibility looks wrong, c
    and `ocx sync-cache` warn when those processes are detected. Restart them with
    `ocx sync --restart-codex` (or stop the matching `app-server` processes yourself), then let Codex
    recreate them so the new list appears.
+7. **`hideUnavailableModels`** — when enabled, a provider that is dead (all accounts need reauth, or
+   discovery fails N times) drops from `/v1/models` and the new-session picker while the admin Models
+   tab still shows last-good rows with a reason. Codex and Cursor cache their pickers; start a **new
+   session** (or restart the client / run `ocx sync --restart-codex`) before expecting the filtered
+   list. Existing sessions keep routing to last-good models.
 
 :::caution[Other local writers]
 Catalog writes (`opencodex-catalog.json`, `config.toml`) are atomic **inside** opencodex, which only

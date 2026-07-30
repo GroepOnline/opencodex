@@ -441,6 +441,8 @@ export const zh: Record<TKey, string> = {
   "models.discoveryFailedNetwork": "由于网络错误，模型发现失败。",
   "models.discoveryFailedProvider": "提供方报告了模型发现错误。",
   "models.discoveryFailedGeneric": "模型发现失败。",
+  "models.clientHiddenBadge": "已对客户端隐藏",
+  "models.clientDegradedBadge": "新会话不可用",
   "models.openProviderSettings": "打开提供方设置",
   "models.loading": "加载中…",
   "models.search": "搜索模型…",

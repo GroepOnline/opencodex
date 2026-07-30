@@ -441,6 +441,8 @@ export const ko: Record<TKey, string> = {
   "models.discoveryFailedNetwork": "네트워크 오류로 모델 검색에 실패했습니다.",
   "models.discoveryFailedProvider": "프로바이더가 모델 검색 오류를 보고했습니다.",
   "models.discoveryFailedGeneric": "모델 검색에 실패했습니다.",
+  "models.clientHiddenBadge": "클라이언트에서 숨김",
+  "models.clientDegradedBadge": "새 세션에서 사용 불가",
   "models.openProviderSettings": "프로바이더 설정 열기",
   "models.loading": "불러오는 중…",
   "models.search": "모델 검색…",

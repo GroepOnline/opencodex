@@ -17,6 +17,13 @@ interface CacheEntry {
   fetchedAt: number;
 }
 
+interface FailureBackoff {
+  /** Consecutive live-discovery failures since the last success. */
+  attempts: number;
+  /** Earliest time a live re-probe may run. */
+  retryAfterMs: number;
+}
+
 export type ProviderModelDiscoveryFailureReason =
   | "http"
   | "blocked"
@@ -41,11 +48,14 @@ export type ProviderModelDiscoveryFailure = ProviderModelDiscoveryStatus extends
 
 const cache = new Map<string, CacheEntry>();
 
-/** Cooldown after a failed live `/models` fetch, so a dead/unreachable provider doesn't re-pay
- * the full fetch timeout on every catalog poll (issue #54: UI stalls behind corporate proxies). */
+/** Base cooldown after the first failed live `/models` fetch. Subsequent failures double until
+ * {@link MODELS_FETCH_FAILURE_MAX_COOLDOWN_MS} (issue #54: UI stalls behind corporate proxies). */
 export const MODELS_FETCH_FAILURE_COOLDOWN_MS = 30_000;
 
-const failureAt = new Map<string, number>();
+/** Ceiling for discovery exponential backoff. */
+export const MODELS_FETCH_FAILURE_MAX_COOLDOWN_MS = 15 * 60 * 1000;
+
+const failureBackoff = new Map<string, FailureBackoff>();
 const discoveryStatus = new Map<string, ProviderModelDiscoveryStatus>();
 /**
  * How many models the last successful discovery actually returned, before any configured-alias
@@ -55,13 +65,33 @@ const discoveryStatus = new Map<string, ProviderModelDiscoveryStatus>();
  */
 const liveModelCounts = new Map<string, number>();
 
+function clearFailureBackoff(provider: string): void {
+  failureBackoff.delete(provider);
+}
+
+/**
+ * Record a live discovery probe failure and schedule the next probe with exponential backoff.
+ * Resets only on the next successful discovery ({@link markProviderDiscoveryOk}).
+ */
 export function markModelsFetchFailure(provider: string, now = Date.now()): void {
-  failureAt.set(provider, now);
+  const prev = failureBackoff.get(provider);
+  const attempts = (prev?.attempts ?? 0) + 1;
+  const delayMs = Math.min(
+    MODELS_FETCH_FAILURE_MAX_COOLDOWN_MS,
+    MODELS_FETCH_FAILURE_COOLDOWN_MS * 2 ** (attempts - 1),
+  );
+  failureBackoff.set(provider, { attempts, retryAfterMs: now + delayMs });
+}
+
+/** Consecutive discovery failures since the last success (0 when healthy / never failed). */
+export function getDiscoveryFailStreak(provider: string): number {
+  return failureBackoff.get(provider)?.attempts ?? 0;
 }
 
 /** `liveModelCount` is required so a caller that forgets to pass it fails typecheck instead of
  * silently recording zero and misclassifying the provider as having no live catalog. */
 export function markProviderDiscoveryOk(provider: string, liveModelCount: number): void {
+  clearFailureBackoff(provider);
   discoveryStatus.set(provider, { status: "ok" });
   liveModelCounts.set(provider, Math.max(0, Math.floor(liveModelCount)));
 }
@@ -97,6 +127,7 @@ export function shouldLogDiscoveryFailure(
 }
 
 export function clearProviderDiscoveryStatus(provider: string): void {
+  clearFailureBackoff(provider);
   discoveryStatus.delete(provider);
   liveModelCounts.delete(provider);
 }
@@ -111,9 +142,18 @@ export function getProviderLiveModelCount(provider: string): number | undefined 
   return liveModelCounts.get(provider);
 }
 
-export function isModelsFetchCoolingDown(provider: string, cooldownMs = MODELS_FETCH_FAILURE_COOLDOWN_MS, now = Date.now()): boolean {
-  const at = failureAt.get(provider);
-  return at !== undefined && now - at < cooldownMs;
+/**
+ * Whether a live `/models` probe should be skipped. `cooldownMs` is retained for call-site
+ * compatibility; the effective wait is the exponential schedule written by
+ * {@link markModelsFetchFailure}.
+ */
+export function isModelsFetchCoolingDown(
+  provider: string,
+  _cooldownMs = MODELS_FETCH_FAILURE_COOLDOWN_MS,
+  now = Date.now(),
+): boolean {
+  const entry = failureBackoff.get(provider);
+  return entry !== undefined && now < entry.retryAfterMs;
 }
 
 /** Fresh cached models for a provider, or null when absent/stale (caller should re-fetch). */
@@ -136,12 +176,12 @@ export function setCached(provider: string, models: CatalogModel[], now = Date.n
 export function clearModelCache(provider?: string): void {
   if (provider) {
     cache.delete(provider);
-    failureAt.delete(provider);
+    clearFailureBackoff(provider);
     discoveryStatus.delete(provider);
     liveModelCounts.delete(provider);
   } else {
     cache.clear();
-    failureAt.clear();
+    failureBackoff.clear();
     discoveryStatus.clear();
     liveModelCounts.clear();
   }
