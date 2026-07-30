@@ -43,19 +43,30 @@ interface QueuedEvent {
   attempts: number;
 }
 
-/** Keys that are stripped from properties before capture (defense-in-depth). */
-const SENSITIVE_KEY_PATTERNS = [
-  /^(authorization|api[_-]?key|token|secret|password|cookie)$/i,
-  /^(prompt|message|content|body|payload|input|text)$/i,
-  /^(header|headers)$/i,
-];
+/**
+ * The only property keys telemetry may emit — an allowlist, so a caller cannot
+ * leak PII or credential material through an undocumented field. A new metric
+ * has to be added here (and to the file header) before it can be captured.
+ */
+const ALLOWED_PROPERTY_KEYS = new Set([
+  // Request outcome.
+  "provider", "model", "adapter", "status", "outcome",
+  // Latency.
+  "durationMs", "firstOutputMs",
+  // Token counts.
+  "inputTokens", "outputTokens", "cachedTokens", "reasoningTokens",
+  // Errors and codex account-pool outcomes.
+  "errorCode", "accountMode", "cooldownMs",
+  // Quota and budget thresholds.
+  "type", "threshold", "actual",
+]);
 
-/** Strip sensitive-looking keys and cap string values to avoid accidental PII. */
+/** Keep only allowlisted metric keys with primitive values, capping string length. */
 function sanitizeProperties(props: Record<string, unknown> | undefined): Record<string, unknown> {
   if (!props || typeof props !== "object") return {};
   const clean: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(props)) {
-    if (SENSITIVE_KEY_PATTERNS.some((re) => re.test(key))) continue;
+    if (!ALLOWED_PROPERTY_KEYS.has(key)) continue;
     if (typeof value === "string" && value.length > 200) {
       clean[key] = value.slice(0, 200);
     } else if (typeof value === "number" && Number.isFinite(value)) {
@@ -163,7 +174,9 @@ export class PosthogClient {
     if (Date.now() < this.retryAfterMs) return;
     this.flushing = true;
     this.retryAfterMs = 0;
-    const batch = this.queue.splice(0, this.queue.length);
+    // At most MAX_BATCH_SIZE per request: captures keep arriving while a flush
+    // is in flight, and one oversized payload is likelier to be rejected.
+    const batch = this.queue.splice(0, MAX_BATCH_SIZE);
     let retryable = false;
     try {
       const body = JSON.stringify({
@@ -196,6 +209,8 @@ export class PosthogClient {
       if (retryable) this.requeue(batch);
       this.flushing = false;
     }
+    // Drain any remainder (or events captured mid-flight) in further batches.
+    if (!retryable && this.queue.length > 0) await this.flush();
   }
 
   /** Flush + stop the timer. Safe to call on shutdown. */

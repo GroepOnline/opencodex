@@ -73,12 +73,15 @@ export function lookupPricing(provider: string, model?: string): ProviderPricing
   if (model) {
     const modelKey = `${provider}:${model.toLowerCase()}`;
     if (PRICING[modelKey]) return PRICING[modelKey];
-    // Try a prefix match (e.g. "claude-sonnet-4-5-20250929" → "claude-sonnet-4-5")
-    const prefixHit = Object.keys(PRICING).find((k) => {
-      if (!k.startsWith(`${provider}:`)) return false;
-      const baseModel = k.slice(provider.length + 1);
-      return baseModel !== provider && model.toLowerCase().startsWith(baseModel);
-    });
+    // Try a prefix match (e.g. "claude-sonnet-4-5-20250929" → "claude-sonnet-4-5"),
+    // longest first so "gpt-4o-mini-2024-…" is not priced as "gpt-4o".
+    const prefixHit = Object.keys(PRICING)
+      .filter((k) => {
+        if (!k.startsWith(`${provider}:`)) return false;
+        const baseModel = k.slice(provider.length + 1);
+        return baseModel !== provider && model.toLowerCase().startsWith(baseModel);
+      })
+      .sort((a, b) => b.length - a.length)[0];
     if (prefixHit) return PRICING[prefixHit];
   }
   return PRICING[provider] ?? { inputPer1k: 0, outputPer1k: 0 };
@@ -91,6 +94,10 @@ export function estimateCostEur(
   inputTokens: number,
   outputTokens: number,
 ): number {
+  // Malformed counts must not produce a negative or NaN cost: a negative input
+  // count would otherwise walk a budget total backwards past its threshold.
+  const input = Number.isFinite(inputTokens) && inputTokens > 0 ? inputTokens : 0;
+  const output = Number.isFinite(outputTokens) && outputTokens > 0 ? outputTokens : 0;
   const p = lookupPricing(provider, model);
-  return (inputTokens / 1000) * p.inputPer1k + (outputTokens / 1000) * p.outputPer1k;
+  return (input / 1000) * p.inputPer1k + (output / 1000) * p.outputPer1k;
 }
