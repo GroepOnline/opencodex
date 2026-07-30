@@ -800,6 +800,15 @@ export type OcxAccountPoolRotationStrategy = "quota" | "round-robin" | "fill-fir
 export type OcxComboStrategy = "failover" | "round-robin";
 export type OcxComboDefaultEffort = "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 
+export interface OcxCodexRequestPacing {
+  /** Master switch. Default false. */
+  enabled?: boolean;
+  /** Inclusive lower bound of the randomized inter-request gap (ms). Default 150. */
+  minMs?: number;
+  /** Inclusive upper bound of the randomized inter-request gap (ms). Default 900. */
+  maxMs?: number;
+}
+
 export interface OcxComboTarget {
   provider: string;
   model: string;

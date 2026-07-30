@@ -377,9 +377,9 @@ describe("fetchProviderAccountQuotas", () => {
 });
 
 describe("fetchProviderAccountQuotas (google-antigravity)", () => {
-  const AGY_FIRST = { accountId: "agy-first", email: "first@agy.example", projectId: "proj-first" };
-  const AGY_SECOND = { accountId: "agy-second", email: "second@agy.example", projectId: "proj-second" };
-  const AGY_THIRD = { accountId: "agy-third", email: "third@agy.example", projectId: "proj-third" };
+  const AGY_FIRST = { accountId: "agy-first", email: "first@agy.example.test", projectId: "proj-first" };
+  const AGY_SECOND = { accountId: "agy-second", email: "second@agy.example.test", projectId: "proj-second" };
+  const AGY_THIRD = { accountId: "agy-third", email: "third@agy.example.test", projectId: "proj-third" };
 
   function antigravityModelsBody(gemRemaining: number, claRemaining: number): string {
     return JSON.stringify({
@@ -468,7 +468,7 @@ describe("fetchProviderAccountQuotas (google-antigravity)", () => {
     });
     await saveCredential("google-antigravity", {
       access: "token-agy-noproj", refresh: "refresh-agy-noproj", expires,
-      accountId: "agy-noproj", email: "noproj@agy.example",
+      accountId: "agy-noproj", email: "noproj@agy.example.test",
     });
     let calls = 0;
     globalThis.fetch = (async () => {
@@ -480,8 +480,8 @@ describe("fetchProviderAccountQuotas (google-antigravity)", () => {
     const byEmail = Object.fromEntries(
       (await import("../src/oauth/store")).getAccountSet("google-antigravity")!.accounts.map(a => [a.id, a.credential.email]),
     );
-    const withProject = rows.find(r => byEmail[r.accountId] === "first@agy.example");
-    const without = rows.find(r => byEmail[r.accountId] === "noproj@agy.example");
+    const withProject = rows.find(r => byEmail[r.accountId] === "first@agy.example.test");
+    const without = rows.find(r => byEmail[r.accountId] === "noproj@agy.example.test");
     expect(withProject?.quota?.customWindows?.[0]?.percent).toBe(50);
     expect(without?.unavailable).toBe(true);
     expect(without?.quota).toBeNull();
@@ -492,7 +492,7 @@ describe("fetchProviderAccountQuotas (google-antigravity)", () => {
     await seedThreeAntigravityAccounts();
     const { getAccountSet, setActiveAccount } = await import("../src/oauth/store");
     const set = getAccountSet("google-antigravity");
-    const first = set?.accounts.find(a => a.credential.email === "first@agy.example");
+    const first = set?.accounts.find(a => a.credential.email === "first@agy.example.test");
     expect(first).toBeTruthy();
     await setActiveAccount("google-antigravity", first!.id);
     let calls = 0;
