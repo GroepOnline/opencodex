@@ -330,6 +330,21 @@ export function clearGoogleAntigravitySessionAffinityForAccount(
   }
 }
 
+/**
+ * Drop a session's binding to `accountId`, leaving other sessions untouched and
+ * ignoring a session that has already moved to a different account. Callers use
+ * this when a rotation target turns out to be unusable, so the session is not
+ * pinned to an account it can never authenticate with.
+ */
+export function releaseGoogleAntigravitySessionAffinity(
+  sessionKey: string | null | undefined,
+  accountId: string,
+): void {
+  const key = sessionKey?.trim();
+  if (!key) return;
+  if (sessionAffinity.get(key)?.accountId === accountId) sessionAffinity.delete(key);
+}
+
 export function googleAntigravitySessionKey(
   parsed: Pick<OcxParsedRequest, "context">,
 ): string {

@@ -61,6 +61,7 @@ import {
   googleAntigravitySessionKey,
   isGoogleAntigravityAccountPoolEnabled,
   promoteGoogleAntigravityActiveAccount,
+  releaseGoogleAntigravitySessionAffinity,
   resolveGoogleAntigravityAccountForSession,
   rotateGoogleAntigravityAccountOn429,
 } from "../../oauth/google-antigravity-routing";
@@ -2376,6 +2377,12 @@ export async function handleResponses(
           if ("failed" in result) return result.failed;
           upstreamResponse = result;
         } catch {
+          // The alternate could not produce a credential (refresh or project
+          // resolution failed). A non-terminal refresh failure leaves it eligible,
+          // so drop the affinity the rotation just bound; otherwise later requests
+          // in this session replay the same unusable account instead of selecting
+          // another one.
+          releaseGoogleAntigravitySessionAffinity(antigravitySessionKey, nextAccountId);
           break;
         }
       }

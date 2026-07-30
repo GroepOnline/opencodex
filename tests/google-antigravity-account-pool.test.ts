@@ -15,6 +15,7 @@ import {
   getGoogleAntigravityPoolCredential,
   googleAntigravitySessionKey,
   isGoogleAntigravityAccountPoolEnabled,
+  releaseGoogleAntigravitySessionAffinity,
   resolveGoogleAntigravityAccountForSession,
   resetGoogleAntigravityRoutingForManualSelection,
   rotateGoogleAntigravityAccountOn429,
@@ -152,6 +153,52 @@ describe("Google Antigravity account pool", () => {
     expect(
       resolveGoogleAntigravityAccountForSession("session-429", config(true)),
     ).toEqual({ accountId: secondId, reason: "affinity" });
+  });
+
+  test("an unusable rotation target releases its session affinity", async () => {
+    const [firstId, secondId] = await seedAccounts();
+    const now = Date.now();
+    bindGoogleAntigravitySessionAffinity("session-unusable", firstId!, now);
+    expect(
+      rotateGoogleAntigravityAccountOn429(
+        config(true),
+        firstId!,
+        "30",
+        "session-unusable",
+        now,
+      ),
+    ).toBe(secondId);
+    // Rotation binds the alternate before its credential is resolved.
+    expect(
+      resolveGoogleAntigravityAccountForSession(
+        "session-unusable",
+        config(true),
+        now,
+      ),
+    ).toEqual({ accountId: secondId, reason: "affinity" });
+
+    releaseGoogleAntigravitySessionAffinity("session-unusable", secondId!);
+
+    // A mismatched release never drops another session's binding.
+    bindGoogleAntigravitySessionAffinity("session-other", secondId!, now);
+    releaseGoogleAntigravitySessionAffinity("session-other", firstId!);
+    expect(
+      resolveGoogleAntigravityAccountForSession(
+        "session-other",
+        config(true),
+        now,
+      ),
+    ).toEqual({ accountId: secondId, reason: "affinity" });
+
+    // The released session re-selects once the cooled account recovers instead of
+    // staying pinned to the account that could not authenticate.
+    expect(
+      resolveGoogleAntigravityAccountForSession(
+        "session-unusable",
+        config(true),
+        now + 31_000,
+      ),
+    ).toEqual({ accountId: firstId, reason: "active" });
   });
 
   test("non-429 outcomes do not change pool health or affinity", async () => {
