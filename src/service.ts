@@ -1455,7 +1455,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 ExecStart=${systemdQuote("/bin/sh")} -lc ${systemdQuote(buildServiceShellCommand(bun, cli))}
-Restart=on-failure
+Restart=always
 RestartSec=5
 ${envLines}
 StandardOutput=${systemdOutputTarget(`append:${log}`)}
