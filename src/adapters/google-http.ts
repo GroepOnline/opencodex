@@ -7,8 +7,10 @@ import {
   cancelResponseBodyBestEffort,
   fetchWithAttemptDeadline,
   retryBackoffDelayMs,
+  retryAfterExceedsInternalLimit,
   sleepWithAbort,
 } from "../lib/upstream-retry";
+import { classifyUpstreamResponse, upstreamOutcomePolicy } from "../lib/upstream-outcome";
 
 const GOOGLE_RETRY_ATTEMPTS = 3;
 const GOOGLE_RETRY_BASE_MS = 250;
@@ -34,6 +36,9 @@ export async function fetchGoogleWithRetry(label: string, request: AdapterReques
   let compatibilityReplayUsed = false;
   for (let attempt = 0; attempt < GOOGLE_RETRY_ATTEMPTS; attempt++) {
     if (ctx.abortSignal?.aborted) throw abortError(ctx.abortSignal);
+    if (ctx.attemptBudget && !ctx.attemptBudget.tryBegin()) {
+      throw lastError ?? new Error("OCX upstream attempt budget exhausted");
+    }
     try {
       const res = await fetchWithAttemptDeadline(activeRequest.url, {
         method: activeRequest.method,
@@ -62,6 +67,14 @@ export async function fetchGoogleWithRetry(label: string, request: AdapterReques
           : normalizeFinalGoogleError(label, res, ctx.abortSignal);
       }
       if (!retryableGoogleStatus(res.status) || attempt === GOOGLE_RETRY_ATTEMPTS - 1) {
+        return ctx.returnRawErrors ? res : normalizeFinalGoogleError(label, res, ctx.abortSignal);
+      }
+      const outcome = await classifyUpstreamResponse("google", res, ctx.abortSignal);
+      if (
+        !upstreamOutcomePolicy(outcome).sameAccountRetry
+        || ctx.attemptBudget?.remaining === 0
+        || retryAfterExceedsInternalLimit(res.headers)
+      ) {
         return ctx.returnRawErrors ? res : normalizeFinalGoogleError(label, res, ctx.abortSignal);
       }
       // A 429 may be a transient rate limit (retry) or hard quota exhaustion (do NOT retry —

@@ -94,6 +94,15 @@ import {
   type CodexUpstreamOutcome,
 } from "../../codex/routing";
 import { fetchWithResetRetry, fetchWithTransientRetry, applyUpstreamRecoveryInit } from "../../lib/upstream-retry";
+import {
+  createUpstreamAttemptBudget,
+  type UpstreamAttemptBudget,
+} from "../../lib/upstream-attempt-budget";
+import {
+  classifyUpstreamResponse,
+  upstreamOutcomePolicy,
+  type UpstreamRail,
+} from "../../lib/upstream-outcome";
 import { ForwardAdmissionCredentialError, validateForwardAdmissionCredential } from "../auth-cors";
 import { listOpenAiForwardSidecarCandidates, resolveFirstUsableOpenAiSidecar, type ResolvedOpenAiForwardSidecar } from "../../providers/openai-sidecar";
 import { isCanonicalOpenAiForwardProvider } from "../../providers/openai-tiers";
@@ -170,6 +179,17 @@ import { guardTerminalEventStream } from "./terminal-guard";
  */
 export function adapterNeedsForcedContinuation(name: string): boolean {
   return name === "kiro" || name === "cursor";
+}
+
+function outcomeRailForAdapter(name: string): UpstreamRail {
+  if (name === "cursor") return "cursor";
+  if (name === "google") return "google";
+  if (name === "kiro") return "kiro";
+  return "generic";
+}
+
+function adapterOwnsAttemptBudget(name: string): boolean {
+  return name === "google" || name === "kiro";
 }
 
 export function sidecarOutcomeRecorder(
@@ -254,8 +274,13 @@ async function shouldRetryCodexPoolAccountModel400(
 }
 
 /** Pre-stream quota/billing rejections that warrant one alternate-account attempt (#584). */
-function shouldRetryCodexPoolAccountQuota(response: Response): boolean {
-  return response.status === 429 || response.status === 402;
+async function shouldRetryCodexPoolAccountQuota(
+  response: Response,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  if (response.status !== 429 && response.status !== 402) return false;
+  const outcome = await classifyUpstreamResponse("generic", response, signal);
+  return upstreamOutcomePolicy(outcome).rotateOrCool;
 }
 
 interface CodexPoolAccountRetryArgs {
@@ -268,6 +293,7 @@ interface CodexPoolAccountRetryArgs {
     abortSignal?: AbortSignal;
     onCodexAuthContextResolved?: (ctx: CodexAuthContext) => void;
     deferCodexResetDerivedCooldown?: boolean;
+    attemptBudget?: UpstreamAttemptBudget;
   };
   firstAuthCtx: Extract<CodexAuthContext, { kind: "pool" | "main-pool" }>;
   firstResponse: Response;
@@ -329,6 +355,7 @@ async function retryCodexPoolOnAlternateAccount(
     req, config, route, parsed, logCtx, options, firstAuthCtx, firstResponse,
     outcomeStatus, upstream, connectMs, passthroughEstimate, stream,
   } = args;
+  if (options.attemptBudget?.remaining === 0) return { kind: "no-alternate" };
   let retryAuthCtx: CodexAuthContext | undefined;
   try {
     retryAuthCtx = await resolveCodexAuthContext(
@@ -388,6 +415,9 @@ async function retryCodexPoolOnAlternateAccount(
   );
 
   noteAttemptSend(logCtx.activeAttempt, passthroughEstimate);
+  if (options.attemptBudget && !options.attemptBudget.tryBegin()) {
+    return { kind: "no-alternate" };
+  }
   try {
     const upstreamResponse = await fetchWithHeaderTimeout(
       request.url,
@@ -519,6 +549,8 @@ export interface HandleResponsesOptions {
   deferCodexResetDerivedCooldown?: boolean;
   /** 030-owned handoff when a child consumed the original failure under bounds. */
   onConsumedComboFailure?: (failure: ConsumedComboFailure) => void;
+  /** Internal request-scoped physical upstream-send budget. */
+  attemptBudget?: UpstreamAttemptBudget;
 }
 
 
@@ -905,6 +937,13 @@ export async function handleComboResponses(
   let lastFailure: Response | null = null;
   while (pick) {
     if (options.abortSignal?.aborted) return clientCancelledResponse();
+    if (options.attemptBudget?.remaining === 0) {
+      return lastFailure ?? formatErrorResponse(
+        502,
+        "upstream_error",
+        "OCX upstream attempt budget exhausted",
+      );
+    }
     const childLog: RequestLogContext = {
       model: pick.target.model,
       provider: pick.target.provider,
@@ -1077,6 +1116,9 @@ export async function handleResponses(
   logCtx: RequestLogContext,
   options: HandleResponsesOptions = {},
 ): Promise<Response> {
+  if (!options.attemptBudget) {
+    options = { ...options, attemptBudget: createUpstreamAttemptBudget() };
+  }
   let body: unknown;
   try {
     body = await readJsonRequestBody(req);
@@ -1539,7 +1581,11 @@ export async function handleResponses(
             body: request.body,
           }, recovery), upstream.signal, connectMs, parsed.stream, providerFetch(route.provider));
         },
-        { abortSignal: upstream.signal, label: safeHostLabel(request.url) },
+        {
+          abortSignal: upstream.signal,
+          label: safeHostLabel(request.url),
+          attemptBudget: options.attemptBudget,
+        },
       );
     } catch (err) {
       return transportFailureResponse(err);
@@ -1553,7 +1599,10 @@ export async function handleResponses(
         options.abortSignal,
       )) {
         poolRetryOutcome = 400;
-      } else if (shouldRetryCodexPoolAccountQuota(upstreamResponse)) {
+      } else if (await shouldRetryCodexPoolAccountQuota(
+        upstreamResponse,
+        options.abortSignal,
+      )) {
         // Pre-stream only: once SSE has begun, mid-stream quota stays terminal.
         poolRetryOutcome = upstreamResponse.status;
       }
@@ -2035,7 +2084,11 @@ export async function handleResponses(
         noteAttemptSend(logCtx.activeAttempt, logCtx.usageLogInputTokens);
         await adapter.runTurn?.(
           parsed,
-          { headers: selectedForwardHeaders, abortSignal: runTurnAbort.signal },
+          {
+            headers: selectedForwardHeaders,
+            abortSignal: runTurnAbort.signal,
+            attemptBudget: options.attemptBudget,
+          },
           queue.push,
         );
       } catch (err) {
@@ -2158,12 +2211,26 @@ export async function handleResponses(
   let upstreamResponse: Response;
   try {
     if (activeAdapter.fetchResponse) {
+      if (
+        !adapterOwnsAttemptBudget(activeAdapter.name)
+        && options.attemptBudget
+        && !options.attemptBudget.tryBegin()
+      ) {
+        return formatErrorResponse(
+          502,
+          "upstream_error",
+          "OCX upstream attempt budget exhausted",
+        );
+      }
       noteAttemptSend(logCtx.activeAttempt, inputTokenEstimate);
       upstreamResponse = await activeAdapter.fetchResponse(request, {
         abortSignal: upstream.signal,
         timeoutMs: connectMs,
         skip429Retry: antigravityPoolOwns429,
         stream: parsed.stream,
+        ...(adapterOwnsAttemptBudget(activeAdapter.name)
+          ? { attemptBudget: options.attemptBudget }
+          : {}),
       });
     } else {
       upstreamResponse = await fetchWithResetRetry(
@@ -2175,7 +2242,11 @@ export async function handleResponses(
             body: request.body,
           }, recovery), upstream.signal, connectMs, parsed.stream, providerFetch(route.provider));
         },
-        { abortSignal: upstream.signal, label: safeHostLabel(request.url) },
+        {
+          abortSignal: upstream.signal,
+          label: safeHostLabel(request.url),
+          attemptBudget: options.attemptBudget,
+        },
       );
     }
   } catch (err) {
@@ -2211,16 +2282,42 @@ export async function handleResponses(
       sealRequestAttemptIdentity(logCtx.activeAttempt, logCtx.provider, activeAdapter.name);
       noteAttemptSend(logCtx.activeAttempt, retryEstimate, recovery);
       try {
-        return activeAdapter.fetchResponse
-          ? await activeAdapter.fetchResponse(retryRequest, {
-              abortSignal: upstream.signal,
-              timeoutMs: connectMs,
-              skip429Retry: antigravityPoolOwns429,
-              stream: parsed.stream,
-            })
-          : await fetchWithHeaderTimeout(retryRequest.url, {
-              method: retryRequest.method, headers: retryRequest.headers, body: retryRequest.body,
-            }, upstream.signal, connectMs, parsed.stream, providerFetch(route.provider));
+        if (activeAdapter.fetchResponse) {
+          if (
+            !adapterOwnsAttemptBudget(activeAdapter.name)
+            && options.attemptBudget
+            && !options.attemptBudget.tryBegin()
+          ) {
+            return {
+              failed: formatErrorResponse(
+                502,
+                "upstream_error",
+                "OCX upstream attempt budget exhausted",
+              ),
+            };
+          }
+          return await activeAdapter.fetchResponse(retryRequest, {
+            abortSignal: upstream.signal,
+            timeoutMs: connectMs,
+            skip429Retry: antigravityPoolOwns429,
+            stream: parsed.stream,
+            ...(adapterOwnsAttemptBudget(activeAdapter.name)
+              ? { attemptBudget: options.attemptBudget }
+              : {}),
+          });
+        }
+        if (options.attemptBudget && !options.attemptBudget.tryBegin()) {
+          return {
+            failed: formatErrorResponse(
+              502,
+              "upstream_error",
+              "OCX upstream attempt budget exhausted",
+            ),
+          };
+        }
+        return await fetchWithHeaderTimeout(retryRequest.url, {
+          method: retryRequest.method, headers: retryRequest.headers, body: retryRequest.body,
+        }, upstream.signal, connectMs, parsed.stream, providerFetch(route.provider));
       } catch (err) {
         cleanupUpstreamAbort();
         upstream.abort();
@@ -2231,12 +2328,22 @@ export async function handleResponses(
         return { failed: formatErrorResponse(502, "upstream_error", msg) };
       }
     };
+    const canRotateOrCoolFailure = async (response: Response): Promise<boolean> => {
+      if ((options.attemptBudget?.remaining ?? 0) === 0) return false;
+      const outcome = await classifyUpstreamResponse(
+        outcomeRailForAdapter(activeAdapter.name),
+        response,
+        options.abortSignal,
+      );
+      return upstreamOutcomePolicy(outcome).rotateOrCool;
+    };
     recovery: for (;;) {
       if (
         upstreamResponse.status === 401
         && isOAuth401ReplayProvider
         && sentOAuthSnapshot
         && !oauth401ReplayAttempted
+        && (options.attemptBudget?.remaining ?? 1) > 0
       ) {
         oauth401ReplayAttempted = true;
         try { void upstreamResponse.body?.cancel().catch(() => {}); } catch { /* already consumed/closed */ }
@@ -2271,7 +2378,11 @@ export async function handleResponses(
       // Multi-key 429 failover: rotate to the next pool key (cooldown-aware) and retry the
       // SAME request once per remaining key. OAuth/forward providers and single-key pools
       // return null immediately, so this stays a no-op for them (src/providers/key-failover.ts).
-      while (upstreamResponse.status === 429 && hasKeyPoolFailover(route.provider)) {
+      while (
+        upstreamResponse.status === 429
+        && hasKeyPoolFailover(route.provider)
+        && await canRotateOrCoolFailure(upstreamResponse)
+      ) {
         const rotated = rotateProviderTransportOn429(config, route.providerName, route.provider, {
           retryAfter: upstreamResponse.headers.get("retry-after"),
           now: Date.now(),
@@ -2299,6 +2410,7 @@ export async function handleResponses(
         && anthropicPoolAccountId
         && isAnthropicAccountPoolEnabled(config)
         && anthropicPoolFailovers < ANTHROPIC_POOL_MAX_FAILOVERS_PER_REQUEST
+        && await canRotateOrCoolFailure(upstreamResponse)
       ) {
         const nextAccountId = rotateAnthropicAccountOn429(
           config,
@@ -2336,6 +2448,7 @@ export async function handleResponses(
         && isGoogleAntigravityAccountPoolEnabled(config)
         && googleAntigravityPoolFailovers
           < GOOGLE_ANTIGRAVITY_POOL_MAX_FAILOVERS_PER_REQUEST
+        && await canRotateOrCoolFailure(upstreamResponse)
       ) {
         const nextAccountId = rotateGoogleAntigravityAccountOn429(
           config,

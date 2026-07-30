@@ -3,6 +3,8 @@ import type { CursorTransport, CursorTransportFactory, CursorTransportFactoryInp
 import { abortError, retryBackoffDelayMs, sleepWithAbort } from "../../lib/upstream-retry";
 import { debugProviderDiagnostic } from "../../lib/debug";
 import { safeCursorErrorMessage } from "./cursor-errors";
+import type { UpstreamAttemptBudget } from "../../lib/upstream-attempt-budget";
+import { classifyCursorUpstreamOutcome } from "../../lib/upstream-outcome";
 
 // Compat: historical name for the shared abortable sleep, kept for external callers.
 export { sleepWithAbort as abortAwareSleep } from "../../lib/upstream-retry";
@@ -21,6 +23,16 @@ export function isRetryableCursorError(err: unknown): boolean {
   const code = typeof err === "object" && err && "code" in err ? String((err as { code?: unknown }).code ?? "") : "";
   const message = err instanceof Error ? err.message : typeof err === "string" ? err : "";
   const haystack = `${code} ${message}`.toLowerCase();
+  const outcome = classifyCursorUpstreamOutcome({ message, code });
+  // Abort/EOF/quota never replay. Cursor same-account retry is transport-only.
+  if (
+    outcome === "client-abort"
+    || outcome === "adapter-eof"
+    || outcome === "rate-limit"
+    || outcome === "quota-exhausted"
+    || outcome === "context-overflow"
+  ) return false;
+  if (outcome === "transient-transport") return true;
   if (/auth|unauthor|forbidden|invalid|permission|denied|not found|unsupported/.test(haystack)) return false;
   if (/resource.exhausted|resource_exhausted|rate limit|too many requests|throttl/.test(haystack)) return false;
   if (haystack.includes("nghttp2_cancel") || haystack.includes("stream suspended")) return false;
@@ -69,9 +81,13 @@ export async function runCursorTurnWithRetry(
   request: CursorRunRequest,
   signal: AbortSignal | undefined,
   onEvent: (message: CursorServerMessage, transport: CursorTransport) => void,
+  attemptBudget?: UpstreamAttemptBudget,
 ): Promise<void> {
   for (let attempt = 0; ; attempt++) {
     if (signal?.aborted) throw abortError(signal);
+    if (attemptBudget && !attemptBudget.tryBegin()) {
+      throw new Error("OCX upstream attempt budget exhausted");
+    }
     const transport = makeTransport(input);
     let emittedAny = false;
     let closed = false;
@@ -99,6 +115,7 @@ export async function runCursorTurnWithRetry(
       const canRetry =
         !emittedAny &&
         attempt < CURSOR_RETRY_ATTEMPTS - 1 &&
+        (attemptBudget?.remaining ?? 1) > 0 &&
         !signal?.aborted &&
         requestUncommitted(transport) &&
         isRetryableCursorError(err);

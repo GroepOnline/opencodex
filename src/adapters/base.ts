@@ -1,9 +1,12 @@
 import type { AdapterEvent, OcxParsedRequest } from "../types";
+import type { UpstreamAttemptBudget } from "../lib/upstream-attempt-budget";
 
 /** Metadata about the caller's incoming request, for auth-forwarding adapters. */
 export interface IncomingMeta {
   headers: Headers;
   abortSignal?: AbortSignal;
+  /** Shared physical-send budget for this client request. */
+  attemptBudget?: UpstreamAttemptBudget;
   /**
    * Image-normalization ladder bias for upstream-413 tightened retries: every image
    * starts one tier lower (devlog/260714_image_normalization_pipeline/030). Only the
@@ -67,4 +70,6 @@ export interface AdapterFetchContext {
   skip429Retry?: boolean;
   /** Whether the upstream response will be consumed as a stream; adapters may select low-latency transport settings. */
   stream?: boolean;
+  /** Shared physical-send budget for this client request. */
+  attemptBudget?: UpstreamAttemptBudget;
 }

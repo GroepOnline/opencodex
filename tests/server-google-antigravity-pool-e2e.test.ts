@@ -190,7 +190,7 @@ describe("server Google Antigravity account pool", () => {
     }
   });
 
-  test("stops after three 429 failovers even when more accounts are eligible", async () => {
+  test("stops after the shared 3-attempt budget even when more accounts are eligible", async () => {
     for (const suffix of ["c", "d", "e"]) {
       await saveCredential(PROVIDER, {
         access: `token-${suffix}`,
@@ -232,8 +232,54 @@ describe("server Google Antigravity account pool", () => {
         }),
       });
       expect(response.status).toBe(429);
-      expect(attempts).toHaveLength(4);
-      expect(new Set(attempts).size).toBe(4);
+      expect(attempts).toHaveLength(3);
+      expect(new Set(attempts).size).toBe(3);
+    } finally {
+      server.stop(true);
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("context-overflow 429 never cools or rotates Antigravity accounts", async () => {
+    const originalFetch = globalThis.fetch;
+    const attempts: string[] = [];
+    globalThis.fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.startsWith("https://daily-cloudcode-pa.googleapis.com/")) {
+        attempts.push(new Headers(init?.headers).get("authorization") ?? "");
+        return new Response(JSON.stringify({
+          error: {
+            message: "RESOURCE_EXHAUSTED: Your input exceeds the context window of this model",
+          },
+        }), {
+          status: 429,
+          headers: {
+            "content-type": "application/json",
+            "retry-after": "30",
+          },
+        });
+      }
+      return originalFetch(input, init);
+    };
+
+    const server = startServer(0);
+    try {
+      const response = await originalFetch(new URL("/v1/responses", server.url), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "google-antigravity/gemini-3.1-pro",
+          input: "overflow must not cool",
+          stream: false,
+        }),
+      });
+      expect(response.status).toBe(429);
+      expect(attempts).toEqual(["Bearer token-a"]);
+      const { getGoogleAntigravityAccountHealthSnapshot } = await import(
+        "../src/oauth/google-antigravity-routing"
+      );
+      const firstId = getAccountSet(PROVIDER)!.accounts[0]!.id;
+      expect(getGoogleAntigravityAccountHealthSnapshot(firstId)).toBeNull();
     } finally {
       server.stop(true);
       globalThis.fetch = originalFetch;
