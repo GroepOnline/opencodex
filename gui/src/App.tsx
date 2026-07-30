@@ -288,8 +288,8 @@ export default function App() {
 
       <main className="main" inert={navOpen}>
         <div className={`main-inner${page === "combos" ? " main-inner--combos" : ""}`}>
+          <div className="page-reveal" key={page}>
           <ErrorBoundary
-            key={page}
             pageName={t(PAGE_TKEY[page])}
             title={t("errorBoundary.title")}
             message={t("errorBoundary.message")}
@@ -310,6 +310,7 @@ export default function App() {
             {page === "claude" && <Claude apiBase={API_BASE} />}
             {page === "grok" && <Grok apiBase={API_BASE} />}
           </ErrorBoundary>
+          </div>
         </div>
       </main>
     </div>

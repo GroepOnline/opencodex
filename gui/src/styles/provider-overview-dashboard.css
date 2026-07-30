@@ -53,19 +53,23 @@
 }
 
 .pws-dashboard-card-count {
-  font-size: 1.25rem;
-  font-weight: 700;
+  font-size: var(--text-title);
+  font-weight: var(--weight-semibold);
   line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-tight);
 }
 
-.pws-dashboard-card--ok .pws-dashboard-card-count { color: var(--green, #22c55e); }
-.pws-dashboard-card--warn .pws-dashboard-card-count { color: var(--yellow, #eab308); }
-.pws-dashboard-card--muted .pws-dashboard-card-count { color: var(--fg-muted, #888); }
+.pws-dashboard-card--ok .pws-dashboard-card-count { color: var(--green); }
+.pws-dashboard-card--warn .pws-dashboard-card-count { color: var(--amber); }
+.pws-dashboard-card--muted .pws-dashboard-card-count { color: var(--faint); }
 
 .pws-dashboard-card-label {
-  font-size: 0.7rem;
-  color: var(--fg-muted, #888);
-  letter-spacing: 0.02em;
+  font-size: var(--text-micro);
+  color: var(--faint);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
 }
 
 /* Rate Limits | Recently Used side-by-side (no vertical stack / scroll) */
