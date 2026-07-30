@@ -30,6 +30,7 @@ export function Select({ value, options, onChange, disabled, label, id, style, a
   onChange: (value: string) => void;
   disabled?: boolean;
   label?: string;
+  /** Optional id on the trigger button (tests / labels target `#codex-pool-strategy`). */
   id?: string;
   style?: CSSProperties;
   align?: "left" | "right";
@@ -37,8 +38,6 @@ export function Select({ value, options, onChange, disabled, label, id, style, a
   dropdownStyle?: CSSProperties;
   /** When true (default), menu is portaled and flips above the trigger if it would leave the viewport. */
   portal?: boolean;
-  /** Optional id on the trigger button (tests / labels target `#codex-pool-strategy`). */
-  id?: string;
 }) {
   const listboxId = useId();
   const [open, setOpen] = useState(false);
