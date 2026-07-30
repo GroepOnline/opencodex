@@ -6,15 +6,19 @@ import { Fragment, useMemo, useState } from "react";
 import { useT, useI18n } from "../../i18n/shared";
 import QuotaBars from "../QuotaBars";
 import type { WorkspaceItem } from "../../provider-workspace/catalog";
+import { IconRefresh } from "../../icons";
 import { formatRelativeTime, relativeTimeLabelsFromT, formatRequestCount, formatTokenCount, formatCostUsd } from "../../provider-workspace/usage";
 import { accountQuotaFromReport, formatQuotaSourceLabel, type ProviderQuotaReportView } from "../../provider-workspace/report";
 import type { ProviderUsageTotals, ProviderModelUsageRow } from "./types";
 
-export default function ProviderUsage({ item, usageTotals, quotaReport, modelUsage }: {
+export default function ProviderUsage({ item, usageTotals, quotaReport, modelUsage, quotaRefreshing, quotaFailed, onRefreshQuota }: {
   item: WorkspaceItem;
   usageTotals?: ProviderUsageTotals;
   quotaReport?: ProviderQuotaReportView;
   modelUsage?: ProviderModelUsageRow[];
+  quotaRefreshing?: boolean;
+  quotaFailed?: boolean;
+  onRefreshQuota?: () => void;
 }) {
   const t = useT();
   const { locale } = useI18n();
@@ -22,7 +26,6 @@ export default function ProviderUsage({ item, usageTotals, quotaReport, modelUsa
   const hasUsage = usageTotals?.requests !== undefined;
   const quota = accountQuotaFromReport(quotaReport);
   const [expandedModel, setExpandedModel] = useState<string | null>(null);
-  void item;
 
   const sortedModels = useMemo(() => {
     if (!modelUsage?.length) return [];
@@ -45,10 +48,10 @@ export default function ProviderUsage({ item, usageTotals, quotaReport, modelUsa
   return (
     <div className="pws-section">
       <div className="pws-usage-block">
-        <h3 className="pws-section-title">{t("pws.usageLast30d")}</h3>
+        <h3 className="pws-section-title">{t("pws.proxyUsage")}</h3>
         {hasUsage ? (
           <>
-            <div className="pws-usage-metrics pws-usage-metrics-3" role="group" aria-label={t("pws.usageLast30d")}>
+            <div className="pws-usage-metrics pws-usage-metrics-3" role="group" aria-label={t("pws.proxyUsage")}>
               <div className="pws-usage-metric">
                 <span className="pws-usage-metric-value mono">{formatCostUsd(providerCost, locale)}</span>
                 <span className="muted pws-usage-metric-label">{t("pws.estimatedCost")}</span>
@@ -135,7 +138,24 @@ export default function ProviderUsage({ item, usageTotals, quotaReport, modelUsa
       )}
 
       <div className="pws-usage-block">
-        <h3 className="pws-section-title">{t("pws.rateLimits")}</h3>
+        <div className="pws-usage-block-head">
+          <h3 className="pws-section-title">{t("pws.providerLimits")}</h3>
+          {onRefreshQuota && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={onRefreshQuota}
+              disabled={quotaRefreshing}
+              aria-label={t("prov.quotaRefreshAria", { name: item.name })}
+            >
+              {quotaRefreshing ? <span className="spin" /> : <IconRefresh />}
+              {quotaRefreshing ? t("prov.quotaRefreshing") : quotaFailed ? t("pws.retry") : t("prov.quotaRefresh")}
+            </button>
+          )}
+        </div>
+        {quotaFailed && (
+          <p className="text-caption" style={{ color: "var(--amber)" }} role="status">{t("prov.quotaRefreshFailed")}</p>
+        )}
         {quota ? (
           <>
             <QuotaBars quota={quota} plan={null} threshold={80} t={t} layout="stacked" />

@@ -199,6 +199,7 @@ describe("fetchProviderAccountQuotas", () => {
 
   test("providers without a per-account usage API are skipped", async () => {
     expect(supportsPerAccountQuota("anthropic")).toBe(true);
+    expect(supportsPerAccountQuota("google-antigravity")).toBe(true);
     expect(supportsPerAccountQuota("kiro")).toBe(false);
     let called = false;
     globalThis.fetch = (async () => { called = true; return new Response("{}", { status: 200 }); }) as typeof fetch;
@@ -372,5 +373,158 @@ describe("fetchProviderAccountQuotas", () => {
     expect(byId[first!.id]?.quota?.fiveHourPercent).toBe(70);
     expect(byId[second!.id]?.quota?.fiveHourPercent).toBe(3);
     expect(calls).toBe(1);
+  });
+});
+
+describe("fetchProviderAccountQuotas (google-antigravity)", () => {
+  const AGY_FIRST = { accountId: "agy-first", email: "first@agy.example", projectId: "proj-first" };
+  const AGY_SECOND = { accountId: "agy-second", email: "second@agy.example", projectId: "proj-second" };
+  const AGY_THIRD = { accountId: "agy-third", email: "third@agy.example", projectId: "proj-third" };
+
+  function antigravityModelsBody(gemRemaining: number, claRemaining: number): string {
+    return JSON.stringify({
+      models: {
+        "gemini-3.6-flash": {
+          displayName: "Gemini Flash",
+          quotaInfo: { remainingFraction: gemRemaining, resetTime: "2026-07-05T14:00:00Z" },
+        },
+        "claude-sonnet-4.6": {
+          displayName: "Claude Sonnet",
+          quotaInfo: { remainingFraction: claRemaining, resetTime: "2026-07-05T15:00:00Z" },
+        },
+      },
+    });
+  }
+
+  async function seedThreeAntigravityAccounts(): Promise<void> {
+    const expires = Date.now() + 60 * 60_000;
+    await saveCredential("google-antigravity", {
+      access: "token-agy-first", refresh: "refresh-agy-first", expires, ...AGY_FIRST,
+    });
+    await saveCredential("google-antigravity", {
+      access: "token-agy-second", refresh: "refresh-agy-second", expires, ...AGY_SECOND,
+    });
+    await saveCredential("google-antigravity", {
+      access: "token-agy-third", refresh: "refresh-agy-third", expires, ...AGY_THIRD,
+    });
+  }
+
+  test("probes each account with its own bearer token and project id", async () => {
+    await seedThreeAntigravityAccounts();
+    const seen: { auth: string; project: string }[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toContain("/v1internal:fetchAvailableModels");
+      const auth = new Headers(init?.headers).get("authorization") ?? "";
+      const body = JSON.parse(String(init?.body ?? "{}")) as { project?: string };
+      seen.push({ auth, project: body.project ?? "" });
+      if (auth.endsWith("token-agy-first")) return new Response(antigravityModelsBody(0.64, 0.21), { status: 200 });
+      if (auth.endsWith("token-agy-second")) return new Response(antigravityModelsBody(0.50, 0.10), { status: 200 });
+      return new Response(antigravityModelsBody(0.90, 0.80), { status: 200 });
+    }) as typeof fetch;
+
+    const rows = await fetchProviderAccountQuotas("google-antigravity");
+    expect(rows).toHaveLength(3);
+    const byProject = Object.fromEntries(seen.map(s => [s.project, s.auth]));
+    expect(byProject["proj-first"]).toBe("Bearer token-agy-first");
+    expect(byProject["proj-second"]).toBe("Bearer token-agy-second");
+    expect(byProject["proj-third"]).toBe("Bearer token-agy-third");
+
+    const values = rows
+      .map(row => row.quota?.customWindows?.map(w => `${w.label}:${w.percent}`).join(","))
+      .sort();
+    expect(values).toEqual([
+      "Gem:10,Cla:20",
+      "Gem:36,Cla:79",
+      "Gem:50,Cla:90",
+    ]);
+  });
+
+  test("cached antigravity rows are reused; forced refresh re-probes through the cache layer", async () => {
+    await seedThreeAntigravityAccounts();
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return new Response(antigravityModelsBody(0.5, 0.5), { status: 200 });
+    }) as typeof fetch;
+
+    await fetchProviderAccountQuotas("google-antigravity");
+    expect(calls).toBe(3);
+    await fetchProviderAccountQuotas("google-antigravity");
+    expect(calls).toBe(3);
+
+    await fetchProviderAccountQuotas("google-antigravity", true);
+    expect(calls).toBe(6);
+
+    // After a forced refresh the result is cached again — a GUI re-render must not
+    // stampede upstream.
+    await fetchProviderAccountQuotas("google-antigravity");
+    expect(calls).toBe(6);
+  });
+
+  test("missing projectId marks the account unavailable without blocking siblings", async () => {
+    const expires = Date.now() + 60 * 60_000;
+    await saveCredential("google-antigravity", {
+      access: "token-agy-first", refresh: "refresh-agy-first", expires, ...AGY_FIRST,
+    });
+    await saveCredential("google-antigravity", {
+      access: "token-agy-noproj", refresh: "refresh-agy-noproj", expires,
+      accountId: "agy-noproj", email: "noproj@agy.example",
+    });
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return new Response(antigravityModelsBody(0.5, 0.5), { status: 200 });
+    }) as typeof fetch;
+
+    const rows = await fetchProviderAccountQuotas("google-antigravity");
+    const byEmail = Object.fromEntries(
+      (await import("../src/oauth/store")).getAccountSet("google-antigravity")!.accounts.map(a => [a.id, a.credential.email]),
+    );
+    const withProject = rows.find(r => byEmail[r.accountId] === "first@agy.example");
+    const without = rows.find(r => byEmail[r.accountId] === "noproj@agy.example");
+    expect(withProject?.quota?.customWindows?.[0]?.percent).toBe(50);
+    expect(without?.unavailable).toBe(true);
+    expect(without?.quota).toBeNull();
+    expect(calls).toBe(1);
+  });
+
+  test("provider-report probe seeds the active antigravity account cache", async () => {
+    await seedThreeAntigravityAccounts();
+    const { getAccountSet, setActiveAccount } = await import("../src/oauth/store");
+    const set = getAccountSet("google-antigravity");
+    const first = set?.accounts.find(a => a.credential.email === "first@agy.example");
+    expect(first).toBeTruthy();
+    await setActiveAccount("google-antigravity", first!.id);
+    let calls = 0;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      calls += 1;
+      const auth = new Headers(init?.headers).get("authorization") ?? "";
+      if (auth.endsWith("token-agy-first")) return new Response(antigravityModelsBody(0.64, 0.21), { status: 200 });
+      if (auth.endsWith("token-agy-second")) return new Response(antigravityModelsBody(0.50, 0.10), { status: 200 });
+      return new Response(antigravityModelsBody(0.90, 0.80), { status: 200 });
+    }) as typeof fetch;
+
+    const config: OcxConfig = {
+      port: 1455,
+      defaultProvider: "google-antigravity",
+      providers: {
+        "google-antigravity": {
+          adapter: "google",
+          authMode: "oauth",
+          baseUrl: "https://daily-cloudcode-pa.googleapis.com",
+        },
+      },
+    };
+    await fetchProviderQuotaReports(config, true);
+    expect(calls).toBe(1);
+
+    const rows = await fetchProviderAccountQuotas("google-antigravity");
+    // Active reused; only the two siblings hit upstream again.
+    expect(calls).toBe(3);
+    const byId = Object.fromEntries(rows.map(row => [row.accountId, row]));
+    expect(byId[first!.id]?.quota?.customWindows).toEqual([
+      { label: "Gem", percent: 36, resetAt: Date.parse("2026-07-05T14:00:00Z") },
+      { label: "Cla", percent: 79, resetAt: Date.parse("2026-07-05T15:00:00Z") },
+    ]);
   });
 });
