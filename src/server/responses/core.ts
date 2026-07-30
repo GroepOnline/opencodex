@@ -2163,7 +2163,10 @@ export async function handleResponses(
       })();
       return { runTurnAbort, queue, done };
     };
-    const rotateCursorRunTurn = async (message: string): Promise<boolean> => {
+    const rotateCursorRunTurn = async (
+      message: string,
+      retryAfter?: string | null,
+    ): Promise<boolean> => {
       if (
         !cursorPoolAccountId
         || cursorPoolFailovers >= CURSOR_POOL_MAX_FAILOVERS_PER_REQUEST
@@ -2175,7 +2178,9 @@ export async function handleResponses(
       const nextAccountId = rotateCursorAccountOnQuota(
         config,
         cursorPoolAccountId,
-        null,
+        // Honour the upstream Retry-After when the adapter reported one, so the cooled account is
+        // held out for the server's interval instead of the generic default cooldown.
+        retryAfter ?? null,
         cursorSessionKey,
       );
       if (!nextAccountId) return false;
@@ -2211,7 +2216,7 @@ export async function handleResponses(
         const preflight = await preflightAdapterEvents(eventSource);
         if (
           preflight.error
-          && await rotateCursorRunTurn(preflight.error.message)
+          && await rotateCursorRunTurn(preflight.error.message, preflight.error.retryAfter)
         ) {
           attempt.runTurnAbort.abort();
           attempt.queue.close();
@@ -2277,7 +2282,7 @@ export async function handleResponses(
       const firstMeaningful = events.find(event => event.type !== "heartbeat");
       if (
         firstMeaningful?.type === "error"
-        && await rotateCursorRunTurn(firstMeaningful.message)
+        && await rotateCursorRunTurn(firstMeaningful.message, firstMeaningful.retryAfter)
       ) {
         continue;
       }

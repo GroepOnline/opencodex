@@ -294,6 +294,12 @@ export type AdapterEvent =
       errorType?: string;
       code?: string;
       retryable?: boolean;
+      /**
+       * Upstream `Retry-After` for this failure when the provider sent one. Account pools use it to
+       * cool the failing account down for the interval the server asked for; the message text cannot
+       * carry it, so an adapter that has the header must surface it here.
+       */
+      retryAfter?: string;
     };
 
 /**

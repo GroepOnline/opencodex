@@ -98,6 +98,27 @@ describe("Cursor account pool", () => {
     });
   });
 
+  test("an upstream Retry-After sets the cooldown instead of the default", async () => {
+    const [firstId] = await seedAccounts();
+    const before = Date.now();
+    rotateCursorAccountOnQuota(config(true), firstId!, "120", "retry-after-session");
+    const snapshot = getCursorAccountHealthSnapshot(firstId!);
+    expect(snapshot?.cooldownSource).toBe("retry-after");
+    // 120s from the server, not the 60s default: assert the window lands past the default so a
+    // regression that drops the header cannot pass.
+    expect(snapshot!.cooldownUntil!).toBeGreaterThan(before + 90_000);
+    expect(snapshot!.cooldownUntil!).toBeLessThanOrEqual(Date.now() + 120_000);
+  });
+
+  test("a missing Retry-After falls back to the default cooldown", async () => {
+    const [firstId] = await seedAccounts();
+    const before = Date.now();
+    rotateCursorAccountOnQuota(config(true), firstId!, null, "default-session");
+    const snapshot = getCursorAccountHealthSnapshot(firstId!);
+    expect(snapshot?.cooldownSource).toBe("default");
+    expect(snapshot!.cooldownUntil!).toBeLessThanOrEqual(before + 60_000);
+  });
+
   test("only explicit rate and quota failures qualify for rotation", () => {
     for (const message of [
       "Cursor rate limit exceeded: HTTP 429 Too Many Requests",

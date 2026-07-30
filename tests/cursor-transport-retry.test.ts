@@ -4,6 +4,7 @@ import {
   isRetryableCursorError,
   runCursorTurnWithRetry,
 } from "../src/adapters/cursor/transport-retry";
+import { cursorRetryAfterFromError } from "../src/adapters/cursor/cursor-errors";
 import type { CursorRunRequest, CursorServerMessage } from "../src/adapters/cursor/types";
 import type { CursorTransport } from "../src/adapters/cursor/transport";
 
@@ -14,6 +15,7 @@ function transport(opts: {
   throwAfter?: number;
   error?: unknown;
   committed?: boolean;
+  retryAfter?: string | null;
 }): CursorTransport {
   return {
     async *run() {
@@ -27,6 +29,7 @@ function transport(opts: {
     writeClient() {},
     close() {},
     requestCommitted: () => opts.committed ?? false,
+    retryAfter: () => opts.retryAfter ?? null,
   };
 }
 
@@ -110,6 +113,33 @@ describe("runCursorTurnWithRetry", () => {
       () => {},
     )).rejects.toThrow("ECONNREFUSED");
     expect(calls).toBe(1);
+  });
+
+  test("carries the upstream Retry-After out on a quota failure", async () => {
+    // Connect reports quota as an end-stream error frame, while the backoff interval arrives
+    // earlier as a response header. The failing transport is discarded by the orchestrator, so the
+    // header has to ride out on the error for the account pool to use it as the cooldown.
+    const quota = new Error("Cursor rate limit exceeded: RESOURCE_EXHAUSTED");
+    await expect(runCursorTurnWithRetry(
+      () => transport({ throwAfter: 0, error: quota, committed: true, retryAfter: "120" }),
+      { provider: { adapter: "cursor" } },
+      request,
+      undefined,
+      () => {},
+    )).rejects.toThrow("RESOURCE_EXHAUSTED");
+    expect(cursorRetryAfterFromError(quota)).toBe("120");
+  });
+
+  test("reports no Retry-After when the upstream sent none", async () => {
+    const quota = new Error("Cursor rate limit exceeded: RESOURCE_EXHAUSTED");
+    await expect(runCursorTurnWithRetry(
+      () => transport({ throwAfter: 0, error: quota, committed: true }),
+      { provider: { adapter: "cursor" } },
+      request,
+      undefined,
+      () => {},
+    )).rejects.toThrow("RESOURCE_EXHAUSTED");
+    expect(cursorRetryAfterFromError(quota)).toBeNull();
   });
 
   test("does NOT retry a non-retryable error", async () => {

@@ -178,6 +178,38 @@ describe("server Cursor account pool", () => {
       }));
   });
 
+  test("an upstream Retry-After drives the cooldown of the rotated-away account", async () => {
+    // Full chain: HTTP/2 `retry-after` response header → transport capture → error event →
+    // rotateCursorAccountOnQuota. Without the header the cooldown falls back to the 60s default,
+    // so asserting the source proves the interval is not being discarded en route.
+    const [firstId] = getAccountSet(PROVIDER)!.accounts.map(account => account.id);
+    await withCursorServer((stream, headers) => {
+      const authorization = String(headers.authorization ?? "");
+      if (authorization === "Bearer token-a") {
+        stream.respond({ ":status": 200, "content-type": "application/connect+proto", "retry-after": "120" });
+        stream.end(endStreamFrame({
+          code: "resource_exhausted",
+          message: "RESOURCE_EXHAUSTED: hard quota exhausted",
+        }));
+        return;
+      }
+      stream.respond({ ":status": 200, "content-type": "application/connect+proto" });
+      stream.end(Buffer.concat([turnEndedFrame(), endStreamFrame()]));
+    }, baseUrl => withCursorRegistryBaseUrl(baseUrl, async () => {
+        saveConfig(config(baseUrl));
+        const server = startServer(0);
+        try {
+          const response = await request(server.url, "cursor-pool-retry-after");
+          expect(response.status).toBe(200);
+          const snapshot = getCursorAccountHealthSnapshot(firstId!);
+          expect(snapshot?.cooldownSource).toBe("retry-after");
+          expect(snapshot!.cooldownUntil!).toBeGreaterThan(Date.now() + 90_000);
+        } finally {
+          await server.stop(true);
+        }
+      }));
+  });
+
   test("EOF and generic 502 errors do not rotate or cool the account", async () => {
     const [firstId] = getAccountSet(PROVIDER)!.accounts.map(account => account.id);
     const attempts: string[] = [];

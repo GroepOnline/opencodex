@@ -2,7 +2,7 @@ import type { CursorRunRequest, CursorServerMessage } from "./types";
 import type { CursorTransport, CursorTransportFactory, CursorTransportFactoryInput } from "./transport";
 import { abortError, retryBackoffDelayMs, sleepWithAbort } from "../../lib/upstream-retry";
 import { debugProviderDiagnostic } from "../../lib/debug";
-import { safeCursorErrorMessage } from "./cursor-errors";
+import { attachCursorRetryAfter, safeCursorErrorMessage } from "./cursor-errors";
 import type { UpstreamAttemptBudget } from "../../lib/upstream-attempt-budget";
 import { classifyCursorUpstreamOutcome } from "../../lib/upstream-outcome";
 
@@ -112,6 +112,9 @@ export async function runCursorTurnWithRetry(
       }
       return;
     } catch (err) {
+      // Carry the failing attempt's upstream Retry-After on the error: the transport is discarded
+      // below, so this is the last point where that header is still reachable.
+      attachCursorRetryAfter(err, transport.retryAfter?.());
       const canRetry =
         !emittedAny &&
         attempt < CURSOR_RETRY_ATTEMPTS - 1 &&
