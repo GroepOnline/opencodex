@@ -35,7 +35,7 @@ export function isLikelyRealThoughtSignature(sig: string | undefined): boolean {
   return /^[A-Za-z0-9+/_=-]+$/.test(sig);
 }
 
-function firstUserText(parsed: OcxParsedRequest): string | undefined {
+function firstUserText(parsed: Pick<OcxParsedRequest, "context">): string | undefined {
   for (const msg of parsed.context.messages) {
     if (msg.role !== "user") continue;
     if (typeof msg.content === "string") return msg.content;
@@ -45,22 +45,29 @@ function firstUserText(parsed: OcxParsedRequest): string | undefined {
   return undefined;
 }
 
+const generatedSessionIds = new WeakMap<Pick<OcxParsedRequest, "context">, string>();
+
 /**
  * Deterministic Cloud Code Assist session id from the first user message text. Mirrors
  * CLIProxyAPI `generateStableSessionID`: sha256(firstUserText) → BigEndian uint64 masked with
  * 0x7FFFFFFFFFFFFFFF, prefixed with "-". Falls back to a random "-<digits>" id when there is no text.
  */
-export function antigravitySessionId(parsed: OcxParsedRequest): string {
+export function antigravitySessionId(
+  parsed: Pick<OcxParsedRequest, "context">,
+): string {
   // Anchored on the first user message text: this is the one value that stays STABLE across every
   // turn of a conversation, which the replay cache requires (it observes signatures on turn N's
   // response and re-injects them on turn N+1's request, so both turns must map to the same id).
   // Cross-conversation collisions (two threads opening with identical text) are made harmless by
   // the replay cache keying signatures on functionCall identity (name+args), not on this id alone.
+  const existing = generatedSessionIds.get(parsed);
+  if (existing) return existing;
   const text = firstUserText(parsed);
-  if (!text) return `-${Math.floor(Math.random() * 9e18).toString()}`;
-  const digest = createHash("sha256").update(text, "utf8").digest();
-  const masked = digest.readBigUInt64BE(0) & 0x7fffffffffffffffn;
-  return `-${masked.toString()}`;
+  const sessionId = text
+    ? `-${(createHash("sha256").update(text, "utf8").digest().readBigUInt64BE(0) & 0x7fffffffffffffffn).toString()}`
+    : `-${Math.floor(Math.random() * 9e18).toString()}`;
+  generatedSessionIds.set(parsed, sessionId);
+  return sessionId;
 }
 
 /** A Gemini content part as it appears in an Antigravity request body. */

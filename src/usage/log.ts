@@ -13,6 +13,7 @@ export type AttemptRecoveryKind =
   | "oauth-401"
   | "key-429"
   | "anthropic-oauth-429"
+  | "google-antigravity-oauth-429"
   | "image-413";
 
 export interface PersistedUsageAttempt {

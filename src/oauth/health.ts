@@ -1,5 +1,6 @@
 import { getCodexAccountHealthSnapshot, type CodexCooldownSource } from "../codex/routing";
 import { getAnthropicAccountHealthSnapshot } from "./anthropic-routing";
+import { getGoogleAntigravityAccountHealthSnapshot } from "./google-antigravity-routing";
 import { isAccountNeedsReauth } from "../codex/account-runtime-state";
 import { getCodexAccountCredential, listCodexAccountIds } from "../codex/account-store";
 import { MAIN_CODEX_ACCOUNT_ID } from "../codex/main-account";
@@ -175,14 +176,16 @@ export function projectStoredOAuthAccountHealth(
   now = Date.now(),
   opts: { observeOnly?: boolean } = {},
 ): OAuthAccountHealth {
-  const anthropicSnap = provider === "anthropic"
+  const poolSnapshot = provider === "anthropic"
     ? getAnthropicAccountHealthSnapshot(account.id, now)
-    : null;
+    : provider === "google-antigravity"
+      ? getGoogleAntigravityAccountHealthSnapshot(account.id, now)
+      : null;
   return projectOAuthAccountHealth({
     needsReauth: account.needsReauth === true,
     reauthReason: account.needsReauth === true ? "refresh_failed" : undefined,
-    cooldownUntilMs: anthropicSnap?.cooldownUntil,
-    cooldownReason: anthropicSnap?.cooldownSource === "retry-after" ? "rate_limit" : anthropicSnap ? "quota" : undefined,
+    cooldownUntilMs: poolSnapshot?.cooldownUntil,
+    cooldownReason: poolSnapshot?.cooldownSource === "retry-after" ? "rate_limit" : poolSnapshot ? "quota" : undefined,
     warningReason: detectOAuthWarning(provider, account, opts.observeOnly === true, now),
     now,
   });

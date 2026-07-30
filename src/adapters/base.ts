@@ -63,6 +63,8 @@ export interface AdapterFetchContext {
   timeoutMs?: number;
   /** Return final non-2xx responses untouched so the caller can own the error-body read. */
   returnRawErrors?: boolean;
+  /** Let an outer account-pool layer own Antigravity 429 handling without same-account retries. */
+  skip429Retry?: boolean;
   /** Whether the upstream response will be consumed as a stream; adapters may select low-latency transport settings. */
   stream?: boolean;
 }

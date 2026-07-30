@@ -56,6 +56,11 @@ export async function fetchGoogleWithRetry(label: string, request: AdapterReques
           continue;
         }
       }
+      if (res.status === 429 && ctx.skip429Retry) {
+        return ctx.returnRawErrors
+          ? res
+          : normalizeFinalGoogleError(label, res, ctx.abortSignal);
+      }
       if (!retryableGoogleStatus(res.status) || attempt === GOOGLE_RETRY_ATTEMPTS - 1) {
         return ctx.returnRawErrors ? res : normalizeFinalGoogleError(label, res, ctx.abortSignal);
       }
