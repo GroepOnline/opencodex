@@ -192,12 +192,23 @@ test("successful key delete keeps last-good keys visible when follow-up refresh 
     expect(deleteBtn).toBeTruthy();
     await act(async () => {
       deleteBtn!.click();
-      await new Promise<void>((resolve) => testWindow.setTimeout(resolve, 0));
     });
 
-    const confirmBtn = [...container.querySelectorAll<HTMLButtonElement>("button")]
-      .find((button) => button.textContent?.includes("Confirm"));
+    // Confirm arms itself on a timer. Poll for the armed state instead of sleeping past
+    // it: a fixed delay races the transition under CI contention and taxes fast runs.
+    let confirmBtn: HTMLButtonElement | undefined;
+    const armDeadline = Date.now() + 5_000;
+    for (;;) {
+      confirmBtn = [...container.querySelectorAll<HTMLButtonElement>("button")]
+        .find((button) => button.textContent?.includes("Confirm"));
+      if (confirmBtn && !confirmBtn.disabled) break;
+      if (Date.now() > armDeadline) break;
+      await act(async () => {
+        await new Promise<void>((resolve) => testWindow.setTimeout(resolve, 10));
+      });
+    }
     expect(confirmBtn).toBeTruthy();
+    expect(confirmBtn!.disabled).toBe(false);
 
     await act(async () => {
       confirmBtn!.click();
