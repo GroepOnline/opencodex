@@ -194,6 +194,32 @@ Leave this disabled unless you understand Anthropic account policy risk. Prefer 
 `ocx account use anthropic <id>` switching when unsure.
 :::
 
+### googleAntigravityAccountPool (experimental)
+
+Opt-in routing across multiple `google-antigravity` OAuth accounts. The pool is off by
+default. It uses the same Antigravity session id as thought-signature replay, and each
+selected account supplies its own OAuth token and Cloud Code Assist project id.
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `googleAntigravityAccountPool.enabled?` | `boolean` | `false` | Enables sticky session affinity and 429 cooldown failover. |
+| `googleAntigravityAccountPool.autoSwitchThreshold?` | `number` | `80` | New-session threshold for known cached 5-hour usage. Unknown usage keeps the active account. `0` disables quota-based picking. |
+| `googleAntigravityAccountPool.strategy?` | `"quota" \| "round-robin" \| "fill-first"` | `"quota"` | Selects new accounts for new sessions. Affinity still wins for an existing session. |
+| `googleAntigravityAccountPool.stickyLimit?` | `number` | `1` | Number of successful new-session binds retained by round-robin before it advances. Range 1–100. |
+
+The failover rule is strict. Only an explicit upstream HTTP 429 cools an account and
+allows an in-request rotation, with at most three failovers. Client cancellation, HTTP
+400, HTTP 502, EOF, and other transport failures do not rotate or cool an account.
+Thought-signature replay state remains intact after a successful 429 failover.
+
+Manage the pool through `/api/oauth/accounts/pool?provider=google-antigravity`,
+`/api/oauth/accounts/clear-cooldown`, and the ordinary OAuth active-account endpoint.
+
+:::caution[Experimental]
+Multi-account rotation may conflict with provider account policies. Leave this disabled
+unless you accept that risk.
+:::
+
 ### claudeCode (OcxClaudeCodeConfig)
 
 Claude Code inbound settings consumed by the `/v1/messages` surface, the `ocx claude`

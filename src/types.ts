@@ -717,6 +717,20 @@ export interface OcxConfig {
     /** Successful new-session binds retained on one round-robin selection. Default 1; range 1..100. */
     stickyLimit?: number;
   };
+  /**
+   * Opt-in Google Antigravity OAuth account pool. Default OFF.
+   * Rotates only after explicit upstream 429 responses and keeps session affinity
+   * aligned with Antigravity thought-signature replay.
+   */
+  googleAntigravityAccountPool?: {
+    enabled?: boolean;
+    /** Usage % threshold for new-session auto-pick. Default 80. 0 = disabled (affinity/active only). */
+    autoSwitchThreshold?: number;
+    /** New-session rotation strategy. Default quota. */
+    strategy?: OcxAccountPoolRotationStrategy;
+    /** Successful new-session binds retained on one round-robin selection. Default 1; range 1..100. */
+    stickyLimit?: number;
+  };
   /** Virtual `combo/<id>` models spanning concrete provider/model targets (issue #133). */
   combos?: Record<string, OcxComboConfig>;
   /** Background proactive token refresh ("Token Guardian"). Off by default; see OcxTokenGuardianConfig. */

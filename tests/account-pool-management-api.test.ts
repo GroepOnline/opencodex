@@ -5,6 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handleCodexAuthAPI } from "../src/codex/auth-api";
 import { saveConfig } from "../src/config";
+import {
+  clearGoogleAntigravityAccountPoolState,
+  getGoogleAntigravityAccountHealthSnapshot,
+  rotateGoogleAntigravityAccountOn429,
+} from "../src/oauth/google-antigravity-routing";
 import { startServer } from "../src/server";
 import type { OcxConfig } from "../src/types";
 import { installIsolatedCodexHome, type IsolatedCodexHome } from "./helpers/isolated-codex-home";
@@ -150,6 +155,12 @@ describe("Anthropic account pool strategy management API", () => {
       defaultProvider: "anthropic",
       providers: {
         anthropic: { adapter: "anthropic", baseUrl: "https://api.anthropic.com", authMode: "oauth" },
+        "google-antigravity": {
+          adapter: "google",
+          baseUrl: "https://daily-cloudcode-pa.googleapis.com",
+          authMode: "oauth",
+          googleMode: "cloud-code-assist",
+        },
       },
     } as OcxConfig;
   }
@@ -159,12 +170,20 @@ describe("Anthropic account pool strategy management API", () => {
     isolatedCodexHome = installIsolatedCodexHome("ocx-pool-mgmt-codex-");
     testDir = mkdtempSync(join(tmpdir(), "ocx-pool-mgmt-"));
     process.env.OPENCODEX_HOME = testDir;
+    clearGoogleAntigravityAccountPoolState();
     saveConfig(baseConfig());
     writeFileSync(join(testDir, "auth.json"), JSON.stringify({
       anthropic: {
         activeAccountId: "aaaa1111",
         accounts: [
           { id: "aaaa1111", credential: { access: "t1", refresh: "r1", expires: 9999999999999, email: "a@example.com", accountId: "acct-1" } },
+        ],
+      },
+      "google-antigravity": {
+        activeAccountId: "google-a",
+        accounts: [
+          { id: "google-a", credential: { access: "gt1", refresh: "gr1", expires: 9999999999999, email: "ga@example.com", accountId: "google-acct-1", projectId: "project-a" } },
+          { id: "google-b", credential: { access: "gt2", refresh: "gr2", expires: 9999999999999, email: "gb@example.com", accountId: "google-acct-2", projectId: "project-b" } },
         ],
       },
     }), { mode: 0o600 });
@@ -175,6 +194,7 @@ describe("Anthropic account pool strategy management API", () => {
     else process.env.OPENCODEX_HOME = previousHome;
     isolatedCodexHome?.restore();
     isolatedCodexHome = null;
+    clearGoogleAntigravityAccountPoolState();
     if (testDir) rmSync(testDir, { recursive: true, force: true });
   });
 
@@ -347,6 +367,118 @@ describe("Anthropic account pool strategy management API", () => {
       expect(await get.json()).toMatchObject({
         enabled: true,
         strategy: "round-robin",
+      });
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  test("Google Antigravity pool defaults off and persists independent settings", async () => {
+    const server = startServer(0);
+    try {
+      const initial = await fetch(new URL(
+        "/api/oauth/accounts/pool?provider=google-antigravity",
+        server.url,
+      ));
+      expect(initial.status).toBe(200);
+      expect(await initial.json()).toMatchObject({
+        provider: "google-antigravity",
+        enabled: false,
+        autoSwitchThreshold: 80,
+        strategy: "quota",
+        stickyLimit: 1,
+      });
+
+      const put = await fetch(new URL("/api/oauth/accounts/pool", server.url), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "google-antigravity",
+          enabled: true,
+          autoSwitchThreshold: 65,
+          strategy: "round-robin",
+          stickyLimit: 3,
+        }),
+      });
+      expect(put.status).toBe(200);
+      expect(await put.json()).toMatchObject({
+        provider: "google-antigravity",
+        enabled: true,
+        autoSwitchThreshold: 65,
+        strategy: "round-robin",
+        stickyLimit: 3,
+      });
+
+      const anthropic = await fetch(new URL(
+        "/api/oauth/accounts/pool?provider=anthropic",
+        server.url,
+      ));
+      expect(await anthropic.json()).toMatchObject({
+        provider: "anthropic",
+        enabled: false,
+        strategy: "quota",
+      });
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  test("Google Antigravity clear-cooldown removes only requested cooldown", async () => {
+    const poolConfig = {
+      ...baseConfig(),
+      googleAntigravityAccountPool: { enabled: true },
+    };
+    saveConfig(poolConfig);
+    expect(
+      rotateGoogleAntigravityAccountOn429(
+        poolConfig,
+        "google-a",
+        "120",
+        "management-session",
+      ),
+    ).toBe("google-b");
+    expect(getGoogleAntigravityAccountHealthSnapshot("google-a")).not.toBeNull();
+
+    const server = startServer(0);
+    try {
+      const response = await fetch(new URL(
+        "/api/oauth/accounts/clear-cooldown",
+        server.url,
+      ), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "google-antigravity",
+          accountId: "google-a",
+        }),
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, cleared: true });
+      expect(getGoogleAntigravityAccountHealthSnapshot("google-a")).toBeNull();
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  test("Google Antigravity active selection resets routing state", async () => {
+    const server = startServer(0);
+    try {
+      const response = await fetch(new URL(
+        "/api/oauth/accounts/active",
+        server.url,
+      ), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "google-antigravity",
+          accountId: "google-b",
+        }),
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        ok: true,
+        provider: "google-antigravity",
+        activeAccountId: "google-b",
       });
     } finally {
       await server.stop(true);
