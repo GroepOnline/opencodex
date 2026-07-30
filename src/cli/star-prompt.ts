@@ -6,7 +6,7 @@ import { recordOwnedConfigPath } from "../lib/config-ownership";
 import { isAgentDriven } from "./agent-driven";
 import { interactiveConfirm } from "./interactive-confirm";
 
-const REPO = "lidge-jun/opencodex";
+const REPO = "OnlineChefGroep/opencodex";
 /** Fires exactly once from the first interactive `ocx start`. */
 const MARKER = ".star-prompted";
 

@@ -20,7 +20,7 @@ Please avoid posting undisclosed vulnerabilities as public GitHub issues.
 Report privately through GitHub private vulnerability reporting, which is enabled on this
 repository:
 
-**<https://github.com/lidge-jun/opencodex/security/advisories/new>**
+**<https://github.com/OnlineChefGroep/opencodex/security/advisories/new>**
 
 The same form is reachable from the repository's **Security** tab under **Report a vulnerability**.
 It is private between you and the maintainers, and it is the only channel this project offers for

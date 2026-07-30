@@ -6,7 +6,7 @@ description: opencodex 的开发环境、结构、约定，以及添加 provider
 ## 环境搭建
 
 ```bash
-git clone https://github.com/lidge-jun/opencodex.git
+git clone https://github.com/OnlineChefGroep/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # 开发模式代理 API
@@ -82,7 +82,7 @@ bun run release:watch               # 观察最新的 Release workflow run
 
 承载 Go 原生移植的 `dev2-go` 已经退役，同时维护两条集成线的政策也一并结束。其历史以只读
 形式保存在
-[lidge-jun/opencodex-go-archive](https://github.com/lidge-jun/opencodex-go-archive)。
+[OnlineChefGroep/opencodex-go-archive](https://github.com/OnlineChefGroep/opencodex-go-archive)。
 现在 `dev` 上的 Bun 原生 TypeScript 是唯一的运行时线。
 
 欢迎变基 PR。把陈旧分支变基到当前 head 是正常的贡献而非噪音。请在描述中注明来源提交。

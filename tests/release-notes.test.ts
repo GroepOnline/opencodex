@@ -120,7 +120,7 @@ describe("stripCarriedReleaseNotes", () => {
       "- release: v2.7.39-preview.20260724 (8894e40e)",
       "- Merge branch 'dev' into preview (9077f7c1)",
       "",
-      "**Full Changelog**: https://github.com/lidge-jun/opencodex/compare/v2.7.38-preview.20260724...v2.7.39-preview.20260724",
+      "**Full Changelog**: https://github.com/OnlineChefGroep/opencodex/compare/v2.7.38-preview.20260724...v2.7.39-preview.20260724",
       "",
     ].join("\n");
 
@@ -215,14 +215,14 @@ describe("assembleReleaseNotes", () => {
       commits: "- release: v2.7.39 (357acee6)",
       compareFrom: "v2.7.37",
       compareTo: "v2.7.39",
-      repository: "lidge-jun/opencodex",
+      repository: "OnlineChefGroep/opencodex",
     });
 
     expect(notes).toContain("dist-tag `latest`");
     expect(notes).toContain("## What's Changed\n### Bug Fixes\n* fix A");
     expect(notes).toContain("## Since preview\n\n## What's Changed\n### Bug Fixes\n* fix B");
     expect(notes).toContain("## Commits\n\n- release: v2.7.39 (357acee6)");
-    expect(notes).toContain("**Full Changelog**: https://github.com/lidge-jun/opencodex/compare/v2.7.37...v2.7.39");
+    expect(notes).toContain("**Full Changelog**: https://github.com/OnlineChefGroep/opencodex/compare/v2.7.37...v2.7.39");
   });
 
   test("omits empty generate-notes delta that is only the config comment", () => {
@@ -273,8 +273,8 @@ describe("rewriteTakeoverCredits", () => {
     const body = [
       "## What's Changed",
       "### New Features",
-      "* feat(images): Grok image bridge (maintainer takeover of #424) by @Wibias in https://github.com/lidge-jun/opencodex/pull/577",
-      "* feat(other): normal change by @Alice in https://github.com/lidge-jun/opencodex/pull/100",
+      "* feat(images): Grok image bridge (maintainer takeover of #424) by @Wibias in https://github.com/OnlineChefGroep/opencodex/pull/577",
+      "* feat(other): normal change by @Alice in https://github.com/OnlineChefGroep/opencodex/pull/100",
     ].join("\n");
 
     const landingCalls: number[] = [];
@@ -289,16 +289,16 @@ describe("rewriteTakeoverCredits", () => {
 
     expect(landingCalls).toEqual([]);
     expect(rewritten).toContain(
-      "* feat(images): Grok image bridge (maintainer takeover of #424) by @tizerluo (takeover by @Wibias) in https://github.com/lidge-jun/opencodex/pull/577",
+      "* feat(images): Grok image bridge (maintainer takeover of #424) by @tizerluo (takeover by @Wibias) in https://github.com/OnlineChefGroep/opencodex/pull/577",
     );
     expect(rewritten).toContain(
-      "* feat(other): normal change by @Alice in https://github.com/lidge-jun/opencodex/pull/100",
+      "* feat(other): normal change by @Alice in https://github.com/OnlineChefGroep/opencodex/pull/100",
     );
   });
 
   test("falls back to landing lookup when title says takeover without #N", async () => {
     const line =
-      "* feat x (takeover) by @Wibias in https://github.com/lidge-jun/opencodex/pull/577";
+      "* feat x (takeover) by @Wibias in https://github.com/OnlineChefGroep/opencodex/pull/577";
     const rewritten = await rewriteTakeoverCredits(
       line,
       async (pr) => {
@@ -312,13 +312,13 @@ describe("rewriteTakeoverCredits", () => {
       async (source) => (source === 424 ? "tizerluo" : null),
     );
     expect(rewritten).toContain(
-      "* feat x (takeover) by @tizerluo (takeover by @Wibias) in https://github.com/lidge-jun/opencodex/pull/577",
+      "* feat x (takeover) by @tizerluo (takeover by @Wibias) in https://github.com/OnlineChefGroep/opencodex/pull/577",
     );
   });
 
   test("leaves line unchanged when landing lookup returns null", async () => {
     const line =
-      "* feat x (takeover) by @Wibias in https://github.com/lidge-jun/opencodex/pull/577";
+      "* feat x (takeover) by @Wibias in https://github.com/OnlineChefGroep/opencodex/pull/577";
     const rewritten = await rewriteTakeoverCredits(
       line,
       async () => null,
@@ -329,7 +329,7 @@ describe("rewriteTakeoverCredits", () => {
 
   test("leaves line unchanged when original author matches landing author", async () => {
     const line =
-      "* feat x (takeover #9) by @Wibias in https://github.com/lidge-jun/opencodex/pull/10";
+      "* feat x (takeover #9) by @Wibias in https://github.com/OnlineChefGroep/opencodex/pull/10";
     const rewritten = await rewriteTakeoverCredits(
       line,
       async () => ({

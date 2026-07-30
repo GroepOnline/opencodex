@@ -60,7 +60,7 @@ defects. Bun-native TypeScript on `dev` is the single runtime line again.
 
 - The branch has been deleted from this repository. Its full history is
   published at
-  [lidge-jun/opencodex-go-archive](https://github.com/lidge-jun/opencodex-go-archive),
+  [OnlineChefGroep/opencodex-go-archive](https://github.com/OnlineChefGroep/opencodex-go-archive),
   and its final tip stays reachable here as the `archive/dev2-go` tag.
 - A merge into `dev` carries no port obligation. The nine open `needs-go-port`
   issues (#661, #663, #666, #670, #674, #678, #680, #685, #703) were closed as

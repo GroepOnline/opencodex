@@ -523,7 +523,7 @@ ocx update
 ocx update --tag preview
 ```
 
-New versions become available the moment the [Release workflow](https://github.com/lidge-jun/opencodex/actions/workflows/release.yml)
+New versions become available the moment the [Release workflow](https://github.com/OnlineChefGroep/opencodex/actions/workflows/release.yml)
 publishes them to npm.
 
 ## Help

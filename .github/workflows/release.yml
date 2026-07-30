@@ -111,31 +111,37 @@ jobs:
         run: |
           set -euo pipefail
 
+          # All releases run from main. Stable versions (no pre-release suffix) get dist-tag "latest".
+          # Pre-release versions (e.g. 1.0.0-alpha.1) get dist-tag "preview".
           case "$GITHUB_REF" in
             refs/heads/main)
-              expected_tag="latest"
               if [[ "$RELEASE_VERSION" == *-* ]]; then
-                echo "::error::main releases must use a stable semver version; got ${RELEASE_VERSION}"
-                exit 1
-              fi
-              ;;
-            refs/heads/preview)
-              expected_tag="preview"
-              if [[ "$RELEASE_VERSION" != *-preview.* ]]; then
-                echo "::error::preview releases must use a preview prerelease version; got ${RELEASE_VERSION}"
-                exit 1
+                # The only supported prerelease shape is X.Y.Z-preview.N: the update
+                # client (src/update/notify.ts, bin/ocx.mjs) and the release-notes
+                # helper both key off that exact suffix, so an -alpha/-beta/-rc build
+                # would publish to preview and then never be seen as an update.
+                if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+$ ]]; then
+                  echo "::error::Pre-release versions must be X.Y.Z-preview.N (got ${RELEASE_VERSION})"
+                  exit 1
+                fi
+                # Pre-release version — must use "preview" dist-tag
+                if [ "$NPM_DIST_TAG" != "preview" ]; then
+                  echo "::error::Pre-release versions (${RELEASE_VERSION}) must use dist-tag 'preview', got '${NPM_DIST_TAG}'"
+                  exit 1
+                fi
+              else
+                # Stable version — must use "latest" dist-tag
+                if [ "$NPM_DIST_TAG" != "latest" ]; then
+                  echo "::error::Stable releases (${RELEASE_VERSION}) must use dist-tag 'latest', got '${NPM_DIST_TAG}'"
+                  exit 1
+                fi
               fi
               ;;
             *)
-              echo "::error::Release must run from main or preview; got ${GITHUB_REF}"
+              echo "::error::Release must run from main; got ${GITHUB_REF}"
               exit 1
               ;;
           esac
-
-          if [ "$NPM_DIST_TAG" != "$expected_tag" ]; then
-            echo "::error::${GITHUB_REF#refs/heads/} releases must publish with npm dist-tag '${expected_tag}', got '${NPM_DIST_TAG}'"
-            exit 1
-          fi
 
           ci_url="$(
             gh run list \
@@ -306,7 +312,7 @@ jobs:
           # Preview builds must be marked prerelease so GitHub "latest" keeps pointing at the
           # stable channel (matching npm dist-tags); see issue #64.
           prerelease_flag=""
-          if [[ "$RELEASE_VERSION" == *-preview.* ]]; then
+          if [[ "$RELEASE_VERSION" == *-* ]]; then
             prerelease_flag="--prerelease"
           fi
 
@@ -329,7 +335,10 @@ jobs:
           # advance the baseline to a later preview that is missing/empty — that would
           # drop the gap between the last carried preview and that later tag.
           notes_range_start="$previous_tag"
-          if [[ "$RELEASE_VERSION" != *-preview.* ]]; then
+          # Same hyphen predicate as the dist-tag gate and prerelease_flag above: any
+          # pre-release suffix ships on the preview channel, so only truly stable
+          # versions take the carry path.
+          if [[ "$RELEASE_VERSION" != *-* ]]; then
             preview_carry_tags="$(
               git tag --list "v${RELEASE_VERSION}-preview.*" |
                 bun scripts/release-notes.ts matching-preview-tags "$RELEASE_VERSION"
