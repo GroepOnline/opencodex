@@ -235,6 +235,9 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
     } else if (provider === "google-antigravity") {
       const { resetGoogleAntigravityRoutingForManualSelection } = await import("../../oauth/google-antigravity-routing");
       resetGoogleAntigravityRoutingForManualSelection(body.accountId);
+    } else if (provider === "cursor") {
+      const { resetCursorRoutingForManualSelection } = await import("../../oauth/cursor-routing");
+      resetCursorRoutingForManualSelection(body.accountId);
     }
     const { clearProviderQuotaCache } = await import("../../providers/quota");
     clearProviderQuotaCache();
@@ -244,12 +247,14 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
   // Opt-in OAuth account pools: enable/threshold/strategy + clear cooldown.
   if (url.pathname === "/api/oauth/accounts/pool" && req.method === "GET") {
     const provider = (url.searchParams.get("provider") ?? "").trim().toLowerCase();
-    if (provider !== "anthropic" && provider !== "google-antigravity") {
-      return jsonResponse({ error: "pool config is only supported for anthropic and google-antigravity" }, 400);
+    if (provider !== "anthropic" && provider !== "google-antigravity" && provider !== "cursor") {
+      return jsonResponse({ error: "pool config is only supported for anthropic, google-antigravity, and cursor" }, 400);
     }
     const pool = provider === "anthropic"
       ? config.anthropicAccountPool ?? {}
-      : config.googleAntigravityAccountPool ?? {};
+      : provider === "google-antigravity"
+        ? config.googleAntigravityAccountPool ?? {}
+        : config.cursorAccountPool ?? {};
     return jsonResponse({
       provider,
       enabled: pool.enabled === true,
@@ -272,12 +277,14 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
       stickyLimit?: unknown;
     };
     const provider = typeof body.provider === "string" ? body.provider.trim().toLowerCase() : "";
-    if (provider !== "anthropic" && provider !== "google-antigravity") {
-      return jsonResponse({ error: "pool config is only supported for anthropic and google-antigravity" }, 400);
+    if (provider !== "anthropic" && provider !== "google-antigravity" && provider !== "cursor") {
+      return jsonResponse({ error: "pool config is only supported for anthropic, google-antigravity, and cursor" }, 400);
     }
     const currentPool = provider === "anthropic"
       ? config.anthropicAccountPool
-      : config.googleAntigravityAccountPool;
+      : provider === "google-antigravity"
+        ? config.googleAntigravityAccountPool
+        : config.cursorAccountPool;
     let enabled = currentPool?.enabled === true;
     if (body.enabled !== undefined) {
       if (typeof body.enabled !== "boolean") return jsonResponse({ error: "enabled must be a boolean" }, 400);
@@ -318,7 +325,8 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
       ...(stickyLimit !== undefined ? { stickyLimit } : {}),
     };
     if (provider === "anthropic") config.anthropicAccountPool = nextPool;
-    else config.googleAntigravityAccountPool = nextPool;
+    else if (provider === "google-antigravity") config.googleAntigravityAccountPool = nextPool;
+    else config.cursorAccountPool = nextPool;
     saveConfigPreservingClaudeCode(config);
     return jsonResponse({
       ok: true,
@@ -334,13 +342,15 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
     const body = await req.json().catch(() => ({})) as { provider?: unknown; accountId?: unknown };
     const provider = typeof body.provider === "string" ? body.provider.trim().toLowerCase() : "";
     const accountId = typeof body.accountId === "string" ? body.accountId.trim() : "";
-    if (provider !== "anthropic" && provider !== "google-antigravity") {
-      return jsonResponse({ error: "clear-cooldown is only supported for anthropic and google-antigravity" }, 400);
+    if (provider !== "anthropic" && provider !== "google-antigravity" && provider !== "cursor") {
+      return jsonResponse({ error: "clear-cooldown is only supported for anthropic, google-antigravity, and cursor" }, 400);
     }
     if (!accountId) return jsonResponse({ error: "missing accountId" }, 400);
     const cleared = provider === "anthropic"
       ? (await import("../../oauth/anthropic-routing")).clearAnthropicAccountCooldown(accountId)
-      : (await import("../../oauth/google-antigravity-routing")).clearGoogleAntigravityAccountCooldown(accountId);
+      : provider === "google-antigravity"
+        ? (await import("../../oauth/google-antigravity-routing")).clearGoogleAntigravityAccountCooldown(accountId)
+        : (await import("../../oauth/cursor-routing")).clearCursorAccountCooldown(accountId);
     return jsonResponse({ ok: true, cleared });
   }
 
@@ -376,6 +386,13 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
       } = await import("../../oauth/google-antigravity-routing");
       clearGoogleAntigravityAccountCooldown(id);
       clearGoogleAntigravitySessionAffinityForAccount(id);
+    } else if (provider === "cursor") {
+      const {
+        clearCursorAccountCooldown,
+        clearCursorSessionAffinityForAccount,
+      } = await import("../../oauth/cursor-routing");
+      clearCursorAccountCooldown(id);
+      clearCursorSessionAffinityForAccount(id);
     }
     if (!getAccountSet(provider)) clearLoginState(provider);
     const { clearProviderQuotaCache, clearAccountQuotaCache } = await import("../../providers/quota");

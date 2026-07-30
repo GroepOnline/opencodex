@@ -65,6 +65,19 @@ import {
   resolveGoogleAntigravityAccountForSession,
   rotateGoogleAntigravityAccountOn429,
 } from "../../oauth/google-antigravity-routing";
+import {
+  bindCursorSessionAffinity,
+  CURSOR_POOL_MAX_FAILOVERS_PER_REQUEST,
+  cursorSessionKeyFromParts,
+  formatCursorProviderForLog,
+  getCursorPoolAccessToken,
+  getCursorPoolRetryAfterSeconds,
+  isCursorAccountPoolEnabled,
+  isCursorPoolRotationError,
+  promoteCursorActiveAccount,
+  resolveCursorAccountForSession,
+  rotateCursorAccountOnQuota,
+} from "../../oauth/cursor-routing";
 import { buildWebSearchTool, planWebSearch, runWithWebSearch, shouldResolveOpenAiWebSearchSidecar } from "../../web-search";
 import { buildImageTool, buildVideoTool, planImageBridge, planVideoBridge, runWithImageBridge, clampImageMaxRounds, IMAGE_GEN_TOOL_NAME, VIDEO_GEN_TOOL_NAME } from "../../images";
 import { describeImagesInPlace, planVisionSidecar, shouldResolveOpenAiVisionSidecar, stripImagesInPlace } from "../../vision";
@@ -1310,6 +1323,8 @@ export async function handleResponses(
   let anthropicPoolFailovers = 0;
   let googleAntigravityPoolAccountId: string | null = null;
   let googleAntigravityPoolFailovers = 0;
+  let cursorPoolAccountId: string | null = null;
+  let cursorPoolFailovers = 0;
   const anthropicSessionKey = route.providerName === "anthropic" && route.provider.authMode === "oauth"
     ? anthropicSessionKeyFromParts({
       sessionIdHeader: sessionIdHeaderFromRequest(req.headers),
@@ -1325,6 +1340,15 @@ export async function handleResponses(
     : null;
   const antigravityPoolOwns429 = route.providerName === "google-antigravity"
     && isGoogleAntigravityAccountPoolEnabled(config);
+  const cursorSessionKey = route.providerName === "cursor" && route.provider.authMode === "oauth"
+    ? cursorSessionKeyFromParts({
+      clientThreadId: parsed._clientThreadId,
+      sessionIdHeader: sessionIdHeaderFromRequest(req.headers),
+      threadIdHeader: req.headers.get("thread-id"),
+      promptCacheKey: parsed.options.promptCacheKey,
+      cursorConversationId: parsed._cursorConversationId,
+    })
+    : null;
   if (route.provider.authMode === "oauth") {
     try {
       if (route.providerName === "anthropic" && isAnthropicAccountPoolEnabled(config)) {
@@ -1384,6 +1408,34 @@ export async function handleResponses(
           project: credential.projectId,
         };
         logCtx.provider = formatGoogleAntigravityProviderForLog(selection.accountId);
+      } else if (
+        route.providerName === "cursor"
+        && isCursorAccountPoolEnabled(config)
+      ) {
+        const selection = resolveCursorAccountForSession(cursorSessionKey, config);
+        if (!selection.accountId) {
+          if (selection.reason === "all-cooled") {
+            const retryAfterSec = getCursorPoolRetryAfterSeconds();
+            return formatErrorResponse(
+              429,
+              "rate_limit_error",
+              "All Cursor OAuth accounts are temporarily rate-limited",
+              retryAfterSec !== null ? { retryAfter: String(retryAfterSec) } : undefined,
+            );
+          }
+          return formatErrorResponse(
+            401,
+            "authentication_error",
+            "No eligible Cursor OAuth account available",
+          );
+        }
+        const accessToken = await getCursorPoolAccessToken(selection.accountId);
+        cursorPoolAccountId = selection.accountId;
+        bindCursorSessionAffinity(cursorSessionKey, selection.accountId);
+        promoteCursorActiveAccount(selection.accountId);
+        parsed._cursorIdentityScope = selection.accountId;
+        route.provider = { ...route.provider, apiKey: accessToken };
+        logCtx.provider = formatCursorProviderForLog(selection.accountId);
       } else {
         const resolved = await getValidAccessTokenSnapshot(route.providerName);
         if (isOAuth401ReplayProvider) sentOAuthSnapshot = resolved;
@@ -2074,57 +2126,115 @@ export async function handleResponses(
   }
 
   if (adapter.runTurn) {
-    const runTurnAbort = new AbortController();
-    linkAbortSignal(runTurnAbort, options.abortSignal);
-    const queue = createAdapterEventQueue({
-      onBacklogExceeded: () => runTurnAbort.abort(),
-    });
-    const runTurn = async (): Promise<void> => {
-      try {
-        noteAttemptSend(logCtx.activeAttempt, logCtx.usageLogInputTokens);
-        await adapter.runTurn?.(
-          parsed,
-          {
-            headers: selectedForwardHeaders,
-            abortSignal: runTurnAbort.signal,
-            attemptBudget: options.attemptBudget,
-          },
-          queue.push,
-        );
-      } catch (err) {
-        queue.push({
-          type: "error",
-          message: err instanceof Error ? err.message : String(err),
-        });
-      } finally {
-        // Cursor assigns a stable conversation id inside runTurn on the first headerless
-        // turn; backfill so Logs can filter/total that opening request (#330 / #522).
-        if (!logCtx.conversationId && parsed._cursorConversationId) {
-          logCtx.conversationId = normalizeLogConversationId(parsed._cursorConversationId);
+    let activeRunTurnAdapter = adapter;
+    const startRunTurnAttempt = () => {
+      const runTurnAbort = new AbortController();
+      const unlinkAbort = linkAbortSignal(runTurnAbort, options.abortSignal);
+      const queue = createAdapterEventQueue({
+        onBacklogExceeded: () => runTurnAbort.abort(),
+      });
+      const attemptAdapter = activeRunTurnAdapter;
+      const done = (async (): Promise<void> => {
+        try {
+          noteAttemptSend(logCtx.activeAttempt, logCtx.usageLogInputTokens);
+          await attemptAdapter.runTurn?.(
+            parsed,
+            {
+              headers: selectedForwardHeaders,
+              abortSignal: runTurnAbort.signal,
+              attemptBudget: options.attemptBudget,
+            },
+            queue.push,
+          );
+        } catch (err) {
+          queue.push({
+            type: "error",
+            message: err instanceof Error ? err.message : String(err),
+          });
+        } finally {
+          unlinkAbort();
+          // Cursor assigns a stable conversation id inside runTurn on the first headerless
+          // turn; backfill so Logs can filter/total that opening request (#330 / #522).
+          if (!logCtx.conversationId && parsed._cursorConversationId) {
+            logCtx.conversationId = normalizeLogConversationId(parsed._cursorConversationId);
+          }
+          queue.close();
         }
-        queue.close();
+      })();
+      return { runTurnAbort, queue, done };
+    };
+    const rotateCursorRunTurn = async (message: string): Promise<boolean> => {
+      if (
+        !cursorPoolAccountId
+        || cursorPoolFailovers >= CURSOR_POOL_MAX_FAILOVERS_PER_REQUEST
+        || options.abortSignal?.aborted
+        || !isCursorPoolRotationError(message)
+      ) {
+        return false;
+      }
+      const nextAccountId = rotateCursorAccountOnQuota(
+        config,
+        cursorPoolAccountId,
+        null,
+        cursorSessionKey,
+      );
+      if (!nextAccountId) return false;
+      try {
+        const accessToken = await getCursorPoolAccessToken(nextAccountId);
+        cursorPoolAccountId = nextAccountId;
+        cursorPoolFailovers += 1;
+        parsed._cursorIdentityScope = nextAccountId;
+        route.provider = { ...route.provider, apiKey: accessToken };
+        promoteCursorActiveAccount(nextAccountId);
+        logCtx.provider = formatCursorProviderForLog(nextAccountId);
+        activeRunTurnAdapter = resolveAdapter(
+          resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
+          config.cacheRetention,
+        );
+        sealRequestAttemptIdentity(
+          logCtx.activeAttempt,
+          logCtx.provider,
+          activeRunTurnAdapter.name,
+        );
+        return true;
+      } catch {
+        return false;
       }
     };
-
     const { toolNsMap, freeformToolNames, toolSearchToolNames } = buildToolBridgeMaps(parsed);
     if (parsed.stream) {
-      void runTurn();
-      let eventSource: AsyncIterable<AdapterEvent> = queue.stream();
-      if (options.comboAttempt) {
+      let attempt = startRunTurnAttempt();
+      let eventSource: AsyncIterable<AdapterEvent>;
+      while (true) {
+        eventSource = attempt.queue.stream();
+        if (!options.comboAttempt && !cursorPoolAccountId) break;
         const preflight = await preflightAdapterEvents(eventSource);
+        if (
+          preflight.error
+          && await rotateCursorRunTurn(preflight.error.message)
+        ) {
+          attempt.runTurnAbort.abort();
+          attempt.queue.close();
+          await attempt.done;
+          attempt = startRunTurnAttempt();
+          continue;
+        }
         if (preflight.error || preflight.empty) {
-          runTurnAbort.abort();
-          queue.close();
-          const message = preflight.error?.message ?? "Adapter ended before producing a response";
-          return formatErrorResponse(502, "upstream_error", redactSecretString(message));
+          if (options.comboAttempt) {
+            attempt.runTurnAbort.abort();
+            attempt.queue.close();
+            const message = preflight.error?.message ?? "Adapter ended before producing a response";
+            return formatErrorResponse(502, "upstream_error", redactSecretString(message));
+          }
         }
         eventSource = preflight.stream;
+        break;
       }
       const sseStream = bridgeToResponsesSSE(
         eventSource, parsed.modelId, toolNsMap, freeformToolNames, toolSearchToolNames,
         () => {
-          runTurnAbort.abort();
-          queue.close();
+          attempt.runTurnAbort.abort();
+          attempt.queue.close();
         }, 2_000,
         {
           ...(options.forceEmptyResponseId ? { responseId: "" } : {}),
@@ -2147,7 +2257,7 @@ export async function handleResponses(
                 parsed._rawBody,
                 response,
                 continuationStateForResponse(providerState),
-                adapterNeedsForcedContinuation(adapter.name) ? { force: true } : undefined,
+                adapterNeedsForcedContinuation(activeRunTurnAdapter.name) ? { force: true } : undefined,
               ),
           }),
         },
@@ -2159,8 +2269,20 @@ export async function handleResponses(
       });
     }
 
-    await runTurn();
-    const events = await queue.collect();
+    let events: AdapterEvent[];
+    while (true) {
+      const attempt = startRunTurnAttempt();
+      await attempt.done;
+      events = await attempt.queue.collect();
+      const firstMeaningful = events.find(event => event.type !== "heartbeat");
+      if (
+        firstMeaningful?.type === "error"
+        && await rotateCursorRunTurn(firstMeaningful.message)
+      ) {
+        continue;
+      }
+      break;
+    }
     if (options.comboAttempt) {
       const firstMeaningful = events.find(event => event.type !== "heartbeat");
       if (!firstMeaningful || firstMeaningful.type === "error") {
@@ -2191,7 +2313,7 @@ export async function handleResponses(
         parsed._rawBody,
         json,
         continuationStateForResponse(providerState),
-        adapterNeedsForcedContinuation(adapter.name) ? { force: true } : undefined,
+        adapterNeedsForcedContinuation(activeRunTurnAdapter.name) ? { force: true } : undefined,
       );
     }
     return new Response(JSON.stringify(json), { headers: { "Content-Type": "application/json" } });

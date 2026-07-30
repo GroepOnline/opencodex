@@ -3,6 +3,7 @@ import type { OcxAccountPoolRotationStrategy } from "../types";
 export const POOL_KEY_CODEX = "codex";
 export const POOL_KEY_ANTHROPIC = "anthropic";
 export const POOL_KEY_ANTIGRAVITY = "google-antigravity";
+export const POOL_KEY_CURSOR = "cursor";
 
 interface SelectionState {
   activeKey?: string;

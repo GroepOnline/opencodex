@@ -222,6 +222,32 @@ Multi-account rotation may conflict with provider account policies. Leave this d
 unless you accept that risk.
 :::
 
+### cursorAccountPool (experimental)
+
+Opt-in routing across multiple Cursor OAuth accounts added with `ocx login cursor`. The
+pool is off by default. It does not probe or warm accounts in the background.
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `cursorAccountPool.enabled?` | `boolean` | `false` | Enables sticky session affinity and reactive quota failover. |
+| `cursorAccountPool.autoSwitchThreshold?` | `number` | `80` | New-session threshold for known cached account usage. Unknown usage keeps the active account. `0` disables quota-based picking. |
+| `cursorAccountPool.strategy?` | `"quota" \| "round-robin" \| "fill-first"` | `"quota"` | Selects accounts for new sessions. Existing sessions keep their affinity while that account remains eligible. |
+| `cursorAccountPool.stickyLimit?` | `number` | `1` | Number of successful new-session binds retained by round-robin before it advances. Range 1–100. |
+
+Cursor rotation occurs only when the adapter reports an explicit pre-output HTTP 429,
+`RESOURCE_EXHAUSTED`, or hard-quota failure. `adapter_eof`, client cancellation,
+post-output failures, HTTP 502, and generic upstream errors do not cool or switch an
+account. A request uses at most the shared three-attempt upstream budget.
+
+Manage the pool through `/api/oauth/accounts/pool?provider=cursor`,
+`/api/oauth/accounts/clear-cooldown`, and the ordinary OAuth active-account endpoint.
+
+:::caution[Terms and account policy]
+Automated multi-account use may violate Cursor's terms or trigger account enforcement.
+OpenCodex does not hide or reduce that risk. Leave this disabled unless the account owner
+has confirmed that the intended use is allowed.
+:::
+
 ### claudeCode (OcxClaudeCodeConfig)
 
 Claude Code inbound settings consumed by the `/v1/messages` surface, the `ocx claude`
