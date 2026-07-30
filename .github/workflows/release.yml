@@ -116,6 +116,14 @@ jobs:
           case "$GITHUB_REF" in
             refs/heads/main)
               if [[ "$RELEASE_VERSION" == *-* ]]; then
+                # The only supported prerelease shape is X.Y.Z-preview.N: the update
+                # client (src/update/notify.ts, bin/ocx.mjs) and the release-notes
+                # helper both key off that exact suffix, so an -alpha/-beta/-rc build
+                # would publish to preview and then never be seen as an update.
+                if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+$ ]]; then
+                  echo "::error::Pre-release versions must be X.Y.Z-preview.N (got ${RELEASE_VERSION})"
+                  exit 1
+                fi
                 # Pre-release version — must use "preview" dist-tag
                 if [ "$NPM_DIST_TAG" != "preview" ]; then
                   echo "::error::Pre-release versions (${RELEASE_VERSION}) must use dist-tag 'preview', got '${NPM_DIST_TAG}'"

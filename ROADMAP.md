@@ -12,12 +12,15 @@ no longer dependent on upstream decisions or timelines.
 - [x] **Independent versioning** — fully detached from upstream, own semver scheme
 - [x] **All closed PRs merged** — Dutch GUI, Claude Desktop, combo/alias, cursor fixes, etc.
 - [x] **Enhanced CI** — CodeQL, dependabot, security audit, workflow linting
-- [x] **Release process** — VERSIONING.md, RELEASE_PROCESS.md, CHANGELOG.md
+- [x] **Release process**: main-only publishing via `.github/workflows/release.yml`
+      and `scripts/release.ts`, with review and promotion policy in `MAINTAINERS.md`
 
 ## Near term (next)
 
 - [ ] **First fork release (`2.7.43`)**: publish from `main` on npm dist-tag `latest`
-      (any pre-release suffix ships on `preview` instead)
+      (prereleases use `X.Y.Z-preview.N` and ship on `preview`)
+- [ ] **Release documentation**: add `VERSIONING.md`, `RELEASE_PROCESS.md`, and
+      `CHANGELOG.md` for the fork's release model
 - [ ] **Update READMEs** — ensure all translated READMEs (ko, zh, ru, ja) reflect fork status
 - [ ] **Clean up old tags** — remove stale upstream tags that don't point to our commits
 - [ ] **Dependency audit** — review and update all dependencies (gui + root)

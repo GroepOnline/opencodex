@@ -271,6 +271,15 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toContain("Pre-release versions (${RELEASE_VERSION}) must use dist-tag 'preview'");
     expect(workflow).toContain("Stable releases (${RELEASE_VERSION}) must use dist-tag 'latest'");
     expect(workflow).not.toContain("refs/heads/preview)");
+    // Prereleases are restricted to X.Y.Z-preview.N: the update client only parses
+    // that suffix, so an -alpha/-beta/-rc publish would never notify preview users.
+    expect(workflow).toContain("Pre-release versions must be X.Y.Z-preview.N");
+    expect(workflow).toContain("^[0-9]+\\.[0-9]+\\.[0-9]+-preview\\.[0-9]+$");
+    // The release helper must dispatch from the only ref the workflow accepts.
+    const releaseHelper = await readText("scripts/release.ts");
+    expect(releaseHelper).toContain('const releaseBranch = "main"');
+    expect(releaseHelper).toContain('const expectedTag = isPrerelease ? "preview" : "latest"');
+    expect(releaseHelper).not.toContain('["main", "preview"]');
 
     // Release notes must include PR categories and the full channel commit range
     // (branch merges + direct commits). Preflight forbids an existing release, so
