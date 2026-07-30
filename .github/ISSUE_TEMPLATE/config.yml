@@ -4,5 +4,5 @@ contact_links:
     url: https://github.com/OnlineChefGroep/opencodex/blob/main/SECURITY.md
     about: Read the supported-version and reporting guidance before sharing security-sensitive details.
   - name: Contributing guide
-    url: https://github.com/OnlineChefGroep/opencodex
+    url: https://github.com/OnlineChefGroep/opencodex/blob/dev/CONTRIBUTING.md
     about: Review setup, build, and verification guidance for contributors.

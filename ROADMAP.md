@@ -1,6 +1,6 @@
 # Roadmap
 
-**OnlineChefGroep fork** of [opencodex](https://github.com/lidge-jun/opencodex)
+Roadmap for [OnlineChefGroep/opencodex](https://github.com/OnlineChefGroep/opencodex).
 
 ## Vision
 
@@ -16,7 +16,8 @@ no longer dependent on upstream decisions or timelines.
 
 ## Near term (next)
 
-- [ ] **First fork release (v1.0.0-alpha.1)** — tag and publish to npm
+- [ ] **First fork release (`2.7.43`)**: publish from `main` on npm dist-tag `latest`
+      (any pre-release suffix ships on `preview` instead)
 - [ ] **Update READMEs** — ensure all translated READMEs (ko, zh, ru, ja) reflect fork status
 - [ ] **Clean up old tags** — remove stale upstream tags that don't point to our commits
 - [ ] **Dependency audit** — review and update all dependencies (gui + root)

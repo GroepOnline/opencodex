@@ -327,7 +327,10 @@ jobs:
           # advance the baseline to a later preview that is missing/empty — that would
           # drop the gap between the last carried preview and that later tag.
           notes_range_start="$previous_tag"
-          if [[ "$RELEASE_VERSION" != *-preview.* ]]; then
+          # Same hyphen predicate as the dist-tag gate and prerelease_flag above: any
+          # pre-release suffix ships on the preview channel, so only truly stable
+          # versions take the carry path.
+          if [[ "$RELEASE_VERSION" != *-* ]]; then
             preview_carry_tags="$(
               git tag --list "v${RELEASE_VERSION}-preview.*" |
                 bun scripts/release-notes.ts matching-preview-tags "$RELEASE_VERSION"
