@@ -69,13 +69,18 @@ export async function fetchGoogleWithRetry(label: string, request: AdapterReques
       if (!retryableGoogleStatus(res.status) || attempt === GOOGLE_RETRY_ATTEMPTS - 1) {
         return ctx.returnRawErrors ? res : normalizeFinalGoogleError(label, res, ctx.abortSignal);
       }
-      const outcome = await classifyUpstreamResponse("google", res, ctx.abortSignal);
-      if (
-        !upstreamOutcomePolicy(outcome).sameAccountRetry
-        || ctx.attemptBudget?.remaining === 0
-        || retryAfterExceedsInternalLimit(res.headers)
-      ) {
+      // The shared attempt budget and `Retry-After` are header-only signals, so they gate raw
+      // mode too. The outcome classifier has to read the body, which raw mode must not do — the
+      // caller gets the untouched upstream response — so it sits behind the same
+      // `returnRawErrors` guard as the quota peek below.
+      if (ctx.attemptBudget?.remaining === 0 || retryAfterExceedsInternalLimit(res.headers)) {
         return ctx.returnRawErrors ? res : normalizeFinalGoogleError(label, res, ctx.abortSignal);
+      }
+      if (!ctx.returnRawErrors) {
+        const outcome = await classifyUpstreamResponse("google", res, ctx.abortSignal);
+        if (!upstreamOutcomePolicy(outcome).sameAccountRetry) {
+          return normalizeFinalGoogleError(label, res, ctx.abortSignal);
+        }
       }
       // A 429 may be a transient rate limit (retry) or hard quota exhaustion (do NOT retry —
       // it won't recover for hours and burns retries). Peek the body to tell them apart.

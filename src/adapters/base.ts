@@ -50,8 +50,8 @@ export interface AdapterRequest {
     /** Exact reasoning parameter emitted by the adapter, for request-log diagnostics only. */
     reasoningLog?: {
       effectiveEffort: string;
-      wireField: "reasoning_effort" | "thinking_budget" | "thinking.type";
-      wireValue: string | number;
+      wireField: "reasoning_effort" | "thinking_budget" | "thinking.type" | "enable_thinking" | "reasoning.effort";
+      wireValue: string | number | boolean;
     };
     usageLog?: {
       inputTokens?: number;

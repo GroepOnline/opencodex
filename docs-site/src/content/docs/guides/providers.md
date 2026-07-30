@@ -216,6 +216,7 @@ validates the key, and stores it. Notable entries:
 | Kilo | `https://api.kilo.ai/api/gateway` |
 | GitLab Duo | `https://cloud.gitlab.com/ai/v1/proxy/openai/v1` |
 | Cloudflare AI Gateway | `https://gateway.ai.cloudflare.com/v1/{account-id}/{gateway}/anthropic` |
+| **OmniRoute** | `https://api.omniroute.online/v1` (self-host: `http://127.0.0.1:20128/v1` + `allowPrivateNetwork: true`) |
 | …and more | opencode zen, Vercel AI Gateway, Venice, NanoGPT, Synthetic, Qianfan, Alibaba, Parallel, ZenMux, LiteLLM |
 
 Most use the `openai-chat` adapter with a bearer key; a few that expose only an Anthropic-compatible
@@ -298,6 +299,14 @@ text-only models. Text-only models (e.g. `glm-5.2`, `deepseek-v4-pro`, `gpt-oss`
 `minimax-m2.x`, `nemotron-3-*`) are listed in `noVisionModels`; vision-native models (e.g.
 `kimi-k2.6`, `minimax-m3`, `gemma4`, `qwen3.5`, `gemini-3-flash-preview`) are not. Matching is
 tolerant of Ollama's `:size` tags, so `gpt-oss` covers `gpt-oss:120b` and `gpt-oss:20b`.
+
+### OmniRoute
+
+OmniRoute is a free OpenAI-compatible gateway preset (`omniroute/...` model ids). Cloud default is
+`https://api.omniroute.online/v1`. For a self-hosted fleet instance bind Docker to loopback only
+(`-p 127.0.0.1:20128:20128`, `REQUIRE_API_KEY=false`), set `baseUrl` to
+`http://127.0.0.1:20128/v1`, `allowPrivateNetwork: true`, and the placeholder bearer `sk_omniroute`.
+`auto` is catalogued but not the default. See `docs/providers/omniroute.md`.
 
 ## 4. Local providers
 

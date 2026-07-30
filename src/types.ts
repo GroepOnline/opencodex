@@ -1,4 +1,5 @@
 import type { KiroOAuthMetadata } from "./oauth/types";
+import type { ProviderCompat } from "./providers/compat";
 
 export interface OcxParsedRequest {
   modelId: string;
@@ -966,6 +967,12 @@ export interface OcxProviderConfig {
    * link-local, or unique-local upstreams. Metadata endpoints remain blocked.
    */
   allowPrivateNetwork?: boolean;
+  /**
+   * Additive wire-compat matrix (thinking format, session affinity hint, strict tools,
+   * max-tokens field). Does not replace `thinkingToggleModels` / `thinkingBudgetModels` /
+   * `promptCacheKey` lists — those still win when set for a model.
+   */
+  compat?: ProviderCompat;
   /** Keep provider settings on disk but exclude it from routing and model/catalog listings. */
   disabled?: boolean;
   /**
