@@ -141,7 +141,23 @@ describe("antigravity CCA envelope", () => {
     expect(env.request.toolConfig.functionCallingConfig.mode).toBe("VALIDATED");
   });
 
-  test("gemini-on-antigravity does NOT get the VALIDATED override", async () => {
+  test("gemini 3 strict tools use toolConfig.functionCallingConfig.mode=VALIDATED", async () => {
+    const withTools = {
+      modelId: "gemini-3.6-flash",
+      stream: false,
+      context: {
+        messages: [{ role: "user", content: "hi" }],
+        systemPrompt: [],
+        tools: [{ name: "bash", description: "run", parameters: { type: "object" }, strict: true }],
+      },
+      options: {},
+    } as unknown as OcxParsedRequest;
+    const req = await createGoogleAdapter(provider).buildRequest(withTools);
+    const env = JSON.parse(req.body);
+    expect(env.request.toolConfig.functionCallingConfig.mode).toBe("VALIDATED");
+  });
+
+  test("gemini 3 non-strict tools keep normal function-calling mode", async () => {
     const withTools = {
       modelId: "gemini-3-pro",
       stream: false,
