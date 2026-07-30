@@ -198,15 +198,19 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
         }),
       };
     };
-    // Per-account rate limits: Anthropic reports usage per credential, so every logged-in
-    // account can show its own 5h/weekly bars (not just the active one). Opt-in via ?quota=1
-    // so the plain account list stays a cheap local read; ?refresh=1 bypasses the TTL.
+    // Per-account rate limits: Anthropic and Google Antigravity report usage per
+    // credential, so every logged-in account can show its own bars (not just the
+    // active one). Opt-in via ?quota=1 so the plain account list stays a cheap
+    // local read; ?refresh=1 bypasses the TTL (still joins inflight + writes cache).
     const wantQuota = url.searchParams.get("quota") === "1" && supportsPerAccountQuota(provider);
     if (!wantQuota) return jsonResponse(projectAccounts());
     const forceRefresh = url.searchParams.get("refresh") === "1";
     // Probing may refresh the active credential and mark needsReauth — project health
     // from the post-probe store so the response is not stale.
-    const rows = await fetchProviderAccountQuotas(provider, forceRefresh);
+    const providerConfig = Object.hasOwn(config.providers, provider) ? config.providers[provider] : undefined;
+    const rows = await fetchProviderAccountQuotas(provider, forceRefresh, {
+      ...(providerConfig?.baseUrl ? { baseUrl: providerConfig.baseUrl } : {}),
+    });
     const byId = new Map(rows.map(row => [row.accountId, row]));
     const projected = projectAccounts();
     return jsonResponse({

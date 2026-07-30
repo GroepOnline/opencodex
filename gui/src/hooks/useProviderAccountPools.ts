@@ -89,8 +89,9 @@ export function useProviderAccountPools(deps: {
         setAccountSets(current => ({ ...current, [provider]: { activeAccountId: data.activeAccountId ?? null, accounts: data.accounts ?? [] } }));
         setAccountLoadStates(current => ({ ...current, [provider]: "ready" }));
 
-        // Enrich with per-account rate limits asynchronously (Anthropic reports usage
-        // per credential). Failures leave the already-ready account rows untouched.
+        // Enrich with per-account rate limits asynchronously (Anthropic and
+        // Google Antigravity report usage per credential). Failures leave the
+        // already-ready account rows untouched.
         void (async () => {
           try {
             const quotaRes = await fetch(`${apiBase}/api/oauth/accounts?provider=${encodeURIComponent(provider)}&quota=1`);

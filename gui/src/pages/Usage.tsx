@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n, type TFn, type Locale } from "../i18n/shared";
 import { formatTokens } from "../format-tokens";
 import { formatEstimatedUsdValue as formatUsdEstimate } from "../intl-formatters";
-import { readSessionListCache, writeSessionListCache } from "../session-list-cache";
 import { EmptyState, Notice } from "../ui";
 import { modelLabel } from "../model-display";
 
@@ -28,6 +27,11 @@ interface UsageSummaryTotals {
   pricedRequests?: number;
   unpricedRequests?: number;
   unmeteredRequests?: number;
+  p95LatencyMs?: number;
+  p95TtftMs?: number;
+  cacheReadRatio?: number;
+  ratio429?: number;
+  ratio502?: number;
 }
 
 interface UsageDay {
@@ -267,9 +271,11 @@ function UsageSummaryCards({
   locale: Locale;
   t: TFn;
 }) {
+  const titleId = "usage-proxy-title";
   return (
-    <>
-    <div className="usage-cards usage-cards-3x2" role="group" aria-label={t("usage.title")}>
+    <section className="panel" style={{ marginTop: 0 }} aria-labelledby={titleId}>
+      <h3 id={titleId} className="panel-title">{t("usage.section.proxyUsage")}</h3>
+    <div className="usage-cards usage-cards-3x2" role="group" aria-label={t("usage.section.proxyUsage")}>
       <div className="stat"><div className="muted">{t("usage.card.requests")}</div><div className="stat-value">{summary.requests}</div></div>
       <div className="stat"><div className="muted">{t("usage.card.measured")}</div><div className="stat-value">{summary.measuredRequests}</div></div>
       <div className="stat"><div className="muted">{t("usage.card.totalTokens")}</div><div className="stat-value">{formatTokens(summary.totalTokens, locale)}</div></div>
@@ -299,7 +305,45 @@ function UsageSummaryCards({
           )}
         </div>
       )}
-    </>
+    </section>
+  );
+}
+
+function UsageQualityPanel({
+  summary,
+  t,
+}: {
+  summary: UsageSummaryTotals;
+  t: TFn;
+}) {
+  const titleId = "usage-quality-title";
+  return (
+    <section className="panel" style={{ marginTop: 16 }} aria-labelledby={titleId}>
+      <h3 id={titleId} className="panel-title">{t("usage.section.quality")}</h3>
+      <div className="usage-cards usage-cards-3x2" role="group" aria-label={t("usage.section.quality")}>
+        <div className="stat">
+          <div className="muted">{t("usage.quality.p95Latency")}</div>
+          <div className="stat-value mono">{summary.p95LatencyMs !== undefined ? `${summary.p95LatencyMs}ms` : "\u2014"}</div>
+        </div>
+        <div className="stat">
+          <div className="muted">{t("usage.quality.p95Ttft")}</div>
+          <div className="stat-value mono">{summary.p95TtftMs !== undefined ? `${summary.p95TtftMs}ms` : "\u2014"}</div>
+        </div>
+        <div className="stat">
+          <div className="muted">{t("usage.quality.cacheReadRatio")}</div>
+          <div className="stat-value">{formatPct(summary.cacheReadRatio ?? 0)}</div>
+        </div>
+        <div className="stat">
+          <div className="muted">{t("usage.quality.ratio429")}</div>
+          <div className="stat-value">{formatPct(summary.ratio429 ?? 0)}</div>
+        </div>
+        <div className="stat">
+          <div className="muted">{t("usage.quality.ratio502")}</div>
+          <div className="stat-value">{formatPct(summary.ratio502 ?? 0)}</div>
+        </div>
+      </div>
+      <p className="muted text-control" style={{ marginTop: 12 }}>{t("usage.quality.note")}</p>
+    </section>
   );
 }
 
@@ -320,10 +364,7 @@ function WeekDayBars({ weekBars, locale, t }: { weekBars: UsageDay[]; locale: Lo
             onMouseLeave={() => setHoverDay(current => (current === day.date ? null : current))}
           >
             <div className="daybar-track">
-              <div
-                className="daybar-stack"
-                style={{ ["--daybar-scale" as string]: String(Math.max(0, Math.min(1, percentage / 100))) }}
-              >
+              <div className="daybar-stack" style={{ height: `${percentage}%` }}>
                 {day.models.map(model => (
                   <div
                     key={`${model.provider}/${model.model}`}
@@ -443,37 +484,18 @@ function UsageHeatmapPanel({
   );
 }
 
-function UsageWorkspaceSection({
-  title,
-  titleId,
-  children,
-}: {
-  title: string;
-  titleId: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="usw-section" aria-labelledby={titleId}>
-      <h3 id={titleId} className="h-section">{title}</h3>
-      {children}
-    </section>
-  );
-}
-
 function UsageModelsTable({
   models,
   modelQuery,
   onModelQuery,
   locale,
   t,
-  workspace = false,
 }: {
   models: UsageModel[];
   modelQuery: string;
   onModelQuery: (query: string) => void;
   locale: Locale;
   t: TFn;
-  workspace?: boolean;
 }) {
   const searchLabel = t("usage.search.models");
   const sectionLabel = t("usage.section.models");
@@ -516,15 +538,6 @@ function UsageModelsTable({
     </div>
   );
 
-  if (workspace) {
-    return (
-      <UsageWorkspaceSection title={sectionLabel} titleId={titleId}>
-        <div className="usw-section-toolbar">{searchInput}</div>
-        {table}
-      </UsageWorkspaceSection>
-    );
-  }
-
   return (
     <section className="panel" style={{ marginTop: 16 }} aria-labelledby={titleId}>
       <div className="panel-head">
@@ -540,12 +553,10 @@ function UsageProvidersTable({
   providers,
   locale,
   t,
-  workspace = false,
 }: {
   providers: UsageProvider[];
   locale: Locale;
   t: TFn;
-  workspace?: boolean;
 }) {
   const sectionLabel = t("usage.section.providers");
   const titleId = "usage-providers-title";
@@ -576,14 +587,6 @@ function UsageProvidersTable({
     </div>
   );
 
-  if (workspace) {
-    return (
-      <UsageWorkspaceSection title={sectionLabel} titleId={titleId}>
-        {table}
-      </UsageWorkspaceSection>
-    );
-  }
-
   return (
     <section className="panel" style={{ marginTop: 16 }} aria-labelledby={titleId}>
       <h3 id={titleId} className="panel-title">{sectionLabel}</h3>
@@ -595,11 +598,9 @@ function UsageProvidersTable({
 function UsageCoveragePanel({
   summary,
   t,
-  workspace = false,
 }: {
   summary: UsageSummaryTotals;
   t: TFn;
-  workspace?: boolean;
 }) {
   const sectionLabel = t("usage.section.coverage");
   const titleId = "usage-coverage-title";
@@ -616,14 +617,6 @@ function UsageCoveragePanel({
     </>
   );
 
-  if (workspace) {
-    return (
-      <UsageWorkspaceSection title={sectionLabel} titleId={titleId}>
-        {body}
-      </UsageWorkspaceSection>
-    );
-  }
-
   return (
     <section className="panel" style={{ marginTop: 16 }} aria-labelledby={titleId}>
       <h3 id={titleId} className="panel-title">{sectionLabel}</h3>
@@ -632,170 +625,29 @@ function UsageCoveragePanel({
   );
 }
 
-/**
- * Workspace layout for Usage: left rail picks one report section so Overview /
- * Models / Providers / Coverage do not stack into a long scroll.
- */
-function UsageWorkspaceBody({
-  data,
-  loading,
-  heatmap,
-  weekBars,
-  activeDays,
-  filteredModels,
-  modelQuery,
-  onModelQuery,
-  sortedProviders,
-  range,
-  selectedSection,
-  onSelectSection,
-  locale,
-  t,
-}: {
-  data: UsageResponse | null;
-  loading: boolean;
-  heatmap: ReturnType<typeof buildHeatmap>;
-  weekBars: UsageDay[];
-  activeDays: number;
-  filteredModels: UsageModel[];
-  modelQuery: string;
-  onModelQuery: (query: string) => void;
-  sortedProviders: UsageProvider[];
-  range: Range;
-  selectedSection: string;
-  onSelectSection: (id: string) => void;
-  locale: Locale;
-  t: TFn;
-}) {
-  const empty = !!data && data.summary.requests === 0;
-  const sections = [
-    {
-      id: "overview",
-      label: t("usage.section.overview"),
-      meta: data ? `${data.summary.requests}` : "—",
-      body: data ? (
-        <>
-          <UsageSummaryCards summary={data.summary} activeDays={activeDays} locale={locale} t={t} />
-          <UsageHeatmapPanel range={range} heatmap={heatmap} weekBars={weekBars} locale={locale} t={t} />
-        </>
-      ) : null,
-    },
-    {
-      id: "models",
-      label: t("usage.section.models"),
-      meta: data ? `${data.models.length}` : "—",
-      body: data
-        ? <UsageModelsTable models={filteredModels} modelQuery={modelQuery} onModelQuery={onModelQuery} locale={locale} t={t} workspace />
-        : null,
-    },
-    {
-      id: "providers",
-      label: t("usage.section.providers"),
-      meta: data ? `${data.providers.length}` : "—",
-      body: data
-        ? <UsageProvidersTable providers={sortedProviders} locale={locale} t={t} workspace />
-        : null,
-    },
-    {
-      id: "coverage",
-      label: t("usage.section.coverage"),
-      meta: data ? formatPct(data.summary.coverageRatio) : "—",
-      body: data ? <UsageCoveragePanel summary={data.summary} t={t} workspace /> : null,
-    },
-  ];
-  const selected = sections.find(s => s.id === selectedSection) ?? sections[0];
-  const mainBody = loading && !data
-    ? <EmptyState title={t("usage.loading")} />
-    : empty
-      ? <EmptyState title={t("usage.empty")} />
-      : selected.body;
-
-  return (
-    <div className="usage-workspace-shell">
-      <div className="usage-workspace-root">
-        <aside className="usage-workspace-rail" aria-label={t("usage.workspace.sections")}>
-          <div className="usage-workspace-rail-header">
-            <span className="usage-workspace-rail-title">{t("usage.title")}</span>
-          </div>
-          <div className="usage-workspace-rail-list">
-            {sections.map(s => (
-              <button
-                key={s.id}
-                type="button"
-                className={`usage-workspace-rail-row${selectedSection === s.id ? " usage-workspace-rail-row--selected" : ""}`}
-                onClick={() => onSelectSection(s.id)}
-                aria-current={selectedSection === s.id ? "true" : undefined}
-              >
-                <span className="usage-workspace-rail-name">{s.label}</span>
-                <span className="usage-workspace-rail-meta">{s.meta}</span>
-              </button>
-            ))}
-          </div>
-        </aside>
-        <section className="usage-workspace-main" aria-label={t("usage.workspace.report")}>
-          <div className="usw-body">{mainBody}</div>
-        </section>
-      </div>
-    </div>
-  );
-}
-
-/** Held usage payloads so provider/surface tab switches skip a cold ~5s refetch. */
-const usageMemoryCache = new Map<string, UsageResponse>();
-
-function usageCacheKey(apiBase: string, range: Range, surface: UsageSurface): string {
-  return `ocx.usage.v1:${apiBase}:${range}:${surface}`;
-}
-
-function readHeldUsage(apiBase: string, range: Range, surface: UsageSurface): UsageResponse | null {
-  const key = usageCacheKey(apiBase, range, surface);
-  return usageMemoryCache.get(key) ?? readSessionListCache<UsageResponse>(key);
-}
-
-function writeHeldUsage(apiBase: string, range: Range, surface: UsageSurface, value: UsageResponse) {
-  const key = usageCacheKey(apiBase, range, surface);
-  usageMemoryCache.set(key, value);
-  writeSessionListCache(key, value);
-}
-
 export default function Usage({ apiBase }: { apiBase: string }) {
   const { t, locale } = useI18n();
   const [range, setRange] = useState<Range>("30d");
   const [surface, setSurface] = useState<UsageSurface>("all");
-  const [data, setData] = useState<UsageResponse | null>(() => readHeldUsage(apiBase, "30d", "all"));
-  const [loading, setLoading] = useState(() => !readHeldUsage(apiBase, "30d", "all"));
+  const [data, setData] = useState<UsageResponse | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modelQuery, setModelQuery] = useState("");
-  const [selectedSection, setSelectedSection] = useState("overview");
   const loadGenerationRef = useRef(0);
 
   const fetchUsage = useCallback(async (nextRange: Range, nextSurface: UsageSurface, signal: AbortSignal) => {
     const generation = ++loadGenerationRef.current;
-    const held = readHeldUsage(apiBase, nextRange, nextSurface);
-    if (held) {
-      // Instant tab switch: show held data and revalidate quietly.
-      setData(held);
-      setLoading(false);
-      setError(null);
-    } else {
-      setLoading(true);
-      setError(null);
-      // Drop mismatched payload so we never paint the wrong surface/range.
-      setData(prev => (prev && prev.range === nextRange && prev.surface === nextSurface ? prev : null));
-    }
+    setLoading(true);
+    setError(null);
     try {
       const res = await fetch(`${apiBase}/api/usage?range=${nextRange}&surface=${nextSurface}`, { signal });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`.trim());
       const json = await res.json() as UsageResponse;
       if (signal.aborted || generation !== loadGenerationRef.current) return;
-      writeHeldUsage(apiBase, nextRange, nextSurface, json);
       setData(json);
-      setError(null);
     } catch (cause) {
       // A stale request (range/apiBase changed, or unmount) must not overwrite newer state.
       if (signal.aborted || generation !== loadGenerationRef.current) return;
-      // Keep held data visible when a background revalidate fails.
-      if (held) return;
       const detail = cause instanceof Error ? cause.message : "";
       setError(detail ? `${t("usage.loadError")} ${detail}` : t("usage.loadError"));
     } finally {
@@ -859,24 +711,20 @@ export default function Usage({ apiBase }: { apiBase: string }) {
             {t("common.retry")}
           </button>
         </Notice>
-      ) : (
-        <UsageWorkspaceBody
-          data={data}
-          loading={loading}
-          heatmap={heatmap}
-          weekBars={weekBars}
-          activeDays={activeDays}
-          filteredModels={filteredModels}
-          modelQuery={modelQuery}
-          onModelQuery={setModelQuery}
-          sortedProviders={sortedProviders}
-          range={range}
-          selectedSection={selectedSection}
-          onSelectSection={setSelectedSection}
-          locale={locale}
-          t={t}
-        />
-      )}
+      ) : loading && !data ? (
+        <EmptyState title={t("usage.loading")} />
+      ) : data?.summary.requests === 0 ? (
+        <EmptyState title={t("usage.empty")} />
+      ) : data ? (
+        <>
+          <UsageSummaryCards summary={data.summary} activeDays={activeDays} locale={locale} t={t} />
+          <UsageQualityPanel summary={data.summary} t={t} />
+          <UsageHeatmapPanel range={range} heatmap={heatmap} weekBars={weekBars} locale={locale} t={t} />
+          <UsageModelsTable models={filteredModels} modelQuery={modelQuery} onModelQuery={setModelQuery} locale={locale} t={t} />
+          <UsageProvidersTable providers={sortedProviders} locale={locale} t={t} />
+          <UsageCoveragePanel summary={data.summary} t={t} />
+        </>
+      ) : null}
     </>
   );
 }
