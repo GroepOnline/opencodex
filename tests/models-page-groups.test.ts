@@ -28,6 +28,22 @@ describe("Models page provider grouping", () => {
     expect(groups[1]?.discovery).toEqual({ status: "failed", reason: "http", httpStatus: 401 });
   });
 
+  test("passes through client hide reason for admin Models badges", () => {
+    const groups = buildProviderModelGroups<Row>(
+      [{ provider: "dead", id: "m1" }],
+      [{
+        name: "dead",
+        liveModels: true,
+        clientHideReason: "discovery_failed",
+        clientHideReasonLabel: "Model discovery failed repeatedly",
+        clientHidden: true,
+      }],
+    );
+    expect(groups[0]?.clientHideReason).toBe("discovery_failed");
+    expect(groups[0]?.clientHidden).toBe(true);
+    expect(groups[0]?.clientHideReasonLabel).toContain("discovery");
+  });
+
   test("excludes disabled and empty forward providers but preserves row-backed groups", () => {
     const groups = buildProviderModelGroups<Row>(
       [

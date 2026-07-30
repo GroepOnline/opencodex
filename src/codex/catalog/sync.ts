@@ -37,6 +37,7 @@ import { applyNativeVisibility, disabledNativeSlugs, isUnsupportedOpenAiNativeSl
 import { loadCatalogForSync, resetBundledCatalogCacheForTests } from "./bundled";
 import { applyCatalogModelMetadata, applyReasoningLevels, catalogEntryEfforts, clampCatalogModelsToCodexSupport, ensureGpt56ReasoningLevels, ensureUltraReasoningLevel, isGpt56NativeSlug } from "./effort";
 import { clearGatherRoutedModelsInflight, filterCatalogVisibleModels, gatherRoutedModels, lastDropWarnSignature } from "./provider-fetch";
+import { filterClientCatalogModels } from "../catalog-visibility";
 import { clearLastComboCatalogOmissions, comboCatalogWarningSignatures, comboMasqueradeCollisionWarnings, exactComboCatalogSlugs, openAiApiCollisionWarnings, resolveSlugAliasCollisions, slugAliasCollisionWarnings, warnComboMasqueradeCollisionOnce } from "./aggregation";
 import type { ComboCatalogOmission } from "./aggregation";
 
@@ -481,9 +482,11 @@ export async function syncCatalogModels(config: OcxConfig): Promise<{
     ensureCatalogBackup(catalogPath, catalog);
   } catch { /* backup best-effort */ }
 
-  // Hide disabled models from Codex, then feature the chosen subagent models (native OR routed)
-  // by giving them the lowest priority — see buildCatalogEntries for why priority, not array order.
-  const enabledGo = filterCatalogVisibleModels(goModels, config);
+  // Hide disabled models from Codex, then optionally omit provider-level death from the on-disk
+  // new-session picker (admin `/api/models` keeps last-good). Feature the chosen subagent models
+  // (native OR routed) by giving them the lowest priority — see buildCatalogEntries for why
+  // priority, not array order.
+  const enabledGo = filterClientCatalogModels(filterCatalogVisibleModels(goModels, config), config);
   const featured = config.subagentModels ?? [];
   const orderedGoModels = orderForSubagents(enabledGo, featured); // stable tie-break among equal priorities
   const multiAgentMode: MultiAgentMode = config.multiAgentMode === "v1" || config.multiAgentMode === "v2" ? config.multiAgentMode : "default";

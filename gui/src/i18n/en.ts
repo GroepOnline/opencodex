@@ -447,6 +447,8 @@ export const en = {
   "models.discoveryFailedNetwork": "Model discovery failed due to a network error.",
   "models.discoveryFailedProvider": "The provider reported a model discovery error.",
   "models.discoveryFailedGeneric": "Model discovery failed.",
+  "models.clientHiddenBadge": "Hidden from clients",
+  "models.clientDegradedBadge": "Unavailable for new sessions",
   "models.openProviderSettings": "Open provider settings",
   "models.loading": "Loading…",
   "models.search": "Search models…",

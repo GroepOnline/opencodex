@@ -65,6 +65,8 @@ differing backup and rewrites known legacy namespaced selected ids to bare ids.
 | `accountPoolStickyLimit?` | `number` | `1` | Successful new-session binds retained on one round-robin selection before advancing. Range 1–100; only applies when `accountPoolStrategy` is `round-robin`. |
 | `upstreamFailoverThreshold?` | `number` | `3` | Consecutive transient upstream failures before future new sessions fail over to another eligible pool account. Set `0` to disable failure failover. |
 | `modelCacheTtlMs?` | `number` | `300000` | Freshness window for the per-provider `/models` cache (5 min). |
+| `hideUnavailableModels?` | `boolean` | `false` | When true, omit models from client `/v1/models` and the Codex new-session picker while the provider is dead (disabled, all OAuth accounts need reauth, or N consecutive discovery failures). Admin Models keeps the full last-good catalog with a reason. Single-account cooldown never hides. Active sessions keep routing. |
+| `hideUnavailableAfterDiscoveryFails?` | `number` | `3` | Consecutive live discovery failures before client hide when `hideUnavailableModels` is on. Transient failures below this threshold keep serving last-good in the picker. |
 | `cacheRetention?` | `"none" \| "short" \| "long"` | `"short"` | Anthropic prompt-cache policy: disabled, 5-minute ephemeral, or 1-hour extended. |
 | `webSearchSidecar?` | `OcxWebSearchSidecarConfig` | on | Web-search sidecar options (see below). |
 | `visionSidecar?` | `OcxVisionSidecarConfig` | on | Vision sidecar options (see below). |

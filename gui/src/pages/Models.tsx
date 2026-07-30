@@ -643,7 +643,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
 
 
   const renderGroup = (group: ProviderModelGroup<ModelRow>) => {
-    const { provider, rows, native, liveModels, discovery } = group;
+    const { provider, rows, native, liveModels, discovery, clientHideReason, clientHideReasonLabel, clientHidden } = group;
     const isCollapsed = collapsed.has(provider);
     // Final visibility, not just the disable flag: a model is visible to Codex only when the
     // provider allowlist admits it AND it is not disabled. Reading `disabled` alone made the
@@ -703,6 +703,15 @@ export default function Models({ apiBase }: { apiBase: string }) {
              title={discoveryFailureLabel(t, discoveryFailure)}
            >
              {t("models.discoveryFailedBadge")}
+           </span>
+         )}
+         {clientHideReason && (
+           <span
+             className="badge badge-amber"
+             role="status"
+             title={clientHideReasonLabel ?? t("models.clientDegradedBadge")}
+           >
+             {clientHidden ? t("models.clientHiddenBadge") : t("models.clientDegradedBadge")}
            </span>
          )}
           <span className="muted mono text-label">{t("models.active", { active: activeCount, total: rows.length })}</span>

@@ -40,6 +40,11 @@ import { codexAccountNamespaceProviderCollisionError } from "../../codex/account
 import { clearThreadAccountMap } from "../../codex/routing";
 import { primeCodexPoolQuotas } from "../../codex/auth-api";
 import { getProviderDiscoveryStatus } from "../../codex/model-cache";
+import {
+  clientHideReasonLabel,
+  hideUnavailableModelsEnabled,
+  providerClientHideReason,
+} from "../../codex/catalog-visibility";
 import { DEFAULT_PROVIDER_CONTEXT_CAP, globalContextCapValue, providerContextCap, providerContextCaps, setAllProviderContextCaps, setGlobalContextCapValue, setProviderContextCap } from "../../providers/context-cap";
 import { resolveCodexHomeDir } from "../../codex/home";
 import { readUsageEntries } from "../../usage/log";
@@ -77,18 +82,27 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
   }
 
   if (url.pathname === "/api/providers" && req.method === "GET") {
-    return jsonResponse(Object.entries(config.providers).map(([name, p]) => ({
-      name, adapter: p.adapter, baseUrl: publicProviderBaseUrl(p.baseUrl), defaultModel: p.defaultModel,
-      hasApiKey: !!p.apiKey,
-      allowPrivateNetwork: p.allowPrivateNetwork === true,
-      liveModels: p.liveModels !== false,
-      models: p.models ?? [],
-      authMode: p.authMode,
-      apiKeyTransport: p.apiKeyTransport,
-      disabled: p.disabled === true,
-      codexAccountMode: providerCodexAccountMode(name, p),
-      discovery: p.liveModels === false ? undefined : getProviderDiscoveryStatus(name),
-    })));
+    const hideEnabled = hideUnavailableModelsEnabled(config);
+    return jsonResponse(Object.entries(config.providers).map(([name, p]) => {
+      const hideReason = providerClientHideReason(name, config);
+      return {
+        name, adapter: p.adapter, baseUrl: publicProviderBaseUrl(p.baseUrl), defaultModel: p.defaultModel,
+        hasApiKey: !!p.apiKey,
+        allowPrivateNetwork: p.allowPrivateNetwork === true,
+        liveModels: p.liveModels !== false,
+        models: p.models ?? [],
+        authMode: p.authMode,
+        apiKeyTransport: p.apiKeyTransport,
+        disabled: p.disabled === true,
+        codexAccountMode: providerCodexAccountMode(name, p),
+        discovery: p.liveModels === false ? undefined : getProviderDiscoveryStatus(name),
+        ...(hideReason ? {
+          clientHideReason: hideReason,
+          clientHideReasonLabel: clientHideReasonLabel(hideReason),
+          clientHidden: hideEnabled,
+        } : {}),
+      };
+    }));
   }
 
   // Add (or overwrite) a single provider. Merges into the live in-memory config and

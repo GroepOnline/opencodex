@@ -673,6 +673,18 @@ export interface OcxConfig {
   syncResumeHistory?: boolean;
   /** Freshness window (ms) for the per-provider live `/models` cache. Defaults to 5 min. */
   modelCacheTtlMs?: number;
+  /**
+   * When true, omit models from client `/v1/models` and the Codex new-session picker while the
+   * provider is dead (disabled, all OAuth accounts need reauth, or N consecutive discovery fails).
+   * Default false. Admin Models tab always keeps the full last-good catalog with a reason.
+   * Single-account cooldown never hides. Active/affinity sessions keep routing to last-good.
+   */
+  hideUnavailableModels?: boolean;
+  /**
+   * Consecutive live discovery failures before client hide when `hideUnavailableModels` is on.
+   * Default 3. Transient failures below this threshold keep serving last-good in the picker.
+   */
+  hideUnavailableAfterDiscoveryFails?: number;
   /** Anthropic prompt-cache retention: "short" = 5-min ephemeral (default), "long" = 1-hour extended, "none" = disabled. */
   cacheRetention?: "none" | "short" | "long";
   /** Web-search sidecar: route web_search for non-OpenAI models through a gpt-mini via ChatGPT passthrough. */

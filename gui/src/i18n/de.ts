@@ -433,6 +433,8 @@ export const de: Record<TKey, string> = {
   "models.discoveryFailedNetwork": "Die Modellerkennung ist an einem Netzwerkfehler gescheitert.",
   "models.discoveryFailedProvider": "Der Anbieter meldete einen Fehler bei der Modellerkennung.",
   "models.discoveryFailedGeneric": "Die Modellerkennung ist fehlgeschlagen.",
+  "models.clientHiddenBadge": "Für Clients ausgeblendet",
+  "models.clientDegradedBadge": "Für neue Sitzungen nicht verfügbar",
   "models.openProviderSettings": "Anbietereinstellungen öffnen",
   "models.loading": "Lädt…",
   "models.search": "Modelle suchen…",

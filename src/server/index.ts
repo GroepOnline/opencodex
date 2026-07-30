@@ -406,9 +406,11 @@ export function startServer(port?: number) {
           return withCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"), req, config);
         }
         const goModels = await fetchAllModels(config);
-        const { applyNativeVisibility, buildCatalogEntries, disabledNativeSlugs, exactComboCatalogSlugs, loadCatalogTemplate, nativeOpenAiSlugs, orderForSubagents, filterCatalogVisibleModels, uniqueCatalogModelsForRawPublicList, visibleNativeSlugs } = await import("../codex/catalog");
+        const { applyNativeVisibility, buildCatalogEntries, disabledNativeSlugs, exactComboCatalogSlugs, loadCatalogTemplate, nativeOpenAiSlugs, orderForSubagents, filterCatalogVisibleModels, filterClientCatalogModels, uniqueCatalogModelsForRawPublicList, visibleNativeSlugs } = await import("../codex/catalog");
         const nativeSlugs = nativeOpenAiSlugs();
-        const goEnabled = filterCatalogVisibleModels(goModels, config);
+        // Client `/v1/models` + new-session pickers optionally hide provider-level death; admin
+        // `/api/models` keeps the full last-good catalog (see catalog-visibility.ts).
+        const goEnabled = filterClientCatalogModels(filterCatalogVisibleModels(goModels, config), config);
         const goOrdered = orderForSubagents(goEnabled, config.subagentModels);
         // Claude Code / Claude Desktop gateway model discovery (GET /v1/models with
         // Anthropic-style headers; 003 G1-G8 + devlog 131). Entries use the official

@@ -696,6 +696,10 @@ const configSchema = z.object({
   // parse: a hand-edited typo must never trip the backup-and-defaults repair
   // path below and wipe providers/pool accounts. Warning emitted in loadConfig.
   streamMode: z.enum(["auto", "legacy-tee", "eager-relay"]).optional().catch(undefined),
+  /** Opt-in client picker hide for provider-level death. Default false (passthrough / unset). */
+  hideUnavailableModels: z.boolean().optional(),
+  /** Consecutive discovery fails before client hide. Default 3 when hide is enabled. */
+  hideUnavailableAfterDiscoveryFails: z.number().int().min(1).optional(),
 }).passthrough().superRefine((config, ctx) => {
   const claudeCode = (config as { claudeCode?: unknown }).claudeCode;
   if (claudeCode !== undefined && (!claudeCode || typeof claudeCode !== "object" || Array.isArray(claudeCode))) {

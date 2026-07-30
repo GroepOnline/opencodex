@@ -414,6 +414,8 @@ export const ja: Record<TKey, string> = {
   "models.discoveryFailedNetwork": "ネットワークエラーによりモデル検出に失敗しました。",
   "models.discoveryFailedProvider": "プロバイダーがモデル検出エラーを報告しました。",
   "models.discoveryFailedGeneric": "モデル検出に失敗しました。",
+  "models.clientHiddenBadge": "クライアントから非表示",
+  "models.clientDegradedBadge": "新規セッションでは利用不可",
   "models.openProviderSettings": "プロバイダー設定を開く",
   "models.loading": "読み込み中…",
   "models.search": "モデルを検索…",
