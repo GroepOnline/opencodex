@@ -24,6 +24,38 @@ function errorCode(value: unknown): string {
 }
 
 /**
+ * Property used to carry an upstream `Retry-After` alongside a Cursor turn failure.
+ *
+ * The value is a transport fact that the error message cannot express: Connect sends quota backoff
+ * in a response header, while the failure itself arrives later as an end-stream error frame. The
+ * account pool needs both to cool an account down for the interval the server asked for.
+ */
+const CURSOR_RETRY_AFTER_KEY = "ocxCursorRetryAfter";
+
+/** Attach an upstream `Retry-After` to a Cursor error, leaving an existing value untouched. */
+export function attachCursorRetryAfter<T>(error: T, retryAfter: string | null | undefined): T {
+  if (typeof error !== "object" || !error) return error;
+  if (typeof retryAfter !== "string" || retryAfter.trim() === "") return error;
+  const target = error as Record<string, unknown>;
+  if (typeof target[CURSOR_RETRY_AFTER_KEY] === "string") return error;
+  // Non-enumerable so the value never leaks into log/JSON serialization of the error.
+  Object.defineProperty(target, CURSOR_RETRY_AFTER_KEY, {
+    value: retryAfter.trim(),
+    enumerable: false,
+    configurable: true,
+    writable: true,
+  });
+  return error;
+}
+
+/** The upstream `Retry-After` previously attached to a Cursor error, when present. */
+export function cursorRetryAfterFromError(error: unknown): string | null {
+  if (typeof error !== "object" || !error) return null;
+  const value = (error as Record<string, unknown>)[CURSOR_RETRY_AFTER_KEY];
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
+/**
  * True when Cursor intentionally cancelled the HTTP/2 stream after a client-tool suspend.
  * These are expected between multi-turn Responses bridge cycles, not upstream failures.
  */

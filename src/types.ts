@@ -294,6 +294,12 @@ export type AdapterEvent =
       errorType?: string;
       code?: string;
       retryable?: boolean;
+      /**
+       * Upstream `Retry-After` for this failure when the provider sent one. Account pools use it to
+       * cool the failing account down for the interval the server asked for; the message text cannot
+       * carry it, so an adapter that has the header must surface it here.
+       */
+      retryAfter?: string;
     };
 
 /**
@@ -742,6 +748,43 @@ export interface OcxConfig {
     strategy?: OcxAccountPoolRotationStrategy;
     /** Successful new-session binds retained on one round-robin selection. Default 1; range 1..100. */
     stickyLimit?: number;
+  };
+  /**
+   * Opt-in Cursor OAuth account pool. Default OFF.
+   * Rotates only after an explicit pre-output 429, RESOURCE_EXHAUSTED, or hard-quota
+   * failure. Transport errors and client cancellation never change account health.
+   */
+  cursorAccountPool?: {
+    enabled?: boolean;
+    /** Usage % threshold for new-session auto-pick. Default 80. 0 = disabled (affinity/active only). */
+    autoSwitchThreshold?: number;
+    /** New-session rotation strategy. Default quota. */
+    strategy?: OcxAccountPoolRotationStrategy;
+    /** Successful new-session binds retained on one round-robin selection. Default 1; range 1..100. */
+    stickyLimit?: number;
+  };
+  /**
+   * Fork alias for Codex pool selection on new (non-affined) conversations.
+   * Prefer `accountPoolStrategy`. When `accountPoolStrategy` is unset,
+   * `"round-robin"` here maps to `accountPoolStrategy: "round-robin"`;
+   * `"failover"` / unset keep the default quota sticky path.
+   */
+  codexRotationMode?: "failover" | "round-robin";
+  /**
+   * Jittered inter-request pacer for outbound Codex pool calls. Off by default.
+   * When enabled, each pool account waits a randomized delay in [minMs, maxMs] between consecutive
+   * sends (per-account state, so concurrent accounts desync instead of aligning into a fixed
+   * interval) so a multi-account pool never emits a regular, ban-prone request pattern. Disabled
+   * by default for backward compatibility; single-account setups are unaffected while disabled.
+   */
+  codexRequestPacing?: OcxCodexRequestPacing;
+  /** Token/cost budget thresholds for usage alerts (see src/usage/budgets.ts). */
+  budgets?: {
+    tokenDaily?: number;
+    tokenWeekly?: number;
+    costDailyEur?: number;
+    alertActions?: Array<"log" | "posthog" | "webhook">;
+    webhookUrl?: string;
   };
   /** Virtual `combo/<id>` models spanning concrete provider/model targets (issue #133). */
   combos?: Record<string, OcxComboConfig>;

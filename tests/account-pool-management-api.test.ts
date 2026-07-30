@@ -423,6 +423,55 @@ describe("Anthropic account pool strategy management API", () => {
     }
   });
 
+  test("Cursor pool defaults off and persists independent settings", async () => {
+    const server = startServer(0);
+    try {
+      const initial = await fetch(new URL(
+        "/api/oauth/accounts/pool?provider=cursor",
+        server.url,
+      ));
+      expect(initial.status).toBe(200);
+      expect(await initial.json()).toMatchObject({
+        provider: "cursor",
+        enabled: false,
+        autoSwitchThreshold: 80,
+        strategy: "quota",
+        stickyLimit: 1,
+      });
+
+      const put = await fetch(new URL("/api/oauth/accounts/pool", server.url), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "cursor",
+          enabled: true,
+          autoSwitchThreshold: 60,
+          strategy: "fill-first",
+          stickyLimit: 2,
+        }),
+      });
+      expect(put.status).toBe(200);
+      expect(await put.json()).toMatchObject({
+        provider: "cursor",
+        enabled: true,
+        autoSwitchThreshold: 60,
+        strategy: "fill-first",
+        stickyLimit: 2,
+      });
+
+      const antigravity = await fetch(new URL(
+        "/api/oauth/accounts/pool?provider=google-antigravity",
+        server.url,
+      ));
+      expect(await antigravity.json()).toMatchObject({
+        provider: "google-antigravity",
+        enabled: false,
+      });
+    } finally {
+      await server.stop(true);
+    }
+  });
+
   test("Google Antigravity clear-cooldown removes only requested cooldown", async () => {
     const poolConfig = {
       ...baseConfig(),
