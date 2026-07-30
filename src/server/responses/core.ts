@@ -1012,6 +1012,14 @@ export async function handleComboResponses(
       response = await handleResponses(childRequest, config, childLog, {
         ...options,
         comboAttempt: true,
+        // Each combo target gets its own attempt budget. The shared budget bounds retries
+        // against ONE upstream — transport retries plus account-pool rotation — but a combo
+        // target is a different provider entirely, and the target list plus per-target
+        // cooldowns already bound the fan-out. Sharing a single budget let a leading target's
+        // transient retries (e.g. three 503s) consume it and starve the failover the combo
+        // exists to perform, so the combo returned the first target's error instead of
+        // advancing.
+        attemptBudget: createUpstreamAttemptBudget(),
         deferCodexResetDerivedCooldown,
         // Attempt-relative TTFT is recorded HERE (not via childLog.firstOutputMs — a later
         // Object.assign(logCtx, childLog) would overwrite the request-relative value).
