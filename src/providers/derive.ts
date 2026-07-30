@@ -1,5 +1,6 @@
 import type { CodexAccountMode, OcxProviderConfig } from "../types";
-import { PROVIDER_REGISTRY, providerMatchesRegistryTransport, type ProviderRegistryEntry } from "./registry";
+import { PROVIDER_REGISTRY, type ProviderRegistryEntry } from "./registry";
+import { cloneProviderCompat } from "./compat";
 
 export interface DerivedKeyLoginProvider {
   label: string;
@@ -107,6 +108,7 @@ export function providerConfigSeed(entry: ProviderRegistryEntry): OcxProviderCon
     ...(entry.apiKeyTransport !== undefined ? { apiKeyTransport: entry.apiKeyTransport } : {}),
     authMode: entry.authKind === "local" ? undefined : entry.authKind,
     ...(entry.codexAccountMode ? { codexAccountMode: entry.codexAccountMode } : {}),
+    ...(entry.compat ? { compat: cloneProviderCompat(entry.compat) } : {}),
     ...(entry.keyOptional !== undefined ? { keyOptional: entry.keyOptional } : {}),
     ...(entry.freeTier !== undefined ? { freeTier: entry.freeTier } : {}),
     ...(entry.modelSuffixBracketStrip !== undefined ? { modelSuffixBracketStrip: entry.modelSuffixBracketStrip } : {}),
@@ -223,7 +225,7 @@ export function deriveProviderPresets(): DerivedProviderPreset[] {
 
 export function enrichProviderFromRegistry(name: string, prov: OcxProviderConfig): void {
   const entry = PROVIDER_REGISTRY.find(row => row.id === name);
-  if (!entry || !providerMatchesRegistryTransport(name, prov)) return;
+  if (!entry) return;
   const seed = providerConfigSeed(entry);
   if (prov.apiKeyTransport === undefined && seed.apiKeyTransport !== undefined) prov.apiKeyTransport = seed.apiKeyTransport;
   if (!prov.defaultModel && seed.defaultModel) prov.defaultModel = seed.defaultModel;
@@ -258,6 +260,7 @@ export function enrichProviderFromRegistry(name: string, prov: OcxProviderConfig
   if (prov.freeTier === undefined && seed.freeTier !== undefined) prov.freeTier = seed.freeTier;
   if (prov.modelSuffixBracketStrip === undefined && seed.modelSuffixBracketStrip !== undefined) prov.modelSuffixBracketStrip = seed.modelSuffixBracketStrip;
   if (!prov.headers && seed.headers) prov.headers = { ...seed.headers };
+  if (!prov.compat && seed.compat) prov.compat = cloneProviderCompat(seed.compat);
 }
 
 export function deriveFeaturedProviderIds(): string[] {
