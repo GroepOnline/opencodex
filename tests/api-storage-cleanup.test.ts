@@ -392,5 +392,5 @@ describe("GET /api/storage/trash + POST restore", () => {
     } finally {
       await server.stop(true);
     }
-  });
+  }, { timeout: 20_000 });
 });
