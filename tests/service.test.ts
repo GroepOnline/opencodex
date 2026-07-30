@@ -104,6 +104,14 @@ describe("systemd service unit", () => {
     expect(unit).not.toContain('StandardError="append:');
   });
 
+  test("restarts the unit always (not only on failure)", () => {
+    const unit = buildUnit();
+
+    expect(unit).toContain("Restart=always");
+    expect(unit).toContain("RestartSec=5");
+    expect(unit).not.toContain("Restart=on-failure");
+  });
+
   test("preserves custom Codex and OpenCodex homes", () => {
     const oldCodexHome = process.env.CODEX_HOME;
     const oldOpenCodexHome = process.env.OPENCODEX_HOME;
