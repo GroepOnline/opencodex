@@ -50,13 +50,38 @@ function findCompetingTestRunners(selfPid: number): number[] {
       stderr: "ignore",
     });
     if (!found.success) return [];
-    return new TextDecoder().decode(found.stdout)
+    const candidates = new TextDecoder().decode(found.stdout)
       .split("\n")
       .map(line => Number.parseInt(line.trim(), 10))
       .filter(pid => Number.isInteger(pid) && pid > 0 && pid !== selfPid);
+    return keepBunExecutables(candidates);
   } catch {
     return [];
   }
+}
+
+/**
+ * `pgrep -f` matches the whole command line, so a shell, `make` target, or CI wrapper
+ * that merely mentions `bun test --isolate` looks like a second runner. Only a process
+ * whose executable really is Bun can contend for the CPU the way the warning claims,
+ * so drop everything else rather than blaming an innocent parent shell.
+ */
+function keepBunExecutables(pids: number[]): number[] {
+  if (pids.length === 0) return [];
+  const listed = Bun.spawnSync(["ps", "-o", "pid=,comm=", "-p", pids.join(",")], {
+    stdout: "pipe",
+    stderr: "ignore",
+  });
+  if (!listed.success) return [];
+  const bunPids = new Set<number>();
+  for (const line of new TextDecoder().decode(listed.stdout).split("\n")) {
+    const match = /^\s*(\d+)\s+(\S.*?)\s*$/.exec(line);
+    if (!match) continue;
+    const pid = Number.parseInt(match[1]!, 10);
+    const executable = match[2]!.split(/[/\\]/).pop() ?? "";
+    if (/^bun(\b|[-_.])/.test(executable)) bunPids.add(pid);
+  }
+  return pids.filter(pid => bunPids.has(pid));
 }
 
 if (import.meta.main) {
@@ -81,8 +106,9 @@ if (import.meta.main) {
         stderr: "inherit",
       },
     );
-    const elapsedSeconds = Math.round((Date.now() - startedAt) / 1000);
-    if (requestedTests.length === 0 && elapsedSeconds > 600) {
+    const elapsedMs = Date.now() - startedAt;
+    const elapsedSeconds = Math.round(elapsedMs / 1000);
+    if (requestedTests.length === 0 && elapsedMs > 600_000) {
       console.warn(
         `[test] the suite took ${elapsedSeconds}s; it normally runs in about 210s on an idle machine. `
         + "Check for another test runner, a busy CPU, or a test that started polling something real.",
