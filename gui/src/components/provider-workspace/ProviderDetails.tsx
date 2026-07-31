@@ -262,6 +262,7 @@ export default function ProviderDetails({
             availableModels={availableModels}
             hasLiveModels={hasLiveModels}
             selectedModels={selectedModels}
+            modelUsage={modelUsage}
             modelsLoading={modelsLoading}
             modelsLoadFailed={modelsLoadFailed}
             needsReauth={
