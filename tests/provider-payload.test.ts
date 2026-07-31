@@ -10,9 +10,7 @@ import {
   OpenAiEnableError,
 } from "../gui/src/provider-payload";
 import { en } from "../gui/src/i18n/en";
-import { ko } from "../gui/src/i18n/ko";
-import { de } from "../gui/src/i18n/de";
-import { zh } from "../gui/src/i18n/zh";
+import { nl } from "../gui/src/i18n/nl";
 import { deriveProviderPresets, providerConfigSeed } from "../src/providers/derive";
 import { PROVIDER_REGISTRY } from "../src/providers/registry";
 
@@ -212,7 +210,7 @@ describe("provider dashboard payload", () => {
     const preset = { ...deriveProviderPresets().find(row => row.id === "openai")!, codexAccountMode: mode };
     expect(isReservedCodexForwardPreset(preset)).toBe(true);
     expect(codexPresetDescriptionKey(preset)).toBe(expectedKey);
-    for (const locale of [en, ko, de, zh]) {
+    for (const locale of [en, nl]) {
       expect(locale[expectedKey].trim().length).toBeGreaterThan(0);
       expect(locale[expectedKey]).not.toBe(preset.note);
       expect(locale[expectedKey].toLowerCase()).not.toContain("api key");

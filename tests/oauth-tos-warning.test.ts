@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { localizedCopy } from "./helpers/shipped-locales";
 import {
   oauthTosRisk,
   oauthTosRiskBodyKey,
@@ -64,8 +65,8 @@ describe("oauth ToS warning UI seam", () => {
     expect(warn).not.toContain('?? "elevated"');
   });
 
-  test("i18n locales define oauthTos keys", async () => {
-    const keys = [
+  test("i18n locales define oauthTos keys", () => {
+    const resolved = localizedCopy([
       "oauthTos.highTitle",
       "oauthTos.elevatedTitle",
       "oauthTos.anthropicBody",
@@ -74,12 +75,10 @@ describe("oauth ToS warning UI seam", () => {
       "oauthTos.saferPath",
       "oauthTos.acknowledge",
       "oauthTos.continue",
-    ];
-    for (const locale of ["en", "de", "ko", "zh"]) {
-      const text = await Bun.file(`gui/src/i18n/${locale}.ts`).text();
-      for (const key of keys) {
-        expect(text).toContain(`"${key}"`);
-      }
+    ]);
+    expect(resolved.length).toBeGreaterThan(0);
+    for (const { value } of resolved) {
+      expect(value.trim().length).toBeGreaterThan(0);
     }
   });
 });

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { localizedCopy } from "./helpers/shipped-locales";
 
 describe("Codex auth modal status feedback", () => {
   test("keeps a distinct submitted/waiting state for manual code login", async () => {
@@ -15,20 +16,15 @@ describe("Codex auth modal status feedback", () => {
     expect(waiting).toContain('aria-live="polite"');
   });
 
-  test("defines the new status copy in every shipped GUI locale", async () => {
-    const localePaths = [
-      "gui/src/i18n/en.ts",
-      "gui/src/i18n/de.ts",
-      "gui/src/i18n/ja.ts",
-      "gui/src/i18n/ko.ts",
-      "gui/src/i18n/ru.ts",
-      "gui/src/i18n/zh.ts",
-    ];
-    const locales = await Promise.all(localePaths.map(path => Bun.file(path).text()));
-    for (const source of locales) {
-      expect(source).toContain('"codexAuth.oauthSubmittingCode"');
-      expect(source).toContain('"codexAuth.oauthCodeSubmitted"');
-      expect(source).toContain('"codexAuth.oauthStatusRetrying"');
+  test("defines the new status copy in every shipped GUI locale", () => {
+    const resolved = localizedCopy([
+      "codexAuth.oauthSubmittingCode",
+      "codexAuth.oauthCodeSubmitted",
+      "codexAuth.oauthStatusRetrying",
+    ]);
+    expect(resolved.length).toBeGreaterThan(0);
+    for (const { value } of resolved) {
+      expect(value.trim().length).toBeGreaterThan(0);
     }
   });
 });
