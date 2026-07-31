@@ -1,4 +1,4 @@
-// English — source of truth. Its keys define the TKey type; ko/zh/ja must match (compile-checked).
+// English — source of truth. Its keys define the TKey type; nl overrides a subset (compile-checked).
 // Strings with {cmd} render a <code> chip via <Trans>; {var} are plain interpolations.
 export const en = {
   // sidebar / nav / common
