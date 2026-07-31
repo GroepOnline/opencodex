@@ -196,6 +196,9 @@ test("a failed custom-model lookup recovers through retry without a remount", as
   const posts: string[] = [];
   globalThis.fetch = (async (input, init) => {
     if (!init?.method || init.method === "GET") {
+      // Count only the custom-model lookup: the Models tab also GETs /api/models on mount,
+      // and this case is about the custom-models effect having no remaining retry trigger.
+      if (!String(input).includes("/api/custom-models")) return Response.json([]);
       getCalls += 1;
       if (getCalls === 1) throw new Error("offline");
       return Response.json([]);

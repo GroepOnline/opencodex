@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { localeSource, SHIPPED_LOCALES } from "./helpers/locales";
 
 async function apiKeysSources(): Promise<string> {
   const page = await Bun.file(new URL("../src/pages/ApiKeys.tsx", import.meta.url)).text();
@@ -71,9 +72,8 @@ test("ApiKeys stacked layout keeps endpoint, generate, keys table, and usage pan
 });
 
 test("retired apikeys workspace i18n keys stay removed from every locale", async () => {
-  const locales = ["en", "de", "ja", "ko", "ru", "zh"] as const;
-  for (const locale of locales) {
-    const dict = await Bun.file(new URL(`../src/i18n/${locale}.ts`, import.meta.url)).text();
+  for (const locale of SHIPPED_LOCALES) {
+    const dict = await localeSource(locale);
     expect(dict).not.toContain('"api.workspace.');
     expect(dict).not.toContain('"claude.workspace.');
   }

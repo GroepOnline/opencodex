@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { localeSource, SHIPPED_LOCALES } from "./helpers/locales";
 
 /**
  * WP1 (devlog/_plan/260725_gui_view_consolidation/010_subagents_single.md):
@@ -55,9 +56,9 @@ test("Workspace-only assets and i18n keys are fully withdrawn", async () => {
   const workspaceCss = Bun.file(new URL("../src/styles-subagents-workspace.css", import.meta.url));
   expect(await workspaceCss.exists()).toBe(false);
 
-  // All six locales drop the Workspace-only strings together.
-  for (const locale of ["en", "ko", "ja", "de", "ru", "zh"]) {
-    const src = await Bun.file(new URL(`../src/i18n/${locale}.ts`, import.meta.url)).text();
+  // Every shipped locale drops the Workspace-only strings together.
+  for (const locale of SHIPPED_LOCALES) {
+    const src = await localeSource(locale);
     expect(src).not.toContain("sub.workspace.");
   }
 });
