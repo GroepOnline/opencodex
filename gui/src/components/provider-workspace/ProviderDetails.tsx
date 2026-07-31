@@ -231,9 +231,6 @@ export default function ProviderDetails({
             item={item}
             usageTotals={usageTotals}
             quotaReport={quotaReport}
-            quotaRefreshing={quotaRefreshing}
-            quotaFailed={quotaFailed}
-            onRefreshQuota={onRefreshQuota}
             oauthEmail={oauthEmail}
             onEditSettings={() => switchTab("settings")}
             onViewUsage={() => switchTab("usage")}

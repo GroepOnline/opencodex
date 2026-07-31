@@ -96,16 +96,6 @@ function bcp47(locale: Locale): string {
   switch (locale) {
     case "en":
       return "en-GB";
-    case "de":
-      return "de-DE";
-    case "ko":
-      return "ko-KR";
-    case "zh":
-      return "zh-CN";
-    case "ru":
-      return "ru-RU";
-    case "ja":
-      return "ja-JP";
     case "nl":
       return "nl-NL";
     default: {
