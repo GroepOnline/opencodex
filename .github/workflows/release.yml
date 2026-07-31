@@ -110,29 +110,35 @@ jobs:
         run: |
           set -euo pipefail
 
-          # All releases run from main. Stable versions (no pre-release suffix) get dist-tag "latest".
-          # Pre-release versions (e.g. 1.0.0-alpha.1) get dist-tag "preview".
+          # Release channels are branch-exact: main publishes stable versions with dist-tag
+          # "latest", preview publishes x.y.z-preview.* with dist-tag "preview". Keep this in
+          # sync with scripts/release.ts, which enforces the same branch/version/tag pairing
+          # before dispatching this workflow.
           case "$GITHUB_REF" in
             refs/heads/main)
+              expected_tag="latest"
               if [[ "$RELEASE_VERSION" == *-* ]]; then
-                # Pre-release version — must use "preview" dist-tag
-                if [ "$NPM_DIST_TAG" != "preview" ]; then
-                  echo "::error::Pre-release versions (${RELEASE_VERSION}) must use dist-tag 'preview', got '${NPM_DIST_TAG}'"
-                  exit 1
-                fi
-              else
-                # Stable version — must use "latest" dist-tag
-                if [ "$NPM_DIST_TAG" != "latest" ]; then
-                  echo "::error::Stable releases (${RELEASE_VERSION}) must use dist-tag 'latest', got '${NPM_DIST_TAG}'"
-                  exit 1
-                fi
+                echo "::error::main releases must use a stable semver version; got ${RELEASE_VERSION}"
+                exit 1
+              fi
+              ;;
+            refs/heads/preview)
+              expected_tag="preview"
+              if [[ "$RELEASE_VERSION" != *-preview.* ]]; then
+                echo "::error::preview releases must use a preview prerelease version; got ${RELEASE_VERSION}"
+                exit 1
               fi
               ;;
             *)
-              echo "::error::Release must run from main; got ${GITHUB_REF}"
+              echo "::error::Release must run from main or preview; got ${GITHUB_REF}"
               exit 1
               ;;
           esac
+
+          if [ "$NPM_DIST_TAG" != "$expected_tag" ]; then
+            echo "::error::${GITHUB_REF#refs/heads/} releases must publish with npm dist-tag '${expected_tag}', got '${NPM_DIST_TAG}'"
+            exit 1
+          fi
 
           ci_url="$(
             gh run list \
