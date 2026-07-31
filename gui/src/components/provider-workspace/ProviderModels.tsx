@@ -86,7 +86,7 @@ export default function ProviderModels({
       // Prefer higher-token row if both namespaced and bare collide.
       const prev = map.get(bare);
       if (!prev || row.totalTokens > prev.totalTokens) map.set(bare, row);
-      map.set(key, row);
+      if (key !== bare) map.set(key, row);
     }
     return map;
   }, [modelUsage]);

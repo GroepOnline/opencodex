@@ -1,11 +1,8 @@
 import { createContext, useContext } from "react";
-import { en, type TKey } from "./en";
-import { nl } from "./nl";
+import { DICTS, type Locale, type TKey } from "./dicts";
 
-export type Locale = "en" | "nl";
-export type { TKey };
-
-export const DICTS: Record<Locale, Record<TKey, string>> = { en, nl };
+export type { Locale, TKey };
+export { DICTS };
 
 export const LOCALES: { code: Locale; name: string; htmlLang: string }[] = [
   { code: "nl", name: "Nederlands", htmlLang: "nl" },

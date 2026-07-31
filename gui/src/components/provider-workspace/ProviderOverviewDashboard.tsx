@@ -58,16 +58,6 @@ export default function ProviderOverviewDashboard({
     return out;
   }, [providerCooldowns, t, locale]);
 
-  const attention = useMemo(
-    () => buildAttentionItems(sections, cooldownOverrides),
-    [sections, cooldownOverrides],
-  );
-  const attentionCount = attention.length;
-  const reauthCount = useMemo(
-    () => sections.needsSetup.filter(p => p.activeNeedsReauth).length,
-    [sections],
-  );
-
   const cappedProviders = useMemo(() => {
     const result: Array<{ name: string; entry: ProviderCapCooldown }> = [];
     for (const [name, entry] of Object.entries(providerCooldowns ?? {})) {
@@ -76,6 +66,19 @@ export default function ProviderOverviewDashboard({
     }
     return result.sort((a, b) => a.entry.until - b.entry.until || a.name.localeCompare(b.name));
   }, [providerCooldowns]);
+  const cappedNames = useMemo(() => new Set(cappedProviders.map(row => row.name)), [cappedProviders]);
+
+  // Capped providers get the richer "Usage caps" section below, so keep them out of the
+  // generic attention list instead of listing the same provider twice.
+  const attention = useMemo(
+    () => buildAttentionItems(sections, cooldownOverrides).filter(item => !cappedNames.has(item.name)),
+    [sections, cooldownOverrides, cappedNames],
+  );
+  const attentionCount = attention.length;
+  const reauthCount = useMemo(
+    () => sections.needsSetup.filter(p => p.activeNeedsReauth).length,
+    [sections],
+  );
 
   /* Rate-limit rows: urgency first (highest utilisation), then name */
   const quotaProviders = useMemo(() => {

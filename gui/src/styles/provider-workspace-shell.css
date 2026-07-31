@@ -387,7 +387,7 @@
 .pws-cap-cooldown-msg {
   margin-top: 6px;
   font-size: 0.8rem;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .providers-workspace-rail-trail {
