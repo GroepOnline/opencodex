@@ -67,15 +67,9 @@ import type { ManagementContext } from "./context";
 export async function handleConfigRoutes(ctx: ManagementContext): Promise<Response | null> {
   const { req, url, config, deps, refreshCodexCatalogBestEffort, syncClaudeAgentDefsBestEffort } = ctx;
   if (url.pathname === "/api/config" && req.method === "GET") {
-    try {
-      const { expireProviderCooldowns } = await import("../../providers/cap-cooldown");
-      if (expireProviderCooldowns(config)) {
-        const { saveConfigPreservingClaudeCode: save } = await import("../../config");
-        save(config);
-      }
-    } catch {
-      /* best-effort expiry */
-    }
+    const { expireProviderCooldowns } = await import("../../providers/cap-cooldown");
+    const { saveConfigPreservingClaudeCode: save } = await import("../../config");
+    if (expireProviderCooldowns(config)) save(config);
     return jsonResponse(safeConfigDTO(config));
   }
 

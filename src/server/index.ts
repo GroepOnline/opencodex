@@ -24,6 +24,7 @@ import { runOpenAiTierStartupMigration } from "../providers/openai-tier-startup"
 import { runAlibabaRegionStartupMigration } from "../providers/alibaba-region-startup";
 import { isCanonicalOpenAiForwardProvider } from "../providers/openai-tiers";
 import { providerCodexAccountMode } from "../providers/registry";
+import { bindProviderCapCooldownConfig, expireProviderCooldowns } from "../providers/cap-cooldown";
 import {
   CodexAccountCooldownError,
   cooldownErrorMessage,
@@ -240,6 +241,9 @@ function attachLiveSidebandUpstream(ws: ServerWebSocket<WsData>): void {
 
 export function startServer(port?: number) {
   const config = runAlibabaRegionStartupMigration(runOpenAiTierStartupMigration(loadConfig()));
+  // Cap-cooldown / request-log side effects must mutate THIS live object (not a disk reload).
+  bindProviderCapCooldownConfig(config);
+  if (expireProviderCooldowns(config)) saveConfig(config);
   applyProxyEnv(config);
   assertServerAuthConfig(config);
   // Refresh OAuth provider presets (models/noReasoningModels) from the registry so a proxy update

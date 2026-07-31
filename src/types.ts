@@ -477,10 +477,27 @@ export interface OcxCustomModel {
   addedAt?: string;
 }
 
+/** Hard weekly/inference-cap cooldown persisted on a provider until reset. */
+export interface ProviderCapCooldown {
+  until: number;
+  reason: string;
+  /** Short, secret-redacted summary suitable for /api/config + GUI. */
+  message: string;
+  source: string;
+  /** True only when this path actually set `providers[name].disabled`. */
+  disabledProvider?: boolean;
+  recordedAt?: number;
+}
+
 export interface OcxConfig {
   port: number;
   providers: Record<string, OcxProviderConfig>;
   defaultProvider: string;
+  /**
+   * Active hard-cap cooldowns (weekly/inference). Mutated on the live server config so
+   * routing and /api/config see disables without restart.
+   */
+  providerCooldowns?: Record<string, ProviderCapCooldown>;
   /** OpenAI provider-contract migration marker (v2 = single `openai` provider with account mode). */
   openaiProviderTierVersion?: 1 | 2;
   /** Claude Code inbound + launcher settings. */

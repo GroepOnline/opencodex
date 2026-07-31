@@ -2,24 +2,28 @@
  * Provider-level weekly/inference-cap cooldowns.
  *
  * When upstream returns a hard weekly/inference cap (e.g. Clinepass INFERENCE_CAP_ERROR
- * with "resets in Nd Nh"), we persist a cooldown on the provider, optionally disable it,
- * and surface the message in the GUI via /api/config.providerCooldowns.
+ * with "resets in Nd Nh"), we persist a cooldown on the LIVE server config, optionally
+ * disable the provider, and surface a short summary via /api/config.providerCooldowns.
+ *
+ * Callers must pass the live `OcxConfig` instance owned by `startServer` — never a fresh
+ * `loadConfig()` snapshot — so routing and management see the change immediately.
  */
-import { loadConfig, saveConfigPreservingClaudeCode } from "../config";
-import type { OcxConfig } from "../types";
+import { saveConfigPreservingClaudeCode } from "../config";
+import type { OcxConfig, ProviderCapCooldown } from "../types";
 
-export interface ProviderCapCooldown {
-  until: number;
-  reason: string;
-  message: string;
-  source: string;
-  disabledProvider?: boolean;
-  recordedAt?: number;
-}
+export type { ProviderCapCooldown };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const MIN_MS = 60 * 1000;
+
+/** Live server config bound at startServer; used when the request-log path has no config arg. */
+let liveConfig: OcxConfig | null = null;
+
+/** Bind the long-lived server config so cooldown recording mutates routing state. */
+export function bindProviderCapCooldownConfig(config: OcxConfig): void {
+  liveConfig = config;
+}
 
 /** Parse "resets in 1d 22h" / "resets in 2d" / "resets in 3h" style phrases. */
 export function parseResetsInMs(message: string, now = Date.now()): number | undefined {
@@ -34,23 +38,37 @@ export function parseResetsInMs(message: string, now = Date.now()): number | und
   return now + days * DAY_MS + hours * HOUR_MS + mins * MIN_MS;
 }
 
+/**
+ * Strong hard-cap signal only: INFERENCE_CAP / weekly+limit with a parseable reset,
+ * or explicit package-expired / out-of-usage phrases. Bare "usage limit" 429s are ignored
+ * so temporary rate limits do not auto-disable a provider for 24h.
+ */
 export function isHardCapMessage(status: number, upstreamError?: string): boolean {
   if (status !== 429 && status !== 402) return false;
   const text = (upstreamError || "").toLowerCase();
-  return (
-    text.includes("inference_cap")
-    || text.includes("weekly") && (text.includes("limit") || text.includes("cap"))
-    || text.includes("usage limit")
-    || text.includes("package has expired")
-    || text.includes("out of usage")
-  );
+  if (text.includes("inference_cap")) return true;
+  if (text.includes("package has expired") || text.includes("out of usage")) return true;
+  const weekly = text.includes("weekly") && (text.includes("limit") || text.includes("cap"));
+  if (weekly && parseResetsInMs(upstreamError || "") !== undefined) return true;
+  return false;
+}
+
+/** Map log labels like `openai-work` back to a config.providers key. */
+export function resolveProviderConfigKey(config: OcxConfig, logProvider: string): string | null {
+  if (!logProvider || logProvider === "combo") return null;
+  if (config.providers[logProvider]) return logProvider;
+  const names = Object.keys(config.providers).sort((a, b) => b.length - a.length);
+  for (const name of names) {
+    if (logProvider.startsWith(`${name}-`)) return name;
+  }
+  return null;
 }
 
 export function activeProviderCooldowns(
   config: OcxConfig,
   now = Date.now(),
 ): Record<string, ProviderCapCooldown> {
-  const raw = (config as OcxConfig & { providerCooldowns?: Record<string, ProviderCapCooldown> }).providerCooldowns;
+  const raw = config.providerCooldowns;
   if (!raw || typeof raw !== "object") return {};
   const out: Record<string, ProviderCapCooldown> = {};
   for (const [name, entry] of Object.entries(raw)) {
@@ -62,11 +80,11 @@ export function activeProviderCooldowns(
 }
 
 /**
- * Expire stale cooldowns. Re-enables providers we auto-disabled when the window ends.
+ * Expire stale cooldowns. Re-enables providers this path auto-disabled when the window ends.
  * Returns true when config was mutated.
  */
 export function expireProviderCooldowns(config: OcxConfig, now = Date.now()): boolean {
-  const bag = (config as OcxConfig & { providerCooldowns?: Record<string, ProviderCapCooldown> }).providerCooldowns;
+  const bag = config.providerCooldowns;
   if (!bag) return false;
   let changed = false;
   for (const [name, entry] of Object.entries(bag)) {
@@ -78,52 +96,91 @@ export function expireProviderCooldowns(config: OcxConfig, now = Date.now()): bo
     }
   }
   if (Object.keys(bag).length === 0) {
-    delete (config as OcxConfig & { providerCooldowns?: unknown }).providerCooldowns;
+    delete config.providerCooldowns;
   }
   return changed;
 }
 
-/** Record a hard-cap 429 onto the provider and optionally disable it until reset. */
+export interface RecordProviderCapCooldownOpts {
+  disable?: boolean;
+  now?: number;
+  /** Persist to disk (default true). */
+  save?: boolean;
+}
+
+/** Record a hard-cap 429/402 onto the live provider config and optionally disable until reset. */
 export function recordProviderCapCooldown(
+  config: OcxConfig,
   providerName: string,
   status: number,
   upstreamError: string | undefined,
-  opts?: { disable?: boolean; now?: number },
+  opts?: RecordProviderCapCooldownOpts,
 ): ProviderCapCooldown | null {
-  if (!providerName || !isHardCapMessage(status, upstreamError)) return null;
+  const key = resolveProviderConfigKey(config, providerName);
+  if (!key || !isHardCapMessage(status, upstreamError)) return null;
   const now = opts?.now ?? Date.now();
-  const message = (upstreamError || "Usage limit reached").slice(0, 400);
-  const until = parseResetsInMs(message, now) ?? (now + DAY_MS); // default 24h if unparsed
-  const reason = /inference_cap/i.test(message)
+  const rawMessage = (upstreamError || "Usage limit reached").slice(0, 400);
+  const until = parseResetsInMs(rawMessage, now);
+  if (until === undefined && !/inference_cap/i.test(rawMessage)
+    && !/package has expired/i.test(rawMessage)
+    && !/out of usage/i.test(rawMessage)) {
+    // Weekly phrases without a parseable reset are not strong enough to auto-pause.
+    return null;
+  }
+  const untilMs = until ?? (now + DAY_MS);
+  const reason = /inference_cap/i.test(rawMessage)
     ? "INFERENCE_CAP_ERROR"
-    : /weekly/i.test(message)
+    : /weekly/i.test(rawMessage)
       ? "weekly_usage_limit"
       : "usage_cap";
+  // Short GUI-safe summary — avoid echoing long upstream bodies (emails, org ids).
+  const message = reason === "INFERENCE_CAP_ERROR"
+    ? "Weekly inference cap reached."
+    : reason === "weekly_usage_limit"
+      ? "Weekly usage limit reached."
+      : "Usage cap reached.";
 
-  const config = loadConfig();
   expireProviderCooldowns(config, now);
-  const bag = ((config as OcxConfig & { providerCooldowns?: Record<string, ProviderCapCooldown> }).providerCooldowns
-    ??= {});
-  const prev = bag[providerName];
-  // Don't shorten an existing longer cooldown.
-  if (prev && prev.until > until) return prev;
+  const bag = (config.providerCooldowns ??= {});
+  const prev = bag[key];
+  // Don't shorten an existing longer cooldown; still persist expiry side-effects below if needed.
+  if (prev && prev.until > untilMs) {
+    if (opts?.save !== false) saveConfigPreservingClaudeCode(config);
+    return prev;
+  }
 
-  const disable = opts?.disable !== false; // default: temporarily disable
+  const wantDisable = opts?.disable !== false;
+  const didDisable = wantDisable
+    && !!config.providers[key]
+    && config.defaultProvider !== key
+    && config.providers[key].disabled !== true;
+
+  if (didDisable) {
+    config.providers[key].disabled = true;
+  }
+
   const entry: ProviderCapCooldown = {
-    until,
+    until: untilMs,
     reason,
-    message,
-    source: "upstream-429",
-    disabledProvider: disable,
+    message: `${message} Resets ~${new Date(untilMs).toISOString()}.`,
+    source: status === 402 ? "upstream-402" : "upstream-429",
+    disabledProvider: didDisable || (prev?.disabledProvider === true && config.providers[key]?.disabled === true),
     recordedAt: now,
   };
-  bag[providerName] = entry;
-  if (disable && config.providers[providerName] && config.defaultProvider !== providerName) {
-    config.providers[providerName].disabled = true;
-  }
-  saveConfigPreservingClaudeCode(config);
+  bag[key] = entry;
+  if (opts?.save !== false) saveConfigPreservingClaudeCode(config);
   console.warn(
-    `[opencodex] Provider cap cooldown set provider=${providerName} until=${new Date(until).toISOString()} reason=${reason}`,
+    `[opencodex] Provider cap cooldown set provider=${key} until=${new Date(untilMs).toISOString()} reason=${reason} disabled=${!!entry.disabledProvider}`,
   );
   return entry;
+}
+
+/** Best-effort record using the bound live config (request-log hot path). */
+export function recordProviderCapCooldownLive(
+  providerName: string,
+  status: number,
+  upstreamError: string | undefined,
+): ProviderCapCooldown | null {
+  if (!liveConfig) return null;
+  return recordProviderCapCooldown(liveConfig, providerName, status, upstreamError);
 }

@@ -30,7 +30,7 @@ import {
   type UsageDebugBodyKind,
 } from "../usage/debug";
 import { matchesLogConversationId } from "./request-log-conversation";
-import { recordProviderCapCooldown } from "../providers/cap-cooldown";
+import { recordProviderCapCooldownLive } from "../providers/cap-cooldown";
 
 export interface RequestLogContext {
   model: string;
@@ -662,10 +662,10 @@ export function addFinalRequestLog(
     ? 499
     : status;
   const errorCode = requestLogErrorCode(effectiveStatus, logCtx.upstreamError);
-  // Hard weekly/inference caps: persist a provider cooldown and optionally disable until reset.
+  // Hard weekly/inference caps: mutate the LIVE server config (bound at startServer).
   if ((effectiveStatus === 429 || effectiveStatus === 402) && logCtx.provider && logCtx.provider !== "combo") {
     try {
-      recordProviderCapCooldown(logCtx.provider, effectiveStatus, logCtx.upstreamError);
+      recordProviderCapCooldownLive(logCtx.provider, effectiveStatus, logCtx.upstreamError);
     } catch {
       /* best-effort: never break request finalization */
     }
