@@ -226,11 +226,14 @@ export const CURSOR_STATIC_MODELS: readonly CursorModelInfo[] = normalizeCursorM
   { id: "kimi-k2.7-code", contextWindow: CONTEXT_262K },
   // Live GetUsableModels exposes kimi-k3-{high,low,max}; bare id seeds catalog + effort picker.
   { id: "kimi-k3", contextWindow: CONTEXT_262K, supportsReasoningEffort: true },
-  { id: "claude-opus-5-thinking", contextWindow: CONTEXT_200K, supportsReasoningEffort: true },
-  { id: "claude-opus-4-8-thinking", contextWindow: CONTEXT_200K, supportsReasoningEffort: true },
-  { id: "claude-opus-4-7-thinking", contextWindow: CONTEXT_200K, supportsReasoningEffort: true },
-  { id: "claude-fable-5-thinking", contextWindow: CONTEXT_200K, supportsReasoningEffort: true },
-  { id: "claude-sonnet-5-thinking", contextWindow: CONTEXT_200K, supportsReasoningEffort: true },
+  // `-thinking` ids are complete Cursor wire ids (the historical `claude-*-thinking` naming), and no
+  // `-thinking-<effort>` variant is verified in GetUsableModels -> no tier picker, sent bare like
+  // claude-opus-4-7-fast. Give them effort-map tiers only once live ids confirm the suffixes.
+  { id: "claude-opus-5-thinking", contextWindow: CONTEXT_200K },
+  { id: "claude-opus-4-8-thinking", contextWindow: CONTEXT_200K },
+  { id: "claude-opus-4-7-thinking", contextWindow: CONTEXT_200K },
+  { id: "claude-fable-5-thinking", contextWindow: CONTEXT_200K },
+  { id: "claude-sonnet-5-thinking", contextWindow: CONTEXT_200K },
   { id: "gemini-3.6-flash", contextWindow: CONTEXT_GEMINI },
 
   { id: "grok-4.5", contextWindow: 500_000, supportsReasoningEffort: true },

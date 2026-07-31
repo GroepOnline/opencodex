@@ -45,6 +45,8 @@ const CURSOR_MODEL_EFFORT_TIERS: Record<string, readonly string[]> = {
   "gpt-5.6-sol": ["low", "medium", "high", "xhigh", "max"],
   "gpt-5.6-terra": ["low", "medium", "high", "xhigh", "max"],
   "gpt-5.6-luna": ["low", "medium", "high", "xhigh", "max"],
+  // GetUsableModels exposes kimi-k3-{low,high,max} (no medium/xhigh tier).
+  "kimi-k3": ["low", "high", "max"],
 };
 
 /** All effort suffixes accepted when matching live Cursor model ids to configured base ids. */
