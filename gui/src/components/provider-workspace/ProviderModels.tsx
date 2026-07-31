@@ -198,7 +198,8 @@ export default function ProviderModels({
     disabledNamespaced.has(modelId) || disabledNamespaced.has(`${item.name}/${modelId}`),
   );
 
-  const applyVisibility = async (targets: string[], enabled: boolean) => {
+  /** Returns whether the server accepted the change, so callers can roll back. */
+  const applyVisibility = async (targets: string[], enabled: boolean): Promise<boolean> => {
     setActionStatus("");
     try {
       const response = await putModelVisibility(
@@ -211,15 +212,17 @@ export default function ProviderModels({
       if (!response.ok) {
         setActionOk(false);
         setActionStatus(t("models.saveFailed"));
-        return;
+        return false;
       }
       setActionOk(true);
       setActionStatus(t("models.applied"));
       setCatalogEpoch(epoch => epoch + 1);
       onRetryModels?.();
+      return true;
     } catch {
       setActionOk(false);
       setActionStatus(t("models.networkError"));
+      return false;
     }
   };
 
@@ -227,6 +230,7 @@ export default function ProviderModels({
     if (busyId || bulkBusy || fetching) return;
     const next = !isModelOn(modelId);
     setBusyId(modelId);
+    const previousDisabled = disabledNamespaced;
     // Optimistic disabled-set update for snappy chips.
     setDisabledNamespaced(prev => {
       const nextSet = new Set(prev);
@@ -239,14 +243,18 @@ export default function ProviderModels({
       }
       return nextSet;
     });
-    await applyVisibility([modelId], next);
+    const saved = await applyVisibility([modelId], next);
+    // A rejected update must not leave the chip showing the optimistic state.
+    if (!saved) setDisabledNamespaced(previousDisabled);
     setBusyId(null);
   };
 
   const bulkToggle = async (enable: boolean) => {
-    if (bulkBusy || busyId || fetching || visibleModels.length === 0) return;
+    if (bulkBusy || busyId || fetching || models.length === 0) return;
     setBulkBusy(true);
-    await applyVisibility(visibleModels, enable);
+    // Every model matching the current search, not just the render-capped
+    // chips: the capped tail would otherwise keep its old visibility.
+    await applyVisibility(models, enable);
     setBulkBusy(false);
   };
 
@@ -308,8 +316,9 @@ export default function ProviderModels({
   const CHIP_RENDER_CAP = 300;
   const capped = models.length > CHIP_RENDER_CAP;
   const visibleModels = capped ? models.slice(0, CHIP_RENDER_CAP) : models;
-  const allOn = visibleModels.length > 0 && visibleModels.every(isModelOn);
-  const allOff = visibleModels.length > 0 && visibleModels.every(id => !isModelOn(id));
+  // Computed over every match, matching what the bulk buttons submit.
+  const allOn = models.length > 0 && models.every(isModelOn);
+  const allOff = models.length > 0 && models.every(id => !isModelOn(id));
   const controlsBusy = Boolean(busyId) || bulkBusy || fetching;
 
   return (
@@ -396,7 +405,7 @@ export default function ProviderModels({
             <button
               type="button"
               className="btn btn-ghost btn-sm text-caption"
-              disabled={controlsBusy || allOn || visibleModels.length === 0}
+              disabled={controlsBusy || allOn || models.length === 0}
               onClick={() => { void bulkToggle(true); }}
             >
               {t("models.allOn")}
@@ -404,7 +413,7 @@ export default function ProviderModels({
             <button
               type="button"
               className="btn btn-ghost btn-sm text-caption"
-              disabled={controlsBusy || allOff || visibleModels.length === 0}
+              disabled={controlsBusy || allOff || models.length === 0}
               onClick={() => { void bulkToggle(false); }}
             >
               {t("models.allOff")}
