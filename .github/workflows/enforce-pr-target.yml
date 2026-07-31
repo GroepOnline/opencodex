@@ -89,68 +89,100 @@ jobs:
               return `\`${String(value).replaceAll("`", "\\`")}\``;
             }
 
+            // Reused so a follow-up upsert updates the same comment instead of
+            // posting a duplicate one.
+            let trackedComment = botComment;
+
             async function upsertComment(body) {
-              if (botComment) {
+              if (trackedComment) {
                 await github.rest.issues.updateComment({
                   owner,
                   repo,
-                  comment_id: botComment.id,
+                  comment_id: trackedComment.id,
                   body
                 });
 
                 return;
               }
 
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number: pull_number,
-                body
-              });
+              const { data: created } =
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: pull_number,
+                  body
+                });
+
+              trackedComment = created;
             }
 
+            // Draft status is not always writable by GITHUB_TOKEN: the
+            // mutations answer "Resource not accessible by integration" when
+            // the repository or organization withholds that permission. The
+            // explanatory comment and the title prefix are the enforcement, so
+            // a rejected draft mutation is reported and the job stays green.
             async function convertToDraft() {
-              await github.graphql(
-                `
-                  mutation($pullRequestId: ID!) {
-                    convertPullRequestToDraft(
-                      input: {
-                        pullRequestId: $pullRequestId
-                      }
-                    ) {
-                      pullRequest {
-                        id
-                        isDraft
+              try {
+                await github.graphql(
+                  `
+                    mutation($pullRequestId: ID!) {
+                      convertPullRequestToDraft(
+                        input: {
+                          pullRequestId: $pullRequestId
+                        }
+                      ) {
+                        pullRequest {
+                          id
+                          isDraft
+                        }
                       }
                     }
+                  `,
+                  {
+                    pullRequestId: pr.node_id
                   }
-                `,
-                {
-                  pullRequestId: pr.node_id
-                }
-              );
+                );
+
+                return true;
+              } catch (error) {
+                core.warning(
+                  `Could not convert the pull request to a draft: ${error.message}`
+                );
+
+                return false;
+              }
             }
 
             async function markReadyForReview() {
-              await github.graphql(
-                `
-                  mutation($pullRequestId: ID!) {
-                    markPullRequestReadyForReview(
-                      input: {
-                        pullRequestId: $pullRequestId
-                      }
-                    ) {
-                      pullRequest {
-                        id
-                        isDraft
+              try {
+                await github.graphql(
+                  `
+                    mutation($pullRequestId: ID!) {
+                      markPullRequestReadyForReview(
+                        input: {
+                          pullRequestId: $pullRequestId
+                        }
+                      ) {
+                        pullRequest {
+                          id
+                          isDraft
+                        }
                       }
                     }
+                  `,
+                  {
+                    pullRequestId: pr.node_id
                   }
-                `,
-                {
-                  pullRequestId: pr.node_id
-                }
-              );
+                );
+
+                return true;
+              } catch (error) {
+                core.warning(
+                  `Could not mark the pull request ready for review: ${error.message}`
+                );
+
+                return false;
+              }
             }
 
             const storedState = parseState(botComment?.body);
@@ -179,16 +211,16 @@ jobs:
                 state.titlePrefixedByBot = true;
               }
 
-              const draftExplanation = state.autoDraftedByBot
-                ? "This pull request is being kept as a draft automatically. Once the target branch is corrected, it will be marked ready for review again."
-                : "This pull request was already a draft. Its draft status will be preserved after the target branch is corrected.";
+              function wrongBaseBody(currentState) {
+                const draftExplanation = currentState.autoDraftedByBot
+                  ? "This pull request is being kept as a draft automatically. Once the target branch is corrected, it will be marked ready for review again."
+                  : pr.draft
+                    ? "This pull request was already a draft. Its draft status will be preserved after the target branch is corrected."
+                    : "Its draft status was left unchanged.";
 
-              // Store the restoration state before changing the PR, allowing
-              // a rerun to recover if an API request fails partway through.
-              await upsertComment(
-                [
+                return [
                   COMMENT_MARKER,
-                  stateMarker(state),
+                  stateMarker(currentState),
                   "",
                   "⚠️ **Wrong target branch**",
                   "",
@@ -199,8 +231,12 @@ jobs:
                   `@${pr.user.login} Please retarget this PR to ${inlineCode(DEFAULT_BASE)}. Most contributions go to ${inlineCode(DEFAULT_BASE)} first; use ${inlineCode("dev2-go")} only for scoped Go native-port work. \`main\` receives only release promotions. See our [Contributing guide](https://lidge-jun.github.io/opencodex/contributing/) for details. Thanks! 🙏`,
                   "",
                   draftExplanation
-                ].join("\n")
-              );
+                ].join("\n");
+              }
+
+              // Store the restoration state before changing the PR, allowing
+              // a rerun to recover if an API request fails partway through.
+              await upsertComment(wrongBaseBody(state));
 
               if (!pr.title.startsWith(TITLE_PREFIX)) {
                 await github.rest.pulls.update({
@@ -212,7 +248,16 @@ jobs:
               }
 
               if (!pr.draft) {
-                await convertToDraft();
+                const converted = await convertToDraft();
+
+                // The mutation can be rejected outright. Clear the flag so the
+                // restore path never promises to undo a change that never
+                // happened, and correct the comment it was already recorded in.
+                if (!converted) {
+                  state.autoDraftedByBot = false;
+
+                  await upsertComment(wrongBaseBody(state));
+                }
               }
 
               return;
@@ -243,11 +288,13 @@ jobs:
 
             // Mark the PR ready only if this workflow originally converted it
             // to draft. Intentionally drafted PRs remain drafts.
+            let markedReady = !pr.draft;
+
             if (
               storedState.autoDraftedByBot &&
               pr.draft
             ) {
-              await markReadyForReview();
+              markedReady = await markReadyForReview();
             }
 
             const completedState = {
@@ -261,9 +308,11 @@ jobs:
               ? `The ${inlineCode(TITLE_PREFIX.trim())} title prefix has been removed.`
               : "The title was left unchanged.";
 
-            const draftResult = storedState.autoDraftedByBot
-              ? "The pull request has been marked ready for review again."
-              : "Its existing draft status has been preserved.";
+            const draftResult = !storedState.autoDraftedByBot
+              ? "Its existing draft status has been preserved."
+              : markedReady
+                ? "The pull request has been marked ready for review again."
+                : "It could not be marked ready for review automatically, so please do that manually.";
 
             await upsertComment(
               [
