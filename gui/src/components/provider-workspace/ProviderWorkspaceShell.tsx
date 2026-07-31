@@ -42,6 +42,8 @@ export interface DetailSlotData {
   modelsLoading: boolean;
   modelsLoadFailed: boolean;
   onRetryModels?: () => void;
+  /** Active weekly/inference-cap cooldown for this provider, if any. */
+  capCooldown?: import("../../pages/providers-shared").ProviderCapCooldown;
 }
 
 const SORT_DEFS: { id: ProviderSortMode; labelKey: "pws.sort.az" | "pws.sort.za" | "pws.sort.freePaid" | "pws.sort.paidFree" | "pws.sort.accountsFirst" }[] = [
@@ -65,6 +67,7 @@ export default function ProviderWorkspaceShell({
   jsonSaving = false,
   modelsRefreshToken = 0,
   activeAccountNeedsReauth,
+  providerCooldowns,
   detail,
 }: {
   providers: Record<string, WorkspaceProvider>;
@@ -81,6 +84,8 @@ export default function ProviderWorkspaceShell({
   /** Bump after login/config changes so /api/selected-models is refetched. */
   modelsRefreshToken?: number;
   activeAccountNeedsReauth?: Record<string, boolean>;
+  /** Active weekly/inference-cap cooldowns from /api/config. */
+  providerCooldowns?: Record<string, import("../../pages/providers-shared").ProviderCapCooldown>;
   /** Detail body for the selected provider (WP090); a placeholder renders when absent. */
   detail?: (item: WorkspaceItem, data: DetailSlotData) => ReactNode;
 }) {
@@ -440,6 +445,7 @@ export default function ProviderWorkspaceShell({
                       tabbable={railTabbableName === item.name}
                       modelCount={modelCounts[item.name]}
                       isDefault={defaultProvider === item.name}
+                      capped={Boolean(providerCooldowns?.[item.name])}
                       showConfigId={duplicateDisplayNames.has(formatProviderDisplayName(item.name))}
                       onClick={() => onSelect(item.name)}
                       onFocus={() => setRailFocusName(item.name)}
@@ -491,6 +497,7 @@ export default function ProviderWorkspaceShell({
             modelsLoading,
             modelsLoadFailed,
             onRetryModels: retryModels,
+            capCooldown: providerCooldowns?.[selectedItem.name],
           }) ?? (
             <div className="pws-detail-placeholder">
               <h3>{formatProviderDisplayName(selectedItem.name)}</h3>
@@ -505,6 +512,7 @@ export default function ProviderWorkspaceShell({
             sections={sections}
             quotaReports={quotaReports}
             usageTotals={usageTotals}
+            providerCooldowns={providerCooldowns}
             onSelectProvider={(name) => onSelect(name)}
             onEditConfig={onEditConfig}
           />

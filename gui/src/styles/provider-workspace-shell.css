@@ -368,6 +368,28 @@
   border-color: var(--amber);
 }
 
+.pwi-rail-badge--capped {
+  color: var(--yellow, #eab308);
+  border-color: var(--yellow, #eab308);
+}
+
+.providers-workspace-rail-row--capped .providers-workspace-rail-name-label {
+  opacity: 0.9;
+}
+
+.pws-cap-cooldown {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.pws-cap-cooldown-msg {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  word-break: break-word;
+}
+
 .providers-workspace-rail-trail {
   display: inline-flex;
   align-items: center;

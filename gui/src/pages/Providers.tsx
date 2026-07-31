@@ -91,8 +91,12 @@ export default function Providers({ apiBase }: { apiBase: string }) {
       void fetchOauth();
       void fetchProviderQuotas();
     }, 0);
+    const interval = window.setInterval(() => {
+      void fetchConfig();
+    }, 60_000);
     return () => {
       window.clearTimeout(timeout);
+      window.clearInterval(interval);
     };
   }, [fetchConfig, fetchOauth, fetchProviderQuotas]);
 
@@ -191,6 +195,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
         onSelect={setWorkspaceSelected}
         onAddProvider={intent => { setAddIntent(intent ?? null); setAdding(true); }}
         onEditConfig={openJsonEditor}
+        providerCooldowns={config.providerCooldowns}
         jsonEditor={{
           open: jsonEditorOpen,
           draft,
@@ -218,6 +223,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
             modelsLoading={data.modelsLoading}
             modelsLoadFailed={data.modelsLoadFailed}
             onRetryModels={data.onRetryModels}
+            capCooldown={data.capCooldown}
             oauthEmail={loginStatus?.email}
             onDeselect={() => setWorkspaceSelected(null)}
             apiBase={apiBase}

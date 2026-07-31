@@ -336,6 +336,18 @@ export function safeConfigDTO(config: OcxConfig): unknown {
     if (codexAccountMode) dto.codexAccountMode = codexAccountMode;
     providers[name] = dto;
   }
+  const cooldowns = (config as { providerCooldowns?: Record<string, unknown> }).providerCooldowns;
+  const activeCooldowns: Record<string, unknown> = {};
+  const now = Date.now();
+  if (cooldowns && typeof cooldowns === "object") {
+    for (const [name, entry] of Object.entries(cooldowns)) {
+      if (!entry || typeof entry !== "object") continue;
+      const until = (entry as { until?: unknown }).until;
+      if (typeof until === "number" && Number.isFinite(until) && until > now) {
+        activeCooldowns[name] = entry;
+      }
+    }
+  }
   return {
     port: config.port,
     hostname: config.hostname ?? "127.0.0.1",
@@ -343,5 +355,6 @@ export function safeConfigDTO(config: OcxConfig): unknown {
     codexAutoStart: codexAutoStartEnabled(config),
     websockets: config.websockets,
     providers,
+    ...(Object.keys(activeCooldowns).length > 0 ? { providerCooldowns: activeCooldowns } : {}),
   };
 }

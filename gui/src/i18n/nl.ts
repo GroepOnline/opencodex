@@ -195,6 +195,15 @@ const overrides: Partial<Record<TKey, string>> = {
   "vk.detailStatus": "status {status}",
   "vk.detailUpstream": "upstream: {error}",
   "vk.detailId": "id {id}",
+
+  // provider weekly/inference caps (Clinepass etc.)
+  "pws.capCooldown.title": "Wekelijks limiet",
+  "pws.capCooldown.section": "Verbruikslimieten",
+  "pws.capCooldown.banner": "{provider} zit aan een wekelijks/inference-plafond. {reset}",
+  "pws.capCooldown.disabled": "Tijdelijk uitgeschakeld tot de limiet reset.",
+  "pws.capCooldown.paused": "Routing voor deze leverancier staat tot die tijd stil.",
+  "pws.capCooldown.badge": "Vol",
+  "pws.attention.capCooldown": "Wekelijks/inference-limiet — {reset}",
 };
 
 export const nl: Record<TKey, string> = { ...en, ...overrides };

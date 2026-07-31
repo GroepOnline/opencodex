@@ -30,6 +30,7 @@ import {
   type UsageDebugBodyKind,
 } from "../usage/debug";
 import { matchesLogConversationId } from "./request-log-conversation";
+import { recordProviderCapCooldown } from "../providers/cap-cooldown";
 
 export interface RequestLogContext {
   model: string;
@@ -661,6 +662,14 @@ export function addFinalRequestLog(
     ? 499
     : status;
   const errorCode = requestLogErrorCode(effectiveStatus, logCtx.upstreamError);
+  // Hard weekly/inference caps: persist a provider cooldown and optionally disable until reset.
+  if ((effectiveStatus === 429 || effectiveStatus === 402) && logCtx.provider && logCtx.provider !== "combo") {
+    try {
+      recordProviderCapCooldown(logCtx.provider, effectiveStatus, logCtx.upstreamError);
+    } catch {
+      /* best-effort: never break request finalization */
+    }
+  }
   // A response.failed whose classified status is 499 is still a client cancel, not an upstream
   // terminal failure — keep /api/logs closeReason aligned with that.
   const closeReason = effectiveStatus === 499

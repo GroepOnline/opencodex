@@ -55,6 +55,7 @@ export default function ProviderDetails({
   isDefault,
   onRemoveProvider,
   onSetDisabled,
+  capCooldown,
 }: {
   item: WorkspaceItem;
   usageTotals?: ProviderUsageTotals;
@@ -88,6 +89,8 @@ export default function ProviderDetails({
   isDefault?: boolean;
   onRemoveProvider?: (name: string) => void;
   onSetDisabled?: (name: string, disabled: boolean) => void;
+  /** Active weekly/inference-cap cooldown from /api/config. */
+  capCooldown?: import("../../pages/providers-shared").ProviderCapCooldown;
 }) {
   const t = useT();
   const [tab, setTab] = useState<Tab>("overview");
@@ -232,6 +235,7 @@ export default function ProviderDetails({
             usageTotals={usageTotals}
             quotaReport={quotaReport}
             oauthEmail={oauthEmail}
+            capCooldown={capCooldown}
             onEditSettings={() => switchTab("settings")}
             onViewUsage={() => switchTab("usage")}
             onUpdateProvider={onUpdateProvider}

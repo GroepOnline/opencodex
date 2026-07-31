@@ -224,6 +224,14 @@ export const CURSOR_STATIC_MODELS: readonly CursorModelInfo[] = normalizeCursorM
   // take PR #73's supportsReasoningEffort for glm-5.2 (its effort-map tiers landed with the PR).
   { id: "glm-5.2", contextWindow: CONTEXT_1M, supportsReasoningEffort: true },
   { id: "kimi-k2.7-code", contextWindow: CONTEXT_262K },
+  // Live GetUsableModels exposes kimi-k3-{high,low,max}; bare id seeds catalog + effort picker.
+  { id: "kimi-k3", contextWindow: CONTEXT_262K, supportsReasoningEffort: true },
+  { id: "claude-opus-5-thinking", contextWindow: CONTEXT_200K, supportsReasoningEffort: true },
+  { id: "claude-opus-4-8-thinking", contextWindow: CONTEXT_200K, supportsReasoningEffort: true },
+  { id: "claude-opus-4-7-thinking", contextWindow: CONTEXT_200K, supportsReasoningEffort: true },
+  { id: "claude-fable-5-thinking", contextWindow: CONTEXT_200K, supportsReasoningEffort: true },
+  { id: "claude-sonnet-5-thinking", contextWindow: CONTEXT_200K, supportsReasoningEffort: true },
+  { id: "gemini-3.6-flash", contextWindow: CONTEXT_GEMINI },
 
   { id: "grok-4.5", contextWindow: 500_000, supportsReasoningEffort: true },
   { id: "grok-4.5-fast", contextWindow: 500_000, supportsReasoningEffort: true },
