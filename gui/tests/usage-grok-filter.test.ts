@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-const LOCALES = ["en", "de", "ja", "ko", "ru", "zh"] as const;
+const LOCALES = ["en"] as const; // full dictionaries; nl.ts spreads en and only overrides a subset
 
 async function read(path: string): Promise<string> {
   return Bun.file(new URL(path, import.meta.url)).text();

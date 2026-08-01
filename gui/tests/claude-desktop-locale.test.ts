@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-const LOCALES = ["en", "de", "ja", "ko", "ru", "zh"] as const;
+const LOCALES = ["en"] as const; // full dictionaries; nl.ts spreads en and only overrides a subset
 
 async function readDict(locale: string): Promise<Map<string, string>> {
   const src = await Bun.file(new URL(`../src/i18n/${locale}.ts`, import.meta.url)).text();
@@ -11,7 +11,7 @@ async function readDict(locale: string): Promise<Map<string, string>> {
   return out;
 }
 
-// `de.ts` is typed `Record<TKey, string>`, so a MISSING key already fails `tsc`. These
+// `en.ts` is the source of truth for `TKey`, so a MISSING key already fails `tsc`. These
 // cases cover what the type cannot see: a key that exists but renders nothing, which
 // would ship a blank tab label or an empty lane heading. The Claude Desktop keys arrived
 // through a hand-resolved merge conflict, so they get an explicit guard.
@@ -30,11 +30,11 @@ test("every locale defines a non-empty value for each Claude Desktop key", async
   expect(blank).toEqual([]);
 });
 
-test("locale key sets stay identical to the English source", async () => {
-  const en = [...(await readDict("en")).keys()].sort();
-  for (const locale of LOCALES.filter(l => l !== "en")) {
-    const other = [...(await readDict(locale)).keys()].sort();
-    expect(`${locale}:${other.length}`).toBe(`${locale}:${en.length}`);
-    expect(other).toEqual(en);
-  }
+// Dutch is an override layer spread over `en`, so it cannot be missing keys. What it CAN
+// carry is a stale or misspelled key that silently never renders, which `Partial<Record<TKey, string>>`
+// only catches for keys tsc can see as literals — this guards the source text directly.
+test("Dutch overrides only reference keys that exist in the English source", async () => {
+  const en = await readDict("en");
+  const unknown = [...(await readDict("nl")).keys()].filter(k => !en.has(k));
+  expect(unknown).toEqual([]);
 });
