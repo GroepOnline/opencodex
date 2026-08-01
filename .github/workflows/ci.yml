@@ -18,6 +18,7 @@ on:
       - ".github/workflows/release.yml"
       - ".github/workflows/enforce-pr-target.yml"
       - ".github/workflows/stale-needs-info.yml"
+      - ".github/workflows/issue-triage.yml"
   push:
     branches: [main, preview, dev]
     paths:
@@ -35,6 +36,7 @@ on:
       - ".github/workflows/release.yml"
       - ".github/workflows/enforce-pr-target.yml"
       - ".github/workflows/stale-needs-info.yml"
+      - ".github/workflows/issue-triage.yml"
   workflow_dispatch:
 
 permissions:
@@ -161,6 +163,10 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Install GUI dependencies
+        working-directory: gui
+        run: bun install --frozen-lockfile
+
       - name: Generate Bun audit report
         id: bun-audit
         continue-on-error: true
@@ -177,6 +183,19 @@ jobs:
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           exit 0
 
+      - name: Generate GUI Bun audit report
+        id: gui-bun-audit
+        continue-on-error: true
+        working-directory: gui
+        shell: bash
+        run: |
+          set +e
+          bun audit --json > bun-audit.json
+          bun audit --audit-level=high
+          status=$?
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
       - name: Upload Bun audit report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -185,10 +204,21 @@ jobs:
           path: bun-audit.json
           retention-days: 7
 
+      - name: Upload GUI Bun audit report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gui-bun-audit
+          path: gui/bun-audit.json
+          retention-days: 7
+
       - name: Enforce Bun audit
-        if: steps.bun-audit.outputs.exit_code != '0'
+        if: steps.bun-audit.outputs.exit_code != '0' || steps.gui-bun-audit.outputs.exit_code != '0'
         run: |
-          cat bun-audit.json
+          echo "== root bun-audit.json =="
+          cat bun-audit.json || true
+          echo "== gui/bun-audit.json =="
+          cat gui/bun-audit.json || true
           exit 1
 
   lint-github-actions:

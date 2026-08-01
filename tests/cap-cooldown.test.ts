@@ -198,6 +198,25 @@ describe("disable ownership", () => {
     const config = bareConfig();
     expect(releaseProviderCooldownDisableOwnership(config, "cline-pass")).toBe(false);
   });
+
+  test("ownership stays claimed when a combined patch would have failed before save", () => {
+    // Mirrors the provider-routes contract: release only after validation succeeds.
+    // A rejected `{ disabled, baseUrl }` patch must leave disabledProvider true so
+    // expiry can still clear the auto-pause.
+    const config = bareConfig();
+    const now = 1_000_000;
+    recordProviderCapCooldown(
+      config,
+      "cline-pass",
+      429,
+      '{"code":"INFERENCE_CAP_ERROR","message":"weekly limit"}',
+      { now, save: false },
+    );
+    expect(config.providerCooldowns?.["cline-pass"]?.disabledProvider).toBe(true);
+    // Simulate a rejected patch path: never call releaseProviderCooldownDisableOwnership.
+    expect(expireProviderCooldowns(config, now + 8 * 24 * HOUR_MS)).toBe(true);
+    expect(config.providers["cline-pass"]?.disabled).toBeUndefined();
+  });
 });
 
 describe("startProviderCooldownSweep", () => {

@@ -211,9 +211,6 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
         return jsonResponse({ error: "cannot disable the default provider; set another default first" }, 400);
       }
       next.disabled = rawBody.disabled;
-      // An explicit operator decision outranks the cap cooldown: without this the expiry
-      // sweep would re-enable a provider the operator just turned off by hand.
-      releaseProviderCooldownDisableOwnership(config, name);
       touched = true;
     }
     if (Object.hasOwn(rawBody, "adapter")) {
@@ -337,6 +334,12 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
     }
 
     const { saveConfigPreservingClaudeCode: save } = await import("../../config");
+    // An explicit operator decision outranks the cap cooldown: without this the expiry
+    // sweep would re-enable a provider the operator just turned off by hand. Run it here,
+    // after every validation gate, so a rejected patch cannot strip cooldown ownership.
+    if (Object.hasOwn(rawBody, "disabled")) {
+      releaseProviderCooldownDisableOwnership(config, name);
+    }
     config.providers[name] = stripRegistryOnlyStaticHeaders(name, next);
     save(config);
     if (editorTouched) {

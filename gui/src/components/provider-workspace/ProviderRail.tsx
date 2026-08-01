@@ -76,7 +76,9 @@ export function RailRow({ item, selected, tabbable, modelCount, isDefault, cappe
   const t = useT();
   const free = isFreeProvider(item);
   const local = isLocalProvider(item);
-  const status = capped ? t("pws.capCooldown.badge") : statusLabel(item, t);
+  // Keep the underlying status for assistive tech; the capped pill is visual-only for sighted users.
+  const baseStatus = statusLabel(item, t);
+  const status = capped ? `${baseStatus} · ${t("pws.capCooldown.badge")}` : baseStatus;
   const displayName = formatProviderDisplayName(item.name);
   const nameTitle = showConfigId ? `${displayName} (${item.name})` : displayName;
   const suffix = `${isDefault ? t("pws.rail.suffixDefault") : ""}${local ? t("pws.rail.suffixLocal") : free ? t("pws.rail.suffixFree") : ""}`;

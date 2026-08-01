@@ -947,6 +947,8 @@ export const en = {
   "pws.selected": "Selected",
   "pws.copyModelId": "Copy ID",
   "pws.modelCopied": "Copied!",
+  "pws.copyModelIdFor": "Copy ID for {model}",
+  "pws.modelCopiedFor": "Copied {model}",
   "pws.modelsAvailable": "{count} available",
   "pws.modelSearchPlaceholder": "Filter models…",
   "pws.modelsLoading": "Loading models…",

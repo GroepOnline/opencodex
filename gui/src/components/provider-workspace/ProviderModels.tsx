@@ -254,7 +254,22 @@ export default function ProviderModels({
     setBulkBusy(true);
     // Every model matching the current search, not just the render-capped
     // chips: the capped tail would otherwise keep its old visibility.
-    await applyVisibility(models, enable);
+    const previousDisabled = disabledNamespaced;
+    setDisabledNamespaced(prev => {
+      const nextSet = new Set(prev);
+      for (const id of models) {
+        const namespaced = nativeIds.has(id) ? id : `${item.name}/${id}`;
+        if (enable) {
+          nextSet.delete(id);
+          nextSet.delete(namespaced);
+        } else {
+          nextSet.add(namespaced);
+        }
+      }
+      return nextSet;
+    });
+    const saved = await applyVisibility(models, enable);
+    if (!saved) setDisabledNamespaced(previousDisabled);
     setBulkBusy(false);
   };
 
@@ -459,7 +474,9 @@ export default function ProviderModels({
                   className="pws-model-chip-main"
                   onClick={() => { void copyModelId(modelId); }}
                   title={usageLabel ? `${modelId} — ${usageLabel}` : modelId}
-                  aria-label={copied ? t("pws.modelCopied") : t("pws.copyModelId")}
+                  aria-label={copied
+                    ? t("pws.modelCopiedFor", { model: modelId })
+                    : t("pws.copyModelIdFor", { model: modelId })}
                 >
                   <span className="pws-model-id">{modelId}</span>
                   {usageLabel ? <span className="pws-model-usage muted text-caption">{usageLabel}</span> : null}

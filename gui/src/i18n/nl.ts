@@ -204,6 +204,8 @@ const overrides: Partial<Record<TKey, string>> = {
   "pws.capCooldown.paused": "Routing voor deze leverancier staat tot die tijd stil.",
   "pws.capCooldown.badge": "Vol",
   "pws.attention.capCooldown": "Wekelijks/inference-limiet — {reset}",
+  "pws.copyModelIdFor": "Kopieer ID van {model}",
+  "pws.modelCopiedFor": "{model} gekopieerd",
 };
 
 export const nl: Record<TKey, string> = { ...en, ...overrides };
