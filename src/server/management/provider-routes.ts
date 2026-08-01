@@ -48,6 +48,7 @@ import {
   setDebugSettings,
   type DebugFlag,
 } from "../../lib/debug-settings";
+import { releaseProviderCooldownDisableOwnership } from "../../providers/cap-cooldown";
 import type { OcxClaudeCodeConfig, OcxConfig, OcxCustomModel, OcxProviderConfig } from "../../types";
 import { drainAndShutdown } from "../lifecycle";
 import { filterRequestLogs, getRequestLogEntries, type RequestLogEntry } from "../request-log";
@@ -181,6 +182,9 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
         return jsonResponse({ error: "cannot disable the default provider; set another default first" }, 400);
       }
       next.disabled = rawBody.disabled;
+      // An explicit operator decision outranks the cap cooldown: without this the expiry
+      // sweep would re-enable a provider the operator just turned off by hand.
+      releaseProviderCooldownDisableOwnership(config, name);
       touched = true;
     }
     if (Object.hasOwn(rawBody, "adapter")) {

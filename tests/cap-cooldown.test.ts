@@ -5,7 +5,9 @@ import {
   isHardCapMessage,
   parseResetsInMs,
   recordProviderCapCooldown,
+  releaseProviderCooldownDisableOwnership,
   resolveProviderConfigKey,
+  startProviderCooldownSweep,
 } from "../src/providers/cap-cooldown";
 import type { OcxConfig } from "../src/types";
 
@@ -116,5 +118,100 @@ describe("recordProviderCapCooldown (live config)", () => {
     expect(expireProviderCooldowns(config, past + 1)).toBe(true);
     expect(config.providers["cline-pass"]?.disabled).toBeUndefined();
     expect(config.providerCooldowns).toBeUndefined();
+  });
+});
+
+describe("cooldown write amplification", () => {
+  const CAP_429 = 'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly Clinepass limit. The limit resets in 1d 22h"}';
+
+  test("repeat hard-cap 429s inside an active window neither rewrite nor re-save", () => {
+    const config = bareConfig();
+    const now = Date.UTC(2026, 6, 31, 0, 0, 0);
+    let saves = 0;
+    const save = () => { saves += 1; };
+    // Stand in for saveConfigPreservingClaudeCode by counting the writes the record path asks for.
+    const record = (at: number) => recordProviderCapCooldown(config, "cline-pass", 429, CAP_429, {
+      now: at,
+      save: false,
+    });
+
+    const first = record(now);
+    save();
+    expect(first?.until).toBe(now + (1 * 24 + 22) * HOUR_MS);
+
+    // A retrying client produces one of these per rejected request for the whole cap window.
+    for (let i = 1; i <= 50; i += 1) {
+      const again = record(now + i * 60_000);
+      expect(again?.until).toBe(first?.until);
+      expect(again?.recordedAt).toBe(now);
+    }
+    expect(saves).toBe(1);
+    expect(Object.keys(config.providerCooldowns ?? {})).toEqual(["cline-pass"]);
+  });
+
+  test("a materially longer cap still extends the active window", () => {
+    const config = bareConfig();
+    const now = Date.UTC(2026, 6, 31, 0, 0, 0);
+    recordProviderCapCooldown(config, "cline-pass", 429, "weekly limit. resets in 3h", { now, save: false });
+    expect(config.providerCooldowns?.["cline-pass"]?.until).toBe(now + 3 * HOUR_MS);
+
+    recordProviderCapCooldown(config, "cline-pass", 429, "weekly limit. resets in 6d", { now, save: false });
+    expect(config.providerCooldowns?.["cline-pass"]?.until).toBe(now + 6 * 24 * HOUR_MS);
+  });
+});
+
+describe("disable ownership", () => {
+  test("an explicit operator disable survives cooldown expiry", () => {
+    const config = bareConfig();
+    const now = 1_000_000;
+    recordProviderCapCooldown(
+      config,
+      "cline-pass",
+      429,
+      '{"code":"INFERENCE_CAP_ERROR","message":"weekly limit"}',
+      { now, save: false },
+    );
+    expect(config.providers["cline-pass"]?.disabled).toBe(true);
+
+    // The operator turns the provider off by hand while the cap is still active; the
+    // management API hands ownership of `disabled` back to them.
+    expect(releaseProviderCooldownDisableOwnership(config, "cline-pass")).toBe(true);
+
+    expect(expireProviderCooldowns(config, now + 8 * 24 * HOUR_MS)).toBe(true);
+    expect(config.providers["cline-pass"]?.disabled).toBe(true);
+    expect(config.providerCooldowns).toBeUndefined();
+  });
+
+  test("releasing ownership is a no-op when no cooldown owns the flag", () => {
+    const config = bareConfig();
+    expect(releaseProviderCooldownDisableOwnership(config, "cline-pass")).toBe(false);
+  });
+});
+
+describe("startProviderCooldownSweep", () => {
+  test("re-enables a capped provider without any /api/config poll", async () => {
+    const config = bareConfig();
+    const now = Date.now();
+    config.providers["cline-pass"].disabled = true;
+    config.providerCooldowns = {
+      "cline-pass": {
+        until: now - 1,
+        reason: "INFERENCE_CAP_ERROR",
+        message: "cap",
+        source: "upstream-429",
+        disabledProvider: true,
+      },
+    };
+    let saves = 0;
+    const sweep = startProviderCooldownSweep(config, { intervalMs: 5, save: () => { saves += 1; } });
+    try {
+      await Bun.sleep(40);
+    } finally {
+      sweep.stop();
+    }
+    expect(config.providers["cline-pass"]?.disabled).toBeUndefined();
+    expect(config.providerCooldowns).toBeUndefined();
+    // Exactly one write: the sweep only saves on the tick that actually mutated config.
+    expect(saves).toBe(1);
   });
 });

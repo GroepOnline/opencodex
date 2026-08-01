@@ -17,6 +17,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const MIN_MS = 60 * 1000;
 
+/** A recomputed window must exceed the active one by more than this to replace it. */
+const COOLDOWN_EXTEND_TOLERANCE_MS = HOUR_MS;
+/** How often the live server sweeps expired cooldowns back off `providers[].disabled`. */
+const DEFAULT_SWEEP_MS = 60 * 1000;
+
 /** Live server config bound at startServer; used when the request-log path has no config arg. */
 let liveConfig: OcxConfig | null = null;
 
@@ -101,6 +106,63 @@ export function expireProviderCooldowns(config: OcxConfig, now = Date.now()): bo
   return changed;
 }
 
+/**
+ * Hand ownership of `providers[name].disabled` back to the operator.
+ *
+ * `expireProviderCooldowns` only re-enables providers this module disabled, which it tracks
+ * via `disabledProvider`. Once a human toggles `disabled` through the management API that
+ * flag is a lie: leaving it set lets the expiry sweep silently re-enable a provider the
+ * operator deliberately turned off. Returns true when the flag was cleared.
+ */
+export function releaseProviderCooldownDisableOwnership(config: OcxConfig, providerName: string): boolean {
+  const entry = config.providerCooldowns?.[providerName];
+  if (!entry || entry.disabledProvider !== true) return false;
+  entry.disabledProvider = false;
+  return true;
+}
+
+export interface ProviderCooldownSweep {
+  stop: () => void;
+}
+
+/** The single in-flight sweep, so repeated `startServer` calls cannot stack timers. */
+let activeSweep: ProviderCooldownSweep | null = null;
+
+/**
+ * Periodically expire cooldowns on the live config.
+ *
+ * Routing reads `providers[name].disabled` directly (see `server/responses/core.ts`,
+ * `combos/resolve.ts`, `codex/subagent-model-fallback.ts`), and expiry otherwise only runs
+ * at startup and on `GET /api/config`. A headless proxy — the primary mode, driving Codex
+ * CLI or Claude Code with no dashboard open — would therefore keep an auto-paused provider
+ * disabled indefinitely past its reset. This sweep is that auto-recovery.
+ */
+export function startProviderCooldownSweep(
+  config: OcxConfig,
+  opts?: { intervalMs?: number; save?: (config: OcxConfig) => void },
+): ProviderCooldownSweep {
+  // One live config means one sweep: replace any prior timer instead of stacking them.
+  activeSweep?.stop();
+  const save = opts?.save ?? saveConfigPreservingClaudeCode;
+  const timer = setInterval(() => {
+    try {
+      if (expireProviderCooldowns(config)) save(config);
+    } catch {
+      /* best-effort: a failed sweep must never take the proxy down */
+    }
+  }, opts?.intervalMs ?? DEFAULT_SWEEP_MS);
+  // Never hold the process open on this alone.
+  (timer as { unref?: () => void }).unref?.();
+  const sweep: ProviderCooldownSweep = {
+    stop: () => {
+      clearInterval(timer);
+      if (activeSweep === sweep) activeSweep = null;
+    },
+  };
+  activeSweep = sweep;
+  return sweep;
+}
+
 export interface RecordProviderCapCooldownOpts {
   disable?: boolean;
   now?: number;
@@ -143,11 +205,12 @@ export function recordProviderCapCooldown(
   expireProviderCooldowns(config, now);
   const bag = (config.providerCooldowns ??= {});
   const prev = bag[key];
-  // Don't shorten an existing longer cooldown; still persist expiry side-effects below if needed.
-  if (prev && prev.until > untilMs) {
-    if (opts?.save !== false) saveConfigPreservingClaudeCode(config);
-    return prev;
-  }
+  // An already-active cooldown is authoritative. Clients retry hard, so this runs once per
+  // rejected request; rewriting `until` each time would fsync config.json on the request
+  // finalization path for the whole cap window. Upstream countdowns ("resets in 1d 22h") are
+  // hour-quantized, so a recomputed window drifts later by up to an hour without meaning
+  // anything — only a materially longer window (a 24h cap escalating to weekly) replaces it.
+  if (prev && prev.until + COOLDOWN_EXTEND_TOLERANCE_MS >= untilMs) return prev;
 
   const wantDisable = opts?.disable !== false;
   const didDisable = wantDisable
