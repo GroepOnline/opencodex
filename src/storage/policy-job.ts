@@ -236,6 +236,13 @@ function runInWorker(opts: RequestPolicyRunOptions & { blockMs?: number }): Prom
       clearTimeout(timer);
       if (activeWorker === worker) activeWorker = null;
       try { worker.terminate(); } catch { /* */ }
+      // Bun 1.3.14 on Windows can panic (Internal assertion failure) when the
+      // next Worker/HTTP server starts while a just-terminated worker's pipes
+      // are still draining (oven-sh/bun#31224, #32071). Give teardown a beat.
+      if (process.platform === "win32") {
+        setTimeout(fn, 75);
+        return;
+      }
       fn();
     };
 

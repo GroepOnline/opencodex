@@ -114,7 +114,7 @@ beforeEach(() => {
   resetArchivedCleanupJobForTests();
 });
 
-afterEach(() => {
+afterEach(async () => {
   stopStorageCleanupScheduler();
   resetStorageCleanupPolicyJobForTests();
   setStorageCleanupPolicyJobTestHooks(null);
@@ -126,6 +126,11 @@ afterEach(() => {
   isolatedCodexHome = null;
   if (testDir) rmSync(testDir, { recursive: true, force: true });
   testDir = "";
+  // Same Bun 1.3.14 Windows Worker-teardown race as policy-job finish(): CI
+  // panics between the blockMs "already running" case and the next server.
+  if (process.platform === "win32") {
+    await Bun.sleep(150);
+  }
 });
 
 describe("storage cleanup policy API", () => {
