@@ -102,6 +102,19 @@ describe("recordProviderCapCooldown (live config)", () => {
     expect(resolveProviderConfigKey(config, "openai-work")).toBe("openai");
   });
 
+  // `providers` is a plain record, so `config.providers.constructor` is a truthy inherited
+  // function. A log label of that name must not resolve as a provider, or the record path
+  // would write `disabled` onto Object.prototype's member and persist a phantom cooldown.
+  test("inherited Object keys never resolve as provider names", () => {
+    const config = bareConfig();
+    for (const inherited of ["constructor", "toString", "valueOf", "hasOwnProperty"]) {
+      expect(resolveProviderConfigKey(config, inherited)).toBeNull();
+    }
+    const cap = 'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. resets in 3h"}';
+    expect(recordProviderCapCooldown(config, "constructor", 429, cap, { save: false })).toBeNull();
+    expect(config.providerCooldowns).toBeUndefined();
+  });
+
   test("expire re-enables only cooldown-disabled providers", () => {
     const config = bareConfig();
     const past = 1_000;
@@ -128,15 +141,14 @@ describe("cooldown write amplification", () => {
     const config = bareConfig();
     const now = Date.UTC(2026, 6, 31, 0, 0, 0);
     let saves = 0;
-    const save = () => { saves += 1; };
-    // Stand in for saveConfigPreservingClaudeCode by counting the writes the record path asks for.
+    // Stands in for saveConfigPreservingClaudeCode, so this counts the writes the record path
+    // actually performs rather than writes the test itself makes.
     const record = (at: number) => recordProviderCapCooldown(config, "cline-pass", 429, CAP_429, {
       now: at,
-      save: false,
+      save: () => { saves += 1; },
     });
 
     const first = record(now);
-    save();
     expect(first?.until).toBe(now + (1 * 24 + 22) * HOUR_MS);
 
     // A retrying client produces one of these per rejected request for the whole cap window.

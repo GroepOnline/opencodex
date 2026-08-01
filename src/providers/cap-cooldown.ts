@@ -61,7 +61,9 @@ export function isHardCapMessage(status: number, upstreamError?: string): boolea
 /** Map log labels like `openai-work` back to a config.providers key. */
 export function resolveProviderConfigKey(config: OcxConfig, logProvider: string): string | null {
   if (!logProvider || logProvider === "combo") return null;
-  if (config.providers[logProvider]) return logProvider;
+  // Own-property only: `providers` is a plain record, so a log label like `constructor` or
+  // `toString` would otherwise resolve to an inherited function and be treated as a provider.
+  if (Object.hasOwn(config.providers, logProvider)) return logProvider;
   const names = Object.keys(config.providers).sort((a, b) => b.length - a.length);
   for (const name of names) {
     if (logProvider.startsWith(`${name}-`)) return name;
@@ -166,8 +168,11 @@ export function startProviderCooldownSweep(
 export interface RecordProviderCapCooldownOpts {
   disable?: boolean;
   now?: number;
-  /** Persist to disk (default true). */
-  save?: boolean;
+  /**
+   * Persistence for a newly recorded window: `false` skips it, a function replaces
+   * `saveConfigPreservingClaudeCode` (tests count real writes), default persists to disk.
+   */
+  save?: boolean | ((config: OcxConfig) => void);
 }
 
 /** Record a hard-cap 429/402 onto the live provider config and optionally disable until reset. */
@@ -231,7 +236,10 @@ export function recordProviderCapCooldown(
     recordedAt: now,
   };
   bag[key] = entry;
-  if (opts?.save !== false) saveConfigPreservingClaudeCode(config);
+  if (opts?.save !== false) {
+    const save = typeof opts?.save === "function" ? opts.save : saveConfigPreservingClaudeCode;
+    save(config);
+  }
   console.warn(
     `[opencodex] Provider cap cooldown set provider=${key} until=${new Date(untilMs).toISOString()} reason=${reason} disabled=${!!entry.disabledProvider}`,
   );
