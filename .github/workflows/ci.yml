@@ -82,7 +82,34 @@ jobs:
         run: bun x tsc --noEmit
 
       - name: Test
-        run: bun test --isolate tests
+        shell: bash
+        env:
+          MATRIX_OS: ${{ matrix.os }}
+        run: |
+          set -euo pipefail
+          if [[ "$MATRIX_OS" != "windows-latest" ]]; then
+            bun test --isolate tests
+            exit 0
+          fi
+          # Bun 1.3.14 on Windows intermittently panics under Worker
+          # spawn/terminate churn in storage policy tests ("Internal assertion
+          # failure" / "Bun has crashed"). Retry once on that runtime crash
+          # only — ordinary assertion failures still fail the job.
+          out="$(mktemp)"
+          set +e
+          bun test --isolate tests >"$out" 2>&1
+          code=$?
+          set -e
+          cat "$out"
+          if [[ $code -eq 0 ]]; then
+            exit 0
+          fi
+          if grep -q 'Bun has crashed' "$out"; then
+            echo "::warning::Bun runtime crash on Windows; retrying suite once"
+            bun test --isolate tests
+            exit $?
+          fi
+          exit "$code"
 
       - name: GUI tests
         run: cd gui && bun test tests

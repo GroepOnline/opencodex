@@ -73,11 +73,11 @@ describe("oauth ToS warning UI seam", () => {
       "oauthTos.acknowledge",
       "oauthTos.continue",
     ];
-    for (const locale of ["en", "de", "ko", "zh"]) {
-      const text = await Bun.file(`gui/src/i18n/${locale}.ts`).text();
-      for (const key of keys) {
-        expect(text).toContain(`"${key}"`);
-      }
+    // en.ts is the TKey source of truth; nl.ts spreads en and only overrides the
+    // Joep-facing copy, so untranslated keys fall back to English by design.
+    const text = await Bun.file("gui/src/i18n/en.ts").text();
+    for (const key of keys) {
+      expect(text).toContain(`"${key}"`);
     }
   });
 });

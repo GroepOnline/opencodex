@@ -52,7 +52,7 @@ test("Usage loading and empty states guard the stacked body", async () => {
 });
 
 test("retired usage workspace i18n keys stay removed from every locale", async () => {
-  const locales = ["en", "de", "ja", "ko", "ru", "zh"] as const;
+  const locales = ["en"] as const; // full dictionaries; nl.ts spreads en and only overrides a subset
   for (const locale of locales) {
     const dict = await Bun.file(new URL(`../src/i18n/${locale}.ts`, import.meta.url)).text();
     expect(dict).not.toContain('"usage.workspace.sections":');

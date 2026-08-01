@@ -1,23 +1,15 @@
 import { createContext, useContext } from "react";
 import { en, type TKey } from "./en";
-import { de } from "./de";
-import { ko } from "./ko";
-import { zh } from "./zh";
-import { ru } from "./ru";
-import { ja } from "./ja";
+import { nl } from "./nl";
 
-export type Locale = "en" | "de" | "ko" | "zh" | "ru" | "ja";
+export type Locale = "en" | "nl";
 export type { TKey };
 
-export const DICTS: Record<Locale, Record<TKey, string>> = { en, de, ko, zh, ru, ja };
+export const DICTS: Record<Locale, Record<TKey, string>> = { en, nl };
 
 export const LOCALES: { code: Locale; name: string; htmlLang: string }[] = [
   { code: "en", name: "English", htmlLang: "en" },
-  { code: "de", name: "Deutsch", htmlLang: "de" },
-  { code: "ko", name: "한국어", htmlLang: "ko" },
-  { code: "zh", name: "中文", htmlLang: "zh-CN" },
-  { code: "ru", name: "Русский", htmlLang: "ru" },
-  { code: "ja", name: "日本語", htmlLang: "ja" },
+  { code: "nl", name: "Nederlands", htmlLang: "nl" },
 ];
 
 const LANG_KEY = "ocx-lang";
@@ -25,15 +17,13 @@ const LANG_KEY = "ocx-lang";
 export function detectInitial(): Locale {
   try {
     const stored = localStorage.getItem(LANG_KEY);
-    if (stored === "en" || stored === "de" || stored === "ko" || stored === "zh" || stored === "ru" || stored === "ja") return stored;
+    if (stored === "en" || stored === "nl") return stored;
   } catch { /* ignore */ }
-  const nav = typeof navigator !== "undefined" ? navigator.language.toLowerCase() : "en";
-  if (nav.startsWith("de")) return "de";
-  if (nav.startsWith("ko")) return "ko";
-  if (nav.startsWith("zh")) return "zh";
-  if (nav.startsWith("ru")) return "ru";
-  if (nav.startsWith("ja")) return "ja";
-  return "en";
+  const nav = typeof navigator !== "undefined" ? navigator.language.toLowerCase() : "nl";
+  if (nav.startsWith("en")) return "en";
+  // ChefGroep host build: Joep-facing copy is Dutch by default (DESIGN.md voice-kit).
+  // The language switcher in the sidebar still offers English.
+  return "nl";
 }
 
 export type Vars = Record<string, string | number>;
