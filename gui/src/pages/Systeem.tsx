@@ -5,6 +5,7 @@ import CodexAuth from "./CodexAuth";
 import ClaudeCode from "./ClaudeCode";
 import { formatUptime } from "../formatUptime";
 import { formatBytes } from "../format-bytes";
+import { readJsonOrThrow } from "../fetch-json";
 import { useI18n, useT } from "../i18n/shared";
 import { IconChevron, IconRefresh } from "../icons";
 
@@ -110,8 +111,8 @@ export default function Systeem({ apiBase, health, healthFailed, target }: {
     const channel: UpdateChannel = health?.version.includes("-preview.") ? "preview" : "latest";
     try {
       const res = await fetch(`${apiBase}/api/update/check?tag=${channel}`);
-      const data = await res.json() as UpdateCheckData & { error?: string };
-      if (!res.ok) throw new Error(data.error ?? t("sys.updateCheckFailed"));
+      const data = await readJsonOrThrow<UpdateCheckData>(res, t("sys.updateCheckFailed"));
+      if (!data) throw new Error(t("sys.updateCheckFailed"));
       setUpdateCheck(data);
       if (!data.updateAvailable) setUpdateMsg(t("sys.upToDate"));
     } catch (err) {
@@ -132,8 +133,8 @@ export default function Systeem({ apiBase, health, healthFailed, target }: {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tag: channel, restart: true }),
       });
-      const data = await res.json() as { job?: unknown; error?: string };
-      if (!res.ok || !data.job) throw new Error(data.error ?? t("sys.updateStartFailed"));
+      const data = await readJsonOrThrow<{ job?: unknown }>(res, t("sys.updateStartFailed"));
+      if (!data?.job) throw new Error(t("sys.updateStartFailed"));
       setUpdateMsg(t("sys.updateRunning"));
     } catch (err) {
       setUpdateMsg(err instanceof Error ? err.message : String(err));
@@ -147,9 +148,8 @@ export default function Systeem({ apiBase, health, healthFailed, target }: {
     setSyncMsg(null);
     try {
       const res = await fetch(`${apiBase}/api/sync`, { method: "POST" });
-      const data = await res.json() as { added?: number; message?: string; error?: string };
-      if (!res.ok) throw new Error(data.error ?? t("sys.syncFailed"));
-      setSyncMsg(t("dash.syncOk", { count: data.added ?? 0 }));
+      const data = await readJsonOrThrow<{ added?: number; message?: string }>(res, t("sys.syncFailed"));
+      setSyncMsg(t("dash.syncOk", { count: data?.added ?? 0 }));
     } catch (err) {
       setSyncMsg(err instanceof Error ? err.message : String(err));
     } finally {

@@ -14,11 +14,17 @@ export default function Instellingen({ onClose }: { apiBase: string; onClose: ()
   const [theme, setTheme] = useState<Theme>(() => readTheme());
 
   return (
-    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div
+      className="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-title"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div className="modal-card" style={{ maxWidth: 420 }}>
         <div className="modal-head">
-          <h3>{t("dash.settingsSection")}</h3>
-          <button className="btn-icon" onClick={onClose} aria-label={t("common.close")}>
+          <h3 id="settings-title">{t("dash.settingsSection")}</h3>
+          <button type="button" className="btn-icon" onClick={onClose} aria-label={t("common.close")}>
             <IconX />
           </button>
         </div>
@@ -32,6 +38,7 @@ export default function Instellingen({ onClose }: { apiBase: string; onClose: ()
           <div className="custom-select" style={{ position: "relative", display: "inline-block" }}>
             <select
               className="select-sm"
+              aria-label={t("lang.label")}
               value={locale}
               onChange={e => setLocale(e.target.value as typeof locale)}
             >
@@ -54,6 +61,7 @@ export default function Instellingen({ onClose }: { apiBase: string; onClose: ()
             {THEMES.map(th => (
               <button
                 key={th.value}
+                type="button"
                 className={`usage-segmented-btn${theme === th.value ? " active" : ""}`}
                 onClick={() => { applyTheme(th.value); setTheme(th.value); }}
               >

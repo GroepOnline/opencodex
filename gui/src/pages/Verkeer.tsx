@@ -90,7 +90,7 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
         if (!res.ok) throw new Error(String(res.status));
         const data = await res.json() as BonEntry[];
         if (!cancelled) {
-          setLogs(Array.isArray(data) ? [...data].sort((a, b) => b.timestamp - a.timestamp) : []);
+          setLogs(Array.isArray(data) ? data.toSorted((a, b) => b.timestamp - a.timestamp) : []);
           setLogsFailed(false);
         }
       } catch {
