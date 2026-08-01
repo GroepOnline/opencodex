@@ -9,6 +9,7 @@ import {
   isComboTargetInCooldown,
 } from "../src/combos";
 import { readConfigDiagnostics, saveConfig } from "../src/config";
+import { clearResponseStateForTests, rememberResponseState } from "../src/responses/state";
 import type { ProviderAdapter } from "../src/adapters/base";
 import { handleManagementAPI } from "../src/server/management-api";
 import { saveCredential } from "../src/oauth/store";
@@ -1770,6 +1771,152 @@ describe("server combo failover 030 activation matrix", () => {
     expect(attempt).toMatchObject({ provider: "a", status: 429, usageStatus: "unreported" });
     expect(attempt).not.toHaveProperty("usage");
   }, 10_000);
+});
+
+describe("per-provider fallback for plain models", () => {
+  function fallbackConfig(
+    providers: OcxConfig["providers"],
+    fallback: Array<{ provider: string; model: string }>,
+  ): OcxConfig {
+    const names = Object.keys(providers);
+    return {
+      port: 0,
+      defaultProvider: names[0]!,
+      providers: { ...providers, [names[0]!]: { ...providers[names[0]!]!, fallback } },
+    };
+  }
+
+  test("a 502 on a plain model hops to the provider's configured fallback", async () => {
+    const hits: string[] = [];
+    const a = serve(() => {
+      hits.push("a");
+      return Response.json({ error: { message: "upstream died" } }, { status: 502 });
+    });
+    const b = serve(() => {
+      hits.push("b");
+      return chatSuccess("fallback backup", "m2");
+    });
+    const config = fallbackConfig({
+      a: provider("openai-chat", baseUrl(a), "key-a"),
+      b: provider("openai-chat", baseUrl(b), "key-b"),
+    }, [{ provider: "b", model: "m2" }]);
+
+    const response = await postModelLogged(config, "a/m1");
+    expect(response.status).toBe(200);
+    expect(JSON.stringify(await response.json())).toContain("fallback backup");
+    expect(hits).toEqual(["a", "b"]);
+  });
+
+  test("the log row keeps the winning target instead of collapsing into a combo row", async () => {
+    const a = serve(() => Response.json({ error: { message: "upstream died" } }, { status: 502 }));
+    const b = serve(() => chatSuccess("fallback backup", "m2"));
+    const config = fallbackConfig({
+      a: provider("openai-chat", baseUrl(a), "key-a"),
+      b: provider("openai-chat", baseUrl(b), "key-b"),
+    }, [{ provider: "b", model: "m2" }]);
+
+    expect((await postModelLogged(config, "a/m1")).status).toBe(200);
+    const { log } = await latestAttemptReceipts(config);
+    expect(log).toMatchObject({ requestedModel: "a/m1", provider: "b", model: "m2" });
+    expect(log.attempts).toMatchObject([{ provider: "a", status: 502 }, { provider: "b", status: 200 }]);
+  });
+
+  test("a non-retryable 400 stops on the primary without touching the fallback", async () => {
+    const hits: string[] = [];
+    const a = serve(() => {
+      hits.push("a");
+      return Response.json({ error: { message: "bad request", type: "invalid_request_error" } }, { status: 400 });
+    });
+    const b = serve(() => {
+      hits.push("b");
+      return chatSuccess("must not be reached", "m2");
+    });
+    const config = fallbackConfig({
+      a: provider("openai-chat", baseUrl(a), "key-a"),
+      b: provider("openai-chat", baseUrl(b), "key-b"),
+    }, [{ provider: "b", model: "m2" }]);
+
+    expect((await postModelLogged(config, "a/m1")).status).toBe(400);
+    expect(hits).toEqual(["a"]);
+  });
+
+  test("without a configured fallback the failure still reaches the caller", async () => {
+    const a = serve(() => Response.json({ error: { message: "upstream died" } }, { status: 502 }));
+    const config: OcxConfig = {
+      port: 0,
+      defaultProvider: "a",
+      providers: { a: provider("openai-chat", baseUrl(a), "key-a") },
+    };
+    expect((await postModelLogged(config, "a/m1")).status).toBe(502);
+  });
+
+  test("an exhausted chain returns the last failure rather than a combo_unavailable", async () => {
+    const a = serve(() => Response.json({ error: { message: "a died" } }, { status: 502 }));
+    const b = serve(() => Response.json({ error: { message: "b overloaded" } }, { status: 503 }));
+    const config = fallbackConfig({
+      a: provider("openai-chat", baseUrl(a), "key-a"),
+      b: provider("openai-chat", baseUrl(b), "key-b"),
+    }, [{ provider: "b", model: "m2" }]);
+
+    const response = await postModelLogged(config, "a/m1");
+    expect(response.status).toBe(503);
+  });
+
+  test("a previous_response_id chain is expanded exactly once on the way to a target", async () => {
+    // The hop loop re-enters handleResponses for every target, and expandPreviousResponseInput
+    // is not idempotent: replaying an already-expanded body would prepend the restored history
+    // a second time in each child request.
+    const bodies: Array<Record<string, unknown>> = [];
+    const a = serve(async request => {
+      bodies.push(await request.json() as Record<string, unknown>);
+      return chatSuccess("primary ok", "m1");
+    });
+    const b = serve(() => chatSuccess("must not be reached", "m2"));
+    const config = fallbackConfig({
+      a: provider("openai-chat", baseUrl(a), "key-a"),
+      b: provider("openai-chat", baseUrl(b), "key-b"),
+    }, [{ provider: "b", model: "m2" }]);
+
+    clearResponseStateForTests();
+    rememberResponseState(
+      { store: true, input: [{ role: "user", content: "restored turn" }] },
+      { id: "resp-chain", status: "completed", output: [] },
+    );
+
+    const response = await postModelLogged(config, "a/m1", {
+      previous_response_id: "resp-chain",
+      store: true,
+    });
+    expect(response.status).toBe(200);
+
+    const messages = bodies[0]?.messages as Array<Record<string, unknown>> | undefined;
+    const restored = (messages ?? []).filter(message => JSON.stringify(message).includes("restored turn"));
+    expect(restored).toHaveLength(1);
+    clearResponseStateForTests();
+  });
+
+  test("an explicit combo request is unaffected by provider fallback config", async () => {
+    const hits: string[] = [];
+    const a = serve(() => {
+      hits.push("a");
+      return Response.json({ error: { message: "a died" } }, { status: 502 });
+    });
+    const b = serve(() => {
+      hits.push("b");
+      return chatSuccess("combo backup", "m2");
+    });
+    const providers = {
+      a: provider("openai-chat", baseUrl(a), "key-a", { fallback: [{ provider: "b", model: "m2" }] }),
+      b: provider("openai-chat", baseUrl(b), "key-b"),
+    };
+    const config = comboConfig(providers);
+
+    const response = await postLogged(config);
+    expect(response.status).toBe(200);
+    expect(hits).toEqual(["a", "b"]);
+    const { log } = await latestAttemptReceipts(config);
+    expect(log).toMatchObject({ provider: "combo", model: "combo/free", resolvedModel: "m2" });
+  });
 });
 
 describe("cursor conversation continuity across store:false chains", () => {
