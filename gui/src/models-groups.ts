@@ -8,6 +8,8 @@ export type ProviderDiscoverySummary =
       httpStatus?: never;
     };
 
+export type ProviderClientHideReason = "disabled" | "all_accounts_reauth" | "discovery_failed";
+
 export interface ConfiguredProviderSummary {
   name: string;
   authMode?: string;
@@ -15,6 +17,9 @@ export interface ConfiguredProviderSummary {
   liveModels?: boolean;
   models?: string[];
   discovery?: ProviderDiscoverySummary;
+  clientHideReason?: ProviderClientHideReason;
+  clientHideReasonLabel?: string;
+  clientHidden?: boolean;
 }
 
 export interface ProviderModelGroup<Row> {
@@ -24,6 +29,9 @@ export interface ProviderModelGroup<Row> {
   liveModels: boolean;
   configuredModels: string[];
   discovery?: ProviderDiscoverySummary;
+  clientHideReason?: ProviderClientHideReason;
+  clientHideReasonLabel?: string;
+  clientHidden?: boolean;
 }
 
 export function buildProviderModelGroups<Row extends { provider: string; native?: boolean }>(
@@ -57,6 +65,11 @@ export function buildProviderModelGroups<Row extends { provider: string; native?
         liveModels: configured?.liveModels !== false,
         configuredModels: configured?.models ?? [],
         discovery: configured?.discovery,
+        ...(configured?.clientHideReason ? {
+          clientHideReason: configured.clientHideReason,
+          clientHideReasonLabel: configured.clientHideReasonLabel,
+          clientHidden: configured.clientHidden === true,
+        } : {}),
       };
     })
     .sort((a, b) => {

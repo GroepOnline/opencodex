@@ -2,7 +2,8 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { augmentRoutedModelsWithJawcodeMetadata, augmentRoutedModelsWithRegistryOpenAiApiRows, buildCatalogEntries, buildComboCatalogOmission, catalogModelSlug, clampCatalogModelsToCodexSupport, clampEntryToCodexSupportedEfforts, clampedDefaultEffort, comboCatalogOmissionReason, deriveComboCatalogModel, exactComboCatalogSlugs, filterCatalogVisibleModels, filterSupportedNativeSlugs, gatherRoutedModels, isDatedVariantId, isMediaGenerationModelId, loadBundledCodexCatalog, materializeBundledCodexCatalog, mergeCatalogEntriesForSync, NATIVE_OPENAI_MODELS, normalizeRoutedCatalogEntry, resetCatalogRuntimeStateForTests, resetOpenAiApiCatalogWarningStateForTests } from "../src/codex/catalog";
+import { augmentRoutedModelsWithJawcodeMetadata, augmentRoutedModelsWithRegistryOpenAiApiRows, buildCatalogEntries, buildComboCatalogOmission, catalogModelSlug, clampCatalogModelsToCodexSupport, clampEntryToCodexSupportedEfforts, clampedDefaultEffort, comboCatalogOmissionReason, deriveComboCatalogModel, exactComboCatalogSlugs, filterCatalogVisibleModels, filterSupportedNativeSlugs, gatherRoutedModels as gatherRoutedModelsDirect, isDatedVariantId, isMediaGenerationModelId, loadBundledCodexCatalog, materializeBundledCodexCatalog, mergeCatalogEntriesForSync, NATIVE_OPENAI_MODELS, normalizeRoutedCatalogEntry, resetCatalogRuntimeStateForTests, resetOpenAiApiCatalogWarningStateForTests, shouldExposeRoutedModel } from "../src/codex/catalog";
+import { withStubbedProviderFetch } from "./helpers/catalog-provider-fetch";
 import {
   CURSOR_STATIC_MODELS,
   filterCursorConfiguredModelsByLiveDiscovery,
@@ -26,6 +27,14 @@ import { enrichProviderFromRegistry } from "../src/providers/derive";
 import { handleManagementAPI } from "../src/server/management-api";
 
 const originalFetch = globalThis.fetch;
+
+/**
+ * Discovery runs on the pinned outbound transport, which does not read
+ * `globalThis.fetch`. These tests stub that global, so every config gets the
+ * caller-owned executor that hands control back to the stub.
+ */
+const gatherRoutedModels: typeof gatherRoutedModelsDirect = (config, options) =>
+  gatherRoutedModelsDirect(withStubbedProviderFetch(config), options);
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -86,6 +95,7 @@ async function liveModelCountAfterDiscovery(provider: string, models: string[] |
         apiKey: "k",
         liveModels: true,
         models: ["configured-fallback"],
+        fetch: ((input: RequestInfo | URL) => globalThis.fetch(input)) as typeof fetch,
       },
     },
   } as unknown as Parameters<typeof handleManagementAPI>[2];
@@ -683,6 +693,34 @@ describe("Google Gemini catalog metadata", () => {
       .toEqual(["low", "medium", "high", "max", "ultra"]);
     expect(entry?.input_modalities).toEqual(["text", "image"]);
     expect(entry?.context_window).toBe(1_048_576);
+  });
+});
+
+describe("Cursor Kimi K3 catalog default effort", () => {
+  // Regression for the effort-tier ladder added with cursor/kimi-k3: the Cursor ladder is
+  // low/high/max with NO medium rung, so applyReasoningLevels' medium -> high -> first
+  // preference would settle default_reasoning_level on "high" unless the registry supplies a
+  // default. Kimi documents `max` as K3's API default, and a "high" default makes the picker
+  // send high explicitly so the request builder never falls back to kimi-k3-max.
+  test("keeps max as the catalog default instead of falling back to high", async () => {
+    const cursor = {
+      adapter: "cursor",
+      authMode: "oauth" as const,
+      liveModels: false,
+    };
+    enrichProviderFromRegistry("cursor", cursor);
+    const models = await gatherRoutedModels({
+      port: 0,
+      defaultProvider: "cursor",
+      providers: { cursor },
+    });
+    const entry = buildCatalogEntries(nativeTemplate(), [], models)
+      .find(row => row.slug === "cursor/kimi-k3");
+
+    expect(entry).toBeDefined();
+    expect((entry?.supported_reasoning_levels as Array<{ effort: string }>).map(level => level.effort))
+      .toEqual(["low", "high", "max", "ultra"]);
+    expect(entry?.default_reasoning_level).toBe("max");
   });
 });
 
@@ -1604,6 +1642,7 @@ describe("Codex catalog routed normalization", () => {
             baseUrl: "http://198.18.0.1/v1",
             apiKey: "sk-test",
             models: ["static-fallback"],
+            fetch: globalThis.fetch,
           },
         },
       });
@@ -1645,6 +1684,7 @@ describe("Codex catalog routed normalization", () => {
             baseUrl: "http://198.18.0.1/v1",
             allowPrivateNetwork: true,
             apiKey: "sk-test",
+            fetch: globalThis.fetch,
           },
         },
       });
@@ -2031,9 +2071,11 @@ describe("Codex catalog routed normalization", () => {
   test("opencode-go high-risk models use official jawcode metadata in the Codex catalog", () => {
     const cases = [
       { id: "glm-5.2", context: 1_000_000, auto: 900_000, input: ["text"] },
-      { id: "qwen3.5-plus", context: 262_144, auto: 235_929, input: ["text", "image"] },
+      // Upstream raised qwen3.5-plus to a 1M window and cut minimax-m3 to the 512K tier that
+      // matches MiniMax's own <=512K pricing band; both are catalogue refreshes, not overrides.
+      { id: "qwen3.5-plus", context: 1_000_000, auto: 900_000, input: ["text", "image"] },
       { id: "kimi-k2.7-code", context: 262_144, auto: 235_929, input: ["text", "image"] },
-      { id: "minimax-m3", context: 1_000_000, auto: 900_000, input: ["text", "image"] },
+      { id: "minimax-m3", context: 512_000, auto: 460_800, input: ["text", "image"] },
       { id: "qwen3.7-max", context: 1_000_000, auto: 900_000, input: ["text"] },
     ] as const;
     const entries = buildCatalogEntries(nativeTemplate(), [], cases.map(({ id }) => ({ provider: "opencode-go", id })));
@@ -2538,7 +2580,10 @@ describe("OpenAI API trusted catalog augmentation", () => {
       });
     };
     try {
-      const rows = await gatherRoutedModels(openAiApiCatalogConfig({ liveModels: true }));
+      // This test exercises the catalog fetch/augmentation path, not DNS destination
+      // classification. Keep it hermetic on NAT64 hosts whose resolver also returns
+      // 64:ff9b::/96 answers for api.openai.com.
+      const rows = await gatherRoutedModels(openAiApiCatalogConfig({ liveModels: true, allowPrivateNetwork: true }));
       const apiRows = rows.filter(row => row.provider === "openai-apikey");
       expect(calls).toEqual(["https://api.openai.com/v1/models"]);
       expect(apiRows.map(row => row.id)).toEqual([...exactIds].sort());
@@ -2671,6 +2716,33 @@ describe("media-generation model filtering", () => {
   });
 });
 
+describe("shouldExposeRoutedModel — Gemini image-capable exemption", () => {
+  test("exposes gemini-3.1-flash-image (image-capable chat model, not media-gen)", () => {
+    expect(shouldExposeRoutedModel({ provider: "google-antigravity", id: "gemini-3.1-flash-image" })).toBe(true);
+  });
+
+  test("exposes cursor gemini-3-pro-image-preview", () => {
+    expect(shouldExposeRoutedModel({ provider: "cursor", id: "gemini-3-pro-image-preview" })).toBe(true);
+  });
+
+  test("does not resurrect standalone media-gen gemini image ids", () => {
+    expect(shouldExposeRoutedModel({ provider: "google-antigravity", id: "gemini-3-pro-image" })).toBe(false);
+    expect(shouldExposeRoutedModel({ provider: "openrouter", id: "gemini-3-pro-image" })).toBe(false);
+  });
+
+  test("still filters true media-generation models", () => {
+    for (const id of [
+      "grok-2-image", "gpt-image-1", "dall-e-3", "imagen-4", "sora-2", "veo-3", "flux",
+    ]) {
+      expect(shouldExposeRoutedModel({ provider: "openrouter", id })).toBe(false);
+    }
+  });
+
+  test("still filters compatibility-excluded slugs", () => {
+    expect(shouldExposeRoutedModel({ provider: "opencode-go", id: "hy3-preview" })).toBe(false);
+  });
+});
+
 describe("Codex reasoning-effort capability clamp", () => {
   function bundledCatalogDeps(efforts: string[]) {
     return {
@@ -2742,3 +2814,4 @@ describe("Codex reasoning-effort capability clamp", () => {
     expect(models).toEqual(before);
   });
 });
+import { ManagementRequest as Request } from "./helpers/management-auth";

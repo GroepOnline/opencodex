@@ -6,7 +6,7 @@ description: 全局控制 Codex 在所有模型上生成和管理子代理的方
 opencodex 允许你为目录中的所有模型选择多代理协作界面。仪表盘和 Models 页面中的 **Sub-agent** 开关会全局控制这一设置。
 
 :::note
-在 v2 界面（`multi_agent_v2`）上，子代理**默认**继承父会话的模型：`fork_turns` 默认为 `all`，而全量历史 fork 会拒绝覆盖。自 v2.7.2 起，opencodex 注入的指引会教模型如何打破继承 —— 将 `fork_turns` 设为 `"none"`（或如 `"3"` 的部分 fork）的 `spawn_agent` 调用可以传入 `model` / `reasoning_effort` 参数；即使公开的工具 schema 中看不到这些参数，Codex 运行时也会解析并应用。已知限制：当**原生**父代理 spawn 一个路由到**非原生** provider 的子代理时，Codex 客户端可能只以后端加密的 `encrypted_content` 发送 `NEW_TASK` 载荷，路由子代理会收到空的任务正文（[#92](https://github.com/OnlineChefGroep/opencodex/issues/92)）。模型覆盖仍会生效，但任务文本可能丢失 —— 异构 provider 委派请使用更可靠的 v1 界面。
+在 v2 界面（`multi_agent_v2`）上，子代理**默认**继承父会话的模型：`fork_turns` 默认为 `all`，而全量历史 fork 会拒绝覆盖。自 v2.7.2 起，opencodex 注入的指引会教模型如何打破继承 —— 将 `fork_turns` 设为 `"none"`（或如 `"3"` 的部分 fork）的 `spawn_agent` 调用可以传入 `model` / `reasoning_effort` 参数；即使公开的工具 schema 中看不到这些参数，Codex 运行时也会解析并应用。已知传输限制：当**原生**父代理 spawn 一个路由到**非原生** provider 的子代理时，Codex 客户端可能只以后端加密的 `encrypted_content` 发送 `NEW_TASK` 载荷（[#92](https://github.com/OnlineChefGroep/opencodex/issues/92)）。opencodex 不会把这种无法读取的任务转发给外部 provider：直接路由会返回 HTTP 400 和错误码 `unreadable_encrypted_agent_task`；组合路由则会跳过无法解密的目标，并在存在可用目标时选择规范的原生 ChatGPT 目标。恢复方法：异构 provider 委派改用 v1、选择原生 ChatGPT 子代理，或将任务重新作为明文 v2 `agent_message` 内容发送。
 :::
 
 ## 模式
@@ -15,7 +15,17 @@ opencodex 允许你为目录中的所有模型选择多代理协作界面。仪�
 | --- | --- | --- |
 | **v1** | `multi_agent_v1` | 使用经典的命名空间代理工具，以及 `send_input` / `close_agent` / `resume_agent`。`spawn_agent` 的模型覆盖可以在其他模型上生成子代理。 |
 | **base**（默认） | 上游固定值 | 恢复上游模型的固定值：gpt-5.6-sol 和 gpt-5.6-terra 使用 v2，gpt-5.6-luna 使用 v1；未固定的模型遵循 Codex 的 `multi_agent_v2` 功能开关。生成行为取决于该模型最终使用的界面。 |
-| **v2** | `multi_agent_v2` | 使用扁平的 `spawn_agent` 工具、并发会话，以及 `send_message` / `followup_task` / `wait_agent` / `interrupt_agent`。全量历史 fork 时子代理继承父模型；`fork_turns: "none"`（或部分 fork）时接受 `model` / `reasoning_effort` 覆盖。原生→路由子代理的任务正文可能以加密形式到达（[#92](https://github.com/OnlineChefGroep/opencodex/issues/92)）。 |
+| **v2** | `multi_agent_v2` | 使用扁平的 `spawn_agent` 工具、并发会话，以及 `send_message` / `followup_task` / `wait_agent` / `interrupt_agent`。全量历史 fork 时子代理继承父模型；`fork_turns: "none"`（或部分 fork）时接受 `model` / `reasoning_effort` 覆盖。如果原生→路由子代理只收到后端加密的任务内容，外部路由会返回 `unreadable_encrypted_agent_task`；混合组合会优先选择可解密的原生目标（[#92](https://github.com/OnlineChefGroep/opencodex/issues/92)）。 |
+
+### 加密的 v2 任务传输
+
+只有原生 ChatGPT 后端能够读取其加密任务载荷。对于无法读取的 v2 `agent_message`，opencodex 会在调用 provider 之前执行以下规则：
+
+- 直接路由到非原生 provider 时，返回 HTTP 400，并设置 `error.code = "unreadable_encrypted_agent_task"`。响应不会回显加密载荷。
+- 组合路由只会为该任务考虑规范的原生 ChatGPT 目标，重试时也遵守同一规则。如果组合中没有可解密的目标，则返回同样的 400，而不会把空任务发送给外部 provider。
+- 可读取的明文任务仍保留正常的组合顺序与故障转移行为。
+
+恢复方法：将子代理切换到原生 ChatGPT 模型、在组合中加入原生目标、异构 provider 委派改用 v1，或者在你能控制调用方时将任务重新作为明文 v2 `agent_message` 内容发送。
 
 ## 工作原理
 
@@ -29,11 +39,13 @@ opencodex 允许你为目录中的所有模型选择多代理协作界面。仪�
 
 ### 委托模型与推理强度
 
-仪表盘中的 **子代理委托** 选择器会保存 `injectionModel`，以及可选的 `injectionEffort`。它们用于生成委托指引，并不是由 proxy 执行的子代理路由规则。设置 `injectionPrompt` 可以把内置指引文本整体替换为自定义内容。
+仪表盘中的 **子代理委托** 选择器会保存 `injectionModel`，以及可选的 `injectionEffort`。所选值会用于由 OpenCodex 编写的委派指引，而该指引由 `multiAgentGuidanceEnabled` 单独控制。它们并不是由 proxy 执行的子代理路由规则。设置 `injectionPrompt` 可以把内置指引文本整体替换为自定义内容。
+
+显式启用 `syncCodexSubagentDefaults` 后，当 OpenCodex 管理当前 Codex 路由时，下一次同步或重启会把所选模型和 effort 应用为 Codex 原生 `[agents]` 子代理默认值。外部用户管理的 provider 配置不会被修改。这些默认值只影响新建的 Codex 任务，该设置本身不会触发委派。已有的用户自有 `[agents]` 默认值会保留而不会被覆盖，因此请求的默认值可能与 Codex 实际使用的默认值不同。
 
 `multiAgentGuidanceText` 根据请求中的工具列表判断当前界面 —— 包括 Codex Desktop 的 WebSocket 路径（`responses_lite`），此时工具位于 `additional_tools` input 项中而不是请求的 `tools` 数组。
 
-在 **v2** 请求上（base 模式下的 Sol/Terra，v2 模式下的全部模型），只要设置了注入模型、或配置的子代理清单能在目录中解析出来，proxy 就会注入一段不超过 700 字符的精简指引：`spawn_agent` 隐藏的 `model` / `reasoning_effort` 参数用法、覆盖所需的 `fork_turns: "none"`（或部分 fork）规则、首选模型与推理强度，以及 `subagentModels` 清单和各模型在目录中公布的 effort 阶梯 —— 这正是 Codex 验证生成强度所用的列表。
+在 **v2** 请求上（base 模式下的 Sol/Terra，v2 模式下的全部模型），只要设置了有效的注入模型、或有效子代理清单非空，proxy 就会注入一段不超过 700 字符的精简指引。该指引以条件方式说明 `model` / `reasoning_effort` 覆盖，不假定它们是否出现在当前 schema 中；它要求使用 `fork_turns: "none"`（或部分 fork），仅命名有效的规范首选模型，并只列出 Codex 中 picker 可见、兼容 v2、按 priority 排序后前五项内的已配置模型及其可用 effort 档位。
 
 在 **v1** 请求上，proxy 仅在最高推理档位（max / ultra）镜像上游的主动委托文本。v1 不会追加模型指定、清单或自定义提示词。
 
@@ -46,7 +58,7 @@ opencodex 允许你为目录中的所有模型选择多代理协作界面。仪�
 - **Dashboard** → 第一个状态单元：选择 **v1**、**base** 或 **v2**。
 - **Models** 页面 → 使用顶部的分段控件。
 - 两个页面都有 **?** 按钮，可打开帮助弹窗并返回本文。
-- **Dashboard** → **子代理委托**：选择首选模型和可选的推理强度。在 v2 上，注入的指引会要求以 `fork_turns: "none"` 生成，使模型覆盖得以应用 —— 但原生→路由子代理的任务正文可能以加密形式到达（[#92](https://github.com/OnlineChefGroep/opencodex/issues/92)）。
+- **Dashboard** → **子代理委托**：选择首选模型和可选的推理强度。启用 **用作原生 Codex 子代理默认值** 后，当 OpenCodex 管理当前 Codex 路由时，下一次同步或重启会把相同选择应用于新建 Codex 任务；外部用户管理的 provider 配置不会被修改。此开关与委派指引开关相互独立。在 v2 上，注入的指引会要求以 `fork_turns: "none"` 生成，使模型覆盖得以应用。如果原生→路由子代理只收到加密任务内容，请使用原生目标或 v1；仅外部目标的传输现在会明确返回 `unreadable_encrypted_agent_task`（[#92](https://github.com/OnlineChefGroep/opencodex/issues/92)）。
 
 ### CLI
 
@@ -82,6 +94,11 @@ curl -X PUT http://localhost:10100/api/injection-model \
   -H 'Content-Type: application/json' \
   -d '{"model": "anthropic/claude-sonnet-5", "effort": "xhigh"}'
 
+# 将所选值同步为 Codex 原生子代理默认值（需先设置 model）
+curl -X PUT http://localhost:10100/api/injection-model \
+  -H 'Content-Type: application/json' \
+  -d '{"model": "anthropic/claude-sonnet-5", "syncCodexSubagentDefaults": true}'
+
 # 设置自定义指引提示词（{{model}}/{{effort}}/{{roster}} 占位符）
 curl -X PUT http://localhost:10100/api/injection-model \
   -H 'Content-Type: application/json' \
@@ -93,11 +110,11 @@ curl -X PUT http://localhost:10100/api/injection-model \
   -d '{"model": null}'
 ```
 
-`GET /api/injection-model` 返回 `model`、`effort`、`prompt`、全局 `efforts` 阶梯，以及由已启用原生/路由模型组成的 `available` 列表。PUT 请求省略 `effort` 或 `prompt` 时会保留当前值，传入 `null` 时会清除它；清除 `model` 一定会同时清除推理强度。API 会按全局 Codex 阶梯验证推理强度，Codex 仍会在生成时检查目标目录条目是否支持该强度。
+`GET /api/injection-model` 返回 `model`、`effort`、`prompt`、`multiAgentGuidanceEnabled`、`syncCodexSubagentDefaults`、全局 `efforts` 阶梯，以及由已启用原生/路由模型组成的 `available` 列表。PUT 为部分更新：省略 `effort` 或 `prompt` 时会保留当前值，传入 `null` 时会清除它。`syncCodexSubagentDefaults: true` 要求已经选择模型；清除 `model` 一定会同时清除推理强度，并关闭原生默认值同步。API 会按全局 Codex 阶梯验证推理强度，Codex 仍会在生成时检查目标目录条目是否支持该强度。
 
 ## 推理强度
 
-可选的子代理推理强度保存在 `injectionEffort` 中，只有同时设置注入模型时才有意义。它会向注入的 v2 指引加入 `reasoning_effort` 要求，但不会改变父会话的推理强度。在接受覆盖的 fork 上，Codex 会直接应用传给 `spawn_agent` 的 `reasoning_effort`。
+可选的子代理推理强度保存在 `injectionEffort` 中，只有同时设置注入模型时才有意义。它会向注入的 v2 指引加入 `reasoning_effort` 要求，但不会改变父会话的推理强度。启用 `syncCodexSubagentDefaults` 且 OpenCodex 管理当前 Codex 路由时，下一次同步或重启还会把它作为新建 Codex 任务的原生子代理默认 effort。在接受覆盖的 fork 上，Codex 会直接应用传给 `spawn_agent` 的 `reasoning_effort`。
 
 在 Codex 目录中，`ultra` 的级别高于 `max`，并带有自动委托语义；但 provider 永远不会在线路上收到字面量 `ultra`。Codex 会在客户端边界将 `ultra` 转成 `max`，随后 opencodex 再确保 provider 收到有效值：
 

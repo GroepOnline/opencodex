@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseRange, parseUsageSurface, summarizeUsage } from "../src/usage/summary";
+import { computeLatencyStats } from "../src/usage/percentiles";
 import type { PersistedUsageEntry } from "../src/usage/log";
 
 const FIXED_NOW = Date.UTC(2026, 5, 28, 12, 0, 0);
@@ -16,6 +17,7 @@ function entry(overrides: Partial<PersistedUsageEntry> & { ts: number }): Persis
     usageStatus: rest.usageStatus ?? "unreported",
     ...(rest.surface === "claude" ? { surface: rest.surface } : {}),
     ...(rest.resolvedModel !== undefined ? { resolvedModel: rest.resolvedModel } : {}),
+    ...(rest.firstOutputMs !== undefined ? { firstOutputMs: rest.firstOutputMs } : {}),
     ...(rest.usage ? { usage: rest.usage } : {}),
     ...(rest.totalTokens !== undefined ? { totalTokens: rest.totalTokens } : {}),
     ...(rest.attempts ? { attempts: rest.attempts } : {}),
@@ -671,4 +673,71 @@ describe("summarizeUsage", () => {
     expect(sum.models[0]?.resolvedModel).toBeUndefined();
   });
 
+  test("aggregates p95 latency, TTFT, cache-read ratio, and 429/502 ratios", () => {
+    const entries: PersistedUsageEntry[] = [
+      entry({
+        ts: FIXED_NOW - 1000,
+        requestId: "ok-1",
+        status: 200,
+        durationMs: 100,
+        firstOutputMs: 10,
+        usageStatus: "reported",
+        usage: { inputTokens: 100, outputTokens: 10, cacheReadInputTokens: 40 },
+      }),
+      entry({
+        ts: FIXED_NOW - 2000,
+        requestId: "ok-2",
+        status: 200,
+        durationMs: 200,
+        firstOutputMs: 20,
+        usageStatus: "reported",
+        usage: { inputTokens: 100, outputTokens: 10, cacheReadInputTokens: 60 },
+      }),
+      entry({
+        ts: FIXED_NOW - 3000,
+        requestId: "rate",
+        status: 429,
+        durationMs: 50,
+        usageStatus: "unreported",
+      }),
+      entry({
+        ts: FIXED_NOW - 4000,
+        requestId: "bad-gateway",
+        status: 502,
+        durationMs: 300,
+        usageStatus: "unreported",
+      }),
+      entry({
+        ts: FIXED_NOW - 5000,
+        requestId: "ok-3",
+        status: 200,
+        durationMs: 400,
+        firstOutputMs: 40,
+        usageStatus: "reported",
+        usage: { inputTokens: 100, outputTokens: 5 },
+      }),
+    ];
+    const sum = summarizeUsage(entries, "30d", FIXED_NOW);
+    expect(sum.summary.requests).toBe(5);
+    // durations 50,100,200,300,400 → p95 via shared helper
+    expect(sum.summary.p95LatencyMs).toBe(computeLatencyStats([50, 100, 200, 300, 400]).p95);
+    expect(sum.summary.p95TtftMs).toBe(computeLatencyStats([10, 20, 40]).p95);
+    // cache reads 40+60+0 over inputs 100+100+100
+    expect(sum.summary.cacheReadRatio).toBeCloseTo(100 / 300, 9);
+    expect(sum.summary.ratio429).toBeCloseTo(1 / 5, 9);
+    expect(sum.summary.ratio502).toBeCloseTo(1 / 5, 9);
+  });
+
+  test("quality metrics are zeroed for an empty window", () => {
+    const sum = summarizeUsage([], "30d", FIXED_NOW);
+    expect(sum.summary).toMatchObject({
+      p95LatencyMs: 0,
+      p95TtftMs: 0,
+      cacheReadRatio: 0,
+      ratio429: 0,
+      ratio502: 0,
+    });
+  });
+
 });
+

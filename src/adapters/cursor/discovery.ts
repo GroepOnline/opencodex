@@ -225,7 +225,8 @@ export const CURSOR_STATIC_MODELS: readonly CursorModelInfo[] = normalizeCursorM
   // take PR #73's supportsReasoningEffort for glm-5.2 (its effort-map tiers landed with the PR).
   { id: "glm-5.2", contextWindow: CONTEXT_1M, supportsReasoningEffort: true },
   { id: "kimi-k2.7-code", contextWindow: CONTEXT_262K },
-  // Live GetUsableModels exposes kimi-k3-{high,low,max}; bare id seeds catalog + effort picker.
+  // kimi-k3: cursor.com/docs/models/kimi-k3; account-verified via GetUsableModels (2026-07-28) —
+  // ships only as effort-suffixed kimi-k3-{low,high,max}, so the tier picker is exposed.
   { id: "kimi-k3", contextWindow: CONTEXT_262K, supportsReasoningEffort: true },
   // `-thinking` ids are complete Cursor wire ids (the historical `claude-*-thinking` naming), and no
   // `-thinking-<effort>` variant is verified in GetUsableModels -> no tier picker, sent bare like

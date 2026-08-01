@@ -1,9 +1,12 @@
 import type { AdapterEvent, OcxParsedRequest } from "../types";
+import type { UpstreamAttemptBudget } from "../lib/upstream-attempt-budget";
 
 /** Metadata about the caller's incoming request, for auth-forwarding adapters. */
 export interface IncomingMeta {
   headers: Headers;
   abortSignal?: AbortSignal;
+  /** Shared physical-send budget for this client request. */
+  attemptBudget?: UpstreamAttemptBudget;
   /**
    * Image-normalization ladder bias for upstream-413 tightened retries: every image
    * starts one tier lower (devlog/260714_image_normalization_pipeline/030). Only the
@@ -47,8 +50,8 @@ export interface AdapterRequest {
     /** Exact reasoning parameter emitted by the adapter, for request-log diagnostics only. */
     reasoningLog?: {
       effectiveEffort: string;
-      wireField: "reasoning_effort" | "thinking_budget" | "thinking.type";
-      wireValue: string | number;
+      wireField: "reasoning_effort" | "thinking_budget" | "thinking.type" | "enable_thinking" | "reasoning.effort";
+      wireValue: string | number | boolean;
     };
     usageLog?: {
       inputTokens?: number;
@@ -63,6 +66,10 @@ export interface AdapterFetchContext {
   timeoutMs?: number;
   /** Return final non-2xx responses untouched so the caller can own the error-body read. */
   returnRawErrors?: boolean;
+  /** Let an outer account-pool layer own Antigravity 429 handling without same-account retries. */
+  skip429Retry?: boolean;
   /** Whether the upstream response will be consumed as a stream; adapters may select low-latency transport settings. */
   stream?: boolean;
+  /** Shared physical-send budget for this client request. */
+  attemptBudget?: UpstreamAttemptBudget;
 }

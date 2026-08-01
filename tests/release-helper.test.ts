@@ -247,8 +247,8 @@ describe("release helper", () => {
     expect(findCallIndex(calls, "git", call => call.args[0] === "push")).toBe(-1);
   });
 
-  test("preview branch still defaults to preview tag and dry-run dispatch", () => {
-    const { calls, result } = runRelease("9.9.9-preview.1", { branch: "preview" });
+  test("a prerelease on main defaults to preview tag and dry-run dispatch", () => {
+    const { calls, result } = runRelease("9.9.9-preview.1");
 
     expect(result.status).toBe(0);
     expect(findCallIndex(calls, "gh", call =>
@@ -258,6 +258,27 @@ describe("release helper", () => {
       && call.args.includes("tag=preview")
       && call.args.includes("dry-run=true"),
     )).toBeGreaterThanOrEqual(0);
+  });
+
+  // release.yml only accepts refs/heads/main, so the helper must refuse anything else
+  // instead of dispatching a run the workflow will reject.
+  test("releasing from a branch other than main aborts before the bump", () => {
+    const { calls, result } = runRelease("9.9.9-preview.1", { branch: "preview" });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr + result.stdout).toContain("must be on main");
+    expect(findCallIndex(calls, "npm", call => call.args[0] === "version")).toBe(-1);
+    expect(findCallIndex(calls, "gh", call => call.args[0] === "workflow" && call.args[1] === "run")).toBe(-1);
+  });
+
+  // The update client only parses X.Y.Z-preview.N, so any other prerelease shape would
+  // publish to the preview dist-tag and then never be seen as an available update.
+  test("prerelease versions outside X.Y.Z-preview.N abort before the bump", () => {
+    const { calls, result } = runRelease("9.9.9-alpha.1");
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr + result.stdout).toContain("must be X.Y.Z-preview.N");
+    expect(findCallIndex(calls, "npm", call => call.args[0] === "version")).toBe(-1);
   });
 
   test("dispatch pins the audited release SHA via expected-sha", () => {

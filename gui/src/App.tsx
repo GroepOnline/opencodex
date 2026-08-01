@@ -8,19 +8,19 @@ import Subagents from "./pages/Subagents";
 import Logs from "./pages/Logs";
 import Usage from "./pages/Usage";
 import Storage from "./pages/Storage";
-import CodexAuth from "./pages/CodexAuth";
 import ApiKeys from "./pages/ApiKeys";
 import Claude from "./pages/Claude";
 import Grok from "./pages/Grok";
 import Startup from "./pages/Startup";
 import ErrorBoundary from "./components/ErrorBoundary";
-import { IconGrid, IconServer, IconBoxes, IconBot, IconList, IconActivity, IconHardDrive, IconKey, IconGithub, IconMenu, IconSun, IconMoon, IconMonitor, IconGlobe, IconPower, IconSparkle, IconX } from "./icons";
+import { IconGrid, IconServer, IconBoxes, IconBot, IconList, IconActivity, IconHardDrive, IconGithub, IconMenu, IconSun, IconMoon, IconMonitor, IconGlobe, IconPower, IconSparkle, IconX } from "./icons";
 import { useI18n, useT, LOCALES, type Locale, type TKey } from "./i18n/shared";
 import { Select, Switch } from "./ui";
 import { installApiAuthFetch } from "./api";
 import { readJsonIfOk } from "./fetch-json";
 import { type Page } from "./app-routing";
 import { useAppRouteState } from "./use-app-route-state";
+import { requestProxyStop } from "./stop-proxy";
 
 installApiAuthFetch();
 
@@ -36,7 +36,6 @@ const PAGE_TKEY: Record<Page, TKey> = {
   logs: "nav.logs",
   usage: "nav.usage",
   storage: "nav.storage",
-  "codex-auth": "nav.codexAuth",
   api: "nav.api",
   claude: "nav.claude",
   grok: "nav.grok",
@@ -47,7 +46,6 @@ const THEME_KEY = "ocx-theme";
 
 const NAV: { id: Page; tkey: TKey; Icon: typeof IconGrid }[] = [
   { id: "dashboard", tkey: "nav.dashboard", Icon: IconGrid },
-  { id: "codex-auth", tkey: "nav.codexAuth", Icon: IconKey },
   { id: "providers", tkey: "nav.providers", Icon: IconServer },
   { id: "models", tkey: "nav.models", Icon: IconBoxes },
   { id: "subagents", tkey: "nav.subagents", Icon: IconBot },
@@ -185,17 +183,16 @@ export default function App() {
   const handleStop = async () => {
     if (!confirm(t("dash.stopConfirm"))) return;
     setStopping(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/stop`, { method: "POST" });
-      // A refusal (409: a service under another home owns this proxy) returns normally instead
-      // of dropping the connection, so the button would otherwise sit in "stopping…" forever
-      // with nothing explaining why.
-      if (!res.ok) {
-        setStopping(false);
-        const detail = await res.json().catch(() => null) as { message?: string } | null;
-        if (detail?.message) alert(detail.message);
-      }
-    } catch { /* connection drops — the proxy is going down as expected */ }
+    const outcome = await requestProxyStop(API_BASE, {
+      formatFailure: status => t("dash.stopFailed", { status: String(status) }),
+    });
+    // Refusals and restore failures return normally instead of dropping the connection.
+    // In both cases the proxy did not reach a clean-stop result, so re-enable the control
+    // and surface the server's remediation instead of leaving "stopping…" stuck forever.
+    if (!outcome.accepted) {
+      setStopping(false);
+      alert(outcome.message);
+    }
   };
 
   const brand = (
@@ -280,7 +277,7 @@ export default function App() {
             aria-label={t("dash.stop")} title={t("dash.stop")}>
             <IconPower /> <span className="mode">{stopping ? t("dash.stopping") : t("dash.stop")}</span>
           </button>
-          <a className="sidebar-link" href="https://github.com/lidge-jun/opencodex" target="_blank" rel="noreferrer">
+          <a className="sidebar-link" href="https://github.com/OnlineChefGroep/opencodex" target="_blank" rel="noreferrer">
             <IconGithub /> {t("common.github")}
           </a>
         </div>
@@ -288,8 +285,8 @@ export default function App() {
 
       <main className="main" inert={navOpen}>
         <div className={`main-inner${page === "combos" ? " main-inner--combos" : ""}`}>
+          <div className="page-reveal" key={page}>
           <ErrorBoundary
-            key={page}
             pageName={t(PAGE_TKEY[page])}
             title={t("errorBoundary.title")}
             message={t("errorBoundary.message")}
@@ -300,16 +297,16 @@ export default function App() {
             {page === "startup" && <Startup apiBase={API_BASE} />}
             {page === "providers" && <Providers apiBase={API_BASE} />}
             {page === "models" && <Models apiBase={API_BASE} />}
-            {page === "combos" && <Combos apiBase={API_BASE} />}
-            {page === "subagents" && <Subagents apiBase={API_BASE} />}
+            {page === "combos" && <Combos key={API_BASE} apiBase={API_BASE} />}
+            {page === "subagents" && <Subagents key={API_BASE} apiBase={API_BASE} />}
             {page === "logs" && <Logs apiBase={API_BASE} />}
             {page === "usage" && <Usage apiBase={API_BASE} />}
             {page === "storage" && <Storage apiBase={API_BASE} />}
-            {page === "codex-auth" && <CodexAuth apiBase={API_BASE} />}
             {page === "api" && <ApiKeys apiBase={API_BASE} />}
             {page === "claude" && <Claude apiBase={API_BASE} />}
             {page === "grok" && <Grok apiBase={API_BASE} />}
           </ErrorBoundary>
+          </div>
         </div>
       </main>
     </div>

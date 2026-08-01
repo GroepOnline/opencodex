@@ -8,7 +8,8 @@ import { LanguageProvider } from "../src/i18n/provider";
 import Models from "../src/pages/Models";
 import { EmptyProviderHint } from "../src/pages/models-provider-hints";
 import type { ProviderDiscoverySummary } from "../src/models-groups";
-import { gatherRoutedModels } from "../../src/codex/catalog";
+import { gatherRoutedModels as gatherRoutedModelsDirect } from "../../src/codex/catalog";
+import { withStubbedProviderFetch } from "../../tests/helpers/catalog-provider-fetch";
 import {
   clearModelCache,
   getProviderDiscoveryStatus,
@@ -19,6 +20,14 @@ import { handleManagementAPI } from "../../src/server/management-api";
 
 let previousLanguage: unknown;
 const originalFetch = globalThis.fetch;
+
+/**
+ * Discovery runs on the pinned outbound transport, which does not read
+ * `globalThis.fetch`. These tests stub that global, so every config gets the
+ * caller-owned executor that hands control back to the stub.
+ */
+const gatherRoutedModels: typeof gatherRoutedModelsDirect = (config, options) =>
+  gatherRoutedModelsDirect(withStubbedProviderFetch(config), options);
 
 beforeEach(() => {
   previousLanguage = (globalThis.navigator as { language?: unknown } | undefined)?.language;
@@ -52,7 +61,7 @@ async function providerDto(
 ): Promise<Record<string, unknown>> {
   const requestUrl = new URL("http://127.0.0.1/api/providers");
   const response = await handleManagementAPI(
-    new Request(requestUrl),
+    new Request(requestUrl, { headers: { Host: requestUrl.host } }),
     requestUrl,
     {
       providers: {
@@ -90,6 +99,7 @@ test("Models page combines final visibility, atomic actions, discovery status, a
     localStorage: { configurable: true, value: testWindow.localStorage },
     IS_REACT_ACT_ENVIRONMENT: { configurable: true, value: true },
   });
+  testWindow.localStorage.setItem("ocx-models-collapsed:v2", JSON.stringify([]));
   const provider = "fallback-provider";
   const ids = ["claude-opus", "claude-sonnet", "gemini-pro", "gemini-flash", "gpt-oss"];
   let selected = ["gemini-pro", "gemini-flash"];
@@ -498,6 +508,7 @@ test("a poll that resolves after a forced refresh cannot overwrite newer models"
     localStorage: { configurable: true, value: testWindow.localStorage },
     IS_REACT_ACT_ENVIRONMENT: { configurable: true, value: true },
   });
+  testWindow.localStorage.setItem("ocx-models-collapsed:v2", JSON.stringify([]));
 
   const provider = "gen-provider";
   const staleIds = ["stale-a", "stale-b"];

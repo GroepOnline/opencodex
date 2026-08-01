@@ -53,19 +53,23 @@
 }
 
 .pws-dashboard-card-count {
-  font-size: 1.25rem;
-  font-weight: 700;
+  font-size: var(--text-title);
+  font-weight: var(--weight-semibold);
   line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-tight);
 }
 
-.pws-dashboard-card--ok .pws-dashboard-card-count { color: var(--green, #22c55e); }
-.pws-dashboard-card--warn .pws-dashboard-card-count { color: var(--yellow, #eab308); }
-.pws-dashboard-card--muted .pws-dashboard-card-count { color: var(--fg-muted, #888); }
+.pws-dashboard-card--ok .pws-dashboard-card-count { color: var(--green); }
+.pws-dashboard-card--warn .pws-dashboard-card-count { color: var(--amber); }
+.pws-dashboard-card--muted .pws-dashboard-card-count { color: var(--faint); }
 
 .pws-dashboard-card-label {
-  font-size: 0.7rem;
-  color: var(--fg-muted, #888);
-  letter-spacing: 0.02em;
+  font-size: var(--text-micro);
+  color: var(--faint);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
 }
 
 /* Rate Limits | Recently Used side-by-side (no vertical stack / scroll) */
@@ -188,6 +192,62 @@
   grid-column: 1 / -1;
   padding-left: 30px;
   padding-top: 1px;
+  min-height: 64px;
+}
+
+.pws-dashboard-section--rate-limits,
+.pws-dashboard-section--recent {
+  min-height: 180px;
+}
+
+.pws-dashboard-empty {
+  margin: 8px 0 0;
+  min-height: 3rem;
+}
+
+.pws-dashboard-row--skeleton {
+  pointer-events: none;
+  cursor: default;
+}
+
+.pws-skel {
+  display: block;
+  border-radius: var(--radius-2xs, 4px);
+  background: linear-gradient(90deg, var(--raised, #eee) 0%, var(--surface, #f7f7f7) 50%, var(--raised, #eee) 100%);
+  background-size: 200% 100%;
+  animation: codex-auth-skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+.pws-dashboard-row-icon.pws-skel {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+}
+
+.pws-skel--name {
+  width: 7rem;
+  height: 0.85rem;
+}
+
+.pws-skel--meta {
+  width: 5rem;
+  height: 0.7rem;
+  margin-top: 4px;
+}
+
+.pws-skel--count {
+  width: 4rem;
+  height: 0.75rem;
+  margin-left: auto;
+}
+
+.providers-workspace--boot {
+  min-height: 600px;
+}
+
+.providers-workspace-rail--boot {
+  min-height: 600px;
+  opacity: 0.35;
 }
 
 /* Narrow main pane / mobile: stack columns */

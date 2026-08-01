@@ -31,12 +31,13 @@ namespaced selected id を bare id に変えます。
 | `openaiProviderTierVersion?` | `2` | 移行設定 | 単一の省略可能 OpenAI projection 完了マーカー。 |
 | `defaultProvider` | `string` | `"openai"` | ルーティングでより良い match が見つからなかったときに使うプロバイダー。 |
 | `subagentModels?` | `string[]` | `gpt-5.5`、GPT-5.6 3種、`gpt-5.4-mini` | Codex サブエージェントセレクターの先頭に表示するネイティブ slug または `provider/model` id。最大 5 つで、明示的な空配列もそのまま保存します。v2 ガイダンスのロスターは、Codex の picker-visible・v2 互換・priority 順の先頭 5 件との設定済みモデルの共通部分で、正規カタログ slug と利用可能な effort ラダーを使います。除外された項目も設定には残ります。 |
-| `injectionModel?` | `string` | — | 注入される multi-agent 案内（v2 surface）に入るネイティブ/ルーティングモデル。委任案内でこのモデルを `fork_turns: "none"` とともに `spawn_agent` に渡します。 |
-| `injectionEffort?` | `string` | — | 希望する `spawn_agent` reasoning effort（`low` から `ultra`）。`injectionModel` と一緒に使うときだけ意味を持ちます。 |
+| `injectionModel?` | `string` | — | 希望するネイティブ/ルーティングのサブエージェントモデル。別の `multiAgentGuidanceEnabled` が制御する OpenCodex 作成の v2 委任ガイダンスで使われ、`syncCodexSubagentDefaults` のオプトインにより新しいタスクの Codex ネイティブ既定値にも適用できます。 |
+| `injectionEffort?` | `string` | — | 希望するサブエージェント reasoning effort（`low` から `ultra`）。`injectionModel` と一緒に使うときだけ意味を持ち、委任ガイダンスとオプションの Codex ネイティブ既定値で使われます。 |
+| `syncCodexSubagentDefaults?` | `boolean` | `false` | OpenCodex が有効な Codex ルーティングを管理している場合、選択した `injectionModel` / `injectionEffort` を次回の sync または restart で Codex ネイティブの `[agents]` サブエージェント既定値へ適用するオプトイン設定。外部のユーザー管理 provider 設定は変更しません。新しく作成される Codex タスクだけに作用し、設定自体が委任を発生させることはありません。既存のユーザー所有対象項目は競合として上書きせず保持します。`injectionModel` が必要で、モデルを消去するとこのオプトインも解除されます。`GET/PUT /api/injection-model` の部分更新フィールドとして公開されます。 |
 | `effortCap?` | `string` | — | reasoning effort にリクエストごとに適用する強制上限。マルチエージェント V2 専用機能で、自身のツールリストに V2 協調 surface を持つメインターンと、`x-openai-subagent: collab_spawn` ヘッダーまたは `x-codex-turn-metadata` の `"subagent_kind": "thread_spawn"` 標識が正確に一致する spawn された子ターンに適用されます（標識のついた子は自身のツール surface と無関係に適用対象です）。通常のメインターンと V1 surface メインターンは触れず、コンパクションターンは常に上限をバイパスし、`multiAgentMode: "v1"` は上限機能全体を無効化します（ダッシュボードもパネルを隠します）。`low` から `ultra` を許可し、値を上げずに下げるだけです。上限以下でモデルがサポートする最も高い段階に下げます。モデルが effort 制御を公開しない、または上限以下にサポート段階がない場合は effort フィールドを削除しプロバイダーのデフォルトを適用します。`max` と `ultra` も許可しますが、より低いランク上限を作りません（クライアントが `ultra` を `max` に変換するためリクエストは `low` から `max` で入ります）。ただし、既知のモデル effort ラダーに従い段階が下がるかフィールドが削除される可能性があります。ダッシュボードセレクターは `low` から `xhigh` まで提供します。`GET /api/effort-caps` と `PUT /api/effort-caps` で管理します。 |
 | `subagentEffortCap?` | `string` | — | 同じ強制上限を codex-rs 標識が正確に一致する spawn された子ターンにだけ適用します: `x-openai-subagent: collab_spawn` または `x-codex-turn-metadata` の `"subagent_kind": "thread_spawn"`。それ以外の内部サブエージェントカテゴリ（レビュー、コンパクション、メモリ整理）はこの上限にかからず、`multiAgentMode: "v1"` は機能全体を無効化します。`low` から `ultra` を許可し両方の上限が設定されていればより低い値を適用し、値を上げずに下げるだけです。上限以下でモデルがサポートする最も高い段階に下げます。モデルが effort 制御を公開しない、または上限以下にサポート段階がない場合は effort フィールドを削除しプロバイダーのデフォルトを適用します。`max` と `ultra` も許可しますが、より低いランク上限を作りません（クライアントが `ultra` を `max` に変換するためリクエストは `low` から `max` で入ります）。ただし、既知のモデル effort ラダーに従い段階が下がるかフィールドが削除される可能性があります。ダッシュボードセレクターは `low` から `xhigh` まで提供します。`GET /api/effort-caps` と `PUT /api/effort-caps` で管理します。 |
 | `injectionPrompt?` | `string` | — | 注入される v2 案内本文を丸ごと差し替えるカスタムテキスト。`{{model}}`、`{{effort}}`、`{{roster}}` placeholder が置換され、発火条件はそのままです。`PUT /api/injection-model` の `prompt` キーでも設定できます。 |
-| `multiAgentGuidanceEnabled?` | `boolean` | `true` | OpenCodex が作成する multi-agent developer ガイダンスだけを制御します。未設定/`true` は v1/v2 ガイダンスを維持し、`false` は collaboration surface、`subagentModels`、routing、effort cap を変えずに両方を抑止します。`GET/PUT /api/injection-model` は有効値を返し、PUT は部分更新です。 |
+| `multiAgentGuidanceEnabled?` | `boolean` | `true` | OpenCodex が作成する multi-agent developer ガイダンスだけを制御します。未設定/`true` は v1/v2 ガイダンスを維持し、`false` は Codex ネイティブの `[agents]` 既定値、collaboration surface、`subagentModels`、routing、effort cap を変えずに両方を抑止します。`GET/PUT /api/injection-model` は有効値を返し、PUT は部分更新です。 |
 | `disabledModels?` | `string[]` | — | Codex で隠すモデル。ルーティングされた `provider/model` id はカタログと `/v1/models` から除外します。`gpt-5.4` のような通常のネイティブ GPT slug はカタログ項目を `visibility: "hide"` に変え、通常の `/v1/models` 一覧から外します。ダッシュボードの Models ページでモデルごとに切り替えできます。 |
 | `multiAgentMode?` | `"v1" \| "default" \| "v2"` | `"default"` | 3 段階 multi-agent surface override。`"v1"` は上流 pin より優先してすべてのモデルを v1 に、`"default"` は上流 model pin（sol/terra=v2、luna=v1）に従い、`"v2"` はすべてを v2 に強制します。ダッシュボードの Models ページまたは `ocx v2 mode` で設定します。 |
 | `providerContextCaps?` | `Record<string,number>` | `{}` | プロバイダー別の Codex 表示 context cap。既知の context window を下げるだけです。 |
@@ -50,8 +51,12 @@ namespaced selected id を bare id に変えます。
 | `codexShimAutoRestore?` | `boolean` | `true` | 完了した外部 Codex 更新で以前にインストールした shim が置換された場合に復元します。無効にするには `false`、またはプロセスで `OPENCODEX_CODEX_SHIM_AUTO_RESTORE=0` を設定します。 |
 | `syncResumeHistory?` | `boolean` | `true` | 戻せる Codex App 履歴互換モード。opencodex は元の Codex thread metadata をバックアップし、旧 OpenAI interactive row を `opencodex` に再マッピングし、opencodex が作成した `exec` row を App に見えるソースとして一時的に昇格します。`ocx stop` / `ocx restore` はバックアップした OpenAI row を復元し、残った opencodex user thread を OpenAI に戻し、ネイティブ Codex が `config.toml` からプロキシを削除した後でも開き続けられるようにします。オフにするには `false` に設定します。 |
 | `codexAccounts?` | `CodexAccount[]` | `[]` | Codex Auth ダッシュボードが管理する ChatGPT/Codex pool アカウント metadata。secret は `codex-accounts.json` に別途置きます。 |
+| `pausedCodexAccountIds?` | `string[]` | `[]` | Codex Auth で再開するまで、今後のすべての Pool 選択から除外するアカウント ID。メインを一時停止した場合は `__main__` も含みます。 |
+| `codexAccountNamespaces?` | `Record<string,string>` | — | 公開 model selector namespace から保存済み Codex アカウント target への任意 map。この foundation layer は map を検証・保存しますが、picker row の追加や routing の変更は行いません。 |
 | `activeCodexAccountId?` | `string` | — | 手動選択した pool アカウント。既存 thread affinity を消去して次のリクエストから適用し、処理中のリクエストは現在のアカウントを維持します。 |
-| `autoSwitchThreshold?` | `number` | `80` | 新しいセッション自動切替用の使用量百分率 threshold。既知の 5 時間、週次、30 日 quota window のうち最も高いスコアを使います。`0` なら quota 自動切替をオフにします。 |
+| `autoSwitchThreshold?` | `number` | `80` | 新しいセッション自動切替用の使用量百分率 threshold。既知の 5 時間、週次、30 日 quota window のうち最も高いスコアを使います。`0` なら quota 自動切替をオフにします。`quota` 戦略と `fill-first` の drain threshold にも使います。 |
+| `accountPoolStrategy?` | `"quota" \| "round-robin" \| "fill-first"` | `"quota"` | Codex pool の新しいセッション rotation 戦略。**新しいセッションのみ**に適用され、既存 thread id は affinity を維持します。`quota`（既定）— アクティブアカウントが `autoSwitchThreshold` を超えたら既知 usage 最小を選択。`round-robin` — 適格アカウント間を smooth weighted で均等分散。`fill-first` — cooldown、使用不可、または（設定時）`autoSwitchThreshold` までアクティブアカウントを使い切り（未知 usage は強制切替しない）、安定ソート順で次へ。 |
+| `accountPoolStickyLimit?` | `number` | `1` | 1 回の round-robin 選択で次へ進む前に保持する成功的新セッション bind 数。範囲 1–100。`accountPoolStrategy` が `round-robin` のときのみ。 |
 | `upstreamFailoverThreshold?` | `number` | `3` | 一時的な上流失敗が連続して起きたのち、以降の新しいセッションを別の適合 pool アカウントに failover する回数。`0` なら失敗ベースの failover をオフにします。 |
 | `modelCacheTtlMs?` | `number` | `300000` | プロバイダー別 `/models` キャッシュの有効期間（5 分）。 |
 | `cacheRetention?` | `"none" \| "short" \| "long"` | `"short"` | Anthropic prompt cache ポリシー。オフ、5 分 ephemeral、1 時間 extended のいずれか。 |
@@ -59,6 +64,15 @@ namespaced selected id を bare id に変えます。
 | `visionSidecar?` | `OcxVisionSidecarConfig` | on | ビジョンサイドカーオプション（下記参照）。 |
 | `tokenGuardian?` | `OcxTokenGuardianConfig` | off | 選択型の proactive OAuth 更新と Codex アカウント warmup ポリシー。フィールドは下で説明します。 |
 | `corsAllowOrigins?` | `string[]` | `[]` | CORS で追加で許可する正確な origin。loopback origin は常に許可します。 |
+
+`codexAccountNamespaces` のキーは公開 selector です。長さは 1〜64 文字、先頭と末尾は ASCII
+英数字、内部には英数字、`.`、`_`、`-` を使用でき、予約済み JavaScript object 名は拒否されます。
+値は有効な pool account id（内部 `__main__` は不可）、または Codex Desktop アカウントを示す
+`"@main"` です。provider と予約済み `openai` / `combo` との衝突は大文字小文字を区別せず検査され、
+namespace 付き combo alias はその namespace prefix に selector を再利用できません。設定済み pool id
+や他の selector target も selector と再利用できません。raw account id と email は
+非公開のままにし、selector を公開名として使ってください。この foundation layer では map は inert で、
+model picker entry の作成、session の固定、Pool / Direct routing の変更は行いません。
 
 `maxConcurrentThreadsPerSession` は `config.json` キーではなく `PUT /api/v2` で使う camel-case
 フィールドです。`ocx v2 threads <n>` は対応する `max_concurrent_threads_per_session` 値を Codex の
@@ -70,8 +84,14 @@ namespaced selected id を bare id に変えます。
 :::note[Codex アカウントプール]
 pool アカウントの追加と quota 更新はダッシュボードの **Codex Auth** ページで処理してください。設定には secret で
 ないアカウント metadata だけを保存し、access/refresh token は強化された Codex アカウント credential store に別途
-保管します。既存 thread id はアカウント affinity を維持し、新しいセッションは quota、cooldown、health に
-応じて自動ルーティングされる場合があります。
+保管します。既存 thread id はアカウント affinity を維持し、新しいセッションは `accountPoolStrategy`、quota、cooldown、health に
+応じて自動ルーティングされます。
+一時停止したアカウントと quota metadata は表示されたままですが、自動切り替え、再試行/failover 選択、cooldown 復旧プローブ、手動有効化の対象外です。
+一時停止するとそのアカウントの thread affinity map も消去されます。処理中のリクエストは取得済み credential を維持しますが、以降のターンは再ルーティングされ、一時停止中のアカウントは再利用できません。
+状態は再起動後も保持され、すべてのアカウントが一時停止中なら Pool ルーティングは別のアカウントを暗黙に選ばず失敗します。
+**上限到達を一括停止** は credential がある適格アカウントだけを先に更新し、関連する quota window が今回 100% と確認できたアカウントだけを停止します。credential がないアカウントや、quota が不明、または更新に失敗したアカウントは変更しません。
+
+**rotation 戦略**（新しいセッションのみ；bound thread は不変）：`quota`（既定）— `autoSwitchThreshold` 超過時に最小 usage を選択；`round-robin` — 均等分散、`accountPoolStickyLimit`（既定 `1`、1–100）で 1 選択あたりの成功 bind 数；`fill-first` — アクティブアカウントを cooldown、再認証、または threshold まで使い切り（未知 usage は強制切替しない）後、安定ソート順で次へ。rotation は provider enforcement を回避しません — 複数アカウント利用は ToS 違反の可能性があります。
 :::
 
 ### 管理型レコード形式
@@ -131,14 +151,15 @@ token の代わりに使えます。すべての候補は timing side channel �
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `adapter` | `string` | `openai-chat`、`openai-responses`、`anthropic`、`google`、`kiro`、`cursor`、`azure-openai`（または別名 `azure`）のいずれか。 |
-| `baseUrl` | `string` | 上流 API base URL。 |
+| `baseUrl` | `string` | 上流 API base URL。固定 endpoint を持つ大半の組み込み provider は一致しない URL を無視します。新しく追加された衝突保護付き API-key preset は、以前からある同名 custom provider の送信先を維持します。[固定プロバイダーのエンドポイント](#固定プロバイダーのエンドポイント)を参照してください。 |
 | `responsesPath?` | `string` | `key` 認証の `openai-responses` リクエストに使う任意の相対 resource path。`/` で始め、URL scheme、query、fragment を含めてはいけません。省略時は従来の `/v1/responses` URL 構築を維持します。 |
 | `disabled?` | `boolean` | 設定はディスクに残すがルーティングとモデル/カタログ一覧から除外します。 |
 | `apiKey?` | `string` | API キーまたはリクエスト時に解釈する `${ENV_VAR}` / `$ENV_VAR` 参照。 |
+| `apiKeyTransport?` | `"x-api-key" \| "bearer"` | Anthropic API キーのヘッダー方式。デフォルトはネイティブの `x-api-key` です。`Authorization: Bearer <key>` が必要な互換 gateway では `"bearer"` を設定します。key 認証の `anthropic` プロバイダーでのみ有効です。 |
 | `apiKeyPool?` | `ApiKeyPoolEntry[]` | 複数キーを納める pool。`apiKey` はアクティブ項目を反映します。各項目には `id`、`key`、選択 `label`、選択数値 `addedAt` があります。 |
 | `defaultModel?` | `string` | 明示的なモデルなしでこのプロバイダーを選んだときに使うモデル。 |
 | `models?` | `string[]` | seed/fallback モデル一覧。`liveModels` が `false` ならここにあるモデルだけが発見されます。 |
-| `liveModels?` | `boolean` | 起動/同期時にプロバイダーのリアルタイム `/models` カタログを取得します（デフォルト `true`）。`false` なら設定された `models` だけを使います。 |
+| `liveModels?` | `boolean` | 起動/同期時にプロバイダーのライブモデルカタログを取得します（デフォルト `true`）。組み込み preset は registry の信頼済み URL・クエリ・フィルターを使用でき、カスタム provider は `${baseUrl}/models` がデフォルトです。`false` なら設定された `models` だけを使います。 |
 | `selectedModels?` | `string[]` | モデル発見後に適用するカタログ allowlist。空でなければその id だけを Codex に公開し、空または省略なら発見したモデルをすべて公開します。 |
 | `contextWindow?` | `number` | ルーティングカタログ項目に表示するプロバイダー単位の context-window cap。リアルタイム metadata がより小さければそのままにします。 |
 | `modelContextWindows?` | `Record<string,number>` | モデル別 context-window cap。一致するモデルでは `contextWindow` より優先し、より小さいリアルタイム metadata を上げません。 |
@@ -170,6 +191,29 @@ token の代わりに使えます。すべての候補は timing side channel �
 | `mcpServers?` | `Record<string,CursorMcpServerConfig>` | **Cursor 専用。** stdio で起動する、または Streamable HTTP で接続する MCP server。フィールドは下で説明します。 |
 | `desktopExecutor?` | `DesktopExecutorConfig` | **Cursor 専用。** 外部 computer-use/record-screen コマンド。フィールドは下で説明します。 |
 | `unsafeAllowNativeLocalExec?` | `boolean` | **Cursor アダプター専用。** Cursor サーバーが指示したローカル `read` / `write` / `delete` / `ls` / `grep` / `shell` / `fetch` 実行を許可する opt-in escape hatch。デフォルト `false` なのでリモート Cursor メッセージが Codex の承認と sandbox を迂回できません。下記 [Cursor プロバイダー](#cursor-プロバイダー-adapter-cursor) 参照。 |
+
+### 固定プロバイダーのエンドポイント
+
+ルーティングは、adapter がリクエストを受け取る前に provider の endpoint を解決します。大半の
+組み込み provider では、config の `baseUrl` より registry の endpoint が優先されます。この段階で
+設定 URL を維持するのは次の 4 種類です。
+
+- override を明示的に許可する provider: `ollama`、`vllm`、`lm-studio`、`litellm`、
+  `qwen-cloud`、`alibaba-token-plan-intl`。
+- registry endpoint が入力用 template の provider（`azure-openai`、`cloudflare-ai-gateway` など）。
+- 同名衝突を保護する新しい固定 API-key preset。以前からある同名 custom provider が別の送信先を
+  指している場合、その送信先を維持し、key を新しい registry host へ送りません。
+- registry に存在せず、ユーザーが独自に定義した provider。
+
+その後も adapter が解決済み URL を調整する場合があります。たとえば `kiro` adapter は canonical な
+`runtime.{region}.kiro.dev` host に対して、import した credential の API region を使います。adapter
+ごとの規則は [Adapters](/ja/reference/adapters/) を参照してください。
+
+ルーティングが設定済み `baseUrl` を破棄すると opencodex は警告を出します。registry endpoint は完全に
+表示し、設定 URL は origin だけを表示します。path は credential 情報を含む可能性があるため記録しません。
+不要な `baseUrl` を削除するか、目的の URL と endpoint が一致する provider を選んでください。地域別
+サービスでは正しい項目を使ってください。`alibaba-token-plan` は北京に固定され、
+`alibaba-token-plan-intl` は国際 endpoint の override を許可します。
 
 ## Cursor プロバイダー（`adapter: "cursor"`）
 
@@ -225,6 +269,11 @@ Codex の承認と sandbox ルールを迂回する Cursor ネイティブロー
 
 一部のプロバイダーはリアルタイムモデルカタログが非常に大きいか遅いです。Codex に `models` で固定したモデルだけ
 見せるには `liveModels` を `false` に設定してください。
+
+ライブ discovery は 4 MiB または 2,000 件の生モデル行を超える応答をキャッシュ前に拒否します。
+組み込み preset は上限をさらに下げ、混在カタログをチャット対応行だけに絞れます。超過または
+不正な応答は stale/static fallback に戻り、不適格な行は除外されます。有効な応答に適格な行が
+なければ権威ある空カタログとなり、上限超過の応答が暗黙に切り詰められることはありません。
 
 `liveModels` が `false` で `models` が空または省略されると opencodex はそのプロバイダーのルーティング
 モデルを 1 つも公開しません。

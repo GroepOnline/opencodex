@@ -8,6 +8,9 @@ through one bearer key, with auto-fallback across upstream providers.
 OmniRoute speaks the OpenAI Chat Completions wire format, so opencodex reuses the built-in
 `openai-chat` adapter. There is no separate adapter to install.
 
+Fleet rule: clients (including joep) reach OmniRoute **only via sofie OCX**. Do not publish
+OmniRoute on a LAN/Tailscale address or open a direct joep→OmniRoute tunnel.
+
 ## 1. Get an OmniRoute key
 
 1. Sign in at <https://omniroute.online>.
@@ -42,6 +45,10 @@ once and reference it as `${OCX_OMNIROUTE_KEY}`:
 export OCX_OMNIROUTE_KEY="your-omniroute-key"
 ```
 
+`auto` is seeded in the offline catalog but is **not** the default — keep an explicit model until
+retry/latency soak is done. Models stay under `omniroute/<id>` (or an explicit combo target);
+opencodex does not silently rewrite `mimo-free/*` / `opencode-free/*` ids onto OmniRoute.
+
 ## 3. Pick a model
 
 OmniRoute exposes a large, frequently-changing catalog. opencodex ships a small offline seed
@@ -50,33 +57,55 @@ router:
 
 | Model id | Notes |
 | --- | --- |
-| `auto` | OmniRoute virtual combo router (picks a healthy free upstream automatically) |
+| `auto` | OmniRoute virtual combo router (available, **not** default) |
 | `cc/claude-opus-4-8` · `cc/claude-opus-4-7` · `cc/claude-sonnet-4-6` | Claude Code passthrough |
 | `cc/claude-haiku-4-5-20251001` | Claude Code passthrough (fast, non-reasoning) |
-| `claude-opus-4-5-thinking` · `claude-sonnet-4-5-thinking` | Claude with extended thinking |
+| `claude-opus-4-5-thinking` · `claude-sonnet-4-5-thinking` | Claude with extended thinking (default seed) |
 | `gemini-3.1-pro-high` · `gemini-3-flash` | Gemini |
 
 The live `GET /v1/models` endpoint is the source of truth. To use any other OmniRoute model id
 (e.g. a DeepSeek, GLM or Kimi variant), type it into the model field or add it to the provider's
 `models` list in config; opencodex forwards unknown ids to OmniRoute verbatim.
 
-## 4. Self-host on your fleet (optional)
+## 4. Self-host on loopback (fleet)
 
-OmniRoute ships as a Docker image: `diegosouzapw/omniroute` (default port `20128`). Run it on a
-fleet server and point opencodex at it instead of the cloud.
-
-```bash
-docker run -d --name omniroute -p 20128:20128 diegosouzapw/omniroute
-```
-
-Then set the OmniRoute provider's **base URL** to your instance, e.g.
-`http://sofie:20128/v1`. OmniRoute is registered with `allowBaseUrlOverride`, so the
-dashboard's Add-provider / Edit-provider form exposes a custom base URL field for this. Export
-the target as `OCX_OMNIROUTE_BASE_URL` if you template your config from the environment:
+OmniRoute ships as a Docker image: `diegosouzapw/omniroute`. Bind **only** to loopback so it is
+not reachable from joep or the LAN:
 
 ```bash
-export OCX_OMNIROUTE_BASE_URL="http://sofie:20128/v1"
+docker run -d --name omniroute \
+  -e REQUIRE_API_KEY=false \
+  -p 127.0.0.1:20128:20128 \
+  diegosouzapw/omniroute
 ```
 
-For a self-hosted instance with `REQUIRE_API_KEY` disabled, OmniRoute accepts the placeholder
-key `sk_omniroute`.
+Smoke:
+
+```bash
+ss -ltn | grep 20128          # expect 127.0.0.1:20128 only
+curl -sS http://127.0.0.1:20128/healthz
+curl -sS -H 'Authorization: Bearer sk_omniroute' http://127.0.0.1:20128/v1/models
+```
+
+Then configure the OmniRoute provider with loopback + private-network opt-in + placeholder bearer
+(when `REQUIRE_API_KEY=false`):
+
+```jsonc
+{
+  "providers": {
+    "omniroute": {
+      "adapter": "openai-chat",
+      "baseUrl": "http://127.0.0.1:20128/v1",
+      "allowPrivateNetwork": true,
+      "apiKey": "sk_omniroute",
+      "defaultModel": "claude-sonnet-4-5-thinking"
+    }
+  }
+}
+```
+
+OmniRoute is registered with `allowBaseUrlOverride`, so the dashboard Add/Edit form exposes a
+custom base URL field. Destination policy rejects loopback unless `allowPrivateNetwork: true`.
+
+OmniRoute-internal provider failover counts as **one** OCX upstream attempt under the global
+3-attempt budget — OCX does not stack account-pool rotation on this provider.

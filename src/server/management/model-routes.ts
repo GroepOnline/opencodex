@@ -4,6 +4,11 @@ import type { CatalogModel } from "../../codex/catalog";
 import { catalogModelSlug, disabledNativeSlugs, invalidateCodexModelsCache, nativeModelRows, uniqueCatalogModelsForPublicList } from "../../codex/catalog";
 import { getProviderLiveModelCount } from "../../codex/model-cache";
 import {
+  clientHideReasonLabel,
+  hideUnavailableModelsEnabled,
+  providerClientHideReason,
+} from "../../codex/catalog-visibility";
+import {
   DEFAULT_SUBAGENT_MODELS,
   codexAutoStartEnabled,
   hasOwnProvider,
@@ -99,11 +104,13 @@ export async function handleModelRoutes(ctx: ManagementContext): Promise<Respons
     // Custom metadata wins when a physical live/static row resolves to the same Codex-facing
     // slug, while a combo keeps the same precedence it has in routing and /v1/models.
     const customNamespaced = new Set(visibleCustomModels.map(c => c.namespaced));
+    const hideEnabled = hideUnavailableModelsEnabled(config);
     const dedupedRouted = publicModels.map(m => {
       // Codex-facing slug (one "/", slug-codec); disabledModels compares tolerate both forms.
       const namespaced = catalogModelSlug(m);
       if (m.provider !== "combo" && customNamespaced.has(namespaced)) return null;
       const contextCap = providerContextCap(config, m.provider);
+      const hideReason = providerClientHideReason(m.provider, config);
       return {
         ...m,
         namespaced,
@@ -111,6 +118,12 @@ export async function handleModelRoutes(ctx: ManagementContext): Promise<Respons
           stored === namespaced || slugEquals(stored, m.provider, m.id)
         )),
         ...(contextCap !== undefined ? { contextCap, contextCapped: m.contextCapped === true } : {}),
+        // Admin always sees last-good rows; reason explains why clients may hide them.
+        ...(hideReason ? {
+          clientHideReason: hideReason,
+          clientHideReasonLabel: clientHideReasonLabel(hideReason),
+          clientHidden: hideEnabled,
+        } : {}),
       };
     }).filter(Boolean);
     return jsonResponse([...native, ...dedupedRouted, ...visibleCustomModels]);

@@ -25,12 +25,13 @@ export function Notice({ tone, children }: { tone: "ok" | "err"; children: React
 
 export interface SelectOption { value: string; label: React.ReactNode }
 
-export function Select({ value, options, onChange, disabled, label, style, align, placement, dropdownStyle, portal = true }: {
-  value: string;
+export function Select({ value, options, onChange, disabled, label, id, style, align, placement, dropdownStyle, portal = true }: {  value: string;
   options: SelectOption[];
   onChange: (value: string) => void;
   disabled?: boolean;
   label?: string;
+  /** Optional id on the trigger button (tests / labels target `#codex-pool-strategy`). */
+  id?: string;
   style?: CSSProperties;
   align?: "left" | "right";
   placement?: "below" | "right";
@@ -204,6 +205,7 @@ export function Select({ value, options, onChange, disabled, label, style, align
     <div ref={ref} className="custom-select" style={{ position: "relative", display: "inline-block", ...style }}>
       <button
         ref={triggerRef}
+        id={id}
         type="button"
         role="combobox"
         className="select-trigger"

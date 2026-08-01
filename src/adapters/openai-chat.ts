@@ -10,6 +10,7 @@ import { contentPartsToText } from "./image";
 import { neutralizeIdentity } from "./identity";
 import { buildNonOpenAIToolCatalogNudgeForTools, shouldInjectNonOpenAIToolCatalogNudge } from "./tool-catalog-nudge";
 import { openRouterProviderPayload, resolveOpenRouterRouting } from "../providers/openrouter-routing";
+import { resolveProviderCompat } from "../providers/compat";
 
 // Providers may opt into stripping one trailing "[...]" group from the wire model id.
 // Z.AI needs this because its OpenAI path rejects glm-5.2[1m] with 400 code 1211;
@@ -429,6 +430,7 @@ function toolsToChatFormat(parsed: OcxParsedRequest, provider: OcxProviderConfig
   if (tools.length === 0) return undefined;
   const xaiTarget = isXaiSchemaTarget(provider);
   const kimiTarget = isKimiSchemaTarget(provider);
+  const compat = resolveProviderCompat(provider.compat);
   const formatted = tools.flatMap(t => {
     const parameters = xaiTarget
       ? normalizeXaiToolParameters(t.parameters)
@@ -436,13 +438,16 @@ function toolsToChatFormat(parsed: OcxParsedRequest, provider: OcxProviderConfig
         ? ensureKimiRootObjectType(t.parameters)
         : t.parameters;
     if (parameters === undefined) return [];
+    const strict = t.strict !== undefined
+      ? t.strict
+      : (compat.supportsStrictMode ? true : undefined);
     return [{
     type: "function",
     function: {
       name: namespacedToolName(t.namespace, t.name),
       description: t.description,
       parameters,
-      ...(t.strict !== undefined ? { strict: t.strict } : {}),
+      ...(strict !== undefined ? { strict } : {}),
     },
     }];
   });
@@ -492,6 +497,12 @@ function resolveMaxTokens(provider: OcxProviderConfig, parsed: OcxParsedRequest)
     ?? provider.defaultMaxOutputTokens;
 }
 
+function hasHeaderCaseInsensitive(headers: Record<string, string> | undefined, name: string): boolean {
+  if (!headers) return false;
+  const needle = name.toLowerCase();
+  return Object.keys(headers).some(key => key.toLowerCase() === needle);
+}
+
 function thinkingBudgetForEffort(parsed: OcxParsedRequest, reasoningEffort: string, maxOutputTokens?: number): number | undefined {
   if (parsed.options.reasoning === "minimal") return 0;
   const maxBudget = maxOutputTokens ?? 32768;
@@ -504,6 +515,64 @@ function thinkingBudgetForEffort(parsed: OcxParsedRequest, reasoningEffort: stri
   };
   const fraction = fractions[reasoningEffort];
   return fraction === undefined ? undefined : Math.max(1, Math.floor(maxBudget * fraction));
+}
+
+function applyCompatThinkingFormat(
+  body: Record<string, unknown>,
+  format: ReturnType<typeof resolveProviderCompat>["thinkingFormat"],
+  reasoningEffort: string,
+  parsed: OcxParsedRequest,
+  maxTokens: number | undefined,
+  setLog: (log: AdapterRequest["reasoningLog"]) => void,
+): void {
+  switch (format) {
+    case "thinking-budget": {
+      const budget = thinkingBudgetForEffort(parsed, reasoningEffort, maxTokens);
+      if (budget === undefined) return;
+      body.thinking_budget = budget;
+      setLog({
+        effectiveEffort: parsed.options.reasoning === "minimal" ? "minimal" : reasoningEffort,
+        wireField: "thinking_budget",
+        wireValue: budget,
+      });
+      return;
+    }
+    case "thinking-type": {
+      const enabled = parsed.options.reasoning !== "minimal" && reasoningEffort !== "disabled";
+      const type = enabled ? (reasoningEffort === "adaptive" ? "adaptive" : "enabled") : "disabled";
+      body.thinking = { type };
+      setLog({ effectiveEffort: type, wireField: "thinking.type", wireValue: type });
+      return;
+    }
+    case "qwen": {
+      const enable = parsed.options.reasoning !== "minimal" && reasoningEffort !== "disabled";
+      body.enable_thinking = enable;
+      setLog({
+        effectiveEffort: enable ? reasoningEffort : "disabled",
+        wireField: "enable_thinking",
+        wireValue: enable,
+      });
+      return;
+    }
+    case "openrouter": {
+      body.reasoning = { effort: reasoningEffort };
+      setLog({
+        effectiveEffort: reasoningEffort,
+        wireField: "reasoning.effort",
+        wireValue: reasoningEffort,
+      });
+      return;
+    }
+    case "openai":
+    default: {
+      body.reasoning_effort = reasoningEffort;
+      setLog({
+        effectiveEffort: reasoningEffort,
+        wireField: "reasoning_effort",
+        wireValue: reasoningEffort,
+      });
+    }
+  }
 }
 
 export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAdapter {
@@ -529,6 +598,7 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
       };
       if (modelInList(provider.reasoningSplitModels, parsed.modelId)) body.reasoning_split = true;
       const maxTokens = resolveMaxTokens(provider, parsed);
+      const compat = resolveProviderCompat(provider.compat);
       const openRouterRouting = resolveOpenRouterRouting(provider, parsed.modelId);
       if (openRouterRouting) body.provider = openRouterProviderPayload(openRouterRouting);
       if (tools) body.tools = tools;
@@ -537,7 +607,7 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
           ? (toolChoice === "none" ? "none" : "auto")
           : toolChoice;
       }
-      if (maxTokens !== undefined) body.max_tokens = maxTokens;
+      if (maxTokens !== undefined) body[compat.maxTokensField] = maxTokens;
       if (parsed.options.temperature !== undefined && !modelInList(provider.noTemperatureModels, parsed.modelId)) {
         body.temperature = parsed.options.temperature;
       }
@@ -571,12 +641,10 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
             };
           }
         } else {
-          body.reasoning_effort = reasoningEffort;
-          reasoningLog = {
-            effectiveEffort: reasoningEffort,
-            wireField: "reasoning_effort",
-            wireValue: reasoningEffort,
-          };
+          // Provider-wide compat.thinkingFormat only applies when no per-model list matched.
+          applyCompatThinkingFormat(body, compat.thinkingFormat, reasoningEffort, parsed, maxTokens, (log) => {
+            reasoningLog = log;
+          });
         }
       }
       if (parsed.options.presencePenalty !== undefined && !modelInList(provider.noPenaltyModels, parsed.modelId)) {
@@ -586,8 +654,11 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
         body.frequency_penalty = parsed.options.frequencyPenalty;
       }
       // prompt_cache_key is an OpenAI-specific chat extension; strict backends (Groq,
-      // Cerebras, etc.) reject unknown fields. Only forward when the provider opts in.
-      if (provider.promptCacheKey && parsed.options.promptCacheKey !== undefined) {
+      // Cerebras, etc.) reject unknown fields. Only forward when the provider opts in
+      // via promptCacheKey OR compat.sessionAffinity === "prompt-cache-key".
+      const forwardPromptCacheKey = provider.promptCacheKey === true
+        || (provider.promptCacheKey !== false && compat.sessionAffinity === "prompt-cache-key");
+      if (forwardPromptCacheKey && parsed.options.promptCacheKey !== undefined) {
         body.prompt_cache_key = parsed.options.promptCacheKey;
       }
 
@@ -612,6 +683,13 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
       // never carry Authorization, so keyless providers are unaffected.
       if (hasCredential) headers["Authorization"] = `Bearer ${provider.apiKey}`;
       if (provider.headers) Object.assign(headers, provider.headers);
+      if (
+        compat.sessionAffinity === "x-session-id"
+        && parsed.options.promptCacheKey
+        && !hasHeaderCaseInsensitive(headers, "x-session-id")
+      ) {
+        headers["X-Session-Id"] = parsed.options.promptCacheKey;
+      }
 
       const bodyJson = JSON.stringify(body);
       // Never log pathname/query — tenant-scoped hosts (e.g. Cloudflare

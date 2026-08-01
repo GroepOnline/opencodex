@@ -33,6 +33,7 @@ export default function ProviderDetails({
   quotaFailed,
   onRefreshQuota,
   availableModels,
+  peerProviders,
   hasLiveModels,
   selectedModels,
   modelsLoading,
@@ -65,6 +66,7 @@ export default function ProviderDetails({
   quotaFailed?: boolean;
   onRefreshQuota?: () => void;
   availableModels: string[];
+  peerProviders?: import("./ProviderSettings").ProviderPeerOption[];
   /** Server-reported live-catalog provenance; see filterModels(). */
   hasLiveModels: boolean;
   selectedModels: string[];
@@ -310,6 +312,7 @@ export default function ProviderDetails({
             item={item}
             apiBase={apiBase}
             availableModels={availableModels}
+            peerProviders={peerProviders}
             onUpdateProvider={onUpdateProvider}
             onDirtyChange={setSettingsDirty}
             onRegisterSave={registerSettingsSave}

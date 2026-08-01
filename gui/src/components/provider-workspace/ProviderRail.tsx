@@ -115,11 +115,9 @@ export function RailRow({ item, selected, tabbable, modelCount, isDefault, cappe
             <span className="pwi-rail-badge pwi-rail-badge--capped" title={t("pws.capCooldown.title")}>{t("pws.capCooldown.badge")}</span>
           ) : null}
         </span>
-        {secondaryLabel && (
-          <span className="providers-workspace-rail-secondary" title={secondaryLabel}>
-            {secondaryLabel}
-          </span>
-        )}
+        <span className="providers-workspace-rail-secondary" title={secondaryLabel || undefined}>
+          {secondaryLabel || "\u00a0"}
+        </span>
       </span>
       <span className="providers-workspace-rail-trail">
         {isDefault && (

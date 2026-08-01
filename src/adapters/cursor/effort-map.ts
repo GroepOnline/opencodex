@@ -27,6 +27,9 @@ const CURSOR_MODEL_EFFORT_TIERS: Record<string, readonly string[]> = {
   "claude-opus-5": ["low", "medium", "high", "xhigh", "max"],
   "claude-sonnet-5": ["low", "medium", "high", "xhigh", "max"],
   "glm-5.2": ["high", "max"],
+  // GetUsableModels (2026-07-28) lists kimi-k3 only as effort-suffixed kimi-k3-{low,high,max};
+  // the bare id returns not_found. Tiers mirror the native Kimi provider's K3 ladder.
+  "kimi-k3": ["low", "high", "max"],
   // GetUsableModels (2026-07-09) lists grok-4.5-{medium,high,xhigh} and grok-4.5-fast-{medium,high,xhigh};
   // the bare "grok-4.5-fast" id was removed upstream and now returns not_found.
   "grok-4.5": ["medium", "high", "xhigh"],
@@ -45,8 +48,6 @@ const CURSOR_MODEL_EFFORT_TIERS: Record<string, readonly string[]> = {
   "gpt-5.6-sol": ["low", "medium", "high", "xhigh", "max"],
   "gpt-5.6-terra": ["low", "medium", "high", "xhigh", "max"],
   "gpt-5.6-luna": ["low", "medium", "high", "xhigh", "max"],
-  // GetUsableModels exposes kimi-k3-{low,high,max} (no medium/xhigh tier).
-  "kimi-k3": ["low", "high", "max"],
 };
 
 /** All effort suffixes accepted when matching live Cursor model ids to configured base ids. */

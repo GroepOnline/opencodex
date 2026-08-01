@@ -24,6 +24,7 @@ test("Usage stacked layout mounts every report panel in order", async () => {
 
   const order = [
     "<UsageSummaryCards",
+    "<UsageQualityPanel",
     "<UsageHeatmapPanel",
     "<UsageModelsTable",
     "<UsageProvidersTable",
@@ -39,6 +40,8 @@ test("Usage stacked layout mounts every report panel in order", async () => {
   // Classic panels keep their section landmarks and headings.
   expect(src).toContain('className="panel"');
   expect(src).toContain('aria-labelledby={titleId}');
+  expect(src).toContain('t("usage.section.proxyUsage")');
+  expect(src).toContain('t("usage.section.quality")');
 });
 
 test("Usage loading and empty states guard the stacked body", async () => {

@@ -6,6 +6,9 @@ import {
   joinCarriedPreviewNotes,
   matchingPreviewTag,
   matchingPreviewTags,
+  parseTakeoverSourcePr,
+  previousReleaseNotesTag,
+  rewriteTakeoverCredits,
   selectNewestCarriedPreviewTag,
   stripCarriedReleaseNotes,
   stripGenerateNotesCompareLink,
@@ -52,6 +55,52 @@ describe("matchingPreviewTags", () => {
   });
 });
 
+describe("previousReleaseNotesTag", () => {
+  test("preview baselines the newest prior release of either channel", () => {
+    expect(previousReleaseNotesTag("2.7.43-preview.20260728", [
+      "v2.7.41-preview.20260726",
+      "v2.7.41",
+      "v2.7.42",
+      "v2.7.43-preview.20260728",
+    ])).toBe("v2.7.42");
+  });
+
+  test("preview after preview (no stable in between) keeps the previous preview", () => {
+    expect(previousReleaseNotesTag("2.7.43-preview.20260729", [
+      "v2.7.42",
+      "v2.7.43-preview.20260728",
+      "v2.7.43-preview.20260729",
+    ])).toBe("v2.7.43-preview.20260728");
+  });
+
+  test("stable baselines the newest prior stable only", () => {
+    expect(previousReleaseNotesTag("2.7.43", [
+      "v2.7.42",
+      "v2.7.43-preview.20260728",
+      "v2.7.43",
+    ])).toBe("v2.7.42");
+  });
+
+  test("returns null when no eligible prior tag exists", () => {
+    expect(previousReleaseNotesTag("2.7.43-preview.1", ["v2.7.43-preview.1"])).toBeNull();
+    expect(previousReleaseNotesTag("2.7.43", ["v2.7.43-preview.1"])).toBeNull();
+  });
+
+  test("ignores candidate tags newer than the target release", () => {
+    expect(previousReleaseNotesTag("2.7.43-preview.20260728", [
+      "v2.7.42",
+      "v2.8.0-preview.1",
+    ])).toBe("v2.7.42");
+  });
+
+  test("ranks a stable tag after its matching preview when both are prior", () => {
+    expect(previousReleaseNotesTag("2.7.43-preview.20260728", [
+      "v2.7.42-preview.20260727",
+      "v2.7.42",
+    ])).toBe("v2.7.42");
+  });
+});
+
 describe("stripCarriedReleaseNotes", () => {
   test("keeps PR categories and drops npm blurb, commits, and compare link", () => {
     const body = [
@@ -71,7 +120,7 @@ describe("stripCarriedReleaseNotes", () => {
       "- release: v2.7.39-preview.20260724 (8894e40e)",
       "- Merge branch 'dev' into preview (9077f7c1)",
       "",
-      "**Full Changelog**: https://github.com/lidge-jun/opencodex/compare/v2.7.38-preview.20260724...v2.7.39-preview.20260724",
+      "**Full Changelog**: https://github.com/OnlineChefGroep/opencodex/compare/v2.7.38-preview.20260724...v2.7.39-preview.20260724",
       "",
     ].join("\n");
 
@@ -166,14 +215,14 @@ describe("assembleReleaseNotes", () => {
       commits: "- release: v2.7.39 (357acee6)",
       compareFrom: "v2.7.37",
       compareTo: "v2.7.39",
-      repository: "lidge-jun/opencodex",
+      repository: "OnlineChefGroep/opencodex",
     });
 
     expect(notes).toContain("dist-tag `latest`");
     expect(notes).toContain("## What's Changed\n### Bug Fixes\n* fix A");
     expect(notes).toContain("## Since preview\n\n## What's Changed\n### Bug Fixes\n* fix B");
     expect(notes).toContain("## Commits\n\n- release: v2.7.39 (357acee6)");
-    expect(notes).toContain("**Full Changelog**: https://github.com/lidge-jun/opencodex/compare/v2.7.37...v2.7.39");
+    expect(notes).toContain("**Full Changelog**: https://github.com/OnlineChefGroep/opencodex/compare/v2.7.37...v2.7.39");
   });
 
   test("omits empty generate-notes delta that is only the config comment", () => {
@@ -207,5 +256,89 @@ describe("assembleReleaseNotes", () => {
     expect(notes).not.toContain("https://example/compare/a...b");
     expect(hasNonWhitespace("")).toBe(false);
     expect(stripGenerateNotesCompareLink("x\n**Full Changelog**: y")).toBe("x");
+  });
+});
+
+describe("parseTakeoverSourcePr", () => {
+  test("matches common maintainer-takeover title forms", () => {
+    expect(parseTakeoverSourcePr("feat(images): Grok image bridge (maintainer takeover of #424)")).toBe(424);
+    expect(parseTakeoverSourcePr("feat(codex): account pause (takeover #565)")).toBe(565);
+    expect(parseTakeoverSourcePr("feat x", "Maintainer takeover of #424.")).toBe(424);
+    expect(parseTakeoverSourcePr("feat x", "no mention")).toBeNull();
+  });
+});
+
+describe("rewriteTakeoverCredits", () => {
+  test("credits original author and keeps landing PR link", async () => {
+    const body = [
+      "## What's Changed",
+      "### New Features",
+      "* feat(images): Grok image bridge (maintainer takeover of #424) by @Wibias in https://github.com/OnlineChefGroep/opencodex/pull/577",
+      "* feat(other): normal change by @Alice in https://github.com/OnlineChefGroep/opencodex/pull/100",
+    ].join("\n");
+
+    const landingCalls: number[] = [];
+    const rewritten = await rewriteTakeoverCredits(
+      body,
+      async (pr) => {
+        landingCalls.push(pr);
+        return null;
+      },
+      async (source) => (source === 424 ? "tizerluo" : null),
+    );
+
+    expect(landingCalls).toEqual([]);
+    expect(rewritten).toContain(
+      "* feat(images): Grok image bridge (maintainer takeover of #424) by @tizerluo (takeover by @Wibias) in https://github.com/OnlineChefGroep/opencodex/pull/577",
+    );
+    expect(rewritten).toContain(
+      "* feat(other): normal change by @Alice in https://github.com/OnlineChefGroep/opencodex/pull/100",
+    );
+  });
+
+  test("falls back to landing lookup when title says takeover without #N", async () => {
+    const line =
+      "* feat x (takeover) by @Wibias in https://github.com/OnlineChefGroep/opencodex/pull/577";
+    const rewritten = await rewriteTakeoverCredits(
+      line,
+      async (pr) => {
+        if (pr !== 577) return null;
+        return {
+          title: "feat x (takeover)",
+          body: "Maintainer takeover of #424.",
+          authorLogin: "Wibias",
+        };
+      },
+      async (source) => (source === 424 ? "tizerluo" : null),
+    );
+    expect(rewritten).toContain(
+      "* feat x (takeover) by @tizerluo (takeover by @Wibias) in https://github.com/OnlineChefGroep/opencodex/pull/577",
+    );
+  });
+
+  test("leaves line unchanged when landing lookup returns null", async () => {
+    const line =
+      "* feat x (takeover) by @Wibias in https://github.com/OnlineChefGroep/opencodex/pull/577";
+    const rewritten = await rewriteTakeoverCredits(
+      line,
+      async () => null,
+      async () => "tizerluo",
+    );
+    expect(rewritten).toBe(line);
+  });
+
+  test("leaves line unchanged when original author matches landing author", async () => {
+    const line =
+      "* feat x (takeover #9) by @Wibias in https://github.com/OnlineChefGroep/opencodex/pull/10";
+    const rewritten = await rewriteTakeoverCredits(
+      line,
+      async () => ({
+        title: "feat x (takeover #9)",
+        body: "",
+        authorLogin: "Wibias",
+      }),
+      async () => "Wibias",
+    );
+    expect(rewritten).toBe(line);
   });
 });

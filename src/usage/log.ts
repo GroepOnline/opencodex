@@ -1,6 +1,7 @@
 import { chmodSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { getConfigDir } from "../config";
+import { recordOwnedConfigPath } from "../lib/config-ownership";
 import { usageDisplayTotalTokens } from "./totals";
 import type { OcxUsage } from "../types";
 
@@ -11,6 +12,8 @@ export type AttemptRecoveryKind =
   | "connection-reset"
   | "oauth-401"
   | "key-429"
+  | "anthropic-oauth-429"
+  | "google-antigravity-oauth-429"
   | "image-413";
 
 export interface PersistedUsageAttempt {
@@ -126,6 +129,13 @@ function normalizeUsageValue(usage: OcxUsage | undefined): OcxUsage | undefined 
   return {
     inputTokens: usage.inputTokens,
     outputTokens: usage.outputTokens,
+    // Absolute active-context checkpoint (types.ts). Stateful providers such as Kiro report
+    // per-attempt usage only, so this field is the ONLY carrier of the cumulative context
+    // figure once the log records raw adapter usage instead of re-parsing the bridged wire
+    // (usageFromBridge, request-log.ts). Omitting it here silently dropped Kiro's context
+    // growth from every persisted row. It is deliberately NOT folded into totalTokens:
+    // a checkpoint is not a per-request total and must never be summed across requests.
+    ...(typeof usage.contextTotalTokens === "number" ? { contextTotalTokens: usage.contextTotalTokens } : {}),
     ...(typeof usage.totalTokens === "number" ? { totalTokens: usage.totalTokens } : {}),
     ...(typeof usage.cachedInputTokens === "number" ? { cachedInputTokens: usage.cachedInputTokens } : {}),
     ...(typeof usage.cacheReadInputTokens === "number" ? { cacheReadInputTokens: usage.cacheReadInputTokens } : {}),
@@ -140,6 +150,7 @@ const ATTEMPT_RECOVERY_KINDS = new Set<AttemptRecoveryKind>([
   "connection-reset",
   "oauth-401",
   "key-429",
+  "anthropic-oauth-429",
   "image-413",
 ]);
 const USAGE_STATUSES = new Set<UsageStatus>([
@@ -159,6 +170,7 @@ function normalizeAttemptUsage(raw: unknown): OcxUsage | null {
   if (!isNonNegativeFiniteNumber(usage.inputTokens)
     || !isNonNegativeFiniteNumber(usage.outputTokens)) return null;
   for (const key of [
+    "contextTotalTokens",
     "totalTokens",
     "cachedInputTokens",
     "cacheReadInputTokens",
@@ -315,6 +327,7 @@ function normalizeUsageEntry(entry: PersistedUsageEntry): PersistedUsageEntry {
 
 function ensureUsageLogDir(): void {
   const dir = getConfigDir();
+  recordOwnedConfigPath(dir, usageLogPath());
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   try { chmodSync(dir, 0o700); } catch { /* best-effort on platforms that ignore chmod */ }
 }

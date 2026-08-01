@@ -48,10 +48,10 @@ export default function ProviderUsage({ item, usageTotals, quotaReport, modelUsa
   return (
     <div className="pws-section">
       <div className="pws-usage-block">
-        <h3 className="pws-section-title">{t("pws.usageLast30d")}</h3>
+        <h3 className="pws-section-title">{t("pws.proxyUsage")}</h3>
         {hasUsage ? (
           <>
-            <div className="pws-usage-metrics pws-usage-metrics-3" role="group" aria-label={t("pws.usageLast30d")}>
+            <div className="pws-usage-metrics pws-usage-metrics-3" role="group" aria-label={t("pws.proxyUsage")}>
               <div className="pws-usage-metric">
                 <span className="pws-usage-metric-value mono">{formatCostUsd(providerCost, locale)}</span>
                 <span className="muted pws-usage-metric-label">{t("pws.estimatedCost")}</span>
@@ -139,7 +139,7 @@ export default function ProviderUsage({ item, usageTotals, quotaReport, modelUsa
 
       <div className="pws-usage-block">
         <div className="pws-usage-block-head">
-          <h3 className="pws-section-title">{t("pws.rateLimits")}</h3>
+          <h3 className="pws-section-title">{t("pws.providerLimits")}</h3>
           {onRefreshQuota && (
             <button
               type="button"

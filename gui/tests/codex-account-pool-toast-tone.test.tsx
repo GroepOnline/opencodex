@@ -22,6 +22,7 @@ const account: CodexAccountEntry = {
   id: "pool-1",
   email: "pool@example.test",
   isMain: false,
+  paused: false,
   hasCredential: true,
   quota: { resetCredits: 2, updatedAt: 1 },
 };
@@ -29,15 +30,19 @@ const account: CodexAccountEntry = {
 function makeController(overrides: Partial<CodexAccountPoolController> = {}): CodexAccountPoolController {
   return {
     accounts: [
-      { id: "main", email: "main@example.test", isMain: true, hasCredential: true, quota: null },
+      { id: "main", email: "main@example.test", isMain: true, paused: false, hasCredential: true, quota: null },
       account,
     ],
     activeId: null,
     loadState: "ready",
     switchingId: null,
+    pauseUpdatingId: null,
+    pausingExhausted: false,
     activeNeedsReauth: false,
     load: async () => true,
     switchAccount: async () => ({ ok: true, activeId: null }),
+    setAccountPaused: async () => ({ ok: true }),
+    pauseExhaustedAccounts: async () => ({ ok: true, pausedCount: 0 }),
     saveAlias: async () => ({ ok: true }),
     removeAccount: async () => ({ ok: false, reason: "request" }),
     syncAfterAccountAdded: async () => ({ ok: true }),
@@ -126,7 +131,7 @@ test("successful redeem clears a stale error toast tone", async () => {
   await act(async () => { removeBtn!.dispatchEvent(new win.MouseEvent("click", { bubbles: true })); });
   await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
 
-  const errNotice = host.querySelector(".notice-err");
+  const errNotice = host.querySelector(".codex-auth-page-head__feedback.is-err");
   expect(errNotice).toBeTruthy();
 
   const resetBtn = host.querySelector('button[aria-label="2 reset credit(s)"]') as HTMLButtonElement | null;
@@ -149,6 +154,6 @@ test("successful redeem clears a stale error toast tone", async () => {
   await act(async () => { confirmReset!.dispatchEvent(new win.MouseEvent("click", { bubbles: true })); });
   await act(async () => { await new Promise((r) => setTimeout(r, 40)); });
 
-  expect(host.querySelector(".notice-err")).toBeNull();
-  expect(host.querySelector(".notice-ok")).toBeTruthy();
+  expect(host.querySelector(".codex-auth-page-head__feedback.is-err")).toBeNull();
+  expect(host.querySelector(".codex-auth-page-head__feedback.is-ok")).toBeTruthy();
 });

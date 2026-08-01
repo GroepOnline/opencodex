@@ -403,6 +403,10 @@ class LiveCursorTransport implements CursorTransport {
   private framesReceived = 0;
  private firstFrameAt?: number;
  private firstFrameLogged = false;
+  // Upstream Retry-After from the HTTP/2 response headers, kept so a quota failure can cool the
+  // failing account down for the interval the server actually asked for instead of the generic
+  // default. Read after failure: open() is the only writer and it lands before any terminal error.
+  private upstreamRetryAfter: string | null = null;
   /** Stable session identifier sent as x-session-id; mirrors IDE session semantics. */
   private readonly sessionId = crypto.randomUUID();
 
@@ -569,6 +573,10 @@ class LiveCursorTransport implements CursorTransport {
     return this.committed;
   }
 
+  retryAfter(): string | null {
+    return this.upstreamRetryAfter;
+  }
+
   private clearFirstFrameTimer(): void {
     if (this.firstFrameTimer) {
       clearTimeout(this.firstFrameTimer);
@@ -653,6 +661,7 @@ class LiveCursorTransport implements CursorTransport {
     this.framesReceived = 0;
     this.firstFrameAt = undefined;
     this.firstFrameLogged = false;
+    this.upstreamRetryAfter = null;
     const dialHost = cursorHostLabel(this.input.provider.baseUrl || "https://api2.cursor.sh");
     debugProviderDiagnostic("cursor", "dial", { host: dialHost });
     this.session = http2.connect(this.input.provider.baseUrl || "https://api2.cursor.sh");
@@ -759,6 +768,14 @@ class LiveCursorTransport implements CursorTransport {
       } catch (err) {
         failAndClear(err instanceof Error ? err : new Error(String(err)));
       }
+    });
+    // Connect-over-HTTP/2 carries quota backoff in the ordinary Retry-After response header, which
+    // arrives before the end-stream error frame that reports RESOURCE_EXHAUSTED. Capture it here so
+    // the pool cooldown can honour the server's interval; the value is only consumed on failure.
+    this.stream.on("response", headers => {
+      const header = headers["retry-after"];
+      const value = Array.isArray(header) ? header[0] : header;
+      if (typeof value === "string" && value.trim() !== "") this.upstreamRetryAfter = value.trim();
     });
     this.stream.on("trailers", trailers => {
       const status = trailers["grpc-status"];

@@ -11,6 +11,12 @@ export interface CursorTransport {
    * accepted is never replayed. Absent (undefined) is treated as "committed" — safe by default.
    */
   requestCommitted?(): boolean;
+  /**
+   * The upstream `Retry-After` header for this turn, when the server sent one. Consumed only on a
+   * quota failure, so the account pool can cool the failing account down for the interval the
+   * server asked for rather than the generic default. Absent (undefined) means "not reported".
+   */
+  retryAfter?(): string | null;
 }
 
 export interface CursorTransportFactoryInput {

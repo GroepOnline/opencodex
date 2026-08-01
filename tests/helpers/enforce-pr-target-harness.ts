@@ -15,6 +15,9 @@
  * either way.
  */
 
+import { createRequire } from "node:module";
+import path from "node:path";
+
 export type RecordedCall = { method: string; args: unknown };
 
 export type HarnessResult = {
@@ -39,6 +42,7 @@ export type PullRequestState = {
   number?: number;
   node_id?: string;
   title?: string;
+  body?: string;
   draft?: boolean;
   base?: { ref: string };
   user?: { login: string };
@@ -79,6 +83,20 @@ export type RunOptions = {
    * exercise that branch.
    */
   failStatus?: number;
+  /** Collaborator permission returned by `getCollaboratorPermissionLevel`. */
+  authorPermission?: string;
+  /** When true, permission lookup rejects like a transient API failure. */
+  failPermissionLookup?: boolean;
+  /** Overrides for `compareCommitsWithBasehead` keyed by `basehead`. */
+  compareByBasehead?: Record<string, { ahead_by: number; behind_by: number }>;
+  /**
+   * Open PRs returned by `pulls.list` (page 1). Used for stacked-base detection
+   * when this PR's base is another PR's head ref. Prefer `openPullPages` when
+   * the test needs pagination beyond the first page.
+   */
+  openPulls?: unknown[];
+  /** Page-keyed open PR fixtures for `pulls.list` (1-based via array index). */
+  openPullPages?: unknown[][];
 };
 
 /**
@@ -89,18 +107,40 @@ export type RunOptions = {
  * `context.payload.pull_request.head.sha` to tell the two apart. The extra
  * fields are inert to the logic and load-bearing for fidelity.
  */
+const DEFAULT_BODY = [
+  "## Summary",
+  "",
+  "This change adds enough substantive detail for reviewers to understand the motivation and approach taken.",
+  "",
+  "## Test plan",
+  "",
+  "- [x] Run `bun test tests/ci-workflows.test.ts`",
+  "- [x] Confirm enforce-pr-target behaviour locally",
+].join("\n");
+
 const DEFAULT_PR = {
   number: 42,
   node_id: "PR_kwDOnode42",
   id: 1122334455,
   title: "Add a thing",
+  body: DEFAULT_BODY,
   draft: false,
   state: "open",
   merged: false,
   locked: false,
-  html_url: "https://github.com/lidge-jun/opencodex/pull/42",
-  base: { ref: "dev", sha: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", label: "lidge-jun:dev" },
-  head: { ref: "feature", sha: "3f1c0de0a6a4d0a3f9a1b2c3d4e5f60718293a4b", label: "contributor:feature" },
+  html_url: "https://github.com/OnlineChefGroep/opencodex/pull/42",
+  base: {
+    ref: "dev",
+    sha: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+    label: "OnlineChefGroep:dev",
+    repo: { name: "opencodex", owner: { login: "OnlineChefGroep" } },
+  },
+  head: {
+    ref: "feature",
+    sha: "3f1c0de0a6a4d0a3f9a1b2c3d4e5f60718293a4b",
+    label: "contributor:feature",
+    repo: { name: "opencodex", owner: { login: "contributor" } },
+  },
   user: { login: "contributor", id: 67890, type: "User" },
   labels: [] as unknown[],
 };
@@ -223,6 +263,7 @@ function octokitError(method: string, status: number): Error & { status: number 
 }
 
 function nodeLikeProcess(): Record<string, unknown> {
+  const workspace = process.cwd();
   return {
     platform: "linux",
     arch: "x64",
@@ -251,15 +292,15 @@ function nodeLikeProcess(): Record<string, unknown> {
       GITHUB_HEAD_REF: "feature",
       GITHUB_JOB: "enforce-target",
       GITHUB_REF: "refs/pull/42/merge",
-      GITHUB_REPOSITORY: "lidge-jun/opencodex",
-      GITHUB_REPOSITORY_OWNER: "lidge-jun",
+      GITHUB_REPOSITORY: "OnlineChefGroep/opencodex",
+      GITHUB_REPOSITORY_OWNER: "OnlineChefGroep",
       GITHUB_RUN_ATTEMPT: "1",
       GITHUB_RUN_ID: "1234567890",
       GITHUB_RUN_NUMBER: "87",
       GITHUB_SERVER_URL: "https://github.com",
       GITHUB_SHA: "3f1c0de0a6a4d0a3f9a1b2c3d4e5f60718293a4b",
       GITHUB_WORKFLOW: "Enforce PR target branch",
-      GITHUB_WORKSPACE: "/home/runner/work/opencodex/opencodex",
+      GITHUB_WORKSPACE: workspace,
       HOME: "/home/runner",
       RUNNER_ARCH: "X64",
       RUNNER_NAME: "GitHub Actions 1",
@@ -270,7 +311,7 @@ function nodeLikeProcess(): Record<string, unknown> {
       ACTIONS_RUNTIME_URL: "https://pipelines.actions.githubusercontent.com/",
     },
     argv: ["/usr/bin/node", "/home/runner/work/_actions/actions/github-script/dist/index.js"],
-    cwd: () => "/home/runner/work/opencodex/opencodex",
+    cwd: () => workspace,
     exit: () => { throw new Error("the script must not call process.exit"); },
   };
 }
@@ -375,12 +416,40 @@ export async function runEnforcePrTarget(
   const outputs: { name: string; value: unknown }[] = [];
   const states = new Map<string, unknown>();
   const failOn = new Set(options.failOn ?? []);
+  if (options.failPermissionLookup) {
+    // Route through `record` so the call appears in the recording even when it
+    // rejects (same semantics as `failOn`).
+    failOn.add("repos.getCollaboratorPermissionLevel");
+  }
   const failStatus = options.failStatus ?? 500;
 
   const pr = {
     ...DEFAULT_PR,
     ...options.pr,
-    base: { ...DEFAULT_PR.base, ...(options.pr.base ?? {}) },
+    base: {
+      ...DEFAULT_PR.base,
+      ...(options.pr.base ?? {}),
+      repo: {
+        ...DEFAULT_PR.base.repo,
+        ...((options.pr.base as { repo?: object } | undefined)?.repo ?? {}),
+        owner: {
+          ...DEFAULT_PR.base.repo.owner,
+          ...((options.pr.base as { repo?: { owner?: object } } | undefined)?.repo?.owner ?? {}),
+        },
+      },
+    },
+    head: {
+      ...DEFAULT_PR.head,
+      ...(options.pr.head ?? {}),
+      repo: {
+        ...DEFAULT_PR.head.repo,
+        ...((options.pr.head as { repo?: object } | undefined)?.repo ?? {}),
+        owner: {
+          ...DEFAULT_PR.head.repo.owner,
+          ...((options.pr.head as { repo?: { owner?: object } } | undefined)?.repo?.owner ?? {}),
+        },
+      },
+    },
     user: { ...DEFAULT_PR.user, ...(options.pr.user ?? {}) },
   };
   // Deep-independent from `pr`, so nothing the script does to one can reach the
@@ -390,10 +459,37 @@ export async function runEnforcePrTarget(
   const eventPr = {
     ...DEFAULT_PR,
     ...source,
-    base: { ...DEFAULT_PR.base, ...(source.base ?? {}) },
+    base: {
+      ...DEFAULT_PR.base,
+      ...(source.base ?? {}),
+      repo: {
+        ...DEFAULT_PR.base.repo,
+        ...((source.base as { repo?: object } | undefined)?.repo ?? {}),
+        owner: {
+          ...DEFAULT_PR.base.repo.owner,
+          ...((source.base as { repo?: { owner?: object } } | undefined)?.repo?.owner ?? {}),
+        },
+      },
+    },
+    head: {
+      ...DEFAULT_PR.head,
+      ...(source.head ?? {}),
+      repo: {
+        ...DEFAULT_PR.head.repo,
+        ...((source.head as { repo?: object } | undefined)?.repo ?? {}),
+        owner: {
+          ...DEFAULT_PR.head.repo.owner,
+          ...((source.head as { repo?: { owner?: object } } | undefined)?.repo?.owner ?? {}),
+        },
+      },
+    },
     user: { ...DEFAULT_PR.user, ...(source.user ?? {}) },
   };
   const pages: Comment[][] = options.commentPages ?? [options.comments ?? []];
+  const openPullPages: unknown[][] =
+    options.openPullPages ??
+    (options.openPulls && options.openPulls.length > 0 ? [options.openPulls] : []);
+  const paginatePageCount = Math.max(pages.length, openPullPages.length, 1);
 
   /**
    * Record the call, then either reject or return a plausible payload. Every
@@ -427,10 +523,46 @@ export async function runEnforcePrTarget(
   const respond = async (method: string, args: unknown, data?: unknown) =>
     record(method, args, data);
 
+  const nodeRequire = createRequire(path.join(process.cwd(), "package.json"));
+  const scriptsRoot = path.resolve(process.cwd(), ".github", "scripts");
+  /** Bare modules the workflow script may load (see enforce-pr-target.yml). */
+  const ALLOWED_MODULES = new Set(["path", "node:path"]);
+
+  function scopedRequire(id: string) {
+    calls.push({ method: "require", args: [id] });
+    const isPathLike = id.startsWith(".") || path.isAbsolute(id);
+    if (!isPathLike) {
+      if (!ALLOWED_MODULES.has(id)) {
+        throw new Error(`the script must not require ${id}`);
+      }
+      return nodeRequire(id);
+    }
+    const resolved = path.isAbsolute(id) ? path.resolve(id) : path.resolve(process.cwd(), id);
+    if (!resolved.startsWith(scriptsRoot + path.sep) && resolved !== scriptsRoot) {
+      throw new Error(`the script must not require ${id}`);
+    }
+    return nodeRequire(resolved);
+  }
+
+  function compareResult(basehead: string): { ahead_by: number; behind_by: number } {
+    const override = options.compareByBasehead?.[basehead];
+    if (override) return override;
+    if (basehead.startsWith("main...")) {
+      // Default: not the #644 shape (several commits ahead of main).
+      return { ahead_by: 8, behind_by: 0 };
+    }
+    return { ahead_by: 0, behind_by: 0 };
+  }
+
   const rest = {
     pulls: {
       get: (args: unknown) => respond("pulls.get", args, pr),
       update: (args: unknown) => respond("pulls.update", args, { ...pr }),
+      // Page-specific open-PR fixtures; missing pages are empty so paginate ends.
+      list: (args: unknown) => {
+        const page = Number((args as { page?: number })?.page ?? 1);
+        return respond("pulls.list", args, openPullPages[page - 1] ?? []);
+      },
     },
     issues: {
       // Honours `page`, so a caller that skips `paginate` sees only page one —
@@ -441,6 +573,16 @@ export async function runEnforcePrTarget(
       },
       createComment: (args: unknown) => respond("issues.createComment", args, { id: 99 }),
       updateComment: (args: unknown) => respond("issues.updateComment", args, { id: 7 }),
+    },
+    repos: {
+      getCollaboratorPermissionLevel: (args: unknown) =>
+        respond("repos.getCollaboratorPermissionLevel", args, {
+          permission: options.authorPermission ?? "read",
+        }),
+      compareCommitsWithBasehead: (args: unknown) => {
+        const basehead = String((args as { basehead?: string })?.basehead ?? "");
+        return respond("repos.compareCommitsWithBasehead", args, compareResult(basehead));
+      },
     },
   };
 
@@ -464,12 +606,13 @@ export async function runEnforcePrTarget(
       respond("request", { route, params });
     /**
      * `github.paginate(fn, params)` — walk every page and concatenate, the way
-     * Octokit does. A one-page fake would make dropping pagination invisible.
+     * Octokit does. Page count covers both comment and open-PR fixtures so a
+     * stacked parent on page two is still visible.
      */
     paginate = Object.assign(
       async (fn: (args: unknown) => Promise<{ data: unknown[] }>, params: unknown) => {
         const collected: unknown[] = [];
-        for (let page = 1; page <= pages.length; page += 1) {
+        for (let page = 1; page <= paginatePageCount; page += 1) {
           const response = await fn({ ...(params as object), page });
           collected.push(...response.data);
         }
@@ -484,7 +627,7 @@ export async function runEnforcePrTarget(
          */
         iterator: (fn: (args: unknown) => Promise<{ data: unknown[] }>, params: unknown) => ({
           async *[Symbol.asyncIterator]() {
-            for (let page = 1; page <= pages.length; page += 1) {
+            for (let page = 1; page <= paginatePageCount; page += 1) {
               yield await fn({ ...(params as object), page });
             }
           },
@@ -552,11 +695,11 @@ export async function runEnforcePrTarget(
       repository: {
         id: 987654321,
         name: "opencodex",
-        full_name: "lidge-jun/opencodex",
+        full_name: "OnlineChefGroep/opencodex",
         default_branch: "main",
         private: false,
-        owner: { login: "lidge-jun", id: 12345, type: "User" },
-        html_url: "https://github.com/lidge-jun/opencodex",
+        owner: { login: "OnlineChefGroep", id: 12345, type: "User" },
+        html_url: "https://github.com/OnlineChefGroep/opencodex",
       },
       sender: { login: "contributor", id: 67890, type: "User" },
       organization: undefined,
@@ -576,10 +719,10 @@ export async function runEnforcePrTarget(
     serverUrl = "https://github.com";
     graphqlUrl = "https://api.github.com/graphql";
     get repo() {
-      return { owner: "lidge-jun", repo: "opencodex" };
+      return { owner: "OnlineChefGroep", repo: "opencodex" };
     }
     get issue() {
-      return { owner: "lidge-jun", repo: "opencodex", number: eventPr.number };
+      return { owner: "OnlineChefGroep", repo: "opencodex", number: eventPr.number };
     }
   }
   const context = new Context();
@@ -705,8 +848,8 @@ export async function runEnforcePrTarget(
     glob: forbidden("glob"),
     io: forbidden("io"),
     fetch: forbidden("fetch"),
-    require: forbidden("require"),
-    __original_require__: forbidden("__original_require__"),
+    require: scopedRequire,
+    __original_require__: scopedRequire,
     // `github-script` runs under Node. An audit round detected the harness with
     // `if (!process.versions.bun) return;` — a no-op in production, green here.
     // Shadow `process` with something that looks like the Node the workflow

@@ -17,6 +17,12 @@ import { getConfigDir } from "../config";
 const DEFAULT_HOST = "https://eu.i.posthog.com";
 const FLUSH_INTERVAL_MS = 10_000;
 const MAX_BATCH_SIZE = 50;
+/** Hard cap on buffered events; the oldest are dropped once exceeded. */
+const MAX_QUEUE_SIZE = 500;
+/** Send attempts per event before it is dropped for good. */
+const MAX_SEND_ATTEMPTS = 3;
+/** Base delay before retrying a transiently failed batch (doubles per attempt). */
+const RETRY_BASE_DELAY_MS = 5_000;
 
 /** Canonical telemetry event names. */
 export const TELEMETRY_EVENTS = {
@@ -33,21 +39,34 @@ interface QueuedEvent {
   event: string;
   properties: Record<string, unknown>;
   timestamp: string;
+  /** Failed send attempts so far; bounds retries of a transiently failed batch. */
+  attempts: number;
 }
 
-/** Keys that are stripped from properties before capture (defense-in-depth). */
-const SENSITIVE_KEY_PATTERNS = [
-  /^(authorization|api[_-]?key|token|secret|password|cookie)$/i,
-  /^(prompt|message|content|body|payload|input|text)$/i,
-  /^(header|headers)$/i,
-];
+/**
+ * The only property keys telemetry may emit — an allowlist, so a caller cannot
+ * leak PII or credential material through an undocumented field. A new metric
+ * has to be added here (and to the file header) before it can be captured.
+ */
+const ALLOWED_PROPERTY_KEYS = new Set([
+  // Request outcome.
+  "provider", "model", "adapter", "status", "outcome",
+  // Latency.
+  "durationMs", "firstOutputMs",
+  // Token counts.
+  "inputTokens", "outputTokens", "cachedTokens", "reasoningTokens",
+  // Errors and codex account-pool outcomes.
+  "errorCode", "accountMode", "cooldownMs",
+  // Quota and budget thresholds.
+  "type", "threshold", "actual",
+]);
 
-/** Strip sensitive-looking keys and cap string values to avoid accidental PII. */
+/** Keep only allowlisted metric keys with primitive values, capping string length. */
 function sanitizeProperties(props: Record<string, unknown> | undefined): Record<string, unknown> {
   if (!props || typeof props !== "object") return {};
   const clean: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(props)) {
-    if (SENSITIVE_KEY_PATTERNS.some((re) => re.test(key))) continue;
+    if (!ALLOWED_PROPERTY_KEYS.has(key)) continue;
     if (typeof value === "string" && value.length > 200) {
       clean[key] = value.slice(0, 200);
     } else if (typeof value === "number" && Number.isFinite(value)) {
@@ -89,6 +108,8 @@ export class PosthogClient {
   private readonly queue: QueuedEvent[] = [];
   private readonly timer: ReturnType<typeof setInterval> | null = null;
   private flushing = false;
+  /** Epoch ms before which flushing is suppressed after a transient failure. */
+  private retryAfterMs = 0;
 
   constructor(key: string, host: string = DEFAULT_HOST) {
     this.key = key;
@@ -108,7 +129,9 @@ export class PosthogClient {
         event,
         properties: sanitizeProperties(properties),
         timestamp: new Date().toISOString(),
+        attempts: 0,
       });
+      this.enforceQueueBound();
       if (this.queue.length >= MAX_BATCH_SIZE) {
         void this.flush();
       }
@@ -117,11 +140,44 @@ export class PosthogClient {
     }
   }
 
+  /** Drop the oldest events once the queue exceeds its hard cap. */
+  private enforceQueueBound(): void {
+    if (this.queue.length > MAX_QUEUE_SIZE) {
+      this.queue.splice(0, this.queue.length - MAX_QUEUE_SIZE);
+    }
+  }
+
+  /**
+   * Return a transiently failed batch to the front of the queue so the next
+   * flush retries it. Events that exhausted MAX_SEND_ATTEMPTS are dropped, and
+   * flushing is delayed with exponential backoff so a failing endpoint is not
+   * hammered on every capture.
+   */
+  private requeue(batch: QueuedEvent[]): void {
+    let maxAttempts = 0;
+    const retryable: QueuedEvent[] = [];
+    for (const queued of batch) {
+      queued.attempts += 1;
+      if (queued.attempts >= MAX_SEND_ATTEMPTS) continue;
+      if (queued.attempts > maxAttempts) maxAttempts = queued.attempts;
+      retryable.push(queued);
+    }
+    if (retryable.length === 0) return;
+    this.queue.unshift(...retryable);
+    this.enforceQueueBound();
+    this.retryAfterMs = Date.now() + RETRY_BASE_DELAY_MS * 2 ** (maxAttempts - 1);
+  }
+
   /** Flush pending events to PostHog /batch/ endpoint. */
   async flush(): Promise<void> {
     if (this.flushing || this.queue.length === 0) return;
+    if (Date.now() < this.retryAfterMs) return;
     this.flushing = true;
-    const batch = this.queue.splice(0, this.queue.length);
+    this.retryAfterMs = 0;
+    // At most MAX_BATCH_SIZE per request: captures keep arriving while a flush
+    // is in flight, and one oversized payload is likelier to be rejected.
+    const batch = this.queue.splice(0, MAX_BATCH_SIZE);
+    let retryable = false;
     try {
       const body = JSON.stringify({
         api_key: this.key,
@@ -141,14 +197,20 @@ export class PosthogClient {
         signal: AbortSignal.timeout(5_000),
       });
       if (!res.ok) {
-        // PostHog returns 1xx for accepted-but-some-invalid; requeue on hard failure.
         void res.body?.cancel().catch(() => {});
+        // 429 and 5xx are transient, so the batch is worth retrying. Anything
+        // else (bad key, malformed batch) would fail identically forever.
+        retryable = res.status === 429 || res.status >= 500;
       }
     } catch {
-      /* network errors are non-fatal — drop the batch */
+      /* network errors and timeouts are transient — retry the batch */
+      retryable = true;
     } finally {
+      if (retryable) this.requeue(batch);
       this.flushing = false;
     }
+    // Drain any remainder (or events captured mid-flight) in further batches.
+    if (!retryable && this.queue.length > 0) await this.flush();
   }
 
   /** Flush + stop the timer. Safe to call on shutdown. */

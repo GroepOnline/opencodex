@@ -7,6 +7,33 @@ opencodex serves `POST /v1/messages` (plus `count_tokens`) alongside `/v1/respon
 Code can use every routed provider — OAuth logins, account pools, key failover and sidecars
 included — with zero extra auth work.
 
+## Claude OAuth account pool (experimental)
+
+You can log in multiple Claude accounts via the Providers dashboard (`ocx login anthropic` /
+add-account). By default every request uses the **active** account only.
+
+An **experimental, opt-in** Claude account pool (`anthropicAccountPool.enabled`) adds sticky
+session affinity and 429 cooldown failover across those OAuth accounts. For **new** sessions
+only, `anthropicAccountPool.strategy` selects among eligible accounts: `quota` (default) picks
+lowest known 5-hour usage when above `autoSwitchThreshold`; `round-robin` spreads evenly
+(`stickyLimit`, default `1`); `fill-first` drains the active account until cooldown,
+reauthentication, or threshold, then advances. It is **off by default**, shows a GUI warning,
+and is not battle-tested — Anthropic may restrict accounts that look like automated rotation;
+rotation does not protect against provider enforcement.
+
+Operational contract when enabled:
+
+- Upstream **429** cools that account using `Retry-After` when present (else a default backoff),
+  clears its affinities, and may rotate to another eligible account within the same request
+  (bounded).
+- Affinity is **process-local** (lost on proxy restart).
+- **401/403** credential failures quarantine the account (`needsReauth`) so it is excluded from
+  selection until re-authenticated.
+- If every eligible account is cooling, the proxy returns **429** (not 401) with `Retry-After`
+  when known.
+
+See [Configuration](/reference/configuration/#anthropicaccountpool-experimental).
+
 ## Quickstart
 
 ```bash
@@ -27,6 +54,40 @@ ocx claude
 | `CLAUDE_CODE_ALWAYS_ENABLE_EFFORT` | `1` when `alwaysEnableEffort` is on (conditional) |
 | `CLAUDE_CODE_MAX_CONTEXT_TOKENS` / `DISABLE_COMPACT` | Legacy context override when `maxContextTokens` is set (conditional) |
 Variables you export yourself always win. Extra arguments pass through: `ocx claude -p "hello"`.
+
+One exception is about *where* a variable comes from, not about precedence. The bundled Bun
+runtime auto-loads a project `.env` / `.env.local`, so a stray `ANTHROPIC_API_KEY` in the
+directory you happen to launch from used to look identical to a deliberate export — and it
+silently disabled a healthy claude.ai subscription in favour of API billing. `ocx claude` now
+ignores Anthropic credentials that only a project dotenv introduced. A value you exported in
+your shell still wins, in every auth mode. To use an API key deliberately, export it
+(`export ANTHROPIC_API_KEY=...`) rather than leaving it in a project file.
+
+## Auth mode
+
+Claude Code needs a token in `ANTHROPIC_AUTH_TOKEN` to talk to a gateway, but setting that
+variable also disables your claude.ai login and its connectors. Which of the two you want
+depends on something opencodex can look up, so by default it does.
+
+Leave **Auth mode** on **Auto** (the default) in **Claude → Claude Code** and opencodex
+decides at each launch:
+
+| What it finds | What it does |
+| --- | --- |
+| A Claude login (`~/.claude.json` OAuth account, `.credentials.json`, the macOS keychain, or an exported `ANTHROPIC_API_KEY`) | Leaves the token unset, so your subscription and connectors keep working |
+| No Claude auth at all | Injects a placeholder token, so Claude Code stops asking you to log in and routes through the proxy |
+| It cannot tell (unreadable keychain, corrupt file) | Assumes subscription and prints a warning — it never moves a paying subscriber onto the proxy on a failed read |
+
+This is recomputed every launch, not remembered, so logging in or out is picked up on the
+next `ocx claude` with nothing to reconfigure.
+
+Pick **Subscription** or **Proxy** explicitly when you want it fixed. An explicit choice is
+stored in `claudeCode.authMode` and detection never overrides it — including after you log
+in or out later. Switch back to Auto to hand the decision back.
+
+On macOS, auto-connect (`claudeCode.systemEnv`) follows the same resolution, so a plain
+`claude` launched outside `ocx` behaves the same way. That file is a snapshot refreshed when
+the proxy starts or you save settings, while `ocx claude` always resolves live.
 
 ## System environment integration (macOS)
 
@@ -58,6 +119,13 @@ readable summary; add `--json` for scripts. `export -` writes versioned JSON to 
 Import validates the complete file before saving, so an invalid file leaves the current profile
 unchanged. Add `--apply` to write a valid imported profile to Desktop immediately. Use `none` only
 for an empty family; every non-empty family must keep one default.
+
+Apply writes to Claude Desktop's real Electron user-data `configLibrary`: `~/Library/Application
+Support/Claude/configLibrary` on macOS, `%APPDATA%\Claude\configLibrary` on Windows, and
+`${XDG_CONFIG_HOME:-~/.config}/Claude/configLibrary` on Linux. Set
+`OPENCODEX_CLAUDE_DESKTOP_CONFIG_DIR` for an explicit library override or
+`CLAUDE_USER_DATA_DIR` for an alternate Desktop user-data root. The legacy `Claude-3p` directory is
+not read or deleted automatically.
 
 Non-Anthropic routes receive stable aliases such as `claude-opus-4-8-2026MMDD`. The date-looking
 part is a synthetic route slot, not the model's release date. Real Anthropic Claude routes keep
@@ -118,6 +186,11 @@ capabilities (reasoning-effort ladder, thinking types) in the official ModelInfo
 Desktop's third-party gateway mode can offer its effort selector. Real Anthropic models keep their
 canonical ids. The synthetic 2026 date is an internal slot, not a release date. Legacy hash aliases
 and `claude-ocx-<provider>--<model>` ids from older configs still resolve.
+
+If Claude Desktop's footer picker does not change the model for an already-running 3P
+conversation, use `/model <id>` in that conversation. OpenCodex cannot observe picker state; it
+routes the model id carried by each request. Confirm the result under **Logs → requestedModel**.
+
 Models with an authoritative 1M context window get an extra `…[1m]` picker row: selecting it makes
 Claude Code account a full 1M context for that model (auto-compaction stays on) — the proxy strips
 the marker before routing.
@@ -126,9 +199,12 @@ the alias back to the routed model. On older Claude Code versions the picker sta
 slots via
 `ANTHROPIC_MODEL` or type any routed id with `/model` (Claude Code passes strings through).
 
-**Alias grammar rules:** provider must not contain `/` or `--` or equal `native`; model must not
-contain `/`. Routes the readable form cannot express fall back to the hashed alias. Model ids
-MAY contain `--` (resolution splits on the first `--` only); native slugs containing `--` fall back to the hashed form.
+**Alias grammar rules:** provider must not contain `/` or `--` or equal `native`.
+Model ids may contain `/` — encoded as `~s` in the alias (e.g. `openrouter/anthropic/claude-opus-4-8`
+→ `claude-ocx-openrouter--anthropic~sclaude-opus-4-8`). Literal `~` in a model id is encoded as `~t`.
+Bare `~` not followed by `s`/`t` is treated as a literal tilde so older persisted aliases keep resolving.
+Routes the readable form cannot express fall back to the hashed alias. Model ids MAY contain `--`
+(resolution splits on the first `--` only); native slugs containing `--` fall back to the hashed form.
 
 **Model resolution order:** `[1m]` marker stripped → readable alias decoded → Desktop hashed
 alias decoded → `modelMap` exact match → date-stripped match (`-20250514` removed) → passthrough.
@@ -174,6 +250,8 @@ fall back to 350k.
 `ANTHROPIC_SMALL_FAST_MODEL`. The effective Haiku is `tierModels.haiku ?? smallFastModel`, fed
 to both Haiku variables.
 
+When both `tierModels.haiku` and `smallFastModel` are absent, OpenCodex leaves both helper variables unset; Claude Code then chooses its native helper model (currently Sonnet), which may incur native-provider charges.
+
 ## Roster agents (injectAgents)
 
 `ocx claude` (and the system-env daemon) syncs your featured subagent roster (Subagents tab,
@@ -182,7 +260,7 @@ up to 5 models) plus `ocx-self` into `~/.claude/agents/ocx-*.md`.
 - **`ocx-self`** pins your `/model` picker default (falling back to `claudeCode.model`); omitted
   when neither exists. It does NOT use model inheritance.
 - Each agent body contains an `<!-- ocx-route: <model> -->` directive — the proxy uses this to
-  pin the real route. The Agent tool's `model` argument is therefore inert; pass `"sonnet"` as a
+  pin the real route. The Agent tool's `model` argument is therefore inert; pass `"haiku"` as a
   placeholder.
 - Frontmatter carries the alias; routing is directive-driven.
 - Only marker-verified `ocx-*.md` files containing `generated-by: opencodex` are ever
@@ -276,7 +354,7 @@ images are cached by backend, model, detail, image bytes, and request context, s
 image-and-context pair is not described again on every replay. Remote `https:` images are never
 cached because their contents can change.
 
-See the [configuration reference](/opencodex/reference/configuration/#sidecars) for every key.
+See the [configuration reference](/reference/configuration/#sidecars) for every key.
 Anthropic-OAuth web search and image description reuse the repository's existing Claude Code OAuth
 fingerprint precedent, but should still be soak-tested with your account and workload before you
 depend on them for long unattended runs.
@@ -419,4 +497,4 @@ it by default (`blockedSkills: ["claude-api"]`).
 
 **Subagent dispatches to wrong model** — Roster agents (`ocx-*`) use `<!-- ocx-route: ... -->`
 directives, not the Agent tool's `model` argument. Make sure the directive matches the intended
-route. Pass `"sonnet"` as the model placeholder.
+route. Pass `"haiku"` as the model placeholder.

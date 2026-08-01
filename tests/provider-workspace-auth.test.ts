@@ -120,7 +120,10 @@ describe("workspace account integration seam", () => {
     expect(page).toContain('notify(t("prov.logoutFail"');
     expect(page).toContain('notify(t("prov.accountRemoveFail"');
     expect(page).toContain("await fetchAccountSets([provider])");
-    expect(codexPool).toContain('setToast(t("codexAuth.removeFailed"))');
+    // Upstream replaced the setToast state with showActionFeedback; the contract this
+    // pins is unchanged and slightly tighter — the failure path must surface
+    // codexAuth.removeFailed AND mark it as an error tone via the second argument.
+    expect(codexPool).toContain('showActionFeedback(t("codexAuth.removeFailed"), true)');
     expect(hook).toContain("pauseTokensRef");
   });
 
@@ -194,7 +197,9 @@ describe("workspace account integration seam", () => {
 
     // Health-only reauth_required must reach both aggregate surfaces.
     expect(pool).toContain("onActiveNeedsReauthChange?.(activePoolNeedsReauth)");
-    expect(hook).toContain("accountNeedsReauth(activePoolAccount ?? mainAccount)");
+    expect(hook).toContain("accountNeedsReauth(activeAccount)");
+    expect(hook).toContain("!activeAccount?.paused &&");
+    expect(hook).toContain("activePoolAccount ?? mainAccount");
     expect(page).toContain("accountNeedsReauth(active)");
     // WP3: background refresh pauses through a token lease, not a boolean read of the
     // modal flag. Two holders must both release before polling resumes.

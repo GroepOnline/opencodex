@@ -32,6 +32,7 @@ on:
 permissions:
   contents: write # create the matching GitHub Release + version tag after npm publish
   actions: read # verify the release commit already passed Cross-platform CI
+  pull-requests: read # credit-takeovers looks up landing/source PR authors via gh api
   id-token: write # OIDC auth for Trusted Publishing + automatic provenance attestation
 
 concurrency:
@@ -110,35 +111,37 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Release channels are branch-exact: main publishes stable versions with dist-tag
-          # "latest", preview publishes x.y.z-preview.* with dist-tag "preview". Keep this in
-          # sync with scripts/release.ts, which enforces the same branch/version/tag pairing
-          # before dispatching this workflow.
+          # All releases run from main. Stable versions (no pre-release suffix) get dist-tag "latest".
+          # Pre-release versions (e.g. 1.0.0-alpha.1) get dist-tag "preview".
           case "$GITHUB_REF" in
             refs/heads/main)
-              expected_tag="latest"
               if [[ "$RELEASE_VERSION" == *-* ]]; then
-                echo "::error::main releases must use a stable semver version; got ${RELEASE_VERSION}"
-                exit 1
-              fi
-              ;;
-            refs/heads/preview)
-              expected_tag="preview"
-              if [[ "$RELEASE_VERSION" != *-preview.* ]]; then
-                echo "::error::preview releases must use a preview prerelease version; got ${RELEASE_VERSION}"
-                exit 1
+                # The only supported prerelease shape is X.Y.Z-preview.N: the update
+                # client (src/update/notify.ts, bin/ocx.mjs) and the release-notes
+                # helper both key off that exact suffix, so an -alpha/-beta/-rc build
+                # would publish to preview and then never be seen as an update.
+                if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+$ ]]; then
+                  echo "::error::Pre-release versions must be X.Y.Z-preview.N (got ${RELEASE_VERSION})"
+                  exit 1
+                fi
+                # Pre-release version — must use "preview" dist-tag
+                if [ "$NPM_DIST_TAG" != "preview" ]; then
+                  echo "::error::Pre-release versions (${RELEASE_VERSION}) must use dist-tag 'preview', got '${NPM_DIST_TAG}'"
+                  exit 1
+                fi
+              else
+                # Stable version — must use "latest" dist-tag
+                if [ "$NPM_DIST_TAG" != "latest" ]; then
+                  echo "::error::Stable releases (${RELEASE_VERSION}) must use dist-tag 'latest', got '${NPM_DIST_TAG}'"
+                  exit 1
+                fi
               fi
               ;;
             *)
-              echo "::error::Release must run from main or preview; got ${GITHUB_REF}"
+              echo "::error::Release must run from main; got ${GITHUB_REF}"
               exit 1
               ;;
           esac
-
-          if [ "$NPM_DIST_TAG" != "$expected_tag" ]; then
-            echo "::error::${GITHUB_REF#refs/heads/} releases must publish with npm dist-tag '${expected_tag}', got '${NPM_DIST_TAG}'"
-            exit 1
-          fi
 
           ci_url="$(
             gh run list \
@@ -158,20 +161,15 @@ jobs:
 
           echo "Cross-platform CI passed for ${GITHUB_SHA}: ${ci_url}"
 
-          # Compare within the release channel so preview and stable gates use matching history.
-          if [[ "$RELEASE_VERSION" == *-preview.* ]]; then
-            previous_tag="$(
-              git tag --merged HEAD --list 'v[0-9]*' --sort=-v:refname |
-                grep -- '-preview\.' |
-                head -n 1 || true
-            )"
-          else
-            previous_tag="$(
-              git tag --merged HEAD --list 'v[0-9]*' --sort=-v:refname |
-                grep -v -- '-preview\.' |
-                head -n 1 || true
-            )"
-          fi
+          # Notes / service baseline:
+          # - Preview: newest prior release of either channel (stable or preview). A
+          #   preview→preview-only baseline skips a shipped stable and restates it.
+          # - Stable: newest prior stable only (matching preview carry adjusts the
+          #   generate-notes range separately below).
+          previous_tag="$(
+            git tag --merged HEAD --list 'v[0-9]*' |
+              bun scripts/release-notes.ts previous-release-tag "$RELEASE_VERSION"
+          )"
           if [ -n "$previous_tag" ]; then
             changed_files="$(git diff --name-only "${previous_tag}..HEAD")"
           else
@@ -303,22 +301,12 @@ jobs:
             exit 1
           fi
 
-          # Channel previous tag (stable↔stable / preview↔preview) for the Full Changelog link.
-          if [[ "$RELEASE_VERSION" == *-preview.* ]]; then
-            previous_tag="$(
-              git tag --merged HEAD --list 'v[0-9]*' --sort=-v:refname |
-                grep -- '-preview\.' |
-                grep -vx "$release_tag" |
-                head -n 1 || true
-            )"
-          else
-            previous_tag="$(
-              git tag --merged HEAD --list 'v[0-9]*' --sort=-v:refname |
-                grep -v -- '-preview\.' |
-                grep -vx "$release_tag" |
-                head -n 1 || true
-            )"
-          fi
+          # Channel previous tag for Full Changelog + default notes baseline.
+          # Preview baselines any prior release; stable baselines prior stable only.
+          previous_tag="$(
+            git tag --merged HEAD --list 'v[0-9]*' |
+              bun scripts/release-notes.ts previous-release-tag "$RELEASE_VERSION"
+          )"
           npm_metadata="Published to npm as \`@bitkyc08/opencodex@${RELEASE_VERSION}\` with dist-tag \`${NPM_DIST_TAG}\`."
 
           # Preview builds must be marked prerelease so GitHub "latest" keeps pointing at the
@@ -347,7 +335,10 @@ jobs:
           # advance the baseline to a later preview that is missing/empty — that would
           # drop the gap between the last carried preview and that later tag.
           notes_range_start="$previous_tag"
-          if [[ "$RELEASE_VERSION" != *-preview.* ]]; then
+          # Same hyphen predicate as the dist-tag gate and prerelease_flag above: any
+          # pre-release suffix ships on the preview channel, so only truly stable
+          # versions take the carry path.
+          if [[ "$RELEASE_VERSION" != *-* ]]; then
             preview_carry_tags="$(
               git tag --list "v${RELEASE_VERSION}-preview.*" |
                 bun scripts/release-notes.ts matching-preview-tags "$RELEASE_VERSION"
@@ -416,6 +407,22 @@ jobs:
             # First release on this channel: never call generate-notes without previous_tag_name.
             # GitHub would baseline the newest repo tag, which may belong to the other channel.
             echo "::notice::No previous channel tag; skipping generate-notes (commits-only notes)"
+          fi
+
+          # Rewrite takeover credits on both carried preview notes and the since-preview
+          # delta. Carried bodies may predate this helper and would otherwise keep
+          # landing-author-only attribution on stable releases.
+          if [ -s "$carried_file" ]; then
+            bun scripts/release-notes.ts credit-takeovers \
+              --repo "$GITHUB_REPOSITORY" \
+              --in "$carried_file" \
+              --out "$carried_file"
+          fi
+          if [ -s "$delta_file" ]; then
+            bun scripts/release-notes.ts credit-takeovers \
+              --repo "$GITHUB_REPOSITORY" \
+              --in "$delta_file" \
+              --out "$delta_file"
           fi
 
           if [ -n "$notes_range_start" ]; then

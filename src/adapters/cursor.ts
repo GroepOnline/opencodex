@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { AdapterEvent, OcxProviderConfig } from "../types";
 import type { ProviderAdapter } from "./base";
 import { cursorExecDeniedMessage, cursorRequestDeclaresFullAccess } from "./cursor/exec-policy";
-import { isCursorBenignCancelError, isCursorInvalidArgumentError, safeCursorErrorMessage } from "./cursor/cursor-errors";
+import { cursorRetryAfterFromError, isCursorBenignCancelError, isCursorInvalidArgumentError, safeCursorErrorMessage } from "./cursor/cursor-errors";
 import { isCursorExternalWireModel } from "./cursor/discovery";
 import { createCursorKvStore, type CursorKvStore } from "./cursor/kv-store";
 import { mapCursorServerMessage } from "./cursor/message-mapper";
@@ -139,6 +139,7 @@ export function createCursorAdapter(provider: OcxProviderConfig, deps: CursorAda
                 emit(event);
               }
             },
+            incoming.attemptBudget,
           );
         };
 
@@ -178,7 +179,13 @@ export function createCursorAdapter(provider: OcxProviderConfig, deps: CursorAda
       } catch (err) {
         if (isCursorBenignCancelError(err)) return;
         const partialUsage = (err as { partialUsage?: import("../types").OcxUsage }).partialUsage;
-        emit({ type: "error", message: safeCursorTransportError(err), ...(partialUsage ? { usage: partialUsage } : {}) });
+        const retryAfter = cursorRetryAfterFromError(err);
+        emit({
+          type: "error",
+          message: safeCursorTransportError(err),
+          ...(partialUsage ? { usage: partialUsage } : {}),
+          ...(retryAfter ? { retryAfter } : {}),
+        });
       }
     },
   };

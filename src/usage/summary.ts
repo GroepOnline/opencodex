@@ -3,6 +3,7 @@ import { canonicalAntigravityUsageModel } from "../providers/antigravity-models"
 import { usageDisplayTotalTokens } from "./totals";
 import type { PersistedUsageEntry, UsageStatus } from "./log";
 import { estimateComboCost, estimateRequestCost, effectiveServiceTier } from "./cost";
+import { computeLatencyStats } from "./percentiles";
 
 export type UsageRange = "7d" | "30d" | "all";
 export type UsageSurface = "all" | "codex" | "claude" | "grok";
@@ -32,6 +33,16 @@ export interface UsageSummaryTotals {
   unpricedRequests: number;
   /** Requests whose usage itself is missing/unsupported, so no cost can be computed. */
   unmeteredRequests: number;
+  /** p95 of request durationMs in the filtered window (0 when empty). */
+  p95LatencyMs: number;
+  /** p95 of firstOutputMs when recorded (0 when no TTFT samples). */
+  p95TtftMs: number;
+  /** cacheReadInputTokens / inputTokens (0 when no input tokens). */
+  cacheReadRatio: number;
+  /** Fraction of requests with HTTP 429. */
+  ratio429: number;
+  /** Fraction of requests with HTTP 502. */
+  ratio502: number;
 }
 
 export interface UsageDay {
@@ -144,6 +155,11 @@ function blankTotals(): UsageSummaryTotals {
     pricedRequests: 0,
     unpricedRequests: 0,
     unmeteredRequests: 0,
+    p95LatencyMs: 0,
+    p95TtftMs: 0,
+    cacheReadRatio: 0,
+    ratio429: 0,
+    ratio502: 0,
   };
 }
 
@@ -264,6 +280,33 @@ function addTokens(
 
 function finalizeCoverage(totals: UsageSummaryTotals): void {
   totals.coverageRatio = totals.requests === 0 ? 0 : totals.measuredRequests / totals.requests;
+}
+
+function finalizeQualityMetrics(
+  totals: UsageSummaryTotals,
+  entries: PersistedUsageEntry[],
+): void {
+  const durations: number[] = [];
+  const ttfts: number[] = [];
+  let status429 = 0;
+  let status502 = 0;
+  for (const entry of entries) {
+    if (typeof entry.durationMs === "number" && Number.isFinite(entry.durationMs) && entry.durationMs >= 0) {
+      durations.push(entry.durationMs);
+    }
+    if (typeof entry.firstOutputMs === "number" && Number.isFinite(entry.firstOutputMs) && entry.firstOutputMs >= 0) {
+      ttfts.push(entry.firstOutputMs);
+    }
+    if (entry.status === 429) status429 += 1;
+    else if (entry.status === 502) status502 += 1;
+  }
+  totals.p95LatencyMs = computeLatencyStats(durations).p95;
+  totals.p95TtftMs = computeLatencyStats(ttfts).p95;
+  totals.cacheReadRatio = totals.inputTokens === 0
+    ? 0
+    : totals.cacheReadInputTokens / totals.inputTokens;
+  totals.ratio429 = totals.requests === 0 ? 0 : status429 / totals.requests;
+  totals.ratio502 = totals.requests === 0 ? 0 : status502 / totals.requests;
 }
 
 function addEstimatedCost(
@@ -507,6 +550,7 @@ export function summarizeUsage(
     addEstimatedCost(totals, entry);
   }
   finalizeCoverage(totals);
+  finalizeQualityMetrics(totals, filteredEntries);
   return {
     range,
     surface,

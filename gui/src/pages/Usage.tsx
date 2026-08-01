@@ -27,6 +27,11 @@ interface UsageSummaryTotals {
   pricedRequests?: number;
   unpricedRequests?: number;
   unmeteredRequests?: number;
+  p95LatencyMs?: number;
+  p95TtftMs?: number;
+  cacheReadRatio?: number;
+  ratio429?: number;
+  ratio502?: number;
 }
 
 interface UsageDay {
@@ -266,9 +271,11 @@ function UsageSummaryCards({
   locale: Locale;
   t: TFn;
 }) {
+  const titleId = "usage-proxy-title";
   return (
-    <>
-    <div className="usage-cards usage-cards-3x2" role="group" aria-label={t("usage.title")}>
+    <section className="panel" style={{ marginTop: 0 }} aria-labelledby={titleId}>
+      <h3 id={titleId} className="panel-title">{t("usage.section.proxyUsage")}</h3>
+    <div className="usage-cards usage-cards-3x2" role="group" aria-label={t("usage.section.proxyUsage")}>
       <div className="stat"><div className="muted">{t("usage.card.requests")}</div><div className="stat-value">{summary.requests}</div></div>
       <div className="stat"><div className="muted">{t("usage.card.measured")}</div><div className="stat-value">{summary.measuredRequests}</div></div>
       <div className="stat"><div className="muted">{t("usage.card.totalTokens")}</div><div className="stat-value">{formatTokens(summary.totalTokens, locale)}</div></div>
@@ -298,7 +305,45 @@ function UsageSummaryCards({
           )}
         </div>
       )}
-    </>
+    </section>
+  );
+}
+
+function UsageQualityPanel({
+  summary,
+  t,
+}: {
+  summary: UsageSummaryTotals;
+  t: TFn;
+}) {
+  const titleId = "usage-quality-title";
+  return (
+    <section className="panel" style={{ marginTop: 16 }} aria-labelledby={titleId}>
+      <h3 id={titleId} className="panel-title">{t("usage.section.quality")}</h3>
+      <div className="usage-cards usage-cards-3x2" role="group" aria-label={t("usage.section.quality")}>
+        <div className="stat">
+          <div className="muted">{t("usage.quality.p95Latency")}</div>
+          <div className="stat-value mono">{summary.p95LatencyMs !== undefined ? `${summary.p95LatencyMs}ms` : "\u2014"}</div>
+        </div>
+        <div className="stat">
+          <div className="muted">{t("usage.quality.p95Ttft")}</div>
+          <div className="stat-value mono">{summary.p95TtftMs !== undefined ? `${summary.p95TtftMs}ms` : "\u2014"}</div>
+        </div>
+        <div className="stat">
+          <div className="muted">{t("usage.quality.cacheReadRatio")}</div>
+          <div className="stat-value">{formatPct(summary.cacheReadRatio ?? 0)}</div>
+        </div>
+        <div className="stat">
+          <div className="muted">{t("usage.quality.ratio429")}</div>
+          <div className="stat-value">{formatPct(summary.ratio429 ?? 0)}</div>
+        </div>
+        <div className="stat">
+          <div className="muted">{t("usage.quality.ratio502")}</div>
+          <div className="stat-value">{formatPct(summary.ratio502 ?? 0)}</div>
+        </div>
+      </div>
+      <p className="muted text-control" style={{ marginTop: 12 }}>{t("usage.quality.note")}</p>
+    </section>
   );
 }
 
@@ -673,6 +718,7 @@ export default function Usage({ apiBase }: { apiBase: string }) {
       ) : data ? (
         <>
           <UsageSummaryCards summary={data.summary} activeDays={activeDays} locale={locale} t={t} />
+          <UsageQualityPanel summary={data.summary} t={t} />
           <UsageHeatmapPanel range={range} heatmap={heatmap} weekBars={weekBars} locale={locale} t={t} />
           <UsageModelsTable models={filteredModels} modelQuery={modelQuery} onModelQuery={setModelQuery} locale={locale} t={t} />
           <UsageProvidersTable providers={sortedProviders} locale={locale} t={t} />

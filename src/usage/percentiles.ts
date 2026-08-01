@@ -46,20 +46,39 @@ export function percentile(values: number[], p: number): number {
   return sorted[lo]! + (sorted[hi]! - sorted[lo]!) * frac;
 }
 
+/**
+ * A latency sample only counts when it is finite and non-negative — the same
+ * invariant `src/usage/summary.ts` enforces. One NaN would otherwise poison the
+ * sum, the extrema, and every percentile.
+ */
+function isValidSample(value: number): boolean {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
 /** Compute the full stats block for a set of latency samples. */
 export function computeLatencyStats(samples: number[]): LatencyStats {
-  if (samples.length === 0) {
+  const valid = samples.every(isValidSample) ? samples : samples.filter(isValidSample);
+  if (valid.length === 0) {
     return { count: 0, p50: 0, p95: 0, p99: 0, min: 0, max: 0, mean: 0 };
   }
-  const sum = samples.reduce((a, b) => a + b, 0);
+  let sum = 0;
+  let min = valid[0]!;
+  let max = valid[0]!;
+  // Iterative extrema: spreading a large sample array into Math.min/Math.max
+  // can exceed the engine's argument limit and throw.
+  for (const value of valid) {
+    sum += value;
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
   return {
-    count: samples.length,
-    p50: Math.round(percentile(samples, 50)),
-    p95: Math.round(percentile(samples, 95)),
-    p99: Math.round(percentile(samples, 99)),
-    min: Math.min(...samples),
-    max: Math.max(...samples),
-    mean: Math.round(sum / samples.length),
+    count: valid.length,
+    p50: Math.round(percentile(valid, 50)),
+    p95: Math.round(percentile(valid, 95)),
+    p99: Math.round(percentile(valid, 99)),
+    min,
+    max,
+    mean: Math.round(sum / valid.length),
   };
 }
 
@@ -77,8 +96,8 @@ export function groupByProvider(
       bucket = { ttft: [], total: [] };
       byProvider.set(s.provider, bucket);
     }
-    bucket.total.push(s.durationMs);
-    if (s.firstOutputMs !== undefined) bucket.ttft.push(s.firstOutputMs);
+    if (isValidSample(s.durationMs)) bucket.total.push(s.durationMs);
+    if (s.firstOutputMs !== undefined && isValidSample(s.firstOutputMs)) bucket.ttft.push(s.firstOutputMs);
   }
   const result = new Map<string, ProviderLatencyStats>();
   for (const [provider, bucket] of byProvider) {

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { managementFetch as fetch } from "./helpers/management-auth";
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -99,6 +100,13 @@ describe("GET /api/usage", () => {
       expect(Array.isArray(body.days)).toBe(true);
       expect(Array.isArray(body.models)).toBe(true);
       expect(Array.isArray(body.providers)).toBe(true);
+      expect(body.summary).toMatchObject({
+        p95LatencyMs: expect.any(Number),
+        p95TtftMs: expect.any(Number),
+        cacheReadRatio: expect.any(Number),
+        ratio429: expect.any(Number),
+        ratio502: expect.any(Number),
+      });
     } finally {
       await server.stop(true);
     }

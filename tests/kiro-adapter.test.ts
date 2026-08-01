@@ -1,27 +1,38 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { Database } from "bun:sqlite";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createKiroAdapter } from "../src/adapters/kiro";
 import { KIRO_TOOL_RESULT_CARRIER_MESSAGE } from "../src/adapters/kiro-constants";
 import { applyProviderConfigHints, buildCatalogEntries } from "../src/codex/catalog";
+import { getValidAccessTokenSnapshot } from "../src/oauth";
+import { saveCredential } from "../src/oauth/store";
 import { normalizeKiroModelId } from "../src/providers/kiro-models";
 import { configuredReasoningEfforts, mapReasoningEffort } from "../src/reasoning-effort";
 import { PROVIDER_REGISTRY } from "../src/providers/registry";
 import type { OcxParsedRequest, OcxProviderConfig } from "../src/types";
 
 const origHome = process.env.HOME;
+const origLocalAppData = process.env.LOCALAPPDATA;
+const origUserProfile = process.env.USERPROFILE;
 const origRegion = process.env.KIRO_REGION;
 const origApiRegion = process.env.KIRO_API_REGION;
 const origArn = process.env.KIRO_PROFILE_ARN;
 const origCredsFile = process.env.KIRO_CREDS_FILE;
 const origCredentialsFile = process.env.KIRO_CREDENTIALS_FILE;
+const origOcxHome = process.env.OPENCODEX_HOME;
 let tmp: string;
 
 beforeEach(() => {
   // isolate: empty HOME so no kiro-cli SQLite is read; deterministic region.
+  // The native store resolves per-platform (issue #710) and win32 prefers LOCALAPPDATA/USERPROFILE
+  // over HOME, so an empty HOME alone would no longer keep a Windows runner off its real profile.
   tmp = mkdtempSync(join(tmpdir(), "kiro-adapter-"));
   process.env.HOME = tmp;
+  process.env.LOCALAPPDATA = join(tmp, "AppData", "Local");
+  process.env.USERPROFILE = tmp;
+  process.env.OPENCODEX_HOME = tmp;
   process.env.KIRO_REGION = "us-east-1";
   delete process.env.KIRO_API_REGION;
   delete process.env.KIRO_PROFILE_ARN;
@@ -30,11 +41,14 @@ beforeEach(() => {
 });
 afterEach(() => {
   if (origHome === undefined) delete process.env.HOME; else process.env.HOME = origHome;
+  if (origLocalAppData === undefined) delete process.env.LOCALAPPDATA; else process.env.LOCALAPPDATA = origLocalAppData;
+  if (origUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = origUserProfile;
   if (origRegion === undefined) delete process.env.KIRO_REGION; else process.env.KIRO_REGION = origRegion;
   if (origApiRegion === undefined) delete process.env.KIRO_API_REGION; else process.env.KIRO_API_REGION = origApiRegion;
   if (origArn === undefined) delete process.env.KIRO_PROFILE_ARN; else process.env.KIRO_PROFILE_ARN = origArn;
   if (origCredsFile === undefined) delete process.env.KIRO_CREDS_FILE; else process.env.KIRO_CREDS_FILE = origCredsFile;
   if (origCredentialsFile === undefined) delete process.env.KIRO_CREDENTIALS_FILE; else process.env.KIRO_CREDENTIALS_FILE = origCredentialsFile;
+  if (origOcxHome === undefined) delete process.env.OPENCODEX_HOME; else process.env.OPENCODEX_HOME = origOcxHome;
   rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -43,6 +57,23 @@ const bashTool = { name: "bash", description: "Run a shell command", parameters:
 
 function parsedWith(messages: unknown[], tools?: unknown[], modelId = "claude-sonnet-4.5"): OcxParsedRequest {
   return { modelId, stream: true, options: {}, context: { messages, tools } } as unknown as OcxParsedRequest;
+}
+
+function seedKiroCliMetadata(profileArn: string, region: string): void {
+  // Host-resolved layout (issue #710): mirrors resolveKiroCliNativeSessionEntries.
+  const dir = process.platform === "win32"
+    ? join(tmp, "AppData", "Local", "Kiro-Cli")
+    : process.platform === "darwin"
+      ? join(tmp, "Library", "Application Support", "kiro-cli")
+      : join(tmp, ".local", "share", "kiro-cli");
+  mkdirSync(dir, { recursive: true });
+  const db = new Database(join(dir, "data.sqlite3"));
+  db.run("CREATE TABLE auth_kv (key TEXT PRIMARY KEY, value TEXT)");
+  db.run("INSERT INTO auth_kv (key, value) VALUES (?, ?)", [
+    "kirocli:social:token",
+    JSON.stringify({ access_token: "local-access", refresh_token: "local-refresh", profile_arn: profileArn, region }),
+  ]);
+  db.close();
 }
 
 describe("kiro adapter — buildRequest", () => {
@@ -55,14 +86,53 @@ describe("kiro adapter — buildRequest", () => {
     }
   });
 
-  test("headers carry Bearer token + CW targets", async () => {
-    const { url, method, headers } = await createKiroAdapter(provider).buildRequest(parsedWith([{ role: "user", content: "hi" }]));
+  test("Builder ID requests without a profile ARN use the Kiro CLI wire contract", async () => {
+    const { url, method, headers, body } = await createKiroAdapter(provider).buildRequest(parsedWith([{ role: "user", content: "hi" }]));
+    const payload = JSON.parse(body) as {
+      profileArn?: string;
+      conversationState: {
+        agentContinuationId?: string;
+        agentTaskType?: string;
+        currentMessage: { userInputMessage: Record<string, unknown> };
+      };
+    };
     expect(url).toBe("https://runtime.us-east-1.kiro.dev/");
     expect(method).toBe("POST");
     expect(headers.authorization).toBe("Bearer tok-123");
     expect(headers["x-amz-target"]).toBe("AmazonCodeWhispererStreamingService.GenerateAssistantResponse");
-    expect(headers.accept).toBe("application/vnd.amazon.eventstream");
-    expect(headers["x-amzn-kiro-agent-mode"]).toBe("vibe");
+    expect(headers.accept).toBe("*/*");
+    expect(headers["user-agent"]).toContain("app/AmazonQ-For-CLI");
+    expect(headers["x-amzn-kiro-agent-mode"]).toBeUndefined();
+    expect(headers["x-amzn-kiro-profile-arn"]).toBeUndefined();
+    expect(headers["x-amzn-codewhisperer-optout"]).toBe("true");
+    expect(headers.tokentype).toBeUndefined();
+    expect(payload.profileArn).toBeUndefined();
+    expect(payload.conversationState.agentTaskType).toBe("vibe");
+    expect(payload.conversationState.agentContinuationId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(payload.conversationState.currentMessage.userInputMessage).toMatchObject({
+      content: "hi",
+      origin: "KIRO_CLI",
+    });
+    expect(payload.conversationState.currentMessage.userInputMessage).not.toHaveProperty("userInputMessageContext.envState");
+  });
+
+  test("Kiro API keys force the CLI token type and ignore unrelated profile metadata", async () => {
+    const apiKeyProvider = { ...provider, authMode: "key", apiKey: "ksk_example" } as unknown as OcxProviderConfig;
+    const parsed = parsedWith([{ role: "user", content: "hi" }]);
+    parsed._kiroAuthContext = {
+      profileArn: "arn:aws:codewhisperer:us-east-1:123456789012:profile/unrelated",
+    };
+    const request = await createKiroAdapter(apiKeyProvider).buildRequest(parsed);
+    const body = JSON.parse(request.body) as {
+      profileArn?: string;
+      conversationState: { currentMessage: { userInputMessage: { origin?: string } } };
+    };
+
+    expect(request.headers.authorization).toBe("Bearer ksk_example");
+    expect(request.headers.tokentype).toBe("API_KEY");
+    expect(request.headers["x-amzn-kiro-profile-arn"]).toBeUndefined();
+    expect(body.profileArn).toBeUndefined();
+    expect(body.conversationState.currentMessage.userInputMessage.origin).toBe("KIRO_CLI");
   });
 
   test("runtime URL uses KIRO_API_REGION separately from auth region", async () => {
@@ -72,6 +142,67 @@ describe("kiro adapter — buildRequest", () => {
     const { url } = await createKiroAdapter(provider).buildRequest(parsedWith([{ role: "user", content: "hi" }]));
 
     expect(url).toBe("https://runtime.ap-northeast-2.kiro.dev/");
+  });
+
+  test("account-scoped OAuth metadata selects the matching Kiro region and profile", async () => {
+    const parsed = parsedWith([{ role: "user", content: "hi" }]);
+    parsed._kiroAuthContext = {
+      apiRegion: "eu-central-1",
+      profileArn: "arn:aws:codewhisperer:eu-central-1:123456789012:profile/account-b",
+    };
+
+    const request = await createKiroAdapter(provider).buildRequest(parsed);
+    const body = JSON.parse(request.body) as { profileArn?: string };
+
+    expect(request.url).toBe("https://runtime.eu-central-1.kiro.dev/");
+    expect(request.headers["x-amzn-kiro-profile-arn"]).toBe(parsed._kiroAuthContext.profileArn);
+    expect(request.headers.accept).toBe("application/vnd.amazon.eventstream");
+    expect(request.headers["x-amzn-kiro-agent-mode"]).toBe("vibe");
+    expect(body.profileArn).toBe(parsed._kiroAuthContext.profileArn);
+  });
+
+  test("an account with no stored Kiro metadata never borrows different local CLI metadata", async () => {
+    seedKiroCliMetadata(
+      "arn:aws:codewhisperer:eu-west-1:123456789012:profile/local-other-account",
+      "eu-west-1",
+    );
+    delete process.env.KIRO_REGION;
+    await saveCredential("kiro", {
+      access: "stored-access",
+      refresh: "stored-refresh",
+      expires: Date.now() + 3_600_000,
+      source: "oauth",
+    });
+
+    const snapshot = await getValidAccessTokenSnapshot("kiro");
+    expect(snapshot.kiro).toEqual({});
+    const parsed = parsedWith([{ role: "user", content: "hi" }]);
+    parsed._kiroAuthContext = { ...snapshot.kiro };
+    const request = await createKiroAdapter(provider).buildRequest(parsed);
+    const body = JSON.parse(request.body) as { profileArn?: string };
+
+    expect(request.url).toBe("https://runtime.us-east-1.kiro.dev/");
+    expect(request.headers["x-amzn-kiro-profile-arn"]).toBeUndefined();
+    expect(body.profileArn).toBeUndefined();
+  });
+
+  test("genuinely accountless requests still honor Kiro environment overrides", async () => {
+    const previousApiRegion = process.env.KIRO_API_REGION;
+    const previousProfileArn = process.env.KIRO_PROFILE_ARN;
+    process.env.KIRO_API_REGION = "ap-northeast-1";
+    process.env.KIRO_PROFILE_ARN = "arn:aws:codewhisperer:ap-northeast-1:123456789012:profile/env";
+    try {
+      const parsed = parsedWith([{ role: "user", content: "hi" }]);
+      expect(parsed._kiroAuthContext).toBeUndefined();
+      const request = await createKiroAdapter(provider).buildRequest(parsed);
+      expect(request.url).toBe("https://runtime.ap-northeast-1.kiro.dev/");
+      expect(request.headers["x-amzn-kiro-profile-arn"]).toBe(process.env.KIRO_PROFILE_ARN);
+    } finally {
+      if (previousApiRegion === undefined) delete process.env.KIRO_API_REGION;
+      else process.env.KIRO_API_REGION = previousApiRegion;
+      if (previousProfileArn === undefined) delete process.env.KIRO_PROFILE_ARN;
+      else process.env.KIRO_PROFILE_ARN = previousProfileArn;
+    }
   });
 
   test("a genuinely custom Kiro base URL is honored", async () => {
@@ -591,7 +722,7 @@ describe("kiro adapter — buildRequest", () => {
     ];
     const cs = JSON.parse((await createKiroAdapter(provider).buildRequest(parsedWith(messages))).body).conversationState;
     expect(cs.history).toEqual([
-      { userInputMessage: { content: "first\n\nsecond", modelId: "claude-sonnet-4.5", origin: "AI_EDITOR" } },
+      { userInputMessage: { content: "first\n\nsecond", modelId: "claude-sonnet-4.5", origin: "KIRO_CLI" } },
       { assistantResponseMessage: { content: "one\n\ntwo" } },
     ]);
     expect(cs.currentMessage.userInputMessage.content).toBe("third");
@@ -707,6 +838,65 @@ describe("kiro adapter — native and emulated reasoning effort", () => {
 
     expect(content).toBe(KIRO_TOOL_RESULT_CARRIER_MESSAGE);
     expect(content).not.toContain("<thinking_mode>");
+  });
+
+  // issue #543: Claude Code sends a mid-turn steer (queued_command) as text riding the same
+  // user turn as the pending tool_result. Proxy filler must never precede that instruction.
+  test("a mid-turn steering message is the current turn without proxy carrier filler", async () => {
+    const steer = "STOP editing module A. Use kiro/gpt-5.6-sol instead.";
+    const messages = [
+      { role: "user", content: "Refactor module A." },
+      { role: "assistant", content: [{ type: "toolCall", id: "call-1", name: "bash", arguments: { command: "ls" } }] },
+      { role: "toolResult", toolCallId: "call-1", toolName: "bash", content: "file list", isError: false },
+      { role: "user", content: steer },
+    ];
+    const { body } = await createKiroAdapter(provider).buildRequest(parsedWith(messages, [bashTool]));
+    const current = JSON.parse(body).conversationState.currentMessage.userInputMessage;
+
+    // The human instruction is the whole content: the carrier sentence must be ABSENT, not
+    // merely moved after it (a startsWith assertion would pass with filler appended).
+    expect(current.content).toBe(steer);
+    expect(current.content).not.toContain(KIRO_TOOL_RESULT_CARRIER_MESSAGE);
+    // The tool result still rides along structurally, so no information is lost.
+    expect(current.userInputMessageContext.toolResults).toEqual([
+      { content: [{ text: "file list" }], status: "success", toolUseId: "call-1" },
+    ]);
+  });
+
+  test("mid-turn steering reaches Kiro identically for opus-5 and opus-4.8", async () => {
+    // The #543 reporter observed opus-4.8 honoring mid-turn steers while opus-5 ignored them on
+    // the same proxy build. Pin that our request construction does not differ between the two
+    // beyond model identity and opus-5's native effort field, so a future model-conditional
+    // regression on this path is caught here rather than in a user's session.
+    const steer = "Stop and switch approach now.";
+    const messages = [
+      { role: "user", content: "Start the task." },
+      { role: "assistant", content: [{ type: "toolCall", id: "call-1", name: "bash", arguments: { command: "ls" } }] },
+      { role: "toolResult", toolCallId: "call-1", toolName: "bash", content: "out", isError: false },
+      { role: "user", content: steer },
+    ];
+    const build = async (modelId: string) => {
+      const { body } = await createKiroAdapter(provider).buildRequest({
+        ...parsedWith(messages, [bashTool], modelId),
+        options: { reasoning: "high" },
+      });
+      return JSON.parse(body);
+    };
+    const opus5 = await build("claude-opus-5");
+    const opus48 = await build("claude-opus-4.8");
+
+    for (const payload of [opus5, opus48]) {
+      const current = payload.conversationState.currentMessage.userInputMessage;
+      expect(current.content).toBe(steer);
+      expect(current.userInputMessageContext.toolResults).toEqual([
+        { content: [{ text: "out" }], status: "success", toolUseId: "call-1" },
+      ]);
+    }
+    // Only the native-effort field may differ; opus-4.8 also gets no emulated thinking tags
+    // here because tool-result turns skip that injection.
+    expect(opus5.additionalModelRequestFields).toEqual({ output_config: { effort: "high" } });
+    expect(opus48.additionalModelRequestFields).toBeUndefined();
+    expect(opus48.conversationState.currentMessage.userInputMessage.content).not.toContain("<thinking_mode>");
   });
 
   test("gpt-5.6-sol sends native reasoning while legacy models keep labeled emulation", async () => {

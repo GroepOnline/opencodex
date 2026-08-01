@@ -133,6 +133,29 @@ export class BudgetTracker {
   }
 
   /**
+   * Roll the day/week counters forward when the process has crossed a local
+   * midnight or Monday boundary since the last touch. `load()` only runs at
+   * construction, and the tracker is a long-lived singleton, so every read and
+   * write has to re-check the window or a proxy left running overnight keeps
+   * reporting (and alerting on) the previous window's totals.
+   */
+  private rollWindows(now = Date.now()): void {
+    const dayStart = startOfDay(now);
+    if (dayStart !== this.state.dayStart) {
+      this.state.todayTokens = 0;
+      this.state.todayCostEur = 0;
+      this.state.dayStart = dayStart;
+      this.dirty = true;
+    }
+    const weekStart = startOfWeek(now);
+    if (weekStart !== this.state.weekStart) {
+      this.state.weekTokens = 0;
+      this.state.weekStart = weekStart;
+      this.dirty = true;
+    }
+  }
+
+  /**
    * Record a completed request's usage. Returns any alerts that crossed a
    * threshold on this call (empty array if under budget / unconfigured).
    */
@@ -142,6 +165,7 @@ export class BudgetTracker {
     if (tokens <= 0) return [];
     const cost = estimateCostEur(provider, model, usage.inputTokens ?? 0, usage.outputTokens ?? 0);
 
+    this.rollWindows();
     this.state.todayTokens += tokens;
     this.state.weekTokens += tokens;
     this.state.todayCostEur += cost;
@@ -222,6 +246,7 @@ export class BudgetTracker {
   }
 
   getUsageSummary(): UsageSummary {
+    this.rollWindows();
     return {
       todayTokens: this.state.todayTokens,
       weekTokens: this.state.weekTokens,

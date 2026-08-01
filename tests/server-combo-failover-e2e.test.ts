@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, setDefaultTimeout, test } from "bun:test";
+import { managementFetch as fetch, ManagementRequest as Request } from "./helpers/management-auth";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,6 +9,7 @@ import {
   isComboTargetInCooldown,
 } from "../src/combos";
 import { readConfigDiagnostics, saveConfig } from "../src/config";
+import { clearResponseStateForTests, rememberResponseState } from "../src/responses/state";
 import type { ProviderAdapter } from "../src/adapters/base";
 import { handleManagementAPI } from "../src/server/management-api";
 import { saveCredential } from "../src/oauth/store";
@@ -19,7 +21,11 @@ import { clearRequestLogsForTests, hydrateRequestLogsFromDisk, type RequestLogCo
 import { responseWithDeferredRequestLog } from "../src/server/relay";
 import { readUsageEntries } from "../src/usage/log";
 import { saveCodexAccountCredential } from "../src/codex/account-store";
-import { formatCodexProviderForLog } from "../src/codex/routing";
+import {
+  clearCodexUpstreamHealth,
+  formatCodexProviderForLog,
+  getCodexUpstreamHealth,
+} from "../src/codex/routing";
 import { startServer } from "../src/server";
 import { fakeChatGptJwt } from "./helpers/fake-chatgpt-jwt";
 
@@ -118,6 +124,7 @@ beforeEach(() => {
   process.env.OPENCODEX_HOME = testDir;
   clearComboSelectionState();
   clearComboTargetCooldowns();
+  clearCodexUpstreamHealth();
   customRunTurn = undefined;
   customFetchResponse = undefined;
   customTransientResponse = undefined;
@@ -139,6 +146,7 @@ afterEach(async () => {
   if (testDir) rmSync(testDir, { recursive: true, force: true });
   clearComboSelectionState();
   clearComboTargetCooldowns();
+  clearCodexUpstreamHealth();
   clearRequestLogsForTests();
 });
 
@@ -743,6 +751,152 @@ describe("server combo failover 030 activation matrix", () => {
       expect(JSON.stringify(receipt)).not.toContain(rawAccountId);
       expect(JSON.stringify(receipt)).not.toContain("acct-pool-safe");
     }
+  });
+
+  test("lets a same-provider combo try its next model after a reset-derived 429", async () => {
+    const rawAccountId = "combo-reset-account";
+    const config = comboConfig({
+      openai: {
+        adapter: "openai-responses",
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+        authMode: "forward",
+        codexAccountMode: "pool",
+      },
+    }, [
+      { provider: "openai", model: "gpt-5.3-codex-spark" },
+      { provider: "openai", model: "gpt-5.4" },
+    ]);
+    config.codexAccounts = [{
+      id: rawAccountId,
+      email: "combo-reset@example.test",
+      isMain: false,
+      logLabel: "preset01",
+    }];
+    config.activeCodexAccountId = rawAccountId;
+    config.autoSwitchThreshold = 0;
+    saveCodexAccountCredential(rawAccountId, {
+      accessToken: "combo-reset-access",
+      refreshToken: "combo-reset-refresh",
+      expiresAt: Date.now() + 300_000,
+      chatgptAccountId: "acct-combo-reset",
+    });
+    let calls = 0;
+    customTransientResponse = async () => {
+      calls += 1;
+      return calls === 1
+        ? Response.json(
+          { error: { message: "spark quota window exhausted", type: "rate_limit_error" } },
+          {
+            status: 429,
+            headers: { "x-codex-primary-reset-at": String(Math.floor(Date.now() / 1000) + 3600) },
+          },
+        )
+        : Response.json(responsesSuccess("model fallback succeeded", "gpt-5.4"));
+    };
+
+    const response = await postLogged(config);
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(calls).toBe(2);
+    expect(getCodexUpstreamHealth(rawAccountId)?.cooldownUntil).toBeUndefined();
+  });
+
+  test("keeps explicit Retry-After account-wide during same-provider combo failover", async () => {
+    const rawAccountId = "combo-retry-after-account";
+    const config = comboConfig({
+      openai: {
+        adapter: "openai-responses",
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+        authMode: "forward",
+        codexAccountMode: "pool",
+      },
+    }, [
+      { provider: "openai", model: "gpt-5.3-codex-spark" },
+      { provider: "openai", model: "gpt-5.4" },
+    ]);
+    config.codexAccounts = [{
+      id: rawAccountId,
+      email: "combo-retry-after@example.test",
+      isMain: false,
+      logLabel: "pretry01",
+    }];
+    config.activeCodexAccountId = rawAccountId;
+    config.autoSwitchThreshold = 0;
+    saveCodexAccountCredential(rawAccountId, {
+      accessToken: "combo-retry-after-access",
+      refreshToken: "combo-retry-after-refresh",
+      expiresAt: Date.now() + 300_000,
+      chatgptAccountId: "acct-combo-retry-after",
+    });
+    let calls = 0;
+    customTransientResponse = async () => {
+      calls += 1;
+      return calls === 1
+        ? Response.json(
+          { error: { message: "retry later", type: "rate_limit_error" } },
+          {
+            status: 429,
+            headers: {
+              "retry-after": "120",
+              "x-codex-primary-reset-at": String(Math.floor(Date.now() / 1000) + 3600),
+            },
+          },
+        )
+        : Response.json(responsesSuccess("must not reach second upstream", "gpt-5.4"));
+    };
+
+    const response = await postLogged(config);
+    expect(response.status).toBe(429);
+    await response.text();
+    expect(calls).toBe(1);
+    expect(getCodexUpstreamHealth(rawAccountId)?.cooldownSource).toBe("retry-after");
+  });
+
+  test("Spark reset cooldown fails over to the shared native quota on the same account (#590)", async () => {
+    const rawAccountId = "spark-scope-account";
+    const config = comboConfig({
+      openai: {
+        adapter: "openai-responses",
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+        authMode: "forward",
+        codexAccountMode: "pool",
+      },
+    }, [
+      { provider: "openai", model: "gpt-5.3-codex-spark" },
+      { provider: "openai", model: "gpt-5.6-terra" },
+    ]);
+    config.codexAccounts = [{
+      id: rawAccountId,
+      email: "pool@example.test",
+      isMain: false,
+      logLabel: "pspark1",
+    }];
+    config.activeCodexAccountId = rawAccountId;
+    config.autoSwitchThreshold = 0;
+    saveCodexAccountCredential(rawAccountId, {
+      accessToken: "pool-access-token",
+      refreshToken: "pool-refresh-token",
+      expiresAt: Date.now() + 300_000,
+      chatgptAccountId: "acct-pool-spark",
+    });
+
+    const resetAt = Math.floor((Date.now() + 4 * 24 * 60 * 60_000) / 1000);
+    let upstreamCalls = 0;
+    customTransientResponse = async () => {
+      upstreamCalls += 1;
+      if (upstreamCalls === 1) {
+        return Response.json({ error: { message: "Spark quota exhausted" } }, {
+          status: 429,
+          headers: { "x-codex-primary-reset-at": String(resetAt) },
+        });
+      }
+      return Response.json(responsesSuccess("Terra fallback", "gpt-5.6-terra"));
+    };
+
+    const response = await post(config);
+    expect(response.status).toBe(200);
+    expect(upstreamCalls).toBe(2);
+    expect(await response.json()).toMatchObject({ model: "gpt-5.6-terra" });
   });
 
   test("keeps a failed estimate on A without overwriting B reported usage", async () => {
@@ -1617,6 +1771,152 @@ describe("server combo failover 030 activation matrix", () => {
     expect(attempt).toMatchObject({ provider: "a", status: 429, usageStatus: "unreported" });
     expect(attempt).not.toHaveProperty("usage");
   }, 10_000);
+});
+
+describe("per-provider fallback for plain models", () => {
+  function fallbackConfig(
+    providers: OcxConfig["providers"],
+    fallback: Array<{ provider: string; model: string }>,
+  ): OcxConfig {
+    const names = Object.keys(providers);
+    return {
+      port: 0,
+      defaultProvider: names[0]!,
+      providers: { ...providers, [names[0]!]: { ...providers[names[0]!]!, fallback } },
+    };
+  }
+
+  test("a 502 on a plain model hops to the provider's configured fallback", async () => {
+    const hits: string[] = [];
+    const a = serve(() => {
+      hits.push("a");
+      return Response.json({ error: { message: "upstream died" } }, { status: 502 });
+    });
+    const b = serve(() => {
+      hits.push("b");
+      return chatSuccess("fallback backup", "m2");
+    });
+    const config = fallbackConfig({
+      a: provider("openai-chat", baseUrl(a), "key-a"),
+      b: provider("openai-chat", baseUrl(b), "key-b"),
+    }, [{ provider: "b", model: "m2" }]);
+
+    const response = await postModelLogged(config, "a/m1");
+    expect(response.status).toBe(200);
+    expect(JSON.stringify(await response.json())).toContain("fallback backup");
+    expect(hits).toEqual(["a", "b"]);
+  });
+
+  test("the log row keeps the winning target instead of collapsing into a combo row", async () => {
+    const a = serve(() => Response.json({ error: { message: "upstream died" } }, { status: 502 }));
+    const b = serve(() => chatSuccess("fallback backup", "m2"));
+    const config = fallbackConfig({
+      a: provider("openai-chat", baseUrl(a), "key-a"),
+      b: provider("openai-chat", baseUrl(b), "key-b"),
+    }, [{ provider: "b", model: "m2" }]);
+
+    expect((await postModelLogged(config, "a/m1")).status).toBe(200);
+    const { log } = await latestAttemptReceipts(config);
+    expect(log).toMatchObject({ requestedModel: "a/m1", provider: "b", model: "m2" });
+    expect(log.attempts).toMatchObject([{ provider: "a", status: 502 }, { provider: "b", status: 200 }]);
+  });
+
+  test("a non-retryable 400 stops on the primary without touching the fallback", async () => {
+    const hits: string[] = [];
+    const a = serve(() => {
+      hits.push("a");
+      return Response.json({ error: { message: "bad request", type: "invalid_request_error" } }, { status: 400 });
+    });
+    const b = serve(() => {
+      hits.push("b");
+      return chatSuccess("must not be reached", "m2");
+    });
+    const config = fallbackConfig({
+      a: provider("openai-chat", baseUrl(a), "key-a"),
+      b: provider("openai-chat", baseUrl(b), "key-b"),
+    }, [{ provider: "b", model: "m2" }]);
+
+    expect((await postModelLogged(config, "a/m1")).status).toBe(400);
+    expect(hits).toEqual(["a"]);
+  });
+
+  test("without a configured fallback the failure still reaches the caller", async () => {
+    const a = serve(() => Response.json({ error: { message: "upstream died" } }, { status: 502 }));
+    const config: OcxConfig = {
+      port: 0,
+      defaultProvider: "a",
+      providers: { a: provider("openai-chat", baseUrl(a), "key-a") },
+    };
+    expect((await postModelLogged(config, "a/m1")).status).toBe(502);
+  });
+
+  test("an exhausted chain returns the last failure rather than a combo_unavailable", async () => {
+    const a = serve(() => Response.json({ error: { message: "a died" } }, { status: 502 }));
+    const b = serve(() => Response.json({ error: { message: "b overloaded" } }, { status: 503 }));
+    const config = fallbackConfig({
+      a: provider("openai-chat", baseUrl(a), "key-a"),
+      b: provider("openai-chat", baseUrl(b), "key-b"),
+    }, [{ provider: "b", model: "m2" }]);
+
+    const response = await postModelLogged(config, "a/m1");
+    expect(response.status).toBe(503);
+  });
+
+  test("a previous_response_id chain is expanded exactly once on the way to a target", async () => {
+    // The hop loop re-enters handleResponses for every target, and expandPreviousResponseInput
+    // is not idempotent: replaying an already-expanded body would prepend the restored history
+    // a second time in each child request.
+    const bodies: Array<Record<string, unknown>> = [];
+    const a = serve(async request => {
+      bodies.push(await request.json() as Record<string, unknown>);
+      return chatSuccess("primary ok", "m1");
+    });
+    const b = serve(() => chatSuccess("must not be reached", "m2"));
+    const config = fallbackConfig({
+      a: provider("openai-chat", baseUrl(a), "key-a"),
+      b: provider("openai-chat", baseUrl(b), "key-b"),
+    }, [{ provider: "b", model: "m2" }]);
+
+    clearResponseStateForTests();
+    rememberResponseState(
+      { store: true, input: [{ role: "user", content: "restored turn" }] },
+      { id: "resp-chain", status: "completed", output: [] },
+    );
+
+    const response = await postModelLogged(config, "a/m1", {
+      previous_response_id: "resp-chain",
+      store: true,
+    });
+    expect(response.status).toBe(200);
+
+    const messages = bodies[0]?.messages as Array<Record<string, unknown>> | undefined;
+    const restored = (messages ?? []).filter(message => JSON.stringify(message).includes("restored turn"));
+    expect(restored).toHaveLength(1);
+    clearResponseStateForTests();
+  });
+
+  test("an explicit combo request is unaffected by provider fallback config", async () => {
+    const hits: string[] = [];
+    const a = serve(() => {
+      hits.push("a");
+      return Response.json({ error: { message: "a died" } }, { status: 502 });
+    });
+    const b = serve(() => {
+      hits.push("b");
+      return chatSuccess("combo backup", "m2");
+    });
+    const providers = {
+      a: provider("openai-chat", baseUrl(a), "key-a", { fallback: [{ provider: "b", model: "m2" }] }),
+      b: provider("openai-chat", baseUrl(b), "key-b"),
+    };
+    const config = comboConfig(providers);
+
+    const response = await postLogged(config);
+    expect(response.status).toBe(200);
+    expect(hits).toEqual(["a", "b"]);
+    const { log } = await latestAttemptReceipts(config);
+    expect(log).toMatchObject({ provider: "combo", model: "combo/free", resolvedModel: "m2" });
+  });
 });
 
 describe("cursor conversation continuity across store:false chains", () => {

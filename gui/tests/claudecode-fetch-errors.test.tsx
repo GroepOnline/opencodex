@@ -172,3 +172,42 @@ test("ClaudeCode save treats an empty 200 body as success", async () => {
     testWindow.close();
   }
 });
+
+test("ClaudeCode helper model options render icon-backed model names", async () => {
+  globalThis.fetch = (async (input) => {
+    if (String(input).endsWith("/api/claude-code")) {
+      return Response.json({ ...CLAUDE_OK, available: ["gpt-5.6-luna"] });
+    }
+    return new Response(null, { status: 404 });
+  }) as typeof fetch;
+
+  const { container, root, testWindow } = await mountClaudeCode();
+  try {
+    const helperSection = [...container.querySelectorAll<HTMLButtonElement>(".claudecode-workspace-rail-row")]
+      .find(button => button.textContent?.includes("Background helper model"));
+    expect(helperSection).toBeTruthy();
+    await act(async () => {
+      helperSection!.click();
+      await Promise.resolve();
+    });
+
+    const helperModel = container.querySelector<HTMLButtonElement>(
+      '[role="combobox"][aria-label="Background helper model"]',
+    );
+    expect(helperModel).toBeTruthy();
+
+    await act(async () => {
+      helperModel!.click();
+      await Promise.resolve();
+    });
+
+    const optionText = [...testWindow.document.querySelectorAll<HTMLElement>('[role="option"]')]
+      .map(option => option.textContent)
+      .join("\n");
+    expect(optionText).toContain("gpt-5.6-luna");
+    expect(optionText).not.toContain("[object Object]");
+  } finally {
+    await act(async () => root.unmount());
+    testWindow.close();
+  }
+});

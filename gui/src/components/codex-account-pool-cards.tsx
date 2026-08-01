@@ -1,10 +1,10 @@
 import { useT } from "../i18n/shared";
-import { IconAlert, IconX } from "../icons";
+import { IconAlert, IconPause, IconPlay, IconX } from "../icons";
 import { displayAccountId } from "../lib/privacy";
 import type { CodexAccountEntry } from "./codex-account-pool-types";
 import type { CodexAccountModeState } from "../codex-multi-state";
 import QuotaBars from "./QuotaBars";
-import { CodexTicketBadge } from "./codex-account-pool-helpers";
+import { CodexPauseToggleLabel, CodexTicketBadge } from "./codex-account-pool-helpers";
 import {
   doctorCopyButtonLabel,
   formatOAuthHealthLabel,
@@ -23,6 +23,9 @@ export function CodexAccountPoolCards({
   threshold,
   onOpenReset,
   onSwitch,
+  onTogglePause,
+  pauseUpdatingId,
+  pauseBusy,
   onReauth,
   onEditAlias,
   onRemove,
@@ -36,6 +39,9 @@ export function CodexAccountPoolCards({
   threshold: number;
   onOpenReset: (account: CodexAccountEntry) => void;
   onSwitch: (account: CodexAccountEntry) => void;
+  onTogglePause: (account: CodexAccountEntry) => void;
+  pauseUpdatingId: string | null;
+  pauseBusy: boolean;
   onReauth: (id: string) => void;
   onEditAlias: (account: CodexAccountEntry) => void;
   onRemove: (id: string) => void;
@@ -43,7 +49,7 @@ export function CodexAccountPoolCards({
   doctorCopyOutcomeFor?: (accountId: string) => "copied" | "unavailable" | null;
 }) {
   const t = useT();
-  const isNext = (id: string) => activeId === id;
+  const isNext = (account: CodexAccountEntry) => !account.paused && activeId === account.id;
 
   return (
     <>
@@ -54,24 +60,29 @@ export function CodexAccountPoolCards({
         const healthLabel = formatOAuthHealthLabel(t, a.health);
         const healthSummary = formatOAuthHealthSummary(t, "codex", a.id, a.health);
         return (
-        <div key={a.id} className={`card ${isNext(a.id) ? "card-active" : ""}`} style={{ marginBottom: 8 }}>
+        <div key={a.id} className={`card ${isNext(a) ? "card-active" : ""}`} style={{ marginBottom: 8 }}>
           <div className="card-head">
-            <span className={`dot ${showReauth ? "dot-amber" : isNext(a.id) ? "dot-blue" : "dot-muted"}`} />
+            <span className={`dot ${showReauth ? "dot-amber" : isNext(a) ? "dot-blue" : "dot-muted"}`} />
             <strong>{a.alias ?? a.email}</strong>
             <span className="card-badges">
               {a.plan && <span className="badge badge-green">{a.plan}</span>}
+              {a.paused && (
+                <span className="badge badge-muted" title={t("codexAuth.pausedHint")}>
+                  {t("codexAuth.paused")}
+                </span>
+              )}
               <CodexTicketBadge t={t} account={a} onClick={() => onOpenReset(a)} />
               {healthLabel && (
                 <span className={oauthHealthBadgeClass(healthStatus)}>{healthLabel}</span>
               )}
               {showReauth && !healthLabel && <span className="badge badge-amber">{t("codexAuth.needsReauth")}</span>}
-              {isNext(a.id) && !showReauth && !inCooldown && (
+              {isNext(a) && !showReauth && !inCooldown && (
                 <span className="badge badge-primary">
                   {t(accountModeState === "direct" ? "codexAuth.poolPrepared" : "codexAuth.nextSession")}
                 </span>
               )}
             </span>
-            {!isNext(a.id) && !showReauth && !inCooldown && (
+            {!a.paused && !isNext(a) && !showReauth && !inCooldown && (
               <button type="button" className="btn btn-ghost btn-sm codex-account-switch" onClick={() => onSwitch(a)}>
                 {switchActionLabel}
               </button>
@@ -82,10 +93,25 @@ export function CodexAccountPoolCards({
               </button>
             )}
             {onCopyDoctor && oauthHealthShowsDoctor(healthStatus) && (
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => onCopyDoctor(a.id)}>
+              <button type="button" className="btn btn-ghost btn-sm codex-auth-action-btn" onClick={() => onCopyDoctor(a.id)}>
                 <span aria-live="polite">{doctorCopyButtonLabel(t, doctorCopyOutcomeFor?.(a.id))}</span>
               </button>
             )}
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost codex-auth-action-btn"
+              onClick={() => onTogglePause(a)}
+              disabled={pauseBusy}
+              title={a.paused ? t("codexAuth.pausedHint") : undefined}
+              aria-label={a.paused ? `${t("codexAuth.resume")}. ${t("codexAuth.pausedHint")}` : t("codexAuth.pause")}
+            >
+              {a.paused ? <IconPlay width={14} /> : <IconPause width={14} />}
+              <CodexPauseToggleLabel
+                t={t}
+                paused={a.paused}
+                saving={pauseUpdatingId === a.id}
+              />
+            </button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => void onEditAlias(a)}>
               {t("prov.editAlias")}
             </button>
@@ -108,7 +134,15 @@ export function CodexAccountPoolCards({
           )}
           {showReauth
             ? <div className="card-sub faint">{t("codexAuth.tokenExpired")}</div>
-            : !inCooldown && <QuotaBars quota={a.quota} plan={a.plan} threshold={threshold} t={t} />}
+            : !inCooldown && (
+              <QuotaBars
+                quota={a.quota}
+                plan={a.plan}
+                threshold={threshold}
+                t={t}
+                pending={a.quota == null}
+              />
+            )}
         </div>
         );
       })}

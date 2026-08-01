@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { atomicWriteFile, getConfigDir, loadConfig, readPid, readRuntimePort } from "../config";
-import { killProxy } from "../lib/process-control";
+import { isProcessAlive, killProxy } from "../lib/process-control";
 import { reclaimListenPort } from "../server/port-reclaim";
 import { isOpencodexHealthz, probeHostname, proxyIdentityAt, type HealthzIdentity } from "../server/proxy-liveness";
 import { isServiceInstalled } from "../service";
@@ -26,8 +26,10 @@ const RELEASE_NOTES_URL = "https://github.com/OnlineChefGroep/opencodex/releases
 const UPDATE_JOB_FILENAME = "update-job.json";
 const UPDATE_TIMEOUT_MS = 180_000;
 const RESTART_TIMEOUT_MS = 60_000;
-const RESTART_HEALTH_TIMEOUT_MS = 15_000;
+const RESTART_HEALTH_TIMEOUT_MS = 30_000;
 const RESTART_STABILITY_WINDOW_MS = 15_000;
+/** Legacy active records did not persist a worker PID, so age is their only safe recovery signal. */
+export const UPDATE_JOB_LEGACY_STALE_MS = 10 * 60_000;
 /** How long update restart waits for the captured port to become bindable after stop. */
 export const RESTART_PORT_RECLAIM_MS = 30_000;
 
@@ -75,6 +77,19 @@ export interface UpdateCheckDeps {
   currentVersion: () => string;
   detectInstall: () => Installer;
   latestVersion: (tag: Channel) => string | null;
+}
+
+interface UpdateWorkerProcess {
+  pid?: number;
+  unref(): void;
+  once(event: "error", listener: (error: Error) => void): unknown;
+}
+
+export interface StartUpdateJobDeps {
+  checkForUpdateFn: (channel: Channel) => UpdateCheckResult;
+  spawnWorkerFn: (jobId: string, channel: Channel, restart: boolean) => UpdateWorkerProcess;
+  isProcessAliveFn: (pid: number) => boolean;
+  nowMs: () => number;
 }
 
 const defaultCheckDeps: UpdateCheckDeps = {
@@ -155,7 +170,9 @@ export function updateExecutionCommand(
     return { bin, args, display: formatCommand(bin, args) };
   }
   if (installer === "bun") {
-    const { bin, args } = updateCommand(installer, channel, resolvedVersion);
+    const command = updateCommand(installer, channel, resolvedVersion);
+    const bin = process.platform === "win32" ? process.execPath : command.bin;
+    const { args } = command;
     return { bin, args, display: updateCommandStr(installer, channel, resolvedVersion) };
   }
   return { bin: "sh", args: ["-lc", manualSourceCommand()], display: manualSourceCommand() };
@@ -225,19 +242,77 @@ function newJobId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function startUpdateJob(channel: Channel, restart: boolean): UpdateJobState {
+/**
+ * [Decision Log]
+ * - Purpose: recover dashboard updates after a detached worker dies without unlocking concurrent live updates.
+ * - Existing constraints: legacy records have no PID, while a healthy update may legitimately run for minutes.
+ * - Alternatives considered: clear every active record by age, or require operators to delete the file manually.
+ * - Chosen approach: trust PID liveness first and use a conservative age limit only for legacy no-PID records.
+ * - Why: age-only recovery can start two installers, while never recovering leaves the dashboard permanently blocked.
+ * - Impact: live PID records remain locked regardless of age; dead PIDs recover immediately; legacy records recover after ten minutes.
+ */
+export function staleActiveUpdateJobReason(
+  job: Pick<UpdateJobState, "status" | "pid" | "updatedAt">,
+  now = Date.now(),
+  isAlive: (pid: number) => boolean = isProcessAlive,
+): string | null {
+  if (job.status !== "running" && job.status !== "restarting") return null;
+  if (typeof job.pid === "number" && Number.isSafeInteger(job.pid) && job.pid > 0) {
+    return isAlive(job.pid) ? null : `update worker PID ${job.pid} is no longer running`;
+  }
+  const updatedAt = Date.parse(job.updatedAt);
+  if (Number.isFinite(updatedAt) && now - updatedAt >= UPDATE_JOB_LEGACY_STALE_MS) {
+    return "legacy active update record has no worker PID and exceeded the stale window";
+  }
+  return null;
+}
+
+const defaultStartUpdateJobDeps: StartUpdateJobDeps = {
+  checkForUpdateFn: channel => checkForUpdate(channel),
+  spawnWorkerFn: (jobId, channel, restart) => spawn(
+    process.execPath,
+    [process.argv[1], "__gui-update-worker", jobId, channel, restart ? "restart" : "no-restart"],
+    {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+      env: { ...process.env, OCX_SERVICE: "1" },
+    },
+  ),
+  isProcessAliveFn: isProcessAlive,
+  nowMs: Date.now,
+};
+
+export function startUpdateJob(
+  channel: Channel,
+  restart: boolean,
+  deps: Partial<StartUpdateJobDeps> = {},
+): UpdateJobState {
+  const resolvedDeps = { ...defaultStartUpdateJobDeps, ...deps };
   const running = readUpdateJob();
   if (running?.status === "running" || running?.status === "restarting") {
-    throw new UpdateJobError("An update job is already running", 409, "update_already_running");
+    const staleReason = staleActiveUpdateJobReason(
+      running,
+      resolvedDeps.nowMs(),
+      resolvedDeps.isProcessAliveFn,
+    );
+    if (!staleReason) {
+      throw new UpdateJobError("An update job is already running", 409, "update_already_running");
+    }
+    updateJob(
+      running,
+      { status: "failed", error: `Recovered stale update job: ${staleReason}.`, exitCode: null },
+      `Recovered stale update job: ${staleReason}.`,
+    );
   }
 
-  const check = checkForUpdate(channel);
+  const check = resolvedDeps.checkForUpdateFn(channel);
   if (!check.canUpdate) {
     throw new UpdateJobError(check.reason ?? "No update is available", 409, check.reason ?? "update_unavailable");
   }
 
   const id = newJobId();
-  const now = new Date().toISOString();
+  const now = new Date(resolvedDeps.nowMs()).toISOString();
   const job: UpdateJobState = {
     id,
     status: "running",
@@ -254,14 +329,30 @@ export function startUpdateJob(channel: Channel, restart: boolean): UpdateJobSta
   };
   writeJob(job);
 
-  const child = spawn(process.execPath, [process.argv[1], "__gui-update-worker", id, channel, restart ? "restart" : "no-restart"], {
-    detached: true,
-    stdio: "ignore",
-    windowsHide: true,
-    env: { ...process.env, OCX_SERVICE: "1" },
+  let child: UpdateWorkerProcess;
+  try {
+    child = resolvedDeps.spawnWorkerFn(id, channel, restart);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    updateJob(job, { status: "failed", error: `Could not start update worker: ${message}` }, "Update worker failed to start.");
+    throw new UpdateJobError("Could not start update worker", 500, "update_worker_start_failed");
+  }
+  if (typeof child.pid !== "number" || !Number.isSafeInteger(child.pid) || child.pid <= 0) {
+    updateJob(job, { status: "failed", error: "Could not start update worker: no worker PID was returned." }, "Update worker failed to start.");
+    throw new UpdateJobError("Could not start update worker", 500, "update_worker_start_failed");
+  }
+  const startedJob = updateJob(job, { pid: child.pid }, `Update worker started as PID ${child.pid}.`);
+  child.once("error", error => {
+    const current = readUpdateJob(id);
+    if (!current || current.pid !== child.pid || (current.status !== "running" && current.status !== "restarting")) return;
+    updateJob(
+      current,
+      { status: "failed", error: `Update worker failed to start: ${error.message}` },
+      "Update worker emitted a startup error.",
+    );
   });
   child.unref();
-  return { ...job, pid: child.pid };
+  return startedJob;
 }
 
 function runLoggedCommand(job: UpdateJobState, bin: string, args: string[], timeout: number): { status: number | null; signal: NodeJS.Signals | null } {
@@ -442,7 +533,10 @@ async function awaitRestartedProxyHealthy(
   const hostname = captured.hostname;
   const startDeadline = now() + RESTART_HEALTH_TIMEOUT_MS;
 
-  while (now() < startDeadline) {
+  while (true) {
+    // Always make one identity-aware probe at or after the boundary. A replacement
+    // becoming healthy on the final tick must not be mistaken for a timeout.
+    const finalProbe = now() >= startDeadline;
     if (await probe(port, hostname)) {
       updateJob(job, {}, `Proxy reported healthy on ${hostname}:${port}; confirming it stays up...`);
       const stableUntil = now() + RESTART_STABILITY_WINDOW_MS;
@@ -456,7 +550,8 @@ async function awaitRestartedProxyHealthy(
       updateJob(job, {}, `Proxy stayed healthy for ${Math.trunc(RESTART_STABILITY_WINDOW_MS / 1000)}s after restart.`);
       return { ok: true };
     }
-    await sleep(250);
+    if (finalProbe) break;
+    await sleep(Math.min(250, Math.max(0, startDeadline - now())));
   }
 
   return { ok: false, reason: "timeout" };
@@ -479,7 +574,7 @@ async function confirmRestartedProxy(
   - 검토한 주요 대안: (1) 포트 점유만 확인 — 외부 프로세스/죽기 직전 프로세스를 성공으로 오인할 수 있다. (2) 무기한 /healthz 폴링 — UX가 느려지고 worker 종료 시점이 불명확하다. (3) 짧은 healthy 등장 + 안정성 창 확인 — 실제 복귀를 확인하면서도 대기 시간을 제한할 수 있다.
   - 선택한 방식: identity-aware /healthz probe가 일정 시간 안에 나타나고, 추가 안정성 창 동안 유지되는지 확인한다.
   - 다른 대안 대신 이 방식을 선택한 이유: GUI는 "업데이트가 설치됐지만 재시작은 실패"를 분리해 알려줘야 하며, 이 방식이 가장 적은 오탐으로 그 경계를 만든다.
-  - 장점, 단점 및 영향: 장점은 silent restart failure가 update-job 상태로 드러난다는 점이다. 단점은 성공 판정이 최대 30초 늦어질 수 있다는 점이며, 대신 실제 복귀를 더 정확히 반영한다.
+  - 장점, 단점 및 영향: 장점은 silent restart failure가 update-job 상태로 드러난다는 점이다. 단점은 설정상 성공 판정 창이 30초 도착 + 15초 안정성으로 늘어나고 경계 probe 지연이 추가될 수 있다는 점이며, 대신 실제 복귀를 더 정확히 반영한다.
   */
   const result = await awaitRestartedProxyHealthy(job, captured, io);
   if (result.ok) return true;
