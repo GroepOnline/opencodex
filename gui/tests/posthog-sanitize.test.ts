@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { sanitizedCurrentUrl } from "../src/posthog";
+import { sanitizedCurrentUrl } from "../src/posthog-sanitize";
 
 function loc(hash: string): Pick<Location, "origin" | "pathname" | "hash"> {
   return { origin: "http://127.0.0.1:10100", pathname: "/", hash };
