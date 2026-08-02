@@ -139,6 +139,8 @@ import { handleLive, logLiveSidebandFrame, parseLiveSidebandTarget, resolveLiveS
 import { handleSearch } from "./search";
 import { fetchAllModels, handleManagementAPI, VERSION } from "./management-api";
 import { initializeManagementAuthState, issueGuiSession, requireManagementAuth } from "./management-auth";
+import { runtimeMetrics } from "../observability/metrics";
+import { ensureUsageLogMetricsObserver } from "../observability/usage-log-metrics";
 
 const MAX_WS_FRAME_BYTES = 50 * 1024 * 1024;
 const WEBSOCKET_IDLE_TIMEOUT_SECONDS = 0;
@@ -301,6 +303,10 @@ export function startServer(port?: number) {
   // #314: warn-only RSS observability (unref'd, idempotent — safe under repeated
   // startServer(0) in tests). Snapshot surfaces via GET /api/system/memory.
   startMemoryWatchdog();
+  // Usage appends feed runtime metrics at their append boundary (no scrape-time file
+  // tailing). Idempotent registration before Bun.serve so no accepted request can
+  // race an unobserved append, and repeated startServer(0) never double-counts.
+  ensureUsageLogMetricsObserver();
   // Issue #42 Phase 3: opt-in archived auto-cleanup (default OFF). Unref'd hourly
   // tick for daily/weekly; startup evaluation is fire-and-forget after listen.
   // Heavy work runs in a Worker via the single-flight job controller.
@@ -343,7 +349,7 @@ export function startServer(port?: number) {
       markActivity(`${req.method} ${url.pathname}`);
 
       if (req.method === "OPTIONS") {
-        const managementPreflight = url.pathname.startsWith("/api/");
+        const managementPreflight = url.pathname.startsWith("/api/") || url.pathname === "/metrics";
         const allowed = managementPreflight
           ? isAllowedManagementOrigin(req, config)
           : isAllowedRequestOrigin(req, config);
@@ -386,6 +392,27 @@ export function startServer(port?: number) {
       if (url.pathname === "/healthz" && req.method === "GET") {
         // service/pid/port let CLI liveness reject foreign 200s and verify pid identity.
         return jsonResponse({ status: "ok", service: "opencodex", version: VERSION, uptime: process.uptime(), pid: process.pid, port: listenPort }, 200, req, config);
+      }
+
+      // Canonical Prometheus scrape endpoint. Management plane only: it rides the same
+      // independent management-auth gate as /api/* (data-plane keys never authorize it)
+      // and must never leak onto the unauthenticated /healthz surface. This path bypasses
+      // handleManagementAPI, so the management origin check is enforced inline.
+      if (url.pathname === "/metrics" && req.method === "GET") {
+        const apiAuthError = requireManagementAuth(req, managementAuth, config);
+        if (apiAuthError) return withManagementCors(apiAuthError, req, config);
+        if (!isAllowedManagementOrigin(req, config)) {
+          return withManagementCors(formatErrorResponse(403, "origin_rejected", "cross-origin management request blocked"), req, config);
+        }
+        // Scrapes serve the in-memory registry only: usage rows were already recorded
+        // at their append boundary, so this path performs zero usage-log filesystem I/O.
+        return withManagementCors(new Response(runtimeMetrics.prometheus(), {
+          status: 200,
+          headers: {
+            "Content-Type": "text/plain; version=0.0.4; charset=utf-8",
+            "Cache-Control": "no-store",
+          },
+        }), req, config);
       }
 
       if (url.pathname.startsWith("/api/")) {

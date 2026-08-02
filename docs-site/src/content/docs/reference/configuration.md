@@ -348,6 +348,49 @@ management API and the data plane to that network with no credential. Use `-L` w
 or bind the forward explicitly to loopback (`ssh -L 127.0.0.1:20100:localhost:10100`).
 :::
 
+## Metrics endpoints
+
+opencodex exposes a process-local metrics registry on two management endpoints:
+
+- `GET /metrics` — Prometheus text exposition format, served with
+  `Content-Type: text/plain; version=0.0.4; charset=utf-8` and `Cache-Control: no-store`.
+- `GET /api/metrics/json` — the same registry as a JSON snapshot.
+
+Both endpoints sit behind the **independent management-auth boundary**, not data-plane
+authentication. Unauthenticated requests and requests carrying only data-plane credentials
+receive `401`. For remote scrapes, authenticate with the admin credential — the
+`OPENCODEX_ADMIN_AUTH_TOKEN` environment variable, or the generated `admin-api-token` file in
+the opencodex config directory — via the `x-opencodex-api-key` or `Authorization: Bearer …`
+header. The browser dashboard reaches `/api/metrics/json` through its authenticated session.
+
+The registry covers process gauges (uptime, memory, active turns, drain state), request
+counts, request-duration and time-to-first-output histograms, and token counts. Counters are
+**process-lifetime only**: existing `usage.jsonl` history is not replayed at startup, a
+restart resets all counters, and each usage row is recorded immediately after a successful
+process-local usage append. Scrapes perform no usage-log reads.
+
+Exported labels are fixed, bounded categories only: surface, HTTP status class, terminal
+status, and token type. Provider, model, account, request, conversation, error, and prompt
+values are never emitted as labels or output.
+
+A minimal Prometheus scrape config, with the admin token supplied from a secret file rather
+than inlined:
+
+```yaml
+scrape_configs:
+  - job_name: opencodex
+    metrics_path: /metrics
+    scheme: http
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/opencodex-admin-token
+    static_configs:
+      - targets: ["proxy-host:10100"]
+```
+
+The credentials file must contain the admin credential; data-plane `ocx_` keys and
+`OPENCODEX_API_AUTH_TOKEN` do not authorize management endpoints.
+
 ## Providers (`OcxProviderConfig`)
 
 | Field | Type | Meaning |

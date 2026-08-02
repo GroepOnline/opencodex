@@ -332,11 +332,89 @@ function ensureUsageLogDir(): void {
   try { chmodSync(dir, 0o700); } catch { /* best-effort on platforms that ignore chmod */ }
 }
 
+/**
+ * Bounded structural observation of one successfully appended usage row.
+ *
+ * This is the ONLY shape that crosses the append-observer boundary. It carries fixed
+ * enums and scalar counts exclusively: requestId, provider, model, account,
+ * conversation, error, attempt, path, and free-form metadata values never appear here.
+ */
+export interface UsageAppendObservation {
+  surface?: NonNullable<PersistedUsageEntry["surface"]>;
+  status: number;
+  durationMs: number;
+  firstOutputMs?: number;
+  terminalStatus?: "completed" | "incomplete" | "failed";
+  usage?: OcxUsage;
+}
+
+export type UsageAppendObserver = (observation: UsageAppendObservation) => void;
+
+/**
+ * Internal infrastructure bound, not a dynamic plugin system. The process registers a
+ * small fixed set of observers (runtime metrics today); overflow is a programming error
+ * surfaced loudly at registration time rather than an unbounded fan-out.
+ */
+const MAX_USAGE_APPEND_OBSERVERS = 8;
+const usageAppendObservers: UsageAppendObserver[] = [];
+
+/**
+ * Subscribe to successful usage appends. Observers are invoked synchronously, in
+ * registration order, strictly AFTER the row is durably appended; a failed append
+ * never notifies. Returns an idempotent unsubscribe function.
+ */
+export function subscribeUsageAppends(observer: UsageAppendObserver): () => void {
+  if (usageAppendObservers.length >= MAX_USAGE_APPEND_OBSERVERS) {
+    throw new RangeError(`usage append observer limit of ${MAX_USAGE_APPEND_OBSERVERS} exceeded`);
+  }
+  usageAppendObservers.push(observer);
+  let active = true;
+  return () => {
+    if (!active) return;
+    active = false;
+    const index = usageAppendObservers.indexOf(observer);
+    if (index >= 0) usageAppendObservers.splice(index, 1);
+  };
+}
+
+function usageAppendObservation(entry: PersistedUsageEntry): UsageAppendObservation {
+  // `entry` is the already-normalized row that was appended. Copy only the bounded
+  // structural fields; the usage object is cloned so no observer can mutate another
+  // observer's payload or retained state.
+  return {
+    ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
+    status: entry.status,
+    durationMs: entry.durationMs,
+    ...(isNonNegativeFiniteNumber(entry.firstOutputMs) ? { firstOutputMs: entry.firstOutputMs } : {}),
+    ...(entry.terminalStatus === "completed"
+      || entry.terminalStatus === "incomplete"
+      || entry.terminalStatus === "failed"
+      ? { terminalStatus: entry.terminalStatus }
+      : {}),
+    ...(entry.usage ? { usage: { ...entry.usage } } : {}),
+  };
+}
+
+function notifyUsageAppendObservers(entry: PersistedUsageEntry): void {
+  for (const observer of [...usageAppendObservers]) {
+    try {
+      observer(usageAppendObservation(entry));
+    } catch {
+      // Observer defects are isolated: a successful usage append must never fail,
+      // and later observers still run in order.
+    }
+  }
+}
+
 export function appendUsageEntry(entry: PersistedUsageEntry): void {
   ensureUsageLogDir();
   const path = usageLogPath();
-  appendFileSync(path, `${JSON.stringify(normalizeUsageEntry(entry))}\n`, { encoding: "utf-8", mode: 0o600 });
+  const normalized = normalizeUsageEntry(entry);
+  appendFileSync(path, `${JSON.stringify(normalized)}\n`, { encoding: "utf-8", mode: 0o600 });
   try { chmodSync(path, 0o600); } catch { /* best-effort on platforms that ignore chmod */ }
+  // Notify only after the exact normalized row was appended successfully; an append
+  // failure throws above and emits nothing.
+  notifyUsageAppendObservers(normalized);
 }
 
 export type UsageLogRevision = {
