@@ -24,6 +24,8 @@ export interface WsData {
   turnId?: number; // monotonically increasing per socket; prevents stale frames after replacement turns
   /** Discriminator: Responses reframing vs transparent live/realtime sideband relay. */
   kind?: "responses" | "live-sideband";
+  /** Idempotent WebSocket concurrency release handle; called on every close path. */
+  rateLimitRelease?: () => void;
   liveUpstream?: WebSocket;
   liveUpstreamUrl?: string;
   liveUpstreamHeaders?: Record<string, string>;

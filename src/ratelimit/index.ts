@@ -14,6 +14,7 @@ export {
   type TokenBucketLimiterOptions,
 } from "./token-bucket";
 export {
+  DEFAULT_RATE_LIMIT_WEBSOCKET_CONCURRENCY,
   WebSocketConcurrencyLimiter,
   type ConcurrencyDenyReason,
   type ConcurrencyLimiterOptions,

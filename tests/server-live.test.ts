@@ -551,6 +551,102 @@ test("sideband GET /v1/live/{callId} upgrades and relays bidirectionally to Chat
   }
 });
 
+test("sideband upgrades hold a live concurrency reservation and release it on close", async () => {
+  const upstream = Bun.serve({
+    port: 0,
+    fetch(req, server) {
+      if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+        if (server.upgrade(req, { data: {} })) return undefined as unknown as Response;
+        return new Response("upgrade failed", { status: 500 });
+      }
+      return new Response("not found", { status: 404 });
+    },
+    websocket: {
+      message(ws, message) {
+        ws.send(`echo:${typeof message === "string" ? message : message.toString()}`);
+      },
+    },
+  });
+
+  const config = forwardConfig();
+  // Loopback callers stay limited when loopbackBypass is off; both clients share the
+  // remote-address principal, so perPrincipal=1 caps concurrent sideband relays at one.
+  // The generous request rate keeps this test about concurrency, not token budget.
+  config.rateLimit = {
+    enabled: true,
+    surfaces: { live: { requestsPerMinute: 600, burst: 100 } },
+    websocket: { perPrincipal: 1, global: 1 },
+  };
+  saveConfig(config);
+
+  const RealWebSocket = globalThis.WebSocket;
+  const upstreamPort = upstream.port;
+  globalThis.WebSocket = class extends RealWebSocket {
+    constructor(url: string | URL, protocols?: string | string[] | Record<string, unknown>) {
+      const parsed = new URL(String(url));
+      const target =
+        parsed.hostname === "api.openai.com" && parsed.pathname.startsWith("/v1/live/")
+          ? `ws://127.0.0.1:${upstreamPort}${parsed.pathname}${parsed.search}`
+          : String(url);
+      super(target, protocols as string[]);
+    }
+  } as typeof WebSocket;
+
+  const server = startServer(0);
+  const sidebandHandshake = (callId: string): Promise<{ opened: boolean; close: () => void }> =>
+    new Promise(resolve => {
+      const wsUrl = new URL(`/v1/live/${callId}`, server.url);
+      wsUrl.protocol = "ws:";
+      const socket = new RealWebSocket(wsUrl.toString(), {
+        headers: {
+          authorization: `Bearer ${DIRECT_CHATGPT_TOKEN}`,
+          "chatgpt-account-id": "acct-123",
+        },
+      } as unknown as string[]);
+      let settled = false;
+      const finish = (opened: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({
+          opened,
+          close: () => {
+            try { socket.close(); } catch { /* already closed */ }
+          },
+        });
+      };
+      socket.addEventListener("open", () => finish(true));
+      socket.addEventListener("error", () => finish(false));
+      socket.addEventListener("close", () => finish(false));
+      const timer = setTimeout(() => finish(false), 5_000);
+    });
+
+  try {
+    // First sideband join reserves the only slot.
+    const first = await sidebandHandshake("rtc_slot_a");
+    expect(first.opened).toBe(true);
+
+    // A second concurrent join is denied 429 before the handshake completes.
+    const denied = await sidebandHandshake("rtc_slot_b");
+    expect(denied.opened).toBe(false);
+
+    // Closing the first relay releases the reservation for the next join.
+    first.close();
+    let reopened = false;
+    for (let attempt = 0; attempt < 20 && !reopened; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+      const retry = await sidebandHandshake("rtc_slot_c");
+      reopened = retry.opened;
+      if (retry.opened) retry.close();
+    }
+    expect(reopened).toBe(true);
+  } finally {
+    globalThis.WebSocket = RealWebSocket;
+    await server.stop(true);
+    await upstream.stop(true);
+  }
+});
+
 test("buildLiveSidebandUpstreamWsUrl maps Frameless and Realtime join shapes", async () => {
   const { buildLiveSidebandUpstreamWsUrl, forwardLiveUrl, keyedLiveUrl, parseLiveSidebandTarget } =
     await import("../src/server/live");

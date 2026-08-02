@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { adminApiTokenFilePath } from "../lib/admin-secrets";
+import { rateLimitFingerprinter, type RateLimitPrincipal } from "../ratelimit";
 import { hardenSecretDir, hardenSecretPath } from "../lib/windows-secret-acl";
 import type { OcxConfig } from "../types";
 import {
@@ -182,6 +183,31 @@ export function issueGuiSession(
   };
   state.sessions.set(token, session);
   return { token, ...session };
+}
+
+/**
+ * Resolve the opaque rate-limit principal for a management request without exposing the raw
+ * credential outside this auth boundary. Only a VALIDATED management admin token or a live GUI
+ * session token earns its own bucket; anything else falls back to the trusted socket address
+ * or the shared anonymous bucket, so an unvalidated presented key never mints a fresh bucket.
+ */
+export function resolveManagementRateLimitPrincipal(
+  req: Request,
+  state: ManagementAuthState,
+  remoteAddress: string | null | undefined,
+): RateLimitPrincipal {
+  if (state.available) {
+    const actual = req.headers.get("x-opencodex-api-key")?.trim()
+      || req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
+    if (actual) {
+      if (equalSecret(actual, state.token)) return rateLimitFingerprinter.management(state.token);
+      removeExpiredSessions(state);
+      if (state.sessions.has(actual)) return rateLimitFingerprinter.management(actual);
+    }
+  }
+  const address = remoteAddress?.trim();
+  if (address) return rateLimitFingerprinter.remoteAddress(address);
+  return rateLimitFingerprinter.anonymous();
 }
 
 export function requireManagementAuth(

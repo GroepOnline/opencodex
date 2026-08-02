@@ -141,6 +141,15 @@ import { fetchAllModels, handleManagementAPI, VERSION } from "./management-api";
 import { initializeManagementAuthState, issueGuiSession, requireManagementAuth } from "./management-auth";
 import { runtimeMetrics } from "../observability/metrics";
 import { ensureUsageLogMetricsObserver } from "../observability/usage-log-metrics";
+import { createServerAdmissionControl } from "./rate-limit";
+export {
+  createServerAdmissionControl,
+  DEFAULT_RATE_LIMIT_SURFACE_POLICIES,
+  DEFAULT_RATE_LIMIT_WEBSOCKET_CONCURRENCY,
+  type AdmissionGate,
+  type RateLimitAggregateSnapshot,
+  type ServerAdmissionControl,
+} from "./rate-limit";
 
 const MAX_WS_FRAME_BYTES = 50 * 1024 * 1024;
 const WEBSOCKET_IDLE_TIMEOUT_SECONDS = 0;
@@ -257,6 +266,10 @@ export function startServer(port?: number) {
   applyProxyEnv(config);
   assertServerAuthConfig(config);
   const managementAuth = initializeManagementAuthState(config);
+  // Admission rate limiting (structure/plugin-metrics-ratelimit-benchmarks.md §3). One instance
+  // per server, created before the listener can serve a request; repeated startServer(0) in
+  // tests therefore never leaks buckets or WebSocket reservations across server instances.
+  const admission = createServerAdmissionControl(config, managementAuth);
   // Refresh OAuth provider presets (models/noReasoningModels) from the registry so a proxy update
   // adding/dropping models reaches existing configs on start — not just fresh installs.
   reconcileOAuthProviders(config);
@@ -368,6 +381,11 @@ export function startServer(port?: number) {
         if (isDraining()) {
           return drainingResponse(req);
         }
+        // WebSocket request rate is charged at handshake time via commit(), which runs only
+        // after auth and Origin pass; long-lived stream concurrency is the separate reservation
+        // below. Invalid credentials always answer 401 and never touch the limiter.
+        const wsGate = admission.gate("responses-websocket", req, requestServer);
+        if (wsGate.preAuthDeny) return withCors(wsGate.preAuthDeny, req, config);
         const apiAuthError = requireResponsesApiAuth(req, config);
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
@@ -381,11 +399,19 @@ export function startServer(port?: number) {
         if (!websocketsEnabled(config)) {
           return withCors(formatErrorResponse(426, "upgrade_required", "Responses WebSocket transport is disabled; use HTTP"), req, config);
         }
+        const wsRateDeny = wsGate.commit();
+        if (wsRateDeny) return withCors(wsRateDeny, req, config);
+        // Reserve the concurrency slot BEFORE the handshake completes; roll it back when
+        // Bun refuses the upgrade so a failed handshake can never strand a reservation.
+        const wsReservation = wsGate.reserveConcurrency();
+        if (wsReservation instanceof Response) return withCors(wsReservation, req, config);
         if (server.upgrade(req, {
           data: {
             headers: selectForwardHeaders(req.headers),
+            rateLimitRelease: wsReservation.release,
           },
         })) return undefined as unknown as Response;
+        wsReservation.release();
         return withCors(formatErrorResponse(426, "upgrade_required", "WebSocket upgrade failed"), req, config);
       }
 
@@ -399,11 +425,19 @@ export function startServer(port?: number) {
       // and must never leak onto the unauthenticated /healthz surface. This path bypasses
       // handleManagementAPI, so the management origin check is enforced inline.
       if (url.pathname === "/metrics" && req.method === "GET") {
+        // /metrics is a management surface (structure/plugin-metrics-ratelimit-benchmarks.md §3):
+        // it shares the management admission bucket with /api/*, charged only after the
+        // management auth and Origin checks pass. Unauthenticated probes always get 401 and
+        // never consume (or mint) limiter state.
+        const metricsGate = admission.gate("management", req, requestServer);
+        if (metricsGate.preAuthDeny) return withManagementCors(metricsGate.preAuthDeny, req, config);
         const apiAuthError = requireManagementAuth(req, managementAuth, config);
         if (apiAuthError) return withManagementCors(apiAuthError, req, config);
         if (!isAllowedManagementOrigin(req, config)) {
           return withManagementCors(formatErrorResponse(403, "origin_rejected", "cross-origin management request blocked"), req, config);
         }
+        const metricsRateDeny = metricsGate.commit();
+        if (metricsRateDeny) return withManagementCors(metricsRateDeny, req, config);
         // Scrapes serve the in-memory registry only: usage rows were already recorded
         // at their append boundary, so this path performs zero usage-log filesystem I/O.
         return withManagementCors(new Response(runtimeMetrics.prometheus(), {
@@ -416,14 +450,26 @@ export function startServer(port?: number) {
       }
 
       if (url.pathname.startsWith("/api/")) {
+        const mgmtGate = admission.gate("management", req, requestServer);
+        if (mgmtGate.preAuthDeny) return withManagementCors(mgmtGate.preAuthDeny, req, config);
         const apiAuthError = requireManagementAuth(req, managementAuth, config);
         if (apiAuthError) return withManagementCors(apiAuthError, req, config);
+        // Origin precedence: handleManagementAPI enforces the same guard, but only after this
+        // block would have charged the limiter. Reject cross-origin here (same payload shape as
+        // management-api.ts) so a 403 can never consume the caller's admission budget.
+        if (!isAllowedManagementOrigin(req, config)) {
+          return withManagementCors(jsonResponse({ error: "cross-origin request blocked" }, 403, req, config), req, config);
+        }
+        const mgmtRateDeny = mgmtGate.commit();
+        if (mgmtRateDeny) return withManagementCors(mgmtRateDeny, req, config);
         const mgmtResponse = await handleManagementAPI(req, url, config);
         if (mgmtResponse) return withManagementCors(mgmtResponse, req, config);
         return withManagementCors(formatErrorResponse(404, "not_found", `Unknown endpoint: ${req.method} ${url.pathname}`), req, config);
       }
 
       if (url.pathname === "/v1/models" && req.method === "GET") {
+        const modelsGate = admission.gate("model-discovery", req, requestServer);
+        if (modelsGate.preAuthDeny) return withCors(modelsGate.preAuthDeny, req, config);
         // Model discovery never forwards Authorization upstream, so the broader admission
         // set (Authorization / x-api-key / x-opencodex-api-key) is safe here and required by
         // remote OpenAI-style bearer clients and Claude gateway discovery (anthropic-version).
@@ -432,6 +478,8 @@ export function startServer(port?: number) {
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"), req, config);
         }
+        const modelsRateDeny = modelsGate.commit();
+        if (modelsRateDeny) return withCors(modelsRateDeny, req, config);
         const goModels = await fetchAllModels(config);
         const { applyNativeVisibility, buildCatalogEntries, disabledNativeSlugs, exactComboCatalogSlugs, loadCatalogTemplate, nativeOpenAiSlugs, orderForSubagents, filterCatalogVisibleModels, filterClientCatalogModels, uniqueCatalogModelsForRawPublicList, visibleNativeSlugs } = await import("../codex/catalog");
         const nativeSlugs = nativeOpenAiSlugs();
@@ -499,11 +547,15 @@ export function startServer(port?: number) {
         if (isDraining()) {
           return drainingResponse(req);
         }
+        const compactGate = admission.gate("responses-http", req, requestServer);
+        if (compactGate.preAuthDeny) return withCors(compactGate.preAuthDeny, req, config);
         const apiAuthError = requireResponsesApiAuth(req, config);
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"), req, config);
         }
+        const compactRateDeny = compactGate.commit();
+        if (compactRateDeny) return withCors(compactRateDeny, req, config);
         const start = Date.now();
         const requestId = nextRequestLogId(start);
         const logCtx: RequestLogContext = { model: "unknown", provider: "unknown" };
@@ -531,11 +583,15 @@ export function startServer(port?: number) {
         if (isDraining()) {
           return drainingResponse(req);
         }
+        const imagesGate = admission.gate("images", req, requestServer);
+        if (imagesGate.preAuthDeny) return withCors(imagesGate.preAuthDeny, req, config);
         const apiAuthError = requireApiAuth(req, config, "data-plane");
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"), req, config);
         }
+        const imagesRateDeny = imagesGate.commit();
+        if (imagesRateDeny) return withCors(imagesRateDeny, req, config);
         const start = Date.now();
         const requestId = nextRequestLogId(start);
         const logCtx: RequestLogContext = { model: "image_gen", provider: "unknown" };
@@ -580,11 +636,15 @@ export function startServer(port?: number) {
         if (isDraining()) {
           return drainingResponse(req);
         }
+        const searchGate = admission.gate("search", req, requestServer);
+        if (searchGate.preAuthDeny) return withCors(searchGate.preAuthDeny, req, config);
         const apiAuthError = requireApiAuth(req, config, "data-plane");
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"), req, config);
         }
+        const searchRateDeny = searchGate.commit();
+        if (searchRateDeny) return withCors(searchRateDeny, req, config);
         const start = Date.now();
         const requestId = nextRequestLogId(start);
         const logCtx: RequestLogContext = { model: "web_search", provider: "unknown" };
@@ -604,11 +664,15 @@ export function startServer(port?: number) {
         if (isDraining()) {
           return drainingResponse(req);
         }
+        const responsesGate = admission.gate("responses-http", req, requestServer);
+        if (responsesGate.preAuthDeny) return withCors(responsesGate.preAuthDeny, req, config);
         const apiAuthError = requireResponsesApiAuth(req, config);
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"), req, config);
         }
+        const responsesRateDeny = responsesGate.commit();
+        if (responsesRateDeny) return withCors(responsesRateDeny, req, config);
         const start = Date.now();
         const requestId = nextRequestLogId(start);
         const logCtx = { model: "unknown", provider: "unknown" };
@@ -643,12 +707,16 @@ export function startServer(port?: number) {
         if (isDraining()) {
           return drainingResponse(req);
         }
+        const countTokensGate = admission.gate("claude-messages", req, requestServer);
+        if (countTokensGate.preAuthDeny) return withCors(countTokensGate.preAuthDeny, req, config);
         if (!hasValidApiAuth(req, config)) {
           return withCors(anthropicErrorResponse(401, "opencodex API key required", "authentication_error"), req, config);
         }
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(anthropicErrorResponse(403, "cross-origin data-plane request blocked", "permission_error"), req, config);
         }
+        const countTokensRateDeny = countTokensGate.commit();
+        if (countTokensRateDeny) return withCors(countTokensRateDeny, req, config);
         const response = await handleClaudeCountTokens(req, config);
         return withCors(response, req, config);
       }
@@ -658,12 +726,16 @@ export function startServer(port?: number) {
         if (isDraining()) {
           return drainingResponse(req);
         }
+        const messagesGate = admission.gate("claude-messages", req, requestServer);
+        if (messagesGate.preAuthDeny) return withCors(messagesGate.preAuthDeny, req, config);
         if (!hasValidApiAuth(req, config)) {
           return withCors(anthropicErrorResponse(401, "opencodex API key required", "authentication_error"), req, config);
         }
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(anthropicErrorResponse(403, "cross-origin data-plane request blocked", "permission_error"), req, config);
         }
+        const messagesRateDeny = messagesGate.commit();
+        if (messagesRateDeny) return withCors(messagesRateDeny, req, config);
         const start = Date.now();
         const requestId = nextRequestLogId(start);
         const logCtx: RequestLogContext = { model: "unknown", provider: "unknown" };
@@ -681,11 +753,15 @@ export function startServer(port?: number) {
         if (isDraining()) {
           return drainingResponse(req);
         }
+        const chatGate = admission.gate("chat-completions", req, requestServer);
+        if (chatGate.preAuthDeny) return withCors(chatGate.preAuthDeny, req, config);
         const apiAuthError = requireResponsesApiAuth(req, config);
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"), req, config);
         }
+        const chatRateDeny = chatGate.commit();
+        if (chatRateDeny) return withCors(chatRateDeny, req, config);
         const start = Date.now();
         const requestId = nextRequestLogId(start);
         const logCtx: RequestLogContext = { model: "unknown", provider: "unknown" };
@@ -704,11 +780,15 @@ export function startServer(port?: number) {
         if (isDraining()) {
           return drainingResponse(req);
         }
+        const liveGate = admission.gate("live", req, requestServer);
+        if (liveGate.preAuthDeny) return withCors(liveGate.preAuthDeny, req, config);
         const apiAuthError = requireApiAuth(req, config, "data-plane");
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"), req, config);
         }
+        const liveRateDeny = liveGate.commit();
+        if (liveRateDeny) return withCors(liveRateDeny, req, config);
         const start = Date.now();
         const requestId = nextRequestLogId(start);
         const logCtx: RequestLogContext = { model: "gpt-live", provider: "unknown" };
@@ -732,11 +812,19 @@ export function startServer(port?: number) {
         if (isDraining()) {
           return drainingResponse(req);
         }
+        // Sideband joins are charged as live request-rate at handshake time, and each accepted
+        // upgrade additionally holds a WebSocket concurrency slot (same reservation discipline
+        // as the Responses WebSocket): reserved before the handshake completes, rolled back on
+        // upgrade failure, released by close() for every disconnect path.
+        const sidebandGate = admission.gate("live", req, requestServer);
+        if (sidebandGate.preAuthDeny) return withCors(sidebandGate.preAuthDeny, req, config);
         const apiAuthError = requireApiAuth(req, config, "data-plane");
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(formatErrorResponse(403, "origin_rejected", "WebSocket upgrade blocked: non-local Origin"), req, config);
         }
+        const sidebandRateDeny = sidebandGate.commit();
+        if (sidebandRateDeny) return withCors(sidebandRateDeny, req, config);
         const start = Date.now();
         const requestId = nextRequestLogId(start);
         const logCtx: RequestLogContext = { model: "gpt-live", provider: "unknown" };
@@ -744,6 +832,14 @@ export function startServer(port?: number) {
         if (resolved instanceof Response) {
           addFinalRequestLog(requestId, start, logCtx, resolved.status);
           return withCors(resolved, req, config);
+        }
+        // Reserve the concurrency slot only for a fully resolved upgrade, BEFORE the handshake
+        // completes; roll it back when Bun refuses the upgrade so a failed handshake can never
+        // strand a reservation. close() releases the stored handle for every disconnect path.
+        const sidebandReservation = sidebandGate.reserveConcurrency();
+        if (sidebandReservation instanceof Response) {
+          addFinalRequestLog(requestId, start, logCtx, 429);
+          return withCors(sidebandReservation, req, config);
         }
         addFinalRequestLog(requestId, start, logCtx, 101);
         if (server.upgrade(req, {
@@ -753,8 +849,10 @@ export function startServer(port?: number) {
             liveUpstreamHeaders: resolved.headers,
             livePending: [],
             liveOpened: false,
+            rateLimitRelease: sidebandReservation.release,
           } satisfies WsData,
         })) return undefined as unknown as Response;
+        sidebandReservation.release();
         return withCors(formatErrorResponse(426, "upgrade_required", "WebSocket upgrade failed"), req, config);
       }
 
@@ -932,6 +1030,9 @@ export function startServer(port?: number) {
         })();
       },
       close(ws: ServerWebSocket<WsData>) {
+        // Idempotent concurrency release; Bun fires close() for normal closes, abnormal
+        // disconnects, errors, and server-forced closes alike, so this covers every path.
+        ws.data.rateLimitRelease?.();
         if (ws.data.kind === "live-sideband") {
           ws.data.cancel?.();
           ws.data.liveUpstream = undefined;

@@ -5,6 +5,16 @@ export interface ConcurrencyLimits {
   global: number;
 }
 
+/**
+ * Default Responses WebSocket concurrency caps. Overridable via `config.rateLimit.websocket`.
+ * Lives with the primitives so config validation can compare effective (default-resolved)
+ * limits without importing server modules.
+ */
+export const DEFAULT_RATE_LIMIT_WEBSOCKET_CONCURRENCY: Readonly<ConcurrencyLimits> = Object.freeze({
+  perPrincipal: 16,
+  global: 128,
+});
+
 export interface ConcurrencyLimiterOptions {
   maxTrackedPrincipals?: number;
 }
