@@ -44,6 +44,8 @@ interface BucketState {
   tokens: number;
   updatedAtMs: number;
   lastSeenAtMs: number;
+  /** Policy that governed elapsed time since updatedAtMs. */
+  policy: RateLimitPolicy;
 }
 
 const SURFACE_ORDER: readonly RateLimitSurface[] = [
@@ -89,6 +91,10 @@ function statsKey(
 
 function bucketKey(surface: RateLimitSurface, principal: RateLimitPrincipal): string {
   return `${surface}\0${principal.fingerprint}`;
+}
+
+function samePolicy(left: RateLimitPolicy, right: RateLimitPolicy): boolean {
+  return left.requestsPerMinute === right.requestsPerMinute && left.burst === right.burst;
 }
 
 /**
@@ -141,19 +147,29 @@ export class TokenBucketLimiter {
     if (!state) {
       if (this.buckets.size >= this.maxBuckets) this.evictOneStale(now);
       if (this.buckets.size < this.maxBuckets) {
-        state = { tokens: policy.burst, updatedAtMs: now, lastSeenAtMs: now };
+        state = {
+          tokens: policy.burst,
+          updatedAtMs: now,
+          lastSeenAtMs: now,
+          policy,
+        };
         this.buckets.set(key, state);
       } else {
         source = "overflow";
         state = this.overflowBuckets.get(surface);
         if (!state) {
-          state = { tokens: policy.burst, updatedAtMs: now, lastSeenAtMs: now };
+          state = {
+            tokens: policy.burst,
+            updatedAtMs: now,
+            lastSeenAtMs: now,
+            policy,
+          };
           this.overflowBuckets.set(surface, state);
         }
       }
     }
 
-    this.refill(state, policy, now);
+    this.applyPolicy(state, policy, now);
     state.lastSeenAtMs = now;
     const allowed = state.tokens >= normalizedCost;
     if (allowed) state.tokens -= normalizedCost;
@@ -203,6 +219,18 @@ export class TokenBucketLimiter {
     const finite = Number.isFinite(sampled) ? Math.max(0, sampled) : this.lastNowMs;
     this.lastNowMs = Math.max(this.lastNowMs, finite);
     return this.lastNowMs;
+  }
+
+  /**
+   * Refill elapsed time under the policy that actually governed that interval. Only after the
+   * refill is committed do we install the new policy. Increasing burst never mints tokens;
+   * decreasing burst clamps existing balance to the new capacity.
+   */
+  private applyPolicy(state: BucketState, nextPolicy: RateLimitPolicy, now: number): void {
+    this.refill(state, state.policy, now);
+    if (samePolicy(state.policy, nextPolicy)) return;
+    state.tokens = Math.min(nextPolicy.burst, Math.max(0, state.tokens));
+    state.policy = nextPolicy;
   }
 
   private refill(state: BucketState, policy: RateLimitPolicy, now: number): void {
