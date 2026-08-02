@@ -30,6 +30,7 @@ import {
   resolveCodexRuntime,
 } from "../codex/runtime";
 import { CODEX_REAUTH_ACTION, collectOAuthHealthEntriesForCli, MASKED_ACCOUNT_FALLBACK, type OAuthHealthEntry } from "../oauth/health";
+import { collectProviderSecurityDoctorChecks } from "../provider-security/status";
 import { getAuthRefreshIntentLockPath, getAuthStorePath } from "../oauth/store";
 export { resolveCodexHomeDir } from "../codex/home";
 
@@ -814,6 +815,11 @@ export async function runDoctor(args: string[] = []): Promise<void> {
   // OAuth reliability: observe-only (no mutations / auto-repair).
   console.log("\nOAuth reliability");
   for (const check of await collectOAuthDoctorChecks()) {
+    console.log(`  [${check.level}] ${check.message}`);
+  }
+
+  console.log("\nProvider security (ChefVault)");
+  for (const check of await collectProviderSecurityDoctorChecks(doctorConfig)) {
     console.log(`  [${check.level}] ${check.message}`);
   }
 

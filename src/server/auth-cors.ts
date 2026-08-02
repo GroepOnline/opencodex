@@ -386,7 +386,7 @@ export function safeConfigDTO(config: OcxConfig): unknown {
     const dto: Record<string, unknown> = {
       adapter: provider.adapter,
       baseUrl: publicProviderBaseUrl(provider.baseUrl),
-      hasApiKey: !!provider.apiKey,
+      hasApiKey: !!provider.apiKey || !!provider.credentialRef,
       hasHeaders: !!provider.headers && Object.keys(provider.headers).length > 0,
     };
     for (const key of [
@@ -395,6 +395,7 @@ export function safeConfigDTO(config: OcxConfig): unknown {
       "allowPrivateNetwork",
       "authMode",
       "apiKeyTransport",
+      "credentialRef",
       "keyOptional",
       "freeTier",
       "liveModels",

@@ -500,8 +500,8 @@ test.each([
   ["oauth auth", { adapter: "openai-responses", baseUrl: "https://images.example.test/v1", apiKey: "key", authMode: "oauth" }, "must be an API-key openai-responses provider"],
   ["local auth", { adapter: "openai-responses", baseUrl: "https://images.example.test/v1", apiKey: "key", authMode: "local" }, "must be an API-key openai-responses provider"],
   ["missing key", { adapter: "openai-responses", baseUrl: "https://images.example.test/v1", authMode: "key" }, "has no usable API key"],
-] as const)("explicit Images provider rejects %s configuration", (_case, provider, expectedError) => {
-  const selection = selectImagesProvider({
+] as const)("explicit Images provider rejects %s configuration", async (_case, provider, expectedError) => {
+  const selection = await selectImagesProvider({
     port: 0,
     defaultProvider: "custom-images",
     providers: provider ? { "custom-images": provider } : {},
@@ -512,6 +512,57 @@ test.each([
   expect(selection.forwardCandidates).toHaveLength(0);
   expect(selection.error).toContain(expectedError);
 });
+
+// A failed ChefVault lease on an explicit Images provider must keep its credential/authority
+// split: a revoked lease is a non-retryable 401 authentication_error, an unreachable authority
+// is a retryable 503 api_error. Codex uses the type to decide whether to retry.
+test.each([
+  ["revoked", "chefvault://providers/images/revoked", 410, { code: "revoked", message: "lease revoked" }, 401, "authentication_error"],
+  ["authority_unavailable", "chefvault://providers/images/outage", 503, { message: "authority down" }, 503, "api_error"],
+] as const)(
+  "a %s ChefVault lease failure maps the Images provider error to %d/%s",
+  async (_case, ref, vaultStatus, vaultBody, expectedStatus, expectedType) => {
+    const previousVaultUrl = process.env.CHEF_PROVIDER_SECURITY_URL;
+    const previousVaultToken = process.env.CHEF_PROVIDER_SECURITY_TOKEN;
+    process.env.CHEF_PROVIDER_SECURITY_URL = "http://vault.test";
+    process.env.CHEF_PROVIDER_SECURITY_TOKEN = "access-token-images-vault-32chars";
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url === "http://vault.test/v1/credentials/resolve") {
+        return Response.json(vaultBody, { status: vaultStatus });
+      }
+      return originalFetch(input, init);
+    }) as typeof fetch;
+
+    try {
+      const selection = await selectImagesProvider({
+        port: 0,
+        defaultProvider: "custom-images",
+        providers: {
+          "custom-images": {
+            adapter: "openai-responses",
+            baseUrl: "https://images.example.test/v1",
+            authMode: "key",
+            credentialRef: ref,
+          },
+        },
+        images: { provider: "custom-images" },
+      } as OcxConfig);
+
+      expect(selection.keyed).toBeUndefined();
+      expect(selection.forwardCandidates).toHaveLength(0);
+      expect(selection.error).toContain("credential could not be resolved");
+      expect(selection.errorStatus).toBe(expectedStatus);
+      expect(selection.errorType).toBe(expectedType);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousVaultUrl === undefined) delete process.env.CHEF_PROVIDER_SECURITY_URL;
+      else process.env.CHEF_PROVIDER_SECURITY_URL = previousVaultUrl;
+      if (previousVaultToken === undefined) delete process.env.CHEF_PROVIDER_SECURITY_TOKEN;
+      else process.env.CHEF_PROVIDER_SECURITY_TOKEN = previousVaultToken;
+    }
+  },
+);
 
 test("keyed baseUrl with a /v1 suffix is normalized (no double /v1)", async () => {
   const captured: CapturedRequest[] = [];

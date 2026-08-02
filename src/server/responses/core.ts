@@ -26,6 +26,7 @@ import {
   pickComboTarget,
   targetKey,
 } from "../../combos";
+import { providerCredentialFailure, providerCredentialRef, withResolvedProviderCredential } from "../../providers/credential";
 import { comboIdLabel, isProviderFallbackComboId, providerFallbackPlan } from "../../providers/fallback";
 import { isInjectionDebugEnabled } from "../../lib/debug-settings";
 import { injectionDebugLog } from "../../lib/injection-debug-log";
@@ -1490,6 +1491,16 @@ export async function handleResponses(
         );
       }
       return formatErrorResponse(401, "authentication_error", err instanceof Error ? err.message : String(err));
+    }
+  }
+  // ChefVault-backed providers carry no secret in config: lease it now so ordinary forwarding
+  // authenticates like model discovery does. The lease lives on this request's provider copy only.
+  if (route.provider.authMode !== "oauth" && route.provider.authMode !== "forward" && providerCredentialRef(route.provider)) {
+    try {
+      route.provider = await withResolvedProviderCredential(route.provider);
+    } catch (err) {
+      const failure = providerCredentialFailure(route.providerName, err);
+      return formatErrorResponse(failure.status, failure.type, failure.message);
     }
   }
   route.provider = resolveProviderTransport(
