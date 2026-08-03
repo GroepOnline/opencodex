@@ -7,10 +7,12 @@
  * loopback opencodex base URL points at a different proxy port.
  */
 import { spawn } from "node:child_process";
-import { loadConfig } from "../config";
+import { getConfigDir, loadConfig } from "../config";
 import { injectClaudeAgentDefs } from "../claude/agents-inject";
 import { effectiveModelEnv, resolveAutoContext } from "../claude/context-windows";
 import { refreshGatewayModelCacheFromProxy } from "../claude/gateway-cache";
+import { syncClaudePersistentSessionEnv } from "../claude/persistent-session-env";
+import { prepareRecursiveClaudeLaunch } from "../claude/recursive-launch";
 import { commandInvocation } from "../lib/win-exec";
 import { findLiveProxy } from "../server/proxy-liveness";
 import type { OcxConfig } from "../types";
@@ -245,6 +247,24 @@ export async function cmdClaude(args: string[]): Promise<number> {
   }
   const contextWindows = await fetchClaudeContextWindows(config, port);
   const env = buildClaudeEnv(config, port, process.env, contextWindows);
+
+  // Agent View/background sessions are separate Claude processes parented to a
+  // per-user supervisor. Keep the provider env eligible for settings.json loading:
+  // host-managed mode intentionally strips those settings-sourced variables.
+  env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST = "0";
+  const persistentEnv = syncClaudePersistentSessionEnv(env, getConfigDir());
+  if (!persistentEnv.synced && persistentEnv.warning) {
+    console.error(`⚠ ${persistentEnv.warning}; Agent View workers may require respawn after fixing Claude settings.`);
+  }
+
+  const recursiveLaunch = prepareRecursiveClaudeLaunch(env, {
+    configDir: getConfigDir(),
+    runtimePath: process.execPath,
+    entryPath: process.argv[1],
+  });
+  if (recursiveLaunch.warning) {
+    console.error(`⚠ ${recursiveLaunch.warning}; descendant Claude CLIs may require manual 'ocx claude'.`);
+  }
   // Pre-write the CLI's gateway-model cache (devlog 030): without a token the CLI
   // never refreshes it, so the picker would keep showing yesterday's aliases.
   try {
@@ -267,8 +287,12 @@ export async function cmdClaude(args: string[]): Promise<number> {
     console.error(`⚠ Claude agent definitions could not be synced: ${message}`);
   }
   return await new Promise<number>(resolve => {
-    const inv = commandInvocation("claude", args);
-    const child = spawn(inv.file, inv.args, { stdio: "inherit", env: env as NodeJS.ProcessEnv, ...inv.options });
+    const inv = commandInvocation(recursiveLaunch.command, args, process.platform, { env: recursiveLaunch.env });
+    const child = spawn(inv.file, inv.args, {
+      stdio: "inherit",
+      env: recursiveLaunch.env as NodeJS.ProcessEnv,
+      ...inv.options,
+    });
     child.on("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "ENOENT") {
         console.error(CLAUDE_INSTALL_HINT);
