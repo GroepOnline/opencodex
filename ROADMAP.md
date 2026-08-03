@@ -23,15 +23,15 @@ feel 10× less frictional than stock upstream for ChefGroep kitchens.
 
 ## Near term (next) — Phase 0–1 of x10 plan
 
-- [ ] **Merge open train** — #51 CI shards → #53 Claude recursive OCX → #52 rate-limit metrics (undraft)
-- [ ] **Reconcile `dev` ↔ `main`** — diverged (~222 ahead / ~43 behind); one coherent line before release
-- [ ] **CI hardening** — Dependabot config, security audit job, actionlint (not yet present on `dev`)
+- [x] **Merge open train** — #51 CI shards → #53 Claude recursive OCX → #52 rate-limit metrics; all open PRs (#51–#61) merged to `dev` on 2026-08-03
+- [x] **Reconcile `dev` ↔ `main`** — Codex pacer ported via #55; non-ports documented in [`structure/10_dev-main-reconcile.md`](structure/10_dev-main-reconcile.md) (De Pas stubs stay until Phase 3)
+- [x] **CI hardening** — `.github/dependabot.yml`, Security audit job (both lockfiles), pinned actionlint job on `dev` (#60)
 - [ ] **Release docs scaffolding** — `VERSIONING.md`, `RELEASE_PROCESS.md`, `CHANGELOG.md` (not yet present)
 - [ ] **Publish first fork release (`v1.0.0-preview.1`)** — tag from reconciled `main`, guarded release workflow, npm install evidence
 - [ ] **Canonical npm ownership** — OnlineChefGroep-controlled scope + compatibility path for `@bitkyc08/opencodex`
 - [ ] **Docs Pages for the fork** — deploy docs-site with OnlineChefGroep URLs (not upstream domain assumptions)
 - [ ] **Upstream intake policy** — security/protocol/client-compat only; no release dependence
-- [ ] **ROADMAP/docs truth pass** — drop false claims (e.g. CodeQL “done” without workflow; strict already enabled)
+- [x] **ROADMAP/docs truth pass** — verified against `dev`: no CodeQL workflow exists (and no doc claims one), `tsconfig.json` has `"strict": true`; required-CI-check names for the shard jobs need no GitHub update because no branch protection rule is configured yet (see `MAINTAINERS.md`) — record the new job names (`windows-latest shard 2/2`, `macos-quality`, `windows-quality`) when protection is set up
 
 ## Medium term — Phase 2–4
 

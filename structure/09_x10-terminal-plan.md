@@ -70,17 +70,18 @@ Until this is reconciled, every release and every “ship x10” claim is blocke
 
 ---
 
-## B. Open PR pickup (executed 2026-08-02)
+## B. Open PR pickup (executed 2026-08-02; completed 2026-08-03)
 
-Merge order for the open train targeting `dev`:
+**Superseded — no open actions remain.** The train merged to `dev` on
+2026-08-03 (see Phase 0 item 1). Kept for the record:
 
-| Pri | PR | Action taken | Remaining human step |
+| Pri | PR | Action taken | Outcome |
 | --- | --- | --- | --- |
-| 1 | [#51](https://github.com/OnlineChefGroep/opencodex/pull/51) CI shard | Rebased onto `dev`; Greptile thread resolved; merge-ready comment | Security sign-off on workflow → **merge** |
-| 2 | [#53](https://github.com/OnlineChefGroep/opencodex/pull/53) Claude recursive OCX | Stale P1/trivial threads resolved; CI green | **Merge** (highest user impact) |
-| 3 | [#52](https://github.com/OnlineChefGroep/opencodex/pull/52) rate-limit metrics | Threads resolved; still **draft** | Undraft → review → **merge** |
+| 1 | [#51](https://github.com/OnlineChefGroep/opencodex/pull/51) CI shard | Rebased onto `dev`; Greptile thread resolved; merge-ready comment | ~~Security sign-off on workflow → merge~~ **Merged 2026-08-03** |
+| 2 | [#53](https://github.com/OnlineChefGroep/opencodex/pull/53) Claude recursive OCX | Stale P1/trivial threads resolved; CI green | ~~Merge~~ **Merged 2026-08-03** |
+| 3 | [#52](https://github.com/OnlineChefGroep/opencodex/pull/52) rate-limit metrics | Threads resolved; still **draft** | ~~Undraft → review → merge~~ **Undrafted and merged 2026-08-03** |
 
-No code conflicts between these three. #51 first protects CI for everything else.
+No code conflicts between these three. #51 first protected CI for everything else.
 
 ---
 
@@ -94,12 +95,10 @@ maintainer-controlled release step.
 
 **Goal:** One coherent integration line and reliable CI.
 
-1. Merge #51 → #53 → #52 in that order.
-2. Reconcile `main` → `dev` (or rebuild `main` from `dev` + selective cherry-picks):
-   - Prefer: bring OmniRoute / upstream parity + useful PostHog/budget pieces onto `dev`.
-   - Decide De Pas stubs: wire into App routing **or** delete from `main` so they stop drifting.
-3. Update required CI checks for new shard job names (`macos-quality`, `windows-quality`, `windows-latest shard 2/2`).
-4. Fix ROADMAP truth: strike false “done” claims (CodeQL absent; strict already on; GUI theme partially done on `dev`).
+1. ~~Merge #51 → #53 → #52 in that order.~~ Done 2026-08-03; all open PRs (#51–#61) merged to `dev`.
+2. ~~Reconcile `main` → `dev`~~ Done via #55 (Codex pacer port); non-ports documented in `structure/10_dev-main-reconcile.md`. De Pas stubs stay until Phase 3.
+3. Update required CI checks for new shard job names (`macos-quality`, `windows-quality`, `windows-latest shard 2/2`). — **No-op for now:** no branch protection rule is configured (see `MAINTAINERS.md`), so there are no required checks to update in GitHub; apply these names when protection is set up.
+4. ~~Fix ROADMAP truth~~ Done 2026-08-03: near-term list updated to match `dev` (CodeQL absent and unclaimed; `tsconfig.json` strict already on).
 
 **Exit gate:** `dev` contains all fork-critical work; CI green under sharded Windows; ROADMAP matches reality; no orphan De Pas files without owners.
 
@@ -212,18 +211,9 @@ Each phase opens as a stacked PR series against `dev`.
 
 ## G. Immediate next commands (operators)
 
-```bash
-# After security OK on #51:
-gh pr merge 51 --merge
-gh pr merge 53 --merge
-# Undraft #52 in the GitHub UI, then:
-gh pr merge 52 --merge
-
-# Then start Phase 0 reconcile on a branch off latest dev:
-git fetch origin
-git checkout -b cursor/reconcile-main-into-dev-ecac origin/dev
-# cherry-pick / merge selected origin/main commits; open PR → dev
-```
+The #51/#53/#52 merge commands and the Phase 0 reconcile branch that used to
+live here are done (train merged 2026-08-03; reconcile landed via #55). Current
+next step is Phase 1 (fork identity release).
 
 Validation on every runtime PR (single command; runs typecheck, GUI lint, tests, privacy scan, and the GUI doctor gate):
 
