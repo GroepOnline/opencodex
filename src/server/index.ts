@@ -280,6 +280,12 @@ export function startServer(port?: number) {
   // per server, created before the listener can serve a request; repeated startServer(0) in
   // tests therefore never leaks buckets or WebSocket reservations across server instances.
   const admission = createServerAdmissionControl(config, managementAuth);
+  // Metrics lane (structure/plugin-metrics-ratelimit-benchmarks.md §3): register the
+  // aggregate-only admission collector once per server start, before the listener can serve a
+  // scrape. Default-off explicitly clears any stale collector from a prior startServer(0)
+  // instance so a disabled server never renders another instance's counters. Snapshots are
+  // projected on demand — no per-route refresh, no file I/O.
+  runtimeMetrics.setRateLimitCollector(admission.enabled ? () => admission.snapshot() : null);
   // Refresh OAuth provider presets (models/noReasoningModels) from the registry so a proxy update
   // adding/dropping models reaches existing configs on start — not just fresh installs.
   reconcileOAuthProviders(config);

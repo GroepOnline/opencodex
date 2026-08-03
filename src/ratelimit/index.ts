@@ -5,6 +5,7 @@ export {
   type RateLimitPrincipalKind,
 } from "./principal";
 export {
+  RATE_LIMIT_SURFACES,
   TokenBucketLimiter,
   validateRateLimitPolicy,
   type RateLimitDecision,

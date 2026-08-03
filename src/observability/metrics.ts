@@ -1,5 +1,11 @@
 import type { OcxUsage } from "../types";
 import { getActiveTurnCount, isDraining } from "../server/lifecycle";
+import type { RateLimitAggregateSnapshot } from "../server/rate-limit";
+import {
+  appendRateLimitPrometheus,
+  projectRateLimitMetrics,
+  type RateLimitMetricsSnapshot,
+} from "./rate-limit-projection";
 
 export const REQUEST_DURATION_BUCKETS_MS = [
   25,
@@ -72,6 +78,12 @@ export interface MetricsSnapshot {
     type: MetricTokenType;
     count: number;
   }>;
+  /**
+   * Aggregate-only admission counters, present only while rate limiting is enabled and the
+   * registered collector produced a snapshot. Absent, disabled, or failing collectors omit the
+   * subtree entirely (fail closed) so default-off output is byte-identical to before.
+   */
+  rateLimit?: RateLimitMetricsSnapshot;
 }
 
 export interface HistogramSnapshot {
@@ -234,6 +246,7 @@ export class RuntimeMetrics {
   private readonly durations = new Map<MetricSurface, HistogramState>();
   private readonly firstOutput = new Map<MetricSurface, HistogramState>();
   private readonly tokenCounts = new Map<string, TokenCounterState>();
+  private rateLimitCollector: (() => Readonly<RateLimitAggregateSnapshot>) | null = null;
 
   constructor(
     private readonly processCollector: () => ProcessMetricsSnapshot = defaultProcessMetrics,
@@ -245,6 +258,18 @@ export class RuntimeMetrics {
     this.durations.clear();
     this.firstOutput.clear();
     this.tokenCounts.clear();
+    // Test/server isolation boundary: a fresh registry must never render a previous server
+    // instance's admission counters through a stale collector.
+    this.rateLimitCollector = null;
+  }
+
+  /**
+   * Register (or clear, with null) the aggregate-only admission collector. The collector is
+   * invoked at most once per snapshot, read-only, and its output is projected into a detached
+   * copy, so metrics consumers can never mutate limiter state.
+   */
+  setRateLimitCollector(collector: (() => Readonly<RateLimitAggregateSnapshot>) | null): void {
+    this.rateLimitCollector = collector;
   }
 
   recordRequest(entry: RequestMetricObservation): void {
@@ -285,7 +310,8 @@ export class RuntimeMetrics {
 
   snapshot(): MetricsSnapshot {
     const processSnapshot = normalizeProcessMetrics(this.processCollector());
-    return {
+    const rateLimit = this.collectRateLimit();
+    const snapshot: MetricsSnapshot = {
       version: 1,
       generatedAt: counterValue(this.now()),
       process: processSnapshot,
@@ -301,6 +327,8 @@ export class RuntimeMetrics {
         .sort((left, right) => surfaceRank(left.surface) - surfaceRank(right.surface)
           || tokenRank(left.type) - tokenRank(right.type)),
     };
+    if (rateLimit) snapshot.rateLimit = rateLimit;
+    return snapshot;
   }
 
   prometheus(): string {
@@ -355,7 +383,22 @@ export class RuntimeMetrics {
     help("opencodex_process_array_buffers_bytes", "gauge", "ArrayBuffer memory tracked by the runtime in bytes.");
     lines.push(`opencodex_process_array_buffers_bytes ${metricNumber(snapshot.process.arrayBuffersBytes)}`);
 
+    // Render from the snapshot already taken above: the admission collector ran at most once
+    // for this scrape, and appending is read-only over the detached projection.
+    appendRateLimitPrometheus(lines, snapshot.rateLimit);
+
     return `${lines.join("\n")}\n`;
+  }
+
+  /** Fail-closed collection: absent, disabled, or throwing collectors omit the subtree. */
+  private collectRateLimit(): RateLimitMetricsSnapshot | null {
+    const collector = this.rateLimitCollector;
+    if (!collector) return null;
+    try {
+      return projectRateLimitMetrics(collector());
+    } catch {
+      return null;
+    }
   }
 
   private addTokens(surface: MetricSurface, type: MetricTokenType, amount: number): void {

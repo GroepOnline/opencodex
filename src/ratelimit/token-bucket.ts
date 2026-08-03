@@ -1,15 +1,19 @@
 import type { RateLimitPrincipal } from "./principal";
 
-export type RateLimitSurface =
-  | "management"
-  | "responses-http"
-  | "responses-websocket"
-  | "chat-completions"
-  | "claude-messages"
-  | "images"
-  | "search"
-  | "live"
-  | "model-discovery";
+/** Authoritative, ordered list of admission surfaces. Derive checks and ordering from this. */
+export const RATE_LIMIT_SURFACES = [
+  "management",
+  "responses-http",
+  "responses-websocket",
+  "chat-completions",
+  "claude-messages",
+  "images",
+  "search",
+  "live",
+  "model-discovery",
+] as const;
+
+export type RateLimitSurface = (typeof RATE_LIMIT_SURFACES)[number];
 
 export interface RateLimitPolicy {
   requestsPerMinute: number;
@@ -48,17 +52,7 @@ interface BucketState {
   policy: RateLimitPolicy;
 }
 
-const SURFACE_ORDER: readonly RateLimitSurface[] = [
-  "management",
-  "responses-http",
-  "responses-websocket",
-  "chat-completions",
-  "claude-messages",
-  "images",
-  "search",
-  "live",
-  "model-discovery",
-];
+const SURFACE_ORDER: readonly RateLimitSurface[] = RATE_LIMIT_SURFACES;
 
 function validatePositiveFinite(value: number, name: string): number {
   if (!Number.isFinite(value) || value <= 0) throw new RangeError(`${name} must be greater than zero`);

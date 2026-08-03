@@ -374,6 +374,26 @@ Exported labels are fixed, bounded categories only: surface, HTTP status class, 
 status, and token type. Provider, model, account, request, conversation, error, and prompt
 values are never emitted as labels or output.
 
+When [rate limiting](#rate-limiting) is enabled, the registry additionally exposes bounded,
+aggregate-only admission series:
+
+- `opencodex_rate_limit_requests_total`: admission decisions by fixed `surface`, `source`
+  (`principal` or `overflow`), and `result` (`allowed` or `denied`) labels.
+- `opencodex_rate_limit_websocket_reservations_total`: WebSocket concurrency reservation
+  outcomes by fixed `reason` label.
+- `opencodex_rate_limit_websocket_connections` and
+  `opencodex_rate_limit_websocket_tracked_principals`: current admitted WebSocket
+  concurrency gauges.
+- `opencodex_rate_limit_principal_buckets` and `opencodex_rate_limit_overflow_surfaces`:
+  current limiter bucket-allocation gauges.
+
+The JSON snapshot carries the same data in an optional `rateLimit` subtree. Rate-limit
+metrics appear only while rate limiting is enabled: default-off servers emit no rate-limit
+series or subtree at all. Like the rest of the registry they are process-local (reset on
+restart), and collection is read-only: scraping never consumes tokens, creates buckets, or
+otherwise mutates limiter state, and no principal, fingerprint, credential, Origin, or
+address values are ever emitted.
+
 A minimal Prometheus scrape config, with the admin token supplied from a secret file rather
 than inlined:
 
