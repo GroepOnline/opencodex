@@ -60,6 +60,7 @@ import {
   recordCodexUpstreamOutcome,
   type CodexUpstreamOutcome,
 } from "../../codex/routing";
+import { codexPaceBeforeSend, configuredCodexPoolSize } from "../../codex/pacer";
 import { fetchWithResetRetry, fetchWithTransientRetry, applyUpstreamRecoveryInit } from "../../lib/upstream-retry";
 import { ForwardAdmissionCredentialError, validateForwardAdmissionCredential } from "../auth-cors";
 import { listOpenAiForwardSidecarCandidates, resolveFirstUsableOpenAiSidecar, type ResolvedOpenAiForwardSidecar } from "../../providers/openai-sidecar";
@@ -284,6 +285,15 @@ export async function handleResponsesCompact(
       });
     };
     let upstream: Response;
+    // Same Codex pool pacing as /v1/responses (no-op when disabled / non-pool auth).
+    // req.signal makes a queued wait abortable: a client disconnect stops the
+    // pacing wait and returns the cancellation response before any upstream send.
+    if (usesCodexForwardPoolAuth(authCtx, route.provider)) {
+      await codexPaceBeforeSend(config, authCtx.accountId, configuredCodexPoolSize(config), req.signal);
+      if (req.signal.aborted) {
+        return formatErrorResponse(499, "client_cancelled", "Client cancelled compact request");
+      }
+    }
     try {
       // Same connect timeout + keep-alive reset + transient-5xx recovery as /v1/responses —
       // compact hits the same ChatGPT host and must soft-avoid / clear affinity (#186).

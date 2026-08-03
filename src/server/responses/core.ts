@@ -108,6 +108,7 @@ import {
   recordCodexUpstreamOutcome,
   type CodexUpstreamOutcome,
 } from "../../codex/routing";
+import { codexPaceBeforeSend, configuredCodexPoolSize } from "../../codex/pacer";
 import { fetchWithResetRetry, fetchWithTransientRetry, applyUpstreamRecoveryInit } from "../../lib/upstream-retry";
 import {
   createUpstreamAttemptBudget,
@@ -1645,6 +1646,14 @@ export async function handleResponses(
     const upstream = new AbortController();
     linkAbortSignal(upstream, options.abortSignal);
     const connectMs = config.connectTimeoutMs ?? 200_000;
+    // Jittered inter-request pacing for outbound Codex pool calls. No-op when
+    // disabled (default) or for non-pool auth (main passthrough / other providers).
+    // The linked upstream signal makes a queued wait abortable: a client
+    // disconnect stops the pacing wait and we bail before the upstream fetch.
+    if (usesCodexForwardPoolAuth(authCtx, route.provider)) {
+      await codexPaceBeforeSend(config, authCtx.accountId, configuredCodexPoolSize(config), upstream.signal);
+      if (upstream.signal.aborted) return clientCancelledResponse();
+    }
     let upstreamResponse: Response;
     const transportFailureResponse = (err: unknown): Response => {
       upstream.abort();
