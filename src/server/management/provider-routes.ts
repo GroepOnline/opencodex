@@ -142,6 +142,10 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
     // let the (possibly new) apiKey join the pool as the active entry.
     const existingPool = config.providers[name]?.apiKeyPool;
     if (existingPool && !prov.apiKeyPool) prov.apiKeyPool = existingPool;
+    // A cooldown recorded against the previous configuration must not own the replacement's
+    // `disabled` flag: expiry would silently re-enable a provider the operator turned off.
+    const { clearProviderCapCooldown } = await import("../../providers/cap-cooldown");
+    clearProviderCapCooldown(config, name);
     config.providers[name] = stripRegistryOnlyStaticHeaders(name, prov);
     if (body.setDefault) config.defaultProvider = name;
     save(config);
@@ -333,6 +337,13 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
     }
 
     const { saveConfigPreservingClaudeCode: save } = await import("../../config");
+    // An explicit operator decision outranks the cap cooldown: without this the expiry
+    // sweep would re-enable a provider the operator just turned off by hand. Run it here,
+    // after every validation gate, so a rejected patch cannot strip cooldown ownership.
+    const { releaseProviderCooldownDisableOwnership } = await import("../../providers/cap-cooldown");
+    if (Object.hasOwn(rawBody, "disabled")) {
+      releaseProviderCooldownDisableOwnership(config, name);
+    }
     config.providers[name] = stripRegistryOnlyStaticHeaders(name, next);
     save(config);
     if (editorTouched) {
@@ -463,6 +474,10 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
     }
     const { saveConfigPreservingClaudeCode: save } = await import("../../config");
     delete config.providers[name];
+    // The cooldown belonged to the deleted provider instance; a same-name provider created
+    // later must not inherit its disable-ownership (expiry would strip an operator disable).
+    const { clearProviderCapCooldown } = await import("../../providers/cap-cooldown");
+    clearProviderCapCooldown(config, name);
     setProviderContextCap(config, name, false);
     save(config);
     const { clearModelCache: clearCache } = await import("../../codex/model-cache");

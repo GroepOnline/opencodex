@@ -30,10 +30,17 @@ import {
   type UsageDebugBodyKind,
 } from "../usage/debug";
 import { matchesLogConversationId } from "./request-log-conversation";
+import { recordProviderCapCooldownLive } from "../providers/cap-cooldown";
 
 export interface RequestLogContext {
   model: string;
   provider: string;
+  /**
+   * The `config.providers` key this request actually routed to. `provider` is a *display*
+   * label that can carry a Codex account suffix (`chatgpt-work`), which collides with a real
+   * provider of that name — so cap-cooldown attribution must use this, never `provider`.
+   */
+  providerConfigKey?: string;
   /** TTFT: ms from request start to the first non-empty model output delta (WP4, devlog 040). */
   firstOutputMs?: number;
   /** Best-effort chat/session correlation for Logs grouping (#330). Opaque; omit when unknown. */
@@ -661,6 +668,15 @@ export function addFinalRequestLog(
     ? 499
     : status;
   const errorCode = requestLogErrorCode(effectiveStatus, logCtx.upstreamError);
+  // Hard weekly/inference caps: mutate the LIVE server config (bound at startServer).
+  const cooldownProvider = logCtx.providerConfigKey || logCtx.provider;
+  if ((effectiveStatus === 429 || effectiveStatus === 402) && cooldownProvider && cooldownProvider !== "combo") {
+    try {
+      recordProviderCapCooldownLive(cooldownProvider, effectiveStatus, logCtx.upstreamError);
+    } catch {
+      /* best-effort: never break request finalization */
+    }
+  }
   // A response.failed whose classified status is 499 is still a client cancel, not an upstream
   // terminal failure — keep /api/logs closeReason aligned with that.
   const closeReason = effectiveStatus === 499

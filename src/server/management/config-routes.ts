@@ -27,6 +27,7 @@ import { isStreamMode } from "../../lib/bun-stream-caps";
 import { enrichProviderFromCatalog, listKeyLoginProviders } from "../../oauth/key-providers";
 import { deriveProviderPresets } from "../../providers/derive";
 import { providerCodexAccountMode } from "../../providers/registry";
+import { expireProviderCooldowns } from "../../providers/cap-cooldown";
 import { routedSlug, slugEquals } from "../../providers/slug-codec";
 import { clearProviderQuotaCache, fetchProviderQuotaReports } from "../../providers/quota";
 import { isCanonicalOpenAiForwardProvider } from "../../providers/openai-tiers";
@@ -67,6 +68,7 @@ import type { ManagementContext } from "./context";
 export async function handleConfigRoutes(ctx: ManagementContext): Promise<Response | null> {
   const { req, url, config, deps, refreshCodexCatalogBestEffort, syncClaudeAgentDefsBestEffort } = ctx;
   if (url.pathname === "/api/config" && req.method === "GET") {
+    if (expireProviderCooldowns(config)) saveConfigPreservingClaudeCode(config);
     return jsonResponse(safeConfigDTO(config));
   }
 

@@ -818,6 +818,9 @@ async function applyFinalRouteRequestNormalization(args: {
   route.provider = resolveWireProtocolOverride(route.providerName, route.modelId, route.provider);
   logCtx.model = route.modelId;
   logCtx.provider = route.providerName;
+  // `logCtx.provider` is later rewritten to a display label with a Codex account suffix; keep
+  // the raw config key so cap-cooldown never disables an unrelated same-named provider.
+  logCtx.providerConfigKey = route.providerName;
   logCtx.providerAdapter = route.provider.adapter;
 
   // Final selected model before virtual wire-model rewriting (Pro aliases).

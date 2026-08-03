@@ -14,6 +14,7 @@ import {
 import { providerDestinationConfigError } from "../lib/destination-policy";
 import { getProviderRegistryEntry, providerCodexAccountMode, providerMatchesRegistryTransport } from "../providers/registry";
 import { providerConfigSeed } from "../providers/derive";
+import { activeProviderCooldowns } from "../providers/cap-cooldown";
 import type { OcxConfig, OcxProviderConfig } from "../types";
 import { openRouterRoutingConfigError } from "../providers/openrouter-routing";
 
@@ -428,6 +429,7 @@ export function safeConfigDTO(config: OcxConfig): unknown {
     if (codexAccountMode) dto.codexAccountMode = codexAccountMode;
     providers[name] = dto;
   }
+  const activeCooldowns = activeProviderCooldowns(config);
   return {
     port: config.port,
     hostname: config.hostname ?? "127.0.0.1",
@@ -435,5 +437,6 @@ export function safeConfigDTO(config: OcxConfig): unknown {
     codexAutoStart: codexAutoStartEnabled(config),
     websockets: config.websockets,
     providers,
+    ...(Object.keys(activeCooldowns).length > 0 ? { providerCooldowns: activeCooldowns } : {}),
   };
 }
