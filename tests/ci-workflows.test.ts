@@ -37,8 +37,15 @@ describe("GitHub Actions hardening", () => {
     // `npm-global-smoke` stays at 8; it finishes in 1-2 minutes.
     expect(count(workflow, "timeout-minutes: 20")).toBe(1);
     expect(count(workflow, "timeout-minutes: 8")).toBe(1);
-    // Both jobs must stay bounded — an unbounded job can hang a queue for hours.
-    expect(count(workflow, "timeout-minutes:")).toBe(2);
+    // EVERY job must stay bounded — an unbounded job can hang a queue for hours.
+    // Derived from the job set rather than a hardcoded count, so adding a job
+    // without a ceiling fails here instead of quietly changing the expectation.
+    const jobs = (Bun.YAML.parse(workflow) as { jobs?: Record<string, { "timeout-minutes"?: number }> }).jobs ?? {};
+    const unbounded = Object.entries(jobs)
+      .filter(([, job]) => typeof job?.["timeout-minutes"] !== "number")
+      .map(([name]) => name);
+    expect(unbounded).toEqual([]);
+    expect(count(workflow, "timeout-minutes:")).toBe(Object.keys(jobs).length);
     expect(workflow).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");
     expect(workflow).toContain("oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6");
     expect(workflow).toContain("actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e");
@@ -47,6 +54,8 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toContain("bun run scripts/test.ts");
     expect(workflow).toContain("bun run scripts/ci-test-shard.ts");
     expect(workflow).not.toContain("bun test --isolate tests");
+    expect(workflow).toContain("raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7");
+    expect(workflow).toContain("bun audit --audit-level=high");
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
   });
 
@@ -103,6 +112,7 @@ describe("GitHub Actions hardening", () => {
       ".gitattributes",
       ".github/workflows/ci.yml",
       ".github/workflows/enforce-pr-target.yml",
+      ".github/workflows/issue-triage.yml",
       ".github/workflows/release.yml",
       ".github/workflows/stale-needs-info.yml",
       ".npmignore",
