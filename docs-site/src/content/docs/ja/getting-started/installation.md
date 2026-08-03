@@ -18,7 +18,7 @@ opencodex をインストールすると同じ実行ファイルを指す `ocx` 
 ## インストール
 
 ```bash
-npm install -g @bitkyc08/opencodex
+npm install -g @onlinechefgroep/opencodex
 ```
 
 :::note[npm が bun の postinstall をブロックした?]
@@ -29,10 +29,10 @@ install-scripts ... blocked because they are not covered by allowScripts`)。
 ディレクトリを再インストールしてしまうので、必ずパッケージ名を明示してください:
 
 ```bash
-npm install -g --allow-scripts=bun @bitkyc08/opencodex
+npm install -g --allow-scripts=bun @onlinechefgroep/opencodex
 
 # 最初に sudo でインストールした場合は sudo を維持してください:
-sudo npm install -g --allow-scripts=bun @bitkyc08/opencodex
+sudo npm install -g --allow-scripts=bun @onlinechefgroep/opencodex
 ```
 :::
 
@@ -50,7 +50,7 @@ GPT-5.6 Sol/Terra/Luna カタログ情報がすでに含まれています。た
 ありません。まだ正式配布されていない opencodex ビルドを試す場合のみ preview チャネルを使ってください:
 
 ```bash
-npm install -g @bitkyc08/opencodex@preview
+npm install -g @onlinechefgroep/opencodex@preview
 ocx update --tag preview
 ```
 

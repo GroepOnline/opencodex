@@ -4,13 +4,13 @@ Two commands, and every one of them runs any LLM you point it at.</p>
 
 <p align="center">
   <a href="https://x.com/claudeebum"><img src="https://img.shields.io/badge/%40claudeebum-000000?logo=x&logoColor=white" alt="Follow @claudeebum on X"></a>
-  <a href="https://www.npmjs.com/package/@bitkyc08/opencodex"><img src="https://img.shields.io/npm/v/@bitkyc08/opencodex?color=cb3837&label=npm&logo=npm" alt="npm version"></a>
-  <a href="https://github.com/OnlineChefGroep/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@bitkyc08/opencodex?color=blue" alt="license"></a>
-  <img src="https://img.shields.io/node/v/@bitkyc08/opencodex?logo=node.js&label=node" alt="node version">
+  <a href="https://www.npmjs.com/package/@onlinechefgroep/opencodex"><img src="https://img.shields.io/npm/v/@onlinechefgroep/opencodex?color=cb3837&label=npm&logo=npm" alt="npm version"></a>
+  <a href="https://github.com/OnlineChefGroep/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@onlinechefgroep/opencodex?color=blue" alt="license"></a>
+  <img src="https://img.shields.io/node/v/@onlinechefgroep/opencodex?logo=node.js&label=node" alt="node version">
 </p>
 
 ```bash
-npm install -g @bitkyc08/opencodex
+npm install -g @onlinechefgroep/opencodex
 ocx start        # proxy + dashboard on localhost:10100
 ```
 
@@ -95,7 +95,7 @@ Requires [Node](https://nodejs.org) 18+. The Bun runtime is bundled automaticall
 ```bash
 # Install (bundles the Bun runtime automatically — only Node 18+ required)
 # Prefer a user-owned Node (nvm/fnm) — avoid `sudo npm install -g …`
-npm install -g @bitkyc08/opencodex
+npm install -g @onlinechefgroep/opencodex
 
 # Interactive setup (writes config, injects into Codex, and offers autostart shim install)
 ocx init
@@ -122,15 +122,15 @@ launcher, so you do **not** need to install Bun yourself. If you see a
 dependencies. Reinstall without those flags, allowing bun's install script:
 
 ```bash
-npm install -g --allow-scripts=bun @bitkyc08/opencodex   # no --ignore-scripts, no --omit=optional
+npm install -g --allow-scripts=bun @onlinechefgroep/opencodex   # no --ignore-scripts, no --omit=optional
 
 # if the original install used sudo, keep using sudo:
-sudo npm install -g --allow-scripts=bun @bitkyc08/opencodex
+sudo npm install -g --allow-scripts=bun @onlinechefgroep/opencodex
 ```
 
 npm's own warning suggests an abbreviated command without the package name —
 that would reinstall the current directory, so always pass
-`@bitkyc08/opencodex` explicitly.
+`@onlinechefgroep/opencodex` explicitly.
 
 If you installed with `sudo` into a root-owned prefix, the sudo reinstall above
 unblocks that prefix — but prefer migrating to a user-owned Node (nvm, fnm, or
@@ -381,7 +381,7 @@ Before removing the npm package, clean up local state:
 
 ```bash
 ocx uninstall
-npm uninstall -g @bitkyc08/opencodex
+npm uninstall -g @onlinechefgroep/opencodex
 ```
 
 `ocx uninstall` stops the proxy, removes any installed service, removes the Codex shim, restores

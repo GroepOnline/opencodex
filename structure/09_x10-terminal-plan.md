@@ -107,7 +107,7 @@ maintainer-controlled release step.
 **Goal:** A stranger can install OnlineChefGroep ocx and know it is ours.
 
 1. Publish `v1.0.0-preview.1` from reconciled `main` (release workflow + evidence in CHANGELOG). The release contract (`scripts/release.ts`, `release.yml`) only accepts prereleases shaped `X.Y.Z-preview.N` on the `preview` dist-tag; `-alpha` versions are rejected before publication.
-2. Canonical npm scope under OnlineChefGroep control; keep `@bitkyc08/opencodex` compatibility path documented.
+2. Canonical npm scope under OnlineChefGroep control; keep the legacy `@bitkyc08/opencodex` compatibility path documented.
 3. Align `package.json` / README / docs-site / star-prompt / update URLs on both branches.
 4. Deploy fork docs to GitHub Pages (replace upstream `opencodex.me` assumptions).
 5. Upstream intake policy doc (security/protocol only; no release dependence).

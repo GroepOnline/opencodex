@@ -1,5 +1,5 @@
 {
-  "name": "@bitkyc08/opencodex",
+  "name": "@onlinechefgroep/opencodex",
   "version": "2.7.43",
   "description": "OnlineChefGroep fork — Universal provider proxy for OpenAI Codex & Claude Code. Use any LLM with Codex CLI/App/SDK and Claude Code.",
   "type": "module",

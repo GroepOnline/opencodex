@@ -18,7 +18,7 @@ vision 和网络搜索 sidecar 也可以使用你的 ChatGPT 登录凭据。
 ## 安装
 
 ```bash
-npm install -g @bitkyc08/opencodex
+npm install -g @onlinechefgroep/opencodex
 ```
 
 :::note[npm 拦截了 bun postinstall？]
@@ -28,10 +28,10 @@ blocked because they are not covered by allowScripts`），导致捆绑的 Bun
 缺少包名，会把当前目录重新安装进去，请始终显式写上包名：
 
 ```bash
-npm install -g --allow-scripts=bun @bitkyc08/opencodex
+npm install -g --allow-scripts=bun @onlinechefgroep/opencodex
 
 # 如果最初是用 sudo 安装的，请继续使用 sudo：
-sudo npm install -g --allow-scripts=bun @bitkyc08/opencodex
+sudo npm install -g --allow-scripts=bun @onlinechefgroep/opencodex
 ```
 :::
 
@@ -49,7 +49,7 @@ GPT-5.6 Sol/Terra/Luna 目录信息，但这些条目本身不会授予上游模
 opencodex 构建时，才需要使用 preview 渠道：
 
 ```bash
-npm install -g @bitkyc08/opencodex@preview
+npm install -g @onlinechefgroep/opencodex@preview
 ocx update --tag preview
 ```
 

@@ -28,7 +28,7 @@ feel 10× less frictional than stock upstream for ChefGroep kitchens.
 - [x] **CI hardening** — `.github/dependabot.yml`, Security audit job (both lockfiles), pinned actionlint job on `dev` (#60)
 - [ ] **Release docs scaffolding** — `VERSIONING.md`, `RELEASE_PROCESS.md`, `CHANGELOG.md` (not yet present)
 - [ ] **Publish first fork release (`v1.0.0-preview.1`)** — tag from reconciled `main`, guarded release workflow, npm install evidence
-- [ ] **Canonical npm ownership** — OnlineChefGroep-controlled scope + compatibility path for `@bitkyc08/opencodex`
+- [ ] **Canonical npm ownership** — package renamed to `@onlinechefgroep/opencodex` in-repo (updater, installers, release automation); still needed: claim the npm scope, set `NPM_TOKEN`, publish first release, and document the compatibility path for legacy `@bitkyc08/opencodex` installs
 - [ ] **Docs Pages for the fork** — deploy docs-site with OnlineChefGroep URLs (not upstream domain assumptions)
 - [ ] **Upstream intake policy** — security/protocol/client-compat only; no release dependence
 - [x] **ROADMAP/docs truth pass** — verified against `dev`: no CodeQL workflow exists (and no doc claims one), `tsconfig.json` has `"strict": true`; required-CI-check names for the shard jobs need no GitHub update because no branch protection rule is configured yet (see `MAINTAINERS.md`) — record the new job names (`windows-latest shard 2/2`, `macos-quality`, `windows-quality`) when protection is set up

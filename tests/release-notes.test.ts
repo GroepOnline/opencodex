@@ -104,7 +104,7 @@ describe("previousReleaseNotesTag", () => {
 describe("stripCarriedReleaseNotes", () => {
   test("keeps PR categories and drops npm blurb, commits, and compare link", () => {
     const body = [
-      "Published to npm as `@bitkyc08/opencodex@2.7.39-preview.20260724` with dist-tag `preview`.",
+      "Published to npm as `@onlinechefgroep/opencodex@2.7.39-preview.20260724` with dist-tag `preview`.",
       "",
       "<!-- Release notes generated using configuration in .github/release.yml at abc -->",
       "",
@@ -138,7 +138,7 @@ describe("stripCarriedReleaseNotes", () => {
 
   test("commits-only preview bodies strip to non-meaningful notes", () => {
     const body = [
-      "Published to npm as `@bitkyc08/opencodex@2.7.39-preview.20260724` with dist-tag `preview`.",
+      "Published to npm as `@onlinechefgroep/opencodex@2.7.39-preview.20260724` with dist-tag `preview`.",
       "",
       "<!-- Release notes generated using configuration in .github/release.yml at abc -->",
       "",
@@ -209,7 +209,7 @@ describe("selectNewestCarriedPreviewTag", () => {
 describe("assembleReleaseNotes", () => {
   test("copies preview notes and appends only the since-preview delta", () => {
     const notes = assembleReleaseNotes({
-      npmMetadata: "Published to npm as `@bitkyc08/opencodex@2.7.39` with dist-tag `latest`.",
+      npmMetadata: "Published to npm as `@onlinechefgroep/opencodex@2.7.39` with dist-tag `latest`.",
       carriedPreviewNotes: "## What's Changed\n### Bug Fixes\n* fix A",
       deltaPrNotes: "## What's Changed\n### Bug Fixes\n* fix B",
       commits: "- release: v2.7.39 (357acee6)",

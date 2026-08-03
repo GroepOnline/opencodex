@@ -4,13 +4,13 @@
 
 <p align="center">
   <a href="https://x.com/claudeebum"><img src="https://img.shields.io/badge/%40claudeebum-000000?logo=x&logoColor=white" alt="Подписывайтесь на @claudeebum в X"></a>
-  <a href="https://www.npmjs.com/package/@bitkyc08/opencodex"><img src="https://img.shields.io/npm/v/@bitkyc08/opencodex?color=cb3837&label=npm&logo=npm" alt="npm version"></a>
-  <a href="https://github.com/OnlineChefGroep/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@bitkyc08/opencodex?color=blue" alt="license"></a>
-  <img src="https://img.shields.io/node/v/@bitkyc08/opencodex?logo=node.js&label=node" alt="node version">
+  <a href="https://www.npmjs.com/package/@onlinechefgroep/opencodex"><img src="https://img.shields.io/npm/v/@onlinechefgroep/opencodex?color=cb3837&label=npm&logo=npm" alt="npm version"></a>
+  <a href="https://github.com/OnlineChefGroep/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@onlinechefgroep/opencodex?color=blue" alt="license"></a>
+  <img src="https://img.shields.io/node/v/@onlinechefgroep/opencodex?logo=node.js&label=node" alt="node version">
 </p>
 
 ```bash
-npm install -g @bitkyc08/opencodex
+npm install -g @onlinechefgroep/opencodex
 ocx start        # прокси + дашборд: localhost:10100
 ```
 
@@ -80,7 +80,7 @@ flowchart LR
 ```bash
 # Установка (рантайм Bun добавляется автоматически — нужен только Node 18+)
 # Предпочитайте Node, принадлежащий пользователю (nvm/fnm), — избегайте `sudo npm install -g …`
-npm install -g @bitkyc08/opencodex
+npm install -g @onlinechefgroep/opencodex
 
 # Интерактивная настройка (записывает конфигурацию, встраивается в Codex и предлагает установить shim автозапуска)
 ocx init
@@ -107,15 +107,15 @@ opencodex поставляет рантайм Bun как зависимость 
 зависимости. Переустановите пакет без этих флагов, разрешив установочный скрипт Bun:
 
 ```bash
-npm install -g --allow-scripts=bun @bitkyc08/opencodex   # без --ignore-scripts и без --omit=optional
+npm install -g --allow-scripts=bun @onlinechefgroep/opencodex   # без --ignore-scripts и без --omit=optional
 
 # если первоначальная установка выполнялась через sudo, продолжайте использовать sudo:
-sudo npm install -g --allow-scripts=bun @bitkyc08/opencodex
+sudo npm install -g --allow-scripts=bun @onlinechefgroep/opencodex
 ```
 
 Собственное предупреждение npm предлагает сокращённую команду без имени пакета —
 такая команда переустановит текущий каталог, поэтому всегда указывайте
-`@bitkyc08/opencodex` явно.
+`@onlinechefgroep/opencodex` явно.
 
 Если вы устанавливали пакет через `sudo` в prefix, принадлежащий root, показанная выше
 переустановка с sudo разблокирует этот prefix — но при возможности лучше перейти на Node,
@@ -332,7 +332,7 @@ shim включён по умолчанию и отключается в GUI-п�
 
 ```bash
 ocx uninstall
-npm uninstall -g @bitkyc08/opencodex
+npm uninstall -g @onlinechefgroep/opencodex
 ```
 
 `ocx uninstall` останавливает прокси, удаляет установленную службу, удаляет shim для Codex,
