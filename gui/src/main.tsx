@@ -6,7 +6,10 @@ import "@fontsource-variable/archivo/wght.css";
 import "@fontsource-variable/jetbrains-mono";
 import App from "./App";
 import { LanguageProvider } from "./i18n/provider";
+import { initPostHog } from "./posthog";
 import "./styles.css";
+
+initPostHog();
 
 // ChefGroep design language ships two complete skins (design-system §14).
 // devin (warm, default) is the :root skin; strak (cool, sharp) is opt-in via
