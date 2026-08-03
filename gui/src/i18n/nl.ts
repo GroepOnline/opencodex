@@ -195,6 +195,12 @@ const overrides: Partial<Record<TKey, string>> = {
   "vk.detailStatus": "status {status}",
   "vk.detailUpstream": "upstream: {error}",
   "vk.detailId": "id {id}",
+
+  // Provider Models tab (visibility toggles)
+  "models.allOn": "Alles aan",
+  "models.allOff": "Alles uit",
+  "pws.copyModelIdFor": "Kopieer ID van {model}",
+  "pws.modelCopiedFor": "{model} gekopieerd",
 };
 
 export const nl: Record<TKey, string> = { ...en, ...overrides };

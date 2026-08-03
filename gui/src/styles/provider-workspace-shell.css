@@ -916,6 +916,32 @@
   text-align: left;
 }
 
+.pws-models-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pws-models-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.pws-models-toolbar .pws-model-search {
+  flex: 1;
+  min-width: 160px;
+  margin: 0;
+}
+
+.pws-models-bulk {
+  display: inline-flex;
+  gap: 4px;
+}
+
 .pws-model-chip {
   display: inline-flex;
   align-items: center;
@@ -925,6 +951,15 @@
   border: 1px solid color-mix(in oklab, var(--border) 85%, transparent);
   border-radius: 8px;
   background: color-mix(in oklab, var(--surface, var(--panel)) 92%, var(--text) 4%);
+}
+
+.pws-model-chip-off {
+  opacity: 0.55;
+}
+
+.pws-model-usage {
+  display: block;
+  margin-top: 2px;
 }
 
 .pws-model-chip-main {
