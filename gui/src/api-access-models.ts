@@ -43,3 +43,25 @@ export function classifyExternalModel(row: {
 export function externalModelId(model: ExternalModelRow): string {
   return model.id;
 }
+
+/**
+ * Map a management `/api/models` row to the external catalog shape. Fallback for
+ * when the data-plane `/v1/models` requires a credential the GUI does not hold
+ * (non-loopback binds authenticate the dashboard with a management session, which
+ * the data plane rejects by design). Rows external clients cannot call (disabled
+ * or client-hidden) return null. `namespaced` carries the callable slug
+ * (alias-first, same precedence as the public list).
+ */
+export function externalModelFromAdminRow(row: unknown): ExternalModelRow | null {
+  if (typeof row !== "object" || row === null) return null;
+  const r = row as Record<string, unknown>;
+  if (typeof r.namespaced !== "string" || !r.namespaced) return null;
+  if (r.disabled === true || r.clientHidden === true) return null;
+  const classified = classifyExternalModel({
+    id: r.namespaced,
+    owned_by: typeof r.provider === "string" ? r.provider : undefined,
+  });
+  return typeof r.displayName === "string" && r.displayName.trim()
+    ? { ...classified, displayName: r.displayName }
+    : classified;
+}

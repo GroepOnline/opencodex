@@ -4,6 +4,7 @@ import { useI18n, LOCALES } from "../i18n/shared";
 import { readJsonIfOk, readJsonOrThrow } from "../fetch-json";
 import {
   classifyExternalModel,
+  externalModelFromAdminRow,
   externalModelId,
   type ExternalModelRow,
 } from "../api-access-models";
@@ -37,6 +38,49 @@ type CachedKeysShape = {
   endpoints: ApiEndpointInfo;
   claudeCodeEnabled: boolean;
 };
+
+/**
+ * Public catalog via the data plane. Fails (null) on non-loopback binds because the
+ * GUI holds a management session, not a data-plane key; the caller then falls back
+ * to the management catalog below.
+ */
+async function fetchPublicModelRows(apiBase: string): Promise<ExternalModelRow[] | null> {
+  try {
+    const res = await fetch(`${apiBase}/v1/models`);
+    if (!res.ok) return null;
+    const data = await res.json() as unknown;
+    const rawRows = Array.isArray(data)
+      ? data
+      : (typeof data === "object" && data !== null && Array.isArray((data as { data?: unknown }).data)
+        ? (data as { data: unknown[] }).data
+        : null);
+    if (!rawRows) return null;
+    return rawRows
+      .filter((row): row is { id: string; owned_by?: string } => (
+        typeof row === "object"
+        && row !== null
+        && typeof (row as { id?: unknown }).id === "string"
+      ))
+      .map(row => classifyExternalModel(row));
+  } catch {
+    return null;
+  }
+}
+
+/** Management catalog fallback: session-authenticated, filtered to callable rows. */
+async function fetchAdminModelRows(apiBase: string): Promise<ExternalModelRow[] | null> {
+  try {
+    const res = await fetch(`${apiBase}/api/models`);
+    if (!res.ok) return null;
+    const data = await res.json() as unknown;
+    if (!Array.isArray(data)) return null;
+    return data
+      .map(row => externalModelFromAdminRow(row))
+      .filter((row): row is ExternalModelRow => row !== null);
+  } catch {
+    return null;
+  }
+}
 
 /** Seed copyable endpoints only when apiBase has a usable origin/host. */
 function seedEndpointsFromApiBase(apiBase: string): ApiEndpointInfo {
@@ -119,31 +163,13 @@ export default function ApiKeys({ apiBase }: { apiBase: string }) {
     if (!hasModelsCacheRef.current) setModelsLoading(true);
     setModelsLoadFailed(false);
     try {
-      const res = await fetch(`${apiBase}/v1/models`);
-      if (!res.ok) {
-        if (!hasModelsCacheRef.current) setModels([]);
-        setModelsLoadFailed(true);
-        return;
-      }
-      const data = await res.json() as unknown;
-      const rawRows = Array.isArray(data)
-        ? data
-        : (typeof data === "object" && data !== null && Array.isArray((data as { data?: unknown }).data)
-          ? (data as { data: unknown[] }).data
-          : null);
+      const rawRows = (await fetchPublicModelRows(apiBase)) ?? (await fetchAdminModelRows(apiBase));
       if (!rawRows) {
         if (!hasModelsCacheRef.current) setModels([]);
         setModelsLoadFailed(true);
         return;
       }
-      const rows = rawRows
-        .filter((row): row is { id: string; owned_by?: string } => (
-          typeof row === "object"
-          && row !== null
-          && typeof (row as { id?: unknown }).id === "string"
-        ))
-        .map(row => classifyExternalModel(row))
-        .sort((a, b) => externalModelId(a).localeCompare(externalModelId(b)));
+      const rows = rawRows.toSorted((a, b) => externalModelId(a).localeCompare(externalModelId(b)));
       setModels(rows);
       hasModelsCacheRef.current = true;
       writeSessionListCache(modelsCacheKey, rows);
