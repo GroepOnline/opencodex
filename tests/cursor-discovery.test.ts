@@ -52,6 +52,30 @@ describe("Cursor discovery metadata", () => {
     expect(cursorModelContextWindows(CURSOR_STATIC_MODELS)["composer-2.5-fast"]).toBe(200_000);
   });
 
+  test("thinking ids and gemini-3.6-flash carry exact windows and no effort tiers", () => {
+    // Table-driven guard for the static seeds added with the `-thinking` catalog expansion:
+    // exact wire id, exact context window, and an empty reasoning-effort list (no tier picker
+    // until effort-suffixed variants are verified in GetUsableModels).
+    const expectations: ReadonlyArray<{ id: string; contextWindow: number }> = [
+      { id: "claude-opus-5-thinking", contextWindow: 200_000 },
+      { id: "claude-opus-4-8-thinking", contextWindow: 200_000 },
+      { id: "claude-opus-4-7-thinking", contextWindow: 200_000 },
+      { id: "claude-fable-5-thinking", contextWindow: 200_000 },
+      { id: "claude-sonnet-5-thinking", contextWindow: 200_000 },
+      { id: "gemini-3.6-flash", contextWindow: 1_048_576 },
+    ];
+
+    const ids = cursorModelIds(CURSOR_STATIC_MODELS);
+    const contextWindows = cursorModelContextWindows(CURSOR_STATIC_MODELS);
+    const efforts = cursorModelReasoningEfforts(CURSOR_STATIC_MODELS);
+
+    for (const expected of expectations) {
+      expect(ids).toContain(expected.id);
+      expect(contextWindows[expected.id]).toBe(expected.contextWindow);
+      expect(efforts[expected.id]).toEqual([]);
+    }
+  });
+
   test("auto is not activated by live GetUsableModels wire ids alone", () => {
     expect(isCursorModelAvailableForAccount("gpt-5.4", ["gpt-5.4-high"])).toBe(true);
     expect(isCursorModelAvailableForAccount("claude-fable-5", ["gpt-5.4-high"])).toBe(false);

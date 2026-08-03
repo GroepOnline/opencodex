@@ -63,11 +63,21 @@ export function credentialsFromCursorTokens(accessToken: string, refreshToken: s
   };
 }
 
+export interface CursorLoginOpts {
+  /** When true (Add account / reauth), force the browser account picker so a second identity can be chosen. */
+  forceAccountSelect?: boolean;
+  /** Injectable poll cadence for tests; production uses the default. */
+  pollBaseDelayMs?: number;
+}
+
 /** Generate PKCE params + the cursor.com deep-link login URL (challenge only — never the verifier). */
-export async function generateCursorAuthParams(): Promise<CursorAuthParams> {
+export async function generateCursorAuthParams(opts?: Pick<CursorLoginOpts, "forceAccountSelect">): Promise<CursorAuthParams> {
   const { verifier, challenge } = await generatePKCE();
   const uuid = crypto.randomUUID();
   const params = new URLSearchParams({ challenge, uuid, mode: "login", redirectTarget: "cli" });
+  // select_account mirrors google-antigravity: without it, an already-signed-in browser session
+  // re-approves the same JWT `sub` and multiauth updates the existing row instead of appending.
+  if (opts?.forceAccountSelect) params.set("prompt", "select_account");
   return { verifier, challenge, uuid, loginUrl: `${CURSOR_LOGIN_URL}?${params.toString()}` };
 }
 
@@ -138,11 +148,23 @@ export async function pollCursorAuth(
 /** Run the standalone Cursor login: surface the URL via `onAuth`, then poll until approved. */
 export async function loginCursor(
   ctrl: OAuthController,
-  pollBaseDelayMs: number = POLL_BASE_DELAY_MS,
+  optsOrPollDelay: CursorLoginOpts | number = {},
 ): Promise<OAuthCredentials> {
-  const { verifier, uuid, loginUrl } = await generateCursorAuthParams();
-  ctrl.onAuth?.({ url: loginUrl, instructions: "Approve the Cursor login in your browser, then return here." });
-  ctrl.onProgress?.("Waiting for Cursor login approval…");
+  const opts: CursorLoginOpts = typeof optsOrPollDelay === "number"
+    ? { pollBaseDelayMs: optsOrPollDelay }
+    : optsOrPollDelay;
+  const forceAccountSelect = opts.forceAccountSelect === true;
+  const pollBaseDelayMs = opts.pollBaseDelayMs ?? POLL_BASE_DELAY_MS;
+  const { verifier, uuid, loginUrl } = await generateCursorAuthParams({ forceAccountSelect });
+  ctrl.onAuth?.({
+    url: loginUrl,
+    instructions: forceAccountSelect
+      ? "Choose the Cursor account to add in your browser, approve the login, then return here."
+      : "Approve the Cursor login in your browser, then return here.",
+  });
+  ctrl.onProgress?.(forceAccountSelect
+    ? "Waiting for Cursor account selection…"
+    : "Waiting for Cursor login approval…");
   const { accessToken, refreshToken } = await pollCursorAuth(uuid, verifier, ctrl.signal, pollBaseDelayMs);
   return credentialsFromCursorTokens(accessToken, refreshToken);
 }

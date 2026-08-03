@@ -167,7 +167,8 @@ export const CURSOR_STATIC_MODELS: readonly CursorModelInfo[] = normalizeCursorM
   // the request builder appends the per-model suffix (see effort-map.ts) and reasoning models
   // advertise effort so Codex exposes the tier picker. `supportsReasoningEffort` tracks whether the
   // model has *selectable effort tiers* (CURSOR_MODEL_EFFORT_TIERS), NOT merely whether it reasons:
-  // gemini/grok/kimi-k2.7/gpt-5-mini are reasoning models in the SOT but are sent bare (no tier picker).
+  // gemini/gpt-5-mini/kimi-k2.7-code are reasoning models in the SOT but are sent bare (no tier
+  // picker), while grok-4.5* and kimi-k3 do have verified tiers in the effort map.
   ...CURSOR_ROUTER_MODEL_IDS.map(id => ({ id, contextWindow: CONTEXT_200K, supportsReasoningEffort: false })),
 
   { id: "claude-sonnet-5", contextWindow: CONTEXT_200K, supportsReasoningEffort: true },
@@ -227,6 +228,15 @@ export const CURSOR_STATIC_MODELS: readonly CursorModelInfo[] = normalizeCursorM
   // kimi-k3: cursor.com/docs/models/kimi-k3; account-verified via GetUsableModels (2026-07-28) —
   // ships only as effort-suffixed kimi-k3-{low,high,max}, so the tier picker is exposed.
   { id: "kimi-k3", contextWindow: CONTEXT_262K, supportsReasoningEffort: true },
+  // `-thinking` ids are complete Cursor wire ids (the historical `claude-*-thinking` naming), and no
+  // `-thinking-<effort>` variant is verified in GetUsableModels -> no tier picker, sent bare like
+  // claude-opus-4-7-fast. Give them effort-map tiers only once live ids confirm the suffixes.
+  { id: "claude-opus-5-thinking", contextWindow: CONTEXT_200K },
+  { id: "claude-opus-4-8-thinking", contextWindow: CONTEXT_200K },
+  { id: "claude-opus-4-7-thinking", contextWindow: CONTEXT_200K },
+  { id: "claude-fable-5-thinking", contextWindow: CONTEXT_200K },
+  { id: "claude-sonnet-5-thinking", contextWindow: CONTEXT_200K },
+  { id: "gemini-3.6-flash", contextWindow: CONTEXT_GEMINI },
 
   { id: "grok-4.5", contextWindow: 500_000, supportsReasoningEffort: true },
   { id: "grok-4.5-fast", contextWindow: 500_000, supportsReasoningEffort: true },
