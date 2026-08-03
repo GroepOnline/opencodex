@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { localizedCopy } from "./helpers/shipped-locales";
 
 describe("Codex auth modal status feedback", () => {
   test("keeps a distinct submitted/waiting state for manual code login", async () => {
@@ -15,12 +16,15 @@ describe("Codex auth modal status feedback", () => {
     expect(waiting).toContain('aria-live="polite"');
   });
 
-  test("defines the new status copy in every shipped GUI locale", async () => {
-    // en.ts is the TKey source of truth; nl.ts spreads en and only overrides the
-    // Joep-facing copy, so untranslated keys fall back to English by design.
-    const source = await Bun.file("gui/src/i18n/en.ts").text();
-    expect(source).toContain('"codexAuth.oauthSubmittingCode"');
-    expect(source).toContain('"codexAuth.oauthCodeSubmitted"');
-    expect(source).toContain('"codexAuth.oauthStatusRetrying"');
+  test("defines the new status copy in every shipped GUI locale", () => {
+    const resolved = localizedCopy([
+      "codexAuth.oauthSubmittingCode",
+      "codexAuth.oauthCodeSubmitted",
+      "codexAuth.oauthStatusRetrying",
+    ]);
+    expect(resolved.length).toBeGreaterThan(0);
+    for (const { value } of resolved) {
+      expect(value.trim().length).toBeGreaterThan(0);
+    }
   });
 });

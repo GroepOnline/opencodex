@@ -1,23 +1,38 @@
 import { createContext, useContext } from "react";
-import { en, type TKey } from "./en";
-import { nl } from "./nl";
+import { DICTS, type Locale, type TKey } from "./dicts";
 
-export type Locale = "en" | "nl";
-export type { TKey };
-
-export const DICTS: Record<Locale, Record<TKey, string>> = { en, nl };
+export type { Locale, TKey };
+export { DICTS };
 
 export const LOCALES: { code: Locale; name: string; htmlLang: string }[] = [
-  { code: "en", name: "English", htmlLang: "en" },
   { code: "nl", name: "Nederlands", htmlLang: "nl" },
+  { code: "en", name: "English", htmlLang: "en" },
 ];
 
 const LANG_KEY = "ocx-lang";
+
+/**
+ * Locales this build no longer ships. A saved preference for one of them was an explicit
+ * "not Dutch" choice, so it migrates to English instead of falling through to the Dutch
+ * default below. The migrated value is written back so the mapping runs once per browser.
+ */
+const RETIRED_LOCALES: Record<string, Locale> = {
+  de: "en",
+  ja: "en",
+  ko: "en",
+  ru: "en",
+  zh: "en",
+};
 
 export function detectInitial(): Locale {
   try {
     const stored = localStorage.getItem(LANG_KEY);
     if (stored === "en" || stored === "nl") return stored;
+    const migrated = stored ? RETIRED_LOCALES[stored] : undefined;
+    if (migrated) {
+      try { localStorage.setItem(LANG_KEY, migrated); } catch { /* ignore */ }
+      return migrated;
+    }
   } catch { /* ignore */ }
   const nav = typeof navigator !== "undefined" ? navigator.language.toLowerCase() : "nl";
   if (nav.startsWith("en")) return "en";
