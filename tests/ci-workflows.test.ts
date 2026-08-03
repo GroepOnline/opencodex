@@ -42,7 +42,11 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");
     expect(workflow).toContain("oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6");
     expect(workflow).toContain("actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e");
-    expect(workflow).toContain("bun test --isolate tests");
+    // Both test paths must go through the canonical isolated-environment entry points, never a
+    // bare `bun test` that inherits the runner's real HOME and configuration.
+    expect(workflow).toContain("bun run scripts/test.ts");
+    expect(workflow).toContain("bun run scripts/ci-test-shard.ts");
+    expect(workflow).not.toContain("bun test --isolate tests");
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
   });
 
