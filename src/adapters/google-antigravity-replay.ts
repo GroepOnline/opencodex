@@ -16,6 +16,16 @@ interface ReplayEntry {
   expiresAtMs: number;
 }
 
+/**
+ * Official Google dummy signature that skips upstream validation
+ * (https://ai.google.dev/gemini-api/docs/thought-signatures). Vertex-style validators accept only
+ * this spelling, so it is the safe choice for Cloud Code Assist. Filled onto model functionCall
+ * parts whose real signature is unknown (proxy restart, TTL expiry, clear-on-invalid, or history
+ * imported from another model/session): Gemini-3 otherwise hard-fails the whole turn with
+ * HTTP 400 "Function call is missing a thought_signature". Degraded reasoning beats a dead session.
+ */
+export const DUMMY_THOUGHT_SIGNATURE = "skip_thought_signature_validator";
+
 const MIN_SIGNATURE_LEN = 16;
 const REPLAY_TTL_MS = 60 * 60 * 1000; // 1h
 const REPLAY_MAX_ENTRIES = 10_240;
@@ -99,15 +109,18 @@ export function observeAntigravityReplay(model: string, sessionId: string, parts
 
 /**
  * Re-inject cached thought signatures into the outgoing `request.contents`, matched by functionCall
- * identity across ALL model turns (not just the last one). Only fills a functionCall part that
- * lacks a real signature. Returns the same array reference (mutated in place).
+ * identity across ALL model turns (not just the last one). A functionCall part whose real signature
+ * is unknown (cache miss) is filled with `DUMMY_THOUGHT_SIGNATURE` instead of being left bare,
+ * because Gemini-3 rejects the entire turn (HTTP 400) on any uncovered functionCall part.
+ * Returns the same array reference (mutated in place).
  */
 export function applyAntigravityReplay(model: string, sessionId: string, contents: unknown[]): unknown[] {
   if (!antigravityUsesReplayCache(model) || !Array.isArray(contents)) return contents;
-  const entry = replayCache.get(replayKey(model, sessionId));
-  if (!entry || entry.expiresAtMs <= Date.now()) {
-    if (entry) replayCache.delete(replayKey(model, sessionId));
-    return contents;
+  const key = replayKey(model, sessionId);
+  let entry = replayCache.get(key);
+  if (entry && entry.expiresAtMs <= Date.now()) {
+    replayCache.delete(key);
+    entry = undefined;
   }
   for (const c of contents as { role?: string; parts?: unknown[] }[]) {
     if (!c || typeof c !== "object" || c.role !== "model" || !Array.isArray(c.parts)) continue;
@@ -116,10 +129,18 @@ export function applyAntigravityReplay(model: string, sessionId: string, content
       const part = raw as Record<string, unknown>;
       const fc = part.functionCall as { name?: unknown; args?: unknown } | undefined;
       if (!fc) continue;
-      if (part.thoughtSignature !== undefined || part.thought_signature !== undefined) continue;
       const ck = functionCallKey(fc.name, fc.args);
-      const sig = ck ? entry.byCall.get(ck) : undefined;
-      if (sig) part.thoughtSignature = sig;
+      const cached = ck ? entry?.byCall.get(ck) : undefined;
+      const existing = part.thoughtSignature ?? part.thought_signature;
+      if (existing !== undefined) {
+        // Upgrade a dummy left by a previous fallback roundtrip when the real signature is known.
+        if (cached && existing === DUMMY_THOUGHT_SIGNATURE) {
+          part.thoughtSignature = cached;
+          delete part.thought_signature;
+        }
+        continue;
+      }
+      part.thoughtSignature = cached ?? DUMMY_THOUGHT_SIGNATURE;
     }
   }
   return contents;

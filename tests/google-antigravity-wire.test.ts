@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createGoogleAdapter } from "../src/adapters/google";
 import { antigravitySessionId, isLikelyRealThoughtSignature } from "../src/adapters/google-antigravity-wire";
+import { DUMMY_THOUGHT_SIGNATURE } from "../src/adapters/google-antigravity-replay";
 import { ANTIGRAVITY_MODELS, ANTIGRAVITY_MODEL_EFFORTS, canonicalAntigravityUsageModel } from "../src/providers/antigravity-models";
 import type { AdapterEvent, OcxParsedRequest, OcxProviderConfig } from "../src/types";
 
@@ -401,7 +402,9 @@ describe("antigravity history preserves tool-call thoughtSignature", () => {
     const env = JSON.parse(req.body);
     const modelTurn = (env.request.contents as { role: string; parts: Record<string, unknown>[] }[]).find(c => c.role === "model");
     const fcPart = modelTurn?.parts.find(part => "functionCall" in part);
-    expect(fcPart?.thoughtSignature).toBeUndefined();
+    // The synthetic id is rejected; the replay fallback fills the documented dummy so the
+    // upstream never sees a bare functionCall part (hard 400 on Gemini-3).
+    expect(fcPart?.thoughtSignature).toBe(DUMMY_THOUGHT_SIGNATURE);
   });
 
   test("custom_tool_call item ids (ctc_...) from Claude/mixed history are NOT forwarded (issue #174)", async () => {
@@ -421,7 +424,8 @@ describe("antigravity history preserves tool-call thoughtSignature", () => {
     const env = JSON.parse(req.body);
     const modelTurn = (env.request.contents as { role: string; parts: Record<string, unknown>[] }[]).find(c => c.role === "model");
     const fcPart = modelTurn?.parts.find(part => "functionCall" in part);
-    expect(fcPart?.thoughtSignature).toBeUndefined();
+    // Same rejection path as fc_ ids: never the synthetic id, dummy fallback instead.
+    expect(fcPart?.thoughtSignature).toBe(DUMMY_THOUGHT_SIGNATURE);
   });
 });
 
