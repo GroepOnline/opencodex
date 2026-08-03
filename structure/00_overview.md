@@ -16,6 +16,8 @@ belong in `docs-site/`; historical investigations belong in `docs/`.
 | [`06_docs-and-release.md`](06_docs-and-release.md) | Public docs site, GitHub Pages, README ownership, release flow. |
 | [`07_design-methodology.md`](07_design-methodology.md) | Design process discipline for new GUI, CLI, and user-facing surfaces. |
 | [`08_openai-provider-tiers.md`](08_openai-provider-tiers.md) | OpenAI Pool/Direct account-mode and API credential/routing invariants. |
+| [`09_x10-terminal-plan.md`](09_x10-terminal-plan.md) | Fork audit, open-PR pickup, and OnlineChefGroep “terminal x10” execution plan. |
+| [`plugin-metrics-ratelimit-benchmarks.md`](plugin-metrics-ratelimit-benchmarks.md) | Staged plugin / metrics / rate-limit / benchmark lane plan. |
 
 ## Product boundary
 
