@@ -224,8 +224,18 @@ describe("GitHub Actions hardening", () => {
 
     // Dry-run first by default; tokenless trusted publishing only.
     expect(workflow).toMatch(/dry-run:[\s\S]*?default: true/);
-    expect(workflow).not.toContain("secrets.NPM_TOKEN");
-    expect(workflow).not.toContain("NODE_AUTH_TOKEN:");
+    // TEMPORARY (GRO-1004): the very first publish of a brand-new npm scope
+    // cannot use Trusted Publishing until the publisher exists on npmjs. The
+    // bootstrap token is gated behind an explicit first-publish input AND a
+    // marker comment, so it cannot silently persist: once the first version is
+    // live, remove the input+marker and this reverts to tokenless-only.
+    if (workflow.includes("first-publish")) {
+      expect(workflow).toContain("FIRST_PUBLISH_NPM_TOKEN");
+      expect(workflow).toContain("inputs.first-publish == true");
+    } else {
+      expect(workflow).not.toContain("secrets.NPM_TOKEN");
+      expect(workflow).not.toContain("NODE_AUTH_TOKEN:");
+    }
 
     // Immutable action references.
     expect(workflow).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");

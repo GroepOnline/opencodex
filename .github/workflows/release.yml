@@ -28,6 +28,17 @@ on:
         description: "Immutable release commit this dispatch must publish (fail if the branch moved)"
         required: false
         type: string
+      # TEMPORARY (GRO-1004): first publish of a brand-new npm scope cannot use
+      # Trusted Publishing (OIDC) until the publisher is configured on npmjs,
+      # which requires the package to exist first. Set true ONLY for the first
+      # publish, then keep false (tokenless) for every release after. The CI
+      # hardening test fails when true without the FIRST_PUBLISH_NPM_TOKEN
+      # marker below, so this cannot silently persist.
+      first-publish:
+        description: "Bootstrap first npm publish with NPM_TOKEN (one-time only)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write # create the matching GitHub Release + version tag after npm publish
@@ -253,6 +264,10 @@ jobs:
         env:
           DRY_RUN: ${{ inputs.dry-run }}
           NPM_DIST_TAG: ${{ inputs.tag }}
+          # TEMPORARY (GRO-1004): bootstrap-only token for the very first
+          # publish of a new scope. Trusted Publishing takes over afterwards.
+          # FIRST_PUBLISH_NPM_TOKEN marker is asserted by tests/ci-workflows.test.ts.
+          NODE_AUTH_TOKEN: ${{ inputs.first-publish == true && secrets.NPM_TOKEN || '' }}
         run: |
           if [ "$DRY_RUN" = "true" ]; then
             echo "::notice::DRY RUN — building + packing, not publishing"
