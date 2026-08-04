@@ -7,7 +7,7 @@ review and merge policy.
 
 | GitHub account | Project role | Responsibilities |
 | --- | --- | --- |
-| [@lidge-jun](https://github.com/lidge-jun) | Project owner | Project direction, releases, repository administration, and final governance decisions |
+| [@GroepOnline](https://github.com/GroepOnline) | Project owner | Project direction, releases, repository administration, and final governance decisions |
 | [@Ingwannu](https://github.com/Ingwannu) | Maintainer | Issue and pull-request triage, `dev` integration, security review, and repository maintenance |
 | [@Wibias](https://github.com/Wibias) | Maintainer | Issue and pull-request triage, `dev` integration, and provider/CI maintenance |
 
@@ -60,7 +60,7 @@ defects. Bun-native TypeScript on `dev` is the single runtime line again.
 
 - The branch has been deleted from this repository. Its full history is
   published at
-  [OnlineChefGroep/opencodex-go-archive](https://github.com/OnlineChefGroep/opencodex-go-archive),
+  [GroepOnline/opencodex-go-archive](https://github.com/GroepOnline/opencodex-go-archive),
   and its final tip stays reachable here as the `archive/dev2-go` tag.
 - A merge into `dev` carries no port obligation. The nine open `needs-go-port`
   issues (#661, #663, #666, #670, #674, #678, #680, #685, #703) were closed as

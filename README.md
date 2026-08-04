@@ -3,14 +3,13 @@
 Two commands, and every one of them runs any LLM you point it at.</p>
 
 <p align="center">
-  <a href="https://x.com/claudeebum"><img src="https://img.shields.io/badge/%40claudeebum-000000?logo=x&logoColor=white" alt="Follow @claudeebum on X"></a>
-  <a href="https://www.npmjs.com/package/@onlinechefgroep/opencodex"><img src="https://img.shields.io/npm/v/@onlinechefgroep/opencodex?color=cb3837&label=npm&logo=npm" alt="npm version"></a>
-  <a href="https://github.com/OnlineChefGroep/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@onlinechefgroep/opencodex?color=blue" alt="license"></a>
-  <img src="https://img.shields.io/node/v/@onlinechefgroep/opencodex?logo=node.js&label=node" alt="node version">
+  <a href="https://www.npmjs.com/package/@groeponline/opencodex"><img src="https://img.shields.io/npm/v/@groeponline/opencodex?color=cb3837&label=npm&logo=npm" alt="npm version"></a>
+  <a href="https://github.com/GroepOnline/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@groeponline/opencodex?color=blue" alt="license"></a>
+  <img src="https://img.shields.io/node/v/@groeponline/opencodex?logo=node.js&label=node" alt="node version">
 </p>
 
 ```bash
-npm install -g @onlinechefgroep/opencodex
+npm install -g @groeponline/opencodex
 ocx start        # proxy + dashboard on localhost:10100
 ```
 
@@ -95,7 +94,7 @@ Requires [Node](https://nodejs.org) 18+. The Bun runtime is bundled automaticall
 ```bash
 # Install (bundles the Bun runtime automatically — only Node 18+ required)
 # Prefer a user-owned Node (nvm/fnm) — avoid `sudo npm install -g …`
-npm install -g @onlinechefgroep/opencodex
+npm install -g @groeponline/opencodex
 
 # Interactive setup (writes config, injects into Codex, and offers autostart shim install)
 ocx init
@@ -122,15 +121,15 @@ launcher, so you do **not** need to install Bun yourself. If you see a
 dependencies. Reinstall without those flags, allowing bun's install script:
 
 ```bash
-npm install -g --allow-scripts=bun @onlinechefgroep/opencodex   # no --ignore-scripts, no --omit=optional
+npm install -g --allow-scripts=bun @groeponline/opencodex   # no --ignore-scripts, no --omit=optional
 
 # if the original install used sudo, keep using sudo:
-sudo npm install -g --allow-scripts=bun @onlinechefgroep/opencodex
+sudo npm install -g --allow-scripts=bun @groeponline/opencodex
 ```
 
 npm's own warning suggests an abbreviated command without the package name —
 that would reinstall the current directory, so always pass
-`@onlinechefgroep/opencodex` explicitly.
+`@groeponline/opencodex` explicitly.
 
 If you installed with `sudo` into a root-owned prefix, the sudo reinstall above
 unblocks that prefix — but prefer migrating to a user-owned Node (nvm, fnm, or
@@ -263,7 +262,7 @@ next Codex session. opencodex keeps these behaviors:
 - **Log in once, skip the API key.** OAuth support for xAI, Anthropic, and Kimi means you can authenticate with your existing account. Tokens auto-refresh. Or forward your `codex login`, paste an API key, or use `${ENV_VAR}` references — your call.
 - **Works everywhere Codex does.** Injects into Codex CLI, TUI, App, and SDK automatically. Routed models show up in Codex's model picker just like native ones.
 - **History-safe injection.** On local installs the proxy points Codex's own built-in `openai` provider at itself via a single `openai_base_url` line — new threads keep their native provider tag, so ongoing chat history is never remapped and an unclean shutdown can't hide it. (Threads re-tagged by older versions are migrated back once on the first start; remote/LAN binds use a dedicated provider entry instead, since they need an API-key header.)
-- **Delegate to the right model.** Feature up to five routed or native models in Codex's subagent picker from the dashboard or config — route complex tasks to a reasoning model, fast tasks to a cheap one. On the v2 multi-agent surface (GPT-5.6 Sol/Terra) the proxy injects compact, schema-agnostic delegation guidance: an eligible preferred sub-agent model and effort (`injectionModel` / `injectionEffort`), the configured intersection of Codex's picker-visible, v2-compatible, priority-sorted first five with available effort ladders, and the `fork_turns` rules that let cross-model `spawn_agent` calls apply their overrides. Known limitation: when a native parent spawns a routed child, the task body can currently arrive backend-encrypted and be lost ([#92](https://github.com/OnlineChefGroep/opencodex/issues/92)) — use the v1 surface for reliable cross-provider delegation. Want your own wording? Set `injectionPrompt` with `{{model}}` / `{{effort}}` / `{{roster}}` placeholders.
+- **Delegate to the right model.** Feature up to five routed or native models in Codex's subagent picker from the dashboard or config — route complex tasks to a reasoning model, fast tasks to a cheap one. On the v2 multi-agent surface (GPT-5.6 Sol/Terra) the proxy injects compact, schema-agnostic delegation guidance: an eligible preferred sub-agent model and effort (`injectionModel` / `injectionEffort`), the configured intersection of Codex's picker-visible, v2-compatible, priority-sorted first five with available effort ladders, and the `fork_turns` rules that let cross-model `spawn_agent` calls apply their overrides. Known limitation: when a native parent spawns a routed child, the task body can currently arrive backend-encrypted and be lost ([#92](https://github.com/GroepOnline/opencodex/issues/92)) — use the v1 surface for reliable cross-provider delegation. Want your own wording? Set `injectionPrompt` with `{{model}}` / `{{effort}}` / `{{roster}}` placeholders.
 - **Prepare for preview-gated OpenAI rollouts.** GPT-5.6 Sol/Terra/Luna entries preserve the upstream effort ladders. Direct/Multi use the 372k Codex contract; OpenAI API and OpenRouter use 1.05M metadata when upstream access is available.
 - **Give any model superpowers.** Non-OpenAI models get real web search and image understanding via a `gpt-5.4-mini` sidecar over your ChatGPT login.
 - **Generate images natively.** Codex's standalone `image_gen` tool uses `POST /v1/images/generations` for generation and `POST /v1/images/edits` for edits; it is separate from the hosted Responses `image_generation` tool.
@@ -381,7 +380,7 @@ Before removing the npm package, clean up local state:
 
 ```bash
 ocx uninstall
-npm uninstall -g @onlinechefgroep/opencodex
+npm uninstall -g @groeponline/opencodex
 ```
 
 `ocx uninstall` stops the proxy, removes any installed service, removes the Codex shim, restores
@@ -510,7 +509,7 @@ Maintainer source-of-truth notes live under [`structure/`](./structure). Histori
 Contributor setup lives in [`CONTRIBUTING.md`](./CONTRIBUTING.md), and security reporting guidance
 lives in [`SECURITY.md`](./SECURITY.md).
 Report undisclosed vulnerabilities privately through
-[GitHub private vulnerability reporting](https://github.com/OnlineChefGroep/opencodex/security/advisories/new),
+[GitHub private vulnerability reporting](https://github.com/GroepOnline/opencodex/security/advisories/new),
 not a public issue.
 
 ## Development
@@ -519,7 +518,7 @@ Source development requires the `bun` CLI on your `PATH`. This is separate from 
 package's bundled Bun runtime, which is used only by installed `ocx` commands.
 
 ```bash
-git clone https://github.com/OnlineChefGroep/opencodex.git
+git clone https://github.com/GroepOnline/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # start the proxy API in dev mode

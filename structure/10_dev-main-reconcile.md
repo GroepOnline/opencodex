@@ -44,6 +44,6 @@ over resetting `main` until the open PR train (#51/#53/#52) lands.
 
 ## Remaining Phase 0 human steps
 
-1. Merge [#51](https://github.com/OnlineChefGroep/opencodex/pull/51) → [#53](https://github.com/OnlineChefGroep/opencodex/pull/53) → undraft+merge [#52](https://github.com/OnlineChefGroep/opencodex/pull/52).
+1. Merge [#51](https://github.com/GroepOnline/opencodex/pull/51) → [#53](https://github.com/GroepOnline/opencodex/pull/53) → undraft+merge [#52](https://github.com/GroepOnline/opencodex/pull/52).
 2. Land this reconcile PR into `dev`.
 3. Promote a coherent `main` from `dev` when ready for alpha (CHE-6).

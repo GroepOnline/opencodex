@@ -111,7 +111,7 @@ Every npm release version must map cleanly across four surfaces:
 | Surface | Required state |
 | --- | --- |
 | `package.json` | `version` equals the release workflow `version` input. |
-| npm registry | `@onlinechefgroep/opencodex@<version>` does not exist before publish, then exists after publish with the requested dist-tag. |
+| npm registry | `@groeponline/opencodex@<version>` does not exist before publish, then exists after publish with the requested dist-tag. |
 | Git tag | `v<version>` does not exist before publish, then points at the exact release commit. |
 | GitHub Release | `v<version>` does not exist before publish, then is created from the exact release commit. |
 
@@ -126,7 +126,7 @@ after an explicit human decision that the public history rewrite is acceptable.
 Manual preflight checks when debugging a release:
 
 ```bash
-npm view @onlinechefgroep/opencodex@<version> version
+npm view @groeponline/opencodex@<version> version
 git ls-remote origin refs/tags/v<version>
 gh release view v<version>
 ```
@@ -156,7 +156,7 @@ and the Node-only global-install smoke path:
 npm install
 npm run build:gui
 npm pack --json > pack.json
-npm install -g ./onlinechefgroep-opencodex-*.tgz
+npm install -g ./groeponline-opencodex-*.tgz
 ocx help
 ```
 

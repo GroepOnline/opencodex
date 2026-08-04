@@ -1,20 +1,20 @@
 # Default reviewers
-* @lidge-jun @Ingwannu @Wibias
+* @GroepOnline @Ingwannu @Wibias
 
 # Repository automation and release security
-/.github/ @lidge-jun @Ingwannu
-/scripts/release.ts @lidge-jun @Ingwannu
-/package.json @lidge-jun @Ingwannu
-/bun.lock @lidge-jun @Ingwannu
+/.github/ @GroepOnline @Ingwannu
+/scripts/release.ts @GroepOnline @Ingwannu
+/package.json @GroepOnline @Ingwannu
+/bun.lock @GroepOnline @Ingwannu
 
 # Authentication, credentials, and management API
-/src/oauth/ @lidge-jun @Ingwannu
-/src/codex/auth-context.ts @lidge-jun @Ingwannu
-/src/server/auth-cors.ts @lidge-jun @Ingwannu
-/src/server/management-api.ts @lidge-jun @Ingwannu
+/src/oauth/ @GroepOnline @Ingwannu
+/src/codex/auth-context.ts @GroepOnline @Ingwannu
+/src/server/auth-cors.ts @GroepOnline @Ingwannu
+/src/server/management-api.ts @GroepOnline @Ingwannu
 
 # Governance and security policy
-/AGENTS.md @lidge-jun @Ingwannu
-**/AGENTS.md @lidge-jun @Ingwannu
-/MAINTAINERS.md @lidge-jun @Ingwannu
-/SECURITY.md @lidge-jun @Ingwannu
+/AGENTS.md @GroepOnline @Ingwannu
+**/AGENTS.md @GroepOnline @Ingwannu
+/MAINTAINERS.md @GroepOnline @Ingwannu
+/SECURITY.md @GroepOnline @Ingwannu

@@ -17,8 +17,15 @@ vision and web-search sidecars can also use your ChatGPT login when a routed mod
 
 ## Install
 
+### Homebrew (macOS/Linux)
+
 ```bash
-npm install -g @onlinechefgroep/opencodex
+brew install GroepOnline/tap/opencodex
+```
+
+
+```bash
+npm install -g @groeponline/opencodex
 ```
 
 :::note[npm blocked the bun postinstall?]
@@ -29,10 +36,10 @@ script — and always include the package name (npm's abbreviated suggestion
 omits it, which would reinstall the current directory instead):
 
 ```bash
-npm install -g --allow-scripts=bun @onlinechefgroep/opencodex
+npm install -g --allow-scripts=bun @groeponline/opencodex
 
 # if the original install used sudo, keep using sudo:
-sudo npm install -g --allow-scripts=bun @onlinechefgroep/opencodex
+sudo npm install -g --allow-scripts=bun @groeponline/opencodex
 ```
 :::
 
@@ -51,7 +58,7 @@ the catalog entries do not grant access by themselves. Use the preview channel o
 unreleased opencodex builds:
 
 ```bash
-npm install -g @onlinechefgroep/opencodex@preview
+npm install -g @groeponline/opencodex@preview
 ocx update --tag preview
 ```
 
@@ -60,7 +67,7 @@ ocx update --tag preview
 To hack on opencodex itself:
 
 ```bash
-git clone https://github.com/OnlineChefGroep/opencodex.git
+git clone https://github.com/GroepOnline/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy   # starts the proxy API in dev mode (src/cli/index.ts start)

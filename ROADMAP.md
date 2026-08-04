@@ -1,8 +1,8 @@
 # Roadmap
 
-**Independent OnlineChefGroep fork** of upstream opencodex
+**Independent GroepOnline fork** of upstream opencodex
 ([lidge-jun/opencodex](https://github.com/lidge-jun/opencodex) as historical source;
-canonical product work lives in [OnlineChefGroep/opencodex](https://github.com/OnlineChefGroep/opencodex)).
+canonical product work lives in [GroepOnline/opencodex](https://github.com/GroepOnline/opencodex)).
 
 For the full audit + phased execution plan, see
 [`structure/09_x10-terminal-plan.md`](structure/09_x10-terminal-plan.md).
@@ -16,7 +16,7 @@ feel 10× less frictional than stock upstream for ChefGroep kitchens.
 
 ## Short term (done)
 
-- [x] **Fork repository + branch model** — OnlineChefGroep remote; `dev` integration; `main` release
+- [x] **Fork repository + branch model** — GroepOnline remote; `dev` integration; `main` release
 - [x] **Inherited product work on lines** — Dutch/ChefGroep GUI language, Claude Desktop, combos/aliases, Cursor fixes (verify per-branch; reconcile still open)
 - [x] **Cross-platform package smoke in CI** — Linux/macOS/Windows package smoke job
 - [x] **Infrastructure lanes started on `dev`** — plugins contract (#40), Prometheus metrics (#42), admission rate-limit (#44/#45), ChefVault provider-security (#38)
@@ -28,8 +28,8 @@ feel 10× less frictional than stock upstream for ChefGroep kitchens.
 - [x] **CI hardening** — `.github/dependabot.yml`, Security audit job (both lockfiles), pinned actionlint job on `dev` (#60)
 - [ ] **Release docs scaffolding** — `VERSIONING.md`, `RELEASE_PROCESS.md`, `CHANGELOG.md` (not yet present)
 - [ ] **Publish first fork release (`v1.0.0-preview.1`)** — tag from reconciled `main`, guarded release workflow, npm install evidence
-- [ ] **Canonical npm ownership** — package renamed to `@onlinechefgroep/opencodex` in-repo (updater, installers, release automation); still needed: claim the npm scope, set `NPM_TOKEN`, publish first release, and document the compatibility path for legacy `@bitkyc08/opencodex` installs
-- [ ] **Docs Pages for the fork** — deploy docs-site with OnlineChefGroep URLs (not upstream domain assumptions)
+- [ ] **Canonical npm ownership** — package renamed to `@groeponline/opencodex` in-repo (updater, installers, release automation); still needed: claim the npm scope, set `NPM_TOKEN`, publish first release, and document the compatibility path for legacy `@groeponline/opencodex` installs
+- [ ] **Docs Pages for the fork** — deploy docs-site with GroepOnline URLs (not upstream domain assumptions)
 - [ ] **Upstream intake policy** — security/protocol/client-compat only; no release dependence
 - [x] **ROADMAP/docs truth pass** — verified against `dev`: no CodeQL workflow exists (and no doc claims one), `tsconfig.json` has `"strict": true`; required-CI-check names for the shard jobs need no GitHub update because no branch protection rule is configured yet (see `MAINTAINERS.md`) — record the new job names (`windows-latest shard 2/2`, `macos-quality`, `windows-quality`) when protection is set up
 

@@ -18,7 +18,7 @@ vision 和网络搜索 sidecar 也可以使用你的 ChatGPT 登录凭据。
 ## 安装
 
 ```bash
-npm install -g @onlinechefgroep/opencodex
+npm install -g @groeponline/opencodex
 ```
 
 :::note[npm 拦截了 bun postinstall？]
@@ -28,10 +28,10 @@ blocked because they are not covered by allowScripts`），导致捆绑的 Bun
 缺少包名，会把当前目录重新安装进去，请始终显式写上包名：
 
 ```bash
-npm install -g --allow-scripts=bun @onlinechefgroep/opencodex
+npm install -g --allow-scripts=bun @groeponline/opencodex
 
 # 如果最初是用 sudo 安装的，请继续使用 sudo：
-sudo npm install -g --allow-scripts=bun @onlinechefgroep/opencodex
+sudo npm install -g --allow-scripts=bun @groeponline/opencodex
 ```
 :::
 
@@ -49,7 +49,7 @@ GPT-5.6 Sol/Terra/Luna 目录信息，但这些条目本身不会授予上游模
 opencodex 构建时，才需要使用 preview 渠道：
 
 ```bash
-npm install -g @onlinechefgroep/opencodex@preview
+npm install -g @groeponline/opencodex@preview
 ocx update --tag preview
 ```
 
@@ -58,7 +58,7 @@ ocx update --tag preview
 若要对 opencodex 本身进行开发:
 
 ```bash
-git clone https://github.com/OnlineChefGroep/opencodex.git
+git clone https://github.com/GroepOnline/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy   # 以开发模式启动代理 API (src/cli/index.ts start)

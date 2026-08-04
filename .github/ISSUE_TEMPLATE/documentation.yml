@@ -28,7 +28,7 @@ body:
     attributes:
       label: Documentation location
       description: Public documentation URL or repository path.
-      placeholder: "https://github.com/OnlineChefGroep/opencodex or docs/providers.md"
+      placeholder: "https://github.com/GroepOnline/opencodex or docs/providers.md"
     validations:
       required: true
 

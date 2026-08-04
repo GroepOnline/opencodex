@@ -52,12 +52,12 @@ export default defineConfig({
         { tag: "meta", attrs: { name: "theme-color", media: "(prefers-color-scheme: dark)", content: "#212121" } },
       ],
       social: [
-        { icon: "github", label: "GitHub", href: "https://github.com/OnlineChefGroep/opencodex" },
+        { icon: "github", label: "GitHub", href: "https://github.com/GroepOnline/opencodex" },
       ],
       editLink: {
         // `dev` is the only integration branch (see MAINTAINERS.md); `main` receives
         // release promotions only, so "Edit page" must open a `dev` edit session.
-        baseUrl: "https://github.com/OnlineChefGroep/opencodex/edit/dev/docs-site/",
+        baseUrl: "https://github.com/GroepOnline/opencodex/edit/dev/docs-site/",
       },
       lastUpdated: true,
       // English at the site root; Korean under /ko, Simplified Chinese under /zh-cn, Russian under /ru, Japanese under /ja.
