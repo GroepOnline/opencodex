@@ -4,8 +4,8 @@ import type { SVGProps } from "react";
 type P = SVGProps<SVGSVGElement> & { size?: 13 | 15 | 18 | 24 };
 const S = ({ size, ...props }: P) => ({
   viewBox: "0 0 24 24", fill: "none", stroke: "currentColor",
-  /* design-system §5/§12: Lucide stroke 1.75; optical sizes 13/15/18/24 */
-  strokeWidth: 1.75, strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
+  /* design-system §12 (wint van oudere §5): Lucide stroke 2; optical sizes 13/15/18/24 */
+  strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
   ...(size !== undefined ? { width: size, height: size } : {}),
   ...props,
 });
