@@ -633,7 +633,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
             </div>
           </div>
         </div>
-        <div className="row muted"><span className="spin" /> {t("models.loading")}</div>
+        <div className="row muted"><span className="spin go" /> {t("models.loading")}</div>
       </>
     );
   }

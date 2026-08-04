@@ -849,7 +849,10 @@ select.input { appearance: none; }
    left→right and back (the Stroom, from design-system worked-row). Under
    reduced-motion the static bar remains, so activity is never lost. */
 .spin { position: relative; width: 18px; height: 10px; display: inline-block; flex-shrink: 0; vertical-align: middle; color: var(--accent-blue); }
-.spin::before { content: ""; position: absolute; left: 0; right: 0; top: 4px; height: 2px; border-radius: 1px; background: currentColor; animation: ocx-rippleflow 1.1s linear infinite; }
+/* motion contract (design-system motion-spec §2): one wavelet per event, then it
+   stops — never an infinite ambient loop. Rest state is a quiet bar. */
+.spin::before { content: ""; position: absolute; left: 0; right: 0; top: 4px; height: 2px; border-radius: 1px; background: currentColor; opacity: 0.4; }
+.spin.go::before { animation: ocx-rippleflow 1.1s var(--ease-out) 1; opacity: 0.9; }
 @keyframes ocx-rippleflow {
   0% { transform: scaleX(0.15); transform-origin: left; }
   45% { transform: scaleX(1); transform-origin: left; }
@@ -947,9 +950,8 @@ dialog.modal-overlay::backdrop {
   height: 0.9em;
   border-radius: 4px;
   vertical-align: middle;
-  background: linear-gradient(90deg, var(--raised) 0%, var(--surface) 50%, var(--raised) 100%);
-  background-size: 200% 100%;
-  animation: codex-auth-skeleton-shimmer 1.2s ease-in-out infinite;
+  /* skeletons stay static — infinite shimmer is ambient motion (banned) */
+  background: var(--raised);
 }
 .codex-auth-load-skeleton__line--sub {
   width: 12rem;
@@ -1010,9 +1012,7 @@ dialog.modal-overlay::backdrop {
   display: block;
   height: 8px;
   border-radius: var(--radius-2xs);
-  background: linear-gradient(90deg, var(--raised) 0%, var(--surface) 50%, var(--raised) 100%);
-  background-size: 200% 100%;
-  animation: codex-auth-skeleton-shimmer 1.2s ease-in-out infinite;
+  background: var(--raised);
 }
 .quota-skel--label { width: 28px; }
 .quota-skel--reset { width: 34px; }
@@ -1212,10 +1212,6 @@ dialog.modal-overlay::backdrop {
   display: inline-block;
   text-align: center;
 }
-@keyframes codex-auth-skeleton-shimmer {
-  0% { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
-}
 
 .account-pool-strategy-card {
   margin-top: 16px;
@@ -1254,9 +1250,7 @@ dialog.modal-overlay::backdrop {
   min-height: 96px;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius);
-  background: linear-gradient(90deg, var(--raised) 0%, var(--surface) 50%, var(--raised) 100%);
-  background-size: 200% 100%;
-  animation: codex-auth-skeleton-shimmer 1.2s ease-in-out infinite;
+  background: var(--raised);
 }
 .notice-warn {
   font-size: var(--text-label);
