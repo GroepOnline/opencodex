@@ -22,7 +22,7 @@ import {
 import { isNewer } from "./notify";
 import { handoffWindowsTrayForUpdate, planWindowsTrayUpdate } from "./tray-update-plan.mjs";
 
-const RELEASE_NOTES_URL = "https://github.com/OnlineChefGroep/opencodex/releases/latest";
+const RELEASE_NOTES_URL = "https://github.com/GroepOnline/opencodex/releases/latest";
 const UPDATE_JOB_FILENAME = "update-job.json";
 const UPDATE_TIMEOUT_MS = 180_000;
 const RESTART_TIMEOUT_MS = 60_000;
@@ -506,7 +506,7 @@ function restartFailureHint(port: number): string {
   return `Update installed, but the restarted proxy did not stay healthy on port ${port}. `
     + `Try 'ocx start --port ${port}'. `
     + "If the update log shows bun postinstall or EPERM warnings, "
-    + "reinstall with 'npm install -g --allow-scripts=bun @onlinechefgroep/opencodex'.";
+    + "reinstall with 'npm install -g --allow-scripts=bun @groeponline/opencodex'.";
 }
 
 type AwaitHealthyResult =

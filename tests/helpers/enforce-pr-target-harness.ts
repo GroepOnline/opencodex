@@ -128,12 +128,12 @@ const DEFAULT_PR = {
   state: "open",
   merged: false,
   locked: false,
-  html_url: "https://github.com/OnlineChefGroep/opencodex/pull/42",
+  html_url: "https://github.com/GroepOnline/opencodex/pull/42",
   base: {
     ref: "dev",
     sha: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
-    label: "OnlineChefGroep:dev",
-    repo: { name: "opencodex", owner: { login: "OnlineChefGroep" } },
+    label: "GroepOnline:dev",
+    repo: { name: "opencodex", owner: { login: "GroepOnline" } },
   },
   head: {
     ref: "feature",
@@ -292,8 +292,8 @@ function nodeLikeProcess(): Record<string, unknown> {
       GITHUB_HEAD_REF: "feature",
       GITHUB_JOB: "enforce-target",
       GITHUB_REF: "refs/pull/42/merge",
-      GITHUB_REPOSITORY: "OnlineChefGroep/opencodex",
-      GITHUB_REPOSITORY_OWNER: "OnlineChefGroep",
+      GITHUB_REPOSITORY: "GroepOnline/opencodex",
+      GITHUB_REPOSITORY_OWNER: "GroepOnline",
       GITHUB_RUN_ATTEMPT: "1",
       GITHUB_RUN_ID: "1234567890",
       GITHUB_RUN_NUMBER: "87",
@@ -695,11 +695,11 @@ export async function runEnforcePrTarget(
       repository: {
         id: 987654321,
         name: "opencodex",
-        full_name: "OnlineChefGroep/opencodex",
+        full_name: "GroepOnline/opencodex",
         default_branch: "main",
         private: false,
-        owner: { login: "OnlineChefGroep", id: 12345, type: "User" },
-        html_url: "https://github.com/OnlineChefGroep/opencodex",
+        owner: { login: "GroepOnline", id: 12345, type: "User" },
+        html_url: "https://github.com/GroepOnline/opencodex",
       },
       sender: { login: "contributor", id: 67890, type: "User" },
       organization: undefined,
@@ -719,10 +719,10 @@ export async function runEnforcePrTarget(
     serverUrl = "https://github.com";
     graphqlUrl = "https://api.github.com/graphql";
     get repo() {
-      return { owner: "OnlineChefGroep", repo: "opencodex" };
+      return { owner: "GroepOnline", repo: "opencodex" };
     }
     get issue() {
-      return { owner: "OnlineChefGroep", repo: "opencodex", number: eventPr.number };
+      return { owner: "GroepOnline", repo: "opencodex", number: eventPr.number };
     }
   }
   const context = new Context();

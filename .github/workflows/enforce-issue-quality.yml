@@ -1040,7 +1040,7 @@ jobs:
               "",
               guidanceList,
               "",
-              "See the [README](https://github.com/OnlineChefGroep/opencodex) for details.",
+              "See the [README](https://github.com/GroepOnline/opencodex) for details.",
               "",
               "Once the report passes the automated checks, it will be reopened automatically unless a maintainer has changed its state.",
             ].join("\n"));

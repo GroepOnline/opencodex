@@ -6,7 +6,7 @@ description: opencodex の開発環境、構成、規約、プロバイダーと
 ## セットアップ
 
 ```bash
-git clone https://github.com/OnlineChefGroep/opencodex.git
+git clone https://github.com/GroepOnline/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # 開発モードのプロキシ API
@@ -87,7 +87,7 @@ bun run release:watch               # 直近の Release ワークフロー run �
 
 Go ネイティブポートを担っていた `dev2-go` は廃止し、2 本の統合ラインを維持する方針も
 終了しました。履歴は
-[OnlineChefGroep/opencodex-go-archive](https://github.com/OnlineChefGroep/opencodex-go-archive)
+[GroepOnline/opencodex-go-archive](https://github.com/GroepOnline/opencodex-go-archive)
 に読み取り専用で残しています。現在は `dev` の Bun ネイティブ TypeScript が単一のランタイム
 ラインです。
 

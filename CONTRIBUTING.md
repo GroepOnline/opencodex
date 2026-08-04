@@ -15,7 +15,7 @@ Thanks for helping with opencodex.
 - `preview` — prerelease train.
 
 The `dev2-go` Go native-port line has been retired. Its history is archived at
-[OnlineChefGroep/opencodex-go-archive](https://github.com/OnlineChefGroep/opencodex-go-archive),
+[GroepOnline/opencodex-go-archive](https://github.com/GroepOnline/opencodex-go-archive),
 and everything now goes to `dev`. See [`MAINTAINERS.md`](./MAINTAINERS.md) for
 the reasoning.
 

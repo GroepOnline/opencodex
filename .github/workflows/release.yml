@@ -269,17 +269,17 @@ jobs:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
           for attempt in $(seq 1 30); do
-            if VERSION=$(npm view "@onlinechefgroep/opencodex@${RELEASE_VERSION}" version 2>/dev/null); then
+            if VERSION=$(npm view "@groeponline/opencodex@${RELEASE_VERSION}" version 2>/dev/null); then
               echo "registry version=$VERSION"
               test "$VERSION" = "$RELEASE_VERSION"
-              npm dist-tag ls @onlinechefgroep/opencodex
+              npm dist-tag ls @groeponline/opencodex
               exit 0
             fi
-            echo "::notice::@onlinechefgroep/opencodex@${RELEASE_VERSION} not visible in npm registry yet (attempt $attempt/30)"
+            echo "::notice::@groeponline/opencodex@${RELEASE_VERSION} not visible in npm registry yet (attempt $attempt/30)"
             sleep 10
           done
           echo "::error::npm registry smoke failed after 30 attempts"
-          npm view @onlinechefgroep/opencodex versions dist-tags --json || true
+          npm view @groeponline/opencodex versions dist-tags --json || true
           exit 1
 
       - name: Create GitHub release
@@ -307,7 +307,7 @@ jobs:
             git tag --merged HEAD --list 'v[0-9]*' |
               bun scripts/release-notes.ts previous-release-tag "$RELEASE_VERSION"
           )"
-          npm_metadata="Published to npm as \`@onlinechefgroep/opencodex@${RELEASE_VERSION}\` with dist-tag \`${NPM_DIST_TAG}\`."
+          npm_metadata="Published to npm as \`@groeponline/opencodex@${RELEASE_VERSION}\` with dist-tag \`${NPM_DIST_TAG}\`."
 
           # Preview builds must be marked prerelease so GitHub "latest" keeps pointing at the
           # stable channel (matching npm dist-tags); see issue #64.
@@ -463,3 +463,54 @@ jobs:
 
           gh release create "$release_tag" --target "$GITHUB_SHA" --title "$release_tag" \
             --notes-file "$notes_file" ${prerelease_flag:+$prerelease_flag}
+
+      - name: Update Homebrew tap
+        if: ${{ inputs.dry-run != true && inputs.tag == 'latest' }}
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          TAP_REPO="GroepOnline/homebrew-tap"
+          FORMULA_FILE="Formula/opencodex.rb"
+
+          # Fetch the published tarball SHA from npm
+          TARBALL_URL="$(node -p "require('./package.json').dist?.tarball")"
+          if [ -z "$TARBALL_URL" ]; then
+            TARBALL_URL="https://registry.npmjs.org/@groeponline/opencodex/-/opencodex-${RELEASE_VERSION}.tgz"
+          fi
+          SHA256="$(curl -sL "$TARBALL_URL" | sha256sum | cut -d' ' -f1)"
+
+          # Clone the tap repo, update the formula, push
+          TMPDIR="$(mktemp -d)"
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${TAP_REPO}.git" "$TMPDIR"
+          mkdir -p "$TMPDIR/Formula"
+
+          cat > "$TMPDIR/${FORMULA_FILE}" <<RUBY
+          # typed: false
+          class Opencodex < Formula
+            desc "Universal provider proxy for OpenAI Codex & Claude Code"
+            homepage "https://github.com/GroepOnline/opencodex"
+            url "$TARBALL_URL"
+            sha256 "$SHA256"
+            license "MIT"
+
+            depends_on "node"
+
+            def install
+              system "npm", "install", "--global", "--prefix=#{prefix}", "."
+              bin.install_symlink libexec.glob("bin/*")
+            end
+
+            test do
+              assert_match "opencodex", shell_output("#{bin}/ocx --version")
+            end
+          end
+          RUBY
+
+          cd "$TMPDIR"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$FORMULA_FILE"
+          git commit -m "opencodex ${RELEASE_VERSION}" || exit 0
+          git push origin main

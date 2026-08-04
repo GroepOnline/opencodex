@@ -1003,7 +1003,7 @@ describe("validateIssue - documentation", () => {
       "### Documentation problem type",
       "Incorrect documentation",
       "### Documentation location",
-      "https://github.com/OnlineChefGroep/opencodex",
+      "https://github.com/GroepOnline/opencodex",
       "### What is wrong or missing?",
       "The page says kimi uses /v1/chat/completions but it actually uses /v1/responses.",
       "### What should the documentation explain instead?",
@@ -1164,7 +1164,7 @@ describe("shouldReopen", () => {
       state: "closed",
       closed_at: "2026-07-20T10:00:00Z",
       state_reason: "not_planned",
-      closed_by: "OnlineChefGroep",
+      closed_by: "GroepOnline",
     };
     assert.equal(shouldReopen(baseBotState, issue, false), false);
   });

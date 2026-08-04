@@ -6,7 +6,7 @@ description: Разработка opencodex — настройка окруже�
 ## Настройка окружения
 
 ```bash
-git clone https://github.com/OnlineChefGroep/opencodex.git
+git clone https://github.com/GroepOnline/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # прокси-API в режиме разработки
@@ -87,7 +87,7 @@ bun run release:watch               # наблюдение за последни
 
 Ветка `dev2-go`, которая несла нативный порт на Go, закрыта, и вместе с ней закончилась
 политика двух линий интеграции. Её история опубликована только для чтения в
-[OnlineChefGroep/opencodex-go-archive](https://github.com/OnlineChefGroep/opencodex-go-archive).
+[GroepOnline/opencodex-go-archive](https://github.com/GroepOnline/opencodex-go-archive).
 Теперь единственная линия рантайма — Bun-нативный TypeScript в `dev`.
 
 Pull request'ы с ребейзом приветствуются: ребейз устаревшей ветки на текущий head — это

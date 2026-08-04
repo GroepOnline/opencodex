@@ -3,14 +3,14 @@
 명령어 두 줄이면 Codex와 Claude Code가 원하는 LLM으로 돌아갑니다.</p>
 
 <p align="center">
-  <a href="https://x.com/claudeebum"><img src="https://img.shields.io/badge/%40claudeebum-000000?logo=x&logoColor=white" alt="X에서 @claudeebum 팔로우"></a>
-  <a href="https://www.npmjs.com/package/@onlinechefgroep/opencodex"><img src="https://img.shields.io/npm/v/@onlinechefgroep/opencodex?color=cb3837&label=npm&logo=npm" alt="npm version"></a>
-  <a href="https://github.com/OnlineChefGroep/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@onlinechefgroep/opencodex?color=blue" alt="license"></a>
-  <img src="https://img.shields.io/node/v/@onlinechefgroep/opencodex?logo=node.js&label=node" alt="node version">
+  
+  <a href="https://www.npmjs.com/package/@groeponline/opencodex"><img src="https://img.shields.io/npm/v/@groeponline/opencodex?color=cb3837&label=npm&logo=npm" alt="npm version"></a>
+  <a href="https://github.com/GroepOnline/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@groeponline/opencodex?color=blue" alt="license"></a>
+  <img src="https://img.shields.io/node/v/@groeponline/opencodex?logo=node.js&label=node" alt="node version">
 </p>
 
 ```bash
-npm install -g @onlinechefgroep/opencodex
+npm install -g @groeponline/opencodex
 ocx start        # 프록시 + 대시보드: localhost:10100
 ```
 
@@ -78,7 +78,7 @@ flowchart LR
 ```bash
 # 설치 (Bun 런타임이 자동으로 번들됩니다 — Node 18+ 만 있으면 됩니다)
 # 사용자 소유 Node(nvm/fnm)를 권장합니다 — `sudo npm install -g …`는 피하세요
-npm install -g @onlinechefgroep/opencodex
+npm install -g @groeponline/opencodex
 
 # 대화형 설정 (config 작성 + Codex 주입 + 자동 시작 shim 설치 선택)
 ocx init
@@ -101,14 +101,14 @@ codex "Write a hello world in Rust"
 opencodex는 Bun 런타임을 의존성으로 번들하고 Node 런처로 실행하므로 Bun을 직접 설치할 필요가 **없습니다**. "bundled Bun runtime is missing" 오류가 보이면 설치 과정에서 lifecycle 스크립트(npm이 `allowScripts`로 bun postinstall을 차단한 경우 포함)나 optional 의존성이 건너뛰어진 경우입니다. bun 설치 스크립트를 허용해서 다시 설치하세요:
 
 ```bash
-npm install -g --allow-scripts=bun @onlinechefgroep/opencodex   # --ignore-scripts, --omit=optional 없이
+npm install -g --allow-scripts=bun @groeponline/opencodex   # --ignore-scripts, --omit=optional 없이
 
 # 처음에 sudo로 설치했다면 sudo를 유지하세요:
-sudo npm install -g --allow-scripts=bun @onlinechefgroep/opencodex
+sudo npm install -g --allow-scripts=bun @groeponline/opencodex
 ```
 
 npm 경고가 제안하는 축약 명령에는 패키지 이름이 빠져 있어 현재 디렉터리를
-재설치하게 됩니다. 항상 `@onlinechefgroep/opencodex`를 명시하세요.
+재설치하게 됩니다. 항상 `@groeponline/opencodex`를 명시하세요.
 
 sudo로 루트 소유 prefix에 설치했다면 위의 sudo 재설치가 해당 prefix를 풀어주지만,
 가능할 때 사용자 소유 Node(nvm, fnm, 사용자 npm prefix)로 옮기는 편이 좋습니다.
@@ -215,7 +215,7 @@ opencodex는 두 가지 동작을 분리해서 유지합니다:
 - **ChatGPT 계정을 안전하게 풀링.** 기존 Codex 스레드는 한 계정에 유지하면서, 새 세션은 쿼터 갱신과 비-PII 요청 라벨과 함께 풀에서 사용량이 낮은 계정을 자동 선택할 수 있습니다.
 - **한 번 로그인하면 API 키는 생략.** xAI, Anthropic, Kimi는 OAuth를 지원하므로 기존 계정으로 인증할 수 있고 토큰은 자동 갱신됩니다. 또는 `codex login`을 forward 하거나, API 키를 붙여넣거나, `${ENV_VAR}` 참조를 쓸 수 있습니다 — 선택은 자유입니다.
 - **Codex가 동작하는 모든 곳에서.** Codex CLI, TUI, App, SDK에 자동으로 주입됩니다. 라우팅된 모델이 네이티브 모델처럼 Codex 모델 선택기에 나타납니다.
-- **알맞은 모델에 위임.** 대시보드나 config에서 최대 5개의 라우팅/네이티브 모델을 Codex 서브에이전트 선택기에 노출해, 복잡한 작업은 reasoning 모델로, 빠른 작업은 저렴한 모델로 보낼 수 있습니다. v2 멀티에이전트 표면(GPT-5.6 Sol/Terra)에서는 프록시가 간결한 위임 가이드를 주입합니다. 선호 서브에이전트 모델·effort(`injectionModel` / `injectionEffort`), 노출된 모델 로스터와 각 모델이 지원하는 effort 사다리, 그리고 크로스모델 `spawn_agent` 오버라이드를 적용하는 `fork_turns` 규칙까지. 알려진 제한: 네이티브 부모가 라우팅 자식을 스폰하면 작업 본문이 백엔드 암호화 상태로 도착해 유실될 수 있습니다([#92](https://github.com/OnlineChefGroep/opencodex/issues/92)) — 안정적인 크로스 프로바이더 위임에는 v1 표면을 쓰세요. 문구를 직접 쓰고 싶다면 `injectionPrompt`에 `{{model}}` / `{{effort}}` / `{{roster}}` 플레이스홀더를 넣으면 됩니다.
+- **알맞은 모델에 위임.** 대시보드나 config에서 최대 5개의 라우팅/네이티브 모델을 Codex 서브에이전트 선택기에 노출해, 복잡한 작업은 reasoning 모델로, 빠른 작업은 저렴한 모델로 보낼 수 있습니다. v2 멀티에이전트 표면(GPT-5.6 Sol/Terra)에서는 프록시가 간결한 위임 가이드를 주입합니다. 선호 서브에이전트 모델·effort(`injectionModel` / `injectionEffort`), 노출된 모델 로스터와 각 모델이 지원하는 effort 사다리, 그리고 크로스모델 `spawn_agent` 오버라이드를 적용하는 `fork_turns` 규칙까지. 알려진 제한: 네이티브 부모가 라우팅 자식을 스폰하면 작업 본문이 백엔드 암호화 상태로 도착해 유실될 수 있습니다([#92](https://github.com/GroepOnline/opencodex/issues/92)) — 안정적인 크로스 프로바이더 위임에는 v1 표면을 쓰세요. 문구를 직접 쓰고 싶다면 `injectionPrompt`에 `{{model}}` / `{{effort}}` / `{{roster}}` 플레이스홀더를 넣으면 됩니다.
 - **프리뷰 게이트된 OpenAI rollout에 대비.** GPT-5.6 Sol/Terra/Luna의 effort 사다리를 보존합니다. Direct/Multi는 372k Codex 계약을, OpenAI API와 OpenRouter는 1.05M metadata를 사용합니다.
 - **어떤 모델에도 초능력을.** OpenAI가 아닌 모델도 ChatGPT 로그인 위에서 도는 `gpt-5.4-mini` sidecar로 실제 웹 검색과 이미지 이해를 사용합니다.
 - **이미지를 네이티브로 생성.** Codex의 독립형 `image_gen` 도구는 생성할 때 `POST /v1/images/generations`, 편집할 때 `POST /v1/images/edits`를 사용합니다. Responses의 hosted `image_generation` 도구와는 별개입니다.
@@ -314,7 +314,7 @@ npm 패키지를 지우기 전에 로컬 상태를 먼저 정리하세요:
 
 ```bash
 ocx uninstall
-npm uninstall -g @onlinechefgroep/opencodex
+npm uninstall -g @groeponline/opencodex
 ```
 
 `ocx uninstall`은 프록시 중지, 설치된 service 제거, Codex shim 제거, Codex config/catalog/history
@@ -436,7 +436,7 @@ ocx recover-history --legacy-openai
 ## 개발
 
 ```bash
-git clone https://github.com/OnlineChefGroep/opencodex.git
+git clone https://github.com/GroepOnline/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # dev 모드로 프록시 API 시작

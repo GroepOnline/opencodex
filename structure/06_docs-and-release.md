@@ -21,7 +21,7 @@ The workflow runs on `main` pushes touching `docs-site/**` or the workflow itsel
 
 [Decision Log]
 - 목적과 의도: Serve the public documentation from the memorable first-party `opencodex.me` domain.
-- 기존 구현 및 제약 조건: The project Pages site was built for `lidge-jun.github.io/opencodex`, so Astro emitted a `/opencodex` base path that returns 404 under a root custom domain.
+- 기존 구현 및 제약 조건: The upstream Pages site was built for `lidge-jun.github.io/opencodex`, so Astro emitted a `/opencodex` base path that returns 404 under a root custom domain.
 - 검토한 주요 대안: Keep the GitHub project URL as canonical; redirect the custom domain through Cloudflare; configure the custom domain directly on GitHub Pages and build for the domain root.
 - 선택한 방식: Keep GitHub Actions Pages hosting, configure `opencodex.me` as the repository custom domain, publish root-relative assets and routes, and retain the default GitHub URL only as GitHub's automatic redirect.
 - 다른 대안 대신 이 방식을 선택한 이유: Direct Pages hosting preserves the existing deployment and HTTPS lifecycle without adding a second proxy or redirect service.
@@ -111,7 +111,7 @@ Every npm release version must map cleanly across four surfaces:
 | Surface | Required state |
 | --- | --- |
 | `package.json` | `version` equals the release workflow `version` input. |
-| npm registry | `@onlinechefgroep/opencodex@<version>` does not exist before publish, then exists after publish with the requested dist-tag. |
+| npm registry | `@groeponline/opencodex@<version>` does not exist before publish, then exists after publish with the requested dist-tag. |
 | Git tag | `v<version>` does not exist before publish, then points at the exact release commit. |
 | GitHub Release | `v<version>` does not exist before publish, then is created from the exact release commit. |
 
@@ -126,7 +126,7 @@ after an explicit human decision that the public history rewrite is acceptable.
 Manual preflight checks when debugging a release:
 
 ```bash
-npm view @onlinechefgroep/opencodex@<version> version
+npm view @groeponline/opencodex@<version> version
 git ls-remote origin refs/tags/v<version>
 gh release view v<version>
 ```
@@ -156,7 +156,7 @@ and the Node-only global-install smoke path:
 npm install
 npm run build:gui
 npm pack --json > pack.json
-npm install -g ./onlinechefgroep-opencodex-*.tgz
+npm install -g ./groeponline-opencodex-*.tgz
 ocx help
 ```
 

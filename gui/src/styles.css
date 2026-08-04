@@ -6,7 +6,7 @@
    instead of spinners. Light + dark are both first-class via the native
    light-dark() function — every token is authored once; `data-theme` (or the
    OS) picks the side, `data-style` swaps the whole skin (devin | strak).
-   Ref: OnlineChefGroep/design-system (tokens.css, DESIGN.md, motion-spec.md).
+   Ref: GroepOnline/design-system (tokens.css, DESIGN.md, motion-spec.md).
    ============================================================================ */
 
 @import "./styles/provider-catalog.css";
@@ -28,7 +28,7 @@
   color-scheme: light dark;
 
   /* ChefGroep design-system (v2 "Devin-richting") — warm off-white, one blue
-     accent. Values from OnlineChefGroep/design-system tokens.css (2026-07). The
+     accent. Values from GroepOnline/design-system tokens.css (2026-07). The
      opencodex light-dark() authoring convention is preserved. */
   --bg:           light-dark(#f7f6f5, #121111);
   --rail:         light-dark(#f2f1f0, #171615);

@@ -3,14 +3,14 @@
 コマンド2つで、Codex と Claude Code の両方が好きな LLM で動きます。</p>
 
 <p align="center">
-  <a href="https://x.com/claudeebum"><img src="https://img.shields.io/badge/%40claudeebum-000000?logo=x&logoColor=white" alt="X で @claudeebum をフォロー"></a>
-  <a href="https://www.npmjs.com/package/@onlinechefgroep/opencodex"><img src="https://img.shields.io/npm/v/@onlinechefgroep/opencodex?color=cb3837&label=npm&logo=npm" alt="npm version"></a>
-  <a href="https://github.com/OnlineChefGroep/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@onlinechefgroep/opencodex?color=blue" alt="license"></a>
-  <img src="https://img.shields.io/node/v/@onlinechefgroep/opencodex?logo=node.js&label=node" alt="node version">
+  
+  <a href="https://www.npmjs.com/package/@groeponline/opencodex"><img src="https://img.shields.io/npm/v/@groeponline/opencodex?color=cb3837&label=npm&logo=npm" alt="npm version"></a>
+  <a href="https://github.com/GroepOnline/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@groeponline/opencodex?color=blue" alt="license"></a>
+  <img src="https://img.shields.io/node/v/@groeponline/opencodex?logo=node.js&label=node" alt="node version">
 </p>
 
 ```bash
-npm install -g @onlinechefgroep/opencodex
+npm install -g @groeponline/opencodex
 ocx start        # プロキシ + ダッシュボード: localhost:10100
 ```
 
@@ -78,7 +78,7 @@ flowchart LR
 ```bash
 # インストール(Bun ランタイムを自動バンドル — Node 18+ のみ必要)
 # ユーザー所有の Node(nvm/fnm)を推奨 — `sudo npm install -g …` は避けてください
-npm install -g @onlinechefgroep/opencodex
+npm install -g @groeponline/opencodex
 
 # 対話型セットアップ(config の書き出し + Codex への注入 + 自動起動 shim のインストールを提案)
 ocx init
@@ -101,14 +101,14 @@ codex "Write a hello world in Rust"
 opencodex は Bun ランタイムを依存関係としてバンドルし、Node ランチャー経由で実行するため、Bun を自分でインストールする必要は**ありません**。"bundled Bun runtime is missing" エラーが出る場合、インストール時にライフサイクルスクリプト(npm が `allowScripts` で bun の postinstall をブロックした場合を含む)やオプション依存がスキップされています。bun のインストールスクリプトを許可して再インストールしてください:
 
 ```bash
-npm install -g --allow-scripts=bun @onlinechefgroep/opencodex   # --ignore-scripts, --omit=optional なしで
+npm install -g --allow-scripts=bun @groeponline/opencodex   # --ignore-scripts, --omit=optional なしで
 
 # 最初に sudo でインストールした場合は sudo を維持してください:
-sudo npm install -g --allow-scripts=bun @onlinechefgroep/opencodex
+sudo npm install -g --allow-scripts=bun @groeponline/opencodex
 ```
 
 npm の警告が提案する省略コマンドにはパッケージ名が含まれておらず、
-現在のディレクトリを再インストールしてしまいます。常に `@onlinechefgroep/opencodex` を明示してください。
+現在のディレクトリを再インストールしてしまいます。常に `@groeponline/opencodex` を明示してください。
 
 sudo で root 所有のプレフィックスにインストールした場合、上の sudo 再インストールでそのプレフィックスの
 ブロックが解除されますが、可能な場合はユーザー所有の Node(nvm、fnm、ユーザー npm プレフィックス)への移行を推奨します。
@@ -216,7 +216,7 @@ opencodex は 2 つの動作を分離して保持します:
 - **一度ログインすれば API キーは省略可。** xAI、Anthropic、Kimi は OAuth をサポートするので既存アカウントで認証でき、トークンは自動更新されます。または `codex login` を転送、API キーを貼り付け、`${ENV_VAR}` 参照を使えます — 自由に選べます。
 - **Codex が動くすべての場所で。** Codex CLI、TUI、App、SDK に自動で注入されます。ルーティングモデルはネイティブモデルと同様に Codex モデルピッカーに表示されます。
 - **履歴セーフな注入。** ローカルインストールではプロキシは Codex 自身の組み込み `openai` プロバイダーを単一の `openai_base_url` 行で自身に向けるため、新しいスレッドはネイティブのプロバイダータグを維持し、進行中のチャット履歴が再マッピングされることはなく、クリーンでないシャットダウンでも隠せません。(古いバージョンで再タグ付けされたスレッドは初回起動時に一度だけマイグレートされます; リモート/LAN バインドは API キーヘッダーが必要なため、専用のプロバイダーエントリを使用します。)
-- **適切なモデルに委任。** ダッシュボードや config から最大 5 つのルーティング/ネイティブモデルを Codex サブエージェントピッカーに公開し、複雑なタスクは推論モデルへ、高速なタスクは安価なモデルへ送れます。v2 マルチエージェントサーフェス(GPT-5.6 Sol/Terra)ではプロキシが簡潔な委任ガイダンスを注入します。推奨サブエージェントモデル・負荷(`injectionModel` / `injectionEffort`)、公開モデルロスターと各モデルが対応する負荷ラダー、そしてクロスモデル `spawn_agent` オーバーライドを適用する `fork_turns` ルールまで。既知の制限: ネイティブの親がルーティング子をスポーンすると、タスク本文がバックエンド暗号化状態で到着し失われることがあります([#92](https://github.com/OnlineChefGroep/opencodex/issues/92)) — 安定したクロスプロバイダー委任には v1 サーフェスを使ってください。表現を自分で書きたい場合は `injectionPrompt` に `{{model}}` / `{{effort}}` / `{{roster}}` プレースホルダーを入れてください。
+- **適切なモデルに委任。** ダッシュボードや config から最大 5 つのルーティング/ネイティブモデルを Codex サブエージェントピッカーに公開し、複雑なタスクは推論モデルへ、高速なタスクは安価なモデルへ送れます。v2 マルチエージェントサーフェス(GPT-5.6 Sol/Terra)ではプロキシが簡潔な委任ガイダンスを注入します。推奨サブエージェントモデル・負荷(`injectionModel` / `injectionEffort`)、公開モデルロスターと各モデルが対応する負荷ラダー、そしてクロスモデル `spawn_agent` オーバーライドを適用する `fork_turns` ルールまで。既知の制限: ネイティブの親がルーティング子をスポーンすると、タスク本文がバックエンド暗号化状態で到着し失われることがあります([#92](https://github.com/GroepOnline/opencodex/issues/92)) — 安定したクロスプロバイダー委任には v1 サーフェスを使ってください。表現を自分で書きたい場合は `injectionPrompt` に `{{model}}` / `{{effort}}` / `{{roster}}` プレースホルダーを入れてください。
 - **preview gate された OpenAI ロールアウトに備える。** GPT-5.6 Sol/Terra/Luna の負荷ラダーを保存します。Direct/Multi は 372k Codex 契約を、OpenAI API と OpenRouter は 1.05M メタデータを使います。
 - **任意のモデルに超能力を。** OpenAI 以外のモデルも ChatGPT ログイン上で動く `gpt-5.4-mini` サイドカーで本当のウェブ検索と画像理解を得られます。
 - **画像をネイティブに生成。** Codex の独立型 `image_gen` ツールは生成時に `POST /v1/images/generations`、編集時に `POST /v1/images/edits` を使います。Responses のホスト型 `image_generation` ツールとは別物です。
@@ -300,7 +300,7 @@ npm パッケージを削除する前に、ローカル状態を先に片付け�
 
 ```bash
 ocx uninstall
-npm uninstall -g @onlinechefgroep/opencodex
+npm uninstall -g @groeponline/opencodex
 ```
 
 `ocx uninstall` はプロキシの停止、インストールされた service の削除、Codex shim の削除、Codex config/catalog/history の
@@ -422,7 +422,7 @@ ocx recover-history --legacy-openai
 ## 開発
 
 ```bash
-git clone https://github.com/OnlineChefGroep/opencodex.git
+git clone https://github.com/GroepOnline/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # dev モードでプロキシ API を起動

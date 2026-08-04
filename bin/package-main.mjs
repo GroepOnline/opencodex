@@ -1,4 +1,4 @@
-export const packageName = "@onlinechefgroep/opencodex";
+export const packageName = "@groeponline/opencodex";
 export const cliCommand = "ocx";
 
 export async function loadBunApi() {

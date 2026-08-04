@@ -2,7 +2,7 @@
 
 > De levende ontwerp- en smaakgids voor het opencodex-dashboard (`gui/`).
 > Dit is de ChefGroep-taal (v2 "Devin-richting"): een stil, warm, mat instrument.
-> Bron van waarheid voor de *taal*: [`OnlineChefGroep/design-system`](https://github.com/OnlineChefGroep/design-system)
+> Bron van waarheid voor de *taal*: [`GroepOnline/design-system`](https://github.com/GroepOnline/design-system)
 > (`tokens.css`, `DESIGN.md`, `motion-spec.md`). Dit bestand legt vast hoe die
 > taal in dít dashboard leeft, en — belangrijker — **hoe je 'm uitbreidt zonder
 > 'm te breken**.

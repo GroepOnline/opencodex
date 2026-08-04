@@ -13,7 +13,7 @@ import { isSelectableCodexPoolAccount } from "./account-id";
  * Defaults preserve current behavior: disabled resolves instantly and never
  * awaits, so single-account and pre-pacing setups are untouched.
  *
- * Ported from OnlineChefGroep `main` (PR #4 / baadc835) and re-wired into the
+ * Ported from GroepOnline `main` (PR #4 / baadc835) and re-wired into the
  * current `responses/core.ts` send path — the original `responses.ts` call site
  * was lost during the responses split on `main`.
  */

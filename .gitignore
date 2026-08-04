@@ -5,7 +5,7 @@ dist/
 .DS_Store
 
 # Maintainer-only planning notes. `devlog` is a private submodule
-# (lidge-jun/opencodex-internal) pinned by gitlink; its contents are never
+# (GroepOnline/opencodex-internal) pinned by gitlink; its contents are never
 # tracked here. Commit inside the submodule, then bump the pointer separately.
 devlog/
 
