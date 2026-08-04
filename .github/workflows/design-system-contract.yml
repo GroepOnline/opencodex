@@ -1,0 +1,20 @@
+name: Design-system contract
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout pinned design-system validator
+        uses: actions/checkout@v4
+        with:
+          repository: GroepOnline/design-system
+          ref: 7a489b05d4d6de8e22e934dfa6368a86446dcf03
+          path: .design-system-validator
+          persist-credentials: false
+      - name: Validate consumer contract
+        run: python3 .design-system-validator/scripts/validate-consumer-contract.py .github/design-system.json
