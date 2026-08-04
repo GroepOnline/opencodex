@@ -42,8 +42,16 @@ jobs:
               path.join(process.cwd(), ".github", "scripts", "pr-quality.cjs"),
             );
 
-            const ALLOWED_BASES = ["dev", "main"];
-            const DEFAULT_BASE = "dev";
+            // Repo default is main (2026-08-04). Keep `dev` allowed during
+            // the cutover so older integration PRs are not falsely rejected.
+            // pull_request_target always evaluates this file from the default
+            // branch — merging this PR is the only way to clear the false
+            // [WRONG BRANCH] labels (chicken-and-egg until then).
+            const DEFAULT_BASE =
+              context.payload.repository?.default_branch || "main";
+            const ALLOWED_BASES = Array.from(
+              new Set(["dev", "main", DEFAULT_BASE]),
+            );
             const TITLE_PREFIX = "[WRONG BRANCH] ";
             const COMMENT_MARKER = "<!-- pr-quality-enforcer -->";
             const LEGACY_COMMENT_MARKER = "<!-- wrong-branch-enforcer -->";
@@ -211,7 +219,7 @@ jobs:
                   "",
                   `This pull request currently targets ${inlineCode(pr.base.ref)}, but pull requests must target one of ${ALLOWED_BASES.map(inlineCode).join(" or ")}.`,
                   "",
-                  `@${pr.user.login} Please retarget this PR to ${inlineCode(DEFAULT_BASE)}. All contributions go to ${inlineCode(DEFAULT_BASE)}; \`main\` receives only release promotions. See our [Contributing guide](https://github.com/GroepOnline/opencodex/blob/dev/CONTRIBUTING.md) for details. Thanks! 🙏`
+                  `@${pr.user.login} Please retarget this PR to ${inlineCode(DEFAULT_BASE)} (or another allowed base: ${ALLOWED_BASES.map(inlineCode).join(", ")}). See our [Contributing guide](https://github.com/GroepOnline/opencodex/blob/${DEFAULT_BASE}/CONTRIBUTING.md) for details. Thanks! 🙏`
                 );
               }
 
