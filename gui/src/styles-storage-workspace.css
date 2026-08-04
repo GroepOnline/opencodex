@@ -300,8 +300,8 @@
 }
 
 .stw-detail-back-chevron {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   flex-shrink: 0;
   transform: rotate(180deg);
   color: var(--muted);

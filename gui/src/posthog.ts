@@ -12,10 +12,32 @@ function posthogKey(): string | undefined {
   return typeof key === "string" && key.trim() ? key.trim() : undefined;
 }
 
-/** Init PostHog only when VITE_POSTHOG_KEY is set. No identify / no PII. */
+/** Explicit opt-out (`localStorage ocx-posthog=0`) or browser DNT blocks init. */
+export function isPostHogTelemetryAllowed(
+  storage: Pick<Storage, "getItem"> | null | undefined,
+  dnt: string | null | undefined,
+): boolean {
+  try {
+    if (storage?.getItem("ocx-posthog") === "0") return false;
+  } catch {
+    /* private mode / blocked storage — fall through to DNT */
+  }
+  return dnt !== "1";
+}
+
+function telemetryAllowed(): boolean {
+  const dnt = navigator.doNotTrack ?? (navigator as Navigator & { msDoNotTrack?: string }).msDoNotTrack;
+  try {
+    return isPostHogTelemetryAllowed(localStorage, dnt);
+  } catch {
+    return isPostHogTelemetryAllowed(undefined, dnt);
+  }
+}
+
+/** Init PostHog only when VITE_POSTHOG_KEY is set and telemetry is allowed. No identify / no PII. */
 export function initPostHog(): void {
   const key = posthogKey();
-  if (!key || typeof window === "undefined") {
+  if (!key || typeof window === "undefined" || !telemetryAllowed()) {
     return;
   }
 

@@ -111,9 +111,10 @@
   --radius-round: 50%;
   --radius-pill: 999px;
 
-  /* typography: product UI first, Korean-safe fallbacks, mono only for machine data */
-  --font-ui: "General Sans", "Pretendard Variable", Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
-  --font-code: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SFMono-Regular", "Cascadia Code", "Noto Sans Mono CJK KR", Menlo, Consolas, monospace;
+  /* typography: product UI first, Korean-safe fallbacks, mono only for machine data.
+     Unquoted family keywords stay lowercase (value-keyword-case). */
+  --font-ui: "General Sans", "Pretendard Variable", pretendard, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, "BlinkMacSystemFont", "Segoe UI", roboto, system-ui, sans-serif;
+  --font-code: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SFMono-Regular", "Cascadia Code", "Noto Sans Mono CJK KR", menlo, consolas, monospace;
   --font: var(--font-ui);
   --mono: var(--font-code);
 
@@ -128,10 +129,11 @@
   --text-title: 24px;     /* page titles — DS --text-2xl */
   --text-display: 28px;   /* hero numbers: product extension, not part of DS §11 */
 
+  /* General Sans ships 400/500/600 only — bold aliases to semibold (no 700 face). */
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
-  --weight-bold: 700;
+  --weight-bold: 600;
 
   /* leading: tight for headings, roomy for prose, calm for UI */
   --leading-tight: 1.2;
@@ -421,7 +423,7 @@ kbd { font-family: var(--font-code); font-size: var(--text-caption); border: 1px
 .lang-toggle .custom-select { width: 100%; position: static !important; }
 .lang-toggle .select-trigger { width: 100%; justify-content: space-between; border: none; background: none; color: inherit; font-size: var(--text-control); padding: 0; min-height: auto; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .lang-toggle .select-trigger:hover:not(:disabled) { border: none; background: none; color: inherit; box-shadow: none; }
-.lang-toggle .select-dropdown { background: var(--glass-rail); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
+.lang-toggle .select-dropdown { background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
 .lang-toggle .select-dropdown-beside { top: auto; bottom: 0; left: calc(100% + 6px); right: auto; min-width: 10rem; max-height: min(60vh, 20rem); overflow-y: auto; }
 .theme-toggle { display: flex; align-items: center; gap: 9px; padding: 8px 10px; width: 100%; text-align: left; background: none; border: none; cursor: pointer; color: var(--muted); font: inherit; font-size: var(--text-control); border-radius: var(--radius-sm); transition: background var(--motion-fast), color var(--motion-fast); }
 .theme-toggle:hover { background: var(--accent-soft); color: var(--text); }
@@ -2038,13 +2040,13 @@ button.prov-account-row.active { cursor: default; }
 }
 /* Only an OPEN group needs the hairline: on a folded one it reads as a stray rule. */
 .ocx-group-head.open { border-bottom: 1px solid var(--border-soft); }
-.ocx-group-heading { flex: 1; min-width: 0; margin: 0; font-size: 14px; }
+.ocx-group-heading { flex: 1; min-width: 0; margin: 0; font-size: var(--text-body); }
 .ocx-group-toggle {
   display: flex; width: 100%; align-items: baseline; gap: 10px; min-width: 0; padding: 0;
   border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left;
 }
-.ocx-group-name { font-size: 14px; font-weight: 600; }
-.ocx-group-count { flex-shrink: 0; color: var(--muted); font-size: 11.5px; }
+.ocx-group-name { font-size: var(--text-body); font-weight: var(--weight-semibold); }
+.ocx-group-count { flex-shrink: 0; color: var(--muted); font-size: var(--text-caption); }
 .ocx-chevron { flex-shrink: 0; align-self: center; color: var(--muted); transition: transform var(--motion-fast); }
 .claude-model-names { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 1px; }
 .claude-model-names strong { display: block; overflow: hidden; color: var(--text); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
@@ -2104,7 +2106,7 @@ button.prov-account-row.active { cursor: default; }
 .claude-1m-chip {
   flex-shrink: 0; padding: 1px 6px; border-radius: var(--radius-xs);
   background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent);
-  font-size: 10px; font-weight: 700; letter-spacing: 0.02em;
+  font-size: var(--text-micro); font-weight: var(--weight-bold); letter-spacing: var(--tracking-wide);
 }
 .claude-model-body { padding: 10px 12px 12px; border-top: 1px solid var(--border-soft); }
 .claude-field { display: block; margin-top: 10px; }
