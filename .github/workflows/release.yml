@@ -253,9 +253,6 @@ jobs:
         env:
           DRY_RUN: ${{ inputs.dry-run }}
           NPM_DIST_TAG: ${{ inputs.tag }}
-          # Fallback to the org NPM_TOKEN secret when Trusted Publishing (OIDC)
-          # is not yet configured for this package (first publish).
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ "$DRY_RUN" = "true" ]; then
             echo "::notice::DRY RUN — building + packing, not publishing"
