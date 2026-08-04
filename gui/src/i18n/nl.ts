@@ -5,7 +5,6 @@ import { en, type TKey } from "./en";
 
 const overrides: Partial<Record<TKey, string>> = {
   // sidebar / nav
-  "nav.dashboard": "De pas",
   "nav.providers": "Leveranciers",
   "nav.models": "Modellen",
   "nav.combos": "Combos",
@@ -13,9 +12,9 @@ const overrides: Partial<Record<TKey, string>> = {
   "nav.logs": "Logs & debug",
   "nav.usage": "Verbruik",
   "nav.storage": "Opslag",
-  "nav.codexAuth": "Codex-login",
   "nav.api": "API",
   "nav.claude": "Claude",
+  "nav.codexAuth": "Codex-login",
   "nav.verkeer": "Verkeer",
   "nav.systeem": "Systeem",
   "nav.views": "Views",
@@ -36,8 +35,6 @@ const overrides: Partial<Record<TKey, string>> = {
   "danger.stopTitle": "Proxy stoppen?",
   "danger.stopBody": "Codex en Cursor verliezen hun verbinding.",
   "danger.stopAction": "Stop proxy",
-  "nav.openMenu": "Open menu",
-  "nav.closeMenu": "Sluit menu",
 
   // common
   "common.github": "GitHub",

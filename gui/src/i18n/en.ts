@@ -2,8 +2,7 @@
 // Strings with {cmd} render a <code> chip via <Trans>; {var} are plain interpolations.
 export const en = {
   // sidebar / nav / common
-  "nav.dashboard": "Dashboard",
-  "nav.startup": "Startup",
+  "nav.codexAuth": "Codex Auth",
   "nav.verkeer": "Traffic",
   "nav.systeem": "System",
   "nav.views": "Views",
@@ -1109,10 +1108,7 @@ export const en = {
   "modal.baseUrlPlaceholderHint": "Replace the {placeholder} in the Base URL with your actual Account ID before adding.",
   "modal.adding": "Adding…",
   "modal.useOauthLogin": "← Use OAuth login",
-  "nav.codexAuth": "Codex Auth",
   "nav.api": "API",
-  "nav.openMenu": "Open menu",
-  "nav.closeMenu": "Close menu",
   "codexAuth.mainAccount": "Main Account",
   "codexAuth.codexApp": "Codex App",
   "codexAuth.appLogin": "App login",
@@ -1415,7 +1411,6 @@ export const en = {
   "claude.saved": "Saved.",
   "claude.saveFailed": "Save failed",
   "claude.networkError": "Network error — is the proxy running?",
-  "claude.toggleAria": "Toggle Claude connection",
   "claude.none": "None",
 
   // Combos workspace

@@ -17,7 +17,6 @@
 @import "./styles/provider-overview-dashboard.css";
 @import "./styles-combos-workspace.css";
 @import "./styles-models-workspace.css";
-@import "./styles-dashboard-workspace.css";
 @import "./styles-storage-workspace.css";
 @import "./styles-subagents-workspace.css";
 @import "./styles-claudecode-workspace.css";
@@ -269,169 +268,10 @@ p { text-wrap: pretty; }
 .caps { font-size: var(--text-micro); font-weight: var(--weight-semibold); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--faint); }
 .prose { font-size: var(--text-body); line-height: var(--leading-relaxed); max-width: 68ch; text-wrap: pretty; }
 
-/* [Decision Log]
-- 목적: 화면마다 임의로 지정된 폰트 크기와 굵기를 역할 기반 타이포그래피로 통일한다.
-- 대안 분석: 태그 선택자만 사용하면 문맥별 역할이 불명확하고, 페이지별 인라인 값은 중복되며, 역할 유틸리티는 UI 의미와 토큰을 직접 연결한다.
-- 선택 근거: 8단계 타입 스케일과 4단계 굵기를 공통화하면 한글/영문/숫자 화면이 같은 위계로 렌더링되고 새 화면도 동일 규칙을 재사용할 수 있다.
-*/
-.text-micro { font-size: var(--text-micro) !important; line-height: var(--leading-ui); }
-.text-caption { font-size: var(--text-caption) !important; line-height: var(--leading-ui); }
-.text-label { font-size: var(--text-label) !important; line-height: var(--leading-ui); }
-.text-control { font-size: var(--text-control) !important; line-height: var(--leading-ui); }
-
-/* Paragraph hints/intros — measure only <p>, not toolbar spans. */
-p.muted.text-label,
-p.muted.text-control {
-  max-width: var(--prose-measure);
-}
-.text-body { font-size: var(--text-body) !important; line-height: var(--leading-body); }
-.text-subtitle { font-size: var(--text-subtitle) !important; line-height: var(--leading-tight); }
-.text-title { font-size: var(--text-title) !important; line-height: var(--leading-tight); }
-.text-display { font-size: var(--text-display) !important; line-height: var(--leading-tight); }
-.font-regular { font-weight: var(--weight-regular) !important; }
-.font-medium { font-weight: var(--weight-medium) !important; }
-.font-semibold { font-weight: var(--weight-semibold) !important; }
-.font-bold { font-weight: var(--weight-bold) !important; }
-.leading-tight { line-height: var(--leading-tight) !important; }
-.leading-ui { line-height: var(--leading-ui) !important; }
-.leading-body { line-height: var(--leading-body) !important; }
-.leading-relaxed { line-height: var(--leading-relaxed) !important; }
-
-::selection { background: var(--accent-soft); }
-
-/* native controls (checkbox/radio) follow the blue accent */
-input[type="checkbox"], input[type="radio"] { accent-color: var(--accent-blue); }
-
-/* range slider — design-system settings surface: 2px hairline track, ring thumb */
-input[type="range"] { -webkit-appearance: none; appearance: none; height: 2px; background: var(--border); border-radius: 1px; outline: none; }
-input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--accent-blue); cursor: pointer; transition: transform 120ms var(--ease-out); }
-input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
-input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--accent-blue); cursor: pointer; }
-
-/* keyboard hint — mono, hairline key cap (design-system) */
-kbd { font-family: var(--font-code); font-size: var(--text-caption); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; color: var(--muted); background: var(--surface); }
-
-/* scrollbars */
-*::-webkit-scrollbar { width: 10px; height: 10px; }
-*::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-pill); border: 2px solid var(--bg); }
-*::-webkit-scrollbar-thumb:hover { background: var(--faint); }
-
-:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; border-radius: var(--radius-2xs); }
-
-/* ---- layout shell ---- */
-.app { display: grid; grid-template-columns: 232px 1fr; min-height: 100dvh; }
-
-.sidebar {
-  position: sticky; top: 0; align-self: start; height: 100dvh;
-  z-index: var(--z-overlay);
-  display: flex; flex-direction: column; gap: 4px;
-  padding: 18px 14px;
-  border-right: 1px solid var(--border);
-  background: var(--glass-rail);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-}
-.brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 14px; }
-/* logo is a white-on-transparent silhouette → recolor via mask with the theme text color so it
-   stays visible in BOTH light and dark (a plain <img> was invisible white-on-white in light). */
-.brand-logo { width: 26px; height: 26px; flex-shrink: 0; background: var(--text);
-  -webkit-mask: url(/logo.png) center / contain no-repeat; mask: url(/logo.png) center / contain no-repeat; }
-/* Devin-DNA: headings weight 500 + tight tracking — never semibold product chrome */
-.brand .name {
-  font-weight: var(--weight-medium); font-size: var(--text-subtitle);
-  letter-spacing: var(--tracking-tight); line-height: 26px;
-}
-.brand .ver {
-  font-family: var(--font-code); font-size: var(--text-micro); color: var(--muted); line-height: var(--leading-tight);
-  background: var(--raised); border: 1px solid var(--border); padding: 2px 6px; border-radius: var(--radius-pill);
-  align-self: center;
-}
-
-/* [Decision Log]
-- 목적: 인접한 사이드바 메뉴의 hover/active 배경이 한 덩어리처럼 보이지 않게 한다.
-- 대안 분석: 항목 margin은 클릭 영역 바깥 정렬이 복잡해지고, 구분선은 시각적 잡음이 크며, nav flex gap은 항목 구조를 유지한 채 일정한 간격을 만든다.
-- 선택 근거: 기존 sidebar-foot의 flex gap 패턴과 동일하고 메뉴별 예외 없이 작은 간격을 일관되게 적용할 수 있다.
-*/
-.sidebar nav {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-/* Devin nav-item: h28, r6, 13px/500, padding 0 10px 0 6 (design-system Fase A) */
-.nav-item {
-  display: flex; align-items: center; gap: 8px;
-  height: 28px; padding: 0 10px 0 6px; border-radius: var(--radius-xs);
-  background: none; border: none; width: 100%; text-align: left; cursor: pointer;
-  color: var(--muted); font: inherit; font-size: 13px; font-weight: var(--weight-medium);
-  transition: background var(--motion-fast), color var(--motion-fast);
-}
-.nav-item:hover { background: var(--hover); color: var(--text); }
-/* design-system nav: active is a calm raised surface, not the accent — one
-   accent max, reserved for links/focus/toggles/status (taste-rules: color). */
-.nav-item.active { background: var(--raised); color: var(--text); font-weight: var(--weight-medium); }
-.nav-item svg { width: 15px; height: 15px; color: var(--faint); flex-shrink: 0; }
-.nav-item.active svg { color: var(--text); }
-
-.nav-entry { display: flex; align-items: center; min-width: 0; border-radius: var(--radius-sm); }
-.nav-entry .nav-item { flex: 1 1 auto; min-width: 0; }
-.nav-entry-claude {
-  padding-right: 4px;
-  transition: background var(--motion-fast), color var(--motion-fast);
-}
-.nav-entry-claude:hover,
-.nav-entry-claude.active { background: var(--accent-soft); color: var(--text); }
-.nav-entry-claude .nav-item,
-.nav-entry-claude .nav-item:hover,
-.nav-entry-claude .nav-item.active { width: auto; background: transparent; }
-/* Use the standard flex Switch (not an absolute track/knob overlay) so the
-   knob stays vertically centered with the Claude label. */
-.nav-entry-claude .switch {
-  margin-inline: 2px 4px;
-}
-.nav-entry-claude .switch:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
-
-.sidebar-foot { margin-top: auto; padding-top: 12px; display: flex; flex-direction: column; gap: 2px; }
-
-/* drawer header row: brand + close button (close is mobile-only) */
-.drawer-head { display: flex; align-items: flex-start; }
-.drawer-head .brand { flex: 1 1 auto; min-width: 0; }
-
-/* mobile drawer chrome: hidden on desktop, activated in the narrow-screen media block */
-.mobile-topbar { display: none; }
-.menu-toggle {
-  display: none; align-items: center; justify-content: center;
-  min-width: 44px; min-height: 44px; padding: 8px;
-  background: none; border: none; border-radius: var(--radius-sm);
-  color: var(--muted); cursor: pointer;
-  transition: background var(--motion-fast), color var(--motion-fast);
-}
-.menu-toggle:hover { background: var(--accent-soft); color: var(--text); }
-.menu-toggle svg { width: 18px; height: 18px; }
-.drawer-scrim {
-  display: none; position: fixed; inset: 0; z-index: var(--z-overlay);
-  background: light-dark(rgba(20, 20, 20, 0.32), rgba(0, 0, 0, 0.52));
-}
-
 .sidebar-link { display: flex; align-items: center; gap: 9px; padding: 8px 10px; color: var(--muted); font-size: var(--text-control); border-radius: var(--radius-sm); text-decoration: none; }
 .sidebar-link:hover { background: var(--accent-soft); color: var(--text); text-decoration: none; }
 .sidebar-link svg { width: 15px; height: 15px; }
 
-.lang-toggle { display: flex; align-items: center; gap: 9px; padding: 8px 10px; width: 100%; color: var(--muted); font-size: var(--text-control); border-radius: var(--radius-sm); transition: background var(--motion-fast), color var(--motion-fast); position: relative; }
-.lang-toggle:hover { background: var(--accent-soft); color: var(--text); }
-.lang-toggle svg { width: 15px; height: 15px; flex-shrink: 0; }
-.lang-toggle .custom-select { width: 100%; position: static !important; }
-.lang-toggle .select-trigger { width: 100%; justify-content: space-between; border: none; background: none; color: inherit; font-size: var(--text-control); padding: 0; min-height: auto; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
-.lang-toggle .select-trigger:hover:not(:disabled) { border: none; background: none; color: inherit; box-shadow: none; }
-.lang-toggle .select-dropdown { background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
-.lang-toggle .select-dropdown-beside { top: auto; bottom: 0; left: calc(100% + 6px); right: auto; min-width: 10rem; max-height: min(60vh, 20rem); overflow-y: auto; }
-.theme-toggle { display: flex; align-items: center; gap: 9px; padding: 8px 10px; width: 100%; text-align: left; background: none; border: none; cursor: pointer; color: var(--muted); font: inherit; font-size: var(--text-control); border-radius: var(--radius-sm); transition: background var(--motion-fast), color var(--motion-fast); }
-.theme-toggle:hover { background: var(--accent-soft); color: var(--text); }
-.theme-toggle svg { width: 15px; height: 15px; flex-shrink: 0; }
-.theme-toggle .mode { text-transform: capitalize; }
-.stop-toggle { color: var(--red); }
-.stop-toggle:hover { background: var(--red-soft); color: var(--red); }
-.stop-toggle:disabled { opacity: 0.5; cursor: default; }
 
 .main { min-width: 0; }
 .main-inner { max-width: 980px; margin: 0 auto; padding: 32px 36px 64px; }
@@ -1039,10 +879,10 @@ select.input { appearance: none; }
 
 /* Press-physics (Motion 4) — the same tactile scale on every pressable row,
    tab, chip and option, matching .btn. Never on inputs, text or panels. */
-.nav-item, .page-tab, .select-option, .chip, .seg button, .usage-segmented-btn, .claude-tabs button {
+.page-tab, .select-option, .chip, .seg button, .usage-segmented-btn, .claude-tabs button {
   transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out), transform 100ms var(--ease-out);
 }
-.nav-item:active, .page-tab:active, .select-option:active, .chip:active, .seg button:active, .usage-segmented-btn:active, .claude-tabs button:active { transform: scale(0.98); }
+.page-tab:active, .select-option:active, .chip:active, .seg button:active, .usage-segmented-btn:active, .claude-tabs button:active { transform: scale(0.98); }
 
 /* ---- modal ---- */
 /* Matte dim — no backdrop blur (glass ban). Overlay alone blocks reading through. */
@@ -1752,84 +1592,6 @@ button.prov-account-row.active { cursor: default; }
 .oauth-device-code { font-size: 20px; font-weight: 800; letter-spacing: .14em; color: var(--text); user-select: all; }
 .oauth-login-paste { display: flex; gap: 8px; align-items: center; width: 100%; }
 .oauth-login-paste .input { flex: 1; min-width: 0; font-size: var(--text-label); padding: 6px 10px; }
-
-/* responsive: compact sticky top bar (menu + brand + stop) with the desktop sidebar
-   reused as an off-canvas drawer — 10 destinations no longer fit an always-visible
-   strip or chip grid without eating half the viewport. */
-@media (max-width: 760px) {
-  /* rows: topbar auto + main fills — without this, align-content stretch splits the
-     leftover viewport height between the two rows and inflates the top bar */
-  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-  .mobile-topbar {
-    position: sticky; top: 0; z-index: var(--z-sticky);
-    display: flex; align-items: center; gap: 2px;
-    padding: 4px 10px; min-width: 0;
-    border-bottom: 1px solid var(--border);
-    background: var(--glass-rail);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-  }
-  .mobile-topbar .brand { flex: 1 1 auto; min-width: 0; padding: 4px; }
-  .mobile-topbar .stop-toggle { width: auto; min-width: 44px; min-height: 44px; justify-content: center; padding: 8px; }
-  .menu-toggle { display: inline-flex; }
-  /* drawer: the desktop sidebar kept intact (nav groups + foot + GitHub link), off-canvas */
-  .sidebar {
-    position: fixed; top: 0; left: 0; bottom: 0; z-index: var(--z-popover);
-    width: min(280px, 84vw); height: 100dvh;
-    padding-bottom: calc(18px + env(safe-area-inset-bottom));
-    /* overlay glass: near-opaque so content behind never reads through — the blur
-       only lets diffused light/color bleed in, not shapes or text */
-    background: light-dark(rgba(249, 249, 249, 0.97), rgba(23, 23, 23, 0.96));
-    transform: translateX(-100%);
-    visibility: hidden;   /* removes the closed drawer from the tab order / a11y tree */
-    transition: transform var(--motion-normal) ease, visibility var(--motion-normal);
-    overflow-y: auto; outline: none;
-  }
-  .sidebar.open {
-    transform: translateX(0); visibility: visible;
-    box-shadow: 0 12px 40px light-dark(rgba(20, 20, 20, 0.22), rgba(0, 0, 0, 0.5));
-  }
-  .drawer-scrim { display: block; }
-  .main-inner { padding: 22px 18px 48px; }
-  /* The mobile app grid already reserves the top-bar row; fill only its remaining main row. */
-  .main-inner.main-inner--combos { padding: 0; min-height: 0; height: 100%; overflow: hidden; }
-  /* settings rows: copy takes the full width, controls drop underneath */
-  .setting-row { flex-wrap: wrap; }
-  .setting-row .setting-copy { flex: 1 1 100% !important; }
-  .setting-row .setting-controls { width: 100%; }
-  .setting-row .setting-controls .select-sm { flex: 1 1 0; min-width: 0; }
-  .setting-row > .select-sm { width: 100%; }
-  .api-form-row { align-items: stretch; flex-direction: column; }
-  .api-form-row .btn { width: 100%; min-height: 40px; }
-  .codex-auto-switch-card { align-items: stretch; flex-direction: column; }
-  .codex-auto-switch-controls { align-items: flex-end; justify-content: space-between; width: 100%; }
-  .codex-auto-switch-feedback { margin-top: -6px; text-align: left; }
-  .stat-row > .stat { min-width: 100px; }
-  .tbl { min-width: 460px; }   /* keep columns readable; .tbl-wrap scrolls horizontally */
-  .usage-cards { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-  .provider-quota { padding-left: 16px; }
-  .prov-meta { display: grid; grid-template-columns: max-content minmax(0, 1fr); width: 100%; }
-  .prov-meta .chip ~ span:not(:last-child) { display: none; }
-  /* account login grid: let name/status truncate with ellipsis instead of wrapping */
-  .oauth-grid { grid-template-columns: minmax(0, auto) minmax(0, 1fr) max-content; column-gap: 8px; }
-  /* language menu: the drawer scrolls (overflow-y) so the beside-placement would be
-     clipped at the drawer edge — open upward from the foot row instead. */
-  .sidebar .lang-toggle .select-dropdown-beside { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; }
-}
-
-.usage-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }
-.usage-cards .stat-value { font-size: var(--text-title); font-weight: var(--weight-semibold); margin-top: 4px; font-variant-numeric: tabular-nums; letter-spacing: var(--tracking-tight); }
-.usage-head { flex-wrap: wrap; }
-.usage-filters { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
-.usage-segmented { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 2px; gap: 2px; background: var(--surface); }
-.usage-segmented-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: none; background: transparent; color: var(--muted); padding: 4px 12px; border-radius: var(--radius-pill); cursor: pointer; font: inherit; white-space: nowrap; }
-.usage-segmented-btn.active { background: var(--raised); color: var(--text); font-weight: var(--weight-semibold); }
-.usage-source-mark { width: var(--icon-sm); height: var(--icon-sm); flex: 0 0 auto; object-fit: contain; }
-:root[data-theme="dark"] .usage-source-mark { filter: invert(1); }
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .usage-source-mark { filter: invert(1); }
-}
 
 @media (max-width: 760px) {
   .usage-segmented-btn { min-height: var(--control-touch); }
