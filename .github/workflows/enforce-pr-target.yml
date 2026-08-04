@@ -42,7 +42,7 @@ jobs:
               path.join(process.cwd(), ".github", "scripts", "pr-quality.cjs"),
             );
 
-            const ALLOWED_BASES = ["dev"];
+            const ALLOWED_BASES = ["dev", "main"];
             const DEFAULT_BASE = "dev";
             const TITLE_PREFIX = "[WRONG BRANCH] ";
             const COMMENT_MARKER = "<!-- pr-quality-enforcer -->";
