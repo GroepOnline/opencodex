@@ -187,7 +187,7 @@ export function DetailPanel({
                   model: comboPublicModelId(e.target.value, d.alias),
                 }))}
               />
-              <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+              <p className="muted" style={{ fontSize: "var(--text-label)", margin: "4px 0 0" }}>
                 {isCreate
                   ? t("cws.field.idInternalHint")
                   : t("cws.field.idHintEdit", { model: comboPublicModelId(draft.id, draft.alias) })}
@@ -207,7 +207,7 @@ export function DetailPanel({
                   model: comboPublicModelId(d.id, e.target.value),
                 }))}
               />
-              <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+              <p className="muted" style={{ fontSize: "var(--text-label)", margin: "4px 0 0" }}>
                 {t("cws.field.aliasHint")}
               </p>
             </div>
@@ -218,7 +218,7 @@ export function DetailPanel({
                 disabled={busy}
                 onChange={(strategy) => updateDraft((d) => ({ ...d, strategy }))}
               />
-              <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>
+              <p className="muted" style={{ fontSize: "var(--text-label)", margin: "6px 0 0" }}>
                 {draft.strategy === "failover" ? t("cws.strategy.failoverHint") : t("cws.strategy.roundRobinHint")}
               </p>
             </div>
@@ -231,7 +231,7 @@ export function DetailPanel({
                 allowedEfforts={allowedEfforts}
                 onChange={(defaultEffort) => updateDraft((d) => ({ ...d, defaultEffort }))}
               />
-              <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+              <p className="muted" style={{ fontSize: "var(--text-label)", margin: "4px 0 0" }}>
                 {t("cws.field.defaultEffortHint")}
               </p>
             </div>
@@ -256,7 +256,7 @@ export function DetailPanel({
             )}
             <div className="cwi-field">
               <span className="field-label">{t("cws.targets")}</span>
-              <p className="muted" style={{ fontSize: 12, margin: "0 0 8px" }}>
+              <p className="muted" style={{ fontSize: "var(--text-label)", margin: "0 0 8px" }}>
                 {draft.strategy === "failover" ? t("cws.targets.failoverHint") : t("cws.targets.roundRobinHint")}
               </p>
               <TargetEditor

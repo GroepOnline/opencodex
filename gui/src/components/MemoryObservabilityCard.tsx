@@ -403,7 +403,7 @@ export default function MemoryObservabilityCard({ apiBase }: { apiBase: string }
             <span className="muted text-control">{t("dash.mem.reconnecting")}</span>
           )}
           {restartPhase === "error" && restartError && (
-            <span className="text-control" style={{ color: "var(--danger, #c44)" }}>{restartError}</span>
+            <span className="text-control" style={{ color: "var(--red)" }}>{restartError}</span>
           )}
           {noSupervisor && restartPhase === "idle" && (
             <span className="muted text-control">{t("dash.mem.restartNoSupervisor")}</span>

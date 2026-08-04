@@ -74,7 +74,7 @@ export function EffortSelect({
         ))}
       </select>
       {unsupported ? (
-        <p className="muted" style={{ fontSize: 12, margin: "4px 0 0", color: "var(--danger, #b42318)" }}>
+        <p className="muted" style={{ fontSize: "var(--text-label)", margin: "4px 0 0", color: "var(--red)" }}>
           {t("cws.field.defaultEffortUnsupported")}
         </p>
       ) : null}
