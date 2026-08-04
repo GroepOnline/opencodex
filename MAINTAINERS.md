@@ -7,7 +7,7 @@ review and merge policy.
 
 | GitHub account | Project role | Responsibilities |
 | --- | --- | --- |
-| [@lidge-jun](https://github.com/lidge-jun) | Project owner | Project direction, releases, repository administration, and final governance decisions |
+| [@GroepOnline](https://github.com/GroepOnline) | Project owner | Project direction, releases, repository administration, and final governance decisions |
 | [@Ingwannu](https://github.com/Ingwannu) | Maintainer | Issue and pull-request triage, `dev` integration, security review, and repository maintenance |
 | [@Wibias](https://github.com/Wibias) | Maintainer | Issue and pull-request triage, `dev` integration, and provider/CI maintenance |
 
