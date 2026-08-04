@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@onlinechefgroep/opencodex",
+      "name": "@groeponline/opencodex",
       "dependencies": {
         "@bufbuild/protobuf": "^2.12.0",
         "@modelcontextprotocol/sdk": "^1",

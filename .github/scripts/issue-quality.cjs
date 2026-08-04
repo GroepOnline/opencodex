@@ -700,7 +700,7 @@ function validateIssue(issue) {
     // Version "Unknown" / "모름" / "idk" is never actionable, on any form.
     if (!softPass && version !== null && isUnusableVersion(version)) {
       reasons.push("Version is missing or unknown.");
-      guidance.push("Report the installed `@onlinechefgroep/opencodex` version (for example `2.7.42`) or a commit SHA from `ocx --version`.");
+      guidance.push("Report the installed `@groeponline/opencodex` version (for example `2.7.42`) or a commit SHA from `ocx --version`.");
     } else if (
       !softPass &&
       isNewBugForm &&

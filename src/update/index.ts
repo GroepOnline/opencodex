@@ -20,7 +20,7 @@ export function historyRestoreIncomplete(configDir = getConfigDir()): boolean {
   }
 }
 
-export const PKG = "@onlinechefgroep/opencodex";
+export const PKG = "@groeponline/opencodex";
 const HERE = dirname(fileURLToPath(import.meta.url)); // .../opencodex/src/update
 
 export type Installer = "bun" | "npm" | "source";

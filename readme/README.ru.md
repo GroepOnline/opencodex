@@ -3,14 +3,13 @@
 Две команды — и Codex, и Claude Code работают на любой LLM, которую вы укажете.</p>
 
 <p align="center">
-  <a href="https://x.com/claudeebum"><img src="https://img.shields.io/badge/%40claudeebum-000000?logo=x&logoColor=white" alt="Подписывайтесь на @claudeebum в X"></a>
-  <a href="https://www.npmjs.com/package/@onlinechefgroep/opencodex"><img src="https://img.shields.io/npm/v/@onlinechefgroep/opencodex?color=cb3837&label=npm&logo=npm" alt="npm version"></a>
-  <a href="https://github.com/OnlineChefGroep/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@onlinechefgroep/opencodex?color=blue" alt="license"></a>
-  <img src="https://img.shields.io/node/v/@onlinechefgroep/opencodex?logo=node.js&label=node" alt="node version">
+  <a href="https://www.npmjs.com/package/@groeponline/opencodex"><img src="https://img.shields.io/npm/v/@groeponline/opencodex?color=cb3837&label=npm&logo=npm" alt="npm version"></a>
+  <a href="https://github.com/GroepOnline/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@groeponline/opencodex?color=blue" alt="license"></a>
+  <img src="https://img.shields.io/node/v/@groeponline/opencodex?logo=node.js&label=node" alt="node version">
 </p>
 
 ```bash
-npm install -g @onlinechefgroep/opencodex
+npm install -g @groeponline/opencodex
 ocx start        # прокси + дашборд: localhost:10100
 ```
 
@@ -80,7 +79,7 @@ flowchart LR
 ```bash
 # Установка (рантайм Bun добавляется автоматически — нужен только Node 18+)
 # Предпочитайте Node, принадлежащий пользователю (nvm/fnm), — избегайте `sudo npm install -g …`
-npm install -g @onlinechefgroep/opencodex
+npm install -g @groeponline/opencodex
 
 # Интерактивная настройка (записывает конфигурацию, встраивается в Codex и предлагает установить shim автозапуска)
 ocx init
@@ -107,15 +106,15 @@ opencodex поставляет рантайм Bun как зависимость 
 зависимости. Переустановите пакет без этих флагов, разрешив установочный скрипт Bun:
 
 ```bash
-npm install -g --allow-scripts=bun @onlinechefgroep/opencodex   # без --ignore-scripts и без --omit=optional
+npm install -g --allow-scripts=bun @groeponline/opencodex   # без --ignore-scripts и без --omit=optional
 
 # если первоначальная установка выполнялась через sudo, продолжайте использовать sudo:
-sudo npm install -g --allow-scripts=bun @onlinechefgroep/opencodex
+sudo npm install -g --allow-scripts=bun @groeponline/opencodex
 ```
 
 Собственное предупреждение npm предлагает сокращённую команду без имени пакета —
 такая команда переустановит текущий каталог, поэтому всегда указывайте
-`@onlinechefgroep/opencodex` явно.
+`@groeponline/opencodex` явно.
 
 Если вы устанавливали пакет через `sudo` в prefix, принадлежащий root, показанная выше
 переустановка с sudo разблокирует этот prefix — но при возможности лучше перейти на Node,
@@ -244,7 +243,7 @@ OpenAI API-ключа и OpenRouter (`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-lu
 - **Один вход — и никаких API-ключей.** Поддержка OAuth для xAI, Anthropic и Kimi позволяет аутентифицироваться существующим аккаунтом; токены обновляются автоматически. Либо пробросьте свой `codex login`, вставьте API-ключ или используйте ссылки вида `${ENV_VAR}` — как вам удобнее.
 - **Работает везде, где работает Codex.** Автоматически встраивается в Codex CLI, TUI, App и SDK. Маршрутизируемые модели отображаются в селекторе моделей Codex наравне с нативными.
 - **Встраивание без риска для истории.** При локальной установке прокси перенаправляет встроенный провайдер Codex `openai` на себя одной строкой `openai_base_url` — новые треды сохраняют нативный тег провайдера, поэтому текущая история чатов никогда не перепривязывается, и даже некорректное завершение работы не может её скрыть. (Треды, перетегированные старыми версиями, однократно мигрируются обратно при первом запуске; при удалённой/LAN-привязке вместо этого используется отдельная запись провайдера, поскольку ей нужен заголовок с API-ключом.)
-- **Делегируйте задачи подходящей модели.** Через панель управления или конфигурацию можно вывести до пяти маршрутизируемых или нативных моделей в селектор подагентов Codex — сложные задачи отправляйте модели с развитыми рассуждениями, быстрые — дешёвой. На мультиагентной поверхности v2 (GPT-5.6 Sol/Terra) прокси внедряет компактные указания по делегированию: предпочтительную модель и уровень рассуждений подагента (`injectionModel` / `injectionEffort`), список отобранных моделей со шкалой уровней, которую поддерживает каждая из них, и правила `fork_turns`, позволяющие кросс-модельным вызовам `spawn_agent` применять свои переопределения. Известное ограничение: когда нативный родитель порождает маршрутизируемого потомка, тело задачи в настоящий момент может прийти зашифрованным на бэкенде и потеряться ([#92](https://github.com/OnlineChefGroep/opencodex/issues/92)) — для надёжного делегирования между провайдерами используйте поверхность v1. Хотите свои формулировки? Задайте `injectionPrompt` с плейсхолдерами `{{model}}` / `{{effort}}` / `{{roster}}`.
+- **Делегируйте задачи подходящей модели.** Через панель управления или конфигурацию можно вывести до пяти маршрутизируемых или нативных моделей в селектор подагентов Codex — сложные задачи отправляйте модели с развитыми рассуждениями, быстрые — дешёвой. На мультиагентной поверхности v2 (GPT-5.6 Sol/Terra) прокси внедряет компактные указания по делегированию: предпочтительную модель и уровень рассуждений подагента (`injectionModel` / `injectionEffort`), список отобранных моделей со шкалой уровней, которую поддерживает каждая из них, и правила `fork_turns`, позволяющие кросс-модельным вызовам `spawn_agent` применять свои переопределения. Известное ограничение: когда нативный родитель порождает маршрутизируемого потомка, тело задачи в настоящий момент может прийти зашифрованным на бэкенде и потеряться ([#92](https://github.com/GroepOnline/opencodex/issues/92)) — для надёжного делегирования между провайдерами используйте поверхность v1. Хотите свои формулировки? Задайте `injectionPrompt` с плейсхолдерами `{{model}}` / `{{effort}}` / `{{roster}}`.
 - **Готовность к превью-релизам OpenAI.** Записи GPT-5.6 Sol/Terra/Luna сохраняют исходные шкалы уровней рассуждений. Direct/Multi используют контракт Codex на 372k токенов; OpenAI API и OpenRouter — метаданные на 1.05M, когда открыт вышестоящий доступ.
 - **Суперспособности для любой модели.** Модели не от OpenAI получают настоящий веб-поиск и понимание изображений через сайдкар `gpt-5.4-mini`, работающий поверх вашего входа ChatGPT.
 - **Нативная генерация изображений.** Автономный инструмент Codex `image_gen` использует `POST /v1/images/generations` для генерации и `POST /v1/images/edits` для правок; он не связан с размещённым инструментом Responses `image_generation`.
@@ -332,7 +331,7 @@ shim включён по умолчанию и отключается в GUI-п�
 
 ```bash
 ocx uninstall
-npm uninstall -g @onlinechefgroep/opencodex
+npm uninstall -g @groeponline/opencodex
 ```
 
 `ocx uninstall` останавливает прокси, удаляет установленную службу, удаляет shim для Codex,
@@ -463,7 +462,7 @@ ocx recover-history --legacy-openai
 ## Разработка
 
 ```bash
-git clone https://github.com/OnlineChefGroep/opencodex.git
+git clone https://github.com/GroepOnline/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # запустить API прокси в dev-режиме

@@ -1,6 +1,6 @@
-# 09 — Full Audit + x10 Terminal Plan (OnlineChefGroep)
+# 09 — Full Audit + x10 Terminal Plan (GroepOnline)
 
-Status: living execution plan for the OnlineChefGroep fork of opencodex (`ocx`).
+Status: living execution plan for the GroepOnline fork of opencodex (`ocx`).
 Authored from a full-repo audit on 2026-08-02. Targets `dev` as the integration
 branch unless a step is explicitly a `main` promotion.
 
@@ -77,9 +77,9 @@ Until this is reconciled, every release and every “ship x10” claim is blocke
 
 | Pri | PR | Action taken | Outcome |
 | --- | --- | --- | --- |
-| 1 | [#51](https://github.com/OnlineChefGroep/opencodex/pull/51) CI shard | Rebased onto `dev`; Greptile thread resolved; merge-ready comment | ~~Security sign-off on workflow → merge~~ **Merged 2026-08-03** |
-| 2 | [#53](https://github.com/OnlineChefGroep/opencodex/pull/53) Claude recursive OCX | Stale P1/trivial threads resolved; CI green | ~~Merge~~ **Merged 2026-08-03** |
-| 3 | [#52](https://github.com/OnlineChefGroep/opencodex/pull/52) rate-limit metrics | Threads resolved; still **draft** | ~~Undraft → review → merge~~ **Undrafted and merged 2026-08-03** |
+| 1 | [#51](https://github.com/GroepOnline/opencodex/pull/51) CI shard | Rebased onto `dev`; Greptile thread resolved; merge-ready comment | ~~Security sign-off on workflow → merge~~ **Merged 2026-08-03** |
+| 2 | [#53](https://github.com/GroepOnline/opencodex/pull/53) Claude recursive OCX | Stale P1/trivial threads resolved; CI green | ~~Merge~~ **Merged 2026-08-03** |
+| 3 | [#52](https://github.com/GroepOnline/opencodex/pull/52) rate-limit metrics | Threads resolved; still **draft** | ~~Undraft → review → merge~~ **Undrafted and merged 2026-08-03** |
 
 No code conflicts between these three. #51 first protected CI for everything else.
 
@@ -104,16 +104,16 @@ maintainer-controlled release step.
 
 ### Phase 1 — Ship the fork identity (trust ×10 for install)
 
-**Goal:** A stranger can install OnlineChefGroep ocx and know it is ours.
+**Goal:** A stranger can install GroepOnline ocx and know it is ours.
 
 1. Publish `v1.0.0-preview.1` from reconciled `main` (release workflow + evidence in CHANGELOG). The release contract (`scripts/release.ts`, `release.yml`) only accepts prereleases shaped `X.Y.Z-preview.N` on the `preview` dist-tag; `-alpha` versions are rejected before publication.
-2. Canonical npm scope under OnlineChefGroep control; keep the legacy `@bitkyc08/opencodex` compatibility path documented.
+2. Canonical npm scope under GroepOnline control; keep the legacy `@groeponline/opencodex` compatibility path documented.
 3. Align `package.json` / README / docs-site / star-prompt / update URLs on both branches.
 4. Deploy fork docs to GitHub Pages (replace upstream `opencodex.me` assumptions).
 5. Upstream intake policy doc (security/protocol only; no release dependence).
 6. Enforce high-severity `bun audit` (already claimed on some histories — verify on `dev`).
 
-**Exit gate:** `npm i -g <our-scope>/opencodex@preview` works on Linux/macOS/Windows without preinstalled Bun; docs and update notifier point only at OnlineChefGroep.
+**Exit gate:** `npm i -g <our-scope>/opencodex@preview` works on Linux/macOS/Windows without preinstalled Bun; docs and update notifier point only at GroepOnline.
 
 ### Phase 2 — Terminal UX 10x (CLI + guided recovery)
 

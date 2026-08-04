@@ -6,7 +6,7 @@ description: 모든 모델의 Codex 서브에이전트 생성·관리 방식을 
 opencodex에서는 카탈로그의 모든 모델이 사용할 멀티에이전트 협업 서피스를 선택할 수 있습니다. 대시보드와 모델 페이지의 **서브에이전트** 토글이 이 값을 전역으로 제어합니다.
 
 :::note
-v2 서피스(`multi_agent_v2`)의 서브에이전트는 **기본적으로** 부모 모델을 상속합니다. `fork_turns` 기본값이 `all`이고, 전체 히스토리 fork는 오버라이드를 거부하기 때문입니다. v2.7.2부터 opencodex가 상속을 깨는 방법을 가이드로 주입합니다. `fork_turns`를 `"none"`(또는 `"3"` 같은 부분 fork)으로 지정한 `spawn_agent` 호출은 `model` / `reasoning_effort` 인자를 전달할 수 있고, 공개된 툴 스키마에 이 인자가 안 보여도 Codex 런타임은 파싱해서 적용합니다. 알려진 전송 제한: **네이티브** 부모가 **비네이티브**(라우팅) 프로바이더의 자식을 스폰하면 Codex 클라이언트가 `NEW_TASK` 페이로드를 백엔드 암호화된 `encrypted_content`로만 볼 수 있습니다([#92](https://github.com/OnlineChefGroep/opencodex/issues/92)). opencodex는 읽을 수 없는 작업을 외부 프로바이더로 전달하지 않습니다. 직접 라우팅은 HTTP 400과 `unreadable_encrypted_agent_task` 코드로 실패하고, 콤보는 복호화할 수 없는 대상은 제외하고 가능하면 정규 네이티브 ChatGPT 대상을 선택합니다. 이종 프로바이더 위임에는 v1을 쓰거나, 네이티브 ChatGPT 자식을 선택하거나, 작업을 평문 v2 `agent_message` 콘텐츠로 다시 볼 수 있습니다.
+v2 서피스(`multi_agent_v2`)의 서브에이전트는 **기본적으로** 부모 모델을 상속합니다. `fork_turns` 기본값이 `all`이고, 전체 히스토리 fork는 오버라이드를 거부하기 때문입니다. v2.7.2부터 opencodex가 상속을 깨는 방법을 가이드로 주입합니다. `fork_turns`를 `"none"`(또는 `"3"` 같은 부분 fork)으로 지정한 `spawn_agent` 호출은 `model` / `reasoning_effort` 인자를 전달할 수 있고, 공개된 툴 스키마에 이 인자가 안 보여도 Codex 런타임은 파싱해서 적용합니다. 알려진 전송 제한: **네이티브** 부모가 **비네이티브**(라우팅) 프로바이더의 자식을 스폰하면 Codex 클라이언트가 `NEW_TASK` 페이로드를 백엔드 암호화된 `encrypted_content`로만 볼 수 있습니다([#92](https://github.com/GroepOnline/opencodex/issues/92)). opencodex는 읽을 수 없는 작업을 외부 프로바이더로 전달하지 않습니다. 직접 라우팅은 HTTP 400과 `unreadable_encrypted_agent_task` 코드로 실패하고, 콤보는 복호화할 수 없는 대상은 제외하고 가능하면 정규 네이티브 ChatGPT 대상을 선택합니다. 이종 프로바이더 위임에는 v1을 쓰거나, 네이티브 ChatGPT 자식을 선택하거나, 작업을 평문 v2 `agent_message` 콘텐츠로 다시 볼 수 있습니다.
 :::
 
 ## 모드
@@ -15,7 +15,7 @@ v2 서피스(`multi_agent_v2`)의 서브에이전트는 **기본적으로** 부�
 | --- | --- | --- |
 | **v1** | `multi_agent_v1` | 네임스페이스 방식의 클래식 에이전트 툴과 `send_input` / `close_agent` / `resume_agent`를 사용합니다. `spawn_agent` 모델 오버라이드로 다른 모델의 서브에이전트를 띄울 수 있습니다. |
 | **base** (기본값) | 업스트림 핀 | 업스트림 모델 핀을 복원합니다. gpt-5.6-sol과 gpt-5.6-terra는 v2, gpt-5.6-luna는 v1을 쓰고, 핀이 없는 모델은 Codex `multi_agent_v2` 기능 플래그를 따릅니다. 실제 스폰 동작은 각 모델에 결정된 서피스를 따릅니다. |
-| **v2** | `multi_agent_v2` | 플랫 `spawn_agent` 툴과 동시 세션, `send_message` / `followup_task` / `wait_agent` / `interrupt_agent`를 사용합니다. 전체 히스토리 fork에서는 자식이 부모 모델을 상속하고, `fork_turns: "none"`(또는 부분 fork)에서는 `model` / `reasoning_effort` 오버라이드가 적용됩니다. 네이티브→라우팅 자식이 백엔드 암호화된 작업 콘텐츠만 받으면 외부 라우팅은 `unreadable_encrypted_agent_task`를 반환하고, 혼합 콤보는 복호화 가능한 네이티브 대상을 우선합니다([#92](https://github.com/OnlineChefGroep/opencodex/issues/92)). |
+| **v2** | `multi_agent_v2` | 플랫 `spawn_agent` 툴과 동시 세션, `send_message` / `followup_task` / `wait_agent` / `interrupt_agent`를 사용합니다. 전체 히스토리 fork에서는 자식이 부모 모델을 상속하고, `fork_turns: "none"`(또는 부분 fork)에서는 `model` / `reasoning_effort` 오버라이드가 적용됩니다. 네이티브→라우팅 자식이 백엔드 암호화된 작업 콘텐츠만 받으면 외부 라우팅은 `unreadable_encrypted_agent_task`를 반환하고, 혼합 콤보는 복호화 가능한 네이티브 대상을 우선합니다([#92](https://github.com/GroepOnline/opencodex/issues/92)). |
 
 ### 암호화된 v2 작업 전달
 
@@ -58,7 +58,7 @@ v2 서피스(`multi_agent_v2`)의 서브에이전트는 **기본적으로** 부�
 - **대시보드** → 첫 번째 스탯 셀에서 **v1**, **base**, **v2**를 선택합니다.
 - **모델** 페이지 → 상단 세그먼트 컨트롤에서 선택합니다.
 - 두 페이지 모두 **?** 버튼을 누르면 이 문서로 연결되는 도움말 모달이 열립니다.
-- **대시보드** → **서브에이전트 위임**에서 선호 모델과 선택 사항인 추론 강도를 고릅니다. **Codex 네이티브 서브에이전트 기본값으로 사용**을 켜면 OpenCodex가 활성 Codex 라우팅을 관리할 때 다음 sync 또는 restart부터 새 Codex task에도 같은 선택값을 적용합니다. 외부 사용자 관리 provider 설정은 그대로 유지합니다. 이 토글은 위임 가이드 토글과 별개입니다. v2에서는 주입된 가이드가 `fork_turns: "none"` 스폰을 지시해 모델 오버라이드가 적용되게 합니다 — 다만 네이티브→라우팅 자식은 작업 본문이 암호화 상태로 도착할 수 있습니다([#92](https://github.com/OnlineChefGroep/opencodex/issues/92)).
+- **대시보드** → **서브에이전트 위임**에서 선호 모델과 선택 사항인 추론 강도를 고릅니다. **Codex 네이티브 서브에이전트 기본값으로 사용**을 켜면 OpenCodex가 활성 Codex 라우팅을 관리할 때 다음 sync 또는 restart부터 새 Codex task에도 같은 선택값을 적용합니다. 외부 사용자 관리 provider 설정은 그대로 유지합니다. 이 토글은 위임 가이드 토글과 별개입니다. v2에서는 주입된 가이드가 `fork_turns: "none"` 스폰을 지시해 모델 오버라이드가 적용되게 합니다 — 다만 네이티브→라우팅 자식은 작업 본문이 암호화 상태로 도착할 수 있습니다([#92](https://github.com/GroepOnline/opencodex/issues/92)).
 
 ### CLI
 

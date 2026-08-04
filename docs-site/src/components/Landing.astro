@@ -61,12 +61,12 @@ const providers: { label: string; path?: string }[] = [
 ];
 
 const quickstartMini = [
-	{ cmd: 'npm install -g @onlinechefgroep/opencodex', note: t('Install', '설치', '安装', 'Установка', 'インストール') },
+	{ cmd: 'npm install -g @groeponline/opencodex', note: t('Install', '설치', '安装', 'Установка', 'インストール') },
 	{ cmd: 'ocx start', note: t('Start the proxy', '프록시 시작', '启动代理', 'Запуск прокси', 'プロキシを起動') },
 ];
 
 const quickstart = [
-	{ cmd: 'npm install -g @onlinechefgroep/opencodex', note: t('Install', '설치', '安装', 'Установка', 'インストール') },
+	{ cmd: 'npm install -g @groeponline/opencodex', note: t('Install', '설치', '安装', 'Установка', 'インストール') },
 	{ cmd: 'ocx init', note: t('Inject a provider into Codex', 'Codex에 프로바이더 주입', '向 Codex 注入 provider', 'Внедрение провайдера в Codex', 'プロバイダーを Codex に注入') },
 	{ cmd: 'ocx start', note: t('Start the proxy', '프록시 시작', '启动代理', 'Запуск прокси', 'プロキシを起動') },
 	{ cmd: 'codex "Write a hello world in Rust"', note: t('Codex now routes through ocx', 'Codex가 ocx를 경유', 'Codex 现在经由 ocx 路由', 'Codex теперь работает через ocx', 'Codex は ocx 経由に') },
@@ -112,8 +112,8 @@ const docsMap = [
 		icon: 'folder',
 		links: [
 			{ label: t('Contributing', '기여하기', '贡献', 'Участие в проекте', 'コントリビュート'), href: `${prefix}contributing/` },
-			{ label: 'GitHub', href: 'https://github.com/OnlineChefGroep/opencodex' },
-			{ label: 'npm', href: 'https://www.npmjs.com/package/@onlinechefgroep/opencodex' },
+			{ label: 'GitHub', href: 'https://github.com/GroepOnline/opencodex' },
+			{ label: 'npm', href: 'https://www.npmjs.com/package/@groeponline/opencodex' },
 		],
 	},
 ];
@@ -158,7 +158,7 @@ const docsMap = [
 					{t('Get Started', '시작하기', '快速开始', 'Начать', 'はじめに')}
 					<svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
 				</a>
-				<a class="lp-btn-ghost" href="https://github.com/OnlineChefGroep/opencodex">GitHub</a>
+				<a class="lp-btn-ghost" href="https://github.com/GroepOnline/opencodex">GitHub</a>
 			</div>
 		<ul class="lp-chips" aria-label={t('Supported providers', '지원 프로바이더', '支持的 provider', 'Поддерживаемые провайдеры', '対応プロバイダー')}>
 				{providers.map((p) => (

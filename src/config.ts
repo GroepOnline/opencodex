@@ -1847,8 +1847,8 @@ export function isOcxStartCommandLine(commandLine: string): boolean {
   // "src/cli.ts" matches pre-restructure installs still running; "src/cli/index.ts" is current.
   const hasOcxEntrypoint = normalized.includes("src/cli.ts")
     || normalized.includes("src/cli/index.ts")
-    || normalized.includes("@onlinechefgroep/opencodex")
-    || normalized.includes("@bitkyc08/opencodex") // legacy global installs still running
+    || normalized.includes("@groeponline/opencodex")
+    || normalized.includes("@groeponline/opencodex") // legacy global installs still running
     || /(?:^|[\s/"'])(?:ocx|opencodex)(?:\.cmd)?(?:$|[\s"'])/.test(normalized);
   return hasOcxEntrypoint && /(?:^|[\s"'])start(?:$|[\s"'])/.test(normalized);
 }

@@ -1351,9 +1351,9 @@ describe("opencodex config defaults", () => {
   test("recognizes opencodex start command lines", () => {
     expect(isOcxStartCommandLine('bun run src/cli.ts start')).toBe(true);
     expect(isOcxStartCommandLine('"C:/tools/bun/bin/bun.exe" "run" "src/cli/index.ts" "start"')).toBe(true);
-    expect(isOcxStartCommandLine('bun C:/tools/bun/install/global/node_modules/@onlinechefgroep/opencodex/src/cli.ts start')).toBe(true);
-    // Legacy scope: global installs from before the OnlineChefGroep rename keep being detected.
-    expect(isOcxStartCommandLine('bun C:/tools/bun/install/global/node_modules/@bitkyc08/opencodex/src/cli.ts start')).toBe(true);
+    expect(isOcxStartCommandLine('bun C:/tools/bun/install/global/node_modules/@groeponline/opencodex/src/cli.ts start')).toBe(true);
+    // Legacy scope: global installs from before the GroepOnline rename keep being detected.
+    expect(isOcxStartCommandLine('bun C:/tools/bun/install/global/node_modules/@groeponline/opencodex/src/cli.ts start')).toBe(true);
     expect(isOcxStartCommandLine("opencodex start")).toBe(true);
 
     expect(isOcxStartCommandLine("bun run src/cli.ts status")).toBe(false);
