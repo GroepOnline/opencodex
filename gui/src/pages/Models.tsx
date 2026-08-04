@@ -922,7 +922,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
               aria-label={t("models.v2Label")}
               aria-haspopup="dialog"
             >
-              <IconInfo width={14} height={14} aria-hidden="true" />
+              <IconInfo width={15} height={15} aria-hidden="true" />
             </button>
           </div>
         )}
@@ -1038,7 +1038,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
        <div className="card models-combos-card">
          <div className="row models-combos-empty-head">
            <div className="row models-field-row" style={{ minWidth: 0 }}>
-             <IconShuffle width={14} height={14} aria-hidden="true" style={{ flexShrink: 0 }} />
+             <IconShuffle width={15} height={15} aria-hidden="true" style={{ flexShrink: 0 }} />
              <strong>{t("nav.combos")}</strong>
              <span className="muted text-label">{t("models.combosEmpty")}</span>
            </div>
@@ -1057,7 +1057,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
              style={{ flex: 1, background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit", color: "inherit", textAlign: "left", minWidth: 0 }}
            >
              <IconChevron style={{ width: 14, height: 14, color: "var(--muted)", flexShrink: 0, transform: combosOpen ? "rotate(90deg)" : "none", transition: "transform .12s" }} />
-             <IconShuffle width={14} height={14} aria-hidden="true" style={{ flexShrink: 0 }} />
+             <IconShuffle width={15} height={15} aria-hidden="true" style={{ flexShrink: 0 }} />
              <strong>{t("nav.combos")}</strong>
              <span className="muted mono text-label">{t("models.combosActive", { count: combos.length })}</span>
            </button>
@@ -1084,10 +1084,10 @@ export default function Models({ apiBase }: { apiBase: string }) {
   const collapseControls = (
     <div className="row models-collapse-controls">
       <button type="button" className="btn btn-ghost btn-sm text-caption" onClick={() => setAllCollapsed(true)} disabled={busy}>
-        <IconChevron width={12} height={12} aria-hidden="true" /> {t("models.collapseAll")}
+        <IconChevron width={13} height={13} aria-hidden="true" /> {t("models.collapseAll")}
       </button>
       <button type="button" className="btn btn-ghost btn-sm text-caption" onClick={() => setAllCollapsed(false)} disabled={busy}>
-        <IconChevron width={12} height={12} aria-hidden="true" style={{ transform: "rotate(90deg)" }} /> {t("models.expandAll")}
+        <IconChevron width={13} height={13} aria-hidden="true" style={{ transform: "rotate(90deg)" }} /> {t("models.expandAll")}
       </button>
     </div>
   );

@@ -34,7 +34,7 @@ export function DashboardModelsSection({
       ) : (
         <>
           <div className="pws-search-wrap">
-            <IconSearch className="pws-search-icon" width={14} height={14} aria-hidden="true" />
+            <IconSearch className="pws-search-icon" width={15} height={15} aria-hidden="true" />
             <input
               type="search"
               className="input pws-search-input"
@@ -59,7 +59,7 @@ export function DashboardModelsSection({
                       onClick={() => setExpandedProviders(prev => { const next = new Set(prev); if (next.has(provider)) next.delete(provider); else next.add(provider); return next; })}
                       aria-expanded={open}
                     >
-                      <IconChevron width={12} height={12} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .12s", color: "var(--muted)" }} aria-hidden="true" />
+                      <IconChevron width={13} height={13} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .12s", color: "var(--muted)" }} aria-hidden="true" />
                       <span className="font-semibold">{provider}</span>
                       <span className="count">{rows.length}</span>
                     </button>

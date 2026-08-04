@@ -164,7 +164,7 @@ export function TargetEditor({
                 e.dataTransfer.setData("text/plain", String(index));
               }}
             >
-              <IconGrip width={14} height={14} aria-hidden="true" />
+              <IconGrip width={15} height={15} aria-hidden="true" />
             </button>
             <div className="cwi-target-reorder">
               <button
@@ -174,7 +174,7 @@ export function TargetEditor({
                 aria-label={t("cws.target.moveUp")}
                 onClick={() => reorder(index, index - 1)}
               >
-                <IconArrowUp width={14} height={14} aria-hidden="true" />
+                <IconArrowUp width={15} height={15} aria-hidden="true" />
               </button>
               <button
                 type="button"
@@ -183,7 +183,7 @@ export function TargetEditor({
                 aria-label={t("cws.target.moveDown")}
                 onClick={() => reorder(index, index + 1)}
               >
-                <IconArrowDown width={14} height={14} aria-hidden="true" />
+                <IconArrowDown width={15} height={15} aria-hidden="true" />
               </button>
             </div>
             <select
@@ -244,7 +244,7 @@ export function TargetEditor({
                 onClick={() => onChange(targets.filter((_, i) => i !== index))}
                 aria-label={t("common.remove")}
               >
-                <IconTrash width={14} height={14} />
+                <IconTrash width={15} height={15} />
               </button>
             </div>
           </div>
@@ -256,7 +256,7 @@ export function TargetEditor({
         style={{ alignSelf: "flex-start" }}
         onClick={() => onChange([...targets, newComboTarget()])}
       >
-        <IconPlus width={14} height={14} /> {t("cws.target.add")}
+        <IconPlus width={15} height={15} /> {t("cws.target.add")}
       </button>
     </div>
   );

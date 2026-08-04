@@ -151,7 +151,7 @@ export function DetailPanel({
         <div className="combos-workspace-detail-actions">
           {!isCreate && onRequestRemove && (
             <button type="button" className="btn btn-ghost btn-sm" onClick={onRequestRemove}>
-              <IconTrash width={14} height={14} /> {t("common.remove")}
+              <IconTrash width={15} height={15} /> {t("common.remove")}
             </button>
           )}
           <button type="button" className="btn btn-primary btn-sm" disabled={(!isCreate && !dirty) || busy} onClick={() => { void save(); }}>

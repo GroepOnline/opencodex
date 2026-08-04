@@ -99,7 +99,7 @@ export function AddComboModal({
         <div className="row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
           <h3 id="cwi-add-title" style={{ margin: 0 }}>{t("cws.addTitle")}</h3>
           <button type="button" className="btn btn-ghost btn-sm" onClick={requestClose} disabled={busy} aria-label={t("common.close")}>
-            <IconX width={16} height={16} />
+            <IconX width={15} height={15} />
           </button>
         </div>
         <p className="muted" style={{ marginTop: 0 }}>{t("cws.addSubtitle")}</p>

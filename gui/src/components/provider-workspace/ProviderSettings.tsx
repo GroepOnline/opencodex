@@ -388,7 +388,7 @@ export default function ProviderSettings({
                   aria-label={t("common.remove")}
                   onClick={() => setFallback(rows => rows.filter(r => r.id !== row.id))}
                 >
-                  <IconTrash width={14} height={14} />
+                  <IconTrash width={15} height={15} />
                 </button>
               </div>
             );
@@ -400,7 +400,7 @@ export default function ProviderSettings({
             disabled={fallbackPeers.length === 0}
             onClick={() => setFallback(rows => [...rows, ...withRowIds([{ provider: "", model: "" }])])}
           >
-            <IconPlus width={14} height={14} /> {t("pws.fallback.add")}
+            <IconPlus width={15} height={15} /> {t("pws.fallback.add")}
           </button>
         </div>
       </div>

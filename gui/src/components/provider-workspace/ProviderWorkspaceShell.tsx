@@ -345,7 +345,7 @@ export default function ProviderWorkspaceShell({
         <aside className="pws-rail" aria-label={t("pws.providerList")}>
         <div className="pws-search-row">
           <div className="pws-search-wrap">
-            <IconSearch className="pws-search-icon" width={14} height={14} aria-hidden="true" />
+            <IconSearch className="pws-search-icon" width={15} height={15} aria-hidden="true" />
             <input
               type="search"
               className="input pws-search-input"
@@ -501,7 +501,7 @@ export default function ProviderWorkspaceShell({
                         }}
                         title={t("pws.removeConfirmTitle")}
                       >
-                        <IconTrash width={14} height={14} />
+                        <IconTrash width={15} height={15} />
                       </button>
                     )}
                   </div>

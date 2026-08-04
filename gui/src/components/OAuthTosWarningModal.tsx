@@ -81,7 +81,7 @@ export default function OAuthTosWarningModal({
           className="notice-warn"
           style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "flex-start" }}
         >
-          <IconAlert width={16} height={16} style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
+          <IconAlert width={15} height={15} style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
           <p className="modal-desc" style={{ margin: 0 }}>
             {t(bodyKey, { provider: providerLabel })}
           </p>

@@ -405,7 +405,7 @@ kbd { font-family: var(--font-code); font-size: var(--text-caption); border: 1px
   transition: background var(--motion-fast), color var(--motion-fast);
 }
 .menu-toggle:hover { background: var(--accent-soft); color: var(--text); }
-.menu-toggle svg { width: 20px; height: 20px; }
+.menu-toggle svg { width: 18px; height: 18px; }
 .drawer-scrim {
   display: none; position: fixed; inset: 0; z-index: var(--z-overlay);
   background: light-dark(rgba(20, 20, 20, 0.32), rgba(0, 0, 0, 0.52));
@@ -413,11 +413,11 @@ kbd { font-family: var(--font-code); font-size: var(--text-caption); border: 1px
 
 .sidebar-link { display: flex; align-items: center; gap: 9px; padding: 8px 10px; color: var(--muted); font-size: var(--text-control); border-radius: var(--radius-sm); text-decoration: none; }
 .sidebar-link:hover { background: var(--accent-soft); color: var(--text); text-decoration: none; }
-.sidebar-link svg { width: 16px; height: 16px; }
+.sidebar-link svg { width: 15px; height: 15px; }
 
 .lang-toggle { display: flex; align-items: center; gap: 9px; padding: 8px 10px; width: 100%; color: var(--muted); font-size: var(--text-control); border-radius: var(--radius-sm); transition: background var(--motion-fast), color var(--motion-fast); position: relative; }
 .lang-toggle:hover { background: var(--accent-soft); color: var(--text); }
-.lang-toggle svg { width: 16px; height: 16px; flex-shrink: 0; }
+.lang-toggle svg { width: 15px; height: 15px; flex-shrink: 0; }
 .lang-toggle .custom-select { width: 100%; position: static !important; }
 .lang-toggle .select-trigger { width: 100%; justify-content: space-between; border: none; background: none; color: inherit; font-size: var(--text-control); padding: 0; min-height: auto; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .lang-toggle .select-trigger:hover:not(:disabled) { border: none; background: none; color: inherit; box-shadow: none; }
@@ -425,7 +425,7 @@ kbd { font-family: var(--font-code); font-size: var(--text-caption); border: 1px
 .lang-toggle .select-dropdown-beside { top: auto; bottom: 0; left: calc(100% + 6px); right: auto; min-width: 10rem; max-height: min(60vh, 20rem); overflow-y: auto; }
 .theme-toggle { display: flex; align-items: center; gap: 9px; padding: 8px 10px; width: 100%; text-align: left; background: none; border: none; cursor: pointer; color: var(--muted); font: inherit; font-size: var(--text-control); border-radius: var(--radius-sm); transition: background var(--motion-fast), color var(--motion-fast); }
 .theme-toggle:hover { background: var(--accent-soft); color: var(--text); }
-.theme-toggle svg { width: 16px; height: 16px; flex-shrink: 0; }
+.theme-toggle svg { width: 15px; height: 15px; flex-shrink: 0; }
 .theme-toggle .mode { text-transform: capitalize; }
 .stop-toggle { color: var(--red); }
 .stop-toggle:hover { background: var(--red-soft); color: var(--red); }
@@ -629,7 +629,7 @@ a.btn, a.btn:hover { text-decoration: none; }
 }
 .btn-icon:hover { background: var(--raised-hover); color: var(--text); }
 .btn-icon:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 1px; }
-.btn-icon svg { width: 16px; height: 16px; display: block; }
+.btn-icon svg { width: 15px; height: 15px; display: block; }
 .btn.btn-ghost.btn-icon { width: 28px; height: 28px; padding: 0; }
 
 /* ---- cards / panels ---- */
@@ -981,7 +981,7 @@ select.input { appearance: none; }
 .chip { font-family: var(--font-code); font-size: var(--text-label); line-height: var(--leading-ui); background: var(--raised); border: 1px solid var(--border); padding: 1px 7px; border-radius: var(--radius-xs); color: var(--text); }
 
 .empty { text-align: center; padding: 56px 20px; border: 1px dashed var(--border); border-radius: var(--radius); color: var(--muted); }
-.empty svg { width: 30px; height: 30px; color: var(--faint); margin-bottom: 12px; }
+.empty svg { width: 24px; height: 24px; color: var(--faint); margin-bottom: 12px; }
 .empty .title { color: var(--text); font-weight: var(--weight-semibold); margin-bottom: 6px; }
 
 .notice { font-size: var(--text-control); line-height: var(--leading-body); padding: 9px 12px; border-radius: var(--radius-sm); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; max-width: var(--prose-measure); }
@@ -1430,7 +1430,7 @@ dialog.modal-overlay::backdrop {
   margin-bottom: 12px;
   max-width: var(--prose-measure);
 }
-.notice-warn svg { width: 14px; height: 14px; flex-shrink: 0; color: var(--amber); }
+.notice-warn svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--amber); }
 
 .startup-runtime-notice__text,
 .startup-runtime-notice__fix code {
@@ -1486,7 +1486,7 @@ dialog.modal-overlay::backdrop {
 .startup-hero--risk { border-color: color-mix(in srgb, var(--amber) 40%, var(--border)); background: color-mix(in srgb, var(--amber-soft) 72%, var(--surface)); }
 .startup-hero--native { border-color: color-mix(in srgb, var(--accent) 20%, var(--border)); }
 .startup-hero-icon { width: 42px; height: 42px; border-radius: var(--radius); display: grid; place-items: center; background: var(--raised); flex: 0 0 auto; }
-.startup-hero-icon svg { width: 21px; height: 21px; }
+.startup-hero-icon svg { width: 24px; height: 24px; }
 .startup-hero-copy h3 { margin: 10px 0 4px; font-size: var(--text-title); }
 .startup-hero-copy p { margin: 0; color: var(--muted); line-height: var(--leading-body); max-width: var(--prose-measure); }
 .startup-state-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
@@ -1688,7 +1688,7 @@ table.logs-table { min-width: 960px; }
 .openai-mode-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
 .openai-mode-control .usage-segmented-btn { min-width: 76px; }
 .link-btn { background: none; border: none; color: var(--accent-hover); font: inherit; font-size: var(--text-control); cursor: pointer; padding: 6px 2px; text-decoration: underline; }
-.link-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+.link-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
 
 /* provider card accounts dropdown (multiauth) */
 .prov-accounts-toggle {
@@ -1698,7 +1698,7 @@ table.logs-table { min-width: 960px; }
 }
 .prov-accounts-toggle:hover { color: var(--text); background: var(--raised); }
 .prov-accounts-toggle .chev { transition: transform var(--motion-normal) ease; display: inline-flex; }
-.prov-accounts-toggle .chev svg { width: 12px; height: 12px; transform: rotate(90deg); }
+.prov-accounts-toggle .chev svg { width: 13px; height: 13px; transform: rotate(90deg); }
 .prov-accounts-toggle.open .chev svg { transform: rotate(-90deg); }
 .prov-accounts-list { border-top: 1px solid var(--border-soft); padding: 6px 16px 10px; display: flex; flex-direction: column; gap: 2px; }
 .prov-account-row {

@@ -43,7 +43,7 @@ export function DashboardOverviewHead({
                 aria-controls="multi-agent-help-dialog"
                 aria-expanded={maHelpOpen}
               >
-                <IconInfo width={14} height={14} aria-hidden="true" />
+                <IconInfo width={15} height={15} aria-hidden="true" />
               </button>
             </div>
             <div className="value" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
