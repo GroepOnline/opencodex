@@ -287,6 +287,44 @@ export async function rewriteTakeoverCredits(
   return out.join("\n");
 }
 
+export const GITHUB_RELEASE_BODY_MAX_LENGTH = 120_000;
+const RELEASE_NOTES_TRUNCATION_MARKER =
+  "\n\n> Release notes truncated to stay within GitHub's 125,000-character limit.\n\n";
+
+export function capReleaseNotesBody(
+  body: string,
+  maxBytes = GITHUB_RELEASE_BODY_MAX_LENGTH,
+): string {
+  const encoder = new TextEncoder();
+  const byteLength = (value: string) => encoder.encode(value).byteLength;
+  if (byteLength(body) <= maxBytes) return body;
+  const markerBytes = byteLength(RELEASE_NOTES_TRUNCATION_MARKER);
+  if (maxBytes <= markerBytes) {
+    return Array.from(RELEASE_NOTES_TRUNCATION_MARKER).slice(0, maxBytes).join("");
+  }
+
+  const chars = Array.from(body);
+  let tailChars: string[] = [];
+  let tailBytes = 0;
+  for (let i = chars.length - 1; i >= 0 && tailChars.length < 2_000; i--) {
+    const charBytes = byteLength(chars[i]);
+    if (tailBytes + charBytes > maxBytes - markerBytes) break;
+    tailChars.unshift(chars[i]);
+    tailBytes += charBytes;
+  }
+
+  const headBudget = maxBytes - markerBytes - tailBytes;
+  let headText = "";
+  let headBytes = 0;
+  for (const character of chars) {
+    const charBytes = byteLength(character);
+    if (headBytes + charBytes > headBudget) break;
+    headText += character;
+    headBytes += charBytes;
+  }
+  return headText + RELEASE_NOTES_TRUNCATION_MARKER + tailChars.join("");
+}
+
 export function assembleReleaseNotes(input: {
   npmMetadata: string;
   carriedPreviewNotes?: string;
@@ -326,7 +364,7 @@ export function assembleReleaseNotes(input: {
     parts.push(`**Full Changelog**: https://github.com/${repo}/compare/${from}...${to}`);
   }
 
-  return parts.join("\n\n").replace(/\n+$/, "") + "\n";
+  return capReleaseNotesBody(parts.join("\n\n").replace(/\n+$/, "") + "\n");
 }
 
 async function readStdinOrFile(path: string | undefined): Promise<string> {

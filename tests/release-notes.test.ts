@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  capReleaseNotesBody,
   assembleReleaseNotes,
   hasMeaningfulCarriedNotes,
   hasNonWhitespace,
@@ -340,5 +341,41 @@ describe("rewriteTakeoverCredits", () => {
       async () => "Wibias",
     );
     expect(rewritten).toBe(line);
+  });
+});
+
+
+describe("capReleaseNotesBody", () => {
+  test("leaves notes under the GitHub limit unchanged", () => {
+    const notes = "npm metadata\n\ncompare link";
+    expect(capReleaseNotesBody(notes)).toBe(notes);
+  });
+
+  test("caps oversized notes while preserving the beginning and tail", () => {
+    const tail = "https://github.com/GroepOnline/opencodex/compare/v0.1.0...v1.0.0";
+    const notes = "release heading\n" + "x".repeat(130_000) + tail;
+    const capped = capReleaseNotesBody(notes);
+
+    expect(new TextEncoder().encode(capped).byteLength).toBeLessThanOrEqual(120_000);
+    expect(capped).toContain("Release notes truncated");
+    expect(capped.startsWith("release heading")).toBe(true);
+    expect(capped.endsWith(tail)).toBe(true);
+  });
+
+  test("keeps UTF-8 output within the byte limit without splitting Unicode", () => {
+    const capped = capReleaseNotesBody("😀".repeat(80_000), 120_000);
+    expect(new TextEncoder().encode(capped).byteLength).toBeLessThanOrEqual(120_000);
+    expect(capped).not.toContain("\uFFFD");
+  });
+
+  test("preserves the generated compare link through assembly", () => {
+    const capped = assembleReleaseNotes({
+      npmMetadata: "metadata",
+      carriedPreviewNotes: "x".repeat(130_000),
+      compareFrom: "v0.1.0",
+      compareTo: "v1.0.0",
+      repository: "GroepOnline/opencodex",
+    });
+    expect(capped).toContain("https://github.com/GroepOnline/opencodex/compare/v0.1.0...v1.0.0");
   });
 });
