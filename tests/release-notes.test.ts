@@ -356,7 +356,7 @@ describe("capReleaseNotesBody", () => {
     const notes = "release heading\n" + "x".repeat(130_000) + tail;
     const capped = capReleaseNotesBody(notes);
 
-    expect(capped.length).toBeLessThanOrEqual(120_000);
+    expect(new TextEncoder().encode(capped).byteLength).toBeLessThanOrEqual(120_000);
     expect(capped).toContain("Release notes truncated");
     expect(capped.startsWith("release heading")).toBe(true);
     expect(capped.endsWith(tail)).toBe(true);
