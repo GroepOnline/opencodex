@@ -3,7 +3,6 @@
 Two commands, and every one of them runs any LLM you point it at.</p>
 
 <p align="center">
-  
   <a href="https://www.npmjs.com/package/@groeponline/opencodex"><img src="https://img.shields.io/npm/v/@groeponline/opencodex?color=cb3837&label=npm&logo=npm" alt="npm version"></a>
   <a href="https://github.com/GroepOnline/opencodex/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@groeponline/opencodex?color=blue" alt="license"></a>
   <img src="https://img.shields.io/node/v/@groeponline/opencodex?logo=node.js&label=node" alt="node version">
@@ -98,7 +97,7 @@ Requires [Node](https://nodejs.org) 18+. The Bun runtime is bundled automaticall
 npm install -g @groeponline/opencodex
 
 # — or via Homebrew (macOS/Linux) —
-brew install GroepOnline/tap/opencodex
+brew install GroepOnline/homebrew-tap/opencodex
 
 # Interactive setup (writes config, injects into Codex, and offers autostart shim install)
 ocx init

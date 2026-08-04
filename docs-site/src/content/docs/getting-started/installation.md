@@ -22,7 +22,7 @@ vision and web-search sidecars can also use your ChatGPT login when a routed mod
 npm install -g @groeponline/opencodex
 
 # — or via Homebrew (macOS/Linux) —
-brew install GroepOnline/tap/opencodex
+brew install GroepOnline/homebrew-tap/opencodex
 ```
 
 :::note[npm blocked the bun postinstall?]
