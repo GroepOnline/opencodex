@@ -18,6 +18,10 @@ const LANG_KEY = "ocx-lang";
  */
 const RETIRED_LOCALES: Record<string, Locale> = {
   de: "en",
+  ja: "en",
+  ko: "en",
+  ru: "en",
+  zh: "en",
 };
 
 export function detectInitial(): Locale {
