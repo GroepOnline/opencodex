@@ -36,7 +36,7 @@ over resetting `main` until the open PR train (#51/#53/#52) lands.
 | Item | Reason |
 | --- | --- |
 | De Pas pages (`Modellen`/`Verkeer`/`Systeem`/`Instellingen` + `depas.css`) | Unwired stubs on `main` only. Rebuild under ChefGroep skins in Phase 3 ([CHE-10](https://linear.app/chefgroepp/issue/CHE-10)); do not revive dead routes. |
-| Extra GUI locales (`de`/`ja`/`ko`/`ru`/`zh`) | `dev` intentionally en/nl-only (#34). |
+| Extra GUI locales (`de`) — removed `ja`/`ko`/`ru`/`zh` per rebrand | `dev` intentionally en/nl-only (#34). |
 | `gui/src/posthog.ts` client | Privacy/scope review; server PostHog already on `dev`. Phase 4. |
 | Duplicate tests (`percentiles.test.ts` etc.) | Already covered on `dev` as `usage-percentiles.test.ts`, `telemetry-posthog-server.test.ts`, … |
 | `v1.0.0-alpha.1` bump on `main` | Release after reconcile + PR train; do not bump from a side PR. |

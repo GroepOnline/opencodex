@@ -12,16 +12,12 @@ export const LOCALES: { code: Locale; name: string; htmlLang: string }[] = [
 const LANG_KEY = "ocx-lang";
 
 /**
- * Locales this build no longer ships. A saved preference for one of them was an explicit
+ * Locales this build no longer ships (ja, ko, ru, zh removed). A saved preference for one of them was an explicit
  * "not Dutch" choice, so it migrates to English instead of falling through to the Dutch
  * default below. The migrated value is written back so the mapping runs once per browser.
  */
 const RETIRED_LOCALES: Record<string, Locale> = {
   de: "en",
-  ja: "en",
-  ko: "en",
-  ru: "en",
-  zh: "en",
 };
 
 export function detectInitial(): Locale {
