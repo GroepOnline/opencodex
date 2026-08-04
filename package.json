@@ -65,7 +65,8 @@
     "typescript": "5.9.3"
   },
   "overrides": {
-    "fast-uri": "^3.1.4"
+    "fast-uri": "^3.1.5",
+    "ip-address": "^10.3.1"
   },
   "keywords": [
     "codex",
