@@ -2159,3 +2159,63 @@ button.prov-account-row.active { cursor: default; }
 }
 .claude-effort-badge.on { background: color-mix(in srgb, var(--green) 15%, transparent); color: var(--green); }
 .claude-effort-badge.off { background: color-mix(in srgb, var(--muted) 12%, transparent); color: var(--muted); }
+
+/* ── Shell v2 (design-system v2 IA, 2026-08) ────────────────────────────────
+   Topbar + view tabs + settings sheet + danger zone. The old 232px sidebar
+   grid is overridden here; sidebar CSS itself is removed in the F3 cleanup. */
+.app { display: block; min-height: 100dvh; }
+
+.topbar { position: sticky; top: 0; z-index: var(--z-sticky); display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 52px; padding: 0 20px; border-bottom: 1px solid var(--border-soft); background: var(--bg); }
+.topbar .brand { padding: 0; }
+.topbar-right { display: flex; align-items: center; gap: 10px; }
+
+/* proxy stamp: status = color + icon + text */
+.stamp { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: var(--radius-pill); font-size: var(--text-micro); font-weight: 600; text-transform: uppercase; letter-spacing: var(--tracking-caps); }
+.stamp-ok { color: var(--green); background: var(--green-soft); }
+.stamp-err { color: var(--red); background: var(--red-soft); }
+
+.offline-banner { display: flex; align-items: center; gap: 9px; padding: 9px 20px; font-size: var(--text-control); color: var(--red); background: var(--red-soft); border-bottom: 1px solid var(--border-soft); }
+.offline-banner .link-btn { margin-left: auto; }
+
+/* view tabs: text labels, active = accent underline (no tablist role — these are
+   view navigations, not tab panels) */
+.view-tabs { display: flex; gap: 2px; padding: 0 20px; border-bottom: 1px solid var(--border-soft); background: var(--bg); overflow-x: auto; }
+.view-tab { position: relative; padding: 10px 13px 9px; background: none; border: none; cursor: pointer; white-space: nowrap; font-family: var(--font-ui); font-size: var(--text-control); font-weight: 500; color: var(--muted); }
+.view-tab:hover { color: var(--text); }
+.view-tab.active { color: var(--text); }
+.view-tab.active::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; border-radius: 1px; background: var(--accent-blue); }
+
+.sub-tabs { display: flex; gap: 2px; margin-bottom: 18px; border-bottom: 1px solid var(--border-soft); overflow-x: auto; }
+.sub-tab { position: relative; padding: 7px 10px 6px; background: none; border: none; cursor: pointer; white-space: nowrap; font-family: var(--font-ui); font-size: var(--text-label); color: var(--muted); }
+.sub-tab:hover { color: var(--text); }
+.sub-tab.active { color: var(--text); font-weight: 500; }
+.sub-tab.active::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 1px; background: var(--accent-blue); }
+.view-tab:active, .sub-tab:active { transform: scale(0.98); }
+
+/* ghost icon button (design-system .gbtn) */
+.gbtn { width: 28px; height: 28px; display: inline-grid; place-items: center; border: none; border-radius: var(--radius-xs); background: transparent; color: var(--muted); cursor: pointer; }
+.gbtn:hover { background: var(--hover); color: var(--text); }
+.gbtn svg { width: 15px; height: 15px; }
+
+/* settings sheet — Motion 5: pane slide 320ms outward, scrim behind */
+.sheet-scrim { position: fixed; inset: 0; z-index: var(--z-modal); background: light-dark(rgba(20, 18, 16, 0.35), rgba(0, 0, 0, 0.60)); animation: ocx-overlay-in var(--motion-fast) var(--ease-out); }
+.settings-sheet { position: fixed; top: 0; right: 0; bottom: 0; width: min(320px, 92vw); display: flex; flex-direction: column; gap: 18px; padding: 18px; background: var(--surface); border-left: 1px solid var(--border); overflow-y: auto; animation: ocx-sheet-in var(--motion-normal) var(--ease-out); }
+@keyframes ocx-sheet-in { from { transform: translateX(100%); } }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; }
+.sheet-head h2 { font-size: var(--text-title); }
+.sheet-label { margin-bottom: 8px; font-size: var(--text-micro); font-weight: 600; text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--faint); }
+.seg { display: inline-flex; gap: 2px; padding: 2px; background: var(--raised); border-radius: var(--radius-xs); }
+.seg button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: none; border-radius: calc(var(--radius-xs) - 2px); background: transparent; color: var(--muted); font-family: var(--font-ui); font-size: var(--text-label); cursor: pointer; }
+.seg button:hover { color: var(--text); }
+.seg button.on { background: var(--surface); color: var(--text); font-weight: 500; box-shadow: var(--shadow-sm); }
+.sheet-foot { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border-soft); }
+
+/* danger zone (Systeem home) */
+.danger-zone { margin-top: 28px; padding: 14px 16px; border: 1px solid var(--red); border-radius: var(--radius-lg); }
+.danger-title { margin-bottom: 10px; font-size: var(--text-micro); font-weight: 600; text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--red); }
+.danger-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.danger-action { font-size: var(--text-control); font-weight: 500; }
+.danger-copy .muted { font-size: var(--text-label); }
+.modal-card--narrow { max-width: 420px; }
+
+@media (prefers-reduced-motion: reduce) { .settings-sheet, .sheet-scrim { animation: none; } }

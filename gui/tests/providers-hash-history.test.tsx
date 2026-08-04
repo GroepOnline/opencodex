@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test, describe } from "bun:test";
 import { Window } from "happy-dom";
 import { normalizeHashPath, replaceHash, navigateHash } from "../src/hash-routing";
-import { hashBelongsToPage, readPageFromHash, resolveAppHashChange } from "../src/app-routing";
+import { canonicalHashFor, readRouteFromHash, resolveAppHashChange } from "../src/app-routing";
 
 /**
  * Hash routing contract after WP5 removed the Classic/Workspace split.
@@ -52,36 +52,59 @@ describe("hash helpers", () => {
 });
 
 describe("route resolution", () => {
-  test("bare page hashes resolve without a rewrite", () => {
-    for (const page of ["dashboard", "providers", "models", "logs", "usage"]) {
-      expect(resolveAppHashChange(page).replaceTo).toBeNull();
+  test("bare view hashes and valid subs resolve without a rewrite", () => {
+    for (const view of ["leveranciers", "modellen", "verkeer", "systeem"]) {
+      expect(resolveAppHashChange(view).replaceTo).toBeNull();
+    }
+    for (const sub of ["leveranciers/claude", "modellen/combos", "verkeer/debug", "systeem/storage"]) {
+      expect(resolveAppHashChange(sub).replaceTo).toBeNull();
     }
   });
 
-  test("the legacy workspace deep link redirects to #providers", () => {
-    // WP5: the dual-layout hash is no longer a route. It must normalise away rather
-    // than persist, and replaceTo (not a push) keeps Back usable.
-    expect(hashBelongsToPage("providers/workspace", "providers")).toBe(false);
-    const action = resolveAppHashChange("providers/workspace");
-    expect(action.page).toBe("providers");
-    expect(action.replaceTo).toBe("providers");
+  test("every pre-IA page hash redirects to its new view", () => {
+    // The 10-page sidebar era is kept alive as legacy redirects: bookmarks and
+    // external deep links land on their new home, via replace (never a push).
+    const cases: [string, string][] = [
+      ["dashboard", "leveranciers"],
+      ["dashboard/providers", "leveranciers"],
+      ["dashboard/models", "modellen"],
+      ["providers", "leveranciers"],
+      ["providers/workspace", "leveranciers"],
+      ["codex-auth", "leveranciers"],
+      ["claude", "leveranciers/claude"],
+      ["grok", "leveranciers/grok"],
+      ["models", "modellen"],
+      ["combos", "modellen/combos"],
+      ["subagents", "modellen/subagents"],
+      ["usage", "verkeer"],
+      ["logs", "verkeer/logs"],
+      ["logs/debug", "verkeer/debug"],
+      ["debug", "verkeer/debug"],
+      ["startup", "systeem"],
+      ["storage", "systeem/storage"],
+      ["api", "systeem/api"],
+    ];
+    for (const [legacy, canonical] of cases) {
+      const action = resolveAppHashChange(legacy);
+      expect(action.replaceTo).toBe(canonical);
+      expect(canonicalHashFor(action.route)).toBe(canonical);
+    }
   });
 
-  test("registered sub-hashes survive; unknown ones are normalised away", () => {
-    expect(resolveAppHashChange("logs/debug").replaceTo).toBeNull();
-    expect(resolveAppHashChange("dashboard/models").replaceTo).toBeNull();
-    expect(resolveAppHashChange("providers/nope").replaceTo).toBe("providers");
-    expect(resolveAppHashChange("models/nope").replaceTo).toBe("models");
+  test("legacy heads with unknown tails collapse to the head's new home", () => {
+    expect(resolveAppHashChange("codex-auth/accounts").replaceTo).toBe("leveranciers");
+    expect(resolveAppHashChange("providers/nope").replaceTo).toBe("leveranciers");
+    expect(resolveAppHashChange("models/nope").replaceTo).toBe("modellen");
   });
 
-  test("legacy #debug still maps onto the Logs tab", () => {
-    const action = resolveAppHashChange("debug");
-    expect(action.page).toBe("logs");
-    expect(action.replaceTo).toBe("logs/debug");
+  test("unknown view subs normalise to the bare view", () => {
+    expect(resolveAppHashChange("leveranciers/nope").replaceTo).toBe("leveranciers");
+    expect(resolveAppHashChange("systeem/nope").replaceTo).toBe("systeem");
   });
 
-  test("an unknown page falls back to the dashboard", () => {
-    expect(readPageFromHash("#nonsense")).toBe("dashboard");
+  test("an unknown hash falls back to Leveranciers", () => {
+    expect(readRouteFromHash("#nonsense").view).toBe("leveranciers");
+    expect(resolveAppHashChange("nonsense").replaceTo).toBe("leveranciers");
   });
 });
 
@@ -142,12 +165,12 @@ describe("useAppRouteState (real hook)", () => {
   });
 
   test("the legacy workspace hash is REPLACED, so Back is not trapped", async () => {
-    const { seen, act } = await mountAt("#dashboard");
+    const { seen, act } = await mountAt("#leveranciers");
 
     // Build a real prior entry, then navigate onto the legacy hash the way a bookmark
     // or a pasted link would.
     const baseline = win.history.length;
-    await act(async () => { seen.current!.navigateToPage("models"); });
+    await act(async () => { seen.current!.navigateTo({ view: "modellen", sub: null }); });
     expect(win.history.length).toBeGreaterThan(baseline);
 
     const beforeLegacy = win.history.length;
@@ -158,41 +181,41 @@ describe("useAppRouteState (real hook)", () => {
     });
 
     // The rewrite itself must be a replace, so it adds no entry beyond the navigation.
-    expect(normalizeHashPath(win.location.hash)).toBe("providers");
-    expect(seen.current!.page).toBe("providers");
+    expect(normalizeHashPath(win.location.hash)).toBe("leveranciers");
+    expect(seen.current!.route.view).toBe("leveranciers");
     expect(win.history.length).toBe(beforeLegacy + 1);
 
-    // And Back must reach the previous page rather than bouncing on a rewritten entry.
+    // And Back must reach the previous view rather than bouncing on a rewritten entry.
     await act(async () => {
       win.history.back();
       await new Promise((r) => setTimeout(r, 20));
     });
-    expect(normalizeHashPath(win.location.hash)).toBe("models");
-    expect(seen.current!.page).toBe("models");
+    expect(normalizeHashPath(win.location.hash)).toBe("modellen");
+    expect(seen.current!.route.view).toBe("modellen");
   });
 
-  test("a bookmarked Codex Auth hash opens Providers on the initial load", async () => {
-    // `codex-auth` is no longer a page id, so the initial state must come from the same
-    // resolver `hashchange` uses — `readPageFromHash` alone would fall back to the dashboard.
+  test("a bookmarked Codex Auth hash opens Leveranciers on the initial load", async () => {
+    // `codex-auth` is no longer a view, so the initial state must come from the same
+    // resolver `hashchange` uses — a bare reader alone would fall back to the default.
     const { seen } = await mountAt("#codex-auth/accounts");
-    expect(seen.current!.page).toBe("providers");
-    expect(normalizeHashPath(win.location.hash)).toBe("providers");
+    expect(seen.current!.route.view).toBe("leveranciers");
+    expect(normalizeHashPath(win.location.hash)).toBe("leveranciers");
   });
 
   test("an unknown suffix is normalised through the hook", async () => {
-    const { seen } = await mountAt("#models/nope");
-    expect(normalizeHashPath(win.location.hash)).toBe("models");
-    expect(seen.current!.page).toBe("models");
+    const { seen } = await mountAt("#modellen/nope");
+    expect(normalizeHashPath(win.location.hash)).toBe("modellen");
+    expect(seen.current!.route.view).toBe("modellen");
   });
 
-  test("navigateToPage pushes a history entry", async () => {
-    const { seen, act } = await mountAt("#dashboard");
+  test("navigateTo pushes a history entry", async () => {
+    const { seen, act } = await mountAt("#leveranciers");
     const before = win.history.length;
     await act(async () => {
-      seen.current!.navigateToPage("models");
+      seen.current!.navigateTo({ view: "modellen", sub: "combos" });
       await new Promise((r) => setTimeout(r, 10));
     });
-    expect(normalizeHashPath(win.location.hash)).toBe("models");
+    expect(normalizeHashPath(win.location.hash)).toBe("modellen/combos");
     expect(win.history.length).toBeGreaterThan(before);
   });
 
@@ -219,7 +242,7 @@ describe("useAppRouteState (real hook)", () => {
 
     const { seen } = await mountAt("#providers/workspace", throwing);
     // Cleanup failure is swallowed; the redirect still happens.
-    expect(normalizeHashPath(win.location.hash)).toBe("providers");
-    expect(seen.current!.page).toBe("providers");
+    expect(normalizeHashPath(win.location.hash)).toBe("leveranciers");
+    expect(seen.current!.route.view).toBe("leveranciers");
   });
 });
