@@ -487,9 +487,8 @@ jobs:
           mkdir -p "$TMPDIR/Formula"
 
           cat > "$TMPDIR/${FORMULA_FILE}" <<RUBY
-          # typed: false
           class Opencodex < Formula
-            desc "Universal provider proxy for OpenAI Codex & Claude Code"
+            desc "GroepOnline OpenCodex — universal provider proxy for Codex and Claude Code"
             homepage "https://github.com/GroepOnline/opencodex"
             url "$TARBALL_URL"
             sha256 "$SHA256"
@@ -498,8 +497,8 @@ jobs:
             depends_on "node"
 
             def install
-              system "npm", "install", "--global", "--prefix=#{prefix}", "."
-              bin.install_symlink libexec.glob("bin/*")
+              system "npm", "install", *std_npm_args
+              bin.install_symlink Dir["#{libexec}/bin/*"]
             end
 
             test do
