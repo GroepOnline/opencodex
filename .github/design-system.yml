@@ -1,8 +1,9 @@
-schema_version: 1
+schema_version: "1"
 source:
   repository: GroepOnline/design-system
   commit_sha: 0e979564d4e0cbfe2b8ae6881ce35512e129be2a
 tier: gold
-applicability: [gui]
-commands: ["existing CI"]
-notes: "No generated design-system output is copied or hand-edited."
+applicability:
+  - gui
+commands: []
+notes: "Machine contract only; no generated design-system output is copied or hand-edited."
