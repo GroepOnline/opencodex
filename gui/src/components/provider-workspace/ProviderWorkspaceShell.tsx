@@ -531,11 +531,12 @@ export default function ProviderWorkspaceShell({
         ) : (
           <ProviderOverviewDashboard
             sections={sections}
-            quotaReports={quotaReports}
+            quotaCards={quotaCards}
             usageTotals={usageTotals}
             usageLoading={usageLoading}
             quotasLoading={quotasLoading}
             onSelectProvider={(name) => onSelect(name)}
+            onRefreshQuota={(name) => refreshQuota(name, { force: true })}
             onEditConfig={onEditConfig}
           />
         )}

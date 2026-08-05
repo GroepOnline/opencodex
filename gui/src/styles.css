@@ -1974,4 +1974,13 @@ button.prov-account-row.active { cursor: default; }
 .danger-copy .muted { font-size: var(--text-label); }
 .modal-card--narrow { max-width: 420px; }
 
+/* per-provider quota card state (design-system opencodex brief) */
+.quota-stamp { font-family: var(--font-code); font-size: var(--text-micro); font-weight: 600; text-transform: uppercase; letter-spacing: var(--tracking-caps); }
+.quota-stamp--vers { color: var(--muted); }
+.quota-stamp--verouderd { color: var(--faint); }
+.quota-stamp--fout { color: var(--red); }
+.quota-card-error { position: relative; }
+.quota-card-error::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--red); border-radius: 1px 0 0 1px; }
+.quota-card-error .quota-retry { margin-left: auto; }
+
 @media (prefers-reduced-motion: reduce) { .settings-sheet, .sheet-scrim { animation: none; } }

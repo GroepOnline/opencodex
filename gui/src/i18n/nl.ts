@@ -35,6 +35,11 @@ const overrides: Partial<Record<TKey, string>> = {
   "danger.stopTitle": "Proxy stoppen?",
   "danger.stopBody": "Codex en Cursor verliezen hun verbinding.",
   "danger.stopAction": "Stop proxy",
+  "pws.quota.vers": "VERS",
+  "pws.quota.verouderd": "VEROUDERD",
+  "pws.quota.fout": "Fout",
+  "pws.quota.retry": "Opnieuw proberen",
+  "pws.quota.retryAt": "Opnieuw om {time}",
 
   // common
   "common.github": "GitHub",
