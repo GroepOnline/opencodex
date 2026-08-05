@@ -13,7 +13,7 @@ import {
  * stale-response drops, bounded backoff with stop, unsupported without retries.
  */
 
-const globals = ["document", "window", "navigator", "sessionStorage", "IS_REACT_ACT_ENVIRONMENT"] as const;
+const globals = ["document", "window", "navigator", "sessionStorage", "fetch", "IS_REACT_ACT_ENVIRONMENT"] as const;
 let previous: Record<(typeof globals)[number], unknown>;
 let win: Window;
 let host: HTMLElement;
@@ -81,13 +81,13 @@ beforeEach(() => {
   }) as typeof fetch;
 });
 afterEach(async () => {
+  jest.useRealTimers();
   if (root) {
     const current = root;
     const { act: actCleanup } = await import("react");
     await actCleanup(async () => { current.unmount(); });
     root = null;
   }
-  jest.useRealTimers();
   for (const k of globals) Object.defineProperty(globalThis, k, { configurable: true, value: previous[k] });
 });
 
