@@ -18,6 +18,7 @@ interface LoggedCall {
 interface ReleaseScenario {
   branch?: string;
   headSha?: string;
+  linearIssue?: string;
   remoteHeadSha?: string;
   privacyExitCode?: number;
   testExitCode?: number;
@@ -191,7 +192,11 @@ function runRelease(version: string, scenario: ReleaseScenario = {}) {
     installCommandShim(shimDir, name);
   }
 
-  const result = spawnSync(process.execPath, [releaseScriptPath, version], {
+  const result = spawnSync(process.execPath, [
+    releaseScriptPath,
+    version,
+    ...(scenario.linearIssue ? ["--linear", scenario.linearIssue] : []),
+  ], {
     cwd: repoRoot,
     env: {
       ...process.env,
@@ -291,6 +296,23 @@ describe("release helper", () => {
       && call.args.includes("release.yml")
       && call.args.includes("expected-sha=deadbeefcafe1234"),
     )).toBeGreaterThanOrEqual(0);
+  });
+
+  test("includes a validated Linear issue in the release commit", () => {
+    const { calls, result } = runRelease("9.9.9", { linearIssue: "GRO-994" });
+
+    expect(result.status).toBe(0);
+    expect(findCallIndex(calls, "git", call =>
+      call.args[0] === "commit" && call.args.join(" ").includes("release: v9.9.9 (GRO-994)"),
+    )).toBeGreaterThanOrEqual(0);
+  });
+
+  test("rejects malformed Linear issue identifiers before the bump", () => {
+    const { calls, result } = runRelease("9.9.9", { linearIssue: "GRO- nope" });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr + result.stdout).toContain("Linear issue must use");
+    expect(findCallIndex(calls, "npm", call => call.args[0] === "version")).toBe(-1);
   });
 
   test("aborts before dispatch when the remote branch moved during the CI wait", () => {
