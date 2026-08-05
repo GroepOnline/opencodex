@@ -50,6 +50,8 @@ jobs:
   test:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    # ponytail: Linux-only on push/PR (saves macOS 10x / Windows 2x minutes); full matrix on release tags.
+    if: matrix.os == 'ubuntu-latest' || startsWith(github.ref, 'refs/tags/v')
     # Keep the 20-minute ceiling as a real performance boundary. The combined provider-security
     # and admission suites pushed the serial macOS/Windows jobs into this ceiling even though the
     # root tests themselves remained green. Slow platforms therefore separate root tests from GUI
@@ -196,10 +198,12 @@ jobs:
     name: npm-global ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 8
+    # ponytail: Linux-only on push/PR; full OS matrix on release tags.
+    if: matrix.os == 'ubuntu-latest' || startsWith(github.ref, 'refs/tags/v')
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: ${{ startsWith(github.ref, 'refs/tags/v') && fromJSON('["ubuntu-latest", "windows-latest", "macos-latest"]') || fromJSON('["ubuntu-latest"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
