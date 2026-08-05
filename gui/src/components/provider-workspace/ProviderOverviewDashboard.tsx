@@ -164,30 +164,33 @@ export default function ProviderOverviewDashboard({
                     <span className="quota-stamp quota-stamp--vers">{t("pws.quota.vers")} · {report?.updatedAt ? clockTime(report.updatedAt) : ""}</span>
                   );
                 return (
-                  <div key={item.name} className={rowClass}
-                    role="button" tabIndex={0}
-                    onClick={() => onSelectProvider(item.name)}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectProvider(item.name); } }}>
-                    <ProviderIcon name={item.name} adapter={item.adapter} baseUrl={item.baseUrl} cls="pws-dashboard-row-icon" />
-                    <div className="pws-dashboard-row-info">
-                      <span className="pws-dashboard-row-name">{formatProviderDisplayName(item.name)}</span>
-                      <span className="pws-dashboard-row-meta muted">{stamp}</span>
+                  <div key={item.name} className={rowClass}>
+                    <div className="pws-dashboard-row-select"
+                      role="button" tabIndex={0}
+                      onClick={() => onSelectProvider(item.name)}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectProvider(item.name); } }}>
+                      <ProviderIcon name={item.name} adapter={item.adapter} baseUrl={item.baseUrl} cls="pws-dashboard-row-icon" />
+                      <div className="pws-dashboard-row-info">
+                        <span className="pws-dashboard-row-name">{formatProviderDisplayName(item.name)}</span>
+                        <span className="pws-dashboard-row-meta muted">{stamp}</span>
+                      </div>
+                      {card.status !== "error" ? (
+                        <IconChevron className="pws-dashboard-row-chevron" aria-hidden="true" />
+                      ) : null}
+                      <div className="pws-dashboard-row-bars">
+                        {card.status === "error" ? (
+                          <span className="quota-stamp quota-stamp--fout">{card.nextRetryAt ? t("pws.quota.retryAt", { time: clockTime(card.nextRetryAt) }) : ""}</span>
+                        ) : (
+                          <QuotaBars quota={report ? accountQuotaFromReport(report) : null} threshold={80} t={t} layout="stacked" pending={card.status === "loading" || !report?.quota} />
+                        )}
+                      </div>
                     </div>
                     {card.status === "error" ? (
                       <button type="button" className="link-btn quota-retry"
-                        onClick={(e) => { e.stopPropagation(); onRefreshQuota(item.name); }}>
+                        onClick={() => onRefreshQuota(item.name)}>
                         {t("pws.quota.retry")}
                       </button>
-                    ) : (
-                      <IconChevron className="pws-dashboard-row-chevron" aria-hidden="true" />
-                    )}
-                    <div className="pws-dashboard-row-bars">
-                      {card.status === "error" ? (
-                        <span className="quota-stamp quota-stamp--fout">{card.nextRetryAt ? t("pws.quota.retryAt", { time: clockTime(card.nextRetryAt) }) : ""}</span>
-                      ) : (
-                        <QuotaBars quota={report ? accountQuotaFromReport(report) : null} threshold={80} t={t} layout="stacked" pending={card.status === "loading" || !report?.quota} />
-                      )}
-                    </div>
+                    ) : null}
                   </div>
                 );
               })}

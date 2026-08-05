@@ -82,12 +82,19 @@ beforeEach(() => {
 });
 afterEach(async () => {
   jest.useRealTimers();
-  if (root) {
-    const current = root;
-    const { act: actCleanup } = await import("react");
-    await actCleanup(async () => { current.unmount(); });
-    root = null;
+  // Teardown must not await act(): an awaited act() unmount can wedge on the
+  // happy-dom scheduler after a fake-timer test (CI hook timeouts). A sync
+  // act() flushes the unmount without that awaited handoff; one real-timer
+  // macrotask then drains any scheduler callback the commit still queued,
+  // while the window and globals are still live (it reads global `window`,
+  // so it must fire before close/restore).
+  const current = root;
+  root = null;
+  if (current) {
+    act(() => { current.unmount(); });
   }
+  await new Promise<void>(resolve => { setTimeout(resolve, 0); });
+  win.close();
   for (const k of globals) Object.defineProperty(globalThis, k, { configurable: true, value: previous[k] });
 });
 

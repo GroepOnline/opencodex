@@ -236,10 +236,10 @@ function DangerZone() {
       </div>
 
       {confirming && (
-        <div className="modal-overlay" onClick={() => !stopping && setConfirming(false)}>
-          <div className="modal-card modal-card--narrow" role="alertdialog" aria-modal="true"
-            aria-labelledby="stop-proxy-title" aria-describedby="stop-proxy-desc"
-            onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" role="alertdialog" aria-modal="true"
+          aria-labelledby="stop-proxy-title" aria-describedby="stop-proxy-desc"
+          onClick={e => { if (e.target === e.currentTarget && !stopping) setConfirming(false); }}>
+          <div className="modal-card modal-card--narrow">
             <div className="modal-head">
               <h3 id="stop-proxy-title">{t("danger.stopTitle")}</h3>
             </div>
