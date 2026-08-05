@@ -80,7 +80,6 @@ beforeEach(() => {
     return await new Promise<Response>((resolve, reject) => pending.push({ url, d: { resolve, reject } }));
   }) as typeof fetch;
 });
-
 afterEach(async () => {
   if (root) {
     const current = root;
@@ -236,4 +235,3 @@ describe("useProviderQuotas (per-provider fan-out)", () => {
     expect(seenUrls.length).toBe(2);
   });
 });
-
