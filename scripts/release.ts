@@ -9,6 +9,7 @@
  *       preview number). Preflight (clean tree + typecheck + tests + privacy scan)
  *       → bump package.json → commit → push → wait for Cross-platform CI → dispatch
  *       the Release workflow → watch it.
+ *       Optional --linear GRO-123/CHE-123 links the release commit to Linear.
  *       The version bump commit/push is real; the Release workflow publish step is dry-run by default.
  *       Pass --publish to publish.
  *   bun scripts/release.ts watch
@@ -17,6 +18,7 @@
  * Example:  bun scripts/release.ts              # auto-bump patch (1.0.0 → 1.0.1)
  *           bun scripts/release.ts --minor      # auto-bump minor (1.0.0 → 1.1.0)
  *           bun scripts/release.ts 0.1.0 --publish  # explicit version, actually publish 0.1.0
+ *           bun scripts/release.ts 1.0.1 --linear GRO-994 # link release evidence to Linear
  *
  * Requires: gh CLI (authed). Publishing is tokenless via Trusted Publishing (OIDC) — no NPM_TOKEN.
  */
@@ -264,7 +266,13 @@ if (!version) {
   console.log(`→ no explicit version: bumping ${bump} → ${version}`);
 }
 if (!/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(version)) {
-  console.error("Usage: bun scripts/release.ts [<version>|--minor|--major] [--tag latest|preview] [--publish]\n       bun scripts/release.ts watch");
+  console.error("Usage: bun scripts/release.ts [<version>|--minor|--major] [--linear GRO-123] [--tag latest|preview] [--publish]\n       bun scripts/release.ts watch");
+  process.exit(1);
+}
+const linearFlagIndex = args.indexOf("--linear");
+const linearIssue = linearFlagIndex === -1 ? undefined : args[linearFlagIndex + 1];
+if (linearFlagIndex !== -1 && (!linearIssue || !/^(?:GRO|CHE)-\d+$/.test(linearIssue))) {
+  console.error("Linear issue must use a GRO-123 or CHE-123 identifier.");
   process.exit(1);
 }
 
@@ -304,7 +312,8 @@ await $`npm version ${version} --no-git-tag-version`;
 
 // 3. Commit + push the version bump.
 await $`git add package.json`;
-await $`git commit -m ${`release: v${version}`}`;
+const releaseCommitMessage = `release: v${version}${linearIssue ? ` (${linearIssue})` : ""}`;
+await $`git commit -m ${releaseCommitMessage}`;
 const releaseSha = (await $`git rev-parse HEAD`.text()).trim();
 console.log(`→ push origin ${branch}`);
 await $`git push origin ${branch}`;
