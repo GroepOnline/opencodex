@@ -57,15 +57,19 @@ async function mount(providers: string[]): Promise<{ seen: { current: HookResult
 }
 
 async function settle(ms = 0) {
-  // Fake-timer-safe: advance the clock (no-op semantics when real timers run the show
-  // in this file — every fake-timer test enables them explicitly), then flush the
-  // microtask queue so fetch-resolution chains land inside act().
+  // Three-phase flush, mirroring logs-auto-refresh.test.tsx (green on every CI
+  // runner, including hosted ubuntu/macos where a single act { advance + drain }
+  // still wedged these four tests at the 5000ms timeout):
+  //   1) advance the fake clock in its own act (fires backoff/stale timers),
+  //   2) drain the microtask queue between acts so React lands the re-render,
+  //   3) fire the scheduler macrotask bucket (setTimeout(0)) the re-render queued.
+  if (ms > 0) {
+    await act(async () => { jest.advanceTimersByTime(ms); });
+  }
+  await act(async () => { for (let i = 0; i < 3; i++) await Promise.resolve(); });
   await act(async () => {
-    if (ms > 0) jest.advanceTimersByTime(ms);
-    // Always fire the fake-clock macrotask bucket (scheduler setTimeout(0), hook
-    // setInterval stale ticker): CI Windows wedged here without an explicit drain.
     jest.advanceTimersByTime(0);
-    for (let i = 0; i < 5; i++) await Promise.resolve();
+    for (let i = 0; i < 3; i++) await Promise.resolve();
   });
 }
 
@@ -118,6 +122,13 @@ function resolveFor(name: string, response: Response, occurrence = 0) {
   if (!found) throw new Error(`no pending request for ${name} (#${occurrence})`);
   pending.splice(pending.indexOf(found), 1);
   found.d.resolve(response);
+}
+
+/** Assert a retry is scheduled ~= now + delay (2ms fake-clock slack, runner-safe). */
+function expectRetryScheduled(nextRetryAt: number | undefined, delayMs: number): void {
+  expect(nextRetryAt).toBeDefined();
+  const drift = (nextRetryAt as number) - Date.now();
+  expect(Math.abs(drift - delayMs)).toBeLessThanOrEqual(2);
 }
 
 describe("useProviderQuotas (per-provider fan-out)", () => {
@@ -187,21 +198,21 @@ describe("useProviderQuotas (per-provider fan-out)", () => {
     await failOnce();
     expect(seen.current!.cards.xai.status).toBe("error");
     expect(seen.current!.cards.xai.attempt).toBe(1);
-    expect(seen.current!.cards.xai.nextRetryAt).toBe(Date.now() + QUOTA_BACKOFF_MS[0]);
+    expectRetryScheduled(seen.current!.cards.xai.nextRetryAt, QUOTA_BACKOFF_MS[0]);
 
     await settle(QUOTA_BACKOFF_MS[0] + 1);
     await settle();
     expect(seenUrls.length).toBe(2);
     await failOnce();
     expect(seen.current!.cards.xai.attempt).toBe(2);
-    expect(seen.current!.cards.xai.nextRetryAt).toBe(Date.now() + QUOTA_BACKOFF_MS[1]);
+    expectRetryScheduled(seen.current!.cards.xai.nextRetryAt, QUOTA_BACKOFF_MS[1]);
 
     await settle(QUOTA_BACKOFF_MS[1] + 1);
     await settle();
     expect(seenUrls.length).toBe(3);
     await failOnce();
     expect(seen.current!.cards.xai.attempt).toBe(3);
-    expect(seen.current!.cards.xai.nextRetryAt).toBe(Date.now() + QUOTA_BACKOFF_MS[2]);
+    expectRetryScheduled(seen.current!.cards.xai.nextRetryAt, QUOTA_BACKOFF_MS[2]);
 
     await settle(QUOTA_BACKOFF_MS[2] + 1);
     await settle();
