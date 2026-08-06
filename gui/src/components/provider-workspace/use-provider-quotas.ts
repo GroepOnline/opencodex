@@ -42,14 +42,18 @@ interface SliceResponse {
   error?: string;
 }
 
-function seedCards(cacheKey: string, names: string[]): Record<string, QuotaCardState> {
+function seedCards(
+  cacheKey: string,
+  names: string[],
+  staleAfterMs: number,
+): Record<string, QuotaCardState> {
   const cached = readSessionListCache<Record<string, ProviderQuotaReportView & { freshAt?: number }>>(cacheKey) ?? {};
   const now = Date.now();
   return Object.fromEntries(names.map(name => {
     const row = cached[name];
     if (row?.updatedAt) {
       const freshAt = typeof row.freshAt === "number" ? row.freshAt : row.updatedAt;
-      return [name, { status: now - freshAt > QUOTA_STALE_AFTER_MS ? "stale" : "ready", report: row, freshAt, attempt: 0 } satisfies QuotaCardState];
+      return [name, { status: now - freshAt > staleAfterMs ? "stale" : "ready", report: row, freshAt, attempt: 0 } satisfies QuotaCardState];
     }
     return [name, { status: "loading", attempt: 0 } satisfies QuotaCardState];
   }));
@@ -59,15 +63,24 @@ export function useProviderQuotas({
   apiBase,
   providers,
   cacheKey,
+  staleAfterMs = QUOTA_STALE_AFTER_MS,
+  backoffMs = QUOTA_BACKOFF_MS,
 }: {
   apiBase: string;
   /** Provider names to track (caller memoizes; identity drives re-seed). */
   providers: string[];
   /** Session seed key (no secrets — quota rows only). */
   cacheKey: string;
+  /** Ready → stale bound. Injectable so tests run with short real timers (no fake clock). */
+  staleAfterMs?: number;
+  /** Auto-retry backoff ladder. Injectable so tests run with short real timers. */
+  backoffMs?: readonly number[];
 }) {
   const providersKey = providers.join("\n");
-  const [cards, setCards] = useState<Record<string, QuotaCardState>>(() => seedCards(cacheKey, providers));
+  // Timer profile is mount-stable (defaults or test-injected); captured once via
+  // useRef's initializer (no ref mutation during render), read from callbacks/effects.
+  const timerProfileRef = useRef({ staleAfterMs, backoffMs });
+  const [cards, setCards] = useState<Record<string, QuotaCardState>>(() => seedCards(cacheKey, providers, staleAfterMs));
   const inflightRef = useRef(new Map<string, number>());
   const retryTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const nextIdRef = useRef(1);
@@ -118,8 +131,9 @@ export function useProviderQuotas({
     const fail = (cause: string) => {
       if (!isCurrent()) return;
       inflightRef.current.delete(name); // the retry timer starts a fresh request
-      const willRetry = attempt < QUOTA_BACKOFF_MS.length;
-      const nextRetryAt = willRetry ? Date.now() + QUOTA_BACKOFF_MS[attempt] : undefined;
+      const { backoffMs: ladder } = timerProfileRef.current;
+      const willRetry = attempt < ladder.length;
+      const nextRetryAt = willRetry ? Date.now() + ladder[attempt] : undefined;
       setCard(name, prev => ({
         status: "error",
         error: cause,
@@ -128,7 +142,7 @@ export function useProviderQuotas({
         attempt: attempt + 1,
         nextRetryAt,
       }));
-      if (willRetry) scheduleRetry(name, attempt + 1, QUOTA_BACKOFF_MS[attempt]);
+      if (willRetry) scheduleRetry(name, attempt + 1, ladder[attempt]);
     };
 
     setCard(name, prev => (prev.report ? prev : { status: "loading", attempt }));
@@ -189,8 +203,10 @@ export function useProviderQuotas({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- providersKey is the identity
   }, [cacheKey, providersKey]);
 
-  // Stale ticker: flip ready → stale once freshAt passes the 5-minute bound.
+  // Stale ticker: flip ready → stale once freshAt passes the stale bound.
+  // Ticks at min(15s, staleAfterMs/2) so an injected short bound still flips promptly.
   useEffect(() => {
+    const staleAfterMs = timerProfileRef.current.staleAfterMs;
     const timer = setInterval(() => {
       if (!mountedRef.current) return;
       const now = Date.now();
@@ -198,14 +214,14 @@ export function useProviderQuotas({
         let changed = false;
         const next = { ...prev };
         for (const [name, card] of Object.entries(next)) {
-          if (card.status === "ready" && card.freshAt && now - card.freshAt > QUOTA_STALE_AFTER_MS) {
+          if (card.status === "ready" && card.freshAt && now - card.freshAt > staleAfterMs) {
             next[name] = { ...card, status: "stale" };
             changed = true;
           }
         }
         return changed ? next : prev;
       });
-    }, 15_000);
+    }, Math.min(15_000, staleAfterMs / 2));
     return () => clearInterval(timer);
   }, []);
 
