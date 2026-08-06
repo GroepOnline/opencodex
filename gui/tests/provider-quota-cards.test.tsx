@@ -46,16 +46,25 @@ async function mount(providers: string[]): Promise<{ seen: { current: HookResult
     root = createRoot(host);
     root.render(<Probe />);
   });
-  await act(async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); });
+  await act(async () => {
+    // Drain React scheduler macrotasks: on platforms without a MessageChannel
+    // path (CI Windows happy-dom) scheduleCallback falls back to setTimeout(0),
+    // which a fake clock must explicitly fire or the render flush never lands.
+    jest.advanceTimersByTime(0);
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+  });
   return { seen };
 }
 
 async function settle(ms = 0) {
-  // Fake-timer safe: advance the clock (no-op semantics when real timers run the show
+  // Fake-timer-safe: advance the clock (no-op semantics when real timers run the show
   // in this file — every fake-timer test enables them explicitly), then flush the
   // microtask queue so fetch-resolution chains land inside act().
   await act(async () => {
     if (ms > 0) jest.advanceTimersByTime(ms);
+    // Always fire the fake-clock macrotask bucket (scheduler setTimeout(0), hook
+    // setInterval stale ticker): CI Windows wedged here without an explicit drain.
+    jest.advanceTimersByTime(0);
     for (let i = 0; i < 5; i++) await Promise.resolve();
   });
 }
@@ -79,6 +88,11 @@ beforeEach(() => {
     seenUrls.push(url);
     return await new Promise<Response>((resolve, reject) => pending.push({ url, d: { resolve, reject } }));
   }) as typeof fetch;
+  // Fixed fake clock for the whole suite (like logs-auto-refresh.test.tsx, which is
+  // green on CI Windows): per-test toggling of fake timers mid-suite leaves React
+  // scheduler macrotasks on a dead clock there — the 4 backoff/stale/seed tests
+  // timed out at 5000ms on windows-quality until this was unified.
+  jest.useFakeTimers({ now: 1_700_000_000_000 });
 });
 afterEach(async () => {
   jest.useRealTimers();
@@ -162,7 +176,6 @@ describe("useProviderQuotas (per-provider fan-out)", () => {
     expect(seenUrls.length).toBe(1);
   });
   test("errors retry with bounded backoff (10s, 30s, 60s) and then stop", async () => {
-    jest.useFakeTimers({ now: Date.now() });
     const { seen } = await mount(["xai"]);
     expect(seenUrls.length).toBe(1);
 
@@ -202,7 +215,6 @@ describe("useProviderQuotas (per-provider fan-out)", () => {
   });
 
   test("a manual refresh recovers an errored card and clears the retry", async () => {
-    jest.useFakeTimers({ now: Date.now() });
     const { seen } = await mount(["xai"]);
     resolveFor("xai", json({ generatedAt: Date.now(), reports: [], error: "quota-probe-failed" }));
     await settle();
@@ -217,7 +229,6 @@ describe("useProviderQuotas (per-provider fan-out)", () => {
   });
 
   test("ready cards flip to stale after the 5-minute bound", async () => {
-    jest.useFakeTimers({ now: Date.now() });
     const { seen } = await mount(["xai"]);
     resolveFor("xai", json(okReport("xai")));
     await settle();
