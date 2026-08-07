@@ -57,7 +57,23 @@ describe("App proxy stop", () => {
     const app = await Bun.file(new URL("../src/App.tsx", import.meta.url)).text();
     const handleStopIdx = app.indexOf("const handleStop");
     expect(handleStopIdx).toBeGreaterThanOrEqual(0);
-    const handler = app.slice(handleStopIdx);
+    // Find the closing brace of handleStop by scanning for the function end
+    let depth = 0;
+    let handlerEndIdx = handleStopIdx;
+    let foundStart = false;
+    for (let i = handleStopIdx; i < app.length; i++) {
+      if (app[i] === "{") {
+        foundStart = true;
+        depth++;
+      } else if (app[i] === "}") {
+        depth--;
+        if (foundStart && depth === 0) {
+          handlerEndIdx = i + 1;
+          break;
+        }
+      }
+    }
+    const handler = app.slice(handleStopIdx, handlerEndIdx);
 
     expect(handler).toContain("await requestProxyStop(API_BASE");
     expect(handler).toContain("if (!outcome.accepted)");

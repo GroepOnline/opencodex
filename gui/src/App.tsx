@@ -87,13 +87,13 @@ export default function App() {
     [],
     async (signal) => {
       const res = await fetch(`${API_BASE}/healthz`, { signal });
-      if (!res.ok) return null;
-      return readRuntimeVersion(await res.json());
+      if (!res.ok) throw new Error(`Health check failed: ${res.status}`);
+      return { version: readRuntimeVersion(await res.json()) };
     },
     { pollMs: 30_000 },
   );
 
-  const displayedVersion: string = healthPoll.data ?? __APP_VERSION__;
+  const displayedVersion: string = healthPoll.data?.version ?? __APP_VERSION__;
   // null = first poll still in flight: no stamp until the first verdict.
   const proxyOnline: boolean | null = healthPoll.error ? false : healthPoll.data ? true : null;
 

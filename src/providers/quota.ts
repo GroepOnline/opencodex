@@ -1,6 +1,6 @@
 import { fetchMainAccountInfo, listCodexAuthAccounts } from "../codex/auth-api";
 import { MAIN_CODEX_ACCOUNT_ID } from "../codex/main-account";
-import { resolveEnvValue } from "../config";
+import { hasOwnProvider, resolveEnvValue } from "../config";
 import { getValidAccessToken, getValidAccessTokenForAccount } from "../oauth";
 import { getAccountCredential, getAccountSet, getCredential } from "../oauth/store";
 import { antigravityUserAgent } from "../adapters/client-fingerprint";
@@ -1010,8 +1010,8 @@ export async function fetchProviderQuotaReport(
   name: string,
   forceRefresh = false,
 ): Promise<ProviderQuotaSliceResponse> {
-  const provider = config.providers[name];
-  if (!provider) throw new Error(`unknown provider: ${name}`);
+  if (!hasOwnProvider(config.providers, name)) throw new Error(`unknown provider: ${name}`);
+  const provider = config.providers[name]!;
   const probe = await probeProviderQuota(name, provider, config, forceRefresh);
   return {
     generatedAt: Date.now(),

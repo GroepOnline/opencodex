@@ -61,6 +61,18 @@ describe("route resolution", () => {
     }
   });
 
+  test("raw hash-prefixed paths exercise the rawHash contract", () => {
+    // Legacy hash with "#" prefix should resolve to its canonical view
+    const logsAction = resolveAppHashChange("#logs");
+    expect(logsAction.replaceTo).toBe("verkeer/logs");
+    expect(canonicalHashFor(logsAction.route)).toBe("verkeer/logs");
+
+    // Canonical hash with "#" prefix should not rewrite
+    const leveranciersAction = resolveAppHashChange("#leveranciers");
+    expect(leveranciersAction.replaceTo).toBeNull();
+    expect(canonicalHashFor(leveranciersAction.route)).toBe("leveranciers");
+  });
+
   test("every pre-IA page hash redirects to its new view", () => {
     // The 10-page sidebar era is kept alive as legacy redirects: bookmarks and
     // external deep links land on their new home, via replace (never a push).

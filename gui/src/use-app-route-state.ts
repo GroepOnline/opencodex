@@ -85,7 +85,6 @@ export function useAppRouteState() {
 
   return {
     route,
-    setRoute,
     navigateTo,
   };
 }

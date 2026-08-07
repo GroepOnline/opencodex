@@ -83,7 +83,7 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
     if (providerName !== null) {
       // Per-provider slice: the Leveranciers view fans out one fetch per card so a slow
       // provider never blocks the rest. Unknown names get a 404, never an ambiguous 200.
-      if (!config.providers[providerName]) {
+      if (!hasOwnProvider(config.providers, providerName)) {
         return jsonResponse({ error: `unknown provider: ${providerName}` }, 404, req, config);
       }
       return jsonResponse(await fetchProviderQuotaReport(config, providerName, forceRefresh), 200, req, config);

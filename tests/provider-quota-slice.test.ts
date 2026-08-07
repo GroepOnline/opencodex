@@ -117,4 +117,8 @@ describe("fetchProviderQuotaReport (per-provider slice)", () => {
   test("unknown provider throws so the route can answer 404", async () => {
     await expect(fetchProviderQuotaReport(testConfig(), "nope")).rejects.toThrow("unknown provider: nope");
   });
+
+  test("inherited properties like constructor are rejected with 404", async () => {
+    await expect(fetchProviderQuotaReport(testConfig(), "constructor")).rejects.toThrow("unknown provider: constructor");
+  });
 });
