@@ -32,7 +32,7 @@ export function OverviewPanel({
       <div className="combos-workspace-overview-head">
         <h2 className="combos-workspace-overview-title">{t("cws.overviewTitle")}</h2>
         <button type="button" className="btn btn-primary btn-sm" onClick={onAdd}>
-          <IconPlus width={14} height={14} /> {t("cws.add")}
+          <IconPlus width={15} height={15} /> {t("cws.add")}
         </button>
       </div>
       <p className="muted" style={{ marginTop: 0, maxWidth: "62ch" }}>{t("cws.overviewBlurb")}</p>
@@ -58,10 +58,10 @@ export function OverviewPanel({
                 className="cwi-attention-row"
                 onClick={() => onSelect(item.id)}
               >
-                <IconAlert width={14} height={14} aria-hidden="true" />
+                <IconAlert width={15} height={15} aria-hidden="true" />
                 <code className="chip">{item.model}</code>
                 <span className="muted">{attentionCopy(item.reason, t)}</span>
-                <IconChevron width={14} height={14} style={{ marginLeft: "auto" }} aria-hidden="true" />
+                <IconChevron width={15} height={15} style={{ marginLeft: "auto" }} aria-hidden="true" />
               </button>
             ))}
           </div>

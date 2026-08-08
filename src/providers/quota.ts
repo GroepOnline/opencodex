@@ -1,6 +1,6 @@
 import { fetchMainAccountInfo, listCodexAuthAccounts } from "../codex/auth-api";
 import { MAIN_CODEX_ACCOUNT_ID } from "../codex/main-account";
-import { resolveEnvValue } from "../config";
+import { hasOwnProvider, resolveEnvValue } from "../config";
 import { getValidAccessToken, getValidAccessTokenForAccount } from "../oauth";
 import { getAccountCredential, getAccountSet, getCredential } from "../oauth/store";
 import { antigravityUserAgent } from "../adapters/client-fingerprint";
@@ -897,29 +897,53 @@ async function fetchAntigravityQuota(provider: string, config: OcxProviderConfig
   return report(provider, "google-antigravity:fetchAvailableModels", quota);
 }
 
+/** Outcome of a single-provider quota probe. The aggregate path only needs the report;
+    the per-provider slice route also needs WHY a report is absent. */
+export interface ProviderQuotaProbe {
+  report: ProviderQuotaReport | null;
+  /** No quota API applies to this provider (or it is disabled): probing is pointless. */
+  unsupported?: boolean;
+  /** A probe applied but produced no usable quota (auth, network, parse). */
+  error?: string;
+}
+
+function probeOk(report: ProviderQuotaReport | null): ProviderQuotaProbe {
+  return report ? { report } : { report: null, error: "quota-probe-failed" };
+}
+
+async function probeProviderQuota(
+  name: string,
+  provider: OcxProviderConfig,
+  config: OcxConfig,
+  forceRefresh: boolean,
+): Promise<ProviderQuotaProbe> {
+  if (provider.disabled === true) return { report: null, unsupported: true };
+  try {
+    if (isBuiltInChatGptForwardProvider(name, provider)) return probeOk(await fetchChatGptForwardQuota(config, name, provider, forceRefresh));
+    if (provider.authMode === "oauth" && name === "xai") return probeOk(await fetchXaiQuota(name));
+    if (provider.authMode === "oauth" && name === "anthropic") return probeOk(await fetchAnthropicQuota(name));
+    if (provider.authMode === "oauth" && name === "cursor") return probeOk(await fetchCursorQuota(name));
+    if (provider.authMode === "oauth" && name === "google-antigravity") return probeOk(await fetchAntigravityQuota(name, provider));
+    // Kimi Code `/usages` accepts OAuth or coding-plan API keys, but only on the canonical
+    // host and only for real key auth — forward/local modes carry no credential of ours.
+    if (provider.authMode === "oauth" && name === "kimi") return probeOk(await fetchKimiQuota(name, provider));
+    if (provider.authMode === "key" && isCanonicalKimiCodeBaseUrl(provider.baseUrl)) {
+      return probeOk(await fetchKimiQuota(name, provider));
+    }
+    return { report: null, unsupported: true };
+  } catch {
+    return { report: null, error: "quota-probe-failed" };
+  }
+}
+
 async function maybeFetchProviderQuota(
   name: string,
   provider: OcxProviderConfig,
   config: OcxConfig,
   forceRefresh: boolean,
 ): Promise<ProviderQuotaReport | null> {
-  if (provider.disabled === true) return null;
-  try {
-    if (isBuiltInChatGptForwardProvider(name, provider)) return fetchChatGptForwardQuota(config, name, provider, forceRefresh);
-    if (provider.authMode === "oauth" && name === "xai") return fetchXaiQuota(name);
-    if (provider.authMode === "oauth" && name === "anthropic") return fetchAnthropicQuota(name);
-    if (provider.authMode === "oauth" && name === "cursor") return fetchCursorQuota(name);
-    if (provider.authMode === "oauth" && name === "google-antigravity") return fetchAntigravityQuota(name, provider);
-    // Kimi Code `/usages` accepts OAuth or coding-plan API keys, but only on the canonical
-    // host and only for real key auth — forward/local modes carry no credential of ours.
-    if (provider.authMode === "oauth" && name === "kimi") return fetchKimiQuota(name, provider);
-    if (provider.authMode === "key" && isCanonicalKimiCodeBaseUrl(provider.baseUrl)) {
-      return fetchKimiQuota(name, provider);
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  // Aggregate behavior is unchanged: absent reasons still collapse to null.
+  return (await probeProviderQuota(name, provider, config, forceRefresh)).report;
 }
 
 export async function fetchProviderQuotaReports(config: OcxConfig, forceRefresh = false): Promise<ProviderQuotaResponse> {
@@ -967,4 +991,32 @@ export async function fetchProviderQuotaReports(config: OcxConfig, forceRefresh 
   } finally {
     if (inflight.get(key) === entry) inflight.delete(key);
   }
+}
+
+/** Slice variant of the aggregate response: one provider, plus why a report is absent. */
+export interface ProviderQuotaSliceResponse extends ProviderQuotaResponse {
+  unsupported?: boolean;
+  error?: string;
+}
+
+/**
+ * Per-provider probe for the Leveranciers fan-out: each card fetches independently, so a
+ * slow provider never blocks the rest. The discriminator lets the card tell "no quota
+ * API" (unsupported) apart from "probe failed" (error). Throws on unknown provider so
+ * the route can answer 404 instead of an ambiguous empty 200.
+ */
+export async function fetchProviderQuotaReport(
+  config: OcxConfig,
+  name: string,
+  forceRefresh = false,
+): Promise<ProviderQuotaSliceResponse> {
+  if (!hasOwnProvider(config.providers, name)) throw new Error(`unknown provider: ${name}`);
+  const provider = config.providers[name]!;
+  const probe = await probeProviderQuota(name, provider, config, forceRefresh);
+  return {
+    generatedAt: Date.now(),
+    reports: probe.report ? [probe.report] : [],
+    ...(probe.unsupported ? { unsupported: true } : {}),
+    ...(probe.error ? { error: probe.error } : {}),
+  };
 }

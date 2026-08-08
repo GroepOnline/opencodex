@@ -79,7 +79,7 @@ export function AddCodexAccountWaitingStep({
       )}
       {error && <div className="notice notice-err" style={{ marginTop: 12 }}>{error}</div>}
       <div style={{ textAlign: "center", padding: "24px 0" }}>
-        <span className="spin" style={{ width: 24, height: 24 }} />
+        <span className="spin go" style={{ width: 24, height: 24 }} />
       </div>
       <button type="button" className="btn btn-ghost" onClick={onClose} style={{ width: "100%" }}>
         {t("codexAuth.cancel")}

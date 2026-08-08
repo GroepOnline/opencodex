@@ -166,7 +166,7 @@ jobs:
 
       - name: GUI tests
         if: ${{ matrix.run_quality }}
-        run: cd gui && bun test tests
+        run: cd gui && bun test tests --isolate
 
       - name: Privacy scan
         if: ${{ matrix.run_quality }}

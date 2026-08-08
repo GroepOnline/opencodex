@@ -28,7 +28,7 @@ export function NumberStepper({
         onMouseDown={(event) => event.preventDefault()}
         onClick={onIncrement}
       >
-        <IconArrowUp width={10} height={10} aria-hidden="true" />
+        <IconArrowUp width={13} height={13} aria-hidden="true" />
       </button>
       <button
         type="button"
@@ -38,7 +38,7 @@ export function NumberStepper({
         onMouseDown={(event) => event.preventDefault()}
         onClick={onDecrement}
       >
-        <IconArrowDown width={10} height={10} aria-hidden="true" />
+        <IconArrowDown width={13} height={13} aria-hidden="true" />
       </button>
     </div>
   );

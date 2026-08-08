@@ -311,7 +311,7 @@ export default function MemoryObservabilityCard({ apiBase }: { apiBase: string }
     return (
       <div className="panel" style={{ marginBottom: 24 }}>
         <div className="font-semibold" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <IconActivity width={16} height={16} aria-hidden="true" />
+          <IconActivity width={15} height={15} aria-hidden="true" />
           {t("dash.mem.title")}
         </div>
         <div className="muted text-control" style={{ marginTop: 8 }}>{t("dash.mem.unavailable")}</div>
@@ -330,7 +330,7 @@ export default function MemoryObservabilityCard({ apiBase }: { apiBase: string }
   return (
     <div className="panel" style={{ marginBottom: 24 }}>
       <div className="font-semibold" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-        <IconActivity width={16} height={16} aria-hidden="true" />
+        <IconActivity width={15} height={15} aria-hidden="true" />
         {t("dash.mem.title")}
       </div>
 
@@ -403,7 +403,7 @@ export default function MemoryObservabilityCard({ apiBase }: { apiBase: string }
             <span className="muted text-control">{t("dash.mem.reconnecting")}</span>
           )}
           {restartPhase === "error" && restartError && (
-            <span className="text-control" style={{ color: "var(--danger, #c44)" }}>{restartError}</span>
+            <span className="text-control" style={{ color: "var(--red)" }}>{restartError}</span>
           )}
           {noSupervisor && restartPhase === "idle" && (
             <span className="muted text-control">{t("dash.mem.restartNoSupervisor")}</span>

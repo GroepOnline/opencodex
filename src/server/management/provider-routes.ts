@@ -35,7 +35,7 @@ import {
   resolveProviderModelDiscovery,
 } from "../../providers/model-discovery";
 import { routedSlug, slugEquals } from "../../providers/slug-codec";
-import { clearProviderQuotaCache, fetchProviderQuotaReports } from "../../providers/quota";
+import { clearProviderQuotaCache, fetchProviderQuotaReport, fetchProviderQuotaReports } from "../../providers/quota";
 import { CODEX_FORWARD_BASE_URL, isCanonicalOpenAiForwardProvider } from "../../providers/openai-tiers";
 import { codexAccountNamespaceProviderCollisionError } from "../../codex/account-namespace-match";
 import { clearThreadAccountMap } from "../../codex/routing";
@@ -79,6 +79,15 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
 
   if (url.pathname === "/api/provider-quotas" && req.method === "GET") {
     const forceRefresh = url.searchParams.get("refresh") === "1" || url.searchParams.get("refresh") === "true";
+    const providerName = url.searchParams.get("provider");
+    if (providerName !== null) {
+      // Per-provider slice: the Leveranciers view fans out one fetch per card so a slow
+      // provider never blocks the rest. Unknown names get a 404, never an ambiguous 200.
+      if (!hasOwnProvider(config.providers, providerName)) {
+        return jsonResponse({ error: `unknown provider: ${providerName}` }, 404, req, config);
+      }
+      return jsonResponse(await fetchProviderQuotaReport(config, providerName, forceRefresh), 200, req, config);
+    }
     return jsonResponse(await fetchProviderQuotaReports(config, forceRefresh));
   }
 

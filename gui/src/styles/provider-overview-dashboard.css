@@ -122,19 +122,39 @@
 
 .pws-dashboard-row {
   display: grid;
-  grid-template-columns: 22px 1fr auto auto;
+  grid-template-columns: 1fr auto;
   align-items: center;
   gap: 8px;
   padding: 6px 6px;
   border-radius: 6px;
   border: none;
   background: none;
-  cursor: pointer;
-  text-align: left;
-  color: inherit;
-  font: inherit;
   width: 100%;
   transition: background 0.12s;
+}
+
+/* The interactive select area of a row (icon + name/meta + chevron + bars).
+   Kept separate from the row wrapper so a real <button> (quota retry) can sit
+   beside it without nesting interactive controls. */
+.pws-dashboard-row-select {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  column-gap: 8px;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.pws-dashboard-row-select:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 1px;
 }
 
 .pws-dashboard-row:hover {
@@ -207,14 +227,14 @@
 .pws-dashboard-row--skeleton {
   pointer-events: none;
   cursor: default;
+  /* Skeleton children are direct icon/info cells (no select wrapper). */
+  grid-template-columns: 22px 1fr;
 }
 
 .pws-skel {
   display: block;
   border-radius: var(--radius-2xs, 4px);
-  background: linear-gradient(90deg, var(--raised, #eee) 0%, var(--surface, #f7f7f7) 50%, var(--raised, #eee) 100%);
-  background-size: 200% 100%;
-  animation: codex-auth-skeleton-shimmer 1.2s ease-in-out infinite;
+  background: var(--raised, #eee);
 }
 
 .pws-dashboard-row-icon.pws-skel {

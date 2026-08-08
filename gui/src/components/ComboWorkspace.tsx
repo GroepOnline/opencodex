@@ -105,7 +105,7 @@ export default function ComboWorkspace({
             <div className="combos-workspace-rail-count">{combos.length}</div>
           </div>
           <button type="button" className="btn btn-primary btn-sm" onClick={handleAdd} aria-label={t("cws.add")}>
-            <IconPlus width={14} height={14} /> {t("cws.add")}
+            <IconPlus width={15} height={15} /> {t("cws.add")}
           </button>
         </div>
         <div className="cwi-search-row">
@@ -145,7 +145,7 @@ export default function ComboWorkspace({
                         aria-current={activeId === item.id ? "true" : undefined}
                       >
                         <span className="combos-workspace-rail-icon" aria-hidden="true">
-                          <IconShuffle width={16} height={16} />
+                          <IconShuffle width={15} height={15} />
                         </span>
                         <span className="combos-workspace-rail-name">{item.model}</span>
                         <span className="combos-workspace-rail-meta">

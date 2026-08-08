@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  hashBelongsToPage,
+  canonicalHashFor,
   resolveAppHashChange,
-  type Page,
+  type Route,
 } from "./app-routing";
 import { navigateHash, normalizeHashPath, replaceHash } from "./hash-routing";
 
@@ -41,13 +41,12 @@ function clearStaleViewKeys(): void {
  * router immediately rewrites.
  */
 export function useAppRouteState() {
-  // The first hash must go through the same resolver as `hashchange`: `readPageFromHash` only
-  // knows the current page ids, so a bookmarked legacy hash (`#codex-auth/accounts`) would land
-  // on the dashboard fallback instead of the page it was retired into.
-  const [page, setPageState] = useState<Page>(() =>
+  // The first hash must go through the same resolver as `hashchange`: legacy
+  // hashes (`#codex-auth/accounts`, `#dashboard/models`) land on their new view.
+  const [route, setRoute] = useState<Route>(() =>
     resolveAppHashChange(
       normalizeHashPath(typeof window === "undefined" ? "" : window.location.hash),
-    ).page,
+    ).route,
   );
 
   useEffect(() => { clearStaleViewKeys(); }, []);
@@ -55,12 +54,12 @@ export function useAppRouteState() {
   const applyHashAction = useCallback((rawHash: string) => {
     const action = resolveAppHashChange(rawHash);
     if (action.replaceTo) replaceHash(action.replaceTo);
-    setPageState(action.page);
+    setRoute(action.route);
   }, []);
 
-  const navigateToPage = (id: Page) => {
-    navigateHash(id);
-    setPageState(id);
+  const navigateTo = (next: Route) => {
+    navigateHash(canonicalHashFor(next));
+    setRoute(next);
   };
 
   useEffect(() => {
@@ -77,24 +76,15 @@ export function useAppRouteState() {
   }, [applyHashAction]);
 
   useEffect(() => {
-    const rawHash = normalizeHashPath(window.location.hash);
-    if (rawHash === "debug" || rawHash.startsWith("debug/")) {
-      replaceHash("logs/debug");
-      return;
-    }
-    // Legacy deep link from the removed dual-layout era.
-    if (rawHash === "providers/workspace") {
-      replaceHash("providers");
-      return;
-    }
-    if (!hashBelongsToPage(rawHash, page)) {
-      replaceHash(page);
-    }
-  }, [page]);
+    // Honour the resolver's rewrite on mount too: a legacy hash (#dashboard,
+    // #codex-auth/accounts) is replaced by its canonical view hash right away,
+    // passively, so Back never traps on the redirect.
+    const action = resolveAppHashChange(normalizeHashPath(window.location.hash));
+    if (action.replaceTo) replaceHash(action.replaceTo);
+  }, [route]);
 
   return {
-    page,
-    setPageState,
-    navigateToPage,
+    route,
+    navigateTo,
   };
 }

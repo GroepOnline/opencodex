@@ -238,7 +238,7 @@ function QuotaRow({ label, percent, resetAt, threshold, t, locale }: {
         className={`quota-val${warn ? " quota-val--warn" : ""}`}
         title={exhausted ? t("quota.limitReached") : undefined}
       >
-        {warn && <IconAlert width={12} height={12} aria-hidden="true" />}
+        {warn && <IconAlert width={13} height={13} aria-hidden="true" />}
         {Math.round(percent)}%
         {exhausted ? ` · ${t("quota.limitReached")}` : ""}
       </span>
@@ -272,7 +272,7 @@ function StackedQuotaRow({ row, threshold, t, locale }: {
       </div>
       {exhausted && (
         <div className="quota-stacked-limit-reached" role="status">
-          <IconAlert width={12} height={12} aria-hidden="true" />
+          <IconAlert width={13} height={13} aria-hidden="true" />
           {t("quota.limitReached")}
         </div>
       )}

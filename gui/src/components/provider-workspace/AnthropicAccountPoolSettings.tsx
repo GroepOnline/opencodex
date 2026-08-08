@@ -265,7 +265,7 @@ export default function AnthropicAccountPoolSettings({
       )}
 
       {error && (
-        <div role="alert" className="card-sub" style={{ marginTop: 8, color: "var(--danger, #c44)" }}>
+        <div role="alert" className="card-sub" style={{ marginTop: 8, color: "var(--red)" }}>
           {error}
         </div>
       )}
