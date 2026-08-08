@@ -109,17 +109,20 @@ export type AppHashChangeAction = {
  * push, so Back is never trapped on a hash the router immediately corrects.
  */
 export function resolveAppHashChange(rawHash: string): AppHashChangeAction {
+  // The `#` prefix is presentation; resolve on the normalized path so a canonical
+  // hash like `#leveranciers` is never needlessly rewritten to `leveranciers`.
+  const normalized = normalizeHashPath(rawHash);
   // Legacy prefixes with unknown tails (e.g. #codex-auth/accounts) collapse to
   // the legacy head's new home rather than leaking into the fallback.
-  const legacyHead = rawHash.split("/")[0];
-  if (!(rawHash in LEGACY_HASH_MAP) && legacyHead && legacyHead in LEGACY_HASH_MAP) {
+  const legacyHead = normalized.split("/")[0];
+  if (!(normalized in LEGACY_HASH_MAP) && legacyHead && legacyHead in LEGACY_HASH_MAP) {
     const route = readRouteFromHash(legacyHead);
     return { route, replaceTo: canonicalHashFor(route) };
   }
 
-  const route = readRouteFromHash(rawHash);
+  const route = readRouteFromHash(normalized);
   const canonical = canonicalHashFor(route);
-  if (rawHash !== canonical) {
+  if (normalized !== canonical) {
     return { route, replaceTo: canonical };
   }
   return { route, replaceTo: null };

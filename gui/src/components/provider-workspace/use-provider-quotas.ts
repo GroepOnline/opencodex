@@ -34,6 +34,7 @@ export interface QuotaCardState {
 
 export const QUOTA_STALE_AFTER_MS = 5 * 60_000;
 export const QUOTA_BACKOFF_MS = [10_000, 30_000, 60_000] as const;
+export const QUOTA_REQUEST_TIMEOUT_MS = 20_000;
 
 interface SliceResponse {
   generatedAt?: number;
@@ -146,13 +147,21 @@ export function useProviderQuotas({
     };
 
     setCard(name, prev => (prev.report ? prev : { status: "loading", attempt }));
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), QUOTA_REQUEST_TIMEOUT_MS);
     try {
       const res = await fetch(
         `${apiBase}/api/provider-quotas?provider=${encodeURIComponent(name)}${opts.force ? "&refresh=1" : ""}`,
+        { signal: controller.signal },
       );
-      const data = res.ok ? await readJsonIfOk<SliceResponse>(res) : null;
+      if (!res.ok) {
+        void res.body?.cancel().catch(() => undefined);
+        if (isCurrent()) fail("http");
+        return;
+      }
+      const data = await readJsonIfOk<SliceResponse>(res);
       if (!isCurrent()) return;
-      if (!data) return fail(res.ok ? "parse" : "http");
+      if (!data) return fail("parse");
       if (data.unsupported) {
         inflightRef.current.delete(name);
         setCard(name, { status: "unsupported", attempt: 0 });
@@ -175,6 +184,8 @@ export function useProviderQuotas({
       fail(data.error ?? "quota-probe-failed");
     } catch {
       if (isCurrent()) fail("network");
+    } finally {
+      clearTimeout(timeout);
     }
   }, [apiBase, persistReport, scheduleRetry, setCard]);
 

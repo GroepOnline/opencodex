@@ -60,8 +60,13 @@ const SUB_TABS: Record<View, { sub: string | null; tkey: TKey }[]> = {
 };
 
 function readStoredTheme(): Theme {
-  const t = localStorage.getItem(THEME_KEY);
-  return t === "light" || t === "dark" ? t : "system";
+  try {
+    const t = localStorage.getItem(THEME_KEY);
+    return t === "light" || t === "dark" ? t : "system";
+  } catch {
+    // Private/blocked storage must not prevent the dashboard from rendering.
+    return "system";
+  }
 }
 
 function readRuntimeVersion(data: unknown): string | null {
@@ -78,8 +83,14 @@ export default function App() {
 
   useEffect(() => {
     const el = document.documentElement;
-    if (theme === "system") { el.removeAttribute("data-theme"); localStorage.removeItem(THEME_KEY); }
-    else { el.setAttribute("data-theme", theme); localStorage.setItem(THEME_KEY, theme); }
+    if (theme === "system") el.removeAttribute("data-theme");
+    else el.setAttribute("data-theme", theme);
+    try {
+      if (theme === "system") localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      // Theme persistence is optional; blocked storage must not break rendering.
+    }
   }, [theme]);
 
   const healthPoll = useKeyedClientResource(
@@ -87,7 +98,7 @@ export default function App() {
     [],
     async (signal) => {
       const res = await fetch(`${API_BASE}/healthz`, { signal });
-      if (!res.ok) throw new Error(`Health check failed: ${res.status}`);
+      if (!res.ok) throw new Error(String(res.status));
       return { version: readRuntimeVersion(await res.json()) };
     },
     { pollMs: 30_000 },
