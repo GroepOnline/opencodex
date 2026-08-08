@@ -880,6 +880,12 @@ export function startServer(port?: number) {
         return withCors(formatErrorResponse(404, "not_found", `Unknown endpoint: ${req.method} ${url.pathname}`), req, config);
       }
 
+      if (url.pathname === "/__opencodex_gui_session" && req.method === "GET") {
+        const session = issueGuiSession(req, config, managementAuth);
+        if (!session) return jsonResponse({ error: "GUI session unavailable" }, 403, req, config);
+        return jsonResponse(session, 200, req, config);
+      }
+
       const guiSessionCandidate = req.method === "GET" && (url.pathname === "/" || !url.pathname.includes("."))
         ? issueGuiSession(req, config, managementAuth)
         : null;
