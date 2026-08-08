@@ -167,7 +167,10 @@ async function startPoolRetryHarness(
     port: 0,
     async fetch(request) {
       const accountId = request.headers.get("chatgpt-account-id") ?? "missing";
-      dispatches.push(accountId);
+      // Only account-labeled requests are pool dispatches. Ambient loopback probes
+      // (headerless GET / from unrelated local daemons/containers) must not pollute
+      // the dispatch-sequence assertions.
+      if (accountId !== "missing") dispatches.push(accountId);
       return reply(accountId, request);
     },
   });
@@ -957,11 +960,16 @@ describe("server local API auth", () => {
     const upstream = Bun.serve({
       port: 0,
       fetch(req) {
-        seen.push({
-          host: req.headers.get("x-test-original-host") ?? "",
-          authorization: req.headers.get("authorization"),
-          chatgptAccountId: req.headers.get("chatgpt-account-id"),
-        });
+        // Only requests routed through matrixFetch carry x-test-original-host; ambient
+        // loopback probes (no marker header) must not pollute the seen assertions.
+        const originalHost = req.headers.get("x-test-original-host");
+        if (originalHost) {
+          seen.push({
+            host: originalHost,
+            authorization: req.headers.get("authorization"),
+            chatgptAccountId: req.headers.get("chatgpt-account-id"),
+          });
+        }
         return Response.json({ id: "resp_tier", object: "response", status: "completed", output: [] });
       },
     });
