@@ -106,14 +106,24 @@ export function useProviderQuotas({
   const retryQueueRef = useRef(new Map<string, number>());
   const [retryTick, setRetryTick] = useState(0);
 
+  const cancelRetry = useCallback((name: string) => {
+    const timer = retryTimersRef.current.get(name);
+    if (timer) clearTimeout(timer);
+    retryTimersRef.current.delete(name);
+    retryQueueRef.current.delete(name);
+  }, []);
+
   const scheduleRetry = useCallback((name: string, nextAttempt: number, delayMs: number) => {
     const prev = retryTimersRef.current.get(name);
     if (prev) clearTimeout(prev);
-    retryTimersRef.current.set(name, setTimeout(() => {
+    const timer = setTimeout(() => {
+      // A forced refresh or a successful probe may have invalidated this timer.
+      if (retryTimersRef.current.get(name) !== timer) return;
       retryTimersRef.current.delete(name);
       retryQueueRef.current.set(name, nextAttempt);
       setRetryTick(t => t + 1);
-    }, delayMs));
+    }, delayMs);
+    retryTimersRef.current.set(name, timer);
   }, []);
 
   const fetchOne = useCallback(async (name: string, opts: { force?: boolean; attempt?: number } = {}) => {
@@ -155,12 +165,14 @@ export function useProviderQuotas({
       if (!data) return fail(res.ok ? "parse" : "http");
       if (data.unsupported) {
         inflightRef.current.delete(name);
+        cancelRetry(name);
         setCard(name, { status: "unsupported", attempt: 0 });
         return;
       }
       const report = data.reports?.[0];
       if (report) {
         inflightRef.current.delete(name);
+        cancelRetry(name);
         const now = Date.now();
         const view: ProviderQuotaReportView = {
           label: report.label ?? name,
@@ -176,7 +188,7 @@ export function useProviderQuotas({
     } catch {
       if (isCurrent()) fail("network");
     }
-  }, [apiBase, persistReport, scheduleRetry, setCard]);
+  }, [apiBase, cancelRetry, persistReport, scheduleRetry, setCard]);
 
   // Fire queued retry attempts (scheduled by backoff timers).
   useEffect(() => {
@@ -189,10 +201,17 @@ export function useProviderQuotas({
 
   /** Refresh one provider (force = bypass server cache) or every provider in parallel. */
   const refresh = useCallback((name?: string, opts?: { force?: boolean }) => {
-    if (name) return void fetchOne(name, { force: opts?.force ?? true, attempt: 0 });
-    for (const p of providers) void fetchOne(p, { force: opts?.force ?? false, attempt: 0 });
+    const force = opts?.force ?? (name ? true : false);
+    if (name) {
+      if (force) cancelRetry(name);
+      return void fetchOne(name, { force, attempt: 0 });
+    }
+    for (const p of providers) {
+      if (force) cancelRetry(p);
+      void fetchOne(p, { force, attempt: 0 });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- providersKey is the identity
-  }, [fetchOne, providersKey]);
+  }, [cancelRetry, fetchOne, providersKey]);
 
   // Initial fan-out when the provider set changes. No sync re-seed here: the useState
   // initializer paints the session seed on mount, and fetchOne's setCard creates
