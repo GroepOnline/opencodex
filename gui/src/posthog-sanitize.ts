@@ -1,26 +1,27 @@
-import { DASHBOARD_TAB_HASHES, VALID_PAGES } from "./app-routing";
+import { KNOWN_VIEW_HASHES, LEGACY_HASH_HEADS, VALID_VIEWS } from "./app-routing";
 
 /**
  * Known hash routes for $current_url. Anything else is treated as sensitive/unknown
- * and dropped to the bare origin+pathname (or the known page head).
+ * and dropped to the bare origin+pathname (or the known view head).
  *
  * Keep this list aligned with `app-routing.ts` so PostHog never sees auth codes,
  * invitation tokens, or emails that landed in the hash.
  */
 const KNOWN_HASH_ROUTES = new Set<string>([
-  ...VALID_PAGES,
-  ...DASHBOARD_TAB_HASHES,
-  "logs/debug",
-  // Still accepted by resolveAppHashChange before rewrite; emit as-is once.
+  ...KNOWN_VIEW_HASHES,
+  // Legacy hashes still accepted by resolveAppHashChange before rewrite; emit once.
   "providers/workspace",
+  "dashboard/providers",
+  "dashboard/models",
+  "codex-auth",
+  "logs/debug",
   "debug",
 ]);
 
-/** Page heads that are safe to emit even when the sub-target is unknown. */
+/** View heads (and legacy heads) safe to emit even when the sub-target is unknown. */
 const KNOWN_PAGE_HEADS = new Set<string>([
-  ...VALID_PAGES,
-  "debug",
-  "codex-auth",
+  ...VALID_VIEWS,
+  ...LEGACY_HASH_HEADS,
 ]);
 
 /**

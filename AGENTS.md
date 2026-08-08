@@ -151,5 +151,19 @@ reviewers (Codex, CodeRabbit).
   server changes need the full suite green.
 - **Docs sync:** user-facing behavior changes should update `docs-site/` (and
   keep translated locales from contradicting the English source).
-- **Privacy:** `bun run privacy:scan` must stay green; never introduce logging
-  of request bodies, API keys, or account identifiers.
+- **Privacy:** `bun run privacy:scan` must stay green; never introduce
+  logging of request bodies, API keys, or account identifiers.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in Linear through the MCP workflow; GitHub Issues are not used. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the canonical labels `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This repository uses a single-context domain layout with root `CONTEXT.md` (when present) and `docs/adr/`. See `docs/agents/domain.md`.

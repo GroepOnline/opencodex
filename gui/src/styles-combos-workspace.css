@@ -152,8 +152,8 @@
 }
 
 .combos-workspace-rail-chevron {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   color: var(--faint);
 }
 
@@ -272,8 +272,8 @@
   left: 10px;
   top: 50%;
   transform: translateY(-50%);
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   color: var(--faint);
   pointer-events: none;
 }
@@ -492,15 +492,15 @@
 .pwi-dot { flex-shrink: 0; width: 7px; height: 7px; border-radius: 50%; display: inline-block; background: var(--muted); }
 .pwi-back-overview { flex: 0 0 auto; gap: 4px; margin-right: 2px; white-space: nowrap; }
 .pwi-section { background: none; border: none; border-radius: 0; min-width: 0; padding: 0; }
-.pwi-section-title { margin: 0 0 4px; font-size: 12px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.pwi-section-title { margin: 0 0 4px; font-size: var(--text-caption); font-weight: var(--weight-semibold); color: var(--muted); text-transform: uppercase; letter-spacing: var(--tracking-caps); }
 .pwi-empty-right-icon { color: var(--faint); }
 .pwi-empty-right-sub { font-size: 13.5px; color: var(--muted); margin: 0; max-width: 44ch; line-height: 1.5; }
 .pwi-json-unsaved-card,
 .pwi-remove-confirm-card { max-width: 420px; width: min(420px, 92vw); padding: 20px 22px 16px; }
 .pwi-json-unsaved-title,
-.pwi-remove-confirm-title { margin: 0 0 8px; font-size: 16px; font-weight: 650; color: var(--text); }
+.pwi-remove-confirm-title { margin: 0 0 8px; font-size: var(--text-subtitle); font-weight: var(--weight-medium); color: var(--text); }
 .pwi-json-unsaved-desc,
-.pwi-remove-confirm-desc { margin: 0 0 18px; font-size: 13.5px; line-height: 1.45; }
+.pwi-remove-confirm-desc { margin: 0 0 18px; font-size: var(--text-control); line-height: var(--leading-body); }
 .pwi-json-unsaved-actions,
 .pwi-remove-confirm-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .pwi-remove-confirm-danger { background: var(--red) !important; color: #fff !important; border-color: transparent !important; }

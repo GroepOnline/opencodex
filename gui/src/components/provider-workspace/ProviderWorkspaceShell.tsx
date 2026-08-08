@@ -23,6 +23,7 @@ import { readJsonIfOk, readJsonOrThrow } from "../../fetch-json";
 import { readSessionListCache, writeSessionListCache } from "../../session-list-cache";
 import { countAvailableModels, parseAvailableModels, parseLiveModelCounts, parseSelectedModels, type ProviderAvailableModels, type ProviderLiveModelCounts, type ProviderModelCounts, type ProviderSelectedModels } from "../../provider-workspace/usage";
 import type { ProviderQuotaReportView } from "../../provider-workspace/report";
+import { useProviderQuotas } from "./use-provider-quotas";
 import { formatProviderDisplayName } from "../../provider-icons";
 import { RailRow } from "./ProviderRail";
 import type { PricingFilter, ProviderModelUsageRow, ProviderUsageTotals, StatusFilter, TypeFilter } from "./types";
@@ -114,11 +115,7 @@ export default function ProviderWorkspaceShell({
   const [usageModels, setUsageModels] = useState<Record<string, ProviderModelUsageRow[]>>(() => (
     readSessionListCache<{ models: Record<string, ProviderModelUsageRow[]> }>(usageCacheKey)?.models ?? {}
   ));
-  const [quotaReports, setQuotaReports] = useState<Record<string, ProviderQuotaReportView>>(() => (
-    readSessionListCache<Record<string, ProviderQuotaReportView>>(quotasCacheKey) ?? {}
-  ));
   const [usageLoading, setUsageLoading] = useState(() => !readSessionListCache(usageCacheKey));
-  const [quotasLoading, setQuotasLoading] = useState(() => !readSessionListCache(quotasCacheKey));
   const [modelsLoadEpoch, setModelsLoadEpoch] = useState(0);
   const filterWrapRef = useRef<HTMLDivElement>(null);
 
@@ -207,41 +204,6 @@ export default function ProviderWorkspaceShell({
   }, [apiBase, usageCacheKey]);
 
   useEffect(() => {
-    let cancelled = false;
-    const timeout = window.setTimeout(() => {
-      if (!readSessionListCache(quotasCacheKey)) setQuotasLoading(true);
-      void fetch(`${apiBase}/api/provider-quotas`)
-        .then(r => readJsonIfOk<{ reports?: Array<{ provider: string; label?: string; source?: string; updatedAt?: number; quota?: unknown }> }>(r))
-        .then((data) => {
-          if (cancelled || !data) return;
-          // Merge so a partial/failed probe cannot wipe a previously good provider row.
-          setQuotaReports(prev => {
-            const next = { ...prev };
-            for (const report of data.reports ?? []) {
-              if (!report?.provider) continue;
-              next[report.provider] = {
-                label: report.label,
-                source: report.source,
-                updatedAt: typeof report.updatedAt === "number" ? report.updatedAt : Date.now(),
-                quota: report.quota,
-              };
-            }
-            writeSessionListCache(quotasCacheKey, next);
-            return next;
-          });
-        })
-        .catch(() => { /* keep last-good */ })
-        .finally(() => { if (!cancelled) setQuotasLoading(false); });
-    }, 0);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeout);
-    };
-    // Key on active-account identity (not the reauth boolean map) so switching between two
-    // healthy accounts still re-reads /api/provider-quotas for the Usage/overview bars.
-  }, [apiBase, quotaRefreshKey, quotasCacheKey]);
-
-  useEffect(() => {
     if (!filterOpen) return;
     const onDoc = (e: MouseEvent) => {
       if (filterWrapRef.current && !filterWrapRef.current.contains(e.target as Node)) setFilterOpen(false);
@@ -260,6 +222,38 @@ export default function ProviderWorkspaceShell({
     [sections],
   );
   const freeCount = useMemo(() => allItems.filter(isFreeProvider).length, [allItems]);
+
+  // Per-provider quota fan-out (design-system opencodex brief): each card fetches
+  // independently so a slow provider never blocks another. The controller owns race
+  // protection, dedupe, bounded backoff, and the VERS/VEROUDERD stale ticker.
+  const providerNames = useMemo(() => allItems.map(i => i.name), [allItems]);
+  const { cards: quotaCards, refresh: refreshQuota } = useProviderQuotas({
+    apiBase,
+    providers: providerNames,
+    cacheKey: quotasCacheKey,
+  });
+  const quotaReports = useMemo(() => {
+    const map: Record<string, ProviderQuotaReportView> = {};
+    for (const [name, card] of Object.entries(quotaCards)) {
+      if (card.report) map[name] = card.report;
+    }
+    return map;
+  }, [quotaCards]);
+  const quotasLoading = useMemo(
+    () => Object.values(quotaCards).some(c => c.status === "loading"),
+    [quotaCards],
+  );
+  // An active-account switch changes which quota each provider should show; re-probe
+  // every card (force bypasses dedupe + server cache so the new account's data lands).
+  const quotaRefreshMountedRef = useRef(false);
+  useEffect(() => {
+    if (!quotaRefreshMountedRef.current) {
+      quotaRefreshMountedRef.current = true;
+      return;
+    }
+    refreshQuota(undefined, { force: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- quotaRefreshKey is the identity
+  }, [quotaRefreshKey]);
   const paidCount = allItems.length - freeCount;
   const typeCounts = useMemo(() => {
     const counts = { cloud: 0, local: 0, selfHosted: 0, login: 0 };
@@ -345,7 +339,7 @@ export default function ProviderWorkspaceShell({
         <aside className="pws-rail" aria-label={t("pws.providerList")}>
         <div className="pws-search-row">
           <div className="pws-search-wrap">
-            <IconSearch className="pws-search-icon" width={14} height={14} aria-hidden="true" />
+            <IconSearch className="pws-search-icon" width={15} height={15} aria-hidden="true" />
             <input
               type="search"
               className="input pws-search-input"
@@ -501,7 +495,7 @@ export default function ProviderWorkspaceShell({
                         }}
                         title={t("pws.removeConfirmTitle")}
                       >
-                        <IconTrash width={14} height={14} />
+                        <IconTrash width={15} height={15} />
                       </button>
                     )}
                   </div>
@@ -542,11 +536,12 @@ export default function ProviderWorkspaceShell({
         ) : (
           <ProviderOverviewDashboard
             sections={sections}
-            quotaReports={quotaReports}
+            quotaCards={quotaCards}
             usageTotals={usageTotals}
             usageLoading={usageLoading}
             quotasLoading={quotasLoading}
             onSelectProvider={(name) => onSelect(name)}
+            onRefreshQuota={(name) => refreshQuota(name, { force: true })}
             onEditConfig={onEditConfig}
           />
         )}

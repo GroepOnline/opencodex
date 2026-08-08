@@ -241,10 +241,10 @@ export default function Grok({ apiBase }: { apiBase: string }) {
         <div className="ocx-group-stack">
           <div className="row" style={{ gap: 6, margin: "2px 0 10px" }}>
             <button type="button" className="btn btn-ghost btn-sm text-caption" onClick={() => setAllCollapsed(true)} disabled={pending !== null}>
-              <IconChevron width={12} height={12} aria-hidden="true" /> {t("models.collapseAll")}
+              <IconChevron width={13} height={13} aria-hidden="true" /> {t("models.collapseAll")}
             </button>
             <button type="button" className="btn btn-ghost btn-sm text-caption" onClick={() => setAllCollapsed(false)} disabled={pending !== null}>
-              <IconChevron width={12} height={12} aria-hidden="true" style={{ transform: "rotate(90deg)" }} /> {t("models.expandAll")}
+              <IconChevron width={13} height={13} aria-hidden="true" style={{ transform: "rotate(90deg)" }} /> {t("models.expandAll")}
             </button>
           </div>
           {GROUPS.map(group => {
@@ -264,8 +264,8 @@ export default function Grok({ apiBase }: { apiBase: string }) {
                     >
                       <IconChevron
                         className="ocx-chevron"
-                        width={14}
-                        height={14}
+                        width={15}
+                        height={15}
                         aria-hidden="true"
                         style={{ transform: isCollapsed ? "none" : "rotate(90deg)" }}
                       />

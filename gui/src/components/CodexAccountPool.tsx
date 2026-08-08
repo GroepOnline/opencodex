@@ -294,7 +294,7 @@ export default function CodexAccountPool({ apiBase, accountModeState = null, ban
             <span className="section-label">{t("codexAuth.accountPool")}</span>
             <div className="sep-line" />
             <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowAdd(true)}>
-              <IconPlus width={14} /> {t("codexAuth.add")}
+              <IconPlus width={15} /> {t("codexAuth.add")}
             </button>
           </div>
 

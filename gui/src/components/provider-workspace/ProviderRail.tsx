@@ -121,7 +121,7 @@ export function RailRow({ item, selected, tabbable, modelCount, isDefault, showC
             title={t("prov.defaultBadge")}
             aria-label={t("prov.defaultBadge")}
           >
-            <IconStar width={17} height={17} aria-hidden="true" />
+            <IconStar width={18} height={18} aria-hidden="true" />
           </span>
         )}
         <span className={railStatusCls(item)} title={status} aria-hidden="true" />

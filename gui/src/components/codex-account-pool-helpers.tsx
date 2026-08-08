@@ -32,7 +32,7 @@ export function CodexTicketBadge({ account, onClick, t }: { account: CodexAccoun
   if (account.quota == null) {
     return (
       <span className="badge badge-muted codex-ticket-badge-slot" aria-hidden="true">
-        <IconTicket width={12} />0
+        <IconTicket width={13} />0
       </span>
     );
   }
@@ -44,7 +44,7 @@ export function CodexTicketBadge({ account, onClick, t }: { account: CodexAccoun
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       aria-label={t("codexAuth.resetCreditsAria", { count: String(credits) })}
     >
-      <IconTicket width={12} />
+      <IconTicket width={13} />
       {credits}
     </button>
   );

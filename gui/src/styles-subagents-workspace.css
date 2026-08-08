@@ -189,11 +189,11 @@
 
 .swi-rail-priority {
   font-family: var(--mono);
-  font-size: 10.5px;
-  font-weight: 700;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-bold);
   color: var(--accent);
   flex-shrink: 0;
-  width: 14px;
+  width: 15px;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
@@ -270,8 +270,8 @@
 
 .swi-featured-pos {
   font-family: var(--mono);
-  font-weight: 700;
-  font-size: 13px;
+  font-weight: var(--weight-bold);
+  font-size: var(--text-control);
   color: var(--accent);
   width: 18px;
   flex-shrink: 0;

@@ -48,8 +48,9 @@ is `light-dark(licht, donker)` — schrijf beide kanten, altijd.
 
 ## 3. Typografie
 
-- **Archivo** (`--font-ui`) voor alles; **JetBrains Mono** (`--font-code`)
-  uitsluitend voor machinedata (timers, model-id's, paden, diffs, tellers).
+- **General Sans** (`--font-ui`, self-hosted woff2) voor alles; **JetBrains Mono**
+  (`--font-code`) uitsluitend voor machinedata (timers, model-id's, paden,
+  diffs, tellers). Geen Archivo/Inter/Geist — design-system v2 §4.
 - Eén type-ladder — gebruik de tokens, nooit losse px:
 
 | Token | px | Gebruik |
@@ -58,11 +59,10 @@ is `light-dark(licht, donker)` — schrijf beide kanten, altijd.
 | `--text-caption` | 11.5 | labels, captions |
 | `--text-label` | 12.5 | secundair / beschrijvingen |
 | `--text-control` | 13.5 | **UI-standaard** (body van de app) |
-| `--text-body` | 14 | leestekst |
-| `--text-subtitle` | 16 | kleine titels |
-| `--text-section` | 18 | sectiekoppen |
-| `--text-title` | 22 | paginatitels |
-| `--text-display` | 28 | hero-getallen |
+| `--text-body` | 15 | leestekst |
+| `--text-subtitle` | 15 | kleine titels |
+| `--text-title` | 24 | paginatitels |
+| `--text-display` | 28 | hero-getallen (product-extensie, geen §11-trede) |
 
 - Koppen: gewicht 500, `letter-spacing: var(--tracking-tight)` (−0.02em),
   `text-wrap: balance`. Leading via `--leading-*` (tight 1.2 / ui 1.45 /
@@ -115,8 +115,8 @@ Bindend voor nieuw werk. Twee observaties minimum per regel (zie de bron).
   standaard. Geen paarse gradients, AI-glow, acid-on-black. Het accent is voor
   links/focus/toggles/status — **niet** voor nav-selectie (die is een kalme
   `--raised`).
-- **Type:** Archivo/General Sans-humanist voor interface; mono **strikt** voor
-  data. Nooit Inter/Geist/Space Grotesk of mono voor labels/prose.
+- **Type:** General Sans voor interface; mono **strikt** voor data. Nooit
+  Inter/Geist/Space Grotesk/Archivo of mono voor labels/prose.
 - **Motion:** vroeg settelen, lage amplitude/frequentie; **één** signatuur-
   systeem (de Stroom/ripple), geen verspreide micro-animaties. Geen bounce,
   elastic of oneindige ambient motion.

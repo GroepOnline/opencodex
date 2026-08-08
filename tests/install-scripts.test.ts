@@ -34,12 +34,26 @@ describe("install scripts", () => {
     expect(pkg.scripts?.dev).toBe("bun run src/cli/index.ts start");
     expect(pkg.scripts?.["dev:proxy"]).toBe("bun run src/cli/index.ts start");
     expect(pkg.scripts?.["dev:gui"]).toBe("cd gui && bun run dev");
+    expect(pkg.scripts?.["dev:preview"]).toBe("bun scripts/freebuff-preview.ts");
     expect(pkg.scripts?.["prepare:package"]).toBe("bun scripts/prepare-package.ts");
     expect(pkg.scripts?.prepack).toBe("bun run prepare:package");
     expect(pkg.files).toContain("assets/banner.png");
     expect(pkg.files).toContain("assets/architecture.png");
     expect(pkg.files).toContain("assets/claude-code-models.gif");
     expect(pkg.files).toContain("assets/codex-app-picker.png");
+  });
+
+  test("Freebuff preview runs the proxy and dashboard as one integrated process", async () => {
+    const preview = await readText("scripts/freebuff-preview.ts");
+    const vite = await readText("gui/vite.config.ts");
+
+    expect(preview).toContain('"src/cli/index.ts", "start", "--port"');
+    expect(preview).toContain("OPENCODEX_PROXY_TARGET");
+    expect(preview).toContain('HOST: "0.0.0.0"');
+    expect(preview).toContain("process.env.PORT");
+    expect(vite).toContain("host: '0.0.0.0'");
+    expect(vite).toContain("proxyConfig(proxyTarget)");
+    expect(vite).toContain("guiSessionPlugin(proxyTarget)");
   });
 
   test("Node can import the package main without executing the CLI", () => {
