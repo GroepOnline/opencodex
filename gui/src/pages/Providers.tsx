@@ -190,7 +190,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
             <div className="providers-workspace providers-workspace--boot" aria-busy="true">
               <div className="providers-workspace-rail providers-workspace-rail--boot" aria-hidden="true" />
               <div className="providers-workspace-main">
-                <p className="muted"><span className="spin" aria-hidden="true" /> {t("prov.loadingConfig")}</p>
+                <p className="muted"><span className="spin go" aria-hidden="true" /> {t("prov.loadingConfig")}</p>
               </div>
             </div>
           )}

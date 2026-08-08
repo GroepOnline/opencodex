@@ -448,8 +448,8 @@ export default function ClaudeDesktop({ apiBase, active = true }: { apiBase: str
                 >
                   <IconChevron
                     className="ocx-chevron"
-                    width={14}
-                    height={14}
+                    width={15}
+                    height={15}
                     aria-hidden="true"
                     style={{ transform: isCollapsed ? "none" : "rotate(90deg)" }}
                   />
@@ -517,8 +517,8 @@ export default function ClaudeDesktop({ apiBase, active = true }: { apiBase: str
                     >
                       <IconChevron
                         className="ocx-chevron"
-                        width={12}
-                        height={12}
+                        width={13}
+                        height={13}
                         aria-hidden="true"
                         style={{ transform: rowOpen ? "rotate(90deg)" : "none" }}
                       />

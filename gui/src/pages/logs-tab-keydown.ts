@@ -3,11 +3,12 @@ import type { KeyboardEvent } from "react";
 export type LogsTab = "logs" | "debug";
 
 export function readTabFromHash(): LogsTab {
-  return window.location.hash.replace(/^#\/?/, "") === "logs/debug" ? "debug" : "logs";
+  // New IA hashes (#verkeer/debug); legacy #logs/debug still resolves here too.
+  return window.location.hash.replace(/^#\/?/, "") === "verkeer/debug" ? "debug" : "logs";
 }
 
 export function selectLogsTab(next: LogsTab) {
-  window.location.hash = next === "debug" ? "logs/debug" : "logs";
+  window.location.hash = next === "debug" ? "verkeer/debug" : "verkeer/logs";
 }
 
 export function logsTabKeyDown(e: KeyboardEvent) {

@@ -197,7 +197,9 @@ describe("Codex autostart shim", () => {
     chmodSync(realCodexPath, 0o755);
     chmodSync(shimPath, 0o755);
 
-    const result = spawnSync(shimPath, ["hello"], { cwd: dir, encoding: "utf8" });
+    const shimEnv = { ...process.env };
+    delete shimEnv.OCX_SHIM_BYPASS;
+    const result = spawnSync(shimPath, ["hello"], { cwd: dir, encoding: "utf8", env: shimEnv });
 
     expect(result.status).toBe(0);
     expect(existsSync(join(dir, "pwned"))).toBe(false);

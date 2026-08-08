@@ -71,13 +71,6 @@
 }
 .pwi-auth-add-key:hover { text-decoration: underline; }
 
-@keyframes pwi-spin { to { transform: rotate(360deg); } }
-.pwi-spin-inline {
-  display: inline-block; width: 14px; height: 14px;
-  border: 2px solid var(--border); border-top-color: var(--accent);
-  border-radius: var(--radius-round);
-  animation: pwi-spin 0.7s linear infinite;
-}
 
 /* ── ProviderSettings ──────────────────────────────────────── */
 

@@ -44,25 +44,25 @@ function mountTabs() {
 }
 
 test("readTabFromHash maps logs and logs/debug hashes", () => {
-  testWindow.location.hash = "#logs";
+  testWindow.location.hash = "#verkeer/logs";
   expect(readTabFromHash()).toBe("logs");
 
-  testWindow.location.hash = "#logs/debug";
+  testWindow.location.hash = "#verkeer/debug";
   expect(readTabFromHash()).toBe("debug");
 
-  testWindow.location.hash = "#/logs/debug";
+  testWindow.location.hash = "#/verkeer/debug";
   expect(readTabFromHash()).toBe("debug");
 
-  testWindow.location.hash = "#logs/other";
+  testWindow.location.hash = "#verkeer/logs/other";
   expect(readTabFromHash()).toBe("logs");
 });
 
 test("selectLogsTab writes the matching hash", () => {
   selectLogsTab("debug");
-  expect(testWindow.location.hash).toBe("#logs/debug");
+  expect(testWindow.location.hash).toBe("#verkeer/debug");
 
   selectLogsTab("logs");
-  expect(testWindow.location.hash).toBe("#logs");
+  expect(testWindow.location.hash).toBe("#verkeer/logs");
 });
 
 test("ArrowLeft and Home select logs and focus the logs tab", () => {
@@ -70,12 +70,12 @@ test("ArrowLeft and Home select logs and focus the logs tab", () => {
   debug.focus();
 
   for (const key of ["ArrowLeft", "Home"] as const) {
-    testWindow.location.hash = "#logs/debug";
+    testWindow.location.hash = "#verkeer/debug";
     debug.focus();
     const e = keyEvent(key);
     logsTabKeyDown(e);
     expect(e.prevented).toBe(true);
-    expect(testWindow.location.hash).toBe("#logs");
+    expect(testWindow.location.hash).toBe("#verkeer/logs");
     expect(testWindow.document.activeElement).toBe(logs);
   }
 });
@@ -85,21 +85,21 @@ test("ArrowRight and End select debug and focus the debug tab", () => {
   logs.focus();
 
   for (const key of ["ArrowRight", "End"] as const) {
-    testWindow.location.hash = "#logs";
+    testWindow.location.hash = "#verkeer/logs";
     logs.focus();
     const e = keyEvent(key);
     logsTabKeyDown(e);
     expect(e.prevented).toBe(true);
-    expect(testWindow.location.hash).toBe("#logs/debug");
+    expect(testWindow.location.hash).toBe("#verkeer/debug");
     expect(testWindow.document.activeElement).toBe(debug);
   }
 });
 
 test("unrelated keys do not navigate or preventDefault", () => {
   mountTabs();
-  testWindow.location.hash = "#logs";
+  testWindow.location.hash = "#verkeer/logs";
   const e = keyEvent("ArrowDown");
   logsTabKeyDown(e);
   expect(e.prevented).toBe(false);
-  expect(testWindow.location.hash).toBe("#logs");
+  expect(testWindow.location.hash).toBe("#verkeer/logs");
 });

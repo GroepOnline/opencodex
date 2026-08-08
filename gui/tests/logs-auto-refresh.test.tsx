@@ -315,7 +315,7 @@ test("Logs: switching to the Debug tab stops scheduled log requests", async () =
   // happy-dom may not emit hashchange on assignment; mirror the page listener.
   if (container.querySelector("#logs-tab-debug")?.getAttribute("aria-selected") !== "true") {
     await act(async () => {
-      window.location.hash = "logs/debug";
+      window.location.hash = "verkeer/debug";
       window.dispatchEvent(new testWindow.Event("hashchange"));
     });
     await flushMicrotasks();
