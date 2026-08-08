@@ -515,9 +515,11 @@ not a public issue.
 ## Development
 
 Source development requires the `bun` CLI on your `PATH`. This is separate from the published npm
-package's bundled Bun runtime, which is used only by installed `ocx` commands. `bun run dev:preview`
-starts the proxy and dashboard together: the dashboard binds to `PORT`/`0.0.0.0`, while the proxy
-stays on an internal loopback port and the Vite dev proxy forwards `/api/*` and `/healthz`.
+package's bundled Bun runtime, which is used only by installed `ocx` commands.
+
+`bun run dev:preview` starts the proxy and dashboard together: the dashboard binds to
+`PORT`/`0.0.0.0`, while the proxy stays on an internal loopback port and the Vite dev proxy forwards
+`/api/*` and `/healthz`.
 
 ```bash
 git clone https://github.com/GroepOnline/opencodex.git
