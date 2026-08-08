@@ -245,7 +245,12 @@ export default function ProviderWorkspaceShell({
   );
   // An active-account switch changes which quota each provider should show; re-probe
   // every card (force bypasses dedupe + server cache so the new account's data lands).
+  const quotaRefreshMountedRef = useRef(false);
   useEffect(() => {
+    if (!quotaRefreshMountedRef.current) {
+      quotaRefreshMountedRef.current = true;
+      return;
+    }
     refreshQuota(undefined, { force: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- quotaRefreshKey is the identity
   }, [quotaRefreshKey]);
