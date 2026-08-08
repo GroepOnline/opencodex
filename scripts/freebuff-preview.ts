@@ -68,8 +68,8 @@ async function main(): Promise<void> {
     stopChild(proxy);
   };
   process.once("SIGINT", cleanup);
+  // SIGTERM is supported by Node on Unix and by the process runner on Windows.
   process.once("SIGTERM", cleanup);
-  process.once("SIGHUP", cleanup);
 
   try {
     await waitForProxy(proxyPort, proxy);
@@ -85,18 +85,23 @@ async function main(): Promise<void> {
     });
 
     await new Promise<void>((resolvePromise, reject) => {
+      const rejectOnExit = (name: string, code: number | null) => {
+        if (!stopping) reject(new Error(`The ${name} exited unexpectedly (code ${code ?? "unknown"}).`));
+        else resolvePromise();
+      };
       gui?.once("error", reject);
       gui?.once("exit", code => {
-        if (!stopping && code && code !== 0) reject(new Error(`The Vite dashboard exited with code ${code}.`));
+        if (code && code !== 0) rejectOnExit("Vite dashboard", code);
         else resolvePromise();
       });
+      proxy.once("error", reject);
+      proxy.once("exit", code => rejectOnExit("opencodex proxy", code));
     });
   } finally {
     cleanup();
     await new Promise(resolvePromise => setTimeout(resolvePromise, 100));
     process.removeListener("SIGINT", cleanup);
     process.removeListener("SIGTERM", cleanup);
-    process.removeListener("SIGHUP", cleanup);
   }
 }
 
