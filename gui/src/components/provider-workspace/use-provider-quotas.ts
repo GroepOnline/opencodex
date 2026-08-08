@@ -224,14 +224,12 @@ export function useProviderQuotas({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- providersKey is the identity
   }, [cancelRetry, fetchOne, providersKey]);
 
-  // Initial fan-out when the provider set changes. No sync re-seed here: the useState
-  // initializer paints the session seed on mount, and fetchOne's setCard creates
-  // loading cards for providers that are new to the set. (Zombie cards for removed
-  // providers are ignored by the shell, which maps over current items.)
+  // Fan out whenever provider configuration changes, including same-name changes.
+  // This replaces unsupported/error cards after a provider is enabled or reconfigured.
   useEffect(() => {
     for (const p of providers) void fetchOne(p, { attempt: 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- providersKey is the identity
-  }, [cacheKey, providersKey]);
+  }, [cacheKey, providers]);
 
   // Stale ticker: flip ready → stale once freshAt passes the stale bound.
   // Ticks at min(15s, staleAfterMs/2) so an injected short bound still flips promptly.
