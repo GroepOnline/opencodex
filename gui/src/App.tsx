@@ -87,7 +87,8 @@ export default function App() {
     [],
     async (signal) => {
       const res = await fetch(`${API_BASE}/healthz`, { signal });
-      if (!res.ok) throw new Error(`Health check failed: ${res.status}`);
+      // Non-OK healthz is a technical fetch failure — the status code is the payload.
+      if (!res.ok) throw new Error(String(res.status));
       return { version: readRuntimeVersion(await res.json()) };
     },
     { pollMs: 30_000 },
