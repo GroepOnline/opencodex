@@ -20,7 +20,6 @@ type CatalogRow = {
   id: string;
   namespaced: string;
   disabled?: boolean;
-  native?: boolean;
 };
 
 export default function ProviderModels({
@@ -64,7 +63,6 @@ export default function ProviderModels({
   const [customModelsLoadEpoch, setCustomModelsLoadEpoch] = useState(0);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [disabledNamespaced, setDisabledNamespaced] = useState<Set<string>>(new Set());
-  const [nativeIds, setNativeIds] = useState<Set<string>>(new Set());
   const [catalogEpoch, setCatalogEpoch] = useState(0);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -143,19 +141,16 @@ export default function ProviderModels({
         if (!Array.isArray(rows)) throw new Error("invalid models");
         if (!active) return;
         const blocked = new Set<string>();
-        const natives = new Set<string>();
         for (const row of rows) {
           if (!row || typeof row !== "object") continue;
           const m = row as CatalogRow;
           if (m.provider !== item.name || typeof m.id !== "string") continue;
-          if (m.native === true) natives.add(m.id);
           if (m.disabled === true) {
             if (typeof m.namespaced === "string") blocked.add(m.namespaced);
             blocked.add(m.id);
           }
         }
         setDisabledNamespaced(blocked);
-        setNativeIds(natives);
       } catch {
         if (!active) return;
         /* keep last known disabled set */
@@ -190,11 +185,17 @@ export default function ProviderModels({
     }
   };
 
+  // Native GPT passthrough rows only exist under the canonical "openai"
+  // provider, and /api/model-visibility accepts native=true exactly for that
+  // provider. Deriving the flag from the provider name (instead of the async
+  // /api/models metadata) keeps toggles valid before the catalog fetch lands.
+  const isNativeProvider = item.name === "openai";
+
   const isModelOn = (modelId: string) => modelVisible(
     selectedMap,
     item.name,
     modelId,
-    nativeIds.has(modelId),
+    isNativeProvider,
     disabledNamespaced.has(modelId) || disabledNamespaced.has(`${item.name}/${modelId}`),
   );
 
@@ -206,7 +207,7 @@ export default function ProviderModels({
         apiBase,
         "models",
         item.name,
-        targets.map(id => ({ id, native: nativeIds.has(id) })),
+        targets.map(id => ({ id, native: isNativeProvider })),
         enabled,
       );
       if (!response.ok) {
@@ -234,7 +235,7 @@ export default function ProviderModels({
     // Optimistic disabled-set update for snappy chips.
     setDisabledNamespaced(prev => {
       const nextSet = new Set(prev);
-      const namespaced = nativeIds.has(modelId) ? modelId : `${item.name}/${modelId}`;
+      const namespaced = isNativeProvider ? modelId : `${item.name}/${modelId}`;
       if (next) {
         nextSet.delete(modelId);
         nextSet.delete(namespaced);
@@ -258,7 +259,7 @@ export default function ProviderModels({
     setDisabledNamespaced(prev => {
       const nextSet = new Set(prev);
       for (const id of models) {
-        const namespaced = nativeIds.has(id) ? id : `${item.name}/${id}`;
+        const namespaced = isNativeProvider ? id : `${item.name}/${id}`;
         if (enable) {
           nextSet.delete(id);
           nextSet.delete(namespaced);

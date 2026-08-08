@@ -1,4 +1,5 @@
 import type { OcxConfig } from "../types";
+import { isSelectableCodexPoolAccount } from "./account-id";
 
 /**
  * Jittered inter-request pacer for outbound Codex pool calls.
@@ -11,12 +12,20 @@ import type { OcxConfig } from "../types";
  *
  * Defaults preserve current behavior: disabled resolves instantly and never
  * awaits, so single-account and pre-pacing setups are untouched.
+ *
+ * Ported from GroepOnline `main` (PR #4 / baadc835) and re-wired into the
+ * current `responses/core.ts` send path — the original `responses.ts` call site
+ * was lost during the responses split on `main`.
  */
 
 const PACE_DEFAULT_MIN_MS = 150;
 const PACE_DEFAULT_MAX_MS = 900;
 
-/** Per-account last-send timestamps (ms). Module-level, in-process, non-persistent. */
+/**
+ * Per-account reserved send timestamps (ms). Module-level, in-process,
+ * non-persistent. Each entry is the slot the most recent send reserved, so
+ * overlapping sends serialize instead of reading a shared stale timestamp.
+ */
 const lastSendAtByAccount = new Map<string, number>();
 
 /** Resolve the inclusive [min, max] bounds, clamping/normalizing bad input. */
@@ -40,13 +49,32 @@ export function resetCodexPacerState(): void {
 }
 
 /**
+ * Configured Codex pool width used for auto-enable: selectable added accounts
+ * plus the main Desktop login candidate (Option A).
+ */
+export function configuredCodexPoolSize(config: Pick<OcxConfig, "codexAccounts">): number {
+  const added = (config.codexAccounts ?? []).filter(isSelectableCodexPoolAccount).length;
+  return added + 1;
+}
+
+function isRoundRobinPool(
+  config: Pick<OcxConfig, "codexRotationMode" | "accountPoolStrategy">,
+): boolean {
+  if (config.accountPoolStrategy === "round-robin") return true;
+  // Fork alias from types.ts: when accountPoolStrategy is unset, codexRotationMode
+  // `"round-robin"` means the same thing.
+  if (config.accountPoolStrategy == null && config.codexRotationMode === "round-robin") return true;
+  return false;
+}
+
+/**
  * Resolve the EFFECTIVE pacing config, accounting for auto-enable:
- * when codexRotationMode === "round-robin" and >1 pool account is configured,
+ * when the pool strategy is round-robin and >1 account is configured,
  * pacing defaults to ON (with default bounds) even if codexRequestPacing is unset.
  * Explicit config always wins.
  */
 export function resolveEffectivePacing(
-  config: Pick<OcxConfig, "codexRequestPacing" | "codexRotationMode">,
+  config: Pick<OcxConfig, "codexRequestPacing" | "codexRotationMode" | "accountPoolStrategy">,
   poolSize: number,
 ): NonNullable<OcxConfig["codexRequestPacing"]> | null {
   const explicit = config.codexRequestPacing;
@@ -57,7 +85,7 @@ export function resolveEffectivePacing(
   }
   // No explicit config: auto-enable for multi-account round-robin pools
   // (reduces ban-prone cadence alignment across accounts).
-  if (config.codexRotationMode === "round-robin" && poolSize > 1) {
+  if (isRoundRobinPool(config) && poolSize > 1) {
     return { enabled: true, minMs: PACE_DEFAULT_MIN_MS, maxMs: PACE_DEFAULT_MAX_MS };
   }
   return null;
@@ -66,20 +94,45 @@ export function resolveEffectivePacing(
 /**
  * Await the per-account jittered gap before an outbound Codex pool send.
  * No-op (no await) when pacing is disabled or no account id is supplied.
+ *
+ * When `signal` aborts (client disconnect), the wait resolves immediately so a
+ * cancelled request never sits in the pacing queue. The reserved slot is kept:
+ * later senders still pace off it, preserving their ordering. Callers must
+ * check the signal after awaiting and skip the upstream send when aborted.
  */
-export async function codexPaceBeforeSend(config: OcxConfig, accountId: string | null, poolSize?: number): Promise<void> {
+export async function codexPaceBeforeSend(
+  config: OcxConfig,
+  accountId: string | null,
+  poolSize?: number,
+  signal?: AbortSignal,
+): Promise<void> {
   const effective = poolSize !== undefined
     ? resolveEffectivePacing(config, poolSize)
-    : (config.codexRequestPacing?.enabled ? { enabled: true, minMs: PACE_DEFAULT_MIN_MS, maxMs: PACE_DEFAULT_MAX_MS, ...config.codexRequestPacing } : null);
+    : (config.codexRequestPacing?.enabled
+      ? { enabled: true, minMs: PACE_DEFAULT_MIN_MS, maxMs: PACE_DEFAULT_MAX_MS, ...config.codexRequestPacing }
+      : null);
   if (!effective) return;
   if (!accountId) return;
   const now = Date.now();
   const last = lastSendAtByAccount.get(accountId);
-  if (last !== undefined) {
-    const wait = Math.max(0, paceGapMs(effective) - (now - last));
-    if (wait > 0) await new Promise<void>(resolve => setTimeout(resolve, wait));
-  }
-  // Record the actual send time (after any wait) so the next gap measures from
-  // the real send cadence rather than the moment we entered the pacer.
-  lastSendAtByAccount.set(accountId, Date.now());
+  // Reserve the next send slot synchronously — BEFORE any await — so
+  // overlapping sends for the same account serialize. Each caller paces off
+  // the previous reservation; recording after the wait would let concurrent
+  // callers read the same stale timestamp and proceed together with no gap.
+  const sendAt = last === undefined ? now : Math.max(now, last + paceGapMs(effective));
+  lastSendAtByAccount.set(accountId, sendAt);
+  const wait = sendAt - now;
+  if (wait <= 0) return;
+  if (signal?.aborted) return;
+  await new Promise<void>(resolve => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, wait);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }

@@ -55,7 +55,7 @@ export function CodexAccountSwitchModal({
           {confirm.plan && <span className="badge badge-green" style={{ marginLeft: 8 }}>{confirm.plan}</span>}
         </div>
         {confirm.id !== "__main__" && (
-          <div className="notice-warn"><IconAlert width={14} /> {t("codexAuth.cacheWarning")}</div>
+          <div className="notice-warn"><IconAlert width={15} /> {t("codexAuth.cacheWarning")}</div>
         )}
         <div className="modal-actions">
           <button type="button" className="btn btn-ghost" onClick={onCancel}>{t("codexAuth.cancel")}</button>

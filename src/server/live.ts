@@ -369,7 +369,7 @@ export async function resolveLiveRelay(
     throw err;
   }
 
-  const candidates = selectOpenAiImagesProvider(config);
+  const candidates = await selectOpenAiImagesProvider(config);
   if (candidates.forwardCandidates.length === 0 && !candidates.keyed) {
     return formatErrorResponse(
       400,

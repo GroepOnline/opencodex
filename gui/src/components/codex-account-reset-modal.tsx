@@ -51,7 +51,7 @@ export function CodexAccountResetModal({
       <div className="modal-card" onClick={e => e.stopPropagation()} role="document">
         {!resetConfirm ? (
           <>
-            <h3 id="codex-reset-title"><IconTicket width={16} /> {t("codexAuth.resetCreditsTitle")}</h3>
+            <h3 id="codex-reset-title"><IconTicket width={15} /> {t("codexAuth.resetCreditsTitle")}</h3>
             <div className="card-sub">{resetPopup.email}{resetPopup.plan ? ` · ${resetPopup.plan}` : ""}</div>
             <div style={{ margin: "16px 0" }}>
               {(resetPopup.quota?.resetCredits ?? 0) > 0 ? (
@@ -82,7 +82,7 @@ export function CodexAccountResetModal({
         ) : (
           <>
             <div style={{ textAlign: "center", padding: "12px 0" }}>
-              <div className="confirm-icon"><IconAlert width={22} /></div>
+              <div className="confirm-icon"><IconAlert width={24} /></div>
               <h3 id="codex-reset-title">{t("codexAuth.confirmResetTitle")}</h3>
               <p className="modal-desc">{t("codexAuth.confirmResetDesc", { count: String(resetPopup.quota?.resetCredits ?? 0) })}</p>
               {creditDetails && creditDetails[0] && (

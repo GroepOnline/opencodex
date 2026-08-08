@@ -1,43 +1,45 @@
-# Versioning Policy
+# VERSIONING.md
 
-**Package:** `@bitkyc08/opencodex`  
-**Repository:** `OnlineChefGroep/opencodex`  
-**License:** MIT
+Versioning policy for the GroepOnline `opencodex` fork. The release contract lives in
+`scripts/release.ts` and `.github/workflows/release.yml`; this file records the policy those
+tools enforce.
 
-This fork of [lidge-jun/opencodex](https://github.com/lidge-jun/opencodex) follows **independent
-semantic versioning** — we are **fully detached** from upstream releases.
+## Version shape
 
-Starting with the first fork release, our versioning is:
+Strict [SemVer 2.0.0](https://semver.org/) with one supported prerelease shape:
 
+```text
+MAJOR.MINOR.PATCH            stable     dist-tag: latest
+MAJOR.MINOR.PATCH-preview.N  prerelease dist-tag: preview
 ```
-v<major>.<minor>.<patch>
-```
 
-## Rules
+- `X.Y.Z-preview.N` is the **only** accepted prerelease form. `-alpha`, `-beta`, `-rc`, and other
+  suffixes are rejected before publication by `scripts/release.ts` (see `structure/09_x10-terminal-plan.md`).
+- The `preview` channel is a monotonically increasing `-preview.N` train per `MAJOR.MINOR.PATCH`
+  core; a later `vX.Y.Z-preview.*` is always older than its stable `vX.Y.Z`.
+- Stable releases always bump `PATCH` (or higher) from the last published version — never reuse or
+  regress a consumed version number.
 
-| Change | Rule |
-|---|---|
-| **Breaking change** (incompatible API, config, or CLI) | Bump **major** |
-| **New feature** (backward-compatible) | Bump **minor** |
-| **Bug fix** (backward-compatible) | Bump **patch** |
+## Dist-tags
 
-## Current version
+| Dist-tag | Meaning | Shape |
+| --- | --- | --- |
+| `latest` | Stable, production installs | `X.Y.Z` |
+| `preview` | Prerelease train, update-notifier channel | `X.Y.Z-preview.N` |
 
-Current: **`2.7.33`** (inherited from upstream; transition starts here)
+The update client recognizes the `preview` channel; a stable release must never be published under
+`preview` and a prerelease must never be published under `latest`. `scripts/release.ts` refuses a
+mismatch before doing any work.
 
-Next release: **`1.0.0`** — our first independent release, signifying the fork's new identity.
+## Who may release
 
-## Version transition
+Releases run from `main` only (`release.yml` rejects any other ref). The release helper requires a
+clean working tree, `gh` CLI auth, and local gates green (typecheck, `bun test --isolate tests`,
+`bun run privacy:scan`) before it bumps and dispatches.
 
-Because this fork initially tracked upstream releases, the existing tags (`v2.7.26` … `v2.7.39`)
-are kept for history. All **new** releases use our own scheme starting at `v1.0.0`.
+## Source of truth
 
-## Release process
-
-1. Update `CHANGELOG.md` with the new version and notes.
-2. Bump version in `package.json`.
-3. Commit and tag: `git tag -a v<version> -m "v<version>"`
-4. Push tag: `git push origin v<version>`
-5. The [Release workflow](.github/workflows/release.yml) handles npm publish + GitHub Release.
-
-See [RELEASE_PROCESS.md](./RELEASE_PROCESS.md) for the full step-by-step guide.
+- Contract: `scripts/release.ts`, `.github/workflows/release.yml`
+- Release metadata invariants: `structure/06_docs-and-release.md` → "Release metadata invariants"
+- Full procedure: `RELEASE_PROCESS.md`
+- Released history: `CHANGELOG.md`

@@ -5,7 +5,7 @@ description: Why the bun process can grow to many gigabytes of RAM on Windows, w
 
 Some Windows users see the `bun` process behind opencodex grow to many
 gigabytes of RSS during long streaming sessions (reported as issue
-[#314](https://github.com/OnlineChefGroep/opencodex/issues/314)). This page explains
+[#314](https://github.com/GroepOnline/opencodex/issues/314)). This page explains
 what is actually happening and what you can do about it, honestly.
 
 ## Root cause: upstream Bun runtime issues
@@ -94,5 +94,5 @@ restart it.
 
 If you try any of these on a real Windows workload, please report the before
 and after `ocx doctor` memory sections on
-[#314](https://github.com/OnlineChefGroep/opencodex/issues/314) — that is exactly
+[#314](https://github.com/GroepOnline/opencodex/issues/314) — that is exactly
 the verification this mitigation is waiting on.

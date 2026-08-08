@@ -35,7 +35,7 @@ import {
   resolveProviderModelDiscovery,
 } from "../../providers/model-discovery";
 import { routedSlug, slugEquals } from "../../providers/slug-codec";
-import { clearProviderQuotaCache, fetchProviderQuotaReports } from "../../providers/quota";
+import { clearProviderQuotaCache, fetchProviderQuotaReport, fetchProviderQuotaReports } from "../../providers/quota";
 import { CODEX_FORWARD_BASE_URL, isCanonicalOpenAiForwardProvider } from "../../providers/openai-tiers";
 import { codexAccountNamespaceProviderCollisionError } from "../../codex/account-namespace-match";
 import { clearThreadAccountMap } from "../../codex/routing";
@@ -62,7 +62,6 @@ import {
   setDebugSettings,
   type DebugFlag,
 } from "../../lib/debug-settings";
-import { releaseProviderCooldownDisableOwnership } from "../../providers/cap-cooldown";
 import type { OcxClaudeCodeConfig, OcxConfig, OcxCustomModel, OcxProviderConfig } from "../../types";
 import { drainAndShutdown } from "../lifecycle";
 import { filterRequestLogs, getRequestLogEntries, type RequestLogEntry } from "../request-log";
@@ -80,6 +79,15 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
 
   if (url.pathname === "/api/provider-quotas" && req.method === "GET") {
     const forceRefresh = url.searchParams.get("refresh") === "1" || url.searchParams.get("refresh") === "true";
+    const providerName = url.searchParams.get("provider");
+    if (providerName !== null) {
+      // Per-provider slice: the Leveranciers view fans out one fetch per card so a slow
+      // provider never blocks the rest. Unknown names get a 404, never an ambiguous 200.
+      if (!hasOwnProvider(config.providers, providerName)) {
+        return jsonResponse({ error: `unknown provider: ${providerName}` }, 404, req, config);
+      }
+      return jsonResponse(await fetchProviderQuotaReport(config, providerName, forceRefresh), 200, req, config);
+    }
     return jsonResponse(await fetchProviderQuotaReports(config, forceRefresh));
   }
 
@@ -143,6 +151,10 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
     // let the (possibly new) apiKey join the pool as the active entry.
     const existingPool = config.providers[name]?.apiKeyPool;
     if (existingPool && !prov.apiKeyPool) prov.apiKeyPool = existingPool;
+    // A cooldown recorded against the previous configuration must not own the replacement's
+    // `disabled` flag: expiry would silently re-enable a provider the operator turned off.
+    const { clearProviderCapCooldown } = await import("../../providers/cap-cooldown");
+    clearProviderCapCooldown(config, name);
     config.providers[name] = stripRegistryOnlyStaticHeaders(name, prov);
     if (body.setDefault) config.defaultProvider = name;
     save(config);
@@ -337,6 +349,7 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
     // An explicit operator decision outranks the cap cooldown: without this the expiry
     // sweep would re-enable a provider the operator just turned off by hand. Run it here,
     // after every validation gate, so a rejected patch cannot strip cooldown ownership.
+    const { releaseProviderCooldownDisableOwnership } = await import("../../providers/cap-cooldown");
     if (Object.hasOwn(rawBody, "disabled")) {
       releaseProviderCooldownDisableOwnership(config, name);
     }
@@ -470,6 +483,10 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
     }
     const { saveConfigPreservingClaudeCode: save } = await import("../../config");
     delete config.providers[name];
+    // The cooldown belonged to the deleted provider instance; a same-name provider created
+    // later must not inherit its disable-ownership (expiry would strip an operator disable).
+    const { clearProviderCapCooldown } = await import("../../providers/cap-cooldown");
+    clearProviderCapCooldown(config, name);
     setProviderContextCap(config, name, false);
     save(config);
     const { clearModelCache: clearCache } = await import("../../codex/model-cache");

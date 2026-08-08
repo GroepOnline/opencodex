@@ -324,9 +324,13 @@ export async function handleImages(
   endpoint: ImagesEndpoint,
   logCtx: RequestLogContext,
 ): Promise<Response> {
-  const candidates = selectImagesProvider(config);
+  const candidates = await selectImagesProvider(config);
   if (candidates.error) {
-    return formatErrorResponse(400, "invalid_request_error", candidates.error);
+    return formatErrorResponse(
+      candidates.errorStatus ?? 400,
+      candidates.errorType ?? "invalid_request_error",
+      candidates.error,
+    );
   }
   const explicitKeyedProvider = config.images?.provider !== undefined && candidates.keyed !== undefined;
   // Admission bearer is valid proxy auth (requireApiAuth already passed) but must never be

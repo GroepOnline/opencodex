@@ -105,7 +105,7 @@ export function CodexAccountPoolMainCard({
             title={main.paused ? t("codexAuth.pausedHint") : undefined}
             aria-label={main.paused ? `${t("codexAuth.resume")}. ${t("codexAuth.pausedHint")}` : t("codexAuth.pause")}
           >
-            {main.paused ? <IconPlay width={14} /> : <IconPause width={14} />}
+            {main.paused ? <IconPlay width={15} /> : <IconPause width={15} />}
             <CodexPauseToggleLabel
               t={t}
               paused={!!main.paused}
@@ -113,7 +113,7 @@ export function CodexAccountPoolMainCard({
             />
           </button>
         )}
-        <span className="card-right"><IconLock width={14} /> {t("codexAuth.appLogin")}</span>
+        <span className="card-right"><IconLock width={15} /> {t("codexAuth.appLogin")}</span>
       </div>
       <div className="card-sub">{main?.email || t("codexAuth.appLogin")}{main?.plan ? ` · ${main.plan}` : ""}</div>
       {healthSummary && (
@@ -178,7 +178,7 @@ export function CodexAccountPoolPageHead({
           onClick={onPauseExhausted}
           disabled={refreshingQuota || pausingExhausted || !!pauseBusy}
         >
-          <IconPause width={14} /> {pausingExhausted ? t("codexAuth.pausingExhausted") : t("codexAuth.pauseExhausted")}
+          <IconPause width={15} /> {pausingExhausted ? t("codexAuth.pausingExhausted") : t("codexAuth.pauseExhausted")}
         </button>
         <button
           type="button"
@@ -186,7 +186,7 @@ export function CodexAccountPoolPageHead({
           onClick={onRefresh}
           disabled={refreshingQuota || pausingExhausted || !!pauseBusy}
         >
-          <IconRefresh width={14} /> {refreshingQuota ? t("codexAuth.refreshingQuota") : t("codexAuth.refreshQuota")}
+          <IconRefresh width={15} /> {refreshingQuota ? t("codexAuth.refreshingQuota") : t("codexAuth.refreshQuota")}
         </button>
       </div>
     </div>
@@ -217,14 +217,14 @@ export function CodexAccountPoolLoadStates({
             <strong>{t("codexAuth.mainAccount")}</strong>
             <span className="card-badges">
               <span className="badge badge-muted codex-ticket-badge-slot" aria-hidden="true">
-                <IconTicket width={12} />0
+                <IconTicket width={13} />0
               </span>
               <span className="badge badge-primary">{t("codexAuth.nextSession")}</span>
             </span>
             <button type="button" className="btn btn-sm btn-ghost" tabIndex={-1} disabled>
-              <IconPause width={14} /> {t("codexAuth.pause")}
+              <IconPause width={15} /> {t("codexAuth.pause")}
             </button>
-            <span className="card-right"><IconLock width={14} /> {t("codexAuth.appLogin")}</span>
+            <span className="card-right"><IconLock width={15} /> {t("codexAuth.appLogin")}</span>
           </div>
           <div className="card-sub">
             {/* Strut keeps the sub line-box equal to ready email/plan text; shimmer is visual only. */}
@@ -238,7 +238,7 @@ export function CodexAccountPoolLoadStates({
           <div className="sep-line" />
           {/* Same Add control as ready section-sep (inert) so the row height matches. */}
           <button type="button" className="btn btn-sm btn-ghost" tabIndex={-1} disabled>
-            <IconPlus width={14} /> {t("codexAuth.add")}
+            <IconPlus width={15} /> {t("codexAuth.add")}
           </button>
         </div>
         <div className="empty codex-auth-pool-empty codex-auth-load-skeleton__empty" aria-hidden="true">

@@ -1,4 +1,5 @@
-import { resolveEnvValue } from "../config";
+import { providerCredentialFailure, resolveProviderApiKey, tryResolveProviderApiKey } from "./credential";
+import { ProviderSecurityError } from "../provider-security";
 import {
   headersForCodexAuthContext,
   hasCallerCodexBearer,
@@ -37,6 +38,9 @@ export interface OpenAiImagesProviderSelection {
     apiKey: string;
   };
   error?: string;
+  /** Response shape for `error`. Defaults to a 400 invalid_request_error (a configuration mistake). */
+  errorStatus?: number;
+  errorType?: string;
 }
 
 export function listOpenAiForwardSidecarCandidates(config: OcxConfig): OpenAiForwardSidecarCandidate[] {
@@ -110,7 +114,7 @@ export async function resolveFirstUsableOpenAiSidecar(
   return undefined;
 }
 
-export function selectOpenAiImagesProvider(config: OcxConfig): OpenAiImagesProviderSelection {
+export async function selectOpenAiImagesProvider(config: OcxConfig): Promise<OpenAiImagesProviderSelection> {
   const selection: OpenAiImagesProviderSelection = {
     forwardCandidates: listOpenAiForwardSidecarCandidates(config),
   };
@@ -122,14 +126,16 @@ export function selectOpenAiImagesProvider(config: OcxConfig): OpenAiImagesProvi
     && provider.authMode !== "forward"
     && provider.baseUrl.replace(/\/+$/, "") === "https://api.openai.com/v1"
   ) {
-    const apiKey = resolveEnvValue(provider.apiKey)?.trim();
+    // A chefvault-backed provider has no inline key; lease it here so the keyed tier is armed
+    // with real authentication instead of being skipped as unconfigured.
+    const apiKey = await tryResolveProviderApiKey(provider);
     if (apiKey) selection.keyed = { providerName: OPENAI_API_PROVIDER_ID, provider, apiKey };
   }
   return selection;
 }
 
 /** Resolve an explicit custom Images provider, otherwise preserve the existing OpenAI fallback. */
-export function selectImagesProvider(config: OcxConfig): OpenAiImagesProviderSelection {
+export async function selectImagesProvider(config: OcxConfig): Promise<OpenAiImagesProviderSelection> {
   const configuredProvider = config.images?.provider;
   if (configuredProvider === undefined) return selectOpenAiImagesProvider(config);
   if (typeof configuredProvider !== "string" || !configuredProvider.trim()) {
@@ -160,7 +166,22 @@ export function selectImagesProvider(config: OcxConfig): OpenAiImagesProviderSel
     };
   }
 
-  const apiKey = resolveEnvValue(provider.apiKey)?.trim();
+  // An explicitly configured Images provider has no other tier to fall back to, so a failed
+  // ChefVault lease is reported as the credential/authority failure it is rather than as the
+  // "no usable API key" configuration error.
+  let apiKey: string | undefined;
+  try {
+    apiKey = await resolveProviderApiKey(provider);
+  } catch (error) {
+    if (!(error instanceof ProviderSecurityError)) throw error;
+    const failure = providerCredentialFailure(providerName, error);
+    return {
+      forwardCandidates: [],
+      error: failure.message,
+      errorStatus: failure.status,
+      errorType: failure.type,
+    };
+  }
   if (!apiKey) {
     return { forwardCandidates: [], error: `images.provider "${providerName}" has no usable API key` };
   }

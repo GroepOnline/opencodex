@@ -14,7 +14,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from "n
 import { join } from "node:path";
 import { getConfigDir } from "../config";
 
-const DEFAULT_HOST = "https://eu.i.posthog.com";
+const DEFAULT_HOST = "https://k.chefgroep.online";
 const FLUSH_INTERVAL_MS = 10_000;
 const MAX_BATCH_SIZE = 50;
 /** Hard cap on buffered events; the oldest are dropped once exceeded. */

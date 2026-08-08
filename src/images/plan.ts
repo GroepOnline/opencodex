@@ -1,6 +1,6 @@
 import type { OcxConfig, OcxParsedRequest, OcxProviderConfig } from "../types";
 import type { ImageBridgePlan, VideoBridgePlan } from "./types";
-import { resolveEnvValue } from "../config";
+import { tryResolveProviderApiKey } from "../providers/credential";
 import { getProviderRegistryEntry } from "../providers/registry";
 import { IMAGE_GEN_TOOL_NAME, VIDEO_GEN_TOOL_NAME, isVideoGenName } from "./synthetic-tool";
 
@@ -33,10 +33,11 @@ export function findXaiProvider(config: OcxConfig): { name: string; provider: Oc
  * OAuth / Grok CLI proxy transport is not used here (that path is chat-oriented and not a
  * supported Images transport), so oauth-only configs deliberately do not arm the bridge.
  */
-export function resolveXaiImageApiKey(provider: OcxProviderConfig): string | undefined {
+export async function resolveXaiImageApiKey(provider: OcxProviderConfig): Promise<string | undefined> {
   if (provider.authMode === "oauth") return undefined;
-  const apiKey = resolveEnvValue(provider.apiKey)?.trim();
-  return apiKey || undefined;
+  // Covers both inline keys and chefvault:// references, so a reference-backed xAI provider
+  // arms the bridge instead of silently looking unconfigured.
+  return tryResolveProviderApiKey(provider);
 }
 
 export async function planImageBridge(
@@ -51,7 +52,7 @@ export async function planImageBridge(
   if (host === "api.openai.com") return undefined;
   const found = findXaiProvider(config);
   if (!found) return undefined;
-  const token = resolveXaiImageApiKey(found.provider);
+  const token = await resolveXaiImageApiKey(found.provider);
   if (!token) return undefined;
   // Pin the baseUrl to the registry entry, ignoring any config-level baseUrl override.
   const registryEntry = getProviderRegistryEntry("xai");
@@ -100,7 +101,7 @@ export async function planVideoBridge(
   if (host === "api.openai.com") return undefined;
   const found = findXaiProvider(config);
   if (!found) return undefined;
-  const token = resolveXaiImageApiKey(found.provider);
+  const token = await resolveXaiImageApiKey(found.provider);
   if (!token) return undefined;
   // Pin the baseUrl to the registry entry, ignoring any config-level baseUrl override.
   const registryEntry = getProviderRegistryEntry("xai");

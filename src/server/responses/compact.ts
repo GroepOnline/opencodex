@@ -36,6 +36,7 @@ import {
   type OAuthAccessSnapshot,
   UnsupportedOAuthProviderError,
 } from "../../oauth";
+import { providerCredentialFailure, providerCredentialRef, withResolvedProviderCredential } from "../../providers/credential";
 import { buildWebSearchTool, planWebSearch, runWithWebSearch, shouldResolveOpenAiWebSearchSidecar } from "../../web-search";
 import { describeImagesInPlace, planVisionSidecar, shouldResolveOpenAiVisionSidecar, stripImagesInPlace } from "../../vision";
 import { createAdapterEventQueue, preflightAdapterEvents } from "../../adapters/run-turn-queue";
@@ -59,6 +60,7 @@ import {
   recordCodexUpstreamOutcome,
   type CodexUpstreamOutcome,
 } from "../../codex/routing";
+import { codexPaceBeforeSend, configuredCodexPoolSize } from "../../codex/pacer";
 import { fetchWithResetRetry, fetchWithTransientRetry, applyUpstreamRecoveryInit } from "../../lib/upstream-retry";
 import { ForwardAdmissionCredentialError, validateForwardAdmissionCredential } from "../auth-cors";
 import { listOpenAiForwardSidecarCandidates, resolveFirstUsableOpenAiSidecar, type ResolvedOpenAiForwardSidecar } from "../../providers/openai-sidecar";
@@ -246,8 +248,21 @@ export async function handleResponsesCompact(
       }
       throw err;
     }
+    // Same fail-closed lease as /v1/responses: a chefvault-backed provider must not compact
+    // against the upstream without an Authorization header. A configured key may be an `$ENV`
+    // reference; a leased secret is literal credential material and must not be expanded.
+    let compactAuthKey = resolveEnvValue(compactProvider.apiKey);
+    if (compactProvider.authMode !== "oauth" && compactProvider.authMode !== "forward" && providerCredentialRef(compactProvider)) {
+      try {
+        compactProvider = await withResolvedProviderCredential(compactProvider);
+        compactAuthKey = compactProvider.apiKey;
+      } catch (err) {
+        const failure = providerCredentialFailure(route.providerName, err);
+        return formatErrorResponse(failure.status, failure.type, failure.message);
+      }
+    }
     const base = (compactProvider.baseUrl ?? "").replace(/\/$/, "");
-    if (compactProvider.apiKey) headers.set("authorization", `Bearer ${resolveEnvValue(compactProvider.apiKey)}`);
+    if (compactAuthKey) headers.set("authorization", `Bearer ${compactAuthKey}`);
     const { reasoning: _reasoning, ...compactBodyRaw } = raw as typeof raw & { reasoning?: unknown };
     // The regular /v1/responses path applies sanitizeReasoningInputContent via the adapter's
     // buildRequest, but the compact endpoint forwards directly. Apply the same sanitizer here
@@ -270,6 +285,15 @@ export async function handleResponsesCompact(
       });
     };
     let upstream: Response;
+    // Same Codex pool pacing as /v1/responses (no-op when disabled / non-pool auth).
+    // req.signal makes a queued wait abortable: a client disconnect stops the
+    // pacing wait and returns the cancellation response before any upstream send.
+    if (usesCodexForwardPoolAuth(authCtx, route.provider)) {
+      await codexPaceBeforeSend(config, authCtx.accountId, configuredCodexPoolSize(config), req.signal);
+      if (req.signal.aborted) {
+        return formatErrorResponse(499, "client_cancelled", "Client cancelled compact request");
+      }
+    }
     try {
       // Same connect timeout + keep-alive reset + transient-5xx recovery as /v1/responses —
       // compact hits the same ChatGPT host and must soft-avoid / clear affinity (#186).

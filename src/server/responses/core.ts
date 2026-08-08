@@ -26,6 +26,7 @@ import {
   pickComboTarget,
   targetKey,
 } from "../../combos";
+import { providerCredentialFailure, providerCredentialRef, withResolvedProviderCredential } from "../../providers/credential";
 import { comboIdLabel, isProviderFallbackComboId, providerFallbackPlan } from "../../providers/fallback";
 import { isInjectionDebugEnabled } from "../../lib/debug-settings";
 import { injectionDebugLog } from "../../lib/injection-debug-log";
@@ -107,6 +108,7 @@ import {
   recordCodexUpstreamOutcome,
   type CodexUpstreamOutcome,
 } from "../../codex/routing";
+import { codexPaceBeforeSend, configuredCodexPoolSize } from "../../codex/pacer";
 import { fetchWithResetRetry, fetchWithTransientRetry, applyUpstreamRecoveryInit } from "../../lib/upstream-retry";
 import {
   createUpstreamAttemptBudget,
@@ -1495,6 +1497,16 @@ export async function handleResponses(
       return formatErrorResponse(401, "authentication_error", err instanceof Error ? err.message : String(err));
     }
   }
+  // ChefVault-backed providers carry no secret in config: lease it now so ordinary forwarding
+  // authenticates like model discovery does. The lease lives on this request's provider copy only.
+  if (route.provider.authMode !== "oauth" && route.provider.authMode !== "forward" && providerCredentialRef(route.provider)) {
+    try {
+      route.provider = await withResolvedProviderCredential(route.provider);
+    } catch (err) {
+      const failure = providerCredentialFailure(route.providerName, err);
+      return formatErrorResponse(failure.status, failure.type, failure.message);
+    }
+  }
   route.provider = resolveProviderTransport(
     route.providerName,
     route.provider,
@@ -1634,6 +1646,14 @@ export async function handleResponses(
     const upstream = new AbortController();
     linkAbortSignal(upstream, options.abortSignal);
     const connectMs = config.connectTimeoutMs ?? 200_000;
+    // Jittered inter-request pacing for outbound Codex pool calls. No-op when
+    // disabled (default) or for non-pool auth (main passthrough / other providers).
+    // The linked upstream signal makes a queued wait abortable: a client
+    // disconnect stops the pacing wait and we bail before the upstream fetch.
+    if (usesCodexForwardPoolAuth(authCtx, route.provider)) {
+      await codexPaceBeforeSend(config, authCtx.accountId, configuredCodexPoolSize(config), upstream.signal);
+      if (upstream.signal.aborted) return clientCancelledResponse();
+    }
     let upstreamResponse: Response;
     const transportFailureResponse = (err: unknown): Response => {
       upstream.abort();

@@ -23,7 +23,7 @@ Bun-native TypeScript with no separate server compile step.
 - `scripts/` — release and maintenance tooling; `scripts/release.ts` is the
   release authority.
 - `devlog/` — maintainer-only planning and investigation notes. This is a
-  **private submodule** (`lidge-jun/opencodex-internal`), not a directory of
+  **private submodule** (`GroepOnline/opencodex-internal`), not a directory of
   this repository. See "The `devlog` submodule" below.
 
 Read the nearest nested `AGENTS.md` before changing files in a scoped
@@ -32,7 +32,7 @@ directory (`src/`, `gui/`, `docs-site/`, `scripts/`, `.github/`).
 ## The `devlog` submodule
 
 Planning notes, triage matrices, and investigation artifacts live in the private
-`lidge-jun/opencodex-internal` repository, wired in as the `devlog` submodule.
+`GroepOnline/opencodex-internal` repository, wired in as the `devlog` submodule.
 They quote live infrastructure state, provider behaviour, unfixed defects, and
 internal triage reasoning, so a public clone should carry the runtime and its
 docs and nothing else.
@@ -151,5 +151,19 @@ reviewers (Codex, CodeRabbit).
   server changes need the full suite green.
 - **Docs sync:** user-facing behavior changes should update `docs-site/` (and
   keep translated locales from contradicting the English source).
-- **Privacy:** `bun run privacy:scan` must stay green; never introduce logging
-  of request bodies, API keys, or account identifiers.
+- **Privacy:** `bun run privacy:scan` must stay green; never introduce
+  logging of request bodies, API keys, or account identifiers.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in Linear through the MCP workflow; GitHub Issues are not used. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the canonical labels `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This repository uses a single-context domain layout with root `CONTEXT.md` (when present) and `docs/adr/`. See `docs/agents/domain.md`.

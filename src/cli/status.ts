@@ -11,6 +11,7 @@ import { displayCodexRuntimePath, effortClampAppliesToRuntime, loadLastEffortCla
 import { redactSecretString, redactUserPath } from "../lib/redact";
 import { collectOrcaCodexHomeDiagnostic, type OrcaCodexHomeDiagnostic } from "../codex/home";
 import { grokFenceEndpointDrift, readGrokStatus } from "../grok/status";
+import { collectProviderSecurityStatusAsync, type ProviderSecurityStatusReport } from "../provider-security/status";
 
 type HealthCheck = {
   ok: boolean;
@@ -68,6 +69,7 @@ export type CliStatusJson = {
     };
   };
   codexHome: OrcaCodexHomeDiagnostic;
+  providerSecurity: ProviderSecurityStatusReport;
 };
 
 export type CliStatusView = {
@@ -270,6 +272,8 @@ export async function collectStatus(): Promise<CliStatusView> {
           ? "reachable, but PID file is missing or stale"
           : "not running";
 
+  const providerSecurity = await collectProviderSecurityStatusAsync(config);
+
   return {
     proxyLabel,
     healthLabel: health.label,
@@ -311,6 +315,7 @@ export async function collectStatus(): Promise<CliStatusView> {
       codexPlugins,
       codexRuntime,
       codexHome,
+      providerSecurity,
     },
   };
 }

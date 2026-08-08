@@ -3,16 +3,22 @@
  * Release helper (jawcode-style, single package). Not shipped in the npm tarball.
  *
  * Usage:
- *   bun scripts/release.ts <version> [--tag latest|preview] [--publish]
- *       Preflight (clean tree + typecheck + tests + privacy scan) → bump package.json → commit → push →
- *       wait for Cross-platform CI → dispatch the Release workflow → watch it.
+ *   bun scripts/release.ts [<version>|--minor|--major] [--tag latest|preview] [--publish]
+ *       Without a version, the current package.json version is bumped (patch by
+ *       default; --minor/--major for bigger bumps; a -preview.N version bumps its
+ *       preview number). Preflight (clean tree + typecheck + tests + privacy scan)
+ *       → bump package.json → commit → push → wait for Cross-platform CI → dispatch
+ *       the Release workflow → watch it.
+ *       Optional --linear GRO-123/CHE-123 links the release commit to Linear.
  *       The version bump commit/push is real; the Release workflow publish step is dry-run by default.
  *       Pass --publish to publish.
  *   bun scripts/release.ts watch
  *       Watch the most recent Release run.
  *
- * Example:  bun scripts/release.ts 0.1.0            # commit/push bump, workflow dry-run publish
- *           bun scripts/release.ts 0.1.0 --publish  # actually publish 0.1.0
+ * Example:  bun scripts/release.ts              # auto-bump patch (1.0.0 → 1.0.1)
+ *           bun scripts/release.ts --minor      # auto-bump minor (1.0.0 → 1.1.0)
+ *           bun scripts/release.ts 0.1.0 --publish  # explicit version, actually publish 0.1.0
+ *           bun scripts/release.ts 1.0.1 --linear GRO-994 # link release evidence to Linear
  *
  * Requires: gh CLI (authed). Publishing is tokenless via Trusted Publishing (OIDC) — no NPM_TOKEN.
  */
@@ -60,6 +66,39 @@ async function readPackageName(): Promise<string> {
   } catch (error) {
     console.error(`✗ failed to read package.json: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
+  }
+}
+
+async function readPackageVersion(): Promise<string> {
+  try {
+    const pkg = JSON.parse(await Bun.file("package.json").text()) as { version?: unknown };
+    if (typeof pkg.version !== "string" || !/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(pkg.version)) {
+      console.error(`✗ package.json is missing a valid version (got ${JSON.stringify(pkg.version)})`);
+      process.exit(1);
+    }
+    return pkg.version;
+  } catch (error) {
+    console.error(`✗ failed to read package.json: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
+}
+
+/** Bump a version. A prerelease (X.Y.Z-preview.N) bumps its preview number; a
+ *  stable version bumps the requested segment and drops any prerelease suffix. */
+function bumpVersion(current: string, bump: "patch" | "minor" | "major"): string {
+  const previewMatch = current.match(/^(\d+)\.(\d+)\.(\d+)-preview\.(\d+)$/);
+  if (previewMatch) {
+    return `${previewMatch[1]}.${previewMatch[2]}.${previewMatch[3]}-preview.${Number(previewMatch[4]) + 1}`;
+  }
+  const [major, minor, patch] = current.split("-")[0]!.split(".").map(Number);
+  switch (bump) {
+    case "major":
+      return `${major + 1}.0.0`;
+    case "minor":
+      return `${major}.${minor + 1}.0`;
+    case "patch":
+    default:
+      return `${major}.${minor}.${patch + 1}`;
   }
 }
 
@@ -217,12 +256,30 @@ if (args[0] === "watch") {
   process.exit(0);
 }
 
-const version = args[0];
-if (!version || !/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(version)) {
-  console.error("Usage: bun scripts/release.ts <version> [--tag latest|preview] [--publish]\n       bun scripts/release.ts watch");
+const explicitVersion = args[0] && !args[0].startsWith("--") ? args[0] : undefined;
+if (explicitVersion && !/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(explicitVersion)) {
+  console.error(`Invalid version: ${explicitVersion}`);
   process.exit(1);
 }
+let version = explicitVersion;
 const dryRun = !args.includes("--publish");
+
+if (!version) {
+  const bump = args.includes("--minor") ? "minor" : args.includes("--major") ? "major" : "patch";
+  const current = await readPackageVersion();
+  version = bumpVersion(current, bump);
+  console.log(`→ no explicit version: bumping ${bump} → ${version}`);
+}
+if (!/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(version)) {
+  console.error("Usage: bun scripts/release.ts [<version>|--minor|--major] [--linear GRO-123] [--tag latest|preview] [--publish]\n       bun scripts/release.ts watch");
+  process.exit(1);
+}
+const linearFlagIndex = args.indexOf("--linear");
+const linearIssue = linearFlagIndex === -1 ? undefined : args[linearFlagIndex + 1];
+if (linearFlagIndex !== -1 && (!linearIssue || !/^(?:GRO|CHE)-\d+$/.test(linearIssue))) {
+  console.error("Linear issue must use a GRO-123 or CHE-123 identifier.");
+  process.exit(1);
+}
 
 // 1. Preflight — every release runs from main (release.yml rejects any other ref),
 // and local verification must pass. Stable versions publish to the `latest` dist-tag,
@@ -260,7 +317,8 @@ await $`npm version ${version} --no-git-tag-version`;
 
 // 3. Commit + push the version bump.
 await $`git add package.json`;
-await $`git commit -m ${`release: v${version}`}`;
+const releaseCommitMessage = `release: v${version}${linearIssue ? ` (${linearIssue})` : ""}`;
+await $`git commit -m ${releaseCommitMessage}`;
 const releaseSha = (await $`git rev-parse HEAD`.text()).trim();
 console.log(`→ push origin ${branch}`);
 await $`git push origin ${branch}`;
@@ -294,4 +352,4 @@ const releaseRun = await waitForReleaseWorkflowRun(releaseSha, branch, dispatchS
 await watchRun(releaseRun.databaseId);
 console.log(dryRun
   ? "\n✓ Dry run complete. Re-run with --publish to publish for real."
-  : "\n✓ Published. Try:  npm install -g @bitkyc08/opencodex");
+  : "\n✓ Published. Try:  npm install -g @groeponline/opencodex");

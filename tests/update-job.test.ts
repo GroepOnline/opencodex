@@ -776,7 +776,7 @@ describe("GUI update execution decisions", () => {
       installer: "npm",
       restart: true,
       command: "node /pkg/bin/ocx.mjs update --tag latest",
-      releaseNotesUrl: "https://github.com/OnlineChefGroep/opencodex/releases/latest",
+      releaseNotesUrl: "https://github.com/GroepOnline/opencodex/releases/latest",
       log: [],
     };
     writeFileSync(updateJobPath(), `${JSON.stringify(job)}\n`);
@@ -811,8 +811,8 @@ describe("GUI update execution decisions", () => {
       channel: "latest",
       installer: "bun",
       restart: true,
-      command: "bun add -g @bitkyc08/opencodex@2.7.41",
-      releaseNotesUrl: "https://github.com/OnlineChefGroep/opencodex/releases/latest",
+      command: "bun add -g @groeponline/opencodex@2.7.41",
+      releaseNotesUrl: "https://github.com/GroepOnline/opencodex/releases/latest",
       log: [],
       pid: 777,
     };
@@ -829,8 +829,8 @@ describe("GUI update execution decisions", () => {
         installer: "bun",
         updateAvailable: true,
         canUpdate: true,
-        command: "bun add -g @bitkyc08/opencodex@2.7.41",
-        releaseNotesUrl: "https://github.com/OnlineChefGroep/opencodex/releases/latest",
+        command: "bun add -g @groeponline/opencodex@2.7.41",
+        releaseNotesUrl: "https://github.com/GroepOnline/opencodex/releases/latest",
       }),
       spawnWorkerFn: () => ({
         pid: 888,
@@ -854,8 +854,8 @@ describe("GUI update execution decisions", () => {
         installer: "bun",
         updateAvailable: true,
         canUpdate: true,
-        command: "bun add -g @bitkyc08/opencodex@2.7.41",
-        releaseNotesUrl: "https://github.com/OnlineChefGroep/opencodex/releases/latest",
+        command: "bun add -g @groeponline/opencodex@2.7.41",
+        releaseNotesUrl: "https://github.com/GroepOnline/opencodex/releases/latest",
       }),
       spawnWorkerFn: () => { throw new Error("spawn denied"); },
     })).toThrow("Could not start update worker");
@@ -866,18 +866,18 @@ describe("GUI update execution decisions", () => {
 
 describe("immutable update target (WP160)", () => {
   test("a resolved version pins the install target instead of the movable tag", () => {
-    expect(updateCommand("bun", "latest", "2.7.24").args).toEqual(["add", "-g", "@bitkyc08/opencodex@2.7.24"]);
-    expect(updateCommand("npm", "latest", "2.7.24").args).toEqual(["install", "-g", "@bitkyc08/opencodex@2.7.24"]);
-    expect(updateCommandStr("bun", "latest", "2.7.24")).toContain("@bitkyc08/opencodex@2.7.24");
+    expect(updateCommand("bun", "latest", "2.7.24").args).toEqual(["add", "-g", "@groeponline/opencodex@2.7.24"]);
+    expect(updateCommand("npm", "latest", "2.7.24").args).toEqual(["install", "-g", "@groeponline/opencodex@2.7.24"]);
+    expect(updateCommandStr("bun", "latest", "2.7.24")).toContain("@groeponline/opencodex@2.7.24");
     // Unknown version falls back to the tag (best-effort lane).
-    expect(updateCommand("bun", "latest").args).toEqual(["add", "-g", "@bitkyc08/opencodex@latest"]);
-    expect(updateCommand("bun", "latest", null).args).toEqual(["add", "-g", "@bitkyc08/opencodex@latest"]);
+    expect(updateCommand("bun", "latest").args).toEqual(["add", "-g", "@groeponline/opencodex@latest"]);
+    expect(updateCommand("bun", "latest", null).args).toEqual(["add", "-g", "@groeponline/opencodex@latest"]);
   });
 
   test("bun worker execution pins the resolved version through updateExecutionCommand", () => {
     const cmd = updateExecutionCommand("bun", "latest", "/pkg/bin/ocx.mjs", "2.7.24");
     expect(cmd.bin).toBe(process.platform === "win32" ? process.execPath : "bun");
-    expect(cmd.args).toEqual(["add", "-g", "@bitkyc08/opencodex@2.7.24"]);
+    expect(cmd.args).toEqual(["add", "-g", "@groeponline/opencodex@2.7.24"]);
     expect(cmd.display).toContain("@2.7.24");
   });
 

@@ -116,7 +116,10 @@ describe("Cursor account pool", () => {
     rotateCursorAccountOnQuota(config(true), firstId!, null, "default-session");
     const snapshot = getCursorAccountHealthSnapshot(firstId!);
     expect(snapshot?.cooldownSource).toBe("default");
-    expect(snapshot!.cooldownUntil!).toBeLessThanOrEqual(before + 60_000);
+    // Bound with a timestamp taken after the rotation: the clock can tick between
+    // `before` and the rotation's own Date.now(), so `before + 60_000` is racy.
+    expect(snapshot!.cooldownUntil!).toBeGreaterThanOrEqual(before + 60_000);
+    expect(snapshot!.cooldownUntil!).toBeLessThanOrEqual(Date.now() + 60_000);
   });
 
   test("only explicit rate and quota failures qualify for rotation", () => {

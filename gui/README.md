@@ -4,7 +4,15 @@ This is the Vite/React dashboard used by `ocx gui` in packaged installs.
 
 ## Source checkout development
 
-Run the proxy and dashboard as two separate dev processes:
+For the complete dashboard + API preview, run one process from the repo root:
+
+```bash
+bun run dev:preview
+```
+
+The launcher keeps the proxy on an internal loopback port and exposes the Vite dashboard on
+Freebuff's injected `PORT`. `/api/*` and `/healthz` are proxied to the same internal runtime.
+For split local development, the two-process setup remains available:
 
 ```bash
 # terminal 1, repo root

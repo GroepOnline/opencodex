@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { setClientResourceData, useKeyedClientResource } from "./client-resource";
-import Dashboard from "./pages/Dashboard";
+import { useEffect, useRef, useState } from "react";
+import { useKeyedClientResource } from "./client-resource";
 import Providers from "./pages/Providers";
 import Models from "./pages/Models";
 import Combos from "./pages/Combos";
@@ -13,12 +12,11 @@ import Claude from "./pages/Claude";
 import Grok from "./pages/Grok";
 import Startup from "./pages/Startup";
 import ErrorBoundary from "./components/ErrorBoundary";
-import { IconGrid, IconServer, IconBoxes, IconBot, IconList, IconActivity, IconHardDrive, IconGithub, IconMenu, IconSun, IconMoon, IconMonitor, IconGlobe, IconPower, IconSparkle, IconX } from "./icons";
-import { useI18n, useT, LOCALES, type Locale, type TKey } from "./i18n/shared";
-import { Select, Switch } from "./ui";
+import SettingsSheet from "./components/SettingsSheet";
+import { IconAlert, IconCheck, IconPower, IconSettings } from "./icons";
+import { useT, type TKey } from "./i18n/shared";
 import { installApiAuthFetch } from "./api";
-import { readJsonIfOk } from "./fetch-json";
-import { type Page } from "./app-routing";
+import { canonicalHashFor, type View } from "./app-routing";
 import { useAppRouteState } from "./use-app-route-state";
 import { requestProxyStop } from "./stop-proxy";
 
@@ -26,39 +24,50 @@ installApiAuthFetch();
 
 type Theme = "light" | "dark" | "system";
 
-const PAGE_TKEY: Record<Page, TKey> = {
-  dashboard: "nav.dashboard",
-  startup: "nav.startup",
-  providers: "nav.providers",
-  models: "nav.models",
-  combos: "nav.combos",
-  subagents: "nav.subagents",
-  logs: "nav.logs",
-  usage: "nav.usage",
-  storage: "nav.storage",
-  api: "nav.api",
-  claude: "nav.claude",
-  grok: "nav.grok",
-};
-
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 const THEME_KEY = "ocx-theme";
 
-const NAV: { id: Page; tkey: TKey; Icon: typeof IconGrid }[] = [
-  { id: "dashboard", tkey: "nav.dashboard", Icon: IconGrid },
-  { id: "providers", tkey: "nav.providers", Icon: IconServer },
-  { id: "models", tkey: "nav.models", Icon: IconBoxes },
-  { id: "subagents", tkey: "nav.subagents", Icon: IconBot },
-  { id: "logs", tkey: "nav.logs", Icon: IconList },
-  { id: "usage", tkey: "nav.usage", Icon: IconActivity },
-  { id: "storage", tkey: "nav.storage", Icon: IconHardDrive },
-  { id: "api", tkey: "nav.api", Icon: IconGlobe },
-  { id: "claude", tkey: "nav.claude", Icon: IconSparkle },
-  { id: "grok", tkey: "nav.grok", Icon: IconBoxes },
+/** Four views (design-system v2 IA, 2026-08). Leveranciers is home. */
+const VIEW_TABS: { view: View; tkey: TKey }[] = [
+  { view: "leveranciers", tkey: "nav.providers" },
+  { view: "modellen", tkey: "nav.models" },
+  { view: "verkeer", tkey: "nav.verkeer" },
+  { view: "systeem", tkey: "nav.systeem" },
 ];
 
-const THEME_ICON = { light: IconSun, dark: IconMoon, system: IconMonitor } as const;
-const THEME_TKEY: Record<Theme, TKey> = { light: "theme.light", dark: "theme.dark", system: "theme.system" };
+/** Sub-tabs per view; `null` is the view's home target. */
+const SUB_TABS: Record<View, { sub: string | null; tkey: TKey }[]> = {
+  leveranciers: [
+    { sub: null, tkey: "sub.overview" },
+    { sub: "claude", tkey: "nav.claude" },
+    { sub: "grok", tkey: "nav.grok" },
+  ],
+  modellen: [
+    { sub: null, tkey: "nav.models" },
+    { sub: "combos", tkey: "nav.combos" },
+    { sub: "subagents", tkey: "nav.subagents" },
+  ],
+  verkeer: [
+    { sub: null, tkey: "nav.usage" },
+    { sub: "logs", tkey: "sub.logs" },
+    { sub: "debug", tkey: "sub.debug" },
+  ],
+  systeem: [
+    { sub: null, tkey: "sub.status" },
+    { sub: "storage", tkey: "nav.storage" },
+    { sub: "api", tkey: "nav.api" },
+  ],
+};
+
+function readStoredTheme(): Theme {
+  try {
+    const t = localStorage.getItem(THEME_KEY);
+    return t === "light" || t === "dark" ? t : "system";
+  } catch {
+    // Private/blocked storage must not prevent the dashboard from rendering.
+    return "system";
+  }
+}
 
 function readRuntimeVersion(data: unknown): string | null {
   if (!data || typeof data !== "object" || !("version" in data)) return null;
@@ -66,38 +75,22 @@ function readRuntimeVersion(data: unknown): string | null {
   return typeof version === "string" && version.length > 0 ? version : null;
 }
 
-function readStoredTheme(): Theme {
-  const t = localStorage.getItem(THEME_KEY);
-  return t === "light" || t === "dark" ? t : "system";
-}
-
 export default function App() {
-  const { page, navigateToPage } = useAppRouteState();
+  const { route, navigateTo } = useAppRouteState();
   const [theme, setTheme] = useState<Theme>(readStoredTheme);
-  const { locale, setLocale } = useI18n();
   const t = useT();
-
-  // Narrow screens: the sidebar becomes an off-canvas drawer behind a hamburger toggle.
-  const [navOpen, setNavOpen] = useState(false);
-  const menuBtnRef = useRef<HTMLButtonElement>(null);
-  const sidebarRef = useRef<HTMLElement>(null);
-  const navWasOpen = useRef(false);
-
-  useEffect(() => {
-    // External navigation (hash edit, back/forward) also dismisses the mobile drawer.
-    const dismissNav = () => setNavOpen(false);
-    window.addEventListener("hashchange", dismissNav);
-    window.addEventListener("popstate", dismissNav);
-    return () => {
-      window.removeEventListener("hashchange", dismissNav);
-      window.removeEventListener("popstate", dismissNav);
-    };
-  }, []);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     const el = document.documentElement;
-    if (theme === "system") { el.removeAttribute("data-theme"); localStorage.removeItem(THEME_KEY); }
-    else { el.setAttribute("data-theme", theme); localStorage.setItem(THEME_KEY, theme); }
+    if (theme === "system") el.removeAttribute("data-theme");
+    else el.setAttribute("data-theme", theme);
+    try {
+      if (theme === "system") localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      // Theme persistence is optional; blocked storage must not break rendering.
+    }
   }, [theme]);
 
   const healthPoll = useKeyedClientResource(
@@ -105,95 +98,19 @@ export default function App() {
     [],
     async (signal) => {
       const res = await fetch(`${API_BASE}/healthz`, { signal });
-      if (!res.ok) return null;
-      return readRuntimeVersion(await res.json());
+      // Non-OK healthz is a technical fetch failure — the status code is the payload.
+      if (!res.ok) throw new Error(String(res.status));
+      return { version: readRuntimeVersion(await res.json()) };
     },
     { pollMs: 30_000 },
   );
 
-  const cycleTheme = () => setTheme(t => (t === "light" ? "dark" : t === "dark" ? "system" : "light"));
-  const ThemeIcon = THEME_ICON[theme];
-  const displayedVersion: string = healthPoll.data ?? __APP_VERSION__;
+  const displayedVersion: string = healthPoll.data?.version ?? __APP_VERSION__;
+  // null = first poll still in flight: no stamp until the first verdict.
+  const proxyOnline: boolean | null = healthPoll.error ? false : healthPoll.data ? true : null;
 
-  const [stopping, setStopping] = useState(false);
-  // Claude navigation row also owns the connection toggle.
-  const fetchClaudeEnabled = useCallback(async (signal: AbortSignal) => {
-    const res = await fetch(`${API_BASE}/api/claude-code`, { signal });
-    const d = await readJsonIfOk<{ enabled?: unknown }>(res);
-    return d && typeof d.enabled === "boolean" ? d.enabled : null;
-  }, []);
-
-  const claudePoll = useKeyedClientResource(
-    `app-claude-code:${API_BASE}`,
-    [],
-    fetchClaudeEnabled,
-  );
-  const claudeEnabled = claudePoll.data ?? null;
-  const claudeToggleInFlight = useRef(false);
-  const [claudeTogglePending, setClaudeTogglePending] = useState(false);
-
-  useEffect(() => {
-    if (!navOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setNavOpen(false); };
-    window.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";         // no background scroll behind the drawer
-    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prevOverflow; };
-  }, [navOpen]);
-
-  // Move focus into the drawer on open; hand it back to the toggle on close.
-  useEffect(() => {
-    if (navOpen) {
-      navWasOpen.current = true;
-      // after the 180ms slide-in: while visibility is transitioning, focus() no-ops
-      const timer = setTimeout(() => sidebarRef.current?.focus(), 200);
-      return () => clearTimeout(timer);
-    }
-    if (navWasOpen.current) { navWasOpen.current = false; menuBtnRef.current?.focus(); }
-  }, [navOpen]);
-
-  // Growing the window past the breakpoint dismisses the drawer state.
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 761px)");
-    const onChange = () => { if (mq.matches) setNavOpen(false); };
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-
-  const toggleClaude = async () => {
-    if (claudeEnabled === null || claudeToggleInFlight.current) return;
-    claudeToggleInFlight.current = true;
-    setClaudeTogglePending(true);
-    const next = !claudeEnabled;
-    setClientResourceData(`app-claude-code:${API_BASE}`, next);
-    try {
-      const res = await fetch(`${API_BASE}/api/claude-code`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: next }),
-      });
-      if (!res.ok) setClientResourceData(`app-claude-code:${API_BASE}`, !next);
-    } catch {
-      setClientResourceData(`app-claude-code:${API_BASE}`, !next);
-    } finally {
-      claudeToggleInFlight.current = false;
-      setClaudeTogglePending(false);
-    }
-  };
-  const handleStop = async () => {
-    if (!confirm(t("dash.stopConfirm"))) return;
-    setStopping(true);
-    const outcome = await requestProxyStop(API_BASE, {
-      formatFailure: status => t("dash.stopFailed", { status: String(status) }),
-    });
-    // Refusals and restore failures return normally instead of dropping the connection.
-    // In both cases the proxy did not reach a clean-stop result, so re-enable the control
-    // and surface the server's remediation instead of leaving "stopping…" stuck forever.
-    if (!outcome.accepted) {
-      setStopping(false);
-      alert(outcome.message);
-    }
-  };
+  const activeTkey =
+    SUB_TABS[route.view].find(s => s.sub === route.sub)?.tkey ?? "nav.providers";
 
   const brand = (
     <div className="brand">
@@ -205,110 +122,151 @@ export default function App() {
 
   return (
     <div className="app">
-      {/* inert while the drawer is open: keeps focus and assistive tech inside the drawer */}
-      <header className="mobile-topbar" inert={navOpen}>
-        <button ref={menuBtnRef} type="button" className="menu-toggle" onClick={() => setNavOpen(o => !o)}
-          aria-expanded={navOpen} aria-controls="app-sidebar"
-          aria-label={t(navOpen ? "nav.closeMenu" : "nav.openMenu")} title={t(navOpen ? "nav.closeMenu" : "nav.openMenu")}>
-          <IconMenu />
-        </button>
+      <header className="topbar">
         {brand}
-        <button type="button" className="theme-toggle stop-toggle" onClick={handleStop} disabled={stopping}
-          aria-label={t("dash.stop")} title={t("dash.stop")}>
-          <IconPower />
-        </button>
+        <div className="topbar-right">
+          {proxyOnline !== null && (
+            <span className={`stamp${proxyOnline ? " stamp-ok" : " stamp-err"}`} role="status">
+              {proxyOnline ? <IconCheck size={13} aria-hidden /> : <IconAlert size={13} aria-hidden />}
+              {t(proxyOnline ? "proxy.online" : "proxy.offline")}
+            </span>
+          )}
+          <button type="button" className="gbtn" onClick={() => setSettingsOpen(true)}
+            aria-label={t("settings.open")} title={t("settings.open")}>
+            <IconSettings />
+          </button>
+        </div>
       </header>
-      {navOpen && <div className="drawer-scrim" onClick={() => setNavOpen(false)} aria-hidden="true" />}
-      <aside id="app-sidebar" className={`sidebar${navOpen ? " open" : ""}`} ref={sidebarRef} tabIndex={-1}>
-        <div className="drawer-head">
-          {brand}
-          <button type="button" className="menu-toggle drawer-close" onClick={() => setNavOpen(false)}
-            aria-label={t("nav.closeMenu")} title={t("nav.closeMenu")}>
-            <IconX />
-          </button>
-        </div>
-        <nav>
-          {/*
-            Codex Auth was once filtered out of this list whenever the workspace layout
-            was active, on the grounds that the Providers workspace embeds the same
-            account pool. It is now promoted to the second slot instead: there is only
-            one layout, so that filter would have hidden the page permanently.
-          */}
-          {NAV.map(({ id, tkey, Icon }) => (
-            <div key={id} className={`nav-entry${id === "claude" ? ` nav-entry-claude${page === id ? " active" : ""}` : ""}`}>
-              <button type="button" className={`nav-item${page === id ? " active" : ""}`} data-page={id}
-                onClick={() => {
-                  // Deliberate sidebar navigation — push a history entry.
-                  navigateToPage(id);
-                  setNavOpen(false);
-                }}
-                aria-current={page === id ? "page" : undefined}>
-                <Icon /> {t(tkey)}
-              </button>
-              {id === "claude" && claudeEnabled !== null && (
-                <Switch
-                  on={claudeEnabled}
-                  onClick={() => void toggleClaude()}
-                  disabled={claudeTogglePending}
-                  label={t("claude.toggleAria")}
-                />
-              )}
-            </div>
-          ))}
-        </nav>
-        <div className="sidebar-foot">
-          <div className="lang-toggle">
-            <IconGlobe aria-hidden />
-            <Select
-              value={locale}
-              options={LOCALES.map(l => ({ value: l.code, label: l.name }))}
-              onChange={v => setLocale(v as Locale)}
-              label={t("lang.label")}
-              placement="right"
-              portal={false}
-              style={{ flex: 1, minWidth: 0, width: "100%" }}
-            />
-          </div>
-          <button type="button" className="theme-toggle" onClick={cycleTheme}
-            aria-label={`${t("theme.label")}: ${t(THEME_TKEY[theme])}`} title={`${t("theme.label")}: ${t(THEME_TKEY[theme])}`}>
-            <ThemeIcon /> <span className="mode">{t(THEME_TKEY[theme])}</span>
-          </button>
-          <button type="button" className="theme-toggle stop-toggle" onClick={handleStop} disabled={stopping}
-            aria-label={t("dash.stop")} title={t("dash.stop")}>
-            <IconPower /> <span className="mode">{stopping ? t("dash.stopping") : t("dash.stop")}</span>
-          </button>
-          <a className="sidebar-link" href="https://github.com/OnlineChefGroep/opencodex" target="_blank" rel="noreferrer">
-            <IconGithub /> {t("common.github")}
-          </a>
-        </div>
-      </aside>
 
-      <main className="main" inert={navOpen}>
-        <div className={`main-inner${page === "combos" ? " main-inner--combos" : ""}`}>
-          <div className="page-reveal" key={page}>
+      {proxyOnline === false && (
+        <div className="offline-banner" role="alert">
+          <IconAlert size={15} aria-hidden />
+          <span>{t("offline.banner")}</span>
+          <button type="button" className="link-btn" onClick={() => navigateTo({ view: "systeem", sub: null })}>
+            {t("offline.toSystem")}
+          </button>
+        </div>
+      )}
+
+      <nav className="view-tabs" aria-label={t("nav.views")}>
+        {VIEW_TABS.map(({ view, tkey }) => (
+          <button key={view} type="button"
+            className={`view-tab${route.view === view ? " active" : ""}`}
+            onClick={() => navigateTo({ view, sub: null })}
+            aria-current={route.view === view ? "page" : undefined}>
+            {t(tkey)}
+          </button>
+        ))}
+      </nav>
+
+      <main className="main">
+        <div className={`main-inner${route.view === "modellen" && route.sub === "combos" ? " main-inner--combos" : ""}`}>
+          <nav className="sub-tabs">
+            {SUB_TABS[route.view].map(({ sub, tkey }) => (
+              <button key={sub ?? "home"} type="button"
+                className={`sub-tab${route.sub === sub ? " active" : ""}`}
+                onClick={() => navigateTo({ view: route.view, sub })}
+                aria-current={route.sub === sub ? "page" : undefined}>
+                {t(tkey)}
+              </button>
+            ))}
+          </nav>
+          <div className="page-reveal" key={canonicalHashFor(route)}>
           <ErrorBoundary
-            pageName={t(PAGE_TKEY[page])}
+            pageName={t(activeTkey)}
             title={t("errorBoundary.title")}
             message={t("errorBoundary.message")}
             detailsLabel={t("errorBoundary.details")}
             reloadLabel={t("errorBoundary.reload")}
           >
-            {page === "dashboard" && <Dashboard apiBase={API_BASE} />}
-            {page === "startup" && <Startup apiBase={API_BASE} />}
-            {page === "providers" && <Providers apiBase={API_BASE} />}
-            {page === "models" && <Models apiBase={API_BASE} />}
-            {page === "combos" && <Combos key={API_BASE} apiBase={API_BASE} />}
-            {page === "subagents" && <Subagents key={API_BASE} apiBase={API_BASE} />}
-            {page === "logs" && <Logs apiBase={API_BASE} />}
-            {page === "usage" && <Usage apiBase={API_BASE} />}
-            {page === "storage" && <Storage apiBase={API_BASE} />}
-            {page === "api" && <ApiKeys apiBase={API_BASE} />}
-            {page === "claude" && <Claude apiBase={API_BASE} />}
-            {page === "grok" && <Grok apiBase={API_BASE} />}
+            {route.view === "leveranciers" && route.sub === null && <Providers apiBase={API_BASE} />}
+            {route.view === "leveranciers" && route.sub === "claude" && <Claude apiBase={API_BASE} />}
+            {route.view === "leveranciers" && route.sub === "grok" && <Grok apiBase={API_BASE} />}
+            {route.view === "modellen" && route.sub === null && <Models apiBase={API_BASE} />}
+            {route.view === "modellen" && route.sub === "combos" && <Combos key={API_BASE} apiBase={API_BASE} />}
+            {route.view === "modellen" && route.sub === "subagents" && <Subagents key={API_BASE} apiBase={API_BASE} />}
+            {route.view === "verkeer" && route.sub === null && <Usage apiBase={API_BASE} />}
+            {route.view === "verkeer" && (route.sub === "logs" || route.sub === "debug") && <Logs apiBase={API_BASE} />}
+            {route.view === "systeem" && route.sub === null && <Startup apiBase={API_BASE} />}
+            {route.view === "systeem" && route.sub === "storage" && <Storage apiBase={API_BASE} />}
+            {route.view === "systeem" && route.sub === "api" && <ApiKeys apiBase={API_BASE} />}
           </ErrorBoundary>
           </div>
+          {route.view === "systeem" && route.sub === null && <DangerZone />}
         </div>
       </main>
+
+      {settingsOpen && (
+        <SettingsSheet theme={theme} onTheme={setTheme} onClose={() => setSettingsOpen(false)} />
+      )}
     </div>
+  );
+}
+
+/** Danger zone (Systeem home): destructive actions live here — named, separated,
+    and behind an explicit confirmation. Never in navigation. */
+function DangerZone() {
+  const t = useT();
+  const [confirming, setConfirming] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!confirming) return;
+    cancelRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !stopping) setConfirming(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirming, stopping]);
+
+  const handleStop = async () => {
+    setStopping(true);
+    const outcome = await requestProxyStop(API_BASE, {
+      formatFailure: status => t("dash.stopFailed", { status: String(status) }),
+    });
+    // Refusals and restore failures return normally instead of dropping the connection.
+    // In both cases the proxy did not reach a clean-stop result, so surface the server's
+    // remediation instead of leaving "stopping…" stuck forever.
+    if (!outcome.accepted) {
+      setStopping(false);
+      setConfirming(false);
+      alert(outcome.message);
+    }
+  };
+
+  return (
+    <section className="danger-zone" aria-labelledby="danger-zone-title">
+      <h3 id="danger-zone-title" className="danger-title">{t("danger.title")}</h3>
+      <div className="danger-row">
+        <div className="danger-copy">
+          <div className="danger-action">{t("danger.stopAction")}</div>
+          <div className="muted">{t("danger.stopBody")}</div>
+        </div>
+        <button type="button" className="btn btn-danger" onClick={() => setConfirming(true)}>
+          <IconPower size={13} aria-hidden /> {t("dash.stop")}
+        </button>
+      </div>
+
+      {confirming && (
+        <div className="modal-overlay" role="alertdialog" aria-modal="true"
+          aria-labelledby="stop-proxy-title" aria-describedby="stop-proxy-desc"
+          onClick={e => { if (e.target === e.currentTarget && !stopping) setConfirming(false); }}>
+          <div className="modal-card modal-card--narrow">
+            <div className="modal-head">
+              <h3 id="stop-proxy-title">{t("danger.stopTitle")}</h3>
+            </div>
+            <p id="stop-proxy-desc" className="modal-desc">{t("danger.stopBody")}</p>
+            <div className="modal-actions">
+              <button ref={cancelRef} type="button" className="btn" onClick={() => setConfirming(false)} disabled={stopping}>
+                {t("common.cancel")}
+              </button>
+              <button type="button" className="btn btn-danger" onClick={() => void handleStop()} disabled={stopping}>
+                <IconPower size={13} aria-hidden /> {stopping ? t("dash.stopping") : t("danger.stopAction")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }

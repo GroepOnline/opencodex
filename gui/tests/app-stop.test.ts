@@ -53,17 +53,34 @@ describe("App proxy stop", () => {
     expect(outcome).toEqual({ accepted: false, message: "HTTP 503 stop failed" });
   });
 
-  test("App clears stopping state and alerts for every rejected stop outcome", async () => {
+  test("the danger-zone stop clears stopping state and alerts for every rejected outcome", async () => {
     const app = await Bun.file(new URL("../src/App.tsx", import.meta.url)).text();
     const handleStopIdx = app.indexOf("const handleStop");
-    const brandIdx = app.indexOf("const brand");
     expect(handleStopIdx).toBeGreaterThanOrEqual(0);
-    expect(brandIdx).toBeGreaterThan(handleStopIdx);
-    const handler = app.slice(handleStopIdx, brandIdx);
+    // Find the closing brace of handleStop by scanning for the function end
+    let depth = 0;
+    let handlerEndIdx = handleStopIdx;
+    let foundStart = false;
+    for (let i = handleStopIdx; i < app.length; i++) {
+      if (app[i] === "{") {
+        foundStart = true;
+        depth++;
+      } else if (app[i] === "}") {
+        depth--;
+        if (foundStart && depth === 0) {
+          handlerEndIdx = i + 1;
+          break;
+        }
+      }
+    }
+    const handler = app.slice(handleStopIdx, handlerEndIdx);
 
     expect(handler).toContain("await requestProxyStop(API_BASE");
     expect(handler).toContain("if (!outcome.accepted)");
     expect(handler).toContain("setStopping(false)");
     expect(handler).toContain("alert(outcome.message)");
+    // The destructive action sits behind a real alertdialog in the danger zone;
+    // a bare window.confirm gate is no longer the contract.
+    expect(handler).not.toContain("confirm(");
   });
 });

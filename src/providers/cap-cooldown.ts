@@ -123,6 +123,23 @@ export function releaseProviderCooldownDisableOwnership(config: OcxConfig, provi
   return true;
 }
 
+/**
+ * Drop the cooldown recorded for a provider that is being deleted or replaced wholesale.
+ *
+ * Cooldown entries are keyed by provider name only, so after a delete or a POST overwrite
+ * the entry would claim disable-ownership over an unrelated provider instance: expiry would
+ * then strip an operator's explicit `disabled: true` from the replacement. The window
+ * belonged to the old configuration (and its credentials), so it dies with it.
+ * Returns true when config was mutated.
+ */
+export function clearProviderCapCooldown(config: OcxConfig, providerName: string): boolean {
+  const bag = config.providerCooldowns;
+  if (!bag || !Object.hasOwn(bag, providerName)) return false;
+  delete bag[providerName];
+  if (Object.keys(bag).length === 0) delete config.providerCooldowns;
+  return true;
+}
+
 export interface ProviderCooldownSweep {
   stop: () => void;
 }

@@ -48,23 +48,59 @@ concurrency:
 
 jobs:
   test:
-    name: ${{ matrix.os }}
+    name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    # Windows dominates this matrix: on run 30459554635 the same suite took
-    # ubuntu 4.6min / macos 5.6min / windows 11.8min. Against the previous
-    # 12-minute ceiling that left ~12s of headroom, so runner variance decided
-    # the result rather than the code under review — #711's rerun finished at
-    # 11.8min and passed while #653's was killed at 12.0min (issue #717).
-    # A cancelled job renders as `fail` in `gh pr checks`, so that flakiness
-    # reads as a broken PR. 20 minutes keeps a green Windows run green with
-    # real margin; it is not a licence for the suite to grow into it. If
-    # Windows approaches this ceiling too, fix the 2.5x platform gap instead
-    # of raising the number again.
+    # Keep the 20-minute ceiling as a real performance boundary. The combined provider-security
+    # and admission suites pushed the serial macOS/Windows jobs into this ceiling even though the
+    # root tests themselves remained green. Slow platforms therefore separate root tests from GUI
+    # quality work, and Windows root tests are deterministically balanced over two shards.
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - name: ubuntu-latest
+            os: ubuntu-latest
+            run_tests: true
+            run_quality: true
+            run_typecheck: true
+            shard_index: 0
+            shard_count: 1
+          - name: macos-latest
+            os: macos-latest
+            run_tests: true
+            run_quality: false
+            run_typecheck: true
+            shard_index: 0
+            shard_count: 1
+          - name: macos-quality
+            os: macos-latest
+            run_tests: false
+            run_quality: true
+            run_typecheck: false
+            shard_index: 0
+            shard_count: 1
+          - name: windows-latest
+            os: windows-latest
+            run_tests: true
+            run_quality: false
+            run_typecheck: true
+            shard_index: 0
+            shard_count: 2
+          - name: windows-latest shard 2/2
+            os: windows-latest
+            run_tests: true
+            run_quality: false
+            run_typecheck: false
+            shard_index: 1
+            shard_count: 2
+          - name: windows-quality
+            os: windows-latest
+            run_tests: false
+            run_quality: true
+            run_typecheck: false
+            shard_index: 0
+            shard_count: 1
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -74,32 +110,47 @@ jobs:
         with:
           bun-version: 1.3.14
 
-      - name: Install dependencies
-        run: |
-          bun install --frozen-lockfile
-          cd gui
-          bun install --frozen-lockfile
+      - name: Install root dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install GUI dependencies
+        # Root tests need gui/node_modules too: several tests/ suites import GUI components
+        # (e.g. provider-workspace rail, quota bars), which resolve react from gui/.
+        if: ${{ matrix.run_quality || matrix.run_tests }}
+        run: cd gui && bun install --frozen-lockfile
 
       - name: Typecheck
+        if: ${{ matrix.run_typecheck }}
         run: bun x tsc --noEmit
 
       - name: Test
+        if: ${{ matrix.run_tests }}
         shell: bash
         env:
           MATRIX_OS: ${{ matrix.os }}
+          TEST_SHARD_INDEX: ${{ matrix.shard_index }}
+          TEST_SHARD_COUNT: ${{ matrix.shard_count }}
         run: |
           set -euo pipefail
+          run_suite() {
+            if [[ "$TEST_SHARD_COUNT" == "1" ]]; then
+              bun run scripts/test.ts
+            else
+              bun run scripts/ci-test-shard.ts "$TEST_SHARD_INDEX" "$TEST_SHARD_COUNT"
+            fi
+          }
+
           if [[ "$MATRIX_OS" != "windows-latest" ]]; then
-            bun test --isolate tests
+            run_suite
             exit 0
           fi
-          # Bun 1.3.14 on Windows intermittently panics under Worker
-          # spawn/terminate churn in storage policy tests ("Internal assertion
-          # failure" / "Bun has crashed"). Retry once on that runtime crash
-          # only — ordinary assertion failures still fail the job.
+
+          # Bun 1.3.14 on Windows intermittently panics under Worker spawn/terminate churn in
+          # storage policy tests ("Internal assertion failure" / "Bun has crashed"). Retry the
+          # current shard once on that runtime crash only; ordinary assertion failures still fail.
           out="$(mktemp)"
           set +e
-          bun test --isolate tests >"$out" 2>&1
+          run_suite >"$out" 2>&1
           code=$?
           set -e
           cat "$out"
@@ -107,32 +158,38 @@ jobs:
             exit 0
           fi
           if grep -q 'Bun has crashed' "$out"; then
-            echo "::warning::Bun runtime crash on Windows; retrying suite once"
-            bun test --isolate tests
+            echo "::warning::Bun runtime crash on Windows shard; retrying once"
+            run_suite
             exit $?
           fi
           exit "$code"
 
       - name: GUI tests
-        run: cd gui && bun test tests
+        if: ${{ matrix.run_quality }}
+        run: cd gui && bun test tests --isolate
 
       - name: Privacy scan
+        if: ${{ matrix.run_quality }}
         run: bun run privacy:scan
 
       - name: Check release helper syntax
+        if: ${{ matrix.run_quality }}
         run: bun build scripts/release.ts --target=bun --outdir=.tmp/ci-release-script-check
 
       - name: GUI lint
+        if: ${{ matrix.run_quality }}
         run: |
           cd gui
           bun run lint
 
       - name: GUI build
+        if: ${{ matrix.run_quality }}
         run: |
           cd gui
           bun run build
 
       - name: CLI help smoke
+        if: ${{ matrix.run_quality }}
         run: bun run src/cli/index.ts help
 
   npm-global-smoke:
@@ -169,7 +226,7 @@ jobs:
 
       - name: Install globally (downloads bundled bun)
         shell: bash
-        run: npm install -g ./bitkyc08-opencodex-*.tgz
+        run: npm install -g ./groeponline-opencodex-*.tgz
 
       - name: ocx help via bundled bun
         run: ocx help

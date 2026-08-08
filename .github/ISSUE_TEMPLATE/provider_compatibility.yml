@@ -37,7 +37,7 @@ body:
     id: version
     attributes:
       label: OpenCodex version
-      description: Installed `@bitkyc08/opencodex` version or commit SHA.
+      description: Installed `@groeponline/opencodex` version or commit SHA.
       placeholder: "2.7.31"
     validations:
       required: true

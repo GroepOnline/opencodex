@@ -12,39 +12,45 @@ import {
   attentionReasonKey,
   buildAttentionItems,
   buildMostUsedProviders,
-  formatRelativeTime,
   formatRequestCount,
-  relativeTimeLabelsFromT,
   type ProviderUsageTotals,
 } from "../../provider-workspace/usage";
 import { maxQuotaUtilisation, formatResetFuture } from "../QuotaBars";
 import { ProviderIcon } from "./ProviderRail";
 import { formatProviderDisplayName } from "../../provider-icons";
 import QuotaBars from "../QuotaBars";
+import type { QuotaCardState } from "./use-provider-quotas";
+
+/** HH:MM (mono) for the VERS · HH:MM / VEROUDERD · HH:MM / "Opnieuw om HH:MM" stamps. */
+function clockTime(epoch: number): string {
+  const d = new Date(epoch);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
 import type { ProviderCapCooldown } from "../../pages/providers-shared";
 
 export default function ProviderOverviewDashboard({
   sections,
-  quotaReports,
+  quotaCards,
   usageTotals,
   providerCooldowns,
   usageLoading = false,
   quotasLoading = false,
   onSelectProvider,
+  onRefreshQuota,
   onEditConfig,
 }: {
   sections: WorkspaceSections;
-  quotaReports: Record<string, ProviderQuotaReportView>;
+  quotaCards: Record<string, QuotaCardState>;
   usageTotals: Record<string, ProviderUsageTotals>;
   providerCooldowns?: Record<string, ProviderCapCooldown>;
   usageLoading?: boolean;
   quotasLoading?: boolean;
   onSelectProvider: (name: string) => void;
+  onRefreshQuota: (name: string) => void;
   onEditConfig?: () => void;
 }) {
   const t = useT();
   const { locale } = useI18n();
-  const timeLabels = relativeTimeLabelsFromT(t);
 
   const allItems = useMemo(
     () => [...sections.ready, ...sections.needsSetup, ...sections.disabled],
@@ -86,18 +92,19 @@ export default function ProviderOverviewDashboard({
   const readyCount = sections.ready.length - readyReauthCount;
   const needsAttentionCount = sections.needsSetup.length + readyReauthCount;
 
-  /* Rate-limit rows: urgency first (highest utilisation), then name */
+  /* Rate-limit rows: per-provider card state (ready/stale/error/loading), urgency first. */
   const quotaProviders = useMemo(() => {
-    const result: Array<{ item: WorkspaceItem; report: ProviderQuotaReportView; urgency: number }> = [];
+    const result: Array<{ item: WorkspaceItem; report?: ProviderQuotaReportView; card: QuotaCardState; urgency: number }> = [];
     for (const item of allItems) {
-      const report = quotaReports[item.name];
-      const quota = report ? accountQuotaFromReport(report) : null;
-      if (report && quota) {
-        result.push({ item, report, urgency: maxQuotaUtilisation(quota) });
-      }
+      const card = quotaCards[item.name];
+      if (!card || card.status === "unsupported") continue; // no quota API: no row here
+      if (card.status === "error") { result.push({ item, report: card.report, card, urgency: -1 }); continue; }
+      if (card.status === "loading") { result.push({ item, report: card.report, card, urgency: -1 }); continue; }
+      const quota = card.report ? accountQuotaFromReport(card.report) : null;
+      if (quota) result.push({ item, report: card.report, card, urgency: maxQuotaUtilisation(quota) });
     }
     return result.sort((a, b) => b.urgency - a.urgency || a.item.name.localeCompare(b.item.name));
-  }, [allItems, quotaReports]);
+  }, [allItems, quotaCards]);
 
   /* Recently-used: filter to known provider names and cap at 4 (PR #139 parity) */
   const mostUsed = useMemo(() => {
@@ -210,32 +217,47 @@ export default function ProviderOverviewDashboard({
           <h3 className="pws-dashboard-section-title">{t("pws.dashboard.rateLimits")}</h3>
           {quotaProviders.length > 0 ? (
             <div className="pws-dashboard-rows">
-              {quotaProviders.map(({ item, report }) => (
-                <button
-                  key={item.name}
-                  type="button"
-                  className="pws-dashboard-row"
-                  onClick={() => onSelectProvider(item.name)}
-                >
-                  <ProviderIcon name={item.name} adapter={item.adapter} baseUrl={item.baseUrl} cls="pws-dashboard-row-icon" />
-                  <div className="pws-dashboard-row-info">
-                    <span className="pws-dashboard-row-name">{formatProviderDisplayName(item.name)}</span>
-                    <span className="pws-dashboard-row-meta muted">
-                      {t("pws.dashboard.checkedAgo", { time: formatRelativeTime(report.updatedAt, timeLabels) })}
-                    </span>
+              {quotaProviders.map(({ item, report, card }) => {
+                const rowClass = `pws-dashboard-row${card.status === "error" ? " quota-card-error" : ""}`;
+                const stamp =
+                  card.status === "error" ? (
+                    <span className="quota-stamp quota-stamp--fout">{t("pws.quota.fout")}</span>
+                  ) : card.status === "stale" ? (
+                    <span className="quota-stamp quota-stamp--verouderd">{t("pws.quota.verouderd")} · {report?.updatedAt ? clockTime(report.updatedAt) : "—"}</span>
+                  ) : (
+                    <span className="quota-stamp quota-stamp--vers">{t("pws.quota.vers")} · {report?.updatedAt ? clockTime(report.updatedAt) : ""}</span>
+                  );
+                return (
+                  <div key={item.name} className={rowClass}>
+                    <div className="pws-dashboard-row-select"
+                      role="button" tabIndex={0}
+                      onClick={() => onSelectProvider(item.name)}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectProvider(item.name); } }}>
+                      <ProviderIcon name={item.name} adapter={item.adapter} baseUrl={item.baseUrl} cls="pws-dashboard-row-icon" />
+                      <div className="pws-dashboard-row-info">
+                        <span className="pws-dashboard-row-name">{formatProviderDisplayName(item.name)}</span>
+                        <span className="pws-dashboard-row-meta muted">{stamp}</span>
+                      </div>
+                      {card.status !== "error" ? (
+                        <IconChevron className="pws-dashboard-row-chevron" aria-hidden="true" />
+                      ) : null}
+                      <div className="pws-dashboard-row-bars">
+                        {card.status === "error" ? (
+                          <span className="quota-stamp quota-stamp--fout">{card.nextRetryAt ? t("pws.quota.retryAt", { time: clockTime(card.nextRetryAt) }) : ""}</span>
+                        ) : (
+                          <QuotaBars quota={report ? accountQuotaFromReport(report) : null} threshold={80} t={t} layout="stacked" pending={card.status === "loading" || !report?.quota} />
+                        )}
+                      </div>
+                    </div>
+                    {card.status === "error" ? (
+                      <button type="button" className="link-btn quota-retry"
+                        onClick={() => onRefreshQuota(item.name)}>
+                        {t("pws.quota.retry")}
+                      </button>
+                    ) : null}
                   </div>
-                  <IconChevron className="pws-dashboard-row-chevron" aria-hidden="true" />
-                  <div className="pws-dashboard-row-bars">
-                    <QuotaBars
-                      quota={accountQuotaFromReport(report)}
-                      threshold={80}
-                      t={t}
-                      layout="stacked"
-                      pending={quotasLoading && !report.quota}
-                    />
-                  </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
           ) : quotasLoading ? (
             <div className="pws-dashboard-rows pws-dashboard-rows--pending" aria-hidden="true">

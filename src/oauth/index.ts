@@ -17,6 +17,7 @@ import { apiKeyPoolEntryId, sanitizeApiKeyValue } from "../providers/api-keys";
 import { effectiveGoogleMode, getProviderRegistryEntry, providerMatchesRegistryTransport } from "../providers/registry";
 import { resolveProviderModelDiscoveryUrl } from "../providers/model-discovery";
 import { resolveProviderTransport } from "../providers/xai-transport";
+import { globalProviderCredentialResolver } from "../provider-security/resolve";
 import { detectClaudeCodeToken, detectGrokCliToken, hasComparableGrokIdentity, isSameGrokIdentity, shouldAdoptGrokGeneration } from "./local-token-detect";
 import { logOAuthEvent } from "./log";
 export {
@@ -463,6 +464,15 @@ export async function resolveModelsAuthToken(name: string, prov: OcxProviderConf
   if (prov.authMode === "oauth") {
     try {
       return await getValidAccessToken(name);
+    } catch {
+      return undefined;
+    }
+  }
+  const credentialRef = prov.credentialRef?.trim();
+  if (credentialRef) {
+    try {
+      const resolved = await globalProviderCredentialResolver.resolveCredentialRef(credentialRef);
+      return resolved.apiKey;
     } catch {
       return undefined;
     }

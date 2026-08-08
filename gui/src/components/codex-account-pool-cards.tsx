@@ -105,7 +105,7 @@ export function CodexAccountPoolCards({
               title={a.paused ? t("codexAuth.pausedHint") : undefined}
               aria-label={a.paused ? `${t("codexAuth.resume")}. ${t("codexAuth.pausedHint")}` : t("codexAuth.pause")}
             >
-              {a.paused ? <IconPlay width={14} /> : <IconPause width={14} />}
+              {a.paused ? <IconPlay width={15} /> : <IconPause width={15} />}
               <CodexPauseToggleLabel
                 t={t}
                 paused={a.paused}
@@ -122,7 +122,7 @@ export function CodexAccountPoolCards({
               title={`${t("common.remove")} — ${a.email}`}
               onClick={e => { e.stopPropagation(); void onRemove(a.id); }}
             >
-              <IconX width={14} />
+              <IconX width={15} />
             </button>
           </div>
           <div className="card-sub">{a.email}{a.plan ? ` · ${a.plan}` : ""} · {t("prov.accountId")}: {displayAccountId(a.id)}</div>
@@ -158,7 +158,7 @@ export function CodexAccountPoolReauthBanner({
   const t = useT();
   return (
     <div className="notice-warn" style={{ marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-      <span><IconAlert width={14} /> {t("codexAuth.tokenExpired")}</span>
+      <span><IconAlert width={15} /> {t("codexAuth.tokenExpired")}</span>
       <button type="button" className="btn btn-primary btn-sm" onClick={onReauth}>
         {t("codexAuth.reauthenticate")}
       </button>

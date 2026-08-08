@@ -28,6 +28,7 @@ import {
 import { isCanonicalOpenAiForwardProvider, OPENAI_CODEX_PROVIDER_ID } from "./providers/openai-tiers";
 import { parseDesktopProfile } from "./claude/desktop-profile";
 import { isCodexReasoningEffort, modelRecordValue } from "./reasoning-effort";
+import { DEFAULT_RATE_LIMIT_WEBSOCKET_CONCURRENCY } from "./ratelimit";
 
 let _atomicSeq = 0;
 
@@ -666,6 +667,77 @@ const codexAccountNamespacesSchema = z.custom<Record<string, unknown>>(
   }
 }).pipe(z.record(z.string(), z.string()));
 
+const RATE_LIMIT_SURFACE_NAMES = [
+  "management",
+  "responses-http",
+  "responses-websocket",
+  "chat-completions",
+  "claude-messages",
+  "images",
+  "search",
+  "live",
+  "model-discovery",
+] as const;
+
+const rateLimitSurfacePolicySchema = z.object({
+  requestsPerMinute: z.number().positive().finite(),
+  burst: z.number().int().min(1),
+}).strict();
+
+/**
+ * Canonical rate-limit settings (structure/plugin-metrics-ratelimit-benchmarks.md §3).
+ * Strict on purpose: an unknown surface name or field is a hand-edit mistake that would
+ * otherwise silently leave a surface unprotected, so it fails validation instead of passing
+ * through. The HMAC principal secret is process-local and is deliberately NOT a config field.
+ */
+const rateLimitConfigSchema = z.object({
+  enabled: z.boolean(),
+  loopbackBypass: z.boolean().optional(),
+  maxBuckets: z.number().int().min(1).max(1_000_000).optional(),
+  staleAfterMs: z.number().int().min(1).optional(),
+  surfaces: z.partialRecord(z.enum(RATE_LIMIT_SURFACE_NAMES), rateLimitSurfacePolicySchema).optional(),
+  websocket: z.object({
+    perPrincipal: z.number().int().min(1).optional(),
+    global: z.number().int().min(1).optional(),
+  }).strict().optional(),
+}).strict().superRefine((rateLimit, ctx) => {
+  if (rateLimit.enabled !== true && rateLimit.loopbackBypass === true) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["loopbackBypass"],
+      message: "loopbackBypass requires enabled: true",
+    });
+  }
+  // Compare EFFECTIVE limits: an omitted value is resolved from the runtime default before the
+  // check, so a partial override like `{ global: 1 }` cannot pass validation and then contradict
+  // the default `perPrincipal` at runtime (the per-principal cap would never be reachable).
+  const websocket = rateLimit.websocket;
+  const effectivePerPrincipal = websocket?.perPrincipal ?? DEFAULT_RATE_LIMIT_WEBSOCKET_CONCURRENCY.perPrincipal;
+  const effectiveGlobal = websocket?.global ?? DEFAULT_RATE_LIMIT_WEBSOCKET_CONCURRENCY.global;
+  if (effectivePerPrincipal > effectiveGlobal) {
+    const perPrincipalLabel = websocket?.perPrincipal !== undefined
+      ? String(websocket.perPrincipal)
+      : `${DEFAULT_RATE_LIMIT_WEBSOCKET_CONCURRENCY.perPrincipal} (default)`;
+    const globalLabel = websocket?.global !== undefined
+      ? String(websocket.global)
+      : `${DEFAULT_RATE_LIMIT_WEBSOCKET_CONCURRENCY.global} (default)`;
+    ctx.addIssue({
+      code: "custom",
+      path: ["websocket", websocket?.perPrincipal !== undefined ? "perPrincipal" : "global"],
+      message: `websocket.perPrincipal must not exceed websocket.global (effective perPrincipal ${perPrincipalLabel}, global ${globalLabel})`,
+    });
+  }
+  for (const [surface, policy] of Object.entries(rateLimit.surfaces ?? {})) {
+    if (policy && policy.burst > 1_000_000) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["surfaces", surface, "burst"],
+        message: "burst must not exceed 1000000",
+      });
+    }
+  }
+});
+
 const configSchema = z.object({
   port: z.number().int().min(0).max(65535).default(10100),
   // A blank hostname degrades to undefined rather than failing the parse. `getDefaultConfig()`
@@ -701,6 +773,8 @@ const configSchema = z.object({
   hideUnavailableModels: z.boolean().optional(),
   /** Consecutive discovery fails before client hide. Default 3 when hide is enabled. */
   hideUnavailableAfterDiscoveryFails: z.number().int().min(1).optional(),
+  /** Optional admission-aware rate limiting. Absent = disabled (backward compatible). */
+  rateLimit: rateLimitConfigSchema.optional(),
 }).passthrough().superRefine((config, ctx) => {
   const claudeCode = (config as { claudeCode?: unknown }).claudeCode;
   if (claudeCode !== undefined && (!claudeCode || typeof claudeCode !== "object" || Array.isArray(claudeCode))) {
@@ -1773,7 +1847,8 @@ export function isOcxStartCommandLine(commandLine: string): boolean {
   // "src/cli.ts" matches pre-restructure installs still running; "src/cli/index.ts" is current.
   const hasOcxEntrypoint = normalized.includes("src/cli.ts")
     || normalized.includes("src/cli/index.ts")
-    || normalized.includes("@bitkyc08/opencodex")
+    || normalized.includes("@groeponline/opencodex")
+    || normalized.includes("@groeponline/opencodex") // legacy global installs still running
     || /(?:^|[\s/"'])(?:ocx|opencodex)(?:\.cmd)?(?:$|[\s"'])/.test(normalized);
   return hasOcxEntrypoint && /(?:^|[\s"'])start(?:$|[\s"'])/.test(normalized);
 }

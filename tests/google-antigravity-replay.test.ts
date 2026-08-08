@@ -3,6 +3,7 @@ import {
   antigravityUsesReplayCache,
   applyAntigravityReplay,
   clearAntigravityReplay,
+  DUMMY_THOUGHT_SIGNATURE,
   observeAntigravityReplay,
   __resetAntigravityReplayCache,
 } from "../src/adapters/google-antigravity-replay";
@@ -33,11 +34,11 @@ describe("antigravity reasoning-replay cache", () => {
     expect((contents[1].parts[0] as { thoughtSignature?: string }).thoughtSignature).toBe(SIG);
   });
 
-  test("ignores signatures shorter than the minimum length", () => {
+  test("ignores signatures shorter than the minimum length (falls back to the dummy)", () => {
     observeAntigravityReplay(MODEL, SESSION, [fcPart("get_x", {}, "short")]);
     const contents = [{ role: "model", parts: [{ functionCall: { name: "get_x", args: {} } }] }];
     applyAntigravityReplay(MODEL, SESSION, contents);
-    expect((contents[0].parts[0] as { thoughtSignature?: string }).thoughtSignature).toBeUndefined();
+    expect((contents[0].parts[0] as { thoughtSignature?: string }).thoughtSignature).toBe(DUMMY_THOUGHT_SIGNATURE);
   });
 
   test("does not clobber an existing signature on the outgoing part", () => {
@@ -54,10 +55,49 @@ describe("antigravity reasoning-replay cache", () => {
     expect((contents[0].parts[0] as { thoughtSignature?: string }).thoughtSignature).toBe(SIG);
   });
 
-  test("clear-on-invalid empties the entry", () => {
+  test("clear-on-invalid empties the entry (next turn gets the dummy, not a stale sig)", () => {
     observeAntigravityReplay(MODEL, SESSION, [fcPart("get_x", {}, SIG)]);
     clearAntigravityReplay(MODEL, SESSION);
     const contents = [{ role: "model", parts: [{ functionCall: { name: "get_x", args: {} } }] }];
+    applyAntigravityReplay(MODEL, SESSION, contents);
+    expect((contents[0].parts[0] as { thoughtSignature?: string }).thoughtSignature).toBe(DUMMY_THOUGHT_SIGNATURE);
+  });
+
+  test("cache miss fills the documented dummy instead of leaving the part bare (regression: upstream 400 'missing thought_signature')", () => {
+    // No observe at all: proxy restart / foreign history — every model functionCall part must
+    // still carry a signature or Antigravity rejects the whole turn.
+    const contents = [
+      { role: "model", parts: [{ functionCall: { name: "Edit", args: { file: "a.ts" } } }] },
+      { role: "user", parts: [{ text: "result" }] },
+      { role: "model", parts: [{ functionCall: { name: "Read", args: { file: "b.ts" } } }] },
+    ];
+    applyAntigravityReplay(MODEL, SESSION, contents);
+    expect((contents[0].parts[0] as { thoughtSignature?: string }).thoughtSignature).toBe(DUMMY_THOUGHT_SIGNATURE);
+    expect((contents[2].parts[0] as { thoughtSignature?: string }).thoughtSignature).toBe(DUMMY_THOUGHT_SIGNATURE);
+  });
+
+  test("partial cache hit: known call gets the real signature, unknown call gets the dummy", () => {
+    observeAntigravityReplay(MODEL, SESSION, [fcPart("known", { k: 1 }, SIG)]);
+    const contents = [
+      { role: "model", parts: [{ functionCall: { name: "known", args: { k: 1 } } }] },
+      { role: "model", parts: [{ functionCall: { name: "unknown", args: { u: 2 } } }] },
+    ];
+    applyAntigravityReplay(MODEL, SESSION, contents);
+    expect((contents[0].parts[0] as { thoughtSignature?: string }).thoughtSignature).toBe(SIG);
+    expect((contents[1].parts[0] as { thoughtSignature?: string }).thoughtSignature).toBe(DUMMY_THOUGHT_SIGNATURE);
+  });
+
+  test("upgrades a previously filled dummy to the real signature once cached", () => {
+    observeAntigravityReplay(MODEL, SESSION, [fcPart("get_x", { a: 1 }, SIG)]);
+    const contents = [
+      { role: "model", parts: [{ functionCall: { name: "get_x", args: { a: 1 } }, thoughtSignature: DUMMY_THOUGHT_SIGNATURE }] },
+    ];
+    applyAntigravityReplay(MODEL, SESSION, contents);
+    expect((contents[0].parts[0] as { thoughtSignature?: string }).thoughtSignature).toBe(SIG);
+  });
+
+  test("text-only model parts are never given a dummy signature", () => {
+    const contents = [{ role: "model", parts: [{ text: "plain answer" }] }];
     applyAntigravityReplay(MODEL, SESSION, contents);
     expect((contents[0].parts[0] as { thoughtSignature?: string }).thoughtSignature).toBeUndefined();
   });

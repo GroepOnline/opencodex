@@ -192,26 +192,26 @@ test("custom-only catalog keeps configured fallback models visible", async () =>
 // remaining trigger, so Add stayed disabled until the whole panel remounted. Drive the full
 // recovery in one mount: failed load -> retry -> successful load -> Add enabled -> exactly one POST.
 test("a failed custom-model lookup recovers through retry without a remount", async () => {
-  let getCalls = 0;
+  let customGets = 0;
   const posts: string[] = [];
   globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    // Catalog discovery is independent; only custom-model GETs drive this recovery path.
+    if (url.endsWith("/api/models")) return Response.json([]);
     if (!init?.method || init.method === "GET") {
-      // Count only the custom-model lookup: the Models tab also GETs /api/models on mount,
-      // and this case is about the custom-models effect having no remaining retry trigger.
-      if (!String(input).includes("/api/custom-models")) return Response.json([]);
-      getCalls += 1;
-      if (getCalls === 1) throw new Error("offline");
+      customGets += 1;
+      if (customGets === 1) throw new Error("offline");
       return Response.json([]);
     }
-    posts.push(String(input));
+    posts.push(url);
     return Response.json({ id: "custom-9", provider: "AiCodeWith", modelId: "claude-opus-5.1" });
   }) as typeof fetch;
 
   const { root, container, input, addButton } = await mountProviderModels();
   await act(async () => { await Promise.resolve(); });
 
-  // The first load failed, so Add must be blocked and a retry affordance must be offered.
-  expect(getCalls).toBe(1);
+  // The first custom-models load failed, so Add must be blocked and a retry affordance offered.
+  expect(customGets).toBe(1);
   await enterModelId(input, "claude-opus-5.1");
   expect(addButton.disabled).toBe(true);
   const alert = container.querySelector('[role="alert"]')!;
@@ -223,7 +223,7 @@ test("a failed custom-model lookup recovers through retry without a remount", as
   await act(async () => { retryButton.click(); await Promise.resolve(); await Promise.resolve(); });
 
   // The retry refetched in the same mount and Add is usable again.
-  expect(getCalls).toBe(2);
+  expect(customGets).toBe(2);
   expect(addButton.disabled).toBe(false);
 
   await act(async () => { addButton.click(); await Promise.resolve(); await Promise.resolve(); });

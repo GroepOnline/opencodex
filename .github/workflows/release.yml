@@ -28,6 +28,17 @@ on:
         description: "Immutable release commit this dispatch must publish (fail if the branch moved)"
         required: false
         type: string
+      # TEMPORARY (GRO-1004): first publish of a brand-new npm scope cannot use
+      # Trusted Publishing (OIDC) until the publisher is configured on npmjs,
+      # which requires the package to exist first. Set true ONLY for the first
+      # publish, then keep false (tokenless) for every release after. The CI
+      # hardening test fails when true without the FIRST_PUBLISH_NPM_TOKEN
+      # marker below, so this cannot silently persist.
+      first-publish:
+        description: "Bootstrap first npm publish with NPM_TOKEN (one-time only)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write # create the matching GitHub Release + version tag after npm publish
@@ -253,6 +264,10 @@ jobs:
         env:
           DRY_RUN: ${{ inputs.dry-run }}
           NPM_DIST_TAG: ${{ inputs.tag }}
+          # TEMPORARY (GRO-1004): bootstrap-only token for the very first
+          # publish of a new scope. Trusted Publishing takes over afterwards.
+          # FIRST_PUBLISH_NPM_TOKEN marker is asserted by tests/ci-workflows.test.ts.
+          NODE_AUTH_TOKEN: ${{ inputs.first-publish == true && secrets.NPM_TOKEN || '' }}
         run: |
           if [ "$DRY_RUN" = "true" ]; then
             echo "::notice::DRY RUN — building + packing, not publishing"
@@ -269,17 +284,17 @@ jobs:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
           for attempt in $(seq 1 30); do
-            if VERSION=$(npm view "@bitkyc08/opencodex@${RELEASE_VERSION}" version 2>/dev/null); then
+            if VERSION=$(npm view "@groeponline/opencodex@${RELEASE_VERSION}" version 2>/dev/null); then
               echo "registry version=$VERSION"
               test "$VERSION" = "$RELEASE_VERSION"
-              npm dist-tag ls @bitkyc08/opencodex
+              npm dist-tag ls @groeponline/opencodex
               exit 0
             fi
-            echo "::notice::@bitkyc08/opencodex@${RELEASE_VERSION} not visible in npm registry yet (attempt $attempt/30)"
+            echo "::notice::@groeponline/opencodex@${RELEASE_VERSION} not visible in npm registry yet (attempt $attempt/30)"
             sleep 10
           done
           echo "::error::npm registry smoke failed after 30 attempts"
-          npm view @bitkyc08/opencodex versions dist-tags --json || true
+          npm view @groeponline/opencodex versions dist-tags --json || true
           exit 1
 
       - name: Create GitHub release
@@ -307,7 +322,7 @@ jobs:
             git tag --merged HEAD --list 'v[0-9]*' |
               bun scripts/release-notes.ts previous-release-tag "$RELEASE_VERSION"
           )"
-          npm_metadata="Published to npm as \`@bitkyc08/opencodex@${RELEASE_VERSION}\` with dist-tag \`${NPM_DIST_TAG}\`."
+          npm_metadata="Published to npm as \`@groeponline/opencodex@${RELEASE_VERSION}\` with dist-tag \`${NPM_DIST_TAG}\`."
 
           # Preview builds must be marked prerelease so GitHub "latest" keeps pointing at the
           # stable channel (matching npm dist-tags); see issue #64.
@@ -463,3 +478,34 @@ jobs:
 
           gh release create "$release_tag" --target "$GITHUB_SHA" --title "$release_tag" \
             --notes-file "$notes_file" ${prerelease_flag:+$prerelease_flag}
+
+      - name: Bump Homebrew tap (stable only)
+        if: ${{ inputs.dry-run != true && inputs.tag == 'latest' }}
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMEBREW_TAP_TOKEN:-}" ]; then
+            echo "::warning::HOMEBREW_TAP_TOKEN not configured — skipping homebrew-tap bump"
+            exit 0
+          fi
+          npm_tgz_url="https://registry.npmjs.org/@groeponline/opencodex/-/opencodex-${RELEASE_VERSION}.tgz"
+          npm_tgz_sha256="$(curl -fsSL "$npm_tgz_url" | sha256sum | awk '{print $1}')"
+          git clone --depth 1 "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/GroepOnline/homebrew-tap.git" /tmp/homebrew-tap
+          formula="/tmp/homebrew-tap/Formula/opencodex.rb"
+          if [ ! -f "$formula" ]; then
+            echo "::error::Formula/opencodex.rb missing in GroepOnline/homebrew-tap"
+            exit 1
+          fi
+          sed -i \
+            -e "s|url \".*\"|url \"${npm_tgz_url}\"|" \
+            -e "s|sha256 \".*\"|sha256 \"${npm_tgz_sha256}\"|" \
+            "$formula"
+          cd /tmp/homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/opencodex.rb
+          git diff --staged --quiet && { echo "No formula changes"; exit 0; }
+          git commit -m "opencodex ${RELEASE_VERSION}"
+          git push origin HEAD

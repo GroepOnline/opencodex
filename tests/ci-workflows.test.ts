@@ -49,7 +49,13 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");
     expect(workflow).toContain("oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6");
     expect(workflow).toContain("actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e");
-    expect(workflow).toContain("bun test --isolate tests");
+    // Both test paths must go through the canonical isolated-environment entry points, never a
+    // bare `bun test` that inherits the runner's real HOME and configuration.
+    expect(workflow).toContain("bun run scripts/test.ts");
+    expect(workflow).toContain("bun run scripts/ci-test-shard.ts");
+    expect(workflow).not.toContain("bun test --isolate tests");
+    expect(workflow).toContain("raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7");
+    expect(workflow).toContain("bun audit --audit-level=high");
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
   });
 
@@ -218,8 +224,18 @@ describe("GitHub Actions hardening", () => {
 
     // Dry-run first by default; tokenless trusted publishing only.
     expect(workflow).toMatch(/dry-run:[\s\S]*?default: true/);
-    expect(workflow).not.toContain("secrets.NPM_TOKEN");
-    expect(workflow).not.toContain("NODE_AUTH_TOKEN:");
+    // TEMPORARY (GRO-1004): the very first publish of a brand-new npm scope
+    // cannot use Trusted Publishing until the publisher exists on npmjs. The
+    // bootstrap token is gated behind an explicit first-publish input AND a
+    // marker comment, so it cannot silently persist: once the first version is
+    // live, remove the input+marker and this reverts to tokenless-only.
+    if (workflow.includes("first-publish")) {
+      expect(workflow).toContain("FIRST_PUBLISH_NPM_TOKEN");
+      expect(workflow).toContain("inputs.first-publish == true");
+    } else {
+      expect(workflow).not.toContain("secrets.NPM_TOKEN");
+      expect(workflow).not.toContain("NODE_AUTH_TOKEN:");
+    }
 
     // Immutable action references.
     expect(workflow).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");
@@ -941,7 +957,7 @@ describe("GitHub Actions hardening", () => {
         "issues.updateComment",
       ]));
       expect(callsTo(result, "pulls.update")).toEqual([
-        { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "Port the runtime entry" },
+        { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "Port the runtime entry" },
       ]);
       const [cleared] = callsTo(result, "issues.updateComment") as [{ body: string }];
       expect(cleared.body).toContain('"active":false');
@@ -968,7 +984,7 @@ describe("GitHub Actions hardening", () => {
         "issues.updateComment",
       ]));
       expect(callsTo(result, "pulls.update")).toEqual([
-        { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] Port the runtime entry" },
+        { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] Port the runtime entry" },
       ]);
       expect(lastEnforcerCommentBody(result)).toContain('"active":true');
       expect(lastEnforcerCommentBody(result)).toContain('"autoDraftedByBot":true');
@@ -1010,7 +1026,7 @@ describe("GitHub Actions hardening", () => {
       // and `body` are all accepted by this endpoint; an audit round added
       // `base: "main"` here and no static assertion caught it.
       expect(callsTo(result, "pulls.update")).toEqual([
-        { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] Add a thing" },
+        { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] Add a thing" },
       ]);
 
       // The first comment create addresses this PR, by its own number.
@@ -1038,7 +1054,7 @@ describe("GitHub Actions hardening", () => {
           number: 42,
           base: {
             ref: parentHead,
-            repo: { name: "opencodex", owner: { login: "OnlineChefGroep" } },
+            repo: { name: "opencodex", owner: { login: "GroepOnline" } },
           },
           title: "Stacked child",
           draft: false,
@@ -1048,7 +1064,7 @@ describe("GitHub Actions hardening", () => {
             number: 41,
             head: {
               ref: parentHead,
-              repo: { name: "opencodex", owner: { login: "OnlineChefGroep" } },
+              repo: { name: "opencodex", owner: { login: "GroepOnline" } },
             },
           },
         ],
@@ -1068,7 +1084,7 @@ describe("GitHub Actions hardening", () => {
         number: 1000 + i,
         head: {
           ref: `feature/filler-${i}`,
-          repo: { name: "opencodex", owner: { login: "OnlineChefGroep" } },
+          repo: { name: "opencodex", owner: { login: "GroepOnline" } },
         },
       }));
       const result = await run({
@@ -1076,7 +1092,7 @@ describe("GitHub Actions hardening", () => {
           number: 42,
           base: {
             ref: parentHead,
-            repo: { name: "opencodex", owner: { login: "OnlineChefGroep" } },
+            repo: { name: "opencodex", owner: { login: "GroepOnline" } },
           },
           title: "Stacked child beyond page one",
           draft: false,
@@ -1088,7 +1104,7 @@ describe("GitHub Actions hardening", () => {
               number: 41,
               head: {
                 ref: parentHead,
-                repo: { name: "opencodex", owner: { login: "OnlineChefGroep" } },
+                repo: { name: "opencodex", owner: { login: "GroepOnline" } },
               },
             },
           ],
@@ -1113,7 +1129,7 @@ describe("GitHub Actions hardening", () => {
             number: 99,
             head: {
               ref: "feature/other",
-              repo: { name: "opencodex", owner: { login: "OnlineChefGroep" } },
+              repo: { name: "opencodex", owner: { login: "GroepOnline" } },
             },
           },
         ],
@@ -1129,7 +1145,7 @@ describe("GitHub Actions hardening", () => {
       ]));
       expect(callsTo(result, "pulls.update")).toEqual([
         {
-          owner: "OnlineChefGroep",
+          owner: "GroepOnline",
           repo: "opencodex",
           pull_number: 42,
           title: "[WRONG BRANCH] Orphan stack",
@@ -1166,7 +1182,7 @@ describe("GitHub Actions hardening", () => {
         "issues.updateComment",
       ]));
       expect(callsTo(restored, "pulls.update")).toEqual([
-        { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "Add a thing" },
+        { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "Add a thing" },
       ]);
     });
 
@@ -1182,7 +1198,7 @@ describe("GitHub Actions hardening", () => {
         "issues.updateComment",
       ]));
       expect(callsTo(result, "pulls.update")).toEqual([
-        { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "Add a thing" },
+        { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "Add a thing" },
       ]);
       const [ready] = callsTo(result, "graphql") as [{ query: string }];
       expect(ready.query).toContain("markPullRequestReadyForReview");
@@ -1202,7 +1218,7 @@ describe("GitHub Actions hardening", () => {
       });
 
       expect(callsTo(result, "pulls.update")).toEqual([
-        { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "Add a thing (v2)" },
+        { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "Add a thing (v2)" },
       ]);
     });
 
@@ -1241,7 +1257,7 @@ describe("GitHub Actions hardening", () => {
         "issues.updateComment",
       ]));
       expect(callsTo(wentWrong, "pulls.update")).toEqual([
-        { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] Add a thing" },
+        { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] Add a thing" },
       ]);
 
       // …and the reverse: the event says main, the live PR says dev. No writes.
@@ -1425,7 +1441,7 @@ describe("GitHub Actions hardening", () => {
       expect(commentBody).toContain("`dev`");
       // Points at the documentation rather than assuming the reader knows.
       expect(commentBody).toContain(
-        "https://github.com/OnlineChefGroep/opencodex/blob/dev/CONTRIBUTING.md",
+        "https://github.com/GroepOnline/opencodex/blob/dev/CONTRIBUTING.md",
       );
       // And carries the state the next run needs.
       expect(commentBody).toContain(MARKER);
@@ -1488,7 +1504,7 @@ describe("GitHub Actions hardening", () => {
           "issues.updateComment",
         ]));
         expect(callsTo(restored, "pulls.update")).toEqual([
-          { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "Add a thing" },
+          { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "Add a thing" },
         ]);
         const [cleared] = callsTo(restored, "issues.updateComment") as [{ body: string }];
         expect(cleared.body).toContain('"version":1');
@@ -1538,7 +1554,7 @@ describe("GitHub Actions hardening", () => {
         "issues.updateComment",
       ]));
       expect(callsTo(loose, "pulls.update")).toEqual([
-        { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "Add a thing" },
+        { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "Add a thing" },
       ]);
 
       // And the falsy side is symmetric: `null` and `0` skip their own
@@ -1603,7 +1619,7 @@ describe("GitHub Actions hardening", () => {
       });
 
       expect(callsTo(result, "pulls.update")).toEqual([
-        { owner: "OnlineChefGroep", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] " },
+        { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] " },
       ]);
       expect(methodsOf(result)).toEqual(readsWrongBase([
         "issues.createComment",

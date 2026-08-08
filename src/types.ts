@@ -1015,6 +1015,11 @@ export interface OcxProviderConfig {
    * failover engine; "direct" pins the caller's main Codex login and never touches pool state.
    */
   codexAccountMode?: CodexAccountMode;
+  /**
+   * ChefVault credential reference (`chefvault://…`) resolved via the provider-security plane.
+   * When set, raw secrets are not stored in config — only in-memory leases at runtime.
+   */
+  credentialRef?: string;
   apiKey?: string;
   /**
    * Key-auth header style for Anthropic-compatible providers.

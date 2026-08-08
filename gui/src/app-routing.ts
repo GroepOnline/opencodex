@@ -1,64 +1,104 @@
-/** Pure hash → page resolution used by App route state. */
+/** Pure hash → view resolution used by App route state.
+ *
+ * IA (design-system v2, 2026-08): four views — Leveranciers (home), Modellen,
+ * Verkeer, Systeem. The old 10-page sidebar hashes are kept as legacy redirects
+ * so bookmarks, Back/Forward and external deep links keep working.
+ */
 
 import { normalizeHashPath } from "./hash-routing";
 
-export type Page =
-  | "dashboard"
-  | "startup"
-  | "providers"
-  | "models"
-  | "combos"
-  | "subagents"
-  | "logs"
-  | "usage"
-  | "storage"
-  | "api"
-  | "claude"
-  | "grok";
+export type View = "leveranciers" | "modellen" | "verkeer" | "systeem";
 
-export const VALID_PAGES = new Set<Page>([
-  "dashboard",
-  "startup",
-  "providers",
-  "models",
-  "combos",
-  "subagents",
-  "logs",
-  "usage",
-  "storage",
-  "api",
-  "claude",
-  "grok",
-]);
+export const VALID_VIEWS = new Set<View>(["leveranciers", "modellen", "verkeer", "systeem"]);
 
-export function readPageFromHash(hash?: string): Page {
-  const raw = normalizeHashPath(
-    hash ?? (typeof window !== "undefined" ? window.location.hash : ""),
-  );
-  // Sub-views use a "/" suffix (e.g. #logs/debug); the first segment is the page id.
-  const pageId = raw.split("/")[0] as Page;
-  // Legacy: Debug used to be a standalone page; it now lives as a tab on Logs.
-  if (pageId === ("debug" as Page)) return "logs";
-  return VALID_PAGES.has(pageId) ? pageId : "dashboard";
+/** Sub-views per view (the "/"-suffix, e.g. #leveranciers/claude). */
+export const VIEW_SUBS: Record<View, ReadonlySet<string>> = {
+  leveranciers: new Set(["claude", "grok"]),
+  modellen: new Set(["combos", "subagents"]),
+  verkeer: new Set(["logs", "debug"]),
+  systeem: new Set(["storage", "api"]),
+};
+
+/** Canonical hashes: bare views plus every valid view/sub combination. */
+export const KNOWN_VIEW_HASHES: readonly string[] = [
+  ...VALID_VIEWS,
+  ...(Object.entries(VIEW_SUBS) as [View, ReadonlySet<string>][]).flatMap(([v, subs]) =>
+    [...subs].map(s => `${v}/${s}`),
+  ),
+];
+
+/** Route = view + optional validated sub-view. */
+export type Route = { view: View; sub: string | null };
+
+export function canonicalHashFor(route: Route): string {
+  return route.sub ? `${route.view}/${route.sub}` : route.view;
 }
 
 /**
- * Dashboard section tabs live in the hash so refresh/bookmark/back-forward keep the
- * choice, mirroring Logs (`#logs` / `#logs/debug`). Overview is the bare `#dashboard`,
- * so it has no suffix entry here.
+ * Legacy hash → canonical hash. Every pre-IA hash lands on its new home; unknown
+ * content falls back below, never to a dead URL.
  */
-export const DASHBOARD_TAB_HASHES = ["dashboard/providers", "dashboard/models"] as const;
+const LEGACY_HASH_MAP: Record<string, string> = {
+  dashboard: "leveranciers",
+  "dashboard/providers": "leveranciers",
+  "dashboard/models": "modellen",
+  providers: "leveranciers",
+  "providers/workspace": "leveranciers",
+  "codex-auth": "leveranciers",
+  claude: "leveranciers/claude",
+  grok: "leveranciers/grok",
+  models: "modellen",
+  combos: "modellen/combos",
+  subagents: "modellen/subagents",
+  usage: "verkeer",
+  logs: "verkeer/logs",
+  "logs/debug": "verkeer/debug",
+  debug: "verkeer/debug",
+  startup: "systeem",
+  storage: "systeem/storage",
+  api: "systeem/api",
+};
 
-export function hashBelongsToPage(rawHash: string, page: Page): boolean {
-  return rawHash === page
-    || (page === "logs" && rawHash === "logs/debug")
-    || (page === "dashboard" && (DASHBOARD_TAB_HASHES as readonly string[]).includes(rawHash));
+/** Legacy route heads still safe to emit to analytics (see posthog-sanitize). */
+export const LEGACY_HASH_HEADS: readonly string[] = [
+  "dashboard",
+  "providers",
+  "codex-auth",
+  "claude",
+  "grok",
+  "models",
+  "combos",
+  "subagents",
+  "usage",
+  "logs",
+  "debug",
+  "startup",
+  "storage",
+  "api",
+];
+
+export function readRouteFromHash(hash?: string): Route {
+  const raw = normalizeHashPath(
+    hash ?? (typeof window !== "undefined" ? window.location.hash : ""),
+  );
+  const canonical = LEGACY_HASH_MAP[raw] ?? raw;
+  const [head, sub] = canonical.split("/");
+  if (VALID_VIEWS.has(head as View)) {
+    const view = head as View;
+    return { view, sub: sub && VIEW_SUBS[view].has(sub) ? sub : null };
+  }
+  return { view: "leveranciers", sub: null };
 }
 
+export function hashBelongsToRoute(rawHash: string, route: Route): boolean {
+  const canonical = LEGACY_HASH_MAP[rawHash] ?? rawHash;
+  if (canonical === route.view) return route.sub === null;
+  return canonical === canonicalHashFor(route);
+}
 
 /** Result of resolving an incoming hash. */
 export type AppHashChangeAction = {
-  page: Page;
+  route: Route;
   /** When non-null, passively replace the hash (no new history entry). */
   replaceTo: string | null;
 };
@@ -69,28 +109,21 @@ export type AppHashChangeAction = {
  * push, so Back is never trapped on a hash the router immediately corrects.
  */
 export function resolveAppHashChange(rawHash: string): AppHashChangeAction {
-  const nextPage = readPageFromHash(rawHash);
-
-  // Legacy: Debug used to be a standalone page.
-  if (rawHash === "debug" || rawHash.startsWith("debug/")) {
-    return { page: "logs", replaceTo: "logs/debug" };
+  // The `#` prefix is presentation; resolve on the normalized path so a canonical
+  // hash like `#leveranciers` is never needlessly rewritten to `leveranciers`.
+  const normalized = normalizeHashPath(rawHash);
+  // Legacy prefixes with unknown tails (e.g. #codex-auth/accounts) collapse to
+  // the legacy head's new home rather than leaking into the fallback.
+  const legacyHead = normalized.split("/")[0];
+  if (!(normalized in LEGACY_HASH_MAP) && legacyHead && legacyHead in LEGACY_HASH_MAP) {
+    const route = readRouteFromHash(legacyHead);
+    return { route, replaceTo: canonicalHashFor(route) };
   }
 
-  // Legacy deep link from the removed dual-layout era.
-  if (rawHash === "providers/workspace") {
-    return { page: "providers", replaceTo: "providers" };
+  const route = readRouteFromHash(normalized);
+  const canonical = canonicalHashFor(route);
+  if (normalized !== canonical) {
+    return { route, replaceTo: canonical };
   }
-
-  // Account management used to be a Codex-only destination. Providers now owns
-  // OAuth accounts, API-key pools and the OpenAI/Codex pool in one place.
-  if (rawHash === "codex-auth" || rawHash.startsWith("codex-auth/")) {
-    return { page: "providers", replaceTo: "providers" };
-  }
-
-  // An unrecognised sub-hash is normalised away rather than left in the URL.
-  if (!hashBelongsToPage(rawHash, nextPage)) {
-    return { page: nextPage, replaceTo: nextPage };
-  }
-
-  return { page: nextPage, replaceTo: null };
+  return { route, replaceTo: null };
 }

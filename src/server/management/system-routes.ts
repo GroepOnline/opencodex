@@ -20,6 +20,7 @@
  * dashboard drain-and-restart confirm UX — never request bodies or IDs.
  */
 import { decideEagerRelay } from "../../lib/bun-stream-caps";
+import { runtimeMetrics } from "../../observability/metrics";
 import { getActiveTurnCount, isDraining } from "../lifecycle";
 import { getActiveMemoryWatchdog, observedMemoryCounter } from "../memory-watchdog";
 import { responseStateMetrics } from "../../responses/state";
@@ -31,6 +32,13 @@ const ENDPOINT_SAMPLE_LIMIT = 60;
 
 export async function handleSystemRoutes(ctx: ManagementContext): Promise<Response | null> {
   const { req, url, config } = ctx;
+
+  if (url.pathname === "/api/metrics/json" && req.method === "GET") {
+    // Usage rows were recorded at their append boundary (usage/log.ts observers);
+    // scraping the JSON snapshot performs zero usage-log filesystem I/O.
+    return jsonResponse(runtimeMetrics.snapshot(), 200, req, config);
+  }
+
   if (url.pathname === "/api/system/memory" && req.method === "GET") {
     const usage = process.memoryUsage();
     let jscHeap: { heapSize: number; heapCapacity: number; objectCount: number } | null = null;
@@ -45,22 +53,22 @@ export async function handleSystemRoutes(ctx: ManagementContext): Promise<Respon
     } catch {
       /* non-Bun tooling or unavailable introspection — omit the discriminator */
     }
-	    const watchdogInstance = getActiveMemoryWatchdog();
-	    const observed = observedMemoryCounter({
-	      rss: usage.rss,
-	      external: usage.external,
-	      arrayBuffers: usage.arrayBuffers,
-	    });
+    const watchdogInstance = getActiveMemoryWatchdog();
+    const observed = observedMemoryCounter({
+      rss: usage.rss,
+      external: usage.external,
+      arrayBuffers: usage.arrayBuffers,
+    });
     const watchdog = watchdogInstance
       ? (() => {
         const snap = watchdogInstance.snapshot();
-	        return {
-	          warnThresholdBytes: snap.warnThresholdBytes,
-	          lastWarnAt: snap.lastWarnAt,
-	          observedBytes: snap.observedBytes,
-	          observedMetric: snap.observedMetric,
-	          samples: snap.samples.slice(-ENDPOINT_SAMPLE_LIMIT),
-	        };
+        return {
+          warnThresholdBytes: snap.warnThresholdBytes,
+          lastWarnAt: snap.lastWarnAt,
+          observedBytes: snap.observedBytes,
+          observedMetric: snap.observedMetric,
+          samples: snap.samples.slice(-ENDPOINT_SAMPLE_LIMIT),
+        };
       })()
       : null;
     const streamMode = config.streamMode ?? "auto";
@@ -72,12 +80,12 @@ export async function handleSystemRoutes(ctx: ManagementContext): Promise<Respon
       uptimeSeconds: process.uptime(),
       rss: usage.rss,
       heapUsed: usage.heapUsed,
-	      heapTotal: usage.heapTotal,
-	      external: usage.external,
-	      arrayBuffers: usage.arrayBuffers,
-	      observedBytes: observed.observedBytes,
-	      observedMetric: observed.observedMetric,
-	      jscHeap,
+      heapTotal: usage.heapTotal,
+      external: usage.external,
+      arrayBuffers: usage.arrayBuffers,
+      observedBytes: observed.observedBytes,
+      observedMetric: observed.observedMetric,
+      jscHeap,
       responseState: responseStateMetrics(),
       streamMode,
       eagerRelay: process.platform === "win32" ? decideEagerRelay(streamMode) : null,

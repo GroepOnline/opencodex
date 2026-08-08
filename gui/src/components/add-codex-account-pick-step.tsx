@@ -33,7 +33,7 @@ export function AddCodexAccountPickStep({
 
       <button type="button" className="list-row" onClick={onStartOAuth} style={{ marginBottom: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <IconGlobe width={20} />
+          <IconGlobe width={18} />
           <div>
             <div className="title">{t("codexAuth.oauthLogin")}</div>
             <div className="sub">{t("codexAuth.oauthDesc")}</div>

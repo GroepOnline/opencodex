@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   activeProviderCooldowns,
+  clearProviderCapCooldown,
   expireProviderCooldowns,
   isHardCapMessage,
   parseResetsInMs,
@@ -197,6 +198,40 @@ describe("disable ownership", () => {
   test("releasing ownership is a no-op when no cooldown owns the flag", () => {
     const config = bareConfig();
     expect(releaseProviderCooldownDisableOwnership(config, "cline-pass")).toBe(false);
+  });
+
+  test("a same-name replacement provider keeps its operator disable after expiry", () => {
+    // Mirrors the provider-routes contract: DELETE/POST-overwrite clear the cooldown, so
+    // expiry never touches a `disabled: true` an operator set on the replacement instance.
+    const config = bareConfig();
+    const now = 1_000_000;
+    recordProviderCapCooldown(
+      config,
+      "cline-pass",
+      429,
+      '{"code":"INFERENCE_CAP_ERROR","message":"weekly limit"}',
+      { now, save: false },
+    );
+    expect(config.providerCooldowns?.["cline-pass"]?.disabledProvider).toBe(true);
+
+    // Provider replaced under the same name with an explicit operator disable.
+    config.providers["cline-pass"] = {
+      baseUrl: "https://replacement.example/v1",
+      adapter: "openai-chat",
+      disabled: true,
+    };
+    expect(clearProviderCapCooldown(config, "cline-pass")).toBe(true);
+    expect(config.providerCooldowns).toBeUndefined();
+
+    expect(expireProviderCooldowns(config, now + 8 * 24 * HOUR_MS)).toBe(false);
+    expect(config.providers["cline-pass"]?.disabled).toBe(true);
+  });
+
+  test("clearing a cooldown is a no-op when none is recorded", () => {
+    const config = bareConfig();
+    expect(clearProviderCapCooldown(config, "cline-pass")).toBe(false);
+    config.providerCooldowns = {};
+    expect(clearProviderCapCooldown(config, "cline-pass")).toBe(false);
   });
 
   test("ownership stays claimed when a combined patch would have failed before save", () => {

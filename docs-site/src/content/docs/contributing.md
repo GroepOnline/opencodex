@@ -9,7 +9,7 @@ Source development requires the `bun` CLI on your `PATH`. The published npm pack
 Bun runtime for users, but this checkout's scripts run through your local Bun installation.
 
 ```bash
-git clone https://github.com/OnlineChefGroep/opencodex.git
+git clone https://github.com/GroepOnline/opencodex.git
 cd opencodex
 bun install
 bun run dev:proxy    # proxy API in dev mode
@@ -89,7 +89,7 @@ bun run release:watch               # watch the newest Release workflow run
 
 The `dev2-go` line that carried the Go native port has been retired, and the
 dual-track carry policy with it. Its history is published read-only at
-[OnlineChefGroep/opencodex-go-archive](https://github.com/OnlineChefGroep/opencodex-go-archive).
+[GroepOnline/opencodex-go-archive](https://github.com/GroepOnline/opencodex-go-archive).
 Bun-native TypeScript on `dev` is the single runtime line.
 
 Rebase pull requests are welcome. Bringing a stale branch onto the current head
@@ -106,7 +106,7 @@ description.
 ## Project maintainers
 
 The current maintainers, their responsibilities, and the review and merge policy are documented in
-[`MAINTAINERS.md`](https://github.com/OnlineChefGroep/opencodex/blob/main/MAINTAINERS.md). GitHub review
+[`MAINTAINERS.md`](https://github.com/GroepOnline/opencodex/blob/main/MAINTAINERS.md). GitHub review
 ownership for the repository and security-sensitive paths is declared in `.github/CODEOWNERS`.
 
 ## Conventions

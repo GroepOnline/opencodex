@@ -53,6 +53,7 @@ differing backup and rewrites known legacy namespaced selected ids to bare ids.
 | `websockets?` | `boolean` | `false` | Advertise `supports_websockets` so Codex uses the Responses WebSocket path. Omit or set `false` to keep HTTP/SSE. |
 | `storageCleanupPolicy?` | `StorageCleanupPolicy` | unset / `enabled: false` | **Opt-in** archived auto-cleanup (issue #42 Phase 3). Default **OFF** — never enabled implicitly. When enabled, runs on `schedule` (`startup` / `daily` / `weekly` / `manual`) once archived bytes exceed `trigger.archivedBytesOver`, selecting oldest archives toward `target` (`reduceToBytes` or `removeOldestPercent`) in `mode` (`quarantine` default, or explicit `permanent`). Persists `lastRun` / `nextRun`. Configure via Storage page or `GET`/`PUT /api/storage/cleanup-policy`; `POST /api/storage/cleanup-policy/run` for manual. |
 | `apiKeys?` | `OcxApiKey[]` | `[]` | Additional generated `ocx_…` credentials accepted by management and data-plane auth on non-loopback binds. Managed by the dashboard; entry fields are listed below. |
+| `rateLimit?` | `OcxRateLimitConfig` | unset / `enabled: false` | **Opt-in** admission-aware rate limiting per API surface. Default **OFF** — omitting it keeps behavior exactly as before. See [Rate limiting](#rate-limiting) below. |
 | `codexAutoStart?` | `boolean` | `true` | Let the Codex shim run `ocx ensure` before launching Codex. `false` makes `ocx ensure` a no-op. |
 | `codexShimAutoRestore?` | `boolean` | `true` | Restore a previously installed Codex shim when a completed external Codex update replaces it. Set `false`, or set `OPENCODEX_CODEX_SHIM_AUTO_RESTORE=0` for a process-level opt-out. |
 | `syncResumeHistory?` | `boolean` | `true` | Reversible Codex App history compatibility mode. opencodex backs up original Codex thread metadata, remaps old OpenAI interactive rows to `opencodex`, and temporarily promotes opencodex-created `exec` rows to an app-visible source. `ocx stop` / `ocx restore` restore backed-up OpenAI rows and eject remaining opencodex user threads to OpenAI so native Codex can resume them after the proxy is removed from `config.toml`. Set `false` to opt out. |
@@ -169,7 +170,7 @@ provider terms of service.
 ### anthropicAccountPool (experimental)
 
 Opt-in routing across **multiple Anthropic OAuth accounts** already stored in `auth.json`
-(issue [#294](https://github.com/OnlineChefGroep/opencodex/issues/294)). **Default off.** This is
+(issue [#294](https://github.com/GroepOnline/opencodex/issues/294)). **Default off.** This is
 experimental and not battle-tested — enable only if you accept the risk that Anthropic may
 restrict accounts that look like automated multi-account rotation. Accounts under the same
 organization can share quota; pooling those will not help.
@@ -347,6 +348,151 @@ or Codespaces forwarding modes bind the *client* side to `0.0.0.0`, which expose
 management API and the data plane to that network with no credential. Use `-L` without `-g`,
 or bind the forward explicitly to loopback (`ssh -L 127.0.0.1:20100:localhost:10100`).
 :::
+
+## Metrics endpoints
+
+opencodex exposes a process-local metrics registry on two management endpoints:
+
+- `GET /metrics` — Prometheus text exposition format, served with
+  `Content-Type: text/plain; version=0.0.4; charset=utf-8` and `Cache-Control: no-store`.
+- `GET /api/metrics/json` — the same registry as a JSON snapshot.
+
+Both endpoints sit behind the **independent management-auth boundary**, not data-plane
+authentication. Unauthenticated requests and requests carrying only data-plane credentials
+receive `401`. For remote scrapes, authenticate with the admin credential — the
+`OPENCODEX_ADMIN_AUTH_TOKEN` environment variable, or the generated `admin-api-token` file in
+the opencodex config directory — via the `x-opencodex-api-key` or `Authorization: Bearer …`
+header. The browser dashboard reaches `/api/metrics/json` through its authenticated session.
+
+The registry covers process gauges (uptime, memory, active turns, drain state), request
+counts, request-duration and time-to-first-output histograms, and token counts. Counters are
+**process-lifetime only**: existing `usage.jsonl` history is not replayed at startup, a
+restart resets all counters, and each usage row is recorded immediately after a successful
+process-local usage append. Scrapes perform no usage-log reads.
+
+Exported labels are fixed, bounded categories only: surface, HTTP status class, terminal
+status, and token type. Provider, model, account, request, conversation, error, and prompt
+values are never emitted as labels or output.
+
+When [rate limiting](#rate-limiting) is enabled, the registry additionally exposes bounded,
+aggregate-only admission series:
+
+- `opencodex_rate_limit_requests_total`: admission decisions by fixed `surface`, `source`
+  (`principal` or `overflow`), and `result` (`allowed` or `denied`) labels.
+- `opencodex_rate_limit_websocket_reservations_total`: WebSocket concurrency reservation
+  outcomes by fixed `reason` label.
+- `opencodex_rate_limit_websocket_connections` and
+  `opencodex_rate_limit_websocket_tracked_principals`: current admitted WebSocket
+  concurrency gauges.
+- `opencodex_rate_limit_principal_buckets` and `opencodex_rate_limit_overflow_surfaces`:
+  current limiter bucket-allocation gauges.
+
+The JSON snapshot carries the same data in an optional `rateLimit` subtree. Rate-limit
+metrics appear only while rate limiting is enabled: default-off servers emit no rate-limit
+series or subtree at all. Like the rest of the registry they are process-local (reset on
+restart), and collection is read-only: scraping never consumes tokens, creates buckets, or
+otherwise mutates limiter state, and no principal, fingerprint, credential, Origin, or
+address values are ever emitted.
+
+A minimal Prometheus scrape config, with the admin token supplied from a secret file rather
+than inlined:
+
+```yaml
+scrape_configs:
+  - job_name: opencodex
+    metrics_path: /metrics
+    scheme: http
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/opencodex-admin-token
+    static_configs:
+      - targets: ["proxy-host:10100"]
+```
+
+The credentials file must contain the admin credential; data-plane `ocx_` keys and
+`OPENCODEX_API_AUTH_TOKEN` do not authorize management endpoints.
+
+## Rate limiting
+
+`rateLimit` adds optional, opt-in admission rate limiting in front of the proxy's API surfaces.
+It is disabled by default: configs without the key (and configs with `enabled: false`) behave
+exactly as before, with no limiter running and no extra headers.
+
+```json
+{
+  "rateLimit": {
+    "enabled": true,
+    "loopbackBypass": false,
+    "maxBuckets": 10000,
+    "staleAfterMs": 600000,
+    "surfaces": {
+      "responses-http": { "requestsPerMinute": 300, "burst": 60 },
+      "management": { "requestsPerMinute": 240, "burst": 60 }
+    },
+    "websocket": { "perPrincipal": 16, "global": 128 }
+  }
+}
+```
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `enabled` | `boolean` | — (required) | Master switch. `false` keeps the feature fully off. |
+| `loopbackBypass?` | `boolean` | `false` | Explicitly exempt loopback callers. Judged only by the trusted socket address or a loopback bind — never by `Origin` or forwarded headers, which any client can spoof. Only valid with `enabled: true`. |
+| `maxBuckets?` | `number` | `10000` | Hard cap on tracked per-principal buckets. At the cap, new identities share a bounded per-surface overflow bucket (fail-closed) instead of allocating more state. |
+| `staleAfterMs?` | `number` | `600000` | Idle time before a bucket may be evicted to make room at the cap. |
+| `surfaces?` | per-surface `{requestsPerMinute, burst}` | built-in defaults | Fixed policy overrides per surface. Unknown surface names, non-positive rates, and non-integer bursts are rejected by config validation. |
+| `websocket?` | `{perPrincipal?, global?}` | `16` / `128` | Concurrent open WebSocket connections (Responses transport and live sideband relays) per principal and in total. `perPrincipal` must not exceed `global`; an omitted value counts as its default for this check. |
+
+### Surfaces and defaults
+
+Each API surface has its own token bucket per caller. The surface names accepted under
+`surfaces` and their built-in defaults:
+
+| Surface | Endpoints | Default rpm / burst |
+| --- | --- | --- |
+| `management` | `/api/*` | 240 / 60 |
+| `responses-http` | `POST /v1/responses`, `POST /v1/responses/compact` | 300 / 60 |
+| `responses-websocket` | `/v1/responses` WebSocket handshakes | 60 / 20 |
+| `chat-completions` | `POST /v1/chat/completions` | 300 / 60 |
+| `claude-messages` | `POST /v1/messages`, `POST /v1/messages/count_tokens` | 300 / 60 |
+| `images` | `POST /v1/images/generations`, `POST /v1/images/edits` | 60 / 10 |
+| `search` | `POST /v1/alpha/search` | 120 / 30 |
+| `live` | `POST /v1/live`, `POST /v1/realtime/calls`, live sideband WebSockets | 60 / 10 |
+| `model-discovery` | `GET /v1/models` | 120 / 30 |
+
+### How callers are identified
+
+Buckets are keyed by an opaque, HMAC-derived principal computed inside the auth layer — never
+by the raw credential. The identity used, in order of preference:
+
+1. a **validated** data-plane admission credential (`OPENCODEX_API_AUTH_TOKEN` or a configured
+   `apiKeys` entry), so each admitted key gets its own budget;
+2. a **validated** management admin token or GUI session (management surface);
+3. the remote socket address, when Bun exposes a trustworthy one;
+4. a shared anonymous bucket.
+
+An invalid or made-up key never earns its own bucket: it is rejected with `401` by the existing
+auth layer before any limiter state is allocated or consumed. The remote-address and anonymous
+identities apply only to callers the server actually admits without a credential. `Origin`,
+forwarded-IP headers, emails, model ids, and request bodies are never used as identity, and the
+HMAC secret is process-local — it is not part of `config.json` and is never logged or exported.
+
+### 429 responses
+
+Denied requests return `429` with integer `Retry-After`, `RateLimit-Limit`,
+`RateLimit-Remaining`, and `RateLimit-Reset` headers, using the error envelope native to the
+surface: the OpenAI error shape on OpenAI-compatible routes, the Anthropic error shape on
+`/v1/messages*`, and the management JSON shape on `/api/*`.
+
+Authentication and origin checks always keep their existing precedence: an invalid key still
+gets `401` and a rejected cross-origin request still gets `403`, and neither allocates or
+consumes any limiter budget. A request is charged only after it passes those checks.
+
+WebSocket handshakes are charged against their surface's request rate at upgrade time
+(`responses-websocket` for the Responses transport, `live` for voice sideband joins), and
+long-lived connections additionally hold a concurrency slot that is reserved before the
+handshake completes, rolled back if the upgrade fails, and released when the socket closes for
+any reason.
 
 ## Providers (`OcxProviderConfig`)
 
