@@ -256,7 +256,12 @@ if (args[0] === "watch") {
   process.exit(0);
 }
 
-let version = args[0] && /^\d+\.\d+\.\d+(-[\w.]+)?$/.test(args[0]) ? args[0] : undefined;
+const explicitVersion = args[0] && !args[0].startsWith("--") ? args[0] : undefined;
+if (explicitVersion && !/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(explicitVersion)) {
+  console.error(`Invalid version: ${explicitVersion}`);
+  process.exit(1);
+}
+let version = explicitVersion;
 const dryRun = !args.includes("--publish");
 
 if (!version) {
