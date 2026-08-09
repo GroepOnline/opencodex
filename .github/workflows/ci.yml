@@ -19,6 +19,7 @@ on:
       - ".github/workflows/enforce-pr-target.yml"
       - ".github/workflows/stale-needs-info.yml"
       - ".github/workflows/issue-triage.yml"
+      - ".github/workflows/publish-on-tag.yml"
   push:
     branches: [main, preview, dev]
     paths:
@@ -37,6 +38,7 @@ on:
       - ".github/workflows/enforce-pr-target.yml"
       - ".github/workflows/stale-needs-info.yml"
       - ".github/workflows/issue-triage.yml"
+      - ".github/workflows/publish-on-tag.yml"
   workflow_dispatch:
 
 permissions:
