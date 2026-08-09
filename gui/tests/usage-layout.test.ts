@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { localeSource, SHIPPED_LOCALES } from "./helpers/locales";
 
-test("Usage renders the single stacked layout (no layout toggle, no workspace rail)", async () => {
+test("Verkeer (usage) renders the single stacked layout (no layout toggle, no workspace rail)", async () => {
   const page = await Bun.file(new URL("../src/pages/Usage.tsx", import.meta.url)).text();
   const app = await Bun.file(new URL("../src/App.tsx", import.meta.url)).text();
   const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
@@ -15,7 +15,9 @@ test("Usage renders the single stacked layout (no layout toggle, no workspace ra
   expect(page).not.toContain("usw-");
   expect(page).not.toContain("selectedSection");
 
-  expect(app).toContain("<Usage apiBase={API_BASE} />");
+  // App renders the Verkeer page (design-system v2 IA) for the verkeer view;
+  // the legacy Usage page is no longer wired into the app shell.
+  expect(app).toContain("<Verkeer apiBase={API_BASE}");
   expect(css).not.toContain("styles-usage-workspace.css");
 });
 
