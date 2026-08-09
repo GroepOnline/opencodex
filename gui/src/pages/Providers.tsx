@@ -151,8 +151,12 @@ export default function Providers({ apiBase }: { apiBase: string }) {
       void fetchOauth();
       // Quotas: workspace shell owns /api/provider-quotas — do not double-fetch on mount.
     }, 0);
+    const interval = window.setInterval(() => {
+      void fetchConfig();
+    }, 60_000);
     return () => {
       window.clearTimeout(timeout);
+      window.clearInterval(interval);
     };
   }, [fetchConfig, fetchOauth]);
 
@@ -258,6 +262,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
         onSelect={setWorkspaceSelected}
         onAddProvider={intent => { setAddIntent(intent ?? null); setAdding(true); }}
         onEditConfig={openJsonEditor}
+        providerCooldowns={config.providerCooldowns}
         jsonEditor={{
           open: jsonEditorOpen,
           draft,
@@ -292,6 +297,10 @@ export default function Providers({ apiBase }: { apiBase: string }) {
             modelsLoading={data.modelsLoading}
             modelsLoadFailed={data.modelsLoadFailed}
             onRetryModels={data.onRetryModels}
+            capCooldown={data.capCooldown}
+            quotaRefreshing={data.quotaRefreshing}
+            quotaFailed={data.quotaFailed}
+            onRefreshQuota={data.onRefreshQuota}
             oauthEmail={loginStatus?.email}
             onDeselect={() => setWorkspaceSelected(null)}
             apiBase={apiBase}

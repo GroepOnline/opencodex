@@ -15,7 +15,7 @@ import {
   formatRequestCount,
   type ProviderUsageTotals,
 } from "../../provider-workspace/usage";
-import { maxQuotaUtilisation } from "../QuotaBars";
+import { maxQuotaUtilisation, formatResetFuture } from "../QuotaBars";
 import { ProviderIcon } from "./ProviderRail";
 import { formatProviderDisplayName } from "../../provider-icons";
 import QuotaBars from "../QuotaBars";
@@ -26,11 +26,13 @@ function clockTime(epoch: number): string {
   const d = new Date(epoch);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
+import type { ProviderCapCooldown } from "../../pages/providers-shared";
 
 export default function ProviderOverviewDashboard({
   sections,
   quotaCards,
   usageTotals,
+  providerCooldowns,
   usageLoading = false,
   quotasLoading = false,
   onSelectProvider,
@@ -40,6 +42,7 @@ export default function ProviderOverviewDashboard({
   sections: WorkspaceSections;
   quotaCards: Record<string, QuotaCardState>;
   usageTotals: Record<string, ProviderUsageTotals>;
+  providerCooldowns?: Record<string, ProviderCapCooldown>;
   usageLoading?: boolean;
   quotasLoading?: boolean;
   onSelectProvider: (name: string) => void;
@@ -55,7 +58,32 @@ export default function ProviderOverviewDashboard({
   );
   const knownNames = useMemo(() => new Set(allItems.map(p => p.name)), [allItems]);
 
-  const attention = useMemo(() => buildAttentionItems(sections, {}), [sections]);
+  const cooldownOverrides = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const [name, entry] of Object.entries(providerCooldowns ?? {})) {
+      if (!entry || typeof entry.until !== "number") continue;
+      const reset = formatResetFuture(entry.until, t, locale);
+      out[name] = t("pws.attention.capCooldown", { reset });
+    }
+    return out;
+  }, [providerCooldowns, t, locale]);
+
+  const cappedProviders = useMemo(() => {
+    const result: Array<{ name: string; entry: ProviderCapCooldown }> = [];
+    for (const [name, entry] of Object.entries(providerCooldowns ?? {})) {
+      if (!entry || typeof entry.until !== "number") continue;
+      result.push({ name, entry });
+    }
+    return result.sort((a, b) => a.entry.until - b.entry.until || a.name.localeCompare(b.name));
+  }, [providerCooldowns]);
+  const cappedNames = useMemo(() => new Set(cappedProviders.map(row => row.name)), [cappedProviders]);
+
+  // Capped providers get the richer "Usage caps" section below, so keep them out of the
+  // generic attention list instead of listing the same provider twice.
+  const attention = useMemo(
+    () => buildAttentionItems(sections, cooldownOverrides).filter(item => !cappedNames.has(item.name)),
+    [sections, cooldownOverrides, cappedNames],
+  );
   const attentionCount = attention.length;
   const readyReauthCount = useMemo(
     () => sections.ready.filter(p => p.activeNeedsReauth).length,
@@ -117,6 +145,42 @@ export default function ProviderOverviewDashboard({
         />
         <SummaryCard count={sections.disabled.length} label={t("prov.disabledBadge")} tone="muted" />
       </div>
+
+      {cappedProviders.length > 0 && (
+        <section className="pws-dashboard-section pws-dashboard-caps" aria-label={t("pws.capCooldown.section")}>
+          <h3 className="pws-dashboard-section-title">
+            <IconAlert style={{ width: 14, height: 14 }} aria-hidden="true" />
+            {t("pws.capCooldown.section")}
+          </h3>
+          <div className="pws-dashboard-rows">
+            {cappedProviders.map(({ name, entry }) => {
+              const reset = formatResetFuture(entry.until, t, locale);
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  className="pws-dashboard-row pws-dashboard-row--attention"
+                  onClick={() => onSelectProvider(name)}
+                >
+                  <ProviderIcon name={name} adapter="" baseUrl="" cls="pws-dashboard-row-icon" />
+                  <div className="pws-dashboard-row-info">
+                    <span className="pws-dashboard-row-name">{formatProviderDisplayName(name)}</span>
+                    <span className="pws-dashboard-row-meta muted">
+                      {t("pws.capCooldown.banner", {
+                        provider: formatProviderDisplayName(name),
+                        reset,
+                      })}
+                      {" "}
+                      {entry.disabledProvider ? t("pws.capCooldown.disabled") : t("pws.capCooldown.paused")}
+                    </span>
+                  </div>
+                  <IconChevron className="pws-dashboard-row-chevron" aria-hidden="true" />
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {attentionCount > 0 && (
         <section className="pws-dashboard-section pws-dashboard-attention" aria-label={t("pws.attentionTitle")}>

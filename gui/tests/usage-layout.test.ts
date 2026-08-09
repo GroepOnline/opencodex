@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { localeSource, SHIPPED_LOCALES } from "./helpers/locales";
 
 test("Usage renders the single stacked layout (no layout toggle, no workspace rail)", async () => {
   const page = await Bun.file(new URL("../src/pages/Usage.tsx", import.meta.url)).text();
@@ -52,9 +53,8 @@ test("Usage loading and empty states guard the stacked body", async () => {
 });
 
 test("retired usage workspace i18n keys stay removed from every locale", async () => {
-  const locales = ["en"] as const; // full dictionaries; nl.ts spreads en and only overrides a subset
-  for (const locale of locales) {
-    const dict = await Bun.file(new URL(`../src/i18n/${locale}.ts`, import.meta.url)).text();
+  for (const locale of SHIPPED_LOCALES) {
+    const dict = await localeSource(locale);
     expect(dict).not.toContain('"usage.workspace.sections":');
     expect(dict).not.toContain('"usage.workspace.report":');
     expect(dict).not.toContain('"usage.workspace.mainAria":');

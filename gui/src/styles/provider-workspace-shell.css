@@ -369,6 +369,28 @@
   border-color: var(--amber);
 }
 
+.pwi-rail-badge--capped {
+  color: var(--yellow, #eab308);
+  border-color: var(--yellow, #eab308);
+}
+
+.providers-workspace-rail-row--capped .providers-workspace-rail-name-label {
+  opacity: 0.9;
+}
+
+.pws-cap-cooldown {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.pws-cap-cooldown-msg {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
 .providers-workspace-rail-trail {
   display: inline-flex;
   align-items: center;
@@ -1011,6 +1033,24 @@
   margin-top: 32px;
   padding-top: 24px;
   border-top: 1px solid color-mix(in oklab, var(--border) 45%, transparent);
+}
+
+.pws-usage-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pws-usage-block-head .pws-section-title {
+  margin-bottom: 0;
+}
+
+/* "Quota updated" stat with its inline per-provider refresh button. */
+.pws-quota-updated {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .pws-usage-metrics {

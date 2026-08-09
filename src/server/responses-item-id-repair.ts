@@ -73,11 +73,14 @@ function rememberMappedId(
   const existing = state.outputIds[type].get(outputIndex);
   if (existing) return existing;
   const rawId = typeof item.id === "string" ? item.id : undefined;
-  if (!rawId) return null;
-  const mapped = state.placeholders[type].has(rawId)
-    ? mintCanonicalId(type, state.scope, outputIndex)
+  const mapped = rawId
+    ? state.placeholders[type].has(rawId)
+      ? mintCanonicalId(type, state.scope, outputIndex)
+      : state.repairMissingTerminalIds
+        ? rawId
+        : null
     : state.repairMissingTerminalIds
-      ? rawId
+      ? mintCanonicalId(type, state.scope, outputIndex)
       : null;
   if (!mapped) return null;
   state.outputIds[type].set(outputIndex, mapped);

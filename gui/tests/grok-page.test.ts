@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-
-const LOCALES = ["en"] as const; // full dictionaries; nl.ts spreads en and only overrides a subset
+import { localeDicts } from "./helpers/locales";
 
 async function read(path: string): Promise<string> {
   return Bun.file(new URL(path, import.meta.url)).text();
@@ -36,7 +35,7 @@ test("the Grok page is routable and present in the nav", async () => {
   expect(app).toContain('{ sub: "grok", tkey: "nav.grok" }');
 });
 
-test("every locale carries the Grok keys", async () => {
+test("every locale carries the Grok keys", () => {
   const keys = ["nav.grok", "grok.title", "grok.subtitle", "grok.loading", "grok.loadFail",
     "grok.notConfiguredTitle", "grok.notConfiguredHint", "grok.endpoint",
     "grok.colModel", "grok.colAlias", "grok.colContext",
@@ -45,11 +44,9 @@ test("every locale carries the Grok keys", async () => {
     "grok.applySkipped", "grok.saveApply", "grok.saving", "grok.applying",
     "grok.unsaved", "grok.upToDate", "grok.toggleModel"];
   const missing: string[] = [];
-  for (const locale of LOCALES) {
-    const dict = await read(`../src/i18n/${locale}.ts`);
+  for (const [locale, dict] of localeDicts()) {
     for (const key of keys) {
-      const match = new RegExp(`"${key.replace(".", "\\.")}":\\s*"([^"]+)"`).exec(dict);
-      if (!match) missing.push(`${locale}:${key}`);
+      if (!(dict[key as keyof typeof dict] ?? "").trim()) missing.push(`${locale}:${key}`);
     }
   }
   expect(missing).toEqual([]);

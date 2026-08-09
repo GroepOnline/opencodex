@@ -60,12 +60,14 @@ export function ProviderIcon({ name, adapter, baseUrl, cls }: {
   );
 }
 
-export function RailRow({ item, selected, tabbable, modelCount, isDefault, showConfigId, onClick, onFocus }: {
+export function RailRow({ item, selected, tabbable, modelCount, isDefault, capped, showConfigId, onClick, onFocus }: {
   item: WorkspaceItem;
   selected: boolean;
   tabbable: boolean;
   modelCount?: number;
   isDefault?: boolean;
+  /** Weekly/inference hard-cap cooldown active for this provider. */
+  capped?: boolean;
   /** When display names collide (e.g. openai + chatgpt → ChatGPT), show the config id. */
   showConfigId?: boolean;
   onClick: () => void;
@@ -74,7 +76,9 @@ export function RailRow({ item, selected, tabbable, modelCount, isDefault, showC
   const t = useT();
   const free = isFreeProvider(item);
   const local = isLocalProvider(item);
-  const status = statusLabel(item, t);
+  // Keep the underlying status for assistive tech; the capped pill is visual-only for sighted users.
+  const baseStatus = statusLabel(item, t);
+  const status = capped ? `${baseStatus} · ${t("pws.capCooldown.badge")}` : baseStatus;
   const displayName = formatProviderDisplayName(item.name);
   const nameTitle = showConfigId ? `${displayName} (${item.name})` : displayName;
   const suffix = `${isDefault ? t("pws.rail.suffixDefault") : ""}${local ? t("pws.rail.suffixLocal") : free ? t("pws.rail.suffixFree") : ""}`;
@@ -85,7 +89,7 @@ export function RailRow({ item, selected, tabbable, modelCount, isDefault, showC
   return (
     <button
       type="button"
-      className={`providers-workspace-rail-row${selected ? " providers-workspace-rail-row--selected" : ""}`}
+      className={`providers-workspace-rail-row${selected ? " providers-workspace-rail-row--selected" : ""}${capped ? " providers-workspace-rail-row--capped" : ""}`}
       onClick={onClick}
       role="option"
       aria-selected={selected}
@@ -109,6 +113,9 @@ export function RailRow({ item, selected, tabbable, modelCount, isDefault, showC
           ) : free ? (
             <span className="pwi-rail-badge pwi-rail-badge--free" title={t("pws.freeTitle")}>{t("modal.badge.free")}</span>
           ) : null}
+          {capped ? (
+            <span className="pwi-rail-badge pwi-rail-badge--capped" title={t("pws.capCooldown.title")}>{t("pws.capCooldown.badge")}</span>
+          ) : null}
         </span>
         <span className="providers-workspace-rail-secondary" title={secondaryLabel || undefined}>
           {secondaryLabel || "\u00a0"}
@@ -124,7 +131,7 @@ export function RailRow({ item, selected, tabbable, modelCount, isDefault, showC
             <IconStar width={18} height={18} aria-hidden="true" />
           </span>
         )}
-        <span className={railStatusCls(item)} title={status} aria-hidden="true" />
+        <span className={capped ? "providers-workspace-rail-status providers-workspace-rail-status--warning" : railStatusCls(item)} title={status} aria-hidden="true" />
       </span>
     </button>
   );

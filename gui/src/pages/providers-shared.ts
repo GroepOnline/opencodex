@@ -16,6 +16,18 @@ export interface ProvidersConfig {
     codexAccountMode?: "direct" | "pool";
     fallback?: Array<{ provider: string; model: string }>;
   }>;
+  /** Active weekly/inference-cap cooldowns from /api/config (until > now). */
+  providerCooldowns?: Record<string, ProviderCapCooldown>;
+}
+
+/** Hard-cap cooldown entry exposed by safeConfigDTO. */
+export interface ProviderCapCooldown {
+  until: number;
+  reason: string;
+  message: string;
+  source?: string;
+  disabledProvider?: boolean;
+  recordedAt?: number;
 }
 
 export interface OAuthStatus {

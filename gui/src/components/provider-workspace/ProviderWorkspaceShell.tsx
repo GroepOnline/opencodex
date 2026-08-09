@@ -44,6 +44,11 @@ export interface DetailSlotData {
   modelsLoading: boolean;
   modelsLoadFailed: boolean;
   onRetryModels?: () => void;
+  /** Active weekly/inference-cap cooldown for this provider, if any. */
+  capCooldown?: import("../../pages/providers-shared").ProviderCapCooldown;
+  quotaRefreshing?: boolean;
+  quotaFailed?: boolean;
+  onRefreshQuota?: () => void;
 }
 
 const SORT_DEFS: { id: ProviderSortMode; labelKey: "pws.sort.az" | "pws.sort.za" | "pws.sort.freePaid" | "pws.sort.paidFree" | "pws.sort.accountsFirst" }[] = [
@@ -67,6 +72,7 @@ export default function ProviderWorkspaceShell({
   jsonSaving = false,
   modelsRefreshToken = 0,
   activeAccountNeedsReauth,
+  providerCooldowns,
   /** Stable key of active OAuth account ids — refetch overview quotas after account switch. */
   quotaRefreshKey = "",
   detail,
@@ -85,6 +91,8 @@ export default function ProviderWorkspaceShell({
   /** Bump after login/config changes so /api/selected-models is refetched. */
   modelsRefreshToken?: number;
   activeAccountNeedsReauth?: Record<string, boolean>;
+  /** Active weekly/inference-cap cooldowns from /api/config. */
+  providerCooldowns?: Record<string, import("../../pages/providers-shared").ProviderCapCooldown>;
   /**
    * Explicit active-account identity key (e.g. `anthropic:<id>|…`). Prefer this over
    * `activeAccountNeedsReauth` object identity so healthy account switches still refresh.
@@ -473,6 +481,7 @@ export default function ProviderWorkspaceShell({
                       tabbable={railTabbableName === item.name}
                       modelCount={modelCounts[item.name]}
                       isDefault={defaultProvider === item.name}
+                      capped={Boolean(providerCooldowns?.[item.name])}
                       showConfigId={duplicateDisplayNames.has(formatProviderDisplayName(item.name))}
                       onClick={() => onSelect(item.name)}
                       onFocus={() => setRailFocusName(item.name)}
@@ -524,6 +533,10 @@ export default function ProviderWorkspaceShell({
             modelsLoading,
             modelsLoadFailed,
             onRetryModels: retryModels,
+            capCooldown: providerCooldowns?.[selectedItem.name],
+            quotaRefreshing: quotaCards[selectedItem.name]?.status === "loading",
+            quotaFailed: quotaCards[selectedItem.name]?.status === "error",
+            onRefreshQuota: () => refreshQuota(selectedItem.name, { force: true }),
           }) ?? (
             <div className="pws-detail-placeholder">
               <h3>{formatProviderDisplayName(selectedItem.name)}</h3>
@@ -538,6 +551,7 @@ export default function ProviderWorkspaceShell({
             sections={sections}
             quotaCards={quotaCards}
             usageTotals={usageTotals}
+            providerCooldowns={providerCooldowns}
             usageLoading={usageLoading}
             quotasLoading={quotasLoading}
             onSelectProvider={(name) => onSelect(name)}

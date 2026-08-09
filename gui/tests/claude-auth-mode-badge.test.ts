@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { buildManualEnv } from "../src/pages/claude-manual-env";
-
-const LOCALES = ["en"] as const; // full dictionaries; nl.ts spreads en and only overrides a subset
+import { localeDicts } from "./helpers/locales";
 
 async function read(path: string): Promise<string> {
   return Bun.file(new URL(path, import.meta.url)).text();
@@ -22,12 +21,11 @@ const NEW_KEYS = [
   "claude.authSource.unknown",
 ];
 
-test("every locale carries the auth-mode keys", async () => {
+test("every locale carries the auth-mode keys", () => {
   const missing: string[] = [];
-  for (const locale of LOCALES) {
-    const dict = await read(`../src/i18n/${locale}.ts`);
+  for (const [locale, dict] of localeDicts()) {
     for (const key of NEW_KEYS) {
-      if (!dict.includes(`"${key}"`)) missing.push(`${locale}:${key}`);
+      if (!(dict[key as keyof typeof dict] ?? "").trim()) missing.push(`${locale}:${key}`);
     }
   }
   expect(missing).toEqual([]);

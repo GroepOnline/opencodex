@@ -29,6 +29,9 @@ export default function ProviderDetails({
   usageTotals,
   modelUsage,
   quotaReport,
+  quotaRefreshing,
+  quotaFailed,
+  onRefreshQuota,
   availableModels,
   peerProviders,
   hasLiveModels,
@@ -53,11 +56,15 @@ export default function ProviderDetails({
   isDefault,
   onRemoveProvider,
   onSetDisabled,
+  capCooldown,
 }: {
   item: WorkspaceItem;
   usageTotals?: ProviderUsageTotals;
   modelUsage?: ProviderModelUsageRow[];
   quotaReport?: ProviderQuotaReportView;
+  quotaRefreshing?: boolean;
+  quotaFailed?: boolean;
+  onRefreshQuota?: () => void;
   availableModels: string[];
   peerProviders?: import("./ProviderSettings").ProviderPeerOption[];
   /** Server-reported live-catalog provenance; see filterModels(). */
@@ -84,6 +91,8 @@ export default function ProviderDetails({
   isDefault?: boolean;
   onRemoveProvider?: (name: string) => void;
   onSetDisabled?: (name: string, disabled: boolean) => void;
+  /** Active weekly/inference-cap cooldown from /api/config. */
+  capCooldown?: import("../../pages/providers-shared").ProviderCapCooldown;
 }) {
   const t = useT();
   const [tab, setTab] = useState<Tab>("overview");
@@ -228,6 +237,7 @@ export default function ProviderDetails({
             usageTotals={usageTotals}
             quotaReport={quotaReport}
             oauthEmail={oauthEmail}
+            capCooldown={capCooldown}
             onEditSettings={() => switchTab("settings")}
             onViewUsage={() => switchTab("usage")}
             onUpdateProvider={onUpdateProvider}
@@ -270,7 +280,15 @@ export default function ProviderDetails({
           />
         )}
         {tab === "usage" && (
-          <ProviderUsage item={item} usageTotals={usageTotals} quotaReport={quotaReport} modelUsage={modelUsage} />
+          <ProviderUsage
+            item={item}
+            usageTotals={usageTotals}
+            quotaReport={quotaReport}
+            modelUsage={modelUsage}
+            quotaRefreshing={quotaRefreshing}
+            quotaFailed={quotaFailed}
+            onRefreshQuota={onRefreshQuota}
+          />
         )}
         {tab === "accounts" && (
           <ProviderAuthPanel

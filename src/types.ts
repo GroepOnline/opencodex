@@ -657,6 +657,14 @@ export interface OcxConfig {
   providerContextCaps?: Record<string, number>;
   /** Global Codex-visible context cap value (tokens). Falls back to DEFAULT_PROVIDER_CONTEXT_CAP. */
   contextCapValue?: number;
+  /** Token/cost budget thresholds for usage alerts (see src/usage/budgets.ts). */
+  budgets?: {
+    tokenDaily?: number;
+    tokenWeekly?: number;
+    costDailyEur?: number;
+    alertActions?: Array<"log" | "posthog" | "webhook">;
+    webhookUrl?: string;
+  };
   /** Bind hostname. Default "127.0.0.1" (loopback only). Set "0.0.0.0" to expose on all interfaces. */
   hostname?: string;
   /**
@@ -796,14 +804,6 @@ export interface OcxConfig {
    * by default for backward compatibility; single-account setups are unaffected while disabled.
    */
   codexRequestPacing?: OcxCodexRequestPacing;
-  /** Token/cost budget thresholds for usage alerts (see src/usage/budgets.ts). */
-  budgets?: {
-    tokenDaily?: number;
-    tokenWeekly?: number;
-    costDailyEur?: number;
-    alertActions?: Array<"log" | "posthog" | "webhook">;
-    webhookUrl?: string;
-  };
   /** Virtual `combo/<id>` models spanning concrete provider/model targets (issue #133). */
   combos?: Record<string, OcxComboConfig>;
   /** Background proactive token refresh ("Token Guardian"). Off by default; see OcxTokenGuardianConfig. */
