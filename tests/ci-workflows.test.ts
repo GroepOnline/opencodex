@@ -113,6 +113,7 @@ describe("GitHub Actions hardening", () => {
       ".github/workflows/ci.yml",
       ".github/workflows/enforce-pr-target.yml",
       ".github/workflows/issue-triage.yml",
+      ".github/workflows/publish-on-tag.yml",
       ".github/workflows/release.yml",
       ".github/workflows/stale-needs-info.yml",
       ".npmignore",
