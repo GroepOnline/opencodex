@@ -298,6 +298,9 @@ export default function Providers({ apiBase }: { apiBase: string }) {
             modelsLoadFailed={data.modelsLoadFailed}
             onRetryModels={data.onRetryModels}
             capCooldown={data.capCooldown}
+            quotaRefreshing={data.quotaRefreshing}
+            quotaFailed={data.quotaFailed}
+            onRefreshQuota={data.onRefreshQuota}
             oauthEmail={loginStatus?.email}
             onDeselect={() => setWorkspaceSelected(null)}
             apiBase={apiBase}

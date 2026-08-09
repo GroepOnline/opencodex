@@ -46,6 +46,9 @@ export interface DetailSlotData {
   onRetryModels?: () => void;
   /** Active weekly/inference-cap cooldown for this provider, if any. */
   capCooldown?: import("../../pages/providers-shared").ProviderCapCooldown;
+  quotaRefreshing?: boolean;
+  quotaFailed?: boolean;
+  onRefreshQuota?: () => void;
 }
 
 const SORT_DEFS: { id: ProviderSortMode; labelKey: "pws.sort.az" | "pws.sort.za" | "pws.sort.freePaid" | "pws.sort.paidFree" | "pws.sort.accountsFirst" }[] = [
@@ -531,6 +534,9 @@ export default function ProviderWorkspaceShell({
             modelsLoadFailed,
             onRetryModels: retryModels,
             capCooldown: providerCooldowns?.[selectedItem.name],
+            quotaRefreshing: quotaCards[selectedItem.name]?.status === "loading",
+            quotaFailed: quotaCards[selectedItem.name]?.status === "error",
+            onRefreshQuota: () => refreshQuota(selectedItem.name, { force: true }),
           }) ?? (
             <div className="pws-detail-placeholder">
               <h3>{formatProviderDisplayName(selectedItem.name)}</h3>
