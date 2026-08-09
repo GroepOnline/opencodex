@@ -42,16 +42,11 @@ jobs:
               path.join(process.cwd(), ".github", "scripts", "pr-quality.cjs"),
             );
 
-            // Repo default is main (2026-08-04). Keep `dev` allowed during
-            // the cutover so older integration PRs are not falsely rejected.
-            // pull_request_target always evaluates this file from the default
-            // branch — merging this PR is the only way to clear the false
-            // [WRONG BRANCH] labels (chicken-and-egg until then).
-            const DEFAULT_BASE =
-              context.payload.repository?.default_branch || "main";
-            const ALLOWED_BASES = Array.from(
-              new Set(["dev", "main", DEFAULT_BASE]),
-            );
+            // PRs target `dev`, the integration branch. `main` is the release
+            // branch and only moves by promotion, so it is not an allowed base.
+            // (See tests/ci-workflows.test.ts — the allow-list is pinned there.)
+            const DEFAULT_BASE = "dev";
+            const ALLOWED_BASES = ["dev"];
             const TITLE_PREFIX = "[WRONG BRANCH] ";
             const COMMENT_MARKER = "<!-- pr-quality-enforcer -->";
             const LEGACY_COMMENT_MARKER = "<!-- wrong-branch-enforcer -->";
