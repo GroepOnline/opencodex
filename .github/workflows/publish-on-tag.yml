@@ -108,9 +108,12 @@ jobs:
 
   deploy:
     needs: publish
+    # secrets are not usable in job-level `if`, so gate on the DEPLOY_HOST repo variable
+    # (set it + the DEPLOY_SSH_KEY secret to enable automated rollout). The script also
+    # self-skips if the key/secret is missing, so a half-configured deploy can't fail.
     if: >-
       ${{ !cancelled() && needs.publish.result == 'success'
-          && secrets.DEPLOY_SSH_KEY != '' && secrets.DEPLOY_HOST != '' }}
+          && vars.DEPLOY_HOST != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -123,6 +126,10 @@ jobs:
           VERSION: ${{ needs.publish.outputs.version }}
         run: |
           set -euo pipefail
+          if [ -z "${DEPLOY_SSH_KEY:-}" ] || [ -z "${DEPLOY_HOST:-}" ]; then
+            echo "deploy not configured (set DEPLOY_HOST var + DEPLOY_SSH_KEY secret); skipping"
+            exit 0
+          fi
           printf '%s\n' "$DEPLOY_SSH_KEY" > /tmp/deploy_key
           chmod 600 /tmp/deploy_key
           ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
