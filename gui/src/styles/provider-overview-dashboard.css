@@ -98,7 +98,8 @@
   padding-bottom: 2px;
 }
 
-.pws-dashboard-attention .pws-dashboard-section-title {
+.pws-dashboard-attention .pws-dashboard-section-title,
+.pws-dashboard-caps .pws-dashboard-section-title {
   display: inline-flex;
   align-items: center;
   gap: 6px;

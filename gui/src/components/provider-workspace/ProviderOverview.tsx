@@ -11,12 +11,15 @@ import { accountQuotaFromReport, formatQuotaSourceLabel, type ProviderQuotaRepor
 import type { ProviderUsageTotals } from "./types";
 import { authModeLabel } from "./ProviderRail";
 import type { ProviderUpdatePatch } from "./types";
+import { formatResetFuture } from "../QuotaBars";
+import { formatProviderDisplayName } from "../../provider-icons";
 
 export default function ProviderOverview({
   item, usageTotals, quotaReport, oauthEmail,
   onEditSettings, onViewUsage, onUpdateProvider,
   onReauthenticate, onCancelLogin, reauthBusy = false,
   accountPanel,
+  capCooldown,
 }: {
   item: WorkspaceItem;
   usageTotals?: ProviderUsageTotals;
@@ -34,6 +37,8 @@ export default function ProviderOverview({
    * duplication is intentional (D2) and cannot desync because both read one controller.
    */
   accountPanel?: ReactNode;
+  /** Active weekly/inference-cap cooldown from /api/config. */
+  capCooldown?: import("../../pages/providers-shared").ProviderCapCooldown;
 }) {
   const t = useT();
   const { locale } = useI18n();
@@ -48,9 +53,31 @@ export default function ProviderOverview({
   const requests = usageTotals?.requests;
   const tokens = usageTotals?.totalTokens;
   const quota = accountQuotaFromReport(quotaReport);
+  const cooldownReset = capCooldown
+    ? formatResetFuture(capCooldown.until, t, locale)
+    : "";
   return (
     <div className="pws-overview-layout">
       <div className="pws-overview-main">
+      {capCooldown && (
+        <div className="pws-auth-summary pws-auth-summary--warn pws-cap-cooldown" role="status">
+          <IconAlert style={{ width: 14, height: 14 }} aria-hidden="true" />
+          <div>
+            <strong>{t("pws.capCooldown.title")}</strong>
+            <p className="muted">
+              {t("pws.capCooldown.banner", {
+                provider: formatProviderDisplayName(item.name),
+                reset: cooldownReset,
+              })}
+              {" "}
+              {capCooldown.disabledProvider ? t("pws.capCooldown.disabled") : t("pws.capCooldown.paused")}
+            </p>
+            {capCooldown.message && (
+              <p className="muted pws-cap-cooldown-msg"><code>{capCooldown.message}</code></p>
+            )}
+          </div>
+        </div>
+      )}
       <section className="pws-section" aria-label={t("pws.connection")}>
         <h3 className="pws-section-title">{t("pws.connection")}</h3>
         <dl className="pws-kv">

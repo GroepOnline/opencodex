@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { localeDicts } from "./helpers/locales";
 
 async function apiKeysSources(): Promise<string> {
   const page = await Bun.file(new URL("../src/pages/ApiKeys.tsx", import.meta.url)).text();
@@ -87,17 +88,21 @@ test("ApiKeys workspace keeps endpoint, generate, models, and usage panels", asy
   expect(page).toContain('from "../api-access-models"');
 });
 
-test("apikeys workspace i18n keys exist in every locale", async () => {
-  const locales = ["en"] as const; // full dictionaries; nl.ts spreads en and only overrides a subset
-  for (const locale of locales) {
-    const dict = await Bun.file(new URL(`../src/i18n/${locale}.ts`, import.meta.url)).text();
-    expect(dict).toContain('"api.workspace.overview":');
-    expect(dict).toContain('"api.workspace.details":');
-    expect(dict).toContain('"api.workspace.deleteKey":');
-    expect(dict).toContain('"api.workspace.usageExamples":');
-    expect(dict).toContain('"api.copyUrlHint":');
-    expect(dict).toContain('"api.urlCopied":');
-    expect(dict).toContain('"api.copyExampleHint":');
-    expect(dict).toContain('"api.exampleCopied":');
+test("apikeys workspace i18n keys resolve in every shipped locale", () => {
+  // The gate follows the shipped registry (en/nl) and asserts *resolved* dictionaries:
+  // nl spreads en, so a raw-source check would false-negative on inherited keys.
+  for (const [locale, dict] of localeDicts()) {
+    for (const key of [
+      "api.workspace.overview",
+      "api.workspace.details",
+      "api.workspace.deleteKey",
+      "api.workspace.usageExamples",
+      "api.copyUrlHint",
+      "api.urlCopied",
+      "api.copyExampleHint",
+      "api.exampleCopied",
+    ] as const) {
+      expect(`${locale}:${key}:${dict[key] ?? ""}`).not.toBe(`${locale}:${key}:`);
+    }
   }
 });

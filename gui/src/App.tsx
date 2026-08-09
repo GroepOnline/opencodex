@@ -4,8 +4,7 @@ import Providers from "./pages/Providers";
 import Models from "./pages/Models";
 import Combos from "./pages/Combos";
 import Subagents from "./pages/Subagents";
-import Logs from "./pages/Logs";
-import Usage from "./pages/Usage";
+import Verkeer from "./pages/Verkeer";
 import Storage from "./pages/Storage";
 import ApiKeys from "./pages/ApiKeys";
 import Claude from "./pages/Claude";
@@ -185,8 +184,7 @@ export default function App() {
             {route.view === "modellen" && route.sub === null && <Models apiBase={API_BASE} />}
             {route.view === "modellen" && route.sub === "combos" && <Combos key={API_BASE} apiBase={API_BASE} />}
             {route.view === "modellen" && route.sub === "subagents" && <Subagents key={API_BASE} apiBase={API_BASE} />}
-            {route.view === "verkeer" && route.sub === null && <Usage apiBase={API_BASE} />}
-            {route.view === "verkeer" && (route.sub === "logs" || route.sub === "debug") && <Logs apiBase={API_BASE} />}
+            {route.view === "verkeer" && <Verkeer apiBase={API_BASE} target={route.sub ?? "usage"} />}
             {route.view === "systeem" && route.sub === null && <Startup apiBase={API_BASE} />}
             {route.view === "systeem" && route.sub === "storage" && <Storage apiBase={API_BASE} />}
             {route.view === "systeem" && route.sub === "api" && <ApiKeys apiBase={API_BASE} />}

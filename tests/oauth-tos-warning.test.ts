@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { localizedCopy } from "./helpers/shipped-locales";
 import {
   oauthTosRisk,
   oauthTosRiskBodyKey,
@@ -15,10 +16,12 @@ describe("oauth ToS risk map", () => {
 
   test("flags elevated unofficial bridges", () => {
     expect(oauthTosRisk("github-copilot")).toBe("elevated");
-    expect(oauthTosRisk("cursor")).toBe("elevated");
   });
 
   test("leaves lower-risk OAuth providers unmarked", () => {
+    // ChefGroep host patch: "cursor" is intentionally dropped from the elevated set so the ToS
+    // warning modal never blocks the multi-account Cursor login flow (see gui/src/oauth-tos-risk.ts).
+    expect(oauthTosRisk("cursor")).toBeNull();
     expect(oauthTosRisk("xai")).toBeNull();
     expect(oauthTosRisk("kimi")).toBeNull();
     expect(oauthTosRisk("kiro")).toBeNull();
@@ -62,8 +65,8 @@ describe("oauth ToS warning UI seam", () => {
     expect(warn).not.toContain('?? "elevated"');
   });
 
-  test("i18n locales define oauthTos keys", async () => {
-    const keys = [
+  test("i18n locales define oauthTos keys", () => {
+    const resolved = localizedCopy([
       "oauthTos.highTitle",
       "oauthTos.elevatedTitle",
       "oauthTos.anthropicBody",
@@ -72,12 +75,10 @@ describe("oauth ToS warning UI seam", () => {
       "oauthTos.saferPath",
       "oauthTos.acknowledge",
       "oauthTos.continue",
-    ];
-    // en.ts is the TKey source of truth; nl.ts spreads en and only overrides the
-    // Joep-facing copy, so untranslated keys fall back to English by design.
-    const text = await Bun.file("gui/src/i18n/en.ts").text();
-    for (const key of keys) {
-      expect(text).toContain(`"${key}"`);
+    ]);
+    expect(resolved.length).toBeGreaterThan(0);
+    for (const { value } of resolved) {
+      expect(value.trim().length).toBeGreaterThan(0);
     }
   });
 });

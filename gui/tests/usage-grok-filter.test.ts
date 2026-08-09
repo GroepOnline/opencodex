@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-
-const LOCALES = ["en"] as const; // full dictionaries; nl.ts spreads en and only overrides a subset
+import { localeDicts } from "./helpers/locales";
 
 async function read(path: string): Promise<string> {
   return Bun.file(new URL(path, import.meta.url)).text();
@@ -14,11 +13,10 @@ test("the Usage filter includes grok with its icon", async () => {
   expect(page).toContain("/provider-icons/grok.svg");
 });
 
-test("every locale carries the grok surface label", async () => {
+test("every locale carries the grok surface label", () => {
   const missing: string[] = [];
-  for (const locale of LOCALES) {
-    const dict = await read(`../src/i18n/${locale}.ts`);
-    if (!dict.includes('"logs.filter.surface.grok"')) missing.push(locale);
+  for (const [locale, dict] of localeDicts()) {
+    if (!(dict["logs.filter.surface.grok"] ?? "").trim()) missing.push(locale);
   }
   expect(missing).toEqual([]);
 });

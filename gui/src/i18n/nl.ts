@@ -298,6 +298,15 @@ const overrides: Partial<Record<TKey, string>> = {
   "api.keysLoadFailed": "Kon de API-keys niet laden.",
   "api.createFailed": "Kon geen API-key aanmaken.",
   "api.deleteFailed": "Kon de API-key niet verwijderen.",
+
+  // provider weekly/inference caps (ported)
+  "pws.capCooldown.title": "Wekelijks limiet",
+  "pws.capCooldown.section": "Verbruikslimieten",
+  "pws.capCooldown.banner": "{provider} zit aan een wekelijks/inference-plafond. {reset}",
+  "pws.capCooldown.disabled": "Tijdelijk uitgeschakeld tot de limiet reset.",
+  "pws.capCooldown.paused": "Routing voor deze leverancier staat tot die tijd stil.",
+  "pws.capCooldown.badge": "Vol",
+  "pws.attention.capCooldown": "Wekelijks/inference-limiet — {reset}",
 };
 
 export const nl: Record<TKey, string> = { ...en, ...overrides };

@@ -946,6 +946,29 @@ async function maybeFetchProviderQuota(
   return (await probeProviderQuota(name, provider, config, forceRefresh)).report;
 }
 
+/**
+ * Force-probe exactly one provider's quota. Never touches other providers'
+ * upstreams; merges the fresh row into the shared cache only when the cache
+ * already exists for the current provider set (a single-provider probe must
+ * not establish a global cache entry that would then serve one-row responses).
+ */
+export async function fetchSingleProviderQuotaReport(
+  config: OcxConfig,
+  name: string,
+): Promise<{ generatedAt: number; report: ProviderQuotaReport | null }> {
+  const provider = Object.hasOwn(config.providers, name) ? config.providers[name] : undefined;
+  if (!provider) return { generatedAt: Date.now(), report: null };
+  const key = cacheKey(config);
+  const epoch = invalidationEpoch;
+  const report = await maybeFetchProviderQuota(name, provider, config, true);
+  if (report && epoch === invalidationEpoch && cache && cache.key === key) {
+    const reports = cache.response.reports.filter(item => item.provider !== name);
+    reports.push(report);
+    cache = { key, ts: cache.ts, response: { generatedAt: Date.now(), reports } };
+  }
+  return { generatedAt: Date.now(), report };
+}
+
 export async function fetchProviderQuotaReports(config: OcxConfig, forceRefresh = false): Promise<ProviderQuotaResponse> {
   const key = cacheKey(config);
   const now = Date.now();

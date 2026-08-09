@@ -11,6 +11,7 @@ import {
   normalizeAccountPoolStrategy,
   notePoolRotationFailure,
   notePoolRotationSuccess,
+  clearPoolRotationState,
   peekRoundRobinAccount,
   pickRoundRobinAccount,
   seedPoolRotationAccount,
@@ -18,7 +19,7 @@ import {
 import { CODEX_UNKNOWN_USAGE_SCORE, getAccountQuota } from "./quota";
 import { MAIN_CODEX_ACCOUNT_ID, getMainAccountPlan } from "./main-account";
 import { isSelectableCodexPoolAccount } from "./account-id";
-import type { OcxConfig } from "../types";
+import type { OcxAccountPoolRotationStrategy, OcxConfig } from "../types";
 
 type ThreadAffinityEntry = {
   accountId: string;
@@ -34,6 +35,26 @@ export type CodexThreadResolution =
   | { status: "selected"; accountId: string }
   | { status: "none" }
   | { status: "expired"; accountId: string };
+
+/**
+ * Effective Codex pool strategy.
+ *
+ * `accountPoolStrategy` is authoritative. `codexRotationMode` is the fork's older alias
+ * (see `OcxConfig.codexRotationMode`): when the canonical field is unset, `"round-robin"`
+ * there selects round-robin, while `"failover"` / unset normalize to the default quota
+ * sticky path. Without this the alias would silently become inert.
+ */
+function resolveCodexPoolStrategy(config: OcxConfig): OcxAccountPoolRotationStrategy {
+  return normalizeAccountPoolStrategy(config.accountPoolStrategy ?? config.codexRotationMode);
+}
+
+/**
+ * Reset the Codex round-robin ring. Intended for deterministic tests; the cursor now lives
+ * in `pool-rotation`'s per-pool selection state rather than a persisted file.
+ */
+export function resetCodexRoundRobinCursor(): void {
+  clearPoolRotationState(POOL_KEY_CODEX);
+}
 
 /**
  * Process-local cursor for automatic RR/fill-first (and quota-429 when not
@@ -824,7 +845,7 @@ function pickUnboundStrategyAccount(
   commit: boolean,
   quotaScope?: CodexQuotaScope,
 ): string | null {
-  const strategy = normalizeAccountPoolStrategy(config.accountPoolStrategy);
+  const strategy = resolveCodexPoolStrategy(config);
   if (strategy === "quota") return null;
   const poolKey = codexPoolKeyForScope(quotaScope);
 
@@ -910,7 +931,7 @@ export function pickAlternateCodexAccount(
   now = Date.now(),
   quotaScope?: CodexQuotaScope,
 ): string | null {
-  const strategy = normalizeAccountPoolStrategy(config.accountPoolStrategy);
+  const strategy = resolveCodexPoolStrategy(config);
   if (strategy === "round-robin") {
     const eligible = listEligibleCodexAccountIds(config, now, quotaScope).filter(id => id !== excludeId);
     return pickRoundRobinAccount(codexPoolKeyForScope(quotaScope), eligible, stickyLimitForConfig(config));
@@ -945,7 +966,7 @@ function setActiveCodexAccount(config: OcxConfig, accountId: string): void {
 
 /** Quota strategy persists; RR/fill-first keep a process-local cursor only. */
 function promoteActiveCodexAccount(config: OcxConfig, accountId: string): void {
-  if (normalizeAccountPoolStrategy(config.accountPoolStrategy) === "quota") {
+  if (resolveCodexPoolStrategy(config) === "quota") {
     setActiveCodexAccount(config, accountId);
     return;
   }
@@ -1054,7 +1075,7 @@ export function previewCodexAccountForRequest(
     ) {
       // Quota strategy only: non-quota strategies keep affinity for ongoing threads
       // (new-session-only rotation — docs / affinity policy A).
-      const strategy = normalizeAccountPoolStrategy(config.accountPoolStrategy);
+      const strategy = resolveCodexPoolStrategy(config);
       if (strategy === "quota") {
         const threshold = config.autoSwitchThreshold ?? 80;
         if (threshold > 0) {
@@ -1136,7 +1157,7 @@ export function resolveCodexAccountForThreadDetailed(
       // serving for up to 60s after a secondary with quota is available (#584).
       // Non-quota strategies (RR / fill-first) keep affinity for ongoing threads —
       // rotation is new-session-only (affinity policy A).
-      const strategy = normalizeAccountPoolStrategy(config.accountPoolStrategy);
+      const strategy = resolveCodexPoolStrategy(config);
       if (strategy === "quota") {
         const threshold = config.autoSwitchThreshold ?? 80;
         const usage = threshold > 0

@@ -48,7 +48,7 @@ cd docs-site && bun install && bun dev
 
 ## Docs publishing
 
-The public docs publish to GitHub Pages at <https://opencodex.me/>. The
+The public docs publish to GitHub Pages at <https://github.com/OnlineChefGroep/opencodex/>. The
 `.github/workflows/deploy-docs.yml` workflow runs on `main` pushes that touch `docs-site/**` or the
 workflow itself, builds `docs-site`, and deploys the generated site. Before pushing docs changes,
 run:
@@ -71,10 +71,6 @@ GitHub Actions intentionally stay small:
 - **Release** (`.github/workflows/release.yml`) is manual. It does not act as a second full CI
   pipeline; before dry-run or publish it requires the exact release commit (`GITHUB_SHA`) to already
   have a successful Cross-platform CI run.
-- **Stale needs-info** (`.github/workflows/stale-needs-info.yml`) runs daily on the default branch.
-  Open issues labeled `needs-info` with no activity for 14 days get a warning; after 7 more idle
-  days they close as not planned. Any update clears the stale warning. To keep long-lived work open,
-  remove `needs-info` (for example when promoting an issue to `roadmap`).
 
 Use the helper for releases:
 
@@ -179,7 +175,7 @@ preset it cannot stand behind. Promote the row to the registry once the evidence
 
 ## Adding an adapter
 
-Implement `ProviderAdapter` (see [Adapters](/reference/adapters/)) in `src/adapters/`,
+Implement `ProviderAdapter` (see [Adapters](/opencodex/reference/adapters/)) in `src/adapters/`,
 register its name in `src/server/adapter-resolve.ts`, and bridge its output to internal
 `AdapterEvent`s. Reuse `image.ts` for image handling and follow `openai-chat.ts` for ordinary
 streaming/tool calls; use `fetchResponse` only when the adapter owns transport retries, or `runTurn`

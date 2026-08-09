@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { localeDicts } from "./helpers/locales";
 
 /**
  * Subagents ships a single denser workspace layout (rail + featured main pane).
@@ -55,9 +56,10 @@ test("Subagents workspace assets and i18n keys are present", async () => {
   const workspaceCss = Bun.file(new URL("../src/styles-subagents-workspace.css", import.meta.url));
   expect(await workspaceCss.exists()).toBe(true);
 
-  // en is the only full dictionary; nl.ts spreads en and only overrides a subset.
-  for (const locale of ["en"]) {
-    const src = await Bun.file(new URL(`../src/i18n/${locale}.ts`, import.meta.url)).text();
-    expect(src).toContain("sub.workspace.");
+  // Every shipped locale resolves the Workspace-only strings. The gate follows the
+  // registry (en/nl) and reads resolved dictionaries, since nl spreads en.
+  for (const [locale, dict] of localeDicts()) {
+    expect(`${locale}:${dict["sub.workspace.allModels"] ?? ""}`).not.toBe(`${locale}:`);
+    expect(`${locale}:${dict["sub.workspace.mainAria"] ?? ""}`).not.toBe(`${locale}:`);
   }
 });
