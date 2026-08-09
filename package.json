@@ -1,6 +1,6 @@
 {
   "name": "@groeponline/opencodex",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "GroepOnline fork — Universal provider proxy for OpenAI Codex & Claude Code. Use any LLM with Codex CLI/App/SDK and Claude Code.",
   "type": "module",
   "main": "./bin/package-main.mjs",

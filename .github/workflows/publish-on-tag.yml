@@ -1,0 +1,130 @@
+name: Publish on tag
+
+# Tag a commit on main with `vX.Y.Z` and this workflow publishes
+# `@groeponline/opencodex` to npm (Trusted Publishing / OIDC, no token) and,
+# if deploy secrets are configured, rolls the new version out to chef-control-01.
+#
+# Publishing is the reliable, always-on half. Deployment is best-effort: it only
+# runs when DEPLOY_SSH_KEY + DEPLOY_HOST secrets exist, so a missing/inaccessible
+# fleet host never blocks the npm publish. Control-01 is Tailscale-only, so a
+# plain CI runner cannot reach it over SSH — point DEPLOY_HOST at a reachable
+# bastion/proxy, or run the documented manual rollout instead.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write # create the GitHub Release
+  id-token: write # OIDC auth for Trusted Publishing + provenance
+  actions: read # verify Cross-platform CI for this commit
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Require successful Cross-platform CI
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "$VERSION" == *-* ]]; then
+            DIST_TAG="preview"
+          else
+            DIST_TAG="latest"
+          fi
+          echo "dist_tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
+          ci_url="$(gh run list --workflow ci.yml --commit "$GITHUB_SHA" \
+            --status success --limit 1 --json url --jq '.[0].url // ""')"
+          if [ -z "$ci_url" ]; then
+            echo "::error::No successful Cross-platform CI run for ${GITHUB_SHA}"
+            gh run list --workflow ci.yml --commit "$GITHUB_SHA" --limit 5 || true
+            exit 1
+          fi
+          echo "Cross-platform CI passed: ${ci_url}"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Verify npm version
+        run: |
+          npm_version="$(npm --version)"
+          echo "npm=${npm_version}"
+          node -e 'const [a,b]=process.argv[1].split(".").map(Number); if(a<11||(a===11&&b<5)){console.error("npm too old for trusted publishing");process.exit(1)}' "$npm_version"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify version matches package.json
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          pkg="$(node -p "require('./package.json').version")"
+          echo "package.json=${pkg} tag=${VERSION}"
+          test "$pkg" = "$VERSION" || {
+            echo "::error::package.json ($pkg) != tag ($VERSION) — bump package.json before tagging";
+            exit 1;
+          }
+
+      - name: Publish to npm (Trusted Publishing)
+        env:
+          DIST_TAG: ${{ steps.ci.outputs.dist_tag }}
+        run: npm publish --access public --tag "$DIST_TAG"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          DIST_TAG: ${{ steps.ci.outputs.dist_tag }}
+        run: |
+          notes="Published \`@groeponline/opencodex@${VERSION}\` to npm (dist-tag \`${DIST_TAG}\`)."
+          gh release create "v${VERSION}" --title "v${VERSION}" --notes "$notes"
+
+  deploy:
+    needs: publish
+    if: >-
+      ${{ !cancelled() && needs.publish.result == 'success'
+          && secrets.DEPLOY_SSH_KEY != '' && secrets.DEPLOY_HOST != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Deploy to control-01 over SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER != '' && secrets.DEPLOY_USER || 'chef' }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/home/chef/opencodex-psp' }}
+          VERSION: ${{ needs.publish.outputs.version }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$DEPLOY_SSH_KEY" > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+          ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "v=$VERSION p=$DEPLOY_PATH; cd \"\$p\"; git fetch --force --tags origin; git checkout \"v\$v\"; bun install --frozen-lockfile; bun run build:gui; sudo systemctl restart opencodex-proxy.service; echo \"deployed v\$v\""

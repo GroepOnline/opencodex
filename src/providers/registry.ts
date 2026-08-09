@@ -470,6 +470,48 @@ const UMANS_MODEL_INPUT_MODALITIES: Record<string, string[]> = Object.fromEntrie
   UMANS_MODELS.map(id => [id, UMANS_TEXT_ONLY_MODELS.includes(id) ? ["text"] : ["text", "image"]]),
 );
 
+// ClinePass — restored from the upstream provider catalog. The live control-01 config enables
+// this provider, but the registration was dropped during the GroepOnline rebrand. Base URL,
+// adapter, model slugs, and modality/context snapshot ported from lidge-jun/opencodex.
+const CLINE_PASS_MODELS = [
+  "cline-pass/glm-5.2",
+  "cline-pass/kimi-k3",
+  "cline-pass/kimi-k2.7-code",
+  "cline-pass/kimi-k2.6",
+  "cline-pass/deepseek-v4-pro",
+  "cline-pass/deepseek-v4-flash",
+  "cline-pass/mimo-v2.5",
+  "cline-pass/mimo-v2.5-pro",
+  "cline-pass/minimax-m3",
+  "cline-pass/qwen3.7-max",
+  "cline-pass/qwen3.7-plus",
+];
+const CLINE_PASS_MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+  "cline-pass/glm-5.2": 1_048_576,
+  "cline-pass/kimi-k3": 1_048_576,
+  "cline-pass/kimi-k2.7-code": 262_144,
+  "cline-pass/kimi-k2.6": 262_144,
+  "cline-pass/deepseek-v4-pro": 1_048_576,
+  "cline-pass/deepseek-v4-flash": 1_048_576,
+  "cline-pass/mimo-v2.5": 1_050_000,
+  "cline-pass/mimo-v2.5-pro": 1_050_000,
+  "cline-pass/minimax-m3": 1_048_576,
+  "cline-pass/qwen3.7-max": 1_000_000,
+  "cline-pass/qwen3.7-plus": 1_000_000,
+};
+const CLINE_PASS_IMAGE_MODELS = new Set([
+  "cline-pass/kimi-k3",
+  "cline-pass/kimi-k2.7-code",
+  "cline-pass/kimi-k2.6",
+  "cline-pass/mimo-v2.5",
+  "cline-pass/minimax-m3",
+  "cline-pass/qwen3.7-plus",
+]);
+const CLINE_PASS_TEXT_ONLY_MODELS = CLINE_PASS_MODELS.filter(id => !CLINE_PASS_IMAGE_MODELS.has(id));
+const CLINE_PASS_MODEL_INPUT_MODALITIES: Record<string, string[]> = Object.fromEntries(
+  CLINE_PASS_MODELS.map(id => [id, CLINE_PASS_IMAGE_MODELS.has(id) ? ["text", "image"] : ["text"]]),
+);
+
 export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
   {
     id: "openai",
@@ -874,6 +916,25 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     id: "firepass", label: "Fire Pass (Fireworks Kimi)", baseUrl: "https://api.fireworks.ai/inference/v1", adapter: "openai-chat", authKind: "key",
     dashboardUrl: "https://fireworks.ai/account/api-keys",
     note: "Model data frozen pending Tier-2 entitlement proof",
+  },
+  {
+    // ClinePass subscription API. Uses a Cline API key and the full cline-pass/<model> upstream
+    // slug; quota is shared across the account's rolling 5-hour, weekly, and monthly limits.
+    // Restored from lidge-jun/opencodex after it was dropped in the GroepOnline rebrand.
+    id: "cline-pass",
+    label: "ClinePass",
+    adapter: "openai-chat",
+    baseUrl: "https://api.cline.bot/api/v1",
+    authKind: "key",
+    dashboardUrl: "https://app.cline.bot",
+    defaultModel: "cline-pass/kimi-k3",
+    models: CLINE_PASS_MODELS,
+    modelContextWindows: CLINE_PASS_MODEL_CONTEXT_WINDOWS,
+    modelInputModalities: CLINE_PASS_MODEL_INPUT_MODALITIES,
+    noVisionModels: CLINE_PASS_TEXT_ONLY_MODELS,
+    reasoningEfforts: ["low"],
+    preserveCustomDestination: true,
+    note: "ClinePass subscription API. Uses a Cline API key and the full cline-pass/<model> upstream slug; quota is shared across the account's rolling 5-hour, weekly, and monthly limits.",
   },
   {
     id: "moonshot", label: "Moonshot (Kimi API)", baseUrl: "https://api.moonshot.ai/v1", adapter: "openai-chat", authKind: "key",
