@@ -3,10 +3,10 @@ import { useI18n, LOCALES } from "../i18n/shared";
 import { IconX } from "../icons";
 import { applyTheme, readTheme, type Theme } from "../theme";
 
-const THEMES: { value: Theme; labelNl: string; labelEn: string }[] = [
-  { value: "light", labelNl: "Licht", labelEn: "Light" },
-  { value: "dark", labelNl: "Donker", labelEn: "Dark" },
-  { value: "system", labelNl: "Systeem", labelEn: "System" },
+const THEMES: { value: Theme; labelKey: "theme.light" | "theme.dark" | "theme.system" }[] = [
+  { value: "light", labelKey: "theme.light" },
+  { value: "dark", labelKey: "theme.dark" },
+  { value: "system", labelKey: "theme.system" },
 ];
 
 export default function Instellingen({ onClose }: { apiBase: string; onClose: () => void }) {
@@ -54,7 +54,7 @@ export default function Instellingen({ onClose }: { apiBase: string; onClose: ()
           <div className="setting-label">
             <div className="title">{t("theme.label")}</div>
             <div className="desc">
-              {THEMES.find(th => th.value === theme)?.labelNl ?? theme}
+              {t(THEMES.find(th => th.value === theme)?.labelKey ?? "theme.system")}
             </div>
           </div>
           <div className="usage-segmented" style={{ flexShrink: 0 }}>
@@ -65,7 +65,7 @@ export default function Instellingen({ onClose }: { apiBase: string; onClose: ()
                 className={`usage-segmented-btn${theme === th.value ? " active" : ""}`}
                 onClick={() => { applyTheme(th.value); setTheme(th.value); }}
               >
-                {locale === "nl" ? th.labelNl : th.labelEn}
+                {t(th.labelKey)}
               </button>
             ))}
           </div>
