@@ -57,6 +57,22 @@ interface ProviderModelDiscoverySharedSpec {
   query?: Readonly<Record<string, string>>;
   /** Declarative eligibility rules evaluated against each untrusted model row. */
   filter?: ProviderModelDiscoveryFilter;
+  /**
+   * Object keys that may hold the model-row array. Default is OpenAI's `data`.
+   * Google AI Studio uses `models` (`{ models: [{ name: "models/…" }] }`).
+   * Top-level arrays (Together) still work when no envelope matches.
+   */
+  envelopeKeys?: readonly string[];
+  /**
+   * Field on each row that carries the model id. Default `id`.
+   * Google AI Studio rows use `name` (`models/gemini-…`).
+   */
+  idField?: string;
+  /**
+   * Optional prefix stripped from the id field before validation
+   * (Google AI Studio: `models/`).
+   */
+  idStripPrefix?: string;
   /** Optional lower byte ceiling; the process-wide hard ceiling still wins. */
   maxResponseBytes?: number;
   /** Optional lower raw-row ceiling; the process-wide hard ceiling still wins. */
@@ -872,6 +888,20 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "gemini-3.5-flash": ["minimal", "low", "medium", "high"],
       "gemini-3.1-pro-preview": ["low", "medium", "high"],
     },
+    // AI Studio GET /v1beta/models returns `{ models: [{ name: "models/gemini-…" }] }`, not OpenAI `{ data: [{ id }] }`.
+    // Live discovery must parse that shape; otherwise catalog sync degrades to the static seed on every start.
+    modelDiscovery: {
+      envelopeKeys: ["models"],
+      idField: "name",
+      idStripPrefix: "models/",
+      // Keep generative chat/vision models; drop embeddings / AQA / imagen / veo / TTS-only rows.
+      filter: {
+        noneOf: [
+          { path: ["name"], containsAny: ["embedding", "aqa", "imagen", "veo", "tts", "gemini-2.0-flash-lite-preview-image-generation"], caseInsensitive: true },
+        ],
+      },
+    },
+    liveModels: true,
     jawcodeBundle: "google", extraMetadataAliases: ["gemini"],
   },
   // 2026-07-10: defaultModel is frozen pending Vertex-specific Tier-2 evidence; Gemini API
@@ -1250,7 +1280,8 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     authKind: "key",
     keyOptional: true,
     featured: true,
-    liveModels: true,
+    // The free-tier host answers chat only; GET …/models returns HTTP 400. Keep the static seed.
+    liveModels: false,
     dashboardUrl: "https://xiaomimimo.com",
     defaultModel: "mimo-auto",
     models: ["mimo-auto"],

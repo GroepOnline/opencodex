@@ -333,6 +333,29 @@ describe("registry-owned provider model discovery", () => {
         .toEqual({ ok: false, reason: "invalid_shape" });
     }
   });
+
+  test("parses Google AI Studio { models: [{ name }] } via registry discovery metadata", () => {
+    const discovery = resolveProviderModelDiscovery("google", {
+      adapter: "google",
+      baseUrl: "https://generativelanguage.googleapis.com",
+    });
+    expect(discovery.spec?.envelopeKeys).toEqual(["models"]);
+    expect(discovery.spec?.idField).toBe("name");
+    const result = extractProviderModelItems({
+      models: [
+        { name: "models/gemini-3.5-flash", displayName: "Gemini 3.5 Flash" },
+        { name: "models/text-embedding-004", displayName: "Embedding" },
+        { name: "models/gemini-3.6-flash", displayName: "Gemini 3.6 Flash" },
+        { name: "models/gemini-3.5-flash", displayName: "dup" },
+      ],
+    }, discovery);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.items.map(item => item.id)).toEqual([
+      "gemini-3.5-flash",
+      "gemini-3.6-flash",
+    ]);
+  });
 });
 
 describe("same-named custom provider preservation", () => {
