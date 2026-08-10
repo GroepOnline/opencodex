@@ -7,6 +7,12 @@ All notable changes to the GroepOnline `opencodex` fork. Format follows
 
 ## [Unreleased]
 
+### Fixed
+- Catalog: parse Google AI Studio live model lists (`models[].name`) instead of treating every 2xx as malformed.
+- Catalog: registry fallback for context windows/modalities restores `google-combo` when config omitted per-model metadata.
+- Providers: `google-antigravity` skips Cloud Code Assist `/models` (no more startup HTTP 404 spam); DeepSeek authoritative drops are quiet.
+- Management API: `GET /api/providers` reports registry-enriched `liveModels` so the GUI matches catalog gather.
+
 ### Changed
 - GUI: removed the unused `@gitlawb/openclaude` dependency.
 - GUI: dropped emoji from warning copy (`⚠`) to match the design-language ban; removed the
