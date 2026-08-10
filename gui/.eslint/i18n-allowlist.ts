@@ -48,8 +48,6 @@ const TECHNICAL_UNITS = new Set([
   "Fr",
   // IEC binary unit rendered next to a formatted number; a unit symbol, not UI prose.
   "GiB",
-  // Process-id label next to a number.
-  "PID",
 ]);
 
 /** Non-UI technical strings (API paths, CSS, shell, headers, debug fields). */

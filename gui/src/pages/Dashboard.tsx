@@ -145,7 +145,7 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
             </div>
             <div className="pws-dashboard-card pws-dashboard-card--muted">
               <span className="pws-dashboard-card-count" style={{ fontSize: "1rem" }}>{health.data.pid}</span>
-              <span className="pws-dashboard-card-label">PID</span>
+              <span className="pws-dashboard-card-label">{t("dash.pid")}</span>
             </div>
           </>
         )}
