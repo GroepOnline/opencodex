@@ -12,11 +12,25 @@ All notable changes to the GroepOnline `opencodex` fork. Format follows
 - Catalog: registry fallback for context windows/modalities restores `google-combo` when config omitted per-model metadata.
 - Providers: `google-antigravity` skips Cloud Code Assist `/models` (no more startup HTTP 404 spam); DeepSeek seed drops deprecated `deepseek-chat`/`deepseek-reasoner`.
 - Management API: `GET /api/providers` reports registry-enriched `liveModels` so the GUI matches catalog gather.
+- Claude: gateway model-cache refresh authenticates to tunnelled proxies; host-managed stays on with an admission token so `/login` does not clash.
+- GUI: `#dashboard` is the landing route again (no longer rewritten to `#leveranciers`).
 
 ### Changed
 - GUI: removed the unused `@gitlawb/openclaude` dependency.
 - GUI: dropped emoji from warning copy (`⚠`) to match the design-language ban; removed the
   unreferenced `dash.shadowCallWarning` key.
+
+## [1.1.1] — 2026-08-09
+
+Published `@groeponline/opencodex@1.1.1` (npm `latest`) and Homebrew `opencodex` 1.1.1.
+
+### Added
+- Tag-driven npm publish workflow (`publish-on-tag.yml`) with OIDC / `NPM_TOKEN` fallback.
+- ClinePass provider restore on the fork release train.
+
+### Fixed
+- CI path-filter contract includes the publish-on-tag workflow.
+- Verkeer route wired into the app hash map.
 
 ## [1.0.0] — 2026-08-07
 
