@@ -946,9 +946,10 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     adapter: "openai-chat",
     authKind: "key",
     dashboardUrl: "https://platform.deepseek.com/api_keys",
-    // deepseek-chat/deepseek-reasoner are upstream-deprecated at 2026-07-24 15:59 UTC;
-    // kept until then. Evidence: devlog/_plan/260710_provider_hardening/002_research_cn.md.
-    models: ["deepseek-chat", "deepseek-reasoner", ...DEEPSEEK_THINKING_MODELS],
+    // deepseek-chat/deepseek-reasoner were upstream-deprecated at 2026-07-24 15:59 UTC and are
+    // gone from the live catalog — keep the seed on V4 only so authoritative discovery does not
+    // drop stale configured ids every start. Evidence: 260710 provider hardening notes.
+    models: [...DEEPSEEK_THINKING_MODELS],
     defaultModel: "deepseek-v4-flash",
     modelContextWindows: { "deepseek-v4-flash": 1_000_000, "deepseek-v4-pro": 1_000_000 },
     /* [Decision Log]
@@ -962,7 +963,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     // Issue #88: every DeepSeek API model is text-only input (no image support upstream) — the
     // vision sidecar describes attached images for them, and the catalog advertises image input
     // on their behalf (same treatment as opencode-go's DeepSeek V4 entries above).
-    noVisionModels: ["deepseek-chat", "deepseek-reasoner", ...DEEPSEEK_THINKING_MODELS],
+    noVisionModels: [...DEEPSEEK_THINKING_MODELS],
   },
   // llama-3.3-70b was deprecated by Cerebras on 2026-02-16. Evidence: devlog/_plan/260710_provider_hardening/003_research_aggregators.md.
   { id: "cerebras", label: "Cerebras", baseUrl: "https://api.cerebras.ai/v1", adapter: "openai-chat", authKind: "key", dashboardUrl: "https://cloud.cerebras.ai/platform/apikeys", defaultModel: "gpt-oss-120b" },

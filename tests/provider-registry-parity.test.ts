@@ -114,8 +114,9 @@ describe("provider registry parity", () => {
     expect(KEY_LOGIN_PROVIDERS.deepseek.modelReasoningEffortMap?.["deepseek-v4-pro"]?.max).toBe("max");
     expect(KEY_LOGIN_PROVIDERS.deepseek.preserveReasoningContentModels).toEqual(["deepseek-v4-pro", "deepseek-v4-flash"]);
     // Issue #88: every DeepSeek API model is text-only input — the vision sidecar covers them.
+    expect(KEY_LOGIN_PROVIDERS.deepseek.models).toEqual(["deepseek-v4-pro", "deepseek-v4-flash"]);
     expect(KEY_LOGIN_PROVIDERS.deepseek.noVisionModels).toEqual([
-      "deepseek-chat", "deepseek-reasoner", "deepseek-v4-pro", "deepseek-v4-flash",
+      "deepseek-v4-pro", "deepseek-v4-flash",
     ]);
   });
 

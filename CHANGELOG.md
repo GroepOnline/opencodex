@@ -10,7 +10,7 @@ All notable changes to the GroepOnline `opencodex` fork. Format follows
 ### Fixed
 - Catalog: parse Google AI Studio live model lists (`models[].name`) instead of treating every 2xx as malformed.
 - Catalog: registry fallback for context windows/modalities restores `google-combo` when config omitted per-model metadata.
-- Providers: `google-antigravity` skips Cloud Code Assist `/models` (no more startup HTTP 404 spam); DeepSeek authoritative drops are quiet.
+- Providers: `google-antigravity` skips Cloud Code Assist `/models` (no more startup HTTP 404 spam); DeepSeek seed drops deprecated `deepseek-chat`/`deepseek-reasoner`.
 - Management API: `GET /api/providers` reports registry-enriched `liveModels` so the GUI matches catalog gather.
 
 ### Changed
