@@ -32,14 +32,15 @@ describe("mimo-free provider registry", () => {
     expect(entry?.authKind).toBe("key");
     expect(entry?.keyOptional).toBe(true);
     expect(entry?.featured).toBe(true);
-    expect(entry?.liveModels).toBe(true);
+    // Free MiMo's /models answers HTTP 400 for typical keys — keep the static seed only.
+    expect(entry?.liveModels).toBe(false);
     expect(entry?.defaultModel).toBe("mimo-auto");
   });
 
   test("providerConfigSeed propagates keyOptional and liveModels", () => {
     const seed = providerConfigSeed(entry!);
     expect(seed.keyOptional).toBe(true);
-    expect(seed.liveModels).toBe(true);
+    expect(seed.liveModels).toBe(false);
   });
 
   test("is included in the key-login map", () => {
