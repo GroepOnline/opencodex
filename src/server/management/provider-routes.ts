@@ -94,19 +94,23 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
   if (url.pathname === "/api/providers" && req.method === "GET") {
     const hideEnabled = hideUnavailableModelsEnabled(config);
     return jsonResponse(Object.entries(config.providers).map(([name, p]) => {
+      // Match catalog gather: registry defaults (e.g. liveModels: false) apply on a clone so the
+      // GUI does not advertise live discovery for providers that never hit /models.
+      const view = { ...p };
+      enrichProviderFromCatalog(name, view);
       const hideReason = providerClientHideReason(name, config);
       return {
-        name, adapter: p.adapter, baseUrl: publicProviderBaseUrl(p.baseUrl), defaultModel: p.defaultModel,
+        name, adapter: view.adapter, baseUrl: publicProviderBaseUrl(view.baseUrl), defaultModel: view.defaultModel,
         hasApiKey: !!p.apiKey,
-        allowPrivateNetwork: p.allowPrivateNetwork === true,
-        liveModels: p.liveModels !== false,
-        models: p.models ?? [],
-        authMode: p.authMode,
-        apiKeyTransport: p.apiKeyTransport,
+        allowPrivateNetwork: view.allowPrivateNetwork === true,
+        liveModels: view.liveModels !== false,
+        models: view.models ?? [],
+        authMode: view.authMode,
+        apiKeyTransport: view.apiKeyTransport,
         disabled: p.disabled === true,
-        fallback: providerFallbackTargets(p),
-        codexAccountMode: providerCodexAccountMode(name, p),
-        discovery: p.liveModels === false ? undefined : getProviderDiscoveryStatus(name),
+        fallback: providerFallbackTargets(view),
+        codexAccountMode: providerCodexAccountMode(name, view),
+        discovery: view.liveModels === false ? undefined : getProviderDiscoveryStatus(name),
         ...(hideReason ? {
           clientHideReason: hideReason,
           clientHideReasonLabel: clientHideReasonLabel(hideReason),
