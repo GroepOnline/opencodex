@@ -881,8 +881,19 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
   {
     id: "google", label: "Google Gemini", adapter: "google", baseUrl: "https://generativelanguage.googleapis.com", authKind: "key", featured: true,
     dashboardUrl: "https://aistudio.google.com/apikey", defaultModel: "gemini-3.5-flash", models: ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"],
-    modelContextWindows: { "gemini-3.6-flash": 1_048_576, "gemini-3.5-flash": 1_000_000, "gemini-3.5-flash-lite": 1_048_576 },
-    modelInputModalities: { "gemini-3.6-flash": ["text", "image"], "gemini-3.5-flash-lite": ["text", "image"] },
+    modelContextWindows: {
+      "gemini-3.6-flash": 1_048_576,
+      "gemini-3.5-flash": 1_000_000,
+      "gemini-3.5-flash-lite": 1_048_576,
+      // Combo members (e.g. google-combo) require a positive contextWindow on every target.
+      "gemini-3.1-pro-preview": 1_048_576,
+    },
+    modelInputModalities: {
+      "gemini-3.6-flash": ["text", "image"],
+      "gemini-3.5-flash": ["text", "image"],
+      "gemini-3.5-flash-lite": ["text", "image"],
+      "gemini-3.1-pro-preview": ["text", "image"],
+    },
     modelReasoningEfforts: {
       "gemini-3.6-flash": ["minimal", "low", "medium", "high"],
       "gemini-3.5-flash": ["minimal", "low", "medium", "high"],
@@ -907,7 +918,23 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
   // 2026-07-10: defaultModel is frozen pending Vertex-specific Tier-2 evidence; Gemini API
   // evidence from ai.google.dev does not establish Vertex publisher availability.
   { id: "google-vertex", label: "Google Vertex AI", adapter: "google", baseUrl: "https://aiplatform.googleapis.com", authKind: "key", dashboardUrl: "https://console.cloud.google.com/vertex-ai", defaultModel: "gemini-3-pro", googleMode: "vertex", jawcodeBundle: "google", extraMetadataAliases: ["gemini-vertex"] },
-  { id: "google-antigravity", label: "Google Antigravity", adapter: "google", baseUrl: "https://daily-cloudcode-pa.googleapis.com", authKind: "oauth", dashboardUrl: "https://antigravity.google", models: ANTIGRAVITY_MODELS, defaultModel: "gemini-3.6-flash", modelContextWindows: ANTIGRAVITY_MODEL_CONTEXT_WINDOWS, modelReasoningEfforts: ANTIGRAVITY_MODEL_EFFORTS, googleMode: "cloud-code-assist", jawcodeBundle: "google", extraMetadataAliases: ["antigravity", "gemini-antigravity"] },
+  {
+    id: "google-antigravity",
+    label: "Google Antigravity",
+    adapter: "google",
+    baseUrl: "https://daily-cloudcode-pa.googleapis.com",
+    authKind: "oauth",
+    dashboardUrl: "https://antigravity.google",
+    models: ANTIGRAVITY_MODELS,
+    defaultModel: "gemini-3.6-flash",
+    modelContextWindows: ANTIGRAVITY_MODEL_CONTEXT_WINDOWS,
+    modelReasoningEfforts: ANTIGRAVITY_MODEL_EFFORTS,
+    googleMode: "cloud-code-assist",
+    // Cloud Code Assist has no OpenAI-style /models; GET falls through to HTTP 404 every start.
+    liveModels: false,
+    jawcodeBundle: "google",
+    extraMetadataAliases: ["antigravity", "gemini-antigravity"],
+  },
   { id: "azure-openai", label: "Azure OpenAI", adapter: "azure-openai", baseUrl: "https://{resource}.openai.azure.com/openai", authKind: "key", featured: true, dashboardUrl: "https://portal.azure.com" },
   { id: "ollama", label: "Ollama (local)", adapter: "openai-chat", baseUrl: "http://localhost:11434/v1", authKind: "local", allowPrivateNetworkByDefault: true, allowBaseUrlOverride: true, featured: true, note: "Local — key usually blank" },
   { id: "vllm", label: "vLLM (local)", adapter: "openai-chat", baseUrl: "http://localhost:8000/v1", authKind: "local", allowPrivateNetworkByDefault: true, allowBaseUrlOverride: true, featured: true, note: "Local — key usually blank" },

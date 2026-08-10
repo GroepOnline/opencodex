@@ -774,6 +774,33 @@ describe("provider registry parity", () => {
       .toEqual(["low", "medium", "high", "max", "ultra"]);
   });
 
+  test("Google combo members get registry context/modalities even when config omitted them", () => {
+    const google = PROVIDER_REGISTRY.find(entry => entry.id === "google");
+    expect(google?.modelContextWindows?.["gemini-3.1-pro-preview"]).toBe(1_048_576);
+    expect(google?.liveModels).toBe(true);
+    const antigravity = PROVIDER_REGISTRY.find(entry => entry.id === "google-antigravity");
+    expect(antigravity?.liveModels).toBe(false);
+
+    // Bare provider row: no per-model windows copied into config.json.
+    const bare = {
+      adapter: "google" as const,
+      baseUrl: "https://generativelanguage.googleapis.com",
+      apiKey: "test-key",
+    };
+    const preview = applyProviderConfigHints("google", bare, {
+      id: "gemini-3.1-pro-preview",
+      provider: "google",
+    });
+    expect(preview.contextWindow).toBe(1_048_576);
+    expect(preview.inputModalities).toEqual(["text", "image"]);
+    const flash = applyProviderConfigHints("google", bare, {
+      id: "gemini-3.6-flash",
+      provider: "google",
+    });
+    expect(flash.contextWindow).toBe(1_048_576);
+    expect(flash.inputModalities).toEqual(["text", "image"]);
+  });
+
   // The id-list assertion above only proves the preset exists. Pin the contract a user actually
   // depends on: which endpoint the key is sent to, which adapter parses the stream, and that the
   // vendor-namespaced seed models survive into a real catalog entry.
