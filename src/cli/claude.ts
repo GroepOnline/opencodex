@@ -17,8 +17,9 @@ import { commandInvocation } from "../lib/win-exec";
 import { findLiveProxy } from "../server/proxy-liveness";
 import type { OcxConfig } from "../types";
 import { configuredAdminToken } from "../lib/admin-secrets";
-import { PROXY_MARKER, ownAdmissionTokens, defaultAuthDetectDeps, detectClaudeAuth, type AuthDetectDeps } from "../claude/auth-detect";
+import { OWNED_TOKEN_MARKERS, PROXY_MARKER, ownAdmissionTokens, defaultAuthDetectDeps, detectClaudeAuth, type AuthDetectDeps } from "../claude/auth-detect";
 import { resolveClaudeAuthMode } from "../claude/auth-mode";
+import { resolveDataPlaneAdmissionToken } from "../lib/service-secrets";
 
 export interface ClaudeLaunchEnv {
   [key: string]: string | undefined;
@@ -49,7 +50,9 @@ export function buildClaudeEnv(
   // stale marker left in place would suppress the admission key and then be removed,
   // leaving the child with no token at all (audit R2-1). It is opencodex state, never
   // user auth, so dropping it unconditionally is safe.
-  if (env.ANTHROPIC_AUTH_TOKEN === PROXY_MARKER) delete env.ANTHROPIC_AUTH_TOKEN;
+  if (env.ANTHROPIC_AUTH_TOKEN && OWNED_TOKEN_MARKERS.has(env.ANTHROPIC_AUTH_TOKEN)) {
+    delete env.ANTHROPIC_AUTH_TOKEN;
+  }
   // Step 1b — drop Anthropic credentials that the bundled Bun runtime synthesized from a
   // project `.env`/`.env.local` (issue #701). Claude Code disables claude.ai connectors the
   // moment either token slot is populated, so an ambient project file silently moved a
@@ -248,10 +251,15 @@ export async function cmdClaude(args: string[]): Promise<number> {
   const contextWindows = await fetchClaudeContextWindows(config, port);
   const env = buildClaudeEnv(config, port, process.env, contextWindows);
 
-  // Agent View/background sessions are separate Claude processes parented to a
-  // per-user supervisor. Keep the provider env eligible for settings.json loading:
-  // host-managed mode intentionally strips those settings-sourced variables.
-  env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST = "0";
+  // Agent View sessions load settings.json `env`. Host-managed mode strips those
+  // keys — keep it OFF only when we are not injecting an admission token. With a
+  // real token, host-managed MUST stay ON so Claude Code does not warn that
+  // ANTHROPIC_AUTH_TOKEN competes with a /login OAuth session.
+  if (env.ANTHROPIC_AUTH_TOKEN) {
+    env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST = "1";
+  } else {
+    env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST = "0";
+  }
   const persistentEnv = syncClaudePersistentSessionEnv(env, getConfigDir());
   if (!persistentEnv.synced && persistentEnv.warning) {
     console.error(`⚠ ${persistentEnv.warning}; Agent View workers may require respawn after fixing Claude settings.`);
@@ -267,8 +275,13 @@ export async function cmdClaude(args: string[]): Promise<number> {
   }
   // Pre-write the CLI's gateway-model cache (devlog 030): without a token the CLI
   // never refreshes it, so the picker would keep showing yesterday's aliases.
+  // Remote / tunnelled proxies require the data-plane admission key on /v1/models.
+  const admissionToken = env.ANTHROPIC_AUTH_TOKEN?.trim()
+    || config.apiKeys?.[0]?.key?.trim()
+    || resolveDataPlaneAdmissionToken(process.env)
+    || null;
   try {
-    const cachePath = await refreshGatewayModelCacheFromProxy(port);
+    const cachePath = await refreshGatewayModelCacheFromProxy(port, 3_000, undefined, admissionToken);
     if (cachePath === null) {
       console.error("⚠ Gateway model cache could not be refreshed; the model picker may be stale.");
     }

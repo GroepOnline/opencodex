@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { claudeConfigDir } from "./gateway-cache";
+import { OWNED_TOKEN_MARKERS } from "./auth-detect";
 import { recordOwnedConfigPath } from "../lib/config-ownership";
 
 export interface PersistentClaudeEnv {
@@ -98,13 +99,16 @@ function readState(path: string, settingsPath: string): PersistentEnvState {
  *
  * Agent View sessions are separate Claude Code processes parented to the per-user
  * supervisor. They do not reliably inherit the interactive terminal environment, but
- * Claude officially applies settings.json `env` to every session. Host-managed mode is
- * forced OFF here because it deliberately strips provider variables loaded from settings;
- * OCX owns and refreshes these exact keys instead.
+ * Claude officially applies settings.json `env` to every session. Host-managed mode
+ * strips provider variables loaded from settings — keep it OFF when OCX is not
+ * injecting an admission token (settings.env carries BASE_URL / model slots). When a
+ * real token is present, host-managed stays ON so Claude Code treats it as host auth
+ * instead of warning that ANTHROPIC_AUTH_TOKEN competes with /login OAuth.
  */
 export function persistentClaudeEnv(source: PersistentClaudeEnv): Record<string, string> {
+  const token = typeof source.ANTHROPIC_AUTH_TOKEN === "string" ? source.ANTHROPIC_AUTH_TOKEN : "";
   const result: Record<string, string> = {
-    CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: "0",
+    CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: token.length > 0 ? "1" : "0",
   };
   for (const key of MANAGED_KEYS) {
     if (key === "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST") continue;
@@ -153,10 +157,19 @@ export function syncClaudePersistentSessionEnv(
       }
 
       const previous = state.previous[key];
-      if (!previous) continue;
-      if (previous.present) env[key] = previous.value;
-      else delete env[key];
-      delete state.previous[key];
+      if (previous) {
+        if (previous.present) env[key] = previous.value;
+        else delete env[key];
+        delete state.previous[key];
+        continue;
+      }
+
+      // No journal entry: drop OCX-owned dummy tokens that would otherwise linger in
+      // settings.env forever (e.g. grok's `opencodex-loopback`) and fight /login OAuth.
+      if (key === "ANTHROPIC_AUTH_TOKEN") {
+        const current = env[key];
+        if (typeof current === "string" && OWNED_TOKEN_MARKERS.has(current)) delete env[key];
+      }
     }
 
     settings.env = env;
