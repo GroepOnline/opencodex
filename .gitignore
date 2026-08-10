@@ -29,3 +29,5 @@ devlog/
 # Test-generated artifacts
 tests/.tmp-*/
 .claude/
+*.html
+!.gitignore
