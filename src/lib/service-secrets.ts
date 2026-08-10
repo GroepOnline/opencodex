@@ -23,3 +23,23 @@ export function loadServiceTokenFromFile(env: Record<string, string | undefined>
     return null;
   }
 }
+
+/**
+ * Resolve a data-plane admission token for CLI clients talking to a remote /
+ * tunnelled proxy. Order: explicit env → OCX_API_TOKEN_FILE → default
+ * `~/.opencodex/service-api-token`.
+ */
+export function resolveDataPlaneAdmissionToken(
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  const fromEnv = env.OPENCODEX_API_AUTH_TOKEN?.trim();
+  if (fromEnv) return fromEnv;
+  const fromFile = loadServiceTokenFromFile(env);
+  if (fromFile) return fromFile;
+  try {
+    const token = readFileSync(serviceApiTokenFilePath(), "utf8").trim();
+    return token || null;
+  } catch {
+    return null;
+  }
+}

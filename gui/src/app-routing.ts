@@ -1,7 +1,7 @@
 /** Pure hash → view resolution used by App route state.
  *
- * IA (design-system v2, 2026-08): four views — Leveranciers (home), Modellen,
- * Verkeer, Systeem. The old 10-page sidebar hashes are kept as legacy redirects
+ * IA (design-system v2, 2026-08): five views — Dashboard (home), Leveranciers,
+ * Modellen, Verkeer, Systeem. Pre-IA sidebar hashes are kept as legacy redirects
  * so bookmarks, Back/Forward and external deep links keep working.
  */
 
@@ -40,7 +40,8 @@ export function canonicalHashFor(route: Route): string {
  * content falls back below, never to a dead URL.
  */
 const LEGACY_HASH_MAP: Record<string, string> = {
-  dashboard: "leveranciers",
+  // `#dashboard` is a first-class view (landing). Only the old nested dashboard
+  // paths redirect; bare `dashboard` must not rewrite away from the home page.
   "dashboard/providers": "leveranciers",
   "dashboard/models": "modellen",
   providers: "leveranciers",
@@ -62,7 +63,6 @@ const LEGACY_HASH_MAP: Record<string, string> = {
 
 /** Legacy route heads still safe to emit to analytics (see posthog-sanitize). */
 export const LEGACY_HASH_HEADS: readonly string[] = [
-  "dashboard",
   "providers",
   "codex-auth",
   "claude",
@@ -88,7 +88,7 @@ export function readRouteFromHash(hash?: string): Route {
     const view = head as View;
     return { view, sub: sub && VIEW_SUBS[view].has(sub) ? sub : null };
   }
-  return { view: "leveranciers", sub: null };
+  return { view: "dashboard", sub: null };
 }
 
 export function hashBelongsToRoute(rawHash: string, route: Route): boolean {

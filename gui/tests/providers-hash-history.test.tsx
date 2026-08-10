@@ -77,7 +77,6 @@ describe("route resolution", () => {
     // The 10-page sidebar era is kept alive as legacy redirects: bookmarks and
     // external deep links land on their new home, via replace (never a push).
     const cases: [string, string][] = [
-      ["dashboard", "leveranciers"],
       ["dashboard/providers", "leveranciers"],
       ["dashboard/models", "modellen"],
       ["providers", "leveranciers"],
@@ -103,6 +102,13 @@ describe("route resolution", () => {
     }
   });
 
+  test("bare #dashboard is the landing view (not a legacy redirect)", () => {
+    const action = resolveAppHashChange("dashboard");
+    expect(action.replaceTo).toBeNull();
+    expect(action.route).toEqual({ view: "dashboard", sub: null });
+    expect(readRouteFromHash("#dashboard").view).toBe("dashboard");
+  });
+
   test("legacy heads with unknown tails collapse to the head's new home", () => {
     expect(resolveAppHashChange("codex-auth/accounts").replaceTo).toBe("leveranciers");
     expect(resolveAppHashChange("providers/nope").replaceTo).toBe("leveranciers");
@@ -114,9 +120,9 @@ describe("route resolution", () => {
     expect(resolveAppHashChange("systeem/nope").replaceTo).toBe("systeem");
   });
 
-  test("an unknown hash falls back to Leveranciers", () => {
-    expect(readRouteFromHash("#nonsense").view).toBe("leveranciers");
-    expect(resolveAppHashChange("nonsense").replaceTo).toBe("leveranciers");
+  test("an unknown hash falls back to Dashboard", () => {
+    expect(readRouteFromHash("#nonsense").view).toBe("dashboard");
+    expect(resolveAppHashChange("nonsense").replaceTo).toBe("dashboard");
   });
 });
 

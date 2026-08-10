@@ -318,8 +318,13 @@ describe("google provider hardening", () => {
     expect(google?.models).toEqual(["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"]);
     expect(google?.modelContextWindows?.["gemini-3.6-flash"]).toBe(1_048_576);
     expect(google?.modelContextWindows?.["gemini-3.5-flash"]).toBe(1_000_000);
-    expect(google?.modelContextWindows?.["gemini-3.1-pro-preview"]).toBeUndefined();
+    // Combo members (google-combo) require a positive contextWindow on every target.
+    expect(google?.modelContextWindows?.["gemini-3.1-pro-preview"]).toBe(1_048_576);
     expect(google?.modelInputModalities?.["gemini-3.6-flash"]).toEqual(["text", "image"]);
+    expect(google?.modelInputModalities?.["gemini-3.1-pro-preview"]).toEqual(["text", "image"]);
+    expect(google?.modelDiscovery?.envelopeKeys).toEqual(["models"]);
+    expect(google?.modelDiscovery?.idField).toBe("name");
+    expect(google?.modelDiscovery?.idStripPrefix).toBe("models/");
     expect(google?.modelReasoningEfforts?.["gemini-3.6-flash"]).toEqual([
       "minimal", "low", "medium", "high",
     ]);

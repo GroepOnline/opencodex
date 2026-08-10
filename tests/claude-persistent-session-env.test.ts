@@ -25,18 +25,18 @@ function readSettings(claudeDir: string): Record<string, unknown> {
 }
 
 describe("Claude supervisor environment persistence", () => {
-  test("selects only OCX provider keys and disables the settings-env stripping guard", () => {
+  test("selects only OCX provider keys and keeps host-managed ON when a token is injected", () => {
     const selected = persistentClaudeEnv({
       PATH: "/tmp/private-bin",
       OPENCODEX_CLAUDE_REAL_COMMAND: "/usr/bin/claude",
       ANTHROPIC_BASE_URL: "http://127.0.0.1:10100",
       ANTHROPIC_AUTH_TOKEN: "opencodex-proxy",
       ANTHROPIC_MODEL: "claude-ocx-opencode-free--deepseek-v4-flash-free",
-      CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: "1",
+      CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: "0",
     });
 
     expect(selected).toEqual({
-      CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: "0",
+      CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: "1",
       ANTHROPIC_BASE_URL: "http://127.0.0.1:10100",
       ANTHROPIC_AUTH_TOKEN: "opencodex-proxy",
       ANTHROPIC_MODEL: "claude-ocx-opencode-free--deepseek-v4-flash-free",
@@ -65,7 +65,7 @@ describe("Claude supervisor environment persistence", () => {
       expect(settings.permissions).toEqual({ allow: ["Bash(git status)"] });
       expect(settings.env).toEqual({
         KEEP_ME: "yes",
-        CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: "0",
+        CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: "1",
         ANTHROPIC_BASE_URL: "http://127.0.0.1:10123",
         ANTHROPIC_AUTH_TOKEN: "opencodex-proxy",
         CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
@@ -94,6 +94,50 @@ describe("Claude supervisor environment persistence", () => {
       const env = readSettings(claudeDir).env as Record<string, unknown>;
       expect(env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:10101");
       expect(env.ANTHROPIC_AUTH_TOKEN).toBe("user-token");
+      expect(env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBe("0");
+    });
+  });
+
+  test("drops stale opencodex-loopback markers left in settings.env", () => {
+    withTempDirs((claudeDir, stateDir) => {
+      writeFileSync(join(claudeDir, "settings.json"), JSON.stringify({
+        env: {
+          ANTHROPIC_AUTH_TOKEN: "opencodex-loopback",
+          ANTHROPIC_BASE_URL: "http://127.0.0.1:10100",
+          CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: "0",
+        },
+      }, null, 2));
+
+      expect(syncClaudePersistentSessionEnv({
+        ANTHROPIC_BASE_URL: "http://127.0.0.1:10100",
+      }, stateDir, claudeDir).synced).toBe(true);
+
+      const env = readSettings(claudeDir).env as Record<string, unknown>;
+      expect(env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+      expect(env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:10100");
+      expect(env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBe("0");
+    });
+  });
+
+  test("deletes a journaled owned marker instead of restoring it", () => {
+    withTempDirs((claudeDir, stateDir) => {
+      // An older launch journaled our own dummy as the "user's" prior token. Restoring
+      // it would reinstate the marker on every subscription-mode sync.
+      writeFileSync(join(claudeDir, "settings.json"), JSON.stringify({
+        env: { ANTHROPIC_AUTH_TOKEN: "opencodex-loopback" },
+      }, null, 2));
+      writeFileSync(join(stateDir, "claude-persistent-env.json"), JSON.stringify({
+        version: 1,
+        settingsPath: join(claudeDir, "settings.json"),
+        previous: { ANTHROPIC_AUTH_TOKEN: { present: true, value: "opencodex-loopback" } },
+      }, null, 2));
+
+      expect(syncClaudePersistentSessionEnv({
+        ANTHROPIC_BASE_URL: "http://127.0.0.1:10100",
+      }, stateDir, claudeDir).synced).toBe(true);
+
+      const env = readSettings(claudeDir).env as Record<string, unknown>;
+      expect(env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
       expect(env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBe("0");
     });
   });
