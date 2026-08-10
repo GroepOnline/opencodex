@@ -34,6 +34,28 @@ export type AuthSourceId =
  */
 export const PROXY_MARKER = "opencodex-proxy";
 
+/**
+ * Dummy / placeholder tokens that opencodex (or adjacent injectors like Grok's
+ * `opencodex-loopback`) may leave in Claude settings.env. None of these are user
+ * credentials — treat them like {@link PROXY_MARKER} when sanitizing launch env.
+ */
+export const OWNED_TOKEN_MARKERS: ReadonlySet<string> = new Set([
+  PROXY_MARKER,
+  "opencodex-loopback",
+]);
+
+/**
+ * The trimmed token if it can serve as a real admission credential, else null.
+ *
+ * Markers exist only to satisfy Claude Code's "a token is set" check, so treating one
+ * as a credential masks the configured key or service-file token behind it and the
+ * request reaches a tunnelled proxy with a value no gateway will admit.
+ */
+export function realAdmissionToken(value: string | undefined | null): string | null {
+  const trimmed = value?.trim();
+  return trimmed && !OWNED_TOKEN_MARKERS.has(trimmed) ? trimmed : null;
+}
+
 const KEYCHAIN_SERVICE = "Claude Code-credentials";
 /** `security` exit code for "the item does not exist" — a real absent, not a failure. */
 const KEYCHAIN_ITEM_NOT_FOUND = 44;
@@ -140,7 +162,7 @@ function detectExportedEnv(deps: AuthDetectDeps): AuthSourceResult {
   try {
     const env = deps.env();
     const isOwn = (value: string): boolean =>
-      value === PROXY_MARKER || (deps.ownTokens ?? []).includes(value);
+      OWNED_TOKEN_MARKERS.has(value) || (deps.ownTokens ?? []).includes(value);
     const apiKey = env.ANTHROPIC_API_KEY?.trim();
     if (apiKey && !isOwn(apiKey)) {
       return { source: "exported-env", presence: "present", detail: "ANTHROPIC_API_KEY" };
@@ -168,7 +190,8 @@ export function detectClaudeAuth(deps: AuthDetectDeps): AuthDetectResult {
   ];
   let staleProxyMarker = false;
   try {
-    staleProxyMarker = deps.env().ANTHROPIC_AUTH_TOKEN?.trim() === PROXY_MARKER;
+    const marker = deps.env().ANTHROPIC_AUTH_TOKEN?.trim();
+    staleProxyMarker = !!marker && OWNED_TOKEN_MARKERS.has(marker);
   } catch {
     staleProxyMarker = false;
   }

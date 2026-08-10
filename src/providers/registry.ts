@@ -57,6 +57,22 @@ interface ProviderModelDiscoverySharedSpec {
   query?: Readonly<Record<string, string>>;
   /** Declarative eligibility rules evaluated against each untrusted model row. */
   filter?: ProviderModelDiscoveryFilter;
+  /**
+   * Object keys that may hold the model-row array. Default is OpenAI's `data`.
+   * Google AI Studio uses `models` (`{ models: [{ name: "models/…" }] }`).
+   * Top-level arrays (Together) still work when no envelope matches.
+   */
+  envelopeKeys?: readonly string[];
+  /**
+   * Field on each row that carries the model id. Default `id`.
+   * Google AI Studio rows use `name` (`models/gemini-…`).
+   */
+  idField?: string;
+  /**
+   * Optional prefix stripped from the id field before validation
+   * (Google AI Studio: `models/`).
+   */
+  idStripPrefix?: string;
   /** Optional lower byte ceiling; the process-wide hard ceiling still wins. */
   maxResponseBytes?: number;
   /** Optional lower raw-row ceiling; the process-wide hard ceiling still wins. */
@@ -865,19 +881,60 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
   {
     id: "google", label: "Google Gemini", adapter: "google", baseUrl: "https://generativelanguage.googleapis.com", authKind: "key", featured: true,
     dashboardUrl: "https://aistudio.google.com/apikey", defaultModel: "gemini-3.5-flash", models: ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"],
-    modelContextWindows: { "gemini-3.6-flash": 1_048_576, "gemini-3.5-flash": 1_000_000, "gemini-3.5-flash-lite": 1_048_576 },
-    modelInputModalities: { "gemini-3.6-flash": ["text", "image"], "gemini-3.5-flash-lite": ["text", "image"] },
+    modelContextWindows: {
+      "gemini-3.6-flash": 1_048_576,
+      "gemini-3.5-flash": 1_000_000,
+      "gemini-3.5-flash-lite": 1_048_576,
+      // Combo members (e.g. google-combo) require a positive contextWindow on every target.
+      "gemini-3.1-pro-preview": 1_048_576,
+    },
+    modelInputModalities: {
+      "gemini-3.6-flash": ["text", "image"],
+      "gemini-3.5-flash": ["text", "image"],
+      "gemini-3.5-flash-lite": ["text", "image"],
+      "gemini-3.1-pro-preview": ["text", "image"],
+    },
     modelReasoningEfforts: {
       "gemini-3.6-flash": ["minimal", "low", "medium", "high"],
       "gemini-3.5-flash": ["minimal", "low", "medium", "high"],
       "gemini-3.1-pro-preview": ["low", "medium", "high"],
     },
+    // AI Studio GET /v1beta/models returns `{ models: [{ name: "models/gemini-…" }] }`, not OpenAI `{ data: [{ id }] }`.
+    // Live discovery must parse that shape; otherwise catalog sync degrades to the static seed on every start.
+    modelDiscovery: {
+      envelopeKeys: ["models"],
+      idField: "name",
+      idStripPrefix: "models/",
+      // Keep generative chat/vision models; drop embeddings / AQA / imagen / veo / TTS-only rows.
+      filter: {
+        noneOf: [
+          { path: ["name"], containsAny: ["embedding", "aqa", "imagen", "veo", "tts", "gemini-2.0-flash-lite-preview-image-generation"], caseInsensitive: true },
+        ],
+      },
+    },
+    liveModels: true,
     jawcodeBundle: "google", extraMetadataAliases: ["gemini"],
   },
   // 2026-07-10: defaultModel is frozen pending Vertex-specific Tier-2 evidence; Gemini API
   // evidence from ai.google.dev does not establish Vertex publisher availability.
   { id: "google-vertex", label: "Google Vertex AI", adapter: "google", baseUrl: "https://aiplatform.googleapis.com", authKind: "key", dashboardUrl: "https://console.cloud.google.com/vertex-ai", defaultModel: "gemini-3-pro", googleMode: "vertex", jawcodeBundle: "google", extraMetadataAliases: ["gemini-vertex"] },
-  { id: "google-antigravity", label: "Google Antigravity", adapter: "google", baseUrl: "https://daily-cloudcode-pa.googleapis.com", authKind: "oauth", dashboardUrl: "https://antigravity.google", models: ANTIGRAVITY_MODELS, defaultModel: "gemini-3.6-flash", modelContextWindows: ANTIGRAVITY_MODEL_CONTEXT_WINDOWS, modelReasoningEfforts: ANTIGRAVITY_MODEL_EFFORTS, googleMode: "cloud-code-assist", jawcodeBundle: "google", extraMetadataAliases: ["antigravity", "gemini-antigravity"] },
+  {
+    id: "google-antigravity",
+    label: "Google Antigravity",
+    adapter: "google",
+    baseUrl: "https://daily-cloudcode-pa.googleapis.com",
+    authKind: "oauth",
+    dashboardUrl: "https://antigravity.google",
+    models: ANTIGRAVITY_MODELS,
+    defaultModel: "gemini-3.6-flash",
+    modelContextWindows: ANTIGRAVITY_MODEL_CONTEXT_WINDOWS,
+    modelReasoningEfforts: ANTIGRAVITY_MODEL_EFFORTS,
+    googleMode: "cloud-code-assist",
+    // Cloud Code Assist has no OpenAI-style /models; GET falls through to HTTP 404 every start.
+    liveModels: false,
+    jawcodeBundle: "google",
+    extraMetadataAliases: ["antigravity", "gemini-antigravity"],
+  },
   { id: "azure-openai", label: "Azure OpenAI", adapter: "azure-openai", baseUrl: "https://{resource}.openai.azure.com/openai", authKind: "key", featured: true, dashboardUrl: "https://portal.azure.com" },
   { id: "ollama", label: "Ollama (local)", adapter: "openai-chat", baseUrl: "http://localhost:11434/v1", authKind: "local", allowPrivateNetworkByDefault: true, allowBaseUrlOverride: true, featured: true, note: "Local — key usually blank" },
   { id: "vllm", label: "vLLM (local)", adapter: "openai-chat", baseUrl: "http://localhost:8000/v1", authKind: "local", allowPrivateNetworkByDefault: true, allowBaseUrlOverride: true, featured: true, note: "Local — key usually blank" },
@@ -889,9 +946,10 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     adapter: "openai-chat",
     authKind: "key",
     dashboardUrl: "https://platform.deepseek.com/api_keys",
-    // deepseek-chat/deepseek-reasoner are upstream-deprecated at 2026-07-24 15:59 UTC;
-    // kept until then. Evidence: devlog/_plan/260710_provider_hardening/002_research_cn.md.
-    models: ["deepseek-chat", "deepseek-reasoner", ...DEEPSEEK_THINKING_MODELS],
+    // deepseek-chat/deepseek-reasoner were upstream-deprecated at 2026-07-24 15:59 UTC and are
+    // gone from the live catalog — keep the seed on V4 only so authoritative discovery does not
+    // drop stale configured ids every start. Evidence: 260710 provider hardening notes.
+    models: [...DEEPSEEK_THINKING_MODELS],
     defaultModel: "deepseek-v4-flash",
     modelContextWindows: { "deepseek-v4-flash": 1_000_000, "deepseek-v4-pro": 1_000_000 },
     /* [Decision Log]
@@ -905,7 +963,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     // Issue #88: every DeepSeek API model is text-only input (no image support upstream) — the
     // vision sidecar describes attached images for them, and the catalog advertises image input
     // on their behalf (same treatment as opencode-go's DeepSeek V4 entries above).
-    noVisionModels: ["deepseek-chat", "deepseek-reasoner", ...DEEPSEEK_THINKING_MODELS],
+    noVisionModels: [...DEEPSEEK_THINKING_MODELS],
   },
   // llama-3.3-70b was deprecated by Cerebras on 2026-02-16. Evidence: devlog/_plan/260710_provider_hardening/003_research_aggregators.md.
   { id: "cerebras", label: "Cerebras", baseUrl: "https://api.cerebras.ai/v1", adapter: "openai-chat", authKind: "key", dashboardUrl: "https://cloud.cerebras.ai/platform/apikeys", defaultModel: "gpt-oss-120b" },
@@ -1250,7 +1308,8 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     authKind: "key",
     keyOptional: true,
     featured: true,
-    liveModels: true,
+    // The free-tier host answers chat only; GET …/models returns HTTP 400. Keep the static seed.
+    liveModels: false,
     dashboardUrl: "https://xiaomimimo.com",
     defaultModel: "mimo-auto",
     models: ["mimo-auto"],

@@ -76,4 +76,23 @@ describe("Claude Code gateway-model cache pre-write (devlog 260712 030)", () => 
       globalThis.fetch = originalFetch;
     }
   });
+
+  test("proxy refresh sends data-plane admission headers when a token is provided", async () => {
+    const dir = tempDir();
+    const originalFetch = globalThis.fetch;
+    let headers: Headers | undefined;
+    try {
+      globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+        headers = new Headers(init?.headers);
+        return new Response(JSON.stringify({ data: [{ id: "claude-ocx-native--gpt-5.6-sol" }] }), {
+          headers: { "content-type": "application/json" },
+        });
+      }) as typeof fetch;
+      await refreshGatewayModelCacheFromProxy(10100, 1000, dir, "ocx_data_test_token");
+      expect(headers?.get("x-api-key")).toBe("ocx_data_test_token");
+      expect(headers?.get("x-opencodex-api-key")).toBe("ocx_data_test_token");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

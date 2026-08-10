@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { claudeNotFoundHint } from "../src/cli/claude";
 import { commandInvocation } from "../src/lib/win-exec";
-import { buildClaudeEnv } from "../src/cli/claude";
+import { buildClaudeEnv, claudeAdmissionToken } from "../src/cli/claude";
 import type { OcxConfig } from "../src/types";
 
 function cfg(extra?: Partial<OcxConfig>): OcxConfig {
@@ -68,6 +68,31 @@ describe("ocx claude env assembly", () => {
       apiKeys: [{ id: "1", name: "main", key: "sk-ocx-123", createdAt: "2026-01-01" }],
     }), 10100, {});
     expect(admission.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBe("1");
+  });
+
+  // The gateway model-cache refresh must reach a tunnelled proxy. Our own dummy marker
+  // satisfies Claude Code's "a token is set" check but no gateway admits it, so it must
+  // never be preferred over a real credential.
+  test("admission token skips owned markers so a real credential stays reachable", () => {
+    const withKey = cfg({ apiKeys: [{ id: "1", name: "main", key: "sk-ocx-123", createdAt: "2026-01-01" }] });
+    expect(claudeAdmissionToken({ ANTHROPIC_AUTH_TOKEN: "opencodex-proxy" }, withKey, {})).toBe("sk-ocx-123");
+
+    // The regression: a marker used to mask the data-plane service token entirely.
+    expect(claudeAdmissionToken(
+      { ANTHROPIC_AUTH_TOKEN: "opencodex-proxy" },
+      cfg({ claudeCode: { authMode: "proxy" } }),
+      { OPENCODEX_API_AUTH_TOKEN: "service-token" },
+    )).toBe("service-token");
+
+    expect(claudeAdmissionToken({ ANTHROPIC_AUTH_TOKEN: "opencodex-loopback" }, cfg(), {
+      OPENCODEX_API_AUTH_TOKEN: "service-token",
+    })).toBe("service-token");
+  });
+
+  test("admission token prefers a real injected token over config and service env", () => {
+    expect(claudeAdmissionToken({ ANTHROPIC_AUTH_TOKEN: "  sk-user-real  " }, cfg({
+      apiKeys: [{ id: "1", name: "main", key: "sk-ocx-123", createdAt: "2026-01-01" }],
+    }), { OPENCODEX_API_AUTH_TOKEN: "service-token" })).toBe("sk-user-real");
   });
 
   test("a user pre-export of the host-managed flag wins (opt-out preserved)", () => {

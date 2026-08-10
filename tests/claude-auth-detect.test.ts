@@ -8,6 +8,7 @@ import {
   claudeConfigDir,
   defaultAuthDetectDeps,
   ownAdmissionTokens,
+  realAdmissionToken,
   detectClaudeAuth,
   type AuthDetectDeps,
   type AuthPresence,
@@ -79,6 +80,19 @@ test("S5: our own proxy marker is NOT auth, and is reported as stale", () => {
   const result = detectClaudeAuth(deps({ env: () => ({ ANTHROPIC_AUTH_TOKEN: PROXY_MARKER }) }));
   expect(result.presence).toBe("absent");
   expect(result.staleProxyMarker).toBe(true);
+});
+
+// The admission-credential side of the same guard: a marker satisfies Claude Code's
+// "a token is set" check but must never be presented to a gateway, or it masks the
+// configured key / service-file token that a tunnelled proxy actually admits.
+test("realAdmissionToken rejects owned markers and keeps real tokens", () => {
+  expect(realAdmissionToken(PROXY_MARKER)).toBeNull();
+  expect(realAdmissionToken("opencodex-loopback")).toBeNull();
+  expect(realAdmissionToken(`  ${PROXY_MARKER}  `)).toBeNull();
+  expect(realAdmissionToken(undefined)).toBeNull();
+  expect(realAdmissionToken("")).toBeNull();
+  expect(realAdmissionToken("   ")).toBeNull();
+  expect(realAdmissionToken("  sk-ant-real  ")).toBe("sk-ant-real");
 });
 
 test("staleProxyMarker rides every aggregate branch", () => {

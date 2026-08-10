@@ -83,7 +83,7 @@ describe("buildModelsRequest anthropic routing", () => {
 });
 
 describe("google models listing via catalog", () => {
-  test("treats a { models } 2xx shape as malformed and degrades to the static seed", async () => {
+  test("parses AI Studio { models: [{ name }] } 2xx into live catalog ids", async () => {
     clearModelCache("google");
     const warning = spyOn(console, "warn").mockImplementation(() => {});
     const seen: { url: string; headers: Record<string, string> }[] = [];
@@ -110,11 +110,12 @@ describe("google models listing via catalog", () => {
       expect(seen[0].url).toBe("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000");
       expect(seen[0].headers["x-goog-api-key"]).toBe("gk-123");
       const ids = models.filter(m => m.provider === "google").map(m => m.id);
-      expect(ids).toEqual(["gemini-3.1-pro-preview", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash"]);
-      expect(ids).not.toContain("gemini-3-pro");
-      expect(ids).not.toContain("gemini-3-flash");
-      expect(getStaleCached("google")).toBeNull();
-      expect(warning.mock.calls.flat().join(" ")).toContain("google");
+      expect(ids).toContain("gemini-3-pro");
+      expect(ids).toContain("gemini-3-flash");
+      // Embeddings are filtered out by the registry discovery filter.
+      expect(ids).not.toContain("text-embedding-004");
+      expect(getStaleCached("google")).not.toBeNull();
+      expect(warning.mock.calls.flat().join(" ")).not.toContain("malformed");
     } finally {
       warning.mockRestore();
     }
