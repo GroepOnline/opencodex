@@ -119,6 +119,29 @@ describe("Claude supervisor environment persistence", () => {
     });
   });
 
+  test("deletes a journaled owned marker instead of restoring it", () => {
+    withTempDirs((claudeDir, stateDir) => {
+      // An older launch journaled our own dummy as the "user's" prior token. Restoring
+      // it would reinstate the marker on every subscription-mode sync.
+      writeFileSync(join(claudeDir, "settings.json"), JSON.stringify({
+        env: { ANTHROPIC_AUTH_TOKEN: "opencodex-loopback" },
+      }, null, 2));
+      writeFileSync(join(stateDir, "claude-persistent-env.json"), JSON.stringify({
+        version: 1,
+        settingsPath: join(claudeDir, "settings.json"),
+        previous: { ANTHROPIC_AUTH_TOKEN: { present: true, value: "opencodex-loopback" } },
+      }, null, 2));
+
+      expect(syncClaudePersistentSessionEnv({
+        ANTHROPIC_BASE_URL: "http://127.0.0.1:10100",
+      }, stateDir, claudeDir).synced).toBe(true);
+
+      const env = readSettings(claudeDir).env as Record<string, unknown>;
+      expect(env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+      expect(env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBe("0");
+    });
+  });
+
   test("malformed Claude settings fail closed instead of replacing the file", () => {
     withTempDirs((claudeDir, stateDir) => {
       const path = join(claudeDir, "settings.json");

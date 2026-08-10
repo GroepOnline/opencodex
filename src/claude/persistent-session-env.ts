@@ -161,11 +161,12 @@ export function syncClaudePersistentSessionEnv(
         if (previous.present) env[key] = previous.value;
         else delete env[key];
         delete state.previous[key];
-        continue;
       }
 
-      // No journal entry: drop OCX-owned dummy tokens that would otherwise linger in
-      // settings.env forever (e.g. grok's `opencodex-loopback`) and fight /login OAuth.
+      // Drop OCX-owned dummy tokens that would otherwise linger in settings.env forever
+      // (e.g. grok's `opencodex-loopback`) and fight /login OAuth. This also covers a
+      // marker that an older launch journaled as the "user's" prior value: restoring it
+      // above would reinstate the dummy on every sync and never reach this guard.
       if (key === "ANTHROPIC_AUTH_TOKEN") {
         const current = env[key];
         if (typeof current === "string" && OWNED_TOKEN_MARKERS.has(current)) delete env[key];

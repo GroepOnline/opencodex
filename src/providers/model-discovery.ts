@@ -361,8 +361,11 @@ export function extractProviderModelItems(
     let id = rawId.trim();
     if (!id || id !== rawId) return { ok: false, reason: "invalid_shape" };
     if (idStripPrefix && id.startsWith(idStripPrefix)) id = id.slice(idStripPrefix.length);
+    // Re-check whitespace after the strip: the guard above only saw the raw row, so
+    // `models/ gemini` would otherwise survive as the catalog id " gemini".
     if (
       !id
+      || id !== id.trim()
       || id.length > MODEL_DISCOVERY_MAX_MODEL_ID_LENGTH
       || MODEL_DISCOVERY_MODEL_ID_CONTROL_CHARS.test(id)
     ) {

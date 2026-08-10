@@ -17,7 +17,7 @@ import { commandInvocation } from "../lib/win-exec";
 import { findLiveProxy } from "../server/proxy-liveness";
 import type { OcxConfig } from "../types";
 import { configuredAdminToken } from "../lib/admin-secrets";
-import { OWNED_TOKEN_MARKERS, PROXY_MARKER, ownAdmissionTokens, defaultAuthDetectDeps, detectClaudeAuth, type AuthDetectDeps } from "../claude/auth-detect";
+import { OWNED_TOKEN_MARKERS, PROXY_MARKER, ownAdmissionTokens, realAdmissionToken, defaultAuthDetectDeps, detectClaudeAuth, type AuthDetectDeps } from "../claude/auth-detect";
 import { resolveClaudeAuthMode } from "../claude/auth-mode";
 import { resolveDataPlaneAdmissionToken } from "../lib/service-secrets";
 
@@ -179,6 +179,26 @@ export function buildClaudeEnv(
 }
 
 /**
+ * The token to present on the proxy's /v1/models refresh, in precedence order:
+ * injected launch token, configured admission key, data-plane service token.
+ *
+ * Owned markers are skipped at every step. In marker mode the injected token is our own
+ * dummy, and preferring it would mask the configured key or service-file token that a
+ * tunnelled proxy actually admits — the marker is only ever set when no real key was
+ * injected, so there is nothing to lose by looking past it.
+ */
+export function claudeAdmissionToken(
+  env: ClaudeLaunchEnv,
+  config: OcxConfig,
+  processEnv: Record<string, string | undefined> = process.env,
+): string | null {
+  return realAdmissionToken(env.ANTHROPIC_AUTH_TOKEN)
+    || realAdmissionToken(config.apiKeys?.[0]?.key)
+    || resolveDataPlaneAdmissionToken(processEnv)
+    || null;
+}
+
+/**
  * Context-window map from the RUNNING proxy's management API (warm TTL cache; the
  * daemon registers every selector form — audit R3#1). 3s bound + management auth header.
  * (no [1m] marking, conservative).
@@ -276,10 +296,7 @@ export async function cmdClaude(args: string[]): Promise<number> {
   // Pre-write the CLI's gateway-model cache (devlog 030): without a token the CLI
   // never refreshes it, so the picker would keep showing yesterday's aliases.
   // Remote / tunnelled proxies require the data-plane admission key on /v1/models.
-  const admissionToken = env.ANTHROPIC_AUTH_TOKEN?.trim()
-    || config.apiKeys?.[0]?.key?.trim()
-    || resolveDataPlaneAdmissionToken(process.env)
-    || null;
+  const admissionToken = claudeAdmissionToken(env, config);
   try {
     const cachePath = await refreshGatewayModelCacheFromProxy(port, 3_000, undefined, admissionToken);
     if (cachePath === null) {

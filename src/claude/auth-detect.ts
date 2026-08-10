@@ -44,6 +44,18 @@ export const OWNED_TOKEN_MARKERS: ReadonlySet<string> = new Set([
   "opencodex-loopback",
 ]);
 
+/**
+ * The trimmed token if it can serve as a real admission credential, else null.
+ *
+ * Markers exist only to satisfy Claude Code's "a token is set" check, so treating one
+ * as a credential masks the configured key or service-file token behind it and the
+ * request reaches a tunnelled proxy with a value no gateway will admit.
+ */
+export function realAdmissionToken(value: string | undefined | null): string | null {
+  const trimmed = value?.trim();
+  return trimmed && !OWNED_TOKEN_MARKERS.has(trimmed) ? trimmed : null;
+}
+
 const KEYCHAIN_SERVICE = "Claude Code-credentials";
 /** `security` exit code for "the item does not exist" — a real absent, not a failure. */
 const KEYCHAIN_ITEM_NOT_FOUND = 44;

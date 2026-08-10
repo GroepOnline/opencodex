@@ -334,6 +334,18 @@ describe("registry-owned provider model discovery", () => {
     }
   });
 
+  test("rejects whitespace that only appears after the id prefix is stripped", () => {
+    const discovery = resolveProviderModelDiscovery("google", {
+      adapter: "google",
+      baseUrl: "https://generativelanguage.googleapis.com",
+    });
+    // The raw row has no outer whitespace, so only a post-strip check catches this.
+    expect(extractProviderModelItems({ models: [{ name: "models/ gemini-3.5-flash" }] }, discovery))
+      .toEqual({ ok: false, reason: "invalid_shape" });
+    expect(extractProviderModelItems({ models: [{ name: "models/gemini-3.5-flash " }] }, discovery))
+      .toEqual({ ok: false, reason: "invalid_shape" });
+  });
+
   test("parses Google AI Studio { models: [{ name }] } via registry discovery metadata", () => {
     const discovery = resolveProviderModelDiscovery("google", {
       adapter: "google",
