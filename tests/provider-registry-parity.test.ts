@@ -114,8 +114,9 @@ describe("provider registry parity", () => {
     expect(KEY_LOGIN_PROVIDERS.deepseek.modelReasoningEffortMap?.["deepseek-v4-pro"]?.max).toBe("max");
     expect(KEY_LOGIN_PROVIDERS.deepseek.preserveReasoningContentModels).toEqual(["deepseek-v4-pro", "deepseek-v4-flash"]);
     // Issue #88: every DeepSeek API model is text-only input — the vision sidecar covers them.
+    expect(KEY_LOGIN_PROVIDERS.deepseek.models).toEqual(["deepseek-v4-pro", "deepseek-v4-flash"]);
     expect(KEY_LOGIN_PROVIDERS.deepseek.noVisionModels).toEqual([
-      "deepseek-chat", "deepseek-reasoner", "deepseek-v4-pro", "deepseek-v4-flash",
+      "deepseek-v4-pro", "deepseek-v4-flash",
     ]);
   });
 
@@ -772,6 +773,33 @@ describe("provider registry parity", () => {
     expect(entry?.context_window).toBe(500_000);
     expect((entry?.supported_reasoning_levels as { effort: string }[]).map(l => l.effort))
       .toEqual(["low", "medium", "high", "max", "ultra"]);
+  });
+
+  test("Google combo members get registry context/modalities even when config omitted them", () => {
+    const google = PROVIDER_REGISTRY.find(entry => entry.id === "google");
+    expect(google?.modelContextWindows?.["gemini-3.1-pro-preview"]).toBe(1_048_576);
+    expect(google?.liveModels).toBe(true);
+    const antigravity = PROVIDER_REGISTRY.find(entry => entry.id === "google-antigravity");
+    expect(antigravity?.liveModels).toBe(false);
+
+    // Bare provider row: no per-model windows copied into config.json.
+    const bare = {
+      adapter: "google" as const,
+      baseUrl: "https://generativelanguage.googleapis.com",
+      apiKey: "test-key",
+    };
+    const preview = applyProviderConfigHints("google", bare, {
+      id: "gemini-3.1-pro-preview",
+      provider: "google",
+    });
+    expect(preview.contextWindow).toBe(1_048_576);
+    expect(preview.inputModalities).toEqual(["text", "image"]);
+    const flash = applyProviderConfigHints("google", bare, {
+      id: "gemini-3.6-flash",
+      provider: "google",
+    });
+    expect(flash.contextWindow).toBe(1_048_576);
+    expect(flash.inputModalities).toEqual(["text", "image"]);
   });
 
   // The id-list assertion above only proves the preset exists. Pin the contract a user actually

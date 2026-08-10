@@ -129,14 +129,37 @@ export function clearGatherRoutedModelsInflight(): void {
   gatherInflight.clear();
 }
 
-export function configuredContextWindow(prov: OcxProviderConfig, id: string): number | undefined {
-  const configured = modelRecordValue(prov.modelContextWindows, id) ?? prov.contextWindow;
-  return typeof configured === "number" && configured > 0 ? configured : undefined;
+function registryFallbackEntry(providerName: string, prov: OcxProviderConfig) {
+  if (!providerMatchesRegistryTransport(providerName, prov)) return undefined;
+  return getProviderRegistryEntry(providerName);
 }
 
-export function configuredInputModalities(prov: OcxProviderConfig, id: string): string[] | undefined {
+export function configuredContextWindow(
+  prov: OcxProviderConfig,
+  id: string,
+  providerName = "",
+): number | undefined {
+  const configured = modelRecordValue(prov.modelContextWindows, id) ?? prov.contextWindow;
+  if (typeof configured === "number" && configured > 0) return configured;
+  // Fall back to the baked-in registry so combo members stay complete even when a live
+  // config.json never copied modelContextWindows from the entry.
+  const fromRegistry = providerName
+    ? modelRecordValue(registryFallbackEntry(providerName, prov)?.modelContextWindows, id)
+    : undefined;
+  return typeof fromRegistry === "number" && fromRegistry > 0 ? fromRegistry : undefined;
+}
+
+export function configuredInputModalities(
+  prov: OcxProviderConfig,
+  id: string,
+  providerName = "",
+): string[] | undefined {
   const modalities = modelRecordValue(prov.modelInputModalities, id);
-  return Array.isArray(modalities) && modalities.length > 0 ? [...modalities] : undefined;
+  if (Array.isArray(modalities) && modalities.length > 0) return [...modalities];
+  const fromRegistry = providerName
+    ? modelRecordValue(registryFallbackEntry(providerName, prov)?.modelInputModalities, id)
+    : undefined;
+  return Array.isArray(fromRegistry) && fromRegistry.length > 0 ? [...fromRegistry] : undefined;
 }
 
 export function configuredMaxInputTokens(prov: OcxProviderConfig, id: string): number | undefined {
@@ -152,10 +175,9 @@ function configuredReasoningSummarySupport(prov: OcxProviderConfig | undefined, 
 }
 
 export function applyProviderConfigHints(name: string, prov: OcxProviderConfig, model: CatalogModel, providerCap?: number): CatalogModel {
-  void name;
-  const configuredCap = configuredContextWindow(prov, model.id);
+  const configuredCap = configuredContextWindow(prov, model.id, name);
   const configuredMaxInput = configuredMaxInputTokens(prov, model.id);
-  let inputModalities = configuredInputModalities(prov, model.id);
+  let inputModalities = configuredInputModalities(prov, model.id, name);
   // Vision-sidecar coverage: `noVisionModels` marks models whose images the PROXY describes
   // (src/vision/index.ts). The catalog must still advertise image input for them — the Codex app
   // gates attachments client-side on input_modalities, and a text-only entry would block images
@@ -218,7 +240,7 @@ export function isDatedVariantId(liveId: string, configuredId: string): boolean 
 
 export const lastDropWarnSignature = new Map<string, string>();
 
-export const QUIET_AUTHORITATIVE_CATALOG_PROVIDERS = new Set(["kimi", "xai"]);
+export const QUIET_AUTHORITATIVE_CATALOG_PROVIDERS = new Set(["kimi", "xai", "deepseek"]);
 
 export const CALLABLE_CONFIGURED_COMPATIBILITY_MODELS: Readonly<Record<string, ReadonlySet<string>>> = {
   kimi: new Set([

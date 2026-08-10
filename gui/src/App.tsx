@@ -27,7 +27,7 @@ type Theme = "light" | "dark" | "system";
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 const THEME_KEY = "ocx-theme";
 
-/** Four views (design-system v2 IA, 2026-08). Leveranciers is home. */
+/** Five views (design-system v2 IA, 2026-08). Dashboard is home. */
 const VIEW_TABS: { view: View; tkey: TKey }[] = [
   { view: "dashboard", tkey: "nav.dashboard" },
   { view: "leveranciers", tkey: "nav.providers" },
