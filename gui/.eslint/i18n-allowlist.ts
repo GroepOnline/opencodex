@@ -48,6 +48,11 @@ const TECHNICAL_UNITS = new Set([
   "Fr",
   // IEC binary unit rendered next to a formatted number; a unit symbol, not UI prose.
   "GiB",
+  // Compact uptime fragments (`3d 2h 15m`) and process-id labels next to numbers.
+  "d",
+  "h",
+  "m",
+  "PID",
 ]);
 
 /** Non-UI technical strings (API paths, CSS, shell, headers, debug fields). */
