@@ -1,49 +1,57 @@
 # 10 — `dev` ↔ `main` reconcile notes
 
-Status: in progress (CHE-5 / Phase 0). Companion to
-[`09_x10-terminal-plan.md`](09_x10-terminal-plan.md).
+Status: current (2026-08-10). Historical Phase 0 notes below are retained for
+context; do not treat the 2026-08-03 divergence table as live.
 
-## Divergence
+## Current state
 
-As of 2026-08-03 the fork branches are **diverged**:
+As of 2026-08-10:
 
-| Direction | Approx. commits |
+| Fact | Value |
+| --- | --- |
+| `dev` tip | tracks `main` (fast-forward) |
+| Integration target for PRs | `dev` |
+| Release branch | `main` (promotion from `dev` only) |
+| Dependabot | enabled, `target-branch: dev` |
+
+Prefer landing work on `dev`, then promoting a coherent tip to `main`.
+
+## Historical divergence (2026-08-03)
+
+At that date the fork branches were **diverged** (~222 ahead / ~43 behind). The
+reconcile PR train and later promotions closed that gap. The table is kept so
+old PR comments remain intelligible:
+
+| Direction | Approx. commits (2026-08-03) |
 | --- | --- |
 | `dev` ahead of `main` | ~222 |
 | `main` ahead of `dev` | ~43 |
-
-`dev` is the integration branch. Prefer porting missing `main` value into `dev`
-over resetting `main` until the open PR train (#51/#53/#52) lands.
 
 ## Already present on both (no port needed)
 
 - OmniRoute, Tencent Coding Plan, SiliconFlow presets
 - Claude Desktop integration
-- ChefGroep GUI redesign / Dutch default (stronger on `dev`)
+- ChefGroep GUI redesign / Dutch default
 - Server PostHog, budgets, percentiles, pricing modules
-- Admission rate-limit + Prometheus metrics + plugin contract (`dev` only — keep)
-- ChefVault provider-security (`dev` only — keep)
+- Admission rate-limit + Prometheus metrics + plugin contract
+- ChefVault provider-security
 
-## Ported in this reconcile PR
+## Ported in the original reconcile PR
 
 | Item | Decision |
 | --- | --- |
-| `src/codex/pacer.ts` + tests | **Ported and re-wired** into `responses/core.ts` + `compact.ts`. On `main` the original `responses.ts` call site was lost after the responses split; types existed on `dev` without implementation. |
-| Auto-enable | Honors both `accountPoolStrategy: "round-robin"` (canonical on `dev`) and the fork alias `codexRotationMode: "round-robin"`. |
+| `src/codex/pacer.ts` + tests | Ported and re-wired into `responses/core.ts` + `compact.ts`. |
 
 ## Explicitly NOT ported (with reason)
 
 | Item | Reason |
 | --- | --- |
-| De Pas pages (`Modellen`/`Verkeer`/`Systeem`/`Instellingen` + `depas.css`) | Unwired stubs on `main` only. Rebuild under ChefGroep skins in Phase 3 ([CHE-10](https://linear.app/chefgroepp/issue/CHE-10)); do not revive dead routes. |
-| Extra GUI locales (`de`) — removed `ja`/`ko`/`ru`/`zh` per rebrand | `dev` intentionally en/nl-only (#34). |
-| `gui/src/posthog.ts` client | Privacy/scope review; server PostHog already on `dev`. Phase 4. |
-| Duplicate tests (`percentiles.test.ts` etc.) | Already covered on `dev` as `usage-percentiles.test.ts`, `telemetry-posthog-server.test.ts`, … |
-| `v1.0.0-alpha.1` bump on `main` | Release after reconcile + PR train; do not bump from a side PR. |
-| `devlog/` chase trees on `main` | Historical; not product runtime. |
+| De Pas pages | Unwired stubs; rebuild under Signaal/design-system if needed |
+| Extra GUI locales beyond en/nl | Intentional |
+| Duplicate tests | Already covered under newer names |
 
-## Remaining Phase 0 human steps
+## Operator checklist
 
-1. Merge [#51](https://github.com/GroepOnline/opencodex/pull/51) → [#53](https://github.com/GroepOnline/opencodex/pull/53) → undraft+merge [#52](https://github.com/GroepOnline/opencodex/pull/52).
-2. Land this reconcile PR into `dev`.
-3. Promote a coherent `main` from `dev` when ready for alpha (CHE-6).
+1. Open feature PRs against `dev`.
+2. Promote `dev` → `main` only for release trains / hotfix promotions.
+3. Keep Dependabot targeting `dev` (see `.github/dependabot.yml`).
