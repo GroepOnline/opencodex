@@ -7,12 +7,13 @@
 
 import { normalizeHashPath } from "./hash-routing";
 
-export type View = "leveranciers" | "modellen" | "verkeer" | "systeem";
+export type View = "dashboard" | "leveranciers" | "modellen" | "verkeer" | "systeem";
 
-export const VALID_VIEWS = new Set<View>(["leveranciers", "modellen", "verkeer", "systeem"]);
+export const VALID_VIEWS = new Set<View>(["dashboard", "leveranciers", "modellen", "verkeer", "systeem"]);
 
 /** Sub-views per view (the "/"-suffix, e.g. #leveranciers/claude). */
 export const VIEW_SUBS: Record<View, ReadonlySet<string>> = {
+  dashboard: new Set(),
   leveranciers: new Set(["claude", "grok"]),
   modellen: new Set(["combos", "subagents"]),
   verkeer: new Set(["logs", "debug"]),

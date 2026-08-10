@@ -1294,6 +1294,35 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
   },
   // FREEZE 2026-07-10: no public OpenAI-compatible endpoint is documented. Evidence: devlog/_plan/260710_provider_hardening/003_research_aggregators.md.
   { id: "gitlab-duo", label: "GitLab Duo", baseUrl: "https://cloud.gitlab.com/ai/v1/proxy/openai/v1", adapter: "openai-chat", authKind: "key", dashboardUrl: "https://gitlab.com/-/user_settings/personal_access_tokens" },
+  // Meta Model API by dev.meta.ai — Llama / Muse Spark family. OpenAI-compatible endpoint
+  // at https://api.meta.ai/v1, authenticated with Bearer $MODEL_API_KEY. Models are
+  // multi-modal (text, image, video, PDF -> text) with 1,048,576-token context. Live model
+  // discovery via GET /v1/models. Standard tier (muse-spark-1.1, muse-spark-1.2) and
+  // discounted contributor tier (muse-spark-1.2-contributor).
+  // Evidence: https://dev.meta.ai/docs/models
+  {
+    id: "meta-ai",
+    label: "Meta AI",
+    baseUrl: "https://api.meta.ai/v1",
+    adapter: "openai-chat",
+    authKind: "key",
+    featured: true,
+    liveModels: true,
+    dashboardUrl: "https://dev.meta.ai",
+    defaultModel: "muse-spark-1.2",
+    models: ["muse-spark-1.2", "muse-spark-1.1", "muse-spark-1.2-contributor"],
+    modelContextWindows: {
+      "muse-spark-1.2": 1_048_576,
+      "muse-spark-1.1": 1_048_576,
+      "muse-spark-1.2-contributor": 1_048_576,
+    },
+    modelInputModalities: {
+      "muse-spark-1.2": ["text", "image"],
+      "muse-spark-1.1": ["text", "image"],
+      "muse-spark-1.2-contributor": ["text", "image"],
+    },
+    note: "Meta Model API — Muse Spark. Standard tier (privacy-respecting) and discounted contributor tier. Get a key at dev.meta.ai.",
+  },
   {
     // OmniRoute: open-source OpenAI-compatible gateway (https://github.com/diegosouzapw/OmniRoute).
     // Aggregates 250+ providers (90+ free) behind one endpoint. Cloud: api.omniroute.online;

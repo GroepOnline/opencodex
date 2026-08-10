@@ -16,6 +16,7 @@ const overrides: Partial<Record<TKey, string>> = {
   "nav.claude": "Claude",
   "nav.codexAuth": "Codex-login",
   "nav.verkeer": "Verkeer",
+  "nav.dashboard": "Overzicht",
   "nav.systeem": "Systeem",
   "nav.views": "Views",
   "sub.overview": "Overzicht",

@@ -35,7 +35,7 @@ const EXPECTED_KEY_PROVIDER_IDS = [
   "huggingface", "nvidia", "venice", "zai", "zhipu-bigmodel", "nanogpt", "synthetic", "siliconflow", "qwen-cloud", "tencent-coding-plan",
   "qianfan", "alibaba", "alibaba-token-plan", "alibaba-token-plan-intl", "parallel", "zenmux", "litellm", "ollama-cloud", "mistral",
   "minimax", "minimax-cn", "kimi-code", "opencode-zen", "vercel-ai-gateway",
-  "opencode-free", "xiaomi", "kilo", "mimo-free", "cloudflare-ai-gateway", "cloudflare-workers-ai", "gitlab-duo",
+  "opencode-free", "xiaomi", "kilo", "mimo-free", "cloudflare-ai-gateway", "cloudflare-workers-ai", "gitlab-duo", "meta-ai",
   "omniroute",
 ];
 
@@ -650,7 +650,7 @@ describe("provider registry parity", () => {
     expect(featured).toEqual([
       "openai", "xai", "anthropic", "anthropic-apikey", "kimi", "openai-apikey", "umans", "opencode-go", "openrouter",
       "groq", "google", "azure-openai", "ollama", "vllm", "lm-studio", "opencode-free",
-      "mimo-free",
+      "mimo-free", "meta-ai",
       "omniroute",
     ]);
 

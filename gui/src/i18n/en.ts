@@ -28,6 +28,7 @@ export const en = {
   "pws.quota.fout": "Error",
   "pws.quota.retry": "Retry",
   "pws.quota.retryAt": "Retry at {time}",
+  "nav.dashboard": "Overview",
   "nav.providers": "Providers & accounts",
   "nav.models": "Models",
   "nav.combos": "Combos",

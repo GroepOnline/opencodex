@@ -9,6 +9,7 @@ import Storage from "./pages/Storage";
 import ApiKeys from "./pages/ApiKeys";
 import Claude from "./pages/Claude";
 import Grok from "./pages/Grok";
+import Dashboard from "./pages/Dashboard";
 import Startup from "./pages/Startup";
 import ErrorBoundary from "./components/ErrorBoundary";
 import SettingsSheet from "./components/SettingsSheet";
@@ -28,6 +29,7 @@ const THEME_KEY = "ocx-theme";
 
 /** Four views (design-system v2 IA, 2026-08). Leveranciers is home. */
 const VIEW_TABS: { view: View; tkey: TKey }[] = [
+  { view: "dashboard", tkey: "nav.dashboard" },
   { view: "leveranciers", tkey: "nav.providers" },
   { view: "modellen", tkey: "nav.models" },
   { view: "verkeer", tkey: "nav.verkeer" },
@@ -36,6 +38,9 @@ const VIEW_TABS: { view: View; tkey: TKey }[] = [
 
 /** Sub-tabs per view; `null` is the view's home target. */
 const SUB_TABS: Record<View, { sub: string | null; tkey: TKey }[]> = {
+  dashboard: [
+    { sub: null, tkey: "nav.dashboard" },
+  ],
   leveranciers: [
     { sub: null, tkey: "sub.overview" },
     { sub: "claude", tkey: "nav.claude" },
@@ -178,7 +183,8 @@ export default function App() {
             detailsLabel={t("errorBoundary.details")}
             reloadLabel={t("errorBoundary.reload")}
           >
-            {route.view === "leveranciers" && route.sub === null && <Providers apiBase={API_BASE} />}
+            {route.view === "dashboard" && <Dashboard apiBase={API_BASE} />}
+          {route.view === "leveranciers" && route.sub === null && <Providers apiBase={API_BASE} />}
             {route.view === "leveranciers" && route.sub === "claude" && <Claude apiBase={API_BASE} />}
             {route.view === "leveranciers" && route.sub === "grok" && <Grok apiBase={API_BASE} />}
             {route.view === "modellen" && route.sub === null && <Models apiBase={API_BASE} />}
