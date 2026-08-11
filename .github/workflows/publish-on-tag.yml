@@ -30,7 +30,8 @@ concurrency:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    # GitHub-hosted runners banned until Actions spending restored (fleet only).
+    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["self-hosted","Linux","X64","pr-isolated"]') || fromJSON('["self-hosted","Linux","X64","heavy"]') }}
     timeout-minutes: 15
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -132,7 +133,8 @@ jobs:
     if: >-
       ${{ !cancelled() && needs.publish.result == 'success'
           && vars.DEPLOY_HOST != '' }}
-    runs-on: ubuntu-latest
+    # GitHub-hosted runners banned until Actions spending restored (fleet only).
+    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["self-hosted","Linux","X64","pr-isolated"]') || fromJSON('["self-hosted","Linux","X64","heavy"]') }}
     timeout-minutes: 15
     steps:
       - name: Deploy to control-01 over SSH

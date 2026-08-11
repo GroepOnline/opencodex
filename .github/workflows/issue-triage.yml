@@ -11,7 +11,8 @@ concurrency:
 jobs:
   find-duplicates:
     name: Find similar issues
-    runs-on: ubuntu-latest
+    # GitHub-hosted runners banned until Actions spending restored (fleet only).
+    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["self-hosted","Linux","X64","pr-isolated"]') || fromJSON('["self-hosted","Linux","X64","heavy"]') }}
     permissions:
       contents: read
       issues: read
@@ -135,7 +136,8 @@ jobs:
     name: Post duplicate comment
     needs: find-duplicates
     if: needs.find-duplicates.outputs.matches
-    runs-on: ubuntu-latest
+    # GitHub-hosted runners banned until Actions spending restored (fleet only).
+    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["self-hosted","Linux","X64","pr-isolated"]') || fromJSON('["self-hosted","Linux","X64","heavy"]') }}
     permissions:
       issues: write
     steps:
