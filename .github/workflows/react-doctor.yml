@@ -35,7 +35,8 @@ concurrency:
 
 jobs:
   react-doctor:
-    runs-on: ubuntu-latest
+    # GitHub-hosted runners banned until Actions spending restored (fleet only).
+    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["self-hosted","Linux","X64","pr-isolated"]') || fromJSON('["self-hosted","Linux","X64","heavy"]') }}
     timeout-minutes: 10
     steps:
       # fetch-depth: 0 gives React Doctor the full git history it needs to find
