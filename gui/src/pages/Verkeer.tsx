@@ -23,7 +23,8 @@ interface BonEntry {
   usage?: { inputTokens: number; outputTokens: number; totalTokens?: number };
 }
 
-const TAIL_INTERVAL_MS = 5000;
+/** Soft poll — CF edge used to 1015 at 100/min on /api/*; keep headroom for other tabs. */
+const TAIL_INTERVAL_MS = 12_000;
 
 function bonTokens(entry: BonEntry): number | undefined {
   if (entry.usage) return entry.usage.totalTokens ?? entry.usage.inputTokens + entry.usage.outputTokens;
