@@ -94,7 +94,15 @@ export function managementRequestOrigin(req: Request, config: OcxConfig): string
   const host = req.headers.get("Host");
   const parsedHost = parseHttpHost(host);
   if (!host || !parsedHost) return null;
-  if (!isApiAuthRequired(config) && !isLoopbackHostname(parsedHost.hostname)) return null;
+  // Loopback bind may still receive public Host via Cloudflare Tunnel. Allow
+  // Access-trusted hostnames so https://ocx… Origin checks succeed.
+  if (
+    !isApiAuthRequired(config)
+    && !isLoopbackHostname(parsedHost.hostname)
+    && !isCfAccessTrustedHost(parsedHost.hostname)
+  ) {
+    return null;
+  }
   try {
     // Cloudflare Tunnel terminates TLS; Bun often sees http:// on the origin. Prefer
     // X-Forwarded-Proto, then https for Access-trusted public hosts so browser
