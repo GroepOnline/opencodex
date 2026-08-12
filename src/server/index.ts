@@ -447,7 +447,7 @@ export function startServer(port?: number) {
         // never consume (or mint) limiter state.
         const metricsGate = admission.gate("management", req, requestServer);
         if (metricsGate.preAuthDeny) return withManagementCors(metricsGate.preAuthDeny, req, config);
-        const apiAuthError = requireManagementAuth(req, managementAuth, config);
+        const apiAuthError = await requireManagementAuth(req, managementAuth, config);
         if (apiAuthError) return withManagementCors(apiAuthError, req, config);
         if (!isAllowedManagementOrigin(req, config)) {
           return withManagementCors(formatErrorResponse(403, "origin_rejected", "cross-origin management request blocked"), req, config);
@@ -468,7 +468,7 @@ export function startServer(port?: number) {
       if (url.pathname.startsWith("/api/")) {
         const mgmtGate = admission.gate("management", req, requestServer);
         if (mgmtGate.preAuthDeny) return withManagementCors(mgmtGate.preAuthDeny, req, config);
-        const apiAuthError = requireManagementAuth(req, managementAuth, config);
+        const apiAuthError = await requireManagementAuth(req, managementAuth, config);
         if (apiAuthError) return withManagementCors(apiAuthError, req, config);
         // Origin precedence: handleManagementAPI enforces the same guard, but only after this
         // block would have charged the limiter. Reject cross-origin here (same payload shape as
@@ -881,13 +881,13 @@ export function startServer(port?: number) {
       }
 
       if (url.pathname === "/__opencodex_gui_session" && req.method === "GET") {
-        const session = issueGuiSession(req, config, managementAuth);
+        const session = await issueGuiSession(req, config, managementAuth);
         if (!session) return jsonResponse({ error: "GUI session unavailable" }, 403, req, config);
         return jsonResponse(session, 200, req, config);
       }
 
       const guiSessionCandidate = req.method === "GET" && (url.pathname === "/" || !url.pathname.includes("."))
-        ? issueGuiSession(req, config, managementAuth)
+        ? await issueGuiSession(req, config, managementAuth)
         : null;
       const guiFile = serveGuiFile(url.pathname, undefined, guiSessionCandidate ?? undefined);
       if (guiFile) return guiFile;
