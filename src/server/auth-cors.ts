@@ -17,6 +17,7 @@ import { providerConfigSeed } from "../providers/derive";
 import { activeProviderCooldowns } from "../providers/cap-cooldown";
 import type { OcxConfig, OcxProviderConfig } from "../types";
 import { openRouterRoutingConfigError } from "../providers/openrouter-routing";
+import { isCfAccessTrustedHost } from "./cf-access-auth";
 
 let _corsOrigin = "http://localhost:10100";
 export function setCorsOrigin(port: number): void { _corsOrigin = `http://localhost:${port}`; }
@@ -93,9 +94,26 @@ export function managementRequestOrigin(req: Request, config: OcxConfig): string
   const host = req.headers.get("Host");
   const parsedHost = parseHttpHost(host);
   if (!host || !parsedHost) return null;
-  if (!isApiAuthRequired(config) && !isLoopbackHostname(parsedHost.hostname)) return null;
+  // Loopback bind may still receive public Host via Cloudflare Tunnel. Allow
+  // Access-trusted hostnames so https://ocx… Origin checks succeed.
+  if (
+    !isApiAuthRequired(config)
+    && !isLoopbackHostname(parsedHost.hostname)
+    && !isCfAccessTrustedHost(parsedHost.hostname)
+  ) {
+    return null;
+  }
   try {
-    const protocol = new URL(req.url).protocol;
+    // Cloudflare Tunnel terminates TLS; Bun often sees http:// on the origin. Prefer
+    // X-Forwarded-Proto, then https for Access-trusted public hosts so browser
+    // Origin (https://ocx.…) matches session/origin checks.
+    const forwarded = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+    let protocol = new URL(req.url).protocol;
+    if (forwarded === "https" || forwarded === "http") {
+      protocol = `${forwarded}:`;
+    } else if (isCfAccessTrustedHost(parsedHost.hostname)) {
+      protocol = "https:";
+    }
     if (protocol !== "http:" && protocol !== "https:") return null;
     return new URL(`${protocol}//${host}`).origin;
   } catch {

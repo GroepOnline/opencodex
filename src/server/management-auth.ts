@@ -24,6 +24,11 @@ import {
   managementRequestOrigin,
   parseHttpHost,
 } from "./auth-cors";
+import {
+  cfAccessConfigured,
+  isCfAccessTrustedHost,
+  verifyCfAccessRequest,
+} from "./cf-access-auth";
 
 const GUI_SESSION_TTL_MS = 5 * 60_000;
 const GUI_SESSION_LIMIT = 128;
@@ -158,14 +163,24 @@ function randomSessionSecret(prefix: "ocx_session_"): string {
   return `${prefix}${randomBytes(32).toString("base64url")}`;
 }
 
-export function issueGuiSession(
+export async function issueGuiSession(
   req: Request,
   config: OcxConfig,
   state: ManagementAuthState,
-): GuiSessionBootstrap | null {
-  if (isApiAuthRequired(config) || !state.available || req.method !== "GET" || !isAllowedManagementOrigin(req, config)) return null;
+): Promise<GuiSessionBootstrap | null> {
+  if (!state.available || req.method !== "GET" || !isAllowedManagementOrigin(req, config)) return null;
   const host = parseHttpHost(req.headers.get("Host"));
-  if (!host || !isLoopbackHostname(host.hostname)) return null;
+  if (!host) return null;
+
+  // Loopback GUI session (laptop tunnel / local bind) — unchanged trust model.
+  const loopbackSession = !isApiAuthRequired(config) && isLoopbackHostname(host.hostname);
+  // Public ocx.chefgroep.online: mint only when Cloudflare Access JWT is valid.
+  let accessSession = false;
+  if (!loopbackSession && cfAccessConfigured() && isCfAccessTrustedHost(host.hostname)) {
+    accessSession = !!(await verifyCfAccessRequest(req));
+  }
+  if (!loopbackSession && !accessSession) return null;
+
   const origin = managementRequestOrigin(req, config);
   if (!origin) return null;
   const now = Date.now();
@@ -210,11 +225,11 @@ export function resolveManagementRateLimitPrincipal(
   return rateLimitFingerprinter.anonymous();
 }
 
-export function requireManagementAuth(
+export async function requireManagementAuth(
   req: Request,
   state: ManagementAuthState,
   config?: OcxConfig,
-): Response | null {
+): Promise<Response | null> {
   if (!state.available) {
     return Response.json({ error: "management API unavailable" }, { status: 503 });
   }
@@ -236,6 +251,18 @@ export function requireManagementAuth(
       if (sameOrigin && (safeMethod || (browserOrigin === session.origin && !!csrf && equalSecret(csrf, session.csrfToken)))) {
         return null;
       }
+    }
+  }
+  // Human GUI behind Cloudflare Access: valid Access JWT replaces admin prompt.
+  // Tailscale/direct hits without JWT still require admin token or session.
+  if (config && cfAccessConfigured()) {
+    const host = parseHttpHost(req.headers.get("Host"));
+    const safeMethod = req.method === "GET" || req.method === "HEAD";
+    const origin = req.headers.get("Origin");
+    if (host && isCfAccessTrustedHost(host.hostname)
+      && isAllowedManagementOrigin(req, config)
+      && (safeMethod || !!origin)) {
+      if (await verifyCfAccessRequest(req)) return null;
     }
   }
   return Response.json({ error: "opencodex admin token required" }, { status: 401 });
