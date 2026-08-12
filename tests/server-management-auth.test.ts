@@ -350,7 +350,7 @@ describe("management and data-plane credential separation", () => {
     process.env.CF_ACCESS_TEAM_DOMAIN = "chefgroep.cloudflareaccess.com";
     process.env.CF_ACCESS_AUD = "test-aud";
     process.env.CF_ACCESS_ALLOWED_HOSTS = "ocx.chefgroep.online";
-    setVerifyCfAccessRequestForTests(async () => ({ email: "misterwantedd@gmail.com", sub: "user-1" }));
+    setVerifyCfAccessRequestForTests(async () => ({ email: "operator@example.test", sub: "user-1" }));
 
     const config = remoteConfig();
     const state = initializeManagementAuthState(config);
@@ -368,7 +368,7 @@ describe("management and data-plane credential separation", () => {
     setVerifyCfAccessRequestForTests(async () => null);
     expect((await requireManagementAuth(denied, state, config))?.status).toBe(401);
 
-    setVerifyCfAccessRequestForTests(async () => ({ email: "misterwantedd@gmail.com", sub: "user-1" }));
+    setVerifyCfAccessRequestForTests(async () => ({ email: "operator@example.test", sub: "user-1" }));
     const session = await issueGuiSession(new Request("http://0.0.0.0:10100/", {
       headers: {
         Host: "ocx.chefgroep.online",
