@@ -20,6 +20,7 @@ type JwksCache = {
 };
 
 const JWKS_TTL_MS = 60 * 60_000;
+const JWKS_FETCH_TIMEOUT_MS = 3_000;
 let jwksCache: JwksCache | null = null;
 
 export function resetCfAccessJwksCacheForTests(): void {
@@ -27,12 +28,12 @@ export function resetCfAccessJwksCacheForTests(): void {
 }
 
 export function cfAccessConfigured(): boolean {
-  return !!process.env.CF_ACCESS_TEAM_DOMAIN?.trim() && !!process.env.CF_ACCESS_AUD?.trim();
+  return !!Bun.env.CF_ACCESS_TEAM_DOMAIN?.trim() && !!Bun.env.CF_ACCESS_AUD?.trim();
 }
 
 export function cfAccessTrustedHosts(): Set<string> {
-  const raw = process.env.CF_ACCESS_ALLOWED_HOSTS?.trim()
-    || process.env.CF_ACCESS_HOST?.trim()
+  const raw = Bun.env.CF_ACCESS_ALLOWED_HOSTS?.trim()
+    || Bun.env.CF_ACCESS_HOST?.trim()
     || "ocx.chefgroep.online";
   return new Set(
     raw.split(",").map(part => part.trim().toLowerCase()).filter(Boolean),
@@ -45,11 +46,11 @@ export function isCfAccessTrustedHost(hostname: string | undefined): boolean {
 }
 
 function teamDomain(): string {
-  return process.env.CF_ACCESS_TEAM_DOMAIN!.trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+  return Bun.env.CF_ACCESS_TEAM_DOMAIN!.trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
 }
 
 function audience(): string {
-  return process.env.CF_ACCESS_AUD!.trim();
+  return Bun.env.CF_ACCESS_AUD!.trim();
 }
 
 function extractAccessJwt(req: Request): string | null {
@@ -76,7 +77,14 @@ async function loadJwks(): Promise<Jwk[]> {
   const now = Date.now();
   if (jwksCache && now - jwksCache.fetchedAt < JWKS_TTL_MS) return jwksCache.keys;
   const url = `https://${teamDomain()}/cdn-cgi/access/certs`;
-  const response = await fetch(url, { headers: { Accept: "application/json" } });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), JWKS_FETCH_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
   if (!response.ok) throw new Error(`CF Access JWKS fetch failed: ${response.status}`);
   const body = await response.json() as { keys?: Jwk[] };
   const keys = Array.isArray(body.keys) ? body.keys : [];
@@ -141,7 +149,8 @@ export async function verifyCfAccessRequest(req: Request): Promise<CfAccessIdent
     const ok = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature, data);
     if (!ok) return null;
     return { email, sub };
-  } catch {
+  } catch (error) {
+    console.warn("Cloudflare Access verification failed", error instanceof Error ? error.message : "unknown error");
     return null;
   }
 }
