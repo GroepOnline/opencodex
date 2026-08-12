@@ -257,7 +257,11 @@ export async function requireManagementAuth(
   // Tailscale/direct hits without JWT still require admin token or session.
   if (config && cfAccessConfigured()) {
     const host = parseHttpHost(req.headers.get("Host"));
-    if (host && isCfAccessTrustedHost(host.hostname) && isAllowedManagementOrigin(req, config)) {
+    const safeMethod = req.method === "GET" || req.method === "HEAD";
+    const origin = req.headers.get("Origin");
+    if (host && isCfAccessTrustedHost(host.hostname)
+      && isAllowedManagementOrigin(req, config)
+      && (safeMethod || !!origin)) {
       if (await verifyCfAccessRequest(req)) return null;
     }
   }
