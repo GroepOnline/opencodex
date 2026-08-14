@@ -19,6 +19,14 @@
 
 Codex App model picker visibility comes from this shared catalog, not from patching the App.
 
+Live discovery (`src/providers/model-discovery.ts` + registry `modelDiscovery`) is not always
+OpenAI `{ data: [{ id }] }`. Google AI Studio returns `{ models: [{ name: "models/…" }] }`; the
+registry entry sets `envelopeKeys` / `idField` / `idStripPrefix` so gather does not treat a valid
+2xx as malformed and fall back to the static seed. Providers without a usable `/models` endpoint
+(e.g. `google-antigravity` Cloud Code Assist) set `liveModels: false`. Combo members need a
+positive `contextWindow` (config or registry fallback via `applyProviderConfigHints`) or the combo
+is omitted as `incomplete_metadata`.
+
 ## Entry shape
 
 Routed entries keep Codex-required metadata such as reasoning levels, shell type, API support flags,

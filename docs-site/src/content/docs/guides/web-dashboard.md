@@ -25,9 +25,11 @@ bun run dev:gui
 
 On the default loopback bind (`localhost` / `127.0.0.1`) the dashboard never asks for a token:
 the proxy mints short-lived GUI sessions into the served page and renews them silently when
-they expire or the proxy restarts. Only a dashboard bound to a non-loopback hostname requires
-the admin token (`OPENCODEX_ADMIN_AUTH_TOKEN`, or the auto-generated
-`~/.opencodex/admin-api-token` file).
+they expire or the proxy restarts. On a public host protected by Cloudflare Access, a valid
+Access login also authorizes the dashboard without an admin-token prompt (configure
+`CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD`, and the trusted host settings). Other dashboards
+bound to a non-loopback hostname require the admin token (`OPENCODEX_ADMIN_AUTH_TOKEN`, or the
+auto-generated `~/.opencodex/admin-api-token` file).
 
 ## What you can do
 

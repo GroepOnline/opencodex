@@ -12,6 +12,7 @@ import {
   issueGuiSession,
   requireManagementAuth,
 } from "../src/server/management-auth";
+import { setVerifyCfAccessRequestForTests } from "../src/server/cf-access-auth";
 import {
   resetHardenedStateForTests,
   setIcaclsRunnerForTests,
@@ -72,6 +73,10 @@ afterEach(() => {
   setIcaclsRunnerForTests(null);
   setPlatformForTests(null);
   resetHardenedStateForTests();
+  setVerifyCfAccessRequestForTests(null);
+  delete process.env.CF_ACCESS_TEAM_DOMAIN;
+  delete process.env.CF_ACCESS_AUD;
+  delete process.env.CF_ACCESS_ALLOWED_HOSTS;
   if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
   else process.env.OPENCODEX_HOME = previousHome;
   if (previousDataToken === undefined) delete process.env.OPENCODEX_API_AUTH_TOKEN;
@@ -271,7 +276,7 @@ describe("management and data-plane credential separation", () => {
     const pageRequest = new Request("http://localhost:10100/", {
       headers: { Host: "localhost:10100" },
     });
-    const session = issueGuiSession(pageRequest, config, state);
+    const session = await issueGuiSession(pageRequest, config, state);
     expect(session).not.toBeNull();
 
     const guiDist = join(testHome, "gui");
@@ -291,7 +296,7 @@ describe("management and data-plane credential separation", () => {
         "x-opencodex-gui-origin": "http://localhost:10100",
       },
     });
-    expect(requireManagementAuth(sameOriginRead, state, config)).toBeNull();
+    expect(await requireManagementAuth(sameOriginRead, state, config)).toBeNull();
 
     const crossPortRead = new Request("http://localhost:10100/api/config", {
       headers: {
@@ -301,7 +306,7 @@ describe("management and data-plane credential separation", () => {
         "x-opencodex-gui-origin": "http://localhost:20100",
       },
     });
-    expect(requireManagementAuth(crossPortRead, state, config)?.status).toBe(401);
+    expect((await requireManagementAuth(crossPortRead, state, config))?.status).toBe(401);
 
     const mutationWithoutCsrf = new Request("http://localhost:10100/api/config", {
       method: "POST",
@@ -312,7 +317,7 @@ describe("management and data-plane credential separation", () => {
         "x-opencodex-gui-origin": "http://localhost:10100",
       },
     });
-    expect(requireManagementAuth(mutationWithoutCsrf, state, config)?.status).toBe(401);
+    expect((await requireManagementAuth(mutationWithoutCsrf, state, config))?.status).toBe(401);
 
     const mutationWithCsrf = new Request("http://localhost:10100/api/config", {
       method: "POST",
@@ -324,21 +329,55 @@ describe("management and data-plane credential separation", () => {
         "x-opencodex-csrf-token": session?.csrfToken ?? "",
       },
     });
-    expect(requireManagementAuth(mutationWithCsrf, state, config)).toBeNull();
+    expect(await requireManagementAuth(mutationWithCsrf, state, config)).toBeNull();
 
-    expect(issueGuiSession(new Request("http://attacker.test/", {
+    expect(await issueGuiSession(new Request("http://attacker.test/", {
       headers: { Host: "attacker.test" },
     }), config, state)).toBeNull();
-    expect(issueGuiSession(new Request("http://localhost:10100/"), config, state)).toBeNull();
+    expect(await issueGuiSession(new Request("http://localhost:10100/"), config, state)).toBeNull();
   });
 
-  test("a non-loopback binding never issues a GUI session from a forged loopback Host", () => {
+  test("a non-loopback binding never issues a GUI session from a forged loopback Host", async () => {
     const config = remoteConfig();
     const state = initializeManagementAuthState(config);
     const request = new Request("http://localhost:10100/", {
       headers: { Host: "localhost:10100" },
     });
-    expect(issueGuiSession(request, config, state)).toBeNull();
+    expect(await issueGuiSession(request, config, state)).toBeNull();
+  });
+
+  test("Cloudflare Access JWT authorizes public GUI management without admin token", async () => {
+    process.env.CF_ACCESS_TEAM_DOMAIN = "chefgroep.cloudflareaccess.com";
+    process.env.CF_ACCESS_AUD = "test-aud";
+    process.env.CF_ACCESS_ALLOWED_HOSTS = "ocx.chefgroep.online";
+    setVerifyCfAccessRequestForTests(async () => ({ email: "operator@example.test", sub: "user-1" }));
+
+    const config = remoteConfig();
+    const state = initializeManagementAuthState(config);
+
+    const denied = new Request("http://0.0.0.0:10100/api/usage", {
+      headers: {
+        Host: "ocx.chefgroep.online",
+        Origin: "https://ocx.chefgroep.online",
+        "x-forwarded-proto": "https",
+      },
+    });
+    // Override returns identity, so this should pass
+    expect(await requireManagementAuth(denied, state, config)).toBeNull();
+
+    setVerifyCfAccessRequestForTests(async () => null);
+    expect((await requireManagementAuth(denied, state, config))?.status).toBe(401);
+
+    setVerifyCfAccessRequestForTests(async () => ({ email: "operator@example.test", sub: "user-1" }));
+    const session = await issueGuiSession(new Request("http://0.0.0.0:10100/", {
+      headers: {
+        Host: "ocx.chefgroep.online",
+        "x-forwarded-proto": "https",
+        "cf-access-jwt-assertion": "dummy",
+      },
+    }), config, state);
+    expect(session).not.toBeNull();
+    expect(session?.origin).toBe("https://ocx.chefgroep.online");
   });
 
   test("all local credential shapes are rejected by the upstream-forwarding guard", () => {

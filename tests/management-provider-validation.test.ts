@@ -14,6 +14,7 @@ import {
   recordCodexUpstreamOutcome,
 } from "../src/codex/routing";
 import { loadConfig, saveConfig } from "../src/config";
+import { ANTIGRAVITY_MODELS } from "../src/providers/antigravity-models";
 import { deriveProviderPresets } from "../src/providers/derive";
 import { MAIN_CODEX_ACCOUNT_ID } from "../src/codex/main-account";
 import {
@@ -159,6 +160,34 @@ describe("provider management validation", () => {
     } finally {
       clearModelCache();
     }
+  });
+
+  test("GET /api/providers exposes registry-enriched liveModels for google-antigravity without mutating config", async () => {
+    // Bare persisted row: liveModels/models live only in the registry until enrich runs on a clone.
+    const antigravity = {
+      adapter: "google" as const,
+      baseUrl: "https://daily-cloudcode-pa.googleapis.com",
+      authMode: "oauth" as const,
+    };
+    const cfg: OcxConfig = {
+      port: 10100,
+      defaultProvider: "google-antigravity",
+      providers: { "google-antigravity": antigravity },
+    };
+    const before = structuredClone(cfg.providers["google-antigravity"]);
+
+    const requestUrl = new URL("http://127.0.0.1/api/providers");
+    const response = await handleManagementAPI(new Request(requestUrl), requestUrl, cfg);
+    const providers = await response!.json() as Array<Record<string, unknown>>;
+    const entry = providers.find(provider => provider.name === "google-antigravity");
+
+    expect(entry).toMatchObject({
+      name: "google-antigravity",
+      liveModels: false,
+      models: [...ANTIGRAVITY_MODELS],
+    });
+    expect(entry).not.toHaveProperty("discovery");
+    expect(cfg.providers["google-antigravity"]).toEqual(before);
   });
 
   test("provider management rejects externally supplied forward auth providers", async () => {

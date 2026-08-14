@@ -502,8 +502,8 @@ function modelDiscoveryTransportSeed(providerName: string, prov: OcxProviderConf
  * (not `/models`), it needs `anthropic-version`, and it authenticates with `x-api-key` by default
  * (or `Authorization: Bearer` when `apiKeyTransport = "bearer"`), plus the OAuth beta for oauth
  * mode — not a bare Bearer. Google (ai-studio mode)
- * is the other special case: `x-goog-api-key` + `/v1beta/models`, returning `{ models: [...] }`.
- * The catalog authority gate intentionally degrades that non-OpenAI shape to stale/static data.
+ * is the other special case: `x-goog-api-key` + `/v1beta/models`, returning `{ models: [{ name }] }`.
+ * Registry `modelDiscovery` (envelopeKeys/idField/idStripPrefix) maps that shape into catalog ids.
  * Everyone else uses the OpenAI-style `/models` + Bearer with a `{ data: [{ id, owned_by? }] }`
  * response.
  */

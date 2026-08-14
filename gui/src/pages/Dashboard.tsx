@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useKeyedClientResource } from "../client-resource";
 import { useT, useI18n } from "../i18n/shared";
 import { formatTokens } from "../format-tokens";
+import { formatUptime } from "../formatUptime";
 import { statusCodeInfo } from "../status-codes";
 import { modelLabel } from "../model-display";
 import { IconCheck, IconAlert } from "../icons";
@@ -35,15 +36,6 @@ interface UsageSummary {
 
 function vandaagKey(): string {
   return new Date().toISOString().slice(0, 10);
-}
-
-function formatUptime(seconds: number): string {
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (d > 0) return `${d}d ${h}h ${m}m`;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
 }
 
 function bonTokens(entry: BonEntry): number | undefined {
@@ -148,12 +140,12 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
               <span className="pws-dashboard-card-label">{t("dash.version")}</span>
             </div>
             <div className="pws-dashboard-card pws-dashboard-card--muted">
-              <span className="pws-dashboard-card-count" style={{ fontSize: "1rem" }}>{formatUptime(health.data.uptime)}</span>
+              <span className="pws-dashboard-card-count" style={{ fontSize: "1rem" }}>{formatUptime(health.data.uptime, locale)}</span>
               <span className="pws-dashboard-card-label">{t("dash.uptime")}</span>
             </div>
             <div className="pws-dashboard-card pws-dashboard-card--muted">
               <span className="pws-dashboard-card-count" style={{ fontSize: "1rem" }}>{health.data.pid}</span>
-              <span className="pws-dashboard-card-label">PID</span>
+              <span className="pws-dashboard-card-label">{t("dash.pid")}</span>
             </div>
           </>
         )}

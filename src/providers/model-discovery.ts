@@ -113,6 +113,24 @@ export function providerModelDiscoverySpecError(spec: ProviderModelDiscoverySpec
       if (error) return `${group}: ${error}`;
     }
   }
+  if (spec.envelopeKeys !== undefined) {
+    if (!Array.isArray(spec.envelopeKeys) || spec.envelopeKeys.length === 0 || spec.envelopeKeys.length > 8) {
+      return "envelopeKeys must contain 1-8 keys";
+    }
+    if (spec.envelopeKeys.some(key => typeof key !== "string" || !key.trim() || key.length > 64)) {
+      return "envelopeKeys entries must be nonblank strings up to 64 characters";
+    }
+  }
+  if (spec.idField !== undefined) {
+    if (typeof spec.idField !== "string" || !spec.idField.trim() || spec.idField.length > 64) {
+      return "idField must be a nonblank string up to 64 characters";
+    }
+  }
+  if (spec.idStripPrefix !== undefined) {
+    if (typeof spec.idStripPrefix !== "string" || !spec.idStripPrefix || spec.idStripPrefix.length > 64) {
+      return "idStripPrefix must be a non-empty string up to 64 characters";
+    }
+  }
   return null;
 }
 
@@ -314,14 +332,19 @@ export function extractProviderModelItems(
   discovery: ResolvedProviderModelDiscovery,
 ): ProviderModelItemsResult {
   const limit = positiveIntegerAtMost(discovery.maxModels, MODEL_DISCOVERY_MAX_MODELS);
+  const envelopeKeys = discovery.spec?.envelopeKeys?.length
+    ? discovery.spec.envelopeKeys
+    : ["data"];
+  const idField = discovery.spec?.idField?.trim() || "id";
+  const idStripPrefix = discovery.spec?.idStripPrefix ?? "";
   let data: unknown[];
   if (Array.isArray(value)) {
     // Together-style top-level /models arrays. Catalog discovery must not treat a stray
-    // `models` key on openai-chat responses as valid — only `data` envelopes or top-level arrays.
+    // `models` key on openai-chat responses as valid unless the registry opted into that envelope.
     if (value.length > limit) return { ok: false, reason: "too_many_models" };
     data = value;
   } else {
-    const envelope = extractModelEnvelopeRows(value, discovery.maxModels, ["data"]);
+    const envelope = extractModelEnvelopeRows(value, discovery.maxModels, envelopeKeys);
     if (!envelope.ok) return envelope;
     data = envelope.rows;
   }
@@ -332,20 +355,31 @@ export function extractProviderModelItems(
     if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
       return { ok: false, reason: "invalid_shape" };
     }
-    const id = (raw as { id?: unknown }).id;
-    if (typeof id !== "string") return { ok: false, reason: "invalid_shape" };
-    const normalizedId = id.trim();
+    const record = raw as Record<string, unknown>;
+    const rawId = record[idField];
+    if (typeof rawId !== "string") return { ok: false, reason: "invalid_shape" };
+    let id = rawId.trim();
+    if (!id || id !== rawId) return { ok: false, reason: "invalid_shape" };
+    if (idStripPrefix && id.startsWith(idStripPrefix)) id = id.slice(idStripPrefix.length);
+    // Re-check whitespace after the strip: the guard above only saw the raw row, so
+    // `models/ gemini` would otherwise survive as the catalog id " gemini".
     if (
-      !normalizedId
-      || normalizedId !== id
-      || normalizedId.length > MODEL_DISCOVERY_MAX_MODEL_ID_LENGTH
-      || MODEL_DISCOVERY_MODEL_ID_CONTROL_CHARS.test(normalizedId)
+      !id
+      || id !== id.trim()
+      || id.length > MODEL_DISCOVERY_MAX_MODEL_ID_LENGTH
+      || MODEL_DISCOVERY_MODEL_ID_CONTROL_CHARS.test(id)
     ) {
       return { ok: false, reason: "invalid_shape" };
     }
-    const item = raw as ProviderModelsApiItem;
-    if (!providerModelMatchesDiscoveryFilter(item, discovery.spec?.filter) || seen.has(normalizedId)) continue;
-    seen.add(normalizedId);
+    // Normalize to the OpenAI-shaped item the rest of the catalog pipeline expects (`id`).
+    const item = { ...record, id } as ProviderModelsApiItem;
+    // Filters may target provider-native fields (Google `name`) — evaluate against the raw row
+    // when the id field is not the OpenAI default, otherwise against the normalized item.
+    const filterSource = (discovery.spec?.idField && discovery.spec.idField !== "id")
+      ? (record as ProviderModelsApiItem)
+      : item;
+    if (!providerModelMatchesDiscoveryFilter(filterSource, discovery.spec?.filter) || seen.has(id)) continue;
+    seen.add(id);
     items.push(item);
   }
   return { ok: true, items, rawCount: data.length };
