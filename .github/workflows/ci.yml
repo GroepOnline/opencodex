@@ -197,7 +197,6 @@ jobs:
 
   security:
     name: Security audit
-    # GitHub-hosted runners banned until Actions spending restored (fleet only).
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -272,7 +271,6 @@ jobs:
 
   lint-github-actions:
     name: Lint GitHub Actions
-    # GitHub-hosted runners banned until Actions spending restored (fleet only).
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:

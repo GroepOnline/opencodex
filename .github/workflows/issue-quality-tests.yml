@@ -49,7 +49,6 @@ permissions:
 
 jobs:
   test:
-    # GitHub-hosted runners banned until Actions spending restored (fleet only).
     runs-on: ubuntu-latest
 
     steps:

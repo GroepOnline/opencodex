@@ -29,7 +29,6 @@ jobs:
   translate:
     name: Translate non-English issues
     if: github.event_name == 'issues' || github.event_name == 'workflow_dispatch'
-    # GitHub-hosted runners banned until Actions spending restored (fleet only).
     runs-on: ubuntu-latest
     # Serialize per-issue control-state RMW; workflow concurrency still cancels
     # superseded runs, but this queue avoids interleaved comment upserts.
@@ -410,7 +409,6 @@ jobs:
   translate-comment:
     name: Translate non-English issue comments
     if: github.event_name == 'issue_comment'
-    # GitHub-hosted runners banned until Actions spending restored (fleet only).
     runs-on: ubuntu-latest
     concurrency:
       # Shares the per-issue queue with the `translate` job: both jobs RMW the
@@ -689,7 +687,6 @@ jobs:
 
   validate:
     if: github.event_name == 'issues' || github.event_name == 'workflow_dispatch'
-    # GitHub-hosted runners banned until Actions spending restored (fleet only).
     runs-on: ubuntu-latest
     permissions:
       contents: read

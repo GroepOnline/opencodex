@@ -11,7 +11,6 @@ concurrency:
 jobs:
   find-duplicates:
     name: Find similar issues
-    # GitHub-hosted runners banned until Actions spending restored (fleet only).
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -136,7 +135,6 @@ jobs:
     name: Post duplicate comment
     needs: find-duplicates
     if: needs.find-duplicates.outputs.matches
-    # GitHub-hosted runners banned until Actions spending restored (fleet only).
     runs-on: ubuntu-latest
     permissions:
       issues: write
