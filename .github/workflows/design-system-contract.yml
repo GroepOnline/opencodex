@@ -6,12 +6,12 @@ permissions:
   contents: read
 jobs:
   validate:
-    # GitHub-hosted runners banned until Actions spending restored (fleet only).
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Checkout pinned design-system validator
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: GroepOnline/design-system
           ref: c5bd56088b4e58425440e816189759d0862eb2b9
