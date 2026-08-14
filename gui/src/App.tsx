@@ -5,6 +5,7 @@ import Models from "./pages/Models";
 import Combos from "./pages/Combos";
 import Subagents from "./pages/Subagents";
 import Verkeer from "./pages/Verkeer";
+import Usage from "./pages/Usage";
 import Storage from "./pages/Storage";
 import ApiKeys from "./pages/ApiKeys";
 import Claude from "./pages/Claude";
@@ -33,6 +34,7 @@ const VIEW_TABS: { view: View; tkey: TKey }[] = [
   { view: "leveranciers", tkey: "nav.providers" },
   { view: "modellen", tkey: "nav.models" },
   { view: "verkeer", tkey: "nav.verkeer" },
+  { view: "verbruik", tkey: "nav.usage" },
   { view: "systeem", tkey: "nav.systeem" },
 ];
 
@@ -52,9 +54,11 @@ const SUB_TABS: Record<View, { sub: string | null; tkey: TKey }[]> = {
     { sub: "subagents", tkey: "nav.subagents" },
   ],
   verkeer: [
-    { sub: null, tkey: "nav.usage" },
-    { sub: "logs", tkey: "sub.logs" },
+    { sub: null, tkey: "sub.logs" },
     { sub: "debug", tkey: "sub.debug" },
+  ],
+  verbruik: [
+    { sub: null, tkey: "nav.usage" },
   ],
   systeem: [
     { sub: null, tkey: "sub.status" },
@@ -190,7 +194,8 @@ export default function App() {
             {route.view === "modellen" && route.sub === null && <Models apiBase={API_BASE} />}
             {route.view === "modellen" && route.sub === "combos" && <Combos key={API_BASE} apiBase={API_BASE} />}
             {route.view === "modellen" && route.sub === "subagents" && <Subagents key={API_BASE} apiBase={API_BASE} />}
-            {route.view === "verkeer" && <Verkeer apiBase={API_BASE} target={route.sub ?? "usage"} />}
+            {route.view === "verkeer" && <Verkeer apiBase={API_BASE} target={route.sub ?? "logs"} />}
+            {route.view === "verbruik" && <Usage apiBase={API_BASE} />}
             {route.view === "systeem" && route.sub === null && <Startup apiBase={API_BASE} />}
             {route.view === "systeem" && route.sub === "storage" && <Storage apiBase={API_BASE} />}
             {route.view === "systeem" && route.sub === "api" && <ApiKeys apiBase={API_BASE} />}

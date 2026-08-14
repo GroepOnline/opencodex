@@ -29,9 +29,26 @@ interface BonEntry {
   usage?: { inputTokens: number; outputTokens: number; totalTokens?: number };
 }
 
+interface UsageProviderRow {
+  provider: string;
+  requests: number;
+  totalTokens: number;
+  shareRatio: number;
+}
+
 interface UsageSummary {
-  summary: { requests: number; totalTokens: number };
+  summary: {
+    requests: number;
+    totalTokens: number;
+    estimatedCostUsd: number;
+    coverageRatio: number;
+    ratio429: number;
+    ratio502: number;
+    p95LatencyMs: number;
+    p95TtftMs: number;
+  };
   days: Array<{ date: string; requests: number; totalTokens?: number }>;
+  providers: UsageProviderRow[];
 }
 
 function vandaagKey(): string {
@@ -97,16 +114,18 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
   const requests30d = summary?.summary.requests ?? 0;
   const tokens30d = summary?.summary.totalTokens ?? 0;
 
-  /** Provider usage ranking (top 5 by request count). */
-  const providerRanks = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const log of logs) {
-      map[log.provider] = (map[log.provider] ?? 0) + 1;
-    }
-    return Object.entries(map)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5);
-  }, [logs]);
+  /** Provider usage ranking (top 5 by request count, 30d from /api/usage). */
+  const usageProviders = useMemo(() => {
+    const ps = summary?.providers ?? [];
+    return [...ps].sort((a, b) => b.requests - a.requests).slice(0, 5);
+  }, [summary]);
+
+  const costUsd = summary
+    ? new Intl.NumberFormat(locale, { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(summary.summary.estimatedCostUsd)
+    : "—";
+  const coveragePct = summary ? `${Math.round(summary.summary.coverageRatio * 100)}%` : "—";
+  const pct429 = summary ? `${Math.round(summary.summary.ratio429 * 100)}%` : "—";
+  const pct502 = summary ? `${Math.round(summary.summary.ratio502 * 100)}%` : "—";
 
   /* Last 8 bon entries for the live feed */
   const recentBons = useMemo(() => logs.slice(0, 8), [logs]);
@@ -165,6 +184,22 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
           <span className="stat-strip-waarde">{requests30d.toLocaleString(locale)}</span>
           <span className="stat-strip-label">{t("vk.requests30d")}</span>
         </div>
+        <div className="stat-strip-item">
+          <span className="stat-strip-waarde">{costUsd}</span>
+          <span className="stat-strip-label">{t("vk.costUsd")}</span>
+        </div>
+        <div className="stat-strip-item">
+          <span className="stat-strip-waarde">{coveragePct}</span>
+          <span className="stat-strip-label">{t("dash.coverage", { pct: coveragePct })}</span>
+        </div>
+        <div className="stat-strip-item">
+          <span className="stat-strip-waarde">{pct429}</span>
+          <span className="stat-strip-label">429</span>
+        </div>
+        <div className="stat-strip-item">
+          <span className="stat-strip-waarde">{pct502}</span>
+          <span className="stat-strip-label">502</span>
+        </div>
       </div>
 
       <div className="pws-dashboard-columns">
@@ -172,20 +207,24 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
         <section className="pws-dashboard-section pws-dashboard-section--recent"
           aria-label={t("dash.providers")}>
           <h3 className="pws-dashboard-section-title">{t("dash.providers")}</h3>
-          {providerRanks.length > 0 ? (
+          {usageProviders.length > 0 ? (
             <div className="pws-dashboard-rows">
-              {providerRanks.map(([name, count]) => (
-                <div key={name} className="pws-dashboard-row">
-                  <span className="pws-dashboard-row-name">{name}</span>
-                  <span className="pws-dashboard-row-count muted">
-                    {t("pws.dashboard.requests", { count: count.toLocaleString(locale) })}
-                  </span>
-                  {/* Mini bar */}
-                  <span className="dash-bar-track" aria-hidden="true">
-                    <span className="dash-bar-fill" style={{ width: `${(count / providerRanks[0][1]) * 100}%` }} />
-                  </span>
-                </div>
-              ))}
+              {usageProviders.map(p => {
+                const name = p.provider;
+                const count = p.requests;
+                return (
+                  <div key={name} className="pws-dashboard-row">
+                    <span className="pws-dashboard-row-name">{name}</span>
+                    <span className="pws-dashboard-row-count muted">
+                      {t("pws.dashboard.requests", { count: count.toLocaleString(locale) })}
+                    </span>
+                    {/* Mini bar */}
+                    <span className="dash-bar-track" aria-hidden="true">
+                      <span className="dash-bar-fill" style={{ width: `${(count / usageProviders[0].requests) * 100}%` }} />
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <p className="muted pws-dashboard-empty">{t("pws.dashboard.noUsage")}</p>
