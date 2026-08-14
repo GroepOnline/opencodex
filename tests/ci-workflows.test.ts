@@ -46,6 +46,29 @@ describe("GitHub Actions hardening", () => {
       .map(([name]) => name);
     expect(unbounded).toEqual([]);
     expect(count(workflow, "timeout-minutes:")).toBe(Object.keys(jobs).length);
+
+    // Same every-job-bounded rule for the auxiliary workflows an audit round
+    // found running unbounded (or with a mutable action ref) on GitHub-hosted
+    // runners. Derived per workflow so adding a job without a ceiling fails here.
+    for (const path of [
+      ".github/workflows/design-system-contract.yml",
+      ".github/workflows/enforce-issue-quality.yml",
+      ".github/workflows/issue-quality-tests.yml",
+      ".github/workflows/issue-triage.yml",
+      ".github/workflows/pr-labeler.yml",
+    ]) {
+      const text = await readText(path);
+      const parsed = (Bun.YAML.parse(text) as { jobs?: Record<string, { "timeout-minutes"?: number }> }).jobs ?? {};
+      const unboundedAux = Object.entries(parsed)
+        .filter(([, job]) => typeof job?.["timeout-minutes"] !== "number")
+        .map(([name]) => `${path}: ${name}`);
+      expect(unboundedAux).toEqual([]);
+      expect(count(text, "timeout-minutes:")).toBe(Object.keys(parsed).length);
+    }
+
+    const designSystem = await readText(".github/workflows/design-system-contract.yml");
+    expect(count(designSystem, "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2")).toBe(2);
+    expect(designSystem).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
     expect(workflow).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");
     expect(workflow).toContain("oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6");
     expect(workflow).toContain("actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e");
