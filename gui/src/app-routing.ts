@@ -16,7 +16,7 @@ export const VIEW_SUBS: Record<View, ReadonlySet<string>> = {
   dashboard: new Set(),
   leveranciers: new Set(["claude", "grok"]),
   modellen: new Set(["combos", "subagents"]),
-  verkeer: new Set(["logs", "debug"]),
+  verkeer: new Set(["debug"]),
   verbruik: new Set(),
   systeem: new Set(["storage", "api"]),
 };
@@ -54,7 +54,7 @@ const LEGACY_HASH_MAP: Record<string, string> = {
   combos: "modellen/combos",
   subagents: "modellen/subagents",
   usage: "verkeer",
-  logs: "verkeer/logs",
+  logs: "verkeer",
   "logs/debug": "verkeer/debug",
   debug: "verkeer/debug",
   startup: "systeem",

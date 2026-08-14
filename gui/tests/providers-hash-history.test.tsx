@@ -53,7 +53,7 @@ describe("hash helpers", () => {
 
 describe("route resolution", () => {
   test("bare view hashes and valid subs resolve without a rewrite", () => {
-    for (const view of ["leveranciers", "modellen", "verkeer", "systeem"]) {
+    for (const view of ["leveranciers", "modellen", "verkeer", "verbruik", "systeem"]) {
       expect(resolveAppHashChange(view).replaceTo).toBeNull();
     }
     for (const sub of ["leveranciers/claude", "modellen/combos", "verkeer/debug", "systeem/storage"]) {
@@ -64,8 +64,12 @@ describe("route resolution", () => {
   test("raw hash-prefixed paths exercise the rawHash contract", () => {
     // Legacy hash with "#" prefix should resolve to its canonical view
     const logsAction = resolveAppHashChange("#logs");
-    expect(logsAction.replaceTo).toBe("verkeer/logs");
-    expect(canonicalHashFor(logsAction.route)).toBe("verkeer/logs");
+    expect(logsAction.replaceTo).toBe("verkeer");
+    expect(canonicalHashFor(logsAction.route)).toBe("verkeer");
+
+    const verkeerLogsAction = resolveAppHashChange("#verkeer/logs");
+    expect(verkeerLogsAction.replaceTo).toBe("verkeer");
+    expect(canonicalHashFor(verkeerLogsAction.route)).toBe("verkeer");
 
     // Canonical hash with "#" prefix should not rewrite
     const leveranciersAction = resolveAppHashChange("#leveranciers");
@@ -88,7 +92,7 @@ describe("route resolution", () => {
       ["combos", "modellen/combos"],
       ["subagents", "modellen/subagents"],
       ["usage", "verkeer"],
-      ["logs", "verkeer/logs"],
+      ["logs", "verkeer"],
       ["logs/debug", "verkeer/debug"],
       ["debug", "verkeer/debug"],
       ["startup", "systeem"],
