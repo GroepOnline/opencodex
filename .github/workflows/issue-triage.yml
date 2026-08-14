@@ -12,6 +12,7 @@ jobs:
   find-duplicates:
     name: Find similar issues
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       issues: read
@@ -136,6 +137,7 @@ jobs:
     needs: find-duplicates
     if: needs.find-duplicates.outputs.matches
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       issues: write
     steps:
