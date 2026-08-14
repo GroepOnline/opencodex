@@ -201,15 +201,20 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toContain("permissions:\n  contents: read");
     expect(workflow).toContain("group: service-lifecycle-${{ github.ref }}");
     expect(workflow).toContain("cancel-in-progress: true");
-    expect(count(workflow, "timeout-minutes: 10")).toBe(3);
-    expect(count(workflow, "if: ${{ !cancelled() }}")).toBe(3);
+    // Linux-only since #54: the dead `if: false` macos-launchd/windows-schtasks
+    // jobs (duplicate `runs-on` YAML keys, actionlint errors) were removed.
+    // Real cross-platform service coverage returns as dedicated, working jobs —
+    // until then this test pins the linux-systemd reality.
+    expect(count(workflow, "timeout-minutes: 10")).toBe(1);
+    expect(count(workflow, "if: ${{ !cancelled() }}")).toBe(1);
     expect(workflow).not.toContain("always()");
     expect(workflow).not.toContain('healthz || echo "healthz not ready yet"');
     expect(workflow).not.toContain("sleep 8");
+    expect(workflow).not.toContain("Get-ScheduledTask");
+    expect(workflow).not.toContain("runs-on: macos");
+    expect(workflow).not.toContain("runs-on: windows");
     expect(workflow).toContain("systemd service has no positive MainPID before crash test");
-    expect(workflow).toContain("Get-ScheduledTask -TaskName opencodex-proxy -ErrorAction SilentlyContinue");
-    expect(workflow).toContain("launchd artifact or proxy survived uninstall");
-    expect(workflow).toContain("scheduled task or proxy survived uninstall");
+    expect(workflow).toContain("systemd artifact or proxy survived uninstall");
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
   });
 

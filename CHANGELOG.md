@@ -7,6 +7,14 @@ All notable changes to the GroepOnline `opencodex` fork. Format follows
 
 ## [1.2.0] — 2026-08-14
 
+### Security
+
+- GUI: `nanoid` override `>=3.3.18` clears GHSA-2v37-7h3g-55p8 (high, transitive via `vite › postcss`) so `bun audit` passes again (#54).
+
+### CI
+
+- `service-lifecycle.yml`: removed the dead `if: false` macos-launchd/windows-schtasks jobs that carried duplicate `runs-on` YAML keys (actionlint red) (#54); `tests/ci-workflows.test.ts` now pins the linux-only reality.
+
 ### Fixed
 
 - Catalog: parse Google AI Studio live model lists (`models[].name`) instead of treating every 2xx as malformed.
