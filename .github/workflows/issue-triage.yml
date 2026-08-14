@@ -12,7 +12,7 @@ jobs:
   find-duplicates:
     name: Find similar issues
     # GitHub-hosted runners banned until Actions spending restored (fleet only).
-    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["self-hosted","Linux","X64","pr-isolated"]') || fromJSON('["self-hosted","Linux","X64","heavy"]') }}
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       issues: read
@@ -137,7 +137,7 @@ jobs:
     needs: find-duplicates
     if: needs.find-duplicates.outputs.matches
     # GitHub-hosted runners banned until Actions spending restored (fleet only).
-    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["self-hosted","Linux","X64","pr-isolated"]') || fromJSON('["self-hosted","Linux","X64","heavy"]') }}
+    runs-on: ubuntu-latest
     permissions:
       issues: write
     steps:

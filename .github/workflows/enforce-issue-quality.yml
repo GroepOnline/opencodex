@@ -30,7 +30,7 @@ jobs:
     name: Translate non-English issues
     if: github.event_name == 'issues' || github.event_name == 'workflow_dispatch'
     # GitHub-hosted runners banned until Actions spending restored (fleet only).
-    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["self-hosted","Linux","X64","pr-isolated"]') || fromJSON('["self-hosted","Linux","X64","heavy"]') }}
+    runs-on: ubuntu-latest
     # Serialize per-issue control-state RMW; workflow concurrency still cancels
     # superseded runs, but this queue avoids interleaved comment upserts.
     concurrency:
@@ -411,7 +411,7 @@ jobs:
     name: Translate non-English issue comments
     if: github.event_name == 'issue_comment'
     # GitHub-hosted runners banned until Actions spending restored (fleet only).
-    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["self-hosted","Linux","X64","pr-isolated"]') || fromJSON('["self-hosted","Linux","X64","heavy"]') }}
+    runs-on: ubuntu-latest
     concurrency:
       # Shares the per-issue queue with the `translate` job: both jobs RMW the
       # single per-issue control comment (attemptedAt / recent / sourceHashes).
@@ -690,7 +690,7 @@ jobs:
   validate:
     if: github.event_name == 'issues' || github.event_name == 'workflow_dispatch'
     # GitHub-hosted runners banned until Actions spending restored (fleet only).
-    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["self-hosted","Linux","X64","pr-isolated"]') || fromJSON('["self-hosted","Linux","X64","heavy"]') }}
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       # Required for issue closure, reopen, and bot comments.

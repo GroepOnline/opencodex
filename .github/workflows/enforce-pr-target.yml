@@ -24,7 +24,7 @@ concurrency:
 jobs:
   enforce-target:
     # GitHub-hosted runners banned until Actions spending restored (fleet only).
-    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["self-hosted","Linux","X64","pr-isolated"]') || fromJSON('["self-hosted","Linux","X64","heavy"]') }}
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout trusted PR-quality scripts

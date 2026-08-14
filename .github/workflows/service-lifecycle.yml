@@ -36,7 +36,7 @@ concurrency:
 jobs:
   linux-systemd:
     # GitHub-hosted runners banned until Actions spending restored (fleet only).
-    runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["self-hosted","Linux","X64","pr-isolated"]') || fromJSON('["self-hosted","Linux","X64","heavy"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -158,7 +158,7 @@ jobs:
           fi
 
   macos-launchd:
-    # BILLING_QUARANTINE: was macos-latest — disabled until spending restored
+    runs-on: macos-latest
     if: false
     runs-on: macos-latest
     timeout-minutes: 10
@@ -240,7 +240,7 @@ jobs:
           fi
 
   windows-schtasks:
-    # BILLING_QUARANTINE: was windows-latest — disabled until spending restored
+    runs-on: windows-latest
     if: false
     runs-on: windows-latest
     timeout-minutes: 10
