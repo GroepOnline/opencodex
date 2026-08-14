@@ -35,7 +35,7 @@ auto-generated `~/.opencodex/admin-api-token` file).
 
 | Area | What it does |
 | --- | --- |
-| **Dashboard summary** | Multi-agent mode, online state, version, uptime, provider count, 30-day token total, active providers, and available native/routed models. |
+| **Dashboard summary** | Multi-agent mode, online state, version, uptime, provider count, 30-day token total, estimated cost, usage coverage, 429/502 ratios, active providers, and available native/routed models. |
 | **Sub-agent delegation** | Choose a native or routed model and optional reasoning effort shared by OpenCodex delegation guidance and the separate native-default opt-in. This is not a proxy-side per-spawn router; see below. |
 | **Sidecars** | Choose the web-search model and effort plus the vision-description model. Changes apply on the next request. |
 | **Maintenance** | Resync the Codex model catalog, inspect project-local config bypass warnings, check the latest or preview release, and run an update with optional proxy restart. |
@@ -54,11 +54,13 @@ auto-generated `~/.opencodex/admin-api-token` file).
 
 ### Linking to a section
 
-There is a single layout, so there is no layout switch to configure. Dashboard sections are
-addressable instead: `#dashboard` opens Overview, and `#dashboard/providers` and
-`#dashboard/models` open the other two. Reload, bookmark, and Back all keep the section you were
-on. **Logs** works the same way with `#logs` and `#logs/debug`. An older `#providers/workspace`
-bookmark now lands on `#providers`.
+There is a single layout, so there is no layout switch to configure. The top-level **Usage** tab
+(`verbruik`) provides detailed usage and debugging views, while the Dashboard also shows estimated
+cost, coverage, and 429/502 error-ratio insight cards. Dashboard sections are addressable instead:
+`#dashboard` opens Overview, and `#dashboard/providers` and `#dashboard/models` open the other two.
+Reload, bookmark, and Back all keep the section you were on. **Logs** works the same way with
+`#logs` and `#logs/debug`; the Logs home is also available at `#verkeer`. An older
+`#providers/workspace` bookmark now lands on `#providers`.
 
 Cost values in **Logs** and **Usage** are API list-price equivalents calculated from reported tokens.
 They are not billing receipts or evidence of an actual charge; subscription usage or provider credits

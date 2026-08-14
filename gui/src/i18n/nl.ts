@@ -201,6 +201,7 @@ const overrides: Partial<Record<TKey, string>> = {
   "vk.tokens30d": "tokens (30d)",
   "vk.requestsToday": "requests vandaag",
   "vk.requests30d": "requests (30d)",
+  "vk.costUsd": "geschatte kosten (30d)",
   "vk.filterAria": "Filter op provider",
   "vk.all": "Alles",
   "vk.pause": "Pauzeer",

@@ -1669,6 +1669,7 @@ export const en = {
   "vk.tokens30d": "tokens (30d)",
   "vk.requestsToday": "requests today",
   "vk.requests30d": "requests (30d)",
+  "vk.costUsd": "est. cost (30d)",
   "vk.filterAria": "Filter by provider",
   "vk.all": "All",
   "vk.pause": "Pause",
