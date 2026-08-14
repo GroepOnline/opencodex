@@ -40,10 +40,10 @@ interface UsageSummary {
   summary: {
     requests: number;
     totalTokens: number;
-    estimatedCostUsd: number;
-    coverageRatio: number;
-    ratio429: number;
-    ratio502: number;
+    estimatedCostUsd?: number;
+    coverageRatio?: number;
+    ratio429?: number;
+    ratio502?: number;
     p95LatencyMs: number;
     p95TtftMs: number;
   };
@@ -120,12 +120,14 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
     return [...ps].sort((a, b) => b.requests - a.requests).slice(0, 5);
   }, [summary]);
 
-  const costUsd = summary
+  const formatRatio = (value: number | undefined): string =>
+    typeof value === "number" && Number.isFinite(value) ? `${Math.round(value * 100)}%` : "—";
+  const costUsd = typeof summary?.summary.estimatedCostUsd === "number" && Number.isFinite(summary.summary.estimatedCostUsd)
     ? new Intl.NumberFormat(locale, { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(summary.summary.estimatedCostUsd)
     : "—";
-  const coveragePct = summary ? `${Math.round(summary.summary.coverageRatio * 100)}%` : "—";
-  const pct429 = summary ? `${Math.round(summary.summary.ratio429 * 100)}%` : "—";
-  const pct502 = summary ? `${Math.round(summary.summary.ratio502 * 100)}%` : "—";
+  const coveragePct = formatRatio(summary?.summary.coverageRatio);
+  const pct429 = formatRatio(summary?.summary.ratio429);
+  const pct502 = formatRatio(summary?.summary.ratio502);
 
   /* Last 8 bon entries for the live feed */
   const recentBons = useMemo(() => logs.slice(0, 8), [logs]);
