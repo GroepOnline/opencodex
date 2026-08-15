@@ -582,6 +582,21 @@ export function clientCancelledResponse(): Response {
   return formatErrorResponse(499, "client_cancelled", "Client cancelled request");
 }
 
+/**
+ * Adapter `buildRequest` throws on empty credentials (and similar config bugs).
+ * Catching here keeps `/v1/messages` JSON instead of Bun's HTML 500 fallback,
+ * which Claude Desktop 3P surfaces as a generic gateway failure.
+ */
+export function adapterBuildRequestError(err: unknown): Response {
+  const message = redactSecretString(err instanceof Error ? err.message : String(err));
+  const missingCred = /requires a non-empty credential/i.test(message);
+  return formatErrorResponse(
+    missingCred ? 401 : 500,
+    missingCred ? "authentication_error" : "server_error",
+    message,
+  );
+}
+
 
 
 export function sanitizedRetryAfter(value: string | null, now: number): string | undefined {
@@ -2381,7 +2396,13 @@ export async function handleResponses(
   const connectMs = config.connectTimeoutMs ?? 200_000;
   let activeAdapter = adapter;
 
-  const request = await activeAdapter.buildRequest(parsed, { headers: selectedForwardHeaders });
+  let request;
+  try {
+    request = await activeAdapter.buildRequest(parsed, { headers: selectedForwardHeaders });
+  } catch (err) {
+    cleanupUpstreamAbort();
+    return adapterBuildRequestError(err);
+  }
   recordAdapterReasoning(logCtx, request);
   const inputTokenEstimate = typeof request.usageLog?.inputTokens === "number"
     ? request.usageLog.inputTokens
