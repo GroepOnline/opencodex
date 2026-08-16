@@ -129,35 +129,14 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           DIST_TAG: ${{ steps.ci.outputs.dist_tag }}
         run: |
-          notes="Published \`@groeponline/opencodex@${VERSION}\` to npm (dist-tag \`${DIST_TAG}\`)."
-          gh release create "v${VERSION}" --title "v${VERSION}" --notes "$notes"
-
-  deploy:
-    needs: publish
-    # secrets are not usable in job-level `if`, so gate on the DEPLOY_HOST repo variable
-    # (set it + the DEPLOY_SSH_KEY secret to enable automated rollout). The script also
-    # self-skips if the key/secret is missing, so a half-configured deploy can't fail.
-    if: >-
-      ${{ !cancelled() && needs.publish.result == 'success'
-          && vars.DEPLOY_HOST != '' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Deploy to control-01 over SSH
-        env:
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER != '' && secrets.DEPLOY_USER || 'chef' }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH != '' && secrets.DEPLOY_PATH || '/home/chef/opencodex-psp' }}
-          VERSION: ${{ needs.publish.outputs.version }}
-        run: |
-          set -euo pipefail
-          if [ -z "${DEPLOY_SSH_KEY:-}" ] || [ -z "${DEPLOY_HOST:-}" ]; then
-            echo "deploy not configured (set DEPLOY_HOST var + DEPLOY_SSH_KEY secret); skipping"
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            echo "release v${VERSION} already exists — skipping (Deploy workflow owns live rollout)"
             exit 0
           fi
-          printf '%s\n' "$DEPLOY_SSH_KEY" > /tmp/deploy_key
-          chmod 600 /tmp/deploy_key
-          ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "v=$VERSION p=$DEPLOY_PATH; cd \"\$p\"; git fetch --force --tags origin; git checkout \"v\$v\"; bun install --frozen-lockfile; bun run build:gui; sudo systemctl restart opencodex-proxy.service; echo \"deployed v\$v\""
+          notes="Published \`@groeponline/opencodex@${VERSION}\` to npm (dist-tag \`${DIST_TAG}\`). Live rollout to chef-control-01 runs in the \`Deploy to control-01\` workflow."
+          gh release create "v${VERSION}" --title "v${VERSION}" --notes "$notes"
+
+  # NOTE: live rollout to chef-control-01 is owned by .github/workflows/deploy.yml,
+  # which runs on the self-hosted `deploy` runner (the control-01 host itself) and
+  # health-gates the result. It is triggered by the same `v*.*.*` tag push, so a
+  # single `git tag vX.Y.Z && git push --tags` both publishes and deploys.

@@ -1,0 +1,117 @@
+name: Deploy to control-01
+
+# Rolls a new opencodex version out to the live proxy on chef-control-01.
+#
+# Triggers:
+#   - push of a `v*.*.*` tag  -> deploy that exact version (the "new version" path)
+#   - workflow_dispatch       -> deploy any ref/version deliberately (the "after merge" path)
+#
+# The job runs on the self-hosted `deploy` runner, which is the control-01 host
+# itself, so it can restart its own systemd service (chef has NOPASSWD sudo) and
+# health-gate the result locally. No SSH keys cross hosts.
+#
+# Requires the runner to be registered on control-01 (ocx-deploy-runner.service).
+# The service checkout at DEPLOY_PATH is updated in place and restarted.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to deploy (tag, branch, or sha). Defaults to the pushed tag or main."
+        required: false
+        default: ""
+      dist_tag:
+        description: "npm dist-tag this version corresponds to (informational; latest|preview)"
+        required: false
+        default: "latest"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ocx-deploy-control-01
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, X64, deploy]
+    timeout-minutes: 20
+    env:
+      DEPLOY_PATH: /home/chef/opencodex-psp
+    steps:
+      - name: Resolve deploy ref
+        id: ref
+        run: |
+          set -euo pipefail
+          if [ -n "${{ github.event.inputs.ref }}" ]; then
+            echo "ref=${{ github.event.inputs.ref }}" >> "$GITHUB_OUTPUT"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "ref=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout ref
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Capture pre-deploy HEAD (for rollback)
+        id: prev
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git fetch --force --tags origin
+
+      - name: Checkout target ref in service checkout
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          git checkout --force "${{ steps.ref.outputs.ref }}"
+          git reset --hard "${{ steps.ref.outputs.ref }}"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build GUI
+        run: bun run build:gui
+
+      - name: Restart opencodex-proxy
+        run: sudo systemctl restart opencodex-proxy.service
+
+      - name: Health gate
+        id: health
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            body="$(curl -fsS -m 5 http://127.0.0.1:10100/healthz || true)"
+            if printf '%s' "$body" | grep -q '"status":"ok"'; then
+              echo "healthy after ${i} tries: $body"
+              echo "status=ok" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::opencodex did not become healthy within 60s after restart"
+          exit 1
+
+      - name: Rollback on failure
+        if: failure() && steps.health.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          git checkout --force "${{ steps.prev.outputs.sha }}"
+          git reset --hard "${{ steps.prev.outputs.sha }}"
+          bun install --frozen-lockfile
+          bun run build:gui
+          sudo systemctl restart opencodex-proxy.service
+          echo "rolled back to ${{ steps.prev.outputs.sha }}"
