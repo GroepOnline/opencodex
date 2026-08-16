@@ -403,6 +403,54 @@ describe("GitHub Actions hardening", () => {
     expect(notesBlock).toMatch(/\n {10}else\n/);
   });
 
+  test("publish-on-tag verifies the tagged commit is reachable from origin/main before publishing", async () => {
+    const text = await readText(".github/workflows/publish-on-tag.yml");
+    const workflow = Bun.YAML.parse(text) as {
+      jobs?: Record<
+        string,
+        {
+          steps?: Array<{ name?: string; uses?: string; run?: string; with?: Record<string, unknown> }>;
+        }
+      >;
+    };
+
+    const steps = workflow.jobs?.publish?.steps ?? [];
+    const stepNames = steps.map(step => step.name);
+
+    // The gate has to run immediately after checkout and before version
+    // resolution or any publish step, or a tag pushed on a stray branch could
+    // slip past to npm before the check has a chance to fail the job.
+    expect(stepNames.slice(0, 3)).toEqual([
+      "Checkout",
+      "Verify tag commit is on main",
+      "Resolve version from tag",
+    ]);
+
+    // `git branch -r --contains` needs full ref history; a shallow checkout
+    // would make the tagged commit look unreachable from every branch and
+    // hard-fail every release regardless of where the tag actually sits.
+    const checkout = steps[0]!;
+    expect(checkout.with?.["fetch-depth"]).toBe(0);
+
+    const verify = steps[1]!;
+    const verifyScript = String(verify.run ?? "");
+    expect(verifyScript).toContain("git fetch origin main");
+    expect(verifyScript).toContain('git branch -r --contains "$GITHUB_SHA"');
+    // Exact-line match against the two-space `git branch -r` list prefix, not
+    // a substring match — otherwise a differently-named remote branch such as
+    // `origin/main-2` or `origin/mainline` would also satisfy the check.
+    expect(verifyScript).toContain('grep -qx "  origin/main"');
+    expect(verifyScript).toContain("exit 1");
+    expect(verifyScript).toContain(
+      "::error::Tagged commit ${GITHUB_SHA} is not on origin/main — release tags must sit on main",
+    );
+    // GITHUB_SHA is the runner-provided default env var, not a workflow
+    // input; the script must never widen this to a raw `${{ ... }}`
+    // interpolation, which would reopen the shell-injection surface the
+    // release workflow's `runBlocks` check (above) guards against.
+    expect(verifyScript).not.toContain("${{");
+  });
+
   /**
    * `enforce-pr-target.yml` had no test at all, and it is the one workflow that
    * mutates a contributor's pull request — it rewrites the title and converts the
@@ -2027,6 +2075,15 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toContain("withastro/action@e84f40bd8d2caa9e768ec82ad30dd81f0b280853");
     expect(workflow).toContain("actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128");
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
+
+    // The Astro action's own `package-manager` input is a mutable version
+    // spec, not a SHA the checkout-pin regex above can see — `bun@latest`
+    // would silently pull whatever Bun ships on a given day into a
+    // supply-chain-sensitive docs build. Pin it exactly, matching the bun
+    // version pinned everywhere else in the workflows (e.g. setup-bun's
+    // `bun-version: 1.3.14`).
+    expect(workflow).toContain("package-manager: bun@1.3.14");
+    expect(workflow).not.toContain("bun@latest");
   });
 
   test("issue-quality workflow rejects workflow_dispatch pull request numbers before mutation", async () => {
