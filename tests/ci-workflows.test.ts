@@ -46,6 +46,29 @@ describe("GitHub Actions hardening", () => {
       .map(([name]) => name);
     expect(unbounded).toEqual([]);
     expect(count(workflow, "timeout-minutes:")).toBe(Object.keys(jobs).length);
+
+    // Same every-job-bounded rule for the auxiliary workflows an audit round
+    // found running unbounded (or with a mutable action ref) on GitHub-hosted
+    // runners. Derived per workflow so adding a job without a ceiling fails here.
+    for (const path of [
+      ".github/workflows/design-system-contract.yml",
+      ".github/workflows/enforce-issue-quality.yml",
+      ".github/workflows/issue-quality-tests.yml",
+      ".github/workflows/issue-triage.yml",
+      ".github/workflows/pr-labeler.yml",
+    ]) {
+      const text = await readText(path);
+      const parsed = (Bun.YAML.parse(text) as { jobs?: Record<string, { "timeout-minutes"?: number }> }).jobs ?? {};
+      const unboundedAux = Object.entries(parsed)
+        .filter(([, job]) => typeof job?.["timeout-minutes"] !== "number")
+        .map(([name]) => `${path}: ${name}`);
+      expect(unboundedAux).toEqual([]);
+      expect(count(text, "timeout-minutes:")).toBe(Object.keys(parsed).length);
+    }
+
+    const designSystem = await readText(".github/workflows/design-system-contract.yml");
+    expect(count(designSystem, "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2")).toBe(2);
+    expect(designSystem).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
     expect(workflow).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");
     expect(workflow).toContain("oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6");
     expect(workflow).toContain("actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e");
@@ -378,6 +401,54 @@ describe("GitHub Actions hardening", () => {
     expect(notesBlock).toContain("previous_tag_name=${notes_range_start}");
     expect(notesBlock).toContain("skipping generate-notes");
     expect(notesBlock).toMatch(/\n {10}else\n/);
+  });
+
+  test("publish-on-tag verifies the tagged commit is reachable from origin/main before publishing", async () => {
+    const text = await readText(".github/workflows/publish-on-tag.yml");
+    const workflow = Bun.YAML.parse(text) as {
+      jobs?: Record<
+        string,
+        {
+          steps?: Array<{ name?: string; uses?: string; run?: string; with?: Record<string, unknown> }>;
+        }
+      >;
+    };
+
+    const steps = workflow.jobs?.publish?.steps ?? [];
+    const stepNames = steps.map(step => step.name);
+
+    // The gate has to run immediately after checkout and before version
+    // resolution or any publish step, or a tag pushed on a stray branch could
+    // slip past to npm before the check has a chance to fail the job.
+    expect(stepNames.slice(0, 3)).toEqual([
+      "Checkout",
+      "Verify tag commit is on main",
+      "Resolve version from tag",
+    ]);
+
+    // `git branch -r --contains` needs full ref history; a shallow checkout
+    // would make the tagged commit look unreachable from every branch and
+    // hard-fail every release regardless of where the tag actually sits.
+    const checkout = steps[0]!;
+    expect(checkout.with?.["fetch-depth"]).toBe(0);
+
+    const verify = steps[1]!;
+    const verifyScript = String(verify.run ?? "");
+    expect(verifyScript).toContain("git fetch origin main");
+    expect(verifyScript).toContain('git branch -r --contains "$GITHUB_SHA"');
+    // Exact-line match against the two-space `git branch -r` list prefix, not
+    // a substring match — otherwise a differently-named remote branch such as
+    // `origin/main-2` or `origin/mainline` would also satisfy the check.
+    expect(verifyScript).toContain('grep -qx "  origin/main"');
+    expect(verifyScript).toContain("exit 1");
+    expect(verifyScript).toContain(
+      "::error::Tagged commit ${GITHUB_SHA} is not on origin/main — release tags must sit on main",
+    );
+    // GITHUB_SHA is the runner-provided default env var, not a workflow
+    // input; the script must never widen this to a raw `${{ ... }}`
+    // interpolation, which would reopen the shell-injection surface the
+    // release workflow's `runBlocks` check (above) guards against.
+    expect(verifyScript).not.toContain("${{");
   });
 
   /**
@@ -2004,6 +2075,15 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toContain("withastro/action@e84f40bd8d2caa9e768ec82ad30dd81f0b280853");
     expect(workflow).toContain("actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128");
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
+
+    // The Astro action's own `package-manager` input is a mutable version
+    // spec, not a SHA the checkout-pin regex above can see — `bun@latest`
+    // would silently pull whatever Bun ships on a given day into a
+    // supply-chain-sensitive docs build. Pin it exactly, matching the bun
+    // version pinned everywhere else in the workflows (e.g. setup-bun's
+    // `bun-version: 1.3.14`).
+    expect(workflow).toContain("package-manager: bun@1.3.14");
+    expect(workflow).not.toContain("bun@latest");
   });
 
   test("issue-quality workflow rejects workflow_dispatch pull request numbers before mutation", async () => {

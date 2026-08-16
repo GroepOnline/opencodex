@@ -23,7 +23,6 @@ concurrency:
 
 jobs:
   enforce-target:
-    # GitHub-hosted runners banned until Actions spending restored (fleet only).
     runs-on: ubuntu-latest
 
     steps:
