@@ -155,4 +155,3 @@ jobs:
             echo "::error::systemd artifact or proxy survived uninstall"
             exit 1
           fi
-
