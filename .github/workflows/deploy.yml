@@ -71,6 +71,7 @@ jobs:
           fetch-depth: 0
 
       - name: Verify tag is on origin/main
+        id: verify
         run: |
           set -euo pipefail
           tag="${{ steps.ref.outputs.tag }}"
@@ -81,7 +82,11 @@ jobs:
             echo "::error::tag $tag is not on origin/main — refusing to deploy an unmerged ref"
             exit 1
           fi
-          echo "$tag is on origin/main"
+          # Pin the tag to its resolved commit SHA now — a Git tag is a mutable ref,
+          # so the deploy step must checkout this exact SHA, not re-resolve the tag
+          # name (which could have been force-moved in the meantime).
+          echo "tag_sha=$(git rev-parse "refs/tags/$tag")" >> "$GITHUB_OUTPUT"
+          echo "$tag is on origin/main ($(git rev-parse "refs/tags/$tag"))"
 
       - name: Capture pre-deploy HEAD (for rollback)
         id: prev
@@ -90,15 +95,16 @@ jobs:
           cd "$DEPLOY_PATH"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy into service checkout (in-place, fresh remote ref)
+      - name: Deploy into service checkout (in-place, pinned SHA)
         id: deploy
         run: |
           set -euo pipefail
           cd "$DEPLOY_PATH"
           git fetch --force --tags origin
-          # Use the freshly fetched tag ref so we never roll out a stale local branch.
-          git checkout --force "${{ steps.ref.outputs.tag }}"
-          git reset --hard "${{ steps.ref.outputs.tag }}"
+          # Checkout the SHA verified above (not the tag name) so a force-moved tag
+          # cannot swap in an unverified commit after the origin/main check passed.
+          git checkout --force "${{ steps.verify.outputs.tag_sha }}"
+          git reset --hard "${{ steps.verify.outputs.tag_sha }}"
           echo "deployed_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Setup Bun
