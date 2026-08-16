@@ -140,7 +140,7 @@ jobs:
           bun run build:gui
           sudo systemctl restart opencodex-proxy.service
           # Re-confirm the rolled-back service is healthy before declaring done.
-          for i in $(seq 1 15); do
+          for _ in $(seq 1 15); do
             body="$(curl -fsS -m 5 http://127.0.0.1:10100/healthz || true)"
             if printf '%s' "$body" | grep -q '"status":"ok"'; then
               echo "rolled back to ${{ steps.prev.outputs.sha }} and healthy"
