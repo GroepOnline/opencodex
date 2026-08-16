@@ -292,6 +292,6 @@ jobs:
         uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
 
       - name: Lint YAML
-        uses: ibiqlik/action-yamllint@f97b30f26838c0d5befbe3526b53a3f5567d8e1a # v3.1.1
+        uses: ibiqlik/action-yamllint@2576378a8e339169678f9939646ee3ee325e845c # v3.1.1
         with:
           config_file: .yamllint.yml
