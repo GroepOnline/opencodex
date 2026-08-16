@@ -40,10 +40,16 @@ jobs:
     steps:
       - name: Resolve deploy tag
         id: ref
+        # The dispatch ref is delivered via an env var (not inline `${{ }}` interpolation)
+        # so it is treated as data. Inline interpolation would let a value like
+        # `v1.2.3$(whoami)` be command-substituted by the shell *before* the shape
+        # guard below runs — an injection on the production deploy host.
+        env:
+          INPUT_REF: ${{ github.event.inputs.ref }}
         run: |
           set -euo pipefail
-          if [ -n "${{ github.event.inputs.ref }}" ]; then
-            tag="${{ github.event.inputs.ref }}"
+          if [ -n "$INPUT_REF" ]; then
+            tag="$INPUT_REF"
           elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             tag="${GITHUB_REF_NAME}"
           else
@@ -130,7 +136,10 @@ jobs:
           exit 1
 
       - name: Rollback on failure
-        if: failure()
+        # Only roll back when we captured a known-good prior SHA (prev step succeeded).
+        # If Verify tag / deploy-into-checkout failed before capture, there is nothing
+        # safe to roll back to and `failure()` alone would skip the gate silently.
+        if: failure() && steps.prev.outcome == 'success'
         run: |
           set -euo pipefail
           cd "$DEPLOY_PATH"
