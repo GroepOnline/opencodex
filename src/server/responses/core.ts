@@ -588,7 +588,8 @@ export function clientCancelledResponse(): Response {
  * which Claude Desktop 3P surfaces as a generic gateway failure.
  */
 export function adapterBuildRequestError(err: unknown): Response {
-  const message = redactSecretString(err instanceof Error ? err.message : String(err));
+  const message = redactSecretString(err instanceof Error ? err.message : String(err))
+            .replace(/(https?:\/\/)[^/\s"'@]*@/g, "$1<redacted>@");
   const missingCred = /requires a non-empty credential/i.test(message);
   return formatErrorResponse(
     missingCred ? 401 : 500,
