@@ -2,7 +2,6 @@ import type { TFn } from "./i18n/shared";
 import { statusCodeInfo } from "./status-codes";
 
 export interface TrafficLogEntry {
-  requestId?: string;
   timestamp: number;
   model: string;
   provider: string;
@@ -36,7 +35,9 @@ export function trafficProviderModelLabel(entry: TrafficLogEntry): string | null
   const model = entry.resolvedModel
     ?? (isUnknownTrafficLabel(entry.model) ? entry.requestedModel : entry.model);
   if (isUnknownTrafficLabel(model)) return null;
-  return model!.trim();
+  const provider = entry.provider?.trim();
+  if (isUnknownTrafficLabel(provider)) return model!.trim();
+  return `${provider}/${model!.trim()}`;
 }
 
 export function trafficPrincipalLabel(entry: TrafficLogEntry, t: TFn): string {
@@ -65,8 +66,10 @@ export function requestsTodayCount(
   summaryDays?: Array<{ date: string; requests: number }>,
 ): number {
   const key = localCalendarDayKey();
-  if (logs.length > 0) return countRequestsOnDay(logs, key);
-  return summaryDays?.find(day => day.date === key)?.requests ?? 0;
+  const liveCount = countRequestsOnDay(logs, key);
+  const summaryCount = summaryDays?.find(day => day.date === key)?.requests ?? 0;
+  // The live endpoint is a bounded tail; the persisted summary is authoritative.
+  return Math.max(liveCount, summaryCount);
 }
 
 export function trafficStatusLabel(

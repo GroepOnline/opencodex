@@ -15,14 +15,14 @@ describe("traffic-shared", () => {
     expect(localCalendarDayKey(local)).toBe("2026-08-18");
   });
 
-  test("requestsTodayCount prefers live logs and includes error rows", () => {
+  test("requestsTodayCount uses the complete summary when it exceeds the live tail", () => {
     const key = localCalendarDayKey();
     const logs = [
       { timestamp: Date.now(), model: "m", provider: "kilo", status: 400, durationMs: 1 },
       { timestamp: Date.now() - 86_400_000, model: "m", provider: "kilo", status: 200, durationMs: 1 },
     ];
     expect(countRequestsOnDay(logs, key)).toBe(1);
-    expect(requestsTodayCount(logs, [{ date: key, requests: 0 }])).toBe(1);
+    expect(requestsTodayCount(logs, [{ date: key, requests: 3 }])).toBe(3);
   });
 
   test("trafficProviderModelLabel falls back to requestedModel", () => {
@@ -34,6 +34,13 @@ describe("traffic-shared", () => {
       status: 400,
       durationMs: 1,
     })).toBe("tencent/hy3:free");
+    expect(trafficProviderModelLabel({
+      timestamp: 0,
+      model: "claude-3",
+      provider: "anthropic",
+      status: 200,
+      durationMs: 1,
+    })).toBe("anthropic/claude-3");
   });
 
   test("trafficPrincipalLabel uses account suffix or provider key", () => {
