@@ -1,19 +1,14 @@
 name: Publish on tag
 
 # Tag a commit on main with `vX.Y.Z` and this workflow publishes
-# `@groeponline/opencodex` to npm and, if deploy secrets are configured, rolls the
-# new version out to chef-control-01.
+# `@groeponline/opencodex` to npm. Live rollout to chef-control-01 is owned by
+# `.github/workflows/deploy.yml` (self-hosted `deploy` runner on control-01).
 #
 # Publishing prefers npm Trusted Publishing (OIDC, no token). The Trusted Publisher
 # on npmjs.com is registered for the `Release` workflow, so OIDC is only accepted
 # there; when this workflow runs, publish falls back to the org NPM_TOKEN secret.
 # To make this workflow tokenless too, add a Trusted Publisher on npmjs.com for
 # repo `GroepOnline/opencodex`, workflow `publish-on-tag.yml`.
-#
-# Deployment is best-effort: it only runs when DEPLOY_HOST + DEPLOY_SSH_KEY are set,
-# so a missing/inaccessible fleet host never blocks the npm publish. Control-01 is
-# Tailscale-only, so a plain CI runner cannot reach it over SSH — point DEPLOY_HOST
-# at a reachable bastion/proxy, or run the documented manual rollout instead.
 on:
   push:
     tags:
