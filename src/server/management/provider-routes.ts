@@ -40,7 +40,7 @@ import { CODEX_FORWARD_BASE_URL, isCanonicalOpenAiForwardProvider } from "../../
 import { codexAccountNamespaceProviderCollisionError } from "../../codex/account-namespace-match";
 import { clearThreadAccountMap } from "../../codex/routing";
 import { primeCodexPoolQuotas } from "../../codex/auth-api";
-import { clearModelCache, getProviderDiscoveryStatus } from "../../codex/model-cache";
+import { clearProviderDiscoveryStatus, getProviderDiscoveryStatus } from "../../codex/model-cache";
 import {
   clientHideReasonLabel,
   hideUnavailableModelsEnabled,
@@ -48,8 +48,6 @@ import {
 } from "../../codex/catalog-visibility";
 import { DEFAULT_PROVIDER_CONTEXT_CAP, globalContextCapValue, providerContextCap, providerContextCaps, setAllProviderContextCaps, setGlobalContextCapValue, setProviderContextCap } from "../../providers/context-cap";
 import { resolveCodexHomeDir } from "../../codex/home";
-
-const providerModelRefreshes = new Map<string, Promise<unknown>>();
 import { readUsageEntries } from "../../usage/log";
 import { getUsageDebugLogEntries } from "../../usage/debug";
 import { parseRange, parseUsageSurface, summarizeUsage } from "../../usage/summary";
@@ -480,11 +478,11 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
     if (!name || !isValidProviderName(name) || !hasOwnProvider(config.providers, name)) {
       return jsonResponse({ error: "unknown provider" }, 404);
     }
-    const prov = config.providers[name]!;
-    if (prov.disabled) {
+    const stored = config.providers[name]!;
+    if (stored.disabled) {
       return jsonResponse({ ok: false, provider: name, count: 0, models: [], error: "Provider is disabled" });
     }
-    if (prov.authMode === "forward") {
+    if (stored.authMode === "forward") {
       return jsonResponse({
         ok: true,
         provider: name,
@@ -493,7 +491,14 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
         source: "passthrough",
       });
     }
-    clearModelCache(name);
+    // Enrich a clone so registry defaults (e.g. liveModels: false for providers that never hit
+    // /models) apply, matching GET /api/providers and the catalog gather. Hydrated defaults must
+    // never leak back into the persisted config.
+    const prov = { ...stored };
+    enrichProviderFromCatalog(name, prov);
+    // Clear only the discovery cooldown/backoff so the click is not served from a 30s–15m backoff.
+    // The cached rows are kept as the fallback when a live fetch fails.
+    clearProviderDiscoveryStatus(name);
     const models = await fetchProviderModels(name, prov, 0, providerContextCap(config, name));
     await refreshCodexCatalogBestEffort();
     const ids = models.map(model => model.id);
@@ -521,13 +526,21 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
         discovery,
       });
     }
+    if (discovery?.status === "ok") {
+      return jsonResponse({
+        ok: true,
+        provider: name,
+        count: ids.length,
+        models: ids,
+        source: "live",
+      });
+    }
     return jsonResponse({
-      ok: true,
+      ok: false,
       provider: name,
       count: ids.length,
       models: ids,
       source: "stale",
-        ok: false,
       error: "live discovery was not attempted",
       discovery,
     });
