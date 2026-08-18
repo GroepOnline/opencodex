@@ -766,7 +766,7 @@ export function addFinalRequestLog(
   const usageStatus = aggregate?.status ?? existing.status;
   const totalTokens = aggregate?.totalTokens ?? existing.totalTokens;
   const provider = isCombo ? "combo" : resolveRequestLogProvider(logCtx);
-  const model = isCombo ? logCtx.requestedModel! : resolveRequestLogModel(logCtx);
+  const model = isCombo ? (logCtx.requestedModel ?? resolveRequestLogModel(logCtx)) : resolveRequestLogModel(logCtx);
   const account = providerAccountLabel(provider);
   addLog({
     requestId,

@@ -43,6 +43,23 @@ describe("traffic-shared", () => {
     })).toBe("anthropic/claude-3");
   });
 
+  test("trafficProviderModelLabel does not double-prefix a namespaced model", () => {
+    expect(trafficProviderModelLabel({
+      timestamp: 0,
+      model: "combo/gpt-5.6-sol",
+      provider: "combo",
+      status: 200,
+      durationMs: 1,
+    })).toBe("combo/gpt-5.6-sol");
+    expect(trafficProviderModelLabel({
+      timestamp: 0,
+      model: "combo",
+      provider: "combo",
+      status: 200,
+      durationMs: 1,
+    })).toBe("combo");
+  });
+
   test("trafficPrincipalLabel uses account suffix or provider key", () => {
     expect(trafficPrincipalLabel({
       timestamp: 0,

@@ -44,7 +44,7 @@ export function TrafficRowCells({
         {t("vk.rowDuration", { s: (entry.durationMs / 1000).toFixed(1) })}
       </span>
       <span className={`bon-col bon-col--status stempel ${trafficStatusClass(entry)}`}>
-        {trafficStatusLabel(entry, locale, t)}
+        {trafficStatusLabel(entry, t)}
       </span>
     </>
   );

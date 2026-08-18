@@ -1,5 +1,4 @@
 import type { TFn } from "./i18n/shared";
-import { statusCodeInfo } from "./status-codes";
 
 export interface TrafficLogEntry {
   requestId?: string;
@@ -18,7 +17,7 @@ export interface TrafficLogEntry {
 }
 
 const UNKNOWN = "unknown";
-const CODEX_ACCOUNT_SUFFIX_RE = /^p[0-9a-f]{6}$/i;
+const CODEX_ACCOUNT_SUFFIX_RE = /^p[0-9a-f]{6}$/;
 
 /**
  * Creates a date key using the local calendar date.
@@ -54,8 +53,12 @@ export function trafficProviderModelLabel(entry: TrafficLogEntry): string | null
     ?? (isUnknownTrafficLabel(entry.model) ? entry.requestedModel : entry.model);
   if (isUnknownTrafficLabel(model)) return null;
   const provider = entry.provider?.trim();
-  if (isUnknownTrafficLabel(provider)) return model!.trim();
-  return `${provider}/${model!.trim()}`;
+  const trimmedModel = model!.trim();
+  if (isUnknownTrafficLabel(provider)) return trimmedModel;
+  // The model id may already carry its provider namespace (e.g. combo rows log `combo/<id>`);
+  // don't prepend the provider again.
+  if (trimmedModel === provider || trimmedModel.startsWith(`${provider}/`)) return trimmedModel;
+  return `${provider}/${trimmedModel}`;
 }
 
 /**
@@ -120,12 +123,9 @@ export function requestsTodayCount(
  */
 export function trafficStatusLabel(
   entry: TrafficLogEntry,
-  locale: string,
   t: (key: "vk.stampDone" | "vk.stampError" | "vk.stampBusy") => string,
 ): string {
   if (entry.status >= 200 && entry.status < 300) return t("vk.stampDone");
-  const info = statusCodeInfo(entry.status, locale);
-  if (info?.label) return info.label;
   if (entry.status === 0) return t("vk.stampError");
   if (entry.status >= 400) return t("vk.stampError");
   return t("vk.stampBusy");
