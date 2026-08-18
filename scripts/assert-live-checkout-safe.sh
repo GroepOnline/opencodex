@@ -12,31 +12,25 @@ checkout=$1
 target=${2-}
 
 if [[ ! -d $checkout ]]; then
-  echo "assert-live-checkout-safe: not a directory: $checkout" >&2
+  echo "assert-live-checkout-safe: not a directory: $(basename -- "$checkout")" >&2
   exit 2
 fi
 
 cd "$checkout"
 
-if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  echo "assert-live-checkout-safe: not a git checkout: $checkout" >&2
+if ! timeout 10s git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "assert-live-checkout-safe: not a git checkout: $(basename -- "$checkout")" >&2
   exit 2
 fi
 
 # Porcelain only as a boolean. Do not print the listing (paths can be sensitive).
-porcelain=$(git status --porcelain)
-status_code=$?
-if [[ $status_code -ne 0 ]]; then
-  echo "assert-live-checkout-safe: git status failed" >&2
-  exit 1
-fi
-if [[ -n $porcelain ]]; then
+if [[ -n $(timeout 10s git status --porcelain) ]]; then
   echo "assert-live-checkout-safe: refusing dirty working tree" >&2
   exit 1
 fi
 
 if [[ -n $target ]]; then
-  if ! git merge-base --is-ancestor HEAD "$target"; then
+  if ! timeout 10s git merge-base --is-ancestor HEAD "$target"; then
     echo "assert-live-checkout-safe: HEAD is not an ancestor of $target (would drop live-only commits)" >&2
     exit 1
   fi
