@@ -1,6 +1,6 @@
 import type { AdapterRequest, ProviderAdapter } from "./base";
 import type { AdapterEvent, OcxAssistantMessage, OcxContentPart, OcxMessage, OcxParsedRequest, OcxProviderConfig, OcxTextContent, OcxThinkingContent, OcxToolCall, OcxUsage } from "../types";
-import { isAllowedToolChoice, modelInList, namespacedToolName, resolveToolChoiceWireName, toolAllowedByChoice } from "../types";
+import { isAllowedToolChoice, modelInList, namespacedToolName, normalizeToolName, resolveToolChoiceWireName, toolAllowedByChoice } from "../types";
 import { mapReasoningEffort, modelRecordValue } from "../reasoning-effort";
 import { debugProviderDiagnostic } from "../lib/debug";
 import { isDebugEnabled } from "../lib/debug-settings";
@@ -203,7 +203,7 @@ function messagesToChatFormat(parsed: OcxParsedRequest, provider: OcxProviderCon
           chatMsg.tool_calls = wireToolCalls.map(({ tc, id }) => ({
             id,
             type: "function",
-            function: { name: namespacedToolName(tc.namespace, tc.name), arguments: JSON.stringify(tc.arguments) },
+            function: { name: normalizeToolName(namespacedToolName(tc.namespace, tc.name)), arguments: JSON.stringify(tc.arguments) },
           }));
           // "" instead of null: strict validators (xAI: "Each message must have at least one
           // content element", langchain#34140) reject content-less assistant history entries.
@@ -213,7 +213,7 @@ function messagesToChatFormat(parsed: OcxParsedRequest, provider: OcxProviderCon
           chatMsg.content = "";
         }
         out.push(chatMsg);
-        pendingToolCalls = wireToolCalls.map(({ tc, id }) => ({ id, name: namespacedToolName(tc.namespace, tc.name) }));
+        pendingToolCalls = wireToolCalls.map(({ tc, id }) => ({ id, name: normalizeToolName(namespacedToolName(tc.namespace, tc.name)) }));
         break;
       }
       case "toolResult": {

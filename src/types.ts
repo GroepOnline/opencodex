@@ -1,5 +1,6 @@
 import type { KiroOAuthMetadata } from "./oauth/types";
 import type { ProviderCompat } from "./providers/compat";
+import { createHash } from "node:crypto";
 
 export interface OcxParsedRequest {
   modelId: string;
@@ -173,6 +174,12 @@ export interface OcxTool {
  */
 export function namespacedToolName(namespace: string | undefined, name: string): string {
   return namespace ? `${namespace}__${name}` : name;
+}
+
+export function normalizeToolName(wireName: string): string {
+  if (wireName.length <= 64) return wireName;
+  const hash = createHash("sha256").update(wireName).digest("hex").slice(0, 8);
+  return `${wireName.slice(0, 55)}_${hash}`;
 }
 
 export function toolChoiceAliases(tool: Pick<OcxTool, "namespace" | "name">): string[] {
