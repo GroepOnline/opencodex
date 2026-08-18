@@ -514,11 +514,12 @@ describe("ocx opencode admission key", () => {
 
   test("falls back to the configured proxy API key", () => {
     const config = cfg({ apiKeys: [{ id: "1", name: "main", key: "sk-cfg", createdAt: "2026-01-01" }] });
-    expect(opencodeApiKey(config, {})).toBe("sk-cfg");
+    // Empty `{}` still fills the default ~/.opencodex/service-api-token path.
+    expect(opencodeApiKey(config, { OCX_API_TOKEN_FILE: join(tmpdir(), "ocx-missing-service-token") })).toBe("sk-cfg");
   });
 
   test("falls back to a placeholder on an open loopback proxy", () => {
-    expect(opencodeApiKey(cfg(), {})).toBe("ocx");
+    expect(opencodeApiKey(cfg(), { OCX_API_TOKEN_FILE: join(tmpdir(), "ocx-missing-service-token") })).toBe("ocx");
   });
 });
 
