@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { saveConfig } from "../src/config";
 import { startServer } from "../src/server";
+import { shouldReplayNativePassthroughOverload } from "../src/server/claude-messages";
 import type { OcxConfig } from "../src/types";
 import { installIsolatedCodexHome, type IsolatedCodexHome } from "./helpers/isolated-codex-home";
 
@@ -254,6 +255,60 @@ test("nativePassthrough:false disables the pierce", async () => {
     });
     expect(res.status).not.toBe(200);
     expect(captured).toHaveLength(0);
+  } finally {
+    server.stop(true);
+    upstream.stop(true);
+  }
+});
+
+test("shouldReplayNativePassthroughOverload requires an Anthropic pool or fallback", () => {
+  expect(shouldReplayNativePassthroughOverload(cfg("https://api.anthropic.com"))).toBe(false);
+  expect(shouldReplayNativePassthroughOverload({
+    ...cfg("https://api.anthropic.com"),
+    providers: {
+      ...cfg("https://api.anthropic.com").providers,
+      anthropic: {
+        adapter: "anthropic",
+        baseUrl: "https://api.anthropic.com",
+        authMode: "oauth",
+        fallback: [{ provider: "mock", model: "test-model" }],
+      },
+    },
+  } as OcxConfig)).toBe(true);
+  expect(shouldReplayNativePassthroughOverload({
+    ...cfg("https://api.anthropic.com"),
+    anthropicAccountPool: { enabled: true },
+  } as OcxConfig)).toBe(true);
+});
+
+test("native HTTP 529 without hop targets is forwarded to the client", async () => {
+  const captured: Captured[] = [];
+  const upstream = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      captured.push({
+        path: new URL(req.url).pathname,
+        headers: req.headers,
+        body: await req.json(),
+      });
+      return Response.json(
+        { type: "error", error: { type: "overloaded_error", message: "Overloaded" } },
+        { status: 529, headers: { "retry-after": "2", "content-type": "application/json" } },
+      );
+    },
+  });
+  saveConfig(cfg(upstream.url.toString().replace(/\/$/, "")));
+  const server = startServer(0);
+  try {
+    const res = await fetch(new URL("/v1/messages", server.url), {
+      method: "POST",
+      headers: OAUTH_HEADERS,
+      body: JSON.stringify({ model: "claude-fable-5", max_tokens: 10, stream: false, messages: [{ role: "user", content: "x" }] }),
+    });
+    expect(res.status).toBe(529);
+    expect(captured).toHaveLength(1);
+    const json = await res.json() as { error?: { type?: string } };
+    expect(json.error?.type).toBe("overloaded_error");
   } finally {
     server.stop(true);
     upstream.stop(true);

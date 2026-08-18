@@ -132,3 +132,34 @@ test("non-transient upstream 400 stays 400 invalid_request_error; no retry", asy
     upstream.stop(true);
   }
 });
+
+test("native HTTP 529 is not same-account retried; client still sees 529", async () => {
+  let calls = 0;
+  const upstream = Bun.serve({
+    port: 0,
+    fetch() {
+      calls++;
+      return Response.json(
+        { type: "error", error: { type: "overloaded_error", message: "Overloaded" } },
+        { status: 529, headers: { "Retry-After": "2" } },
+      );
+    },
+  });
+  saveConfig(nativeConfig(`${upstream.url.toString().replace(/\/$/, "")}/v1`));
+  const server = startServer(0);
+  try {
+    const response = await fetch(new URL("/v1/messages", server.url), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: messagesBody(),
+    });
+    expect(calls).toBe(1);
+    expect(response.status).toBe(529);
+    expect(response.headers.get("retry-after")).toBe("2");
+    const json = await response.json() as { error?: { type?: string } };
+    expect(json.error?.type).toBe("overloaded_error");
+  } finally {
+    server.stop(true);
+    upstream.stop(true);
+  }
+});

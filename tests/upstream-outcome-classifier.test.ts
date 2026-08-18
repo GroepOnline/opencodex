@@ -75,6 +75,37 @@ describe("unified upstream outcome labels", () => {
     }
   });
 
+  test("HTTP 529 and overloaded_error hop immediately without same-account retry", () => {
+    for (const evidence of [
+      { status: 529 },
+      { status: 529, message: "Overloaded" },
+      { message: '{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}' },
+    ]) {
+      const label = classifyGenericUpstreamOutcome(evidence);
+      expect(label).toBe("overload");
+      expect(upstreamOutcomePolicy(label).rotateOrCool).toBe(true);
+      expect(upstreamOutcomePolicy(label).sameAccountRetry).toBe(false);
+      expect(upstreamOutcomePolicy(label).failover).toBe(true);
+    }
+  });
+
+  test("502/503 server-overloaded copy stays same-account-retry, not pool rotation", () => {
+    const label = classifyCursorUpstreamOutcome({
+      status: 502,
+      message: "Cursor server overloaded: Provider error 502",
+    });
+    expect(label).toBe("transient-transport");
+    expect(upstreamOutcomePolicy(label).rotateOrCool).toBe(false);
+    expect(upstreamOutcomePolicy(label).sameAccountRetry).toBe(true);
+  });
+
+  test("400 and 413 never hop", () => {
+    expect(classifyGenericUpstreamOutcome({ status: 400, message: "bad request" })).toBe("invalid-request");
+    expect(classifyGenericUpstreamOutcome({ status: 413, message: "request too large" })).toBe("invalid-request");
+    expect(upstreamOutcomePolicy("invalid-request").rotateOrCool).toBe(false);
+    expect(upstreamOutcomePolicy("invalid-request").failover).toBe(false);
+  });
+
   test("context-overflow wins over RESOURCE_EXHAUSTED / 429 wording", () => {
     const label = classifyUpstreamOutcome("google", {
       status: 429,

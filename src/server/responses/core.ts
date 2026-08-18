@@ -300,6 +300,10 @@ async function shouldRetryCodexPoolAccountQuota(
   return upstreamOutcomePolicy(outcome).rotateOrCool;
 }
 
+function isAccountPoolHopStatus(status: number): boolean {
+  return status === 429 || status === 529;
+}
+
 interface CodexPoolAccountRetryArgs {
   req: Request;
   config: OcxConfig;
@@ -2666,7 +2670,7 @@ export async function handleResponses(
       // SAME request once per remaining key. OAuth/forward providers and single-key pools
       // return null immediately, so this stays a no-op for them (src/providers/key-failover.ts).
       while (
-        upstreamResponse.status === 429
+        isAccountPoolHopStatus(upstreamResponse.status)
         && hasKeyPoolFailover(route.provider)
         && await canRotateOrCoolFailure(upstreamResponse)
       ) {
@@ -2693,7 +2697,7 @@ export async function handleResponses(
       // Opt-in Anthropic OAuth account pool (#294): cool the failed account and retry
       // with another eligible OAuth account (bounded per request). Disabled by default.
       while (
-        upstreamResponse.status === 429
+        isAccountPoolHopStatus(upstreamResponse.status)
         && anthropicPoolAccountId
         && isAnthropicAccountPoolEnabled(config)
         && anthropicPoolFailovers < ANTHROPIC_POOL_MAX_FAILOVERS_PER_REQUEST
@@ -2726,11 +2730,11 @@ export async function handleResponses(
           break;
         }
       }
-      // Opt-in Google Antigravity OAuth pool: rotate only on an explicit upstream
-      // 429. Transport failures, client aborts, and other HTTP statuses never enter
-      // this block. Keep the shared Antigravity session id so replay state survives.
+      // Opt-in Google Antigravity OAuth pool: rotate on 429 and native 529
+      // overload. Transport failures, client aborts, and 4xx never enter this
+      // block. Keep the shared Antigravity session id so replay state survives.
       while (
-        upstreamResponse.status === 429
+        isAccountPoolHopStatus(upstreamResponse.status)
         && googleAntigravityPoolAccountId
         && isGoogleAntigravityAccountPoolEnabled(config)
         && googleAntigravityPoolFailovers
@@ -2909,7 +2913,7 @@ export async function handleResponses(
         return;
       }
 
-      if (response.status === 429 && hasKeyPoolFailover(route.provider)) {
+      if (isAccountPoolHopStatus(response.status) && hasKeyPoolFailover(route.provider)) {
         const rotated = rotateProviderTransportOn429(config, route.providerName, route.provider, {
           retryAfter: response.headers.get("retry-after"),
           now: Date.now(),
@@ -2927,7 +2931,7 @@ export async function handleResponses(
         }
       }
       if (
-        response.status === 429
+        isAccountPoolHopStatus(response.status)
         && anthropicPoolAccountId
         && isAnthropicAccountPoolEnabled(config)
         && anthropicPoolFailovers < ANTHROPIC_POOL_MAX_FAILOVERS_PER_REQUEST

@@ -122,11 +122,12 @@ describe("Cursor account pool", () => {
     expect(snapshot!.cooldownUntil!).toBeLessThanOrEqual(Date.now() + 60_000);
   });
 
-  test("only explicit rate and quota failures qualify for rotation", () => {
+  test("only explicit rate, quota, and overload failures qualify for rotation", () => {
     for (const message of [
       "Cursor rate limit exceeded: HTTP 429 Too Many Requests",
       "Cursor rate limit exceeded: RESOURCE_EXHAUSTED",
       "Cursor quota exhausted: usage limit has been reached",
+      "overloaded_error: Overloaded",
     ]) {
       expect(isCursorPoolRotationError(message)).toBe(true);
     }

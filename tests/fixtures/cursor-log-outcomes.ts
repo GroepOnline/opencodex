@@ -76,6 +76,12 @@ export const ARCHITECTURE_CONTRACT_ROWS = [
     rotateOrCool: true,
   },
   {
+    signal: "529 / overloaded_error",
+    label: "overload",
+    sameAccountRetry: false,
+    rotateOrCool: true,
+  },
+  {
     signal: "context-overflow / billing / empty pool",
     label: "context-overflow",
     sameAccountRetry: false,
