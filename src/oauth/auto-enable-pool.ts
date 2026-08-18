@@ -25,7 +25,8 @@ export function autoEnableOAuthAccountPoolOnSecondAccount(
     : provider === "cursor"
       ? "cursorAccountPool"
       : "googleAntigravityAccountPool";
-  if (config[field]?.enabled === true) return false;
-  config[field] = { ...config[field], enabled: true };
+  // An explicitly persisted false is an operator choice, not an empty opt-in.
+  if (config[field] !== undefined) return false;
+  config[field] = { enabled: true };
   return true;
 }
