@@ -95,6 +95,22 @@ jobs:
           cd "$DEPLOY_PATH"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Refuse dirty live checkout or dropped commits
+        id: live_guard
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          # Porcelain as a boolean only — do not print the listing (paths can be sensitive).
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::live checkout is dirty; refusing force checkout (would drop unpublished work)"
+            exit 1
+          fi
+          tag_sha="${{ steps.verify.outputs.tag_sha }}"
+          if ! git merge-base --is-ancestor HEAD "$tag_sha"; then
+            echo "::error::live HEAD is not an ancestor of $tag_sha (would drop live-only commits)"
+            exit 1
+          fi
+
       - name: Deploy into service checkout (in-place, pinned SHA)
         id: deploy
         run: |
@@ -145,7 +161,7 @@ jobs:
         # Only roll back when we captured a known-good prior SHA (prev step succeeded).
         # If Verify tag / deploy-into-checkout failed before capture, there is nothing
         # safe to roll back to and `failure()` alone would skip the gate silently.
-        if: failure() && steps.prev.outcome == 'success'
+        if: failure() && steps.prev.outcome == 'success' && steps.live_guard.outcome == 'success'
         run: |
           set -euo pipefail
           cd "$DEPLOY_PATH"

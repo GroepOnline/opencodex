@@ -2086,6 +2086,21 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).not.toContain("bun@latest");
   });
 
+  test("control-01 deploy refuses a dirty live tree or a tag that would drop live-only commits", async () => {
+    const workflow = await readText(".github/workflows/deploy.yml");
+    const guardIndex = workflow.indexOf("Refuse dirty live checkout or dropped commits");
+    const deployIndex = workflow.indexOf("Deploy into service checkout (in-place, pinned SHA)");
+    const resetIndex = workflow.indexOf("git reset --hard \"${{ steps.verify.outputs.tag_sha }}\"");
+    expect(guardIndex).toBeGreaterThan(-1);
+    expect(deployIndex).toBeGreaterThan(guardIndex);
+    expect(resetIndex).toBeGreaterThan(deployIndex);
+    expect(workflow).toContain("git status --porcelain");
+    expect(workflow).toContain("git merge-base --is-ancestor HEAD");
+    expect(workflow).toContain("would drop unpublished work");
+    expect(workflow).toContain("would drop live-only commits");
+    expect(workflow).toContain("steps.live_guard.outcome == 'success'");
+  });
+
   test("issue-quality workflow rejects workflow_dispatch pull request numbers before mutation", async () => {
     const workflow = await readText(".github/workflows/enforce-issue-quality.yml");
 
