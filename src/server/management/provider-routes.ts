@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { CatalogModel } from "../../codex/catalog";
-import { catalogModelSlug, invalidateCodexModelsCache, nativeModelRows, uniqueCatalogModelsForPublicList } from "../../codex/catalog";
+import { catalogModelSlug, fetchProviderModels, invalidateCodexModelsCache, nativeModelRows, uniqueCatalogModelsForPublicList } from "../../codex/catalog";
 import {
   DEFAULT_SUBAGENT_MODELS,
   codexAutoStartEnabled,
@@ -40,7 +40,7 @@ import { CODEX_FORWARD_BASE_URL, isCanonicalOpenAiForwardProvider } from "../../
 import { codexAccountNamespaceProviderCollisionError } from "../../codex/account-namespace-match";
 import { clearThreadAccountMap } from "../../codex/routing";
 import { primeCodexPoolQuotas } from "../../codex/auth-api";
-import { getProviderDiscoveryStatus } from "../../codex/model-cache";
+import { clearModelCache, getProviderDiscoveryStatus } from "../../codex/model-cache";
 import {
   clientHideReasonLabel,
   hideUnavailableModelsEnabled,
@@ -469,6 +469,64 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
           : err instanceof Error ? err.message : "Connection test failed",
       });
     }
+  }
+
+  // Operator-forced live /models refresh for one provider. Clears TTL + failure cooldown so a
+  // dashboard "Fetch models" click is not served from a stale cache or a 30s–15m backoff.
+  if (url.pathname === "/api/providers/models/refresh" && req.method === "POST") {
+    const name = url.searchParams.get("name")?.trim();
+    if (!name || !isValidProviderName(name) || !hasOwnProvider(config.providers, name)) {
+      return jsonResponse({ error: "unknown provider" }, 404);
+    }
+    const prov = config.providers[name]!;
+    if (prov.disabled) {
+      return jsonResponse({ ok: false, provider: name, count: 0, models: [], error: "Provider is disabled" });
+    }
+    if (prov.authMode === "forward") {
+      return jsonResponse({
+        ok: true,
+        provider: name,
+        count: 0,
+        models: [],
+        source: "passthrough",
+      });
+    }
+    clearModelCache(name);
+    const models = await fetchProviderModels(name, prov, 0, providerContextCap(config, name));
+    await refreshCodexCatalogBestEffort();
+    const ids = models.map(model => model.id);
+    if (prov.liveModels === false) {
+      return jsonResponse({
+        ok: true,
+        provider: name,
+        count: ids.length,
+        models: ids,
+        source: "static",
+      });
+    }
+    const discovery = getProviderDiscoveryStatus(name);
+    if (discovery?.status === "failed") {
+      const error = discovery.reason === "http"
+        ? `upstream /models returned ${discovery.httpStatus}`
+        : `live discovery failed (${discovery.reason})`;
+      return jsonResponse({
+        ok: false,
+        provider: name,
+        count: ids.length,
+        models: ids,
+        source: "stale",
+        error,
+        discovery,
+      });
+    }
+    return jsonResponse({
+      ok: true,
+      provider: name,
+      count: ids.length,
+      models: ids,
+      source: "live",
+      discovery: discovery ?? { status: "ok" },
+    });
   }
 
   if (url.pathname === "/api/providers" && req.method === "DELETE") {

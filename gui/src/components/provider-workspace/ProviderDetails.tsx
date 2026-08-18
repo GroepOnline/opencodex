@@ -20,6 +20,7 @@ import type { CodexAccountPoolController } from "../../hooks/useCodexAccountPool
 import ProviderSettings from "./ProviderSettings";
 import { UnsavedLeaveDialog } from "./ProviderDialogs";
 import type { ProviderQuotaReportView } from "../../provider-workspace/report";
+import { refreshProviderModels } from "../../provider-workspace/refresh-models";
 import type { AccountLoadState, ProviderModelUsageRow, ProviderUsageTotals, OAuthAccountRow, ApiKeyRow, LoginHint, ProviderAuthHandlers, ProviderUpdatePatch } from "./types";
 
 type Tab = "overview" | "models" | "usage" | "accounts" | "settings";
@@ -99,6 +100,10 @@ export default function ProviderDetails({
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [pendingLeave, setPendingLeave] = useState<Tab | "deselect" | null>(null);
   const [leaveSaving, setLeaveSaving] = useState(false);
+  const [fetchingProvider, setFetchingProvider] = useState<string | null>(null);
+  const [fetchModelsNotice, setFetchModelsNotice] = useState<{ provider: string; ok: boolean; text: string } | null>(null);
+  const fetchingModels = fetchingProvider === item.name;
+  const fetchModelsStatus = fetchModelsNotice?.provider === item.name ? fetchModelsNotice : null;
   const settingsSaveRef = useRef<(() => Promise<boolean>) | null>(null);
   const registerSettingsSave = useCallback((save: (() => Promise<boolean>) | null) => {
     settingsSaveRef.current = save;
@@ -122,6 +127,35 @@ export default function ProviderDetails({
     }
     setTab(next);
   }, [tab, settingsDirty]);
+
+  const fetchThisProviderModels = useCallback(async () => {
+    const provider = item.name;
+    if (fetchingProvider === provider || item.disabled) return;
+    setTab("models");
+    setFetchingProvider(provider);
+    setFetchModelsNotice(null);
+    try {
+      const result = await refreshProviderModels(apiBase, provider);
+      if (!result.ok) {
+        setFetchModelsNotice({ provider, ok: false, text: t("pws.fetchModelsFailed", { error: result.error }) });
+      } else if (result.source === "static") {
+        setFetchModelsNotice({ provider, ok: true, text: t("pws.fetchModelsStatic", { count: result.count }) });
+      } else if (result.source === "passthrough") {
+        setFetchModelsNotice({ provider, ok: true, text: t("pws.fetchModelsPassthrough") });
+      } else {
+        setFetchModelsNotice({
+          provider,
+          ok: true,
+          text: t("pws.fetchModelsOk", { count: result.count, provider }),
+        });
+      }
+      onRetryModels?.();
+    } catch {
+      setFetchModelsNotice({ provider, ok: false, text: t("models.networkError") });
+    } finally {
+      setFetchingProvider(current => current === provider ? null : current);
+    }
+  }, [apiBase, fetchingProvider, item.disabled, item.name, onRetryModels, t]);
 
   const requestDeselect = useCallback(() => {
     if (settingsDirty && tab === "settings") {
@@ -166,6 +200,22 @@ export default function ProviderDetails({
           </h2>
         </div>
         <div className="pws-detail-actions">
+          {item.authMode !== "forward" && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                if (settingsDirty && tab === "settings") {
+                  setPendingLeave("models");
+                  return;
+                }
+                void fetchThisProviderModels();
+              }}
+              disabled={fetchingModels || isDisabled}
+            >
+              {fetchingModels ? t("pws.fetchingModels") : t("pws.fetchModels")}
+            </button>
+          )}
           {onRemoveProvider && (
             <button
               type="button"
@@ -190,6 +240,15 @@ export default function ProviderDetails({
           )}
         </div>
       </div>
+      {fetchModelsStatus && (
+        <p
+          className="muted text-label"
+          role="status"
+          style={{ margin: "0 0 8px", color: fetchModelsStatus.ok ? undefined : "var(--amber)" }}
+        >
+          {fetchModelsStatus.text}
+        </p>
+      )}
       <div className="pws-detail-tabs" role="tablist">
         {tabs.map((candidate, index) => (
           <button

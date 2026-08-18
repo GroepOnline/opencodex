@@ -5,7 +5,7 @@ export type { CatalogModel, MultiAgentMode } from "./catalog/parsing";
 export { NATIVE_OPENAI_MODELS, nativeOpenAiContextWindow, disabledNativeSlugs, visibleNativeSlugs, nativeModelRows, applyNativeVisibility, upstreamNativeEntry, nativeOpenAiSlugs, listCatalogNativeSlugs } from "./catalog/metadata";
 export { isSpawnableCodexCandidate, codexExecInvocation, loadBundledCodexCatalog, materializeBundledCodexCatalog, loadCatalogTemplate } from "./catalog/bundled";
 export { nativeEffortClamp, shouldApplyNativeEffortClamp, catalogModelEfforts, codexSupportedReasoningEfforts, clampedDefaultEffort, clampEntryToCodexSupportedEfforts, clampCatalogModelsToCodexSupport } from "./catalog/effort";
-export { applyProviderConfigHints, isDatedVariantId, filterCatalogVisibleModels, gatherRoutedModels, clearGatherRoutedModelsInflight, augmentRoutedModelsWithRegistryOpenAiApiRows, augmentRoutedModelsWithJawcodeMetadata } from "./catalog/provider-fetch";
+export { applyProviderConfigHints, isDatedVariantId, filterCatalogVisibleModels, fetchProviderModels, gatherRoutedModels, clearGatherRoutedModelsInflight, augmentRoutedModelsWithRegistryOpenAiApiRows, augmentRoutedModelsWithJawcodeMetadata } from "./catalog/provider-fetch";
 export {
   DEFAULT_HIDE_AFTER_DISCOVERY_FAILS,
   allOAuthAccountsNeedReauth,

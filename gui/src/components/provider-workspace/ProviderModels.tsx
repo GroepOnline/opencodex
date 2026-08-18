@@ -14,6 +14,7 @@ import { filterModels } from "../../provider-workspace/report";
 import { formatRequestCount, formatTokenCount } from "../../provider-workspace/usage";
 import { Switch } from "../../ui";
 import type { ProviderModelUsageRow } from "./types";
+import { refreshProviderModels } from "../../provider-workspace/refresh-models";
 
 type CatalogRow = {
   provider: string;
@@ -279,15 +280,22 @@ export default function ProviderModels({
     setFetching(true);
     setActionStatus("");
     try {
-      // Clears provider model caches server-side and refreshes the Codex catalog.
-      const response = await fetch(`${apiBase}/api/sync`, { method: "POST" });
-      if (!response.ok) {
+      const result = await refreshProviderModels(apiBase, item.name);
+      if (!result.ok) {
         setActionOk(false);
-        setActionStatus(t("dash.syncFailed", { error: `HTTP ${response.status}` }));
+        setActionStatus(t("pws.fetchModelsFailed", { error: result.error }));
+        setCatalogEpoch(epoch => epoch + 1);
+        onRetryModels?.();
         return;
       }
       setActionOk(true);
-      setActionStatus(t("dash.syncModels"));
+      if (result.source === "static") {
+        setActionStatus(t("pws.fetchModelsStatic", { count: result.count }));
+      } else if (result.source === "passthrough") {
+        setActionStatus(t("pws.fetchModelsPassthrough"));
+      } else {
+        setActionStatus(t("pws.fetchModelsOk", { count: result.count, provider: item.name }));
+      }
       setCatalogEpoch(epoch => epoch + 1);
       onRetryModels?.();
     } catch {
@@ -345,14 +353,16 @@ export default function ProviderModels({
           {models.length > 0 && (
             <span className="muted">{t("pws.modelsAvailable", { count: models.length })}</span>
           )}
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={() => { void fetchModels(); }}
-            disabled={controlsBusy}
-          >
-            {fetching ? t("dash.syncing") : t("dash.syncModels")}
-          </button>
+          {item.authMode !== "forward" && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => { void fetchModels(); }}
+              disabled={controlsBusy}
+            >
+              {fetching ? t("pws.fetchingModels") : t("pws.fetchModels")}
+            </button>
+          )}
         </div>
       </div>
       {actionStatus && (
