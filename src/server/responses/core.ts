@@ -10,6 +10,7 @@ import {
 import { parseRequest } from "../../responses/parser";
 import { buildCompactV1Output, COMPACT_PROMPT, decodeCompactionSummary, extractCompactUserMessages } from "../../responses/compaction";
 import { FORWARD_HEADERS, sanitizeReasoningInputContent } from "../../adapters/openai-responses";
+import type { AdapterRequest } from "../../adapters/base";
 import { expandPreviousResponseInput, previousResponseProviderState, rememberResponseState } from "../../responses/state";
 import { routeModel, type RouteResult } from "../../router";
 import {
@@ -333,6 +334,10 @@ type CodexPoolAccountRetryResult =
     kind: "transport";
     error: unknown;
     authCtx: Extract<CodexAuthContext, { kind: "pool" | "main-pool" }>;
+  }
+  | {
+    kind: "build-request-failed";
+    response: Response;
   };
 
 function codexQuotaOutcomeMeta(response: Response): {
@@ -418,7 +423,12 @@ async function retryCodexPoolOnAlternateAccount(
     resolveWireProtocolOverride(route.providerName, route.modelId, retryProvider),
     config.cacheRetention,
   );
-  const request = await retryAdapter.buildRequest(parsed, { headers: retryHeaders });
+  let request;
+  try {
+    request = await retryAdapter.buildRequest(parsed, { headers: retryHeaders });
+  } catch (err) {
+    return { kind: "build-request-failed", response: resolveAdapterBuildRequestError(err, options.abortSignal) };
+  }
   recordAdapterReasoning(logCtx, request);
 
   await firstResponse.body?.cancel().catch(() => undefined);
@@ -580,6 +590,65 @@ export interface HandleResponsesOptions {
 
 export function clientCancelledResponse(): Response {
   return formatErrorResponse(499, "client_cancelled", "Client cancelled request");
+}
+
+const ADAPTER_MISSING_CREDENTIAL_MESSAGE =
+  /requires a non-empty credential|requires a non-empty api\s*key|requires a non-empty apikey|\boauth token missing\b|\btoken missing\b|requires a Cursor access token|auth is required but unavailable/i;
+
+function isAdapterMissingCredentialError(err: unknown, message: string): boolean {
+  if (
+    err instanceof CodexAuthContextError
+    || err instanceof CodexPoolAuthenticationError
+    || err instanceof CodexDirectAuthenticationError
+    || err instanceof ForwardAdmissionCredentialError
+  ) {
+    return true;
+  }
+  if (
+    typeof err === "object"
+    && err !== null
+    && "code" in err
+    && (err as { code?: unknown }).code === "cursor_missing_credential"
+  ) {
+    return true;
+  }
+  return ADAPTER_MISSING_CREDENTIAL_MESSAGE.test(message);
+}
+
+function classifyAdapterBuildRequestError(
+  err: unknown,
+  abortSignal?: AbortSignal,
+): { status: number; errorType: string; message: string } {
+  if (
+    abortSignal?.aborted
+    || (err instanceof Error && err.name === "AbortError")
+  ) {
+    return { status: 499, errorType: "client_cancelled", message: "Client cancelled request" };
+  }
+  const message = redactSecretString(err instanceof Error ? err.message : String(err))
+    .replace(/(https?:\/\/)[^/\s"'@]*@/g, "$1<redacted>@");
+  const missingCred = isAdapterMissingCredentialError(err, message);
+  return {
+    status: missingCred ? 401 : 500,
+    errorType: missingCred ? "authentication_error" : "server_error",
+    message,
+  };
+}
+
+/**
+ * Adapter `buildRequest` throws on empty credentials (and similar config bugs).
+ * Catching here keeps `/v1/messages` JSON instead of Bun's HTML 500 fallback,
+ * which Claude Desktop 3P surfaces as a generic gateway failure.
+ */
+export function adapterBuildRequestError(err: unknown): Response {
+  const { status, errorType, message } = classifyAdapterBuildRequestError(err);
+  return formatErrorResponse(status, errorType, message);
+}
+
+/** Maps buildRequest throws to JSON responses; honors client abort as 499. */
+export function resolveAdapterBuildRequestError(err: unknown, abortSignal?: AbortSignal): Response {
+  const { status, errorType, message } = classifyAdapterBuildRequestError(err, abortSignal);
+  return formatErrorResponse(status, errorType, message);
 }
 
 
@@ -1632,7 +1701,12 @@ export async function handleResponses(
         + `(model ${parsed.modelId}); forwarding without it — earlier turns may be missing from this request`,
       );
     }
-    let request = await adapter.buildRequest(parsed, { headers: selectedForwardHeaders });
+    let request: AdapterRequest;
+    try {
+      request = await adapter.buildRequest(parsed, { headers: selectedForwardHeaders });
+    } catch (err) {
+      return resolveAdapterBuildRequestError(err, options.abortSignal);
+    }
     recordAdapterReasoning(logCtx, request);
     const passthroughEstimate = typeof request.usageLog?.inputTokens === "number"
       ? request.usageLog.inputTokens
@@ -1730,6 +1804,9 @@ export async function handleResponses(
         if (retry.kind === "transport") {
           authCtx = retry.authCtx;
           return transportFailureResponse(retry.error);
+        }
+        if (retry.kind === "build-request-failed") {
+          return retry.response;
         }
         if (retry.kind === "retried") {
           authCtx = retry.authCtx;
@@ -2381,7 +2458,13 @@ export async function handleResponses(
   const connectMs = config.connectTimeoutMs ?? 200_000;
   let activeAdapter = adapter;
 
-  const request = await activeAdapter.buildRequest(parsed, { headers: selectedForwardHeaders });
+  let request;
+  try {
+    request = await activeAdapter.buildRequest(parsed, { headers: selectedForwardHeaders });
+  } catch (err) {
+    cleanupUpstreamAbort();
+    return resolveAdapterBuildRequestError(err, options.abortSignal);
+  }
   recordAdapterReasoning(logCtx, request);
   const inputTokenEstimate = typeof request.usageLog?.inputTokens === "number"
     ? request.usageLog.inputTokens
@@ -2448,10 +2531,16 @@ export async function handleResponses(
     const rebuildAndRefetch = async (
       recovery: AttemptRecoveryKind,
     ): Promise<Response | { failed: Response }> => {
-      const retryRequest = await activeAdapter.buildRequest(parsed, {
-        headers: selectedForwardHeaders,
-        ...(imageTierBias > 0 ? { imageTierBias } : {}),
-      });
+      let retryRequest;
+      try {
+        retryRequest = await activeAdapter.buildRequest(parsed, {
+          headers: selectedForwardHeaders,
+          ...(imageTierBias > 0 ? { imageTierBias } : {}),
+        });
+      } catch (err) {
+        cleanupUpstreamAbort();
+        return { failed: resolveAdapterBuildRequestError(err, options.abortSignal) };
+      }
       recordAdapterReasoning(logCtx, retryRequest);
       const retryEstimate = typeof retryRequest.usageLog?.inputTokens === "number"
         ? retryRequest.usageLog.inputTokens
@@ -2743,16 +2832,27 @@ export async function handleResponses(
     let imageTierBias = 0;
     let response: Response | undefined;
     while (true) {
+      let continuationRequest;
       try {
-        const continuationRequest = await activeAdapter.buildRequest(nextParsed, {
+        continuationRequest = await activeAdapter.buildRequest(nextParsed, {
           headers: selectedForwardHeaders,
           ...(imageTierBias > 0 ? { imageTierBias } : {}),
         });
-        recordAdapterReasoning(logCtx, continuationRequest);
-        const continuationEstimate = typeof continuationRequest.usageLog?.inputTokens === "number"
-          ? continuationRequest.usageLog.inputTokens
-          : undefined;
-        if (continuationEstimate !== undefined) logCtx.usageLogInputTokens = continuationEstimate;
+      } catch (error) {
+        const classified = classifyAdapterBuildRequestError(error, options.abortSignal);
+        yield {
+          type: "error",
+          message: classified.message,
+          status: classified.status,
+        };
+        return;
+      }
+      recordAdapterReasoning(logCtx, continuationRequest);
+      const continuationEstimate = typeof continuationRequest.usageLog?.inputTokens === "number"
+        ? continuationRequest.usageLog.inputTokens
+        : undefined;
+      if (continuationEstimate !== undefined) logCtx.usageLogInputTokens = continuationEstimate;
+      try {
         if (activeAdapter.fetchResponse) {
           noteAttemptSend(logCtx.activeAttempt, continuationEstimate);
           response = await activeAdapter.fetchResponse(continuationRequest, {
