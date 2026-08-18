@@ -181,15 +181,8 @@ function configuredMaxOutputTokens(
   id: string,
   providerName: string,
 ): number | undefined {
-  const configured = modelRecordValue(prov.modelMaxOutputTokens, id);
-  if (typeof configured === "number" && configured > 0) return configured;
-  const fromRegistry = modelRecordValue(registryFallbackEntry(providerName, prov)?.modelMaxOutputTokens, id);
-  if (typeof fromRegistry === "number" && fromRegistry > 0) return fromRegistry;
-  if (typeof prov.defaultMaxOutputTokens === "number" && prov.defaultMaxOutputTokens > 0) {
-    return prov.defaultMaxOutputTokens;
-  }
-  const registryDefault = registryFallbackEntry(providerName, prov)?.defaultMaxOutputTokens;
-  return typeof registryDefault === "number" && registryDefault > 0 ? registryDefault : undefined;
+  // Configured output budgets are adapter fallbacks, not authoritative model caps.
+  return undefined;
 }
 
 function firstPositiveTokenLimit(...values: Array<number | undefined>): number | undefined {
@@ -206,7 +199,8 @@ function configuredReasoningSummarySupport(prov: OcxProviderConfig | undefined, 
 export function applyProviderConfigHints(name: string, prov: OcxProviderConfig, model: CatalogModel, providerCap?: number): CatalogModel {
   const configuredCap = configuredContextWindow(prov, model.id, name);
   const configuredMaxInput = configuredMaxInputTokens(prov, model.id);
-  const configuredMaxOutput = configuredMaxOutputTokens(prov, model.id, name);
+  // Provider output budgets are request fallbacks, not authoritative model caps.
+  const configuredMaxOutput = undefined;
   const jawcodeMeta = jawcodeCatalogMeta(name, model.id);
   let inputModalities = configuredInputModalities(prov, model.id, name);
   // Vision-sidecar coverage: `noVisionModels` marks models whose images the PROXY describes
