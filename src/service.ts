@@ -1800,20 +1800,19 @@ export function diagnoseService(): ServiceDiagnostic {
     if (existsSync("/.dockerenv")) return { supported: false, installed: false, enabled: false, running: false, viable: false, startable: false, stale: false, conflict: false, backend: null, summary: "unsupported in Docker" };
     const systemUnit = diagnoseSystemSystemdUnit();
     if (systemUnit?.installed) {
-      const viable = systemUnit.enabled && systemUnit.running;
       return {
         supported: true,
-        installed: true,
+        installed: false,
         enabled: systemUnit.enabled,
-        running: true,
-        viable,
-        startable: true,
+        running: systemUnit.running,
+        viable: false,
+        startable: false,
         stale: false,
         conflict: false,
         backend: "systemd",
-        summary: viable
-          ? `installed, enabled and running (systemd system; ${diagnostics})`
-          : `installed, but ${!systemUnit.enabled ? "disabled" : "not running"} (systemd system; ${diagnostics})`,
+        summary: systemUnit.enabled && systemUnit.running
+          ? `systemd system unit running, unmanaged (${diagnostics})`
+          : `systemd system unit present but ${!systemUnit.enabled ? "disabled" : "not running"}, unmanaged (${diagnostics})`,
       };
     }
     if (!isSystemd()) return { supported: false, installed: false, enabled: false, running: false, viable: false, startable: false, stale: false, conflict: false, backend: null, summary: "unsupported: systemd not found" };

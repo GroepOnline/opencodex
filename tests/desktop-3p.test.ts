@@ -318,6 +318,20 @@ describe("readAppliedDesktop3pLibrary", () => {
     }
   });
 
+  test("returns 404 when _meta.json is not a JSON object", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ocx-3p-lib-meta-shape-"));
+    try {
+      writeFileSync(join(dir, "_meta.json"), "[]");
+      expect(readAppliedDesktop3pLibrary(libraryOptions(dir))).toEqual({
+        ok: false,
+        status: 404,
+        error: "Claude Desktop 3P library has no appliedId",
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("returns 404 when the applied config file is missing", () => {
     const dir = mkdtempSync(join(tmpdir(), "ocx-3p-lib-missing-"));
     try {

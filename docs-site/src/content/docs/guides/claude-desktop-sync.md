@@ -7,7 +7,7 @@ The Claude Desktop page can apply a profile and offer **Sync to this laptop**. T
 
 ## Authentication
 
-The library endpoint is `GET /v1/claude-desktop-3p-library`. It uses management authentication, like `GET /api/claude-desktop/3p-library`; a data-plane routing token is not sufficient. Cross-origin requests must also satisfy the configured origin policy.
+The data-plane library endpoint is `GET /v1/claude-desktop-3p-library`. It requires a data-plane admission secret even on loopback, with the same origin policy as other data-plane routes. The dashboard management route `GET /api/claude-desktop/3p-library` uses management authentication (admin token, GUI session, or Cloudflare Access) instead.
 
 ## Secret handling
 

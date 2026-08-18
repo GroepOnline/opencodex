@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { collectStartupHealth } from "../src/codex/autostart-health";
@@ -136,6 +136,34 @@ describe("assert-live-checkout-safe.sh", () => {
       const notAncestor = Bun.spawnSync(["bash", script, dir, first], { stdout: "pipe", stderr: "pipe" });
       expect(notAncestor.exitCode).toBe(1);
       expect(notAncestor.stderr.toString()).toContain("would drop live-only commits");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("exits 2 when git status probe fails without printing porcelain", () => {
+    if (!Bun.which("bash")) return;
+    const dir = initRepo();
+    try {
+      const realGit = Bun.which("git");
+      if (!realGit) return;
+      const binDir = mkdtempSync(join(tmpdir(), "ocx-live-checkout-bin-"));
+      writeFileSync(join(binDir, "git"), `#!/usr/bin/env bash
+if [[ "$1" == "status" && "$2" == "--porcelain" ]]; then
+  exit 1
+fi
+exec "${realGit}" "$@"
+`);
+      chmodSync(join(binDir, "git"), 0o755);
+      const probe = Bun.spawnSync(["bash", script, dir], {
+        stdout: "pipe",
+        stderr: "pipe",
+        env: { ...process.env, PATH: `${binDir}:${process.env.PATH ?? ""}` },
+      });
+      expect(probe.exitCode).toBe(2);
+      expect(probe.stderr.toString()).toContain("git status probe failed");
+      expect(probe.stdout.toString()).toBe("");
+      expect(probe.stderr.toString()).not.toContain("??");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

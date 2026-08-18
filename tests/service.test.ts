@@ -799,6 +799,19 @@ describe("service diagnostics", () => {
     expect(statusCase).toContain("Diagnostics:");
     expect(statusCase).toContain("serviceDiagnosticsSummary()");
   });
+
+  test("reports stopped system units as diagnose-only without hardcoding running", async () => {
+    const service = await readText("src/service.ts");
+    const branch = service.slice(
+      service.indexOf("const systemUnit = diagnoseSystemSystemdUnit();"),
+      service.indexOf("if (!isSystemd())"),
+    );
+    expect(branch).toContain("if (systemUnit?.installed)");
+    expect(branch).toContain("installed: false");
+    expect(branch).toContain("startable: false");
+    expect(branch).toContain("running: systemUnit.running");
+    expect(branch).not.toContain("running: true");
+  });
 });
 
 describe("service repair", () => {
