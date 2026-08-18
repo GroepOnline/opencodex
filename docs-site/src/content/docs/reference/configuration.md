@@ -177,14 +177,14 @@ organization can share quota; pooling those will not help.
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
-| `anthropicAccountPool.enabled?` | `boolean` | `false` | When true, sticky session affinity + 429 cooldown failover across eligible Anthropic OAuth accounts. |
+| `anthropicAccountPool.enabled?` | `boolean` | `false` | When true, sticky session affinity + 429/529 overload cooldown failover across eligible Anthropic OAuth accounts. |
 | `anthropicAccountPool.autoSwitchThreshold?` | `number` | `80` | For **new** sessions only: if the active account's **known** cached 5-hour usage is at/above this percent, pick the lowest-usage eligible account. Unknown usage does not force a switch. `0` disables quota-based picking (affinity + active only). Also used as the drain threshold for `fill-first`. |
 | `anthropicAccountPool.strategy?` | `"quota" \| "round-robin" \| "fill-first"` | `"quota"` | New-session rotation strategy when the pool is enabled. Same round-robin/fill-first semantics as `accountPoolStrategy`; `quota` uses 5-hour bars only (not Codex multi-window scoring). Applies to **new** sessions only. |
 | `anthropicAccountPool.stickyLimit?` | `number` | `1` | Successful new-session binds retained on one round-robin selection before advancing. Range 1–100; only when `strategy` is `round-robin`. |
 
 Reliability contract when enabled:
 
-- A provider **429** records cooldown from `Retry-After` (capped) or a default backoff, clears
+- A provider **429 or 529 overload** records cooldown from `Retry-After` (capped) or a default backoff, clears
   that account's affinities, and may rotate within the request (bounded attempts).
 - Affinity maps are **process-local** (lost on restart) and size-bounded.
 - Credential **401/403** failures mark `needsReauth` and exclude the account until login is fixed.
@@ -205,7 +205,7 @@ selected account supplies its own OAuth token and Cloud Code Assist project id.
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
-| `googleAntigravityAccountPool.enabled?` | `boolean` | `false` | Enables sticky session affinity and 429 cooldown failover. |
+| `googleAntigravityAccountPool.enabled?` | `boolean` | `false` | Enables sticky session affinity and 429/529 overload cooldown failover. |
 | `googleAntigravityAccountPool.autoSwitchThreshold?` | `number` | `80` | New-session threshold for known cached 5-hour usage. Unknown usage keeps the active account. `0` disables quota-based picking. |
 | `googleAntigravityAccountPool.strategy?` | `"quota" \| "round-robin" \| "fill-first"` | `"quota"` | Selects new accounts for new sessions. Affinity still wins for an existing session. |
 | `googleAntigravityAccountPool.stickyLimit?` | `number` | `1` | Number of successful new-session binds retained by round-robin before it advances. Range 1–100. |
