@@ -582,6 +582,29 @@ export function clientCancelledResponse(): Response {
   return formatErrorResponse(499, "client_cancelled", "Client cancelled request");
 }
 
+const ADAPTER_MISSING_CREDENTIAL_MESSAGE =
+  /requires a non-empty credential|requires a non-empty api\s*key|requires a non-empty apikey|\boauth token missing\b|\btoken missing\b|requires a Cursor access token|auth is required but unavailable/i;
+
+function isAdapterMissingCredentialError(err: unknown, message: string): boolean {
+  if (
+    err instanceof CodexAuthContextError
+    || err instanceof CodexPoolAuthenticationError
+    || err instanceof CodexDirectAuthenticationError
+    || err instanceof ForwardAdmissionCredentialError
+  ) {
+    return true;
+  }
+  if (
+    typeof err === "object"
+    && err !== null
+    && "code" in err
+    && (err as { code?: unknown }).code === "cursor_missing_credential"
+  ) {
+    return true;
+  }
+  return ADAPTER_MISSING_CREDENTIAL_MESSAGE.test(message);
+}
+
 /**
  * Adapter `buildRequest` throws on empty credentials (and similar config bugs).
  * Catching here keeps `/v1/messages` JSON instead of Bun's HTML 500 fallback,
@@ -590,7 +613,7 @@ export function clientCancelledResponse(): Response {
 export function adapterBuildRequestError(err: unknown): Response {
   const message = redactSecretString(err instanceof Error ? err.message : String(err))
             .replace(/(https?:\/\/)[^/\s"'@]*@/g, "$1<redacted>@");
-  const missingCred = /requires a non-empty credential/i.test(message);
+  const missingCred = isAdapterMissingCredentialError(err, message);
   return formatErrorResponse(
     missingCred ? 401 : 500,
     missingCred ? "authentication_error" : "server_error",
