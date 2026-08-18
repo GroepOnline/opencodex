@@ -1,0 +1,183 @@
+name: Deploy to control-01
+
+# Rolls a new opencodex version out to the live proxy on chef-control-01.
+#
+# Triggers:
+#   - push of a `v*.*.*` tag  -> deploy that exact version (the "new version" path)
+#   - workflow_dispatch       -> deploy a tag ref deliberately (the "after merge" path)
+#
+# The job runs on the self-hosted `deploy` runner, which is the control-01 host
+# itself, so it can restart its own systemd service (chef has NOPASSWD sudo) and
+# health-gate the result locally. No SSH keys cross hosts.
+#
+# Requires the runner to be registered on control-01 (ocx-deploy-runner.service).
+# The service checkout at DEPLOY_PATH is updated in place and restarted.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag to deploy (e.g. v1.2.1). Must be an existing tag and must sit on origin/main."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ocx-deploy-control-01
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, X64, deploy]
+    timeout-minutes: 20
+    env:
+      DEPLOY_PATH: /home/chef/opencodex-psp
+    steps:
+      - name: Resolve deploy tag
+        id: ref
+        # The dispatch ref is delivered via an env var (not inline `${{ }}` interpolation)
+        # so it is treated as data. Inline interpolation would let a value like
+        # `v1.2.3$(whoami)` be command-substituted by the shell *before* the shape
+        # guard below runs — an injection on the production deploy host.
+        env:
+          INPUT_REF: ${{ github.event.inputs.ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "$INPUT_REF" ]; then
+            tag="$INPUT_REF"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            # Tag-triggered deploys are the primary path; a bare push/dispatch with no
+            # tag is not a valid deploy trigger.
+            echo "::error::no tag resolved for deploy (ref=${GITHUB_REF})"
+            exit 1
+          fi
+          # Basic shape guard: a vX.Y.Z (or vX.Y.Z-preview.N) tag only.
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-preview\.[0-9]+)?$ ]]; then
+            echo "::error::ref '$tag' is not a valid deploy tag"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout ref
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag is on origin/main
+        id: verify
+        run: |
+          set -euo pipefail
+          tag="${{ steps.ref.outputs.tag }}"
+          git fetch --force --tags origin
+          # The tag must be an ancestor of the remote main so we never deploy a
+          # ref that has not been merged to main (mirrors publish-on-tag.yml gating).
+          if ! git merge-base --is-ancestor "refs/tags/$tag" "origin/main"; then
+            echo "::error::tag $tag is not on origin/main — refusing to deploy an unmerged ref"
+            exit 1
+          fi
+          # Pin the tag to its resolved commit SHA now — a Git tag is a mutable ref,
+          # so the deploy step must checkout this exact SHA, not re-resolve the tag
+          # name (which could have been force-moved in the meantime).
+          echo "tag_sha=$(git rev-parse "refs/tags/$tag")" >> "$GITHUB_OUTPUT"
+          echo "$tag is on origin/main ($(git rev-parse "refs/tags/$tag"))"
+
+      - name: Capture pre-deploy HEAD (for rollback)
+        id: prev
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse dirty live checkout or dropped commits
+        id: live_guard
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          # Porcelain as a boolean only — do not print the listing (paths can be sensitive).
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::live checkout is dirty; refusing force checkout (would drop unpublished work)"
+            exit 1
+          fi
+          tag_sha="${{ steps.verify.outputs.tag_sha }}"
+          if ! git merge-base --is-ancestor HEAD "$tag_sha"; then
+            echo "::error::live HEAD is not an ancestor of $tag_sha (would drop live-only commits)"
+            exit 1
+          fi
+
+      - name: Deploy into service checkout (in-place, pinned SHA)
+        id: deploy
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          git fetch --force --tags origin
+          # Checkout the SHA verified above (not the tag name) so a force-moved tag
+          # cannot swap in an unverified commit after the origin/main check passed.
+          git checkout --force "${{ steps.verify.outputs.tag_sha }}"
+          git reset --hard "${{ steps.verify.outputs.tag_sha }}"
+          echo "deployed_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies (in service checkout)
+        working-directory: ${{ env.DEPLOY_PATH }}
+        run: bun install --frozen-lockfile
+
+      - name: Build GUI (in service checkout)
+        working-directory: ${{ env.DEPLOY_PATH }}
+        run: bun run build:gui
+
+      - name: Restart opencodex-proxy
+        run: sudo systemctl restart opencodex-proxy.service
+
+      - name: Health gate
+        id: health
+        run: |
+          set -euo pipefail
+          # Port is the service default (10100) on control-01; the proxy binds it
+          # regardless of any LAN hostname, so the loopback probe is stable.
+          for i in $(seq 1 30); do
+            body="$(curl -fsS -m 5 http://127.0.0.1:10100/healthz || true)"
+            if printf '%s' "$body" | grep -q '"status":"ok"'; then
+              echo "healthy after ${i} tries: $body"
+              echo "status=ok" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::opencodex did not become healthy within 60s after restart"
+          exit 1
+
+      - name: Rollback on failure
+        # Only roll back when we captured a known-good prior SHA (prev step succeeded).
+        # If Verify tag / deploy-into-checkout failed before capture, there is nothing
+        # safe to roll back to and `failure()` alone would skip the gate silently.
+        if: failure() && steps.prev.outcome == 'success' && steps.live_guard.outcome == 'success'
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          git checkout --force "${{ steps.prev.outputs.sha }}"
+          git reset --hard "${{ steps.prev.outputs.sha }}"
+          bun install --frozen-lockfile
+          bun run build:gui
+          sudo systemctl restart opencodex-proxy.service
+          # Re-confirm the rolled-back service is healthy before declaring done.
+          for _ in $(seq 1 15); do
+            body="$(curl -fsS -m 5 http://127.0.0.1:10100/healthz || true)"
+            if printf '%s' "$body" | grep -q '"status":"ok"'; then
+              echo "rolled back to ${{ steps.prev.outputs.sha }} and healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::rollback deployed ${{ steps.prev.outputs.sha }} but service not healthy"
+          exit 1

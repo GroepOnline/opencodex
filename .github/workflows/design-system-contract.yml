@@ -1,7 +1,17 @@
 name: Design-system contract
 on:
   push:
+    paths:
+      - ".github/design-system.json"
+      - ".github/design-system.yml"
+      - ".github/workflows/design-system-contract.yml"
+      - "gui/**"
   pull_request:
+    paths:
+      - ".github/design-system.json"
+      - ".github/design-system.yml"
+      - ".github/workflows/design-system-contract.yml"
+      - "gui/**"
 permissions:
   contents: read
 jobs:
