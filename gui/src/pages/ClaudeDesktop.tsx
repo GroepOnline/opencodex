@@ -65,13 +65,6 @@ type PendingAction = "save" | "apply" | "sync" | null;
 
 const LAPTOP_SYNC_HREF = "ocx-desktop://sync";
 
-function requestLaptopSync() {
-  const link = document.createElement("a");
-  link.href = LAPTOP_SYNC_HREF;
-  link.rel = "noopener";
-  link.click();
-}
-
 const FAMILY_KEYS: Record<Family, TKey> = {
   opus: "claudeDesktop.family.opus",
   fable: "claudeDesktop.family.fable",
@@ -322,7 +315,6 @@ export default function ClaudeDesktop({ apiBase, active = true }: { apiBase: str
         setPending("apply");
         const applyResponse = await fetch(`${apiBase}/api/claude-desktop/apply`, { method: "POST" });
         await readJsonOrThrow<{ error?: string }>(applyResponse, t("claudeDesktop.applyFailed"));
-        requestLaptopSync();
         setMessage({ tone: "ok", text: t("claudeDesktop.savedApplied") });
         setAnnouncement(t("claudeDesktop.savedAppliedAnnounce"));
       } else {

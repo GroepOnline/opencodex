@@ -17,9 +17,9 @@ function git(cwd: string, args: string[]): string {
       ...process.env,
       GIT_CONFIG_NOSYSTEM: "1",
       GIT_AUTHOR_NAME: "ocx-test",
-      GIT_AUTHOR_EMAIL: "ocx-test@example.invalid",
+      GIT_AUTHOR_EMAIL: "ocx-test@example.test",
       GIT_COMMITTER_NAME: "ocx-test",
-      GIT_COMMITTER_EMAIL: "ocx-test@example.invalid",
+      GIT_COMMITTER_EMAIL: "ocx-test@example.test",
     },
   }).trim();
 }
@@ -27,7 +27,7 @@ function git(cwd: string, args: string[]): string {
 function initRepo(): string {
   const dir = mkdtempSync(join(tmpdir(), "ocx-live-checkout-"));
   git(dir, ["init", "-b", "main"]);
-  git(dir, ["config", "user.email", "ocx-test@example.invalid"]);
+  git(dir, ["config", "user.email", "ocx-test@example.test"]);
   git(dir, ["config", "user.name", "ocx-test"]);
   git(dir, ["commit", "--allow-empty", "-m", "init"]);
   return dir;

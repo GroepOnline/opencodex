@@ -54,7 +54,7 @@ import { drainAndShutdown } from "../lifecycle";
 import { filterRequestLogs, getRequestLogEntries, type RequestLogEntry } from "../request-log";
 import { estimateComboCost, estimateRequestCost, normalizeCostTokens, tokensPerSecond } from "../../usage/cost";
 import type { PersistedUsageAttempt } from "../../usage/log";
-import { isAllowedRequestOrigin, jsonResponse, providerManagementConfigError, publicProviderBaseUrl, safeConfigDTO } from "../auth-cors";
+import { isAllowedRequestOrigin, jsonResponse, providerManagementConfigError, publicProviderBaseUrl, safeConfigDTO, withNoStore } from "../auth-cors";
 import { applySystemEnvToggle } from "../system-env";
 
 import { isPlainRecord, parseDebugLogQuery, tokPerSecondResult, unavailableCostReason, costResult, requestLogDto, stripRegistryOnlyStaticHeaders, fetchAllModels, fetchGrokCandidateModels, buildClaudeDesktopState } from "./shared";
@@ -565,12 +565,13 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
   // proxy host. This payload is the applied 3P library so a local handler can
   // copy it through the ocx-tunnel without SSH.
   if (url.pathname === "/api/claude-desktop/3p-library" && req.method === "GET") {
+    const noStoreJson = (data: unknown, status = 200) => withNoStore(jsonResponse(data, status, req, config));
     try {
       const library = readAppliedDesktop3pLibrary();
-      if (!library.ok) return jsonResponse({ error: library.error }, library.status);
-      return jsonResponse(library);
+      if (!library.ok) return noStoreJson({ error: library.error }, library.status);
+      return noStoreJson(library);
     } catch (error) {
-      return jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 400);
+      return noStoreJson({ error: error instanceof Error ? error.message : String(error) }, 400);
     }
   }
 

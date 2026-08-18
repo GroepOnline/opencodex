@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export interface LiveCheckoutDiagnostic {
@@ -33,6 +33,7 @@ function git(cwd: string, args: string[]): string {
 export function findGitCheckout(startDir: string): string | null {
   let dir = resolve(startDir);
   for (let i = 0; i < 16; i++) {
+    if (basename(dir) === "node_modules") return null;
     if (existsSync(join(dir, ".git"))) return dir;
     const parent = dirname(dir);
     if (parent === dir) return null;

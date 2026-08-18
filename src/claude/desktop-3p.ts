@@ -129,12 +129,10 @@ export function readAppliedDesktop3pLibrary(
     return { ok: false, status: 404, error: "Claude Desktop 3P config missing" };
   }
   const configPath = join(libraryPath, `${registryId}.json`);
-  if (!existsSync(configPath)) {
-    return { ok: false, status: 404, error: "Claude Desktop 3P config missing" };
-  }
-  const raw = readFileSync(configPath, "utf8");
+  let raw: string;
   let config: unknown;
   try {
+    raw = readFileSync(configPath, "utf8");
     config = JSON.parse(raw) as unknown;
   } catch {
     return { ok: false, status: 404, error: "Claude Desktop 3P config missing" };

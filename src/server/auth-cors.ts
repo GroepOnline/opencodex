@@ -190,6 +190,17 @@ export function jsonResponse(data: unknown, status = 200, req?: Request, config?
   });
 }
 
+/** Sensitive JSON payloads (credentials) must not be cached by intermediaries or disk cache. */
+export function withNoStore(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("Cache-Control", "no-store");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export function configuredApiAuthToken(_config: OcxConfig): string | undefined {
   const token = process.env.OPENCODEX_API_AUTH_TOKEN?.trim();
   return token || undefined;

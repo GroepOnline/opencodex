@@ -74,6 +74,7 @@ describe("Claude Desktop 3P library HTTP auth", () => {
     try {
       const res = await fetch(new URL("/v1/claude-desktop-3p-library", server.url));
       expect(res.status).toBe(401);
+      expect(res.headers.get("Cache-Control")).toBe("no-store");
       const body = await res.text();
       expect(body).not.toContain(FIXTURE_KEY);
     } finally {
@@ -88,9 +89,24 @@ describe("Claude Desktop 3P library HTTP auth", () => {
         headers: { "x-opencodex-api-key": FIXTURE_KEY },
       });
       expect(res.status).toBe(200);
+      expect(res.headers.get("Cache-Control")).toBe("no-store");
       const payload = await res.json() as { ok: boolean; config: { inferenceGatewayApiKey: string } };
       expect(payload.ok).toBe(true);
       expect(payload.config.inferenceGatewayApiKey).toBe(FIXTURE_KEY);
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  test("authenticated loopback GET /v1/claude-desktop-3p-library returns 404 when library is not applied", async () => {
+    rmSync(process.env.OPENCODEX_CLAUDE_DESKTOP_CONFIG_DIR!, { recursive: true, force: true });
+    const server = startServer(0);
+    try {
+      const res = await fetch(new URL("/v1/claude-desktop-3p-library", server.url), {
+        headers: { "x-opencodex-api-key": FIXTURE_KEY },
+      });
+      expect(res.status).toBe(404);
+      expect(res.headers.get("Cache-Control")).toBe("no-store");
     } finally {
       await server.stop(true);
     }
@@ -101,13 +117,27 @@ describe("Claude Desktop 3P library HTTP auth", () => {
     try {
       const unauth = await fetch(new URL("/api/claude-desktop/3p-library", server.url));
       expect(unauth.status).toBe(401);
+      expect(unauth.headers.get("Cache-Control")).toBe("no-store");
       expect(await unauth.text()).not.toContain(FIXTURE_KEY);
 
       const authed = await managementFetch(new URL("/api/claude-desktop/3p-library", server.url));
       expect(authed.status).toBe(200);
+      expect(authed.headers.get("Cache-Control")).toBe("no-store");
       const payload = await authed.json() as { ok: boolean; config: { inferenceGatewayApiKey: string } };
       expect(payload.ok).toBe(true);
       expect(payload.config.inferenceGatewayApiKey).toBe(FIXTURE_KEY);
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  test("management GET /api/claude-desktop/3p-library returns 404 when library is not applied", async () => {
+    rmSync(process.env.OPENCODEX_CLAUDE_DESKTOP_CONFIG_DIR!, { recursive: true, force: true });
+    const server = startServer(0);
+    try {
+      const res = await managementFetch(new URL("/api/claude-desktop/3p-library", server.url));
+      expect(res.status).toBe(404);
+      expect(res.headers.get("Cache-Control")).toBe("no-store");
     } finally {
       await server.stop(true);
     }
