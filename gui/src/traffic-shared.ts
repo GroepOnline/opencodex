@@ -2,6 +2,7 @@ import type { TFn } from "./i18n/shared";
 import { statusCodeInfo } from "./status-codes";
 
 export interface TrafficLogEntry {
+  requestId?: string;
   timestamp: number;
   model: string;
   provider: string;
