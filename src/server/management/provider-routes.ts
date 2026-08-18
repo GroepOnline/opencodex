@@ -48,6 +48,8 @@ import {
 } from "../../codex/catalog-visibility";
 import { DEFAULT_PROVIDER_CONTEXT_CAP, globalContextCapValue, providerContextCap, providerContextCaps, setAllProviderContextCaps, setGlobalContextCapValue, setProviderContextCap } from "../../providers/context-cap";
 import { resolveCodexHomeDir } from "../../codex/home";
+
+const providerModelRefreshes = new Map<string, Promise<unknown>>();
 import { readUsageEntries } from "../../usage/log";
 import { getUsageDebugLogEntries } from "../../usage/debug";
 import { parseRange, parseUsageSurface, summarizeUsage } from "../../usage/summary";
@@ -524,8 +526,10 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
       provider: name,
       count: ids.length,
       models: ids,
-      source: "live",
-      discovery: discovery ?? { status: "ok" },
+      source: "stale",
+        ok: false,
+      error: "live discovery was not attempted",
+      discovery,
     });
   }
 
