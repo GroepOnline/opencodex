@@ -41,6 +41,12 @@ interface UsageSummary {
 }
 
 
+/**
+ * Determines the total token count for a traffic entry.
+ *
+ * @param entry - The traffic entry containing usage or total token data
+ * @returns The recorded total tokens, calculated usage tokens, or the entry total tokens
+ */
 function bonTokens(entry: BonEntry): number | undefined {
   if (entry.usage) return entry.usage.totalTokens ?? entry.usage.inputTokens + entry.usage.outputTokens;
   return entry.totalTokens;
@@ -50,7 +56,11 @@ function tijd(ts: number, locale: string): string {
   return new Date(ts).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-/** Dashboard: enterprise landing — proxy health, usage stats, top providers, recent activity. */
+/**
+ * Displays proxy health, usage statistics, provider rankings, and recent traffic activity.
+ *
+ * @param apiBase - Base URL used to retrieve proxy health, usage, and traffic data.
+ */
 export default function Dashboard({ apiBase }: { apiBase: string }) {
   const t = useT();
   const { locale } = useI18n();

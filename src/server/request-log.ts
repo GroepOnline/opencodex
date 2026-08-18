@@ -143,7 +143,12 @@ let requestLogsHydratedFromDisk = false;
 
 const UNKNOWN_LOG_LABEL = "unknown";
 
-/** Keep /api/logs rows honest when routing/auth fails after the request model is known. */
+/**
+ * Resolves the model label recorded for a request log entry.
+ *
+ * @param logCtx - Request metadata containing requested, resolved, and recorded model labels
+ * @returns The recorded model, requested model, resolved model, or existing fallback label
+ */
 export function resolveRequestLogModel(logCtx: RequestLogContext): string {
   if (logCtx.model && logCtx.model !== UNKNOWN_LOG_LABEL) return logCtx.model;
   if (typeof logCtx.requestedModel === "string" && logCtx.requestedModel.trim()) return logCtx.requestedModel.trim();
@@ -162,6 +167,12 @@ export function resolveRequestLogProvider(logCtx: RequestLogContext): string {
   return logCtx.provider;
 }
 
+/**
+ * Converts a terminal status label to a recognized Responses terminal status.
+ *
+ * @param value - The terminal status label to validate
+ * @returns The recognized terminal status, or `undefined` for unsupported values
+ */
 function asTerminalStatus(value: string | undefined): ResponsesTerminalStatus | undefined {
   if (value === "completed" || value === "failed" || value === "incomplete") return value;
   return undefined;
@@ -180,7 +191,12 @@ function asCloseReason(value: string | undefined): RequestLogEntry["closeReason"
   }
 }
 
-/** Project a persisted usage.jsonl row back into the in-memory /api/logs shape. */
+/**
+ * Converts a persisted usage record into an in-memory request log entry.
+ *
+ * @param entry - The persisted usage record to convert
+ * @returns The request log entry reconstructed from `entry`
+ */
 export function requestLogEntryFromPersistedUsage(entry: PersistedUsageEntry): RequestLogEntry {
   const terminalStatus = asTerminalStatus(entry.terminalStatus);
   const closeReason = asCloseReason(entry.closeReason);
@@ -251,6 +267,13 @@ export function hydrateRequestLogsFromDisk(
   }
 }
 
+/**
+ * Records a request log entry in memory and persists its usage data.
+ *
+ * Persistence failures are ignored so request logging does not interrupt the request.
+ *
+ * @param entry - The request log entry to record
+ */
 export function addRequestLog(entry: RequestLogEntry) {
   requestLog.push(entry);
   if (requestLog.length > MAX_LOG_SIZE) requestLog.shift();
@@ -681,6 +704,16 @@ export function httpStatusForRequestLogTerminal(
   return httpStatusForTerminalStatus(status);
 }
 
+/**
+ * Finalizes and records a request log entry with status, diagnostics, usage, routing, and retry-attempt data.
+ *
+ * @param requestId - The request identifier
+ * @param start - The request start timestamp in milliseconds
+ * @param logCtx - Mutable metadata collected during the request
+ * @param status - The upstream response status
+ * @param meta - Optional terminal status and close reason
+ * @param addLog - Function used to store the finalized log entry
+ */
 export function addFinalRequestLog(
   requestId: string,
   start: number,

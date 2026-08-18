@@ -270,6 +270,13 @@ function capMetadataString(s: string): string {
   return s.length > MAX_METADATA_STRING_LEN ? s.slice(0, MAX_METADATA_STRING_LEN) : s;
 }
 
+/**
+ * Normalizes a persisted usage entry for storage.
+ *
+ * Removes invalid optional fields, trims and caps metadata strings, normalizes usage and attempts, and preserves valid request, status, timing, and diagnostic data.
+ *
+ * @returns The normalized persisted usage entry
+ */
 function normalizeUsageEntry(entry: PersistedUsageEntry): PersistedUsageEntry {
   const attempts = normalizedAttempts(entry.attempts);
   return {

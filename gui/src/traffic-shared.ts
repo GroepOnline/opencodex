@@ -20,7 +20,12 @@ export interface TrafficLogEntry {
 const UNKNOWN = "unknown";
 const CODEX_ACCOUNT_SUFFIX_RE = /^p[0-9a-f]{6}$/i;
 
-/** Local calendar day key — matches server usage summary bucketing, not UTC ISO dates. */
+/**
+ * Creates a date key using the local calendar date.
+ *
+ * @param when - The date to format; defaults to the current date
+ * @returns The date in `YYYY-MM-DD` format
+ */
 export function localCalendarDayKey(when = new Date()): string {
   const y = when.getFullYear();
   const m = String(when.getMonth() + 1).padStart(2, "0");
@@ -28,10 +33,22 @@ export function localCalendarDayKey(when = new Date()): string {
   return `${y}-${m}-${d}`;
 }
 
+/**
+ * Determines whether a traffic label is missing, blank, or set to `"unknown"`.
+ *
+ * @param value - The traffic label to inspect
+ * @returns `true` if the label is missing, blank, or equals `"unknown"` ignoring case, `false` otherwise.
+ */
 export function isUnknownTrafficLabel(value: string | undefined): boolean {
   return !value?.trim() || value.trim().toLowerCase() === UNKNOWN;
 }
 
+/**
+ * Builds a display label from a traffic entry's provider and model.
+ *
+ * @param entry - The traffic record containing provider and model identifiers
+ * @returns The provider/model label, the model label when the provider is unknown, or `null` when no usable model is available
+ */
 export function trafficProviderModelLabel(entry: TrafficLogEntry): string | null {
   const model = entry.resolvedModel
     ?? (isUnknownTrafficLabel(entry.model) ? entry.requestedModel : entry.model);
@@ -41,6 +58,13 @@ export function trafficProviderModelLabel(entry: TrafficLogEntry): string | null
   return `${provider}/${model!.trim()}`;
 }
 
+/**
+ * Resolves the display label for a traffic entry's account or provider.
+ *
+ * @param entry - The traffic record containing account and provider identifiers
+ * @param t - Translates the label used for unknown providers
+ * @returns The account, recognized provider suffix, provider name, or localized unknown label
+ */
 export function trafficPrincipalLabel(entry: TrafficLogEntry, t: TFn): string {
   if (entry.account?.trim()) return entry.account.trim();
   const provider = entry.provider?.trim();
@@ -53,6 +77,13 @@ export function trafficPrincipalLabel(entry: TrafficLogEntry, t: TFn): string {
   return provider!;
 }
 
+/**
+ * Counts traffic log entries recorded on a specified local calendar day.
+ *
+ * @param logs - The traffic log entries to inspect
+ * @param dayKey - The day to match in `YYYY-MM-DD` format
+ * @returns The number of entries recorded on the specified day
+ */
 export function countRequestsOnDay(logs: readonly TrafficLogEntry[], dayKey: string): number {
   let count = 0;
   for (const entry of logs) {
@@ -61,7 +92,13 @@ export function countRequestsOnDay(logs: readonly TrafficLogEntry[], dayKey: str
   return count;
 }
 
-/** Prefer the live tail when loaded — it includes errors and matches local timestamps. */
+/**
+ * Computes the number of requests recorded for the current local calendar day.
+ *
+ * @param logs - Recent traffic log entries
+ * @param summaryDays - Persisted daily request counts
+ * @returns The greater of the live log count and persisted summary count for today
+ */
 export function requestsTodayCount(
   logs: readonly TrafficLogEntry[],
   summaryDays?: Array<{ date: string; requests: number }>,
@@ -73,6 +110,14 @@ export function requestsTodayCount(
   return Math.max(liveCount, summaryCount);
 }
 
+/**
+ * Provides a localized label for a traffic entry's response status.
+ *
+ * @param entry - The traffic entry whose status determines the label
+ * @param locale - The locale used for status-code descriptions
+ * @param t - The translation function for completed, error, and busy labels
+ * @returns The localized status label
+ */
 export function trafficStatusLabel(
   entry: TrafficLogEntry,
   locale: string,
@@ -86,6 +131,12 @@ export function trafficStatusLabel(
   return t("vk.stampBusy");
 }
 
+/**
+ * Determines the CSS class for a traffic entry's status.
+ *
+ * @param entry - The traffic entry whose status determines the class
+ * @returns A success class for 2xx statuses, an error class for HTTP errors or status `0`, or an empty string otherwise
+ */
 export function trafficStatusClass(entry: TrafficLogEntry): string {
   if (entry.status >= 200 && entry.status < 300) return "stempel--klaar";
   if (entry.status >= 400 || entry.status === 0) return "stempel--fout";

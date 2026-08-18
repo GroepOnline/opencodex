@@ -10,6 +10,13 @@ import {
   type TrafficLogEntry,
 } from "./traffic-shared";
 
+/**
+ * Renders the provider/model, principal, token count, duration, and status cells for a traffic entry.
+ *
+ * @param entry - The traffic entry to display
+ * @param locale - The locale used to format localized values
+ * @param tokens - The token count to display, when available
+ */
 export function TrafficRowCells({
   entry,
   locale,
@@ -43,6 +50,9 @@ export function TrafficRowCells({
   );
 }
 
+/**
+ * Renders localized column headings for the traffic table.
+ */
 export function TrafficColumnHead() {
   const { t } = useI18n();
   return (

@@ -1143,6 +1143,16 @@ export async function handleComboResponses(
 
 
 
+/**
+ * Processes a Responses API request through routing, authentication, provider failover, sidecars,
+ * streaming or non-streaming adaptation, continuation handling, and response normalization.
+ *
+ * @param req - The incoming HTTP request.
+ * @param config - Server and provider configuration.
+ * @param logCtx - Request context updated with routing, provider, usage, and response metadata.
+ * @param options - Request lifecycle, retry, cancellation, and callback settings.
+ * @returns The normalized Responses API response.
+ */
 export async function handleResponses(
   req: Request,
   config: OcxConfig,

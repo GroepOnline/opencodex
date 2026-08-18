@@ -28,6 +28,20 @@ function clockTime(epoch: number): string {
 }
 import type { ProviderCapCooldown } from "../../pages/providers-shared";
 
+/**
+ * Renders an aggregate dashboard for configured providers, quotas, usage, and provider attention states.
+ *
+ * @param sections - Provider groups categorized by readiness and disabled status
+ * @param quotaCards - Per-provider quota loading, error, and report states
+ * @param usageTotals - Per-provider request totals used for recently used providers
+ * @param providerCooldowns - Optional provider cooldowns and reset timestamps
+ * @param usageLoading - Whether usage data is loading
+ * @param quotasLoading - Whether quota data is loading
+ * @param onSelectProvider - Handles navigation to a provider
+ * @param onRefreshQuota - Retries loading quota data for a provider
+ * @param onEditConfig - Optionally opens the provider configuration editor
+ * @returns The provider overview dashboard
+ */
 export default function ProviderOverviewDashboard({
   sections,
   quotaCards,

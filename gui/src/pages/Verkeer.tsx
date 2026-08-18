@@ -18,16 +18,34 @@ interface UsageSummary {
 /** Soft poll — CF edge used to 1015 at 100/min on /api/*; keep headroom for other tabs. */
 const TAIL_INTERVAL_MS = 12_000;
 
+/**
+ * Determines the total token count for a traffic log entry.
+ *
+ * @param entry - The traffic log entry to inspect
+ * @returns The total token count, or `undefined` when unavailable
+ */
 function bonTokens(entry: TrafficLogEntry): number | undefined {
   if (entry.usage) return entry.usage.totalTokens ?? entry.usage.inputTokens + entry.usage.outputTokens;
   return entry.totalTokens;
 }
 
+/**
+ * Formats a timestamp as a localized time with hours, minutes, and seconds.
+ *
+ * @param ts - The timestamp in milliseconds
+ * @param locale - The locale used for formatting
+ * @returns The localized time string
+ */
 function tijd(ts: number, locale: string): string {
   return new Date(ts).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-/** Verkeer: stat-strip + de bonnenrail met recente requests, met de volledige analyse eronder. */
+/**
+ * Displays traffic statistics, recent requests, provider filters, and optional usage analysis.
+ *
+ * @param apiBase - The base URL for API requests.
+ * @param target - The navigation target used to open usage analysis.
+ */
 export default function Verkeer({ apiBase, target }: { apiBase: string; target?: string }) {
   const { locale, t } = useI18n();
   const [summary30d, setSummary30d] = useState<UsageSummary | null>(null);
