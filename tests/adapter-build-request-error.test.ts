@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { handleResponses } from "../src/server/responses";
-import { adapterBuildRequestError } from "../src/server/responses/core";
+import { adapterBuildRequestError, resolveAdapterBuildRequestError } from "../src/server/responses/core";
 import type { OcxConfig } from "../src/types";
 
 describe("adapterBuildRequestError", () => {
@@ -34,6 +34,25 @@ describe("adapterBuildRequestError", () => {
     Object.assign(err, { code: "cursor_missing_credential" });
     const response = adapterBuildRequestError(err);
     expect(response.status).toBe(401);
+  });
+
+  test("returns JSON 499 when abortSignal is already aborted", async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const response = resolveAdapterBuildRequestError(new Error("anything"), ac.signal);
+    expect(response.status).toBe(499);
+    expect(response.headers.get("content-type") ?? "").toContain("application/json");
+    const body = await response.json() as { error?: { type?: string } };
+    expect(body.error?.type).toBe("client_cancelled");
+  });
+
+  test("returns JSON 499 for AbortError during buildRequest", async () => {
+    const response = resolveAdapterBuildRequestError(
+      new DOMException("The operation was aborted", "AbortError"),
+    );
+    expect(response.status).toBe(499);
+    const body = await response.json() as { error?: { type?: string } };
+    expect(body.error?.type).toBe("client_cancelled");
   });
 });
 
