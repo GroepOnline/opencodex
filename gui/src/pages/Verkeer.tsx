@@ -1,56 +1,55 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Usage from "./Usage";
-import { useI18n, type TKey } from "../i18n/shared";
+import { useI18n } from "../i18n/shared";
 import { formatTokens } from "../format-tokens";
-import { statusCodeInfo } from "../status-codes";
-import { modelLabel } from "../model-display";
+import { TrafficColumnHead, TrafficRowCells } from "../traffic-row";
+import {
+  requestsTodayCount,
+  trafficPrincipalLabel,
+  trafficProviderModelLabel,
+  type TrafficLogEntry,
+} from "../traffic-shared";
 
 interface UsageSummary {
   summary: { requests: number; totalTokens: number };
   days: Array<{ date: string; requests: number; totalTokens?: number }>;
 }
 
-interface BonEntry {
-  requestId?: string;
-  timestamp: number;
-  model: string;
-  provider: string;
-  status: number;
-  durationMs: number;
-  errorCode?: string;
-  upstreamError?: string;
-  totalTokens?: number;
-  usage?: { inputTokens: number; outputTokens: number; totalTokens?: number };
-}
-
 /** Soft poll — CF edge used to 1015 at 100/min on /api/*; keep headroom for other tabs. */
 const TAIL_INTERVAL_MS = 12_000;
 
-function bonTokens(entry: BonEntry): number | undefined {
+/**
+ * Determines the total token count for a traffic log entry.
+ *
+ * @param entry - The traffic log entry to inspect
+ * @returns The total token count, or `undefined` when unavailable
+ */
+function bonTokens(entry: TrafficLogEntry): number | undefined {
   if (entry.usage) return entry.usage.totalTokens ?? entry.usage.inputTokens + entry.usage.outputTokens;
   return entry.totalTokens;
 }
 
-function bonStempel(entry: BonEntry): { labelKey: TKey; cls: string } {
-  if (entry.status >= 200 && entry.status < 300) return { labelKey: "vk.stampDone", cls: "stempel--klaar" };
-  if (entry.status === 0) return { labelKey: "vk.stampError", cls: "stempel--fout" };
-  if (entry.status >= 400) return { labelKey: "vk.stampError", cls: "stempel--fout" };
-  return { labelKey: "vk.stampBusy", cls: "" };
-}
-
+/**
+ * Formats a timestamp as a localized time with hours, minutes, and seconds.
+ *
+ * @param ts - The timestamp in milliseconds
+ * @param locale - The locale used for formatting
+ * @returns The localized time string
+ */
 function tijd(ts: number, locale: string): string {
   return new Date(ts).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-function vandaagKey(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-/** Verkeer: stat-strip + de bonnenrail met recente requests, met de volledige analyse eronder. */
+/**
+ * Displays traffic statistics, recent requests, provider filters, and optional usage analysis.
+ *
+ * @param apiBase - The base URL for API requests.
+ * @param target - The navigation target used to open usage analysis.
+ */
 export default function Verkeer({ apiBase, target }: { apiBase: string; target?: string }) {
   const { locale, t } = useI18n();
   const [summary30d, setSummary30d] = useState<UsageSummary | null>(null);
-  const [logs, setLogs] = useState<BonEntry[]>([]);
+  const [logs, setLogs] = useState<TrafficLogEntry[]>([]);
   const [logsFailed, setLogsFailed] = useState(false);
   const [providerFilter, setProviderFilter] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
@@ -59,8 +58,6 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
   const pausedRef = useRef(paused);
   useEffect(() => { pausedRef.current = paused; }, [paused]);
 
-  // The legacy #usage deep link opens the full analysis section on landing. Adjust during render
-  // when the routed target changes (React's documented alternative to syncing state in an effect).
   const [seenTarget, setSeenTarget] = useState(target);
   if (target !== seenTarget) {
     setSeenTarget(target);
@@ -89,7 +86,7 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
       try {
         const res = await fetch(`${apiBase}/api/logs`);
         if (!res.ok) throw new Error(String(res.status));
-        const data = await res.json() as BonEntry[];
+        const data = await res.json() as TrafficLogEntry[];
         if (!cancelled) {
           setLogs(Array.isArray(data) ? data.toSorted((a, b) => b.timestamp - a.timestamp) : []);
           setLogsFailed(false);
@@ -103,16 +100,34 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
     return () => { cancelled = true; clearInterval(iv); };
   }, [apiBase]);
 
-  const providers = useMemo(() => [...new Set(logs.map(l => l.provider))].sort(), [logs]);
-  const zichtbaar = useMemo(
-    () => (providerFilter ? logs.filter(l => l.provider === providerFilter) : logs).slice(0, 60),
-    [logs, providerFilter],
-  );
+  const providers = useMemo(() => {
+    const names = new Set<string>();
+    for (const entry of logs) {
+      const principal = trafficPrincipalLabel(entry, t);
+      if (principal !== t("vk.unknown")) names.add(principal);
+      const providerModel = trafficProviderModelLabel(entry);
+      if (providerModel?.includes("/")) names.add(providerModel.split("/")[0]!);
+    }
+    return [...names].sort();
+  }, [logs, t]);
 
-  const requestsVandaag = useMemo(() => {
-    const key = vandaagKey();
-    return summary30d?.days.find(d => d.date === key)?.requests ?? 0;
-  }, [summary30d]);
+  const zichtbaar = useMemo(() => {
+    const rows = providerFilter
+      ? logs.filter(entry => {
+        const principal = trafficPrincipalLabel(entry, t);
+        const providerModel = trafficProviderModelLabel(entry) ?? "";
+        return principal === providerFilter
+          || entry.provider === providerFilter
+          || providerModel.startsWith(`${providerFilter}/`);
+      })
+      : logs;
+    return rows.slice(0, 60);
+  }, [logs, providerFilter, t]);
+
+  const requestsVandaag = useMemo(
+    () => requestsTodayCount(logs, summary30d?.days),
+    [logs, summary30d],
+  );
 
   const requests30d = summary30d?.summary.requests ?? 0;
   const tokens30d = summary30d?.summary.totalTokens ?? 0;
@@ -176,6 +191,8 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
         </p>
       )}
 
+      <TrafficColumnHead />
+
       <div className="rail" aria-live="polite" onFocus={() => setPaused(true)}>
         {zichtbaar.length === 0 ? (
           <p className="muted" style={{ fontFamily: "var(--font-code)", fontSize: "0.875rem" }}>
@@ -183,29 +200,23 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
           </p>
         ) : zichtbaar.map(entry => {
           const id = entry.requestId ?? `${entry.timestamp}-${entry.provider}-${entry.model}`;
-          const stempel = bonStempel(entry);
           const tokens = bonTokens(entry);
           const isOpen = openBon === id;
-          const statusInfo = statusCodeInfo(entry.status, locale);
           return (
             <div key={id} className="bon">
               <button
                 type="button"
-                className="bon-kop"
+                className="bon-kop bon-kop--grid"
                 style={{ width: "100%", background: "transparent", border: "none", padding: 0, font: "inherit", color: "inherit", cursor: "pointer", textAlign: "left" }}
                 onClick={() => setOpenBon(current => current === id ? null : id)}
                 aria-expanded={isOpen}
               >
-                <span className="bon-tijd">{tijd(entry.timestamp, locale)}</span>
-                <span className="bon-titel">{modelLabel(entry.model)}</span>
-                <span className="bon-meta">{entry.provider}</span>
-                {tokens !== undefined && <span className="bon-meta">{t("vk.rowTokens", { n: formatTokens(tokens, locale) })}</span>}
-                <span className="bon-meta">{t("vk.rowDuration", { s: (entry.durationMs / 1000).toFixed(1) })}</span>
-                <span className={`stempel ${stempel.cls}`}>{t(stempel.labelKey)}</span>
+                <span className="bon-col bon-col--time bon-tijd">{tijd(entry.timestamp, locale)}</span>
+                <TrafficRowCells entry={entry} locale={locale} tokens={tokens} />
               </button>
               {isOpen && (
                 <div className="bon-detail">
-                  <div>{t("vk.detailStatus", { status: entry.status })}{statusInfo ? ` · ${statusInfo.label}` : ""}</div>
+                  <div>{t("vk.detailStatus", { status: entry.status })}</div>
                   {entry.errorCode && <div>{t("vk.detailError", { code: entry.errorCode })}</div>}
                   {entry.upstreamError && <div>{t("vk.detailUpstream", { error: entry.upstreamError })}</div>}
                   {entry.usage && (

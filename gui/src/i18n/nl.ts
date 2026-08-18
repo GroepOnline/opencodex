@@ -107,6 +107,8 @@ const overrides: Partial<Record<TKey, string>> = {
   "pws.dashboard.noQuota": "Geen quota-data",
   "pws.dashboard.noUsage": "Nog geen verbruik",
   "pws.dashboard.noRateLimits": "Nog geen rate-limit data",
+  "pws.dashboard.configuredProviders": "Geconfigureerde leveranciers",
+  "pws.dashboard.noConfiguredProviders": "Nog geen leveranciers geconfigureerd",
   "pws.allProviders": "Leveranciersoverzicht",
   "pws.saveSettings": "Bewaar",
   "pws.saving": "Bewaren…",
@@ -454,6 +456,14 @@ const overrides: Partial<Record<TKey, string>> = {
   "vk.detailStatus": "status {status}",
   "vk.detailUpstream": "upstream: {error}",
   "vk.detailId": "id {id}",
+
+  "vk.unknown": "Onbekend",
+  "vk.col.time": "Tijd",
+  "vk.col.providerModel": "Provider / model",
+  "vk.col.principal": "Principal",
+  "vk.col.tokens": "Tokens",
+  "vk.col.duration": "Duur",
+  "vk.col.status": "Status",
 
   // Provider Models tab (visibility toggles)
   "models.allOn": "Alles aan",

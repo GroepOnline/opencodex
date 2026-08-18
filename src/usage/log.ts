@@ -47,6 +47,12 @@ export interface PersistedUsageEntry {
   surface?: "claude" | "claude-desktop" | "grok";
   /** Best-effort chat/session correlation for Logs grouping (#330). */
   conversationId?: string;
+  /**
+   * Pseudonymized Codex account label extracted from the provider display label at
+   * write time (the `p<hex6>` suffix account-label.ts appends, or legacy `main`).
+   * Absent on rows whose provider carries no account suffix.
+   */
+  account?: string;
   resolvedModel?: string;
   requestedModel?: string;
   /** Reasoning effort / service-tier metadata for GUI Logs after restart. */
@@ -264,6 +270,13 @@ function capMetadataString(s: string): string {
   return s.length > MAX_METADATA_STRING_LEN ? s.slice(0, MAX_METADATA_STRING_LEN) : s;
 }
 
+/**
+ * Normalizes a persisted usage entry for storage.
+ *
+ * Removes invalid optional fields, trims and caps metadata strings, normalizes usage and attempts, and preserves valid request, status, timing, and diagnostic data.
+ *
+ * @returns The normalized persisted usage entry
+ */
 function normalizeUsageEntry(entry: PersistedUsageEntry): PersistedUsageEntry {
   const attempts = normalizedAttempts(entry.attempts);
   return {
@@ -274,6 +287,9 @@ function normalizeUsageEntry(entry: PersistedUsageEntry): PersistedUsageEntry {
     ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
     ...(typeof entry.conversationId === "string" && entry.conversationId.trim()
       ? { conversationId: entry.conversationId.trim().slice(0, 128) }
+      : {}),
+    ...(typeof entry.account === "string" && entry.account.trim()
+      ? { account: capMetadataString(entry.account.trim()) }
       : {}),
     ...(entry.resolvedModel ? { resolvedModel: entry.resolvedModel } : {}),
     ...(entry.requestedModel ? { requestedModel: entry.requestedModel } : {}),

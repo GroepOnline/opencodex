@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { baseProviderLabel } from "../src/providers/label";
+import { baseProviderLabel, providerAccountLabel } from "../src/providers/label";
 
 describe("baseProviderLabel", () => {
   test("returns the input when there is no pool suffix", () => {
@@ -40,5 +40,21 @@ describe("baseProviderLabel", () => {
   test("leaves bare provider names with leading or trailing dashes alone", () => {
     expect(baseProviderLabel("-pabc123")).toBe("-pabc123"); // empty head
     expect(baseProviderLabel("chatgpt-")).toBe("chatgpt-");  // empty tail
+  });
+});
+
+describe("providerAccountLabel", () => {
+  test("returns the pool suffix or legacy main without the base provider", () => {
+    expect(providerAccountLabel("openai-p104398")).toBe("p104398");
+    expect(providerAccountLabel("openai-main")).toBe("main");
+    expect(providerAccountLabel("anthropic-pabc123")).toBe("pabc123");
+  });
+
+  test("returns undefined when there is no account suffix", () => {
+    expect(providerAccountLabel("openai")).toBeUndefined();
+    expect(providerAccountLabel("chatgpt")).toBeUndefined();
+    expect(providerAccountLabel("openai-multi")).toBeUndefined();
+    expect(providerAccountLabel("anthropic-claude")).toBeUndefined();
+    expect(providerAccountLabel("kilo")).toBeUndefined();
   });
 });

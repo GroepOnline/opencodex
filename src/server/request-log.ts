@@ -10,6 +10,7 @@ import { readCodexCatalogPath } from "../codex/catalog";
 import type { OcxUsage } from "../types";
 import type { AdapterRequest } from "../adapters/base";
 import { redactSecretString } from "../lib/redact";
+import { providerAccountLabel } from "../providers/label";
 import {
   appendUsageEntry,
   isKnownUsageSurface,
@@ -120,6 +121,8 @@ export interface RequestLogEntry {
   closeReason?: "terminal" | "client_cancel" | "non_stream" | "body_stall" | "body_overflow";
   /** Secret-redacted upstream error reason, surfaced in /api/logs and the GUI detail modal. */
   upstreamError?: string;
+  /** Pseudonymized account label when the provider display name carries a pool suffix. */
+  account?: string;
   usageStatus: UsageStatus;
   usage?: OcxUsage;
   totalTokens?: number;
@@ -138,6 +141,38 @@ let requestLogSeq = 0;
 /** True after hydrateRequestLogsFromDisk ran once in this process. */
 let requestLogsHydratedFromDisk = false;
 
+const UNKNOWN_LOG_LABEL = "unknown";
+
+/**
+ * Resolves the model label recorded for a request log entry.
+ *
+ * @param logCtx - Request metadata containing requested, resolved, and recorded model labels
+ * @returns The recorded model, requested model, resolved model, or existing fallback label
+ */
+export function resolveRequestLogModel(logCtx: RequestLogContext): string {
+  if (logCtx.model && logCtx.model !== UNKNOWN_LOG_LABEL) return logCtx.model;
+  if (typeof logCtx.requestedModel === "string" && logCtx.requestedModel.trim()) return logCtx.requestedModel.trim();
+  if (typeof logCtx.resolvedModel === "string" && logCtx.resolvedModel.trim()) return logCtx.resolvedModel.trim();
+  return logCtx.model;
+}
+
+/** Prefer the routed config key or attempt provider over the pre-route placeholder. */
+export function resolveRequestLogProvider(logCtx: RequestLogContext): string {
+  if (logCtx.provider && logCtx.provider !== UNKNOWN_LOG_LABEL) return logCtx.provider;
+  if (typeof logCtx.providerConfigKey === "string" && logCtx.providerConfigKey.trim()) {
+    return logCtx.providerConfigKey.trim();
+  }
+  const attemptProvider = logCtx.attempts?.at(-1)?.provider;
+  if (typeof attemptProvider === "string" && attemptProvider.trim()) return attemptProvider.trim();
+  return logCtx.provider;
+}
+
+/**
+ * Converts a terminal status label to a recognized Responses terminal status.
+ *
+ * @param value - The terminal status label to validate
+ * @returns The recognized terminal status, or `undefined` for unsupported values
+ */
 function asTerminalStatus(value: string | undefined): ResponsesTerminalStatus | undefined {
   if (value === "completed" || value === "failed" || value === "incomplete") return value;
   return undefined;
@@ -156,7 +191,12 @@ function asCloseReason(value: string | undefined): RequestLogEntry["closeReason"
   }
 }
 
-/** Project a persisted usage.jsonl row back into the in-memory /api/logs shape. */
+/**
+ * Converts a persisted usage record into an in-memory request log entry.
+ *
+ * @param entry - The persisted usage record to convert
+ * @returns The request log entry reconstructed from `entry`
+ */
 export function requestLogEntryFromPersistedUsage(entry: PersistedUsageEntry): RequestLogEntry {
   const terminalStatus = asTerminalStatus(entry.terminalStatus);
   const closeReason = asCloseReason(entry.closeReason);
@@ -168,6 +208,7 @@ export function requestLogEntryFromPersistedUsage(entry: PersistedUsageEntry): R
     ...(entry.firstOutputMs !== undefined ? { firstOutputMs: entry.firstOutputMs } : {}),
     ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
     ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
+    ...(entry.account ? { account: entry.account } : {}),
     ...(entry.requestedModel ? { requestedModel: entry.requestedModel } : {}),
     ...(entry.requestedEffort ? { requestedEffort: entry.requestedEffort } : {}),
     ...(entry.effectiveEffort ? { effectiveEffort: entry.effectiveEffort } : {}),
@@ -226,6 +267,13 @@ export function hydrateRequestLogsFromDisk(
   }
 }
 
+/**
+ * Records a request log entry in memory and persists its usage data.
+ *
+ * Persistence failures are ignored so request logging does not interrupt the request.
+ *
+ * @param entry - The request log entry to record
+ */
 export function addRequestLog(entry: RequestLogEntry) {
   requestLog.push(entry);
   if (requestLog.length > MAX_LOG_SIZE) requestLog.shift();
@@ -241,6 +289,7 @@ export function addRequestLog(entry: RequestLogEntry) {
         ...(entry.upstreamError ? { upstreamError: entry.upstreamError } : {}),
       }
       : {};
+    const account = providerAccountLabel(entry.provider);
     appendUsageEntry({
       requestId: entry.requestId,
       timestamp: entry.timestamp,
@@ -248,6 +297,7 @@ export function addRequestLog(entry: RequestLogEntry) {
       model: entry.model,
       ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
       ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
+      ...(account ? { account } : {}),
       ...(entry.resolvedModel ? { resolvedModel: entry.resolvedModel } : {}),
       ...(entry.requestedModel ? { requestedModel: entry.requestedModel } : {}),
       ...(entry.requestedEffort ? { requestedEffort: entry.requestedEffort } : {}),
@@ -654,6 +704,16 @@ export function httpStatusForRequestLogTerminal(
   return httpStatusForTerminalStatus(status);
 }
 
+/**
+ * Finalizes and records a request log entry with status, diagnostics, usage, routing, and retry-attempt data.
+ *
+ * @param requestId - The request identifier
+ * @param start - The request start timestamp in milliseconds
+ * @param logCtx - Mutable metadata collected during the request
+ * @param status - The upstream response status
+ * @param meta - Optional terminal status and close reason
+ * @param addLog - Function used to store the finalized log entry
+ */
 export function addFinalRequestLog(
   requestId: string,
   start: number,
@@ -705,11 +765,15 @@ export function addFinalRequestLog(
   const loggedUsage = aggregate?.usage ?? existing.usage;
   const usageStatus = aggregate?.status ?? existing.status;
   const totalTokens = aggregate?.totalTokens ?? existing.totalTokens;
+  const provider = isCombo ? "combo" : resolveRequestLogProvider(logCtx);
+  const model = isCombo ? (logCtx.requestedModel ?? resolveRequestLogModel(logCtx)) : resolveRequestLogModel(logCtx);
+  const account = providerAccountLabel(provider);
   addLog({
     requestId,
     timestamp: start,
-    model: isCombo ? logCtx.requestedModel! : logCtx.model,
-    provider: isCombo ? "combo" : logCtx.provider,
+    model,
+    provider,
+    ...(account ? { account } : {}),
     ...(logCtx.surface ? { surface: logCtx.surface } : {}),
     ...(logCtx.conversationId ? { conversationId: logCtx.conversationId } : {}),
     ...(logCtx.requestedModel ? { requestedModel: logCtx.requestedModel } : {}),

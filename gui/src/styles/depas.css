@@ -368,10 +368,42 @@ body { background: var(--tegelwit); }
   flex-wrap: wrap;
 }
 
+.bon-kop--grid {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(8rem, 1.4fr) minmax(5rem, 0.8fr) 5.5rem 4rem minmax(5rem, 0.9fr);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+}
+
+.bon--head {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  padding: 0 0 8px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--gietijzer-60);
+}
+
+.bon--head + .bon { margin-top: 0; }
+
+.bon-kop--grid .bon-col--status { justify-self: end; }
+
 .bon-tijd { color: var(--gietijzer-60); white-space: nowrap; }
 .bon-titel { font-weight: 600; }
 .bon-meta { color: var(--gietijzer-60); }
 .bon-kop .stempel { margin-left: auto; }
+
+@media (max-width: 700px) {
+  .bon-kop--grid {
+    grid-template-columns: 4rem minmax(0, 1.4fr) minmax(0, 0.8fr) 4rem 3.5rem 4rem;
+    gap: 6px;
+  }
+
+  .bon-kop--grid > .bon-col { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+}
 
 .bon-detail {
   margin-top: 8px;

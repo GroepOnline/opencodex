@@ -4,6 +4,14 @@ function canonicalUsageProviderLabel(provider: string): string {
   return provider === "chatgpt" || provider === "openai-multi" ? "openai" : provider;
 }
 
+/**
+ * Determines the aggregation label for a provider.
+ *
+ * Canonicalizes supported provider aliases and removes recognized Codex account suffixes, including the legacy `-main` suffix.
+ *
+ * @param provider - The provider label to normalize
+ * @returns The canonical provider label without a recognized account suffix
+ */
 export function baseProviderLabel(provider: string): string {
   const canonical = canonicalUsageProviderLabel(provider);
   if (canonical !== provider) return canonical;
@@ -16,4 +24,18 @@ export function baseProviderLabel(provider: string): string {
   // summaries normalize them to one `openai` row after recognized main/pool suffixes are removed.
   if (suffix === "main") return canonicalUsageProviderLabel(provider.slice(0, cut));
   return CODEX_ACCOUNT_LOG_LABEL_RE.test(suffix) ? canonicalUsageProviderLabel(provider.slice(0, cut)) : provider;
+}
+
+/**
+ * Extracts the recognized Codex account suffix from a provider label.
+ *
+ * @returns The account suffix, either `main` or a pseudonymized label, or `undefined` when the provider has no recognized removable account suffix.
+ */
+export function providerAccountLabel(provider: string): string | undefined {
+  if (canonicalUsageProviderLabel(provider) !== provider) return undefined;
+  const cut = provider.lastIndexOf("-");
+  if (cut <= 0) return undefined;
+  const suffix = provider.slice(cut + 1);
+  if (suffix === "main") return baseProviderLabel(provider) !== provider ? "main" : undefined;
+  return CODEX_ACCOUNT_LOG_LABEL_RE.test(suffix) ? suffix : undefined;
 }

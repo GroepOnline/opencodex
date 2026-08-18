@@ -1212,6 +1212,16 @@ export async function handleComboResponses(
 
 
 
+/**
+ * Processes a Responses API request through routing, authentication, provider failover, sidecars,
+ * streaming or non-streaming adaptation, continuation handling, and response normalization.
+ *
+ * @param req - The incoming HTTP request.
+ * @param config - Server and provider configuration.
+ * @param logCtx - Request context updated with routing, provider, usage, and response metadata.
+ * @param options - Request lifecycle, retry, cancellation, and callback settings.
+ * @returns The normalized Responses API response.
+ */
 export async function handleResponses(
   req: Request,
   config: OcxConfig,
@@ -1262,6 +1272,11 @@ export async function handleResponses(
     const clientThreadId = req.headers.get("x-codex-parent-thread-id")?.trim();
     if (clientThreadId) parsed._clientThreadId = clientThreadId;
   } catch (err) {
+    const rawModel = (body as { model?: unknown } | null)?.model;
+    if (typeof rawModel === "string" && rawModel.trim()) {
+      logCtx.requestedModel = rawModel.trim();
+      logCtx.model = rawModel.trim();
+    }
     return formatErrorResponse(400, "invalid_request_error", err instanceof Error ? err.message : String(err));
   }
   // Prefer a pre-populated id (routed Claude) over Responses headers that may be
@@ -1310,6 +1325,10 @@ export async function handleResponses(
     }
     return formatErrorResponse(404, "invalid_request_error", err instanceof Error ? err.message : String(err));
   }
+  logCtx.model = route.modelId;
+  logCtx.provider = route.providerName;
+  logCtx.providerConfigKey = route.providerName;
+  logCtx.providerAdapter = route.provider.adapter;
 
   const hasUnexpandedPreviousResponse = !!parsed.previousResponseId
     && parsed._previousResponseInputExpanded !== true;
