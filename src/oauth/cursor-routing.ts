@@ -326,7 +326,7 @@ export function resolveCursorAccountForSession(
 
 export function isCursorPoolRotationError(message: string): boolean {
   const outcome = classifyCursorUpstreamOutcome({ message });
-  return outcome === "rate-limit" || outcome === "quota-exhausted";
+  return outcome === "rate-limit" || outcome === "quota-exhausted" || outcome === "overload";
 }
 
 export function rotateCursorAccountOnQuota(

@@ -344,4 +344,74 @@ describe("server 429 key failover (end-to-end)", () => {
       server.stop(true);
     }
   });
+
+  test("HTTP 529 hops to the next API key without same-account retries", async () => {
+    const originalFetch = globalThis.fetch;
+    const seenAuth: string[] = [];
+    globalThis.fetch = (async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url === "https://api.x.ai/v1/chat/completions") {
+        const headers = new Headers(init?.headers);
+        seenAuth.push(headers.get("authorization") ?? "");
+        if (seenAuth.length === 1) {
+          return new Response(JSON.stringify({
+            type: "error",
+            error: { type: "overloaded_error", message: "Overloaded" },
+          }), {
+            status: 529,
+            headers: { "retry-after": "2", "content-type": "application/json" },
+          });
+        }
+        return new Response(JSON.stringify({
+          id: "chatcmpl-xai-529",
+          object: "chat.completion",
+          choices: [{ index: 0, message: { role: "assistant", content: "ok after 529 hop" }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+        }), { headers: { "content-type": "application/json" } });
+      }
+      return originalFetch(input, init);
+    }) as typeof fetch;
+
+    let server: ReturnType<typeof startServer> | null = null;
+    try {
+      const config: OcxConfig = {
+        port: 0,
+        hostname: "127.0.0.1",
+        defaultProvider: "xai",
+        providers: {
+          xai: {
+            adapter: "openai-chat",
+            baseUrl: "https://api.x.ai/v1",
+            authMode: "key",
+            apiKey: "key-alpha-000111222333",
+            apiKeyPool: [
+              { id: "k1", key: "key-alpha-000111222333", addedAt: 1 },
+              { id: "k2", key: "key-beta-444555666777", addedAt: 2 },
+            ],
+          },
+        },
+      } as OcxConfig;
+      saveConfig(config);
+      server = startServer(0);
+      const res = await originalFetch(new URL("/v1/responses", server.url), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "xai/grok-4.5",
+          input: "hello",
+          stream: false,
+        }),
+      });
+      expect(res.status).toBe(200);
+      const json = await res.json() as { output?: { type: string; content?: { text?: string }[] }[] };
+      expect(json.output?.find(o => o.type === "message")?.content?.[0]?.text).toBe("ok after 529 hop");
+      expect(seenAuth).toEqual([
+        "Bearer key-alpha-000111222333",
+        "Bearer key-beta-444555666777",
+      ]);
+    } finally {
+      server?.stop(true);
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

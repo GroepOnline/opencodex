@@ -23,7 +23,7 @@ rotation does not protect against provider enforcement.
 
 Operational contract when enabled:
 
-- Upstream **429** cools that account using `Retry-After` when present (else a default backoff),
+- Upstream **429 or 529 overload** cools that account using `Retry-After` when present (else a default backoff),
   clears its affinities, and may rotate to another eligible account within the same request
   (bounded).
 - Affinity is **process-local** (lost on proxy restart).

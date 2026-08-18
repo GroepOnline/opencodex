@@ -9,6 +9,7 @@ export type UpstreamOutcomeLabel =
   | "context-overflow"
   | "rate-limit"
   | "quota-exhausted"
+  | "overload"
   | "billing"
   | "empty-pool"
   | "transient-transport"
@@ -46,6 +47,10 @@ const OUTCOME_POLICIES: Record<UpstreamOutcomeLabel, UpstreamOutcomePolicy> = {
   // Transient throttle may same-account retry; account pools still cool/rotate.
   "rate-limit": { sameAccountRetry: true, rotateOrCool: true, failover: true },
   "quota-exhausted": { sameAccountRetry: false, rotateOrCool: true, failover: true },
+  // Native 529 / overloaded_error: hop immediately. Do not same-account retry
+  // (that would burn the budget on the overloaded lane). 502/503 stay on
+  // transient-transport so keep-alive resets still retry the same account first.
+  overload: { sameAccountRetry: false, rotateOrCool: true, failover: true },
   "transient-transport": { sameAccountRetry: true, rotateOrCool: false, failover: true },
   other: NO_RECOVERY,
 };
@@ -118,6 +123,10 @@ function classifyShared(evidence: UpstreamOutcomeEvidence): UpstreamOutcomeLabel
     || text.includes("too many requests")
     || text.includes("throttl")
   ) return "rate-limit";
+  // Anthropic/Desktop overload is HTTP 529 with type overloaded_error. Do not
+  // treat generic "server overloaded" 502/503 copy as this label — those stay
+  // transient-transport so Cursor ECONNRESET-shaped 502s do not rotate.
+  if (status === 529 || text.includes("overloaded_error")) return "overload";
   if (
     status === 401
     || status === 403
@@ -206,6 +215,7 @@ export async function classifyUpstreamResponse(
     || response.status === 520
     || response.status === 521
     || response.status === 522
+    || response.status === 529
   ) {
     return classifyUpstreamOutcome(rail, { status: response.status });
   }

@@ -299,7 +299,7 @@ describe("combo target cooldowns", () => {
 
 describe("combo failure policy and advancement", () => {
   test("hops only retryable provider-local failures", () => {
-    for (const status of [401, 403, 404, 408, 429, 500, 503]) {
+    for (const status of [401, 403, 404, 408, 429, 500, 503, 529]) {
       expect(comboFailureDecision(status, "provider failure")).toBe("hop");
     }
     expect(comboFailureDecision(400, "context_length_exceeded")).toBe("stop");

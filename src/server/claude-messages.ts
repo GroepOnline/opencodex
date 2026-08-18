@@ -16,6 +16,8 @@ import { stripOneMillionMarker } from "../claude/context-windows";
 import { captureClaudeInbound } from "../claude/inbound-debug";
 import { isTransientUpstreamStatus } from "../lib/upstream-retry";
 import { resolveClientRetryAfter } from "../lib/retry-after";
+import { isAnthropicAccountPoolEnabled } from "../oauth/anthropic-routing";
+import { providerFallbackTargets } from "../providers/fallback";
 import {
   anthropicErrorBody,
   anthropicErrorResponse,
@@ -96,6 +98,13 @@ function wantsNativePassthrough(req: Request, config: OcxConfig, model: unknown)
   if (!hasAnthropicNativeCredential(req)) return false;
   // An alias or modelMap hit means the user asked for a ROUTED model: translate instead.
   return resolveInboundModel(model, config.claudeCode) === model;
+}
+
+/** Replay a native 529 through handleResponses when OCX can hop accounts or providers. */
+export function shouldReplayNativePassthroughOverload(config: OcxConfig): boolean {
+  if (isAnthropicAccountPoolEnabled(config)) return true;
+  const anthropic = config.providers.anthropic;
+  return Boolean(anthropic && providerFallbackTargets(anthropic).length > 0);
 }
 
 /** Format a 32-hex cache key as a uuid-shaped session id (version/variant nibbles forced). */
@@ -289,7 +298,7 @@ async function anthropicNativePassthrough(
   logIds: { requestId: string; start: number } | undefined,
   body: Rec,
   pathname: string,
-): Promise<Response> {
+): Promise<Response | "replay-routed"> {
   const model = typeof body.model === "string" ? body.model : "unknown";
   logCtx.model = model;
   logCtx.provider = "anthropic-native";
@@ -334,6 +343,14 @@ async function anthropicNativePassthrough(
     return anthropicErrorResponse(502, `anthropic passthrough failed: ${err instanceof Error ? err.message : String(err)}`, "api_error");
   }
   const upstream = result.upstream;
+  if (
+    pathname === "/v1/messages"
+    && upstream.status === 529
+    && shouldReplayNativePassthroughOverload(config)
+  ) {
+    try { void upstream.body?.cancel().catch(() => {}); } catch { /* already closed */ }
+    return "replay-routed";
+  }
 
   const contentType = upstream.headers.get("content-type") ?? "application/json";
   const bodyGuard = resolvePassthroughBodyGuard(config, req.signal);
@@ -567,7 +584,11 @@ export async function handleClaudeMessages(
       if (claudeConversationId) logCtx.conversationId = claudeConversationId;
     }
     if (isRec(anthropicBody) && wantsNativePassthrough(req, config, anthropicBody.model)) {
-      return await anthropicNativePassthrough(req, config, logCtx, logIds, anthropicBody, "/v1/messages");
+      const passthrough = await anthropicNativePassthrough(req, config, logCtx, logIds, anthropicBody, "/v1/messages");
+      if (passthrough !== "replay-routed") return passthrough;
+      if (typeof anthropicBody.model === "string" && !anthropicBody.model.includes("/")) {
+        anthropicBody.model = `anthropic/${anthropicBody.model}`;
+      }
     }
     if (isRec(anthropicBody) && effortOverride) {
       anthropicBody.output_config = { effort: effortOverride };
@@ -828,7 +849,11 @@ export async function handleClaudeCountTokens(req: Request, config: OcxConfig): 
   }
   captureClaudeInbound("count_tokens", raw, resolveInboundModel(model, config.claudeCode), req.headers.get("anthropic-beta") ?? undefined);
   if (wantsNativePassthrough(req, config, model)) {
-    return await anthropicNativePassthrough(req, config, { model, provider: "anthropic-native", surface: "claude" }, undefined, raw, "/v1/messages/count_tokens");
+    const passthrough = await anthropicNativePassthrough(req, config, { model, provider: "anthropic-native", surface: "claude" }, undefined, raw, "/v1/messages/count_tokens");
+    if (passthrough === "replay-routed") {
+      return anthropicErrorResponse(529, "upstream overloaded", "overloaded_error");
+    }
+    return passthrough;
   }
   const parts: string[] = [];
   if (raw.system !== undefined) parts.push(typeof raw.system === "string" ? raw.system : JSON.stringify(raw.system));
