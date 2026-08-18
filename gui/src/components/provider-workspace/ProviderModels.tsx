@@ -353,7 +353,7 @@ export default function ProviderModels({
           {models.length > 0 && (
             <span className="muted">{t("pws.modelsAvailable", { count: models.length })}</span>
           )}
-          {item.authMode !== "forward" && (
+          {item.name !== "openai" && item.authMode !== "forward" && (
             <button
               type="button"
               className="btn btn-ghost btn-sm"

@@ -98,7 +98,7 @@ export default function ProviderDetails({
   const t = useT();
   const [tab, setTab] = useState<Tab>("overview");
   const [settingsDirty, setSettingsDirty] = useState(false);
-  const [pendingLeave, setPendingLeave] = useState<Tab | "deselect" | null>(null);
+  const [pendingLeave, setPendingLeave] = useState<Tab | "deselect" | "fetch-models" | null>(null);
   const [leaveSaving, setLeaveSaving] = useState(false);
   const [fetchingProvider, setFetchingProvider] = useState<string | null>(null);
   const [fetchModelsNotice, setFetchModelsNotice] = useState<{ provider: string; ok: boolean; text: string } | null>(null);
@@ -200,13 +200,13 @@ export default function ProviderDetails({
           </h2>
         </div>
         <div className="pws-detail-actions">
-          {item.authMode !== "forward" && (
+          {item.name !== "openai" && item.authMode !== "forward" && (
             <button
               type="button"
               className="btn btn-ghost btn-sm"
               onClick={() => {
                 if (settingsDirty && tab === "settings") {
-                  setPendingLeave("models");
+                  setPendingLeave("fetch-models");
                   return;
                 }
                 void fetchThisProviderModels();
@@ -388,7 +388,10 @@ export default function ProviderDetails({
             setPendingLeave(null);
             setSettingsDirty(false);
             if (next === "deselect") onDeselect();
-            else setTab(next);
+            else if (next === "fetch-models") {
+                setTab("models");
+                void fetchThisProviderModels();
+              } else setTab(next);
           }}
           onSave={() => {
             void (async () => {
@@ -401,7 +404,10 @@ export default function ProviderDetails({
                 setPendingLeave(null);
                 setSettingsDirty(false);
                 if (next === "deselect") onDeselect();
-                else if (next) setTab(next);
+                else if (next === "fetch-models") {
+                    setTab("models");
+                    void fetchThisProviderModels();
+                  } else if (next) setTab(next);
               } finally {
                 setLeaveSaving(false);
               }
