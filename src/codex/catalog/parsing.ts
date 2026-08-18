@@ -102,6 +102,8 @@ export interface CatalogModel {
   defaultReasoningEffort?: string;
   contextWindow?: number;
   maxInputTokens?: number;
+  /** Authoritative max output tokens (Responses max_output_tokens / Anthropic max_tokens). */
+  maxOutputTokens?: number;
   contextCap?: number;
   contextCapped?: boolean;
   inputModalities?: string[];

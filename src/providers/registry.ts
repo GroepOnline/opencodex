@@ -1335,6 +1335,16 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "@cf/zai-org/glm-5.2",
       "@cf/mistralai/mistral-small-3.1-24b-instruct",
     ],
+    // Live-verified 2026-08-18 against developers.cloudflare.com/workers-ai/models/*.
+    // These are host caps (llama-3.3-70b is 24k on Workers AI, not Meta's 128k).
+    modelContextWindows: {
+      "@cf/meta/llama-3.3-70b-instruct-fp8-fast": 24_000,
+      "@cf/qwen/qwq-32b": 24_000,
+      "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b": 80_000,
+      "@cf/moonshotai/kimi-k2.7-code": 262_144,
+      "@cf/zai-org/glm-5.2": 262_144,
+      "@cf/mistralai/mistral-small-3.1-24b-instruct": 128_000,
+    },
     note: "Workers AI · Free tier included · Account ID required in base URL",
   },
   // FREEZE 2026-07-10: /models was auth-gated under key login. OAuth device-flow + copilot_internal

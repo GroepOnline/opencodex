@@ -191,7 +191,7 @@ The proxy picks the family per request: `?ids=cli` or `?ids=desktop` wins; other
 Both families decode forever — a model saved in `settings.json` under either form keeps working.
 Each entry carries an honest display name such as `gemini-3-pro (gemini)`, plus full model
 capabilities (reasoning-effort ladder, thinking types) in the official ModelInfo shape so Claude
-Desktop's third-party gateway mode can offer its effort selector. Real Anthropic models keep their
+Desktop's third-party gateway mode can offer its effort selector. The discovery response also exposes authoritative token limits as `max_input_tokens` (context/input limit) and `max_tokens` (output limit); either field is `null` when no authoritative value is available. Real Anthropic models keep their
 canonical ids. The synthetic 2026 date is an internal slot, not a release date. Legacy hash aliases
 and `claude-ocx-<provider>--<model>` ids from older configs still resolve.
 

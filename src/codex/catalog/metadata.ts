@@ -72,6 +72,12 @@ export function nativeOpenAiContextWindow(slug: string): number | undefined {
       : undefined);
 }
 
+/** Authoritative native output cap from the jawcode openai bundle — never guessed. */
+export function nativeOpenAiMaxOutputTokens(slug: string): number | undefined {
+  const tokens = getJawcodeModelMetadata("openai", slug)?.maxTokens;
+  return typeof tokens === "number" && tokens > 0 ? tokens : undefined;
+}
+
 export function nativeInputModalities(slug: string): string[] {
   const upstream = UPSTREAM_NATIVE_ENTRIES.get(slug);
   if (Array.isArray(upstream?.input_modalities) && upstream!.input_modalities!.length > 0) {

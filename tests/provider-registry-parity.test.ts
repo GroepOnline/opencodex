@@ -451,6 +451,11 @@ describe("provider registry parity", () => {
     expect(freeTierProviders).toEqual(["nvidia", "cloudflare-workers-ai", "omniroute"]);
   });
 
+  test("Cloudflare Workers AI GLM 5.2 stays on the host 262k cap", () => {
+    const cf = PROVIDER_REGISTRY.find(entry => entry.id === "cloudflare-workers-ai");
+    expect(cf?.modelContextWindows?.["@cf/zai-org/glm-5.2"]).toBe(262_144);
+  });
+
   test("freeTier propagates through config seed, enrich backfill, and presets without overwriting user config", async () => {
     const { enrichProviderFromRegistry } = await import("../src/providers/derive");
     const nvidia = PROVIDER_REGISTRY.find(entry => entry.id === "nvidia")!;
@@ -567,10 +572,11 @@ describe("provider registry parity", () => {
     expect(seed.models).toContain("gpt-5.6-luna");
     expect(seed.models).toContain("kimi-k2.7-code");
     expect(seed.modelContextWindows?.auto).toBe(200_000);
-    expect(seed.modelContextWindows?.["gemini-3.5-flash"]).toBe(200_000);
-    expect(seed.modelContextWindows?.["gpt-5.6-sol"]).toBe(1_000_000);
-    expect(seed.modelContextWindows?.["gpt-5.6-terra"]).toBe(1_000_000);
-    expect(seed.modelContextWindows?.["gpt-5.6-luna"]).toBe(1_000_000);
+    expect(seed.modelContextWindows?.["gemini-3.5-flash"]).toBe(1_048_576);
+    expect(seed.modelContextWindows?.["gpt-5.4"]).toBe(1_000_000);
+    expect(seed.modelContextWindows?.["gpt-5.6-sol"]).toBe(372_000);
+    expect(seed.modelContextWindows?.["gpt-5.6-terra"]).toBe(372_000);
+    expect(seed.modelContextWindows?.["gpt-5.6-luna"]).toBe(372_000);
     expect(seed.modelReasoningEfforts?.["gpt-5.5"]).toEqual(["low", "medium", "high"]);
     expect(seed.modelReasoningEfforts?.["gpt-5.6-sol"]).toEqual(["low", "medium", "high", "xhigh", "max"]);
 

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { augmentRoutedModelsWithJawcodeMetadata, augmentRoutedModelsWithRegistryOpenAiApiRows, buildCatalogEntries, buildComboCatalogOmission, catalogModelSlug, clampCatalogModelsToCodexSupport, clampEntryToCodexSupportedEfforts, clampedDefaultEffort, comboCatalogOmissionReason, deriveComboCatalogModel, exactComboCatalogSlugs, filterCatalogVisibleModels, filterSupportedNativeSlugs, gatherRoutedModels as gatherRoutedModelsDirect, isDatedVariantId, isMediaGenerationModelId, loadBundledCodexCatalog, materializeBundledCodexCatalog, mergeCatalogEntriesForSync, NATIVE_OPENAI_MODELS, normalizeRoutedCatalogEntry, resetCatalogRuntimeStateForTests, resetOpenAiApiCatalogWarningStateForTests, shouldExposeRoutedModel } from "../src/codex/catalog";
+import { augmentRoutedModelsWithJawcodeMetadata, augmentRoutedModelsWithRegistryOpenAiApiRows, applyProviderConfigHints, buildCatalogEntries, buildComboCatalogOmission, catalogModelSlug, clampCatalogModelsToCodexSupport, clampEntryToCodexSupportedEfforts, clampedDefaultEffort, comboCatalogOmissionReason, deriveComboCatalogModel, exactComboCatalogSlugs, filterCatalogVisibleModels, filterSupportedNativeSlugs, gatherRoutedModels as gatherRoutedModelsDirect, isDatedVariantId, isMediaGenerationModelId, loadBundledCodexCatalog, materializeBundledCodexCatalog, mergeCatalogEntriesForSync, NATIVE_OPENAI_MODELS, normalizeRoutedCatalogEntry, resetCatalogRuntimeStateForTests, resetOpenAiApiCatalogWarningStateForTests, shouldExposeRoutedModel } from "../src/codex/catalog";
 import { withStubbedProviderFetch } from "./helpers/catalog-provider-fetch";
 import {
   CURSOR_STATIC_MODELS,
@@ -171,6 +171,17 @@ describe("combo catalog capability intersection", () => {
       reasoningEfforts: ["low", "medium"],
       defaultReasoningEffort: "medium",
     });
+  });
+
+  test("combo maxOutputTokens is the min when every member has a cap, else omitted", () => {
+    expect(deriveComboCatalogModel("capped", normalizedCombo(), [
+      { ...memberA, maxOutputTokens: 128_000 },
+      { ...memberB, maxOutputTokens: 32_000 },
+    ])?.maxOutputTokens).toBe(32_000);
+    expect(deriveComboCatalogModel("mixed-output", normalizedCombo(), [
+      { ...memberA, maxOutputTokens: 128_000 },
+      memberB,
+    ])?.maxOutputTokens).toBeUndefined();
   });
 
   test("handles vision, missing modalities, reasoning defaults, and parallel tools conservatively", () => {
@@ -2105,6 +2116,30 @@ describe("Codex catalog routed normalization", () => {
     // generated bundle must not resurrect it as a selectable model.
     expect(slugs.has("opencode-go/hy3-preview")).toBe(false);
     expect(models.filter(m => `${m.provider}/${m.id}` === "opencode-go/glm-5.2")).toHaveLength(1);
+  });
+
+  test("applyProviderConfigHints fills maxOutputTokens from config, default, then jawcode", () => {
+    const perModel = applyProviderConfigHints("custom", {
+      adapter: "openai-chat",
+      baseUrl: "https://example.test/v1",
+      defaultMaxOutputTokens: 16_000,
+      modelMaxOutputTokens: { "glm-5.2": 64_000 },
+    }, { provider: "custom", id: "glm-5.2" });
+    expect(perModel.maxOutputTokens).toBe(64_000);
+
+    const providerDefault = applyProviderConfigHints("custom", {
+      adapter: "openai-chat",
+      baseUrl: "https://example.test/v1",
+      defaultMaxOutputTokens: 16_000,
+    }, { provider: "custom", id: "other-model" });
+    expect(providerDefault.maxOutputTokens).toBe(16_000);
+
+    const jawcode = applyProviderConfigHints("opencode-go", {
+      adapter: "openai-chat",
+      baseUrl: "https://opencode.ai/zen/go/v1",
+    }, { provider: "opencode-go", id: "glm-5.2" });
+    expect(typeof jawcode.maxOutputTokens).toBe("number");
+    expect(jawcode.maxOutputTokens).toBeGreaterThan(0);
   });
 
   test("opencode-go catalog sync appends jawcode rows with provider context-cap metadata", () => {

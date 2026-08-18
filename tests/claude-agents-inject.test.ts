@@ -25,7 +25,7 @@ function generatedBodies(config: OcxConfig, dir: string): string[] {
 
 describe("buildClaudeAgentDefs (devlog 070 + audit 071)", () => {
   test("roster + pinned self from settings.json; [1m] marking; name collision suffix", () => {
-    const windows = { "claude-ocx-native--gpt-5.6-sol": 372_000, "claude-ocx-cursor--gpt-5.6-sol": 1_000_000 };
+    const windows = { "claude-ocx-native--gpt-5.6-sol": 372_000, "claude-ocx-cursor--gpt-5.6-sol": 372_000 };
     const dir = tempDir();
     writeFileSync(join(dir, "settings.json"), JSON.stringify({ model: "claude-ocx-native--gpt-5.6-sol[1m]" }));
     const defs = buildClaudeAgentDefs(cfg({
