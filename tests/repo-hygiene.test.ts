@@ -14,7 +14,7 @@ const repoRoot = fileURLToPath(new URL("../", import.meta.url));
  * This test closes that gap by asserting against the real index instead of the
  * ignore file, so a forced add fails CI on the commit that introduces it.
  */
-const FORBIDDEN_TRACKED_DIRS = [".codexclaw", ".omo", ".claude", "node_modules", ".tmp"];
+const FORBIDDEN_TRACKED_DIRS = [".codexclaw", ".omo", ".claude", ".serena", "node_modules", ".tmp"];
 
 const FORBIDDEN_TRACKED_FILENAMES = [".DS_Store", "Thumbs.db"];
 

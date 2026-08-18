@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { readAppliedDesktop3pLibrary } from "../../claude/desktop-3p";
 import type { CatalogModel } from "../../codex/catalog";
 import { catalogModelSlug, invalidateCodexModelsCache, nativeModelRows, uniqueCatalogModelsForPublicList } from "../../codex/catalog";
 import {
@@ -554,7 +555,20 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
         config.claudeCode = { ...(config.claudeCode ?? {}), desktopProfile: { ...state.profile, appliedFingerprint: result.fingerprint, appliedAt: new Date().toISOString() } };
         saveConfigPreservingClaudeCode(config);
       }
-      return jsonResponse({ ok: true, saved: true, applied: true, path: result.path, fingerprint: result.fingerprint });
+      return jsonResponse({ ok: true, saved: true, applied: true, path: result.path, fingerprint: result.fingerprint, laptopSync: "ocx-desktop://sync" });
+    } catch (error) {
+      return jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 400);
+    }
+  }
+
+  // Laptop Claude Desktop reads ~/.config/Claude-3p, not chef's homedir on the
+  // proxy host. This payload is the applied 3P library so a local handler can
+  // copy it through the ocx-tunnel without SSH.
+  if (url.pathname === "/api/claude-desktop/3p-library" && req.method === "GET") {
+    try {
+      const library = readAppliedDesktop3pLibrary();
+      if (!library.ok) return jsonResponse({ error: library.error }, library.status);
+      return jsonResponse(library);
     } catch (error) {
       return jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 400);
     }

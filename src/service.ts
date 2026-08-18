@@ -6,7 +6,7 @@
  * restore it via the command.
  */
 import { execFileSync, execSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { expandUserPath, getConfigDir, readPid, removePid, removeRuntimePort } from "./config";
@@ -1435,6 +1435,25 @@ function unitPath(): string {
   return join(unitDir(), `${TASK}.service`);
 }
 
+/** True when a unit file is the systemd mask (`symlink → /dev/null`). */
+export function isMaskedSystemdUnit(path: string): boolean {
+  try {
+    if (!lstatSync(path).isSymbolicLink()) return false;
+    return readlinkSync(path) === "/dev/null";
+  } catch {
+    return false;
+  }
+}
+
+/** Fleet/proxy hosts often run a system unit instead of the per-user one `ocx service install` writes. */
+function diagnoseSystemSystemdUnit(): { installed: boolean; enabled: boolean; running: boolean } | null {
+  const path = `/etc/systemd/system/${TASK}.service`;
+  if (!existsSync(path) || isMaskedSystemdUnit(path)) return null;
+  const enabled = (() => { try { return sh(`systemctl is-enabled ${TASK}.service`) === "enabled"; } catch { return false; } })();
+  const running = (() => { try { return sh(`systemctl is-active ${TASK}.service`) === "active"; } catch { return false; } })();
+  return { installed: true, enabled, running };
+}
+
 export function buildUnit(): string {
   const { bun, cli } = cliEntry();
   const log = logPath();
@@ -1779,8 +1798,26 @@ export function diagnoseService(): ServiceDiagnostic {
   }
   if (process.platform === "linux") {
     if (existsSync("/.dockerenv")) return { supported: false, installed: false, enabled: false, running: false, viable: false, startable: false, stale: false, conflict: false, backend: null, summary: "unsupported in Docker" };
+    const systemUnit = diagnoseSystemSystemdUnit();
+    if (systemUnit?.running) {
+      const viable = systemUnit.enabled && systemUnit.running;
+      return {
+        supported: true,
+        installed: true,
+        enabled: systemUnit.enabled,
+        running: true,
+        viable,
+        startable: true,
+        stale: false,
+        conflict: false,
+        backend: "systemd",
+        summary: viable
+          ? `installed, enabled and running (systemd system; ${diagnostics})`
+          : `installed, but ${!systemUnit.enabled ? "disabled" : "not running"} (systemd system; ${diagnostics})`,
+      };
+    }
     if (!isSystemd()) return { supported: false, installed: false, enabled: false, running: false, viable: false, startable: false, stale: false, conflict: false, backend: null, summary: "unsupported: systemd not found" };
-    const installed = existsSync(unitPath());
+    const installed = existsSync(unitPath()) && !isMaskedSystemdUnit(unitPath());
     const enabled = installed && (() => { try { return sh(`systemctl --user is-enabled ${TASK}`) === "enabled"; } catch { return false; } })();
     const running = installed && (() => { try { return sh(`systemctl --user is-active ${TASK}`) === "active"; } catch { return false; } })();
     const stale = installed && bakedServicePathsDiagnostic() !== null;

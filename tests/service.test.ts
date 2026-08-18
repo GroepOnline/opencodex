@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { saveConfig } from "../src/config";
 import { windowsEnvIndirectBatchValue } from "../src/lib/win-paths";
-import { assertServiceAuthEnvironment, assertServiceEnvironmentMatchesInstall, bakedServicePathsDiagnostic, buildPlist, buildUnit, buildWindowsLauncherVbs, buildWindowsSchtasksCreateArgs, buildWindowsServiceScript, buildWindowsTaskXml, deriveWindowsServiceDiagnostic, normalizeServiceSubcommand, parseServiceInstallState, readWindowsSchedulerXmlState, repairService, resolveServiceListenPort, serviceLogPath, serviceStartableFromTray, serviceStatusSummary, windowsTaskRegistrationHealthy } from "../src/service";
+import { assertServiceAuthEnvironment, assertServiceEnvironmentMatchesInstall, bakedServicePathsDiagnostic, buildPlist, buildUnit, buildWindowsLauncherVbs, buildWindowsSchtasksCreateArgs, buildWindowsServiceScript, buildWindowsTaskXml, deriveWindowsServiceDiagnostic, isMaskedSystemdUnit, normalizeServiceSubcommand, parseServiceInstallState, readWindowsSchedulerXmlState, repairService, resolveServiceListenPort, serviceLogPath, serviceStartableFromTray, serviceStatusSummary, windowsTaskRegistrationHealthy } from "../src/service";
 import { serviceApiTokenFilePath } from "../src/lib/service-secrets";
 import type { OcxConfig } from "../src/types";
 
@@ -865,5 +865,23 @@ describe("service repair", () => {
       repairSystemd: () => { calls.push("systemd"); },
     });
     expect(calls).toEqual(["native", "native-state"]);
+  });
+});
+
+describe("isMaskedSystemdUnit", () => {
+  test("treats a /dev/null symlink as a masked unit", () => {
+    if (process.platform === "win32") return;
+    mkdirSync(TEST_DIR, { recursive: true });
+    const path = join(TEST_DIR, "opencodex-proxy.service");
+    symlinkSync("/dev/null", path);
+    expect(isMaskedSystemdUnit(path)).toBe(true);
+  });
+
+  test("regular files and missing paths are not masked", () => {
+    mkdirSync(TEST_DIR, { recursive: true });
+    const path = join(TEST_DIR, "real.service");
+    writeFileSync(path, "[Unit]\n");
+    expect(isMaskedSystemdUnit(path)).toBe(false);
+    expect(isMaskedSystemdUnit(join(TEST_DIR, "missing.service"))).toBe(false);
   });
 });

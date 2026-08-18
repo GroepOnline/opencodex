@@ -61,7 +61,16 @@ interface DesktopResponse {
   port: number;
 }
 
-type PendingAction = "save" | "apply" | null;
+type PendingAction = "save" | "apply" | "sync" | null;
+
+const LAPTOP_SYNC_HREF = "ocx-desktop://sync";
+
+function requestLaptopSync() {
+  const link = document.createElement("a");
+  link.href = LAPTOP_SYNC_HREF;
+  link.rel = "noopener";
+  link.click();
+}
 
 const FAMILY_KEYS: Record<Family, TKey> = {
   opus: "claudeDesktop.family.opus",
@@ -313,6 +322,7 @@ export default function ClaudeDesktop({ apiBase, active = true }: { apiBase: str
         setPending("apply");
         const applyResponse = await fetch(`${apiBase}/api/claude-desktop/apply`, { method: "POST" });
         await readJsonOrThrow<{ error?: string }>(applyResponse, t("claudeDesktop.applyFailed"));
+        requestLaptopSync();
         setMessage({ tone: "ok", text: t("claudeDesktop.savedApplied") });
         setAnnouncement(t("claudeDesktop.savedAppliedAnnounce"));
       } else {
@@ -408,6 +418,9 @@ export default function ClaudeDesktop({ apiBase, active = true }: { apiBase: str
           <button type="button" className="btn btn-ghost" disabled={!dirty || pending !== null} onClick={() => void save(false)}>
             {pending === "save" ? t("claudeDesktop.saving") : t("common.save")}
           </button>
+          <a className="btn btn-ghost" href={LAPTOP_SYNC_HREF} onClick={() => setAnnouncement(t("claudeDesktop.syncLaptopAnnounce"))}>
+            {t("claudeDesktop.syncLaptop")}
+          </a>
           <button type="button" className="btn btn-primary" disabled={pending !== null} onClick={() => void save(true)}>
             {pending === "apply" ? t("claudeDesktop.applying") : pending === "save" ? t("claudeDesktop.saving") : t("claudeDesktop.saveApply")}
           </button>

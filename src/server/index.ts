@@ -137,7 +137,7 @@ export { disableResponsesRequestTimeout, linkAbortSignal } from "./responses";
 import { handleClaudeCountTokens, handleClaudeMessages } from "./claude-messages";
 import { handleChatCompletions } from "./chat-completions";
 import { anthropicErrorResponse } from "../claude/outbound";
-import { buildDesktop3pRegistry } from "../claude/desktop-3p";
+import { buildDesktop3pRegistry, readAppliedDesktop3pLibrary } from "../claude/desktop-3p";
 import { runClaudeAuthModeMigration } from "../claude/auth-mode-migration";
 import { handleImages } from "./images";
 import { handleLive, logLiveSidebandFrame, parseLiveSidebandTarget, resolveLiveSidebandUpgrade } from "./live";
@@ -554,6 +554,30 @@ export function startServer(port?: number) {
           ...uniqueCatalogModelsForRawPublicList(goOrdered).map(m => ({ id: m.alias ?? `${m.provider}/${m.id}`, object: "model", created: 0, owned_by: m.owned_by ?? m.provider })),
         ];
         return jsonResponse({ object: "list", data }, 200, req, config);
+      }
+
+      // Laptop Claude Desktop sync: same 3P library as /api/claude-desktop/3p-library,
+      // but data-plane ocx_ auth so the tunnel can pull it without the admin token.
+      if (url.pathname === "/v1/claude-desktop-3p-library" && req.method === "GET") {
+        const modelsGate = admission.gate("model-discovery", req, requestServer);
+        if (modelsGate.preAuthDeny) return withCors(modelsGate.preAuthDeny, req, config);
+        const apiAuthError = requireApiAuth(req, config, "data-plane");
+        if (apiAuthError) return withCors(apiAuthError, req, config);
+        if (!isAllowedRequestOrigin(req, config)) {
+          return withCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"), req, config);
+        }
+        const rateDeny = modelsGate.commit();
+        if (rateDeny) return withCors(rateDeny, req, config);
+        try {
+          const library = readAppliedDesktop3pLibrary();
+          if (!library.ok) {
+            return withCors(jsonResponse({ error: library.error }, library.status, req, config), req, config);
+          }
+          return withCors(jsonResponse(library, 200, req, config), req, config);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return withCors(jsonResponse({ error: message }, 400, req, config), req, config);
+        }
       }
 
       // Remote compaction v1 (codex-rs with Feature::RemoteCompactionV2 off — the default).

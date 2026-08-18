@@ -25,6 +25,8 @@ devlog/
 **/.codexclaw/
 .omo/
 **/.omo/
+.serena/
+**/.serena/
 
 # Test-generated artifacts
 tests/.tmp-*/

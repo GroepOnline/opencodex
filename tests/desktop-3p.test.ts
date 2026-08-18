@@ -11,6 +11,7 @@ import {
   generateDesktop3pModels,
   legacyDesktop3pAlias,
   parseDesktop3pModeArgs,
+  readAppliedDesktop3pLibrary,
   resolveDesktop3pConfigLibraryPath,
   resolveDesktop3pAlias,
 } from "../src/claude/desktop-3p";
@@ -277,6 +278,84 @@ describe("Claude Desktop 3P models", () => {
       expect(warning.mock.calls.flat().join(" ")).toContain("stays bound to test/model-123");
     } finally {
       warning.mockRestore();
+    }
+  });
+});
+
+describe("readAppliedDesktop3pLibrary", () => {
+  function libraryOptions(dir: string) {
+    return {
+      env: { OPENCODEX_CLAUDE_DESKTOP_CONFIG_DIR: dir },
+      platform: "linux" as const,
+      homeDir: dir,
+    };
+  }
+
+  test("returns 404 when the library has not been applied", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ocx-3p-lib-empty-"));
+    try {
+      expect(readAppliedDesktop3pLibrary(libraryOptions(dir))).toEqual({
+        ok: false,
+        status: 404,
+        error: "Claude Desktop 3P library not applied yet",
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("returns 404 when _meta.json has no appliedId", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ocx-3p-lib-meta-"));
+    try {
+      writeFileSync(join(dir, "_meta.json"), JSON.stringify({ entries: [] }));
+      expect(readAppliedDesktop3pLibrary(libraryOptions(dir))).toEqual({
+        ok: false,
+        status: 404,
+        error: "Claude Desktop 3P library has no appliedId",
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("returns 404 when the applied config file is missing", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ocx-3p-lib-missing-"));
+    try {
+      writeFileSync(join(dir, "_meta.json"), JSON.stringify({ appliedId: "opencodex", entries: [] }));
+      expect(readAppliedDesktop3pLibrary(libraryOptions(dir))).toEqual({
+        ok: false,
+        status: 404,
+        error: "Claude Desktop 3P config missing",
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("returns ok payload and keeps 404 errors free of the gateway key", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ocx-3p-lib-ok-"));
+    const secret = "INFERENCE_GATEWAY_API_KEY_FIXTURE";
+    try {
+      writeFileSync(join(dir, "_meta.json"), JSON.stringify({ appliedId: "opencodex", entries: [{ id: "opencodex" }] }));
+      writeFileSync(join(dir, "opencodex.json"), JSON.stringify({
+        inferenceProvider: "gateway",
+        inferenceGatewayApiKey: secret,
+      }));
+      const result = readAppliedDesktop3pLibrary(libraryOptions(dir));
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("expected ok");
+      expect(result.appliedId).toBe("opencodex");
+      expect(result.config).toEqual({
+        inferenceProvider: "gateway",
+        inferenceGatewayApiKey: secret,
+      });
+      expect(result.fingerprint).toMatch(/^[0-9a-f]{16}$/);
+      expect(result.laptopGateway).toBe("http://127.0.0.1:10100");
+      const missing = readAppliedDesktop3pLibrary(libraryOptions(join(dir, "absent")));
+      expect(missing.ok).toBe(false);
+      expect(JSON.stringify(missing)).not.toContain(secret);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

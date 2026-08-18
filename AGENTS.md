@@ -94,6 +94,19 @@ bun run build:gui      # Vite GUI build
 Run `bun run typecheck` and `bun run test` before proposing or approving any
 non-trivial change. CI runs these on Linux, Windows, and macOS.
 
+## Live checkouts
+
+A deployed working tree (for example the fleet proxy checkout) is never a
+working copy you edit. Rescue snowflake changes onto a branch, push, then check
+that branch out so HEAD is named and the tree is clean. Never `git reset --hard`
+while porcelain is dirty, and never deploy a tag that is not a descendant of
+live HEAD.
+
+`scripts/assert-live-checkout-safe.sh <checkout-dir> [target-sha]` refuses a dirty
+tree, and if a target SHA is given refuses unless `HEAD` is an ancestor of that
+SHA (would drop live-only commits). `ocx doctor` and `__startup-health` report
+sha / branch / detached / dirty only — never the diff.
+
 ## Branch policy
 
 - `dev` — the single integration branch and the target for every pull request.
