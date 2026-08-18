@@ -117,7 +117,6 @@ import {
   isLoopbackHostname,
   jsonResponse,
   requireApiAuth,
-  requireDataPlaneAdmissionAuth,
   requireResponsesApiAuth,
   safeConfigDTO,
   setCorsOrigin,
@@ -558,11 +557,11 @@ export function startServer(port?: number) {
       }
 
       // Laptop Claude Desktop sync: same 3P library as /api/claude-desktop/3p-library,
-      // but data-plane ocx_ auth so the tunnel can pull it without the admin token.
+      // Security Review: required — this response may contain gateway credentials.
       if (url.pathname === "/v1/claude-desktop-3p-library" && req.method === "GET") {
         const modelsGate = admission.gate("model-discovery", req, requestServer);
         if (modelsGate.preAuthDeny) return withCors(modelsGate.preAuthDeny, req, config);
-        const apiAuthError = requireDataPlaneAdmissionAuth(req, config);
+        const apiAuthError = requireApiAuth(req, config, "data-plane");
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"), req, config);
