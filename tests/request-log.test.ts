@@ -796,6 +796,44 @@ describe("request log metadata", () => {
     });
   });
 
+  test("addFinalRequestLog keeps requested model and routed provider on early failures", () => {
+    const entries: RequestLogEntry[] = [];
+    addFinalRequestLog(
+      "ocx-test-early-fail",
+      Date.now(),
+      {
+        model: "unknown",
+        provider: "unknown",
+        requestedModel: "tencent/hy3:free",
+        providerConfigKey: "kilo",
+      },
+      400,
+      { closeReason: "non_stream" },
+      entry => entries.push(entry),
+    );
+    expect(entries[0]).toMatchObject({
+      model: "tencent/hy3:free",
+      provider: "kilo",
+      status: 400,
+    });
+  });
+
+  test("addFinalRequestLog extracts account suffix from provider display labels", () => {
+    const entries: RequestLogEntry[] = [];
+    addFinalRequestLog(
+      "ocx-test-account",
+      Date.now(),
+      { model: "gpt-5.6-sol", provider: "openai-p104398" },
+      200,
+      undefined,
+      entry => entries.push(entry),
+    );
+    expect(entries[0]).toMatchObject({
+      provider: "openai-p104398",
+      account: "p104398",
+    });
+  });
+
   test("httpStatusFromTerminalError maps Cursor tool catalog limits to 400", () => {
     expect(httpStatusFromTerminalError({
       type: "invalid_request_error",

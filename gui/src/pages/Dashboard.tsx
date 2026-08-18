@@ -3,8 +3,8 @@ import { useKeyedClientResource } from "../client-resource";
 import { useT, useI18n } from "../i18n/shared";
 import { formatTokens } from "../format-tokens";
 import { formatUptime } from "../formatUptime";
-import { statusCodeInfo } from "../status-codes";
-import { modelLabel } from "../model-display";
+import { TrafficRowCells } from "../traffic-row";
+import { requestsTodayCount, type TrafficLogEntry } from "../traffic-shared";
 import { IconCheck, IconAlert } from "../icons";
 
 interface Healthz {
@@ -16,18 +16,7 @@ interface Healthz {
   port: number;
 }
 
-interface BonEntry {
-  requestId?: string;
-  timestamp: number;
-  model: string;
-  provider: string;
-  status: number;
-  durationMs: number;
-  errorCode?: string;
-  upstreamError?: string;
-  totalTokens?: number;
-  usage?: { inputTokens: number; outputTokens: number; totalTokens?: number };
-}
+type BonEntry = TrafficLogEntry;
 
 interface UsageProviderRow {
   provider: string;
@@ -51,9 +40,6 @@ interface UsageSummary {
   providers: UsageProviderRow[];
 }
 
-function vandaagKey(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function bonTokens(entry: BonEntry): number | undefined {
   if (entry.usage) return entry.usage.totalTokens ?? entry.usage.inputTokens + entry.usage.outputTokens;
@@ -106,10 +92,10 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
     return () => { cancelled = true; clearInterval(iv); };
   }, [apiBase]);
 
-  const requestsVandaag = useMemo(() => {
-    const key = vandaagKey();
-    return summary?.days.find(d => d.date === key)?.requests ?? 0;
-  }, [summary]);
+  const requestsVandaag = useMemo(
+    () => requestsTodayCount(logs, summary?.days),
+    [logs, summary],
+  );
 
   const requests30d = summary?.summary.requests ?? 0;
   const tokens30d = summary?.summary.totalTokens ?? 0;
@@ -242,18 +228,11 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
               {recentBons.map(entry => {
                 const id = entry.requestId ?? `${entry.timestamp}-${entry.provider}-${entry.model}`;
                 const tokens = bonTokens(entry);
-                const statusInfo = statusCodeInfo(entry.status, locale);
-                const stempelCls = entry.status >= 200 && entry.status < 300 ? "stempel--klaar" : "stempel--fout";
                 return (
                   <div key={id} className="bon" style={{ borderBottom: "1px solid var(--border-soft)" }}>
-                    <div className="bon-kop" style={{ padding: "6px 8px", display: "flex", gap: 8, alignItems: "center", fontSize: "0.8125rem" }}>
-                      <span className="bon-tijd">{tijd(entry.timestamp, locale)}</span>
-                      <span className="bon-titel" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {modelLabel(entry.model)}
-                      </span>
-                      <span className="bon-meta">{entry.provider}</span>
-                      {tokens !== undefined && <span className="bon-meta">{t("vk.rowTokens", { n: formatTokens(tokens, locale) })}</span>}
-                      <span className={`stempel ${stempelCls}`}>{statusInfo?.label ?? entry.status}</span>
+                    <div className="bon-kop bon-kop--grid" style={{ padding: "6px 8px", fontSize: "0.8125rem" }}>
+                      <span className="bon-col bon-col--time bon-tijd">{tijd(entry.timestamp, locale)}</span>
+                      <TrafficRowCells entry={entry} locale={locale} tokens={tokens} />
                     </div>
                   </div>
                 );

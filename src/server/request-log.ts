@@ -10,6 +10,7 @@ import { readCodexCatalogPath } from "../codex/catalog";
 import type { OcxUsage } from "../types";
 import type { AdapterRequest } from "../adapters/base";
 import { redactSecretString } from "../lib/redact";
+import { providerAccountLabel } from "../providers/label";
 import {
   appendUsageEntry,
   isKnownUsageSurface,
@@ -120,6 +121,8 @@ export interface RequestLogEntry {
   closeReason?: "terminal" | "client_cancel" | "non_stream" | "body_stall" | "body_overflow";
   /** Secret-redacted upstream error reason, surfaced in /api/logs and the GUI detail modal. */
   upstreamError?: string;
+  /** Pseudonymized account label when the provider display name carries a pool suffix. */
+  account?: string;
   usageStatus: UsageStatus;
   usage?: OcxUsage;
   totalTokens?: number;
@@ -137,6 +140,27 @@ const MAX_LOG_SIZE = 200;
 let requestLogSeq = 0;
 /** True after hydrateRequestLogsFromDisk ran once in this process. */
 let requestLogsHydratedFromDisk = false;
+
+const UNKNOWN_LOG_LABEL = "unknown";
+
+/** Keep /api/logs rows honest when routing/auth fails after the request model is known. */
+export function resolveRequestLogModel(logCtx: RequestLogContext): string {
+  if (logCtx.model && logCtx.model !== UNKNOWN_LOG_LABEL) return logCtx.model;
+  if (typeof logCtx.requestedModel === "string" && logCtx.requestedModel.trim()) return logCtx.requestedModel.trim();
+  if (typeof logCtx.resolvedModel === "string" && logCtx.resolvedModel.trim()) return logCtx.resolvedModel.trim();
+  return logCtx.model;
+}
+
+/** Prefer the routed config key or attempt provider over the pre-route placeholder. */
+export function resolveRequestLogProvider(logCtx: RequestLogContext): string {
+  if (logCtx.provider && logCtx.provider !== UNKNOWN_LOG_LABEL) return logCtx.provider;
+  if (typeof logCtx.providerConfigKey === "string" && logCtx.providerConfigKey.trim()) {
+    return logCtx.providerConfigKey.trim();
+  }
+  const attemptProvider = logCtx.attempts?.at(-1)?.provider;
+  if (typeof attemptProvider === "string" && attemptProvider.trim()) return attemptProvider.trim();
+  return logCtx.provider;
+}
 
 function asTerminalStatus(value: string | undefined): ResponsesTerminalStatus | undefined {
   if (value === "completed" || value === "failed" || value === "incomplete") return value;
@@ -168,6 +192,7 @@ export function requestLogEntryFromPersistedUsage(entry: PersistedUsageEntry): R
     ...(entry.firstOutputMs !== undefined ? { firstOutputMs: entry.firstOutputMs } : {}),
     ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
     ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
+    ...(entry.account ? { account: entry.account } : {}),
     ...(entry.requestedModel ? { requestedModel: entry.requestedModel } : {}),
     ...(entry.requestedEffort ? { requestedEffort: entry.requestedEffort } : {}),
     ...(entry.effectiveEffort ? { effectiveEffort: entry.effectiveEffort } : {}),
@@ -241,6 +266,7 @@ export function addRequestLog(entry: RequestLogEntry) {
         ...(entry.upstreamError ? { upstreamError: entry.upstreamError } : {}),
       }
       : {};
+    const account = providerAccountLabel(entry.provider);
     appendUsageEntry({
       requestId: entry.requestId,
       timestamp: entry.timestamp,
@@ -248,6 +274,7 @@ export function addRequestLog(entry: RequestLogEntry) {
       model: entry.model,
       ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
       ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
+      ...(account ? { account } : {}),
       ...(entry.resolvedModel ? { resolvedModel: entry.resolvedModel } : {}),
       ...(entry.requestedModel ? { requestedModel: entry.requestedModel } : {}),
       ...(entry.requestedEffort ? { requestedEffort: entry.requestedEffort } : {}),
@@ -705,11 +732,15 @@ export function addFinalRequestLog(
   const loggedUsage = aggregate?.usage ?? existing.usage;
   const usageStatus = aggregate?.status ?? existing.status;
   const totalTokens = aggregate?.totalTokens ?? existing.totalTokens;
+  const provider = isCombo ? "combo" : resolveRequestLogProvider(logCtx);
+  const model = isCombo ? logCtx.requestedModel! : resolveRequestLogModel(logCtx);
+  const account = providerAccountLabel(provider);
   addLog({
     requestId,
     timestamp: start,
-    model: isCombo ? logCtx.requestedModel! : logCtx.model,
-    provider: isCombo ? "combo" : logCtx.provider,
+    model,
+    provider,
+    ...(account ? { account } : {}),
     ...(logCtx.surface ? { surface: logCtx.surface } : {}),
     ...(logCtx.conversationId ? { conversationId: logCtx.conversationId } : {}),
     ...(logCtx.requestedModel ? { requestedModel: logCtx.requestedModel } : {}),

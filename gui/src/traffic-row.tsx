@@ -1,0 +1,60 @@
+import type { ReactNode } from "react";
+import { useI18n } from "./i18n/shared";
+import { formatTokens } from "./format-tokens";
+import { modelLabel } from "./model-display";
+import {
+  trafficPrincipalLabel,
+  trafficProviderModelLabel,
+  trafficStatusClass,
+  trafficStatusLabel,
+  type TrafficLogEntry,
+} from "./traffic-shared";
+
+export function TrafficRowCells({
+  entry,
+  locale,
+  tokens,
+}: {
+  entry: TrafficLogEntry;
+  locale: string;
+  tokens?: number;
+}) {
+  const { t } = useI18n();
+  const providerModel = trafficProviderModelLabel(entry);
+  const principal = trafficPrincipalLabel(entry, t);
+  const providerModelNode: ReactNode = providerModel
+    ? modelLabel(providerModel)
+    : t("vk.unknown");
+
+  return (
+    <>
+      <span className="bon-col bon-col--model bon-titel">{providerModelNode}</span>
+      <span className="bon-col bon-col--principal bon-meta">{principal}</span>
+      <span className="bon-col bon-col--tokens bon-meta">
+        {tokens !== undefined ? t("vk.rowTokens", { n: formatTokens(tokens, locale) }) : "\u2014"}
+      </span>
+      <span className="bon-col bon-col--duration bon-meta">
+        {t("vk.rowDuration", { s: (entry.durationMs / 1000).toFixed(1) })}
+      </span>
+      <span className={`bon-col bon-col--status stempel ${trafficStatusClass(entry)}`}>
+        {trafficStatusLabel(entry, locale, t)}
+      </span>
+    </>
+  );
+}
+
+export function TrafficColumnHead() {
+  const { t } = useI18n();
+  return (
+    <div className="bon bon--head" aria-hidden="true">
+      <div className="bon-kop bon-kop--grid">
+        <span className="bon-col bon-col--time">{t("vk.col.time")}</span>
+        <span className="bon-col bon-col--model">{t("vk.col.providerModel")}</span>
+        <span className="bon-col bon-col--principal">{t("vk.col.principal")}</span>
+        <span className="bon-col bon-col--tokens">{t("vk.col.tokens")}</span>
+        <span className="bon-col bon-col--duration">{t("vk.col.duration")}</span>
+        <span className="bon-col bon-col--status">{t("vk.col.status")}</span>
+      </div>
+    </div>
+  );
+}

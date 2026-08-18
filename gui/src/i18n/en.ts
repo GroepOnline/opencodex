@@ -1069,6 +1069,8 @@ export const en = {
   "pws.dashboard.noQuota": "No quota data",
   "pws.dashboard.noUsage": "No usage data yet",
   "pws.dashboard.noRateLimits": "No rate-limit data yet",
+  "pws.dashboard.configuredProviders": "Configured providers",
+  "pws.dashboard.noConfiguredProviders": "No providers configured yet",
   "pws.capCooldown.title": "Weekly usage limit",
   "pws.capCooldown.section": "Usage caps",
   "pws.capCooldown.banner": "{provider} hit a weekly/inference cap. {reset}",
@@ -1696,6 +1698,13 @@ export const en = {
   "vk.detailStatus": "status {status}",
   "vk.detailUpstream": "upstream: {error}",
   "vk.detailId": "id {id}",
+  "vk.unknown": "Unknown",
+  "vk.col.time": "Time",
+  "vk.col.providerModel": "Provider / model",
+  "vk.col.principal": "Principal",
+  "vk.col.tokens": "Tokens",
+  "vk.col.duration": "Duration",
+  "vk.col.status": "Status",
 } as const;
 
 export type TKey = keyof typeof en;

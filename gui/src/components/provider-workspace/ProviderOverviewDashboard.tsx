@@ -208,6 +208,37 @@ export default function ProviderOverviewDashboard({
         </section>
       )}
 
+      <section className="pws-dashboard-section" aria-label={t("pws.dashboard.configuredProviders")}>
+        <h3 className="pws-dashboard-section-title">{t("pws.dashboard.configuredProviders")}</h3>
+        {allItems.length > 0 ? (
+          <div className="pws-dashboard-rows">
+            {allItems.map(item => (
+              <button
+                key={item.name}
+                type="button"
+                className="pws-dashboard-row"
+                onClick={() => onSelectProvider(item.name)}
+              >
+                <ProviderIcon name={item.name} adapter={item.adapter} baseUrl={item.baseUrl} cls="pws-dashboard-row-icon" />
+                <span className="pws-dashboard-row-name">{formatProviderDisplayName(item.name)}</span>
+                <span className="pws-dashboard-row-count muted">
+                  {item.disabled
+                    ? t("prov.disabledBadge")
+                    : item.activeNeedsReauth
+                      ? t("pws.status.needsAttention")
+                      : item.tier
+                        ? t("pws.status.ready")
+                        : t("pws.status.needsSetup")}
+                </span>
+                <IconChevron className="pws-dashboard-row-chevron" aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="muted pws-dashboard-empty">{t("pws.dashboard.noConfiguredProviders")}</p>
+        )}
+      </section>
+
       <div className="pws-dashboard-columns">
         <section
           className="pws-dashboard-section pws-dashboard-section--rate-limits"
