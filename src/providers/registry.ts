@@ -1323,6 +1323,8 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     id: "cloudflare-workers-ai", label: "Cloudflare Workers AI",
     baseUrl: "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1",
     adapter: "openai-chat", authKind: "key", freeTier: true,
+    // OpenAI-compatible /v1/models is not supported (HTTP 405); catalog search is a different API.
+    liveModels: false,
     dashboardUrl: "https://dash.cloudflare.com/?to=/:account/ai/workers-ai",
     defaultModel: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
     models: [
