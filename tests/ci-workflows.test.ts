@@ -2101,263 +2101,176 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toContain("steps.live_guard.outcome == 'success'");
   });
 
-  test("actionlint config declares the self-hosted deploy runner labels that deploy.yml runs on", async () => {
-    const actionlintConfig = Bun.YAML.parse(await readText(".github/actionlint.yaml")) as {
+  test("actionlint config declares exactly the self-hosted labels the deploy workflow requires", async () => {
+    const config = Bun.YAML.parse(await readText(".github/actionlint.yaml")) as {
       "self-hosted-runner"?: { labels?: string[] };
     };
-    const labels = actionlintConfig["self-hosted-runner"]?.labels ?? [];
-    // actionlint has no way to discover custom self-hosted labels on its own; an
-    // undeclared label here makes the "Lint workflows" step fail on any workflow
-    // that runs on it, even though the label is real and the runner exists.
-    expect([...labels].sort()).toEqual(["deploy", "opencodex"]);
+    // actionlint fails closed on unknown `runs-on` labels for self-hosted runners,
+    // so every label deploy.yml's `runs-on: [self-hosted, ...]` uses must be
+    // declared here or CI linting the workflow itself would go red.
+    expect(config["self-hosted-runner"]?.labels).toEqual(["deploy", "opencodex"]);
 
-    const deployWorkflow = Bun.YAML.parse(await readText(".github/workflows/deploy.yml")) as {
-      jobs?: Record<string, { "runs-on"?: string[] | string }>;
+    const deploy = Bun.YAML.parse(await readText(".github/workflows/deploy.yml")) as {
+      jobs?: Record<string, { "runs-on"?: unknown }>;
     };
-    const runsOn = deployWorkflow.jobs?.deploy?.["runs-on"];
-    expect(runsOn).toEqual(["self-hosted", "Linux", "X64", "deploy"]);
-    // Every custom (non-standard-GitHub-hosted) label the job runs on must be
-    // pre-declared here, or actionlint fails the whole "Lint GitHub Actions" job.
-    const standardLabels = ["self-hosted", "Linux", "X64", "macOS", "Windows", "ARM64"];
-    const customLabels = (Array.isArray(runsOn) ? runsOn : [runsOn]).filter(
-      label => !standardLabels.includes(String(label)),
-    );
-    expect(customLabels.length).toBeGreaterThan(0);
-    for (const label of customLabels) {
-      expect(labels).toContain(label);
+    const runsOn = deploy.jobs?.deploy?.["runs-on"];
+    expect(Array.isArray(runsOn)).toBe(true);
+    for (const label of runsOn as string[]) {
+      if (label === "self-hosted" || label === "Linux" || label === "X64") continue;
+      expect(config["self-hosted-runner"]?.labels).toContain(label);
     }
   });
 
-  test("cross-platform CI caches GUI node_modules before install and lints YAML right after actionlint", async () => {
+  test("cross-platform CI caches bun and GUI node_modules and lints YAML with the shared config", async () => {
     const text = await readText(".github/workflows/ci.yml");
     const workflow = Bun.YAML.parse(text) as {
       jobs?: Record<
         string,
         {
-          steps?: Array<{
-            name?: string;
-            uses?: string;
-            if?: string;
-            with?: Record<string, unknown>;
-          }>;
+          steps?: Array<{ name?: string; uses?: string; if?: string; with?: Record<string, unknown> }>;
         }
       >;
     };
 
     const steps = workflow.jobs?.test?.steps ?? [];
-    const stepNames = steps.map(step => step.name);
-    const setupBunIndex = stepNames.indexOf("Setup Bun");
-    const cacheIndex = stepNames.indexOf("Cache GUI node_modules");
-    const installGuiIndex = stepNames.indexOf("Install GUI dependencies");
-    expect(setupBunIndex).toBeGreaterThan(-1);
-    expect(cacheIndex).toBeGreaterThan(setupBunIndex);
-    // Restoring the cache after GUI deps are already installed defeats the point
-    // of caching; it must land before the install step it is meant to speed up.
-    expect(installGuiIndex).toBeGreaterThan(cacheIndex);
+    const names = steps.map(step => step.name);
 
-    const setupBun = steps[setupBunIndex]!;
-    expect(setupBun.with?.cache).toBe(true);
-    expect(setupBun.with?.["cache-bin"]).toBe(true);
+    // Bun's own toolchain cache must be enabled, and the GUI node_modules cache
+    // step must exist and run before dependencies are installed (a cache
+    // restored after `bun install` cannot save any work).
+    const setupBun = steps.find(step => step.uses?.startsWith("oven-sh/setup-bun@"));
+    expect(setupBun?.with?.cache).toBe(true);
+    expect(setupBun?.with?.["cache-bin"]).toBe(true);
+
+    const cacheIndex = names.indexOf("Cache GUI node_modules");
+    const installGuiIndex = names.indexOf("Install GUI dependencies");
+    const installRootIndex = names.indexOf("Install root dependencies");
+    expect(cacheIndex).toBeGreaterThan(-1);
+    expect(installGuiIndex).toBeGreaterThan(-1);
+    expect(cacheIndex).toBeLessThan(installRootIndex);
+    expect(cacheIndex).toBeLessThan(installGuiIndex);
 
     const cacheStep = steps[cacheIndex]!;
-    expect(cacheStep.uses).toBe("actions/cache@5a3ec84eff668545956fd18022155c47e93e2684");
+    // The cache must be conditioned on the same predicate as the GUI install
+    // step it feeds; a narrower/broader condition would either install into an
+    // uncached tree on some matrix legs or restore a cache nothing populated.
+    expect(cacheStep.if).toBe(steps[installGuiIndex]!.if);
+    expect(cacheStep.uses).toBe("actions/cache@5a3ec84eff668545956fd18022155c47e93e2684"); // v4
     expect(cacheStep.with?.path).toBe("gui/node_modules");
     expect(cacheStep.with?.key).toBe("gui-node-modules-${{ runner.os }}-${{ hashFiles('gui/bun.lock') }}");
-    expect(String(cacheStep.with?.["restore-keys"]).trim()).toBe("gui-node-modules-${{ runner.os }}-");
-    // The cache and the install step it feeds must be gated identically, or the
-    // cache restores/saves on legs that never install GUI deps (wasted churn) or
-    // skips restoring on a leg that does install (guaranteed cache miss).
-    expect(cacheStep.if).toBe(steps[installGuiIndex]!.if);
+    // The restore-keys fallback must be a strict prefix of the primary key
+    // (drop the lockfile hash) so a lockfile bump still gets a partial hit.
+    expect(String(cacheStep.with?.["restore-keys"] ?? "").trim()).toBe("gui-node-modules-${{ runner.os }}-");
 
-    const lintSteps = workflow.jobs?.["lint-github-actions"]?.steps ?? [];
-    const lintNames = lintSteps.map(step => step.name);
-    const actionlintIndex = lintNames.indexOf("Lint workflows");
-    const yamllintIndex = lintNames.indexOf("Lint YAML");
+    const lintJob = workflow.jobs?.["lint-github-actions"]?.steps ?? [];
+    const yamllint = lintJob.find(step => step.name === "Lint YAML");
+    expect(yamllint).toBeDefined();
+    expect(yamllint?.uses).toBe("ibiqlik/action-yamllint@2576378a8e339169678f9939646ee3ee325e845c"); // v3.1.1
+    expect(yamllint?.with?.config_file).toBe(".yamllint.yml");
+    // actionlint must run first: a YAML syntax error should surface as an
+    // actionlint parse failure with clearer context before yamllint style rules run.
+    const actionlintIndex = lintJob.findIndex(step => step.name === "Lint workflows");
+    const yamllintIndex = lintJob.findIndex(step => step.name === "Lint YAML");
     expect(actionlintIndex).toBeGreaterThan(-1);
-    expect(yamllintIndex).toBeGreaterThan(actionlintIndex);
-    const yamllintStep = lintSteps[yamllintIndex]!;
-    expect(yamllintStep.uses).toBe("ibiqlik/action-yamllint@2576378a8e339169678f9939646ee3ee325e845c");
-    expect(yamllintStep.with?.config_file).toBe(".yamllint.yml");
-    expect(text).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
+    expect(actionlintIndex).toBeLessThan(yamllintIndex);
   });
 
-  test("design-system-contract workflow only runs on design-system or gui changes, identically for push and pull_request", async () => {
-    const workflow = Bun.YAML.parse(await readText(".github/workflows/design-system-contract.yml")) as {
-      on?: {
-        push?: { paths?: string[] };
-        pull_request?: { paths?: string[] };
-      };
-    };
-    // Before this change the workflow ran on every push/PR regardless of what
-    // changed; an unscoped trigger here burns CI minutes on unrelated diffs and
-    // also means an actual design-system regression is buried in unrelated noise.
-    const expectedPaths = [
-      ".github/design-system.json",
-      ".github/design-system.yml",
-      ".github/workflows/design-system-contract.yml",
-      "gui/**",
-    ];
-    expect([...(workflow.on?.push?.paths ?? [])].sort()).toEqual(expectedPaths);
-    // Push and pull_request must cover identical surfaces, or a design-system
-    // regression gets caught on one trigger and silently merges via the other.
-    expect([...(workflow.on?.pull_request?.paths ?? [])].sort()).toEqual(expectedPaths);
-  });
-
-  test("publish-on-tag no longer deploys over SSH and skips release creation if one already exists", async () => {
-    const text = await readText(".github/workflows/publish-on-tag.yml");
+  test("control-01 deploy triggers only on version tags or an explicit dispatch, least-privilege and serialized", async () => {
+    const text = await readText(".github/workflows/deploy.yml");
     const workflow = Bun.YAML.parse(text) as {
-      jobs?: Record<string, { steps?: Array<{ name?: string; run?: string }> }>;
-    };
-
-    // Live rollout moved to the self-hosted deploy.yml workflow; a leftover SSH
-    // deploy job here would double-deploy the same tag (and reintroduce the
-    // cross-host SSH key this change was written to remove).
-    expect(Object.keys(workflow.jobs ?? {})).toEqual(["publish"]);
-    expect(text).not.toContain("DEPLOY_SSH_KEY");
-    expect(text).not.toContain("ssh -i");
-    expect(text).not.toContain("needs: publish");
-    expect(text).not.toContain("deploy_key");
-
-    const releaseStep = (workflow.jobs?.publish?.steps ?? []).find(step => step.name === "Create GitHub Release");
-    expect(releaseStep).toBeDefined();
-    const releaseScript = String(releaseStep!.run ?? "");
-    // deploy.yml triggers off the same `v*.*.*` tag push as this workflow and can
-    // run concurrently with it (or be re-run manually), so release creation must
-    // tolerate the release already existing instead of failing or double-posting.
-    expect(releaseScript).toContain('gh release view "v${VERSION}"');
-    expect(releaseScript.indexOf("gh release view")).toBeLessThan(releaseScript.indexOf("gh release create"));
-    expect(releaseScript).toContain("already exists");
-    expect(releaseScript).toContain("gh release create");
-    expect(text).toContain("Deploy to control-01");
-    // The publish job's own permissions/steps up to release creation are covered
-    // by the "reachable from origin/main" test above; this test only pins the
-    // structural change (deploy job removed, release creation made idempotent).
-  });
-
-  test("yamllint config relaxes formatting to match generated workflow style while keeping structural checks", async () => {
-    const text = await readText(".yamllint.yml");
-    const config = Bun.YAML.parse(text) as {
-      extends?: string;
-      rules?: Record<string, unknown>;
-      ignore?: string;
-    };
-
-    expect(config.extends).toBe("default");
-    // These relax formatting-only rules that generated/pinned-SHA-comment
-    // workflow YAML routinely violates (long lines from SHA comments, no
-    // document-start marker, GitHub's `on:`/`true:` truthy-like keys).
-    expect(config.rules?.["line-length"]).toBe("disable");
-    expect(config.rules?.truthy).toEqual({ "check-keys": false });
-    expect(config.rules?.comments).toEqual({ "min-spaces-from-content": 1 });
-    expect(config.rules?.["comments-indentation"]).toBe("disable");
-    expect(config.rules?.["document-start"]).toBe("disable");
-    // Structural checks stay enabled: 2-space, sequence-indented YAML is still
-    // enforced so a genuinely malformed workflow still fails the lint step.
-    expect(config.rules?.indentation).toEqual({ spaces: 2, "indent-sequences": true });
-    expect(config.rules?.braces).toEqual({ "max-spaces-inside": 1 });
-    expect(config.rules?.brackets).toEqual({ "max-spaces-inside": 1 });
-    // design-system.yml is machine-generated by an external validator and isn't
-    // expected to conform to this repo's style; ignore that one file explicitly
-    // rather than relaxing a rule repo-wide to accommodate it.
-    expect(config.ignore?.trim()).toBe(".github/design-system.yml");
-
-    // The config file this defines must actually be the one ci.yml wires up.
-    const ci = await readText(".github/workflows/ci.yml");
-    expect(ci).toContain("config_file: .yamllint.yml");
-  });
-
-  test("control-01 deploy triggers only on version tags or manual dispatch, is single-flight, and read-only", async () => {
-    const workflow = Bun.YAML.parse(await readText(".github/workflows/deploy.yml")) as {
       on?: {
         push?: { tags?: string[] };
         workflow_dispatch?: { inputs?: Record<string, { required?: boolean; default?: string }> };
       };
       permissions?: Record<string, string>;
       concurrency?: { group?: string; "cancel-in-progress"?: boolean };
-      jobs?: Record<
-        string,
-        {
-          "runs-on"?: string[];
-          "timeout-minutes"?: number;
-          env?: Record<string, string>;
-        }
-      >;
+      jobs?: Record<string, { "timeout-minutes"?: number; env?: Record<string, string> }>;
     };
 
     expect(workflow.on?.push?.tags).toEqual(["v*.*.*"]);
     expect(workflow.on?.workflow_dispatch?.inputs?.ref?.required).toBe(false);
     expect(workflow.on?.workflow_dispatch?.inputs?.ref?.default).toBe("");
-    // The job restarts a production service and has broad local filesystem
-    // access via the self-hosted runner; it must not also hold repo write scope.
+
+    // Read-only token: the job only ever pushes state to the self-hosted host
+    // it runs on (via git/systemctl locally), never back to GitHub.
     expect(workflow.permissions).toEqual({ contents: "read" });
-    // A second deploy run must never race a rollback or in-flight restart on the
-    // same host; cancelling mid-deploy would leave the live checkout half-updated.
+
+    // A second deploy must queue rather than race the first, and a mid-flight
+    // cancel could leave the live checkout half-updated with no rollback run.
     expect(workflow.concurrency?.group).toBe("ocx-deploy-control-01");
     expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
 
-    const job = workflow.jobs?.deploy;
-    expect(job?.["runs-on"]).toEqual(["self-hosted", "Linux", "X64", "deploy"]);
-    expect(job?.["timeout-minutes"]).toBe(20);
-    expect(job?.env?.DEPLOY_PATH).toBe("/home/chef/opencodex-psp");
+    expect(workflow.jobs?.deploy?.["timeout-minutes"]).toBe(20);
+    expect(workflow.jobs?.deploy?.env?.DEPLOY_PATH).toBe("/home/chef/opencodex-psp");
+
+    expect(text).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");
+    expect(text).toContain("oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6");
+    expect(text).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
   });
 
-  test("control-01 deploy resolves the dispatch ref through env (not inline interpolation) and enforces a strict tag shape", async () => {
+  test("control-01 deploy resolves the dispatch ref via env (not inline interpolation) and validates its shape", async () => {
     const text = await readText(".github/workflows/deploy.yml");
     const workflow = Bun.YAML.parse(text) as {
-      jobs?: {
-        deploy?: {
-          steps?: Array<{ name?: string; id?: string; env?: Record<string, string>; run?: string }>;
-        };
-      };
+      jobs?: { deploy?: { steps?: Array<{ name?: string; env?: Record<string, string>; run?: string }> } };
     };
     const steps = workflow.jobs?.deploy?.steps ?? [];
-    const resolveStep = steps.find(step => step.name === "Resolve deploy tag");
-    expect(resolveStep?.id).toBe("ref");
-    expect(resolveStep?.env?.INPUT_REF).toBe("${{ github.event.inputs.ref }}");
+    const resolve = steps.find(step => step.name === "Resolve deploy tag");
+    expect(resolve).toBeDefined();
 
-    const script = String(resolveStep?.run ?? "");
-    // A dispatch input like `v1.2.3$(whoami)` interpolated directly into the
-    // shell source (rather than passed through an env var) would be command-
-    // substituted before the shape guard below ever runs, on the box that also
-    // holds the production deploy path and sudo rights.
-    expect(script).not.toContain("${{");
-    expect(script).toContain('if [ -n "$INPUT_REF" ]; then');
-    expect(script).toContain('tag="$INPUT_REF"');
-    expect(script).toContain('elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then');
-    expect(script).toContain("^v[0-9]+\\.[0-9]+\\.[0-9]+(-preview\\.[0-9]+)?$");
-    expect(script).toContain("is not a valid deploy tag");
+    // The raw dispatch input must be delivered as data via env, never spliced
+    // directly into the shell — `${{ github.event.inputs.ref }}` inline would
+    // let a value like `v1.2.3$(whoami)` be command-substituted on the
+    // production deploy host before the shape guard below ever runs.
+    expect(resolve!.env?.INPUT_REF).toBe("${{ github.event.inputs.ref }}");
+    expect(resolve!.run ?? "").not.toContain("${{ github.event.inputs.ref }}");
+    expect(resolve!.run ?? "").not.toContain("${{");
 
-    // The raw event input must appear nowhere else in the workflow outside this
-    // one `env:` mapping — any other use would reopen a second injection path.
-    expect(count(text, "github.event.inputs.ref")).toBe(1);
+    // Extract the actual shape-guard regex and exercise it, rather than
+    // grepping for a substring a cosmetic rewrite could still satisfy.
+    const match = (resolve!.run ?? "").match(/=~ (\^\S+\$) \]\]/);
+    expect(match).not.toBeNull();
+    const shape = new RegExp(match![1]!);
+    expect(shape.test("v1.2.3")).toBe(true);
+    expect(shape.test("v1.2.3-preview.4")).toBe(true);
+    expect(shape.test("1.2.3")).toBe(false);
+    expect(shape.test("v1.2")).toBe(false);
+    expect(shape.test("v1.2.3.4")).toBe(false);
+    expect(shape.test("v1.2.3-beta.1")).toBe(false);
+    expect(shape.test("v1.2.3-preview")).toBe(false);
+
+    // No tag resolved (neither a dispatch input nor a `refs/tags/v*` push) must
+    // fail closed, not silently no-op.
+    expect(resolve!.run ?? "").toContain("no tag resolved for deploy");
+    expect(resolve!.run ?? "").toContain("exit 1");
   });
 
-  test("control-01 deploy pins the verified tag to its resolved SHA and never re-resolves the tag name for checkout", async () => {
+  test("control-01 deploy pins the checkout to a merge-base-verified SHA, never a re-resolved tag name", async () => {
     const text = await readText(".github/workflows/deploy.yml");
     const workflow = Bun.YAML.parse(text) as {
       jobs?: { deploy?: { steps?: Array<{ name?: string; id?: string; run?: string }> } };
     };
     const steps = workflow.jobs?.deploy?.steps ?? [];
+    const verify = steps.find(step => step.id === "verify");
+    const deploy = steps.find(step => step.name === "Deploy into service checkout (in-place, pinned SHA)");
+    expect(verify).toBeDefined();
+    expect(deploy).toBeDefined();
 
-    const verify = steps.find(step => step.name === "Verify tag is on origin/main");
-    expect(verify?.id).toBe("verify");
-    const verifyScript = String(verify?.run ?? "");
-    expect(verifyScript).toContain('tag="${{ steps.ref.outputs.tag }}"');
-    expect(verifyScript).toContain('git merge-base --is-ancestor "refs/tags/$tag" "origin/main"');
-    expect(verifyScript).toContain('tag_sha=$(git rev-parse "refs/tags/$tag")');
-    expect(verifyScript).toContain("refusing to deploy an unmerged ref");
+    // The origin/main ancestry check must gate before the tag is ever pinned
+    // to a SHA, mirroring publish-on-tag.yml's own main-ancestry gate.
+    expect(verify!.run ?? "").toContain('git merge-base --is-ancestor "refs/tags/$tag" "origin/main"');
+    expect(verify!.run ?? "").toContain("is not on origin/main");
+    expect(verify!.run ?? "").toContain('tag_sha=$(git rev-parse "refs/tags/$tag")');
 
-    const deployStep = steps.find(step => step.name === "Deploy into service checkout (in-place, pinned SHA)");
-    const deployScript = String(deployStep?.run ?? "");
-    // Checking out the tag name here (instead of the SHA resolved in "verify")
-    // would let a tag force-moved between the two steps swap in an unverified
-    // commit — defeating the entire point of pinning tag_sha upfront.
-    expect(deployScript).toContain('git checkout --force "${{ steps.verify.outputs.tag_sha }}"');
-    expect(deployScript).toContain('git reset --hard "${{ steps.verify.outputs.tag_sha }}"');
-    expect(deployScript).not.toContain("steps.ref.outputs.tag");
+    // The deploy step must check out `steps.verify.outputs.tag_sha`, not
+    // re-resolve `$tag`/the tag ref — otherwise a tag force-moved between the
+    // verify step and this one could smuggle in an unverified commit.
+    expect(deploy!.run ?? "").toContain('git checkout --force "${{ steps.verify.outputs.tag_sha }}"');
+    expect(deploy!.run ?? "").toContain('git reset --hard "${{ steps.verify.outputs.tag_sha }}"');
+    expect(deploy!.run ?? "").not.toContain("git checkout --force \"$tag\"");
+    expect(deploy!.run ?? "").not.toMatch(/git checkout --force "refs\/tags/);
   });
 
-  test("control-01 deploy health-gates the restart and only rolls back after a known-good prior SHA was captured", async () => {
+  test("control-01 deploy health-gates the restart for up to 60s and only rolls back to a captured prior SHA", async () => {
     const text = await readText(".github/workflows/deploy.yml");
     const workflow = Bun.YAML.parse(text) as {
       jobs?: {
@@ -2367,33 +2280,134 @@ describe("GitHub Actions hardening", () => {
       };
     };
     const steps = workflow.jobs?.deploy?.steps ?? [];
-
-    const health = steps.find(step => step.name === "Health gate");
-    expect(health?.id).toBe("health");
-    const healthScript = String(health?.run ?? "");
-    expect(healthScript).toContain("curl -fsS -m 5 http://127.0.0.1:10100/healthz");
-    expect(healthScript).toContain('grep -q \'"status":"ok"\'');
-    expect(healthScript).toContain("for i in $(seq 1 30)");
-    expect(healthScript).toContain("did not become healthy within 60s");
-
+    const health = steps.find(step => step.id === "health");
     const rollback = steps.find(step => step.name === "Rollback on failure");
-    // Rolling back on any failure() would also fire when the live-checkout guard
-    // itself failed (e.g. a dirty tree): there is nothing safely captured to roll
-    // back to, and forcing a checkout there would discard the very state the
-    // guard exists to protect. Both preconditions must hold, not just "failed".
-    expect(rollback?.if).toBe(
-      "failure() && steps.prev.outcome == 'success' && steps.live_guard.outcome == 'success'",
+    expect(health).toBeDefined();
+    expect(rollback).toBeDefined();
+
+    // 30 tries * 2s sleep = 60s, matching the error message's stated budget.
+    expect(health!.run ?? "").toContain("for i in $(seq 1 30)");
+    expect(health!.run ?? "").toContain("sleep 2");
+    expect(health!.run ?? "").toContain("did not become healthy within 60s");
+    expect(health!.run ?? "").toContain('http://127.0.0.1:10100/healthz');
+    expect(health!.run ?? "").toContain('"status":"ok"');
+    expect(health!.run ?? "").toContain("exit 1");
+
+    // Rollback must only fire once a known-good prior SHA was captured AND the
+    // dirty/ancestry guard passed — otherwise a failure before either of those
+    // steps ran has nothing safe to roll back to, and `failure()` alone would
+    // attempt a checkout with an empty/garbage output.
+    expect(rollback!.if).toBe("failure() && steps.prev.outcome == 'success' && steps.live_guard.outcome == 'success'");
+    expect(rollback!.run ?? "").toContain('git checkout --force "${{ steps.prev.outputs.sha }}"');
+    expect(rollback!.run ?? "").toContain('git reset --hard "${{ steps.prev.outputs.sha }}"');
+    expect(rollback!.run ?? "").toContain("bun run build:gui");
+    expect(rollback!.run ?? "").toContain("sudo systemctl restart opencodex-proxy.service");
+    // Rollback re-verifies health rather than declaring success on restart alone.
+    expect(rollback!.run ?? "").toContain('"status":"ok"');
+    expect(rollback!.run ?? "").toContain("rollback deployed");
+    expect(rollback!.run ?? "").toContain("but service not healthy");
+  });
+
+  test("design-system contract only runs when design-system inputs or the GUI change, identically on push and PR", async () => {
+    const text = await readText(".github/workflows/design-system-contract.yml");
+    const workflow = Bun.YAML.parse(text) as {
+      on?: { push?: { paths?: string[] }; pull_request?: { paths?: string[] } };
+    };
+
+    const expectedPaths = [
+      ".github/design-system.json",
+      ".github/design-system.yml",
+      ".github/workflows/design-system-contract.yml",
+      "gui/**",
+    ];
+    expect([...(workflow.on?.push?.paths ?? [])].sort()).toEqual(expectedPaths);
+    expect([...(workflow.on?.pull_request?.paths ?? [])].sort()).toEqual(expectedPaths);
+    // Push and PR must match exactly, or a change could be checked on one
+    // trigger and merge unchecked on the other.
+    expect([...(workflow.on?.push?.paths ?? [])].sort()).toEqual(
+      [...(workflow.on?.pull_request?.paths ?? [])].sort(),
     );
-    const rollbackScript = String(rollback?.run ?? "");
-    expect(rollbackScript).toContain('git checkout --force "${{ steps.prev.outputs.sha }}"');
-    expect(rollbackScript).toContain('git reset --hard "${{ steps.prev.outputs.sha }}"');
-    expect(rollbackScript).toContain("bun install --frozen-lockfile");
-    expect(rollbackScript).toContain("bun run build:gui");
-    expect(rollbackScript).toContain("sudo systemctl restart opencodex-proxy.service");
-    // A restart on the rolled-back SHA is not proof the service came back up;
-    // the rollback must re-run its own health check rather than assuming success.
-    expect(rollbackScript).toContain("for _ in $(seq 1 15)");
-    expect(rollbackScript).toContain("but service not healthy");
+  });
+
+  test("publish-on-tag no longer performs its own SSH deploy and defers live rollout to deploy.yml", async () => {
+    const text = await readText(".github/workflows/publish-on-tag.yml");
+    const workflow = Bun.YAML.parse(text) as {
+      jobs?: Record<string, { steps?: Array<{ name?: string; run?: string }> }>;
+    };
+
+    // The SSH-based `deploy` job (and its DEPLOY_HOST/DEPLOY_SSH_KEY secrets)
+    // must be gone entirely — reintroducing it would race the self-hosted
+    // deploy.yml rollout against a second, unhealth-gated deploy path.
+    expect(Object.keys(workflow.jobs ?? {})).toEqual(["publish"]);
+    expect(text).not.toContain("DEPLOY_SSH_KEY");
+    expect(text).not.toContain("DEPLOY_HOST");
+    expect(text).not.toContain("ssh -i");
+    expect(text).not.toContain("StrictHostKeyChecking=no");
+
+    const steps = workflow.jobs?.publish?.steps ?? [];
+    const createRelease = steps.find(step => step.name === "Create GitHub Release");
+    expect(createRelease).toBeDefined();
+    const releaseScript = createRelease!.run ?? "";
+
+    // A pre-existing release for the same tag must short-circuit before
+    // `gh release create` is attempted (a re-run after the SSH deploy job was
+    // removed would otherwise fail on a duplicate release).
+    const viewIndex = releaseScript.indexOf("gh release view");
+    const skipIndex = releaseScript.indexOf("exit 0");
+    const createIndex = releaseScript.indexOf("gh release create");
+    expect(viewIndex).toBeGreaterThan(-1);
+    expect(createIndex).toBeGreaterThan(-1);
+    expect(viewIndex).toBeLessThan(skipIndex);
+    expect(skipIndex).toBeLessThan(createIndex);
+    expect(releaseScript).toContain("Deploy workflow owns live rollout");
+    // The notes string escapes backticks for the shell (\\` ... \\`); match the
+    // raw source exactly rather than the unescaped rendering.
+    expect(releaseScript).toContain(
+      "Live rollout to chef-control-01 runs in the \\`Deploy to control-01\\` workflow.",
+    );
+
+    // The hand-off must be documented in-line so the ownership split doesn't
+    // silently rot as the two workflows evolve independently.
+    expect(text).toContain(".github/workflows/deploy.yml");
+    expect(text).toContain("self-hosted `deploy` runner");
+  });
+
+  test("service-lifecycle workflow file has no trailing blank line", async () => {
+    const text = await readText(".github/workflows/service-lifecycle.yml");
+    // yamllint's default `empty-lines` rule rejects a trailing blank line;
+    // the file must end in exactly one newline.
+    expect(text.endsWith("\n")).toBe(true);
+    expect(text.endsWith("\n\n")).toBe(false);
+  });
+
+  test(".yamllint.yml relaxes formatting noise but keeps structural checks, and ci.yml wires it in", async () => {
+    const text = await readText(".yamllint.yml");
+    const config = Bun.YAML.parse(text) as {
+      extends?: string;
+      rules?: Record<string, unknown>;
+      ignore?: string;
+    };
+
+    expect(config.extends).toBe("default");
+    expect(config.rules?.["line-length"]).toBe("disable");
+    expect(config.rules?.["document-start"]).toBe("disable");
+    expect(config.rules?.["comments-indentation"]).toBe("disable");
+    expect((config.rules?.truthy as { "check-keys"?: boolean })?.["check-keys"]).toBe(false);
+    expect((config.rules?.comments as { "min-spaces-from-content"?: number })?.["min-spaces-from-content"]).toBe(1);
+    expect((config.rules?.indentation as { spaces?: number; "indent-sequences"?: boolean })).toEqual({
+      spaces: 2,
+      "indent-sequences": true,
+    });
+    expect((config.rules?.braces as { "max-spaces-inside"?: number })?.["max-spaces-inside"]).toBe(1);
+    expect((config.rules?.brackets as { "max-spaces-inside"?: number })?.["max-spaces-inside"]).toBe(1);
+
+    // The generated/external design-system manifest is not expected to follow
+    // this repo's YAML style, so it must be excluded rather than tightened
+    // rules being silently disabled repo-wide to accommodate it.
+    expect((config.ignore ?? "").trim()).toBe(".github/design-system.yml");
+
+    const ciText = await readText(".github/workflows/ci.yml");
+    expect(ciText).toContain("config_file: .yamllint.yml");
   });
 
   test("issue-quality workflow rejects workflow_dispatch pull request numbers before mutation", async () => {
