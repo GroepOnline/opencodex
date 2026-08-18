@@ -61,7 +61,9 @@ interface DesktopResponse {
   port: number;
 }
 
-type PendingAction = "save" | "apply" | null;
+type PendingAction = "save" | "apply" | "sync" | null;
+
+const LAPTOP_SYNC_HREF = "ocx-desktop://sync";
 
 const FAMILY_KEYS: Record<Family, TKey> = {
   opus: "claudeDesktop.family.opus",
@@ -408,6 +410,9 @@ export default function ClaudeDesktop({ apiBase, active = true }: { apiBase: str
           <button type="button" className="btn btn-ghost" disabled={!dirty || pending !== null} onClick={() => void save(false)}>
             {pending === "save" ? t("claudeDesktop.saving") : t("common.save")}
           </button>
+          <a className={`btn btn-ghost${pending !== null ? " disabled" : ""}`} href={pending === null ? LAPTOP_SYNC_HREF : undefined} aria-disabled={pending !== null} onClick={event => { if (pending !== null) { event.preventDefault(); return; } setAnnouncement(t("claudeDesktop.syncLaptopAnnounce")); }}>
+            {t("claudeDesktop.syncLaptop")}
+          </a>
           <button type="button" className="btn btn-primary" disabled={pending !== null} onClick={() => void save(true)}>
             {pending === "apply" ? t("claudeDesktop.applying") : pending === "save" ? t("claudeDesktop.saving") : t("claudeDesktop.saveApply")}
           </button>

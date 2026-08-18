@@ -190,6 +190,17 @@ export function jsonResponse(data: unknown, status = 200, req?: Request, config?
   });
 }
 
+/** Sensitive JSON payloads (credentials) must not be cached by intermediaries or disk cache. */
+export function withNoStore(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("Cache-Control", "no-store");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export function configuredApiAuthToken(_config: OcxConfig): string | undefined {
   const token = process.env.OPENCODEX_API_AUTH_TOKEN?.trim();
   return token || undefined;
@@ -276,8 +287,21 @@ export function hasValidApiAuth(req: Request, config: OcxConfig): boolean {
   return isDataPlaneAdmissionSecret(actual, config);
 }
 
+function extractDataPlaneAdmissionToken(req: Request): string | undefined {
+  return req.headers.get("x-opencodex-api-key")?.trim()
+    || req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim()
+    || req.headers.get("x-api-key")?.trim();
+}
+
 export function requireApiAuth(req: Request, config: OcxConfig, _kind: "data-plane"): Response | null {
   if (hasValidApiAuth(req, config)) return null;
+  return formatErrorResponse(401, "authentication_error", "opencodex API key required");
+}
+
+/** Require data-plane admission even on loopback (routes that export gateway secrets). */
+export function requireDataPlaneAdmissionAuth(req: Request, config: OcxConfig): Response | null {
+  const actual = extractDataPlaneAdmissionToken(req);
+  if (actual && isDataPlaneAdmissionSecret(actual, config)) return null;
   return formatErrorResponse(401, "authentication_error", "opencodex API key required");
 }
 

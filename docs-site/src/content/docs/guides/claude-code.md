@@ -127,6 +127,14 @@ Support/Claude/configLibrary` on macOS, `%APPDATA%\Claude\configLibrary` on Wind
 `CLAUDE_USER_DATA_DIR` for an alternate Desktop user-data root. The legacy `Claude-3p` directory is
 not read or deleted automatically.
 
+When the proxy runs on a remote host and Claude Desktop runs on your laptop, **Save & apply** writes
+the 3P library on the proxy. Use **Sync to this laptop** (or the `ocx-desktop://sync` handler) to
+copy it into your local Desktop config library through `ocx-tunnel`. The helper fetches the applied
+library from `GET /v1/claude-desktop-3p-library`, which requires a data-plane admission secret even
+on loopback. The dashboard management route `GET /api/claude-desktop/3p-library` always requires the
+admin token instead. Neither endpoint should be logged: the JSON can include
+`inferenceGatewayApiKey`.
+
 Non-Anthropic routes receive stable aliases such as `claude-opus-4-8-2026MMDD`. The date-looking
 part is a synthetic route slot, not the model's release date. Real Anthropic Claude routes keep
 their real ids. New routes default to the Opus family, but moving a route does not change the

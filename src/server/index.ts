@@ -117,11 +117,13 @@ import {
   isLoopbackHostname,
   jsonResponse,
   requireApiAuth,
+  requireDataPlaneAdmissionAuth,
   requireResponsesApiAuth,
   safeConfigDTO,
   setCorsOrigin,
   withCors,
   withManagementCors,
+  withNoStore,
 } from "./auth-cors";
 export {
   assertServerAuthConfig,
@@ -137,7 +139,7 @@ export { disableResponsesRequestTimeout, linkAbortSignal } from "./responses";
 import { handleClaudeCountTokens, handleClaudeMessages } from "./claude-messages";
 import { handleChatCompletions } from "./chat-completions";
 import { anthropicErrorResponse } from "../claude/outbound";
-import { buildDesktop3pRegistry } from "../claude/desktop-3p";
+import { buildDesktop3pRegistry, readAppliedDesktop3pLibrary } from "../claude/desktop-3p";
 import { runClaudeAuthModeMigration } from "../claude/auth-mode-migration";
 import { handleImages } from "./images";
 import { handleLive, logLiveSidebandFrame, parseLiveSidebandTarget, resolveLiveSidebandUpgrade } from "./live";
@@ -466,21 +468,26 @@ export function startServer(port?: number) {
       }
 
       if (url.pathname.startsWith("/api/")) {
+        const desktop3pLibraryGet = url.pathname === "/api/claude-desktop/3p-library" && req.method === "GET";
+        const wrapManagement = (response: Response) => {
+          const wrapped = withManagementCors(response, req, config);
+          return desktop3pLibraryGet ? withNoStore(wrapped) : wrapped;
+        };
         const mgmtGate = admission.gate("management", req, requestServer);
-        if (mgmtGate.preAuthDeny) return withManagementCors(mgmtGate.preAuthDeny, req, config);
+        if (mgmtGate.preAuthDeny) return wrapManagement(mgmtGate.preAuthDeny);
         const apiAuthError = await requireManagementAuth(req, managementAuth, config);
-        if (apiAuthError) return withManagementCors(apiAuthError, req, config);
+        if (apiAuthError) return wrapManagement(apiAuthError);
         // Origin precedence: handleManagementAPI enforces the same guard, but only after this
         // block would have charged the limiter. Reject cross-origin here (same payload shape as
         // management-api.ts) so a 403 can never consume the caller's admission budget.
         if (!isAllowedManagementOrigin(req, config)) {
-          return withManagementCors(jsonResponse({ error: "cross-origin request blocked" }, 403, req, config), req, config);
+          return wrapManagement(jsonResponse({ error: "cross-origin request blocked" }, 403, req, config));
         }
         const mgmtRateDeny = mgmtGate.commit();
-        if (mgmtRateDeny) return withManagementCors(mgmtRateDeny, req, config);
+        if (mgmtRateDeny) return wrapManagement(mgmtRateDeny);
         const mgmtResponse = await handleManagementAPI(req, url, config);
-        if (mgmtResponse) return withManagementCors(mgmtResponse, req, config);
-        return withManagementCors(formatErrorResponse(404, "not_found", `Unknown endpoint: ${req.method} ${url.pathname}`), req, config);
+        if (mgmtResponse) return wrapManagement(mgmtResponse);
+        return wrapManagement(formatErrorResponse(404, "not_found", `Unknown endpoint: ${req.method} ${url.pathname}`));
       }
 
       if (url.pathname === "/v1/models" && req.method === "GET") {
@@ -554,6 +561,31 @@ export function startServer(port?: number) {
           ...uniqueCatalogModelsForRawPublicList(goOrdered).map(m => ({ id: m.alias ?? `${m.provider}/${m.id}`, object: "model", created: 0, owned_by: m.owned_by ?? m.provider })),
         ];
         return jsonResponse({ object: "list", data }, 200, req, config);
+      }
+
+      // Laptop Claude Desktop sync: same 3P library as /api/claude-desktop/3p-library,
+      // Security Review: required — this response may contain gateway credentials.
+      if (url.pathname === "/v1/claude-desktop-3p-library" && req.method === "GET") {
+        const noStoreCors = (response: Response) => withNoStore(withCors(response, req, config));
+        const modelsGate = admission.gate("model-discovery", req, requestServer);
+        if (modelsGate.preAuthDeny) return noStoreCors(modelsGate.preAuthDeny);
+        const apiAuthError = requireDataPlaneAdmissionAuth(req, config);
+        if (apiAuthError) return noStoreCors(apiAuthError);
+        if (!isAllowedRequestOrigin(req, config)) {
+          return noStoreCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"));
+        }
+        const rateDeny = modelsGate.commit();
+        if (rateDeny) return noStoreCors(rateDeny);
+        try {
+          const library = readAppliedDesktop3pLibrary();
+          if (!library.ok) {
+            return noStoreCors(jsonResponse({ error: library.error }, library.status, req, config));
+          }
+          return noStoreCors(jsonResponse(library, 200, req, config));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return noStoreCors(jsonResponse({ error: message }, 400, req, config));
+        }
       }
 
       // Remote compaction v1 (codex-rs with Feature::RemoteCompactionV2 off — the default).

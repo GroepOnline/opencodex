@@ -22,6 +22,7 @@ import { findCodexOnPath, isWindowsInteropDir } from "../codex/shim";
 import { countPendingOpencodexHistory } from "../codex/history-provider";
 import { collectProjectCodexConfigWarnings, formatProjectCodexConfigWarningsForDoctor } from "../codex/project-config-warnings";
 import { collectStartupHealth, startupHealthSummary } from "../codex/autostart-health";
+import { formatLiveCheckoutDoctorLines } from "../lib/live-checkout";
 import {
   displayCodexRuntimePath,
   loadLastEffortClamp,
@@ -689,6 +690,11 @@ export async function runDoctor(args: string[] = []): Promise<void> {
   console.log("\nCodex restart safety");
   console.log(`  ${startup.rebootSafe ? "ok " : "!! "} ${startupHealthSummary(startup)}`);
   console.log(`       routing=${startup.routingKind}, service=${startup.serviceViable ? "viable" : startup.serviceInstalled ? "installed-but-unhealthy" : "absent"}, shim=${startup.shimHealthy ? "healthy" : startup.shimInstalled ? "stale" : "absent"}`);
+
+  console.log("\nLive checkout");
+  for (const line of formatLiveCheckoutDoctorLines(startup.liveCheckout ?? { sha: null, branch: null, detached: false, dirty: false })) {
+    console.log(line);
+  }
 
   console.log("\nCodex runtime selection");
   {

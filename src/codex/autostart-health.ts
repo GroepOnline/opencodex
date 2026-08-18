@@ -1,4 +1,5 @@
 import { codexAutoStartEnabled } from "../config";
+import { diagnoseLiveCheckout, type LiveCheckoutDiagnostic } from "../lib/live-checkout";
 import { diagnoseService, type ServiceDiagnostic } from "../service";
 import type { OcxConfig } from "../types";
 import { getCodexRoutingKind, type CodexRoutingKind } from "./inject";
@@ -50,6 +51,8 @@ export interface StartupHealth {
     installShim: string;
     restoreNative: string;
   };
+  /** Present on collectStartupHealth / `__startup-health`. Never includes diffs. */
+  liveCheckout?: LiveCheckoutDiagnostic;
 }
 
 const COMMANDS = {
@@ -117,20 +120,23 @@ export function collectStartupHealth(
 ): StartupHealth {
   const shim = diagnostics.shim ?? diagnoseCodexShim();
   const service = diagnostics.service ?? diagnoseService();
-  return deriveStartupHealth({
-    routingKind: diagnostics.routingKind ?? getCodexRoutingKind(),
-    autostartEnabled: codexAutoStartEnabled(config),
-    serviceInstalled: service.installed,
-    serviceViable: service.viable,
-    serviceEnabled: service.enabled,
-    serviceRunning: service.running,
-    serviceStale: service.stale,
-    serviceConflict: service.conflict,
-    serviceSupported: service.supported,
-    shimInstalled: shim.installed,
-    shimHealthy: shim.healthy,
-    platform: process.platform,
-  });
+  return {
+    ...deriveStartupHealth({
+      routingKind: diagnostics.routingKind ?? getCodexRoutingKind(),
+      autostartEnabled: codexAutoStartEnabled(config),
+      serviceInstalled: service.installed,
+      serviceViable: service.viable,
+      serviceEnabled: service.enabled,
+      serviceRunning: service.running,
+      serviceStale: service.stale,
+      serviceConflict: service.conflict,
+      serviceSupported: service.supported,
+      shimInstalled: shim.installed,
+      shimHealthy: shim.healthy,
+      platform: process.platform,
+    }),
+    liveCheckout: diagnoseLiveCheckout(),
+  };
 }
 
 export function startupHealthSummary(health: StartupHealth): string {

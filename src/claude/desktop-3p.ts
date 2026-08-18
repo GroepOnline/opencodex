@@ -77,6 +77,77 @@ export function resolveDesktop3pConfigLibraryPath(
   });
 }
 
+/** Laptop tunnel target for Claude Desktop sync. The helper copies the applied 3P library here. */
+export const LAPTOP_PROXY_GATEWAY = "http://127.0.0.1:10100";
+
+const APPLIED_DESKTOP_3P_ID = /^[A-Za-z0-9_-]+$/;
+
+export type AppliedDesktop3pLibrary =
+  | {
+      ok: true;
+      appliedId: string;
+      meta: Record<string, unknown>;
+      config: unknown;
+      fingerprint: string;
+      laptopGateway: string;
+    }
+  | { ok: false; status: 404; error: string };
+
+/**
+ * Read the currently applied Claude Desktop 3P library so a laptop helper can
+ * copy it through ocx-tunnel without SSH into the proxy host homedir.
+ */
+export function readAppliedDesktop3pLibrary(
+  options: Desktop3pConfigLibraryOptions = {},
+): AppliedDesktop3pLibrary {
+  const libraryPath = resolveDesktop3pConfigLibraryPath(options);
+  const metaPath = join(libraryPath, "_meta.json");
+  if (!existsSync(metaPath)) {
+    return { ok: false, status: 404, error: "Claude Desktop 3P library not applied yet" };
+  }
+  let meta: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(metaPath, "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { ok: false, status: 404, error: "Claude Desktop 3P library has no appliedId" };
+    }
+    meta = parsed as Record<string, unknown>;
+  } catch {
+    return { ok: false, status: 404, error: "Claude Desktop 3P library has no appliedId" };
+  }
+  const appliedId = typeof meta.appliedId === "string" ? meta.appliedId : null;
+  if (!appliedId || !APPLIED_DESKTOP_3P_ID.test(appliedId)) {
+    return { ok: false, status: 404, error: "Claude Desktop 3P library has no appliedId" };
+  }
+  const entries = Array.isArray(meta.entries) ? meta.entries : [];
+  const opencodexEntry = entries.find(
+    (entry): entry is Record<string, unknown> =>
+      !!entry && typeof entry === "object" && !Array.isArray(entry) && entry.name === "opencodex",
+  );
+  const registryId = opencodexEntry && typeof opencodexEntry.id === "string" ? opencodexEntry.id : null;
+  if (!registryId || !APPLIED_DESKTOP_3P_ID.test(registryId) || appliedId !== registryId) {
+    return { ok: false, status: 404, error: "Claude Desktop 3P config missing" };
+  }
+  const configPath = join(libraryPath, `${registryId}.json`);
+  let raw: string;
+  let config: unknown;
+  try {
+    raw = readFileSync(configPath, "utf8");
+    config = JSON.parse(raw) as unknown;
+  } catch {
+    return { ok: false, status: 404, error: "Claude Desktop 3P config missing" };
+  }
+  // Do not log `config`: the 3P JSON can contain inferenceGatewayApiKey.
+  return {
+    ok: true,
+    appliedId,
+    meta,
+    config,
+    fingerprint: createHash("sha256").update(raw).digest("hex").slice(0, 16),
+    laptopGateway: LAPTOP_PROXY_GATEWAY,
+  };
+}
+
 /** CLI arg parsing for `ocx claude desktop` mode flags (mutually exclusive). */
 export function parseDesktop3pModeArgs(flags: string[]): { mode: Desktop3pConfigMode } | { error: string } {
   const known = new Map<string, Desktop3pConfigMode>([
