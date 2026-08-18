@@ -10,6 +10,7 @@ import { readCodexCatalogPath } from "../codex/catalog";
 import type { OcxUsage } from "../types";
 import type { AdapterRequest } from "../adapters/base";
 import { redactSecretString } from "../lib/redact";
+import { providerAccountLabel } from "../providers/label";
 import {
   appendUsageEntry,
   isKnownUsageSurface,
@@ -241,6 +242,7 @@ export function addRequestLog(entry: RequestLogEntry) {
         ...(entry.upstreamError ? { upstreamError: entry.upstreamError } : {}),
       }
       : {};
+    const account = providerAccountLabel(entry.provider);
     appendUsageEntry({
       requestId: entry.requestId,
       timestamp: entry.timestamp,
@@ -248,6 +250,7 @@ export function addRequestLog(entry: RequestLogEntry) {
       model: entry.model,
       ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
       ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
+      ...(account ? { account } : {}),
       ...(entry.resolvedModel ? { resolvedModel: entry.resolvedModel } : {}),
       ...(entry.requestedModel ? { requestedModel: entry.requestedModel } : {}),
       ...(entry.requestedEffort ? { requestedEffort: entry.requestedEffort } : {}),
