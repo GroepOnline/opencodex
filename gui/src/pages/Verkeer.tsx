@@ -213,7 +213,7 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
                   ? <span className="bon-meta">{t("vk.rowTokens", { n: formatTokens(tokens, locale) })}</span>
                   : <span className="bon-meta" aria-hidden="true" />}
                 <span className="bon-meta">{t("vk.rowDuration", { s: (entry.durationMs / 1000).toFixed(1) })}</span>
-                <span className={`stempel ${stempel.cls}`}>{statusInfo?.label ?? t(stempel.labelKey)}</span>
+                <span className={`stempel ${stempel.cls}`}>{t(stempel.labelKey)}</span>
               </button>
               {isOpen && (
                 <div className="bon-detail">
