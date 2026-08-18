@@ -362,7 +362,17 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
     const { upsertOAuthProvider } = await import("../../oauth");
     const { autoEnableOAuthAccountPoolOnSecondAccount } = await import("../../oauth/auto-enable-pool");
     const accountCountBeforeWrite = getAccountSet("cursor")?.accounts.length ?? 0;
-    await saveCredential("cursor", cred);
+    try {
+      // Run collision validation before persisting the imported credential.
+      upsertOAuthProvider(config, "cursor");
+    } catch (err) {
+      return jsonResponse({ error: err instanceof Error ? err.message : String(err) }, 409);
+    }
+    try {
+      await saveCredential("cursor", cred);
+    } catch (err) {
+      return jsonResponse({ error: err instanceof Error ? err.message : String(err) }, 500);
+    }
     autoEnableOAuthAccountPoolOnSecondAccount(config, "cursor", accountCountBeforeWrite);
     try {
       upsertOAuthProvider(config, "cursor");
