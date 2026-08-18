@@ -129,6 +129,7 @@ The GUI is a thin client over the proxy's JSON management API. Useful endpoints 
 | `POST /api/startup-action` | Install the background service or Codex launcher shim through fixed, allowlisted actions. |
 | `GET` / `POST /api/windows-tray` | Read or change the Windows tray installation and visible-process state. POST accepts `install`, `start`, `stop`, or `uninstall`. |
 | `POST /api/sync` | Rebuild the shared model catalog and stale the Codex model cache. |
+| `POST /api/providers/models/refresh?name=...` | Force-fetch one provider's live `/models` list (ignores cache and failure cooldown) and resync the Codex catalog. Dashboard **Fetch models** uses this. |
 | `GET /api/update/check` · `POST /api/update/run` · `GET /api/update/status` | Check, run, and monitor self-update jobs. Worker PIDs are persisted so a crashed job recovers automatically; legacy no-PID jobs recover after ten minutes. |
 | `GET` / `PUT /api/sidecar-settings` | Read or set search/vision sidecar model settings. |
 | `GET` / `PUT /api/injection-model` | Read or set the shared sub-agent model/effort selection and the independent guidance/native-default switches. |

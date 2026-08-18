@@ -460,6 +460,12 @@ const overrides: Partial<Record<TKey, string>> = {
   "models.allOff": "Alles uit",
   "pws.copyModelIdFor": "Kopieer ID van {model}",
   "pws.modelCopiedFor": "{model} gekopieerd",
+  "pws.fetchModels": "Haal modellen op",
+  "pws.fetchingModels": "Ophalen…",
+  "pws.fetchModelsOk": "{count} modellen van {provider}.",
+  "pws.fetchModelsStatic": "Live discovery staat uit — dit is de ingestelde lijst ({count}).",
+  "pws.fetchModelsPassthrough": "Passthrough-leveranciers hebben geen upstream /models-catalogus.",
+  "pws.fetchModelsFailed": "Kon modellen niet ophalen: {error}",
 
   // API-toegang (#api)
   "api.title": "API-toegang",

@@ -42,6 +42,7 @@ import {
   type V2Status,
 } from "./models-shared";
 import { EmptyProviderHint } from "./models-provider-hints";
+import { refreshProviderModels } from "../provider-workspace/refresh-models";
 
 type CachedModelsPage = {
   models: ModelRow[];
@@ -74,6 +75,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
   const [ok, setOk] = useState(false);
   const [loading, setLoading] = useState(() => !cached);
   const [busy, setBusy] = useState(false);
+  const [fetchingProvider, setFetchingProvider] = useState<string | null>(null);
   const busyRef = useRef(false);
   const loadGenerationRef = useRef(0);
   const loadPendingRef = useRef(false);
@@ -428,6 +430,38 @@ export default function Models({ apiBase }: { apiBase: string }) {
   );
   const setAll = () => { void putCap({ setAll: !allCapped }); };
 
+  const fetchGroupModels = async (provider: string) => {
+    if (fetchingProvider || busy) return;
+    setFetchingProvider(provider);
+    busyRef.current = true;
+    setBusy(true);
+    setStatus("");
+    try {
+      const result = await refreshProviderModels(apiBase, provider);
+      await load(true);
+      if (!result.ok) {
+        setOk(false);
+        setStatus(t("pws.fetchModelsFailed", { error: result.error }));
+        return;
+      }
+      setOk(true);
+      if (result.source === "static") {
+        setStatus(t("pws.fetchModelsStatic", { count: result.count }));
+      } else if (result.source === "passthrough") {
+        setStatus(t("pws.fetchModelsPassthrough"));
+      } else {
+        setStatus(t("pws.fetchModelsOk", { count: result.count, provider }));
+      }
+    } catch {
+      setOk(false);
+      setStatus(t("models.networkError"));
+    } finally {
+      setFetchingProvider(null);
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
   const saveShadowCall = async (patch: Partial<ShadowCallData>) => {
     if (!shadowCall || shadowCallSaving) return;
     setShadowCallSaving(true);
@@ -658,6 +692,8 @@ export default function Models({ apiBase }: { apiBase: string }) {
     const activeCount = rows.filter(isVisible).length;
     const capOn = contextCaps[provider] === contextCapValue;
     const isNative = native;
+    const configured = providers.find(row => row.name === provider);
+    const canFetchModels = !isNative && configured?.authMode !== "forward" && configured?.disabled !== true;
     const discoveryFailure = liveModels && discovery?.status === "failed" ? discovery : undefined;
     const q = (search[provider] ?? "").trim().toLowerCase();
     const filtered = q ? rows.filter(m => m.id.toLowerCase().includes(q)) : rows;
@@ -717,6 +753,19 @@ export default function Models({ apiBase }: { apiBase: string }) {
           <span className="muted mono text-label">{t("models.active", { active: activeCount, total: rows.length })}</span>
           </button>
            <div className="row models-provider-actions">
+             {canFetchModels && (
+               <button
+                 type="button"
+                 className="btn btn-ghost btn-sm text-caption"
+                 disabled={busy || fetchingProvider !== null}
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   void fetchGroupModels(provider);
+                 }}
+               >
+                 {fetchingProvider === provider ? t("pws.fetchingModels") : t("pws.fetchModels")}
+               </button>
+             )}
              {!isNative && (
                <button
                  type="button"
