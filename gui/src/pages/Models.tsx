@@ -433,6 +433,8 @@ export default function Models({ apiBase }: { apiBase: string }) {
   const fetchGroupModels = async (provider: string) => {
     if (fetchingProvider || busy) return;
     setFetchingProvider(provider);
+    busyRef.current = true;
+    setBusy(true);
     setStatus("");
     try {
       const result = await refreshProviderModels(apiBase, provider);
@@ -455,6 +457,8 @@ export default function Models({ apiBase }: { apiBase: string }) {
       setStatus(t("models.networkError"));
     } finally {
       setFetchingProvider(null);
+      busyRef.current = false;
+      setBusy(false);
     }
   };
 
