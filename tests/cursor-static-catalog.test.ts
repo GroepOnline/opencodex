@@ -89,11 +89,11 @@ describe("Cursor static Codex catalog", () => {
     expect(entries.find(item => item.slug === "cursor/gemini-3-pro")).toBeTruthy();
     expect(entries.find(item => item.slug === "cursor/gemini-3-pro-image-preview")).toBeTruthy();
     expect(entries.find(item => item.slug === "cursor/gemini-3-pro")?.context_window).toBe(1_048_576);
-    expect(entries.find(item => item.slug === "cursor/gemini-3.5-flash")?.context_window).toBe(200_000);
+    expect(entries.find(item => item.slug === "cursor/gemini-3.5-flash")?.context_window).toBe(1_048_576);
     expect(entries.find(item => item.slug === "cursor/gpt-5-codex")?.context_window).toBe(272_000);
-    expect(entries.find(item => item.slug === "cursor/gpt-5.6-sol")?.context_window).toBe(1_000_000);
-    expect(entries.find(item => item.slug === "cursor/gpt-5.6-terra")?.context_window).toBe(1_000_000);
-    expect(entries.find(item => item.slug === "cursor/gpt-5.6-luna")?.context_window).toBe(1_000_000);
+    expect(entries.find(item => item.slug === "cursor/gpt-5.6-sol")?.context_window).toBe(372_000);
+    expect(entries.find(item => item.slug === "cursor/gpt-5.6-terra")?.context_window).toBe(372_000);
+    expect(entries.find(item => item.slug === "cursor/gpt-5.6-luna")?.context_window).toBe(372_000);
     expect(entries.find(item => item.slug === "cursor/glm-5.2")?.context_window).toBe(1_000_000);
     expect(entries.find(item => item.slug === "cursor/composer-2.5-fast")?.context_window).toBe(200_000);
     expect(entries.find(item => item.slug === "cursor/gpt-5.5")?.supported_reasoning_levels)

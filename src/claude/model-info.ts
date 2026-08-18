@@ -12,10 +12,10 @@
  *    survive nativeEffortClamp as identity (`(clamp(r) ?? r) === r`), ultra excluded;
  *  - routed ladders use the adapter-reported CatalogModel.reasoningEfforts only —
  *    no ladder means effort.supported:false, never a guess;
- *  - created_at is a fixed constant; max_input_tokens is authoritative-or-null;
- *    max_tokens is always null (no authoritative output limit exists proxy-side).
+ *  - created_at is a fixed constant; max_input_tokens and max_tokens are
+ *    authoritative-or-null (native override / CatalogModel / jawcode). Nothing is guessed.
  */
-import { catalogModelEfforts, nativeEffortClamp, nativeOpenAiContextWindow, type CatalogModel } from "../codex/catalog";
+import { catalogModelEfforts, nativeEffortClamp, nativeOpenAiContextWindow, nativeOpenAiMaxOutputTokens, type CatalogModel } from "../codex/catalog";
 import { claudeCodeAlias, claudeCodeNativeAlias } from "./alias";
 import { desktop3pAlias } from "./desktop-3p";
 import { AUTO_CONTEXT_OFF, shouldMarkOneMillion, type AutoContextMode } from "./context-windows";
@@ -78,10 +78,17 @@ export interface AnthropicModelInfo {
   created_at: string;
   capabilities: ReturnType<typeof modelCapabilities>;
   max_input_tokens: number | null;
-  max_tokens: null;
+  max_tokens: number | null;
 }
 
-function modelInfo(id: string, displayName: string, ladder: readonly string[], imageInput: boolean, contextWindow?: number): AnthropicModelInfo {
+function modelInfo(
+  id: string,
+  displayName: string,
+  ladder: readonly string[],
+  imageInput: boolean,
+  contextWindow?: number,
+  maxOutputTokens?: number,
+): AnthropicModelInfo {
   return {
     id,
     display_name: displayName,
@@ -89,7 +96,7 @@ function modelInfo(id: string, displayName: string, ladder: readonly string[], i
     created_at: MODEL_INFO_CREATED_AT,
     capabilities: modelCapabilities(ladder, imageInput),
     max_input_tokens: typeof contextWindow === "number" && contextWindow > 0 ? contextWindow : null,
-    max_tokens: null,
+    max_tokens: typeof maxOutputTokens === "number" && maxOutputTokens > 0 ? maxOutputTokens : null,
   };
 }
 
@@ -131,7 +138,14 @@ export function buildAnthropicModelInfos(
     const id = idStyle === "readable" ? claudeCodeNativeAlias(slug) : aliasForRoute("native", slug);
     if (seen.has(id)) continue;
     seen.add(id);
-    const info = modelInfo(id, `${slug} (native)`, nativeEffectiveLadder(slug), true);
+    const info = modelInfo(
+      id,
+      `${slug} (native)`,
+      nativeEffectiveLadder(slug),
+      true,
+      nativeOpenAiContextWindow(slug),
+      nativeOpenAiMaxOutputTokens(slug),
+    );
     out.push(info);
     push1mVariant(info, nativeOpenAiContextWindow(slug));
   }
@@ -141,7 +155,7 @@ export function buildAnthropicModelInfos(
     seen.add(id);
     const ladder = Array.isArray(m.reasoningEfforts) ? m.reasoningEfforts : [];
     const imageInput = Array.isArray(m.inputModalities) ? m.inputModalities.includes("image") : false;
-    const info = modelInfo(id, `${m.id} (${m.provider})`, ladder, imageInput, m.contextWindow);
+    const info = modelInfo(id, `${m.id} (${m.provider})`, ladder, imageInput, m.contextWindow, m.maxOutputTokens);
     out.push(info);
     // Anthropic passthrough guard (audit 021 #3): never auto-widen canonical claude
     // routes — only a genuine >=1M window earns the variant row there.

@@ -57,7 +57,7 @@ import upstreamModelsSnapshot from "../data/upstream-models.json";
 
 import { JAWCODE_CATALOG_AUGMENT_PROVIDERS, catalogModelSlug, shouldExposeRoutedModel } from "./parsing";
 import type { CatalogModel } from "./parsing";
-import { disabledNativeSlugs, hasComboTargets, nativeInputModalities, nativeOpenAiContextWindow, nativeOpenAiSlugs, nativeParallelToolCalls, nativeReasoningEfforts } from "./metadata";
+import { disabledNativeSlugs, hasComboTargets, nativeInputModalities, nativeOpenAiContextWindow, nativeOpenAiMaxOutputTokens, nativeOpenAiSlugs, nativeParallelToolCalls, nativeReasoningEfforts } from "./metadata";
 import { deriveComboCatalogModel, normalizedOpenAiApiSignature, openAiApiCollisionWarnings, replaceLastComboCatalogOmissions, warnUncataloguedComboOnce } from "./aggregation";
 import type { ComboCatalogOmission } from "./aggregation";
 
@@ -167,6 +167,35 @@ export function configuredMaxInputTokens(prov: OcxProviderConfig, id: string): n
   return typeof configured === "number" && configured > 0 ? configured : undefined;
 }
 
+function jawcodeCatalogMeta(providerName: string, modelId: string) {
+  const jawcodeProvider = resolveJawcodeProvider(providerName);
+  if (!jawcodeProvider) return undefined;
+  return getJawcodeModelMetadata(jawcodeProvider, modelId)
+    ?? (shouldCaseFoldMetadataModelId(providerName)
+      ? getJawcodeModelMetadataCaseInsensitive(jawcodeProvider, modelId)
+      : undefined);
+}
+
+function configuredMaxOutputTokens(
+  prov: OcxProviderConfig,
+  id: string,
+  providerName: string,
+): number | undefined {
+  const configured = modelRecordValue(prov.modelMaxOutputTokens, id);
+  if (typeof configured === "number" && configured > 0) return configured;
+  const fromRegistry = modelRecordValue(registryFallbackEntry(providerName, prov)?.modelMaxOutputTokens, id);
+  if (typeof fromRegistry === "number" && fromRegistry > 0) return fromRegistry;
+  if (typeof prov.defaultMaxOutputTokens === "number" && prov.defaultMaxOutputTokens > 0) {
+    return prov.defaultMaxOutputTokens;
+  }
+  const registryDefault = registryFallbackEntry(providerName, prov)?.defaultMaxOutputTokens;
+  return typeof registryDefault === "number" && registryDefault > 0 ? registryDefault : undefined;
+}
+
+function firstPositiveTokenLimit(...values: Array<number | undefined>): number | undefined {
+  return values.find(value => typeof value === "number" && Number.isSafeInteger(value) && value > 0);
+}
+
 function configuredReasoningSummarySupport(prov: OcxProviderConfig | undefined, id: string): boolean | undefined {
   if (!prov) return undefined;
   const explicit = modelRecordValue(prov.modelSupportsReasoningSummaries, id);
@@ -177,6 +206,8 @@ function configuredReasoningSummarySupport(prov: OcxProviderConfig | undefined, 
 export function applyProviderConfigHints(name: string, prov: OcxProviderConfig, model: CatalogModel, providerCap?: number): CatalogModel {
   const configuredCap = configuredContextWindow(prov, model.id, name);
   const configuredMaxInput = configuredMaxInputTokens(prov, model.id);
+  const configuredMaxOutput = configuredMaxOutputTokens(prov, model.id, name);
+  const jawcodeMeta = jawcodeCatalogMeta(name, model.id);
   let inputModalities = configuredInputModalities(prov, model.id, name);
   // Vision-sidecar coverage: `noVisionModels` marks models whose images the PROXY describes
   // (src/vision/index.ts). The catalog must still advertise image input for them — the Codex app
@@ -189,15 +220,31 @@ export function applyProviderConfigHints(name: string, prov: OcxProviderConfig, 
   const reasoningEfforts = configuredReasoningEfforts(prov, model.id);
   const defaultReasoningEffort = modelRecordValue(prov.modelDefaultReasoningEfforts, model.id) ?? model.defaultReasoningEffort;
   const supportsReasoningSummaries = configuredReasoningSummarySupport(prov, model.id);
+  const jawcodeContext = typeof jawcodeMeta?.contextWindow === "number" && jawcodeMeta.contextWindow > 0
+    ? jawcodeMeta.contextWindow
+    : undefined;
+  const jawcodeMaxOutput = typeof jawcodeMeta?.maxTokens === "number" && jawcodeMeta.maxTokens > 0
+    ? jawcodeMeta.maxTokens
+    : undefined;
+  let contextWindow: number | undefined;
+  if (configuredCap !== undefined) {
+    contextWindow = typeof model.contextWindow === "number" && model.contextWindow > 0
+      ? Math.min(model.contextWindow, configuredCap)
+      : configuredCap;
+  } else if (typeof model.contextWindow === "number" && model.contextWindow > 0) {
+    contextWindow = model.contextWindow;
+  } else {
+    contextWindow = jawcodeContext;
+  }
+  const liveMaxOutput = typeof model.maxOutputTokens === "number" && model.maxOutputTokens > 0
+    ? model.maxOutputTokens
+    : undefined;
+  const maxOutputTokens = configuredMaxOutput !== undefined && liveMaxOutput !== undefined
+    ? Math.min(configuredMaxOutput, liveMaxOutput)
+    : firstPositiveTokenLimit(configuredMaxOutput, liveMaxOutput, jawcodeMaxOutput);
   const hinted = {
     ...model,
-    ...(configuredCap !== undefined
-      ? {
-        contextWindow: typeof model.contextWindow === "number" && model.contextWindow > 0
-          ? Math.min(model.contextWindow, configuredCap)
-          : configuredCap,
-      }
-      : {}),
+    ...(contextWindow !== undefined ? { contextWindow } : {}),
     ...(inputModalities ? { inputModalities } : {}),
     ...(reasoningEfforts !== undefined ? { reasoningEfforts } : {}),
     ...(configuredMaxInput !== undefined
@@ -207,6 +254,7 @@ export function applyProviderConfigHints(name: string, prov: OcxProviderConfig, 
           : configuredMaxInput,
       }
       : {}),
+    ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
     ...(defaultReasoningEffort ? { defaultReasoningEffort } : {}),
     ...(typeof supportsReasoningSummaries === "boolean" ? { supportsReasoningSummaries } : {}),
     ...(prov.adapter === "kiro" ? { supportsVerbosity: false } : {}),
@@ -368,6 +416,11 @@ export function catalogHintsFromModelsApiItem(providerName: string, item: Provid
       item.max_context_length,
     );
   const maxInputTokens = positiveSafeInteger(limits?.max_input_tokens, item.max_input_tokens);
+  const maxOutputTokens = positiveSafeInteger(
+    limits?.max_output_tokens,
+    item.max_output_tokens,
+    item.max_completion_tokens,
+  );
   const rawReasoningEfforts = capabilityRecord?.reasoning_effort ?? item.reasoning_efforts;
   const listedReasoningEfforts = normalizedStringList(rawReasoningEfforts, 8, 24);
   const reasoningEfforts = listedReasoningEfforts
@@ -384,6 +437,7 @@ export function catalogHintsFromModelsApiItem(providerName: string, item: Provid
   return {
     ...(contextWindow && contextWindow > 0 ? { contextWindow } : {}),
     ...(maxInputTokens && maxInputTokens > 0 ? { maxInputTokens } : {}),
+    ...(maxOutputTokens && maxOutputTokens > 0 ? { maxOutputTokens } : {}),
     ...(reasoningEfforts !== undefined ? { reasoningEfforts } : {}),
     ...(inputModalities ? { inputModalities } : {}),
     ...(capabilities ? { capabilities } : {}),
@@ -739,12 +793,14 @@ async function gatherRoutedModelsUncached(
       if (disabled.has(slug)) continue;
       const contextWindow = nativeOpenAiContextWindow(slug);
       if (contextWindow === undefined) continue;
+      const maxOutputTokens = nativeOpenAiMaxOutputTokens(slug);
       const synthetic: CatalogModel = {
         provider: "openai",
         id: slug,
         owned_by: "openai",
         contextWindow,
         maxInputTokens: contextWindow,
+        ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
         inputModalities: nativeInputModalities(slug),
         reasoningEfforts: nativeReasoningEfforts(slug),
         ...(nativeParallelToolCalls(slug) ? { parallelToolCalls: true } : {}),
@@ -878,6 +934,7 @@ export function augmentRoutedModelsWithJawcodeMetadata(
         id: meta.id,
         owned_by: provider,
         ...(typeof meta.contextWindow === "number" && meta.contextWindow > 0 ? { contextWindow: meta.contextWindow } : {}),
+        ...(typeof meta.maxTokens === "number" && meta.maxTokens > 0 ? { maxOutputTokens: meta.maxTokens } : {}),
         ...(Array.isArray(meta.input) && meta.input.length > 0 ? { inputModalities: [...meta.input] } : {}),
       };
       out.push({

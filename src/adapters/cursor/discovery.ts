@@ -13,6 +13,8 @@ const CURSOR_REASONING_EFFORTS = ["low", "medium", "high"] as const;
 const CURSOR_DEFAULT_INPUT_MODALITIES = ["text", "image"] as const;
 const CONTEXT_1M = 1_000_000;
 const CONTEXT_GEMINI = 1_048_576;
+/** Same value as `NATIVE_GPT56_CONTEXT_WINDOW` in catalog/metadata.ts — keep this file free of that import cycle. */
+const CONTEXT_GPT56 = 372_000;
 const CONTEXT_272K = 272_000;
 const CONTEXT_262K = 262_144;
 const CONTEXT_256K = 256_000;
@@ -21,9 +23,10 @@ const CONTEXT_200K = 200_000;
 export function inferCursorContextWindow(modelId: string): number {
   const id = modelId.trim().toLowerCase();
   if (id.includes("1m")) return CONTEXT_1M;
-  if (id.startsWith("gemini-")) return CONTEXT_1M;
+  if (id.startsWith("gemini-")) return CONTEXT_GEMINI;
   if (id === "glm-5.2") return CONTEXT_1M;
-  if (id.startsWith("gpt-5.6-")) return CONTEXT_1M;
+  if (id.startsWith("gpt-5.6-")) return CONTEXT_GPT56;
+  if (id.startsWith("gpt-5.4")) return CONTEXT_1M;
   if (id.startsWith("gpt-5") || id === "gpt-5-codex") return CONTEXT_272K;
   if (id.startsWith("grok-4.5")) return 500_000;
   if (id.startsWith("grok-")) return CONTEXT_256K;
@@ -195,7 +198,7 @@ export const CURSOR_STATIC_MODELS: readonly CursorModelInfo[] = normalizeCursorM
   { id: "gemini-3-pro", contextWindow: CONTEXT_GEMINI },
   { id: "gemini-3-pro-image-preview", contextWindow: CONTEXT_200K },
   { id: "gemini-3.1-pro", contextWindow: CONTEXT_GEMINI },
-  { id: "gemini-3.5-flash", contextWindow: CONTEXT_200K },
+  { id: "gemini-3.5-flash", contextWindow: CONTEXT_GEMINI },
 
   { id: "gpt-5-codex", contextWindow: CONTEXT_272K },
   { id: "gpt-5-fast", contextWindow: CONTEXT_272K },
@@ -207,16 +210,16 @@ export const CURSOR_STATIC_MODELS: readonly CursorModelInfo[] = normalizeCursorM
   { id: "gpt-5.2", contextWindow: CONTEXT_272K, supportsReasoningEffort: true },
   { id: "gpt-5.2-codex", contextWindow: CONTEXT_272K, supportsReasoningEffort: true },
   { id: "gpt-5.3-codex", contextWindow: CONTEXT_272K, supportsReasoningEffort: true },
-  { id: "gpt-5.4", contextWindow: CONTEXT_272K, supportsReasoningEffort: true },
+  { id: "gpt-5.4", contextWindow: CONTEXT_1M, supportsReasoningEffort: true },
   { id: "gpt-5.4-mini", contextWindow: CONTEXT_272K, supportsReasoningEffort: true },
   { id: "gpt-5.4-nano", contextWindow: CONTEXT_272K, supportsReasoningEffort: true },
   { id: "gpt-5.5", contextWindow: CONTEXT_272K, supportsReasoningEffort: true },
   // gpt-5.5-extra: absent from cursor.com docs but SURVIVES the live GetUsableModels filter
   // (account-verified 260709, devlog/model_update/260709_model_refresh/004_live_snapshot.md).
   { id: "gpt-5.5-extra", contextWindow: CONTEXT_200K, supportsReasoningEffort: true },
-  { id: "gpt-5.6-sol", contextWindow: CONTEXT_1M, supportsReasoningEffort: true },
-  { id: "gpt-5.6-terra", contextWindow: CONTEXT_1M, supportsReasoningEffort: true },
-  { id: "gpt-5.6-luna", contextWindow: CONTEXT_1M, supportsReasoningEffort: true },
+  { id: "gpt-5.6-sol", contextWindow: CONTEXT_GPT56, supportsReasoningEffort: true },
+  { id: "gpt-5.6-terra", contextWindow: CONTEXT_GPT56, supportsReasoningEffort: true },
+  { id: "gpt-5.6-luna", contextWindow: CONTEXT_GPT56, supportsReasoningEffort: true },
 
   // 260709 refresh: stale grok/composer/kimi/gpt ids dropped per current cursor.com docs; the
   // 260709 note: grok-4.5 was deferred; confirmed live 260708 (cursor.com/models, xAI launch).

@@ -8,6 +8,7 @@ describe("anthropic-flavor ModelInfo discovery entries (devlog 130 B4b)", () => 
       provider: "cursor", id: "gpt-5.6-luna",
       reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
       contextWindow: 1_000_000,
+      maxOutputTokens: 128_000,
       inputModalities: ["text", "image"],
     }]);
     expect(info!.id).toMatch(/^claude-opus-4-8-[a-z][0-9a-z]{2}$/);
@@ -15,7 +16,7 @@ describe("anthropic-flavor ModelInfo discovery entries (devlog 130 B4b)", () => 
     expect(info!.type).toBe("model");
     expect(info!.created_at).toBe("2026-01-01T00:00:00Z");
     expect(info!.max_input_tokens).toBe(1_000_000);
-    expect(info!.max_tokens).toBeNull();
+    expect(info!.max_tokens).toBe(128_000);
     expect(info!.capabilities.effort.supported).toBe(true);
     expect(info!.capabilities.effort.low.supported).toBe(true);
     expect(info!.capabilities.effort.max.supported).toBe(true);
@@ -80,7 +81,17 @@ describe("anthropic-flavor ModelInfo discovery entries (devlog 130 B4b)", () => 
     expect(String(lunaBase)).toBeDefined();
   });
 
-  test("[1m] variants cover 1M NATIVES too (audit R1#1) — and skip sub-1M natives", () => {
+  test("native rows advertise their real context window and jawcode output cap", () => {
+    const infos = buildAnthropicModelInfos(["gpt-5.6-sol", "gpt-5.4"], []);
+    const sol = infos.find(i => i.display_name.includes("gpt-5.6-sol") && !i.id.includes("[1m]"))!;
+    expect(sol.max_input_tokens).toBe(372_000);
+    expect(sol.max_tokens).toBe(128_000);
+    const five4 = infos.find(i => i.display_name.includes("gpt-5.4") && !i.id.includes("[1m]"))!;
+    expect(five4.max_input_tokens).toBe(1_000_000);
+    expect(five4.max_tokens).toBe(128_000);
+  });
+
+  test("[1m] variants cover 1M natives only (gpt-5.4, not gpt-5.6-sol at 372k)", () => {
     const infos = buildAnthropicModelInfos(["gpt-5.4", "gpt-5.6-sol"], []);
     const variants = infos.filter(i => i.id.endsWith("[1m]"));
     expect(variants).toHaveLength(1); // gpt-5.4 (1M) only; gpt-5.6-sol native is 372k

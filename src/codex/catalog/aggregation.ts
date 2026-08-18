@@ -138,6 +138,9 @@ export function deriveComboCatalogModel(
   const maxInputTokens = Math.min(
     ...members.map(member => member.maxInputTokens ?? member.contextWindow!),
   );
+  const memberOutputLimits = members
+    .map(member => member.maxOutputTokens)
+    .filter((value): value is number => typeof value === "number" && value > 0);
   const defaultReasoningEffort = effectiveComboDefault(
     combo.defaultEffort,
     reasoningEfforts,
@@ -149,6 +152,9 @@ export function deriveComboCatalogModel(
     owned_by: COMBO_NAMESPACE,
     contextWindow,
     maxInputTokens,
+    ...(memberOutputLimits.length === members.length
+      ? { maxOutputTokens: Math.min(...memberOutputLimits) }
+      : {}),
     inputModalities,
     reasoningEfforts,
     ...(combo.alias ? { alias: combo.alias } : {}),

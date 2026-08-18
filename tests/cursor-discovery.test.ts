@@ -50,6 +50,12 @@ describe("Cursor discovery metadata", () => {
       expect(cursorModelContextWindows(CURSOR_STATIC_MODELS)[id]).toBe(200_000);
     }
     expect(cursorModelContextWindows(CURSOR_STATIC_MODELS)["composer-2.5-fast"]).toBe(200_000);
+    expect(cursorModelContextWindows(CURSOR_STATIC_MODELS)["gpt-5.4"]).toBe(1_000_000);
+    expect(cursorModelContextWindows(CURSOR_STATIC_MODELS)["gpt-5.6-sol"]).toBe(372_000);
+    expect(cursorModelContextWindows(CURSOR_STATIC_MODELS)["gpt-5.6-terra"]).toBe(372_000);
+    expect(cursorModelContextWindows(CURSOR_STATIC_MODELS)["gpt-5.6-luna"]).toBe(372_000);
+    expect(cursorModelContextWindows(CURSOR_STATIC_MODELS)["gemini-3.5-flash"]).toBe(1_048_576);
+    expect(cursorModelContextWindows(CURSOR_STATIC_MODELS)["glm-5.2"]).toBe(1_000_000);
   });
 
   test("thinking ids and gemini-3.6-flash carry exact windows and no effort tiers", () => {
@@ -139,10 +145,12 @@ describe("Cursor discovery metadata", () => {
     expect(inferCursorContextWindow("unknown-model")).toBe(CURSOR_DEFAULT_CONTEXT_WINDOW);
     expect(inferCursorContextWindow("claude-4.5-sonnet")).toBe(200_000);
     expect(inferCursorContextWindow("claude-opus-4.8")).toBe(200_000);
-    expect(inferCursorContextWindow("gemini-3.5-flash")).toBe(1_000_000);
+    expect(inferCursorContextWindow("gemini-3.5-flash")).toBe(1_048_576);
     expect(inferCursorContextWindow("glm-5.2")).toBe(1_000_000);
     expect(inferCursorContextWindow("grok-4.3")).toBe(256_000);
     expect(inferCursorContextWindow("gpt-5.5")).toBe(272_000);
+    expect(inferCursorContextWindow("gpt-5.4")).toBe(1_000_000);
+    expect(inferCursorContextWindow("gpt-5.6-sol")).toBe(372_000);
   });
 
   test("input modalities are cloned per model", () => {

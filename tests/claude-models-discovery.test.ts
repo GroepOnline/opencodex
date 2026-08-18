@@ -72,7 +72,10 @@ test("anthropic-version header flips /v1/models to the discovery contract", asyn
       expect(entry.type).toBe("model");
       expect(entry.created_at).toBe("2026-01-01T00:00:00Z");
       expect(entry.capabilities).toBeDefined();
-      expect(entry.max_tokens).toBeNull();
+      expect(
+        entry.max_tokens === null
+        || (typeof entry.max_tokens === "number" && entry.max_tokens > 0),
+      ).toBe(true);
     }
     expect(json.data.find(m => m.id === mockAlias)?.display_name).toBe("test-model (mock)");
     // Contract shape only: no OpenAI list fields on the top level.
