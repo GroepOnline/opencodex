@@ -11,6 +11,7 @@ import { loginKimi, refreshKimiToken } from "./kimi";
 import { loginChatGPT, refreshChatGPTToken } from "./chatgpt";
 import { loginAntigravity, refreshAntigravityToken } from "./google-antigravity";
 import { loginCursor, refreshCursorToken } from "./cursor";
+import { autoEnableOAuthAccountPoolOnSecondAccount } from "./auto-enable-pool";
 import { loginGithubCopilot, refreshGithubCopilotToken, validateCopilotApiBaseUrl } from "./github-copilot";
 import { deriveOAuthDefaultModel, deriveOAuthProviderConfig } from "../providers/derive";
 import { apiKeyPoolEntryId, sanitizeApiKeyValue } from "../providers/api-keys";
@@ -751,6 +752,7 @@ export async function runLogin(
       const preCommitConfig = loadLatestConfig();
       upsertOAuthProvider(preCommitConfig, provider);
     }
+    let accountCountBeforeWrite: number | null = null;
     if (opts?.reauthAccountId) {
       const existing = getAccountCredential(provider, opts.reauthAccountId);
       if (!existing) throw new Error(`Unknown account for reauth: ${opts.reauthAccountId}`);
@@ -767,6 +769,7 @@ export async function runLogin(
       }
       await (deps.saveAccountCredential ?? saveAccountCredential)(provider, opts.reauthAccountId, cred);
     } else {
+      accountCountBeforeWrite = getAccountSet(provider)?.accounts.length ?? 0;
       await (deps.saveCredential ?? saveCredential)(provider, cred, {
         preserveIdentityless: provider === "kiro" && opts?.forceLogin === true,
       });
@@ -775,6 +778,9 @@ export async function runLogin(
       // Re-run against post-credential state so same-provider API-key additions, removals,
       // and active-key switches survive. A late namespace claim wins over provider creation.
       const latestConfig = loadLatestConfig();
+      if (accountCountBeforeWrite !== null) {
+        autoEnableOAuthAccountPoolOnSecondAccount(latestConfig, provider, accountCountBeforeWrite);
+      }
       const lateCollision = codexAccountNamespaceProviderCollisionError(
         latestConfig.codexAccountNamespaces,
         provider,

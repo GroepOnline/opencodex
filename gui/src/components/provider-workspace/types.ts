@@ -50,7 +50,7 @@ export type OAuthAccountRow = {
   healthLabel?: string;
   healthSummary?: string;
   healthAction?: string;
-  /** Per-account rate limits, for providers that report usage per credential (anthropic). */
+  /** Per-account rate limits, for providers that report usage per credential. */
   quota?: AccountQuota | null;
   quotaUnavailable?: boolean;
 };

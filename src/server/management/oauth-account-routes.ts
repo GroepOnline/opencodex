@@ -198,10 +198,11 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
         }),
       };
     };
-    // Per-account rate limits: Anthropic and Google Antigravity report usage per
-    // credential, so every logged-in account can show its own bars (not just the
-    // active one). Opt-in via ?quota=1 so the plain account list stays a cheap
-    // local read; ?refresh=1 bypasses the TTL (still joins inflight + writes cache).
+    // Per-account rate limits: Anthropic, Cursor, and Google Antigravity report
+    // usage per credential, so every logged-in account can show its own bars
+    // (not just the active one). Opt-in via ?quota=1 so the plain account list
+    // stays a cheap local read; ?refresh=1 bypasses the TTL (still joins inflight
+    // + writes cache).
     const wantQuota = url.searchParams.get("quota") === "1" && supportsPerAccountQuota(provider);
     if (!wantQuota) return jsonResponse(projectAccounts());
     const forceRefresh = url.searchParams.get("refresh") === "1";
@@ -340,6 +341,54 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
       strategy: normalizeAccountPoolStrategy(strategy),
       stickyLimit: normalizeAccountPoolStickyLimit(stickyLimit),
       experimental: true,
+    });
+  }
+  if (url.pathname === "/api/oauth/accounts/import-key" && req.method === "POST") {
+    const raw = await req.json().catch(() => null);
+    if (!isPlainRecord(raw)) return jsonResponse({ error: "body must be an object" }, 400);
+    const provider = typeof raw.provider === "string" ? raw.provider.trim().toLowerCase() : "";
+    if (provider !== "cursor") {
+      return jsonResponse({ error: "import-key is only supported for cursor" }, 400);
+    }
+    const apiKey = typeof raw.apiKey === "string" ? raw.apiKey.trim() : "";
+    if (!apiKey) return jsonResponse({ error: "missing apiKey" }, 400);
+    if (apiKey.length > 8192) return jsonResponse({ error: "apiKey too long" }, 400);
+    const { credentialsFromCursorTokens } = await import("../../oauth/cursor");
+    const cred = credentialsFromCursorTokens(apiKey, apiKey);
+    if (!cred.accountId) {
+      return jsonResponse({ error: "Cursor API key must be a JWT with a sub claim" }, 400);
+    }
+    const { saveCredential, getAccountSet } = await import("../../oauth/store");
+    const { upsertOAuthProvider } = await import("../../oauth");
+    const { autoEnableOAuthAccountPoolOnSecondAccount } = await import("../../oauth/auto-enable-pool");
+    const accountCountBeforeWrite = getAccountSet("cursor")?.accounts.length ?? 0;
+    try {
+      // Run collision validation before persisting the imported credential.
+      upsertOAuthProvider(config, "cursor");
+    } catch (err) {
+      return jsonResponse({ error: err instanceof Error ? err.message : String(err) }, 409);
+    }
+    try {
+      await saveCredential("cursor", cred);
+    } catch (err) {
+      return jsonResponse({ error: err instanceof Error ? err.message : String(err) }, 500);
+    }
+    autoEnableOAuthAccountPoolOnSecondAccount(config, "cursor", accountCountBeforeWrite);
+    try {
+      upsertOAuthProvider(config, "cursor");
+    } catch (err) {
+      return jsonResponse({ error: err instanceof Error ? err.message : String(err) }, 409);
+    }
+    saveConfigPreservingClaudeCode(config);
+    const { clearAccountQuotaCache } = await import("../../providers/quota");
+    clearProviderQuotaCache();
+    clearAccountQuotaCache("cursor");
+    const set = getAccountSet("cursor");
+    return jsonResponse({
+      ok: true,
+      provider: "cursor",
+      accountId: set?.activeAccountId ?? cred.accountId,
+      poolEnabled: config.cursorAccountPool?.enabled === true,
     });
   }
   if (url.pathname === "/api/oauth/accounts/clear-cooldown" && req.method === "POST") {

@@ -14,6 +14,16 @@ import { startServer } from "../src/server";
 import type { OcxConfig } from "../src/types";
 import { installIsolatedCodexHome, type IsolatedCodexHome } from "./helpers/isolated-codex-home";
 
+function cursorJwt(sub: string): string {
+  const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({
+    sub,
+    email: `${sub.replace(/[^a-z0-9]+/gi, "-")}@example.test`,
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  })).toString("base64url");
+  return `${header}.${payload}.sig`;
+}
+
 function makeCodexConfig(overrides: Partial<OcxConfig> = {}): OcxConfig {
   return {
     port: 10100,
@@ -466,6 +476,94 @@ describe("Anthropic account pool strategy management API", () => {
       expect(await antigravity.json()).toMatchObject({
         provider: "google-antigravity",
         enabled: false,
+      });
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  test("Cursor import-key stores a JWT identity and never echoes the key", async () => {
+    const server = startServer(0);
+    try {
+      const firstKey = cursorJwt("google-oauth2|cursor-a");
+      const first = await fetch(new URL("/api/oauth/accounts/import-key", server.url), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "cursor", apiKey: firstKey }),
+      });
+      expect(first.status).toBe(200);
+      const firstBody = await first.json() as Record<string, unknown>;
+      expect(firstBody).toMatchObject({
+        ok: true,
+        provider: "cursor",
+        poolEnabled: false,
+      });
+      expect(typeof firstBody.accountId).toBe("string");
+      expect(JSON.stringify(firstBody)).not.toContain(firstKey);
+      expect(JSON.stringify(firstBody)).not.toContain("apiKey");
+
+      const pool = await fetch(new URL("/api/oauth/accounts/pool?provider=cursor", server.url));
+      expect(await pool.json()).toMatchObject({ enabled: false });
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  test("Cursor import-key auto-enables the pool on the second distinct account", async () => {
+    const server = startServer(0);
+    try {
+      const first = await fetch(new URL("/api/oauth/accounts/import-key", server.url), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "cursor", apiKey: cursorJwt("google-oauth2|cursor-a") }),
+      });
+      expect(first.status).toBe(200);
+      expect(await first.json()).toMatchObject({ poolEnabled: false });
+
+      const second = await fetch(new URL("/api/oauth/accounts/import-key", server.url), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "cursor", apiKey: cursorJwt("google-oauth2|cursor-b") }),
+      });
+      expect(second.status).toBe(200);
+      expect(await second.json()).toMatchObject({ poolEnabled: true });
+
+      const pool = await fetch(new URL("/api/oauth/accounts/pool?provider=cursor", server.url));
+      expect(await pool.json()).toMatchObject({ provider: "cursor", enabled: true });
+
+      const sameAgain = await fetch(new URL("/api/oauth/accounts/import-key", server.url), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "cursor", apiKey: cursorJwt("google-oauth2|cursor-b") }),
+      });
+      expect(sameAgain.status).toBe(200);
+      expect(await sameAgain.json()).toMatchObject({ poolEnabled: true });
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  test("Cursor import-key rejects non-JWT material and other providers", async () => {
+    const server = startServer(0);
+    try {
+      const missing = await fetch(new URL("/api/oauth/accounts/import-key", server.url), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "cursor", apiKey: "not-a-jwt" }),
+      });
+      expect(missing.status).toBe(400);
+      expect(await missing.json()).toMatchObject({
+        error: "Cursor API key must be a JWT with a sub claim",
+      });
+
+      const anthropic = await fetch(new URL("/api/oauth/accounts/import-key", server.url), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "anthropic", apiKey: cursorJwt("google-oauth2|nope") }),
+      });
+      expect(anthropic.status).toBe(400);
+      expect(await anthropic.json()).toMatchObject({
+        error: "import-key is only supported for cursor",
       });
     } finally {
       await server.stop(true);

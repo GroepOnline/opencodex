@@ -19,7 +19,7 @@ import {
   oauthHealthShowsReauth,
 } from "../../oauth-health-display";
 import CodexAccountPool from "../CodexAccountPool";
-import AnthropicAccountPoolSettings from "./AnthropicAccountPoolSettings";
+import OAuthAccountPoolSettings, { type OAuthPoolProvider } from "./OAuthAccountPoolSettings";
 import { LoginUrlBlock } from "../login-url-block";
 import QuotaBars from "../QuotaBars";
 import { useCopyFeedback } from "../use-copy-feedback";
@@ -30,6 +30,11 @@ const DOCTOR_CMD = "ocx doctor";
 const QUOTA_ENRICH_RESERVE_MS = 4_000;
 const EMPTY_OAUTH_ACCOUNTS: OAuthAccountRow[] = [];
 const EMPTY_API_KEYS: ApiKeyRow[] = [];
+const OAUTH_POOL_PROVIDERS = new Set<string>(["anthropic", "cursor", "google-antigravity"]);
+
+function isOAuthPoolProvider(name: string): name is OAuthPoolProvider {
+  return OAUTH_POOL_PROVIDERS.has(name);
+}
 
 export default function ProviderAuthPanel({
   item, apiBase, oauth, accounts = EMPTY_OAUTH_ACCOUNTS, keys = EMPTY_API_KEYS, accountLoadState = "ready",
@@ -54,6 +59,12 @@ export default function ProviderAuthPanel({
   const [addingKey, setAddingKey] = useState(false);
   const [newKey, setNewKey] = useState("");
   const [keyBusy, setKeyBusy] = useState(false);
+  const [importingCursorKey, setImportingCursorKey] = useState(false);
+  const [cursorApiKey, setCursorApiKey] = useState("");
+  const [cursorKeyBusy, setCursorKeyBusy] = useState(false);
+  const [cursorKeyError, setCursorKeyError] = useState<string | null>(null);
+  const [clearingCooldownId, setClearingCooldownId] = useState<string | null>(null);
+  const [cooldownError, setCooldownError] = useState<string | null>(null);
   const [reserveQuotaSlots, setReserveQuotaSlots] = useState(false);
   const deviceCodeCopy = useCopyFeedback<string>();
   const doctorCopy = useCopyFeedback<string>();
@@ -127,14 +138,62 @@ export default function ProviderAuthPanel({
     }
   };
 
+  const submitCursorApiKey = async () => {
+    const key = cursorApiKey.trim();
+    if (!key) return;
+    setCursorKeyBusy(true);
+    setCursorKeyError(null);
+    try {
+      const res = await fetch(`${apiBase}/api/oauth/accounts/import-key`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ provider: "cursor", apiKey: key }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: unknown } | null;
+        const invalid = typeof body?.error === "string" && body.error.includes("JWT");
+        setCursorKeyError(t(invalid ? "oauthPool.importKeyInvalid" : "oauthPool.importKeyFailed"));
+        return;
+      }
+      setCursorApiKey("");
+      setImportingCursorKey(false);
+      await authHandlers.onRetryAccounts?.(item.name);
+    } catch {
+      setCursorKeyError(t("oauthPool.importKeyFailed"));
+    } finally {
+      setCursorKeyBusy(false);
+    }
+  };
+
+  const clearAccountCooldown = async (accountId: string) => {
+    setClearingCooldownId(accountId);
+    setCooldownError(null);
+    try {
+      const res = await fetch(`${apiBase}/api/oauth/accounts/clear-cooldown`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ provider: item.name, accountId }),
+      });
+      if (!res.ok) {
+        setCooldownError(t("oauthPool.clearCooldownFailed"));
+        return;
+      }
+      await authHandlers.onRetryAccounts?.(item.name);
+    } catch {
+      setCooldownError(t("oauthPool.clearCooldownFailed"));
+    } finally {
+      setClearingCooldownId(null);
+    }
+  };
+
   return (
     <section className="pwi-section pwi-auth-section" aria-label={isOauth ? t("pws.availableAccounts") : t("pws.apiKeys")}>
       <h3 className="pwi-section-title">{isOauth ? t("pws.availableAccounts") : t("pws.apiKeys")}</h3>
       <div className="pwi-auth-body">
         {isOauth && (
           <>
-            {item.name === "anthropic" && (
-              <AnthropicAccountPoolSettings apiBase={apiBase} accountCount={accounts.length} />
+            {isOAuthPoolProvider(item.name) && (
+              <OAuthAccountPoolSettings provider={item.name} apiBase={apiBase} accountCount={accounts.length} />
             )}
             <div className="pwi-auth-status-row">
               <span className={`pwi-auth-dot ${activeNeedsReauth ? "pwi-auth-dot--warn" : loggedIn ? "pwi-auth-dot--ok" : "pwi-auth-dot--off"}`} aria-hidden="true" />
@@ -199,6 +258,11 @@ export default function ProviderAuthPanel({
                 )}
               </div>
             )}
+            {cooldownError && (
+              <div role="alert" className="card-sub" style={{ marginTop: 8, color: "var(--red)" }}>
+                {cooldownError}
+              </div>
+            )}
             {accounts.length > 0 && (
               <ul className="pwi-auth-list">
                 {accounts.map(account => {
@@ -253,6 +317,16 @@ export default function ProviderAuthPanel({
                         <span aria-live="polite">{doctorCopyButtonLabel(t, doctorCopy.outcomeFor(account.id))}</span>
                       </button>
                     )}
+                    {inCooldown && isOAuthPoolProvider(item.name) && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={busy || Boolean(switchingAccountId) || clearingCooldownId === account.id}
+                        onClick={() => void clearAccountCooldown(account.id)}
+                      >
+                        {t("oauthPool.clearCooldown")}
+                      </button>
+                    )}
                     <button type="button" className="btn btn-ghost btn-sm"
                       onClick={() => void authHandlers.onEditAlias(item.name, "oauth", account.id, account.alias)}>
                       {t("prov.editAlias")}
@@ -294,6 +368,52 @@ export default function ProviderAuthPanel({
                 onClick={() => void authHandlers.onLogin(item.name, true)} disabled={busy || Boolean(switchingAccountId)}>
                 {t("pws.addAccount")}
               </button>
+            )}
+            {item.name === "cursor" && (
+              importingCursorKey ? (
+                <div className="pwi-auth-add-key" style={{ marginTop: 8 }}>
+                  <input
+                    className="input"
+                    type="password"
+                    value={cursorApiKey}
+                    onChange={e => setCursorApiKey(e.target.value)}
+                    placeholder={t("oauthPool.importKeyPlaceholder")}
+                    autoComplete="off"
+                    disabled={cursorKeyBusy}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => void submitCursorApiKey()}
+                    disabled={cursorKeyBusy || !cursorApiKey.trim()}
+                  >
+                    {cursorKeyBusy ? t("pws.saving") : t("oauthPool.importKeySubmit")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => { setImportingCursorKey(false); setCursorApiKey(""); setCursorKeyError(null); }}
+                  >
+                    {t("common.cancel")}
+                  </button>
+                  <div className="card-sub" style={{ flexBasis: "100%" }}>{t("oauthPool.importKeyHelp")}</div>
+                  {cursorKeyError && (
+                    <div role="alert" className="card-sub" style={{ flexBasis: "100%", color: "var(--red)" }}>
+                      {cursorKeyError}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ marginTop: 8 }}
+                  onClick={() => { setImportingCursorKey(true); setCursorKeyError(null); }}
+                  disabled={busy || cursorKeyBusy || Boolean(switchingAccountId)}
+                >
+                  {t("oauthPool.importKey")}
+                </button>
+              )
             )}
           </>
         )}
