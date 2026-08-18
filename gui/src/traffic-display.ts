@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { TKey } from "./i18n/shared";
 
 const UNKNOWN_SENTINEL = "unknown";
@@ -16,12 +17,12 @@ export function isUnknownTrafficLabel(value: string | undefined): boolean {
   return !value?.trim() || value.trim().toLowerCase() === UNKNOWN_SENTINEL;
 }
 
-/** Local calendar day key — matches server usage bucketing and row timestamps in the browser TZ. */
+/** UTC calendar day key — the explicit timezone shared with server usage bucketing. */
 export function localTrafficDateKey(ts = Date.now()): string {
   const d = new Date(ts);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
 
@@ -61,12 +62,16 @@ export function trafficPrincipalLabel(
 export function trafficProviderModelLabel(
   row: Pick<TrafficLogRow, "model" | "provider">,
   t: (key: TKey) => string,
-  formatModel: (model: string) => string = value => value,
-): string {
+  formatModel: (model: string) => ReactNode = value => value,
+): ReactNode {
   const providerKnown = !isUnknownTrafficLabel(row.provider);
   const modelKnown = !isUnknownTrafficLabel(row.model);
   if (!providerKnown && !modelKnown) return t("common.unknown");
-  if (providerKnown && modelKnown) return `${row.provider.trim()}/${formatModel(row.model)}`;
+  if (providerKnown && modelKnown) {
+      const model = row.model.trim();
+      if (model.toLowerCase().startsWith(`${row.provider.trim().toLowerCase()}/`)) return formatModel(model);
+      return <>{row.provider.trim()}/{formatModel(model)}</>;
+    }
   if (providerKnown) return row.provider.trim();
   return formatModel(row.model);
 }
