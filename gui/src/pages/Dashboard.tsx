@@ -4,6 +4,11 @@ import { useT, useI18n } from "../i18n/shared";
 import { formatTokens } from "../format-tokens";
 import { formatUptime } from "../formatUptime";
 import { statusCodeInfo } from "../status-codes";
+import {
+  resolveRequestsToday,
+  trafficPrincipalLabel,
+  trafficProviderModelLabel,
+} from "../traffic-display";
 import { modelLabel } from "../model-display";
 import { IconCheck, IconAlert } from "../icons";
 
@@ -21,6 +26,8 @@ interface BonEntry {
   timestamp: number;
   model: string;
   provider: string;
+  principal?: string;
+  account?: string;
   status: number;
   durationMs: number;
   errorCode?: string;
@@ -49,10 +56,6 @@ interface UsageSummary {
   };
   days: Array<{ date: string; requests: number; totalTokens?: number }>;
   providers: UsageProviderRow[];
-}
-
-function vandaagKey(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 function bonTokens(entry: BonEntry): number | undefined {
@@ -106,10 +109,10 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
     return () => { cancelled = true; clearInterval(iv); };
   }, [apiBase]);
 
-  const requestsVandaag = useMemo(() => {
-    const key = vandaagKey();
-    return summary?.days.find(d => d.date === key)?.requests ?? 0;
-  }, [summary]);
+  const requestsVandaag = useMemo(
+    () => resolveRequestsToday(summary?.days, logs),
+    [summary, logs],
+  );
 
   const requests30d = summary?.summary.requests ?? 0;
   const tokens30d = summary?.summary.totalTokens ?? 0;
@@ -246,13 +249,14 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
                 const stempelCls = entry.status >= 200 && entry.status < 300 ? "stempel--klaar" : "stempel--fout";
                 return (
                   <div key={id} className="bon" style={{ borderBottom: "1px solid var(--border-soft)" }}>
-                    <div className="bon-kop" style={{ padding: "6px 8px", display: "flex", gap: 8, alignItems: "center", fontSize: "0.8125rem" }}>
+                    <div className="bon-kop" style={{ padding: "6px 8px" }}>
                       <span className="bon-tijd">{tijd(entry.timestamp, locale)}</span>
-                      <span className="bon-titel" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {modelLabel(entry.model)}
-                      </span>
-                      <span className="bon-meta">{entry.provider}</span>
-                      {tokens !== undefined && <span className="bon-meta">{t("vk.rowTokens", { n: formatTokens(tokens, locale) })}</span>}
+                      <span className="bon-titel">{trafficProviderModelLabel(entry, t, modelLabel)}</span>
+                      <span className="bon-meta">{trafficPrincipalLabel(entry, t)}</span>
+                      {tokens !== undefined
+                        ? <span className="bon-meta">{t("vk.rowTokens", { n: formatTokens(tokens, locale) })}</span>
+                        : <span className="bon-meta" aria-hidden="true" />}
+                      <span className="bon-meta">{t("vk.rowDuration", { s: (entry.durationMs / 1000).toFixed(1) })}</span>
                       <span className={`stempel ${stempelCls}`}>{statusInfo?.label ?? entry.status}</span>
                     </div>
                   </div>

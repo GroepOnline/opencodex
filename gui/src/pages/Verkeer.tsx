@@ -4,6 +4,13 @@ import { useI18n, type TKey } from "../i18n/shared";
 import { formatTokens } from "../format-tokens";
 import { statusCodeInfo } from "../status-codes";
 import { modelLabel } from "../model-display";
+import {
+  isUnknownTrafficLabel,
+  resolveRequestsToday,
+  trafficFilterLabel,
+  trafficPrincipalLabel,
+  trafficProviderModelLabel,
+} from "../traffic-display";
 
 interface UsageSummary {
   summary: { requests: number; totalTokens: number };
@@ -15,6 +22,8 @@ interface BonEntry {
   timestamp: number;
   model: string;
   provider: string;
+  principal?: string;
+  account?: string;
   status: number;
   durationMs: number;
   errorCode?: string;
@@ -40,10 +49,6 @@ function bonStempel(entry: BonEntry): { labelKey: TKey; cls: string } {
 
 function tijd(ts: number, locale: string): string {
   return new Date(ts).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-}
-
-function vandaagKey(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 /** Verkeer: stat-strip + de bonnenrail met recente requests, met de volledige analyse eronder. */
@@ -103,16 +108,19 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
     return () => { cancelled = true; clearInterval(iv); };
   }, [apiBase]);
 
-  const providers = useMemo(() => [...new Set(logs.map(l => l.provider))].sort(), [logs]);
+  const providers = useMemo(
+    () => [...new Set(logs.map(l => (isUnknownTrafficLabel(l.provider) ? null : l.provider)).filter(Boolean))].sort() as string[],
+    [logs],
+  );
   const zichtbaar = useMemo(
     () => (providerFilter ? logs.filter(l => l.provider === providerFilter) : logs).slice(0, 60),
     [logs, providerFilter],
   );
 
-  const requestsVandaag = useMemo(() => {
-    const key = vandaagKey();
-    return summary30d?.days.find(d => d.date === key)?.requests ?? 0;
-  }, [summary30d]);
+  const requestsVandaag = useMemo(
+    () => resolveRequestsToday(summary30d?.days, logs),
+    [summary30d, logs],
+  );
 
   const requests30d = summary30d?.summary.requests ?? 0;
   const tokens30d = summary30d?.summary.totalTokens ?? 0;
@@ -155,7 +163,7 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
               className={`usage-segmented-btn${providerFilter === p ? " active" : ""}`}
               onClick={() => setProviderFilter(current => current === p ? null : p)}
             >
-              {p}
+              {trafficFilterLabel(p, t)}
             </button>
           ))}
         </div>
@@ -187,6 +195,8 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
           const tokens = bonTokens(entry);
           const isOpen = openBon === id;
           const statusInfo = statusCodeInfo(entry.status, locale);
+          const providerModelText = trafficProviderModelLabel(entry, t, modelLabel);
+          const principalText = trafficPrincipalLabel(entry, t);
           return (
             <div key={id} className="bon">
               <button
@@ -197,11 +207,13 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
                 aria-expanded={isOpen}
               >
                 <span className="bon-tijd">{tijd(entry.timestamp, locale)}</span>
-                <span className="bon-titel">{modelLabel(entry.model)}</span>
-                <span className="bon-meta">{entry.provider}</span>
-                {tokens !== undefined && <span className="bon-meta">{t("vk.rowTokens", { n: formatTokens(tokens, locale) })}</span>}
+                <span className="bon-titel">{providerModelText}</span>
+                <span className="bon-meta">{principalText}</span>
+                {tokens !== undefined
+                  ? <span className="bon-meta">{t("vk.rowTokens", { n: formatTokens(tokens, locale) })}</span>
+                  : <span className="bon-meta" aria-hidden="true" />}
                 <span className="bon-meta">{t("vk.rowDuration", { s: (entry.durationMs / 1000).toFixed(1) })}</span>
-                <span className={`stempel ${stempel.cls}`}>{t(stempel.labelKey)}</span>
+                <span className={`stempel ${stempel.cls}`}>{statusInfo?.label ?? t(stempel.labelKey)}</span>
               </button>
               {isOpen && (
                 <div className="bon-detail">

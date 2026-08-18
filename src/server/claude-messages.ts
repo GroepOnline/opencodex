@@ -29,7 +29,7 @@ import { routeModel } from "../router";
 import { resolveWireProtocolOverride } from "./adapter-resolve";
 import type { OcxConfig } from "../types";
 import { readJsonRequestBody } from "./request-decompress";
-import { addFinalRequestLog, httpStatusForTerminalStatus, recordFirstOutput, type RequestLogContext, type RequestLogEntry } from "./request-log";
+import { addFinalRequestLog, applyDataPlaneLogAdmission, httpStatusForTerminalStatus, recordFirstOutput, seedLogCtxFromRequestBody, type RequestLogContext, type RequestLogEntry } from "./request-log";
 import { conversationIdFromClaudeMetadata } from "./request-log-conversation";
 import { responseWithDeferredRequestLog } from "./relay";
 import { handleResponses } from "./responses";
@@ -513,6 +513,7 @@ export async function handleClaudeMessages(
   logCtx: RequestLogContext,
   logIds?: { requestId: string; start: number },
 ): Promise<Response> {
+  applyDataPlaneLogAdmission(logCtx, req, config);
   logCtx.surface = "claude";
   const disabled = claudeInboundDisabled(config);
   if (disabled) {
@@ -578,11 +579,14 @@ export async function handleClaudeMessages(
     cacheKeySource = translation.cacheKeySource;
   } catch (err) {
     const status = err instanceof AnthropicRequestError ? 400 : 500;
+    if (anthropicBody !== undefined) seedLogCtxFromRequestBody(logCtx, anthropicBody, config);
     if (logIds) addFinalRequestLog(logIds.requestId, logIds.start, logCtx, status, { closeReason: "non_stream" });
     return anthropicErrorResponse(status, err instanceof Error ? err.message : String(err));
   }
 
   const requestedModel = (anthropicBody as Rec).model as string;
+  logCtx.requestedModel = requestedModel;
+  logCtx.model = typeof internalBody.model === "string" ? internalBody.model : requestedModel;
   const stream = internalBody.stream === true;
   // Routed adapters only support streamed turns; always stream internally and fold
   // the translated Anthropic SSE into a message JSON for non-streaming clients.

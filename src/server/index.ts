@@ -69,6 +69,7 @@ export {
 } from "./lifecycle";
 import {
   addFinalRequestLog,
+  applyDataPlaneLogAdmission,
   hydrateRequestLogsFromDisk,
   httpStatusForRequestLogTerminal,
   httpStatusForTerminalStatus,
@@ -607,6 +608,7 @@ export function startServer(port?: number) {
         const start = Date.now();
         const requestId = nextRequestLogId(start);
         const logCtx: RequestLogContext = { model: "unknown", provider: "unknown" };
+        applyDataPlaneLogAdmission(logCtx, req, config);
         let response: Response;
         try {
           response = await handleResponsesCompact(req, config, logCtx);
@@ -643,6 +645,7 @@ export function startServer(port?: number) {
         const start = Date.now();
         const requestId = nextRequestLogId(start);
         const logCtx: RequestLogContext = { model: "image_gen", provider: "unknown" };
+        applyDataPlaneLogAdmission(logCtx, req, config);
         const endpoint = url.pathname.endsWith("/edits") ? "edits" as const : "generations" as const;
         const response = await handleImages(req, config, endpoint, logCtx);
         addFinalRequestLog(requestId, start, logCtx, response.status, response.status === 499 ? { closeReason: "client_cancel" } : undefined);
@@ -696,6 +699,7 @@ export function startServer(port?: number) {
         const start = Date.now();
         const requestId = nextRequestLogId(start);
         const logCtx: RequestLogContext = { model: "web_search", provider: "unknown" };
+        applyDataPlaneLogAdmission(logCtx, req, config);
         const response = await handleSearch(req, config, logCtx);
         addFinalRequestLog(
           requestId,
@@ -840,6 +844,7 @@ export function startServer(port?: number) {
         const start = Date.now();
         const requestId = nextRequestLogId(start);
         const logCtx: RequestLogContext = { model: "gpt-live", provider: "unknown" };
+        applyDataPlaneLogAdmission(logCtx, req, config);
         const response = await handleLive(req, config, logCtx);
         addFinalRequestLog(
           requestId,
@@ -876,6 +881,7 @@ export function startServer(port?: number) {
         const start = Date.now();
         const requestId = nextRequestLogId(start);
         const logCtx: RequestLogContext = { model: "gpt-live", provider: "unknown" };
+        applyDataPlaneLogAdmission(logCtx, req, config);
         const resolved = await resolveLiveSidebandUpgrade(req, config, logCtx, liveSidebandTarget);
         if (resolved instanceof Response) {
           addFinalRequestLog(requestId, start, logCtx, resolved.status);

@@ -24,8 +24,10 @@ import type { OcxConfig } from "../types";
 import { readJsonRequestBody } from "./request-decompress";
 import {
   addFinalRequestLog,
+  applyDataPlaneLogAdmission,
   httpStatusForTerminalStatus,
   recordFirstOutput,
+  seedLogCtxFromRequestBody,
   type RequestLogContext,
   type RequestLogEntry,
 } from "./request-log";
@@ -51,6 +53,7 @@ export async function handleChatCompletions(
   logCtx: RequestLogContext,
   logIds?: { requestId: string; start: number },
 ): Promise<Response> {
+  applyDataPlaneLogAdmission(logCtx, req, config);
   let chatBody: unknown;
   let internalBody: Rec;
   try {
@@ -58,11 +61,14 @@ export async function handleChatCompletions(
     internalBody = chatCompletionsToResponsesBody(chatBody);
   } catch (err) {
     const status = err instanceof ChatCompletionsRequestError ? 400 : 500;
+    if (chatBody) seedLogCtxFromRequestBody(logCtx, chatBody, config);
     if (logIds) addFinalRequestLog(logIds.requestId, logIds.start, logCtx, status, { closeReason: "non_stream" });
     return chatCompletionsErrorResponse(status, err instanceof Error ? err.message : String(err));
   }
 
   const requestedModel = (chatBody as Rec).model as string;
+  logCtx.requestedModel = requestedModel;
+  logCtx.model = requestedModel;
   const stream = internalBody.stream === true;
   // Best-effort Grok attribution: the managed fence stamps this header on every model
   // it registers (extra_headers, sent verbatim by upstream Grok). Dashboard usage

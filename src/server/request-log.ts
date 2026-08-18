@@ -10,6 +10,8 @@ import { readCodexCatalogPath } from "../codex/catalog";
 import type { OcxUsage } from "../types";
 import type { AdapterRequest } from "../adapters/base";
 import { redactSecretString } from "../lib/redact";
+import { resolveDataPlanePrincipalName } from "./auth-cors";
+import { providerAccountLabel } from "../providers/label";
 import {
   appendUsageEntry,
   isKnownUsageSurface,
@@ -31,10 +33,79 @@ import {
 } from "../usage/debug";
 import { matchesLogConversationId } from "./request-log-conversation";
 import { recordProviderCapCooldownLive } from "../providers/cap-cooldown";
+import { routeModel } from "../router";
+import type { OcxConfig } from "../types";
+
+const UNKNOWN_LOG_LABEL = "unknown";
+
+function isUnknownLogLabel(value: string | undefined): boolean {
+  return !value || value === UNKNOWN_LOG_LABEL;
+}
+
+function providerFromNamespacedModel(modelId: string | undefined): string | undefined {
+  if (!modelId) return undefined;
+  const slash = modelId.indexOf("/");
+  if (slash <= 0) return undefined;
+  return modelId.slice(0, slash);
+}
+
+function resolveLoggedModel(logCtx: RequestLogContext, isCombo: boolean): string {
+  if (isCombo && logCtx.requestedModel) return logCtx.requestedModel;
+  if (!isUnknownLogLabel(logCtx.model)) return logCtx.model;
+  if (logCtx.requestedModel) return logCtx.requestedModel;
+  const fromAttempt = logCtx.attempts?.find(attempt => !isUnknownLogLabel(attempt.model))?.model;
+  return fromAttempt ?? logCtx.model;
+}
+
+function resolveLoggedProvider(logCtx: RequestLogContext, isCombo: boolean, model: string): string {
+  if (isCombo) return "combo";
+  if (!isUnknownLogLabel(logCtx.provider)) return logCtx.provider;
+  if (logCtx.providerConfigKey) return logCtx.providerConfigKey;
+  const fromAttempt = logCtx.attempts?.find(attempt => !isUnknownLogLabel(attempt.provider))?.provider;
+  if (fromAttempt) return fromAttempt;
+  return providerFromNamespacedModel(logCtx.requestedModel ?? model) ?? logCtx.provider;
+}
+
+/** Best-effort model/provider stamp from a parsed JSON body before routing completes. */
+export function seedLogCtxFromRequestBody(
+  logCtx: RequestLogContext,
+  body: unknown,
+  config: OcxConfig,
+): void {
+  if (!body || typeof body !== "object") return;
+  const rawModel = (body as { model?: unknown }).model;
+  const model = typeof rawModel === "string" ? rawModel.trim() : "";
+  if (!model) return;
+  logCtx.requestedModel = model;
+  if (isUnknownLogLabel(logCtx.model)) logCtx.model = model;
+  if (!isUnknownLogLabel(logCtx.provider)) return;
+  try {
+    const route = routeModel(config, model);
+    logCtx.provider = route.providerName;
+    logCtx.providerConfigKey = route.providerName;
+    logCtx.providerAdapter = route.provider.adapter;
+    if (route.modelId !== model) logCtx.model = route.modelId;
+  } catch {
+    const namespaced = providerFromNamespacedModel(model);
+    if (namespaced) logCtx.provider = namespaced;
+  }
+}
+
+/** Stamp admission principal on a request log context (apiKeys[].name only). */
+export function applyDataPlaneLogAdmission(
+  logCtx: RequestLogContext,
+  req: Request,
+  config: OcxConfig,
+): void {
+  const principal = resolveDataPlanePrincipalName(req, config);
+  if (principal) logCtx.principal = principal;
+}
 
 export interface RequestLogContext {
   model: string;
   provider: string;
+  /** Configured apiKeys[].name when the request authenticated with a named key. */
+  principal?: string;
   /**
    * The `config.providers` key this request actually routed to. `provider` is a *display*
    * label that can carry a Codex account suffix (`chatgpt-work`), which collides with a real
@@ -96,6 +167,10 @@ export interface RequestLogEntry {
   timestamp: number;
   model: string;
   provider: string;
+  /** Configured apiKeys[].name when the request authenticated with a named key. */
+  principal?: string;
+  /** Pseudonymized Codex account suffix when present on the provider label. */
+  account?: string;
   /** TTFT: ms from request start to the first non-empty model output delta; unset for non-streaming/tool-only. */
   firstOutputMs?: number;
   surface?: "claude" | "claude-desktop" | "grok";
@@ -160,11 +235,17 @@ function asCloseReason(value: string | undefined): RequestLogEntry["closeReason"
 export function requestLogEntryFromPersistedUsage(entry: PersistedUsageEntry): RequestLogEntry {
   const terminalStatus = asTerminalStatus(entry.terminalStatus);
   const closeReason = asCloseReason(entry.closeReason);
+  const model = !isUnknownLogLabel(entry.model) ? entry.model : (entry.requestedModel ?? entry.model);
+  const provider = !isUnknownLogLabel(entry.provider)
+    ? entry.provider
+    : (providerFromNamespacedModel(entry.requestedModel ?? model) ?? entry.provider);
   return {
     requestId: entry.requestId,
     timestamp: entry.timestamp,
-    model: entry.model,
-    provider: entry.provider,
+    model,
+    provider,
+    ...(entry.principal ? { principal: entry.principal } : {}),
+    ...(entry.account ? { account: entry.account } : {}),
     ...(entry.firstOutputMs !== undefined ? { firstOutputMs: entry.firstOutputMs } : {}),
     ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
     ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
@@ -241,6 +322,7 @@ export function addRequestLog(entry: RequestLogEntry) {
         ...(entry.upstreamError ? { upstreamError: entry.upstreamError } : {}),
       }
       : {};
+    const account = providerAccountLabel(entry.provider);
     appendUsageEntry({
       requestId: entry.requestId,
       timestamp: entry.timestamp,
@@ -248,6 +330,8 @@ export function addRequestLog(entry: RequestLogEntry) {
       model: entry.model,
       ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
       ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
+      ...(account ? { account } : {}),
+      ...(entry.principal ? { principal: entry.principal } : {}),
       ...(entry.resolvedModel ? { resolvedModel: entry.resolvedModel } : {}),
       ...(entry.requestedModel ? { requestedModel: entry.requestedModel } : {}),
       ...(entry.requestedEffort ? { requestedEffort: entry.requestedEffort } : {}),
@@ -705,11 +789,16 @@ export function addFinalRequestLog(
   const loggedUsage = aggregate?.usage ?? existing.usage;
   const usageStatus = aggregate?.status ?? existing.status;
   const totalTokens = aggregate?.totalTokens ?? existing.totalTokens;
+  const loggedModel = resolveLoggedModel(logCtx, isCombo);
+  const loggedProvider = resolveLoggedProvider(logCtx, isCombo, loggedModel);
+  const account = providerAccountLabel(loggedProvider);
   addLog({
     requestId,
     timestamp: start,
-    model: isCombo ? logCtx.requestedModel! : logCtx.model,
-    provider: isCombo ? "combo" : logCtx.provider,
+    model: loggedModel,
+    provider: loggedProvider,
+    ...(logCtx.principal ? { principal: logCtx.principal } : {}),
+    ...(account ? { account } : {}),
     ...(logCtx.surface ? { surface: logCtx.surface } : {}),
     ...(logCtx.conversationId ? { conversationId: logCtx.conversationId } : {}),
     ...(logCtx.requestedModel ? { requestedModel: logCtx.requestedModel } : {}),

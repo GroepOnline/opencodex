@@ -17,3 +17,16 @@ export function baseProviderLabel(provider: string): string {
   if (suffix === "main") return canonicalUsageProviderLabel(provider.slice(0, cut));
   return CODEX_ACCOUNT_LOG_LABEL_RE.test(suffix) ? canonicalUsageProviderLabel(provider.slice(0, cut)) : provider;
 }
+
+/**
+ * Pseudonymized Codex account suffix on a usage/log provider label (`p<hex6>` or legacy
+ * `main`). Undefined when the suffix is not one aggregation would strip.
+ */
+export function providerAccountLabel(provider: string): string | undefined {
+  if (canonicalUsageProviderLabel(provider) !== provider) return undefined;
+  const cut = provider.lastIndexOf("-");
+  if (cut <= 0) return undefined;
+  const suffix = provider.slice(cut + 1);
+  if (suffix === "main") return baseProviderLabel(provider) !== provider ? "main" : undefined;
+  return CODEX_ACCOUNT_LOG_LABEL_RE.test(suffix) ? suffix : undefined;
+}

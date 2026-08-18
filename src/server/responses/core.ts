@@ -143,9 +143,11 @@ import {
 } from "../../codex/subagent-model-fallback";
 import {
   beginRequestAttempt,
+  applyDataPlaneLogAdmission,
   catalogModelSupportsServiceTier,
   finishRequestAttempt,
   inspectResponseLogJson,
+  seedLogCtxFromRequestBody,
   noteAttemptSend,
   readConfiguredCodexServiceTier,
   recordAdapterReasoning,
@@ -1149,6 +1151,7 @@ export async function handleResponses(
   logCtx: RequestLogContext,
   options: HandleResponsesOptions = {},
 ): Promise<Response> {
+  applyDataPlaneLogAdmission(logCtx, req, config);
   if (!options.attemptBudget) {
     options = { ...options, attemptBudget: createUpstreamAttemptBudget() };
   }
@@ -1193,6 +1196,7 @@ export async function handleResponses(
     const clientThreadId = req.headers.get("x-codex-parent-thread-id")?.trim();
     if (clientThreadId) parsed._clientThreadId = clientThreadId;
   } catch (err) {
+    seedLogCtxFromRequestBody(logCtx, body, config);
     return formatErrorResponse(400, "invalid_request_error", err instanceof Error ? err.message : String(err));
   }
   // Prefer a pre-populated id (routed Claude) over Responses headers that may be
@@ -1206,6 +1210,7 @@ export async function handleResponses(
     });
   }
   logCtx.requestedModel = parsed.modelId;
+  logCtx.model = parsed.modelId;
   logCtx.requestedEffort = parsed.options.reasoning;
   logCtx.requestedServiceTier = parsed.options.serviceTier;
   logCtx.requestedSpeedLabel = requestLogSpeedLabel(parsed.options.serviceTier);
@@ -1235,6 +1240,9 @@ export async function handleResponses(
   let route: RouteResult;
   try {
     route = routeModel(config, parsed.modelId);
+    logCtx.provider = route.providerName;
+    logCtx.model = route.modelId;
+    logCtx.providerConfigKey = route.providerName;
   } catch (err) {
     if (err instanceof NoAvailableComboTargetsError) {
       return comboUnavailableResponse(err.message);

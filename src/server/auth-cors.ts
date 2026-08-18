@@ -293,6 +293,16 @@ function extractDataPlaneAdmissionToken(req: Request): string | undefined {
     || req.headers.get("x-api-key")?.trim();
 }
 
+/** Human-readable principal for traffic logs — configured apiKeys[].name only; never the secret. */
+export function resolveDataPlanePrincipalName(req: Request, config: OcxConfig): string | undefined {
+  const token = extractDataPlaneAdmissionToken(req);
+  if (!token) return undefined;
+  for (const entry of config.apiKeys ?? []) {
+    if (entry.name.trim() && secretEquals(token, entry.key)) return entry.name.trim();
+  }
+  return undefined;
+}
+
 export function requireApiAuth(req: Request, config: OcxConfig, _kind: "data-plane"): Response | null {
   if (hasValidApiAuth(req, config)) return null;
   return formatErrorResponse(401, "authentication_error", "opencodex API key required");

@@ -101,12 +101,14 @@ const overrides: Partial<Record<TKey, string>> = {
   "pws.dashboard.title": "Overzicht leveranciers",
   "pws.dashboard.subtitle": "Alle model-leveranciers op één plek.",
   "pws.dashboard.rateLimits": "RATE LIMITS",
+  "pws.dashboard.configured": "GECONFIGUREERD",
   "pws.dashboard.recentlyUsed": "RECENT GEBRUIKT",
   "pws.dashboard.requests": "{count} requests",
   "pws.dashboard.checkedAgo": "Check {time}",
   "pws.dashboard.noQuota": "Geen quota-data",
   "pws.dashboard.noUsage": "Nog geen verbruik",
   "pws.dashboard.noRateLimits": "Nog geen rate-limit data",
+  "pws.noProvidersConfigured": "Geen leveranciers geconfigureerd.",
   "pws.allProviders": "Leveranciersoverzicht",
   "pws.saveSettings": "Bewaar",
   "pws.saving": "Bewaren…",
@@ -286,6 +288,7 @@ const overrides: Partial<Record<TKey, string>> = {
   "common.ok": "OK",
   "common.remove": "Verwijder",
   "common.loading": "Laden…",
+  "common.unknown": "Onbekend",
 
   // theme / language
   "theme.label": "Weergave",
@@ -549,6 +552,7 @@ const overrides: Partial<Record<TKey, string>> = {
   "pws.capCooldown.disabled": "Tijdelijk uitgeschakeld tot de limiet reset.",
   "pws.capCooldown.paused": "Routing voor deze leverancier staat tot die tijd stil.",
   "pws.capCooldown.badge": "Vol",
+  "pws.capCooldown.rowStamp": "Limiet · {reset}",
   "pws.attention.capCooldown": "Wekelijks/inference-limiet — {reset}",
 };
 
