@@ -52,6 +52,8 @@ auto-generated `~/.opencodex/admin-api-token` file).
 | **Storage** | Read-only CODEX_HOME disk breakdown (sessions, archives, DBs, attachments). Optional archived cleanup: preview the oldest N%, then quarantine to `CODEX_HOME/.trash` (default) or permanently delete behind an explicit checkbox. **Auto-cleanup policy** is opt-in and **default OFF** (`storageCleanupPolicy.enabled`); configure threshold/target/schedule/mode on the Storage page, or trigger **Run now**. Quarantined entries can be restored from the Storage page (JSONL + threads). Active sessions stay read-only. Cleanup and restore are refused while Codex holds the newest/active `state_*.sqlite` locked. |
 | **Stop** | Gracefully stop the proxy and installed background service, restore native Codex, and exit (`POST /api/stop`). |
 
+Configured providers remain visible on the provider dashboard even when they have no quota support or are temporarily paused by a cap cooldown. Providers that still need credentials are shown alongside ready providers so their setup state is not hidden.
+
 ### Linking to a section
 
 There is a single layout, so there is no layout switch to configure. The top-level **Usage** tab
