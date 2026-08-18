@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
-import { detectInstall } from "../update/index";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export interface LiveCheckoutDiagnostic {
@@ -34,7 +33,6 @@ function git(cwd: string, args: string[]): string {
 export function findGitCheckout(startDir: string): string | null {
   let dir = resolve(startDir);
   for (let i = 0; i < 16; i++) {
-    if (basename(dir) === "node_modules") return null;
     if (existsSync(join(dir, ".git"))) return dir;
     const parent = dirname(dir);
     if (parent === dir) return null;
@@ -48,9 +46,9 @@ export function findGitCheckout(startDir: string): string | null {
  * those can quote unpublished config (including 3P gateway keys).
  */
 export function diagnoseLiveCheckout(startDir?: string): LiveCheckoutDiagnostic {
-  if (detectInstall() !== "source") return EMPTY_CHECKOUT;
   const from = startDir ?? fileURLToPath(new URL("../..", import.meta.url));
-  const root = findGitCheckout(from);
+  // Never walk into an ancestor when running from an installed package.
+  const root = startDir ? findGitCheckout(from) : (existsSync(join(from, ".git")) ? from : null);
   if (!root) return EMPTY_CHECKOUT;
   try {
     const sha = git(root, ["rev-parse", "HEAD"]);
