@@ -200,6 +200,7 @@ describe("fetchProviderAccountQuotas", () => {
   test("providers without a per-account usage API are skipped", async () => {
     expect(supportsPerAccountQuota("anthropic")).toBe(true);
     expect(supportsPerAccountQuota("google-antigravity")).toBe(true);
+    expect(supportsPerAccountQuota("cursor")).toBe(true);
     expect(supportsPerAccountQuota("kiro")).toBe(false);
     let called = false;
     globalThis.fetch = (async () => { called = true; return new Response("{}", { status: 200 }); }) as typeof fetch;
@@ -526,5 +527,53 @@ describe("fetchProviderAccountQuotas (google-antigravity)", () => {
       { label: "Gem", percent: 36, resetAt: Date.parse("2026-07-05T14:00:00Z") },
       { label: "Cla", percent: 79, resetAt: Date.parse("2026-07-05T15:00:00Z") },
     ]);
+  });
+
+  async function seedTwoCursorAccounts(): Promise<void> {
+    const expires = Date.now() + 60 * 60_000;
+    await saveCredential("cursor", {
+      access: "cursor-token-first",
+      refresh: "cursor-refresh-first",
+      expires,
+      accountId: "cursor-first",
+      email: "first@cursor.test",
+    });
+    await saveCredential("cursor", {
+      access: "cursor-token-second",
+      refresh: "cursor-refresh-second",
+      expires,
+      accountId: "cursor-second",
+      email: "second@cursor.test",
+    });
+  }
+
+  function cursorPeriodBody(totalPercent: number): string {
+    return JSON.stringify({
+      planUsage: {
+        limit: 10000,
+        remaining: 7000,
+        includedSpend: 3000,
+        totalPercentUsed: totalPercent,
+      },
+      billingCycleEnd: "2026-08-01T00:00:00.000Z",
+    });
+  }
+
+  test("Cursor reports each account's own period usage, keyed by bearer token", async () => {
+    await seedTwoCursorAccounts();
+    const seenTokens: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage");
+      const auth = new Headers(init?.headers).get("authorization") ?? "";
+      seenTokens.push(auth);
+      const percent = auth.endsWith("cursor-token-first") ? 30 : 71;
+      return new Response(cursorPeriodBody(percent), { status: 200 });
+    }) as typeof fetch;
+
+    const rows = await fetchProviderAccountQuotas("cursor");
+    expect(rows).toHaveLength(2);
+    const percents = rows.map(row => row.quota?.monthlyPercent).sort((a, b) => (a ?? 0) - (b ?? 0));
+    expect(percents).toEqual([30, 71]);
+    expect(seenTokens.sort()).toEqual(["Bearer cursor-token-first", "Bearer cursor-token-second"]);
   });
 });

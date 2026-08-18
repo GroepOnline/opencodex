@@ -267,10 +267,10 @@ async function fetchAnthropicQuota(provider: string): Promise<ProviderQuotaRepor
 // ---------------------------------------------------------------------------
 
 /**
- * Anthropic and Google Antigravity report usage per CREDENTIAL, so every logged-in
- * account can be probed with its own bearer token (and for Antigravity, its own
- * Cloud Code Assist project id). The active-account selection and the local usage
- * log are irrelevant here.
+ * Anthropic, Cursor, and Google Antigravity report usage per CREDENTIAL, so every
+ * logged-in account can be probed with its own bearer token (and for Antigravity,
+ * its own Cloud Code Assist project id). The active-account selection and the
+ * local usage log are irrelevant here.
  * Mirrors the Codex pool behaviour (codex/auth-api.ts:fetchPoolAccountQuota), including a
  * per-account TTL so N accounts cost at most N upstream calls per window.
  *
@@ -296,7 +296,7 @@ export interface ProviderAccountQuota {
 
 /** Providers whose per-account quota can be probed. Extend as other OAuth APIs are covered. */
 export function supportsPerAccountQuota(provider: string): boolean {
-  return provider === "anthropic" || provider === "google-antigravity";
+  return provider === "anthropic" || provider === "google-antigravity" || provider === "cursor";
 }
 
 function accountCacheKey(provider: string, accountId: string): string {
@@ -398,6 +398,9 @@ async function fetchAccountQuota(
           return entry;
         }
         quota = await fetchAntigravityUsageQuota(token, projectId, baseUrl);
+      } else if (provider === "cursor") {
+        const built = await fetchCursorQuota(provider, token);
+        quota = built?.quota ?? null;
       }
       if (!quota) {
         // Preserve last-good bars and mark unavailable; advance TTL so failures
@@ -591,12 +594,16 @@ async function fetchKimiQuota(provider: string, config: OcxProviderConfig): Prom
 }
 
 /** Cursor included usage via api2.cursor.sh (Bearer from OAuth) — unofficial, may change. */
-async function fetchCursorQuota(provider: string): Promise<ProviderQuotaReport | null> {
+async function fetchCursorQuota(provider: string, accessTokenOverride?: string): Promise<ProviderQuotaReport | null> {
   let accessToken: string;
-  try {
-    accessToken = await getValidAccessToken("cursor");
-  } catch {
-    return null;
+  if (accessTokenOverride) {
+    accessToken = accessTokenOverride;
+  } else {
+    try {
+      accessToken = await getValidAccessToken("cursor");
+    } catch {
+      return null;
+    }
   }
 
   const authHeaders = {

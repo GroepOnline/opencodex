@@ -173,7 +173,8 @@ Opt-in routing across **multiple Anthropic OAuth accounts** already stored in `a
 (issue [#294](https://github.com/GroepOnline/opencodex/issues/294)). **Default off.** This is
 experimental and not battle-tested — enable only if you accept the risk that Anthropic may
 restrict accounts that look like automated multi-account rotation. Accounts under the same
-organization can share quota; pooling those will not help.
+organization can share quota; pooling those will not help. Saving a second Anthropic account
+turns the pool on automatically; you can still turn it off afterwards.
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -202,6 +203,9 @@ Leave this disabled unless you understand Anthropic account policy risk. Prefer 
 Opt-in routing across multiple `google-antigravity` OAuth accounts. The pool is off by
 default. It uses the same Antigravity session id as thought-signature replay, and each
 selected account supplies its own OAuth token and Cloud Code Assist project id.
+Saving a second Antigravity account turns the pool on automatically; you can still turn
+it off afterwards. The dashboard pool card on Providers → google-antigravity → Accounts
+matches this config.
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -210,10 +214,10 @@ selected account supplies its own OAuth token and Cloud Code Assist project id.
 | `googleAntigravityAccountPool.strategy?` | `"quota" \| "round-robin" \| "fill-first"` | `"quota"` | Selects new accounts for new sessions. Affinity still wins for an existing session. |
 | `googleAntigravityAccountPool.stickyLimit?` | `number` | `1` | Number of successful new-session binds retained by round-robin before it advances. Range 1–100. |
 
-The failover rule is strict. Only an explicit upstream HTTP 429 cools an account and
-allows an in-request rotation, with at most three failovers. Client cancellation, HTTP
-400, HTTP 502, EOF, and other transport failures do not rotate or cool an account.
-Thought-signature replay state remains intact after a successful 429 failover.
+The failover rule is strict. Only an explicit upstream HTTP 429 or HTTP 529 / `overloaded_error`
+cools an account and allows an in-request rotation, with at most three failovers. Client
+cancellation, HTTP 400, HTTP 502, EOF, and other transport failures do not rotate or cool
+an account. Thought-signature replay state remains intact after a successful 429 failover.
 
 Manage the pool through `/api/oauth/accounts/pool?provider=google-antigravity`,
 `/api/oauth/accounts/clear-cooldown`, and the ordinary OAuth active-account endpoint.
@@ -225,8 +229,12 @@ unless you accept that risk.
 
 ### cursorAccountPool (experimental)
 
-Opt-in routing across multiple Cursor OAuth accounts added with `ocx login cursor`. The
-pool is off by default. It does not probe or warm accounts in the background.
+Opt-in routing across multiple Cursor accounts added with `ocx login cursor` or by pasting a
+Cursor user API key (JWT) on the Providers Cursor login surface. The pool is off by default
+and turns on automatically when a second distinct account is saved. It does not probe or warm
+accounts in the background. The dashboard pool card, `/api/oauth/accounts/pool?provider=cursor`,
+`/api/oauth/accounts/import-key`, `/api/oauth/accounts/clear-cooldown`, and the ordinary OAuth
+active-account endpoint all manage the same config.
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -236,12 +244,12 @@ pool is off by default. It does not probe or warm accounts in the background.
 | `cursorAccountPool.stickyLimit?` | `number` | `1` | Number of successful new-session binds retained by round-robin before it advances. Range 1–100. |
 
 Cursor rotation occurs only when the adapter reports an explicit pre-output HTTP 429,
-`RESOURCE_EXHAUSTED`, or hard-quota failure. `adapter_eof`, client cancellation,
-post-output failures, HTTP 502, and generic upstream errors do not cool or switch an
-account. A request uses at most the shared three-attempt upstream budget.
+HTTP 529 / `overloaded_error`, `RESOURCE_EXHAUSTED`, or hard-quota failure. `adapter_eof`,
+client cancellation, post-output failures, HTTP 502, and generic upstream errors do not
+cool or switch an account. A request uses at most the shared three-attempt upstream budget.
 
-Manage the pool through `/api/oauth/accounts/pool?provider=cursor`,
-`/api/oauth/accounts/clear-cooldown`, and the ordinary OAuth active-account endpoint.
+Each logged-in Cursor account can show its own included-usage bars (unofficial `api2.cursor.sh`
+period usage). A failed probe keeps last-known bars and marks them unavailable.
 
 :::caution[Terms and account policy]
 Automated multi-account use may violate Cursor's terms or trigger account enforcement.
