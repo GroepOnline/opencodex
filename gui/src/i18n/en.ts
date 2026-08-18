@@ -1538,7 +1538,7 @@ export const en = {
   "claudeDesktop.applyFailed": "Profile was saved, but could not be applied.",
   "claudeDesktop.updateFailed": "Claude Desktop update failed.",
   "claudeDesktop.savedApplied": "Saved on the proxy. Confirm the laptop sync prompt to refresh Claude Desktop.",
-  "claudeDesktop.savedAppliedAnnounce": "Claude Desktop profile saved and applied.",
+  "claudeDesktop.savedAppliedAnnounce": "Saved on the proxy. Confirm the laptop sync prompt to refresh Claude Desktop.",
   "claudeDesktop.saved": "Profile saved.",
   "claudeDesktop.savedAnnounce": "Claude Desktop profile saved.",
   "claudeDesktop.exported": "Profile exported as JSON.",

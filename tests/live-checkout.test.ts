@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { collectStartupHealth } from "../src/codex/autostart-health";
@@ -78,6 +78,19 @@ describe("diagnoseLiveCheckout", () => {
       expect(checkout.dirty).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("does not walk past node_modules into a consumer repository", () => {
+    const consumer = initRepo();
+    const packageRoot = join(consumer, "node_modules", "opencodex");
+    try {
+      mkdirSync(packageRoot, { recursive: true });
+      const checkout = diagnoseLiveCheckout(packageRoot);
+      expect(checkout.sha).toBeNull();
+      expect(checkout.dirty).toBe(false);
+    } finally {
+      rmSync(consumer, { recursive: true, force: true });
     }
   });
 

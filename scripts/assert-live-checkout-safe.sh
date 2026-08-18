@@ -24,7 +24,13 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 
 # Porcelain only as a boolean. Do not print the listing (paths can be sensitive).
-if [[ -n $(git status --porcelain) ]]; then
+porcelain=$(git status --porcelain)
+status_code=$?
+if [[ $status_code -ne 0 ]]; then
+  echo "assert-live-checkout-safe: git status failed" >&2
+  exit 1
+fi
+if [[ -n $porcelain ]]; then
   echo "assert-live-checkout-safe: refusing dirty working tree" >&2
   exit 1
 fi

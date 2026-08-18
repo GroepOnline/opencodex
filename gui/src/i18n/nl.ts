@@ -277,6 +277,7 @@ const overrides: Partial<Record<TKey, string>> = {
   "claudeDesktop.syncLaptopAnnounce": "Laptop-sync start. Sta het toe als de browser vraagt.",
   "claudeDesktop.status.applied": "Gezet op de proxy",
   "claudeDesktop.savedApplied": "Op de proxy gezet. Bevestig de laptop-sync om Claude Desktop te verversen.",
+  "claudeDesktop.savedAppliedAnnounce": "Op de proxy gezet. Bevestig de laptop-sync om Claude Desktop te verversen.",
   "claudeDesktop.saveApply": "Bewaar, zet live & sync",
   "common.saving": "Bewaren…",
   "common.cancel": "Annuleer",

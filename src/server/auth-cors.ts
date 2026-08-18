@@ -276,8 +276,21 @@ export function hasValidApiAuth(req: Request, config: OcxConfig): boolean {
   return isDataPlaneAdmissionSecret(actual, config);
 }
 
+function extractDataPlaneAdmissionToken(req: Request): string | undefined {
+  return req.headers.get("x-opencodex-api-key")?.trim()
+    || req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim()
+    || req.headers.get("x-api-key")?.trim();
+}
+
 export function requireApiAuth(req: Request, config: OcxConfig, _kind: "data-plane"): Response | null {
   if (hasValidApiAuth(req, config)) return null;
+  return formatErrorResponse(401, "authentication_error", "opencodex API key required");
+}
+
+/** Require data-plane admission even on loopback (routes that export gateway secrets). */
+export function requireDataPlaneAdmissionAuth(req: Request, config: OcxConfig): Response | null {
+  const actual = extractDataPlaneAdmissionToken(req);
+  if (actual && isDataPlaneAdmissionSecret(actual, config)) return null;
   return formatErrorResponse(401, "authentication_error", "opencodex API key required");
 }
 

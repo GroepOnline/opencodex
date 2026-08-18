@@ -117,6 +117,7 @@ import {
   isLoopbackHostname,
   jsonResponse,
   requireApiAuth,
+  requireDataPlaneAdmissionAuth,
   requireResponsesApiAuth,
   safeConfigDTO,
   setCorsOrigin,
@@ -561,7 +562,7 @@ export function startServer(port?: number) {
       if (url.pathname === "/v1/claude-desktop-3p-library" && req.method === "GET") {
         const modelsGate = admission.gate("model-discovery", req, requestServer);
         if (modelsGate.preAuthDeny) return withCors(modelsGate.preAuthDeny, req, config);
-        const apiAuthError = requireApiAuth(req, config, "data-plane");
+        const apiAuthError = requireDataPlaneAdmissionAuth(req, config);
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"), req, config);
