@@ -8,9 +8,10 @@
  * that dies without a terminal event (`upstream_server_error`) goes straight back to
  * the caller.
  *
- * This module closes that gap without a second retry mechanism. A provider's `fallback`
- * list is turned into a synthetic combo whose first target is the request's own route,
- * so the normal combo hop loop drives the retry.
+ * This module closes that gap without a second retry mechanism. Availability
+ * (`selectHopChain`) turns a provider's `fallback` list into an internal hop chain
+ * whose first target is the request's own route, so the combo hop loop drives the retry.
+ * Callers of the Responses turn must not import this file; they go through Availability.
  *
  * The synthetic combo id embeds NUL, which `COMBO_ID_PATTERN` rejects. A configured
  * combo can therefore never collide with it, and no client-supplied model string can

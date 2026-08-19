@@ -16,7 +16,6 @@ import { routeModel, type RouteResult } from "../../router";
 import {
   advanceComboAfterFailure,
   comboDefaultEffort,
-  comboFailureDecision,
   comboIdFromRawBody,
   concreteComboRequestBody,
   getCombo,
@@ -28,7 +27,7 @@ import {
   targetKey,
 } from "../../combos";
 import { providerCredentialFailure, providerCredentialRef, withResolvedProviderCredential } from "../../providers/credential";
-import { comboIdLabel, isProviderFallbackComboId, providerFallbackPlan } from "../../providers/fallback";
+import { classifyAttempt, comboIdLabel, isAccountPoolHopStatus, selectHopChain } from "../../availability";
 import { isInjectionDebugEnabled } from "../../lib/debug-settings";
 import { injectionDebugLog } from "../../lib/injection-debug-log";
 import { resolveClientRetryAfter } from "../../lib/retry-after";
@@ -298,10 +297,6 @@ async function shouldRetryCodexPoolAccountQuota(
   if (response.status !== 429 && response.status !== 402) return false;
   const outcome = await classifyUpstreamResponse("generic", response, signal);
   return upstreamOutcomePolicy(outcome).rotateOrCool;
-}
-
-function isAccountPoolHopStatus(status: number): boolean {
-  return status === 429 || status === 529;
 }
 
 interface CodexPoolAccountRetryArgs {
@@ -576,10 +571,10 @@ export interface HandleResponsesOptions {
   /** Internal recursion guard; callers outside this module must not set it. */
   comboAttempt?: boolean;
   /**
-   * Internal: this combo attempt belongs to a synthetic per-provider fallback chain, not to a
+   * Internal: this combo attempt belongs to a provider-fallback hop chain, not to a
    * combo the user configured. Such a hop must otherwise behave exactly like the plain request
-   * it replaced (see `providerFallbackPlan`), so single-provider behaviour that combos disable
-   * on purpose — currently the Anthropic terminal-guard continuation — stays enabled.
+   * it replaced, so single-provider behaviour that combos disable on purpose — currently the
+   * Anthropic terminal-guard continuation — stays enabled.
    */
   providerFallbackAttempt?: boolean;
   /** Internal combo handoff: allow a later same-provider model after a reset-derived 429/402. */
@@ -983,7 +978,7 @@ export async function handleComboResponses(
   // A per-provider fallback chain runs on this same hop loop but is not a combo the user
   // configured: the log row must keep the winning target's own provider/model rather than
   // collapsing into a synthetic `combo` row nothing in the GUI can open.
-  const providerFallbackChain = isProviderFallbackComboId(comboId);
+  const providerFallbackChain = options.providerFallbackAttempt === true;
   const comboIdentity = providerFallbackChain
     ? { requestedModel }
     : { requestedModel, model: requestedModel, provider: "combo", comboId };
@@ -1194,9 +1189,11 @@ export async function handleComboResponses(
     (logCtx.attempts ??= []).push(attempt);
     attemptRetained = true;
     lastFailure = failure.response;
-    if (comboFailureDecision(failure.response.status, failure.classificationText, {
+    if (classifyAttempt({
+      status: failure.response.status,
+      message: failure.classificationText,
       code: failure.upstreamCode,
-    }) === "stop") {
+    }) === "surface") {
       adoptFailedChildLog(childLog);
       return lastFailure;
     }
@@ -1349,13 +1346,16 @@ export async function handleResponses(
   // combo hop loop. Thread spawns are excluded: they carry their own Codex account/model fallback
   // below, which the combo path deliberately skips.
   if (!options.comboAttempt && !isThreadSpawnRequest(req.headers)) {
-    const plan = providerFallbackPlan(config, { provider: route.providerName, modelId: route.modelId });
-    if (plan) {
+    const chain = selectHopChain(config, { provider: route.providerName, modelId: route.modelId });
+    if (chain) {
       // Hand the hop loop the PRE-expansion body, exactly as the `combo/<id>` entry point does.
       // `expandPreviousResponseInput` is not idempotent and leaves `previous_response_id` in
       // place, so replaying an already-expanded body would prepend the restored history a second
       // time in every child request.
-      return handleComboResponses(req, originalBody, plan.comboId, plan.config, logCtx, options);
+      return handleComboResponses(req, originalBody, chain.comboId, chain.config, logCtx, {
+        ...options,
+        providerFallbackAttempt: chain.preservePhysicalIdentity,
+      });
     }
   }
 
