@@ -27,7 +27,7 @@ import {
   targetKey,
 } from "../../combos";
 import { providerCredentialFailure, providerCredentialRef, withResolvedProviderCredential } from "../../providers/credential";
-import { classifyAttempt, comboIdLabel, isAccountPoolHopStatus, selectHopChain } from "../../availability";
+import { classifyAttempt, comboIdLabel, isAccountPoolHopStatus, keyPoolCanHop, resolveOutcome, selectHopChain } from "../../availability";
 import { isInjectionDebugEnabled } from "../../lib/debug-settings";
 import { injectionDebugLog } from "../../lib/injection-debug-log";
 import { resolveClientRetryAfter } from "../../lib/retry-after";
@@ -127,7 +127,6 @@ import { applyOpenAiVirtualModel, resolveOpenAiCompactModel } from "../../provid
 import { isUsageDebugEnabled } from "../../usage/debug";
 import { readJsonRequestBody, DecompressedBodyTooLargeError, UnsupportedContentEncodingError } from "../request-decompress";
 import { resolveAdapter, resolveWireProtocolOverride } from "../adapter-resolve";
-import { hasKeyPoolFailover, rotateProviderTransportOn429 } from "../../providers/key-failover";
 import { shouldAttemptImageTierRetry } from "../image-retry";
 import { resolveProviderTransport } from "../../providers/xai-transport";
 import type { WsData } from "../ws-bridge";
@@ -2184,7 +2183,11 @@ export async function handleResponses(
         }
       },
       on429: retryAfter => {
-        const rotated = rotateProviderTransportOn429(config, route.providerName, route.provider, {
+        const rotated = resolveOutcome({
+          config,
+          providerName: route.providerName,
+          routedProvider: route.provider,
+          status: 429,
           retryAfter,
           now: Date.now(),
           attemptedKey: route.provider.apiKey,
@@ -2251,7 +2254,11 @@ export async function handleResponses(
       routedModelStallTimeoutMs: wsPlan.routedModelStallTimeoutMs,
       stallTimeoutSec: wsPlan.stallTimeoutSec,
       on429: retryAfter => {
-        const rotated = rotateProviderTransportOn429(config, route.providerName, route.provider, {
+        const rotated = resolveOutcome({
+          config,
+          providerName: route.providerName,
+          routedProvider: route.provider,
+          status: 429,
           retryAfter,
           now: Date.now(),
           attemptedKey: route.provider.apiKey,
@@ -2666,15 +2673,18 @@ export async function handleResponses(
         continue recovery;
       }
 
-      // Multi-key 429 failover: rotate to the next pool key (cooldown-aware) and retry the
-      // SAME request once per remaining key. OAuth/forward providers and single-key pools
-      // return null immediately, so this stays a no-op for them (src/providers/key-failover.ts).
+      // Multi-key 429/529 hop: Availability records the failed key and returns the next
+      // fetch-ready provider, or null to surface. OAuth/forward and single-key pools no-op.
       while (
         isAccountPoolHopStatus(upstreamResponse.status)
-        && hasKeyPoolFailover(route.provider)
+        && keyPoolCanHop(route.provider)
         && await canRotateOrCoolFailure(upstreamResponse)
       ) {
-        const rotated = rotateProviderTransportOn429(config, route.providerName, route.provider, {
+        const rotated = resolveOutcome({
+          config,
+          providerName: route.providerName,
+          routedProvider: route.provider,
+          status: upstreamResponse.status,
           retryAfter: upstreamResponse.headers.get("retry-after"),
           now: Date.now(),
           attemptedKey: route.provider.apiKey,
@@ -2913,8 +2923,12 @@ export async function handleResponses(
         return;
       }
 
-      if (isAccountPoolHopStatus(response.status) && hasKeyPoolFailover(route.provider)) {
-        const rotated = rotateProviderTransportOn429(config, route.providerName, route.provider, {
+      {
+        const rotated = resolveOutcome({
+          config,
+          providerName: route.providerName,
+          routedProvider: route.provider,
+          status: response.status,
           retryAfter: response.headers.get("retry-after"),
           now: Date.now(),
           attemptedKey: route.provider.apiKey,

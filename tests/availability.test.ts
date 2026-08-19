@@ -1,6 +1,16 @@
-import { describe, expect, test } from "bun:test";
-import { classifyAttempt, hopChainTargets, isAccountPoolHopStatus, selectHopChain } from "../src/availability";
-import type { OcxConfig } from "../src/types";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  classifyAttempt,
+  clearKeyPoolCooldowns,
+  hopChainTargets,
+  isAccountPoolHopStatus,
+  resolveOutcome,
+  selectHopChain,
+} from "../src/availability";
+import type { OcxConfig, OcxProviderConfig } from "../src/types";
 
 function baseConfig(overrides: Partial<OcxConfig> = {}): OcxConfig {
   return {
@@ -60,5 +70,86 @@ describe("selectHopChain", () => {
     config.providers.a!.fallback = [{ provider: "b", model: "m2" }];
     config.providers.b!.disabled = true;
     expect(selectHopChain(config, { provider: "a", modelId: "m1" })).toBeNull();
+  });
+});
+
+describe("resolveOutcome", () => {
+  let home: string;
+
+  const pool = [
+    { id: "k1", key: "key-alpha-000111222333", addedAt: 1 },
+    { id: "k2", key: "key-beta-444555666777", addedAt: 2 },
+  ];
+
+  function poolConfig(): OcxConfig {
+    return {
+      port: 10100,
+      defaultProvider: "p",
+      providers: {
+        p: {
+          adapter: "openai-chat",
+          baseUrl: "https://p.example/v1",
+          apiKey: pool[0]!.key,
+          apiKeyPool: pool,
+        } as OcxProviderConfig,
+      },
+    };
+  }
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "ocx-availability-"));
+    process.env.OPENCODEX_HOME = home;
+    clearKeyPoolCooldowns();
+  });
+
+  afterEach(() => {
+    delete process.env.OPENCODEX_HOME;
+    rmSync(home, { recursive: true, force: true });
+    clearKeyPoolCooldowns();
+  });
+
+  test("surfaces 503 and single-key providers", () => {
+    const config = poolConfig();
+    expect(resolveOutcome({
+      config,
+      providerName: "p",
+      routedProvider: config.providers.p!,
+      status: 503,
+    })).toBeNull();
+    const single = poolConfig();
+    delete single.providers.p!.apiKeyPool;
+    expect(resolveOutcome({
+      config: single,
+      providerName: "p",
+      routedProvider: single.providers.p!,
+      status: 429,
+    })).toBeNull();
+  });
+
+  test("hops 429 to the next key and records cooldown", () => {
+    const config = poolConfig();
+    const next = resolveOutcome({
+      config,
+      providerName: "p",
+      routedProvider: config.providers.p!,
+      status: 429,
+      now: 1_000_000,
+      attemptedKey: pool[0]!.key,
+    });
+    expect(next?.apiKey).toBe(pool[1]!.key);
+    expect(config.providers.p!.apiKey).toBe(pool[1]!.key);
+  });
+
+  test("hops 529 the same way as 429", () => {
+    const config = poolConfig();
+    const next = resolveOutcome({
+      config,
+      providerName: "p",
+      routedProvider: config.providers.p!,
+      status: 529,
+      now: 1_000_000,
+      attemptedKey: pool[0]!.key,
+    });
+    expect(next?.apiKey).toBe(pool[1]!.key);
   });
 });

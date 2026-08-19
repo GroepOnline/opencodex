@@ -14,4 +14,6 @@ export {
   selectHopChain,
   type HopChain,
 } from "./chain";
+export { resolveOutcome, keyPoolCanHop, type ResolveOutcomeInput } from "./resolve";
+export { clearKeyPoolCooldowns } from "./management";
 export { comboIdLabel } from "../providers/fallback";
