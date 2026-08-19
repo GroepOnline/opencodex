@@ -16,17 +16,22 @@ export {
 } from "./chain";
 export { resolveOutcome, keyPoolCanHop, type ResolveOutcomeInput } from "./resolve";
 export {
+  selectOauthPoolCandidate,
   resolveAnthropicPoolOutcome,
   resolveGoogleAntigravityPoolOutcome,
   resolveCursorPoolOutcome,
   type OauthPoolHop,
+  type OauthPoolName,
+  type OauthPoolSelectResult,
 } from "./oauth-pool";
 export {
+  selectCodexCandidate,
   resolveCodexPoolOutcome,
   codexQuotaOutcomeMeta,
   shouldDeferCodexResetDerivedCooldown,
   type CodexPoolHop,
   type CodexPoolAuth,
+  type CodexSelectResult,
 } from "./codex-pool";
 export { clearKeyPoolCooldowns } from "./management";
 export { comboIdLabel } from "../providers/fallback";

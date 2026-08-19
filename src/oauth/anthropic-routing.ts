@@ -372,8 +372,8 @@ export function resolveAnthropicAccountForSession(
 
   const strategyPick = pickUnboundStrategyAccount(config, now);
   if (strategyPick) {
-    // Do not promote active here — token validation may still fail. Callers
-    // (responses/core) promote after getAnthropicPoolAccessToken succeeds.
+    // Do not promote active here — token validation may still fail. Availability
+    // selectCandidate promotes after getAnthropicPoolAccessToken succeeds.
     if (key) {
       sessionAffinity.set(key, { accountId: strategyPick.accountId, lastUsedAt: now });
       pruneExpiredAffinity(now);

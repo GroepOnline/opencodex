@@ -1,12 +1,16 @@
-import type { OcxConfig, OcxProviderConfig } from "../types";
+import type { CodexAccountMode, OcxConfig, OcxProviderConfig } from "../types";
 import { applyAccountQuotaFromUpstreamHeaders } from "../codex/auth-api";
 import {
   applyCodexAuthContextToProvider,
   CodexAccountCooldownError,
   CodexAuthContextError,
+  CodexDirectAuthenticationError,
   CodexPoolAuthenticationError,
+  CodexThreadAffinityExpiredError,
   headersForCodexAuthContext,
+  isCodexAuthContextUsable,
   resolveCodexAuthContext,
+  releaseCodexAuthContextProbeLease,
   codexProbeLeaseId,
   codexProbeQuotaScope,
   stripCodexRuntimeProviderFields,
@@ -21,6 +25,68 @@ export type CodexPoolHop = {
   provider: OcxProviderConfig;
   headers: Headers;
 };
+
+export type CodexSelectResult =
+  | {
+    ok: true;
+    authCtx: CodexAuthContext;
+    headers: Headers;
+    provider: OcxProviderConfig;
+  }
+  | { ok: false; reason: "cooldown"; error: CodexAccountCooldownError }
+  | { ok: false; reason: "affinity-expired" }
+  | { ok: false; reason: "unusable" }
+  | { ok: false; reason: "reauth"; accountId: string }
+  | { ok: false; reason: "pool-auth"; message: string }
+  | { ok: false; reason: "direct-auth"; message: string };
+
+/**
+ * First Codex pick for this attempt. Returns a fetch-ready provider and
+ * headers, or a domain failure the turn maps to HTTP. Does not fetch.
+ * Direct admission (caller credential present) stays on the turn.
+ */
+export async function selectCodexCandidate(input: {
+  headers: Headers;
+  config: OcxConfig;
+  mode?: CodexAccountMode;
+  modelId: string;
+  routedProvider: OcxProviderConfig;
+}): Promise<CodexSelectResult> {
+  try {
+    const authCtx = input.mode
+      ? await resolveCodexAuthContext(input.headers, input.config, input.mode, {
+        modelId: input.modelId,
+      })
+      : { kind: "main" as const, accountId: null };
+    if (!isCodexAuthContextUsable(authCtx, input.config)) {
+      releaseCodexAuthContextProbeLease(authCtx);
+      return { ok: false, reason: "unusable" };
+    }
+    return {
+      ok: true,
+      authCtx,
+      headers: headersForCodexAuthContext(input.headers, authCtx),
+      provider: applyCodexAuthContextToProvider(input.routedProvider, authCtx, input.mode),
+    };
+  } catch (err) {
+    if (err instanceof CodexAccountCooldownError) {
+      return { ok: false, reason: "cooldown", error: err };
+    }
+    if (err instanceof CodexThreadAffinityExpiredError) {
+      return { ok: false, reason: "affinity-expired" };
+    }
+    if (err instanceof CodexAuthContextError) {
+      return { ok: false, reason: "reauth", accountId: err.accountId };
+    }
+    if (err instanceof CodexPoolAuthenticationError) {
+      return { ok: false, reason: "pool-auth", message: err.message };
+    }
+    if (err instanceof CodexDirectAuthenticationError) {
+      return { ok: false, reason: "direct-auth", message: err.message };
+    }
+    throw err;
+  }
+}
 
 export function codexQuotaOutcomeMeta(response: Response): {
   retryAfter: string | null;

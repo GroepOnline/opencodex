@@ -27,7 +27,24 @@ import {
   targetKey,
 } from "../../combos";
 import { providerCredentialFailure, providerCredentialRef, withResolvedProviderCredential } from "../../providers/credential";
-import { classifyAttempt, comboIdLabel, isAccountPoolHopStatus, keyPoolCanHop, resolveAnthropicPoolOutcome, resolveCodexPoolOutcome, resolveCursorPoolOutcome, resolveGoogleAntigravityPoolOutcome, resolveOutcome, selectHopChain, codexQuotaOutcomeMeta, shouldDeferCodexResetDerivedCooldown } from "../../availability";
+import {
+  classifyAttempt,
+  comboIdLabel,
+  isAccountPoolHopStatus,
+  keyPoolCanHop,
+  resolveAnthropicPoolOutcome,
+  resolveCodexPoolOutcome,
+  resolveCursorPoolOutcome,
+  resolveGoogleAntigravityPoolOutcome,
+  resolveOutcome,
+  selectCodexCandidate,
+  selectHopChain,
+  selectOauthPoolCandidate,
+  codexQuotaOutcomeMeta,
+  shouldDeferCodexResetDerivedCooldown,
+  type OauthPoolName,
+  type OauthPoolSelectResult,
+} from "../../availability";
 import { isInjectionDebugEnabled } from "../../lib/debug-settings";
 import { injectionDebugLog } from "../../lib/injection-debug-log";
 import { resolveClientRetryAfter } from "../../lib/retry-after";
@@ -37,7 +54,6 @@ import {
   forceRefreshOAuthAccessSnapshot,
   getOAuthCredentialApiBaseUrl,
   getOAuthCredentialProjectId,
-  getValidAccessTokenForAccount,
   getValidAccessTokenSnapshot,
   type OAuthAccessSnapshot,
   UnsupportedOAuthProviderError,
@@ -45,54 +61,30 @@ import {
 import {
   ANTHROPIC_POOL_MAX_FAILOVERS_PER_REQUEST,
   anthropicSessionKeyFromParts,
-  bindAnthropicSessionAffinity,
-  formatAnthropicProviderForLog,
-  getAnthropicPoolAccessToken,
-  getAnthropicPoolRetryAfterSeconds,
   isAnthropicAccountPoolEnabled,
-  promoteAnthropicActiveAccount,
-  resolveAnthropicAccountForSession,
 } from "../../oauth/anthropic-routing";
 import {
   GOOGLE_ANTIGRAVITY_POOL_MAX_FAILOVERS_PER_REQUEST,
-  bindGoogleAntigravitySessionAffinity,
-  formatGoogleAntigravityProviderForLog,
-  getGoogleAntigravityPoolCredential,
-  getGoogleAntigravityPoolRetryAfterSeconds,
   googleAntigravitySessionKey,
   isGoogleAntigravityAccountPoolEnabled,
-  promoteGoogleAntigravityActiveAccount,
-  resolveGoogleAntigravityAccountForSession,
 } from "../../oauth/google-antigravity-routing";
 import {
-  bindCursorSessionAffinity,
   CURSOR_POOL_MAX_FAILOVERS_PER_REQUEST,
   cursorSessionKeyFromParts,
-  formatCursorProviderForLog,
-  getCursorPoolAccessToken,
-  getCursorPoolRetryAfterSeconds,
-  isCursorAccountPoolEnabled,
-  promoteCursorActiveAccount,
-  resolveCursorAccountForSession,
 } from "../../oauth/cursor-routing";
 import { buildWebSearchTool, planWebSearch, runWithWebSearch, shouldResolveOpenAiWebSearchSidecar } from "../../web-search";
 import { buildImageTool, buildVideoTool, planImageBridge, planVideoBridge, runWithImageBridge, clampImageMaxRounds, IMAGE_GEN_TOOL_NAME, VIDEO_GEN_TOOL_NAME } from "../../images";
 import { describeImagesInPlace, planVisionSidecar, shouldResolveOpenAiVisionSidecar, stripImagesInPlace } from "../../vision";
 import { createAdapterEventQueue, preflightAdapterEvents } from "../../adapters/run-turn-queue";
 import {
-  applyCodexAuthContextToProvider,
   CodexAccountCooldownError,
   cooldownErrorResponse,
   CodexAuthContextError,
   CodexDirectAuthenticationError,
   CodexPoolAuthenticationError,
   CodexThreadAffinityExpiredError,
-  headersForCodexAuthContext,
-  isCodexAuthContextUsable,
-  resolveCodexAuthContext,
   codexProbeLeaseId,
   codexProbeQuotaScope,
-  releaseCodexAuthContextProbeLease,
   type CodexAuthContext,
 } from "../../codex/auth-context";
 import {
@@ -735,12 +727,38 @@ function unreadableEncryptedAgentTaskResponse(): Response {
 }
 
 type ResponsesAuthResolution =
-  | { ok: true; authCtx: CodexAuthContext; headers: Headers }
+  | { ok: true; authCtx: CodexAuthContext; headers: Headers; provider: OcxProviderConfig }
   | { ok: false; response: Response };
 
+const OAUTH_POOL_ALL_COOLED: Record<OauthPoolName, string> = {
+  anthropic: "All Anthropic OAuth accounts are temporarily rate-limited",
+  "google-antigravity": "All Google Antigravity OAuth accounts are temporarily rate-limited",
+  cursor: "All Cursor OAuth accounts are temporarily rate-limited",
+};
+
+const OAUTH_POOL_NONE: Record<OauthPoolName, string> = {
+  anthropic: "No eligible Anthropic OAuth account available",
+  "google-antigravity": "No eligible Google Antigravity OAuth account available",
+  cursor: "No eligible Cursor OAuth account available",
+};
+
+function oauthPoolSelectErrorResponse(
+  result: Extract<OauthPoolSelectResult, { kind: "all-cooled" | "none" }>,
+): Response {
+  if (result.kind === "all-cooled") {
+    return formatErrorResponse(
+      429,
+      "rate_limit_error",
+      OAUTH_POOL_ALL_COOLED[result.pool],
+      result.retryAfterSeconds !== null ? { retryAfter: String(result.retryAfterSeconds) } : undefined,
+    );
+  }
+  return formatErrorResponse(401, "authentication_error", OAUTH_POOL_NONE[result.pool]);
+}
+
 /**
- * Resolve Codex auth for a route. On unusable contexts, releases any probe lease
- * before returning the 401 (nothing reaches upstream).
+ * Resolve Codex auth for a route. Availability selects the candidate; this maps
+ * domain failures to HTTP. Direct admission stays here (caller credential).
  */
 async function resolveResponsesCodexAuth(
   req: Request,
@@ -750,50 +768,47 @@ async function resolveResponsesCodexAuth(
 ): Promise<ResponsesAuthResolution> {
   try {
     if (route.codexAccountMode === "direct") validateForwardAdmissionCredential(req.headers, config);
-    let authCtx: CodexAuthContext;
-    if (route.codexAccountMode) {
-      authCtx = await resolveCodexAuthContext(req.headers, config, route.codexAccountMode, { modelId: route.modelId });
-      options.onCodexAuthContextResolved?.(authCtx);
-    } else {
-      authCtx = { kind: "main", accountId: null };
-      options.onCodexAuthContextResolved?.(undefined);
-    }
-    if (!isCodexAuthContextUsable(authCtx, config)) {
-      releaseCodexAuthContextProbeLease(authCtx);
+    const selected = await selectCodexCandidate({
+      headers: req.headers,
+      config,
+      mode: route.codexAccountMode,
+      modelId: route.modelId,
+      routedProvider: route.provider,
+    });
+    if (!selected.ok) {
+      if (selected.reason === "cooldown") {
+        return { ok: false, response: cooldownErrorResponse(selected.error) };
+      }
+      if (selected.reason === "affinity-expired") {
+        return {
+          ok: false,
+          response: formatErrorResponse(
+            409,
+            "invalid_request_error",
+            "Codex thread account affinity expired; start a new session",
+          ),
+        };
+      }
+      if (selected.reason === "reauth") {
+        const safeAccountLabel = formatCodexProviderForLog(route.providerName, selected.accountId, config);
+        console.error(`[codex-auth] Pool account ${safeAccountLabel} token failed; reauthentication required`);
+      }
+      if (selected.reason === "pool-auth" || selected.reason === "direct-auth") {
+        return { ok: false, response: formatErrorResponse(401, "authentication_error", selected.message) };
+      }
       return {
         ok: false,
         response: formatErrorResponse(401, "authentication_error", "Selected Codex account needs reauthentication"),
       };
     }
+    options.onCodexAuthContextResolved?.(route.codexAccountMode ? selected.authCtx : undefined);
     return {
       ok: true,
-      authCtx,
-      headers: headersForCodexAuthContext(req.headers, authCtx),
+      authCtx: selected.authCtx,
+      headers: selected.headers,
+      provider: selected.provider,
     };
   } catch (err) {
-    if (err instanceof CodexAccountCooldownError) {
-      return { ok: false, response: cooldownErrorResponse(err) };
-    }
-    if (err instanceof CodexThreadAffinityExpiredError) {
-      return {
-        ok: false,
-        response: formatErrorResponse(409, "invalid_request_error", "Codex thread account affinity expired; start a new session"),
-      };
-    }
-    if (err instanceof CodexAuthContextError) {
-      const safeAccountLabel = formatCodexProviderForLog(route.providerName, err.accountId, config);
-      console.error(`[codex-auth] Pool account ${safeAccountLabel} token failed; reauthentication required`);
-      return {
-        ok: false,
-        response: formatErrorResponse(401, "authentication_error", "Selected Codex account needs reauthentication"),
-      };
-    }
-    if (err instanceof CodexPoolAuthenticationError) {
-      return { ok: false, response: formatErrorResponse(401, "authentication_error", err.message) };
-    }
-    if (err instanceof CodexDirectAuthenticationError) {
-      return { ok: false, response: formatErrorResponse(401, "authentication_error", err.message) };
-    }
     if (err instanceof ForwardAdmissionCredentialError) {
       return { ok: false, response: formatErrorResponse(401, "authentication_error", err.message) };
     }
@@ -1367,9 +1382,8 @@ export async function handleResponses(
     if (!finalAuth.ok) return finalAuth.response;
     authCtx = finalAuth.authCtx;
     selectedForwardHeaders = finalAuth.headers;
+    route.provider = finalAuth.provider;
   }
-
-  route.provider = applyCodexAuthContextToProvider(route.provider, authCtx, route.codexAccountMode);
   logCtx.provider = formatCodexProviderForLog(route.providerName, codexLogAccountId(authCtx), config);
   // Prefer Codex pool account as the Cursor thread namespace when present. Cursor routes without
   // codexAccountMode still get a credential-derived scope inside the Cursor adapter.
@@ -1416,91 +1430,30 @@ export async function handleResponses(
     : null;
   if (route.provider.authMode === "oauth") {
     try {
-      if (route.providerName === "anthropic" && isAnthropicAccountPoolEnabled(config)) {
-        const selection = resolveAnthropicAccountForSession(anthropicSessionKey, config);
-        if (!selection.accountId) {
-          if (selection.reason === "all-cooled") {
-            const retryAfterSec = getAnthropicPoolRetryAfterSeconds();
-            return formatErrorResponse(
-              429,
-              "rate_limit_error",
-              "All Anthropic OAuth accounts are temporarily rate-limited",
-              retryAfterSec !== null ? { retryAfter: String(retryAfterSec) } : undefined,
-            );
-          }
-          return formatErrorResponse(401, "authentication_error", "No eligible Anthropic OAuth account available");
+      const poolPick = await selectOauthPoolCandidate({
+        providerName: route.providerName,
+        config,
+        routedProvider: route.provider,
+        sessionKey: route.providerName === "anthropic"
+          ? anthropicSessionKey
+          : route.providerName === "google-antigravity"
+            ? antigravitySessionKey
+            : route.providerName === "cursor"
+              ? cursorSessionKey
+              : null,
+      });
+      if (poolPick.kind === "all-cooled" || poolPick.kind === "none") {
+        return oauthPoolSelectErrorResponse(poolPick);
+      }
+      if (poolPick.kind === "selected") {
+        route.provider = poolPick.hop.provider;
+        logCtx.provider = poolPick.hop.logProvider;
+        if (poolPick.pool === "anthropic") anthropicPoolAccountId = poolPick.hop.accountId;
+        else if (poolPick.pool === "google-antigravity") googleAntigravityPoolAccountId = poolPick.hop.accountId;
+        else if (poolPick.pool === "cursor") {
+          cursorPoolAccountId = poolPick.hop.accountId;
+          parsed._cursorIdentityScope = poolPick.hop.accountId;
         }
-        const accessToken = await getAnthropicPoolAccessToken(selection.accountId);
-        anthropicPoolAccountId = selection.accountId;
-        bindAnthropicSessionAffinity(anthropicSessionKey, selection.accountId);
-        promoteAnthropicActiveAccount(selection.accountId);
-        route.provider = { ...route.provider, apiKey: accessToken };
-        logCtx.provider = formatAnthropicProviderForLog("anthropic", selection.accountId, config);
-      } else if (
-        route.providerName === "google-antigravity"
-        && isGoogleAntigravityAccountPoolEnabled(config)
-      ) {
-        const selection = resolveGoogleAntigravityAccountForSession(
-          antigravitySessionKey,
-          config,
-        );
-        if (!selection.accountId) {
-          if (selection.reason === "all-cooled") {
-            const retryAfterSec = getGoogleAntigravityPoolRetryAfterSeconds();
-            return formatErrorResponse(
-              429,
-              "rate_limit_error",
-              "All Google Antigravity OAuth accounts are temporarily rate-limited",
-              retryAfterSec !== null ? { retryAfter: String(retryAfterSec) } : undefined,
-            );
-          }
-          return formatErrorResponse(
-            401,
-            "authentication_error",
-            "No eligible Google Antigravity OAuth account available",
-          );
-        }
-        const credential = await getGoogleAntigravityPoolCredential(selection.accountId);
-        googleAntigravityPoolAccountId = selection.accountId;
-        bindGoogleAntigravitySessionAffinity(
-          antigravitySessionKey,
-          selection.accountId,
-        );
-        promoteGoogleAntigravityActiveAccount(selection.accountId);
-        route.provider = {
-          ...route.provider,
-          apiKey: credential.accessToken,
-          project: credential.projectId,
-        };
-        logCtx.provider = formatGoogleAntigravityProviderForLog(selection.accountId);
-      } else if (
-        route.providerName === "cursor"
-        && isCursorAccountPoolEnabled(config)
-      ) {
-        const selection = resolveCursorAccountForSession(cursorSessionKey, config);
-        if (!selection.accountId) {
-          if (selection.reason === "all-cooled") {
-            const retryAfterSec = getCursorPoolRetryAfterSeconds();
-            return formatErrorResponse(
-              429,
-              "rate_limit_error",
-              "All Cursor OAuth accounts are temporarily rate-limited",
-              retryAfterSec !== null ? { retryAfter: String(retryAfterSec) } : undefined,
-            );
-          }
-          return formatErrorResponse(
-            401,
-            "authentication_error",
-            "No eligible Cursor OAuth account available",
-          );
-        }
-        const accessToken = await getCursorPoolAccessToken(selection.accountId);
-        cursorPoolAccountId = selection.accountId;
-        bindCursorSessionAffinity(cursorSessionKey, selection.accountId);
-        promoteCursorActiveAccount(selection.accountId);
-        parsed._cursorIdentityScope = selection.accountId;
-        route.provider = { ...route.provider, apiKey: accessToken };
-        logCtx.provider = formatCursorProviderForLog(selection.accountId);
       } else {
         const resolved = await getValidAccessTokenSnapshot(route.providerName);
         if (isOAuth401ReplayProvider) sentOAuthSnapshot = resolved;
