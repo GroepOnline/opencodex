@@ -7,6 +7,7 @@ import {
   clearKeyPoolCooldowns,
   hopChainTargets,
   isAccountPoolHopStatus,
+  recordCapOutcome,
   resolveAnthropicPoolOutcome,
   resolveGoogleAntigravityPoolOutcome,
   resolveOutcome,
@@ -15,6 +16,7 @@ import {
   selectKeyPoolCandidate,
   selectOauthPoolCandidate,
 } from "../src/availability";
+import { handleResponses } from "../src/server/responses";
 import {
   clearAnthropicAccountPoolState,
   rotateAnthropicAccountOn429,
@@ -199,6 +201,108 @@ describe("resolveOutcome", () => {
       providerName: "p",
       routedProvider: config.providers.p!,
     })).toBeNull();
+  });
+
+  test("records a hard-cap 429 on a single-key provider and surfaces", () => {
+    const config = baseConfig({ defaultProvider: "a" });
+    const next = resolveOutcome({
+      config,
+      providerName: "b",
+      routedProvider: config.providers.b!,
+      status: 429,
+      now: 1_000_000,
+      message: 'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly Clinepass limit. The limit resets in 1d 22h"}',
+      save: false,
+    });
+    expect(next).toBeNull();
+    expect(config.providers.b!.disabled).toBe(true);
+    expect(config.providerCooldowns?.b?.reason).toBe("INFERENCE_CAP_ERROR");
+  });
+
+  test("does not disable a key-pool provider on a weekly cap", () => {
+    const config = poolConfig();
+    resolveOutcome({
+      config,
+      providerName: "p",
+      routedProvider: config.providers.p!,
+      status: 429,
+      now: 1_000_000,
+      attemptedKey: pool[0]!.key,
+      message: 'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. The limit resets in 2d"}',
+      save: false,
+    });
+    expect(config.providers.p!.disabled).toBeUndefined();
+    expect(config.providerCooldowns?.p).toBeUndefined();
+  });
+});
+
+describe("recordCapOutcome", () => {
+  test("is a no-op for ordinary rate limits", () => {
+    const config = baseConfig();
+    expect(recordCapOutcome({
+      config,
+      providerName: "b",
+      status: 429,
+      message: "Too many requests",
+      save: false,
+    })).toBeNull();
+    expect(config.providers.b!.disabled).toBeUndefined();
+  });
+});
+
+describe("handleResponses records cap-cooldown", () => {
+  let home: string;
+  const previousFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "ocx-cap-turn-"));
+    process.env.OPENCODEX_HOME = home;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = previousFetch;
+    delete process.env.OPENCODEX_HOME;
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  test("disables a single-key provider after a weekly inference cap", async () => {
+    globalThis.fetch = (async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes("api.cline.bot")) {
+        return new Response(
+          JSON.stringify({
+            error: { code: "INFERENCE_CAP_ERROR", message: "weekly Clinepass limit. The limit resets in 1d 22h" },
+          }),
+          { status: 429, headers: { "content-type": "application/json" } },
+        );
+      }
+      return previousFetch(input as Request);
+    }) as typeof fetch;
+
+    const config = baseConfig({
+      defaultProvider: "a",
+      providers: {
+        a: { adapter: "openai-chat", baseUrl: "https://a.example/v1", apiKey: "ka", models: ["m1"] },
+        "cline-pass": {
+          adapter: "openai-chat",
+          baseUrl: "https://api.cline.bot/v1",
+          apiKey: "k-cline",
+          models: ["cline-sonnet"],
+        },
+      },
+    });
+    const response = await handleResponses(
+      new Request("http://localhost/v1/responses", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: "cline-pass/cline-sonnet", input: "hi", stream: false }),
+      }),
+      config,
+      { model: "", provider: "" },
+    );
+    expect(response.status).toBe(429);
+    expect(config.providers["cline-pass"]?.disabled).toBe(true);
+    expect(config.providerCooldowns?.["cline-pass"]?.reason).toBe("INFERENCE_CAP_ERROR");
   });
 });
 

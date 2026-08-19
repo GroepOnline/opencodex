@@ -1,3 +1,4 @@
+import { recordProviderCapCooldown, type ProviderCapCooldown } from "../providers/cap-cooldown";
 import { activateUncooledApiKey, hasKeyPoolFailover, rotateProviderTransportOn429 } from "../providers/key-failover";
 import type { OcxConfig, OcxProviderConfig } from "../types";
 import { resolveProviderTransport, type OcxProviderTransport } from "../providers/xai-transport";
@@ -13,7 +14,27 @@ export type ResolveOutcomeInput = {
   promptCacheKey?: string;
   now?: number;
   message?: string;
+  save?: boolean | ((config: OcxConfig) => void);
 };
+
+/** Persist a hard weekly/inference cap on this provider. Key pools no-op (cool the key instead). */
+export function recordCapOutcome(input: {
+  config: OcxConfig;
+  providerName: string;
+  status: number;
+  message?: string;
+  now?: number;
+  save?: boolean | ((config: OcxConfig) => void);
+}): ProviderCapCooldown | null {
+  try {
+    return recordProviderCapCooldown(input.config, input.providerName, input.status, input.message, {
+      now: input.now,
+      ...(input.save !== undefined ? { save: input.save } : {}),
+    });
+  } catch {
+    return null;
+  }
+}
 
 /** True when this provider has a key pool that Availability may hop. Does not read the body. */
 export function keyPoolCanHop(provider: OcxProviderConfig | OcxProviderTransport): boolean {
@@ -50,6 +71,7 @@ export function selectKeyPoolCandidate(input: {
  * Combo/Codex hops still go through their own loops; this is the apiKeyPool adapter.
  */
 export function resolveOutcome(input: ResolveOutcomeInput): OcxProviderTransport | null {
+  recordCapOutcome(input);
   if (!isAccountPoolHopStatus(input.status)) return null;
   if (!hasKeyPoolFailover(input.routedProvider)) return null;
   return rotateProviderTransportOn429(

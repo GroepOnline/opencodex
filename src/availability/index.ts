@@ -14,7 +14,7 @@ export {
   selectHopChain,
   type HopChain,
 } from "./chain";
-export { resolveOutcome, keyPoolCanHop, selectKeyPoolCandidate, type ResolveOutcomeInput } from "./resolve";
+export { resolveOutcome, recordCapOutcome, keyPoolCanHop, selectKeyPoolCandidate, type ResolveOutcomeInput } from "./resolve";
 export {
   selectOauthPoolCandidate,
   resolveAnthropicPoolOutcome,

@@ -29,7 +29,6 @@ import { isCanonicalOpenAiForwardProvider } from "../providers/openai-tiers";
 import { providerCodexAccountMode } from "../providers/registry";
 import type { StorageCleanupPolicy } from "../types";
 import {
-  bindProviderCapCooldownConfig,
   expireProviderCooldowns,
   startProviderCooldownSweep,
 } from "../providers/cap-cooldown";
@@ -270,8 +269,7 @@ function attachLiveSidebandUpstream(ws: ServerWebSocket<WsData>): void {
 
 export function startServer(port?: number) {
   const config = runAlibabaRegionStartupMigration(runOpenAiTierStartupMigration(loadConfig()));
-  // Cap-cooldown / request-log side effects must mutate THIS live object (not a disk reload).
-  bindProviderCapCooldownConfig(config);
+  // Availability mutates THIS live object when it records a cap-cooldown.
   if (expireProviderCooldowns(config)) saveConfig(config);
   // Auto-pausing a capped provider is only safe if it auto-recovers without the dashboard.
   startProviderCooldownSweep(config);

@@ -32,6 +32,7 @@ import {
   comboIdLabel,
   isAccountPoolHopStatus,
   keyPoolCanHop,
+  recordCapOutcome,
   resolveAnthropicPoolOutcome,
   resolveCodexPoolOutcome,
   resolveCursorPoolOutcome,
@@ -1518,6 +1519,15 @@ export async function handleResponses(
   const adapter = resolveAdapter(adapterProvider, config.cacheRetention);
   logCtx.providerAdapter = adapter.name;
   sealRequestAttemptIdentity(logCtx.activeAttempt, logCtx.provider, adapter.name);
+  const persistHardCap = async (response: Response): Promise<void> => {
+    if (response.status !== 429 && response.status !== 402) return;
+    recordCapOutcome({
+      config,
+      providerName: route.providerName,
+      status: response.status,
+      message: await peekUpstreamErrorText(response, options.abortSignal),
+    });
+  };
   const isPassthrough = "passthrough" in adapter && !!adapter.passthrough;
 
   if (adapter.name === "kiro" && parsed.previousResponseId && !parsed._previousResponseInputExpanded) {
@@ -2121,12 +2131,14 @@ export async function handleResponses(
         ),
     });
     if (imgResponse.body) {
+      await persistHardCap(imgResponse);
       const imgTurnAc = new AbortController();
       return new Response(trackStreamLifetime(imgResponse.body, imgTurnAc), {
         status: imgResponse.status,
         headers: imgResponse.headers,
       });
     }
+    await persistHardCap(imgResponse);
     return imgResponse;
     } // end else (streaming bridge)
   }
@@ -2185,12 +2197,14 @@ export async function handleResponses(
     // Register the sidecar stream as an active turn so drainAndShutdown waits for (or aborts)
     // in-flight web-search turns instead of skipping them during graceful shutdown.
     if (wsResponse.body) {
+      await persistHardCap(wsResponse);
       const wsTurnAc = new AbortController();
       return new Response(trackStreamLifetime(wsResponse.body, wsTurnAc), {
         status: wsResponse.status,
         headers: wsResponse.headers,
       });
     }
+    await persistHardCap(wsResponse);
     return wsResponse;
   }
 
@@ -2709,10 +2723,22 @@ export async function handleResponses(
       if (options.comboAttempt) {
         const failure = await consumeComboFailure(upstreamResponse, options.abortSignal)
           .finally(cleanupUpstreamAbort);
+        recordCapOutcome({
+          config,
+          providerName: route.providerName,
+          status: failure.response.status,
+          message: failure.classificationText,
+        });
         options.onConsumedComboFailure?.(failure);
         return failure.response;
       }
       const errorText = await upstreamResponse.text().catch(() => "unknown error");
+      recordCapOutcome({
+        config,
+        providerName: route.providerName,
+        status: upstreamResponse.status,
+        message: errorText,
+      });
       cleanupUpstreamAbort();
       recordSubagentQuotaFailureForThreadSpawn(
         req.headers,

@@ -5,6 +5,8 @@
  * with "resets in Nd Nh"), we persist a cooldown on the LIVE server config, optionally
  * disable the provider, and surface a short summary via /api/config.providerCooldowns.
  *
+ * Availability records this from the Responses turn (`recordCapOutcome` /
+ * `resolveOutcome`). The request log only displays what Availability already stored.
  * Callers must pass the live `OcxConfig` instance owned by `startServer` — never a fresh
  * `loadConfig()` snapshot — so routing and management see the change immediately.
  */
@@ -22,14 +24,6 @@ const MIN_MS = 60 * 1000;
 const COOLDOWN_EXTEND_TOLERANCE_MS = HOUR_MS;
 /** How often the live server sweeps expired cooldowns back off `providers[].disabled`. */
 const DEFAULT_SWEEP_MS = 60 * 1000;
-
-/** Live server config bound at startServer; used when the request-log path has no config arg. */
-let liveConfig: OcxConfig | null = null;
-
-/** Bind the long-lived server config so cooldown recording mutates routing state. */
-export function bindProviderCapCooldownConfig(config: OcxConfig): void {
-  liveConfig = config;
-}
 
 /** Parse "resets in 1d 22h" / "resets in 2d" / "resets in 3h" style phrases. */
 export function parseResetsInMs(message: string, now = Date.now()): number | undefined {
@@ -264,14 +258,4 @@ export function recordProviderCapCooldown(
     `[opencodex] Provider cap cooldown set provider=${key} until=${new Date(untilMs).toISOString()} reason=${reason} disabled=${!!entry.disabledProvider}`,
   );
   return entry;
-}
-
-/** Best-effort record using the bound live config (request-log hot path). */
-export function recordProviderCapCooldownLive(
-  providerName: string,
-  status: number,
-  upstreamError: string | undefined,
-): ProviderCapCooldown | null {
-  if (!liveConfig) return null;
-  return recordProviderCapCooldown(liveConfig, providerName, status, upstreamError);
 }
