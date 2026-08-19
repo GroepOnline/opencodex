@@ -461,6 +461,7 @@ export default function ProviderAuthPanel({
               <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 8 }}
                 onClick={() => setAddingKey(true)}>{t("pws.addKey")}</button>
             )}
+            <p className="card-sub" style={{ marginTop: 8 }}>{t("pws.keyPoolHint")}</p>
           </>
         )}
 

@@ -12,6 +12,7 @@ import {
   resolveOutcome,
   selectCodexCandidate,
   selectHopChain,
+  selectKeyPoolCandidate,
   selectOauthPoolCandidate,
 } from "../src/availability";
 import {
@@ -160,6 +161,44 @@ describe("resolveOutcome", () => {
       attemptedKey: pool[0]!.key,
     });
     expect(next?.apiKey).toBe(pool[1]!.key);
+  });
+
+  test("Meta AI and OpenCode Zen shaped openai-chat pools hop like any other key pool", () => {
+    const now = 1_000_000;
+    for (const [name, baseUrl] of [
+      ["meta-ai", "https://api.meta.ai/v1"],
+      ["opencode-zen", "https://opencode.ai/zen/v1"],
+    ] as const) {
+      const config = baseConfig({
+        defaultProvider: name,
+        providers: {
+          [name]: {
+            adapter: "openai-chat",
+            baseUrl,
+            apiKey: pool[0]!.key,
+            apiKeyPool: pool,
+          },
+        },
+      });
+      const next = resolveOutcome({
+        config,
+        providerName: name,
+        routedProvider: config.providers[name]!,
+        status: 429,
+        now,
+        attemptedKey: pool[0]!.key,
+      });
+      expect(next?.apiKey).toBe(pool[1]!.key);
+    }
+  });
+
+  test("selectKeyPoolCandidate is a no-op when the live key is eligible", () => {
+    const config = poolConfig();
+    expect(selectKeyPoolCandidate({
+      config,
+      providerName: "p",
+      routedProvider: config.providers.p!,
+    })).toBeNull();
   });
 });
 

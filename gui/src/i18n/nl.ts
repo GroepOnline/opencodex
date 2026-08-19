@@ -563,6 +563,8 @@ const overrides: Partial<Record<TKey, string>> = {
 
   "prov.waitingBrowser": "Wachten op de browser…",
   "pws.addAccount": "Account toevoegen",
+  "pws.addKey": "API-key toevoegen",
+  "pws.keyPoolHint": "Een tweede key schakelt door bij rate limits. Een weeklimiet koelt alleen die key.",
   "pws.healthCooldownHint": "Wacht tot de cooldown voorbij is. Deze account nog niet aanraken.",
   "pws.accountQuotaUnavailable": "Rate-limit data even niet bereikbaar; laatste bekende waarden blijven staan als die er zijn.",
 

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createOpenAIChatAdapter } from "../src/adapters/openai-chat";
 import {
+  activateUncooledApiKey,
   clearKeyCooldowns,
   getKeyCooldownUntil,
   hasKeyPoolFailover,
@@ -84,6 +85,21 @@ describe("rotateKeyOn429", () => {
     expect(getKeyCooldownUntil("p", "k1", now)).toBe(now + 10 * 60_000);
   });
 
+  test("hard-cap copy cools the failed key for the reset window", () => {
+    const config = makeConfig({ apiKey: "key-alpha-000111222333", apiKeyPool: pool3() });
+    const now = 1_000_000;
+    rotateKeyOn429(
+      config,
+      "p",
+      null,
+      now,
+      "key-alpha-000111222333",
+      "INFERENCE_CAP_ERROR weekly Clinepass limit. The limit resets in 2d",
+    );
+    expect(getKeyCooldownUntil("p", "k1", now)).toBe(now + 2 * 24 * 60 * 60 * 1000);
+    expect(config.providers.p.apiKey).toBe("key-beta-444555666777");
+  });
+
   test("skips keys already in cooldown and wraps around the pool", () => {
     const config = makeConfig({ apiKey: "key-alpha-000111222333", apiKeyPool: pool3() });
     const now = 1_000_000;
@@ -128,6 +144,16 @@ describe("rotateKeyOn429", () => {
     expect(getKeyCooldownUntil("p", "k1", now)).not.toBeNull();
     // A REAL beta failure afterwards still rotates to gamma.
     expect(rotateKeyOn429(config, "p", null, now, "key-beta-444555666777")?.apiKey).toBe("key-gamma-888999000111");
+  });
+
+  test("first pick skips a cooling active key without cooling the replacement", () => {
+    const config = makeConfig({ apiKey: "key-alpha-000111222333", apiKeyPool: pool3() });
+    const now = 1_000_000;
+    rotateKeyOn429(config, "p", "30", now, "key-alpha-000111222333");
+    config.providers.p.apiKey = "key-alpha-000111222333";
+    const selected = activateUncooledApiKey(config, "p", now, "key-alpha-000111222333");
+    expect(selected?.apiKey).toBe("key-beta-444555666777");
+    expect(getKeyCooldownUntil("p", "k2", now)).toBeNull();
   });
 });
 

@@ -116,6 +116,32 @@ describe("recordProviderCapCooldown (live config)", () => {
     expect(config.providerCooldowns).toBeUndefined();
   });
 
+  test("does not disable a key-pooled provider such as Meta AI", () => {
+    const config = bareConfig({
+      providers: {
+        openai: { baseUrl: "https://api.openai.com/v1", adapter: "openai-responses" },
+        "meta-ai": {
+          adapter: "openai-chat",
+          baseUrl: "https://api.meta.ai/v1",
+          apiKey: "key-a",
+          apiKeyPool: [
+            { id: "k1", key: "key-a" },
+            { id: "k2", key: "key-b" },
+          ],
+        },
+      },
+    });
+    expect(recordProviderCapCooldown(
+      config,
+      "meta-ai",
+      429,
+      'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. The limit resets in 1d 22h"}',
+      { save: false },
+    )).toBeNull();
+    expect(config.providers["meta-ai"]?.disabled).toBeUndefined();
+    expect(config.providerCooldowns?.["meta-ai"]).toBeUndefined();
+  });
+
   test("expire re-enables only cooldown-disabled providers", () => {
     const config = bareConfig();
     const past = 1_000;

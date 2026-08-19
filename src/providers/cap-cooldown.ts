@@ -10,6 +10,7 @@
  */
 import { saveConfigPreservingClaudeCode } from "../config";
 import type { OcxConfig, ProviderCapCooldown } from "../types";
+import { hasKeyPoolFailover } from "./api-keys";
 
 export type { ProviderCapCooldown };
 
@@ -202,6 +203,8 @@ export function recordProviderCapCooldown(
 ): ProviderCapCooldown | null {
   const key = resolveProviderConfigKey(config, providerName);
   if (!key || !isHardCapMessage(status, upstreamError)) return null;
+  const pooled = config.providers[key];
+  if (pooled && hasKeyPoolFailover(pooled)) return null;
   const now = opts?.now ?? Date.now();
   const rawMessage = (upstreamError || "Usage limit reached").slice(0, 400);
   const until = parseResetsInMs(rawMessage, now);

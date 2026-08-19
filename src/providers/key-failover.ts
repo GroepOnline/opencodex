@@ -10,7 +10,11 @@
  */
 import { saveConfigPreservingClaudeCode } from "../config";
 import type { OcxConfig, OcxProviderConfig } from "../types";
+import { hasKeyPoolFailover } from "./api-keys";
+import { isHardCapMessage, parseResetsInMs } from "./cap-cooldown";
 import { resolveProviderTransport, type OcxProviderTransport } from "./xai-transport";
+
+export { hasKeyPoolFailover } from "./api-keys";
 
 // ---- cooldown state (in-memory, same as codex/routing.ts) ----
 
@@ -19,7 +23,9 @@ interface KeyCooldown {
 }
 
 const DEFAULT_COOLDOWN_MS = 60_000;
-const MAX_COOLDOWN_MS = 10 * 60_000; // cap at 10 min for api-key rotation
+const MAX_COOLDOWN_MS = 10 * 60_000; // ordinary 429 Retry-After
+const MAX_HARD_CAP_KEY_COOLDOWN_MS = 14 * 24 * 60 * 60 * 1000;
+const HARD_CAP_DEFAULT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 /** Map<`${providerName}\0${keyId}`, KeyCooldown> */
 const keyCooldowns = new Map<string, KeyCooldown>();
@@ -43,6 +49,21 @@ function parseRetryAfterMs(value: string | null | undefined, now = Date.now()): 
   return delay > 0 ? Math.min(delay, MAX_COOLDOWN_MS) : undefined;
 }
 
+function cooldownMsForFailure(
+  retryAfterHeader: string | null | undefined,
+  message: string | undefined,
+  now: number,
+): number {
+  if (isHardCapMessage(429, message) || isHardCapMessage(402, message)) {
+    const until = parseResetsInMs(message || "", now);
+    if (until !== undefined) {
+      return Math.min(Math.max(until - now, 1), MAX_HARD_CAP_KEY_COOLDOWN_MS);
+    }
+    return HARD_CAP_DEFAULT_COOLDOWN_MS;
+  }
+  return parseRetryAfterMs(retryAfterHeader, now) ?? DEFAULT_COOLDOWN_MS;
+}
+
 function isKeyInCooldown(providerName: string, keyId: string, now = Date.now()): boolean {
   const entry = keyCooldowns.get(cooldownKey(providerName, keyId));
   if (!entry) return false;
@@ -55,13 +76,17 @@ function isKeyInCooldown(providerName: string, keyId: string, now = Date.now()):
 
 // ---- public API ----
 
-/**
- * Check whether a provider has multiple keys available for failover.
- * Returns true only for key-auth providers with 2+ pool entries.
- */
-export function hasKeyPoolFailover(provider: OcxProviderConfig): boolean {
-  if (provider.authMode === "oauth" || provider.authMode === "forward") return false;
-  return (provider.apiKeyPool?.length ?? 0) >= 2;
+function pickUncooledKey(
+  providerName: string,
+  pool: NonNullable<OcxProviderConfig["apiKeyPool"]>,
+  fromIndex: number,
+  now: number,
+): NonNullable<OcxProviderConfig["apiKeyPool"]>[number] | null {
+  for (let i = 1; i <= pool.length; i++) {
+    const candidate = pool[(fromIndex + i) % pool.length]!;
+    if (!isKeyInCooldown(providerName, candidate.id, now)) return candidate;
+  }
+  return null;
 }
 
 /**
@@ -81,6 +106,7 @@ export function rotateKeyOn429(
   retryAfterHeader: string | null | undefined,
   now = Date.now(),
   attemptedKey?: string,
+  message?: string,
 ): OcxProviderConfig | null {
   const provider = config.providers[providerName];
   if (!provider) return null;
@@ -95,7 +121,7 @@ export function rotateKeyOn429(
   const failedKey = attemptedKey ?? provider.apiKey;
   const currentEntry = pool.find(e => e.key === failedKey);
   if (currentEntry) {
-    const cooldownMs = parseRetryAfterMs(retryAfterHeader, now) ?? DEFAULT_COOLDOWN_MS;
+    const cooldownMs = cooldownMsForFailure(retryAfterHeader, message, now);
     keyCooldowns.set(cooldownKey(providerName, currentEntry.id), {
       cooldownUntil: now + cooldownMs,
     });
@@ -110,23 +136,18 @@ export function rotateKeyOn429(
     }
   }
 
-  // Pick the next key that is NOT in cooldown
   const currentIndex = currentEntry ? pool.indexOf(currentEntry) : -1;
-  for (let i = 1; i < pool.length; i++) {
-    const candidate = pool[(currentIndex + i) % pool.length]!;
-    if (!isKeyInCooldown(providerName, candidate.id, now)) {
-      // Swap active key
-      provider.apiKey = candidate.key;
-      saveConfigPreservingClaudeCode(config);
-      console.warn(
-        // Log ids only — labels are user-supplied free text and could carry secret material.
-        `[key-failover] ${providerName}: 429 on key ${currentEntry?.id ?? "?"}; rotating to key ${candidate.id}`,
-      );
-      return { ...provider };
-    }
+  const candidate = pickUncooledKey(providerName, pool, currentIndex, now);
+  if (candidate) {
+    provider.apiKey = candidate.key;
+    saveConfigPreservingClaudeCode(config);
+    console.warn(
+      // Log ids only — labels are user-supplied free text and could carry secret material.
+      `[key-failover] ${providerName}: 429 on key ${currentEntry?.id ?? "?"}; rotating to key ${candidate.id}`,
+    );
+    return { ...provider };
   }
 
-  // All keys in cooldown
   console.warn(`[key-failover] ${providerName}: all ${pool.length} keys in cooldown; returning 429 to client`);
   return null;
 }
@@ -136,6 +157,7 @@ interface RotateProviderTransportOptions {
   now?: number;
   attemptedKey?: string;
   promptCacheKey?: string;
+  message?: string;
 }
 
 /**
@@ -161,6 +183,7 @@ export function rotateProviderTransportOn429(
     options.retryAfter,
     options.now,
     options.attemptedKey,
+    options.message,
   );
   return rotated
     ? resolveProviderTransport(
@@ -169,6 +192,31 @@ export function rotateProviderTransportOn429(
         options.promptCacheKey,
       )
     : null;
+}
+
+/**
+ * First pick: if the active key is cooling, persist the next uncooled key.
+ * Returns null when this is not a pool or the live key is already eligible.
+ */
+export function activateUncooledApiKey(
+  config: OcxConfig,
+  providerName: string,
+  now = Date.now(),
+  attemptedKey?: string,
+): OcxProviderConfig | null {
+  const provider = config.providers[providerName];
+  if (!provider || !hasKeyPoolFailover(provider)) return null;
+  const pool = provider.apiKeyPool!;
+  const liveKey = attemptedKey ?? provider.apiKey;
+  const current = pool.find(e => e.key === liveKey);
+  if (current && !isKeyInCooldown(providerName, current.id, now)) return null;
+  const fromIndex = current ? pool.indexOf(current) : -1;
+  const candidate = pickUncooledKey(providerName, pool, fromIndex, now);
+  if (!candidate) return null;
+  if (candidate.key === provider.apiKey) return { ...provider };
+  provider.apiKey = candidate.key;
+  saveConfigPreservingClaudeCode(config);
+  return { ...provider };
 }
 
 /** Clear cooldown state for a provider (e.g. after manual key management). */

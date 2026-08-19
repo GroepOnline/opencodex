@@ -994,6 +994,7 @@ export const en = {
   "pws.adapterBaseRequired": "Adapter and base URL are required.",
   "pws.addAccount": "Add account",
   "pws.addKey": "Add API key",
+  "pws.keyPoolHint": "Add a second key to rotate on rate limits. A weekly cap cools that key only.",
   "pws.apiKeys": "API Keys",
   "pws.authMode": "Auth mode",
   "pws.availableAccounts": "Available accounts",

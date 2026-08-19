@@ -39,6 +39,7 @@ import {
   resolveOutcome,
   selectCodexCandidate,
   selectHopChain,
+  selectKeyPoolCandidate,
   selectOauthPoolCandidate,
   codexQuotaOutcomeMeta,
   shouldDeferCodexResetDerivedCooldown,
@@ -254,6 +255,15 @@ function isAllowListedCodexAccountModel400(
       === normalizeCodexUnsupportedModelDetail(expected);
   } catch {
     return false;
+  }
+}
+
+async function peekUpstreamErrorText(response: Response, signal?: AbortSignal): Promise<string | undefined> {
+  try {
+    const body = await readBoundedResponseBody(response.clone(), { signal });
+    return body.displaySafe ? body.text : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -1491,6 +1501,13 @@ export async function handleResponses(
       return formatErrorResponse(failure.status, failure.type, failure.message);
     }
   }
+  const keyPick = selectKeyPoolCandidate({
+    config,
+    providerName: route.providerName,
+    routedProvider: route.provider,
+    promptCacheKey: parsed.options.promptCacheKey,
+  });
+  if (keyPick) route.provider = { ...route.provider, apiKey: keyPick.apiKey };
   route.provider = resolveProviderTransport(
     route.providerName,
     route.provider,
@@ -2566,6 +2583,7 @@ export async function handleResponses(
         && keyPoolCanHop(route.provider)
         && await canRotateOrCoolFailure(upstreamResponse)
       ) {
+        const hopMessage = await peekUpstreamErrorText(upstreamResponse, options.abortSignal);
         const rotated = resolveOutcome({
           config,
           providerName: route.providerName,
@@ -2575,6 +2593,7 @@ export async function handleResponses(
           now: Date.now(),
           attemptedKey: route.provider.apiKey,
           promptCacheKey: parsed.options.promptCacheKey,
+          message: hopMessage,
         });
         if (!rotated) break;
         // Release the failed response's socket before retrying; unread bodies otherwise linger
@@ -2792,6 +2811,7 @@ export async function handleResponses(
       }
 
       {
+        const hopMessage = await peekUpstreamErrorText(response, options.abortSignal);
         const rotated = resolveOutcome({
           config,
           providerName: route.providerName,
@@ -2801,6 +2821,7 @@ export async function handleResponses(
           now: Date.now(),
           attemptedKey: route.provider.apiKey,
           promptCacheKey: nextParsed.options.promptCacheKey,
+          message: hopMessage,
         });
         if (rotated) {
           try { void response.body?.cancel().catch(() => {}); } catch { /* already closed */ }
