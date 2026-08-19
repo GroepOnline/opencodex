@@ -7,6 +7,8 @@ import {
   clearKeyPoolCooldowns,
   hopChainTargets,
   isAccountPoolHopStatus,
+  resolveAnthropicPoolOutcome,
+  resolveGoogleAntigravityPoolOutcome,
   resolveOutcome,
   selectHopChain,
 } from "../src/availability";
@@ -151,5 +153,24 @@ describe("resolveOutcome", () => {
       attemptedKey: pool[0]!.key,
     });
     expect(next?.apiKey).toBe(pool[1]!.key);
+  });
+});
+
+describe("oauth pool resolveOutcome", () => {
+  test("surfaces statuses that are not 429/529 without touching accounts", async () => {
+    const config = baseConfig();
+    const routed = config.providers.a!;
+    expect(await resolveAnthropicPoolOutcome({
+      config,
+      status: 400,
+      failedAccountId: "acct-1",
+      routedProvider: routed,
+    })).toBeNull();
+    expect(await resolveGoogleAntigravityPoolOutcome({
+      config,
+      status: 503,
+      failedAccountId: "acct-1",
+      routedProvider: routed,
+    })).toBeNull();
   });
 });

@@ -27,7 +27,7 @@ import {
   targetKey,
 } from "../../combos";
 import { providerCredentialFailure, providerCredentialRef, withResolvedProviderCredential } from "../../providers/credential";
-import { classifyAttempt, comboIdLabel, isAccountPoolHopStatus, keyPoolCanHop, resolveOutcome, selectHopChain } from "../../availability";
+import { classifyAttempt, comboIdLabel, isAccountPoolHopStatus, keyPoolCanHop, resolveAnthropicPoolOutcome, resolveCodexPoolOutcome, resolveCursorPoolOutcome, resolveGoogleAntigravityPoolOutcome, resolveOutcome, selectHopChain, codexQuotaOutcomeMeta, shouldDeferCodexResetDerivedCooldown } from "../../availability";
 import { isInjectionDebugEnabled } from "../../lib/debug-settings";
 import { injectionDebugLog } from "../../lib/injection-debug-log";
 import { resolveClientRetryAfter } from "../../lib/retry-after";
@@ -52,7 +52,6 @@ import {
   isAnthropicAccountPoolEnabled,
   promoteAnthropicActiveAccount,
   resolveAnthropicAccountForSession,
-  rotateAnthropicAccountOn429,
 } from "../../oauth/anthropic-routing";
 import {
   GOOGLE_ANTIGRAVITY_POOL_MAX_FAILOVERS_PER_REQUEST,
@@ -63,9 +62,7 @@ import {
   googleAntigravitySessionKey,
   isGoogleAntigravityAccountPoolEnabled,
   promoteGoogleAntigravityActiveAccount,
-  releaseGoogleAntigravitySessionAffinity,
   resolveGoogleAntigravityAccountForSession,
-  rotateGoogleAntigravityAccountOn429,
 } from "../../oauth/google-antigravity-routing";
 import {
   bindCursorSessionAffinity,
@@ -75,10 +72,8 @@ import {
   getCursorPoolAccessToken,
   getCursorPoolRetryAfterSeconds,
   isCursorAccountPoolEnabled,
-  isCursorPoolRotationError,
   promoteCursorActiveAccount,
   resolveCursorAccountForSession,
-  rotateCursorAccountOnQuota,
 } from "../../oauth/cursor-routing";
 import { buildWebSearchTool, planWebSearch, runWithWebSearch, shouldResolveOpenAiWebSearchSidecar } from "../../web-search";
 import { buildImageTool, buildVideoTool, planImageBridge, planVideoBridge, runWithImageBridge, clampImageMaxRounds, IMAGE_GEN_TOOL_NAME, VIDEO_GEN_TOOL_NAME } from "../../images";
@@ -98,11 +93,9 @@ import {
   codexProbeLeaseId,
   codexProbeQuotaScope,
   releaseCodexAuthContextProbeLease,
-  stripCodexRuntimeProviderFields,
   type CodexAuthContext,
 } from "../../codex/auth-context";
 import {
-  computeQuotaCooldown,
   formatCodexProviderForLog,
   previewCodexAccountForRequest,
   recordCodexUpstreamOutcome,
@@ -338,31 +331,6 @@ type CodexPoolAccountRetryResult =
     response: Response;
   };
 
-function codexQuotaOutcomeMeta(response: Response): {
-  retryAfter: string | null;
-  resetAt: string[];
-} {
-  return {
-    retryAfter: response.headers.get("retry-after"),
-    resetAt: [
-      response.headers.get("x-codex-primary-reset-at"),
-      response.headers.get("x-codex-secondary-reset-at"),
-      response.headers.get("x-codex-tertiary-reset-at"),
-    ].filter((value): value is string => !!value),
-  };
-}
-
-/**
- * A reset timestamp describes a quota window, not an explicit instruction to
- * stop using the whole account. A combo may therefore try a later model in the
- * same request, while Retry-After and headerless quota failures remain blocking.
- */
-function shouldDeferCodexResetDerivedCooldown(response: Response, enabled?: boolean): boolean {
-  return enabled === true
-    && (response.status === 429 || response.status === 402)
-    && computeQuotaCooldown(codexQuotaOutcomeMeta(response)).source === "reset-derived";
-}
-
 /**
  * One bounded alternate-account retry for Codex pool auth. Used for allow-listed
  * model-400 and for pre-stream 429/402 quota failures (#584).
@@ -375,48 +343,20 @@ async function retryCodexPoolOnAlternateAccount(
     outcomeStatus, upstream, connectMs, passthroughEstimate, stream,
   } = args;
   if (options.attemptBudget?.remaining === 0) return { kind: "no-alternate" };
-  let retryAuthCtx: CodexAuthContext | undefined;
-  try {
-    retryAuthCtx = await resolveCodexAuthContext(
-      req.headers,
-      config,
-      "pool",
-      { excludeAccountId: firstAuthCtx.accountId, modelId: route.modelId },
-    );
-  } catch (error) {
-    if (
-      !(error instanceof CodexPoolAuthenticationError)
-      && !(error instanceof CodexAuthContextError)
-      && !(error instanceof CodexAccountCooldownError)
-    ) throw error;
-  }
-  if (retryAuthCtx?.kind !== "pool" && retryAuthCtx?.kind !== "main-pool") {
-    return { kind: "no-alternate" };
-  }
-
-  const quotaMeta = codexQuotaOutcomeMeta(firstResponse);
-  if (outcomeStatus === 429 || outcomeStatus === 402) {
-    const { applyAccountQuotaFromUpstreamHeaders } = await import("../../codex/auth-api");
-    applyAccountQuotaFromUpstreamHeaders(firstAuthCtx.accountId, firstResponse.headers);
-  }
-  if (!shouldDeferCodexResetDerivedCooldown(firstResponse, options.deferCodexResetDerivedCooldown)) {
-    recordCodexUpstreamOutcome(config, firstAuthCtx.accountId, outcomeStatus, {
-      ...quotaMeta,
-      threadId: req.headers.get("x-codex-parent-thread-id"),
-      modelId: route.modelId,
-      probeLeaseId: codexProbeLeaseId(firstAuthCtx),
-      probeQuotaScope: codexProbeQuotaScope(firstAuthCtx),
-      // Retry already advanced the RR ring via excludeAccountId — reuse for promotion.
-      ...(retryAuthCtx.accountId ? { promoteAccountId: retryAuthCtx.accountId } : {}),
-    });
-  }
-
-  const retryHeaders = headersForCodexAuthContext(req.headers, retryAuthCtx);
-  const retryProvider = applyCodexAuthContextToProvider(
-    stripCodexRuntimeProviderFields(route.provider),
-    retryAuthCtx,
-    "pool",
-  );
+  const hop = await resolveCodexPoolOutcome({
+    headers: req.headers,
+    config,
+    firstAuthCtx,
+    firstResponse,
+    outcomeStatus,
+    modelId: route.modelId,
+    routedProvider: route.provider,
+    deferCodexResetDerivedCooldown: options.deferCodexResetDerivedCooldown,
+  });
+  if (!hop) return { kind: "no-alternate" };
+  const retryAuthCtx = hop.authCtx;
+  const retryHeaders = hop.headers;
+  const retryProvider = hop.provider;
   const retryAdapter = resolveAdapter(
     resolveWireProtocolOverride(route.providerName, route.modelId, retryProvider),
     config.cacheRetention,
@@ -2330,40 +2270,33 @@ export async function handleResponses(
         !cursorPoolAccountId
         || cursorPoolFailovers >= CURSOR_POOL_MAX_FAILOVERS_PER_REQUEST
         || options.abortSignal?.aborted
-        || !isCursorPoolRotationError(message)
       ) {
         return false;
       }
-      const nextAccountId = rotateCursorAccountOnQuota(
+      const hop = await resolveCursorPoolOutcome({
         config,
-        cursorPoolAccountId,
-        // Honour the upstream Retry-After when the adapter reported one, so the cooled account is
-        // held out for the server's interval instead of the generic default cooldown.
-        retryAfter ?? null,
-        cursorSessionKey,
+        message,
+        failedAccountId: cursorPoolAccountId,
+        routedProvider: route.provider,
+        retryAfter: retryAfter ?? null,
+        sessionKey: cursorSessionKey,
+      });
+      if (!hop) return false;
+      cursorPoolAccountId = hop.accountId;
+      cursorPoolFailovers += 1;
+      parsed._cursorIdentityScope = hop.accountId;
+      route.provider = hop.provider;
+      logCtx.provider = hop.logProvider;
+      activeRunTurnAdapter = resolveAdapter(
+        resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
+        config.cacheRetention,
       );
-      if (!nextAccountId) return false;
-      try {
-        const accessToken = await getCursorPoolAccessToken(nextAccountId);
-        cursorPoolAccountId = nextAccountId;
-        cursorPoolFailovers += 1;
-        parsed._cursorIdentityScope = nextAccountId;
-        route.provider = { ...route.provider, apiKey: accessToken };
-        promoteCursorActiveAccount(nextAccountId);
-        logCtx.provider = formatCursorProviderForLog(nextAccountId);
-        activeRunTurnAdapter = resolveAdapter(
-          resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
-          config.cacheRetention,
-        );
-        sealRequestAttemptIdentity(
-          logCtx.activeAttempt,
-          logCtx.provider,
-          activeRunTurnAdapter.name,
-        );
-        return true;
-      } catch {
-        return false;
-      }
+      sealRequestAttemptIdentity(
+        logCtx.activeAttempt,
+        logCtx.provider,
+        activeRunTurnAdapter.name,
+      );
+      return true;
     };
     const { toolNsMap, freeformToolNames, toolSearchToolNames } = buildToolBridgeMaps(parsed);
     if (parsed.stream) {
@@ -2713,32 +2646,28 @@ export async function handleResponses(
         && anthropicPoolFailovers < ANTHROPIC_POOL_MAX_FAILOVERS_PER_REQUEST
         && await canRotateOrCoolFailure(upstreamResponse)
       ) {
-        const nextAccountId = rotateAnthropicAccountOn429(
+        const hop = await resolveAnthropicPoolOutcome({
           config,
-          anthropicPoolAccountId,
-          upstreamResponse.headers.get("retry-after"),
-          anthropicSessionKey,
-        );
-        if (!nextAccountId) break;
+          status: upstreamResponse.status,
+          failedAccountId: anthropicPoolAccountId,
+          routedProvider: route.provider,
+          retryAfter: upstreamResponse.headers.get("retry-after"),
+          sessionKey: anthropicSessionKey,
+        });
+        if (!hop) break;
         try { void upstreamResponse.body?.cancel().catch(() => {}); } catch { /* already consumed/closed */ }
-        try {
-          const accessToken = await getAnthropicPoolAccessToken(nextAccountId);
-          anthropicPoolAccountId = nextAccountId;
-          anthropicPoolFailovers += 1;
-          route.provider = { ...route.provider, apiKey: accessToken };
-          promoteAnthropicActiveAccount(nextAccountId);
-          logCtx.provider = formatAnthropicProviderForLog("anthropic", nextAccountId, config);
-          activeAdapter = resolveAdapter(
-            resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
-            config.cacheRetention,
-          );
-          sealRequestAttemptIdentity(logCtx.activeAttempt, logCtx.provider, activeAdapter.name);
-          const result = await rebuildAndRefetch("anthropic-oauth-429");
-          if ("failed" in result) return result.failed;
-          upstreamResponse = result;
-        } catch {
-          break;
-        }
+        anthropicPoolAccountId = hop.accountId;
+        anthropicPoolFailovers += 1;
+        route.provider = hop.provider;
+        logCtx.provider = hop.logProvider;
+        activeAdapter = resolveAdapter(
+          resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
+          config.cacheRetention,
+        );
+        sealRequestAttemptIdentity(logCtx.activeAttempt, logCtx.provider, activeAdapter.name);
+        const result = await rebuildAndRefetch("anthropic-oauth-429");
+        if ("failed" in result) return result.failed;
+        upstreamResponse = result;
       }
       // Opt-in Google Antigravity OAuth pool: rotate on 429 and native 529
       // overload. Transport failures, client aborts, and 4xx never enter this
@@ -2751,54 +2680,40 @@ export async function handleResponses(
           < GOOGLE_ANTIGRAVITY_POOL_MAX_FAILOVERS_PER_REQUEST
         && await canRotateOrCoolFailure(upstreamResponse)
       ) {
-        const nextAccountId = rotateGoogleAntigravityAccountOn429(
+        const hop = await resolveGoogleAntigravityPoolOutcome({
           config,
-          googleAntigravityPoolAccountId,
-          upstreamResponse.headers.get("retry-after"),
-          antigravitySessionKey,
-        );
-        if (!nextAccountId) break;
+          status: upstreamResponse.status,
+          failedAccountId: googleAntigravityPoolAccountId,
+          routedProvider: route.provider,
+          retryAfter: upstreamResponse.headers.get("retry-after"),
+          sessionKey: antigravitySessionKey,
+        });
+        if (!hop) break;
         try {
           void upstreamResponse.body?.cancel().catch(() => {});
         } catch {
           /* already consumed/closed */
         }
-        try {
-          const credential = await getGoogleAntigravityPoolCredential(nextAccountId);
-          googleAntigravityPoolAccountId = nextAccountId;
-          googleAntigravityPoolFailovers += 1;
-          route.provider = {
-            ...route.provider,
-            apiKey: credential.accessToken,
-            project: credential.projectId,
-          };
-          promoteGoogleAntigravityActiveAccount(nextAccountId);
-          logCtx.provider = formatGoogleAntigravityProviderForLog(nextAccountId);
-          activeAdapter = resolveAdapter(
-            resolveWireProtocolOverride(
-              route.providerName,
-              route.modelId,
-              route.provider,
-            ),
-            config.cacheRetention,
-          );
-          sealRequestAttemptIdentity(
-            logCtx.activeAttempt,
-            logCtx.provider,
-            activeAdapter.name,
-          );
-          const result = await rebuildAndRefetch("google-antigravity-oauth-429");
-          if ("failed" in result) return result.failed;
-          upstreamResponse = result;
-        } catch {
-          // The alternate could not produce a credential (refresh or project
-          // resolution failed). A non-terminal refresh failure leaves it eligible,
-          // so drop the affinity the rotation just bound; otherwise later requests
-          // in this session replay the same unusable account instead of selecting
-          // another one.
-          releaseGoogleAntigravitySessionAffinity(antigravitySessionKey, nextAccountId);
-          break;
-        }
+        googleAntigravityPoolAccountId = hop.accountId;
+        googleAntigravityPoolFailovers += 1;
+        route.provider = hop.provider;
+        logCtx.provider = hop.logProvider;
+        activeAdapter = resolveAdapter(
+          resolveWireProtocolOverride(
+            route.providerName,
+            route.modelId,
+            route.provider,
+          ),
+          config.cacheRetention,
+        );
+        sealRequestAttemptIdentity(
+          logCtx.activeAttempt,
+          logCtx.provider,
+          activeAdapter.name,
+        );
+        const result = await rebuildAndRefetch("google-antigravity-oauth-429");
+        if ("failed" in result) return result.failed;
+        upstreamResponse = result;
       }
       // Anthropic 413 request_too_large: rebuild once with every image one tier lower
       // (spiral guard: single attempt). The biased response re-enters the 429 check above.
@@ -2950,30 +2865,26 @@ export async function handleResponses(
         && isAnthropicAccountPoolEnabled(config)
         && anthropicPoolFailovers < ANTHROPIC_POOL_MAX_FAILOVERS_PER_REQUEST
       ) {
-        const nextAccountId = rotateAnthropicAccountOn429(
+        const hop = await resolveAnthropicPoolOutcome({
           config,
-          anthropicPoolAccountId,
-          response.headers.get("retry-after"),
-          anthropicSessionKey,
-        );
-        if (nextAccountId) {
+          status: response.status,
+          failedAccountId: anthropicPoolAccountId,
+          routedProvider: route.provider,
+          retryAfter: response.headers.get("retry-after"),
+          sessionKey: anthropicSessionKey,
+        });
+        if (hop) {
           try { void response.body?.cancel().catch(() => {}); } catch { /* already closed */ }
-          try {
-            const accessToken = await getAnthropicPoolAccessToken(nextAccountId);
-            anthropicPoolAccountId = nextAccountId;
-            anthropicPoolFailovers += 1;
-            route.provider = { ...route.provider, apiKey: accessToken };
-            promoteAnthropicActiveAccount(nextAccountId);
-            logCtx.provider = formatAnthropicProviderForLog("anthropic", nextAccountId, config);
-            activeAdapter = resolveAdapter(
-              resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
-              config.cacheRetention,
-            );
-            sealRequestAttemptIdentity(logCtx.activeAttempt, logCtx.provider, activeAdapter.name);
-            continue;
-          } catch {
-            // fall through to emit continuation error below
-          }
+          anthropicPoolAccountId = hop.accountId;
+          anthropicPoolFailovers += 1;
+          route.provider = hop.provider;
+          logCtx.provider = hop.logProvider;
+          activeAdapter = resolveAdapter(
+            resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
+            config.cacheRetention,
+          );
+          sealRequestAttemptIdentity(logCtx.activeAttempt, logCtx.provider, activeAdapter.name);
+          continue;
         }
       }
       if (shouldAttemptImageTierRetry({

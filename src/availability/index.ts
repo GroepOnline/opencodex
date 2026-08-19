@@ -15,5 +15,18 @@ export {
   type HopChain,
 } from "./chain";
 export { resolveOutcome, keyPoolCanHop, type ResolveOutcomeInput } from "./resolve";
+export {
+  resolveAnthropicPoolOutcome,
+  resolveGoogleAntigravityPoolOutcome,
+  resolveCursorPoolOutcome,
+  type OauthPoolHop,
+} from "./oauth-pool";
+export {
+  resolveCodexPoolOutcome,
+  codexQuotaOutcomeMeta,
+  shouldDeferCodexResetDerivedCooldown,
+  type CodexPoolHop,
+  type CodexPoolAuth,
+} from "./codex-pool";
 export { clearKeyPoolCooldowns } from "./management";
 export { comboIdLabel } from "../providers/fallback";
