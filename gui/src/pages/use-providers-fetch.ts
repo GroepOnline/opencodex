@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import type { TFn } from "../i18n/shared";
 import { readJsonIfOk, readJsonOrThrow } from "../fetch-json";
 import { writeSessionListCache } from "../session-list-cache";
-import type { OAuthStatus, ProviderQuotaReport, ProvidersConfig } from "./providers-shared";
+import type { AvailabilityProviderView, OAuthStatus, ProviderQuotaReport, ProvidersConfig } from "./providers-shared";
 
 export function useProvidersFetch({
   apiBase,
@@ -11,6 +11,7 @@ export function useProvidersFetch({
   setOauthProviders,
   setOauthStatus,
   setQuotaReports,
+  setAvailability,
   notify,
   configCacheKey,
 }: {
@@ -20,20 +21,30 @@ export function useProvidersFetch({
   setOauthProviders: React.Dispatch<React.SetStateAction<string[]>>;
   setOauthStatus: React.Dispatch<React.SetStateAction<Record<string, OAuthStatus>>>;
   setQuotaReports: React.Dispatch<React.SetStateAction<Record<string, ProviderQuotaReport>>>;
+  setAvailability?: React.Dispatch<React.SetStateAction<AvailabilityProviderView[]>>;
   notify: (msg: string, ok: boolean) => void;
   /** Session seed key for instant Providers shell paint (no secrets — hasApiKey flags only). */
   configCacheKey?: string;
 }) {
   const fetchConfig = useCallback(async () => {
     try {
-      const res = await fetch(`${apiBase}/api/config`);
+      const [res, availRes] = await Promise.all([
+        fetch(`${apiBase}/api/config`),
+        fetch(`${apiBase}/api/availability`),
+      ]);
       const data = await readJsonOrThrow<ProvidersConfig>(res);
       setConfig(data ?? null);
       if (configCacheKey && data) writeSessionListCache(configCacheKey, data);
+      if (setAvailability) {
+        const avail = availRes.ok
+          ? await readJsonIfOk<{ providers?: AvailabilityProviderView[] }>(availRes)
+          : null;
+        setAvailability(avail?.providers ?? []);
+      }
     } catch {
       notify(t("prov.loadConfigFail"), false);
     }
-  }, [apiBase, configCacheKey, notify, setConfig, t]);
+  }, [apiBase, configCacheKey, notify, setAvailability, setConfig, t]);
 
   const fetchOauth = useCallback(async () => {
     try {

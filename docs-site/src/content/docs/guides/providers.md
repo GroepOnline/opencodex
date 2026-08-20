@@ -236,7 +236,9 @@ Key-based providers can also keep multiple keys — including simple openai-chat
 such as Meta AI and opencode zen. Adding a key through the Providers page stores it
 under `provider.apiKeyPool`, makes it active, and mirrors it to `provider.apiKey` so routing and
 adapters continue to read the same field as before. The same dropdown can switch or remove keys; the
-management API is `/api/providers/keys` and returns masked keys only. Two or more keys rotate on
+management API is `/api/providers/keys` and returns masked keys only, including `cooldownUntil`
+when Availability is cooling that key. `GET /api/availability` is the dashboard read-model:
+pool size, first hop, cooling-key count, and cap window, with no secrets. Two or more keys rotate on
 429/529 without disabling the provider: a weekly inference cap cools that key until reset and the
 next key keeps serving. One key on Meta and one key on Zen are still two providers; hop across them
 with `fallback` or a combo, not `apiKeyPool`.

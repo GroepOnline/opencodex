@@ -1,10 +1,10 @@
-/* ProviderOverviewDashboard — aggregate overview (Phase 010) */
+/* ProviderOverviewDashboard — operate strip: who may take the next attempt. */
 
 .pws-dashboard {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 4px 0;
+  gap: var(--space-4);
+  padding: var(--space-1) 0;
   max-width: 100%;
 }
 
@@ -13,7 +13,7 @@
   flex-direction: row;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .pws-dashboard-header-text {
@@ -24,76 +24,77 @@
 }
 
 .pws-dashboard-title {
-  font-size: 1.1rem;
-  font-weight: 600;
+  font-size: var(--text-subtitle);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-tight);
+  text-wrap: balance;
   margin: 0;
 }
 
 .pws-dashboard-subtitle {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: var(--text-label);
 }
 
-/* Summary cards */
-.pws-dashboard-summary {
-  display: flex;
-  gap: 10px;
+.pws-dashboard-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
 }
 
-.pws-dashboard-card {
+.pws-dashboard-stat {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 10px 20px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg-secondary, var(--bg));
-  min-width: 80px;
+  gap: var(--space-0-5);
+  padding: var(--space-2) var(--space-3);
+  min-width: 0;
 }
 
-.pws-dashboard-card-count {
+.pws-dashboard-stat + .pws-dashboard-stat {
+  border-left: 1px solid var(--border-soft);
+}
+
+.pws-dashboard-stat-count {
   font-size: var(--text-title);
-  font-weight: var(--weight-semibold);
-  line-height: 1;
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
   font-variant-numeric: tabular-nums;
   letter-spacing: var(--tracking-tight);
+  color: var(--text);
 }
 
-.pws-dashboard-card--ok .pws-dashboard-card-count { color: var(--green); }
-.pws-dashboard-card--warn .pws-dashboard-card-count { color: var(--amber); }
-.pws-dashboard-card--muted .pws-dashboard-card-count { color: var(--faint); }
+.pws-dashboard-stat-count--warn {
+  color: var(--amber);
+}
 
-.pws-dashboard-card-label {
+.pws-dashboard-stat-label {
   font-size: var(--text-micro);
   color: var(--faint);
-  font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
 }
 
-/* Rate Limits | Recently Used side-by-side (no vertical stack / scroll) */
 .pws-dashboard-columns {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-  gap: 20px;
+  gap: var(--space-5);
   align-items: start;
 }
 
-/* Sections (Rate Limits / Recently Used) */
 .pws-dashboard-section {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   min-width: 0;
 }
 
 .pws-dashboard-section-title {
-  font-size: 0.68rem;
-  font-weight: 600;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--fg-muted, #888);
+  letter-spacing: var(--tracking-caps);
+  color: var(--muted);
   margin: 0;
   padding-bottom: 2px;
 }
@@ -102,19 +103,48 @@
 .pws-dashboard-caps .pws-dashboard-section-title {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  color: var(--yellow, #eab308);
+  gap: var(--space-1-5);
+  color: var(--amber);
   text-transform: none;
-  font-size: 0.82rem;
+  font-size: var(--text-label);
   letter-spacing: 0;
 }
 
-.pws-dashboard-row--attention {
-  border-color: color-mix(in srgb, var(--yellow, #eab308) 40%, var(--border));
-  background: color-mix(in srgb, var(--yellow, #eab308) 8%, var(--bg-secondary, var(--bg)));
+.pws-dashboard-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
 }
 
-/* Clickable provider rows */
+.pws-dashboard-group .pws-dashboard-row {
+  border-radius: 0;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.pws-dashboard-group .pws-dashboard-row:last-child {
+  border-bottom: none;
+}
+
+.pws-dashboard-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-label);
+  white-space: nowrap;
+}
+
+.pws-dashboard-status--ready { color: var(--muted); }
+.pws-dashboard-status--warn { color: var(--amber); }
+.pws-dashboard-status--cool { color: var(--amber); }
+.pws-dashboard-status--off { color: var(--faint); }
+
+.pws-dashboard-row--attention {
+  border-color: color-mix(in srgb, var(--amber) 40%, var(--border));
+  background: color-mix(in srgb, var(--amber) 8%, var(--surface));
+}
+
 .pws-dashboard-rows {
   display: flex;
   flex-direction: column;
@@ -123,25 +153,26 @@
 
 .pws-dashboard-row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 22px minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 8px;
-  padding: 6px 6px;
-  border-radius: 6px;
+  gap: var(--space-2);
+  padding: var(--space-1-5);
+  border-radius: var(--radius-xs);
   border: none;
   background: none;
   width: 100%;
-  transition: background 0.12s;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out);
 }
 
-/* The interactive select area of a row (icon + name/meta + chevron + bars).
-   Kept separate from the row wrapper so a real <button> (quota retry) can sit
-   beside it without nesting interactive controls. */
 .pws-dashboard-row-select {
   display: grid;
   grid-template-columns: 22px 1fr auto;
   align-items: center;
-  column-gap: 8px;
+  column-gap: var(--space-2);
   min-width: 0;
   padding: 0;
   border: none;
@@ -150,16 +181,21 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
 }
 
-.pws-dashboard-row-select:focus-visible {
-  outline: 2px solid var(--accent-ring);
+.pws-dashboard-row-select:focus-visible,
+.pws-dashboard-row:focus-visible {
+  outline: 2px solid var(--accent-blue);
   outline-offset: 1px;
 }
 
 .pws-dashboard-row:hover {
-  background: var(--bg-hover, rgba(128, 128, 128, 0.08));
+  background: var(--raised);
+}
+
+.pws-dashboard-row:active {
+  transform: scale(0.98);
 }
 
 .pws-dashboard-row-icon {
@@ -184,30 +220,29 @@
 }
 
 .pws-dashboard-row-name {
-  font-weight: 500;
-  font-size: 0.85rem;
+  font-weight: var(--weight-medium);
+  font-size: var(--text-control);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .pws-dashboard-row-meta {
-  font-size: 0.72rem;
+  font-size: var(--text-caption);
 }
 
 .pws-dashboard-row-count {
-  font-size: 0.8rem;
+  font-size: var(--text-label);
   white-space: nowrap;
 }
 
 .pws-dashboard-row-chevron {
-  width: 12px;
-  height: 12px;
-  color: var(--fg-muted, #888);
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
   flex-shrink: 0;
 }
 
-/* QuotaBars inside the rate-limit rows */
 .pws-dashboard-row-bars {
   grid-column: 1 / -1;
   padding-left: 30px;
@@ -228,36 +263,35 @@
 .pws-dashboard-row--skeleton {
   pointer-events: none;
   cursor: default;
-  /* Skeleton children are direct icon/info cells (no select wrapper). */
   grid-template-columns: 22px 1fr;
 }
 
 .pws-skel {
   display: block;
-  border-radius: var(--radius-2xs, 4px);
-  background: var(--raised, #eee);
+  border-radius: var(--radius-2xs);
+  background: var(--raised);
 }
 
 .pws-dashboard-row-icon.pws-skel {
   width: 22px;
   height: 22px;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
 }
 
 .pws-skel--name {
   width: 7rem;
-  height: 0.85rem;
+  height: var(--text-control);
 }
 
 .pws-skel--meta {
   width: 5rem;
-  height: 0.7rem;
+  height: var(--text-caption);
   margin-top: 4px;
 }
 
 .pws-skel--count {
   width: 4rem;
-  height: 0.75rem;
+  height: var(--text-label);
   margin-left: auto;
 }
 
@@ -270,46 +304,52 @@
   opacity: 0.35;
 }
 
-/* Narrow main pane / mobile: stack columns */
 @container provider-workspace (max-width: 920px) {
   .pws-dashboard-columns {
     grid-template-columns: 1fr;
-    gap: 14px;
+    gap: var(--space-4);
   }
 }
 
 @media (max-width: 900px) {
   .pws-dashboard-columns {
     grid-template-columns: 1fr;
-    gap: 14px;
+    gap: var(--space-4);
+  }
+
+  .pws-dashboard-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pws-dashboard-stat:nth-child(3),
+  .pws-dashboard-stat:nth-child(4) {
+    border-top: 1px solid var(--border-soft);
+  }
+
+  .pws-dashboard-stat:nth-child(3) {
+    border-left: none;
   }
 }
 
-@media (max-width: 600px) {
-  .pws-dashboard-summary {
-    flex-direction: column;
-  }
-  .pws-dashboard-card {
-    flex-direction: row;
-    justify-content: space-between;
-    min-width: 0;
+@media (prefers-reduced-motion: reduce) {
+  .pws-dashboard-row:active {
+    transform: none;
   }
 }
 
-/* Mini usage bars in the Dashboard landing view */
 .dash-bar-track {
   flex: 1;
   min-width: 60px;
   height: 6px;
-  background: var(--border-soft, #e5e5e5);
-  border-radius: 3px;
+  background: var(--border-soft);
+  border-radius: var(--radius-2xs);
   overflow: hidden;
 }
 
 .dash-bar-fill {
   display: block;
   height: 100%;
-  border-radius: 3px;
-  background: var(--accent-blue, #3b82f6);
-  transition: width 0.4s ease;
+  border-radius: var(--radius-2xs);
+  background: var(--accent-blue);
+  transition: width var(--motion-slow) var(--ease-out);
 }

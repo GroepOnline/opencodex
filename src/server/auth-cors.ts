@@ -432,6 +432,9 @@ export function safeConfigDTO(config: OcxConfig): unknown {
       hasApiKey: !!provider.apiKey || !!provider.credentialRef,
       hasHeaders: !!provider.headers && Object.keys(provider.headers).length > 0,
     };
+    const poolCount = provider.apiKeyPool?.length
+      ?? ((provider.apiKey || provider.credentialRef) ? 1 : 0);
+    if (poolCount > 0) dto.keyPoolCount = poolCount;
     for (const key of [
       "defaultModel",
       "disabled",

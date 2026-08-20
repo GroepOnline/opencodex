@@ -17,7 +17,7 @@ import { captureClaudeInbound } from "../claude/inbound-debug";
 import { isTransientUpstreamStatus } from "../lib/upstream-retry";
 import { resolveClientRetryAfter } from "../lib/retry-after";
 import { isAnthropicAccountPoolEnabled } from "../oauth/anthropic-routing";
-import { providerFallbackTargets } from "../providers/fallback";
+import { selectHopChain } from "../availability";
 import {
   anthropicErrorBody,
   anthropicErrorResponse,
@@ -104,7 +104,9 @@ function wantsNativePassthrough(req: Request, config: OcxConfig, model: unknown)
 export function shouldReplayNativePassthroughOverload(config: OcxConfig): boolean {
   if (isAnthropicAccountPoolEnabled(config)) return true;
   const anthropic = config.providers.anthropic;
-  return Boolean(anthropic && providerFallbackTargets(anthropic).length > 0);
+  if (!anthropic) return false;
+  const modelId = anthropic.defaultModel ?? anthropic.models?.[0] ?? "claude";
+  return selectHopChain(config, { provider: "anthropic", modelId }) !== null;
 }
 
 /** Format a 32-hex cache key as a uuid-shaped session id (version/variant nibbles forced). */

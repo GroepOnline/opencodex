@@ -71,6 +71,10 @@
 }
 .pwi-auth-add-key:hover { text-decoration: underline; }
 
+.pwi-auth-hint { margin: 0; }
+
+.pwi-auth-row .badge { gap: 4px; }
+
 
 /* ── ProviderSettings ──────────────────────────────────────── */
 

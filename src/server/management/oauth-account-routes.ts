@@ -460,8 +460,8 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
   if (url.pathname === "/api/providers/keys" && req.method === "GET") {
     const name = (url.searchParams.get("name") ?? "").trim();
     if (!name || !isValidProviderName(name) || !hasOwnProvider(config.providers, name)) return jsonResponse({ error: "unknown provider" }, 404);
-    const { listProviderApiKeys } = await import("../../providers/api-keys");
-    return jsonResponse(listProviderApiKeys(config, name));
+    const { inspectKeyPool } = await import("../../availability");
+    return jsonResponse(inspectKeyPool(config, name));
   }
   if (url.pathname === "/api/providers/keys" && req.method === "POST") {
     const body = await req.json().catch(() => ({})) as { name?: string; key?: string; label?: string };

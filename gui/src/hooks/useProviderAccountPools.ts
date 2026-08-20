@@ -27,7 +27,7 @@ export interface OAuthAccount {
   /** Set when the per-account probe could not reach upstream (expired login, 429, network). */
   quotaUnavailable?: boolean;
 }
-export interface ApiKeyEntry { id: string; label?: string; masked: string; active: boolean }
+export interface ApiKeyEntry { id: string; label?: string; masked: string; active: boolean; cooldownUntil?: number }
 
 /** Pure aggregate map used by Providers overview / rail attention state. */
 export function buildActiveAccountNeedsReauthMap(

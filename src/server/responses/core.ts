@@ -26,7 +26,6 @@ import {
   pickComboTarget,
   targetKey,
 } from "../../combos";
-import { providerCredentialFailure, providerCredentialRef, withResolvedProviderCredential } from "../../providers/credential";
 import {
   classifyAttempt,
   comboIdLabel,
@@ -38,10 +37,9 @@ import {
   resolveCursorPoolOutcome,
   resolveGoogleAntigravityPoolOutcome,
   resolveOutcome,
+  selectCandidate,
   selectCodexCandidate,
   selectHopChain,
-  selectKeyPoolCandidate,
-  selectOauthPoolCandidate,
   codexQuotaOutcomeMeta,
   shouldDeferCodexResetDerivedCooldown,
   type OauthPoolName,
@@ -55,10 +53,7 @@ import type { AdapterEvent, OcxConfig, OcxParsedRequest, OcxProviderConfig, OcxP
 import {
   forceRefreshOAuthAccessSnapshot,
   getOAuthCredentialApiBaseUrl,
-  getOAuthCredentialProjectId,
-  getValidAccessTokenSnapshot,
   type OAuthAccessSnapshot,
-  UnsupportedOAuthProviderError,
 } from "../../oauth";
 import {
   ANTHROPIC_POOL_MAX_FAILOVERS_PER_REQUEST,
@@ -1404,8 +1399,8 @@ export async function handleResponses(
     ? authCtx.accountId
     : config.activeCodexAccountId ?? null;
 
-  // OAuth providers: swap in a fresh access token (auto-refreshed) as the Bearer key, so the
-  // existing openai-chat / anthropic adapters authenticate with no change.
+  // Availability first-picks the fetch-ready candidate (OAuth pool, single-account token,
+  // ChefVault lease, key pool). Session keys are request evidence, not adapter choice.
   const isOAuth401ReplayProvider = (route.providerName === "xai" || route.providerName === "github-copilot" || route.providerName === "kiro")
     && route.provider.authMode === "oauth";
   let sentOAuthSnapshot: OAuthAccessSnapshot | undefined;
@@ -1439,82 +1434,52 @@ export async function handleResponses(
       cursorConversationId: parsed._cursorConversationId,
     })
     : null;
-  if (route.provider.authMode === "oauth") {
-    try {
-      const poolPick = await selectOauthPoolCandidate({
-        providerName: route.providerName,
-        config,
-        routedProvider: route.provider,
-        sessionKey: route.providerName === "anthropic"
-          ? anthropicSessionKey
-          : route.providerName === "google-antigravity"
-            ? antigravitySessionKey
-            : route.providerName === "cursor"
-              ? cursorSessionKey
-              : null,
-      });
-      if (poolPick.kind === "all-cooled" || poolPick.kind === "none") {
-        return oauthPoolSelectErrorResponse(poolPick);
-      }
-      if (poolPick.kind === "selected") {
-        route.provider = poolPick.hop.provider;
-        logCtx.provider = poolPick.hop.logProvider;
-        if (poolPick.pool === "anthropic") anthropicPoolAccountId = poolPick.hop.accountId;
-        else if (poolPick.pool === "google-antigravity") googleAntigravityPoolAccountId = poolPick.hop.accountId;
-        else if (poolPick.pool === "cursor") {
-          cursorPoolAccountId = poolPick.hop.accountId;
-          parsed._cursorIdentityScope = poolPick.hop.accountId;
-        }
-      } else {
-        const resolved = await getValidAccessTokenSnapshot(route.providerName);
-        if (isOAuth401ReplayProvider) sentOAuthSnapshot = resolved;
-        route.provider = { ...route.provider, apiKey: resolved.accessToken };
-        if (route.providerName === "kiro") {
-          // `{}` is intentional: this is an account-scoped request with no stored routing metadata.
-          // Only genuinely accountless adapter calls leave the context undefined and use local/env fallback.
-          parsed._kiroAuthContext = { ...(resolved.kiro ?? {}) };
-        }
-        // Antigravity (cloud-code-assist) needs the discovered Cloud Code Assist project id in the
-        // CCA envelope; the server injects only the bare token, so pull project from the credential.
-        if (route.provider.googleMode === "cloud-code-assist" && !route.provider.project) {
-          const projectId = getOAuthCredentialProjectId(route.providerName);
-          if (projectId) route.provider = { ...route.provider, project: projectId };
-        }
-      }
-    } catch (err) {
-      if (err instanceof UnsupportedOAuthProviderError) {
-        return formatErrorResponse(
-          400,
-          "invalid_request_error",
-          `${err.message}. Remove or reconfigure provider '${route.providerName}' in ${getConfigPath()}.`,
-        );
-      }
-      return formatErrorResponse(401, "authentication_error", err instanceof Error ? err.message : String(err));
-    }
-  }
-  // ChefVault-backed providers carry no secret in config: lease it now so ordinary forwarding
-  // authenticates like model discovery does. The lease lives on this request's provider copy only.
-  if (route.provider.authMode !== "oauth" && route.provider.authMode !== "forward" && providerCredentialRef(route.provider)) {
-    try {
-      route.provider = await withResolvedProviderCredential(route.provider);
-    } catch (err) {
-      const failure = providerCredentialFailure(route.providerName, err);
-      return formatErrorResponse(failure.status, failure.type, failure.message);
-    }
-  }
-  const keyPick = selectKeyPoolCandidate({
-    config,
+  const pick = await selectCandidate({
     providerName: route.providerName,
+    config,
     routedProvider: route.provider,
+    sessionKey: route.providerName === "anthropic"
+      ? anthropicSessionKey
+      : route.providerName === "google-antigravity"
+        ? antigravitySessionKey
+        : route.providerName === "cursor"
+          ? cursorSessionKey
+          : null,
     promptCacheKey: parsed.options.promptCacheKey,
   });
-  if (keyPick) route.provider = { ...route.provider, apiKey: keyPick.apiKey };
-  route.provider = resolveProviderTransport(
-    route.providerName,
-    route.provider,
-    parsed.options.promptCacheKey,
-    route.providerName === "github-copilot" ? getOAuthCredentialApiBaseUrl(route.providerName) : undefined,
-  );
+  if (!pick.ok) {
+    if (pick.kind === "oauth-all-cooled" || pick.kind === "oauth-none") {
+      return oauthPoolSelectErrorResponse(
+        pick.kind === "oauth-all-cooled"
+          ? { kind: "all-cooled", pool: pick.pool, retryAfterSeconds: pick.retryAfterSeconds }
+          : { kind: "none", pool: pick.pool },
+      );
+    }
+    if (pick.kind === "oauth-unsupported") {
+      return formatErrorResponse(
+        400,
+        "invalid_request_error",
+        `${pick.message}. Remove or reconfigure provider '${route.providerName}' in ${getConfigPath()}.`,
+      );
+    }
+    if (pick.kind === "vault") {
+      return formatErrorResponse(pick.status, pick.type, pick.message);
+    }
+    return formatErrorResponse(401, "authentication_error", pick.message);
+  }
+  route.provider = pick.provider;
+  if (pick.logProvider) logCtx.provider = pick.logProvider;
+  if (pick.oauthPool?.pool === "anthropic") anthropicPoolAccountId = pick.oauthPool.accountId;
+  else if (pick.oauthPool?.pool === "google-antigravity") googleAntigravityPoolAccountId = pick.oauthPool.accountId;
+  else if (pick.oauthPool?.pool === "cursor") {
+    cursorPoolAccountId = pick.oauthPool.accountId;
+    parsed._cursorIdentityScope = pick.oauthPool.accountId;
+  }
+  if (isOAuth401ReplayProvider && pick.oauthSnapshot) sentOAuthSnapshot = pick.oauthSnapshot;
+  if (route.providerName === "kiro" && pick.oauthSnapshot) {
+    // `{}` is intentional: this is an account-scoped request with no stored routing metadata.
+    parsed._kiroAuthContext = { ...(pick.oauthSnapshot.kiro ?? {}) };
+  }
   const adapterProvider = resolveWireProtocolOverride(route.providerName, route.modelId, route.provider);
   const adapter = resolveAdapter(adapterProvider, config.cacheRetention);
   logCtx.providerAdapter = adapter.name;

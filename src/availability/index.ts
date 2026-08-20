@@ -16,6 +16,13 @@ export {
 } from "./chain";
 export { resolveOutcome, recordCapOutcome, keyPoolCanHop, selectKeyPoolCandidate, type ResolveOutcomeInput } from "./resolve";
 export {
+  selectCandidate,
+  type SelectCandidateInput,
+  type SelectCandidateOk,
+  type SelectCandidateFail,
+  type SelectCandidateResult,
+} from "./select";
+export {
   selectOauthPoolCandidate,
   resolveAnthropicPoolOutcome,
   resolveGoogleAntigravityPoolOutcome,
@@ -33,5 +40,11 @@ export {
   type CodexPoolAuth,
   type CodexSelectResult,
 } from "./codex-pool";
-export { clearKeyPoolCooldowns } from "./management";
+export {
+  clearKeyPoolCooldowns,
+  inspectKeyPool,
+  inspectAvailability,
+  type InspectedApiKey,
+  type AvailabilityProviderView,
+} from "./management";
 export { comboIdLabel } from "../providers/fallback";

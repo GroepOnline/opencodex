@@ -73,6 +73,7 @@ export default function ProviderWorkspaceShell({
   modelsRefreshToken = 0,
   activeAccountNeedsReauth,
   providerCooldowns,
+  availability,
   /** Stable key of active OAuth account ids — refetch overview quotas after account switch. */
   quotaRefreshKey = "",
   detail,
@@ -93,6 +94,8 @@ export default function ProviderWorkspaceShell({
   activeAccountNeedsReauth?: Record<string, boolean>;
   /** Active weekly/inference-cap cooldowns from /api/config. */
   providerCooldowns?: Record<string, import("../../pages/providers-shared").ProviderCapCooldown>;
+  /** Live routing read-model from GET /api/availability. */
+  availability?: import("../../pages/providers-shared").AvailabilityProviderView[];
   /**
    * Explicit active-account identity key (e.g. `anthropic:<id>|…`). Prefer this over
    * `activeAccountNeedsReauth` object identity so healthy account switches still refresh.
@@ -552,6 +555,7 @@ export default function ProviderWorkspaceShell({
             quotaCards={quotaCards}
             usageTotals={usageTotals}
             providerCooldowns={providerCooldowns}
+            availability={availability}
             usageLoading={usageLoading}
             quotasLoading={quotasLoading}
             onSelectProvider={(name) => onSelect(name)}

@@ -7,10 +7,13 @@ import {
   clearKeyPoolCooldowns,
   hopChainTargets,
   isAccountPoolHopStatus,
+  inspectAvailability,
+  inspectKeyPool,
   recordCapOutcome,
   resolveAnthropicPoolOutcome,
   resolveGoogleAntigravityPoolOutcome,
   resolveOutcome,
+  selectCandidate,
   selectCodexCandidate,
   selectHopChain,
   selectKeyPoolCandidate,
@@ -303,6 +306,140 @@ describe("handleResponses records cap-cooldown", () => {
     expect(response.status).toBe(429);
     expect(config.providers["cline-pass"]?.disabled).toBe(true);
     expect(config.providerCooldowns?.["cline-pass"]?.reason).toBe("INFERENCE_CAP_ERROR");
+  });
+});
+
+describe("inspectKeyPool", () => {
+  let home: string;
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "ocx-inspect-keys-"));
+    process.env.OPENCODEX_HOME = home;
+    clearKeyPoolCooldowns();
+  });
+
+  afterEach(() => {
+    delete process.env.OPENCODEX_HOME;
+    rmSync(home, { recursive: true, force: true });
+    clearKeyPoolCooldowns();
+  });
+
+  test("marks a cooled key after a pool hop", () => {
+    const now = 1_000_000;
+    const config = baseConfig({
+      defaultProvider: "p",
+      providers: {
+        p: {
+          adapter: "openai-chat",
+          baseUrl: "https://p.example/v1",
+          apiKey: "key-alpha-000111222333",
+          apiKeyPool: [
+            { id: "k1", key: "key-alpha-000111222333", addedAt: 1 },
+            { id: "k2", key: "key-beta-444555666777", addedAt: 2 },
+          ],
+        },
+      },
+    });
+    resolveOutcome({
+      config,
+      providerName: "p",
+      routedProvider: config.providers.p!,
+      status: 429,
+      now,
+      attemptedKey: "key-alpha-000111222333",
+      save: false,
+    });
+    const view = inspectKeyPool(config, "p", now + 1);
+    const cooled = view.keys.find(key => key.id === "k1");
+    const live = view.keys.find(key => key.id === "k2");
+    expect(cooled?.cooldownUntil).toBeGreaterThan(now);
+    expect(live?.cooldownUntil).toBeUndefined();
+    expect(live?.active).toBe(true);
+  });
+
+  test("inspectAvailability counts cooling keys and the first hop", () => {
+    const now = 1_000_000;
+    const config = baseConfig({
+      defaultProvider: "p",
+      providers: {
+        p: {
+          adapter: "openai-chat",
+          baseUrl: "https://p.example/v1",
+          apiKey: "key-alpha-000111222333",
+          apiKeyPool: [
+            { id: "k1", key: "key-alpha-000111222333", addedAt: 1 },
+            { id: "k2", key: "key-beta-444555666777", addedAt: 2 },
+          ],
+          fallback: [{ provider: "b", model: "m2" }],
+        },
+      },
+    });
+    resolveOutcome({
+      config,
+      providerName: "p",
+      routedProvider: config.providers.p!,
+      status: 429,
+      now,
+      attemptedKey: "key-alpha-000111222333",
+      save: false,
+    });
+    const view = inspectAvailability(config, now + 1).providers.find(row => row.name === "p");
+    expect(view?.keyPoolCount).toBe(2);
+    expect(view?.coolingKeyCount).toBe(1);
+    expect(view?.hopProvider).toBe("b");
+  });
+});
+
+describe("selectCandidate", () => {
+  let home: string;
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "ocx-select-candidate-"));
+    process.env.OPENCODEX_HOME = home;
+    clearKeyPoolCooldowns();
+  });
+
+  afterEach(() => {
+    delete process.env.OPENCODEX_HOME;
+    rmSync(home, { recursive: true, force: true });
+    clearKeyPoolCooldowns();
+  });
+
+  test("skips a cooling key on first pick", async () => {
+    const now = 1_000_000;
+    const config = baseConfig({
+      defaultProvider: "p",
+      providers: {
+        p: {
+          adapter: "openai-chat",
+          baseUrl: "https://p.example/v1",
+          apiKey: "key-alpha-000111222333",
+          apiKeyPool: [
+            { id: "k1", key: "key-alpha-000111222333", addedAt: 1 },
+            { id: "k2", key: "key-beta-444555666777", addedAt: 2 },
+          ],
+        },
+      },
+    });
+    resolveOutcome({
+      config,
+      providerName: "p",
+      routedProvider: config.providers.p!,
+      status: 429,
+      now,
+      attemptedKey: "key-alpha-000111222333",
+      save: false,
+    });
+    config.providers.p!.apiKey = "key-alpha-000111222333";
+    const result = await selectCandidate({
+      config,
+      providerName: "p",
+      routedProvider: config.providers.p!,
+      now: now + 1,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.provider.apiKey).toBe("key-beta-444555666777");
   });
 });
 
