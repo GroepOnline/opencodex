@@ -3,12 +3,12 @@
 .provider-catalog {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: calc(var(--space-2) + var(--space-0-5));
 }
 
 .provider-catalog-tabs {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   border-bottom: 1px solid var(--border);
 }
 
@@ -16,8 +16,8 @@
   appearance: none;
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
-  padding: 8px 12px;
+  border-bottom: var(--space-0-5) solid transparent;
+  padding: var(--space-2) var(--space-3);
   color: var(--muted);
   font: inherit;
   cursor: pointer;
@@ -29,7 +29,7 @@
 }
 
 .provider-catalog-accounts-hint {
-  padding: 2px 2px 0;
+  padding: var(--space-0-5) var(--space-0-5) 0;
 }
 
 .provider-catalog-search {
@@ -39,20 +39,20 @@
 .provider-catalog-rows {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1-5);
   max-height: 360px;
   overflow-y: auto;
 }
 
 .provider-catalog-badges {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
   flex-shrink: 0;
 }
 
 .provider-catalog-empty {
-  padding: 8px;
+  padding: var(--space-2);
 }
 
 .provider-catalog-account-row .sub {
@@ -62,6 +62,6 @@
 
 .provider-catalog-footer {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
 }
