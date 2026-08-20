@@ -216,28 +216,28 @@ export async function handleResponsesCompact(
     if (!pick.ok) return selectCandidateFailResponse(pick, { providerName: route.providerName, config });
     const compactProvider = pick.provider;
     const authCtx: CodexAuthContext = pick.authCtx ?? { kind: "main", accountId: null };
+    const selectedForwardHeaders = pick.headers ?? req.headers;
     const headers = new Headers({ "content-type": "application/json" });
-    if (pick.headers) {
-      for (const name of FORWARD_HEADERS) {
-        const value = pick.headers.get(name);
-        if (value) headers.set(name, value);
-      }
+    for (const name of FORWARD_HEADERS) {
+      const value = selectedForwardHeaders.get(name);
+      if (value) headers.set(name, value);
     }
     const override = (compactProvider as { _codexAccountOverride?: { accessToken: string; chatgptAccountId: string } })._codexAccountOverride;
     if (override) {
       headers.set("authorization", `Bearer ${override.accessToken}`);
       headers.set("chatgpt-account-id", override.chatgptAccountId);
+    } else {
+      // Same fail-closed lease as /v1/responses: a chefvault-backed provider must not compact
+      // against the upstream without an Authorization header. A configured key may be an `$ENV`
+      // reference; a leased secret is already on the candidate and must not be expanded.
+      const compactAuthKey = compactProvider.authMode !== "oauth"
+        && compactProvider.authMode !== "forward"
+        && providerCredentialRef(compactProvider)
+        ? compactProvider.apiKey
+        : resolveEnvValue(compactProvider.apiKey);
+      if (compactAuthKey) headers.set("authorization", `Bearer ${compactAuthKey}`);
     }
-    // Same fail-closed lease as /v1/responses: a chefvault-backed provider must not compact
-    // against the upstream without an Authorization header. A configured key may be an `$ENV`
-    // reference; a leased secret is already on the candidate and must not be expanded.
-    const compactAuthKey = compactProvider.authMode !== "oauth"
-      && compactProvider.authMode !== "forward"
-      && providerCredentialRef(compactProvider)
-      ? compactProvider.apiKey
-      : resolveEnvValue(compactProvider.apiKey);
     const base = (compactProvider.baseUrl ?? "").replace(/\/$/, "");
-    if (compactAuthKey) headers.set("authorization", `Bearer ${compactAuthKey}`);
     const { reasoning: _reasoning, ...compactBodyRaw } = raw as typeof raw & { reasoning?: unknown };
     // The regular /v1/responses path applies sanitizeReasoningInputContent via the adapter's
     // buildRequest, but the compact endpoint forwards directly. Apply the same sanitizer here

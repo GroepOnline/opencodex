@@ -164,6 +164,7 @@ describe("validateOpenAiVirtualModelDefinition", () => {
 describe("OpenAI API compact transport", () => {
   test("maps every Pro id to base, strips reasoning, buffers failures, caps bodies, and logs exactly once", async () => {
     const originalFetch = globalThis.fetch;
+    const originalHome = process.env.OPENCODEX_HOME;
     const home = mkdtempSync(join(tmpdir(), "ocx-openai-api-compact-"));
     process.env.OPENCODEX_HOME = home;
     saveConfig({
@@ -347,7 +348,8 @@ describe("OpenAI API compact transport", () => {
     } finally {
       globalThis.fetch = originalFetch;
       await server.stop(true);
-      delete process.env.OPENCODEX_HOME;
+      if (originalHome === undefined) delete process.env.OPENCODEX_HOME;
+      else process.env.OPENCODEX_HOME = originalHome;
       rmSync(home, { recursive: true, force: true });
     }
   }, 20_000);
@@ -356,6 +358,7 @@ describe("OpenAI API compact transport", () => {
 describe("OpenAI API compact Availability first-pick", () => {
   test("skips a cooling key on native compact", async () => {
     const originalFetch = globalThis.fetch;
+    const originalHome = process.env.OPENCODEX_HOME;
     const home = mkdtempSync(join(tmpdir(), "ocx-openai-api-compact-keys-"));
     process.env.OPENCODEX_HOME = home;
     clearKeyPoolCooldowns();
@@ -411,7 +414,8 @@ describe("OpenAI API compact Availability first-pick", () => {
       globalThis.fetch = originalFetch;
       await server.stop(true);
       clearKeyPoolCooldowns();
-      delete process.env.OPENCODEX_HOME;
+      if (originalHome === undefined) delete process.env.OPENCODEX_HOME;
+      else process.env.OPENCODEX_HOME = originalHome;
       rmSync(home, { recursive: true, force: true });
     }
   });
@@ -420,6 +424,7 @@ describe("OpenAI API compact Availability first-pick", () => {
 describe("OpenAI API Pro transport identities", () => {
   test("HTTP JSON, HTTP SSE, and real WebSocket keep base wire/client identity and virtual logs", async () => {
     const originalFetch = globalThis.fetch;
+    const originalHome = process.env.OPENCODEX_HOME;
     const home = mkdtempSync(join(tmpdir(), "ocx-openai-api-pro-"));
     process.env.OPENCODEX_HOME = home;
     saveConfig({
@@ -562,7 +567,8 @@ describe("OpenAI API Pro transport identities", () => {
     } finally {
       globalThis.fetch = originalFetch;
       await server.stop(true);
-      delete process.env.OPENCODEX_HOME;
+      if (originalHome === undefined) delete process.env.OPENCODEX_HOME;
+      else process.env.OPENCODEX_HOME = originalHome;
       rmSync(home, { recursive: true, force: true });
     }
   }, 20_000);
