@@ -12,6 +12,7 @@ export {
 export {
   hopChainTargets,
   selectHopChain,
+  canHopNativeClaudePierce,
   type HopChain,
 } from "./chain";
 export { resolveOutcome, recordCapOutcome, keyPoolCanHop, selectKeyPoolCandidate, type ResolveOutcomeInput } from "./resolve";

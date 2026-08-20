@@ -16,8 +16,7 @@ import { stripOneMillionMarker } from "../claude/context-windows";
 import { captureClaudeInbound } from "../claude/inbound-debug";
 import { isTransientUpstreamStatus } from "../lib/upstream-retry";
 import { resolveClientRetryAfter } from "../lib/retry-after";
-import { isAnthropicAccountPoolEnabled } from "../oauth/anthropic-routing";
-import { selectHopChain } from "../availability";
+import { canHopNativeClaudePierce, classifyAttempt } from "../availability";
 import {
   anthropicErrorBody,
   anthropicErrorResponse,
@@ -100,13 +99,9 @@ function wantsNativePassthrough(req: Request, config: OcxConfig, model: unknown)
   return resolveInboundModel(model, config.claudeCode) === model;
 }
 
-/** Replay a native 529 through handleResponses when OCX can hop accounts or providers. */
+/** Replay a native 529 through handleResponses when Availability can hop. */
 export function shouldReplayNativePassthroughOverload(config: OcxConfig): boolean {
-  if (isAnthropicAccountPoolEnabled(config)) return true;
-  const anthropic = config.providers.anthropic;
-  if (!anthropic) return false;
-  const modelId = anthropic.defaultModel ?? anthropic.models?.[0] ?? "claude";
-  return selectHopChain(config, { provider: "anthropic", modelId }) !== null;
+  return canHopNativeClaudePierce(config);
 }
 
 /** Format a 32-hex cache key as a uuid-shaped session id (version/variant nibbles forced). */
@@ -347,8 +342,9 @@ async function anthropicNativePassthrough(
   const upstream = result.upstream;
   if (
     pathname === "/v1/messages"
+    && classifyAttempt({ status: upstream.status, message: "" }) === "hop"
     && upstream.status === 529
-    && shouldReplayNativePassthroughOverload(config)
+    && canHopNativeClaudePierce(config)
   ) {
     try { void upstream.body?.cancel().catch(() => {}); } catch { /* already closed */ }
     return "replay-routed";

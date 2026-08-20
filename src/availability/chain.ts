@@ -1,4 +1,5 @@
 import { getCombo } from "../combos/types";
+import { isAnthropicAccountPoolEnabled } from "../oauth/anthropic-routing";
 import { providerFallbackPlan } from "../providers/fallback";
 import type { OcxComboTarget, OcxConfig } from "../types";
 
@@ -32,4 +33,17 @@ export function selectHopChain(
     config: plan.config,
     preservePhysicalIdentity: true,
   };
+}
+
+/**
+ * Whether a native Claude pierce (caller sk-ant-) may hop into the provider table
+ * after overload. The pierce itself stays on the turn; Availability only answers
+ * whether another candidate exists. 529-only: native 429 stays on the caller account.
+ */
+export function canHopNativeClaudePierce(config: OcxConfig): boolean {
+  if (isAnthropicAccountPoolEnabled(config)) return true;
+  const anthropic = config.providers.anthropic;
+  if (!anthropic) return false;
+  const modelId = anthropic.defaultModel ?? anthropic.models?.[0] ?? "claude";
+  return selectHopChain(config, { provider: "anthropic", modelId }) !== null;
 }

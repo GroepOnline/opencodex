@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  canHopNativeClaudePierce,
   classifyAttempt,
   clearKeyPoolCooldowns,
   hopChainTargets,
@@ -85,6 +86,31 @@ describe("selectHopChain", () => {
     config.providers.a!.fallback = [{ provider: "b", model: "m2" }];
     config.providers.b!.disabled = true;
     expect(selectHopChain(config, { provider: "a", modelId: "m1" })).toBeNull();
+  });
+});
+
+describe("canHopNativeClaudePierce", () => {
+  test("is false without an Anthropic pool or fallback list", () => {
+    expect(canHopNativeClaudePierce(baseConfig())).toBe(false);
+  });
+
+  test("is true when the Anthropic account pool is on", () => {
+    expect(canHopNativeClaudePierce(baseConfig({ anthropicAccountPool: { enabled: true } }))).toBe(true);
+  });
+
+  test("is true when the Anthropic provider has a hop chain", () => {
+    const config = baseConfig({
+      providers: {
+        ...baseConfig().providers,
+        anthropic: {
+          adapter: "anthropic",
+          baseUrl: "https://api.anthropic.com",
+          authMode: "oauth",
+          fallback: [{ provider: "a", model: "m1" }],
+        },
+      },
+    });
+    expect(canHopNativeClaudePierce(config)).toBe(true);
   });
 });
 
