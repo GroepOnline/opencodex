@@ -189,6 +189,7 @@ export function rotateKeyOn429(
   attemptedKey?: string,
   message?: string,
   status = 429,
+  persistConfig?: OcxConfig,
 ): OcxProviderConfig | null {
   const provider = config.providers[providerName];
   if (!provider) return null;
@@ -218,7 +219,7 @@ export function rotateKeyOn429(
   if (attemptedKey !== undefined && provider.apiKey !== attemptedKey) {
     const liveEntry = poolEntryForKey(pool, provider.apiKey);
     if (liveEntry && !isKeyInCooldown(providerName, liveEntry.id, now)) {
-      if (needsSave) saveConfigPreservingClaudeCode(config);
+      if (needsSave) saveConfigRoot(config, persistConfig);
       return { ...provider };
     }
   }
@@ -227,7 +228,7 @@ export function rotateKeyOn429(
   const candidate = pickUncooledKey(providerName, pool, currentIndex, now);
   if (candidate) {
     provider.apiKey = candidate.key;
-    saveConfigPreservingClaudeCode(config);
+    saveConfigRoot(config, persistConfig);
     console.warn(
       // Log ids only — labels are user-supplied free text and could carry secret material.
       `[key-failover] ${providerName}: 429 on key ${currentEntry?.id ?? "?"}; rotating to key ${candidate.id}`,
@@ -235,7 +236,7 @@ export function rotateKeyOn429(
     return { ...provider };
   }
 
-  if (needsSave) saveConfigPreservingClaudeCode(config);
+  if (needsSave) saveConfigRoot(config, persistConfig);
   console.warn(`[key-failover] ${providerName}: all ${pool.length} keys in cooldown; returning 429 to client`);
   return null;
 }
@@ -264,7 +265,7 @@ export function coolAttemptedKey(
     options.status ?? 402,
     now,
   );
-  if (persistedHardCap) saveConfigPreservingClaudeCode(config);
+  if (persistedHardCap) saveConfigRoot(config, options.persistConfig);
   return poolAllKeysCooling(providerName, pool, now);
 }
 
@@ -275,6 +276,12 @@ interface RotateProviderTransportOptions {
   promptCacheKey?: string;
   message?: string;
   status?: number;
+  /** Live server config for disk writes when the working config is a routing clone. */
+  persistConfig?: OcxConfig;
+}
+
+function saveConfigRoot(working: OcxConfig, persistRoot?: OcxConfig): void {
+  saveConfigPreservingClaudeCode(persistRoot ?? working);
 }
 
 /**
@@ -302,6 +309,7 @@ export function rotateProviderTransportOn429(
     options.attemptedKey,
     options.message,
     options.status,
+    options.persistConfig,
   );
   return rotated
     ? resolveProviderTransport(

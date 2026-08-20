@@ -1,12 +1,14 @@
 import { isHardCapMessage, recordProviderCapCooldown, type ProviderCapCooldown } from "../providers/cap-cooldown";
 import { coolAttemptedKey, hasKeyPoolFailover, pickUncooledApiKey, rotateProviderTransportOn429 } from "../providers/key-failover";
 import type { OcxConfig, OcxProviderConfig } from "../types";
-import { resolveEnvValue } from "../config";
+import { resolveEnvValue, saveConfigPreservingClaudeCode } from "../config";
 import type { OcxProviderTransport } from "../providers/xai-transport";
 import { isAccountPoolHopStatus } from "./classify";
 
 export type ResolveOutcomeInput = {
   config: OcxConfig;
+  /** Live server config for disk writes when `config` is a routing clone (fallback chain). */
+  persistConfig?: OcxConfig;
   providerName: string;
   routedProvider: OcxProviderTransport;
   status: number;
@@ -18,9 +20,19 @@ export type ResolveOutcomeInput = {
   save?: boolean | ((config: OcxConfig) => void);
 };
 
+function capPersistSave(
+  input: Pick<ResolveOutcomeInput, "config" | "persistConfig" | "save">,
+): boolean | ((config: OcxConfig) => void) {
+  if (input.save === false) return false;
+  if (typeof input.save === "function") return input.save;
+  const root = input.persistConfig ?? input.config;
+  return () => saveConfigPreservingClaudeCode(root);
+}
+
 /** Persist a hard weekly/inference cap on this provider. Key pools no-op unless every key is cooling. */
 export function recordCapOutcome(input: {
   config: OcxConfig;
+  persistConfig?: OcxConfig;
   providerName: string;
   status: number;
   message?: string;
@@ -31,7 +43,7 @@ export function recordCapOutcome(input: {
   try {
     return recordProviderCapCooldown(input.config, input.providerName, input.status, input.message, {
       now: input.now,
-      ...(input.save !== undefined ? { save: input.save } : {}),
+      save: capPersistSave(input),
       ...(input.allowPooled !== undefined ? { allowPooled: input.allowPooled } : {}),
     });
   } catch {
@@ -99,6 +111,7 @@ export function resolveOutcome(input: ResolveOutcomeInput): OcxProviderTransport
           promptCacheKey: input.promptCacheKey,
           message: input.message,
           status: input.status,
+          persistConfig: input.persistConfig,
         },
       );
       if (rotated) return rotated;
@@ -112,6 +125,7 @@ export function resolveOutcome(input: ResolveOutcomeInput): OcxProviderTransport
         attemptedKey: input.attemptedKey,
         message: input.message,
         status: input.status,
+        persistConfig: input.persistConfig,
       });
       if (allCooled) pausePooledProviderIfHardCapped(input);
       return null;

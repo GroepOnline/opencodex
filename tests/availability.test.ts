@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as configModule from "../src/config";
 import {
   canHopNativeClaudePierce,
   classifyAttempt,
@@ -458,6 +459,31 @@ describe("recordCapOutcome", () => {
       save: false,
     })).toBeNull();
     expect(config.providers.b!.disabled).toBeUndefined();
+  });
+
+  test("default save uses persistConfig when routing config is a clone", () => {
+    const live = baseConfig();
+    const clone = {
+      ...live,
+      combos: { synth: { targets: [{ provider: "a", model: "m1" }] } },
+    };
+    const saved: configModule.OcxConfig[] = [];
+    const spy = spyOn(configModule, "saveConfigPreservingClaudeCode").mockImplementation((cfg) => {
+      saved.push(cfg);
+    });
+    try {
+      recordCapOutcome({
+        config: clone,
+        persistConfig: live,
+        providerName: "b",
+        status: 429,
+        message: 'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. The limit resets in 1d 22h"}',
+      });
+      expect(saved).toEqual([live]);
+      expect(live.combos).toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   test("warns without echoing the persist error when save throws", () => {

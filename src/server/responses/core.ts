@@ -518,6 +518,12 @@ export interface HandleResponsesOptions {
   onConsumedComboFailure?: (failure: ConsumedComboFailure) => void;
   /** Internal request-scoped physical upstream-send budget. */
   attemptBudget?: UpstreamAttemptBudget;
+  /**
+   * Live server config for disk writes when the routing `config` is a clone (provider-fallback
+   * chain). Mutations still use the routing config; only `saveConfigPreservingClaudeCode` uses
+   * this root so claudeCode hand-edit protection and combo maps stay on the live instance.
+   */
+  persistConfig?: OcxConfig;
 }
 
 
@@ -1200,6 +1206,8 @@ export async function handleResponses(
   logCtx.providerConfigKey = route.providerName;
   logCtx.providerAdapter = route.provider.adapter;
 
+  const persistConfig = options.persistConfig ?? config;
+
   const hasUnexpandedPreviousResponse = !!parsed.previousResponseId
     && parsed._previousResponseInputExpanded !== true;
   // A canonical replay miss must not poll quota upstream before the final fail-closed decision.
@@ -1224,6 +1232,7 @@ export async function handleResponses(
       return handleComboResponses(req, originalBody, chain.comboId, chain.config, logCtx, {
         ...options,
         providerFallbackAttempt: chain.preservePhysicalIdentity,
+        persistConfig: options.persistConfig ?? config,
       });
     }
   }
@@ -1388,6 +1397,7 @@ export async function handleResponses(
     if (response.status !== 429 && response.status !== 402) return;
     recordCapOutcome({
       config,
+      persistConfig,
       providerName: route.providerName,
       status: response.status,
       message: await peekUpstreamErrorText(response, options.abortSignal),
@@ -1970,6 +1980,7 @@ export async function handleResponses(
       on429: retryAfter => {
         const rotated = resolveOutcome({
           config,
+          persistConfig,
           providerName: route.providerName,
           routedProvider: route.provider,
           status: 429,
@@ -2043,6 +2054,7 @@ export async function handleResponses(
       on429: retryAfter => {
         const rotated = resolveOutcome({
           config,
+          persistConfig,
           providerName: route.providerName,
           routedProvider: route.provider,
           status: 429,
@@ -2465,6 +2477,7 @@ export async function handleResponses(
         const hopMessage = await peekUpstreamErrorText(upstreamResponse, options.abortSignal);
         const rotated = resolveOutcome({
           config,
+          persistConfig,
           providerName: route.providerName,
           routedProvider: route.provider,
           status: upstreamResponse.status,
@@ -2602,6 +2615,7 @@ export async function handleResponses(
           .finally(cleanupUpstreamAbort);
         recordCapOutcome({
           config,
+          persistConfig,
           providerName: route.providerName,
           status: failure.response.status,
           message: failure.classificationText,
@@ -2612,6 +2626,7 @@ export async function handleResponses(
       const errorText = await upstreamResponse.text().catch(() => "unknown error");
       recordCapOutcome({
         config,
+        persistConfig,
         providerName: route.providerName,
         status: upstreamResponse.status,
         message: errorText,
@@ -2724,6 +2739,7 @@ export async function handleResponses(
         if (needsPoolOutcome) {
           const rotated = resolveOutcome({
             config,
+            persistConfig,
             providerName: route.providerName,
             routedProvider: route.provider,
             status: response.status,
