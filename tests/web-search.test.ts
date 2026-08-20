@@ -551,9 +551,11 @@ describe("web-search sidecar native web_search_call emission", () => {
       settings: { model: "gpt-5.4-mini", reasoning: "low", timeoutMs: 30_000 },
       maxSearches: 1,
       onRequestBuilt: request => reasoningLogs.push(request.reasoningLog),
-      on429: retryAfter => {
+      on429: (retryAfter, hop) => {
         rotations++;
         expect(retryAfter).toBe("30");
+        expect(hop?.status).toBe(429);
+        expect(hop?.message).toBe("rate limited");
         return rotatedAdapter;
       },
     });
@@ -598,6 +600,52 @@ describe("web-search sidecar native web_search_call emission", () => {
     expect(response.status).toBe(429);
     const body = await response.json() as { error?: { message?: string } };
     expect(body.error?.message ?? "").toContain("429");
+  });
+
+  test("loop 529 triggers on429 rotation and forwards the peeked body", async () => {
+    const firstAdapter: ProviderAdapter = {
+      name: "mock-529",
+      buildRequest: () => ({ url: "https://routed.test/v1", method: "POST", headers: {}, body: "{}" }),
+      fetchResponse: async () => new Response('{"type":"overloaded_error"}', {
+        status: 529,
+        headers: { "retry-after": "7" },
+      }),
+      async *parseStream() { /* unused */ },
+      async parseResponse() { return [{ type: "text_delta", text: "should not reach" }, { type: "done" }] as AdapterEvent[]; },
+    };
+    const rotatedAdapter: ProviderAdapter = {
+      name: "mock-rotated-529",
+      buildRequest: () => ({ url: "https://routed.test/v1", method: "POST", headers: {}, body: "{}" }),
+      fetchResponse: async () => new Response("{}", { status: 200 }),
+      async *parseStream() {
+        yield { type: "text_delta", text: "answer after 529 hop" };
+        yield { type: "done" };
+      },
+      async parseResponse() { throw new Error("parseResponse must be unreachable"); },
+    };
+    let rotations = 0;
+    const response = await runWithWebSearch({
+      parsed: parseRequest({ model: "routed/model", input: "hi", stream: true, tools: [{ type: "web_search" }] }),
+      adapter: firstAdapter,
+      forwardProvider,
+      hostedTool: { type: "web_search" },
+      selectedForwardHeaders: new Headers({ authorization: "Bearer token" }),
+      settings: { model: "gpt-5.4-mini", reasoning: "low", timeoutMs: 30_000 },
+      maxSearches: 1,
+      on429: (retryAfter, hop) => {
+        rotations++;
+        expect(retryAfter).toBe("7");
+        expect(hop?.status).toBe(529);
+        expect(hop?.message).toContain("overloaded_error");
+        return rotatedAdapter;
+      },
+    });
+    expect(response.status).toBe(200);
+    const frames = await collectSse(response.body!);
+    const completed = frames.find(f => f.event === "response.completed")?.data.response as Record<string, unknown>;
+    const output = completed.output as { type: string; content?: { text?: string }[] }[];
+    expect(output.find(o => o.type === "message")?.content?.[0]?.text).toBe("answer after 529 hop");
+    expect(rotations).toBe(1);
   });
 
   test("loop per-iteration timeout surfaces 504 instead of hanging", async () => {

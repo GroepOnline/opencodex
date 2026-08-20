@@ -376,8 +376,11 @@ describe("runWithImageBridge", () => {
       parsed: makeParsed(),
       adapter: firstAdapter,
       plan,
-      on429: () => {
+      on429: (retryAfter, hop) => {
         rotations++;
+        expect(retryAfter).toBe("1");
+        expect(hop?.status).toBe(429);
+        expect(hop?.message).toBe("rate limited");
         activeAdapter = secondAdapter;
         return secondAdapter;
       },
@@ -387,6 +390,49 @@ describe("runWithImageBridge", () => {
     expect(fetchCalls).toBe(2);
     expect(activeAdapter).toBe(secondAdapter);
     expect(sse).toContain("after rotate");
+  });
+
+  test("529 overload hops the pool and forwards the peeked body", async () => {
+    let fetchCalls = 0;
+    let rotations = 0;
+    const firstAdapter: ProviderAdapter = {
+      name: "before-529",
+      buildRequest: async () => ({ url: "https://test/v1/chat", method: "POST", headers: {}, body: "{}" }),
+      fetchResponse: async () => {
+        fetchCalls++;
+        return new Response('{"type":"overloaded_error"}', { status: 529, headers: { "retry-after": "2" } });
+      },
+      parseStream: async function* (): AsyncGenerator<AdapterEvent> {},
+    };
+    const secondAdapter: ProviderAdapter = {
+      name: "after-529",
+      buildRequest: async () => ({ url: "https://test/v1/chat", method: "POST", headers: {}, body: "{}" }),
+      fetchResponse: async () => {
+        fetchCalls++;
+        streamQueue = [[{ type: "text_delta", text: "after 529 hop" }, { type: "done" }]];
+        return new Response("{}", { status: 200 });
+      },
+      parseStream: async function* (): AsyncGenerator<AdapterEvent> {
+        const events = streamQueue.shift();
+        if (events) for (const e of events) yield e;
+      },
+    };
+    const response = await runWithImageBridge({
+      parsed: makeParsed(),
+      adapter: firstAdapter,
+      plan,
+      on429: (retryAfter, hop) => {
+        rotations++;
+        expect(retryAfter).toBe("2");
+        expect(hop?.status).toBe(529);
+        expect(hop?.message).toContain("overloaded_error");
+        return secondAdapter;
+      },
+    });
+    const sse = await response.text();
+    expect(rotations).toBe(1);
+    expect(fetchCalls).toBe(2);
+    expect(sse).toContain("after 529 hop");
   });
 });
 

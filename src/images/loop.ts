@@ -26,6 +26,7 @@ import { parseVideoCallArgs, pollVideoWithHeartbeats, buildVideoResult, createVi
 import { submitVideoJob } from "./xai-video-client";
 import { downloadVideoToArtifact, createImageBudget, pruneArtifacts } from "./artifacts";
 import { IMAGE_GEN_TOOL_NAME, VIDEO_GEN_TOOL_NAME } from "./synthetic-tool";
+import { isAccountPoolHopStatus } from "../availability/classify";
 import type { ImageBridgePlan, VideoBridgePlan } from "./types";
 
 const SSE_HEADERS = {
@@ -38,6 +39,15 @@ const SSE_HEADERS = {
 const CONNECT_TIMEOUT_MS = 200_000;
 const STALL_TIMEOUT_MS = 200_000;
 export const DEFAULT_MAX_ROUNDS = 3;
+
+async function peekBridgeHopMessage(response: Response, signal?: AbortSignal): Promise<string | undefined> {
+  try {
+    const body = await readBoundedResponseBody(response.clone(), { signal });
+    return body.displaySafe ? body.text : undefined;
+  } catch {
+    return undefined;
+  }
+}
 /** Absolute ceiling so a hand-edited `images.maxRounds: 10000` cannot unbound paid xAI calls. */
 export const MAX_ROUNDS_HARD_LIMIT = 10;
 /** Cap paid xAI image fulfillments per turn (parallel calls in one round count separately). */
@@ -223,10 +233,14 @@ export interface ImageBridgeDeps {
   /** Raw adapter usage at the terminal event, pre wire-normalization (see bridgeToResponsesSSE onUsage). */
   onUsage?: (usage: OcxUsage | undefined) => void;
   /**
-   * Optional 429 key-failover for the routed (non-xAI) model. Return a rebuilt adapter for the
-   * rotated key, or null when the pool is exhausted.
+   * Optional 429/529 key-failover for the routed (non-xAI) model. Return a rebuilt adapter
+   * for the rotated key, or null when the pool is exhausted. `hop` carries the status and
+   * a bounded peek of the upstream body so Availability can apply hard-cap windows.
    */
-  on429?: (retryAfterHeader: string | null) => ProviderAdapter | null;
+  on429?: (
+    retryAfterHeader: string | null,
+    hop?: { status: number; message?: string },
+  ) => ProviderAdapter | null;
   /** Called when the bridged Responses stream completes (parity with runTurn / routed paths). */
   onCompletedResponse?: (response: Record<string, unknown>, providerState?: OcxProviderContinuationState) => void;
   /** WebSocket Responses path only — leave response id empty for protocol compatibility. */
@@ -441,9 +455,13 @@ export async function runWithImageBridge(deps: ImageBridgeDeps): Promise<Respons
       };
 
       let prepared = await fetchOnce(adapter);
-      // 429 key-failover parity with web-search / normal routed path.
-      while (prepared.response.status === 429 && deps.on429) {
-        const rotated = deps.on429(prepared.response.headers.get("retry-after"));
+      // 429/529 key-failover parity with web-search / normal routed path.
+      while (isAccountPoolHopStatus(prepared.response.status) && deps.on429) {
+        const hopMessage = await peekBridgeHopMessage(prepared.response, signal);
+        const rotated = deps.on429(prepared.response.headers.get("retry-after"), {
+          status: prepared.response.status,
+          ...(hopMessage !== undefined ? { message: hopMessage } : {}),
+        });
         if (!rotated) break;
         try { void prepared.response.body?.cancel().catch(() => {}); } catch { /* already closed */ }
         adapter = rotated;

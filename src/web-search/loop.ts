@@ -10,6 +10,7 @@ import { readBoundedResponseBody } from "../lib/bounded-body";
 import { fetchWithResetRetry } from "../lib/upstream-retry";
 import { formatWebSearchResults } from "./format-result";
 import { parseStreamWithProgress, RoutedModelInactivityError, WebSearchStreamProtocolError } from "./progress-stream";
+import { isAccountPoolHopStatus } from "../availability/classify";
 import { WEB_SEARCH_TOOL_NAME } from "./synthetic-tool";
 
 const SSE_HEADERS = {
@@ -18,6 +19,15 @@ const SSE_HEADERS = {
   "Connection": "keep-alive",
   "X-Accel-Buffering": "no",
 };
+
+async function peekBridgeHopMessage(response: Response, signal?: AbortSignal): Promise<string | undefined> {
+  try {
+    const body = await readBoundedResponseBody(response.clone(), { signal });
+    return body.displaySafe ? body.text : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 interface WebSearchCall {
   id: string;
@@ -234,10 +244,15 @@ export interface WebSearchLoopDeps {
   /** Observe the exact adapter request selected for each routed-model iteration. */
   onRequestBuilt?: (request: AdapterRequest) => void;
   /**
-   * 429 key-failover hook: rotate the provider's active pool key and return a rebuilt adapter,
-   * or null when the pool is exhausted (same semantics as the normal routed path).
+   * 429/529 key-failover hook: rotate the provider's active pool key and return a rebuilt
+   * adapter, or null when the pool is exhausted (same semantics as the normal routed path).
+   * `hop` carries the status and a bounded peek of the upstream body so Availability can
+   * apply hard-cap windows.
    */
-  on429?: (retryAfterHeader: string | null) => ProviderAdapter | null;
+  on429?: (
+    retryAfterHeader: string | null,
+    hop?: { status: number; message?: string },
+  ) => ProviderAdapter | null;
 }
 
 /**
@@ -342,10 +357,15 @@ export async function runWithWebSearch(deps: WebSearchLoopDeps): Promise<Respons
       };
 
       let prepared = await fetchOnce(adapter);
-      // 429 key-failover parity with the normal routed path: rotate pool keys until one responds
-      // or the pool is exhausted (deps.on429 returns null — cooldown map guarantees termination).
-      while (prepared.response.status === 429 && deps.on429) {
-        const rotated = deps.on429(prepared.response.headers.get("retry-after"));
+      // 429/529 key-failover parity with the normal routed path: rotate pool keys until one
+      // responds or the pool is exhausted (deps.on429 returns null — cooldown map guarantees
+      // termination). Peek the body before cancel so hard-cap copy reaches Availability.
+      while (isAccountPoolHopStatus(prepared.response.status) && deps.on429) {
+        const hopMessage = await peekBridgeHopMessage(prepared.response, signal);
+        const rotated = deps.on429(prepared.response.headers.get("retry-after"), {
+          status: prepared.response.status,
+          ...(hopMessage !== undefined ? { message: hopMessage } : {}),
+        });
         if (!rotated) break;
         // Never let a broken body's cancel promise outlive the cumulative header deadline. Observe
         // it, but proceed immediately to the rotated fetch under the SAME deadline signal.

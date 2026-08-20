@@ -183,6 +183,19 @@ function outcomeRailForAdapter(name: string): UpstreamRail {
   return "generic";
 }
 
+async function upstreamAllowsRotateOrCool(
+  adapterName: string,
+  response: Response,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const outcome = await classifyUpstreamResponse(
+    outcomeRailForAdapter(adapterName),
+    response,
+    signal,
+  );
+  return upstreamOutcomePolicy(outcome).rotateOrCool;
+}
+
 function adapterOwnsAttemptBudget(name: string): boolean {
   return name === "google" || name === "kiro";
 }
@@ -1977,17 +1990,18 @@ export async function handleResponses(
           if (logCtx.activeAttempt) logCtx.activeAttempt.usage = usage;
         }
       },
-      on429: retryAfter => {
+      on429: (retryAfter, hop) => {
         const rotated = resolveOutcome({
           config,
           persistConfig,
           providerName: route.providerName,
           routedProvider: route.provider,
-          status: 429,
+          status: hop?.status ?? 429,
           retryAfter,
           now: Date.now(),
           attemptedKey: route.provider.apiKey,
           promptCacheKey: parsed.options.promptCacheKey,
+          message: hop?.message,
         });
         if (!rotated) return null;
         route.provider = rotated;
@@ -2051,17 +2065,18 @@ export async function handleResponses(
       connectTimeoutMs: config.connectTimeoutMs ?? 200_000,
       routedModelStallTimeoutMs: wsPlan.routedModelStallTimeoutMs,
       stallTimeoutSec: wsPlan.stallTimeoutSec,
-      on429: retryAfter => {
+      on429: (retryAfter, hop) => {
         const rotated = resolveOutcome({
           config,
           persistConfig,
           providerName: route.providerName,
           routedProvider: route.provider,
-          status: 429,
+          status: hop?.status ?? 429,
           retryAfter,
           now: Date.now(),
           attemptedKey: route.provider.apiKey,
           promptCacheKey: parsed.options.promptCacheKey,
+          message: hop?.message,
         });
         if (!rotated) return null;
         route.provider = rotated;
@@ -2422,12 +2437,7 @@ export async function handleResponses(
     };
     const canRotateOrCoolFailure = async (response: Response): Promise<boolean> => {
       if ((options.attemptBudget?.remaining ?? 0) === 0) return false;
-      const outcome = await classifyUpstreamResponse(
-        outcomeRailForAdapter(activeAdapter.name),
-        response,
-        options.abortSignal,
-      );
-      return upstreamOutcomePolicy(outcome).rotateOrCool;
+      return upstreamAllowsRotateOrCool(activeAdapter.name, response, options.abortSignal);
     };
     recovery: for (;;) {
       if (
@@ -2765,6 +2775,7 @@ export async function handleResponses(
         && anthropicPoolAccountId
         && isAnthropicAccountPoolEnabled(config)
         && anthropicPoolFailovers < ANTHROPIC_POOL_MAX_FAILOVERS_PER_REQUEST
+        && await upstreamAllowsRotateOrCool(activeAdapter.name, response, options.abortSignal)
       ) {
         const hop = await resolveAnthropicPoolOutcome({
           config,
