@@ -198,7 +198,7 @@ export default function ProviderOverviewDashboard({
         )}
       </div>
 
-      <div className="pws-dashboard-stats" role="status">
+      <div className="pws-dashboard-stats" role="group" aria-label={t("pws.statsAria")}>
         <div className="pws-dashboard-stat">
           <span className="pws-dashboard-stat-count num">{readyCount}</span>
           <span className="pws-dashboard-stat-label caps">{t("pws.status.ready")}</span>

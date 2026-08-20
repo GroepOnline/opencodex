@@ -18,7 +18,8 @@
   gap: var(--space-4);
   width: 100%;
   max-width: 100%;
-  min-height: 480px;
+  min-height: calc(var(--space-16) * 7 + var(--space-8));
+  overflow-x: clip;
 }
 
 .pws-rail {
