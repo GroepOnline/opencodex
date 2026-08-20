@@ -2497,7 +2497,6 @@ export async function handleResponses(
         && anthropicPoolFailovers < ANTHROPIC_POOL_MAX_FAILOVERS_PER_REQUEST
         && await canRotateOrCoolFailure(upstreamResponse)
       ) {
-        try { void upstreamResponse.body?.cancel().catch(() => {}); } catch { /* already consumed/closed */ }
         const hop = await resolveAnthropicPoolOutcome({
           config,
           status: upstreamResponse.status,
@@ -2521,6 +2520,9 @@ export async function handleResponses(
         } catch {
           break;
         }
+        // Cancel only after a next account is bound. Cancelling first drops the
+        // 429 body, and the surface path then reports "unknown error".
+        try { void upstreamResponse.body?.cancel().catch(() => {}); } catch { /* already consumed/closed */ }
         const result = await rebuildAndRefetch("anthropic-oauth-429");
         if ("failed" in result) return result.failed;
         upstreamResponse = result;
@@ -2536,11 +2538,6 @@ export async function handleResponses(
           < GOOGLE_ANTIGRAVITY_POOL_MAX_FAILOVERS_PER_REQUEST
         && await canRotateOrCoolFailure(upstreamResponse)
       ) {
-        try {
-          void upstreamResponse.body?.cancel().catch(() => {});
-        } catch {
-          /* already consumed/closed */
-        }
         const hop = await resolveGoogleAntigravityPoolOutcome({
           config,
           status: upstreamResponse.status,
@@ -2571,6 +2568,11 @@ export async function handleResponses(
           activeAdapter = nextAdapter;
         } catch {
           break;
+        }
+        try {
+          void upstreamResponse.body?.cancel().catch(() => {});
+        } catch {
+          /* already consumed/closed */
         }
         const result = await rebuildAndRefetch("google-antigravity-oauth-429");
         if ("failed" in result) return result.failed;

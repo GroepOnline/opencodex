@@ -958,6 +958,85 @@ describe("selectOauthPoolCandidate", () => {
   });
 });
 
+describe("handleResponses anthropic oauth pool", () => {
+  let home: string;
+  const previousHome = process.env.OPENCODEX_HOME;
+  const previousFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "ocx-availability-anthropic-pool-"));
+    process.env.OPENCODEX_HOME = home;
+    clearAnthropicAccountPoolState();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = previousFetch;
+    clearAnthropicAccountPoolState();
+    restoreOpenCodexHome(previousHome);
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  test("an exhausted pool surfaces the last upstream 429 body", async () => {
+    await saveCredential("anthropic", {
+      access: "access-a",
+      refresh: "refresh-a",
+      expires: Date.now() + 3_600_000,
+      accountId: "uuid-aaaa",
+      email: "a@example.test",
+    });
+    await saveCredential("anthropic", {
+      access: "access-b",
+      refresh: "refresh-b",
+      expires: Date.now() + 3_600_000,
+      accountId: "uuid-bbbb",
+      email: "b@example.test",
+    });
+    const set = getAccountSet("anthropic")!;
+    const a = set.accounts.find(acc => acc.credential.accountId === "uuid-aaaa")!;
+    await setActiveAccount("anthropic", a.id);
+
+    globalThis.fetch = (async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes("api.anthropic.com")) {
+        return new Response(
+          JSON.stringify({
+            type: "error",
+            error: { type: "rate_limit_error", message: "anthropic weekly limit" },
+          }),
+          { status: 429, headers: { "content-type": "application/json", "retry-after": "12" } },
+        );
+      }
+      return previousFetch(input as Request);
+    }) as typeof fetch;
+
+    const config = baseConfig({
+      defaultProvider: "anthropic",
+      providers: {
+        anthropic: {
+          adapter: "anthropic",
+          baseUrl: "https://api.anthropic.com",
+          authMode: "oauth",
+          models: ["claude-sonnet-4-6"],
+        },
+      },
+      anthropicAccountPool: { enabled: true },
+    });
+    const response = await handleResponses(
+      new Request("http://localhost/v1/responses", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: "anthropic/claude-sonnet-4-6", input: "hi", stream: false }),
+      }),
+      config,
+      { model: "", provider: "" },
+    );
+    expect(response.status).toBe(429);
+    const text = await response.text();
+    expect(text.toLowerCase()).not.toContain("unknown error");
+    expect(text).toContain("anthropic weekly limit");
+  });
+});
+
 describe("selectCodexCandidate", () => {
   test("without a Codex account mode forwards the caller bearer", async () => {
     const config = baseConfig();
