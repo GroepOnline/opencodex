@@ -40,9 +40,16 @@ const CONNECT_TIMEOUT_MS = 200_000;
 const STALL_TIMEOUT_MS = 200_000;
 export const DEFAULT_MAX_ROUNDS = 3;
 
+/** Hard-cap JSON is already buffered; a hanging 429 body must not stall rotation. */
+const BRIDGE_HOP_PEEK_TIMEOUT_MS = 25;
+
 async function peekBridgeHopMessage(response: Response, signal?: AbortSignal): Promise<string | undefined> {
   try {
-    const body = await readBoundedResponseBody(response.clone(), { signal });
+    const body = await readBoundedResponseBody(response.clone(), {
+      signal,
+      totalTimeoutMs: BRIDGE_HOP_PEEK_TIMEOUT_MS,
+      inactivityTimeoutMs: BRIDGE_HOP_PEEK_TIMEOUT_MS,
+    });
     return body.displaySafe ? body.text : undefined;
   } catch {
     return undefined;
