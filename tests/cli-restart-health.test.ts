@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -9,12 +8,17 @@ const repoRoot = dirname(fileURLToPath(new URL("../package.json", import.meta.ur
 const cliPath = join(repoRoot, "src", "cli", "index.ts");
 
 function runCli(args: string[], env: Record<string, string> = {}) {
-  return spawnSync(process.execPath, [cliPath, ...args], {
+  const result = Bun.spawnSync([process.execPath, cliPath, ...args], {
     cwd: repoRoot,
     env: { ...process.env, ...env },
-    encoding: "utf8",
-    timeout: 10000,
+    stdout: "pipe",
+    stderr: "pipe",
   });
+  return {
+    status: result.exitCode,
+    stdout: new TextDecoder().decode(result.stdout),
+    stderr: new TextDecoder().decode(result.stderr),
+  };
 }
 
 describe("ocx restart", () => {
