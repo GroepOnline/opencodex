@@ -50,11 +50,12 @@ function parseRetryAfterMs(value: string | null | undefined, now = Date.now()): 
 }
 
 function cooldownMsForFailure(
+  status: number,
   retryAfterHeader: string | null | undefined,
   message: string | undefined,
   now: number,
 ): number {
-  if (isHardCapMessage(429, message) || isHardCapMessage(402, message)) {
+  if (isHardCapMessage(status, message)) {
     const until = parseResetsInMs(message || "", now);
     if (until !== undefined) {
       return Math.min(Math.max(until - now, 1), MAX_HARD_CAP_KEY_COOLDOWN_MS);
@@ -99,11 +100,60 @@ function pickUncooledKey(
   fromIndex: number,
   now: number,
 ): NonNullable<OcxProviderConfig["apiKeyPool"]>[number] | null {
-  for (let i = 1; i <= pool.length; i++) {
+  if (fromIndex < 0) {
+    for (const candidate of pool) {
+      if (!isKeyInCooldown(providerName, candidate.id, now)) return candidate;
+    }
+    return null;
+  }
+  // Skip `fromIndex` itself: callers asked to move away from that entry.
+  for (let i = 1; i < pool.length; i++) {
     const candidate = pool[(fromIndex + i) % pool.length]!;
     if (!isKeyInCooldown(providerName, candidate.id, now)) return candidate;
   }
   return null;
+}
+
+function persistHardCapKeyCooldown(
+  config: OcxConfig,
+  providerName: string,
+  keyId: string,
+  until: number,
+): void {
+  const bag = (config.keyPoolCooldowns ??= {});
+  const keys = (bag[providerName] ??= {});
+  keys[keyId] = { until };
+}
+
+function applyFailedKeyCooldown(
+  config: OcxConfig,
+  providerName: string,
+  pool: NonNullable<OcxProviderConfig["apiKeyPool"]>,
+  failedKey: string | undefined,
+  retryAfterHeader: string | null | undefined,
+  message: string | undefined,
+  status: number,
+  now: number,
+): { currentEntry: NonNullable<OcxProviderConfig["apiKeyPool"]>[number] | undefined; persistedHardCap: boolean } {
+  const currentEntry = poolEntryForKey(pool, failedKey);
+  if (!currentEntry) return { currentEntry: undefined, persistedHardCap: false };
+  const cooldownMs = cooldownMsForFailure(status, retryAfterHeader, message, now);
+  keyCooldowns.set(cooldownKey(providerName, currentEntry.id), {
+    cooldownUntil: now + cooldownMs,
+  });
+  const persistedHardCap = cooldownMs > MAX_COOLDOWN_MS;
+  if (persistedHardCap) {
+    persistHardCapKeyCooldown(config, providerName, currentEntry.id, now + cooldownMs);
+  }
+  return { currentEntry, persistedHardCap };
+}
+
+function poolAllKeysCooling(
+  providerName: string,
+  pool: NonNullable<OcxProviderConfig["apiKeyPool"]>,
+  now: number,
+): boolean {
+  return pool.every(entry => isKeyInCooldown(providerName, entry.id, now));
 }
 
 function earliestCooldownRetryAfterSeconds(
@@ -138,6 +188,7 @@ export function rotateKeyOn429(
   now = Date.now(),
   attemptedKey?: string,
   message?: string,
+  status = 429,
 ): OcxProviderConfig | null {
   const provider = config.providers[providerName];
   if (!provider) return null;
@@ -150,19 +201,24 @@ export function rotateKeyOn429(
   // rotated provider.apiKey — cooling the live key would punish an innocent replacement and can
   // exhaust a 2-key pool from a single bad key. CAS semantics: callers pass the key they used.
   const failedKey = attemptedKey ?? provider.apiKey;
-  const currentEntry = poolEntryForKey(pool, failedKey);
-  if (currentEntry) {
-    const cooldownMs = cooldownMsForFailure(retryAfterHeader, message, now);
-    keyCooldowns.set(cooldownKey(providerName, currentEntry.id), {
-      cooldownUntil: now + cooldownMs,
-    });
-  }
+  const { currentEntry, persistedHardCap } = applyFailedKeyCooldown(
+    config,
+    providerName,
+    pool,
+    failedKey,
+    retryAfterHeader,
+    message,
+    status,
+    now,
+  );
+  const needsSave = persistedHardCap;
 
   // Lost the race: someone already rotated away from the failed key. If the live key is healthy,
   // retry with it as-is instead of rotating a second time.
   if (attemptedKey !== undefined && provider.apiKey !== attemptedKey) {
     const liveEntry = poolEntryForKey(pool, provider.apiKey);
     if (liveEntry && !isKeyInCooldown(providerName, liveEntry.id, now)) {
+      if (needsSave) saveConfigPreservingClaudeCode(config);
       return { ...provider };
     }
   }
@@ -179,8 +235,37 @@ export function rotateKeyOn429(
     return { ...provider };
   }
 
+  if (needsSave) saveConfigPreservingClaudeCode(config);
   console.warn(`[key-failover] ${providerName}: all ${pool.length} keys in cooldown; returning 429 to client`);
   return null;
+}
+
+/**
+ * Cool the attempted key without hopping. Used for 402 (account-exhausted) on a pool:
+ * Availability must not rotate, but the spent key should stop being first-picked.
+ * Returns true when every pool entry is now cooling.
+ */
+export function coolAttemptedKey(
+  config: OcxConfig,
+  providerName: string,
+  options: RotateProviderTransportOptions & { status?: number } = {},
+): boolean {
+  const provider = config.providers[providerName];
+  if (!provider || !hasKeyPoolFailover(provider)) return false;
+  const pool = provider.apiKeyPool!;
+  const now = options.now ?? Date.now();
+  const { persistedHardCap } = applyFailedKeyCooldown(
+    config,
+    providerName,
+    pool,
+    options.attemptedKey ?? provider.apiKey,
+    options.retryAfter,
+    options.message,
+    options.status ?? 402,
+    now,
+  );
+  if (persistedHardCap) saveConfigPreservingClaudeCode(config);
+  return poolAllKeysCooling(providerName, pool, now);
 }
 
 interface RotateProviderTransportOptions {
@@ -189,6 +274,7 @@ interface RotateProviderTransportOptions {
   attemptedKey?: string;
   promptCacheKey?: string;
   message?: string;
+  status?: number;
 }
 
 /**
@@ -215,6 +301,7 @@ export function rotateProviderTransportOn429(
     options.now,
     options.attemptedKey,
     options.message,
+    options.status,
   );
   return rotated
     ? resolveProviderTransport(
@@ -272,15 +359,69 @@ export function activateUncooledApiKey(
 }
 
 /** Clear cooldown state for a provider (e.g. after manual key management). */
-export function clearKeyCooldowns(providerName?: string): void {
+export function clearKeyCooldowns(providerName?: string, config?: OcxConfig): boolean {
+  let persistedChanged = false;
   if (!providerName) {
     keyCooldowns.clear();
-    return;
+    if (config?.keyPoolCooldowns) {
+      delete config.keyPoolCooldowns;
+      persistedChanged = true;
+    }
+    return persistedChanged;
   }
   const prefix = `${providerName}\0`;
   for (const key of keyCooldowns.keys()) {
     if (key.startsWith(prefix)) keyCooldowns.delete(key);
   }
+  if (config?.keyPoolCooldowns && Object.hasOwn(config.keyPoolCooldowns, providerName)) {
+    delete config.keyPoolCooldowns[providerName];
+    if (Object.keys(config.keyPoolCooldowns).length === 0) delete config.keyPoolCooldowns;
+    persistedChanged = true;
+  }
+  return persistedChanged;
+}
+
+/** Load persisted hard-cap key windows into the in-memory map (startup). */
+export function hydrateKeyPoolCooldowns(config: OcxConfig, now = Date.now()): void {
+  const bag = config.keyPoolCooldowns;
+  if (!bag) return;
+  for (const [providerName, keys] of Object.entries(bag)) {
+    if (!keys || typeof keys !== "object") continue;
+    for (const [keyId, entry] of Object.entries(keys)) {
+      if (!entry || typeof entry.until !== "number" || !Number.isFinite(entry.until)) continue;
+      if (entry.until <= now) continue;
+      keyCooldowns.set(cooldownKey(providerName, keyId), { cooldownUntil: entry.until });
+    }
+  }
+}
+
+/** Drop expired persisted key windows. Returns true when config was mutated. */
+export function expireKeyPoolCooldowns(config: OcxConfig, now = Date.now()): boolean {
+  const bag = config.keyPoolCooldowns;
+  if (!bag) return false;
+  let changed = false;
+  for (const [providerName, keys] of Object.entries(bag)) {
+    if (!keys || typeof keys !== "object") {
+      delete bag[providerName];
+      changed = true;
+      continue;
+    }
+    for (const [keyId, entry] of Object.entries(keys)) {
+      if (!entry || typeof entry.until !== "number" || entry.until <= now) {
+        delete keys[keyId];
+        keyCooldowns.delete(cooldownKey(providerName, keyId));
+        changed = true;
+      }
+    }
+    if (Object.keys(keys).length === 0) {
+      delete bag[providerName];
+      changed = true;
+    }
+  }
+  if (changed && Object.keys(bag).length === 0) {
+    delete config.keyPoolCooldowns;
+  }
+  return changed;
 }
 
 /** Visible-for-testing: get the cooldown-until timestamp for a key. */

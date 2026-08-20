@@ -10,7 +10,6 @@ export {
   type AvailabilityDecision,
 } from "./classify";
 export {
-  hopChainTargets,
   selectHopChain,
   canHopNativeClaudePierce,
   type HopChain,
@@ -48,4 +47,4 @@ export {
   type InspectedApiKey,
   type AvailabilityProviderView,
 } from "./management";
-export { comboIdLabel } from "../providers/fallback";
+export { comboIdLabel, isProviderFallbackComboId } from "../providers/fallback";

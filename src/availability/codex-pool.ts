@@ -34,9 +34,9 @@ export type CodexSelectResult =
     provider: OcxProviderConfig;
   }
   | { ok: false; reason: "cooldown"; error: CodexAccountCooldownError }
-  | { ok: false; reason: "affinity-expired" }
+  | { ok: false; reason: "affinity-expired"; error: CodexThreadAffinityExpiredError }
   | { ok: false; reason: "unusable" }
-  | { ok: false; reason: "reauth"; accountId: string }
+  | { ok: false; reason: "reauth"; accountId: string; error: CodexAuthContextError }
   | { ok: false; reason: "pool-auth"; message: string }
   | { ok: false; reason: "direct-auth"; message: string };
 
@@ -73,10 +73,10 @@ export async function selectCodexCandidate(input: {
       return { ok: false, reason: "cooldown", error: err };
     }
     if (err instanceof CodexThreadAffinityExpiredError) {
-      return { ok: false, reason: "affinity-expired" };
+      return { ok: false, reason: "affinity-expired", error: err };
     }
     if (err instanceof CodexAuthContextError) {
-      return { ok: false, reason: "reauth", accountId: err.accountId };
+      return { ok: false, reason: "reauth", accountId: err.accountId, error: err };
     }
     if (err instanceof CodexPoolAuthenticationError) {
       return { ok: false, reason: "pool-auth", message: err.message };

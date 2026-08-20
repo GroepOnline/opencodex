@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   comboIdLabel,
   isProviderFallbackComboId,
@@ -8,6 +11,8 @@ import {
   providerFallbackTargets,
 } from "../src/providers/fallback";
 import { isValidComboId } from "../src/combos";
+import { getConfigPath, saveConfig } from "../src/config";
+import { recordProviderCapCooldown } from "../src/providers/cap-cooldown";
 import type { OcxConfig } from "../src/types";
 
 function baseConfig(overrides: Partial<OcxConfig> = {}): OcxConfig {
@@ -102,10 +107,25 @@ describe("provider fallback plan", () => {
     });
   });
 
-  test("leaves the caller's config untouched", () => {
+  test("does not inject the synthetic combo into the caller's combos map", () => {
     const config = withFallback([{ provider: "b", model: "m2" }]);
     providerFallbackPlan(config, { provider: "a", modelId: "m1" });
     expect(config.combos).toBeUndefined();
+  });
+
+  test("shares live cooldown bags so a child cap persist reaches the server config", () => {
+    const config = withFallback([{ provider: "b", model: "m2" }]);
+    const plan = providerFallbackPlan(config, { provider: "a", modelId: "m1" })!;
+    recordProviderCapCooldown(
+      plan.config,
+      "b",
+      429,
+      'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. The limit resets in 1d 22h"}',
+      { now: 1_000_000, save: false },
+    );
+    expect(config.providerCooldowns?.b).toBeDefined();
+    expect(config.providers.b?.disabled).toBe(true);
+    expect(plan.config.providerCooldowns).toBe(config.providerCooldowns);
   });
 
   test("preserves configured combos alongside the synthetic one", () => {
@@ -162,5 +182,25 @@ describe("synthetic combo ids", () => {
     const { comboId } = providerFallbackPlan(config, { provider: "a", modelId: "m1" })!;
     expect(comboIdLabel(comboId)).toBe("fallback:a/m1");
     expect(comboIdLabel("free")).toBe("free");
+  });
+
+  test("saveConfig drops synthetic fallback combo ids", () => {
+    const previousHome = process.env.OPENCODEX_HOME;
+    const home = mkdtempSync(join(tmpdir(), "ocx-fallback-save-"));
+    process.env.OPENCODEX_HOME = home;
+    try {
+      const config = withFallback([{ provider: "b", model: "m2" }], {
+        combos: { free: { targets: [{ provider: "a", model: "m1" }] } },
+      });
+      const plan = providerFallbackPlan(config, { provider: "a", modelId: "m1" })!;
+      saveConfig(plan.config);
+      const raw = JSON.parse(readFileSync(getConfigPath(), "utf8")) as { combos?: Record<string, unknown> };
+      expect(Object.keys(raw.combos ?? {}).some(id => id.includes("\u0000"))).toBe(false);
+      expect(raw.combos).toEqual({ free: { targets: [{ provider: "a", model: "m1" }] } });
+    } finally {
+      if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
+      else process.env.OPENCODEX_HOME = previousHome;
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

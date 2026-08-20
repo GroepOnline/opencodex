@@ -70,6 +70,7 @@
   cursor: pointer; padding: var(--space-1) 0; text-align: left;
 }
 .pwi-auth-add-key:hover { text-decoration: underline; }
+.pwi-auth-add { margin-top: var(--space-2); }
 
 .pwi-auth-hint { margin: 0; }
 

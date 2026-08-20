@@ -161,8 +161,17 @@ export function providerFallbackPlan(
 
   const comboId = syntheticComboId(route.provider, route.modelId);
   const combo: OcxComboConfig = { targets, strategy: "failover" };
+  // Share live bags so a child `recordProviderCapCooldown` mutates the server config,
+  // not a clone-only object that `saveConfig` would persist with this synthetic combo id.
+  const providerCooldowns = (config.providerCooldowns ??= {});
+  const keyPoolCooldowns = (config.keyPoolCooldowns ??= {});
   return {
     comboId,
-    config: { ...config, combos: { ...config.combos, [comboId]: combo } },
+    config: {
+      ...config,
+      combos: { ...config.combos, [comboId]: combo },
+      providerCooldowns,
+      keyPoolCooldowns,
+    },
   };
 }

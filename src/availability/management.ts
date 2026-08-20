@@ -1,3 +1,4 @@
+import { saveConfigPreservingClaudeCode } from "../config";
 import { configuredKeyCount, listProviderApiKeys, type ProviderApiKeyInfo } from "../providers/api-keys";
 import { activeProviderCooldowns } from "../providers/cap-cooldown";
 import { clearKeyCooldowns, getKeyCooldownUntil } from "../providers/key-failover";
@@ -6,8 +7,10 @@ import type { OcxConfig } from "../types";
 export type InspectedApiKey = ProviderApiKeyInfo & { cooldownUntil?: number };
 
 /** Management adapter: drop key-pool cooldowns after the operator edits keys. */
-export function clearKeyPoolCooldowns(providerName?: string): void {
-  clearKeyCooldowns(providerName);
+export function clearKeyPoolCooldowns(providerName?: string, config?: OcxConfig): void {
+  if (clearKeyCooldowns(providerName, config) && config) {
+    saveConfigPreservingClaudeCode(config);
+  }
 }
 
 /** Live key-pool view: masked keys plus which ones Availability is currently cooling. */

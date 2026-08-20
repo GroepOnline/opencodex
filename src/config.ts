@@ -15,7 +15,7 @@ import { hardenSecretDir, hardenSecretPath, hardenSecretPathAsync } from "./lib/
 import { recordOwnedConfigPath } from "./lib/config-ownership";
 import { providerDestinationConfigError } from "./lib/destination-policy";
 import { openRouterRoutingConfigError } from "./providers/openrouter-routing";
-import { providerFallbackIssues } from "./providers/fallback";
+import { isProviderFallbackComboId, providerFallbackIssues } from "./providers/fallback";
 import {
   isWirePinnedModel,
   MODEL_ADAPTER_OVERRIDE_ALLOWED,
@@ -1362,6 +1362,30 @@ export function readConfigDiagnostics(): ConfigDiagnostics {
   }
 }
 
+/** Drop runtime-only synthetic fallback combos and empty cooldown bags before disk. */
+function persistableConfig(config: OcxConfig): OcxConfig {
+  let next: OcxConfig = config;
+  const combos = next.combos;
+  if (combos) {
+    const synthetic = Object.keys(combos).filter(isProviderFallbackComboId);
+    if (synthetic.length > 0) {
+      const kept = { ...combos };
+      for (const id of synthetic) delete kept[id];
+      next = { ...next, combos: kept };
+      if (Object.keys(kept).length === 0) delete next.combos;
+    }
+  }
+  if (next.providerCooldowns && Object.keys(next.providerCooldowns).length === 0) {
+    if (next === config) next = { ...config };
+    delete next.providerCooldowns;
+  }
+  if (next.keyPoolCooldowns && Object.keys(next.keyPoolCooldowns).length === 0) {
+    if (next === config) next = { ...next };
+    delete next.keyPoolCooldowns;
+  }
+  return next;
+}
+
 export function saveConfig(config: OcxConfig): void {
   const dir = getConfigDir();
   if (!existsSync(dir)) {
@@ -1373,7 +1397,7 @@ export function saveConfig(config: OcxConfig): void {
     hardenSecretDir(dir, { required: true });
   }
   const configPath = getConfigPath();
-  atomicWriteFile(configPath, JSON.stringify(config, null, 2) + "\n");
+  atomicWriteFile(configPath, JSON.stringify(persistableConfig(config), null, 2) + "\n");
 }
 
 export function websocketsEnabled(config: Pick<OcxConfig, "websockets">): boolean {

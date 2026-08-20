@@ -254,6 +254,12 @@ export function useProviderAccountPools(deps: {
     return () => window.clearTimeout(timeout);
   }, [fetchKeyPools, keyCardProviders]);
 
+  useEffect(() => {
+    if (keyCardProviders.length === 0) return;
+    const timer = window.setInterval(() => { void fetchKeyPools(keyCardProviders); }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [fetchKeyPools, keyCardProviders]);
+
   const activeAccountNeedsReauth = useMemo(
     () => buildActiveAccountNeedsReauthMap(accountSets, codexActiveNeedsReauth),
     [accountSets, codexActiveNeedsReauth],

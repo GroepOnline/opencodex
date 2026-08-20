@@ -6,7 +6,6 @@ import {
   canHopNativeClaudePierce,
   classifyAttempt,
   clearKeyPoolCooldowns,
-  hopChainTargets,
   isAccountPoolHopStatus,
   inspectAvailability,
   inspectKeyPool,
@@ -20,6 +19,7 @@ import {
   selectKeyPoolCandidate,
   selectOauthPoolCandidate,
 } from "../src/availability";
+import { hopChainTargets } from "../src/availability/chain";
 import { handleResponses } from "../src/server/responses";
 import { selectCandidateFailResponse } from "../src/server/responses/select-http";
 import {
@@ -361,7 +361,7 @@ describe("resolveOutcome", () => {
     expect(config.providerCooldowns?.b?.reason).toBe("INFERENCE_CAP_ERROR");
   });
 
-  test("does not disable a key-pool provider on a weekly cap", () => {
+  test("does not disable a key-pool provider on a weekly cap while another key remains", () => {
     const config = poolConfig();
     resolveOutcome({
       config,
@@ -375,6 +375,62 @@ describe("resolveOutcome", () => {
     });
     expect(config.providers.p!.disabled).toBeUndefined();
     expect(config.providerCooldowns?.p).toBeUndefined();
+  });
+
+  test("pauses a key-pool provider once every key is hard-capped", () => {
+    const config = poolConfig();
+    config.defaultProvider = "other";
+    config.providers.other = {
+      adapter: "openai-chat",
+      baseUrl: "https://other.example/v1",
+      apiKey: "ko",
+    };
+    const cap = 'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. The limit resets in 2d"}';
+    const now = 1_000_000;
+    resolveOutcome({
+      config,
+      providerName: "p",
+      routedProvider: config.providers.p!,
+      status: 429,
+      now,
+      attemptedKey: pool[0]!.key,
+      message: cap,
+      save: false,
+    });
+    const last = resolveOutcome({
+      config,
+      providerName: "p",
+      routedProvider: { ...config.providers.p!, apiKey: pool[1]!.key },
+      status: 429,
+      now,
+      attemptedKey: pool[1]!.key,
+      message: cap,
+      save: false,
+    });
+    expect(last).toBeNull();
+    expect(config.providers.p!.disabled).toBe(true);
+    expect(config.providerCooldowns?.p?.reason).toBe("INFERENCE_CAP_ERROR");
+  });
+
+  test("402 cools the attempted key without hopping", () => {
+    const config = poolConfig();
+    const now = 1_000_000;
+    const next = resolveOutcome({
+      config,
+      providerName: "p",
+      routedProvider: config.providers.p!,
+      status: 402,
+      now,
+      attemptedKey: pool[0]!.key,
+      message: 'Error 402: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. The limit resets in 2d"}',
+      save: false,
+    });
+    expect(next).toBeNull();
+    expect(config.providers.p!.apiKey).toBe(pool[0]!.key);
+    expect(inspectKeyPool(config, "p", now).keys.find(key => key.id === "k1")?.cooldownUntil).toBe(
+      now + 2 * 24 * 60 * 60 * 1000,
+    );
+    expect(config.providers.p!.disabled).toBeUndefined();
   });
 });
 

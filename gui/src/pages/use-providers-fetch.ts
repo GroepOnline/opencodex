@@ -41,8 +41,9 @@ export function useProvidersFetch({
   configCacheKey?: string;
 }) {
   const fetchConfig = useCallback(async () => {
+    const availAbort = new AbortController();
     const availPromise = setAvailability
-      ? fetch(`${apiBase}/api/availability`).catch(() => null)
+      ? fetch(`${apiBase}/api/availability`, { signal: availAbort.signal }).catch(() => null)
       : null;
     try {
       const res = await fetch(`${apiBase}/api/config`);
@@ -50,6 +51,8 @@ export function useProvidersFetch({
       setConfig(data ?? null);
       if (configCacheKey && data) writeSessionListCache(configCacheKey, data);
     } catch {
+      availAbort.abort();
+      if (availPromise) await readAvailabilityProviders(availPromise);
       notify(t("prov.loadConfigFail"), false);
       return;
     }

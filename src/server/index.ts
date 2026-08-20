@@ -32,6 +32,7 @@ import {
   expireProviderCooldowns,
   startProviderCooldownSweep,
 } from "../providers/cap-cooldown";
+import { expireKeyPoolCooldowns, hydrateKeyPoolCooldowns } from "../providers/key-failover";
 import {
   CodexAccountCooldownError,
   cooldownErrorMessage,
@@ -270,7 +271,8 @@ function attachLiveSidebandUpstream(ws: ServerWebSocket<WsData>): void {
 export function startServer(port?: number) {
   const config = runAlibabaRegionStartupMigration(runOpenAiTierStartupMigration(loadConfig()));
   // Availability mutates THIS live object when it records a cap-cooldown.
-  if (expireProviderCooldowns(config)) saveConfig(config);
+  hydrateKeyPoolCooldowns(config);
+  if (expireProviderCooldowns(config) || expireKeyPoolCooldowns(config)) saveConfig(config);
   // Auto-pausing a capped provider is only safe if it auto-recovers without the dashboard.
   startProviderCooldownSweep(config);
   applyProxyEnv(config);

@@ -149,6 +149,23 @@
 .pws-dashboard-row--attention {
   border-color: color-mix(in srgb, var(--amber) 40%, var(--border));
   background: color-mix(in srgb, var(--amber) 8%, var(--surface));
+  grid-template-columns: var(--icon-lg) minmax(0, 1fr) auto;
+}
+
+.pws-dashboard-quota-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-1-5);
+  border-radius: var(--radius-xs);
+}
+
+.pws-dashboard-quota-row .pws-dashboard-row-select {
+  width: 100%;
+}
+
+.pws-dashboard-quota-row:hover {
+  background: var(--raised);
 }
 
 .pws-dashboard-rows {
@@ -269,7 +286,7 @@
 .pws-dashboard-row--skeleton {
   pointer-events: none;
   cursor: default;
-  grid-template-columns: var(--icon-lg) 1fr;
+  grid-template-columns: var(--icon-lg) minmax(0, 1fr) auto;
 }
 
 .pws-skel {

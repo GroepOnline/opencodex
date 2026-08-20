@@ -29,6 +29,7 @@ import {
   classifyAttempt,
   comboIdLabel,
   isAccountPoolHopStatus,
+  isProviderFallbackComboId,
   keyPoolCanHop,
   recordCapOutcome,
   resolveAnthropicPoolOutcome,
@@ -845,7 +846,8 @@ export async function handleComboResponses(
   // A per-provider fallback chain runs on this same hop loop but is not a combo the user
   // configured: the log row must keep the winning target's own provider/model rather than
   // collapsing into a synthetic `combo` row nothing in the GUI can open.
-  const providerFallbackChain = options.providerFallbackAttempt === true;
+  const providerFallbackChain = options.providerFallbackAttempt === true
+    || isProviderFallbackComboId(comboId);
   const comboIdentity = providerFallbackChain
     ? { requestedModel }
     : { requestedModel, model: requestedModel, provider: "combo", comboId };
@@ -2495,6 +2497,7 @@ export async function handleResponses(
         && anthropicPoolFailovers < ANTHROPIC_POOL_MAX_FAILOVERS_PER_REQUEST
         && await canRotateOrCoolFailure(upstreamResponse)
       ) {
+        try { void upstreamResponse.body?.cancel().catch(() => {}); } catch { /* already consumed/closed */ }
         const hop = await resolveAnthropicPoolOutcome({
           config,
           status: upstreamResponse.status,
@@ -2504,16 +2507,20 @@ export async function handleResponses(
           sessionKey: anthropicSessionKey,
         });
         if (!hop) break;
-        try { void upstreamResponse.body?.cancel().catch(() => {}); } catch { /* already consumed/closed */ }
-        anthropicPoolAccountId = hop.accountId;
-        anthropicPoolFailovers += 1;
-        route.provider = hop.provider;
-        logCtx.provider = hop.logProvider;
-        activeAdapter = resolveAdapter(
-          resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
-          config.cacheRetention,
-        );
-        sealRequestAttemptIdentity(logCtx.activeAttempt, logCtx.provider, activeAdapter.name);
+        try {
+          const nextAdapter = resolveAdapter(
+            resolveWireProtocolOverride(route.providerName, route.modelId, hop.provider),
+            config.cacheRetention,
+          );
+          sealRequestAttemptIdentity(logCtx.activeAttempt, hop.logProvider, nextAdapter.name);
+          anthropicPoolAccountId = hop.accountId;
+          anthropicPoolFailovers += 1;
+          route.provider = hop.provider;
+          logCtx.provider = hop.logProvider;
+          activeAdapter = nextAdapter;
+        } catch {
+          break;
+        }
         const result = await rebuildAndRefetch("anthropic-oauth-429");
         if ("failed" in result) return result.failed;
         upstreamResponse = result;
@@ -2529,6 +2536,11 @@ export async function handleResponses(
           < GOOGLE_ANTIGRAVITY_POOL_MAX_FAILOVERS_PER_REQUEST
         && await canRotateOrCoolFailure(upstreamResponse)
       ) {
+        try {
+          void upstreamResponse.body?.cancel().catch(() => {});
+        } catch {
+          /* already consumed/closed */
+        }
         const hop = await resolveGoogleAntigravityPoolOutcome({
           config,
           status: upstreamResponse.status,
@@ -2539,27 +2551,27 @@ export async function handleResponses(
         });
         if (!hop) break;
         try {
-          void upstreamResponse.body?.cancel().catch(() => {});
+          const nextAdapter = resolveAdapter(
+            resolveWireProtocolOverride(
+              route.providerName,
+              route.modelId,
+              hop.provider,
+            ),
+            config.cacheRetention,
+          );
+          sealRequestAttemptIdentity(
+            logCtx.activeAttempt,
+            hop.logProvider,
+            nextAdapter.name,
+          );
+          googleAntigravityPoolAccountId = hop.accountId;
+          googleAntigravityPoolFailovers += 1;
+          route.provider = hop.provider;
+          logCtx.provider = hop.logProvider;
+          activeAdapter = nextAdapter;
         } catch {
-          /* already consumed/closed */
+          break;
         }
-        googleAntigravityPoolAccountId = hop.accountId;
-        googleAntigravityPoolFailovers += 1;
-        route.provider = hop.provider;
-        logCtx.provider = hop.logProvider;
-        activeAdapter = resolveAdapter(
-          resolveWireProtocolOverride(
-            route.providerName,
-            route.modelId,
-            route.provider,
-          ),
-          config.cacheRetention,
-        );
-        sealRequestAttemptIdentity(
-          logCtx.activeAttempt,
-          logCtx.provider,
-          activeAdapter.name,
-        );
         const result = await rebuildAndRefetch("google-antigravity-oauth-429");
         if ("failed" in result) return result.failed;
         upstreamResponse = result;

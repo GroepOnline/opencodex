@@ -530,6 +530,11 @@ export interface ProviderCapCooldown {
   recordedAt?: number;
 }
 
+/** Hard-cap window for one key in a pool. Ordinary 60s/Retry-After cooldowns stay in memory. */
+export interface KeyPoolCapCooldown {
+  until: number;
+}
+
 export interface OcxConfig {
   port: number;
   providers: Record<string, OcxProviderConfig>;
@@ -539,6 +544,11 @@ export interface OcxConfig {
    * routing and /api/config see disables without restart.
    */
   providerCooldowns?: Record<string, ProviderCapCooldown>;
+  /**
+   * Persisted hard-cap windows for individual apiKeyPool entries. Hydrated into the
+   * in-memory key cooldown map on startup; ordinary short 429s are not stored here.
+   */
+  keyPoolCooldowns?: Record<string, Record<string, KeyPoolCapCooldown>>;
   /** OpenAI provider-contract migration marker (v2 = single `openai` provider with account mode). */
   openaiProviderTierVersion?: 1 | 2;
   /** Claude Code inbound + launcher settings. */

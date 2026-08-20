@@ -182,7 +182,11 @@ export default function ProviderOverviewDashboard({
   };
 
   const rowStatus = (item: WorkspaceItem): { label: string; tone: "ready" | "warn" | "cool" | "off" } => {
-    if (cappedNames.has(item.name) || (availabilityByName[item.name]?.coolingKeyCount ?? 0) > 0) {
+    const live = availabilityByName[item.name];
+    const cooling = live?.coolingKeyCount ?? 0;
+    const pool = live?.keyPoolCount ?? 0;
+    const allKeysCooling = pool >= 2 && cooling >= pool;
+    if (cappedNames.has(item.name) || allKeysCooling) {
       return { label: cappedNames.has(item.name) ? t("pws.capCooldown.badge") : t("pws.keyCooling"), tone: "cool" };
     }
     if (item.disabled) return { label: t("prov.disabledBadge"), tone: "off" };
@@ -195,6 +199,7 @@ export default function ProviderOverviewDashboard({
     <div className="pws-dashboard">
       <div className="pws-dashboard-header">
         <div className="pws-dashboard-header-text">
+          <h2 className="pws-dashboard-title">{t("pws.dashboard.title")}</h2>
           <p className="muted pws-dashboard-subtitle">{t("pws.dashboard.subtitle")}</p>
         </div>
         {onEditConfig && (
@@ -330,7 +335,6 @@ export default function ProviderOverviewDashboard({
           {quotaProviders.length > 0 ? (
             <div className="pws-dashboard-rows">
               {quotaProviders.map(({ item, report, card }) => {
-                const rowClass = `pws-dashboard-row${card.status === "error" ? " quota-card-error" : ""}`;
                 const stamp =
                   card.status === "error" ? (
                     <span className="quota-stamp quota-stamp--fout">{t("pws.quota.fout")}</span>
@@ -340,7 +344,7 @@ export default function ProviderOverviewDashboard({
                     <span className="quota-stamp quota-stamp--vers">{t("pws.quota.vers")} · {report?.updatedAt ? clockTime(report.updatedAt) : ""}</span>
                   );
                 return (
-                  <div key={item.name} className={rowClass}>
+                  <div key={item.name} className={`pws-dashboard-quota-row${card.status === "error" ? " quota-card-error" : ""}`}>
                     <div className="pws-dashboard-row-select"
                       role="button" tabIndex={0}
                       onClick={() => onSelectProvider(item.name)}

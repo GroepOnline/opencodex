@@ -460,7 +460,7 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
   if (url.pathname === "/api/providers/keys" && req.method === "GET") {
     const name = (url.searchParams.get("name") ?? "").trim();
     if (!name || !isValidProviderName(name) || !hasOwnProvider(config.providers, name)) return jsonResponse({ error: "unknown provider" }, 404);
-    const { inspectKeyPool } = await import("../../availability");
+    const { inspectKeyPool } = await import("../../availability/management");
     return jsonResponse(inspectKeyPool(config, name));
   }
   if (url.pathname === "/api/providers/keys" && req.method === "POST") {
@@ -475,8 +475,8 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
     clearModelCache(name);
     const { clearProviderQuotaCache } = await import("../../providers/quota");
     clearProviderQuotaCache();
-    const { clearKeyPoolCooldowns } = await import("../../availability");
-    clearKeyPoolCooldowns(name);
+    const { clearKeyPoolCooldowns } = await import("../../availability/management");
+    clearKeyPoolCooldowns(name, config);
     return jsonResponse({ ok: true, id: result.id }, 201);
   }
   if (url.pathname === "/api/providers/keys/active" && req.method === "PUT") {
@@ -490,8 +490,8 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
     clearModelCache(name);
     const { clearProviderQuotaCache } = await import("../../providers/quota");
     clearProviderQuotaCache();
-    const { clearKeyPoolCooldowns } = await import("../../availability");
-    clearKeyPoolCooldowns(name);
+    const { clearKeyPoolCooldowns } = await import("../../availability/management");
+    clearKeyPoolCooldowns(name, config);
     return jsonResponse({ ok: true, name, activeId: body.id });
   }
   if (url.pathname === "/api/providers/keys/alias" && req.method === "PUT") {
@@ -519,8 +519,8 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
     clearModelCache(name);
     const { clearProviderQuotaCache } = await import("../../providers/quota");
     clearProviderQuotaCache();
-    const { clearKeyPoolCooldowns } = await import("../../availability");
-    clearKeyPoolCooldowns(name);
+    const { clearKeyPoolCooldowns } = await import("../../availability/management");
+    clearKeyPoolCooldowns(name, config);
     return jsonResponse({ ok: true });
   }
 

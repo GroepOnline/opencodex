@@ -2,10 +2,8 @@ import { selectCandidate } from "../availability";
 import { resolveEnvValue } from "../config";
 import { providerCredentialRef } from "./credential";
 import {
-  CodexAuthContextError,
   CodexDirectAuthenticationError,
   CodexPoolAuthenticationError,
-  CodexThreadAffinityExpiredError,
   headersForCodexAuthContext,
   hasCallerCodexBearer,
   type CodexAuthContext,
@@ -111,8 +109,8 @@ export async function resolveFirstUsableOpenAiSidecar(
     if (!pick.ok) {
       if (pick.kind === "codex-unusable") continue;
       if (pick.kind === "codex-cooldown") throw pick.error;
-      if (pick.kind === "codex-reauth") throw new CodexAuthContextError(pick.accountId, undefined);
-      if (pick.kind === "codex-affinity-expired") throw new CodexThreadAffinityExpiredError("");
+      if (pick.kind === "codex-reauth") throw pick.error;
+      if (pick.kind === "codex-affinity-expired") throw pick.error;
       if (pick.kind === "codex-pool-auth") throw new CodexPoolAuthenticationError();
       if (pick.kind === "codex-direct-auth") throw new CodexDirectAuthenticationError();
       continue;

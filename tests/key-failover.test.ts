@@ -8,6 +8,7 @@ import {
   clearKeyCooldowns,
   getKeyCooldownUntil,
   hasKeyPoolFailover,
+  hydrateKeyPoolCooldowns,
   pickUncooledApiKey,
   rotateKeyOn429,
   rotateProviderTransportOn429,
@@ -102,6 +103,40 @@ describe("rotateKeyOn429", () => {
     );
     expect(getKeyCooldownUntil("p", "k1", now)).toBe(now + 2 * 24 * 60 * 60 * 1000);
     expect(config.providers.p.apiKey).toBe("key-beta-444555666777");
+    expect(config.keyPoolCooldowns?.p?.k1?.until).toBe(now + 2 * 24 * 60 * 60 * 1000);
+  });
+
+  test("529 with weekly copy is not treated as a hard cap", () => {
+    const config = makeConfig({ apiKey: "key-alpha-000111222333", apiKeyPool: pool3() });
+    const now = 1_000_000;
+    rotateKeyOn429(
+      config,
+      "p",
+      null,
+      now,
+      "key-alpha-000111222333",
+      "INFERENCE_CAP_ERROR weekly Clinepass limit. The limit resets in 2d",
+      529,
+    );
+    expect(getKeyCooldownUntil("p", "k1", now)).toBe(now + 60_000);
+    expect(config.keyPoolCooldowns?.p).toBeUndefined();
+  });
+
+  test("hydrates persisted hard-cap key windows after a process restart", () => {
+    const config = makeConfig({ apiKey: "key-alpha-000111222333", apiKeyPool: pool3() });
+    const now = 1_000_000;
+    rotateKeyOn429(
+      config,
+      "p",
+      null,
+      now,
+      "key-alpha-000111222333",
+      "INFERENCE_CAP_ERROR weekly Clinepass limit. The limit resets in 2d",
+    );
+    clearKeyCooldowns();
+    expect(getKeyCooldownUntil("p", "k1", now)).toBeNull();
+    hydrateKeyPoolCooldowns(config, now);
+    expect(getKeyCooldownUntil("p", "k1", now)).toBe(now + 2 * 24 * 60 * 60 * 1000);
   });
 
   test("skips keys already in cooldown and wraps around the pool", () => {

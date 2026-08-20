@@ -2,7 +2,13 @@
  * Pre-request pick: who may take this attempt. Returns a fetch-ready provider.
  * The turn maps domain failures to HTTP; it does not choose an adapter.
  */
-import type { CodexAccountCooldownError, CodexAuthContext } from "../codex/auth-context";
+import {
+  releaseCodexAuthContextProbeLease,
+  type CodexAccountCooldownError,
+  type CodexAuthContext,
+  type CodexAuthContextError,
+  type CodexThreadAffinityExpiredError,
+} from "../codex/auth-context";
 import type { CodexAccountMode, OcxConfig, OcxProviderConfig } from "../types";
 import {
   getOAuthCredentialApiBaseUrl,
@@ -49,8 +55,8 @@ export type SelectCandidateFail =
   | { ok: false; kind: "key-all-cooled"; retryAfterSeconds: number }
   | { ok: false; kind: "vault"; status: number; type: string; message: string }
   | { ok: false; kind: "codex-cooldown"; error: CodexAccountCooldownError }
-  | { ok: false; kind: "codex-affinity-expired" }
-  | { ok: false; kind: "codex-reauth"; accountId: string }
+  | { ok: false; kind: "codex-affinity-expired"; error: CodexThreadAffinityExpiredError }
+  | { ok: false; kind: "codex-reauth"; accountId: string; error: CodexAuthContextError }
   | { ok: false; kind: "codex-unusable" }
   | { ok: false; kind: "codex-pool-auth"; message: string }
   | { ok: false; kind: "codex-direct-auth"; message: string };
@@ -62,9 +68,9 @@ function codexSelectFail(reason: Exclude<Awaited<ReturnType<typeof selectCodexCa
     case "cooldown":
       return { ok: false, kind: "codex-cooldown", error: reason.error };
     case "affinity-expired":
-      return { ok: false, kind: "codex-affinity-expired" };
+      return { ok: false, kind: "codex-affinity-expired", error: reason.error };
     case "reauth":
-      return { ok: false, kind: "codex-reauth", accountId: reason.accountId };
+      return { ok: false, kind: "codex-reauth", accountId: reason.accountId, error: reason.error };
     case "unusable":
       return { ok: false, kind: "codex-unusable" };
     case "pool-auth":
@@ -72,6 +78,14 @@ function codexSelectFail(reason: Exclude<Awaited<ReturnType<typeof selectCodexCa
     case "direct-auth":
       return { ok: false, kind: "codex-direct-auth", message: redactSecretString(reason.message) };
   }
+}
+
+function failAfterCodex(
+  authCtx: CodexAuthContext | undefined,
+  fail: SelectCandidateFail,
+): SelectCandidateFail {
+  releaseCodexAuthContextProbeLease(authCtx);
+  return fail;
 }
 
 /**
@@ -110,15 +124,15 @@ export async function selectCandidate(input: SelectCandidateInput): Promise<Sele
         now: input.now,
       });
       if (poolPick.kind === "all-cooled") {
-        return {
+        return failAfterCodex(authCtx, {
           ok: false,
           kind: "oauth-all-cooled",
           pool: poolPick.pool,
           retryAfterSeconds: poolPick.retryAfterSeconds,
-        };
+        });
       }
       if (poolPick.kind === "none") {
-        return { ok: false, kind: "oauth-none", pool: poolPick.pool };
+        return failAfterCodex(authCtx, { ok: false, kind: "oauth-none", pool: poolPick.pool });
       }
       if (poolPick.kind === "selected") {
         provider = poolPick.hop.provider;
@@ -135,20 +149,24 @@ export async function selectCandidate(input: SelectCandidateInput): Promise<Sele
       }
     } catch (err) {
       if (err instanceof UnsupportedOAuthProviderError) {
-        return { ok: false, kind: "oauth-unsupported", message: redactSecretString(err.message) };
+        return failAfterCodex(authCtx, {
+          ok: false,
+          kind: "oauth-unsupported",
+          message: redactSecretString(err.message),
+        });
       }
-      return {
+      return failAfterCodex(authCtx, {
         ok: false,
         kind: "oauth-auth",
         message: redactSecretString(err instanceof Error ? err.message : String(err)),
-      };
+      });
     }
   } else if (provider.authMode !== "forward" && providerCredentialRef(provider)) {
     try {
       provider = await withResolvedProviderCredential(provider);
     } catch (err) {
       const failure = providerCredentialFailure(input.providerName, err);
-      return { ok: false, kind: "vault", ...failure };
+      return failAfterCodex(authCtx, { ok: false, kind: "vault", ...failure });
     }
   }
 
@@ -160,9 +178,13 @@ export async function selectCandidate(input: SelectCandidateInput): Promise<Sele
     now: input.now,
   });
   if (keyPick.kind === "all-cooled") {
-    return { ok: false, kind: "key-all-cooled", retryAfterSeconds: keyPick.retryAfterSeconds };
+    return failAfterCodex(authCtx, {
+      ok: false,
+      kind: "key-all-cooled",
+      retryAfterSeconds: keyPick.retryAfterSeconds,
+    });
   }
-  if (keyPick.kind === "selected") provider = { ...provider, apiKey: keyPick.transport.apiKey };
+  if (keyPick.kind === "selected") provider = { ...provider, apiKey: keyPick.apiKey };
 
   provider = resolveProviderTransport(
     input.providerName,

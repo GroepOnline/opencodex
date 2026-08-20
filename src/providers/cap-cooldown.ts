@@ -6,13 +6,16 @@
  * disable the provider, and surface a short summary via /api/config.providerCooldowns.
  *
  * Availability records this from the Responses turn (`recordCapOutcome` /
- * `resolveOutcome`). The request log only displays what Availability already stored.
+ * `resolveOutcome`). Key-pooled providers rotate keys instead of pausing, until
+ * every key is cooling after a hard cap — then a provider-level window is recorded
+ * so combo/fallback selection stops choosing the exhausted provider.
  * Callers must pass the live `OcxConfig` instance owned by `startServer` — never a fresh
  * `loadConfig()` snapshot — so routing and management see the change immediately.
  */
 import { saveConfigPreservingClaudeCode } from "../config";
 import type { OcxConfig, ProviderCapCooldown } from "../types";
 import { hasKeyPoolFailover } from "./api-keys";
+import { expireKeyPoolCooldowns } from "./key-failover";
 
 export type { ProviderCapCooldown };
 
@@ -97,7 +100,7 @@ export function expireProviderCooldowns(config: OcxConfig, now = Date.now()): bo
       delete config.providers[name].disabled;
     }
   }
-  if (Object.keys(bag).length === 0) {
+  if (changed && Object.keys(bag).length === 0) {
     delete config.providerCooldowns;
   }
   return changed;
@@ -160,7 +163,9 @@ export function startProviderCooldownSweep(
   const save = opts?.save ?? saveConfigPreservingClaudeCode;
   const timer = setInterval(() => {
     try {
-      if (expireProviderCooldowns(config)) save(config);
+      const expiredProvider = expireProviderCooldowns(config);
+      const expiredKeys = expireKeyPoolCooldowns(config);
+      if (expiredProvider || expiredKeys) save(config);
     } catch {
       /* best-effort: a failed sweep must never take the proxy down */
     }
@@ -185,6 +190,12 @@ export interface RecordProviderCapCooldownOpts {
    * `saveConfigPreservingClaudeCode` (tests count real writes), default persists to disk.
    */
   save?: boolean | ((config: OcxConfig) => void);
+  /**
+   * Record a provider-level window even when the provider has an apiKeyPool.
+   * Used once every pooled key is already cooling after a hard cap, so combo/fallback
+   * selection (which keys off `providers[name].disabled`) stops choosing it.
+   */
+  allowPooled?: boolean;
 }
 
 /** Record a hard-cap 429/402 onto the live provider config and optionally disable until reset. */
@@ -198,7 +209,7 @@ export function recordProviderCapCooldown(
   const key = resolveProviderConfigKey(config, providerName);
   if (!key || !isHardCapMessage(status, upstreamError)) return null;
   const pooled = config.providers[key];
-  if (pooled && hasKeyPoolFailover(pooled)) return null;
+  if (pooled && hasKeyPoolFailover(pooled) && opts?.allowPooled !== true) return null;
   const now = opts?.now ?? Date.now();
   const rawMessage = (upstreamError || "Usage limit reached").slice(0, 400);
   const until = parseResetsInMs(rawMessage, now);

@@ -1,8 +1,8 @@
-import { recordProviderCapCooldown, type ProviderCapCooldown } from "../providers/cap-cooldown";
-import { hasKeyPoolFailover, pickUncooledApiKey, rotateProviderTransportOn429 } from "../providers/key-failover";
+import { isHardCapMessage, recordProviderCapCooldown, type ProviderCapCooldown } from "../providers/cap-cooldown";
+import { coolAttemptedKey, hasKeyPoolFailover, pickUncooledApiKey, rotateProviderTransportOn429 } from "../providers/key-failover";
 import type { OcxConfig, OcxProviderConfig } from "../types";
 import { resolveEnvValue } from "../config";
-import { resolveProviderTransport, type OcxProviderTransport } from "../providers/xai-transport";
+import type { OcxProviderTransport } from "../providers/xai-transport";
 import { isAccountPoolHopStatus } from "./classify";
 
 export type ResolveOutcomeInput = {
@@ -18,7 +18,7 @@ export type ResolveOutcomeInput = {
   save?: boolean | ((config: OcxConfig) => void);
 };
 
-/** Persist a hard weekly/inference cap on this provider. Key pools no-op (cool the key instead). */
+/** Persist a hard weekly/inference cap on this provider. Key pools no-op unless every key is cooling. */
 export function recordCapOutcome(input: {
   config: OcxConfig;
   providerName: string;
@@ -26,11 +26,13 @@ export function recordCapOutcome(input: {
   message?: string;
   now?: number;
   save?: boolean | ((config: OcxConfig) => void);
+  allowPooled?: boolean;
 }): ProviderCapCooldown | null {
   try {
     return recordProviderCapCooldown(input.config, input.providerName, input.status, input.message, {
       now: input.now,
       ...(input.save !== undefined ? { save: input.save } : {}),
+      ...(input.allowPooled !== undefined ? { allowPooled: input.allowPooled } : {}),
     });
   } catch {
     console.warn("[opencodex] Failed to persist provider cap cooldown");
@@ -49,7 +51,7 @@ export function keyPoolCanHop(provider: OcxProviderConfig | OcxProviderTransport
  */
 export type KeyPoolCandidateResult =
   | { kind: "live" }
-  | { kind: "selected"; transport: OcxProviderTransport }
+  | { kind: "selected"; apiKey: string }
   | { kind: "all-cooled"; retryAfterSeconds: number };
 
 export function selectKeyPoolCandidate(input: {
@@ -70,14 +72,13 @@ export function selectKeyPoolCandidate(input: {
     return { kind: "all-cooled", retryAfterSeconds: pick.retryAfterSeconds };
   }
   const apiKey = resolveEnvValue(pick.provider.apiKey) ?? pick.provider.apiKey;
-  return {
-    kind: "selected",
-    transport: resolveProviderTransport(
-      input.providerName,
-      { ...input.routedProvider, apiKey },
-      input.promptCacheKey,
-    ),
-  };
+  if (!apiKey) return { kind: "live" };
+  return { kind: "selected", apiKey };
+}
+
+function pausePooledProviderIfHardCapped(input: ResolveOutcomeInput): void {
+  if (!isHardCapMessage(input.status, input.message)) return;
+  recordCapOutcome({ ...input, allowPooled: true });
 }
 
 /**
@@ -85,19 +86,39 @@ export function selectKeyPoolCandidate(input: {
  * Combo/Codex hops still go through their own loops; this is the apiKeyPool adapter.
  */
 export function resolveOutcome(input: ResolveOutcomeInput): OcxProviderTransport | null {
+  if (hasKeyPoolFailover(input.routedProvider)) {
+    if (isAccountPoolHopStatus(input.status)) {
+      const rotated = rotateProviderTransportOn429(
+        input.config,
+        input.providerName,
+        input.routedProvider,
+        {
+          retryAfter: input.retryAfter,
+          now: input.now,
+          attemptedKey: input.attemptedKey,
+          promptCacheKey: input.promptCacheKey,
+          message: input.message,
+          status: input.status,
+        },
+      );
+      if (rotated) return rotated;
+      pausePooledProviderIfHardCapped(input);
+      return null;
+    }
+    if (input.status === 402) {
+      const allCooled = coolAttemptedKey(input.config, input.providerName, {
+        retryAfter: input.retryAfter,
+        now: input.now,
+        attemptedKey: input.attemptedKey,
+        message: input.message,
+        status: input.status,
+      });
+      if (allCooled) pausePooledProviderIfHardCapped(input);
+      return null;
+    }
+    recordCapOutcome(input);
+    return null;
+  }
   recordCapOutcome(input);
-  if (!isAccountPoolHopStatus(input.status)) return null;
-  if (!hasKeyPoolFailover(input.routedProvider)) return null;
-  return rotateProviderTransportOn429(
-    input.config,
-    input.providerName,
-    input.routedProvider,
-    {
-      retryAfter: input.retryAfter,
-      now: input.now,
-      attemptedKey: input.attemptedKey,
-      promptCacheKey: input.promptCacheKey,
-      message: input.message,
-    },
-  );
+  return null;
 }
