@@ -1,7 +1,6 @@
-import { getCombo } from "../combos/types";
 import { isAnthropicAccountPoolEnabled } from "../oauth/anthropic-routing";
-import { providerFallbackPlan } from "../providers/fallback";
-import type { OcxComboTarget, OcxConfig } from "../types";
+import { providerFallbackPlan, usableProviderFallbackTargets } from "../providers/fallback";
+import type { OcxConfig } from "../types";
 
 /**
  * A hop chain for this Responses turn: user combo or provider fallback list.
@@ -13,10 +12,6 @@ export type HopChain = {
   /** True when the chain stands in for a plain provider request (fallback list). */
   preservePhysicalIdentity: boolean;
 };
-
-export function hopChainTargets(chain: HopChain): OcxComboTarget[] {
-  return getCombo(chain.config, chain.comboId)?.targets ?? [];
-}
 
 /**
  * Pre-request selection of a multi-target hop chain. Null means a single-candidate
@@ -39,11 +34,14 @@ export function selectHopChain(
  * Whether a native Claude pierce (caller sk-ant-) may hop into the provider table
  * after overload. The pierce itself stays on the turn; Availability only answers
  * whether another candidate exists. 529-only: native 429 stays on the caller account.
+ *
+ * Read-only: does not clone config or attach empty cooldown bags. A disabled
+ * anthropic row or a hop chain with no remaining usable targets returns false.
  */
 export function canHopNativeClaudePierce(config: OcxConfig): boolean {
   if (isAnthropicAccountPoolEnabled(config)) return true;
   const anthropic = config.providers.anthropic;
   if (!anthropic) return false;
   const modelId = anthropic.defaultModel ?? anthropic.models?.[0] ?? "claude";
-  return selectHopChain(config, { provider: "anthropic", modelId }) !== null;
+  return usableProviderFallbackTargets(config, { provider: "anthropic", modelId }) !== null;
 }

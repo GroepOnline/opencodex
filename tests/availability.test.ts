@@ -19,7 +19,7 @@ import {
   selectKeyPoolCandidate,
   selectOauthPoolCandidate,
 } from "../src/availability";
-import { hopChainTargets } from "../src/availability/chain";
+import { getCombo } from "../src/combos/types";
 import { handleResponses } from "../src/server/responses";
 import { selectCandidateFailResponse } from "../src/server/responses/select-http";
 import {
@@ -75,7 +75,7 @@ describe("selectHopChain", () => {
     const chain = selectHopChain(config, { provider: "a", modelId: "m1" });
     expect(chain).not.toBeNull();
     expect(chain!.preservePhysicalIdentity).toBe(true);
-    expect(hopChainTargets(chain!).map(({ provider, model }) => ({ provider, model }))).toEqual([
+    expect(getCombo(chain!.config, chain!.comboId)!.targets.map(({ provider, model }) => ({ provider, model }))).toEqual([
       { provider: "a", model: "m1" },
       { provider: "b", model: "m2" },
       { provider: "c", model: "m3" },
@@ -96,16 +96,8 @@ describe("selectHopChain", () => {
 });
 
 describe("canHopNativeClaudePierce", () => {
-  test("is false without an Anthropic pool or fallback list", () => {
-    expect(canHopNativeClaudePierce(baseConfig())).toBe(false);
-  });
-
-  test("is true when the Anthropic account pool is on", () => {
-    expect(canHopNativeClaudePierce(baseConfig({ anthropicAccountPool: { enabled: true } }))).toBe(true);
-  });
-
-  test("is true when the Anthropic provider has a hop chain", () => {
-    const config = baseConfig({
+  function anthropicFallbackConfig(): OcxConfig {
+    return baseConfig({
       providers: {
         ...baseConfig().providers,
         anthropic: {
@@ -116,7 +108,28 @@ describe("canHopNativeClaudePierce", () => {
         },
       },
     });
+  }
+
+  test("is false without an Anthropic pool or fallback list", () => {
+    expect(canHopNativeClaudePierce(baseConfig())).toBe(false);
+  });
+
+  test("is true when the Anthropic account pool is on", () => {
+    expect(canHopNativeClaudePierce(baseConfig({ anthropicAccountPool: { enabled: true } }))).toBe(true);
+  });
+
+  test("is true when the Anthropic provider has a hop chain", () => {
+    const config = anthropicFallbackConfig();
     expect(canHopNativeClaudePierce(config)).toBe(true);
+    expect(config.providerCooldowns).toBeUndefined();
+    expect(config.keyPoolCooldowns).toBeUndefined();
+    expect(config.combos).toBeUndefined();
+  });
+
+  test("is false when the Anthropic provider row is disabled", () => {
+    const config = anthropicFallbackConfig();
+    config.providers.anthropic!.disabled = true;
+    expect(canHopNativeClaudePierce(config)).toBe(false);
   });
 });
 

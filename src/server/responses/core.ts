@@ -2712,30 +2712,34 @@ export async function handleResponses(
       }
 
       {
-        // Peeking clones the body (up to the bounded-read stall). 200 continuations
-        // never hop, so skip the clone on success.
-        const hopMessage = isAccountPoolHopStatus(response.status)
+        // Peeking clones the body (up to the bounded-read stall). Success/5xx
+        // continuations never hop or record a cap, so skip the clone and the
+        // resolveOutcome call. 402 still cools the attempted key without hopping.
+        const needsPoolOutcome = isAccountPoolHopStatus(response.status) || response.status === 402;
+        const hopMessage = needsPoolOutcome
           ? await peekUpstreamErrorText(response, options.abortSignal)
           : undefined;
-        const rotated = resolveOutcome({
-          config,
-          providerName: route.providerName,
-          routedProvider: route.provider,
-          status: response.status,
-          retryAfter: response.headers.get("retry-after"),
-          now: Date.now(),
-          attemptedKey: route.provider.apiKey,
-          promptCacheKey: nextParsed.options.promptCacheKey,
-          message: hopMessage,
-        });
-        if (rotated) {
-          try { void response.body?.cancel().catch(() => {}); } catch { /* already closed */ }
-          route.provider = rotated;
-          activeAdapter = resolveAdapter(
-            resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
-            config.cacheRetention,
-          );
-          continue;
+        if (needsPoolOutcome) {
+          const rotated = resolveOutcome({
+            config,
+            providerName: route.providerName,
+            routedProvider: route.provider,
+            status: response.status,
+            retryAfter: response.headers.get("retry-after"),
+            now: Date.now(),
+            attemptedKey: route.provider.apiKey,
+            promptCacheKey: nextParsed.options.promptCacheKey,
+            message: hopMessage,
+          });
+          if (rotated) {
+            try { void response.body?.cancel().catch(() => {}); } catch { /* already closed */ }
+            route.provider = rotated;
+            activeAdapter = resolveAdapter(
+              resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
+              config.cacheRetention,
+            );
+            continue;
+          }
         }
       }
       if (

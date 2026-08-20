@@ -9,6 +9,7 @@ import {
   providerFallbackIssues,
   providerFallbackPlan,
   providerFallbackTargets,
+  usableProviderFallbackTargets,
 } from "../src/providers/fallback";
 import { isValidComboId } from "../src/combos";
 import { getConfigPath, saveConfig } from "../src/config";
@@ -110,6 +111,17 @@ describe("provider fallback plan", () => {
   test("does not inject the synthetic combo into the caller's combos map", () => {
     const config = withFallback([{ provider: "b", model: "m2" }]);
     providerFallbackPlan(config, { provider: "a", modelId: "m1" });
+    expect(config.combos).toBeUndefined();
+  });
+
+  test("eligibility check does not attach empty cooldown bags", () => {
+    const config = withFallback([{ provider: "b", model: "m2" }]);
+    expect(usableProviderFallbackTargets(config, { provider: "a", modelId: "m1" })).toEqual([
+      { provider: "a", model: "m1" },
+      { provider: "b", model: "m2" },
+    ]);
+    expect(config.providerCooldowns).toBeUndefined();
+    expect(config.keyPoolCooldowns).toBeUndefined();
     expect(config.combos).toBeUndefined();
   });
 

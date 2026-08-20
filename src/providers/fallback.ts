@@ -129,13 +129,17 @@ export function providerFallbackError(
 }
 
 /**
- * Build the synthetic combo for a request that routed to `provider`/`model`, or null when the
- * provider has no usable fallback and the request should take the normal single-target path.
+ * Usable hop-chain targets for this route, or null when the request stays on
+ * the single routed provider. Read-only: does not clone config or attach cooldown bags.
+ *
+ * A disabled routed provider, a lone remaining target after dropping disabled
+ * fallbacks, or a physical provider named `combo` all yield null — a 529 replay
+ * would fail those cases anyway.
  */
-export function providerFallbackPlan(
+export function usableProviderFallbackTargets(
   config: OcxConfig,
   route: { provider: string; modelId: string },
-): ProviderFallbackPlan | null {
+): OcxComboTarget[] | null {
   // A physical provider literally named "combo" is only kept addressable while no combos
   // exist (preservesPhysicalComboProvider). Injecting one here would silently shadow it.
   if (Object.hasOwn(config.providers, COMBO_NAMESPACE)) return null;
@@ -158,11 +162,25 @@ export function providerFallbackPlan(
     targets.push(target);
   }
   if (targets.length < 2) return null;
+  return targets;
+}
+
+/**
+ * Build the synthetic combo for a request that routed to `provider`/`model`, or null when the
+ * provider has no usable fallback and the request should take the normal single-target path.
+ */
+export function providerFallbackPlan(
+  config: OcxConfig,
+  route: { provider: string; modelId: string },
+): ProviderFallbackPlan | null {
+  const targets = usableProviderFallbackTargets(config, route);
+  if (!targets) return null;
 
   const comboId = syntheticComboId(route.provider, route.modelId);
   const combo: OcxComboConfig = { targets, strategy: "failover" };
   // Share live bags so a child `recordProviderCapCooldown` mutates the server config,
   // not a clone-only object that `saveConfig` would persist with this synthetic combo id.
+  // Eligibility checks use `usableProviderFallbackTargets` and must not reach this.
   const providerCooldowns = (config.providerCooldowns ??= {});
   const keyPoolCooldowns = (config.keyPoolCooldowns ??= {});
   return {
