@@ -390,6 +390,28 @@ describe("recordCapOutcome", () => {
     })).toBeNull();
     expect(config.providers.b!.disabled).toBeUndefined();
   });
+
+  test("warns without echoing the persist error when save throws", () => {
+    const config = baseConfig();
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(" ")); };
+    try {
+      expect(recordCapOutcome({
+        config,
+        providerName: "b",
+        status: 429,
+        message: 'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. The limit resets in 2d"}',
+        save: () => {
+          throw new Error("disk-secret-path");
+        },
+      })).toBeNull();
+      expect(warnings.some(line => line.includes("Failed to persist provider cap cooldown"))).toBe(true);
+      expect(warnings.join("\n")).not.toContain("disk-secret-path");
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
 });
 
 describe("handleResponses records cap-cooldown", () => {

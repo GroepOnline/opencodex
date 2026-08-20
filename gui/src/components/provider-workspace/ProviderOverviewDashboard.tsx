@@ -169,7 +169,11 @@ export default function ProviderOverviewDashboard({
     const parts: string[] = [];
     if (line.poolCount >= 2) parts.push(t("pws.availability.pool", { count: String(line.poolCount) }));
     if ((live?.coolingKeyCount ?? 0) > 0) {
-      parts.push(t("pws.availability.cooling", { count: String(live!.coolingKeyCount) }));
+      parts.push(
+        live!.coolingKeyCount === 1
+          ? t("pws.availability.coolingOne")
+          : t("pws.availability.cooling", { count: String(live!.coolingKeyCount) }),
+      );
     }
     if (line.hopProvider) {
       parts.push(t("pws.availability.hop", { provider: formatProviderDisplayName(line.hopProvider) }));
@@ -405,7 +409,9 @@ export default function ProviderOverviewDashboard({
                   <ProviderIcon name={provider.name} adapter="" baseUrl="" cls="pws-dashboard-row-icon" />
                   <span className="pws-dashboard-row-name">{formatProviderDisplayName(provider.name)}</span>
                   <span className="pws-dashboard-row-count muted">
-                    {t("pws.dashboard.requests", { count: formatRequestCount(provider.requests, locale) })}
+                    {provider.requests === 1
+                      ? t("pws.dashboard.requestOne")
+                      : t("pws.dashboard.requests", { count: formatRequestCount(provider.requests, locale) })}
                   </span>
                   <IconChevron className="pws-dashboard-row-chevron" aria-hidden="true" />
                 </button>

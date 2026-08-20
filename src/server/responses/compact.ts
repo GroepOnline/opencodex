@@ -216,23 +216,29 @@ export async function handleResponsesCompact(
     if (!pick.ok) return selectCandidateFailResponse(pick, { providerName: route.providerName, config });
     const compactProvider = pick.provider;
     const authCtx: CodexAuthContext = pick.authCtx ?? { kind: "main", accountId: null };
-    const selectedForwardHeaders = pick.headers ?? req.headers;
+    // Codex/OAuth compact reuses the caller's ChatGPT session. Key-auth compact must not:
+    // FORWARD_HEADERS includes authorization, chatgpt-account-id, and session ids, and
+    // pick.headers is unset for key-auth so the previous fallback copied the caller onto
+    // a third-party upstream.
+    const relayCallerIdentity = compactProvider.authMode === "forward"
+      || compactProvider.authMode === "oauth";
     const headers = new Headers({ "content-type": "application/json" });
-    for (const name of FORWARD_HEADERS) {
-      const value = selectedForwardHeaders.get(name);
-      if (value) headers.set(name, value);
+    if (relayCallerIdentity) {
+      const selectedForwardHeaders = pick.headers ?? req.headers;
+      for (const name of FORWARD_HEADERS) {
+        const value = selectedForwardHeaders.get(name);
+        if (value) headers.set(name, value);
+      }
     }
     const override = (compactProvider as { _codexAccountOverride?: { accessToken: string; chatgptAccountId: string } })._codexAccountOverride;
     if (override) {
       headers.set("authorization", `Bearer ${override.accessToken}`);
       headers.set("chatgpt-account-id", override.chatgptAccountId);
-    } else {
+    } else if (!relayCallerIdentity) {
       // Same fail-closed lease as /v1/responses: a chefvault-backed provider must not compact
       // against the upstream without an Authorization header. A configured key may be an `$ENV`
       // reference; a leased secret is already on the candidate and must not be expanded.
-      const compactAuthKey = compactProvider.authMode !== "oauth"
-        && compactProvider.authMode !== "forward"
-        && providerCredentialRef(compactProvider)
+      const compactAuthKey = providerCredentialRef(compactProvider)
         ? compactProvider.apiKey
         : resolveEnvValue(compactProvider.apiKey);
       if (compactAuthKey) headers.set("authorization", `Bearer ${compactAuthKey}`);

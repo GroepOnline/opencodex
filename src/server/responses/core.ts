@@ -2700,7 +2700,11 @@ export async function handleResponses(
       }
 
       {
-        const hopMessage = await peekUpstreamErrorText(response, options.abortSignal);
+        // Peeking clones the body (up to the bounded-read stall). 200 continuations
+        // never hop, so skip the clone on success.
+        const hopMessage = isAccountPoolHopStatus(response.status)
+          ? await peekUpstreamErrorText(response, options.abortSignal)
+          : undefined;
         const rotated = resolveOutcome({
           config,
           providerName: route.providerName,

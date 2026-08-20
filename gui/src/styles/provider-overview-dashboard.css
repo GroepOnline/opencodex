@@ -46,6 +46,11 @@
   overflow: hidden;
 }
 
+.pws-dashboard-stats--fit {
+  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+  margin-bottom: var(--space-6);
+}
+
 .pws-dashboard-stat {
   display: flex;
   flex-direction: column;

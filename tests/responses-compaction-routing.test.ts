@@ -147,6 +147,53 @@ describe("supportsNativeResponsesCompactEndpoint (#422)", () => {
   });
 });
 
+describe("native OpenAI API compact auth", () => {
+  test("does not forward caller ChatGPT session headers onto a key-auth compact", async () => {
+    const captured: Headers[] = [];
+    globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+      captured.push(new Headers(init?.headers));
+      return jsonResponse({ output: [], model: "gpt-5.6-sol" });
+    }) as typeof fetch;
+
+    const config = {
+      defaultProvider: "openai-apikey",
+      providers: {
+        "openai-apikey": {
+          adapter: "openai-responses",
+          baseUrl: "https://api.openai.com/v1",
+          authMode: "key",
+          apiKey: "sk-provider-key",
+          models: ["gpt-5.6-sol"],
+        },
+      },
+    } as unknown as OcxConfig;
+
+    const res = await handleResponsesCompact(
+      new Request("http://localhost/v1/responses/compact", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer chatgpt-session-token",
+          "chatgpt-account-id": "acc_caller",
+          session_id: "sess_caller",
+          "x-codex-parent-thread-id": "thread_caller",
+        },
+        body: JSON.stringify(baseCompactionBody({ model: "openai-apikey/gpt-5.6-sol" })),
+      }),
+      config,
+      { model: "", provider: "" },
+    );
+
+    expect(res.status).toBe(200);
+    expect(captured).toHaveLength(1);
+    const headers = captured[0]!;
+    expect(headers.get("authorization")).toBe("Bearer sk-provider-key");
+    expect(headers.get("chatgpt-account-id")).toBeNull();
+    expect(headers.get("session_id")).toBeNull();
+    expect(headers.get("x-codex-parent-thread-id")).toBeNull();
+  });
+});
+
 describe("native Codex pool compaction", () => {
   test("keeps a Spark reset cooldown separate from a Terra compact request (#590)", async () => {
     const testDir = mkdtempSync(join(tmpdir(), "ocx-compact-scope-"));

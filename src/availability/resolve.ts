@@ -33,6 +33,7 @@ export function recordCapOutcome(input: {
       ...(input.save !== undefined ? { save: input.save } : {}),
     });
   } catch {
+    console.warn("[opencodex] Failed to persist provider cap cooldown");
     return null;
   }
 }
