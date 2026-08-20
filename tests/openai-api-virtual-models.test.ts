@@ -14,6 +14,8 @@ import { PROVIDER_REGISTRY } from "../src/providers/registry";
 import { saveConfig } from "../src/config";
 import { startServer } from "../src/server";
 import { usageLogPath } from "../src/usage/log";
+import { clearKeyPoolCooldowns, resolveOutcome } from "../src/availability";
+import type { OcxConfig } from "../src/types";
 
 const moduleOriginalFetch = globalThis.fetch;
 const moduleOriginalHome = process.env.OPENCODEX_HOME;
@@ -349,6 +351,70 @@ describe("OpenAI API compact transport", () => {
       rmSync(home, { recursive: true, force: true });
     }
   }, 20_000);
+});
+
+describe("OpenAI API compact Availability first-pick", () => {
+  test("skips a cooling key on native compact", async () => {
+    const originalFetch = globalThis.fetch;
+    const home = mkdtempSync(join(tmpdir(), "ocx-openai-api-compact-keys-"));
+    process.env.OPENCODEX_HOME = home;
+    clearKeyPoolCooldowns();
+    const provider = {
+      adapter: "openai-responses" as const,
+      baseUrl: "https://api.openai.com/v1",
+      authMode: "key" as const,
+      apiKey: "key-alpha-000111222333",
+      apiKeyPool: [
+        { id: "k1", key: "key-alpha-000111222333", addedAt: 1 },
+        { id: "k2", key: "key-beta-444555666777", addedAt: 2 },
+      ],
+    };
+    const config: OcxConfig = {
+      port: 0,
+      defaultProvider: "openai-apikey",
+      openaiProviderTierVersion: 2,
+      providers: { "openai-apikey": provider },
+    };
+    saveConfig(config);
+    const now = 1_000_000;
+    resolveOutcome({
+      config,
+      providerName: "openai-apikey",
+      routedProvider: provider,
+      status: 429,
+      now,
+      attemptedKey: "key-alpha-000111222333",
+      save: false,
+    });
+    config.providers["openai-apikey"]!.apiKey = "key-alpha-000111222333";
+
+    const authorizations: string[] = [];
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url !== "https://api.openai.com/v1/responses/compact") throw new Error(`unexpected upstream URL: ${url}`);
+      authorizations.push(new Headers(init?.headers).get("authorization") ?? "");
+      return new Response(JSON.stringify({ output: [], model: "gpt-5.6-sol" }), {
+        headers: { "content-type": "application/json" },
+      });
+    };
+
+    const server = startServer(0);
+    try {
+      const response = await originalFetch(new URL("/v1/responses/compact", server.url), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: "openai-apikey/gpt-5.6-sol", input: [] }),
+      });
+      expect(response.status).toBe(200);
+      expect(authorizations).toEqual(["Bearer key-beta-444555666777"]);
+    } finally {
+      globalThis.fetch = originalFetch;
+      await server.stop(true);
+      clearKeyPoolCooldowns();
+      delete process.env.OPENCODEX_HOME;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("OpenAI API Pro transport identities", () => {

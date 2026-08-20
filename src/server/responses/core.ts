@@ -3,7 +3,6 @@ import { bridgeToResponsesSSE, buildResponseJSON, formatErrorResponse, type Resp
 import { formatPassthroughUpstreamError } from "./passthrough-error";
 import { describeUpstreamConnectFailure } from "./upstream-error";
 import {
-  getConfigPath,
   multiAgentGuidanceEnabled,
   resolveEnvValue,
 } from "../../config";
@@ -41,8 +40,6 @@ import {
   selectHopChain,
   codexQuotaOutcomeMeta,
   shouldDeferCodexResetDerivedCooldown,
-  type OauthPoolName,
-  type OauthPoolSelectResult,
 } from "../../availability";
 import { isInjectionDebugEnabled } from "../../lib/debug-settings";
 import { injectionDebugLog } from "../../lib/injection-debug-log";
@@ -101,6 +98,7 @@ import {
   type UpstreamRail,
 } from "../../lib/upstream-outcome";
 import { ForwardAdmissionCredentialError, validateForwardAdmissionCredential } from "../auth-cors";
+import { selectCandidateFailResponse } from "./select-http";
 import { listOpenAiForwardSidecarCandidates, resolveFirstUsableOpenAiSidecar, type ResolvedOpenAiForwardSidecar } from "../../providers/openai-sidecar";
 import { isCanonicalOpenAiForwardProvider } from "../../providers/openai-tiers";
 import { slugsEquivalent } from "../../providers/slug-codec";
@@ -731,32 +729,6 @@ function unreadableEncryptedAgentTaskResponse(): Response {
   );
 }
 
-const OAUTH_POOL_ALL_COOLED: Record<OauthPoolName, string> = {
-  anthropic: "All Anthropic OAuth accounts are temporarily rate-limited",
-  "google-antigravity": "All Google Antigravity OAuth accounts are temporarily rate-limited",
-  cursor: "All Cursor OAuth accounts are temporarily rate-limited",
-};
-
-const OAUTH_POOL_NONE: Record<OauthPoolName, string> = {
-  anthropic: "No eligible Anthropic OAuth account available",
-  "google-antigravity": "No eligible Google Antigravity OAuth account available",
-  cursor: "No eligible Cursor OAuth account available",
-};
-
-function oauthPoolSelectErrorResponse(
-  result: Extract<OauthPoolSelectResult, { kind: "all-cooled" | "none" }>,
-): Response {
-  if (result.kind === "all-cooled") {
-    return formatErrorResponse(
-      429,
-      "rate_limit_error",
-      OAUTH_POOL_ALL_COOLED[result.pool],
-      result.retryAfterSeconds !== null ? { retryAfter: String(result.retryAfterSeconds) } : undefined,
-    );
-  }
-  return formatErrorResponse(401, "authentication_error", OAUTH_POOL_NONE[result.pool]);
-}
-
 /**
  * Apply every route-dependent request mutation against the final selected route.
  * Must run only after subagent fallback has settled the model/provider.
@@ -1381,44 +1353,7 @@ export async function handleResponses(
     mode: route.codexAccountMode,
     modelId: route.modelId,
   });
-  if (!pick.ok) {
-    if (pick.kind === "oauth-all-cooled" || pick.kind === "oauth-none") {
-      return oauthPoolSelectErrorResponse(
-        pick.kind === "oauth-all-cooled"
-          ? { kind: "all-cooled", pool: pick.pool, retryAfterSeconds: pick.retryAfterSeconds }
-          : { kind: "none", pool: pick.pool },
-      );
-    }
-    if (pick.kind === "oauth-unsupported") {
-      return formatErrorResponse(
-        400,
-        "invalid_request_error",
-        `${pick.message}. Remove or reconfigure provider '${route.providerName}' in ${getConfigPath()}.`,
-      );
-    }
-    if (pick.kind === "vault") {
-      return formatErrorResponse(pick.status, pick.type, pick.message);
-    }
-    if (pick.kind === "codex-cooldown") {
-      return cooldownErrorResponse(pick.error);
-    }
-    if (pick.kind === "codex-affinity-expired") {
-      return formatErrorResponse(
-        409,
-        "invalid_request_error",
-        "Codex thread account affinity expired; start a new session",
-      );
-    }
-    if (pick.kind === "codex-reauth") {
-      const safeAccountLabel = formatCodexProviderForLog(route.providerName, pick.accountId, config);
-      console.error(`[codex-auth] Pool account ${safeAccountLabel} token failed; reauthentication required`);
-      return formatErrorResponse(401, "authentication_error", "Selected Codex account needs reauthentication");
-    }
-    if (pick.kind === "codex-unusable") {
-      return formatErrorResponse(401, "authentication_error", "Selected Codex account needs reauthentication");
-    }
-    return formatErrorResponse(401, "authentication_error", pick.message);
-  }
+  if (!pick.ok) return selectCandidateFailResponse(pick, { providerName: route.providerName, config });
   route.provider = pick.provider;
   authCtx = pick.authCtx ?? { kind: "main", accountId: null };
   selectedForwardHeaders = pick.headers ?? req.headers;
