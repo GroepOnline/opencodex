@@ -4,6 +4,20 @@ import { readJsonIfOk, readJsonOrThrow } from "../fetch-json";
 import { writeSessionListCache } from "../session-list-cache";
 import type { AvailabilityProviderView, OAuthStatus, ProviderQuotaReport, ProvidersConfig } from "./providers-shared";
 
+/** Live routing is optional: a down /api/availability must not block /api/config. */
+export async function readAvailabilityProviders(
+  input: Promise<Response | null>,
+): Promise<AvailabilityProviderView[]> {
+  try {
+    const availRes = await input;
+    if (!availRes?.ok) return [];
+    const avail = await readJsonIfOk<{ providers?: AvailabilityProviderView[] }>(availRes);
+    return Array.isArray(avail?.providers) ? avail.providers : [];
+  } catch {
+    return [];
+  }
+}
+
 export function useProvidersFetch({
   apiBase,
   t,
@@ -27,22 +41,20 @@ export function useProvidersFetch({
   configCacheKey?: string;
 }) {
   const fetchConfig = useCallback(async () => {
+    const availPromise = setAvailability
+      ? fetch(`${apiBase}/api/availability`).catch(() => null)
+      : null;
     try {
-      const [res, availRes] = await Promise.all([
-        fetch(`${apiBase}/api/config`),
-        fetch(`${apiBase}/api/availability`),
-      ]);
+      const res = await fetch(`${apiBase}/api/config`);
       const data = await readJsonOrThrow<ProvidersConfig>(res);
       setConfig(data ?? null);
       if (configCacheKey && data) writeSessionListCache(configCacheKey, data);
-      if (setAvailability) {
-        const avail = availRes.ok
-          ? await readJsonIfOk<{ providers?: AvailabilityProviderView[] }>(availRes)
-          : null;
-        setAvailability(avail?.providers ?? []);
-      }
     } catch {
       notify(t("prov.loadConfigFail"), false);
+      return;
+    }
+    if (setAvailability && availPromise) {
+      setAvailability(await readAvailabilityProviders(availPromise));
     }
   }, [apiBase, configCacheKey, notify, setAvailability, setConfig, t]);
 

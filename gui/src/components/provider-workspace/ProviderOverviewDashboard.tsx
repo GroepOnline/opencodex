@@ -144,16 +144,18 @@ export default function ProviderOverviewDashboard({
     return reason;
   };
 
-  const poolCount = useMemo(
-    () => allItems.filter(item => (item.keyPoolCount ?? 0) >= 2).length,
-    [allItems],
-  );
-
   const availabilityByName = useMemo(() => {
     const map: Record<string, AvailabilityProviderView> = {};
     for (const row of availability ?? []) map[row.name] = row;
     return map;
   }, [availability]);
+
+  const poolCount = useMemo(
+    () => allItems.filter(item => (
+      (availabilityByName[item.name]?.keyPoolCount ?? item.keyPoolCount) ?? 0
+    ) >= 2).length,
+    [allItems, availabilityByName],
+  );
 
   const rowAvailability = (item: WorkspaceItem): string | null => {
     const live = availabilityByName[item.name];
