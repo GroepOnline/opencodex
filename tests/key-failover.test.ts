@@ -8,14 +8,17 @@ import {
   clearKeyCooldowns,
   getKeyCooldownUntil,
   hasKeyPoolFailover,
+  pickUncooledApiKey,
   rotateKeyOn429,
   rotateProviderTransportOn429,
 } from "../src/providers/key-failover";
+import { configuredKeyCount } from "../src/providers/api-keys";
 import { deriveXaiConvId } from "../src/providers/xai-transport";
 import { routeModel } from "../src/router";
 import type { OcxConfig, OcxParsedRequest, OcxProviderConfig } from "../src/types";
 
 let home: string;
+const previousHome = process.env.OPENCODEX_HOME;
 
 function makeConfig(provider: Partial<OcxProviderConfig>): OcxConfig {
   return {
@@ -46,7 +49,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete process.env.OPENCODEX_HOME;
+  if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
+  else process.env.OPENCODEX_HOME = previousHome;
   rmSync(home, { recursive: true, force: true });
   clearKeyCooldowns();
 });
@@ -154,6 +158,62 @@ describe("rotateKeyOn429", () => {
     const selected = activateUncooledApiKey(config, "p", now, "key-alpha-000111222333");
     expect(selected?.apiKey).toBe("key-beta-444555666777");
     expect(getKeyCooldownUntil("p", "k2", now)).toBeNull();
+  });
+
+  test("empty apiKeyPool still counts a configured key", () => {
+    expect(configuredKeyCount({ adapter: "openai-chat", baseUrl: "x", apiKey: "k", apiKeyPool: [] } as OcxProviderConfig)).toBe(1);
+    expect(configuredKeyCount({ adapter: "openai-chat", baseUrl: "x", apiKey: "k" } as OcxProviderConfig)).toBe(1);
+    expect(configuredKeyCount({ adapter: "openai-chat", baseUrl: "x", apiKeyPool: pool3() } as OcxProviderConfig)).toBe(3);
+    expect(configuredKeyCount({ adapter: "openai-chat", baseUrl: "x" } as OcxProviderConfig)).toBe(0);
+  });
+
+  test("matches a resolved env-ref live key and hops to the next resolved secret", () => {
+    const prevA = process.env.OCX_FAILOVER_KEY_A;
+    const prevB = process.env.OCX_FAILOVER_KEY_B;
+    process.env.OCX_FAILOVER_KEY_A = "key-alpha-000111222333";
+    process.env.OCX_FAILOVER_KEY_B = "key-beta-444555666777";
+    try {
+      const config = makeConfig({
+        apiKey: "$OCX_FAILOVER_KEY_A",
+        apiKeyPool: [
+          { id: "k1", key: "$OCX_FAILOVER_KEY_A", addedAt: 1 },
+          { id: "k2", key: "${OCX_FAILOVER_KEY_B}", addedAt: 2 },
+          { id: "k3", key: "key-gamma-888999000111", addedAt: 3 },
+        ],
+      });
+      const now = 1_000_000;
+      expect(pickUncooledApiKey(config, "p", now, "key-alpha-000111222333")).toEqual({ kind: "noop" });
+      expect(config.providers.p.apiKey).toBe("$OCX_FAILOVER_KEY_A");
+      expect(activateUncooledApiKey(config, "p", now, "key-alpha-000111222333")).toBeNull();
+
+      const rotated = rotateProviderTransportOn429(
+        config,
+        "p",
+        { ...config.providers.p, apiKey: "key-alpha-000111222333" },
+        { now, attemptedKey: "key-alpha-000111222333" },
+      );
+      expect(rotated?.apiKey).toBe("key-beta-444555666777");
+      expect(config.providers.p.apiKey).toBe("${OCX_FAILOVER_KEY_B}");
+    } finally {
+      if (prevA === undefined) delete process.env.OCX_FAILOVER_KEY_A;
+      else process.env.OCX_FAILOVER_KEY_A = prevA;
+      if (prevB === undefined) delete process.env.OCX_FAILOVER_KEY_B;
+      else process.env.OCX_FAILOVER_KEY_B = prevB;
+    }
+  });
+
+  test("first pick reports all-cooled instead of a live-looking no-op", () => {
+    const config = makeConfig({ apiKey: "key-alpha-000111222333", apiKeyPool: pool3() });
+    const now = 1_000_000;
+    expect(rotateKeyOn429(config, "p", null, now, "key-alpha-000111222333")?.apiKey).toBe("key-beta-444555666777");
+    expect(rotateKeyOn429(config, "p", null, now, "key-beta-444555666777")?.apiKey).toBe("key-gamma-888999000111");
+    expect(rotateKeyOn429(config, "p", null, now, "key-gamma-888999000111")).toBeNull();
+    config.providers.p.apiKey = "key-alpha-000111222333";
+    const pick = pickUncooledApiKey(config, "p", now, "key-alpha-000111222333");
+    expect(pick.kind).toBe("all-cooled");
+    if (pick.kind !== "all-cooled") return;
+    expect(pick.retryAfterSeconds).toBeGreaterThanOrEqual(1);
+    expect(activateUncooledApiKey(config, "p", now, "key-alpha-000111222333")).toBeNull();
   });
 });
 

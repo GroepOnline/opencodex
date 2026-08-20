@@ -15,7 +15,7 @@ export {
   canHopNativeClaudePierce,
   type HopChain,
 } from "./chain";
-export { resolveOutcome, recordCapOutcome, keyPoolCanHop, selectKeyPoolCandidate, type ResolveOutcomeInput } from "./resolve";
+export { resolveOutcome, recordCapOutcome, keyPoolCanHop, selectKeyPoolCandidate, type ResolveOutcomeInput, type KeyPoolCandidateResult } from "./resolve";
 export {
   selectCandidate,
   type SelectCandidateInput,

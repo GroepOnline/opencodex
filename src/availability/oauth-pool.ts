@@ -2,6 +2,7 @@ import type { OcxConfig, OcxProviderConfig } from "../types";
 import { isAccountPoolHopStatus } from "./classify";
 import {
   bindAnthropicSessionAffinity,
+  clearAnthropicSessionAffinityForAccount,
   formatAnthropicProviderForLog,
   getAnthropicPoolAccessToken,
   getAnthropicPoolRetryAfterSeconds,
@@ -23,6 +24,7 @@ import {
 } from "../oauth/google-antigravity-routing";
 import {
   bindCursorSessionAffinity,
+  clearCursorSessionAffinityForAccount,
   formatCursorProviderForLog,
   getCursorPoolAccessToken,
   getCursorPoolRetryAfterSeconds,
@@ -169,6 +171,7 @@ export async function resolveAnthropicPoolOutcome(input: {
       logProvider: formatAnthropicProviderForLog("anthropic", nextAccountId, input.config),
     };
   } catch {
+    clearAnthropicSessionAffinityForAccount(nextAccountId);
     return null;
   }
 }
@@ -244,6 +247,7 @@ export async function resolveCursorPoolOutcome(input: {
       logProvider: formatCursorProviderForLog(nextAccountId),
     };
   } catch {
+    clearCursorSessionAffinityForAccount(nextAccountId);
     return null;
   }
 }

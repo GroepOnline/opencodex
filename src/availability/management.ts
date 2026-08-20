@@ -1,4 +1,4 @@
-import { listProviderApiKeys, type ProviderApiKeyInfo } from "../providers/api-keys";
+import { configuredKeyCount, listProviderApiKeys, type ProviderApiKeyInfo } from "../providers/api-keys";
 import { activeProviderCooldowns } from "../providers/cap-cooldown";
 import { clearKeyCooldowns, getKeyCooldownUntil } from "../providers/key-failover";
 import type { OcxConfig } from "../types";
@@ -44,8 +44,7 @@ export function inspectAvailability(
   const caps = activeProviderCooldowns(config, now);
   const providers: AvailabilityProviderView[] = [];
   for (const [name, provider] of Object.entries(config.providers)) {
-    const keyPoolCount = provider.apiKeyPool?.length
-      ?? ((provider.apiKey || provider.credentialRef) ? 1 : 0);
+    const keyPoolCount = configuredKeyCount(provider);
     const hop = provider.fallback?.[0];
     const coolingKeyCount = (provider.apiKeyPool?.length ?? 0) >= 2
       ? inspectKeyPool(config, name, now).keys.filter(

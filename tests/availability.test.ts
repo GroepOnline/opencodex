@@ -21,12 +21,18 @@ import {
   selectOauthPoolCandidate,
 } from "../src/availability";
 import { handleResponses } from "../src/server/responses";
+import { selectCandidateFailResponse } from "../src/server/responses/select-http";
 import {
   clearAnthropicAccountPoolState,
   rotateAnthropicAccountOn429,
 } from "../src/oauth/anthropic-routing";
 import { getAccountSet, saveCredential, setActiveAccount } from "../src/oauth/store";
 import type { OcxConfig, OcxProviderConfig } from "../src/types";
+
+function restoreOpenCodexHome(previous: string | undefined): void {
+  if (previous === undefined) delete process.env.OPENCODEX_HOME;
+  else process.env.OPENCODEX_HOME = previous;
+}
 
 function baseConfig(overrides: Partial<OcxConfig> = {}): OcxConfig {
   return {
@@ -116,6 +122,7 @@ describe("canHopNativeClaudePierce", () => {
 
 describe("resolveOutcome", () => {
   let home: string;
+  const previousHome = process.env.OPENCODEX_HOME;
 
   const pool = [
     { id: "k1", key: "key-alpha-000111222333", addedAt: 1 },
@@ -144,7 +151,7 @@ describe("resolveOutcome", () => {
   });
 
   afterEach(() => {
-    delete process.env.OPENCODEX_HOME;
+    restoreOpenCodexHome(previousHome);
     rmSync(home, { recursive: true, force: true });
     clearKeyPoolCooldowns();
   });
@@ -229,7 +236,113 @@ describe("resolveOutcome", () => {
       config,
       providerName: "p",
       routedProvider: config.providers.p!,
-    })).toBeNull();
+    })).toEqual({ kind: "live" });
+  });
+
+  test("selectKeyPoolCandidate keeps a resolved env-ref secret on the live key", () => {
+    const prevA = process.env.OCX_AVAIL_POOL_KEY_A;
+    const prevB = process.env.OCX_AVAIL_POOL_KEY_B;
+    process.env.OCX_AVAIL_POOL_KEY_A = pool[0]!.key;
+    process.env.OCX_AVAIL_POOL_KEY_B = pool[1]!.key;
+    try {
+      const config = baseConfig({
+        defaultProvider: "p",
+        providers: {
+          p: {
+            adapter: "openai-chat",
+            baseUrl: "https://p.example/v1",
+            apiKey: "$OCX_AVAIL_POOL_KEY_A",
+            apiKeyPool: [
+              { id: "k1", key: "$OCX_AVAIL_POOL_KEY_A", addedAt: 1 },
+              { id: "k2", key: "${OCX_AVAIL_POOL_KEY_B}", addedAt: 2 },
+            ],
+          },
+        },
+      });
+      const routed = { ...config.providers.p!, apiKey: pool[0]!.key };
+      expect(selectKeyPoolCandidate({
+        config,
+        providerName: "p",
+        routedProvider: routed,
+      })).toEqual({ kind: "live" });
+      expect(config.providers.p!.apiKey).toBe("$OCX_AVAIL_POOL_KEY_A");
+    } finally {
+      if (prevA === undefined) delete process.env.OCX_AVAIL_POOL_KEY_A;
+      else process.env.OCX_AVAIL_POOL_KEY_A = prevA;
+      if (prevB === undefined) delete process.env.OCX_AVAIL_POOL_KEY_B;
+      else process.env.OCX_AVAIL_POOL_KEY_B = prevB;
+    }
+  });
+
+  test("selectKeyPoolCandidate hops an env-ref pool to the resolved next secret", () => {
+    const prevA = process.env.OCX_AVAIL_POOL_KEY_A;
+    const prevB = process.env.OCX_AVAIL_POOL_KEY_B;
+    process.env.OCX_AVAIL_POOL_KEY_A = pool[0]!.key;
+    process.env.OCX_AVAIL_POOL_KEY_B = pool[1]!.key;
+    try {
+      const config = baseConfig({
+        defaultProvider: "p",
+        providers: {
+          p: {
+            adapter: "openai-chat",
+            baseUrl: "https://p.example/v1",
+            apiKey: "$OCX_AVAIL_POOL_KEY_A",
+            apiKeyPool: [
+              { id: "k1", key: "$OCX_AVAIL_POOL_KEY_A", addedAt: 1 },
+              { id: "k2", key: "${OCX_AVAIL_POOL_KEY_B}", addedAt: 2 },
+            ],
+          },
+        },
+      });
+      const next = resolveOutcome({
+        config,
+        providerName: "p",
+        routedProvider: { ...config.providers.p!, apiKey: pool[0]!.key },
+        status: 429,
+        now: 1_000_000,
+        attemptedKey: pool[0]!.key,
+        save: false,
+      });
+      expect(next?.apiKey).toBe(pool[1]!.key);
+      expect(config.providers.p!.apiKey).toBe("${OCX_AVAIL_POOL_KEY_B}");
+    } finally {
+      if (prevA === undefined) delete process.env.OCX_AVAIL_POOL_KEY_A;
+      else process.env.OCX_AVAIL_POOL_KEY_A = prevA;
+      if (prevB === undefined) delete process.env.OCX_AVAIL_POOL_KEY_B;
+      else process.env.OCX_AVAIL_POOL_KEY_B = prevB;
+    }
+  });
+
+  test("selectKeyPoolCandidate reports all-cooled instead of forwarding the live key", () => {
+    const now = 1_000_000;
+    const config = poolConfig();
+    resolveOutcome({
+      config,
+      providerName: "p",
+      routedProvider: config.providers.p!,
+      status: 429,
+      now,
+      attemptedKey: pool[0]!.key,
+      save: false,
+    });
+    resolveOutcome({
+      config,
+      providerName: "p",
+      routedProvider: config.providers.p!,
+      status: 429,
+      now,
+      attemptedKey: pool[1]!.key,
+      save: false,
+    });
+    const pick = selectKeyPoolCandidate({
+      config,
+      providerName: "p",
+      routedProvider: { ...config.providers.p!, apiKey: pool[0]!.key },
+      now: now + 1,
+    });
+    expect(pick.kind).toBe("all-cooled");
+    if (pick.kind !== "all-cooled") return;
+    expect(pick.retryAfterSeconds).toBeGreaterThanOrEqual(1);
   });
 
   test("records a hard-cap 429 on a single-key provider and surfaces", () => {
@@ -281,6 +394,7 @@ describe("recordCapOutcome", () => {
 
 describe("handleResponses records cap-cooldown", () => {
   let home: string;
+  const previousHome = process.env.OPENCODEX_HOME;
   const previousFetch = globalThis.fetch;
 
   beforeEach(() => {
@@ -290,7 +404,7 @@ describe("handleResponses records cap-cooldown", () => {
 
   afterEach(() => {
     globalThis.fetch = previousFetch;
-    delete process.env.OPENCODEX_HOME;
+    restoreOpenCodexHome(previousHome);
     rmSync(home, { recursive: true, force: true });
   });
 
@@ -337,6 +451,7 @@ describe("handleResponses records cap-cooldown", () => {
 
 describe("inspectKeyPool", () => {
   let home: string;
+  const previousHome = process.env.OPENCODEX_HOME;
 
   beforeEach(() => {
     home = mkdtempSync(join(tmpdir(), "ocx-inspect-keys-"));
@@ -345,7 +460,7 @@ describe("inspectKeyPool", () => {
   });
 
   afterEach(() => {
-    delete process.env.OPENCODEX_HOME;
+    restoreOpenCodexHome(previousHome);
     rmSync(home, { recursive: true, force: true });
     clearKeyPoolCooldowns();
   });
@@ -414,10 +529,27 @@ describe("inspectKeyPool", () => {
     expect(view?.coolingKeyCount).toBe(1);
     expect(view?.hopProvider).toBe("b");
   });
+
+  test("inspectAvailability counts a bare apiKey when apiKeyPool is empty", () => {
+    const config = baseConfig({
+      providers: {
+        a: {
+          adapter: "openai-chat",
+          baseUrl: "https://a.example/v1",
+          apiKey: "ka",
+          apiKeyPool: [],
+          models: ["m1"],
+        },
+      },
+    });
+    const view = inspectAvailability(config).providers.find(row => row.name === "a");
+    expect(view?.keyPoolCount).toBe(1);
+  });
 });
 
 describe("selectCandidate", () => {
   let home: string;
+  const previousHome = process.env.OPENCODEX_HOME;
 
   beforeEach(() => {
     home = mkdtempSync(join(tmpdir(), "ocx-select-candidate-"));
@@ -426,7 +558,7 @@ describe("selectCandidate", () => {
   });
 
   afterEach(() => {
-    delete process.env.OPENCODEX_HOME;
+    restoreOpenCodexHome(previousHome);
     rmSync(home, { recursive: true, force: true });
     clearKeyPoolCooldowns();
   });
@@ -522,6 +654,102 @@ describe("selectCandidate", () => {
     if (result.ok) return;
     expect(result.kind).toBe("codex-direct-auth");
   });
+
+  test("fails closed when every pool key is cooling", async () => {
+    const now = 1_000_000;
+    const config = baseConfig({
+      defaultProvider: "p",
+      providers: {
+        p: {
+          adapter: "openai-chat",
+          baseUrl: "https://p.example/v1",
+          apiKey: "key-alpha-000111222333",
+          apiKeyPool: [
+            { id: "k1", key: "key-alpha-000111222333", addedAt: 1 },
+            { id: "k2", key: "key-beta-444555666777", addedAt: 2 },
+          ],
+        },
+      },
+    });
+    resolveOutcome({
+      config,
+      providerName: "p",
+      routedProvider: config.providers.p!,
+      status: 429,
+      now,
+      attemptedKey: "key-alpha-000111222333",
+      save: false,
+    });
+    resolveOutcome({
+      config,
+      providerName: "p",
+      routedProvider: config.providers.p!,
+      status: 429,
+      now,
+      attemptedKey: "key-beta-444555666777",
+      save: false,
+    });
+    const result = await selectCandidate({
+      config,
+      providerName: "p",
+      routedProvider: { ...config.providers.p!, apiKey: "key-alpha-000111222333" },
+      now: now + 1,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.kind).toBe("key-all-cooled");
+    if (result.kind !== "key-all-cooled") return;
+    expect(result.retryAfterSeconds).toBeGreaterThanOrEqual(1);
+  });
+
+  test("keeps a resolved env-ref secret instead of writing the $VAR back onto the turn", async () => {
+    const prevA = process.env.OCX_AVAIL_POOL_KEY_A;
+    const prevB = process.env.OCX_AVAIL_POOL_KEY_B;
+    process.env.OCX_AVAIL_POOL_KEY_A = "key-alpha-000111222333";
+    process.env.OCX_AVAIL_POOL_KEY_B = "key-beta-444555666777";
+    try {
+      const config = baseConfig({
+        defaultProvider: "p",
+        providers: {
+          p: {
+            adapter: "openai-chat",
+            baseUrl: "https://p.example/v1",
+            apiKey: "$OCX_AVAIL_POOL_KEY_A",
+            apiKeyPool: [
+              { id: "k1", key: "$OCX_AVAIL_POOL_KEY_A", addedAt: 1 },
+              { id: "k2", key: "${OCX_AVAIL_POOL_KEY_B}", addedAt: 2 },
+            ],
+          },
+        },
+      });
+      const result = await selectCandidate({
+        config,
+        providerName: "p",
+        routedProvider: { ...config.providers.p!, apiKey: "key-alpha-000111222333" },
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.provider.apiKey).toBe("key-alpha-000111222333");
+      expect(config.providers.p!.apiKey).toBe("$OCX_AVAIL_POOL_KEY_A");
+    } finally {
+      if (prevA === undefined) delete process.env.OCX_AVAIL_POOL_KEY_A;
+      else process.env.OCX_AVAIL_POOL_KEY_A = prevA;
+      if (prevB === undefined) delete process.env.OCX_AVAIL_POOL_KEY_B;
+      else process.env.OCX_AVAIL_POOL_KEY_B = prevB;
+    }
+  });
+
+  test("maps all-cooled keys to HTTP 429 with Retry-After", async () => {
+    const response = selectCandidateFailResponse(
+      { ok: false, kind: "key-all-cooled", retryAfterSeconds: 12 },
+      { providerName: "p", config: baseConfig() },
+    );
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("12");
+    const body = await response.json() as { error: { type: string; message: string } };
+    expect(body.error.type).toBe("rate_limit_error");
+    expect(body.error.message).toBe("All API keys are temporarily rate-limited");
+  });
 });
 
 describe("oauth pool resolveOutcome", () => {
@@ -555,8 +783,7 @@ describe("selectOauthPoolCandidate", () => {
 
   afterEach(() => {
     clearAnthropicAccountPoolState();
-    if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
-    else process.env.OPENCODEX_HOME = previousHome;
+    restoreOpenCodexHome(previousHome);
     rmSync(home, { recursive: true, force: true });
   });
 

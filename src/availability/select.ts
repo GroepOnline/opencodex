@@ -11,6 +11,7 @@ import {
   type OAuthAccessSnapshot,
   UnsupportedOAuthProviderError,
 } from "../oauth";
+import { redactSecretString } from "../lib/redact";
 import { providerCredentialFailure, providerCredentialRef, withResolvedProviderCredential } from "../providers/credential";
 import { resolveProviderTransport } from "../providers/xai-transport";
 import { selectCodexCandidate } from "./codex-pool";
@@ -45,6 +46,7 @@ export type SelectCandidateFail =
   | { ok: false; kind: "oauth-none"; pool: OauthPoolName }
   | { ok: false; kind: "oauth-unsupported"; message: string }
   | { ok: false; kind: "oauth-auth"; message: string }
+  | { ok: false; kind: "key-all-cooled"; retryAfterSeconds: number }
   | { ok: false; kind: "vault"; status: number; type: string; message: string }
   | { ok: false; kind: "codex-cooldown"; error: CodexAccountCooldownError }
   | { ok: false; kind: "codex-affinity-expired" }
@@ -66,9 +68,9 @@ function codexSelectFail(reason: Exclude<Awaited<ReturnType<typeof selectCodexCa
     case "unusable":
       return { ok: false, kind: "codex-unusable" };
     case "pool-auth":
-      return { ok: false, kind: "codex-pool-auth", message: reason.message };
+      return { ok: false, kind: "codex-pool-auth", message: redactSecretString(reason.message) };
     case "direct-auth":
-      return { ok: false, kind: "codex-direct-auth", message: reason.message };
+      return { ok: false, kind: "codex-direct-auth", message: redactSecretString(reason.message) };
   }
 }
 
@@ -133,9 +135,13 @@ export async function selectCandidate(input: SelectCandidateInput): Promise<Sele
       }
     } catch (err) {
       if (err instanceof UnsupportedOAuthProviderError) {
-        return { ok: false, kind: "oauth-unsupported", message: err.message };
+        return { ok: false, kind: "oauth-unsupported", message: redactSecretString(err.message) };
       }
-      return { ok: false, kind: "oauth-auth", message: err instanceof Error ? err.message : String(err) };
+      return {
+        ok: false,
+        kind: "oauth-auth",
+        message: redactSecretString(err instanceof Error ? err.message : String(err)),
+      };
     }
   } else if (provider.authMode !== "forward" && providerCredentialRef(provider)) {
     try {
@@ -153,7 +159,10 @@ export async function selectCandidate(input: SelectCandidateInput): Promise<Sele
     promptCacheKey: input.promptCacheKey,
     now: input.now,
   });
-  if (keyPick) provider = { ...provider, apiKey: keyPick.apiKey };
+  if (keyPick.kind === "all-cooled") {
+    return { ok: false, kind: "key-all-cooled", retryAfterSeconds: keyPick.retryAfterSeconds };
+  }
+  if (keyPick.kind === "selected") provider = { ...provider, apiKey: keyPick.transport.apiKey };
 
   provider = resolveProviderTransport(
     input.providerName,

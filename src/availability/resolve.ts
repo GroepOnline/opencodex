@@ -1,6 +1,7 @@
 import { recordProviderCapCooldown, type ProviderCapCooldown } from "../providers/cap-cooldown";
-import { activateUncooledApiKey, hasKeyPoolFailover, rotateProviderTransportOn429 } from "../providers/key-failover";
+import { hasKeyPoolFailover, pickUncooledApiKey, rotateProviderTransportOn429 } from "../providers/key-failover";
 import type { OcxConfig, OcxProviderConfig } from "../types";
+import { resolveEnvValue } from "../config";
 import { resolveProviderTransport, type OcxProviderTransport } from "../providers/xai-transport";
 import { isAccountPoolHopStatus } from "./classify";
 
@@ -45,25 +46,37 @@ export function keyPoolCanHop(provider: OcxProviderConfig | OcxProviderTransport
  * First key-pool pick. Skips a cooling active key so Meta/Zen-style openai-chat
  * pools do not spend a turn on a credential that already 429'd.
  */
+export type KeyPoolCandidateResult =
+  | { kind: "live" }
+  | { kind: "selected"; transport: OcxProviderTransport }
+  | { kind: "all-cooled"; retryAfterSeconds: number };
+
 export function selectKeyPoolCandidate(input: {
   config: OcxConfig;
   providerName: string;
   routedProvider: OcxProviderTransport;
   promptCacheKey?: string;
   now?: number;
-}): OcxProviderTransport | null {
-  const selected = activateUncooledApiKey(
+}): KeyPoolCandidateResult {
+  const pick = pickUncooledApiKey(
     input.config,
     input.providerName,
     input.now,
     input.routedProvider.apiKey,
   );
-  if (!selected) return null;
-  return resolveProviderTransport(
-    input.providerName,
-    { ...input.routedProvider, apiKey: selected.apiKey },
-    input.promptCacheKey,
-  );
+  if (pick.kind === "noop") return { kind: "live" };
+  if (pick.kind === "all-cooled") {
+    return { kind: "all-cooled", retryAfterSeconds: pick.retryAfterSeconds };
+  }
+  const apiKey = resolveEnvValue(pick.provider.apiKey) ?? pick.provider.apiKey;
+  return {
+    kind: "selected",
+    transport: resolveProviderTransport(
+      input.providerName,
+      { ...input.routedProvider, apiKey },
+      input.promptCacheKey,
+    ),
+  };
 }
 
 /**

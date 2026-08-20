@@ -35,6 +35,14 @@ export function selectCandidateFailResponse(
   if (pick.kind === "oauth-none") {
     return formatErrorResponse(401, "authentication_error", OAUTH_POOL_NONE[pick.pool]);
   }
+  if (pick.kind === "key-all-cooled") {
+    return formatErrorResponse(
+      429,
+      "rate_limit_error",
+      "All API keys are temporarily rate-limited",
+      { retryAfter: String(pick.retryAfterSeconds) },
+    );
+  }
   if (pick.kind === "oauth-unsupported") {
     return formatErrorResponse(
       400,

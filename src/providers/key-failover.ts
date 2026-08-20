@@ -8,7 +8,7 @@
  *
  * Modelled after src/codex/routing.ts cooldown logic but scoped to plain API-key pools.
  */
-import { saveConfigPreservingClaudeCode } from "../config";
+import { resolveEnvValue, saveConfigPreservingClaudeCode } from "../config";
 import type { OcxConfig, OcxProviderConfig } from "../types";
 import { hasKeyPoolFailover } from "./api-keys";
 import { isHardCapMessage, parseResetsInMs } from "./cap-cooldown";
@@ -76,6 +76,23 @@ function isKeyInCooldown(providerName: string, keyId: string, now = Date.now()):
 
 // ---- public API ----
 
+function resolvedStoredApiKey(stored: string | undefined): string | undefined {
+  return resolveEnvValue(stored) ?? stored;
+}
+
+function poolEntryForKey(
+  pool: NonNullable<OcxProviderConfig["apiKeyPool"]>,
+  liveKey: string | undefined,
+): NonNullable<OcxProviderConfig["apiKeyPool"]>[number] | undefined {
+  if (!liveKey) return undefined;
+  const direct = pool.find(entry => entry.key === liveKey);
+  if (direct) return direct;
+  return pool.find(entry => {
+    const resolved = resolveEnvValue(entry.key);
+    return Boolean(resolved) && resolved === liveKey;
+  });
+}
+
 function pickUncooledKey(
   providerName: string,
   pool: NonNullable<OcxProviderConfig["apiKeyPool"]>,
@@ -87,6 +104,20 @@ function pickUncooledKey(
     if (!isKeyInCooldown(providerName, candidate.id, now)) return candidate;
   }
   return null;
+}
+
+function earliestCooldownRetryAfterSeconds(
+  providerName: string,
+  pool: NonNullable<OcxProviderConfig["apiKeyPool"]>,
+  now: number,
+): number {
+  let soonest = Number.POSITIVE_INFINITY;
+  for (const entry of pool) {
+    const until = getKeyCooldownUntil(providerName, entry.id, now);
+    if (until !== null && until < soonest) soonest = until;
+  }
+  if (!Number.isFinite(soonest)) return 1;
+  return Math.max(1, Math.ceil((soonest - now) / 1000));
 }
 
 /**
@@ -119,7 +150,7 @@ export function rotateKeyOn429(
   // rotated provider.apiKey — cooling the live key would punish an innocent replacement and can
   // exhaust a 2-key pool from a single bad key. CAS semantics: callers pass the key they used.
   const failedKey = attemptedKey ?? provider.apiKey;
-  const currentEntry = pool.find(e => e.key === failedKey);
+  const currentEntry = poolEntryForKey(pool, failedKey);
   if (currentEntry) {
     const cooldownMs = cooldownMsForFailure(retryAfterHeader, message, now);
     keyCooldowns.set(cooldownKey(providerName, currentEntry.id), {
@@ -130,7 +161,7 @@ export function rotateKeyOn429(
   // Lost the race: someone already rotated away from the failed key. If the live key is healthy,
   // retry with it as-is instead of rotating a second time.
   if (attemptedKey !== undefined && provider.apiKey !== attemptedKey) {
-    const liveEntry = pool.find(e => e.key === provider.apiKey);
+    const liveEntry = poolEntryForKey(pool, provider.apiKey);
     if (liveEntry && !isKeyInCooldown(providerName, liveEntry.id, now)) {
       return { ...provider };
     }
@@ -188,35 +219,56 @@ export function rotateProviderTransportOn429(
   return rotated
     ? resolveProviderTransport(
         providerName,
-        { ...routedProvider, apiKey: rotated.apiKey },
+        { ...routedProvider, apiKey: resolvedStoredApiKey(rotated.apiKey) },
         options.promptCacheKey,
       )
     : null;
 }
 
+export type UncooledApiKeyPick =
+  | { kind: "noop" }
+  | { kind: "swapped"; provider: OcxProviderConfig }
+  | { kind: "all-cooled"; retryAfterSeconds: number };
+
 /**
  * First pick: if the active key is cooling, persist the next uncooled key.
- * Returns null when this is not a pool or the live key is already eligible.
+ * Distinguishes "live key is fine" from "every key is cooling".
  */
+export function pickUncooledApiKey(
+  config: OcxConfig,
+  providerName: string,
+  now = Date.now(),
+  attemptedKey?: string,
+): UncooledApiKeyPick {
+  const provider = config.providers[providerName];
+  if (!provider || !hasKeyPoolFailover(provider)) return { kind: "noop" };
+  const pool = provider.apiKeyPool!;
+  const liveKey = attemptedKey ?? provider.apiKey;
+  const current = poolEntryForKey(pool, liveKey) ?? poolEntryForKey(pool, provider.apiKey);
+  if (current && !isKeyInCooldown(providerName, current.id, now)) return { kind: "noop" };
+  const fromIndex = current ? pool.indexOf(current) : -1;
+  const candidate = pickUncooledKey(providerName, pool, fromIndex, now);
+  if (!candidate) {
+    return {
+      kind: "all-cooled",
+      retryAfterSeconds: earliestCooldownRetryAfterSeconds(providerName, pool, now),
+    };
+  }
+  if (candidate.key === provider.apiKey) return { kind: "noop" };
+  provider.apiKey = candidate.key;
+  saveConfigPreservingClaudeCode(config);
+  return { kind: "swapped", provider: { ...provider } };
+}
+
+/** First pick: if the active key is cooling, persist the next uncooled key. */
 export function activateUncooledApiKey(
   config: OcxConfig,
   providerName: string,
   now = Date.now(),
   attemptedKey?: string,
 ): OcxProviderConfig | null {
-  const provider = config.providers[providerName];
-  if (!provider || !hasKeyPoolFailover(provider)) return null;
-  const pool = provider.apiKeyPool!;
-  const liveKey = attemptedKey ?? provider.apiKey;
-  const current = pool.find(e => e.key === liveKey);
-  if (current && !isKeyInCooldown(providerName, current.id, now)) return null;
-  const fromIndex = current ? pool.indexOf(current) : -1;
-  const candidate = pickUncooledKey(providerName, pool, fromIndex, now);
-  if (!candidate) return null;
-  if (candidate.key === provider.apiKey) return { ...provider };
-  provider.apiKey = candidate.key;
-  saveConfigPreservingClaudeCode(config);
-  return { ...provider };
+  const pick = pickUncooledApiKey(config, providerName, now, attemptedKey);
+  return pick.kind === "swapped" ? pick.provider : null;
 }
 
 /** Clear cooldown state for a provider (e.g. after manual key management). */
