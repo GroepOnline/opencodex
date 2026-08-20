@@ -38,7 +38,6 @@ import {
   resolveGoogleAntigravityPoolOutcome,
   resolveOutcome,
   selectCandidate,
-  selectCodexCandidate,
   selectHopChain,
   codexQuotaOutcomeMeta,
   shouldDeferCodexResetDerivedCooldown,
@@ -732,10 +731,6 @@ function unreadableEncryptedAgentTaskResponse(): Response {
   );
 }
 
-type ResponsesAuthResolution =
-  | { ok: true; authCtx: CodexAuthContext; headers: Headers; provider: OcxProviderConfig }
-  | { ok: false; response: Response };
-
 const OAUTH_POOL_ALL_COOLED: Record<OauthPoolName, string> = {
   anthropic: "All Anthropic OAuth accounts are temporarily rate-limited",
   "google-antigravity": "All Google Antigravity OAuth accounts are temporarily rate-limited",
@@ -760,66 +755,6 @@ function oauthPoolSelectErrorResponse(
     );
   }
   return formatErrorResponse(401, "authentication_error", OAUTH_POOL_NONE[result.pool]);
-}
-
-/**
- * Resolve Codex auth for a route. Availability selects the candidate; this maps
- * domain failures to HTTP. Direct admission stays here (caller credential).
- */
-async function resolveResponsesCodexAuth(
-  req: Request,
-  config: OcxConfig,
-  route: RouteResult,
-  options: HandleResponsesOptions,
-): Promise<ResponsesAuthResolution> {
-  try {
-    if (route.codexAccountMode === "direct") validateForwardAdmissionCredential(req.headers, config);
-    const selected = await selectCodexCandidate({
-      headers: req.headers,
-      config,
-      mode: route.codexAccountMode,
-      modelId: route.modelId,
-      routedProvider: route.provider,
-    });
-    if (!selected.ok) {
-      if (selected.reason === "cooldown") {
-        return { ok: false, response: cooldownErrorResponse(selected.error) };
-      }
-      if (selected.reason === "affinity-expired") {
-        return {
-          ok: false,
-          response: formatErrorResponse(
-            409,
-            "invalid_request_error",
-            "Codex thread account affinity expired; start a new session",
-          ),
-        };
-      }
-      if (selected.reason === "reauth") {
-        const safeAccountLabel = formatCodexProviderForLog(route.providerName, selected.accountId, config);
-        console.error(`[codex-auth] Pool account ${safeAccountLabel} token failed; reauthentication required`);
-      }
-      if (selected.reason === "pool-auth" || selected.reason === "direct-auth") {
-        return { ok: false, response: formatErrorResponse(401, "authentication_error", selected.message) };
-      }
-      return {
-        ok: false,
-        response: formatErrorResponse(401, "authentication_error", "Selected Codex account needs reauthentication"),
-      };
-    }
-    options.onCodexAuthContextResolved?.(route.codexAccountMode ? selected.authCtx : undefined);
-    return {
-      ok: true,
-      authCtx: selected.authCtx,
-      headers: selected.headers,
-      provider: selected.provider,
-    };
-  } catch (err) {
-    if (err instanceof ForwardAdmissionCredentialError) {
-      return { ok: false, response: formatErrorResponse(401, "authentication_error", err.message) };
-    }
-    throw err;
-  }
 }
 
 /**
@@ -1383,24 +1318,20 @@ export async function handleResponses(
 
   await applyFinalRouteRequestNormalization({ parsed, route, config, req, logCtx });
 
-  {
-    const finalAuth = await resolveResponsesCodexAuth(req, config, route, options);
-    if (!finalAuth.ok) return finalAuth.response;
-    authCtx = finalAuth.authCtx;
-    selectedForwardHeaders = finalAuth.headers;
-    route.provider = finalAuth.provider;
+  if (route.codexAccountMode === "direct") {
+    try {
+      validateForwardAdmissionCredential(req.headers, config);
+    } catch (err) {
+      if (err instanceof ForwardAdmissionCredentialError) {
+        return formatErrorResponse(401, "authentication_error", err.message);
+      }
+      throw err;
+    }
   }
-  logCtx.provider = formatCodexProviderForLog(route.providerName, codexLogAccountId(authCtx), config);
-  // Prefer Codex pool account as the Cursor thread namespace when present. Cursor routes without
-  // codexAccountMode still get a credential-derived scope inside the Cursor adapter.
-  const identityScope = codexLogAccountId(authCtx);
-  if (identityScope) parsed._cursorIdentityScope = identityScope;
-  subagentFallbackAccountId = authCtx.kind === "pool" || authCtx.kind === "main-pool"
-    ? authCtx.accountId
-    : config.activeCodexAccountId ?? null;
 
-  // Availability first-picks the fetch-ready candidate (OAuth pool, single-account token,
+  // Availability first-picks the fetch-ready candidate (Codex, OAuth pool,
   // ChefVault lease, key pool). Session keys are request evidence, not adapter choice.
+  // Direct admission (caller credential present) stays on the turn.
   const isOAuth401ReplayProvider = (route.providerName === "xai" || route.providerName === "github-copilot" || route.providerName === "kiro")
     && route.provider.authMode === "oauth";
   let sentOAuthSnapshot: OAuthAccessSnapshot | undefined;
@@ -1446,6 +1377,9 @@ export async function handleResponses(
           ? cursorSessionKey
           : null,
     promptCacheKey: parsed.options.promptCacheKey,
+    headers: req.headers,
+    mode: route.codexAccountMode,
+    modelId: route.modelId,
   });
   if (!pick.ok) {
     if (pick.kind === "oauth-all-cooled" || pick.kind === "oauth-none") {
@@ -1465,9 +1399,38 @@ export async function handleResponses(
     if (pick.kind === "vault") {
       return formatErrorResponse(pick.status, pick.type, pick.message);
     }
+    if (pick.kind === "codex-cooldown") {
+      return cooldownErrorResponse(pick.error);
+    }
+    if (pick.kind === "codex-affinity-expired") {
+      return formatErrorResponse(
+        409,
+        "invalid_request_error",
+        "Codex thread account affinity expired; start a new session",
+      );
+    }
+    if (pick.kind === "codex-reauth") {
+      const safeAccountLabel = formatCodexProviderForLog(route.providerName, pick.accountId, config);
+      console.error(`[codex-auth] Pool account ${safeAccountLabel} token failed; reauthentication required`);
+      return formatErrorResponse(401, "authentication_error", "Selected Codex account needs reauthentication");
+    }
+    if (pick.kind === "codex-unusable") {
+      return formatErrorResponse(401, "authentication_error", "Selected Codex account needs reauthentication");
+    }
     return formatErrorResponse(401, "authentication_error", pick.message);
   }
   route.provider = pick.provider;
+  authCtx = pick.authCtx ?? { kind: "main", accountId: null };
+  selectedForwardHeaders = pick.headers ?? req.headers;
+  options.onCodexAuthContextResolved?.(route.codexAccountMode ? pick.authCtx : undefined);
+  logCtx.provider = formatCodexProviderForLog(route.providerName, codexLogAccountId(authCtx), config);
+  // Prefer Codex pool account as the Cursor thread namespace when present. Cursor routes without
+  // codexAccountMode still get a credential-derived scope inside the Cursor adapter.
+  const identityScope = codexLogAccountId(authCtx);
+  if (identityScope) parsed._cursorIdentityScope = identityScope;
+  subagentFallbackAccountId = authCtx.kind === "pool" || authCtx.kind === "main-pool"
+    ? authCtx.accountId
+    : config.activeCodexAccountId ?? null;
   if (pick.logProvider) logCtx.provider = pick.logProvider;
   if (pick.oauthPool?.pool === "anthropic") anthropicPoolAccountId = pick.oauthPool.accountId;
   else if (pick.oauthPool?.pool === "google-antigravity") googleAntigravityPoolAccountId = pick.oauthPool.accountId;

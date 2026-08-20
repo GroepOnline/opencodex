@@ -441,6 +441,61 @@ describe("selectCandidate", () => {
     if (!result.ok) return;
     expect(result.provider.apiKey).toBe("key-beta-444555666777");
   });
+
+  test("with headers and no Codex mode forwards the caller bearer then skips a cooling key", async () => {
+    const now = 1_000_000;
+    const config = baseConfig({
+      defaultProvider: "p",
+      providers: {
+        p: {
+          adapter: "openai-chat",
+          baseUrl: "https://p.example/v1",
+          apiKey: "key-alpha-000111222333",
+          apiKeyPool: [
+            { id: "k1", key: "key-alpha-000111222333", addedAt: 1 },
+            { id: "k2", key: "key-beta-444555666777", addedAt: 2 },
+          ],
+        },
+      },
+    });
+    resolveOutcome({
+      config,
+      providerName: "p",
+      routedProvider: config.providers.p!,
+      status: 429,
+      now,
+      attemptedKey: "key-alpha-000111222333",
+      save: false,
+    });
+    config.providers.p!.apiKey = "key-alpha-000111222333";
+    const result = await selectCandidate({
+      config,
+      providerName: "p",
+      routedProvider: config.providers.p!,
+      now: now + 1,
+      headers: new Headers({ authorization: "Bearer client-token" }),
+      modelId: "m1",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.authCtx).toEqual({ kind: "main", accountId: null });
+    expect(result.headers?.get("authorization")).toBe("Bearer client-token");
+    expect(result.provider.apiKey).toBe("key-beta-444555666777");
+  });
+
+  test("Direct without a caller bearer is a Codex domain failure", async () => {
+    const result = await selectCandidate({
+      config: baseConfig(),
+      providerName: "a",
+      routedProvider: baseConfig().providers.a!,
+      headers: new Headers(),
+      mode: "direct",
+      modelId: "gpt-5",
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.kind).toBe("codex-direct-auth");
+  });
 });
 
 describe("oauth pool resolveOutcome", () => {

@@ -2,7 +2,8 @@
  * Pre-request pick: who may take this attempt. Returns a fetch-ready provider.
  * The turn maps domain failures to HTTP; it does not choose an adapter.
  */
-import type { OcxConfig, OcxProviderConfig } from "../types";
+import type { CodexAccountCooldownError, CodexAuthContext } from "../codex/auth-context";
+import type { CodexAccountMode, OcxConfig, OcxProviderConfig } from "../types";
 import {
   getOAuthCredentialApiBaseUrl,
   getOAuthCredentialProjectId,
@@ -12,6 +13,7 @@ import {
 } from "../oauth";
 import { providerCredentialFailure, providerCredentialRef, withResolvedProviderCredential } from "../providers/credential";
 import { resolveProviderTransport } from "../providers/xai-transport";
+import { selectCodexCandidate } from "./codex-pool";
 import { selectOauthPoolCandidate, type OauthPoolName } from "./oauth-pool";
 import { selectKeyPoolCandidate } from "./resolve";
 
@@ -22,6 +24,10 @@ export type SelectCandidateInput = {
   sessionKey?: string | null;
   promptCacheKey?: string;
   now?: number;
+  /** When set, Codex first-pick runs before OAuth / vault / key pool. */
+  headers?: Headers;
+  mode?: CodexAccountMode;
+  modelId?: string;
 };
 
 export type SelectCandidateOk = {
@@ -30,6 +36,8 @@ export type SelectCandidateOk = {
   logProvider?: string;
   oauthPool?: { pool: OauthPoolName; accountId: string };
   oauthSnapshot?: OAuthAccessSnapshot;
+  authCtx?: CodexAuthContext;
+  headers?: Headers;
 };
 
 export type SelectCandidateFail =
@@ -37,19 +45,58 @@ export type SelectCandidateFail =
   | { ok: false; kind: "oauth-none"; pool: OauthPoolName }
   | { ok: false; kind: "oauth-unsupported"; message: string }
   | { ok: false; kind: "oauth-auth"; message: string }
-  | { ok: false; kind: "vault"; status: number; type: string; message: string };
+  | { ok: false; kind: "vault"; status: number; type: string; message: string }
+  | { ok: false; kind: "codex-cooldown"; error: CodexAccountCooldownError }
+  | { ok: false; kind: "codex-affinity-expired" }
+  | { ok: false; kind: "codex-reauth"; accountId: string }
+  | { ok: false; kind: "codex-unusable" }
+  | { ok: false; kind: "codex-pool-auth"; message: string }
+  | { ok: false; kind: "codex-direct-auth"; message: string };
 
 export type SelectCandidateResult = SelectCandidateOk | SelectCandidateFail;
 
+function codexSelectFail(reason: Exclude<Awaited<ReturnType<typeof selectCodexCandidate>>, { ok: true }>): SelectCandidateFail {
+  switch (reason.reason) {
+    case "cooldown":
+      return { ok: false, kind: "codex-cooldown", error: reason.error };
+    case "affinity-expired":
+      return { ok: false, kind: "codex-affinity-expired" };
+    case "reauth":
+      return { ok: false, kind: "codex-reauth", accountId: reason.accountId };
+    case "unusable":
+      return { ok: false, kind: "codex-unusable" };
+    case "pool-auth":
+      return { ok: false, kind: "codex-pool-auth", message: reason.message };
+    case "direct-auth":
+      return { ok: false, kind: "codex-direct-auth", message: reason.message };
+  }
+}
+
 /**
- * First pick for this attempt: OAuth pool, single-account OAuth, ChefVault lease,
- * then key pool. Codex stays on selectCodexCandidate (settled earlier in the turn).
+ * First pick for this attempt: Codex (when headers are supplied), then OAuth
+ * pool, single-account OAuth, ChefVault lease, then key pool.
  */
 export async function selectCandidate(input: SelectCandidateInput): Promise<SelectCandidateResult> {
   let provider = input.routedProvider;
   let logProvider: string | undefined;
   let oauthPool: SelectCandidateOk["oauthPool"];
   let oauthSnapshot: OAuthAccessSnapshot | undefined;
+  let authCtx: CodexAuthContext | undefined;
+  let headers: Headers | undefined;
+
+  if (input.headers) {
+    const codex = await selectCodexCandidate({
+      headers: input.headers,
+      config: input.config,
+      mode: input.mode,
+      modelId: input.modelId ?? "",
+      routedProvider: provider,
+    });
+    if (!codex.ok) return codexSelectFail(codex);
+    provider = codex.provider;
+    authCtx = codex.authCtx;
+    headers = codex.headers;
+  }
 
   if (provider.authMode === "oauth") {
     try {
@@ -121,5 +168,7 @@ export async function selectCandidate(input: SelectCandidateInput): Promise<Sele
     ...(logProvider ? { logProvider } : {}),
     ...(oauthPool ? { oauthPool } : {}),
     ...(oauthSnapshot ? { oauthSnapshot } : {}),
+    ...(authCtx ? { authCtx } : {}),
+    ...(headers ? { headers } : {}),
   };
 }
