@@ -437,8 +437,8 @@ export default function ProviderAuthPanel({
                   return (
                   <li key={entry.id} className={`pwi-auth-row${entry.active ? " pwi-auth-row--active" : ""}`}>
                     <button type="button" className="pwi-auth-row-main"
-                      onClick={() => void authHandlers.onSwitchApiKey(item.name, entry)}
-                      disabled={entry.active}>
+                      onClick={() => { if (!cooling) void authHandlers.onSwitchApiKey(item.name, entry); }}
+                      disabled={entry.active || cooling}>
                       <span className={`pwi-auth-dot ${entry.active ? "pwi-auth-dot--ok" : cooling ? "pwi-auth-dot--warn" : "pwi-auth-dot--off"}`} aria-hidden="true" />
                       <span className="pwi-auth-row-copy">
                         <span className="pwi-auth-row-label">{entry.label ?? entry.masked}</span>
