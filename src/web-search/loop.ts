@@ -20,16 +20,9 @@ const SSE_HEADERS = {
   "X-Accel-Buffering": "no",
 };
 
-/** Hard-cap JSON is already buffered; a hanging 429 body must not stall rotation. */
-const BRIDGE_HOP_PEEK_TIMEOUT_MS = 25;
-
 async function peekBridgeHopMessage(response: Response, signal?: AbortSignal): Promise<string | undefined> {
   try {
-    const body = await readBoundedResponseBody(response.clone(), {
-      signal,
-      totalTimeoutMs: BRIDGE_HOP_PEEK_TIMEOUT_MS,
-      inactivityTimeoutMs: BRIDGE_HOP_PEEK_TIMEOUT_MS,
-    });
+    const body = await readBoundedResponseBody(response.clone(), { signal });
     return body.displaySafe ? body.text : undefined;
   } catch {
     return undefined;
@@ -368,7 +361,7 @@ export async function runWithWebSearch(deps: WebSearchLoopDeps): Promise<Respons
       // responds or the pool is exhausted (deps.on429 returns null — cooldown map guarantees
       // termination). Peek the body before cancel so hard-cap copy reaches Availability.
       while (isAccountPoolHopStatus(prepared.response.status) && deps.on429) {
-        const hopMessage = await peekBridgeHopMessage(prepared.response, signal);
+        const hopMessage = await peekBridgeHopMessage(prepared.response, headerDeadline.signal);
         const rotated = deps.on429(prepared.response.headers.get("retry-after"), {
           status: prepared.response.status,
           ...(hopMessage !== undefined ? { message: hopMessage } : {}),

@@ -40,16 +40,9 @@ const CONNECT_TIMEOUT_MS = 200_000;
 const STALL_TIMEOUT_MS = 200_000;
 export const DEFAULT_MAX_ROUNDS = 3;
 
-/** Hard-cap JSON is already buffered; a hanging 429 body must not stall rotation. */
-const BRIDGE_HOP_PEEK_TIMEOUT_MS = 25;
-
 async function peekBridgeHopMessage(response: Response, signal?: AbortSignal): Promise<string | undefined> {
   try {
-    const body = await readBoundedResponseBody(response.clone(), {
-      signal,
-      totalTimeoutMs: BRIDGE_HOP_PEEK_TIMEOUT_MS,
-      inactivityTimeoutMs: BRIDGE_HOP_PEEK_TIMEOUT_MS,
-    });
+    const body = await readBoundedResponseBody(response.clone(), { signal });
     return body.displaySafe ? body.text : undefined;
   } catch {
     return undefined;
@@ -464,7 +457,7 @@ export async function runWithImageBridge(deps: ImageBridgeDeps): Promise<Respons
       let prepared = await fetchOnce(adapter);
       // 429/529 key-failover parity with web-search / normal routed path.
       while (isAccountPoolHopStatus(prepared.response.status) && deps.on429) {
-        const hopMessage = await peekBridgeHopMessage(prepared.response, signal);
+        const hopMessage = await peekBridgeHopMessage(prepared.response, headerDeadline.signal);
         const rotated = deps.on429(prepared.response.headers.get("retry-after"), {
           status: prepared.response.status,
           ...(hopMessage !== undefined ? { message: hopMessage } : {}),
