@@ -3,6 +3,7 @@ import {
   activeProviderCooldowns,
   clearProviderCapCooldown,
   expireProviderCooldowns,
+  expireRecordedCooldowns,
   isHardCapMessage,
   parseResetsInMs,
   recordProviderCapCooldown,
@@ -185,6 +186,29 @@ describe("recordProviderCapCooldown (live config)", () => {
     expect(expireProviderCooldowns(config, past + 1)).toBe(true);
     expect(config.providers["cline-pass"]?.disabled).toBeUndefined();
     expect(config.providerCooldowns).toBeUndefined();
+  });
+
+  test("expireRecordedCooldowns still drops expired key windows when a provider window already expired", () => {
+    const now = 2_000;
+    const config = bareConfig({
+      providerCooldowns: {
+        "cline-pass": {
+          until: 1_000,
+          reason: "INFERENCE_CAP_ERROR",
+          message: "cap",
+          source: "upstream-429",
+          disabledProvider: true,
+        },
+      },
+      keyPoolCooldowns: {
+        pooled: { k1: { until: 1_500 } },
+      },
+    });
+    config.providers["cline-pass"].disabled = true;
+    expect(expireRecordedCooldowns(config, now)).toBe(true);
+    expect(config.providerCooldowns).toBeUndefined();
+    expect(config.keyPoolCooldowns).toBeUndefined();
+    expect(config.providers["cline-pass"]?.disabled).toBeUndefined();
   });
 });
 

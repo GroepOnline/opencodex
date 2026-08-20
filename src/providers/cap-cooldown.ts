@@ -107,6 +107,17 @@ export function expireProviderCooldowns(config: OcxConfig, now = Date.now()): bo
 }
 
 /**
+ * Expire provider-level and per-key persisted windows. Always runs both
+ * sweeps: `expireProviderCooldowns(config) || expireKeyPoolCooldowns(config)`
+ * would skip the key-pool bag whenever a provider window already expired.
+ */
+export function expireRecordedCooldowns(config: OcxConfig, now = Date.now()): boolean {
+  const expiredProvider = expireProviderCooldowns(config, now);
+  const expiredKeys = expireKeyPoolCooldowns(config, now);
+  return expiredProvider || expiredKeys;
+}
+
+/**
  * Hand ownership of `providers[name].disabled` back to the operator.
  *
  * `expireProviderCooldowns` only re-enables providers this module disabled, which it tracks
@@ -163,9 +174,7 @@ export function startProviderCooldownSweep(
   const save = opts?.save ?? saveConfigPreservingClaudeCode;
   const timer = setInterval(() => {
     try {
-      const expiredProvider = expireProviderCooldowns(config);
-      const expiredKeys = expireKeyPoolCooldowns(config);
-      if (expiredProvider || expiredKeys) save(config);
+      if (expireRecordedCooldowns(config)) save(config);
     } catch {
       /* best-effort: a failed sweep must never take the proxy down */
     }

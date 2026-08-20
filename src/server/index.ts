@@ -29,10 +29,10 @@ import { isCanonicalOpenAiForwardProvider } from "../providers/openai-tiers";
 import { providerCodexAccountMode } from "../providers/registry";
 import type { StorageCleanupPolicy } from "../types";
 import {
-  expireProviderCooldowns,
+  expireRecordedCooldowns,
   startProviderCooldownSweep,
 } from "../providers/cap-cooldown";
-import { expireKeyPoolCooldowns, hydrateKeyPoolCooldowns } from "../providers/key-failover";
+import { hydrateKeyPoolCooldowns } from "../providers/key-failover";
 import {
   CodexAccountCooldownError,
   cooldownErrorMessage,
@@ -272,7 +272,7 @@ export function startServer(port?: number) {
   const config = runAlibabaRegionStartupMigration(runOpenAiTierStartupMigration(loadConfig()));
   // Availability mutates THIS live object when it records a cap-cooldown.
   hydrateKeyPoolCooldowns(config);
-  if (expireProviderCooldowns(config) || expireKeyPoolCooldowns(config)) saveConfig(config);
+  if (expireRecordedCooldowns(config)) saveConfig(config);
   // Auto-pausing a capped provider is only safe if it auto-recovers without the dashboard.
   startProviderCooldownSweep(config);
   applyProxyEnv(config);
