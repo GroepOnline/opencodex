@@ -100,26 +100,32 @@ if (import.meta.main) {
     // Async spawn with a hard kill boundary, not spawnSync: a wedged test isolate (e.g. a
     // sync wait inside a timed test under CI load) would otherwise sit in total silence until
     // an external job timeout — burning the whole 20-minute CI budget on a hang. Kill here,
-    // name the wedge, and fail fast instead.
-    const SUITE_KILL_AFTER_MS = 15 * 60_000;
-    const child = Bun.spawn(
-      [process.execPath, "test", "--isolate", ...(requestedTests.length > 0 ? requestedTests : ["./tests/"])],
-      {
+    // name the wedge, and retry ONCE: two observed wedges (codex-shim lock handshake,
+    // live-checkout git probe) were load-ordering flukes, not deterministic failures, and the
+    // retry keeps one wedge from failing an otherwise-green 6600-test run.
+    const SUITE_KILL_AFTER_MS = 7 * 60_000;
+    const suiteArgs = [process.execPath, "test", "--isolate", ...(requestedTests.length > 0 ? requestedTests : ["./tests/"])];
+    let exitCode: number | null = null;
+    let killedForHang = false;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const child = Bun.spawn(suiteArgs, {
         env: isolated.env,
         stdin: "inherit",
         stdout: "inherit",
         stderr: "inherit",
-      },
-    );
-    let killedForHang = false;
-    const killer = setTimeout(() => {
-      killedForHang = true;
-      console.error(`[test] suite exceeded ${Math.round(SUITE_KILL_AFTER_MS / 60_000)}m — killing (wedged isolate suspected).`);
-      child.kill(9);
-    }, SUITE_KILL_AFTER_MS);
-    const exitCode = await child.exited;
-    clearTimeout(killer);
-    if (killedForHang) process.exitCode = exitCode ?? 1;
+      });
+      killedForHang = false;
+      const killer = setTimeout(() => {
+        killedForHang = true;
+        console.error(`[test] suite exceeded ${Math.round(SUITE_KILL_AFTER_MS / 60_000)}m — killing (wedged isolate suspected).`);
+        child.kill(9);
+      }, SUITE_KILL_AFTER_MS);
+      exitCode = await child.exited;
+      clearTimeout(killer);
+      if (!killedForHang) break;
+      if (attempt === 1) console.error("[test] retrying once after hang-kill");
+    }
+    if (killedForHang && exitCode === 0) exitCode = 1;
     const elapsedMs = Date.now() - startedAt;
     const elapsedSeconds = Math.round(elapsedMs / 1000);
     if (requestedTests.length === 0 && elapsedMs > 600_000) {
