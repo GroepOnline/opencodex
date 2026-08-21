@@ -1,7 +1,9 @@
 /**
  * Response-cache middleware (Fase D): probe logic for non-streaming routes.
- * Covers: cache disabled → null, streaming opts out, stable key order collapses,
- * hit returns a rebuilt Response with x-cache: HIT, miss stores a 2xx body.
+ * Covers: cache disabled → null, streaming opts out but still yields a re-readable body,
+ * stable key order collapses, hit returns a rebuilt Response with x-cache: HIT, miss stores
+ * a 2xx body. The key invariant: a probe that has consumed the body MUST hand the downstream
+ * handler a rebuilt Request (never bare null with a drained stream).
  */
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import {
@@ -28,12 +30,12 @@ function baseConfig(): OcxConfig {
   } as unknown as OcxConfig;
 }
 
-function makeReq(body: unknown, opts: { stream?: boolean; cacheControl?: string } = {}): Request {
+function makeReq(body: unknown, opts: { stream?: boolean; cacheControl?: string; endpoint?: "responses" | "messages" | "chat-completions" } = {}): Request {
   const payload = { ...(typeof body === "string" ? JSON.parse(body) : body) };
   if (opts.stream) payload.stream = true;
   const headers = new Headers({ "content-type": "application/json" });
   if (opts.cacheControl) headers.set("cache-control", opts.cacheControl);
-  return new Request("http://localhost/v1/messages", {
+  return new Request(`http://localhost${opts.endpoint === "responses" ? "/v1/responses" : opts.endpoint === "chat-completions" ? "/v1/chat/completions" : "/v1/messages"}`, {
     method: "POST",
     headers,
     body: JSON.stringify(payload),
@@ -54,14 +56,22 @@ describe("probeResponseCache", () => {
     expect(await probeResponseCache(req, baseConfig(), "messages")).toBeNull();
   });
 
-  test("returns null for a streaming request (never cached)", async () => {
+  test("streaming request opts out but STILL yields a rebuilt request (no drained body)", async () => {
     installResponseCache({ port: 10100, providers: {}, responseCache: { enabled: true } } as unknown as OcxConfig);
     const req = makeReq({ model: "claude-opus-4-8", messages: [{ role: "user", content: "hi" }] }, { stream: true });
     const probe = await probeResponseCache(req, baseConfig(), "messages");
-    expect(probe).toBeNull();
+    // Must NOT be null: the body was consumed, so the downstream handler needs a rebuilt Request.
+    expect(probe).not.toBeNull();
+    expect("miss" in probe!).toBe(true);
+    const reread = await (probe as { request: Request }).request.text();
+    expect(JSON.parse(reread).stream).toBe(true);
+    // Nothing is stored for a streaming request.
+    (probe as { store: (r: Response) => void }).store(new Response("stream", { status: 200, headers: { "content-type": "text/event-stream" } }));
+    await new Promise(r => setTimeout(r, 0));
+    expect(getInstalledCache()!.size).toBe(0);
   });
 
-  test("returns null when client sends cache-control: no-store", async () => {
+  test("returns null when client sends cache-control: no-store (fast path, body untouched)", async () => {
     installResponseCache({ port: 10100, providers: {}, responseCache: { enabled: true } } as unknown as OcxConfig);
     const req = makeReq(
       { model: "claude-opus-4-8", messages: [{ role: "user", content: "hi" }] },
@@ -122,5 +132,21 @@ describe("probeResponseCache", () => {
       await new Promise(r => setTimeout(r, 0)); // store() resolves asynchronously
       expect(getInstalledCache()!.size).toBe(0);
     }
+  });
+
+  test("endpoint is part of the key: responses vs messages never cross-hit", async () => {
+    installResponseCache({ port: 10100, providers: {}, responseCache: { enabled: true, ttlMs: 10_000 } } as unknown as OcxConfig);
+
+    const responsesReq = makeReq({ model: "claude-opus-4-8", input: "hi" }, { endpoint: "responses" });
+    const messagesReq = makeReq({ model: "claude-opus-4-8", messages: [{ role: "user", content: "hi" }] });
+
+    const pR = await probeResponseCache(responsesReq, baseConfig(), "responses");
+    if ("store" in pR!) {
+      pR.store(new Response(JSON.stringify({ via: "responses" }), { status: 200, headers: { "content-type": "application/json" } }));
+      await new Promise(r => setTimeout(r, 0));
+    }
+    // A messages request with the same model+normalized shape must NOT hit the responses entry.
+    const pM = await probeResponseCache(messagesReq, baseConfig(), "messages");
+    expect("hit" in pM!).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Usage from "./Usage";
+import { KeyPoolHealthPanel, ResponseCachePanel } from "../ops-panels";
 import { useI18n } from "../i18n/shared";
 import { formatTokens } from "../format-tokens";
 import { TrafficColumnHead, TrafficRowCells } from "../traffic-row";
@@ -26,6 +27,16 @@ interface UsageSummary {
     totalTokens: number;
     estimatedCostUsd?: number;
     cacheReadRatio?: number;
+  }>;
+  models?: Array<{
+    provider: string;
+    model: string;
+    requests: number;
+    totalTokens: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    shareRatio?: number;
+    estimatedCostUsd?: number;
   }>;
   days: Array<{ date: string; requests: number; totalTokens?: number }>;
 }
@@ -70,6 +81,7 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
   const [paused, setPaused] = useState(false);
   const [openBon, setOpenBon] = useState<string | null>(null);
   const [analyseOpen, setAnalyseOpen] = useState(target === "usage");
+  const [opsOpen, setOpsOpen] = useState(false);
   const pausedRef = useRef(paused);
   useEffect(() => { pausedRef.current = paused; }, [paused]);
 
@@ -146,6 +158,12 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
 
   const requests30d = summary30d?.summary.requests ?? 0;
   const tokens30d = summary30d?.summary.totalTokens ?? 0;
+
+  /** Per-model breakdown (top 12 by requests, 30d from /api/usage models[]). */
+  const topModellen = useMemo(() => {
+    const ms = summary30d?.models ?? [];
+    return [...ms].sort((a, b) => b.requests - a.requests).slice(0, 12);
+  }, [summary30d]);
 
   return (
     <>
@@ -236,6 +254,45 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
         </div>
       )}
 
+      {topModellen.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <h3 className="depas-viewsub" style={{ marginBottom: 8 }}>{t("vk.modelTableHead")}</h3>
+          <table className="depas-tabel" style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left" }}>{t("vk.modelColModel")}</th>
+                <th style={{ textAlign: "right" }}>{t("vk.modelColRequests")}</th>
+                <th style={{ textAlign: "right" }}>{t("vk.modelColTokens")}</th>
+                <th style={{ textAlign: "right" }}>{t("vk.modelColShare")}</th>
+                <th style={{ textAlign: "right" }}>{t("vk.modelColCost")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {topModellen.map(m => (
+                <tr key={`${m.provider}/${m.model}`}>
+                  <td style={{ fontFamily: "var(--font-code)" }}>
+                    {m.model}
+                    {m.provider && (
+                      <span style={{ color: "var(--gietijzer-60)" }}> · {m.provider}</span>
+                    )}
+                  </td>
+                  <td style={{ textAlign: "right" }}>{m.requests.toLocaleString(locale)}</td>
+                  <td style={{ textAlign: "right" }}>{formatTokens(m.totalTokens, locale)}</td>
+                  <td style={{ textAlign: "right" }}>
+                    {typeof m.shareRatio === "number"
+                      ? `${Math.round(m.shareRatio * 100)}%`
+                      : "—"}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    {typeof m.estimatedCostUsd === "number" ? `€${(m.estimatedCostUsd * 0.92).toFixed(2)}` : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
         <div className="usage-segmented" role="group" aria-label={t("vk.filterAria")}>
           <button
@@ -310,6 +367,29 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
             </div>
           );
         })}
+      </div>
+
+      <div style={{ marginTop: 48 }}>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => setOpsOpen(open => !open)}
+          aria-expanded={opsOpen}
+        >
+          {opsOpen ? t("vk.hideOps") : t("vk.showOps")}
+        </button>
+        {opsOpen && (
+          <div style={{ marginTop: 16, display: "grid", gap: 32 }}>
+            <section aria-label={t("ops.cacheAria")}>
+              <h3 className="depas-viewsub" style={{ marginBottom: 8 }}>{t("ops.cacheHead")}</h3>
+              <ResponseCachePanel apiBase={apiBase} />
+            </section>
+            <section aria-label={t("ops.poolHead")}>
+              <h3 className="depas-viewsub" style={{ marginBottom: 8 }}>{t("ops.poolHead")}</h3>
+              <KeyPoolHealthPanel apiBase={apiBase} />
+            </section>
+          </div>
+        )}
       </div>
 
       <div style={{ marginTop: 48 }}>

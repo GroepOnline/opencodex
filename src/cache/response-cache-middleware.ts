@@ -1,22 +1,30 @@
 /**
  * Server-side response-cache middleware (Fase D).
  *
- * Wires the per-provider/model KV `ResponseCache` into the three non-streaming POST routes
- * (/v1/responses, /v1/messages, /v1/chat/completions). Streaming requests are never cached:
- * we only store a fully-buffered 2xx JSON body, and we read the original body once to decide.
+ * Wires the per-provider/model/endpoint KV `ResponseCache` into the three non-streaming POST
+ * routes (/v1/responses, /v1/messages, /v1/chat/completions). Streaming requests are never
+ * cached: we only store a fully-buffered 2xx JSON body, and we read the original body once to
+ * decide whether to cache.
  *
  * Usage in src/server/index.ts:
  *   await installResponseCache(responseCacheFromConfig(config));
  *   ...
- *   const probe = cacheEnabled ? await probeResponseCache(req, config) : null;
+ *   const probe = cacheEnabled ? await probeResponseCache(req, config, "responses") : null;
  *   if (probe?.hit) return withCors(probe.hit, req, config);
  *   const workingReq = probe ? probe.request : req;
  *   const response = await handleX(workingReq, ...);
  *   if (probe?.store) probe.store(response);
  *   return withCors(response, ...);
+ *
+ * CRITICAL: every early-return path that has ALREADY consumed `req.text()` must return a
+ * `CacheMiss` carrying a REBUILT Request (with the body re-attached), never bare `null`. A bare
+ * `null` would hand the downstream handler the original `Request` whose body stream is already
+ * drained, causing the handler to receive an empty body. The only paths that may return `null`
+ * are the ones that inspect headers/method BEFORE touching the body — there the original Request
+ * is still intact and safe to pass through unchanged.
  */
 
-import { ResponseCache, normalizeRequestBody, requestOptsOutOfCache, responseCacheFromConfig, type CacheEntry } from "./kv-cache";
+import { ResponseCache, normalizeRequestBody, requestOptsOutOfCache, responseCacheFromConfig } from "./kv-cache";
 import { routeModel } from "../router";
 import type { OcxConfig } from "../types";
 
@@ -28,7 +36,7 @@ export async function installResponseCache(config: OcxConfig, configDir?: string
   activeCache = cache;
   if (cache.enabled) {
     cache.startSweep();
-    console.warn(`[kv-cache] response cache ENABLED (ttl=${cache.ttlMs}ms, max=${cache.maxEntries})`);
+    console.warn(`[kv-cache] response cache ENABLED (ttl=${cache.ttlMs}ms, max=${cache.maxEntries}, persist=${cache.persistEnabled})`);
   }
   return cache.enabled ? cache : null;
 }
@@ -48,17 +56,46 @@ export interface CacheMiss {
   provider: string;
   model: string;
   normalizedBody: string;
+  endpoint: "responses" | "messages" | "chat-completions";
   /** Store a 2xx non-streaming response into the cache (no-op if not cacheable). */
   store: (response: Response) => void;
 }
 
 export type CacheProbe = CacheHit | CacheMiss | null;
 
+/** No-op CacheMiss for the "cache disabled or not cacheable" fast paths (body untouched). */
+function disabledProbe(): null {
+  return null;
+}
+
+/**
+ * Build a CacheMiss that does NOT store anything (used when the request is technically cacheable
+ * but we cannot route it, or the upstream response is not storable). It still carries a rebuilt
+ * Request so the downstream handler gets a re-readable body.
+ */
+function noStoreMiss(
+  rebuilt: Request,
+  provider: string | null,
+  model: string | null,
+  normalized: string,
+  endpoint: "responses" | "messages" | "chat-completions",
+): CacheMiss {
+  return {
+    miss: true,
+    request: rebuilt,
+    provider: provider ?? "",
+    model: model ?? "",
+    normalizedBody: normalized,
+    endpoint,
+    store: () => {},
+  };
+}
+
 /**
  * Probe the cache for a non-streaming request. Returns:
  * - a `CacheHit` (Response) on a cache hit,
  * - a `CacheMiss` carrying a rebuilt Request when the cache is enabled but cold,
- * - null when the cache is disabled / the request is not cacheable.
+ * - null when the cache is disabled / the request is not cacheable AND its body is still intact.
  */
 export async function probeResponseCache(
   req: Request,
@@ -66,82 +103,111 @@ export async function probeResponseCache(
   endpoint: "responses" | "messages" | "chat-completions",
 ): Promise<CacheProbe> {
   const cache = activeCache;
-  if (!cache || !cache.enabled) return null;
-  if (req.method !== "POST") return null;
+  // Fast path: cache disabled, or request method not POST. Body untouched, pass through.
+  if (!cache || !cache.enabled) return disabledProbe();
+  if (req.method !== "POST") return disabledProbe();
 
-  // Honor an explicit client-side opt-out (Cache-Control: no-store).
+  // Honor an explicit client-side opt-out (Cache-Control: no-store). Body untouched.
   const cc = req.headers.get("cache-control") ?? "";
-  if (/\bno-store\b/i.test(cc)) return null;
+  if (/\bno-store\b/i.test(cc)) return disabledProbe();
 
+  // Anything below consumes the body. From here on we MUST return a rebuilt Request one way or
+  // another, so the downstream handler never sees a drained stream.
   let raw: string;
   try {
     raw = await req.text();
   } catch {
-    return null;
+    // Body already drained and unreadable; nothing we can hand downstream. Signal a miss with a
+    // synthetic empty body — the handler will fail the same way it would have reading the stream.
+    return noStoreMiss(
+      new Request(req.url, { method: req.method, headers: req.headers, body: "" }),
+      null,
+      null,
+      "",
+      endpoint,
+    );
   }
 
   let parsed: unknown;
   try {
     parsed = raw.length ? JSON.parse(raw) : {};
   } catch {
-    return null;
+    return noStoreMiss(rebuild(req, raw), null, null, "", endpoint);
   }
 
   // Never cache streaming requests: we only ever replay fully-buffered bodies, and a
   // streamed SSE body is unsafe to dedupe / replay byte-for-byte.
   if (requestOptsOutOfCache(parsed)) {
-    return null;
+    return noStoreMiss(rebuild(req, raw), null, null, "", endpoint);
   }
 
   const modelId = extractModelId(parsed, endpoint);
-  if (!modelId) return null;
+  if (!modelId) return noStoreMiss(rebuild(req, raw), null, null, "", endpoint);
 
   let route: ReturnType<typeof routeModel>;
   try {
     route = routeModel(config, modelId);
   } catch {
-    return null;
+    return noStoreMiss(rebuild(req, raw), null, modelId, "", endpoint);
   }
-  if (!route?.providerName) return null;
+  if (!route?.providerName) return noStoreMiss(rebuild(req, raw), null, modelId, "", endpoint);
 
   const normalized = normalizeRequestBody(parsed);
-  if (normalized === null) return null;
+  if (normalized === null) return noStoreMiss(rebuild(req, raw), route.providerName, route.modelId, "", endpoint);
 
-  const hit = cache.get(route.providerName, route.modelId, normalized);
+  const hit = cache.get(route.providerName, route.modelId, normalized, endpoint);
   if (hit) {
     const headers = new Headers({
       "content-type": hit.contentType,
       "x-cache": "HIT",
       "cache-control": "no-store",
     });
-    console.warn(`[kv-cache] HIT ${ResponseCache.keyPrefix(route.providerName, route.modelId, normalized)} (${hit.body.length}B)`);
+    console.warn(
+      `[kv-cache] HIT ${ResponseCache.keyPrefix(route.providerName, route.modelId, normalized, endpoint)} (${hit.body.length}B)`,
+    );
     return { hit: new Response(hit.body, { status: 200, headers }) };
   }
 
   // Rebuild a Request with the re-readable body so the downstream handler can read it again.
-  const rebuilt = new Request(req.url, {
-    method: req.method,
-    headers: req.headers,
-    body: raw,
-  });
+  const rebuilt = rebuild(req, raw);
 
   const store = (response: Response) => {
     if (response.status < 200 || response.status >= 300) return;
     const ct = response.headers.get("content-type") ?? "application/json";
     if (ct.includes("text/event-stream")) return; // never cache a streamed body
+    // Never cache a response that carries its own content-encoding: the clone().text() below
+    // would hand us the still-compressed bytes, and we'd replay garbage to the client.
+    if (response.headers.get("content-encoding")) return;
     void response
       .clone()
       .text()
       .then((body) => {
         if (!body) return;
-        cache.set(route.providerName, route.modelId, normalized, body, ct);
+        cache.set(route.providerName, route.modelId, normalized, body, ct, endpoint);
       })
       .catch(() => {
         /* clone read failure is non-fatal */
       });
   };
 
-  return { miss: true, request: rebuilt, provider: route.providerName, model: route.modelId, normalizedBody: normalized, store };
+  return {
+    miss: true,
+    request: rebuilt,
+    provider: route.providerName,
+    model: route.modelId,
+    normalizedBody: normalized,
+    endpoint,
+    store,
+  };
+}
+
+/** Rebuild a Request carrying `raw` as a re-readable body. */
+function rebuild(req: Request, raw: string): Request {
+  return new Request(req.url, {
+    method: req.method,
+    headers: req.headers,
+    body: raw,
+  });
 }
 
 /** Pull the model id from a parsed request body, per wire protocol. */
@@ -164,5 +230,3 @@ export function clearResponseCache(): number {
   cache.clear();
   return n;
 }
-
-export type { CacheEntry };
