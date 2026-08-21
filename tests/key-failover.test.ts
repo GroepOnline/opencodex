@@ -3,6 +3,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createOpenAIChatAdapter } from "../src/adapters/openai-chat";
+import { createAnthropicAdapter } from "../src/adapters/anthropic";
+import type { AdapterRateLimitInfo } from "../src/adapters/base";
+import { rateLimitForFailure } from "../src/availability/rate-limit-parse";
 import {
   activateUncooledApiKey,
   clearKeyCooldowns,
@@ -122,6 +125,45 @@ describe("rotateKeyOn429", () => {
     // Ordinary 429/529 cooldowns are now persisted too (not just hard caps), so a proxy restart
     // mid-rate-limit respects the in-flight cooldown instead of re-hitting the exhausted key.
     expect(config.keyPoolCooldowns?.p?.k1?.until).toBe(now + 60_000);
+  });
+
+  test("provider-parsed rateLimit overrides cooldown math (Anthropic spend cap → long cooldown)", () => {
+    const config = makeConfig({ apiKey: "key-alpha-000111222333", apiKeyPool: pool3() });
+    const now = 1_000_000;
+    // Anthropic spend cap: 429, no retry-after, window exhausted → hardCap flag.
+    const spendCap: AdapterRateLimitInfo = { retryable: false, hardCap: true, retryAfterSec: null, requestsRemaining: 0, tokensRemaining: 0 };
+    rotateKeyOn429(config, "p", null, now, "key-alpha-000111222333", undefined, 429, undefined, spendCap);
+    // Hard caps cool for the long window, not the 60s default.
+    expect(getKeyCooldownUntil("p", "k1", now)).toBe(now + 24 * 60 * 60 * 1000);
+    expect(config.providers.p.apiKey).toBe("key-beta-444555666777");
+  });
+
+  test("provider-parsed retryAfterSec is honored over the generic default", () => {
+    const config = makeConfig({ apiKey: "key-alpha-000111222333", apiKeyPool: pool3() });
+    const now = 1_000_000;
+    // Provider supplies its own window (e.g. anthropic-ratelimit reset).
+    const rl: AdapterRateLimitInfo = { retryable: true, retryAfterSec: 240, requestsRemaining: 3 };
+    rotateKeyOn429(config, "p", null, now, "key-alpha-000111222333", undefined, 429, undefined, rl);
+    expect(getKeyCooldownUntil("p", "k1", now)).toBe(now + 240_000);
+  });
+
+  test("rateLimitForFailure reads a real upstream Response (Anthropic spend cap) like core.ts does", () => {
+    const config = makeConfig({ apiKey: "key-alpha-000111222333", apiKeyPool: pool3() });
+    const now = 1_000_000;
+    const upstream = new Response("{}", {
+      status: 429,
+      headers: {
+        "anthropic-ratelimit-requests-remaining": "0",
+        "anthropic-ratelimit-tokens-remaining": "0",
+      },
+    });
+    const adapter = createAnthropicAdapter({ adapter: "anthropic", baseUrl: "https://api.anthropic.com", models: ["claude-opus-4-8"] } as OcxProviderConfig);
+    // Mirrors the line in core.ts: rateLimitForFailure(providerName, status, headers, activeAdapter)
+    const rl = rateLimitForFailure("anthropic", upstream.status, upstream.headers, adapter);
+    expect(rl?.hardCap).toBe(true);
+    expect(rl?.retryable).toBe(false);
+    rotateKeyOn429(config, "p", null, now, "key-alpha-000111222333", undefined, 429, undefined, rl);
+    expect(getKeyCooldownUntil("p", "k1", now)).toBe(now + 24 * 60 * 60 * 1000);
   });
 
   test("hydrates persisted hard-cap key windows after a process restart", () => {

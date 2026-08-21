@@ -10,6 +10,14 @@ export {
   type AvailabilityDecision,
 } from "./classify";
 export {
+  rateLimitForFailure,
+  parseAnthropicRateLimit,
+  parseOpenAIRateLimit,
+  parseGenericRateLimit,
+  parseProviderRateLimit,
+  parseRetryAfterToSec,
+} from "./rate-limit-parse";
+export {
   selectHopChain,
   canHopNativeClaudePierce,
   type HopChain,

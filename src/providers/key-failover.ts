@@ -9,6 +9,7 @@
  * Modelled after src/codex/routing.ts cooldown logic but scoped to plain API-key pools.
  */
 import { resolveEnvValue, saveConfigPreservingClaudeCode } from "../config";
+import type { AdapterRateLimitInfo } from "../adapters/base";
 import type { OcxConfig, OcxProviderConfig } from "../types";
 import { hasKeyPoolFailover } from "./api-keys";
 import { isHardCapMessage, parseResetsInMs } from "./cap-cooldown";
@@ -54,7 +55,20 @@ function cooldownMsForFailure(
   retryAfterHeader: string | null | undefined,
   message: string | undefined,
   now: number,
+  rateLimit?: AdapterRateLimitInfo | null,
 ): number {
+  // Provider-parsed signal wins when present (Fase C): a per-account spend cap with NO
+  // retry-after must cool the key for a long window (it will not recover by rotating), and
+  // a provider-supplied retry-after (anthropic-ratelimit reset / openai x-ratelimit) should
+  // be honored over the generic default.
+  if (rateLimit) {
+    if (rateLimit.hardCap) {
+      return HARD_CAP_DEFAULT_COOLDOWN_MS;
+    }
+    if (rateLimit.retryAfterSec != null) {
+      return Math.min(Math.max(rateLimit.retryAfterSec * 1000, 1), MAX_COOLDOWN_MS);
+    }
+  }
   if (isHardCapMessage(status, message)) {
     const until = parseResetsInMs(message || "", now);
     if (until !== undefined) {
@@ -134,10 +148,11 @@ function applyFailedKeyCooldown(
   message: string | undefined,
   status: number,
   now: number,
+  rateLimit?: AdapterRateLimitInfo | null,
 ): { currentEntry: NonNullable<OcxProviderConfig["apiKeyPool"]>[number] | undefined; persistedHardCap: boolean } {
   const currentEntry = poolEntryForKey(pool, failedKey);
   if (!currentEntry) return { currentEntry: undefined, persistedHardCap: false };
-  const cooldownMs = cooldownMsForFailure(status, retryAfterHeader, message, now);
+  const cooldownMs = cooldownMsForFailure(status, retryAfterHeader, message, now, rateLimit);
   const until = now + cooldownMs;
   keyCooldowns.set(cooldownKey(providerName, currentEntry.id), {
     cooldownUntil: until,
@@ -192,6 +207,7 @@ export function rotateKeyOn429(
   message?: string,
   status = 429,
   persistConfig?: OcxConfig,
+  rateLimit?: AdapterRateLimitInfo | null,
 ): OcxProviderConfig | null {
   const provider = config.providers[providerName];
   if (!provider) return null;
@@ -213,6 +229,7 @@ export function rotateKeyOn429(
     message,
     status,
     now,
+    rateLimit,
   );
   // Every cooldown is now persisted, so always save on a failure (the active key rotated,
   // and any cooldown entry was written to config.keyPoolCooldowns).
@@ -268,6 +285,7 @@ export function coolAttemptedKey(
     options.message,
     options.status ?? 402,
     now,
+    options.rateLimit,
   );
   // Every cooldown is now persisted; save so a restart respects the cooled key.
   saveConfigRoot(config, options.persistConfig);
@@ -281,6 +299,8 @@ interface RotateProviderTransportOptions {
   promptCacheKey?: string;
   message?: string;
   status?: number;
+  /** Provider-parsed rate-limit signal (from the adapter). Overrides generic cooldown math. */
+  rateLimit?: AdapterRateLimitInfo | null;
   /** Live server config for disk writes when the working config is a routing clone. */
   persistConfig?: OcxConfig;
 }
@@ -315,6 +335,7 @@ export function rotateProviderTransportOn429(
     options.message,
     options.status,
     options.persistConfig,
+    options.rateLimit,
   );
   return rotated
     ? resolveProviderTransport(

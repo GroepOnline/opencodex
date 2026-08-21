@@ -241,12 +241,14 @@ export interface ImageBridgeDeps {
   onUsage?: (usage: OcxUsage | undefined) => void;
   /**
    * Optional 429/529 key-failover for the routed (non-xAI) model. Return a rebuilt adapter
-   * for the rotated key, or null when the pool is exhausted. `hop` carries the status and
-   * a bounded peek of the upstream body so Availability can apply hard-cap windows.
+   * for the rotated key, or null when the pool is exhausted. `hop` carries the status, a
+   * bounded peek of the upstream body and the response HEADERS so Availability can apply
+   * hard-cap windows and provider-specific rate-limit cooldowns (Fase C) without any
+   * additional body read.
    */
   on429?: (
     retryAfterHeader: string | null,
-    hop?: { status: number; message?: string },
+    hop?: { status: number; message?: string; headers?: Headers },
   ) => ProviderAdapter | null;
   /** Called when the bridged Responses stream completes (parity with runTurn / routed paths). */
   onCompletedResponse?: (response: Record<string, unknown>, providerState?: OcxProviderContinuationState) => void;
@@ -468,6 +470,8 @@ export async function runWithImageBridge(deps: ImageBridgeDeps): Promise<Respons
         const rotated = deps.on429(prepared.response.headers.get("retry-after"), {
           status: prepared.response.status,
           ...(hopMessage !== undefined ? { message: hopMessage } : {}),
+          // Fase C: provider-specific rate-limit parsing reads these without touching the body.
+          headers: prepared.response.headers,
         });
         if (!rotated) break;
         try { void prepared.response.body?.cancel().catch(() => {}); } catch { /* already closed */ }

@@ -1,5 +1,6 @@
 import { isHardCapMessage, recordProviderCapCooldown, type ProviderCapCooldown } from "../providers/cap-cooldown";
 import { coolAttemptedKey, hasKeyPoolFailover, pickUncooledApiKey, rotateProviderTransportOn429 } from "../providers/key-failover";
+import type { AdapterRateLimitInfo } from "../adapters/base";
 import type { OcxConfig, OcxProviderConfig } from "../types";
 import { resolveEnvValue, saveConfigPreservingClaudeCode } from "../config";
 import type { OcxProviderTransport } from "../providers/xai-transport";
@@ -18,6 +19,8 @@ export type ResolveOutcomeInput = {
   now?: number;
   message?: string;
   save?: boolean | ((config: OcxConfig) => void);
+  /** Provider-parsed rate-limit signal (from the adapter), threaded into cooldown math. */
+  rateLimit?: AdapterRateLimitInfo | null;
 };
 
 function capPersistSave(
@@ -111,6 +114,7 @@ export function resolveOutcome(input: ResolveOutcomeInput): OcxProviderTransport
           promptCacheKey: input.promptCacheKey,
           message: input.message,
           status: input.status,
+          rateLimit: input.rateLimit,
           persistConfig: input.persistConfig,
         },
       );
@@ -125,6 +129,7 @@ export function resolveOutcome(input: ResolveOutcomeInput): OcxProviderTransport
         attemptedKey: input.attemptedKey,
         message: input.message,
         status: input.status,
+        rateLimit: input.rateLimit,
         persistConfig: input.persistConfig,
       });
       if (allCooled) pausePooledProviderIfHardCapped(input);

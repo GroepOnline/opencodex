@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import type { IncomingMeta, ProviderAdapter } from "./base";
+import type { AdapterRateLimitInfo, IncomingMeta, ProviderAdapter } from "./base";
+import { parseOpenAIRateLimit } from "../availability/rate-limit-parse";
 import { namespacedToolName, type AdapterEvent, type OcxParsedRequest, type OcxProviderConfig, type OcxUsage } from "../types";
 import { catalogModelSupportsReasoningSummaries } from "../codex/catalog";
 import { COMPACT_PROMPT, decodeCompactionSummary, SUMMARY_PREFIX } from "../responses/compaction";
@@ -1016,6 +1017,11 @@ export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): 
       }
       const usage = usageFromResponsesPayload(payload);
       return [{ type: "text_delta", text }, { type: "done", ...(usage ? { usage } : {}) }];
+    },
+
+    // Fase C: teach the failover core OpenAI-style rate-limit signaling (x-ratelimit-* + retry-after).
+    rateLimitFromHeaders(status: number, headers: Headers): AdapterRateLimitInfo | null {
+      return parseOpenAIRateLimit(status, headers);
     },
   };
 }

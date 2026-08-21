@@ -43,6 +43,7 @@ import {
   shouldDeferCodexResetDerivedCooldown,
 } from "../../availability";
 import { isInjectionDebugEnabled } from "../../lib/debug-settings";
+import { rateLimitForFailure } from "../../availability/rate-limit-parse";
 import { injectionDebugLog } from "../../lib/injection-debug-log";
 import { resolveClientRetryAfter } from "../../lib/retry-after";
 import { modelInList, namespacedToolName } from "../../types";
@@ -1991,6 +1992,10 @@ export async function handleResponses(
         }
       },
       on429: (retryAfter, hop) => {
+        // Fase C: provider-specific rate-limit signal parsed from the hop HEADERS (no body read).
+        const hopRateLimit = hop?.headers
+          ? rateLimitForFailure(route.providerName, hop.status ?? 429, hop.headers, activeAdapter)
+          : null;
         const rotated = resolveOutcome({
           config,
           persistConfig,
@@ -2002,6 +2007,7 @@ export async function handleResponses(
           attemptedKey: route.provider.apiKey,
           promptCacheKey: parsed.options.promptCacheKey,
           message: hop?.message,
+          rateLimit: hopRateLimit,
         });
         if (!rotated) return null;
         route.provider = rotated;
@@ -2066,6 +2072,10 @@ export async function handleResponses(
       routedModelStallTimeoutMs: wsPlan.routedModelStallTimeoutMs,
       stallTimeoutSec: wsPlan.stallTimeoutSec,
       on429: (retryAfter, hop) => {
+        // Fase C: provider-specific rate-limit signal parsed from the hop HEADERS (no body read).
+        const hopRateLimit = hop?.headers
+          ? rateLimitForFailure(route.providerName, hop.status ?? 429, hop.headers, activeAdapter)
+          : null;
         const rotated = resolveOutcome({
           config,
           persistConfig,
@@ -2077,6 +2087,7 @@ export async function handleResponses(
           attemptedKey: route.provider.apiKey,
           promptCacheKey: parsed.options.promptCacheKey,
           message: hop?.message,
+          rateLimit: hopRateLimit,
         });
         if (!rotated) return null;
         route.provider = rotated;
@@ -2485,6 +2496,15 @@ export async function handleResponses(
         && await canRotateOrCoolFailure(upstreamResponse)
       ) {
         const hopMessage = await peekUpstreamErrorText(upstreamResponse, options.abortSignal);
+        // Fase C: read the provider-specific rate-limit signal (anthropic-ratelimit-*, OpenAI
+        // x-ratelimit-*, spend-cap vs window exhaustion) so the cooldown math uses the real
+        // upstream signal instead of a generic 429 default.
+        const hopRateLimit = rateLimitForFailure(
+          route.providerName,
+          upstreamResponse.status,
+          upstreamResponse.headers,
+          activeAdapter,
+        );
         const rotated = resolveOutcome({
           config,
           persistConfig,
@@ -2496,6 +2516,7 @@ export async function handleResponses(
           attemptedKey: route.provider.apiKey,
           promptCacheKey: parsed.options.promptCacheKey,
           message: hopMessage,
+          rateLimit: hopRateLimit,
         });
         if (!rotated) break;
         // Release the failed response's socket before retrying; unread bodies otherwise linger

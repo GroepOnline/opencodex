@@ -253,12 +253,13 @@ export interface WebSearchLoopDeps {
   /**
    * 429/529 key-failover hook: rotate the provider's active pool key and return a rebuilt
    * adapter, or null when the pool is exhausted (same semantics as the normal routed path).
-   * `hop` carries the status and a bounded peek of the upstream body so Availability can
-   * apply hard-cap windows.
+   * `hop` carries the status, a bounded peek of the upstream body and the response HEADERS so
+   * Availability can apply hard-cap windows and provider-specific rate-limit cooldowns
+   * (Fase C) without any additional body read.
    */
   on429?: (
     retryAfterHeader: string | null,
-    hop?: { status: number; message?: string },
+    hop?: { status: number; message?: string; headers?: Headers },
   ) => ProviderAdapter | null;
 }
 
@@ -372,6 +373,8 @@ export async function runWithWebSearch(deps: WebSearchLoopDeps): Promise<Respons
         const rotated = deps.on429(prepared.response.headers.get("retry-after"), {
           status: prepared.response.status,
           ...(hopMessage !== undefined ? { message: hopMessage } : {}),
+          // Fase C: provider-specific rate-limit parsing reads these without touching the body.
+          headers: prepared.response.headers,
         });
         if (!rotated) break;
         // Never let a broken body's cancel promise outlive the cumulative header deadline. Observe

@@ -1,4 +1,5 @@
-import type { AdapterRequest, ProviderAdapter } from "./base";
+import type { AdapterRateLimitInfo, AdapterRequest, ProviderAdapter } from "./base";
+import { parseOpenAIRateLimit } from "../availability/rate-limit-parse";
 import type { AdapterEvent, OcxAssistantMessage, OcxContentPart, OcxMessage, OcxParsedRequest, OcxProviderConfig, OcxTextContent, OcxThinkingContent, OcxToolCall, OcxUsage } from "../types";
 import { isAllowedToolChoice, modelInList, namespacedToolName, resolveToolChoiceWireName, toolAllowedByChoice } from "../types";
 import { mapReasoningEffort, modelRecordValue } from "../reasoning-effort";
@@ -952,6 +953,11 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
         usage: usageFromOpenAIChat(usage),
       });
       return events;
+    },
+
+    // Fase C: teach the failover core OpenAI-style rate-limit signaling (x-ratelimit-* + retry-after).
+    rateLimitFromHeaders(status: number, headers: Headers): AdapterRateLimitInfo | null {
+      return parseOpenAIRateLimit(status, headers);
     },
   };
 }
