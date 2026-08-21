@@ -97,7 +97,12 @@ if (import.meta.main) {
       );
     }
     const startedAt = Date.now();
-    const child = Bun.spawnSync(
+    // Async spawn with a hard kill boundary, not spawnSync: a wedged test isolate (e.g. a
+    // sync wait inside a timed test under CI load) would otherwise sit in total silence until
+    // an external job timeout — burning the whole 20-minute CI budget on a hang. Kill here,
+    // name the wedge, and fail fast instead.
+    const SUITE_KILL_AFTER_MS = 15 * 60_000;
+    const child = Bun.spawn(
       [process.execPath, "test", "--isolate", ...(requestedTests.length > 0 ? requestedTests : ["./tests/"])],
       {
         env: isolated.env,
@@ -106,6 +111,15 @@ if (import.meta.main) {
         stderr: "inherit",
       },
     );
+    let killedForHang = false;
+    const killer = setTimeout(() => {
+      killedForHang = true;
+      console.error(`[test] suite exceeded ${Math.round(SUITE_KILL_AFTER_MS / 60_000)}m — killing (wedged isolate suspected).`);
+      child.kill(9);
+    }, SUITE_KILL_AFTER_MS);
+    const exitCode = await child.exited;
+    clearTimeout(killer);
+    if (killedForHang) process.exitCode = exitCode ?? 1;
     const elapsedMs = Date.now() - startedAt;
     const elapsedSeconds = Math.round(elapsedMs / 1000);
     if (requestedTests.length === 0 && elapsedMs > 600_000) {
@@ -114,7 +128,7 @@ if (import.meta.main) {
         + "Check for another test runner, a busy CPU, or a test that started polling something real.",
       );
     }
-    process.exitCode = child.exitCode ?? 1;
+    process.exitCode = exitCode ?? 1;
   } finally {
     isolated.cleanup();
   }
