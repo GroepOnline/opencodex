@@ -352,7 +352,7 @@ function systemdOutputTarget(value: string): string {
 }
 
 function sh(cmd: string): string {
-  return execSync(cmd, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  return execSync(cmd, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], timeout: 15_000 }).trim();
 }
 
 /**
@@ -1509,12 +1509,12 @@ function ensureUserBusEnv(): void {
 }
 
 function isSystemd(): boolean {
-  try { execSync("systemctl --version", { stdio: "pipe" }); } catch { return false; }
+  try { execSync("systemctl --version", { stdio: "pipe", timeout: 15_000 }); } catch { return false; }
   ensureUserBusEnv();
   // Prefer the user-bus probe; but an SSH session without a user D-Bus fails it even when systemd
   // is present (F9). Fall back to the per-user runtime dir existing — a strong signal the user
   // systemd instance is available — so a first-time `ocx service install` isn't wrongly refused.
-  try { execSync("systemctl --user show-environment", { stdio: "pipe" }); return true; } catch { /* no user bus in this session */ }
+  try { execSync("systemctl --user show-environment", { stdio: "pipe", timeout: 15_000 }); return true; } catch { /* no user bus in this session */ }
   return userRuntimeDir() !== null;
 }
 

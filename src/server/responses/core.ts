@@ -2869,53 +2869,123 @@ export async function handleResponses(
   };
 
   if (parsed.stream) {
-    const initialEventStream = activeAdapter.parseStream(upstreamResponse);
-    const eventStream = terminalGuardEnabled
-      ? guardTerminalEventStream({
-          parsed,
-          firstEvents: initialEventStream,
-          adapterName: activeAdapter.name,
-          maxAutoContinuations: 1,
-          continuation: fetchTerminalGuardContinuation,
-        })
-      : initialEventStream;
-    const { toolNsMap, freeformToolNames, toolSearchToolNames } = buildToolBridgeMaps(parsed);
-    const sseStream = bridgeToResponsesSSE(
-      eventStream, parsed.modelId, toolNsMap, freeformToolNames, toolSearchToolNames,
-      () => upstream.abort(), 2_000,
-      {
-        ...(options.forceEmptyResponseId ? { responseId: "" } : {}),
-        stallTimeoutSec: config.stallTimeoutSec,
-        hideThinkingSummary: parsed.options.hideThinkingSummary,
-        ...(options.onFirstOutput ? { onFirstOutput: options.onFirstOutput } : {}),
-        ...(routedCompaction ? { compaction: true } : {}),
-        onUsage: usage => {
-          // Raw adapter usage, pre wire-normalization (see the runTurn branch above).
-          logCtx.usageFromBridge = true;
-          if (usage) {
-            logCtx.usage = usage;
-            if (logCtx.activeAttempt) logCtx.activeAttempt.usage = usage;
-          }
+    // A mid-stream death — the upstream socket drops after the 200 headers but before the
+    // first SSE frame (the classic stale keep-alive reset shape) — surfaces here as a leading
+    // adapter error. The pre-headers guards (transient-5xx / reset retry at fetch time) cannot
+    // recover it: the response already resolved and the failure lands during body read. Nothing
+    // has been written to the client wire yet, though, so a pre-commit failure can be retried
+    // once through the same fetch path as the initial attempt. A combo attempt does not retry
+    // here: it returns 502 so the hop engine cools this target and hops to the next one.
+    const refetchFreshResponse = async (): Promise<Response> => {
+      noteAttemptSend(logCtx.activeAttempt, inputTokenEstimate, "connection-reset");
+      if (activeAdapter.fetchResponse) {
+        return activeAdapter.fetchResponse(request, {
+          abortSignal: upstream.signal,
+          timeoutMs: connectMs,
+          skip429Retry: antigravityPoolOwns429,
+          stream: parsed.stream,
+          ...(adapterOwnsAttemptBudget(activeAdapter.name)
+            ? { attemptBudget: options.attemptBudget }
+            : {}),
+        });
+      }
+      return fetchWithResetRetry(
+        recovery => {
+          noteAttemptSend(logCtx.activeAttempt, inputTokenEstimate, recovery);
+          return fetchWithHeaderTimeout(
+            request.url,
+            applyUpstreamRecoveryInit({
+              method: request.method,
+              headers: request.headers,
+              body: request.body,
+            }, recovery),
+            upstream.signal,
+            connectMs,
+            parsed.stream,
+            providerFetch(route.provider),
+          );
         },
-        // Compaction turns must NOT enter the continuation cache: _rawBody still holds the full
-        // PRE-compaction history, and a later previous_response_id expansion would rehydrate the
-        // giant stale chain Codex just replaced.
-        ...(routedCompaction ? {} : {
-          onCompletedResponse: (response: Record<string, unknown>, providerState?: OcxProviderContinuationState) =>
-            rememberResponseState(
-              parsed._rawBody,
-              response,
-              continuationStateForResponse(providerState),
-              activeAdapter.name === "kiro" ? { force: true } : undefined,
-            ),
-        }),
-      },
-    );
-    const bridgeTurnAc = new AbortController();
-    const trackedSse = trackStreamLifetime(sseStream, bridgeTurnAc, cleanupUpstreamAbort);
-    return new Response(trackedSse, {
-      headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no" },
-    });
+        {
+          abortSignal: upstream.signal,
+          label: safeHostLabel(request.url),
+          attemptBudget: options.attemptBudget,
+        },
+      );
+    };
+    let streamAttempt = 0;
+    while (true) {
+      streamAttempt += 1;
+      const initialEventStream = activeAdapter.parseStream(upstreamResponse);
+      const preflight = await preflightAdapterEvents(initialEventStream);
+      if ((preflight.error || preflight.empty) && streamAttempt === 1 && !options.abortSignal?.aborted) {
+        try { void upstreamResponse.body?.cancel?.().catch(() => {}); } catch { /* already closed */ }
+        if (options.comboAttempt) {
+          cleanupUpstreamAbort();
+          return formatErrorResponse(502, "upstream_error", "Provider stream ended before its first event");
+        }
+        // Single transparent retry on a fresh connection; the request body is a replayable
+        // string. If the retry also fails pre-commit, the leading error streams to the client.
+        try {
+          upstreamResponse = await refetchFreshResponse();
+        } catch (err) {
+          cleanupUpstreamAbort();
+          upstream.abort();
+          if (options.abortSignal?.aborted) return clientCancelledResponse();
+          const msg = describeUpstreamConnectFailure(err, connectMs);
+          return formatErrorResponse(502, "upstream_error", msg);
+        }
+        cancelBodyOnAbort(upstreamResponse.body, upstream.signal);
+        continue;
+      }
+      if (preflight.error || preflight.empty) cleanupUpstreamAbort();
+      const committedStream = preflight.stream;
+      const eventStream = terminalGuardEnabled
+        ? guardTerminalEventStream({
+            parsed,
+            firstEvents: committedStream,
+            adapterName: activeAdapter.name,
+            maxAutoContinuations: 1,
+            continuation: fetchTerminalGuardContinuation,
+          })
+        : committedStream;
+      const { toolNsMap, freeformToolNames, toolSearchToolNames } = buildToolBridgeMaps(parsed);
+      const sseStream = bridgeToResponsesSSE(
+        eventStream, parsed.modelId, toolNsMap, freeformToolNames, toolSearchToolNames,
+        () => upstream.abort(), 2_000,
+        {
+          ...(options.forceEmptyResponseId ? { responseId: "" } : {}),
+          stallTimeoutSec: config.stallTimeoutSec,
+          hideThinkingSummary: parsed.options.hideThinkingSummary,
+          ...(options.onFirstOutput ? { onFirstOutput: options.onFirstOutput } : {}),
+          ...(routedCompaction ? { compaction: true } : {}),
+          onUsage: usage => {
+            // Raw adapter usage, pre wire-normalization (see the runTurn branch above).
+            logCtx.usageFromBridge = true;
+            if (usage) {
+              logCtx.usage = usage;
+              if (logCtx.activeAttempt) logCtx.activeAttempt.usage = usage;
+            }
+          },
+          // Compaction turns must NOT enter the continuation cache: _rawBody still holds the full
+          // PRE-compaction history, and a later previous_response_id expansion would rehydrate the
+          // giant stale chain Codex just replaced.
+          ...(routedCompaction ? {} : {
+            onCompletedResponse: (response: Record<string, unknown>, providerState?: OcxProviderContinuationState) =>
+              rememberResponseState(
+                parsed._rawBody,
+                response,
+                continuationStateForResponse(providerState),
+                activeAdapter.name === "kiro" ? { force: true } : undefined,
+              ),
+          }),
+        },
+      );
+      const bridgeTurnAc = new AbortController();
+      const trackedSse = trackStreamLifetime(sseStream, bridgeTurnAc, cleanupUpstreamAbort);
+      return new Response(trackedSse, {
+        headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no" },
+      });
+    }
   }
 
   if (activeAdapter.parseResponse) {
