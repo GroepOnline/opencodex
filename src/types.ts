@@ -737,6 +737,22 @@ export interface OcxConfig {
   hideUnavailableAfterDiscoveryFails?: number;
   /** Anthropic prompt-cache retention: "short" = 5-min ephemeral (default), "long" = 1-hour extended, "none" = disabled. */
   cacheRetention?: "none" | "short" | "long";
+  /**
+   * Proxy-level response KV cache. Caches identical non-streaming requests per provider/model and
+   * replays them from memory (+ optional file warm-restart) to cut cost and latency. Opt-in: when
+   * unset the cache is OFF (safe default — no caching of anything until the operator enables it).
+   * Streaming responses are never cached (only whole, completed JSON responses are safe to replay).
+   */
+  responseCache?: {
+    /** Master switch. Default false. */
+    enabled?: boolean;
+    /** Entry TTL in ms (default 600_000 = 10 min). */
+    ttlMs?: number;
+    /** Max in-memory entries (LRU eviction). Default 1024. */
+    maxEntries?: number;
+    /** Persist entries to disk for warm restart. Default false (memory-only). */
+    persist?: boolean;
+  };
   /** Web-search sidecar: route web_search for non-OpenAI models through a gpt-mini via ChatGPT passthrough. */
   webSearchSidecar?: OcxWebSearchSidecarConfig;
   /** Vision sidecar: describe images via a gpt vision model so text-only models can "see" them. */

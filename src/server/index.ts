@@ -14,6 +14,7 @@ import {
   applyProxyEnv,
   armClaudeCodeBaseline,
   codexAccountPoolsEnabled,
+  getConfigDir,
   loadConfig,
   saveConfig,
   websocketsEnabled,
@@ -26,6 +27,7 @@ import { setStorageCleanupPolicyJobLiveApply } from "../storage/policy-job";
 import { scheduleStorageCleanupStartupRun, startStorageCleanupScheduler } from "../storage/policy-scheduler";
 import { runOpenAiTierStartupMigration } from "../providers/openai-tier-startup";
 import { runAlibabaRegionStartupMigration } from "../providers/alibaba-region-startup";
+import { installResponseCache, probeResponseCache } from "../cache/response-cache-middleware";
 import { isCanonicalOpenAiForwardProvider } from "../providers/openai-tiers";
 import { providerCodexAccountMode, setCodexAccountPoolsEnabled } from "../providers/registry";
 import type { StorageCleanupPolicy } from "../types";
@@ -274,6 +276,8 @@ export function startServer(port?: number) {
   // Bind the Codex-account-pool master switch so every resolver sees one source of truth.
   // When false, opencodex runs standalone (no ChatGPT account pool / quota windows / history remap).
   setCodexAccountPoolsEnabled(codexAccountPoolsEnabled(config));
+  // Fase D: install the per-provider/model KV response cache (no-op unless config.responseCache.enabled).
+  void installResponseCache(config, getConfigDir());
   // Availability mutates THIS live object when it records a cap-cooldown.
   hydrateKeyPoolCooldowns(config);
   if (expireRecordedCooldowns(config)) saveConfig(config);
@@ -725,6 +729,13 @@ export function startServer(port?: number) {
         }
         const responsesRateDeny = responsesGate.commit();
         if (responsesRateDeny) return withCors(responsesRateDeny, req, config);
+        // Fase D: probe the response cache. A hit returns immediately; a miss yields a
+        // rebuilt Request (so the handler can read the body again) + a store callback.
+        const responsesCacheProbe = await probeResponseCache(req, config, "responses");
+        if (responsesCacheProbe && "hit" in responsesCacheProbe) {
+          return withCors(responsesCacheProbe.hit, req, config);
+        }
+        const responsesWorkReq = responsesCacheProbe?.request ?? req;
         const start = Date.now();
         const requestId = nextRequestLogId(start);
         const logCtx = { model: "unknown", provider: "unknown" };
@@ -737,7 +748,7 @@ export function startServer(port?: number) {
           logged = true;
           addFinalRequestLog(requestId, start, logCtx, status, meta);
         };
-        const response = await handleResponses(req, config, logCtx, {
+        const response = await handleResponses(responsesWorkReq, config, logCtx, {
           abortSignal: req.signal,
           onFirstOutput: () => recordFirstOutput(logCtx, start),
           onNativePassthroughTerminal: status => {
@@ -750,6 +761,7 @@ export function startServer(port?: number) {
             finalizeNativePassthroughLog(499, { closeReason: "client_cancel" });
           },
         });
+        responsesCacheProbe?.store(response);
         return withCors(responseWithDeferredRequestLog(response, requestId, start, logCtx), req, config);
       }
 
@@ -788,13 +800,21 @@ export function startServer(port?: number) {
         }
         const messagesRateDeny = messagesGate.commit();
         if (messagesRateDeny) return withCors(messagesRateDeny, req, config);
+        // Fase D: probe the response cache. A hit returns immediately; a miss yields a
+        // rebuilt Request (so the handler can read the body again) + a store callback.
+        const messagesCacheProbe = await probeResponseCache(req, config, "messages");
+        if (messagesCacheProbe && "hit" in messagesCacheProbe) {
+          return withCors(messagesCacheProbe.hit, req, config);
+        }
+        const messagesWorkReq = messagesCacheProbe?.request ?? req;
         const start = Date.now();
         const requestId = nextRequestLogId(start);
         const logCtx: RequestLogContext = { model: "unknown", provider: "unknown" };
         // Logging is finalized inside handleClaudeMessages (Responses-vocab tap on the
         // pre-translation stream + native passthrough callbacks) — do not re-wrap the
         // translated Anthropic stream here.
-        const response = await handleClaudeMessages(req, config, logCtx, { requestId, start });
+        const response = await handleClaudeMessages(messagesWorkReq, config, logCtx, { requestId, start });
+        messagesCacheProbe?.store(response);
         return withCors(response, req, config);
       }
 
@@ -814,10 +834,18 @@ export function startServer(port?: number) {
         }
         const chatRateDeny = chatGate.commit();
         if (chatRateDeny) return withCors(chatRateDeny, req, config);
+        // Fase D: probe the response cache. A hit returns immediately; a miss yields a
+        // rebuilt Request (so the handler can read the body again) + a store callback.
+        const chatCacheProbe = await probeResponseCache(req, config, "chat-completions");
+        if (chatCacheProbe && "hit" in chatCacheProbe) {
+          return withCors(chatCacheProbe.hit, req, config);
+        }
+        const chatWorkReq = chatCacheProbe?.request ?? req;
         const start = Date.now();
         const requestId = nextRequestLogId(start);
         const logCtx: RequestLogContext = { model: "unknown", provider: "unknown" };
-        const response = await handleChatCompletions(req, config, logCtx, { requestId, start });
+        const response = await handleChatCompletions(chatWorkReq, config, logCtx, { requestId, start });
+        chatCacheProbe?.store(response);
         return withCors(response, req, config);
       }
 
