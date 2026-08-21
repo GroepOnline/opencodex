@@ -186,7 +186,7 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
         <div className="stat-strip-item">
           <span className="stat-strip-waarde">
             {typeof summary30d?.summary.p95LatencyMs === "number" && summary30d.summary.p95LatencyMs > 0
-              ? `${(summary30d.summary.p95LatencyMs / 1000).toFixed(1)}s`
+              ? `${(summary30d.summary.p95LatencyMs / 1000).toFixed(1)}${t("vk.p95Unit")}`
               : "—"}
           </span>
           <span className="stat-strip-label">{t("vk.p95")}</span>

@@ -1706,6 +1706,7 @@ export const en = {
   "vk.costUsd": "est. cost (30d)",
   "vk.cacheHit": "cache-hit",
   "vk.p95": "p95 duration",
+  "vk.p95Unit": "s",
   "vk.ratio429": "429 share",
   "vk.ratio502": "502 share",
   "vk.providerTableHead": "Per provider (30d)",
