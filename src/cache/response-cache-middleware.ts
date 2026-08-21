@@ -1,8 +1,10 @@
 /**
  * Server-side response-cache middleware (Fase D).
  *
- * Wires the per-provider/model/endpoint KV `ResponseCache` into the three non-streaming POST
- * routes (/v1/responses, /v1/messages, /v1/chat/completions). Streaming requests are never
+ * Wires the per-provider/model/endpoint KV `ResponseCache` into the non-stateful non-streaming POST
+ * routes (/v1/messages, /v1/chat/completions). `/v1/responses` is deliberately excluded: a cached
+ * response id participates in `previous_response_id` continuation state that this body-only cache
+ * cannot safely reconstruct. Streaming requests are never
  * cached: we only store a fully-buffered 2xx JSON body, and we read the original body once to
  * decide whether to cache.
  *
@@ -107,6 +109,11 @@ export async function probeResponseCache(
   // Fast path: cache disabled, or request method not POST. Body untouched, pass through.
   if (!cache || !cache.enabled) return disabledProbe();
   if (req.method !== "POST") return disabledProbe();
+  // Responses ids are continuation handles, not replayable payload ids. A cache hit bypasses
+  // rememberResponseState(), and persisted cache entries can outlive the 1h continuation store.
+  // Until the cache can persist/rebuild provider continuation metadata, fail safe by leaving
+  // /v1/responses on its normal stateful path. Body is untouched here.
+  if (endpoint === "responses") return disabledProbe();
 
   // Honor an explicit client-side opt-out (Cache-Control: no-store). Body untouched.
   const cc = req.headers.get("cache-control") ?? "";

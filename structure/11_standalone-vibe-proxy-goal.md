@@ -99,6 +99,8 @@ via de registry. Codex-account-pools worden een **losse module** achter een feat
 ### Fase D — KV / response caching
 - [ ] Cache-laag: `Map` + LRU + TTL, write-through naar file voor warme restart.
   Key = SHA-256(provider, model, endpoint, genormaliseerde body). Redis opt-in voor multi-proc.
+  `/v1/responses` blijft buiten de body-cache zolang cache-entries geen volledige
+  `previous_response_id` + provider-continuation state kunnen reconstrueren; Messages/Chat zijn veilig.
 - [ ] `x-cache: HIT|MISS` + `x-cache-key` response-headers. `x-skip-cache` / `no-store` controls.
 - [ ] Streaming: cache eerst na volledige SSE-close (nooit mid-stream).
 - [ ] Anthropic prompt caching benutten: `cache_control` pass-through + cache-token-counts in usage.

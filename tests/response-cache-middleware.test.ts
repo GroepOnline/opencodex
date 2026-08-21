@@ -186,19 +186,16 @@ describe("probeResponseCache", () => {
     }
   });
 
-  test("endpoint is part of the key: responses vs messages never cross-hit", async () => {
+  test("responses bypass the body cache so response ids keep continuation semantics", async () => {
     installResponseCache({ port: 10100, providers: {}, responseCache: { enabled: true, ttlMs: 10_000 } } as unknown as OcxConfig);
+    const req = makeReq(
+      { model: "claude-opus-4-8", input: "hi", stream: false },
+      { endpoint: "responses" },
+    );
 
-    const responsesReq = makeReq({ model: "claude-opus-4-8", input: "hi" }, { endpoint: "responses" });
-    const messagesReq = makeReq({ model: "claude-opus-4-8", messages: [{ role: "user", content: "hi" }] });
-
-    const pR = await probeResponseCache(responsesReq, baseConfig(), "responses");
-    if ("store" in pR!) {
-      pR.store(new Response(JSON.stringify({ via: "responses" }), { status: 200, headers: { "content-type": "application/json" } }));
-      await new Promise(r => setTimeout(r, 0));
-    }
-    // A messages request with the same model+normalized shape must NOT hit the responses entry.
-    const pM = await probeResponseCache(messagesReq, baseConfig(), "messages");
-    expect("hit" in pM!).toBe(false);
+    const probe = await probeResponseCache(req, baseConfig(), "responses");
+    expect(probe).toBeNull();
+    expect(await req.json()).toEqual({ model: "claude-opus-4-8", input: "hi", stream: false });
+    expect(getInstalledCache()!.size).toBe(0);
   });
 });
