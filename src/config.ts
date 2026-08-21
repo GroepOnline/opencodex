@@ -1681,9 +1681,10 @@ export function multiAgentGuidanceEnabled(
 }
 
 export function getDefaultConfig(): OcxConfig {
-  // Fresh-install default: works out of the box with Codex's ChatGPT OAuth (no API key).
-  // gpt-* requests forward the caller's incoming OAuth headers to the ChatGPT backend.
-  // Adding extra providers (e.g. opencode-go) and switching defaultProvider is a user/runtime choice.
+  // Fresh-install default: a STANDALONE provider proxy. No Codex-account dependency —
+  // Claude Code, Claude Desktop, and any OpenAI-compatible client are first-class.
+  // The OpenAI provider is still registered (in case the operator wants ChatGPT), but
+  // its account pool stays OFF until explicitly enabled via the dashboard or `ocx init`.
   return {
     port: 10100,
     // Fresh/re-initialized configs are already written in the current three-tier
@@ -1704,7 +1705,15 @@ export function getDefaultConfig(): OcxConfig {
     websockets: false,
     codexAutoStart: true,
     codexShimAutoRestore: true,
+    // Standalone vibe proxy by default: no ChatGPT account pool, no quota windows,
+    // no history remapping. Flip to true (or run `ocx init` with the Codex path) to opt in.
+    codexAccountPools: false,
   };
+}
+
+/** Master switch for the Codex account-pool subsystem. True unless explicitly disabled. */
+export function codexAccountPoolsEnabled(config: Pick<OcxConfig, "codexAccountPools">): boolean {
+  return config.codexAccountPools !== false;
 }
 
 export function resolveEnvValue(value: string | undefined): string | undefined {

@@ -11,7 +11,22 @@ import {
 } from "../traffic-shared";
 
 interface UsageSummary {
-  summary: { requests: number; totalTokens: number };
+  summary: {
+    requests: number;
+    totalTokens: number;
+    estimatedCostUsd?: number;
+    cacheReadRatio?: number;
+    p95LatencyMs?: number;
+    ratio429?: number;
+    ratio502?: number;
+  };
+  providers?: Array<{
+    provider: string;
+    requests: number;
+    totalTokens: number;
+    estimatedCostUsd?: number;
+    cacheReadRatio?: number;
+  }>;
   days: Array<{ date: string; requests: number; totalTokens?: number }>;
 }
 
@@ -152,7 +167,74 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
           <span className="stat-strip-waarde">{requests30d.toLocaleString(locale)}</span>
           <span className="stat-strip-label">{t("vk.requests30d")}</span>
         </div>
+        <div className="stat-strip-item">
+          <span className="stat-strip-waarde">
+            {typeof summary30d?.summary.cacheReadRatio === "number"
+              ? `${Math.round(summary30d.summary.cacheReadRatio * 100)}%`
+              : "—"}
+          </span>
+          <span className="stat-strip-label">{t("vk.cacheHit")}</span>
+        </div>
+        <div className="stat-strip-item">
+          <span className="stat-strip-waarde">
+            {typeof summary30d?.summary.estimatedCostUsd === "number"
+              ? `€${(summary30d.summary.estimatedCostUsd * 0.92).toFixed(2)}`
+              : "—"}
+          </span>
+          <span className="stat-strip-label">{t("vk.costUsd")}</span>
+        </div>
+        <div className="stat-strip-item">
+          <span className="stat-strip-waarde">
+            {typeof summary30d?.summary.p95LatencyMs === "number" && summary30d.summary.p95LatencyMs > 0
+              ? `${(summary30d.summary.p95LatencyMs / 1000).toFixed(1)}s`
+              : "—"}
+          </span>
+          <span className="stat-strip-label">{t("vk.p95")}</span>
+        </div>
+        <div className="stat-strip-item">
+          <span className="stat-strip-waarde">
+            {typeof summary30d?.summary.ratio429 === "number"
+              ? `${Math.round(summary30d.summary.ratio429 * 100)}%`
+              : "—"}
+          </span>
+          <span className="stat-strip-label">{t("vk.ratio429")}</span>
+        </div>
       </div>
+
+      {summary30d?.providers && summary30d.providers.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <h3 className="depas-viewsub" style={{ marginBottom: 8 }}>{t("vk.providerTableHead")}</h3>
+          <table className="depas-tabel" style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left" }}>{t("vk.providerColProvider")}</th>
+                <th style={{ textAlign: "right" }}>{t("vk.providerColRequests")}</th>
+                <th style={{ textAlign: "right" }}>{t("vk.providerColTokens")}</th>
+                <th style={{ textAlign: "right" }}>{t("vk.providerColCost")}</th>
+                <th style={{ textAlign: "right" }}>{t("vk.providerColCache")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary30d.providers
+                .slice()
+                .sort((a, b) => b.requests - a.requests)
+                .map(p => (
+                  <tr key={p.provider}>
+                    <td style={{ fontFamily: "var(--font-code)" }}>{p.provider}</td>
+                    <td style={{ textAlign: "right" }}>{p.requests.toLocaleString(locale)}</td>
+                    <td style={{ textAlign: "right" }}>{formatTokens(p.totalTokens, locale)}</td>
+                    <td style={{ textAlign: "right" }}>
+                      {typeof p.estimatedCostUsd === "number" ? `€${(p.estimatedCostUsd * 0.92).toFixed(2)}` : "—"}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      {typeof p.cacheReadRatio === "number" ? `${Math.round(p.cacheReadRatio * 100)}%` : "—"}
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
         <div className="usage-segmented" role="group" aria-label={t("vk.filterAria")}>

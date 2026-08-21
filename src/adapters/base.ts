@@ -15,6 +15,40 @@ export interface IncomingMeta {
   imageTierBias?: number;
 }
 
+/** Normalized usage returned by an adapter after a successful (or partial) upstream response. */
+export interface AdapterUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  reasoningOutputTokens?: number;
+  /** Absolute active-context size after the response, when the provider exposes it. */
+  contextTotalTokens?: number;
+  totalTokens?: number;
+  /** Marks the numbers as display-time estimates rather than provider-reported values. */
+  estimated?: boolean;
+}
+
+/**
+ * Provider-agnostic rate-limit observation parsed from an upstream response.
+ * Adapters declare how to read their own provider's rate-limit signaling so the
+ * core never hard-codes OpenAI/Anthropic header shapes (decoupling contract).
+ */
+export interface AdapterRateLimitInfo {
+  /** True when the upstream asked the caller to stop and retry later (cooldown trigger). */
+  retryable: boolean;
+  /** Seconds to wait before retrying, when the provider supplies one (else null). */
+  retryAfterSec?: number | null;
+  /** Hard spend/quota cap with NO retry-after — must NOT be retried (Anthropic spend cap). */
+  hardCap?: boolean;
+  /** Transient overload that is safe to fail over (e.g. Anthropic 529). */
+  overload?: boolean;
+  /** Remaining request/token budget windows, when the provider exposes them. */
+  requestsRemaining?: number | null;
+  tokensRemaining?: number | null;
+}
+
 export interface ProviderAdapter {
   name: string;
 
@@ -23,6 +57,20 @@ export interface ProviderAdapter {
    * return fully redacted output: callers may pass untrusted provider headers and payload text.
    */
   formatErrorBody?(status: number, headers: Headers, payloadText: string): string;
+
+  /**
+   * Normalize a provider-specific usage payload into the adapter-agnostic shape the proxy
+   * logs and meters. Optional: when omitted, the core falls back to its generic mapping.
+   * Keeps per-provider usage quirks (cache token fields, context checkpoints) inside the adapter.
+   */
+  normalizeUsage?(raw: unknown): AdapterUsage | null;
+
+  /**
+   * Parse provider-specific rate-limit signaling from response headers. Optional: when omitted,
+   * the core applies a generic `retry-after` / status-code policy. This is the decoupling seam
+   * that lets each adapter teach the proxy its own 429/529/cooldown semantics (Fase C).
+   */
+  rateLimitFromHeaders?(status: number, headers: Headers): AdapterRateLimitInfo | null;
 
   /**
    * Build the upstream request. May be async: adapters that resolve a short-lived credential

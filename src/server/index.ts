@@ -13,6 +13,7 @@ import {
   DEFAULT_SUBAGENT_MODELS,
   applyProxyEnv,
   armClaudeCodeBaseline,
+  codexAccountPoolsEnabled,
   loadConfig,
   saveConfig,
   websocketsEnabled,
@@ -26,7 +27,7 @@ import { scheduleStorageCleanupStartupRun, startStorageCleanupScheduler } from "
 import { runOpenAiTierStartupMigration } from "../providers/openai-tier-startup";
 import { runAlibabaRegionStartupMigration } from "../providers/alibaba-region-startup";
 import { isCanonicalOpenAiForwardProvider } from "../providers/openai-tiers";
-import { providerCodexAccountMode } from "../providers/registry";
+import { providerCodexAccountMode, setCodexAccountPoolsEnabled } from "../providers/registry";
 import type { StorageCleanupPolicy } from "../types";
 import {
   expireRecordedCooldowns,
@@ -270,6 +271,9 @@ function attachLiveSidebandUpstream(ws: ServerWebSocket<WsData>): void {
 
 export function startServer(port?: number) {
   const config = runAlibabaRegionStartupMigration(runOpenAiTierStartupMigration(loadConfig()));
+  // Bind the Codex-account-pool master switch so every resolver sees one source of truth.
+  // When false, opencodex runs standalone (no ChatGPT account pool / quota windows / history remap).
+  setCodexAccountPoolsEnabled(codexAccountPoolsEnabled(config));
   // Availability mutates THIS live object when it records a cap-cooldown.
   hydrateKeyPoolCooldowns(config);
   if (expireRecordedCooldowns(config)) saveConfig(config);

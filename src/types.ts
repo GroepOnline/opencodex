@@ -704,6 +704,14 @@ export interface OcxConfig {
   apiKeys?: Array<{ id: string; name: string; key: string; createdAt: string }>;
   /** Auto-start/sync the proxy from the Codex shim before launching Codex. Default true. */
   codexAutoStart?: boolean;
+  /**
+   * Master switch for the OpenAI Codex account-pool subsystem (ChatGPT account pool, 5h/weekly/30d
+   * quota windows, account affinity + failover, and history remapping). When false, opencodex runs
+   * as a standalone provider proxy with NO Codex-account dependency — Claude Code, Claude Desktop,
+   * and any OpenAI-compatible client are first-class. Existing installs that already use the pool
+   * keep it enabled on upgrade; fresh installs default to false (standalone vibe proxy).
+   */
+  codexAccountPools?: boolean;
   /** Restore an installed shim after a stable external Codex update replaces it. Default true. */
   codexShimAutoRestore?: boolean;
   /**

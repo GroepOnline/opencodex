@@ -307,8 +307,8 @@ function isBareOpenAiFamilyModel(modelId: string): boolean {
   return !modelId.includes("/") && /^(?:gpt-|o1-|o3-|o4-)/.test(modelId);
 }
 
-function routeResult(providerName: string, provider: OcxProviderConfig, modelId: string): RouteResult {
-  const codexAccountMode = providerCodexAccountMode(providerName, provider);
+function routeResult(providerName: string, provider: OcxProviderConfig, modelId: string, config?: OcxConfig): RouteResult {
+  const codexAccountMode = providerCodexAccountMode(providerName, provider, config);
   return {
     providerName,
     provider: routedProviderConfig(providerName, provider),
@@ -346,7 +346,7 @@ function routeModelInternal(config: OcxConfig, modelId: string, bypassCombos: bo
       // Self-namespaced native id — the vendor segment equals the provider id, so the FULL ref is
       // itself a known model (e.g. orcarouter/auto). Route it whole instead of stripping to the
       // remainder, which would send a bare `auto` the upstream cannot resolve.
-      if (known.includes(modelId)) return routeResult(provName, prov, modelId);
+      if (known.includes(modelId)) return routeResult(provName, prov, modelId, config);
       // Codex-facing alias ids (`provider/vendor-model`) decode back to the native
       // slash id via an exact known-id lookup; raw full-slash selectors keep working.
       return routeResult(provName, prov, decodeRoutedModelId(modelId.slice(slash + 1), known));
@@ -355,14 +355,14 @@ function routeModelInternal(config: OcxConfig, modelId: string, bypassCombos: bo
 
   if (isBareOpenAiFamilyModel(modelId)) {
     const provider = config.providers[OPENAI_CODEX_PROVIDER_ID];
-    if (provider && provider.disabled !== true) return routeResult(OPENAI_CODEX_PROVIDER_ID, provider, modelId);
+    if (provider && provider.disabled !== true) return routeResult(OPENAI_CODEX_PROVIDER_ID, provider, modelId, config);
     throw new NoEnabledOpenAiProviderError(modelId);
   }
 
   for (const [provName, prov] of activeProviderEntries(config)) {
     if (prov.defaultModel === modelId
       || (typeof prov.defaultModel === "string" && encodeRoutedModelId(prov.defaultModel) === modelId)) {
-      return routeResult(provName, prov, prov.defaultModel as string);
+      return routeResult(provName, prov, prov.defaultModel as string, config);
     }
   }
 
@@ -372,7 +372,7 @@ function routeModelInternal(config: OcxConfig, modelId: string, bypassCombos: bo
   for (const [provName, prov] of activeProviderEntries(config)) {
     if (prov.models && Array.isArray(prov.models)) {
       const hit = (prov.models as string[]).find(id => id === modelId || encodeRoutedModelId(id) === modelId);
-      if (hit !== undefined) return routeResult(provName, prov, hit);
+      if (hit !== undefined) return routeResult(provName, prov, hit, config);
     }
   }
 
@@ -382,7 +382,7 @@ function routeModelInternal(config: OcxConfig, modelId: string, bypassCombos: bo
   if (hasOwnProvider(config.providers, config.defaultProvider)) {
     const defaultProv = config.providers[config.defaultProvider];
     if (defaultProv.disabled === true) throw new Error(`Default provider is disabled: ${config.defaultProvider}`);
-    return routeResult(config.defaultProvider, defaultProv, modelId);
+    return routeResult(config.defaultProvider, defaultProv, modelId, config);
   }
 
   throw new Error(`No provider configured for model: ${modelId}`);
@@ -400,7 +400,7 @@ function routeByKnownModelPattern(config: OcxConfig, modelId: string): RouteResu
       );
       if (matchingProvider) {
         const [provName, prov] = matchingProvider;
-        return routeResult(provName, prov, modelId);
+        return routeResult(provName, prov, modelId, config);
       }
     }
   }
