@@ -55,6 +55,7 @@ describe("headless GUI parity CLI", () => {
     }
     const coverage: Array<[string, string]> = [
       ["/api/claude-code", "ocx claude config"],
+      ["/api/response-cache", "ocx cache"],
       ["/api/claude-desktop", "ocx claude desktop"],
       ["/api/claude/", "ocx observe"],
       ["/api/codex-auth", "ocx account"],

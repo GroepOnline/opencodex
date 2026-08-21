@@ -56,6 +56,11 @@ function tijd(ts: number, locale: string): string {
   return new Date(ts).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+/** Formats a 0..1 ratio as a rounded percentage; em-dash when absent. */
+function formatRatio(value: number | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? `${Math.round(value * 100)}%` : "—";
+}
+
 /**
  * Displays proxy health, usage statistics, provider rankings, and recent traffic activity.
  *
@@ -113,11 +118,9 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
   /** Provider usage ranking (top 5 by request count, 30d from /api/usage). */
   const usageProviders = useMemo(() => {
     const ps = summary?.providers ?? [];
-    return [...ps].sort((a, b) => b.requests - a.requests).slice(0, 5);
+    return ps.toSorted((a, b) => b.requests - a.requests).slice(0, 5);
   }, [summary]);
 
-  const formatRatio = (value: number | undefined): string =>
-    typeof value === "number" && Number.isFinite(value) ? `${Math.round(value * 100)}%` : "—";
   const costUsd = typeof summary?.summary.estimatedCostUsd === "number" && Number.isFinite(summary.summary.estimatedCostUsd)
     ? new Intl.NumberFormat(locale, { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(summary.summary.estimatedCostUsd)
     : "—";
