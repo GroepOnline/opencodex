@@ -753,6 +753,24 @@ export interface OcxConfig {
     /** Persist entries to disk for warm restart. Default false (memory-only). */
     persist?: boolean;
   };
+  /**
+   * Auto-router (Fase E). When mode is "auto", the target order of per-provider fallback hop
+   * chains is re-scored per request: score = wCost*cost + wLatency*latency + wQuality*quality
+   * (lower wins; all inputs normalized to 0..1). User-configured combos keep their explicit
+   * target order — only the operator's own fallback lists are reordered. Default "off".
+   */
+  router?: {
+    /** "off" (default) keeps configured fallback order; "auto" scores and reorders targets. */
+    mode?: "off" | "auto";
+    /** Score weights. Defaults: cost 1, latency 1, quality 1. Range 0..10. */
+    weights?: {
+      cost?: number;
+      latency?: number;
+      quality?: number;
+    };
+    /** Max age (ms) of usage history feeding the latency estimate. Default 7 days. */
+    latencyWindowMs?: number;
+  };
   /** Web-search sidecar: route web_search for non-OpenAI models through a gpt-mini via ChatGPT passthrough. */
   webSearchSidecar?: OcxWebSearchSidecarConfig;
   /** Vision sidecar: describe images via a gpt vision model so text-only models can "see" them. */

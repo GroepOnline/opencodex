@@ -28,6 +28,8 @@ import { scheduleStorageCleanupStartupRun, startStorageCleanupScheduler } from "
 import { runOpenAiTierStartupMigration } from "../providers/openai-tier-startup";
 import { runAlibabaRegionStartupMigration } from "../providers/alibaba-region-startup";
 import { installResponseCache, probeResponseCache } from "../cache/response-cache-middleware";
+import { installAutoRouterLatencyHistory } from "../availability/chain";
+import { p50DurationForModel } from "../usage/latency-history";
 import { isCanonicalOpenAiForwardProvider } from "../providers/openai-tiers";
 import { providerCodexAccountMode, setCodexAccountPoolsEnabled } from "../providers/registry";
 import type { StorageCleanupPolicy } from "../types";
@@ -278,6 +280,11 @@ export function startServer(port?: number) {
   setCodexAccountPoolsEnabled(codexAccountPoolsEnabled(config));
   // Fase D: install the per-provider/model KV response cache (no-op unless config.responseCache.enabled).
   void installResponseCache(config, getConfigDir());
+  // Fase E: wire the auto-router's latency input to the usage log (p50 per provider/model).
+  // Cheap: the reader caches aggregates for a minute and only reads the recent tail of usage.jsonl.
+  installAutoRouterLatencyHistory({
+    p50DurationMs: (provider, model, sinceMs) => p50DurationForModel(provider, model, sinceMs),
+  });
   // Availability mutates THIS live object when it records a cap-cooldown.
   hydrateKeyPoolCooldowns(config);
   if (expireRecordedCooldowns(config)) saveConfig(config);
