@@ -111,10 +111,10 @@ via de registry. Codex-account-pools worden een **losse module** achter een feat
 correctheidsregressie op streaming.
 
 ### Fase E — Auto-router (LATER, opt-in/fuzz)
-- [ ] Config-gedreven scoring: `score = w1*cost + w2*latency + w3*quality`, weights in config.
-- [ ] `quality` uit static tier-table (kost-map); later verfijnd met eigen latency/error-history.
-- [ ] Fallback-ketens hergebruiken `allowed_fails`/`cooldown_time` uit Fase C.
-- [ ] Default OFF; alleen als `"router": "auto"` expliciet aan. Codex-subagents etc. = fuzz-optie.
+- [x] Config-gedreven scoring: `score = w1*cost + w2*latency + w3*quality`, weights in config.
+- [x] `quality` uit static tier-table (kost-map); later verfijnd met eigen latency/error-history.
+- [x] Fallback-ketens hergebruiken `allowed_fails`/`cooldown_time` uit Fase C.
+- [x] Default OFF; alleen als `"router": "auto"` expliciet aan. Codex-subagents etc. = fuzz-optie.
 
 **Exit gate:** auto-router kiest meetbaar goedkoper/sneller zonder correctheidsregressie; opt-in.
 

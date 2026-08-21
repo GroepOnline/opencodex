@@ -57,3 +57,34 @@ cooldowns so the new set starts fetch-ready.
 
 See [Multiple API keys](/guides/providers/#multiple-api-keys) for the operator
 workflow.
+
+## Auto-router
+
+`GET /api/router` shows what the auto-router would do right now. The auto-router
+is off by default; it activates only when the config sets `router.mode` to
+`"auto"`.
+
+```json
+{
+  "mode": "off",
+  "enabled": false,
+  "weights": { "cost": 1, "latency": 1, "quality": 1 },
+  "chains": []
+}
+```
+
+When enabled, `chains` lists one entry per configured provider fallback chain
+with the scored target order the router would pick:
+
+- `score` — weighted composite (lower wins)
+- `components` — normalized `cost`, `latency`, and static quality `tier`
+- `costPer1kEur` — blended EUR estimate per 1k tokens (75/25 input/output)
+
+Cost comes from static pricing, latency from p50 request durations in the usage
+log over the last 7 days (`router.latencyWindowMs` overrides), and quality from
+a coarse model-family tier table. Targets with no measured latency score a
+neutral 0.5 so only evidence reorders them. Ties keep your configured order.
+User-defined combos are never reordered — only automatic fallback chains.
+
+`PUT /api/router` with body `{ "mode": "auto" }` or `{ "mode": "off" }` toggles
+the router live and persists the choice to the config file.

@@ -726,6 +726,38 @@ Model keys are exact OpenRouter model ids, without the outer OpenCodex provider 
 example above, select `openrouter/anthropic-claude-sonnet-5` in Codex; OpenCodex restores the native
 `anthropic/claude-sonnet-5` id before applying the model-specific rule.
 
+## Auto-router (`router`)
+
+The auto-router reorders automatic provider fallback chains by a weighted score instead of
+keeping your configured order. It is **off by default** and activates only when
+`router.mode` is exactly `"auto"`:
+
+```json
+{
+  "router": {
+    "mode": "auto",
+    "weights": { "cost": 1, "latency": 1, "quality": 1 },
+    "latencyWindowMs": 604800000
+  }
+}
+```
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `mode?` | `"off" \| "auto"` | `"off"` | `"auto"` enables score-based reordering of fallback chains. |
+| `weights?` | `{ cost?, latency?, quality? }` | all `1` | Score weights. Clamped to 0..10; non-numbers fall back to defaults. |
+| `latencyWindowMs?` | `number` | 7 days | How far back p50 request durations are sampled from the usage log (minimum 60s). |
+
+Each target scores `weights.cost * cost + weights.latency * latency + weights.quality * quality`
+(lower wins). Cost is a blended EUR-per-1k estimate relative to the most expensive candidate in
+the chain; latency is the measured p50 duration relative to the slowest candidate (neutral 0.5
+without history); quality comes from a coarse static family tier (0 = frontier .. 3 = small/fast,
+unknown models sit conservatively at 2). Ties keep your configured order.
+
+User-defined combos always keep their explicit order — only synthetic fallback chains reorder.
+Fallback behavior itself (`allowedFails`, cooldowns) is unchanged. Inspect what the router
+would pick via [`GET /api/router`](/reference/management-api/#auto-router).
+
 ## Static model allowlists
 
 Some providers expose very large or slow live model catalogs. Set `liveModels` to `false` when you
