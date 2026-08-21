@@ -30,15 +30,25 @@ function baseConfig(): OcxConfig {
   } as unknown as OcxConfig;
 }
 
-function makeReq(body: unknown, opts: { stream?: boolean; cacheControl?: string; endpoint?: "responses" | "messages" | "chat-completions" } = {}): Request {
+function makeReq(body: unknown, opts: {
+  stream?: boolean;
+  cacheControl?: string;
+  endpoint?: "responses" | "messages" | "chat-completions";
+  authorization?: string;
+  accountId?: string;
+  signal?: AbortSignal;
+} = {}): Request {
   const payload = { ...(typeof body === "string" ? JSON.parse(body) : body) };
   if (opts.stream) payload.stream = true;
   const headers = new Headers({ "content-type": "application/json" });
   if (opts.cacheControl) headers.set("cache-control", opts.cacheControl);
+  if (opts.authorization) headers.set("authorization", opts.authorization);
+  if (opts.accountId) headers.set("chatgpt-account-id", opts.accountId);
   return new Request(`http://localhost${opts.endpoint === "responses" ? "/v1/responses" : opts.endpoint === "chat-completions" ? "/v1/chat/completions" : "/v1/messages"}`, {
     method: "POST",
     headers,
     body: JSON.stringify(payload),
+    signal: opts.signal,
   });
 }
 
@@ -69,6 +79,48 @@ describe("probeResponseCache", () => {
     (probe as { store: (r: Response) => void }).store(new Response("stream", { status: 200, headers: { "content-type": "text/event-stream" } }));
     await new Promise(r => setTimeout(r, 0));
     expect(getInstalledCache()!.size).toBe(0);
+  });
+
+  test("rebuilt streaming request preserves client cancellation", async () => {
+    installResponseCache({ port: 10100, providers: {}, responseCache: { enabled: true } } as unknown as OcxConfig);
+    const controller = new AbortController();
+    const req = makeReq(
+      { model: "claude-opus-4-8", messages: [{ role: "user", content: "hi" }] },
+      { stream: true, signal: controller.signal },
+    );
+    const probe = await probeResponseCache(req, baseConfig(), "messages");
+    expect(probe).not.toBeNull();
+    expect("miss" in probe!).toBe(true);
+    controller.abort();
+    expect((probe as { request: Request }).request.signal.aborted).toBe(true);
+  });
+
+  test("caller identity is part of the cache scope", async () => {
+    installResponseCache({ port: 10100, providers: {}, responseCache: { enabled: true, ttlMs: 10_000 } } as unknown as OcxConfig);
+    const body = { model: "claude-opus-4-8", messages: [{ role: "user", content: "private" }] };
+    const first = await probeResponseCache(makeReq(body, { authorization: "Bearer caller-a" }), baseConfig(), "messages");
+    expect(first && "store" in first).toBe(true);
+    if (first && "store" in first) {
+      first.store(new Response(JSON.stringify({ completion: "caller-a-only" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+      await new Promise(r => setTimeout(r, 0));
+    }
+
+    const otherCaller = await probeResponseCache(
+      makeReq(body, { authorization: "Bearer caller-b" }),
+      baseConfig(),
+      "messages",
+    );
+    expect(otherCaller && "hit" in otherCaller).toBe(false);
+
+    const sameCaller = await probeResponseCache(
+      makeReq(body, { authorization: "Bearer caller-a" }),
+      baseConfig(),
+      "messages",
+    );
+    expect(sameCaller && "hit" in sameCaller).toBe(true);
   });
 
   test("returns null when client sends cache-control: no-store (fast path, body untouched)", async () => {

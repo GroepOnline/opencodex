@@ -24,6 +24,7 @@
  * is still intact and safe to pass through unchanged.
  */
 
+import { createHash } from "node:crypto";
 import { ResponseCache, normalizeRequestBody, requestOptsOutOfCache, responseCacheFromConfig } from "./kv-cache";
 import { routeModel } from "../router";
 import type { OcxConfig } from "../types";
@@ -120,7 +121,7 @@ export async function probeResponseCache(
     // Body already drained and unreadable; nothing we can hand downstream. Signal a miss with a
     // synthetic empty body — the handler will fail the same way it would have reading the stream.
     return noStoreMiss(
-      new Request(req.url, { method: req.method, headers: req.headers, body: "" }),
+      rebuild(req, ""),
       null,
       null,
       "",
@@ -155,7 +156,11 @@ export async function probeResponseCache(
   const normalized = normalizeRequestBody(parsed);
   if (normalized === null) return noStoreMiss(rebuild(req, raw), route.providerName, route.modelId, "", endpoint);
 
-  const hit = cache.get(route.providerName, route.modelId, normalized, endpoint);
+  // Cache entries are scoped to the caller/account/session inputs that can affect routing or
+  // upstream semantics. Only the hash participates in the cache material: credentials and account
+  // identifiers never reach persistence or logs.
+  const scopedNormalized = `${cacheCallerScope(req.headers)}\0${normalized}`;
+  const hit = cache.get(route.providerName, route.modelId, scopedNormalized, endpoint);
   if (hit) {
     const headers = new Headers({
       "content-type": hit.contentType,
@@ -163,7 +168,7 @@ export async function probeResponseCache(
       "cache-control": "no-store",
     });
     console.warn(
-      `[kv-cache] HIT ${ResponseCache.keyPrefix(route.providerName, route.modelId, normalized, endpoint)} (${hit.body.length}B)`,
+      `[kv-cache] HIT ${ResponseCache.keyPrefix(endpoint, route.providerName, route.modelId, scopedNormalized)} (${hit.body.length}B)`,
     );
     return { hit: new Response(hit.body, { status: 200, headers }) };
   }
@@ -183,7 +188,7 @@ export async function probeResponseCache(
       .text()
       .then((body) => {
         if (!body) return;
-        cache.set(route.providerName, route.modelId, normalized, body, ct, endpoint);
+        cache.set(route.providerName, route.modelId, scopedNormalized, body, ct, endpoint);
       })
       .catch(() => {
         /* clone read failure is non-fatal */
@@ -201,12 +206,34 @@ export async function probeResponseCache(
   };
 }
 
-/** Rebuild a Request carrying `raw` as a re-readable body. */
+const CACHE_SCOPE_HEADERS = [
+  "authorization",
+  "x-opencodex-api-key",
+  "x-api-key",
+  "chatgpt-account-id",
+  "x-codex-installation-id",
+  "x-codex-parent-thread-id",
+  "session_id",
+  "session-id",
+  "thread-id",
+] as const;
+
+/** Hash identity/affinity inputs so two security principals or sessions never cross-hit. */
+function cacheCallerScope(headers: Headers): string {
+  const material = CACHE_SCOPE_HEADERS
+    .map((name) => [name, headers.get(name)?.trim() ?? ""] as const)
+    .filter(([, value]) => value.length > 0);
+  if (material.length === 0) return "anonymous";
+  return createHash("sha256").update(JSON.stringify(material)).digest("hex");
+}
+
+/** Rebuild a Request carrying `raw` as a re-readable body and the original cancellation signal. */
 function rebuild(req: Request, raw: string): Request {
   return new Request(req.url, {
     method: req.method,
     headers: req.headers,
     body: raw,
+    signal: req.signal,
   });
 }
 

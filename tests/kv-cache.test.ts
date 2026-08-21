@@ -21,11 +21,13 @@ describe("kv-cache key normalization", () => {
     );
   });
 
-  test("non-deterministic fields (stream/user/metadata) are dropped", () => {
+  test("user and metadata remain in the cache key while stream is transport-only", () => {
     const base = normalizeRequestBody(JSON.stringify({ model: "x", messages: [] }))!;
     const withUser = normalizeRequestBody(JSON.stringify({ model: "x", messages: [], user: "abc123" }))!;
+    const withMetadata = normalizeRequestBody(JSON.stringify({ model: "x", messages: [], metadata: { tenant: "a" } }))!;
     const withStream = normalizeRequestBody(JSON.stringify({ model: "x", messages: [], stream: true }))!;
-    expect(base).toBe(withUser);
+    expect(base).not.toBe(withUser);
+    expect(base).not.toBe(withMetadata);
     expect(base).toBe(withStream);
   });
 
