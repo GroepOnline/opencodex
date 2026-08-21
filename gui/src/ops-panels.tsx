@@ -85,9 +85,11 @@ export function ResponseCachePanel({ apiBase, onCleared }: { apiBase: string; on
   const clear = async () => {
     setBusy(true);
     try {
-      await fetch(`${apiBase}/api/response-cache/clear`, { method: "POST" });
+      const cleared = await fetch(`${apiBase}/api/response-cache/clear`, { method: "POST" });
+      if (!cleared.ok) throw new Error(String(cleared.status));
       const res = await fetch(`${apiBase}/api/response-cache`);
-      if (res.ok) setView(await res.json() as ResponseCacheView);
+      if (!res.ok) throw new Error(String(res.status));
+      setView(await res.json() as ResponseCacheView);
       onCleared?.();
     } catch { /* keep last-good */ } finally {
       setBusy(false);
@@ -203,7 +205,7 @@ export function KeyPoolHealthPanel({ apiBase }: { apiBase: string }) {
 
   const rows = useMemo(() => {
     const list = providers ?? [];
-    return [...list].sort((a, b) => {
+    return list.toSorted((a, b) => {
       // Troubled providers first: caps, then cooling keys, then name.
       const aCap = a.capUntil !== undefined && a.capUntil > now ? 1 : 0;
       const bCap = b.capUntil !== undefined && b.capUntil > now ? 1 : 0;

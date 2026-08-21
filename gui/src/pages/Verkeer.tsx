@@ -162,7 +162,7 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
   /** Per-model breakdown (top 12 by requests, 30d from /api/usage models[]). */
   const topModellen = useMemo(() => {
     const ms = summary30d?.models ?? [];
-    return [...ms].sort((a, b) => b.requests - a.requests).slice(0, 12);
+    return ms.toSorted((a, b) => b.requests - a.requests).slice(0, 12);
   }, [summary30d]);
 
   return (

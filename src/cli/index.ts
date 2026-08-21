@@ -1016,7 +1016,8 @@ switch (command) {
   case "logs":
   case "usage":
   case "storage":
-  case "memory": {
+  case "memory":
+  case "cache": {
     const { handleObserveCommand } = await import("./observe");
     process.exitCode = await handleObserveCommand([command, ...args.slice(1)]);
     break;

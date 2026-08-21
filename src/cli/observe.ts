@@ -17,6 +17,8 @@ const USAGE = `Usage:
   ocx observe usage [--range <7d|30d|all>] [--surface <all|codex|claude|grok>] [--json]
   ocx observe storage [--json]
   ocx observe memory [--json]
+  ocx observe cache [--json]
+  ocx observe cache clear --yes [--json]
   ocx observe debug [--json]
   ocx observe claude-inbound [--limit <n>] [--json]
   ocx observe injection [--limit <n>] [--json]`;
@@ -100,6 +102,23 @@ async function simple(path: string, argv: string[], deps: RuntimeApiDeps): Promi
   printData(result, wantsJson, summaryLines(result));
 }
 
+async function cache(argv: string[], deps: RuntimeApiDeps): Promise<void> {
+  const args = [...argv];
+  const wantsJson = takeFlag(args, "--json");
+  if (args[0] === "clear") {
+    args.shift();
+    const yes = takeFlag(args, "--yes");
+    rejectArgs(args, USAGE);
+    if (!yes) throw new CliUsageError("cache clear requires --yes", USAGE);
+    const result = await runtimeRequest("/api/response-cache/clear", { method: "POST" }, deps);
+    printData(result, wantsJson, summaryLines(result));
+    return;
+  }
+  rejectArgs(args, USAGE);
+  const result = await runtimeRequest("/api/response-cache", {}, deps);
+  printData(result, wantsJson, summaryLines(result));
+}
+
 export async function handleObserveCommand(argv: string[], deps: RuntimeApiDeps = {}): Promise<number> {
   return runCliAction(async () => {
     const [sub = "logs", ...rest] = argv;
@@ -107,6 +126,7 @@ export async function handleObserveCommand(argv: string[], deps: RuntimeApiDeps 
     else if (sub === "usage") await usage(rest, deps);
     else if (sub === "storage") await simple("/api/storage", rest, deps);
     else if (sub === "memory") await simple("/api/system/memory", rest, deps);
+    else if (sub === "cache") await cache(rest, deps);
     else if (sub === "debug") await simple("/api/debug", rest, deps);
     else if (sub === "claude-inbound") await simple("/api/claude/inbound-debug", rest, deps);
     else if (sub === "injection") await simple("/api/debug/injection-logs", rest, deps);

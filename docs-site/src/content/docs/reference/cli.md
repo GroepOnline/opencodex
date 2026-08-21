@@ -196,7 +196,7 @@ routes, validation, live configuration, and catalog refresh side effects as the 
 | --- | --- |
 | Routing | `ocx combo ...` or `ocx route combo ...` |
 | Agent policy | `ocx agent injection|effort|subagents|fallback|sidecar ...` |
-| Observability | `ocx observe logs|usage|storage|memory|debug ...` |
+| Observability | `ocx observe logs|usage|storage|memory|cache|debug ...` |
 | API admission | `ocx access key|endpoints|models|test ...` |
 | Claude Code | `ocx claude config status|set ...` |
 | Grok Build | `ocx grok status|exclude|include|set|clear|apply ...` |
@@ -204,9 +204,9 @@ routes, validation, live configuration, and catalog refresh side effects as the 
 | Offline config | `ocx config show|get|set|unset|validate|export|import ...` |
 
 List/status is the default where unambiguous. Use `--json` for structured snapshots and
-`ocx observe logs --follow --jsonl` for a streaming request-log feed. Destructive removal/import
-and update actions require `--yes`. Live operations require a running proxy; validated config
-inspection and import/export work offline.
+`ocx observe logs --follow --jsonl` for a streaming request-log feed. Destructive removal/import,
+cache flush (`ocx observe cache clear --yes`), and update actions require `--yes`. Live operations
+require a running proxy; validated config inspection and import/export work offline.
 
 ```bash
 ocx provider test ark
