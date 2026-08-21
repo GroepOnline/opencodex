@@ -138,13 +138,15 @@ function applyFailedKeyCooldown(
   const currentEntry = poolEntryForKey(pool, failedKey);
   if (!currentEntry) return { currentEntry: undefined, persistedHardCap: false };
   const cooldownMs = cooldownMsForFailure(status, retryAfterHeader, message, now);
+  const until = now + cooldownMs;
   keyCooldowns.set(cooldownKey(providerName, currentEntry.id), {
-    cooldownUntil: now + cooldownMs,
+    cooldownUntil: until,
   });
   const persistedHardCap = cooldownMs > MAX_COOLDOWN_MS;
-  if (persistedHardCap) {
-    persistHardCapKeyCooldown(config, providerName, currentEntry.id, now + cooldownMs);
-  }
+  // Persist EVERY cooldown (not just hard-cap ones) so a proxy restart mid-rate-limit
+  // respects the in-flight cooldowns instead of re-hitting an already-exhausted key.
+  // The config save is already triggered by the caller's `needsSave` path.
+  persistHardCapKeyCooldown(config, providerName, currentEntry.id, until);
   return { currentEntry, persistedHardCap };
 }
 
@@ -212,7 +214,9 @@ export function rotateKeyOn429(
     status,
     now,
   );
-  const needsSave = persistedHardCap;
+  // Every cooldown is now persisted, so always save on a failure (the active key rotated,
+  // and any cooldown entry was written to config.keyPoolCooldowns).
+  const needsSave = true;
 
   // Lost the race: someone already rotated away from the failed key. If the live key is healthy,
   // retry with it as-is instead of rotating a second time.
@@ -265,7 +269,8 @@ export function coolAttemptedKey(
     options.status ?? 402,
     now,
   );
-  if (persistedHardCap) saveConfigRoot(config, options.persistConfig);
+  // Every cooldown is now persisted; save so a restart respects the cooled key.
+  saveConfigRoot(config, options.persistConfig);
   return poolAllKeysCooling(providerName, pool, now);
 }
 

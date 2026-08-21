@@ -119,7 +119,9 @@ describe("rotateKeyOn429", () => {
       529,
     );
     expect(getKeyCooldownUntil("p", "k1", now)).toBe(now + 60_000);
-    expect(config.keyPoolCooldowns?.p).toBeUndefined();
+    // Ordinary 429/529 cooldowns are now persisted too (not just hard caps), so a proxy restart
+    // mid-rate-limit respects the in-flight cooldown instead of re-hitting the exhausted key.
+    expect(config.keyPoolCooldowns?.p?.k1?.until).toBe(now + 60_000);
   });
 
   test("hydrates persisted hard-cap key windows after a process restart", () => {
