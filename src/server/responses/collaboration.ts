@@ -26,7 +26,7 @@ import {
 } from "../../combos";
 import { isInjectionDebugEnabled } from "../../lib/debug-settings";
 import { injectionDebugLog } from "../../lib/injection-debug-log";
-import { modelInList, namespacedToolName } from "../../types";
+import { modelInList, namespacedToolName, normalizeToolName } from "../../types";
 import type { AdapterEvent, OcxConfig, OcxParsedRequest, OcxProviderConfig, OcxProviderContinuationState, OcxUsage } from "../../types";
 import {
   forceRefreshOAuthAccessSnapshot,
@@ -108,7 +108,7 @@ export function buildToolBridgeMaps(parsed: OcxParsedRequest): {
   const freeformToolNames = new Set<string>();
   const toolSearchToolNames = new Set<string>();
   for (const t of parsed.context.tools ?? []) {
-    if (t.namespace) toolNsMap.set(namespacedToolName(t.namespace, t.name), { namespace: t.namespace, name: t.name });
+    if (t.namespace) toolNsMap.set(normalizeToolName(namespacedToolName(t.namespace, t.name)), { namespace: t.namespace, name: t.name });
     if (t.freeform) freeformToolNames.add(t.name);
     if (t.toolSearch) toolSearchToolNames.add(t.name);
   }
