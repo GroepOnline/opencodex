@@ -178,6 +178,7 @@ export default function ProviderOverviewDashboard({
   };
 
   const rowStatus = (item: WorkspaceItem): { label: string; tone: "ready" | "warn" | "cool" | "off" } => {
+    if (item.disabled) return { label: t("prov.disabledBadge"), tone: "off" };
     if (cappedNames.has(item.name) || (availabilityByName[item.name]?.coolingKeyCount ?? 0) > 0) {
       return { label: cappedNames.has(item.name) ? t("pws.capCooldown.badge") : t("pws.keyCooling"), tone: "cool" };
     }
