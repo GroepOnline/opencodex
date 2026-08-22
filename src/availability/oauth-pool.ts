@@ -66,6 +66,29 @@ function oauthPoolSelectMiss(
 }
 
 /**
+ * True when every account in this provider's OAuth pool is cooling.
+ * Combo/fallback must then record a provider-level cap (`allowPooled`).
+ */
+export function isOauthAccountPoolExhausted(
+  config: OcxConfig,
+  providerName: string,
+  routedProvider: Pick<OcxProviderConfig, "authMode">,
+  now = Date.now(),
+): boolean {
+  if (routedProvider.authMode !== "oauth") return false;
+  if (providerName === "anthropic" && isAnthropicAccountPoolEnabled(config)) {
+    return resolveAnthropicAccountForSession(null, config, now).reason === "all-cooled";
+  }
+  if (providerName === "google-antigravity" && isGoogleAntigravityAccountPoolEnabled(config)) {
+    return resolveGoogleAntigravityAccountForSession(null, config, now).reason === "all-cooled";
+  }
+  if (providerName === "cursor" && isCursorAccountPoolEnabled(config)) {
+    return resolveCursorAccountForSession(null, config, now).reason === "all-cooled";
+  }
+  return false;
+}
+
+/**
  * First OAuth-pool pick for this attempt. Returns a fetch-ready provider, or
  * not-pooled so the turn uses the single-account token snapshot.
  */

@@ -33,6 +33,7 @@ export {
 } from "./select";
 export {
   selectOauthPoolCandidate,
+  isOauthAccountPoolExhausted,
   resolveAnthropicPoolOutcome,
   resolveGoogleAntigravityPoolOutcome,
   resolveCursorPoolOutcome,

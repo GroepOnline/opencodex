@@ -5,6 +5,7 @@ import type { OcxConfig, OcxProviderConfig } from "../types";
 import { resolveEnvValue, saveConfigPreservingClaudeCode } from "../config";
 import type { OcxProviderTransport } from "../providers/xai-transport";
 import { isAccountPoolHopStatus } from "./classify";
+import { isOauthAccountPoolExhausted } from "./oauth-pool";
 
 export type ResolveOutcomeInput = {
   config: OcxConfig;
@@ -138,6 +139,16 @@ export function resolveOutcome(input: ResolveOutcomeInput): OcxProviderTransport
     recordCapOutcome(input);
     return null;
   }
-  recordCapOutcome(input);
+  recordCapOutcome({
+    ...input,
+    ...(isOauthAccountPoolExhausted(
+      input.config,
+      input.providerName,
+      input.routedProvider,
+      input.now,
+    )
+      ? { allowPooled: true }
+      : {}),
+  });
   return null;
 }

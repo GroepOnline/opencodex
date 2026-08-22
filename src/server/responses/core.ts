@@ -31,6 +31,7 @@ import {
   isAccountPoolHopStatus,
   isOauthAccountPoolHopStatus,
   isProviderFallbackComboId,
+  isOauthAccountPoolExhausted,
   keyPoolCanHop,
   recordCapOutcome,
   resolveAnthropicPoolOutcome,
@@ -1416,6 +1417,9 @@ export async function handleResponses(
       providerName: route.providerName,
       status: response.status,
       message: await peekUpstreamErrorText(response, options.abortSignal),
+      ...(isOauthAccountPoolExhausted(config, route.providerName, route.provider)
+        ? { allowPooled: true }
+        : {}),
     });
   };
   const isPassthrough = "passthrough" in adapter && !!adapter.passthrough;
@@ -2651,6 +2655,9 @@ export async function handleResponses(
           providerName: route.providerName,
           status: failure.response.status,
           message: failure.classificationText,
+          ...(isOauthAccountPoolExhausted(config, route.providerName, route.provider)
+            ? { allowPooled: true }
+            : {}),
         });
         options.onConsumedComboFailure?.(failure);
         return failure.response;
@@ -2662,6 +2669,9 @@ export async function handleResponses(
         providerName: route.providerName,
         status: upstreamResponse.status,
         message: errorText,
+        ...(isOauthAccountPoolExhausted(config, route.providerName, route.provider)
+          ? { allowPooled: true }
+          : {}),
       });
       cleanupUpstreamAbort();
       recordSubagentQuotaFailureForThreadSpawn(
