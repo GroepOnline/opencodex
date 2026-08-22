@@ -1705,6 +1705,7 @@ export const en = {
   "vk.requests30d": "requests (30d)",
   "vk.costUsd": "est. cost (30d)",
   "vk.cacheHit": "cache-hit",
+  "vk.proxyCacheHit": "proxy-cache",
   "vk.p95": "p95 duration",
   "vk.p95Unit": "s",
   "vk.ratio429": "429 share",

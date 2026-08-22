@@ -82,6 +82,10 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
   const [openBon, setOpenBon] = useState<string | null>(null);
   const [analyseOpen, setAnalyseOpen] = useState(target === "usage");
   const [opsOpen, setOpsOpen] = useState(false);
+  // Proxy response-cache hit-rate (hits / (hits+misses)) from GET /api/response-cache — the same
+  // source ResponseCachePanel reads. null when the cache is off or the endpoint is unreachable.
+  // This is DISTINCT from summary.cacheReadRatio, which is Anthropic prompt-cache token reuse.
+  const [proxyCacheRatio, setProxyCacheRatio] = useState<number | null>(null);
   const pausedRef = useRef(paused);
   useEffect(() => { pausedRef.current = paused; }, [paused]);
 
@@ -103,6 +107,29 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
     };
     void load();
     const iv = setInterval(() => void load(), 60_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [apiBase]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadCache = async () => {
+      try {
+        const res = await fetch(`${apiBase}/api/response-cache`);
+        if (!res.ok) throw new Error(String(res.status));
+        const data = await res.json() as { enabled?: boolean; stats?: { hits: number; misses: number } };
+        if (cancelled) return;
+        const hits = data.stats?.hits ?? 0;
+        const misses = data.stats?.misses ?? 0;
+        const lookups = hits + misses;
+        // Only surface a ratio when the cache is on AND has been probed: 0 lookups is "no signal",
+        // not a 0% hit-rate, so leave it null rather than showing a misleading 0%.
+        setProxyCacheRatio(data.enabled && lookups > 0 ? hits / lookups : null);
+      } catch {
+        if (!cancelled) setProxyCacheRatio(null);
+      }
+    };
+    void loadCache();
+    const iv = setInterval(() => void loadCache(), 15_000);
     return () => { cancelled = true; clearInterval(iv); };
   }, [apiBase]);
 
@@ -192,6 +219,12 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
               : "—"}
           </span>
           <span className="stat-strip-label">{t("vk.cacheHit")}</span>
+        </div>
+        <div className="stat-strip-item">
+          <span className="stat-strip-waarde">
+            {proxyCacheRatio !== null ? `${Math.round(proxyCacheRatio * 100)}%` : "—"}
+          </span>
+          <span className="stat-strip-label">{t("vk.proxyCacheHit")}</span>
         </div>
         <div className="stat-strip-item">
           <span className="stat-strip-waarde">

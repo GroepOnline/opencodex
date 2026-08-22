@@ -443,6 +443,7 @@ const overrides: Partial<Record<TKey, string>> = {
   "vk.requests30d": "requests (30d)",
   "vk.costUsd": "geschatte kosten (30d)",
   "vk.cacheHit": "cache-hit",
+  "vk.proxyCacheHit": "proxy-cache",
   "vk.p95": "p95 duur",
   "vk.p95Unit": "s",
   "vk.ratio429": "429-deel",
