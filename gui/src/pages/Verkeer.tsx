@@ -207,7 +207,7 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
               <button
                 type="button"
                 className="traffic-entry-head traffic-entry-head--grid"
-                style={{ width: "100%", background: "transparent", border: "none", padding: 0, font: "inherit", color: "inherit", cursor: "pointer", textAlign: "left" }}
+                style={{ width: "100%", background: "transparent", border: "none", padding: 0, color: "inherit", cursor: "pointer", textAlign: "left" }}
                 onClick={() => setOpenBon(current => current === id ? null : id)}
                 aria-expanded={isOpen}
               >
