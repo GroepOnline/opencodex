@@ -236,9 +236,15 @@ function cacheCallerScope(headers: Headers): string {
 
 /** Rebuild a Request carrying `raw` as a re-readable body and the original cancellation signal. */
 function rebuild(req: Request, raw: string): Request {
+  // The probe already decoded the body via req.text(), so `raw` is plain UTF-8. Drop the
+  // original content-encoding/content-length: keeping them makes the downstream JSON reader
+  // try to decompress a now-uncompressed body (and mismatches the new byte length).
+  const headers = new Headers(req.headers);
+  headers.delete("content-encoding");
+  headers.delete("content-length");
   return new Request(req.url, {
     method: req.method,
-    headers: req.headers,
+    headers,
     body: raw,
     signal: req.signal,
   });

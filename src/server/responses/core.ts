@@ -1994,7 +1994,7 @@ export async function handleResponses(
       on429: (retryAfter, hop) => {
         // Fase C: provider-specific rate-limit signal parsed from the hop HEADERS (no body read).
         const hopRateLimit = hop?.headers
-          ? rateLimitForFailure(route.providerName, hop.status ?? 429, hop.headers, activeAdapter)
+          ? rateLimitForFailure(route.providerName, hop.status ?? 429, hop.headers, adapter)
           : null;
         const rotated = resolveOutcome({
           config,
@@ -2074,7 +2074,7 @@ export async function handleResponses(
       on429: (retryAfter, hop) => {
         // Fase C: provider-specific rate-limit signal parsed from the hop HEADERS (no body read).
         const hopRateLimit = hop?.headers
-          ? rateLimitForFailure(route.providerName, hop.status ?? 429, hop.headers, activeAdapter)
+          ? rateLimitForFailure(route.providerName, hop.status ?? 429, hop.headers, adapter)
           : null;
         const rotated = resolveOutcome({
           config,

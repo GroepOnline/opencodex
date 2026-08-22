@@ -16,6 +16,8 @@ const RING_BUFFER_MAX_ENTRIES = 5_000;
 
 const sampleCache = new Map<string, number[]>();
 let cacheBuiltAt = 0;
+/** Window the current sampleCache was built for. A different window forces a rebuild. */
+let cacheBuiltForSinceMs: number | null = null;
 const CACHE_TTL_MS = 60_000;
 
 function cacheKey(provider: string, model: string): string {
@@ -47,7 +49,11 @@ export function p50DurationForModel(
   sinceMs: number,
   now = Date.now(),
 ): number | null {
-  if (now - cacheBuiltAt > CACHE_TTL_MS) {
+  // Rebuild when the TTL lapses OR the caller asks for a different window: the cache holds
+  // aggregated samples with no per-entry timestamps, so a cache built for window A cannot
+  // answer window B. Without the window check the first caller within the TTL would pin the
+  // window for every later reader (e.g. the /api/router inspect endpoint vs. live routing).
+  if (now - cacheBuiltAt > CACHE_TTL_MS || cacheBuiltForSinceMs !== sinceMs) {
     sampleCache.clear();
     try {
       // Recent window only: scoring needs a coarse p50, not the full history. The window
@@ -57,6 +63,7 @@ export function p50DurationForModel(
       /* unreadable log → no latency signal */
     }
     cacheBuiltAt = now;
+    cacheBuiltForSinceMs = sinceMs;
   }
   const samples = sampleCache.get(cacheKey(provider, model));
   if (!samples || samples.length === 0) return null;
