@@ -2285,14 +2285,18 @@ describe("GitHub Actions hardening", () => {
     expect(health).toBeDefined();
     expect(rollback).toBeDefined();
 
-    // 30 tries * 2s sleep = 60s, matching the error message's stated budget.
-    expect(health!.run ?? "").toContain("for i in $(seq 1 30)");
-    expect(health!.run ?? "").toContain("sleep 2");
-    expect(health!.run ?? "").toContain("did not become healthy within 60s");
-    expect(health!.run ?? "").toContain("$OCX_HEALTH_URLS");
-    expect(health!.run ?? "").toContain('"status":"ok"');
-    expect(health!.run ?? "").toContain("exit 1");
-    const resolveHealth = steps.find(step => step.name === "Resolve health URLs");
+    // A wall-clock deadline bounds serial endpoint probes; identity must match the systemd unit.
+    expect(health!.run ?? "").toContain("deadline=$((SECONDS + 60))");
+    expect(health!.run ?? "").toContain('systemctl show -p MainPID --value opencodex-proxy.service');
+    expect(health!.run ?? "").toContain('b.get("service") == "opencodex"');
+    expect(health!.run ?? "").toContain('str(b.get("pid")) == os.environ["MAIN_PID"]');
+    expect(health!.run ?? "").toContain("--max-time");
+    expect(health!.run ?? "").toContain("identity-verified healthy within 60s");
+    const resolveHealthIndex = steps.findIndex(step => step.name === "Resolve health URLs");
+    const deployIndex = steps.findIndex(step => step.name === "Deploy into service checkout (in-place, pinned SHA)");
+    const resolveHealth = steps[resolveHealthIndex];
+    expect(resolveHealthIndex).toBeGreaterThanOrEqual(0);
+    expect(resolveHealthIndex).toBeLessThan(deployIndex);
     expect(resolveHealth?.run ?? "").toContain("http://127.0.0.1:10100/healthz");
     expect(resolveHealth?.run ?? "").toContain("tailscale ip -4");
     expect(text).not.toContain("100.109.39.86");
@@ -2306,10 +2310,14 @@ describe("GitHub Actions hardening", () => {
     expect(rollback!.run ?? "").toContain('git reset --hard "${{ steps.prev.outputs.sha }}"');
     expect(rollback!.run ?? "").toContain("bun run build:gui");
     expect(rollback!.run ?? "").toContain("sudo systemctl restart opencodex-proxy.service");
-    // Rollback re-verifies health rather than declaring success on restart alone.
-    expect(rollback!.run ?? "").toContain('"status":"ok"');
+    // Rollback is independent of prior GITHUB_ENV and applies the same identity contract.
+    expect(rollback!.run ?? "").toContain('${OCX_HEALTH_URLS:-http://127.0.0.1:10100/healthz}');
+    expect(rollback!.run ?? "").toContain("tailscale ip -4");
+    expect(rollback!.run ?? "").toContain("deadline=$((SECONDS + 30))");
+    expect(rollback!.run ?? "").toContain('systemctl show -p MainPID --value opencodex-proxy.service');
+    expect(rollback!.run ?? "").toContain('b.get("service") == "opencodex"');
     expect(rollback!.run ?? "").toContain("rollback deployed");
-    expect(rollback!.run ?? "").toContain("but service not healthy");
+    expect(rollback!.run ?? "").toContain("identity-verified healthy within 30s");
   });
 
   test("design-system contract only runs when design-system inputs or the GUI change, identically on push and PR", async () => {
