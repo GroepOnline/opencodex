@@ -6,6 +6,7 @@
 export {
   classifyAttempt,
   isAccountPoolHopStatus,
+  isOauthAccountPoolHopStatus,
   type AttemptEvidence,
   type AvailabilityDecision,
 } from "./classify";
@@ -32,6 +33,7 @@ export {
 } from "./select";
 export {
   selectOauthPoolCandidate,
+  isOauthAccountPoolExhausted,
   resolveAnthropicPoolOutcome,
   resolveGoogleAntigravityPoolOutcome,
   resolveCursorPoolOutcome,

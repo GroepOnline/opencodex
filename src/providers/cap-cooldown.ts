@@ -16,6 +16,10 @@ import { saveConfigPreservingClaudeCode } from "../config";
 import type { OcxConfig, ProviderCapCooldown } from "../types";
 import { hasKeyPoolFailover } from "./api-keys";
 import { expireKeyPoolCooldowns } from "./key-failover";
+import { isAnthropicAccountPoolEnabled } from "../oauth/anthropic-routing";
+import { isCursorAccountPoolEnabled } from "../oauth/cursor-routing";
+import { isGoogleAntigravityAccountPoolEnabled } from "../oauth/google-antigravity-routing";
+import { OAUTH_PROVIDERS } from "../oauth";
 
 export type { ProviderCapCooldown };
 
@@ -207,6 +211,20 @@ export interface RecordProviderCapCooldownOpts {
   allowPooled?: boolean;
 }
 
+/**
+ * True when this provider routes through a multi-account OAuth pool whose per-account
+ * rotation owns account-scoped cap handling. A cap message from one pooled account must not
+ * hard-disable the whole provider while other accounts still have capacity.
+ */
+function hasOauthAccountPoolFailover(config: OcxConfig, key: string): boolean {
+  // Consult the canonical OAuth registry and actual provider routing before suppressing cooldowns.
+  if (!OAUTH_PROVIDERS[key] || config.providers[key]?.authMode !== "oauth") return false;
+  if (key === "anthropic") return isAnthropicAccountPoolEnabled(config);
+  if (key === "google-antigravity") return isGoogleAntigravityAccountPoolEnabled(config);
+  if (key === "cursor") return isCursorAccountPoolEnabled(config);
+  return false;
+}
+
 /** Record a hard-cap 429/402 onto the live provider config and optionally disable until reset. */
 export function recordProviderCapCooldown(
   config: OcxConfig,
@@ -218,7 +236,12 @@ export function recordProviderCapCooldown(
   const key = resolveProviderConfigKey(config, providerName);
   if (!key || !isHardCapMessage(status, upstreamError)) return null;
   const pooled = config.providers[key];
-  if (pooled && hasKeyPoolFailover(pooled) && opts?.allowPooled !== true) return null;
+  if (
+    pooled
+    && (hasKeyPoolFailover(pooled)
+      || (hasOauthAccountPoolFailover(config, key) && (status === 429 || status === 402)))
+    && opts?.allowPooled !== true
+  ) return null;
   const now = opts?.now ?? Date.now();
   const rawMessage = (upstreamError || "Usage limit reached").slice(0, 400);
   const until = parseResetsInMs(rawMessage, now);

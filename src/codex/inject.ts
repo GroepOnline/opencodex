@@ -128,7 +128,10 @@ export function buildProviderTableBlock(port: number, supportsWebsockets = false
     "requires_openai_auth = true",
   ];
   if (includeApiAuthHeader) {
-    lines.push('env_http_headers = { "x-opencodex-api-key" = "OPENCODEX_API_AUTH_TOKEN" }');
+    // Codex omits an env_http_headers entry when that env var is unset.
+    lines.push(
+      'env_http_headers = { "x-opencodex-api-key" = "OPENCODEX_API_AUTH_TOKEN", "CF-Access-Client-Id" = "CF_ACCESS_CLIENT_ID", "CF-Access-Client-Secret" = "CF_ACCESS_CLIENT_SECRET" }',
+    );
   }
   if (supportsWebsockets) lines.push("supports_websockets = true");
   return lines.join("\n") + "\n";

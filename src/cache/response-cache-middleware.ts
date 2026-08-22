@@ -29,6 +29,7 @@
 import { createHash } from "node:crypto";
 import { ResponseCache, normalizeRequestBody, requestOptsOutOfCache, responseCacheFromConfig } from "./kv-cache";
 import { routeModel } from "../router";
+import { isApiAuthRequired } from "../server/auth-cors";
 import type { OcxConfig } from "../types";
 
 let activeCache: ResponseCache | null = null;
@@ -109,34 +110,18 @@ export async function probeResponseCache(
   endpoint: "responses" | "messages" | "chat-completions",
 ): Promise<CacheProbe> {
   const cache = activeCache;
-  // Fast path: cache disabled, or request method not POST. Body untouched, pass through.
   if (!cache || !cache.enabled) return disabledProbe();
   if (req.method !== "POST") return disabledProbe();
-  // Responses ids are continuation handles, not replayable payload ids. A cache hit bypasses
-  // rememberResponseState(), and persisted cache entries can outlive the 1h continuation store.
-  // Until the cache can persist/rebuild provider continuation metadata, fail safe by leaving
-  // /v1/responses on its normal stateful path. Body is untouched here.
   if (endpoint === "responses") return disabledProbe();
 
-  // Honor an explicit client-side opt-out (Cache-Control: no-store). Body untouched.
   const cc = req.headers.get("cache-control") ?? "";
   if (/\bno-store\b/i.test(cc)) return disabledProbe();
 
-  // Anything below consumes the body. From here on we MUST return a rebuilt Request one way or
-  // another, so the downstream handler never sees a drained stream.
   let raw: string;
   try {
     raw = await req.text();
   } catch {
-    // Body already drained and unreadable; nothing we can hand downstream. Signal a miss with a
-    // synthetic empty body — the handler will fail the same way it would have reading the stream.
-    return noStoreMiss(
-      rebuild(req, ""),
-      null,
-      null,
-      "",
-      endpoint,
-    );
+    return noStoreMiss(rebuild(req, ""), null, null, "", endpoint);
   }
 
   let parsed: unknown;
@@ -146,8 +131,6 @@ export async function probeResponseCache(
     return noStoreMiss(rebuild(req, raw), null, null, "", endpoint);
   }
 
-  // Never cache streaming requests: we only ever replay fully-buffered bodies, and a
-  // streamed SSE body is unsafe to dedupe / replay byte-for-byte.
   if (requestOptsOutOfCache(parsed)) {
     return noStoreMiss(rebuild(req, raw), null, null, "", endpoint);
   }
@@ -166,15 +149,17 @@ export async function probeResponseCache(
   const normalized = normalizeRequestBody(parsed);
   if (normalized === null) return noStoreMiss(rebuild(req, raw), route.providerName, route.modelId, "", endpoint);
 
-  // Cache entries are scoped to the caller/account/session inputs that can affect routing or
-  // upstream semantics. Only the hash participates in the cache material: credentials and account
-  // identifiers never reach persistence or logs. A request without any identity material yields a
-  // null scope: never pool credential-less callers into a shared bucket (they could replay each
-  // other's response bodies). Body stays re-readable via the rebuilt Request.
-  const callerScope = cacheCallerScope(req.headers);
+  // Scope cache entries by authenticated identity/session material. Identity-less requests are
+  // only pooled on loopback, where admission intentionally treats local traffic as one principal.
+  // If alternate wiring reaches this point on an auth-required bind without identity, fail closed.
+  let callerScope = cacheCallerScope(req.headers);
   if (callerScope === null) {
-    return noStoreMiss(rebuild(req, raw), route.providerName, route.modelId, normalized, endpoint);
+    if (isApiAuthRequired(config)) {
+      return noStoreMiss(rebuild(req, raw), route.providerName, route.modelId, normalized, endpoint);
+    }
+    callerScope = "loopback-anonymous";
   }
+
   const scopedNormalized = `${callerScope}\0${normalized}`;
   const hit = cache.get(route.providerName, route.modelId, scopedNormalized, endpoint);
   if (hit) {
@@ -193,15 +178,12 @@ export async function probeResponseCache(
     };
   }
 
-  // Rebuild a Request with the re-readable body so the downstream handler can read it again.
   const rebuilt = rebuild(req, raw);
 
   const store = (response: Response) => {
     if (response.status < 200 || response.status >= 300) return;
     const ct = response.headers.get("content-type") ?? "application/json";
-    if (ct.includes("text/event-stream")) return; // never cache a streamed body
-    // Never cache a response that carries its own content-encoding: the clone().text() below
-    // would hand us the still-compressed bytes, and we'd replay garbage to the client.
+    if (ct.includes("text/event-stream")) return;
     if (response.headers.get("content-encoding")) return;
     void response
       .clone()
@@ -238,12 +220,7 @@ const CACHE_SCOPE_HEADERS = [
   "thread-id",
 ] as const;
 
-/**
- * Hash identity/affinity inputs so two security principals or sessions never cross-hit.
- * Returns null when the request carries NO identity material: a shared "anonymous" bucket
- * would let credential-less callers replay each other's stored response bodies (CWE-524),
- * so the probe treats a null scope as not-cacheable rather than pooling them together.
- */
+/** Hash identity/affinity inputs so two authenticated principals or sessions never cross-hit. */
 function cacheCallerScope(headers: Headers): string | null {
   const material = CACHE_SCOPE_HEADERS
     .map((name) => [name, headers.get(name)?.trim() ?? ""] as const)
@@ -252,11 +229,7 @@ function cacheCallerScope(headers: Headers): string | null {
   return createHash("sha256").update(JSON.stringify(material)).digest("hex");
 }
 
-/** Rebuild a Request carrying `raw` as a re-readable body and the original cancellation signal. */
 function rebuild(req: Request, raw: string): Request {
-  // The probe already decoded the body via req.text(), so `raw` is plain UTF-8. Drop the
-  // original content-encoding/content-length: keeping them makes the downstream JSON reader
-  // try to decompress a now-uncompressed body (and mismatches the new byte length).
   const headers = new Headers(req.headers);
   headers.delete("content-encoding");
   headers.delete("content-length");
@@ -268,7 +241,6 @@ function rebuild(req: Request, raw: string): Request {
   });
 }
 
-/** Pull the model id from a parsed request body, per wire protocol. */
 function extractModelId(parsed: unknown, endpoint: "responses" | "messages" | "chat-completions"): string | null {
   if (!parsed || typeof parsed !== "object") return null;
   const obj = parsed as Record<string, unknown>;
@@ -280,7 +252,6 @@ function extractModelId(parsed: unknown, endpoint: "responses" | "messages" | "c
   return null;
 }
 
-/** Operator action: clear the whole response cache (exposed via management API later). */
 export function clearResponseCache(): number {
   const cache = activeCache;
   if (!cache) return 0;

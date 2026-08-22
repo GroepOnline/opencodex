@@ -29,7 +29,9 @@ import {
   classifyAttempt,
   comboIdLabel,
   isAccountPoolHopStatus,
+  isOauthAccountPoolHopStatus,
   isProviderFallbackComboId,
+  isOauthAccountPoolExhausted,
   keyPoolCanHop,
   recordCapOutcome,
   resolveAnthropicPoolOutcome,
@@ -1415,6 +1417,9 @@ export async function handleResponses(
       providerName: route.providerName,
       status: response.status,
       message: await peekUpstreamErrorText(response, options.abortSignal),
+      ...(isOauthAccountPoolExhausted(config, route.providerName, route.provider)
+        ? { allowPooled: true }
+        : {}),
     });
   };
   const isPassthrough = "passthrough" in adapter && !!adapter.passthrough;
@@ -2535,7 +2540,7 @@ export async function handleResponses(
       // Opt-in Anthropic OAuth account pool (#294): cool the failed account and retry
       // with another eligible OAuth account (bounded per request). Disabled by default.
       while (
-        isAccountPoolHopStatus(upstreamResponse.status)
+        isOauthAccountPoolHopStatus(upstreamResponse.status)
         && anthropicPoolAccountId
         && isAnthropicAccountPoolEnabled(config)
         && anthropicPoolFailovers < ANTHROPIC_POOL_MAX_FAILOVERS_PER_REQUEST
@@ -2575,7 +2580,7 @@ export async function handleResponses(
       // overload. Transport failures, client aborts, and 4xx never enter this
       // block. Keep the shared Antigravity session id so replay state survives.
       while (
-        isAccountPoolHopStatus(upstreamResponse.status)
+        isOauthAccountPoolHopStatus(upstreamResponse.status)
         && googleAntigravityPoolAccountId
         && isGoogleAntigravityAccountPoolEnabled(config)
         && googleAntigravityPoolFailovers
@@ -2650,6 +2655,9 @@ export async function handleResponses(
           providerName: route.providerName,
           status: failure.response.status,
           message: failure.classificationText,
+          ...(isOauthAccountPoolExhausted(config, route.providerName, route.provider)
+            ? { allowPooled: true }
+            : {}),
         });
         options.onConsumedComboFailure?.(failure);
         return failure.response;
@@ -2661,6 +2669,9 @@ export async function handleResponses(
         providerName: route.providerName,
         status: upstreamResponse.status,
         message: errorText,
+        ...(isOauthAccountPoolExhausted(config, route.providerName, route.provider)
+          ? { allowPooled: true }
+          : {}),
       });
       cleanupUpstreamAbort();
       recordSubagentQuotaFailureForThreadSpawn(
@@ -2792,7 +2803,7 @@ export async function handleResponses(
         }
       }
       if (
-        isAccountPoolHopStatus(response.status)
+        isOauthAccountPoolHopStatus(response.status)
         && anthropicPoolAccountId
         && isAnthropicAccountPoolEnabled(config)
         && anthropicPoolFailovers < ANTHROPIC_POOL_MAX_FAILOVERS_PER_REQUEST

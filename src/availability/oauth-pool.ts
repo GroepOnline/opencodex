@@ -1,5 +1,5 @@
 import type { OcxConfig, OcxProviderConfig } from "../types";
-import { isAccountPoolHopStatus } from "./classify";
+import { isOauthAccountPoolHopStatus } from "./classify";
 import {
   bindAnthropicSessionAffinity,
   clearAnthropicSessionAffinityForAccount,
@@ -63,6 +63,29 @@ function oauthPoolSelectMiss(
     return { kind: "all-cooled", pool, retryAfterSeconds };
   }
   return { kind: "none", pool };
+}
+
+/**
+ * True when every account in this provider's OAuth pool is cooling.
+ * Combo/fallback must then record a provider-level cap (`allowPooled`).
+ */
+export function isOauthAccountPoolExhausted(
+  config: OcxConfig,
+  providerName: string,
+  routedProvider: Pick<OcxProviderConfig, "authMode">,
+  now = Date.now(),
+): boolean {
+  if (routedProvider.authMode !== "oauth") return false;
+  if (providerName === "anthropic" && isAnthropicAccountPoolEnabled(config)) {
+    return resolveAnthropicAccountForSession(null, config, now).reason === "all-cooled";
+  }
+  if (providerName === "google-antigravity" && isGoogleAntigravityAccountPoolEnabled(config)) {
+    return resolveGoogleAntigravityAccountForSession(null, config, now).reason === "all-cooled";
+  }
+  if (providerName === "cursor" && isCursorAccountPoolEnabled(config)) {
+    return resolveCursorAccountForSession(null, config, now).reason === "all-cooled";
+  }
+  return false;
 }
 
 /**
@@ -152,7 +175,7 @@ export async function resolveAnthropicPoolOutcome(input: {
   sessionKey?: string | null;
   now?: number;
 }): Promise<OauthPoolHop | null> {
-  if (!isAccountPoolHopStatus(input.status)) return null;
+  if (!isOauthAccountPoolHopStatus(input.status)) return null;
   if (!isAnthropicAccountPoolEnabled(input.config)) return null;
   const nextAccountId = rotateAnthropicAccountOn429(
     input.config,
@@ -189,7 +212,7 @@ export async function resolveGoogleAntigravityPoolOutcome(input: {
   sessionKey?: string | null;
   now?: number;
 }): Promise<OauthPoolHop | null> {
-  if (!isAccountPoolHopStatus(input.status)) return null;
+  if (!isOauthAccountPoolHopStatus(input.status)) return null;
   if (!isGoogleAntigravityAccountPoolEnabled(input.config)) return null;
   const nextAccountId = rotateGoogleAntigravityAccountOn429(
     input.config,

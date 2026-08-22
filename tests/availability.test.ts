@@ -8,6 +8,7 @@ import {
   classifyAttempt,
   clearKeyPoolCooldowns,
   isAccountPoolHopStatus,
+  isOauthAccountPoolHopStatus,
   inspectAvailability,
   inspectKeyPool,
   recordCapOutcome,
@@ -19,6 +20,7 @@ import {
   selectHopChain,
   selectKeyPoolCandidate,
   selectOauthPoolCandidate,
+  isOauthAccountPoolExhausted,
 } from "../src/availability";
 import { getCombo } from "../src/combos/types";
 import { handleResponses } from "../src/server/responses";
@@ -66,6 +68,14 @@ describe("isAccountPoolHopStatus", () => {
     expect(isAccountPoolHopStatus(429)).toBe(true);
     expect(isAccountPoolHopStatus(529)).toBe(true);
     expect(isAccountPoolHopStatus(503)).toBe(false);
+    expect(isAccountPoolHopStatus(402)).toBe(false);
+  });
+
+  test("OAuth pools additionally hop account-scoped 402 caps", () => {
+    expect(isOauthAccountPoolHopStatus(429)).toBe(true);
+    expect(isOauthAccountPoolHopStatus(529)).toBe(true);
+    expect(isOauthAccountPoolHopStatus(402)).toBe(true);
+    expect(isOauthAccountPoolHopStatus(503)).toBe(false);
   });
 });
 
@@ -981,6 +991,28 @@ describe("selectOauthPoolCandidate", () => {
     if (result.kind !== "all-cooled") return;
     expect(result.pool).toBe("anthropic");
     expect(result.retryAfterSeconds).not.toBeNull();
+  });
+
+  test("exhausted OAuth pool is visible to cap recording", async () => {
+    const { aId } = await seedAnthropicPair();
+    const config = poolConfig(true);
+    const bId = getAccountSet("anthropic")!.accounts.find(acc => acc.id !== aId)!.id;
+    expect(rotateAnthropicAccountOn429(config, aId, "120")).toBe(bId);
+    expect(rotateAnthropicAccountOn429(config, bId, "120")).toBeNull();
+    expect(isOauthAccountPoolExhausted(config, "anthropic", routed)).toBe(true);
+
+    const cap = "You have reached your weekly limit. The limit resets in 1d 22h.";
+    expect(resolveOutcome({
+      config,
+      providerName: "anthropic",
+      routedProvider: routed,
+      status: 429,
+      message: cap,
+      save: false,
+    })).toBeNull();
+    expect(config.providerCooldowns?.anthropic).toBeTruthy();
+    // Default provider stays selectable; combo/fallback still sees the window.
+    expect(config.providers.anthropic?.disabled).toBeUndefined();
   });
 });
 

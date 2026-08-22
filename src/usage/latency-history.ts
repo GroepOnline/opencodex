@@ -14,19 +14,27 @@ const MAX_SAMPLES_PER_KEY = 200;
 /** Ring-buffer scan window; entries older than this are ignored even if still buffered. */
 const RING_BUFFER_MAX_ENTRIES = 5_000;
 
-const sampleCache = new Map<string, number[]>();
+type TimedSample = { durationMs: number; timestamp: number };
+
+const sampleCache = new Map<string, TimedSample[]>();
 let cacheBuiltAt = 0;
-/** Window the current sampleCache was built for. A different window forces a rebuild. */
-let cacheBuiltForSinceMs: number | null = null;
+/** Window duration bucket the current sampleCache was built for. */
+let cacheBuiltForWindowMs: number | null = null;
 const CACHE_TTL_MS = 60_000;
+const WINDOW_BUCKET_MS = 60_000;
+
+function windowDurationBucket(sinceMs: number, now: number): number {
+  const windowMs = Math.max(0, now - sinceMs);
+  return Math.ceil(windowMs / WINDOW_BUCKET_MS) * WINDOW_BUCKET_MS;
+}
 
 function cacheKey(provider: string, model: string): string {
   return `${provider}\0${model}`;
 }
 
-function collectFromEntries(entries: PersistedUsageEntry[], sinceMs: number): void {
+function collectFromEntries(entries: PersistedUsageEntry[], coarseSinceMs: number): void {
   for (const entry of entries) {
-    if (entry.timestamp < sinceMs) continue;
+    if (entry.timestamp < coarseSinceMs) continue;
     const duration = entry.durationMs;
     if (typeof duration !== "number" || !Number.isFinite(duration) || duration < 0) continue;
     const key = cacheKey(entry.provider, entry.model);
@@ -35,7 +43,7 @@ function collectFromEntries(entries: PersistedUsageEntry[], sinceMs: number): vo
       samples = [];
       sampleCache.set(key, samples);
     }
-    samples.push(duration);
+    samples.push({ durationMs: duration, timestamp: entry.timestamp });
     // Keep the NEWEST half when over cap: cheap trim, biased toward recent behavior.
     if (samples.length > MAX_SAMPLES_PER_KEY * 2) {
       samples.splice(0, samples.length - MAX_SAMPLES_PER_KEY);
@@ -49,23 +57,27 @@ export function p50DurationForModel(
   sinceMs: number,
   now = Date.now(),
 ): number | null {
-  // Rebuild when the TTL lapses OR the caller asks for a different window: the cache holds
-  // aggregated samples with no per-entry timestamps, so a cache built for window A cannot
-  // answer window B. Without the window check the first caller within the TTL would pin the
-  // window for every later reader (e.g. the /api/router inspect endpoint vs. live routing).
-  if (now - cacheBuiltAt > CACHE_TTL_MS || cacheBuiltForSinceMs !== sinceMs) {
+  // Cache by requested window duration rather than the moving absolute sinceMs. Two calls using
+  // the same latencyWindowMs therefore reuse one scan inside the TTL, while materially different
+  // windows still rebuild independently.
+  const bucketWindowMs = windowDurationBucket(sinceMs, now);
+  if (now - cacheBuiltAt > CACHE_TTL_MS || cacheBuiltForWindowMs !== bucketWindowMs) {
     sampleCache.clear();
     try {
-      // Recent window only: scoring needs a coarse p50, not the full history. The window
-      // filter itself runs per key below (samples carry no timestamps after aggregation).
-      collectFromEntries(readRecentUsageEntries(RING_BUFFER_MAX_ENTRIES), sinceMs);
+      // Read a coarse superset for this duration bucket, then filter against the exact requested
+      // sinceMs below. This keeps routing semantics precise without rescanning on every request.
+      collectFromEntries(readRecentUsageEntries(RING_BUFFER_MAX_ENTRIES), now - bucketWindowMs);
     } catch {
       /* unreadable log → no latency signal */
     }
     cacheBuiltAt = now;
-    cacheBuiltForSinceMs = sinceMs;
+    cacheBuiltForWindowMs = bucketWindowMs;
   }
   const samples = sampleCache.get(cacheKey(provider, model));
   if (!samples || samples.length === 0) return null;
-  return percentile(samples, 50);
+  const exact = samples
+    .filter((sample) => sample.timestamp >= sinceMs)
+    .map((sample) => sample.durationMs);
+  if (exact.length === 0) return null;
+  return percentile(exact, 50);
 }
