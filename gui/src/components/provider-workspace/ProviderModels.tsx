@@ -477,7 +477,7 @@ export default function ProviderModels({
                 <Switch
                   on={on}
                   onClick={() => { void toggleModel(modelId); }}
-                  disabled={controlsBusy}
+                  disabled={controlsBusy || item.disabled === true}
                   label={modelId}
                 />
                 <button
