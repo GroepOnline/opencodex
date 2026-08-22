@@ -123,6 +123,27 @@ describe("probeResponseCache", () => {
     expect(sameCaller && "hit" in sameCaller).toBe(true);
   });
 
+  test("anonymous requests never cache (null-scope fail-closed)", async () => {
+    installResponseCache({ port: 10100, providers: {}, responseCache: { enabled: true, ttlMs: 10_000 } } as unknown as OcxConfig);
+    const body = { model: "claude-opus-4-8", messages: [{ role: "user", content: "anon" }] };
+    // No authorization / account / session headers → null caller scope.
+    const first = await probeResponseCache(makeReq(body), baseConfig(), "messages");
+    expect(first).not.toBeNull();
+    expect("miss" in first!).toBe(true);
+    if (first && "store" in first) {
+      first.store(new Response(JSON.stringify({ completion: "should-not-persist" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+      await new Promise(r => setTimeout(r, 0));
+    }
+    expect(getInstalledCache()!.size).toBe(0);
+
+    const second = await probeResponseCache(makeReq(body), baseConfig(), "messages");
+    expect(second && "hit" in second).toBe(false);
+    expect(getInstalledCache()!.size).toBe(0);
+  });
+
   test("returns null when client sends cache-control: no-store (fast path, body untouched)", async () => {
     installResponseCache({ port: 10100, providers: {}, responseCache: { enabled: true } } as unknown as OcxConfig);
     const req = makeReq(

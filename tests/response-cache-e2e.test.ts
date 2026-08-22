@@ -113,6 +113,47 @@ test("identical non-streaming request hits the cache on the second call", async 
   }
 });
 
+test("anonymous non-streaming requests never populate the cache", async () => {
+  const upstream = mockJsonUpstream();
+  saveConfig(mockConfig(`${upstream.url.toString().replace(/\/$/, "")}/v1`));
+  const server = startServer(0);
+  try {
+    const body = JSON.stringify({
+      model: "mock/test-model",
+      stream: false,
+      messages: [{ role: "user", content: "anon-ping" }],
+    });
+    // Credential-less callers must not share a cache bucket (null-scope fail-closed).
+    const post = () => fetch(new URL("/v1/chat/completions", server.url), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    });
+
+    const first = await post();
+    expect(first.status).toBe(200);
+    expect(first.headers.get("x-cache")).toBeNull();
+    expect(upstreamHits).toBe(1);
+    await new Promise(r => setTimeout(r, 50));
+
+    const second = await post();
+    expect(second.status).toBe(200);
+    expect(second.headers.get("x-cache")).toBeNull();
+    expect(upstreamHits).toBe(2); // both went upstream; nothing was stored
+
+    const view = await (await managementFetch(new URL("/api/response-cache", server.url))).json() as {
+      size: number;
+      stats: { stores: number; hits: number };
+    };
+    expect(view.size).toBe(0);
+    expect(view.stats.stores).toBe(0);
+    expect(view.stats.hits).toBe(0);
+  } finally {
+    server.stop(true);
+    upstream.stop(true);
+  }
+});
+
 test("stream:true with cache enabled still streams (body not drained by the probe)", async () => {
   const upstream = Bun.serve({
     port: 0,
