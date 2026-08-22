@@ -173,14 +173,14 @@ export async function probeResponseCache(
   // gate, and on auth-required (non-loopback) binds that gate only accepts the same headers the
   // scope is derived from — so distinct principals can never share a bucket. A request with no
   // identity material at all is therefore only reachable on loopback, where the local principal
-  // is the sole caller: pool those under one "anonymous" scope. If an alternate wiring ever
+  // is not a sufficient security principal, so do not pool those requests. If an alternate wiring ever
   // reaches here with auth required and no identity material, fail safe and do not cache.
   let callerScope = cacheCallerScope(req.headers);
   if (callerScope === null) {
     if (isApiAuthRequired(config)) {
       return noStoreMiss(rebuild(req, raw), route.providerName, route.modelId, normalized, endpoint);
     }
-    callerScope = "anonymous";
+    return noStoreMiss(rebuild(req, raw), route.providerName, route.modelId, normalized, endpoint);
   }
   const scopedNormalized = `${callerScope}\0${normalized}`;
   const hit = cache.get(route.providerName, route.modelId, scopedNormalized, endpoint);
