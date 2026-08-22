@@ -1,7 +1,7 @@
 # gui/DESIGN.md — de ontwerptaal van het dashboard
 
 > De levende ontwerp- en smaakgids voor het opencodex-dashboard (`gui/`).
-> Dit is de ChefGroep-taal (v2 "Devin-richting"): een stil, warm, mat instrument.
+> Dit is de ChefGroep-taal (v3 "Signaal"): een stil, warm, mat instrument.
 > Bron van waarheid voor de *taal*: [`GroepOnline/design-system`](https://github.com/GroepOnline/design-system)
 > (`tokens.css`, `DESIGN.md`, `motion-spec.md`). Dit bestand legt vast hoe die
 > taal in dít dashboard leeft, en — belangrijker — **hoe je 'm uitbreidt zonder
@@ -50,7 +50,7 @@ is `light-dark(licht, donker)` — schrijf beide kanten, altijd.
 
 - **General Sans** (`--font-ui`, self-hosted woff2) voor alles; **JetBrains Mono**
   (`--font-code`) uitsluitend voor machinedata (timers, model-id's, paden,
-  diffs, tellers). Geen Archivo/Inter/Geist — design-system v2 §4.
+  diffs, tellers). Geen Archivo/Inter/Geist — design-system v3 §11.
 - Eén type-ladder — gebruik de tokens, nooit losse px:
 
 | Token | px | Gebruik |

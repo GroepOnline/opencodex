@@ -1,5 +1,5 @@
 /* ============================================================================
-   opencodex dashboard — ChefGroep design language (v2 "Devin-richting")
+   opencodex dashboard — ChefGroep design language (v3 "Signaal")
    A still, warm, matte instrument: warm off-white surfaces, one blue accent,
    hairline borders, flat surfaces (no glow/glass/gradients), monospace for
    machine data only. shadcn component conventions, Lucide icons, ripples
@@ -22,7 +22,7 @@
 @import "./styles-claudecode-workspace.css";
 @import "./styles-apikeys-workspace.css";
 
-/* General Sans (design-system v2 §4) — self-hosted, weights 400/500/600.
+/* General Sans (design-system v3 §11) — self-hosted, weights 400/500/600.
    Not on fontsource; woff2 vendored from Fontshare (free license). */
 @font-face {
   font-family: "General Sans";
@@ -50,7 +50,7 @@
   /* default: follow the OS; [data-theme] below pins color-scheme so light-dark() obeys it */
   color-scheme: light dark;
 
-  /* ChefGroep design-system (v2 "Devin-richting") — warm off-white, one blue
+  /* ChefGroep design-system (v3 "Signaal") — warm off-white, one blue
      accent. Values from GroepOnline/design-system tokens.css (2026-07). The
      opencodex light-dark() authoring convention is preserved. */
   --bg:           light-dark(#f7f6f5, #121111);
@@ -1922,7 +1922,7 @@ button.prov-account-row.active { cursor: default; }
 .claude-effort-badge.on { background: color-mix(in srgb, var(--green) 15%, transparent); color: var(--green); }
 .claude-effort-badge.off { background: color-mix(in srgb, var(--muted) 12%, transparent); color: var(--muted); }
 
-/* ── Shell v2 (design-system v2 IA, 2026-08) ────────────────────────────────
+/* ── Shell v2 (design-system v3 Signaal IA, 2026-08) ────────────────────────
    Topbar + view tabs + settings sheet + danger zone. The old 232px sidebar
    grid is overridden here; sidebar CSS itself is removed in the F3 cleanup. */
 .app { display: block; min-height: 100dvh; }
