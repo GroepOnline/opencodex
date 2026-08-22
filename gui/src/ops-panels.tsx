@@ -215,6 +215,13 @@ export function KeyPoolHealthPanel({ apiBase }: { apiBase: string }) {
     });
   }, [providers, now]);
 
+  // Locale-correct countdown suffixes: the English UI must not show the Dutch "u" for hours.
+  const countdownUnits = {
+    minutes: t("ops.unitMinutes"),
+    hours: t("ops.unitHours"),
+    days: t("ops.unitDays"),
+  };
+
   if (failed && !providers) {
     return <p className="text-caption" style={{ color: "var(--wijn)" }}>{t("ops.poolFailed")}</p>;
   }
@@ -234,7 +241,7 @@ export function KeyPoolHealthPanel({ apiBase }: { apiBase: string }) {
       <tbody>
         {rows.map(p => {
           const capped = p.capUntil !== undefined && p.capUntil > now;
-          const capIn = capped ? formatCountdown((p.capUntil as number) - now) : null;
+          const capIn = capped ? formatCountdown((p.capUntil as number) - now, countdownUnits) : null;
           return (
             <tr key={p.name} style={capped ? { color: "var(--wijn)" } : undefined}>
               <td style={{ fontFamily: "var(--font-code)" }}>{p.name}</td>

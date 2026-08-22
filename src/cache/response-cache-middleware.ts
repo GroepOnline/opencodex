@@ -165,8 +165,14 @@ export async function probeResponseCache(
 
   // Cache entries are scoped to the caller/account/session inputs that can affect routing or
   // upstream semantics. Only the hash participates in the cache material: credentials and account
-  // identifiers never reach persistence or logs.
-  const scopedNormalized = `${cacheCallerScope(req.headers)}\0${normalized}`;
+  // identifiers never reach persistence or logs. A request without any identity material yields a
+  // null scope: never pool credential-less callers into a shared bucket (they could replay each
+  // other's response bodies). Body stays re-readable via the rebuilt Request.
+  const callerScope = cacheCallerScope(req.headers);
+  if (callerScope === null) {
+    return noStoreMiss(rebuild(req, raw), route.providerName, route.modelId, normalized, endpoint);
+  }
+  const scopedNormalized = `${callerScope}\0${normalized}`;
   const hit = cache.get(route.providerName, route.modelId, scopedNormalized, endpoint);
   if (hit) {
     const headers = new Headers({
@@ -225,12 +231,17 @@ const CACHE_SCOPE_HEADERS = [
   "thread-id",
 ] as const;
 
-/** Hash identity/affinity inputs so two security principals or sessions never cross-hit. */
-function cacheCallerScope(headers: Headers): string {
+/**
+ * Hash identity/affinity inputs so two security principals or sessions never cross-hit.
+ * Returns null when the request carries NO identity material: a shared "anonymous" bucket
+ * would let credential-less callers replay each other's stored response bodies (CWE-524),
+ * so the probe treats a null scope as not-cacheable rather than pooling them together.
+ */
+function cacheCallerScope(headers: Headers): string | null {
   const material = CACHE_SCOPE_HEADERS
     .map((name) => [name, headers.get(name)?.trim() ?? ""] as const)
     .filter(([, value]) => value.length > 0);
-  if (material.length === 0) return "anonymous";
+  if (material.length === 0) return null;
   return createHash("sha256").update(JSON.stringify(material)).digest("hex");
 }
 

@@ -664,6 +664,9 @@ const overrides: Partial<Record<TKey, string>> = {
   "ops.poolColCap": "cap",
   "ops.poolColHop": "fallback-hop",
   "ops.poolCapDisabled": "uitgeschakeld",
+  "ops.unitMinutes": "m",
+  "ops.unitHours": "u",
+  "ops.unitDays": "d",
 };
 
 export const nl: Record<TKey, string> = { ...en, ...overrides };

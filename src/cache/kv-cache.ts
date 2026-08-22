@@ -212,7 +212,10 @@ export class ResponseCache {
     now = Date.now(),
   ): void {
     if (!this.opts.enabled) return;
-    if (body.length > this.opts.maxBodyBytes!) {
+    // Measure real UTF-8 bytes, not UTF-16 code units: `body.length` under-counts multi-byte
+    // JSON, so a "2MB" cap would silently admit larger payloads than intended.
+    const byteSize = Buffer.byteLength(body, "utf8");
+    if (byteSize > this.opts.maxBodyBytes!) {
       this.stats.tooLarge += 1;
       return;
     }
@@ -225,7 +228,7 @@ export class ResponseCache {
       contentType,
       expiresAt: now + this.opts.ttlMs,
       storedAt: now,
-      size: body.length,
+      size: byteSize,
     };
     this.map.delete(key);
     this.map.set(key, entry);
@@ -308,6 +311,10 @@ export class ResponseCache {
   startSweep(intervalMs = 60_000): void {
     if (this.persistTimer) return;
     this.persistTimer = setInterval(() => {
+      // Count this tick first so the compaction gate lands on the intended cadence: with the
+      // increment in `finally`, `sweeps` was still 0 on the first tick and compaction ran at
+      // ~60s instead of the documented 10 minutes.
+      this.sweeps += 1;
       try {
         this.sweep();
         // Compact the append-only file on a slow cadence: expired/evicted lines would
@@ -315,8 +322,6 @@ export class ResponseCache {
         if (this.sweeps % COMPACT_EVERY_SWEEPS === 0) this.compactPersisted();
       } catch {
         /* best-effort: a failed sweep must never take the proxy down */
-      } finally {
-        this.sweeps += 1;
       }
     }, intervalMs);
     // Don't keep the event loop alive solely for the cache.

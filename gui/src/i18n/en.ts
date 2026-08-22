@@ -1772,6 +1772,9 @@ export const en = {
   "ops.poolColCap": "cap",
   "ops.poolColHop": "fallback hop",
   "ops.poolCapDisabled": "disabled",
+  "ops.unitMinutes": "m",
+  "ops.unitHours": "h",
+  "ops.unitDays": "d",
 } as const;
 
 export type TKey = keyof typeof en;
