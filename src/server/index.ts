@@ -167,6 +167,22 @@ const MAX_WS_FRAME_BYTES = 50 * 1024 * 1024;
 const WEBSOCKET_IDLE_TIMEOUT_SECONDS = 0;
 const LIVE_SIDEBAND_PENDING_MAX = 32;
 
+/**
+ * Record a served-from-cache request in /api/logs so request counts reflect real client traffic.
+ * A cache hit did NOT reach an upstream, so no usage/cost is attributed: logCtx carries no usage,
+ * and addFinalRequestLog omits the usage/totalTokens fields when it is absent. The response itself
+ * already carries `x-cache: HIT`; this is purely the request-count / observability entry.
+ */
+function logCacheHitRequest(hit: CacheHit): void {
+  const start = Date.now();
+  addFinalRequestLog(
+    nextRequestLogId(start),
+    start,
+    { model: hit.model || "unknown", provider: hit.provider || "unknown" },
+    200,
+  );
+}
+
 function closeLiveSideband(ws: ServerWebSocket<WsData>, code = 1000, reason = ""): void {
   try {
     ws.data.liveUpstream?.close(code, reason);
