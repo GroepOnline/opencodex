@@ -143,6 +143,47 @@ describe("recordProviderCapCooldown (live config)", () => {
     expect(config.providerCooldowns?.["meta-ai"]).toBeUndefined();
   });
 
+  // A hard-cap 429 from one OAuth-pool account (anthropic/cursor/google-antigravity) is a
+  // per-account cap: the pool's own rotation cools that account and hops to the next one.
+  // Recording it as a provider-level cooldown would hard-disable the whole provider while
+  // other accounts still have capacity.
+  test("does not disable an OAuth account-pool provider on a per-account hard cap", () => {
+    const config = bareConfig({
+      anthropicAccountPool: { enabled: true },
+      providers: {
+        openai: { baseUrl: "https://api.openai.com/v1", adapter: "openai-responses" },
+        anthropic: { adapter: "anthropic", baseUrl: "https://api.anthropic.com", authMode: "oauth" },
+      },
+    });
+    expect(recordProviderCapCooldown(
+      config,
+      "anthropic",
+      429,
+      'Error 429: You have reached your weekly limit. The limit resets in 1d 22h, please try again later.',
+      { save: false },
+    )).toBeNull();
+    expect(config.providers.anthropic?.disabled).toBeUndefined();
+    expect(config.providerCooldowns?.anthropic).toBeUndefined();
+  });
+
+  test("records a cap on an OAuth-pool provider when the pool is not enabled", () => {
+    const config = bareConfig({
+      providers: {
+        openai: { baseUrl: "https://api.openai.com/v1", adapter: "openai-responses" },
+        anthropic: { adapter: "anthropic", baseUrl: "https://api.anthropic.com", authMode: "oauth" },
+      },
+    });
+    const entry = recordProviderCapCooldown(
+      config,
+      "anthropic",
+      429,
+      'Error 429: You have reached your weekly limit. The limit resets in 1d 22h, please try again later.',
+      { save: false },
+    );
+    expect(entry).not.toBeNull();
+    expect(config.providers.anthropic?.disabled).toBe(true);
+  });
+
   test("allowPooled records a provider window on a key pool", () => {
     const config = bareConfig({
       providers: {

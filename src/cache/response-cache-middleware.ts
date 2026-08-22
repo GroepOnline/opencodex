@@ -29,6 +29,7 @@
 import { createHash } from "node:crypto";
 import { ResponseCache, normalizeRequestBody, requestOptsOutOfCache, responseCacheFromConfig } from "./kv-cache";
 import { routeModel } from "../router";
+import { isApiAuthRequired } from "../server/auth-cors";
 import type { OcxConfig } from "../types";
 
 let activeCache: ResponseCache | null = null;
@@ -168,12 +169,18 @@ export async function probeResponseCache(
 
   // Cache entries are scoped to the caller/account/session inputs that can affect routing or
   // upstream semantics. Only the hash participates in the cache material: credentials and account
-  // identifiers never reach persistence or logs. A request without any identity material yields a
-  // null scope: never pool credential-less callers into a shared bucket (they could replay each
-  // other's response bodies). Body stays re-readable via the rebuilt Request.
-  const callerScope = cacheCallerScope(req.headers);
+  // identifiers never reach persistence or logs. This probe runs strictly AFTER the admission
+  // gate, and on auth-required (non-loopback) binds that gate only accepts the same headers the
+  // scope is derived from — so distinct principals can never share a bucket. A request with no
+  // identity material at all is therefore only reachable on loopback, where the local principal
+  // is the sole caller: pool those under one "anonymous" scope. If an alternate wiring ever
+  // reaches here with auth required and no identity material, fail safe and do not cache.
+  let callerScope = cacheCallerScope(req.headers);
   if (callerScope === null) {
-    return noStoreMiss(rebuild(req, raw), route.providerName, route.modelId, normalized, endpoint);
+    if (isApiAuthRequired(config)) {
+      return noStoreMiss(rebuild(req, raw), route.providerName, route.modelId, normalized, endpoint);
+    }
+    callerScope = "anonymous";
   }
   const scopedNormalized = `${callerScope}\0${normalized}`;
   const hit = cache.get(route.providerName, route.modelId, scopedNormalized, endpoint);
@@ -240,9 +247,8 @@ const CACHE_SCOPE_HEADERS = [
 
 /**
  * Hash identity/affinity inputs so two security principals or sessions never cross-hit.
- * Returns null when the request carries NO identity material: a shared "anonymous" bucket
- * would let credential-less callers replay each other's stored response bodies (CWE-524),
- * so the probe treats a null scope as not-cacheable rather than pooling them together.
+ * Returns null when the request carries no identity material; the caller decides whether
+ * that means "single anonymous loopback principal" or "do not cache" (see probeResponseCache).
  */
 function cacheCallerScope(headers: Headers): string | null {
   const material = CACHE_SCOPE_HEADERS

@@ -19,6 +19,17 @@ let cacheBuiltAt = 0;
 /** Window the current sampleCache was built for. A different window forces a rebuild. */
 let cacheBuiltForSinceMs: number | null = null;
 const CACHE_TTL_MS = 60_000;
+/**
+ * Quantize windows to minute buckets. Callers derive `sinceMs` as `now - windowMs`, so a raw
+ * comparison never matches twice and the TTL cache would be rebuilt on every request. All
+ * windows in the same bucket share one (coarse, minute-granular) sample set — fine for a p50
+ * scoring signal, and different windowMs still land in different buckets.
+ */
+const WINDOW_BUCKET_MS = 60_000;
+
+function windowBucket(sinceMs: number): number {
+  return Math.floor(sinceMs / WINDOW_BUCKET_MS) * WINDOW_BUCKET_MS;
+}
 
 function cacheKey(provider: string, model: string): string {
   return `${provider}\0${model}`;
@@ -49,21 +60,22 @@ export function p50DurationForModel(
   sinceMs: number,
   now = Date.now(),
 ): number | null {
-  // Rebuild when the TTL lapses OR the caller asks for a different window: the cache holds
+  const bucketSinceMs = windowBucket(sinceMs);
+  // Rebuild when the TTL lapses OR the caller asks for a different window bucket: the cache holds
   // aggregated samples with no per-entry timestamps, so a cache built for window A cannot
-  // answer window B. Without the window check the first caller within the TTL would pin the
+  // answer window B. Without the bucket check the first caller within the TTL would pin the
   // window for every later reader (e.g. the /api/router inspect endpoint vs. live routing).
-  if (now - cacheBuiltAt > CACHE_TTL_MS || cacheBuiltForSinceMs !== sinceMs) {
+  if (now - cacheBuiltAt > CACHE_TTL_MS || cacheBuiltForSinceMs !== bucketSinceMs) {
     sampleCache.clear();
     try {
       // Recent window only: scoring needs a coarse p50, not the full history. The window
       // filter itself runs per key below (samples carry no timestamps after aggregation).
-      collectFromEntries(readRecentUsageEntries(RING_BUFFER_MAX_ENTRIES), sinceMs);
+      collectFromEntries(readRecentUsageEntries(RING_BUFFER_MAX_ENTRIES), bucketSinceMs);
     } catch {
       /* unreadable log → no latency signal */
     }
     cacheBuiltAt = now;
-    cacheBuiltForSinceMs = sinceMs;
+    cacheBuiltForSinceMs = bucketSinceMs;
   }
   const samples = sampleCache.get(cacheKey(provider, model));
   if (!samples || samples.length === 0) return null;

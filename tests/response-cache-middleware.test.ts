@@ -123,24 +123,40 @@ describe("probeResponseCache", () => {
     expect(sameCaller && "hit" in sameCaller).toBe(true);
   });
 
-  test("anonymous requests never cache (null-scope fail-closed)", async () => {
+  test("loopback (auth not required): identical anonymous requests share one scope and hit", async () => {
+    // Default config has no hostname → loopback → admission gate does not require a credential.
+    // Anonymous callers are the single local principal, so they must still get cache service.
     installResponseCache({ port: 10100, providers: {}, responseCache: { enabled: true, ttlMs: 10_000 } } as unknown as OcxConfig);
-    const body = { model: "claude-opus-4-8", messages: [{ role: "user", content: "anon" }] };
-    // No authorization / account / session headers → null caller scope.
-    const first = await probeResponseCache(makeReq(body), baseConfig(), "messages");
-    expect(first).not.toBeNull();
-    expect("miss" in first!).toBe(true);
-    if (first && "store" in first) {
-      first.store(new Response(JSON.stringify({ completion: "should-not-persist" }), {
+    const body = { model: "claude-opus-4-8", messages: [{ role: "user", content: "ping" }] };
+    const miss = await probeResponseCache(makeReq(body), baseConfig(), "messages");
+    expect(miss && "store" in miss).toBe(true);
+    if (miss && "store" in miss) {
+      miss.store(new Response(JSON.stringify({ completion: "pong" }), {
         status: 200,
         headers: { "content-type": "application/json" },
       }));
       await new Promise(r => setTimeout(r, 0));
     }
-    expect(getInstalledCache()!.size).toBe(0);
 
     const second = await probeResponseCache(makeReq(body), baseConfig(), "messages");
-    expect(second && "hit" in second).toBe(false);
+    expect(second && "hit" in second).toBe(true);
+  });
+
+  test("auth-required bind with no identity material is never cached (fail-safe branch)", async () => {
+    // A non-loopback hostname makes admission mandatory. If a request still carries none of
+    // the scope headers, the probe must fail safe: miss with a no-op store, nothing persisted.
+    const authRequired = { ...baseConfig(), hostname: "0.0.0.0" } as OcxConfig;
+    installResponseCache({ port: 10100, providers: {}, responseCache: { enabled: true, ttlMs: 10_000 } } as unknown as OcxConfig);
+    const body = { model: "claude-opus-4-8", messages: [{ role: "user", content: "ping" }] };
+    const probe = await probeResponseCache(makeReq(body), authRequired, "messages");
+    expect(probe && "miss" in probe).toBe(true);
+    if (probe && "store" in probe) {
+      probe.store(new Response(JSON.stringify({ completion: "pong" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+      await new Promise(r => setTimeout(r, 0));
+    }
     expect(getInstalledCache()!.size).toBe(0);
   });
 
@@ -157,8 +173,8 @@ describe("probeResponseCache", () => {
     installResponseCache({ port: 10100, providers: {}, responseCache: { enabled: true, ttlMs: 10_000 } } as unknown as OcxConfig);
 
     const body = { model: "claude-opus-4-8", messages: [{ role: "user", content: "hi" }] };
-    const a = makeReq({ ...body, z: 1, a: 2 }, { authorization: "Bearer caller" });
-    const b = makeReq({ ...body, a: 2, z: 1 }, { authorization: "Bearer caller" }); // different key order, same semantics
+    const a = makeReq({ ...body, z: 1, a: 2 });
+    const b = makeReq({ ...body, a: 2, z: 1 }); // different key order, same semantics
 
     const probeA = await probeResponseCache(a, baseConfig(), "messages");
     expect(probeA).not.toBeNull();
@@ -178,7 +194,7 @@ describe("probeResponseCache", () => {
 
   test("miss exposes a rebuilt request + store that captures a 2xx body", async () => {
     installResponseCache({ port: 10100, providers: {}, responseCache: { enabled: true, ttlMs: 10_000 } } as unknown as OcxConfig);
-    const req = makeReq({ model: "claude-opus-4-8", messages: [{ role: "user", content: "ping" }] }, { authorization: "Bearer caller" });
+    const req = makeReq({ model: "claude-opus-4-8", messages: [{ role: "user", content: "ping" }] });
     const probe = await probeResponseCache(req, baseConfig(), "messages");
     expect(probe).not.toBeNull();
     if ("miss" in probe!) {
@@ -197,7 +213,7 @@ describe("probeResponseCache", () => {
 
   test("store ignores non-2xx and event-stream responses", async () => {
     installResponseCache({ port: 10100, providers: {}, responseCache: { enabled: true, ttlMs: 10_000 } } as unknown as OcxConfig);
-    const req = makeReq({ model: "claude-opus-4-8", messages: [{ role: "user", content: "x" }] }, { authorization: "Bearer caller" });
+    const req = makeReq({ model: "claude-opus-4-8", messages: [{ role: "user", content: "x" }] });
     const probe = await probeResponseCache(req, baseConfig(), "messages");
     if ("store" in probe!) {
       probe.store(new Response("rate limited", { status: 429, headers: { "content-type": "application/json" } }));
