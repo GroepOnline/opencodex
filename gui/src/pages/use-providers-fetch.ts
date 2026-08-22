@@ -30,14 +30,16 @@ export function useProvidersFetch({
     try {
       const [res, availRes] = await Promise.all([
         fetch(`${apiBase}/api/config`),
-        fetch(`${apiBase}/api/availability`),
+        fetch(`${apiBase}/api/availability`).catch(() => null),
       ]);
       const data = await readJsonOrThrow<ProvidersConfig>(res);
       setConfig(data ?? null);
       if (configCacheKey && data) writeSessionListCache(configCacheKey, data);
       if (setAvailability) {
-        const avail = availRes.ok
-          ? await readJsonIfOk<{ providers?: AvailabilityProviderView[] }>(availRes)
+        let avail: { providers?: AvailabilityProviderView[] } | null = null;
+          try {
+            avail = availRes?.ok
+          ? await readJsonIfOk<{ providers?: AvailabilityProviderView[] }>(availRes).catch(() => null)
           : null;
         setAvailability(avail?.providers ?? []);
       }
