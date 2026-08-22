@@ -444,7 +444,7 @@ function toolsToChatFormat(parsed: OcxParsedRequest, provider: OcxProviderConfig
     return [{
     type: "function",
     function: {
-      name: namespacedToolName(t.namespace, t.name),
+      name: normalizeToolName(namespacedToolName(t.namespace, t.name)),
       description: t.description,
       parameters,
       ...(strict !== undefined ? { strict } : {}),
@@ -475,7 +475,7 @@ function toolChoiceToChatFormat(tc: OcxParsedRequest["options"]["toolChoice"], t
   if (!tc) return undefined;
   if (isAllowedToolChoice(tc)) return tc.mode === "required" ? "required" : "auto";
   if (tc === "auto" || tc === "none" || tc === "required") return tc;
-  if ("name" in tc) return { type: "function", function: { name: resolveToolChoiceWireName(tools, tc.name) } };
+  if ("name" in tc) return { type: "function", function: { name: normalizeToolName(resolveToolChoiceWireName(tools, tc.name)) } };
   return undefined;
 }
 
