@@ -196,7 +196,7 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
         <div className="stat-strip-item">
           <span className="stat-strip-waarde">
             {typeof summary30d?.summary.estimatedCostUsd === "number"
-              ? `€${(summary30d.summary.estimatedCostUsd * 0.92).toFixed(2)}`
+              ? `$${summary30d.summary.estimatedCostUsd.toFixed(2)}`
               : "—"}
           </span>
           <span className="stat-strip-label">{t("vk.costUsd")}</span>
@@ -242,7 +242,7 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
                     <td style={{ textAlign: "right" }}>{p.requests.toLocaleString(locale)}</td>
                     <td style={{ textAlign: "right" }}>{formatTokens(p.totalTokens, locale)}</td>
                     <td style={{ textAlign: "right" }}>
-                      {typeof p.estimatedCostUsd === "number" ? `€${(p.estimatedCostUsd * 0.92).toFixed(2)}` : "—"}
+                      {typeof p.estimatedCostUsd === "number" ? `$${p.estimatedCostUsd.toFixed(2)}` : "—"}
                     </td>
                     <td style={{ textAlign: "right" }}>
                       {typeof p.cacheReadRatio === "number" ? `${Math.round(p.cacheReadRatio * 100)}%` : "—"}
@@ -284,7 +284,7 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
                       : "—"}
                   </td>
                   <td style={{ textAlign: "right" }}>
-                    {typeof m.estimatedCostUsd === "number" ? `€${(m.estimatedCostUsd * 0.92).toFixed(2)}` : "—"}
+                    {typeof m.estimatedCostUsd === "number" ? `$${m.estimatedCostUsd.toFixed(2)}` : "—"}
                   </td>
                 </tr>
               ))}
