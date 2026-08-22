@@ -1994,14 +1994,14 @@ export async function handleResponses(
         ),
     });
     if (imgResponse.body) {
-      await persistHardCap(imgResponse);
+      void persistHardCap(imgResponse);
       const imgTurnAc = new AbortController();
       return new Response(trackStreamLifetime(imgResponse.body, imgTurnAc), {
         status: imgResponse.status,
         headers: imgResponse.headers,
       });
     }
-    await persistHardCap(imgResponse);
+    void persistHardCap(imgResponse);
     return imgResponse;
     } // end else (streaming bridge)
   }
@@ -2060,14 +2060,14 @@ export async function handleResponses(
     // Register the sidecar stream as an active turn so drainAndShutdown waits for (or aborts)
     // in-flight web-search turns instead of skipping them during graceful shutdown.
     if (wsResponse.body) {
-      await persistHardCap(wsResponse);
+      void persistHardCap(wsResponse);
       const wsTurnAc = new AbortController();
       return new Response(trackStreamLifetime(wsResponse.body, wsTurnAc), {
         status: wsResponse.status,
         headers: wsResponse.headers,
       });
     }
-    await persistHardCap(wsResponse);
+    void persistHardCap(wsResponse);
     return wsResponse;
   }
 
