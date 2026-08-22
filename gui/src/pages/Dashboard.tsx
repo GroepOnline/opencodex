@@ -239,9 +239,9 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
                 const id = entry.requestId ?? `${entry.timestamp}-${entry.provider}-${entry.model}`;
                 const tokens = bonTokens(entry);
                 return (
-                  <div key={id} className="bon" style={{ borderBottom: "1px solid var(--border-soft)" }}>
-                    <div className="bon-kop bon-kop--grid" style={{ padding: "6px 8px", fontSize: "0.8125rem" }}>
-                      <span className="bon-col bon-col--time bon-tijd">{tijd(entry.timestamp, locale)}</span>
+                  <div key={id} className="traffic-entry" style={{ borderBottom: "1px solid var(--border-soft)" }}>
+                    <div className="traffic-entry-head traffic-entry-head--grid" style={{ padding: "6px 8px", fontSize: "0.8125rem" }}>
+                      <span className="traffic-col traffic-col--time traffic-time">{tijd(entry.timestamp, locale)}</span>
                       <TrafficRowCells entry={entry} locale={locale} tokens={tokens} />
                     </div>
                   </div>

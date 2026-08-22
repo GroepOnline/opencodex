@@ -35,15 +35,15 @@ export function TrafficRowCells({
 
   return (
     <>
-      <span className="bon-col bon-col--model bon-titel">{providerModelNode}</span>
-      <span className="bon-col bon-col--principal bon-meta">{principal}</span>
-      <span className="bon-col bon-col--tokens bon-meta">
+      <span className="traffic-col traffic-col--model traffic-title">{providerModelNode}</span>
+      <span className="traffic-col traffic-col--principal traffic-meta">{principal}</span>
+      <span className="traffic-col traffic-col--tokens traffic-meta">
         {tokens !== undefined ? t("vk.rowTokens", { n: formatTokens(tokens, locale) }) : "\u2014"}
       </span>
-      <span className="bon-col bon-col--duration bon-meta">
+      <span className="traffic-col traffic-col--duration traffic-meta">
         {t("vk.rowDuration", { s: (entry.durationMs / 1000).toFixed(1) })}
       </span>
-      <span className={`bon-col bon-col--status stempel ${trafficStatusClass(entry)}`}>
+      <span className={`traffic-col traffic-col--status traffic-status ${trafficStatusClass(entry)}`}>
         {trafficStatusLabel(entry, t)}
       </span>
     </>
@@ -56,14 +56,14 @@ export function TrafficRowCells({
 export function TrafficColumnHead() {
   const { t } = useI18n();
   return (
-    <div className="bon bon--head" aria-hidden="true">
-      <div className="bon-kop bon-kop--grid">
-        <span className="bon-col bon-col--time">{t("vk.col.time")}</span>
-        <span className="bon-col bon-col--model">{t("vk.col.providerModel")}</span>
-        <span className="bon-col bon-col--principal">{t("vk.col.principal")}</span>
-        <span className="bon-col bon-col--tokens">{t("vk.col.tokens")}</span>
-        <span className="bon-col bon-col--duration">{t("vk.col.duration")}</span>
-        <span className="bon-col bon-col--status">{t("vk.col.status")}</span>
+    <div className="traffic-entry traffic-entry--head" aria-hidden="true">
+      <div className="traffic-entry-head traffic-entry-head--grid">
+        <span className="traffic-col traffic-col--time">{t("vk.col.time")}</span>
+        <span className="traffic-col traffic-col--model">{t("vk.col.providerModel")}</span>
+        <span className="traffic-col traffic-col--principal">{t("vk.col.principal")}</span>
+        <span className="traffic-col traffic-col--tokens">{t("vk.col.tokens")}</span>
+        <span className="traffic-col traffic-col--duration">{t("vk.col.duration")}</span>
+        <span className="traffic-col traffic-col--status">{t("vk.col.status")}</span>
       </div>
     </div>
   );
