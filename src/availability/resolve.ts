@@ -72,7 +72,9 @@ export function selectKeyPoolCandidate(input: {
  */
 export function resolveOutcome(input: ResolveOutcomeInput): OcxProviderTransport | null {
   recordCapOutcome(input);
-  if (!isAccountPoolHopStatus(input.status)) return null;
+  // Hard-cap 402 responses must cool the failed pooled key too; provider-level
+  // cooldown recording is intentionally suppressed for key pools.
+  if (!isAccountPoolHopStatus(input.status) && input.status !== 402) return null;
   if (!hasKeyPoolFailover(input.routedProvider)) return null;
   return rotateProviderTransportOn429(
     input.config,
