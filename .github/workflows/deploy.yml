@@ -118,9 +118,11 @@ jobs:
           # Loopback first; Tailscale IPv4 discovered on the deploy host (no hardcoded 100.x).
           urls="http://127.0.0.1:10100/healthz"
           ts_ip="$(tailscale ip -4 2>/dev/null | head -n1 || true)"
-          if [ -n "$ts_ip" ]; then
-            urls="$urls http://${ts_ip}:10100/healthz"
+          if [ -z "$ts_ip" ]; then
+            echo "::error::chef-control-az-01 has no discoverable Tailscale IPv4; refusing deploy before live checkout mutation"
+            exit 1
           fi
+          urls="$urls http://${ts_ip}:10100/healthz"
           echo "OCX_HEALTH_URLS=$urls" >> "$GITHUB_ENV"
 
       - name: Deploy into service checkout (in-place, pinned SHA)
@@ -184,7 +186,7 @@ jobs:
         # Only roll back when we captured a known-good prior SHA (prev step succeeded).
         # If Verify tag / deploy-into-checkout failed before capture, there is nothing
         # safe to roll back to and `failure()` alone would skip the gate silently.
-        if: failure() && steps.prev.outcome == 'success' && steps.live_guard.outcome == 'success'
+        if: failure() && steps.prev.outcome == 'success' && steps.live_guard.outcome == 'success' && steps.deploy.outcome == 'success'
         run: |
           set -euo pipefail
           cd "$DEPLOY_PATH"
