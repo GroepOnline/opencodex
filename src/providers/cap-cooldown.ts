@@ -19,6 +19,7 @@ import { expireKeyPoolCooldowns } from "./key-failover";
 import { isAnthropicAccountPoolEnabled } from "../oauth/anthropic-routing";
 import { isCursorAccountPoolEnabled } from "../oauth/cursor-routing";
 import { isGoogleAntigravityAccountPoolEnabled } from "../oauth/google-antigravity-routing";
+import { OAUTH_PROVIDERS } from "../oauth";
 
 export type { ProviderCapCooldown };
 
@@ -216,6 +217,8 @@ export interface RecordProviderCapCooldownOpts {
  * hard-disable the whole provider while other accounts still have capacity.
  */
 function hasOauthAccountPoolFailover(config: OcxConfig, key: string): boolean {
+  // Consult the canonical OAuth registry and actual provider routing before suppressing cooldowns.
+  if (!OAUTH_PROVIDERS[key] || config.providers[key]?.authMode !== "oauth") return false;
   if (key === "anthropic") return isAnthropicAccountPoolEnabled(config);
   if (key === "google-antigravity") return isGoogleAntigravityAccountPoolEnabled(config);
   if (key === "cursor") return isCursorAccountPoolEnabled(config);
@@ -235,7 +238,8 @@ export function recordProviderCapCooldown(
   const pooled = config.providers[key];
   if (
     pooled
-    && (hasKeyPoolFailover(pooled) || hasOauthAccountPoolFailover(config, key))
+    && (hasKeyPoolFailover(pooled)
+      || (hasOauthAccountPoolFailover(config, key) && (status === 429 || status === 529)))
     && opts?.allowPooled !== true
   ) return null;
   const now = opts?.now ?? Date.now();
