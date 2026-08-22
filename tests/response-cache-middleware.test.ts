@@ -136,8 +136,8 @@ describe("probeResponseCache", () => {
     installResponseCache({ port: 10100, providers: {}, responseCache: { enabled: true, ttlMs: 10_000 } } as unknown as OcxConfig);
 
     const body = { model: "claude-opus-4-8", messages: [{ role: "user", content: "hi" }] };
-    const a = makeReq({ ...body, z: 1, a: 2 });
-    const b = makeReq({ ...body, a: 2, z: 1 }); // different key order, same semantics
+    const a = makeReq({ ...body, z: 1, a: 2 }, { authorization: "Bearer caller" });
+    const b = makeReq({ ...body, a: 2, z: 1 }, { authorization: "Bearer caller" }); // different key order, same semantics
 
     const probeA = await probeResponseCache(a, baseConfig(), "messages");
     expect(probeA).not.toBeNull();
@@ -157,7 +157,7 @@ describe("probeResponseCache", () => {
 
   test("miss exposes a rebuilt request + store that captures a 2xx body", async () => {
     installResponseCache({ port: 10100, providers: {}, responseCache: { enabled: true, ttlMs: 10_000 } } as unknown as OcxConfig);
-    const req = makeReq({ model: "claude-opus-4-8", messages: [{ role: "user", content: "ping" }] });
+    const req = makeReq({ model: "claude-opus-4-8", messages: [{ role: "user", content: "ping" }] }, { authorization: "Bearer caller" });
     const probe = await probeResponseCache(req, baseConfig(), "messages");
     expect(probe).not.toBeNull();
     if ("miss" in probe!) {

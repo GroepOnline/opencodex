@@ -89,7 +89,7 @@ test("identical non-streaming request hits the cache on the second call", async 
     });
     const post = () => fetch(new URL("/v1/chat/completions", server.url), {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", authorization: "Bearer caller" },
       body,
     });
 
@@ -160,7 +160,7 @@ test("management endpoints report stats and clear the cache", async () => {
   try {
     const post = () => fetch(new URL("/v1/chat/completions", server.url), {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", authorization: "Bearer caller" },
       body: JSON.stringify({
         model: "mock/test-model",
         stream: false,
