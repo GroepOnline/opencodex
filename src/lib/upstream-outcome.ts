@@ -99,7 +99,16 @@ function classifyShared(evidence: UpstreamOutcomeEvidence): UpstreamOutcomeLabel
   // property and must never cool an account or trigger a replay.
   if (isContextOverflow(text)) return "context-overflow";
 
-  if (status === 402) return "quota-exhausted";
+  if (
+    status === 402
+    && (
+      text.includes("weekly limit")
+      || text.includes("weekly cap")
+      || text.includes("quota")
+      || text.includes("usage limit")
+      || text.includes("usage cap")
+    )
+  ) return "quota-exhausted";
 
   if (
     text.includes("billing")
