@@ -60,7 +60,8 @@ export function p50DurationForModel(
   sinceMs: number,
   now = Date.now(),
 ): number | null {
-  const bucketSinceMs = windowBucket(sinceMs);
+  // Keep the requested window precise; aggregated samples are rebuilt for each distinct start.
+  const bucketSinceMs = sinceMs;
   // Rebuild when the TTL lapses OR the caller asks for a different window bucket: the cache holds
   // aggregated samples with no per-entry timestamps, so a cache built for window A cannot
   // answer window B. Without the bucket check the first caller within the TTL would pin the
