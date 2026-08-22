@@ -35,15 +35,15 @@ export function TrafficRowCells({
 
   return (
     <>
-      <span className="bon-col bon-col--model bon-titel">{providerModelNode}</span>
-      <span className="bon-col bon-col--principal bon-meta">{principal}</span>
-      <span className="bon-col bon-col--tokens bon-meta">
+      <span className="bon-col bon-col--model bon-titel" aria-label={t("vk.col.providerModel")}>{providerModelNode}</span>
+      <span className="bon-col bon-col--principal bon-meta" aria-label={t("vk.col.principal")}>{principal}</span>
+      <span className="bon-col bon-col--tokens bon-meta" aria-label={t("vk.col.tokens")}>
         {tokens !== undefined ? t("vk.rowTokens", { n: formatTokens(tokens, locale) }) : "\u2014"}
       </span>
-      <span className="bon-col bon-col--duration bon-meta">
+      <span className="bon-col bon-col--duration bon-meta" aria-label={t("vk.col.duration")}>
         {t("vk.rowDuration", { s: (entry.durationMs / 1000).toFixed(1) })}
       </span>
-      <span className={`bon-col bon-col--status stempel ${trafficStatusClass(entry)}`}>
+      <span className={`bon-col bon-col--status stempel ${trafficStatusClass(entry)}`} aria-label={t("vk.col.status")}>
         {trafficStatusLabel(entry, t)}
       </span>
     </>
@@ -56,7 +56,7 @@ export function TrafficRowCells({
 export function TrafficColumnHead() {
   const { t } = useI18n();
   return (
-    <div className="bon bon--head" aria-hidden="true">
+    <div className="bon bon--head">
       <div className="bon-kop bon-kop--grid">
         <span className="bon-col bon-col--time">{t("vk.col.time")}</span>
         <span className="bon-col bon-col--model">{t("vk.col.providerModel")}</span>
