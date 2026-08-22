@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import type { TFn } from "../i18n/shared";
 import { readJsonIfOk, readJsonOrThrow } from "../fetch-json";
 import { writeSessionListCache } from "../session-list-cache";
@@ -40,8 +40,10 @@ export function useProvidersFetch({
   /** Session seed key for instant Providers shell paint (no secrets — hasApiKey flags only). */
   configCacheKey?: string;
 }) {
-  const fetchConfig = useCallback(async () => {
-    const availPromise = setAvailability
+  const fetchGeneration = useRef(0);
+    const fetchConfig = useCallback(async () => {
+    const generation = ++fetchGeneration.current;
+      const availPromise = setAvailability
       ? fetch(`${apiBase}/api/availability`).catch(() => null)
       : null;
     try {
@@ -53,7 +55,7 @@ export function useProvidersFetch({
       notify(t("prov.loadConfigFail"), false);
       return;
     }
-    if (setAvailability && availPromise) {
+    if (setAvailability && availPromise && generation === fetchGeneration.current) {
       setAvailability(await readAvailabilityProviders(availPromise));
     }
   }, [apiBase, configCacheKey, notify, setAvailability, setConfig, t]);
