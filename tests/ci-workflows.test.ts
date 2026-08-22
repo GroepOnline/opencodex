@@ -2289,9 +2289,13 @@ describe("GitHub Actions hardening", () => {
     expect(health!.run ?? "").toContain("for i in $(seq 1 30)");
     expect(health!.run ?? "").toContain("sleep 2");
     expect(health!.run ?? "").toContain("did not become healthy within 60s");
-    expect(health!.run ?? "").toContain('http://127.0.0.1:10100/healthz');
+    expect(health!.run ?? "").toContain("$OCX_HEALTH_URLS");
     expect(health!.run ?? "").toContain('"status":"ok"');
     expect(health!.run ?? "").toContain("exit 1");
+    const resolveHealth = steps.find(step => step.name === "Resolve health URLs");
+    expect(resolveHealth?.run ?? "").toContain("http://127.0.0.1:10100/healthz");
+    expect(resolveHealth?.run ?? "").toContain("tailscale ip -4");
+    expect(text).not.toContain("100.109.39.86");
 
     // Rollback must only fire once a known-good prior SHA was captured AND the
     // dirty/ancestry guard passed — otherwise a failure before either of those

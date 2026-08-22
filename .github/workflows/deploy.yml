@@ -38,7 +38,6 @@ jobs:
     timeout-minutes: 20
     env:
       DEPLOY_PATH: /opt/chef/services/opencodex
-      OCX_HEALTH_URLS: "http://127.0.0.1:10100/healthz http://100.109.39.86:10100/healthz"
     steps:
       - name: Resolve deploy tag
         id: ref
@@ -140,6 +139,17 @@ jobs:
 
       - name: Restart opencodex-proxy
         run: sudo systemctl restart opencodex-proxy.service
+
+      - name: Resolve health URLs
+        run: |
+          set -euo pipefail
+          # Loopback first; Tailscale IPv4 discovered on the deploy host (no hardcoded 100.x).
+          urls="http://127.0.0.1:10100/healthz"
+          ts_ip="$(tailscale ip -4 2>/dev/null | head -n1 || true)"
+          if [ -n "$ts_ip" ]; then
+            urls="$urls http://${ts_ip}:10100/healthz"
+          fi
+          echo "OCX_HEALTH_URLS=$urls" >> "$GITHUB_ENV"
 
       - name: Health gate
         id: health
