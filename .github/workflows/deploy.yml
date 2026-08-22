@@ -1,17 +1,18 @@
-name: Deploy to control-01
+name: Deploy to chef-control-az-01
 
-# Rolls a new opencodex version out to the live proxy on chef-control-01.
+# Rolls a new opencodex version out to the live proxy on chef-control-az-01.
 #
 # Triggers:
 #   - push of a `v*.*.*` tag  -> deploy that exact version (the "new version" path)
 #   - workflow_dispatch       -> deploy a tag ref deliberately (the "after merge" path)
 #
-# The job runs on the self-hosted `deploy` runner, which is the control-01 host
+# The job runs on the self-hosted `deploy` runner, which is the Azure control host
 # itself, so it can restart its own systemd service (chef has NOPASSWD sudo) and
 # health-gate the result locally. No SSH keys cross hosts.
 #
-# Requires the runner to be registered on control-01 (ocx-deploy-runner.service).
+# Requires the runner to be registered on chef-control-az-01 (ocx-deploy-runner.service).
 # The service checkout at DEPLOY_PATH is updated in place and restarted.
+# Historical UpCloud chef-control-01 runner is retired.
 
 on:
   push:
@@ -28,7 +29,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ocx-deploy-control-01
+  group: ocx-deploy-az-01
   cancel-in-progress: false
 
 jobs:
@@ -36,7 +37,8 @@ jobs:
     runs-on: [self-hosted, Linux, X64, deploy]
     timeout-minutes: 20
     env:
-      DEPLOY_PATH: /home/chef/opencodex-psp
+      DEPLOY_PATH: /opt/chef/services/opencodex
+      OCX_HEALTH_URLS: "http://127.0.0.1:10100/healthz http://100.109.39.86:10100/healthz"
     steps:
       - name: Resolve deploy tag
         id: ref
@@ -143,15 +145,17 @@ jobs:
         id: health
         run: |
           set -euo pipefail
-          # Port is the service default (10100) on control-01; the proxy binds it
-          # regardless of any LAN hostname, so the loopback probe is stable.
+          # Azure authority binds Tailscale :10100; loopback may be closed.
           for i in $(seq 1 30); do
-            body="$(curl -fsS -m 5 http://127.0.0.1:10100/healthz || true)"
-            if printf '%s' "$body" | grep -q '"status":"ok"'; then
-              echo "healthy after ${i} tries: $body"
-              echo "status=ok" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
+            body=""
+            for url in $OCX_HEALTH_URLS; do
+              body="$(curl -fsS -m 5 "$url" || true)"
+              if printf '%s' "$body" | grep -q '"status":"ok"'; then
+                echo "healthy after ${i} tries via $url: $body"
+                echo "status=ok" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            done
             sleep 2
           done
           echo "::error::opencodex did not become healthy within 60s after restart"
@@ -172,11 +176,14 @@ jobs:
           sudo systemctl restart opencodex-proxy.service
           # Re-confirm the rolled-back service is healthy before declaring done.
           for _ in $(seq 1 15); do
-            body="$(curl -fsS -m 5 http://127.0.0.1:10100/healthz || true)"
-            if printf '%s' "$body" | grep -q '"status":"ok"'; then
-              echo "rolled back to ${{ steps.prev.outputs.sha }} and healthy"
-              exit 0
-            fi
+            body=""
+            for url in $OCX_HEALTH_URLS; do
+              body="$(curl -fsS -m 5 "$url" || true)"
+              if printf '%s' "$body" | grep -q '"status":"ok"'; then
+                echo "rolled back to ${{ steps.prev.outputs.sha }} and healthy via $url"
+                exit 0
+              fi
+            done
             sleep 2
           done
           echo "::error::rollback deployed ${{ steps.prev.outputs.sha }} but service not healthy"
