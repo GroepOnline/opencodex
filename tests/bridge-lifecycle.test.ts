@@ -100,40 +100,61 @@ describe("bridge stream lifecycle (RC1 / RC2)", () => {
   });
 
   test("a true upstream stall while reading emits incomplete, closes, and cancels upstream", async () => {
+    // Drive the beat loop through the test clock seam instead of real setInterval: with a real
+    // 10ms beat, a loaded CI runner coalesces interval ticks and the 1s stall budget is reached
+    // long after this test's own timeout — the stream then looks like it never closes.
+    // Same manual-clock pattern as tests/bridge.test.ts "heartbeat events reset the stall watchdog".
     let cancelled = false;
-    const stream = bridgeToResponsesSSE(
-      hangs(), "routed/model", undefined, undefined, undefined,
-      () => { cancelled = true; },
-      10,
-      { stallTimeoutSec: 1 },
-    );
+    let beatTick: (() => void) | undefined;
+    const timers = {
+      setInterval(handler: () => void, _ms: number) {
+        beatTick = handler;
+        return 1;
+      },
+      clearInterval(_id: unknown) {
+        beatTick = undefined;
+      },
+    };
+    let waitResolve: (() => void) | undefined;
+    const waitDelay = () => new Promise<void>(resolve => { waitResolve = resolve; });
+    const releaseDelay = () => {
+      const resolve = waitResolve;
+      waitResolve = undefined;
+      resolve?.();
+    };
+    const flush = async () => {
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+    };
 
-    const reader = stream.getReader();
-    const decoder = new TextDecoder();
-    let text = "";
-    const completed = (async () => {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) return;
-        text += decoder.decode(value, { stream: true });
-      }
-    })();
-    try {
-      await Promise.race([
-        completed,
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("stall stream did not close")), 2_500)),
-      ]);
-    } finally {
-      await reader.cancel();
+    async function* stallsAfterOneDelta(): AsyncGenerator<AdapterEvent> {
+      yield { type: "text_delta", text: "partial" };
+      await waitDelay(); // silent forever: no further events, no terminal
     }
-    const names = text.split("\n\n")
-      .map(frame => frame.split("\n").find(line => line.startsWith("event: "))?.slice(7) ?? "")
-      .filter(Boolean);
+
+    const heartbeatMs = 10;
+    const stallTimeoutSec = 1;
+    const maxStallTicks = Math.ceil((stallTimeoutSec * 1000) / heartbeatMs);
+    const framesPromise = collectEventNames(bridgeToResponsesSSE(
+      stallsAfterOneDelta(), "routed/model", undefined, undefined, undefined,
+      () => { cancelled = true; },
+      heartbeatMs,
+      { stallTimeoutSec, timers },
+    ));
+
+    // First delta pulled; generator now parked on the delay gate with gated=false.
+    await flush();
+    // The delta itself counts as upstream activity on the first beat, so the watchdog needs
+    // maxStallTicks silent ticks after that one; fire a few extra to be explicit.
+    for (let t = 0; t < maxStallTicks + 5; t++) {
+      beatTick?.();
+      await flush(); // let each beat handler run before the next tick
+    }
+    const names = await framesPromise;
 
     expect(names).toContain("response.incomplete");
     expect(names).not.toContain("response.completed");
     expect(cancelled).toBe(true);
-  }, 3_000);
+  });
 
   test("terminal callback reports completed for a normal done event", async () => {
     const terminals: string[] = [];

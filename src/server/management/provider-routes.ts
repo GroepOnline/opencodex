@@ -77,6 +77,11 @@ import type { ManagementContext } from "./context";
 export async function handleProviderRoutes(ctx: ManagementContext): Promise<Response | null> {
   const { req, url, config, deps, refreshCodexCatalogBestEffort, syncClaudeAgentDefsBestEffort } = ctx;
 
+  if (url.pathname === "/api/availability" && req.method === "GET") {
+    const { inspectAvailability } = await import("../../availability");
+    return jsonResponse(inspectAvailability(config));
+  }
+
   if (url.pathname === "/api/provider-quotas" && req.method === "GET") {
     const forceRefresh = url.searchParams.get("refresh") === "1" || url.searchParams.get("refresh") === "true";
     const providerName = url.searchParams.get("provider");

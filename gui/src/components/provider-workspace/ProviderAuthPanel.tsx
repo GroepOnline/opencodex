@@ -4,8 +4,8 @@
  * handlers via props-down; no internal auth machinery.
  */
 import { useEffect, useState } from "react";
-import { useT } from "../../i18n/shared";
-import { IconLock, IconTrash } from "../../icons";
+import { useT, useI18n } from "../../i18n/shared";
+import { IconClock, IconLock, IconTrash } from "../../icons";
 import type { WorkspaceItem } from "../../provider-workspace/catalog";
 import { oauthAccountDisplayLabel, providerAuthSurface } from "../../provider-workspace/auth";
 import { displayAccountId } from "../../lib/privacy";
@@ -21,7 +21,7 @@ import {
 import CodexAccountPool from "../CodexAccountPool";
 import OAuthAccountPoolSettings, { type OAuthPoolProvider } from "./OAuthAccountPoolSettings";
 import { LoginUrlBlock } from "../login-url-block";
-import QuotaBars from "../QuotaBars";
+import QuotaBars, { formatResetFuture } from "../QuotaBars";
 import { useCopyFeedback } from "../use-copy-feedback";
 import type { CodexAccountPoolController } from "../../hooks/useCodexAccountPool";
 import type { AccountLoadState, OAuthAccountRow, ApiKeyRow, LoginHint, ProviderAuthHandlers } from "./types";
@@ -56,6 +56,7 @@ export default function ProviderAuthPanel({
   codexController?: CodexAccountPoolController;
 }) {
   const t = useT();
+  const { locale } = useI18n();
   const [addingKey, setAddingKey] = useState(false);
   const [newKey, setNewKey] = useState("");
   const [keyBusy, setKeyBusy] = useState(false);
@@ -66,8 +67,14 @@ export default function ProviderAuthPanel({
   const [clearingCooldownId, setClearingCooldownId] = useState<string | null>(null);
   const [cooldownError, setCooldownError] = useState<string | null>(null);
   const [reserveQuotaSlots, setReserveQuotaSlots] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const deviceCodeCopy = useCopyFeedback<string>();
   const doctorCopy = useCopyFeedback<string>();
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Soft &quota=1 enrichment lands after the local account list. Reserve stacked
   // bar height briefly so bars don't shove rows when WHAM returns.
@@ -422,17 +429,31 @@ export default function ProviderAuthPanel({
           <>
             {keys.length > 0 && (
               <ul className="pwi-auth-list">
-                {keys.map(entry => (
+                {keys.map(entry => {
+                  const cooling = typeof entry.cooldownUntil === "number" && entry.cooldownUntil > nowMs;
+                  const coolingReset = cooling
+                    ? formatResetFuture(entry.cooldownUntil!, t, locale)
+                    : "";
+                  return (
                   <li key={entry.id} className={`pwi-auth-row${entry.active ? " pwi-auth-row--active" : ""}`}>
                     <button type="button" className="pwi-auth-row-main"
-                      onClick={() => void authHandlers.onSwitchApiKey(item.name, entry)}
-                      disabled={entry.active}>
-                      <span className={`pwi-auth-dot ${entry.active ? "pwi-auth-dot--ok" : "pwi-auth-dot--off"}`} aria-hidden="true" />
+                      onClick={() => { if (!cooling) void authHandlers.onSwitchApiKey(item.name, entry); }}
+                      disabled={entry.active || cooling}>
+                      <span className={`pwi-auth-dot ${entry.active ? "pwi-auth-dot--ok" : cooling ? "pwi-auth-dot--warn" : "pwi-auth-dot--off"}`} aria-hidden="true" />
                       <span className="pwi-auth-row-copy">
                         <span className="pwi-auth-row-label">{entry.label ?? entry.masked}</span>
                         {entry.label && <code className="pwi-auth-row-secondary">{entry.masked} · {t("prov.accountId")}: {entry.id}</code>}
+                        {cooling && (
+                          <span className="pwi-auth-row-secondary faint">{t("pws.keyCoolingUntil", { reset: coolingReset })}</span>
+                        )}
                       </span>
                       {entry.active && <span className="badge badge-primary">{t("prov.accountActive")}</span>}
+                      {cooling && (
+                        <span className="badge badge-amber">
+                          <IconClock size={13} aria-hidden="true" />
+                          {t("pws.keyCooling")}
+                        </span>
+                      )}
                     </button>
                     <button type="button" className="btn btn-ghost btn-sm"
                       onClick={() => void authHandlers.onEditAlias(item.name, "api-key", entry.id, entry.label)}>
@@ -442,10 +463,11 @@ export default function ProviderAuthPanel({
                       aria-label={`${t("common.remove")} — ${entry.label ?? entry.masked}`}
                       title={`${t("common.remove")} — ${entry.label ?? entry.masked}`}
                       onClick={() => void authHandlers.onRemoveApiKey(item.name, entry)}>
-                      <IconTrash style={{ width: 13, height: 13 }} aria-hidden="true" />
+                      <IconTrash size={13} aria-hidden="true" />
                     </button>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
             {addingKey ? (
@@ -458,9 +480,10 @@ export default function ProviderAuthPanel({
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setAddingKey(false); setNewKey(""); }}>{t("common.cancel")}</button>
               </div>
             ) : (
-              <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 8 }}
+              <button type="button" className="btn btn-ghost btn-sm pwi-auth-add"
                 onClick={() => setAddingKey(true)}>{t("pws.addKey")}</button>
             )}
+            <p className="card-sub pwi-auth-hint">{t("pws.keyPoolHint")}</p>
           </>
         )}
 

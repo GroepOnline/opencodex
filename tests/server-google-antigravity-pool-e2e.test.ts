@@ -150,6 +150,43 @@ describe("server Google Antigravity account pool", () => {
     }
   });
 
+  test("an exhausted pool surfaces the last upstream 429 body", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.startsWith("https://daily-cloudcode-pa.googleapis.com/")) {
+        return new Response(JSON.stringify({ error: { message: "quota exhausted" } }), {
+          status: 429,
+          headers: {
+            "content-type": "application/json",
+            "retry-after": "30",
+          },
+        });
+      }
+      return originalFetch(input, init);
+    };
+
+    const server = startServer(0);
+    try {
+      const response = await originalFetch(new URL("/v1/responses", server.url), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "google-antigravity/gemini-3.1-pro",
+          input: "both accounts are capped",
+          stream: false,
+        }),
+      });
+      expect(response.status).toBe(429);
+      const text = await response.text();
+      expect(text.toLowerCase()).not.toContain("unknown error");
+      expect(text).toContain("quota exhausted");
+    } finally {
+      server.stop(true);
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("400 and 502 responses never rotate accounts", async () => {
     const originalFetch = globalThis.fetch;
     const attempts: string[] = [];

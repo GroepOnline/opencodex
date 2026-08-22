@@ -13,6 +13,8 @@ import {
   DEFAULT_SUBAGENT_MODELS,
   applyProxyEnv,
   armClaudeCodeBaseline,
+  codexAccountPoolsEnabled,
+  getConfigDir,
   loadConfig,
   saveConfig,
   websocketsEnabled,
@@ -25,14 +27,17 @@ import { setStorageCleanupPolicyJobLiveApply } from "../storage/policy-job";
 import { scheduleStorageCleanupStartupRun, startStorageCleanupScheduler } from "../storage/policy-scheduler";
 import { runOpenAiTierStartupMigration } from "../providers/openai-tier-startup";
 import { runAlibabaRegionStartupMigration } from "../providers/alibaba-region-startup";
+import { installResponseCache, probeResponseCache, type CacheHit } from "../cache/response-cache-middleware";
+import { installAutoRouterLatencyHistory } from "../availability/chain";
+import { p50DurationForModel } from "../usage/latency-history";
 import { isCanonicalOpenAiForwardProvider } from "../providers/openai-tiers";
-import { providerCodexAccountMode } from "../providers/registry";
+import { providerCodexAccountMode, setCodexAccountPoolsEnabled } from "../providers/registry";
 import type { StorageCleanupPolicy } from "../types";
 import {
-  bindProviderCapCooldownConfig,
-  expireProviderCooldowns,
+  expireRecordedCooldowns,
   startProviderCooldownSweep,
 } from "../providers/cap-cooldown";
+import { hydrateKeyPoolCooldowns } from "../providers/key-failover";
 import {
   CodexAccountCooldownError,
   cooldownErrorMessage,
@@ -162,6 +167,22 @@ const MAX_WS_FRAME_BYTES = 50 * 1024 * 1024;
 const WEBSOCKET_IDLE_TIMEOUT_SECONDS = 0;
 const LIVE_SIDEBAND_PENDING_MAX = 32;
 
+/**
+ * Record a served-from-cache request in /api/logs so request counts reflect real client traffic.
+ * A cache hit did NOT reach an upstream, so no usage/cost is attributed: logCtx carries no usage,
+ * and addFinalRequestLog omits the usage/totalTokens fields when it is absent. The response itself
+ * already carries `x-cache: HIT`; this is purely the request-count / observability entry.
+ */
+function logCacheHitRequest(hit: CacheHit): void {
+  const start = Date.now();
+  addFinalRequestLog(
+    nextRequestLogId(start),
+    start,
+    { model: hit.model || "unknown", provider: hit.provider || "unknown" },
+    200,
+  );
+}
+
 function closeLiveSideband(ws: ServerWebSocket<WsData>, code = 1000, reason = ""): void {
   try {
     ws.data.liveUpstream?.close(code, reason);
@@ -270,9 +291,19 @@ function attachLiveSidebandUpstream(ws: ServerWebSocket<WsData>): void {
 
 export function startServer(port?: number) {
   const config = runAlibabaRegionStartupMigration(runOpenAiTierStartupMigration(loadConfig()));
-  // Cap-cooldown / request-log side effects must mutate THIS live object (not a disk reload).
-  bindProviderCapCooldownConfig(config);
-  if (expireProviderCooldowns(config)) saveConfig(config);
+  // Bind the Codex-account-pool master switch so every resolver sees one source of truth.
+  // When false, opencodex runs standalone (no ChatGPT account pool / quota windows / history remap).
+  setCodexAccountPoolsEnabled(codexAccountPoolsEnabled(config));
+  // Fase D: install the per-provider/model KV response cache (no-op unless config.responseCache.enabled).
+  void installResponseCache(config, getConfigDir());
+  // Fase E: wire the auto-router's latency input to the usage log (p50 per provider/model).
+  // Cheap: the reader caches aggregates for a minute and only reads the recent tail of usage.jsonl.
+  installAutoRouterLatencyHistory({
+    p50DurationMs: (provider, model, sinceMs) => p50DurationForModel(provider, model, sinceMs),
+  });
+  // Availability mutates THIS live object when it records a cap-cooldown.
+  hydrateKeyPoolCooldowns(config);
+  if (expireRecordedCooldowns(config)) saveConfig(config);
   // Auto-pausing a capped provider is only safe if it auto-recovers without the dashboard.
   startProviderCooldownSweep(config);
   applyProxyEnv(config);
@@ -721,6 +752,14 @@ export function startServer(port?: number) {
         }
         const responsesRateDeny = responsesGate.commit();
         if (responsesRateDeny) return withCors(responsesRateDeny, req, config);
+        // Fase D: probe the response cache. A hit returns immediately; a miss yields a
+        // rebuilt Request (so the handler can read the body again) + a store callback.
+        const responsesCacheProbe = await probeResponseCache(req, config, "responses");
+        if (responsesCacheProbe && "hit" in responsesCacheProbe) {
+          logCacheHitRequest(responsesCacheProbe);
+          return withCors(responsesCacheProbe.hit, req, config);
+        }
+        const responsesWorkReq = responsesCacheProbe?.request ?? req;
         const start = Date.now();
         const requestId = nextRequestLogId(start);
         const logCtx = { model: "unknown", provider: "unknown" };
@@ -733,7 +772,7 @@ export function startServer(port?: number) {
           logged = true;
           addFinalRequestLog(requestId, start, logCtx, status, meta);
         };
-        const response = await handleResponses(req, config, logCtx, {
+        const response = await handleResponses(responsesWorkReq, config, logCtx, {
           abortSignal: req.signal,
           onFirstOutput: () => recordFirstOutput(logCtx, start),
           onNativePassthroughTerminal: status => {
@@ -746,6 +785,7 @@ export function startServer(port?: number) {
             finalizeNativePassthroughLog(499, { closeReason: "client_cancel" });
           },
         });
+        responsesCacheProbe?.store(response);
         return withCors(responseWithDeferredRequestLog(response, requestId, start, logCtx), req, config);
       }
 
@@ -784,13 +824,22 @@ export function startServer(port?: number) {
         }
         const messagesRateDeny = messagesGate.commit();
         if (messagesRateDeny) return withCors(messagesRateDeny, req, config);
+        // Fase D: probe the response cache. A hit returns immediately; a miss yields a
+        // rebuilt Request (so the handler can read the body again) + a store callback.
+        const messagesCacheProbe = await probeResponseCache(req, config, "messages");
+        if (messagesCacheProbe && "hit" in messagesCacheProbe) {
+          logCacheHitRequest(messagesCacheProbe);
+          return withCors(messagesCacheProbe.hit, req, config);
+        }
+        const messagesWorkReq = messagesCacheProbe?.request ?? req;
         const start = Date.now();
         const requestId = nextRequestLogId(start);
         const logCtx: RequestLogContext = { model: "unknown", provider: "unknown" };
         // Logging is finalized inside handleClaudeMessages (Responses-vocab tap on the
         // pre-translation stream + native passthrough callbacks) — do not re-wrap the
         // translated Anthropic stream here.
-        const response = await handleClaudeMessages(req, config, logCtx, { requestId, start });
+        const response = await handleClaudeMessages(messagesWorkReq, config, logCtx, { requestId, start });
+        messagesCacheProbe?.store(response);
         return withCors(response, req, config);
       }
 
@@ -810,10 +859,19 @@ export function startServer(port?: number) {
         }
         const chatRateDeny = chatGate.commit();
         if (chatRateDeny) return withCors(chatRateDeny, req, config);
+        // Fase D: probe the response cache. A hit returns immediately; a miss yields a
+        // rebuilt Request (so the handler can read the body again) + a store callback.
+        const chatCacheProbe = await probeResponseCache(req, config, "chat-completions");
+        if (chatCacheProbe && "hit" in chatCacheProbe) {
+          logCacheHitRequest(chatCacheProbe);
+          return withCors(chatCacheProbe.hit, req, config);
+        }
+        const chatWorkReq = chatCacheProbe?.request ?? req;
         const start = Date.now();
         const requestId = nextRequestLogId(start);
         const logCtx: RequestLogContext = { model: "unknown", provider: "unknown" };
-        const response = await handleChatCompletions(req, config, logCtx, { requestId, start });
+        const response = await handleChatCompletions(chatWorkReq, config, logCtx, { requestId, start });
+        chatCacheProbe?.store(response);
         return withCors(response, req, config);
       }
 

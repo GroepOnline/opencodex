@@ -460,8 +460,8 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
   if (url.pathname === "/api/providers/keys" && req.method === "GET") {
     const name = (url.searchParams.get("name") ?? "").trim();
     if (!name || !isValidProviderName(name) || !hasOwnProvider(config.providers, name)) return jsonResponse({ error: "unknown provider" }, 404);
-    const { listProviderApiKeys } = await import("../../providers/api-keys");
-    return jsonResponse(listProviderApiKeys(config, name));
+    const { inspectKeyPool } = await import("../../availability/management");
+    return jsonResponse(inspectKeyPool(config, name));
   }
   if (url.pathname === "/api/providers/keys" && req.method === "POST") {
     const body = await req.json().catch(() => ({})) as { name?: string; key?: string; label?: string };
@@ -475,8 +475,8 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
     clearModelCache(name);
     const { clearProviderQuotaCache } = await import("../../providers/quota");
     clearProviderQuotaCache();
-    const { clearKeyCooldowns } = await import("../../providers/key-failover");
-    clearKeyCooldowns(name); // manual key management resets 429 cooldown state
+    const { clearKeyPoolCooldowns } = await import("../../availability/management");
+    clearKeyPoolCooldowns(name, config);
     return jsonResponse({ ok: true, id: result.id }, 201);
   }
   if (url.pathname === "/api/providers/keys/active" && req.method === "PUT") {
@@ -490,8 +490,8 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
     clearModelCache(name);
     const { clearProviderQuotaCache } = await import("../../providers/quota");
     clearProviderQuotaCache();
-    const { clearKeyCooldowns } = await import("../../providers/key-failover");
-    clearKeyCooldowns(name); // manual key management resets 429 cooldown state
+    const { clearKeyPoolCooldowns } = await import("../../availability/management");
+    clearKeyPoolCooldowns(name, config);
     return jsonResponse({ ok: true, name, activeId: body.id });
   }
   if (url.pathname === "/api/providers/keys/alias" && req.method === "PUT") {
@@ -519,8 +519,8 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
     clearModelCache(name);
     const { clearProviderQuotaCache } = await import("../../providers/quota");
     clearProviderQuotaCache();
-    const { clearKeyCooldowns } = await import("../../providers/key-failover");
-    clearKeyCooldowns(name); // manual key management resets 429 cooldown state
+    const { clearKeyPoolCooldowns } = await import("../../availability/management");
+    clearKeyPoolCooldowns(name, config);
     return jsonResponse({ ok: true });
   }
 

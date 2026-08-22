@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Usage from "./Usage";
+import { KeyPoolHealthPanel, ResponseCachePanel } from "../ops-panels";
 import { useI18n } from "../i18n/shared";
 import { formatTokens } from "../format-tokens";
 import { TrafficColumnHead, TrafficRowCells } from "../traffic-row";
@@ -11,7 +12,32 @@ import {
 } from "../traffic-shared";
 
 interface UsageSummary {
-  summary: { requests: number; totalTokens: number };
+  summary: {
+    requests: number;
+    totalTokens: number;
+    estimatedCostUsd?: number;
+    cacheReadRatio?: number;
+    p95LatencyMs?: number;
+    ratio429?: number;
+    ratio502?: number;
+  };
+  providers?: Array<{
+    provider: string;
+    requests: number;
+    totalTokens: number;
+    estimatedCostUsd?: number;
+    cacheReadRatio?: number;
+  }>;
+  models?: Array<{
+    provider: string;
+    model: string;
+    requests: number;
+    totalTokens: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    shareRatio?: number;
+    estimatedCostUsd?: number;
+  }>;
   days: Array<{ date: string; requests: number; totalTokens?: number }>;
 }
 
@@ -55,6 +81,11 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
   const [paused, setPaused] = useState(false);
   const [openBon, setOpenBon] = useState<string | null>(null);
   const [analyseOpen, setAnalyseOpen] = useState(target === "usage");
+  const [opsOpen, setOpsOpen] = useState(false);
+  // Proxy response-cache hit-rate (hits / (hits+misses)) from GET /api/response-cache — the same
+  // source ResponseCachePanel reads. null when the cache is off or the endpoint is unreachable.
+  // This is DISTINCT from summary.cacheReadRatio, which is Anthropic prompt-cache token reuse.
+  const [proxyCacheRatio, setProxyCacheRatio] = useState<number | null>(null);
   const pausedRef = useRef(paused);
   useEffect(() => { pausedRef.current = paused; }, [paused]);
 
@@ -76,6 +107,29 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
     };
     void load();
     const iv = setInterval(() => void load(), 60_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [apiBase]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadCache = async () => {
+      try {
+        const res = await fetch(`${apiBase}/api/response-cache`);
+        if (!res.ok) throw new Error(String(res.status));
+        const data = await res.json() as { enabled?: boolean; stats?: { hits: number; misses: number } };
+        if (cancelled) return;
+        const hits = data.stats?.hits ?? 0;
+        const misses = data.stats?.misses ?? 0;
+        const lookups = hits + misses;
+        // Only surface a ratio when the cache is on AND has been probed: 0 lookups is "no signal",
+        // not a 0% hit-rate, so leave it null rather than showing a misleading 0%.
+        setProxyCacheRatio(data.enabled && lookups > 0 ? hits / lookups : null);
+      } catch {
+        if (!cancelled) setProxyCacheRatio(null);
+      }
+    };
+    void loadCache();
+    const iv = setInterval(() => void loadCache(), 15_000);
     return () => { cancelled = true; clearInterval(iv); };
   }, [apiBase]);
 
@@ -132,6 +186,12 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
   const requests30d = summary30d?.summary.requests ?? 0;
   const tokens30d = summary30d?.summary.totalTokens ?? 0;
 
+  /** Per-model breakdown (top 12 by requests, 30d from /api/usage models[]). */
+  const topModellen = useMemo(() => {
+    const ms = summary30d?.models ?? [];
+    return ms.toSorted((a, b) => b.requests - a.requests).slice(0, 12);
+  }, [summary30d]);
+
   return (
     <>
       <div className="depas-viewkop">
@@ -152,7 +212,119 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
           <span className="stat-strip-waarde">{requests30d.toLocaleString(locale)}</span>
           <span className="stat-strip-label">{t("vk.requests30d")}</span>
         </div>
+        <div className="stat-strip-item">
+          <span className="stat-strip-waarde">
+            {typeof summary30d?.summary.cacheReadRatio === "number"
+              ? `${Math.round(summary30d.summary.cacheReadRatio * 100)}%`
+              : "—"}
+          </span>
+          <span className="stat-strip-label">{t("vk.cacheHit")}</span>
+        </div>
+        <div className="stat-strip-item">
+          <span className="stat-strip-waarde">
+            {proxyCacheRatio !== null ? `${Math.round(proxyCacheRatio * 100)}%` : "—"}
+          </span>
+          <span className="stat-strip-label">{t("vk.proxyCacheHit")}</span>
+        </div>
+        <div className="stat-strip-item">
+          <span className="stat-strip-waarde">
+            {typeof summary30d?.summary.estimatedCostUsd === "number"
+              ? `$${summary30d.summary.estimatedCostUsd.toFixed(2)}`
+              : "—"}
+          </span>
+          <span className="stat-strip-label">{t("vk.costUsd")}</span>
+        </div>
+        <div className="stat-strip-item">
+          <span className="stat-strip-waarde">
+            {typeof summary30d?.summary.p95LatencyMs === "number" && summary30d.summary.p95LatencyMs > 0
+              ? `${(summary30d.summary.p95LatencyMs / 1000).toFixed(1)}${t("vk.p95Unit")}`
+              : "—"}
+          </span>
+          <span className="stat-strip-label">{t("vk.p95")}</span>
+        </div>
+        <div className="stat-strip-item">
+          <span className="stat-strip-waarde">
+            {typeof summary30d?.summary.ratio429 === "number"
+              ? `${Math.round(summary30d.summary.ratio429 * 100)}%`
+              : "—"}
+          </span>
+          <span className="stat-strip-label">{t("vk.ratio429")}</span>
+        </div>
       </div>
+
+      {summary30d?.providers && summary30d.providers.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <h3 className="depas-viewsub" style={{ marginBottom: 8 }}>{t("vk.providerTableHead")}</h3>
+          <table className="depas-tabel" style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left" }}>{t("vk.providerColProvider")}</th>
+                <th style={{ textAlign: "right" }}>{t("vk.providerColRequests")}</th>
+                <th style={{ textAlign: "right" }}>{t("vk.providerColTokens")}</th>
+                <th style={{ textAlign: "right" }}>{t("vk.providerColCost")}</th>
+                <th style={{ textAlign: "right" }}>{t("vk.providerColCache")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary30d.providers
+                .slice()
+                .sort((a, b) => b.requests - a.requests)
+                .map(p => (
+                  <tr key={p.provider}>
+                    <td style={{ fontFamily: "var(--font-code)" }}>{p.provider}</td>
+                    <td style={{ textAlign: "right" }}>{p.requests.toLocaleString(locale)}</td>
+                    <td style={{ textAlign: "right" }}>{formatTokens(p.totalTokens, locale)}</td>
+                    <td style={{ textAlign: "right" }}>
+                      {typeof p.estimatedCostUsd === "number" ? `$${p.estimatedCostUsd.toFixed(2)}` : "—"}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      {typeof p.cacheReadRatio === "number" ? `${Math.round(p.cacheReadRatio * 100)}%` : "—"}
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {topModellen.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <h3 className="depas-viewsub" style={{ marginBottom: 8 }}>{t("vk.modelTableHead")}</h3>
+          <table className="depas-tabel" style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left" }}>{t("vk.modelColModel")}</th>
+                <th style={{ textAlign: "right" }}>{t("vk.modelColRequests")}</th>
+                <th style={{ textAlign: "right" }}>{t("vk.modelColTokens")}</th>
+                <th style={{ textAlign: "right" }}>{t("vk.modelColShare")}</th>
+                <th style={{ textAlign: "right" }}>{t("vk.modelColCost")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {topModellen.map(m => (
+                <tr key={`${m.provider}/${m.model}`}>
+                  <td style={{ fontFamily: "var(--font-code)" }}>
+                    {m.model}
+                    {m.provider && (
+                      <span style={{ color: "var(--gietijzer-60)" }}> · {m.provider}</span>
+                    )}
+                  </td>
+                  <td style={{ textAlign: "right" }}>{m.requests.toLocaleString(locale)}</td>
+                  <td style={{ textAlign: "right" }}>{formatTokens(m.totalTokens, locale)}</td>
+                  <td style={{ textAlign: "right" }}>
+                    {typeof m.shareRatio === "number"
+                      ? `${Math.round(m.shareRatio * 100)}%`
+                      : "—"}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    {typeof m.estimatedCostUsd === "number" ? `$${m.estimatedCostUsd.toFixed(2)}` : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
         <div className="usage-segmented" role="group" aria-label={t("vk.filterAria")}>
@@ -228,6 +400,29 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
             </div>
           );
         })}
+      </div>
+
+      <div style={{ marginTop: 48 }}>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => setOpsOpen(open => !open)}
+          aria-expanded={opsOpen}
+        >
+          {opsOpen ? t("vk.hideOps") : t("vk.showOps")}
+        </button>
+        {opsOpen && (
+          <div style={{ marginTop: 16, display: "grid", gap: 32 }}>
+            <section aria-label={t("ops.cacheAria")}>
+              <h3 className="depas-viewsub" style={{ marginBottom: 8 }}>{t("ops.cacheHead")}</h3>
+              <ResponseCachePanel apiBase={apiBase} />
+            </section>
+            <section aria-label={t("ops.poolHead")}>
+              <h3 className="depas-viewsub" style={{ marginBottom: 8 }}>{t("ops.poolHead")}</h3>
+              <KeyPoolHealthPanel apiBase={apiBase} />
+            </section>
+          </div>
+        )}
       </div>
 
       <div style={{ marginTop: 48 }}>

@@ -50,6 +50,8 @@ export interface WorkspaceProvider {
    * Empty/omitted = no hop; failures return to the caller.
    */
   fallback?: Array<{ provider: string; model: string }>;
+  /** Count of API keys in the pool (from /api/config; never the secrets). */
+  keyPoolCount?: number;
 }
 
 /** Three-way pricing/ownership tier for a ready provider row. */
@@ -220,6 +222,18 @@ export function buildProviderWorkspace(
   }
 
   return { ready, needsSetup, disabled };
+}
+
+/** Operate-mode line for a provider: pool size and the first hop target. */
+export function providerAvailabilityLine(item: WorkspaceItem): {
+  poolCount: number;
+  hopProvider?: string;
+} {
+  const poolCount = typeof item.keyPoolCount === "number"
+    ? item.keyPoolCount
+    : (item.hasApiKey ? 1 : 0);
+  const hop = item.fallback?.[0]?.provider?.trim();
+  return hop ? { poolCount, hopProvider: hop } : { poolCount };
 }
 
 /**

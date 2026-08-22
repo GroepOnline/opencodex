@@ -15,9 +15,21 @@ export interface ProvidersConfig {
     note?: string;
     codexAccountMode?: "direct" | "pool";
     fallback?: Array<{ provider: string; model: string }>;
+    keyPoolCount?: number;
   }>;
   /** Active weekly/inference-cap cooldowns from /api/config (until > now). */
   providerCooldowns?: Record<string, ProviderCapCooldown>;
+}
+
+/** Live routing row from GET /api/availability (no secrets). */
+export interface AvailabilityProviderView {
+  name: string;
+  keyPoolCount: number;
+  hopProvider?: string;
+  hopModel?: string;
+  coolingKeyCount: number;
+  capUntil?: number;
+  capDisabled?: boolean;
 }
 
 /** Hard-cap cooldown entry exposed by safeConfigDTO. */

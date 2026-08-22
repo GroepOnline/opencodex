@@ -60,6 +60,7 @@ export type ApiKeyRow = {
   label?: string;
   masked: string;
   active: boolean;
+  cooldownUntil?: number;
 };
 
 export type LoginHint = {

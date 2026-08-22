@@ -8,6 +8,7 @@ import { handleComboCommand } from "../src/cli/combo";
 import { handleConfigCommand } from "../src/cli/config-command";
 import { handleGrokCommand } from "../src/cli/integrations";
 import { handleModelsRuntimeCommand } from "../src/cli/models-runtime";
+import { handleObserveCommand } from "../src/cli/observe";
 import { handleProviderRuntimeCommand } from "../src/cli/provider-runtime";
 
 type Recorded = { path: string; method: string; body: unknown };
@@ -59,6 +60,7 @@ describe("headless GUI parity CLI", () => {
       ["/api/codex-auth", "ocx account"],
       ["/api/oauth", "ocx account"],
       ["/api/providers/keys", "ocx account"],
+      ["/api/availability", "ocx account"],
       ["/api/providers", "ocx provider"],
       ["/api/provider-", "ocx provider/models"],
       ["/api/selected-models", "ocx models"],
@@ -79,6 +81,7 @@ describe("headless GUI parity CLI", () => {
       ["/api/startup", "ocx system"],
       ["/api/stop", "ocx stop"],
       ["/api/storage", "ocx observe"],
+      ["/api/response-cache", "ocx observe cache"],
       ["/api/subagent", "ocx agent"],
       ["/api/sync", "ocx system sync"],
       ["/api/system", "ocx observe/system"],
@@ -156,6 +159,17 @@ describe("headless GUI parity CLI", () => {
     });
     expect(await handleGrokCommand(["include", "a", "--json"], runtime.deps)).toBe(0);
     expect(runtime.requests[1]).toEqual({ path: "/api/grok/selection", method: "PUT", body: { excluded: ["b"] } });
+  });
+
+  test("response cache view and clear use the GUI management routes", async () => {
+    const runtime = fakeRuntime();
+    expect(await handleObserveCommand(["cache", "--json"], runtime.deps)).toBe(0);
+    expect(await handleObserveCommand(["cache", "clear", "--json"], runtime.deps)).not.toBe(0);
+    expect(await handleObserveCommand(["cache", "clear", "--yes", "--json"], runtime.deps)).toBe(0);
+    expect(runtime.requests.map(row => [row.path, row.method])).toEqual([
+      ["/api/response-cache", "GET"],
+      ["/api/response-cache/clear", "POST"],
+    ]);
   });
 
   test("config set validates the complete candidate before the atomic write", async () => {

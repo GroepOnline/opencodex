@@ -174,6 +174,18 @@ export async function runInit(): Promise<void> {
   console.log(`\n✅ Config saved to ~/.opencodex/config.json`);
   if (oauthHint) console.log(`🔐 Authenticate this provider with:  ocx login ${providerName}`);
 
+  // Standalone vibe proxy: Claude Code is the first-class wired client. Offer it before Codex.
+  const claudeAnswer = await prompt.ask("Launch Claude Code wired to this proxy? [Y/n]: ");
+  if (claudeAnswer.trim().toLowerCase() !== "n") {
+    try {
+      const { cmdClaude } = await import("./claude");
+      const code = await cmdClaude([]);
+      console.log(code === 0 ? `✅ Claude Code launched wired to the proxy.` : `⚠️  Claude Code launch returned status ${code}.`);
+    } catch (err) {
+      console.log(`⚠️  Claude Code wiring skipped: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   const injectAnswer = await prompt.ask("Inject into Codex config.toml? [Y/n]: ");
   if (injectAnswer.trim().toLowerCase() !== "n") {
     console.log("Fetching available models from provider...");
@@ -192,6 +204,6 @@ export async function runInit(): Promise<void> {
     }
   }
 
-  console.log(`\n🚀 Setup complete! Run 'ocx start' to start the proxy.`);
+  console.log(`\n🚀 Setup complete! Run 'ocx start' (or 'ocx claude') to start the proxy.`);
   prompt.close();
 }

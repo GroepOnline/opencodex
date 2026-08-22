@@ -13,6 +13,10 @@ function git(cwd: string, args: string[]): string {
   return execFileSync("git", args, {
     cwd,
     encoding: "utf8",
+    // A hung git probe must fail the test, not wedge the whole isolate: under loaded CI a
+    // blocked sync spawn survives bun's test timeout and silences the file until an external
+    // kill. Same bound as the production git() in src/lib/live-checkout.ts.
+    timeout: 4_000,
     env: {
       ...process.env,
       GIT_CONFIG_NOSYSTEM: "1",

@@ -14,6 +14,7 @@ import {
 import { providerDestinationConfigError } from "../lib/destination-policy";
 import { getProviderRegistryEntry, providerCodexAccountMode, providerMatchesRegistryTransport } from "../providers/registry";
 import { providerConfigSeed } from "../providers/derive";
+import { configuredKeyCount } from "../providers/api-keys";
 import { activeProviderCooldowns } from "../providers/cap-cooldown";
 import type { OcxConfig, OcxProviderConfig } from "../types";
 import { openRouterRoutingConfigError } from "../providers/openrouter-routing";
@@ -432,6 +433,8 @@ export function safeConfigDTO(config: OcxConfig): unknown {
       hasApiKey: !!provider.apiKey || !!provider.credentialRef,
       hasHeaders: !!provider.headers && Object.keys(provider.headers).length > 0,
     };
+    const poolCount = configuredKeyCount(provider);
+    if (poolCount > 0) dto.keyPoolCount = poolCount;
     for (const key of [
       "defaultModel",
       "disabled",

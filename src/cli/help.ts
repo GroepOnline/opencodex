@@ -157,13 +157,14 @@ const helpEntries: Record<string, HelpEntry> = {
     summary: "Manage headless multi-agent, roster, effort, injection, and sidecar settings.",
   },
   observe: {
-    usage: "ocx observe <logs|usage|storage|memory|debug|claude-inbound|injection> ...",
-    summary: "Inspect proxy requests, usage, storage, memory, and debug data.",
+    usage: "ocx observe <logs|usage|storage|memory|cache|debug|claude-inbound|injection> ...",
+    summary: "Inspect proxy requests, usage, storage, memory, response cache, and debug data.",
   },
   logs: { usage: "ocx logs [filters] [--follow] [--json|--jsonl]", summary: "Alias of ocx observe logs." },
   usage: { usage: "ocx usage [--range <7d|30d|all>] [--surface <all|codex|claude|grok>] [--json]", summary: "Alias of ocx observe usage." },
   storage: { usage: "ocx storage [--json]", summary: "Alias of ocx observe storage." },
   memory: { usage: "ocx memory [--json]", summary: "Alias of ocx observe memory." },
+  cache: { usage: "ocx cache [--json]", summary: "Alias of ocx observe cache. Clear with: ocx cache clear --yes" },
   access: {
     usage: "ocx access <key|endpoints|models|test> ...",
     summary: "Manage OpenCodex admission API keys and inspect external endpoints.",
@@ -284,7 +285,7 @@ Usage:
   ocx models <sub>            Live/custom models, visibility, context, and shadow calls
   ocx combo <sub>             Combo failover/round-robin routing
   ocx agent <sub>             Subagents, injection, effort caps, and sidecars
-  ocx observe <sub>           Logs, usage, storage, memory, and debug data
+  ocx observe <sub>           Logs, usage, storage, memory, cache, and debug data
   ocx access <sub>            External API keys and endpoint information
   ocx grok <sub>              Grok Build model selection and apply
   ocx system <sub>            Runtime settings, startup, sync, and updates

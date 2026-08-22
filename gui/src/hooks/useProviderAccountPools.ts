@@ -27,7 +27,7 @@ export interface OAuthAccount {
   /** Set when the per-account probe could not reach upstream (expired login, 429, network). */
   quotaUnavailable?: boolean;
 }
-export interface ApiKeyEntry { id: string; label?: string; masked: string; active: boolean }
+export interface ApiKeyEntry { id: string; label?: string; masked: string; active: boolean; cooldownUntil?: number }
 
 /** Pure aggregate map used by Providers overview / rail attention state. */
 export function buildActiveAccountNeedsReauthMap(
@@ -252,6 +252,12 @@ export function useProviderAccountPools(deps: {
     if (keyCardProviders.length === 0) return;
     const timeout = window.setTimeout(() => { void fetchKeyPools(keyCardProviders); }, 0);
     return () => window.clearTimeout(timeout);
+  }, [fetchKeyPools, keyCardProviders]);
+
+  useEffect(() => {
+    if (keyCardProviders.length === 0) return;
+    const timer = window.setInterval(() => { void fetchKeyPools(keyCardProviders); }, 15_000);
+    return () => window.clearInterval(timer);
   }, [fetchKeyPools, keyCardProviders]);
 
   const activeAccountNeedsReauth = useMemo(

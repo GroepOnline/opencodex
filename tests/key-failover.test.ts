@@ -3,18 +3,26 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createOpenAIChatAdapter } from "../src/adapters/openai-chat";
+import { createAnthropicAdapter } from "../src/adapters/anthropic";
+import type { AdapterRateLimitInfo } from "../src/adapters/base";
+import { rateLimitForFailure } from "../src/availability/rate-limit-parse";
 import {
+  activateUncooledApiKey,
   clearKeyCooldowns,
   getKeyCooldownUntil,
   hasKeyPoolFailover,
+  hydrateKeyPoolCooldowns,
+  pickUncooledApiKey,
   rotateKeyOn429,
   rotateProviderTransportOn429,
 } from "../src/providers/key-failover";
+import { configuredKeyCount } from "../src/providers/api-keys";
 import { deriveXaiConvId } from "../src/providers/xai-transport";
 import { routeModel } from "../src/router";
 import type { OcxConfig, OcxParsedRequest, OcxProviderConfig } from "../src/types";
 
 let home: string;
+const previousHome = process.env.OPENCODEX_HOME;
 
 function makeConfig(provider: Partial<OcxProviderConfig>): OcxConfig {
   return {
@@ -45,7 +53,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete process.env.OPENCODEX_HOME;
+  if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
+  else process.env.OPENCODEX_HOME = previousHome;
   rmSync(home, { recursive: true, force: true });
   clearKeyCooldowns();
 });
@@ -82,6 +91,96 @@ describe("rotateKeyOn429", () => {
     const now = 1_000_000;
     rotateKeyOn429(config, "p", "86400", now);
     expect(getKeyCooldownUntil("p", "k1", now)).toBe(now + 10 * 60_000);
+  });
+
+  test("hard-cap copy cools the failed key for the reset window", () => {
+    const config = makeConfig({ apiKey: "key-alpha-000111222333", apiKeyPool: pool3() });
+    const now = 1_000_000;
+    rotateKeyOn429(
+      config,
+      "p",
+      null,
+      now,
+      "key-alpha-000111222333",
+      "INFERENCE_CAP_ERROR weekly Clinepass limit. The limit resets in 2d",
+    );
+    expect(getKeyCooldownUntil("p", "k1", now)).toBe(now + 2 * 24 * 60 * 60 * 1000);
+    expect(config.providers.p.apiKey).toBe("key-beta-444555666777");
+    expect(config.keyPoolCooldowns?.p?.k1?.until).toBe(now + 2 * 24 * 60 * 60 * 1000);
+  });
+
+  test("529 with weekly copy is not treated as a hard cap", () => {
+    const config = makeConfig({ apiKey: "key-alpha-000111222333", apiKeyPool: pool3() });
+    const now = 1_000_000;
+    rotateKeyOn429(
+      config,
+      "p",
+      null,
+      now,
+      "key-alpha-000111222333",
+      "INFERENCE_CAP_ERROR weekly Clinepass limit. The limit resets in 2d",
+      529,
+    );
+    expect(getKeyCooldownUntil("p", "k1", now)).toBe(now + 60_000);
+    // Ordinary 429/529 cooldowns are now persisted too (not just hard caps), so a proxy restart
+    // mid-rate-limit respects the in-flight cooldown instead of re-hitting the exhausted key.
+    expect(config.keyPoolCooldowns?.p?.k1?.until).toBe(now + 60_000);
+  });
+
+  test("provider-parsed rateLimit overrides cooldown math (Anthropic spend cap → long cooldown)", () => {
+    const config = makeConfig({ apiKey: "key-alpha-000111222333", apiKeyPool: pool3() });
+    const now = 1_000_000;
+    // Anthropic spend cap: 429, no retry-after, window exhausted → hardCap flag.
+    const spendCap: AdapterRateLimitInfo = { retryable: false, hardCap: true, retryAfterSec: null, requestsRemaining: 0, tokensRemaining: 0 };
+    rotateKeyOn429(config, "p", null, now, "key-alpha-000111222333", undefined, 429, undefined, spendCap);
+    // Hard caps cool for the long window, not the 60s default.
+    expect(getKeyCooldownUntil("p", "k1", now)).toBe(now + 24 * 60 * 60 * 1000);
+    expect(config.providers.p.apiKey).toBe("key-beta-444555666777");
+  });
+
+  test("provider-parsed retryAfterSec is honored over the generic default", () => {
+    const config = makeConfig({ apiKey: "key-alpha-000111222333", apiKeyPool: pool3() });
+    const now = 1_000_000;
+    // Provider supplies its own window (e.g. anthropic-ratelimit reset).
+    const rl: AdapterRateLimitInfo = { retryable: true, retryAfterSec: 240, requestsRemaining: 3 };
+    rotateKeyOn429(config, "p", null, now, "key-alpha-000111222333", undefined, 429, undefined, rl);
+    expect(getKeyCooldownUntil("p", "k1", now)).toBe(now + 240_000);
+  });
+
+  test("rateLimitForFailure reads a real upstream Response (Anthropic spend cap) like core.ts does", () => {
+    const config = makeConfig({ apiKey: "key-alpha-000111222333", apiKeyPool: pool3() });
+    const now = 1_000_000;
+    const upstream = new Response("{}", {
+      status: 429,
+      headers: {
+        "anthropic-ratelimit-requests-remaining": "0",
+        "anthropic-ratelimit-tokens-remaining": "0",
+      },
+    });
+    const adapter = createAnthropicAdapter({ adapter: "anthropic", baseUrl: "https://api.anthropic.com", models: ["claude-opus-4-8"] } as OcxProviderConfig);
+    // Mirrors the line in core.ts: rateLimitForFailure(providerName, status, headers, activeAdapter)
+    const rl = rateLimitForFailure("anthropic", upstream.status, upstream.headers, adapter);
+    expect(rl?.hardCap).toBe(true);
+    expect(rl?.retryable).toBe(false);
+    rotateKeyOn429(config, "p", null, now, "key-alpha-000111222333", undefined, 429, undefined, rl);
+    expect(getKeyCooldownUntil("p", "k1", now)).toBe(now + 24 * 60 * 60 * 1000);
+  });
+
+  test("hydrates persisted hard-cap key windows after a process restart", () => {
+    const config = makeConfig({ apiKey: "key-alpha-000111222333", apiKeyPool: pool3() });
+    const now = 1_000_000;
+    rotateKeyOn429(
+      config,
+      "p",
+      null,
+      now,
+      "key-alpha-000111222333",
+      "INFERENCE_CAP_ERROR weekly Clinepass limit. The limit resets in 2d",
+    );
+    clearKeyCooldowns();
+    expect(getKeyCooldownUntil("p", "k1", now)).toBeNull();
+    hydrateKeyPoolCooldowns(config, now);
+    expect(getKeyCooldownUntil("p", "k1", now)).toBe(now + 2 * 24 * 60 * 60 * 1000);
   });
 
   test("skips keys already in cooldown and wraps around the pool", () => {
@@ -128,6 +227,72 @@ describe("rotateKeyOn429", () => {
     expect(getKeyCooldownUntil("p", "k1", now)).not.toBeNull();
     // A REAL beta failure afterwards still rotates to gamma.
     expect(rotateKeyOn429(config, "p", null, now, "key-beta-444555666777")?.apiKey).toBe("key-gamma-888999000111");
+  });
+
+  test("first pick skips a cooling active key without cooling the replacement", () => {
+    const config = makeConfig({ apiKey: "key-alpha-000111222333", apiKeyPool: pool3() });
+    const now = 1_000_000;
+    rotateKeyOn429(config, "p", "30", now, "key-alpha-000111222333");
+    config.providers.p.apiKey = "key-alpha-000111222333";
+    const selected = activateUncooledApiKey(config, "p", now, "key-alpha-000111222333");
+    expect(selected?.apiKey).toBe("key-beta-444555666777");
+    expect(getKeyCooldownUntil("p", "k2", now)).toBeNull();
+  });
+
+  test("empty apiKeyPool still counts a configured key", () => {
+    expect(configuredKeyCount({ adapter: "openai-chat", baseUrl: "x", apiKey: "k", apiKeyPool: [] } as OcxProviderConfig)).toBe(1);
+    expect(configuredKeyCount({ adapter: "openai-chat", baseUrl: "x", apiKey: "k" } as OcxProviderConfig)).toBe(1);
+    expect(configuredKeyCount({ adapter: "openai-chat", baseUrl: "x", apiKeyPool: pool3() } as OcxProviderConfig)).toBe(3);
+    expect(configuredKeyCount({ adapter: "openai-chat", baseUrl: "x" } as OcxProviderConfig)).toBe(0);
+  });
+
+  test("matches a resolved env-ref live key and hops to the next resolved secret", () => {
+    const prevA = process.env.OCX_FAILOVER_KEY_A;
+    const prevB = process.env.OCX_FAILOVER_KEY_B;
+    process.env.OCX_FAILOVER_KEY_A = "key-alpha-000111222333";
+    process.env.OCX_FAILOVER_KEY_B = "key-beta-444555666777";
+    try {
+      const config = makeConfig({
+        apiKey: "$OCX_FAILOVER_KEY_A",
+        apiKeyPool: [
+          { id: "k1", key: "$OCX_FAILOVER_KEY_A", addedAt: 1 },
+          { id: "k2", key: "${OCX_FAILOVER_KEY_B}", addedAt: 2 },
+          { id: "k3", key: "key-gamma-888999000111", addedAt: 3 },
+        ],
+      });
+      const now = 1_000_000;
+      expect(pickUncooledApiKey(config, "p", now, "key-alpha-000111222333")).toEqual({ kind: "noop" });
+      expect(config.providers.p.apiKey).toBe("$OCX_FAILOVER_KEY_A");
+      expect(activateUncooledApiKey(config, "p", now, "key-alpha-000111222333")).toBeNull();
+
+      const rotated = rotateProviderTransportOn429(
+        config,
+        "p",
+        { ...config.providers.p, apiKey: "key-alpha-000111222333" },
+        { now, attemptedKey: "key-alpha-000111222333" },
+      );
+      expect(rotated?.apiKey).toBe("key-beta-444555666777");
+      expect(config.providers.p.apiKey).toBe("${OCX_FAILOVER_KEY_B}");
+    } finally {
+      if (prevA === undefined) delete process.env.OCX_FAILOVER_KEY_A;
+      else process.env.OCX_FAILOVER_KEY_A = prevA;
+      if (prevB === undefined) delete process.env.OCX_FAILOVER_KEY_B;
+      else process.env.OCX_FAILOVER_KEY_B = prevB;
+    }
+  });
+
+  test("first pick reports all-cooled instead of a live-looking no-op", () => {
+    const config = makeConfig({ apiKey: "key-alpha-000111222333", apiKeyPool: pool3() });
+    const now = 1_000_000;
+    expect(rotateKeyOn429(config, "p", null, now, "key-alpha-000111222333")?.apiKey).toBe("key-beta-444555666777");
+    expect(rotateKeyOn429(config, "p", null, now, "key-beta-444555666777")?.apiKey).toBe("key-gamma-888999000111");
+    expect(rotateKeyOn429(config, "p", null, now, "key-gamma-888999000111")).toBeNull();
+    config.providers.p.apiKey = "key-alpha-000111222333";
+    const pick = pickUncooledApiKey(config, "p", now, "key-alpha-000111222333");
+    expect(pick.kind).toBe("all-cooled");
+    if (pick.kind !== "all-cooled") return;
+    expect(pick.retryAfterSeconds).toBeGreaterThanOrEqual(1);
+    expect(activateUncooledApiKey(config, "p", now, "key-alpha-000111222333")).toBeNull();
   });
 });
 

@@ -13,7 +13,7 @@ import { useCodexAccountPool } from "../hooks/useCodexAccountPool";
 import { useJsonConfigEditor } from "../hooks/useJsonConfigEditor";
 import { useKeyedClientResource } from "../client-resource";
 import { readSessionListCache } from "../session-list-cache";
-import type { ProvidersConfig } from "./providers-shared";
+import type { AvailabilityProviderView, ProvidersConfig } from "./providers-shared";
 import { useProvidersOAuth } from "./use-providers-oauth";
 import { useProvidersCrud } from "./use-providers-crud";
 import { useProvidersFetch } from "./use-providers-fetch";
@@ -34,6 +34,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
   // Value is unread: the workspace shell fetches its own quota view. The setter stays
   // because the refresh path still primes this cache for that shell.
   const [, setQuotaReports] = useState<Record<string, import("./providers-shared").ProviderQuotaReport>>({});
+  const [availability, setAvailability] = useState<AvailabilityProviderView[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [loginInfo, setLoginInfo] = useState<{ provider: string; url?: string; instructions?: string; deviceCode?: string } | null>(null);
   const [workspaceSelected, setWorkspaceSelected] = useState<string | null>(null);
@@ -82,7 +83,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
     },
   );
   const { fetchConfig, fetchOauth, fetchProviderQuotas } = useProvidersFetch({
-    apiBase, t, setConfig, setOauthProviders, setOauthStatus, setQuotaReports, notify,
+    apiBase, t, setConfig, setOauthProviders, setOauthStatus, setQuotaReports, setAvailability, notify,
     configCacheKey,
   });
 
@@ -263,6 +264,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
         onAddProvider={intent => { setAddIntent(intent ?? null); setAdding(true); }}
         onEditConfig={openJsonEditor}
         providerCooldowns={config.providerCooldowns}
+        availability={availability}
         jsonEditor={{
           open: jsonEditorOpen,
           draft,

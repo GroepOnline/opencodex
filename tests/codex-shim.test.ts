@@ -400,6 +400,9 @@ describe("Codex autostart shim", () => {
     });
   });
 
+  // Generous per-test timeout: this test coordinates two real child processes through
+  // filesystem handshakes. Under loaded CI the default 5s fires mid-handshake, and the
+  // resulting wedged isolate goes silent for the rest of the suite.
   test("an aged lock held by a live restore owner is never reclaimed", async () => {
     const binDir = mkdtempSync(join(tmpdir(), "ocx-shim-concurrent-bin-"));
     const home = mkdtempSync(join(tmpdir(), "ocx-shim-concurrent-home-"));
@@ -436,7 +439,9 @@ describe("Codex autostart shim", () => {
             writeFileSync(ownerPath, JSON.stringify(held) + "\\n");
             utimesSync(ownerPath, new Date(0), new Date(0));
             writeFileSync(${JSON.stringify(readyPath)}, readFileSync(ownerPath));
-            while (!existsSync(${JSON.stringify(releasePath)})) Bun.sleepSync(5);
+            // Hard self-expiry: never spin past the harness kill window even if the parent dies.
+            const holdDeadline = Date.now() + 30_000;
+            while (!existsSync(${JSON.stringify(releasePath)}) && Date.now() < holdDeadline) Bun.sleepSync(5);
           },
         });
         console.log(JSON.stringify(result));
@@ -452,17 +457,26 @@ describe("Codex autostart shim", () => {
         stdout: "pipe",
         stderr: "pipe",
       });
-      const deadline = Date.now() + 5_000;
+      const deadline = Date.now() + 20_000;
       while (!existsSync(readyPath) && Date.now() < deadline) await Bun.sleep(5);
       expect(existsSync(readyPath)).toBe(true);
 
-      const second = spawnSync(process.execPath, ["-e", secondScript], {
+      // Async spawn (not spawnSync): a blocking sync wait inside a timed test wedges the whole
+      // isolate when the runner is loaded — bun's own timeout cannot interrupt it and every
+      // later test in the file goes silent until an external kill.
+      const second = Bun.spawn([process.execPath, "-e", secondScript], {
         cwd: join(import.meta.dir, ".."),
         env: childEnv,
-        encoding: "utf8",
+        stdout: "pipe",
+        stderr: "pipe",
       });
-      expect(second.status).toBe(0);
-      expect(JSON.parse(second.stdout.trim())).toEqual({ status: "deferred" });
+      const secondExit = await Promise.race([
+        second.exited,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("deferred-probe child hung")), 20_000)),
+      ]);
+      expect(secondExit).toBe(0);
+      const secondStdout = await new Response(second.stdout).text();
+      expect(JSON.parse(secondStdout.trim())).toEqual({ status: "deferred" });
       const heldLock = JSON.parse(readFileSync(readyPath, "utf8")) as { pid?: number; token?: string };
       expect(heldLock.pid).toBe(first.pid);
       expect(heldLock.token).toBeString();
@@ -483,7 +497,7 @@ describe("Codex autostart shim", () => {
       rmSync(binDir, { recursive: true, force: true });
       rmSync(home, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   test("stale-lock compare-and-delete never unlinks a successor lock", () => {
     withInstalledShim(({ home, wrappers, backups }) => {

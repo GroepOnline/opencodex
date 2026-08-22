@@ -1467,11 +1467,34 @@ export function providerMatchesRegistryTransport(
 }
 
 /**
+ * Live `codexAccountPools` master-switch value, set once by startServer from the loaded config.
+ * Keeping it here (rather than threading config through all 13 call sites) means the switch is a
+ * single source of truth that every resolver sees, and the many existing call sites stay unchanged.
+ */
+let liveCodexAccountPools: boolean | undefined = undefined;
+
+/** Called by startServer with the live config so the master switch is authoritative at runtime. */
+export function setCodexAccountPoolsEnabled(enabled: boolean | undefined): void {
+  liveCodexAccountPools = enabled;
+}
+
+/**
  * Effective Codex account mode for a provider. For canonical `openai`, a valid persisted
  * `codexAccountMode` on the provider config wins and a missing/invalid value defaults to
  * `"pool"`. Other providers keep registry-only metadata (there is no mode for `openai-apikey`).
+ *
+ * The `codexAccountPools` master switch (OcxConfig) gates the whole subsystem: when it is
+ * explicitly false, no provider gets a Codex account mode, so opencodex runs standalone with
+ * no Codex-account dependency. A missing/unset switch preserves historical behaviour (pool on
+ * for in-place upgrades); only fresh installs opt out by persisting `codexAccountPools: false`.
  */
-export function providerCodexAccountMode(id: string, provider?: OcxProviderConfig): CodexAccountMode | undefined {
+export function providerCodexAccountMode(
+  id: string,
+  provider?: OcxProviderConfig,
+  config?: { codexAccountPools?: boolean },
+): CodexAccountMode | undefined {
+  const poolsOn = config ? config.codexAccountPools : liveCodexAccountPools;
+  if (poolsOn === false) return undefined;
   const registryMode = getProviderRegistryEntry(id)?.codexAccountMode;
   if (id !== "openai") return registryMode;
   const persisted = provider?.codexAccountMode;

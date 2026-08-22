@@ -530,6 +530,11 @@ export interface ProviderCapCooldown {
   recordedAt?: number;
 }
 
+/** Hard-cap window for one key in a pool. Ordinary 60s/Retry-After cooldowns stay in memory. */
+export interface KeyPoolCapCooldown {
+  until: number;
+}
+
 export interface OcxConfig {
   port: number;
   providers: Record<string, OcxProviderConfig>;
@@ -539,6 +544,11 @@ export interface OcxConfig {
    * routing and /api/config see disables without restart.
    */
   providerCooldowns?: Record<string, ProviderCapCooldown>;
+  /**
+   * Persisted hard-cap windows for individual apiKeyPool entries. Hydrated into the
+   * in-memory key cooldown map on startup; ordinary short 429s are not stored here.
+   */
+  keyPoolCooldowns?: Record<string, Record<string, KeyPoolCapCooldown>>;
   /** OpenAI provider-contract migration marker (v2 = single `openai` provider with account mode). */
   openaiProviderTierVersion?: 1 | 2;
   /** Claude Code inbound + launcher settings. */
@@ -694,6 +704,14 @@ export interface OcxConfig {
   apiKeys?: Array<{ id: string; name: string; key: string; createdAt: string }>;
   /** Auto-start/sync the proxy from the Codex shim before launching Codex. Default true. */
   codexAutoStart?: boolean;
+  /**
+   * Master switch for the OpenAI Codex account-pool subsystem (ChatGPT account pool, 5h/weekly/30d
+   * quota windows, account affinity + failover, and history remapping). When false, opencodex runs
+   * as a standalone provider proxy with NO Codex-account dependency — Claude Code, Claude Desktop,
+   * and any OpenAI-compatible client are first-class. Existing installs that already use the pool
+   * keep it enabled on upgrade; fresh installs default to false (standalone vibe proxy).
+   */
+  codexAccountPools?: boolean;
   /** Restore an installed shim after a stable external Codex update replaces it. Default true. */
   codexShimAutoRestore?: boolean;
   /**
@@ -719,6 +737,40 @@ export interface OcxConfig {
   hideUnavailableAfterDiscoveryFails?: number;
   /** Anthropic prompt-cache retention: "short" = 5-min ephemeral (default), "long" = 1-hour extended, "none" = disabled. */
   cacheRetention?: "none" | "short" | "long";
+  /**
+   * Proxy-level response KV cache. Caches identical non-streaming requests per provider/model and
+   * replays them from memory (+ optional file warm-restart) to cut cost and latency. Opt-in: when
+   * unset the cache is OFF (safe default — no caching of anything until the operator enables it).
+   * Streaming responses are never cached (only whole, completed JSON responses are safe to replay).
+   */
+  responseCache?: {
+    /** Master switch. Default false. */
+    enabled?: boolean;
+    /** Entry TTL in ms (default 600_000 = 10 min). */
+    ttlMs?: number;
+    /** Max in-memory entries (LRU eviction). Default 1024. */
+    maxEntries?: number;
+    /** Persist entries to disk for warm restart. Default false (memory-only). */
+    persist?: boolean;
+  };
+  /**
+   * Auto-router (Fase E). When mode is "auto", the target order of per-provider fallback hop
+   * chains is re-scored per request: score = wCost*cost + wLatency*latency + wQuality*quality
+   * (lower wins; all inputs normalized to 0..1). User-configured combos keep their explicit
+   * target order — only the operator's own fallback lists are reordered. Default "off".
+   */
+  router?: {
+    /** "off" (default) keeps configured fallback order; "auto" scores and reorders targets. */
+    mode?: "off" | "auto";
+    /** Score weights. Defaults: cost 1, latency 1, quality 1. Range 0..10. */
+    weights?: {
+      cost?: number;
+      latency?: number;
+      quality?: number;
+    };
+    /** Max age (ms) of usage history feeding the latency estimate. Default 7 days. */
+    latencyWindowMs?: number;
+  };
   /** Web-search sidecar: route web_search for non-OpenAI models through a gpt-mini via ChatGPT passthrough. */
   webSearchSidecar?: OcxWebSearchSidecarConfig;
   /** Vision sidecar: describe images via a gpt vision model so text-only models can "see" them. */

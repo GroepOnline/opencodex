@@ -354,6 +354,7 @@ describe("server local API auth", () => {
       hasApiKey: true,
       hasHeaders: true,
       codexAccountMode: "pool",
+      keyPoolCount: 1,
     });
     expect(dto.providers.openai).not.toHaveProperty("apiKey");
     expect(dto.providers.openai).not.toHaveProperty("headers");

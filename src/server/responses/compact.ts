@@ -1,7 +1,6 @@
 import type { Server } from "bun";
 import { bridgeToResponsesSSE, buildResponseJSON, formatErrorResponse, type ResponsesTerminalStatus } from "../../bridge";
 import {
-  getConfigPath,
   multiAgentGuidanceEnabled,
   resolveEnvValue,
 } from "../../config";
@@ -36,21 +35,12 @@ import {
   type OAuthAccessSnapshot,
   UnsupportedOAuthProviderError,
 } from "../../oauth";
-import { providerCredentialFailure, providerCredentialRef, withResolvedProviderCredential } from "../../providers/credential";
+import { selectCandidate } from "../../availability";
+import { providerCredentialRef } from "../../providers/credential";
 import { buildWebSearchTool, planWebSearch, runWithWebSearch, shouldResolveOpenAiWebSearchSidecar } from "../../web-search";
 import { describeImagesInPlace, planVisionSidecar, shouldResolveOpenAiVisionSidecar, stripImagesInPlace } from "../../vision";
 import { createAdapterEventQueue, preflightAdapterEvents } from "../../adapters/run-turn-queue";
 import {
-  applyCodexAuthContextToProvider,
-  CodexAccountCooldownError,
-  cooldownErrorResponse,
-  CodexAuthContextError,
-  CodexDirectAuthenticationError,
-  CodexPoolAuthenticationError,
-  CodexThreadAffinityExpiredError,
-  headersForCodexAuthContext,
-  isCodexAuthContextUsable,
-  resolveCodexAuthContext,
   codexProbeLeaseId,
   codexProbeQuotaScope,
   type CodexAuthContext,
@@ -70,7 +60,6 @@ import { applyOpenAiVirtualModel, resolveOpenAiCompactModel } from "../../provid
 import { isUsageDebugEnabled } from "../../usage/debug";
 import { readJsonRequestBody, DecompressedBodyTooLargeError, UnsupportedContentEncodingError } from "../request-decompress";
 import { resolveAdapter, resolveWireProtocolOverride } from "../adapter-resolve";
-import { hasKeyPoolFailover, rotateProviderTransportOn429 } from "../../providers/key-failover";
 import { shouldAttemptImageTierRetry } from "../image-retry";
 import { resolveProviderTransport } from "../../providers/xai-transport";
 import type { WsData } from "../ws-bridge";
@@ -104,6 +93,7 @@ import type { EffectiveSubagentRoster, SpawnAgentSurface } from "../../codex/cat
 
 import { decodeRequestErrorResponse, handleResponses, usesCodexForwardPoolAuth } from "./core";
 import { fetchWithHeaderTimeout, providerFetch, safeHostLabel } from "./fetch-helpers";
+import { selectCandidateFailResponse } from "./select-http";
 
 export const COMPACT_RESPONSE_MAX_BYTES = 32 * 1024 * 1024;
 
@@ -215,54 +205,45 @@ export async function handleResponsesCompact(
     // Resolve the SAME pool/thread auth context as /v1/responses — forwarding the caller's raw
     // headers would run compaction on the wrong account (or 401) whenever a pool account is
     // active for this thread while normal turns succeed.
-    let compactProvider = route.provider;
-    let authCtx: CodexAuthContext = { kind: "main", accountId: null };
+    const pick = await selectCandidate({
+      providerName: route.providerName,
+      config,
+      routedProvider: route.provider,
+      ...(route.codexAccountMode
+        ? { headers: req.headers, mode: route.codexAccountMode, modelId: selectedModelId }
+        : {}),
+    });
+    if (!pick.ok) return selectCandidateFailResponse(pick, { providerName: route.providerName, config });
+    const compactProvider = pick.provider;
+    const authCtx: CodexAuthContext = pick.authCtx ?? { kind: "main", accountId: null };
+    // Codex/OAuth compact reuses the caller's ChatGPT session. Key-auth compact must not:
+    // FORWARD_HEADERS includes authorization, chatgpt-account-id, and session ids, and
+    // pick.headers is unset for key-auth so the previous fallback copied the caller onto
+    // a third-party upstream.
+    const relayCallerIdentity = compactProvider.authMode === "forward"
+      || compactProvider.authMode === "oauth";
     const headers = new Headers({ "content-type": "application/json" });
-    try {
-      if (route.codexAccountMode) {
-        authCtx = await resolveCodexAuthContext(req.headers, config, route.codexAccountMode, { modelId: selectedModelId });
-        const selected = headersForCodexAuthContext(req.headers, authCtx);
-        compactProvider = applyCodexAuthContextToProvider(route.provider, authCtx, route.codexAccountMode);
-        for (const name of FORWARD_HEADERS) {
-          const value = selected.get(name);
-          if (value) headers.set(name, value);
-        }
-        const override = (compactProvider as { _codexAccountOverride?: { accessToken: string; chatgptAccountId: string } })._codexAccountOverride;
-        if (override) {
-          headers.set("authorization", `Bearer ${override.accessToken}`);
-          headers.set("chatgpt-account-id", override.chatgptAccountId);
-        }
+    if (relayCallerIdentity) {
+      const selectedForwardHeaders = pick.headers ?? req.headers;
+      for (const name of FORWARD_HEADERS) {
+        const value = selectedForwardHeaders.get(name);
+        if (value) headers.set(name, value);
       }
-    } catch (err) {
-      if (err instanceof CodexAccountCooldownError) {
-        return cooldownErrorResponse(err);
-      }
-      if (err instanceof CodexThreadAffinityExpiredError) {
-        return formatErrorResponse(409, "invalid_request_error", "Codex thread account affinity expired; start a new session");
-      }
-      if (err instanceof CodexAuthContextError) {
-        return formatErrorResponse(401, "authentication_error", "Selected Codex account needs reauthentication");
-      }
-      if (err instanceof CodexPoolAuthenticationError || err instanceof CodexDirectAuthenticationError) {
-        return formatErrorResponse(401, "authentication_error", err.message);
-      }
-      throw err;
     }
-    // Same fail-closed lease as /v1/responses: a chefvault-backed provider must not compact
-    // against the upstream without an Authorization header. A configured key may be an `$ENV`
-    // reference; a leased secret is literal credential material and must not be expanded.
-    let compactAuthKey = resolveEnvValue(compactProvider.apiKey);
-    if (compactProvider.authMode !== "oauth" && compactProvider.authMode !== "forward" && providerCredentialRef(compactProvider)) {
-      try {
-        compactProvider = await withResolvedProviderCredential(compactProvider);
-        compactAuthKey = compactProvider.apiKey;
-      } catch (err) {
-        const failure = providerCredentialFailure(route.providerName, err);
-        return formatErrorResponse(failure.status, failure.type, failure.message);
-      }
+    const override = (compactProvider as { _codexAccountOverride?: { accessToken: string; chatgptAccountId: string } })._codexAccountOverride;
+    if (override) {
+      headers.set("authorization", `Bearer ${override.accessToken}`);
+      headers.set("chatgpt-account-id", override.chatgptAccountId);
+    } else if (!relayCallerIdentity) {
+      // Same fail-closed lease as /v1/responses: a chefvault-backed provider must not compact
+      // against the upstream without an Authorization header. A configured key may be an `$ENV`
+      // reference; a leased secret is already on the candidate and must not be expanded.
+      const compactAuthKey = providerCredentialRef(compactProvider)
+        ? compactProvider.apiKey
+        : resolveEnvValue(compactProvider.apiKey);
+      if (compactAuthKey) headers.set("authorization", `Bearer ${compactAuthKey}`);
     }
     const base = (compactProvider.baseUrl ?? "").replace(/\/$/, "");
-    if (compactAuthKey) headers.set("authorization", `Bearer ${compactAuthKey}`);
     const { reasoning: _reasoning, ...compactBodyRaw } = raw as typeof raw & { reasoning?: unknown };
     // The regular /v1/responses path applies sanitizeReasoningInputContent via the adapter's
     // buildRequest, but the compact endpoint forwards directly. Apply the same sanitizer here

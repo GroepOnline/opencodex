@@ -39,6 +39,18 @@ export function isKeyAuthProvider(provider: OcxProviderConfig): boolean {
   return provider.authMode !== "oauth" && provider.authMode !== "forward";
 }
 
+/** True when Availability may hop keys: key-auth with 2+ pool entries. */
+export function hasKeyPoolFailover(provider: OcxProviderConfig): boolean {
+  return isKeyAuthProvider(provider) && (provider.apiKeyPool?.length ?? 0) >= 2;
+}
+
+/** Operator-visible pool size: empty `apiKeyPool` still counts a configured key. */
+export function configuredKeyCount(provider: OcxProviderConfig): number {
+  const pooled = provider.apiKeyPool?.length ?? 0;
+  if (pooled > 0) return pooled;
+  return provider.apiKey || provider.credentialRef ? 1 : 0;
+}
+
 /** Trim and reject blank / CRLF-bearing secrets. Shared by pool writes and OAuth upsert. */
 export function sanitizeApiKeyValue(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;

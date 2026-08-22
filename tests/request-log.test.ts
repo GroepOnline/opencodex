@@ -1,4 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
+import * as capCooldown from "../src/providers/cap-cooldown";
 import {
   filterRequestLogs,
   addFinalRequestLog,
@@ -772,6 +773,25 @@ describe("request log metadata", () => {
       errorCode: "client_closed_request",
       closeReason: "client_cancel",
     });
+  });
+
+  test("addFinalRequestLog does not record provider cap-cooldowns", () => {
+    const spy = spyOn(capCooldown, "recordProviderCapCooldown");
+    addFinalRequestLog(
+      "ocx-test-no-cap",
+      Date.now(),
+      {
+        model: "cline-sonnet",
+        provider: "cline-pass",
+        providerConfigKey: "cline-pass",
+        upstreamError: 'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly Clinepass limit. The limit resets in 1d 22h"}',
+      },
+      429,
+      { closeReason: "non_stream" },
+      () => {},
+    );
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 
   test("addFinalRequestLog remaps legacy 502 client-close messages to 499", () => {

@@ -1,4 +1,5 @@
-import type { IncomingMeta, ProviderAdapter } from "./base";
+import type { AdapterRateLimitInfo, IncomingMeta, ProviderAdapter } from "./base";
+import { parseAnthropicRateLimit } from "../availability/rate-limit-parse";
 import { debugDroppedFrame } from "../lib/debug";
 import type {
   AdapterEvent,
@@ -881,6 +882,12 @@ export function createAnthropicAdapter(provider: OcxProviderConfig, cacheRetenti
         ...(stopReason ? { stopReason } : {}),
       });
       return events;
+    },
+
+    // Fase C: teach the failover core Anthropic's rate-limit signaling
+    // (anthropic-ratelimit-* + per-account spend cap that must NOT rotate-retry).
+    rateLimitFromHeaders(status: number, headers: Headers): AdapterRateLimitInfo | null {
+      return parseAnthropicRateLimit(status, headers);
     },
 
   };

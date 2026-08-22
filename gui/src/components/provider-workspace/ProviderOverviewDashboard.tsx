@@ -1,12 +1,11 @@
 /**
- * ProviderOverviewDashboard — aggregate overview when no provider is selected.
- * Shows summary cards, attention list, per-provider rate limits (QuotaBars stacked),
- * recently-used ranking, and Edit JSON entry.
+ * ProviderOverviewDashboard — operate view: who may take the next attempt.
  */
 import { useMemo } from "react";
 import { useT, useI18n } from "../../i18n/shared";
-import { IconAlert, IconChevron } from "../../icons";
+import { IconAlert, IconCheck, IconChevron, IconClock, IconX } from "../../icons";
 import type { WorkspaceSections, WorkspaceItem } from "../../provider-workspace/catalog";
+import { providerAvailabilityLine } from "../../provider-workspace/catalog";
 import { accountQuotaFromReport, type ProviderQuotaReportView } from "../../provider-workspace/report";
 import {
   attentionReasonKey,
@@ -20,13 +19,20 @@ import { ProviderIcon } from "./ProviderRail";
 import { formatProviderDisplayName } from "../../provider-icons";
 import QuotaBars from "../QuotaBars";
 import type { QuotaCardState } from "./use-provider-quotas";
+import type { AvailabilityProviderView, ProviderCapCooldown } from "../../pages/providers-shared";
 
-/** HH:MM (mono) for the VERS · HH:MM / VEROUDERD · HH:MM / "Opnieuw om HH:MM" stamps. */
+/** HH:MM (mono) for the VERS · HH:MM / VEROUDERD · HH:MM stamps. */
 function clockTime(epoch: number): string {
   const d = new Date(epoch);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
-import type { ProviderCapCooldown } from "../../pages/providers-shared";
+
+function StatusMark({ tone }: { tone: "ready" | "warn" | "cool" | "off" }) {
+  if (tone === "ready") return <IconCheck size={13} aria-hidden="true" />;
+  if (tone === "cool") return <IconClock size={13} aria-hidden="true" />;
+  if (tone === "off") return <IconX size={13} aria-hidden="true" />;
+  return <IconAlert size={13} aria-hidden="true" />;
+}
 
 /**
  * Renders an aggregate dashboard for configured providers, quotas, usage, and provider attention states.
@@ -47,6 +53,7 @@ export default function ProviderOverviewDashboard({
   quotaCards,
   usageTotals,
   providerCooldowns,
+  availability,
   usageLoading = false,
   quotasLoading = false,
   onSelectProvider,
@@ -57,6 +64,7 @@ export default function ProviderOverviewDashboard({
   quotaCards: Record<string, QuotaCardState>;
   usageTotals: Record<string, ProviderUsageTotals>;
   providerCooldowns?: Record<string, ProviderCapCooldown>;
+  availability?: AvailabilityProviderView[];
   usageLoading?: boolean;
   quotasLoading?: boolean;
   onSelectProvider: (name: string) => void;
@@ -136,6 +144,57 @@ export default function ProviderOverviewDashboard({
     return reason;
   };
 
+  const availabilityByName = useMemo(() => {
+    const map: Record<string, AvailabilityProviderView> = {};
+    for (const row of availability ?? []) map[row.name] = row;
+    return map;
+  }, [availability]);
+
+  const poolCount = useMemo(
+    () => allItems.filter(item => (
+      (availabilityByName[item.name]?.keyPoolCount ?? item.keyPoolCount) ?? 0
+    ) >= 2).length,
+    [allItems, availabilityByName],
+  );
+
+  const rowAvailability = (item: WorkspaceItem): string | null => {
+    const live = availabilityByName[item.name];
+    const line = providerAvailabilityLine({
+      ...item,
+      keyPoolCount: live?.keyPoolCount ?? item.keyPoolCount,
+      fallback: live?.hopProvider
+        ? [{ provider: live.hopProvider, model: live.hopModel ?? "" }]
+        : item.fallback,
+    });
+    const parts: string[] = [];
+    if (line.poolCount >= 2) parts.push(t("pws.availability.pool", { count: String(line.poolCount) }));
+    if ((live?.coolingKeyCount ?? 0) > 0) {
+      parts.push(
+        live!.coolingKeyCount === 1
+          ? t("pws.availability.coolingOne")
+          : t("pws.availability.cooling", { count: String(live!.coolingKeyCount) }),
+      );
+    }
+    if (line.hopProvider) {
+      parts.push(t("pws.availability.hop", { provider: formatProviderDisplayName(line.hopProvider) }));
+    }
+    return parts.length > 0 ? parts.join(" · ") : null;
+  };
+
+  const rowStatus = (item: WorkspaceItem): { label: string; tone: "ready" | "warn" | "cool" | "off" } => {
+    const live = availabilityByName[item.name];
+    const cooling = live?.coolingKeyCount ?? 0;
+    const pool = live?.keyPoolCount ?? 0;
+    const allKeysCooling = pool >= 2 && cooling >= pool;
+    if (cappedNames.has(item.name) || allKeysCooling) {
+      return { label: cappedNames.has(item.name) ? t("pws.capCooldown.badge") : t("pws.keyCooling"), tone: "cool" };
+    }
+    if (item.disabled) return { label: t("prov.disabledBadge"), tone: "off" };
+    if (item.activeNeedsReauth) return { label: t("pws.status.needsAttention"), tone: "warn" };
+    if (item.tier) return { label: t("pws.status.ready"), tone: "ready" };
+    return { label: t("pws.status.needsSetup"), tone: "warn" };
+  };
+
   return (
     <div className="pws-dashboard">
       <div className="pws-dashboard-header">
@@ -150,23 +209,32 @@ export default function ProviderOverviewDashboard({
         )}
       </div>
 
-      <div className="pws-dashboard-summary">
-        <SummaryCard count={readyCount} label={t("pws.status.ready")} tone="ok" />
-        <SummaryCard
-          count={needsAttentionCount}
-          label={readyReauthCount > 0 ? t("pws.status.needsAttention") : t("pws.status.needsSetup")}
-          tone="warn"
-        />
-        <SummaryCard count={sections.disabled.length} label={t("prov.disabledBadge")} tone="muted" />
+      <div className="pws-dashboard-stats" role="group" aria-label={t("pws.statsAria")}>
+        <div className="pws-dashboard-stat">
+          <span className="pws-dashboard-stat-count num">{readyCount}</span>
+          <span className="pws-dashboard-stat-label caps">{t("pws.status.ready")}</span>
+        </div>
+        <div className="pws-dashboard-stat">
+          <span className="pws-dashboard-stat-count num pws-dashboard-stat-count--warn">{needsAttentionCount}</span>
+          <span className="pws-dashboard-stat-label caps">{readyReauthCount > 0 ? t("pws.status.needsAttention") : t("pws.status.needsSetup")}</span>
+        </div>
+        <div className="pws-dashboard-stat">
+          <span className="pws-dashboard-stat-count num">{sections.disabled.length}</span>
+          <span className="pws-dashboard-stat-label caps">{t("prov.disabledBadge")}</span>
+        </div>
+        <div className="pws-dashboard-stat">
+          <span className="pws-dashboard-stat-count num">{poolCount}</span>
+          <span className="pws-dashboard-stat-label caps">{t("pws.availability.pools")}</span>
+        </div>
       </div>
 
       {cappedProviders.length > 0 && (
         <section className="pws-dashboard-section pws-dashboard-caps" aria-label={t("pws.capCooldown.section")}>
           <h3 className="pws-dashboard-section-title">
-            <IconAlert style={{ width: 14, height: 14 }} aria-hidden="true" />
+            <IconAlert size={15} aria-hidden="true" />
             {t("pws.capCooldown.section")}
           </h3>
-          <div className="pws-dashboard-rows">
+          <div className="pws-dashboard-group">
             {cappedProviders.map(({ name, entry }) => {
               const reset = formatResetFuture(entry.until, t, locale);
               return (
@@ -199,10 +267,10 @@ export default function ProviderOverviewDashboard({
       {attentionCount > 0 && (
         <section className="pws-dashboard-section pws-dashboard-attention" aria-label={t("pws.attentionTitle")}>
           <h3 className="pws-dashboard-section-title">
-            <IconAlert style={{ width: 14, height: 14 }} aria-hidden="true" />
+            <IconAlert size={15} aria-hidden="true" />
             {t("pws.attentionTitle")}
           </h3>
-          <div className="pws-dashboard-rows">
+          <div className="pws-dashboard-group">
             {attention.map(item => (
               <button
                 key={`${item.name}:${item.reason}`}
@@ -225,8 +293,11 @@ export default function ProviderOverviewDashboard({
       <section className="pws-dashboard-section" aria-label={t("pws.dashboard.configuredProviders")}>
         <h3 className="pws-dashboard-section-title">{t("pws.dashboard.configuredProviders")}</h3>
         {allItems.length > 0 ? (
-          <div className="pws-dashboard-rows">
-            {allItems.map(item => (
+          <div className="pws-dashboard-group">
+            {allItems.map(item => {
+              const line = rowAvailability(item);
+              const status = rowStatus(item);
+              return (
               <button
                 key={item.name}
                 type="button"
@@ -234,19 +305,20 @@ export default function ProviderOverviewDashboard({
                 onClick={() => onSelectProvider(item.name)}
               >
                 <ProviderIcon name={item.name} adapter={item.adapter} baseUrl={item.baseUrl} cls="pws-dashboard-row-icon" />
-                <span className="pws-dashboard-row-name">{formatProviderDisplayName(item.name)}</span>
-                <span className="pws-dashboard-row-count muted">
-                  {item.disabled
-                    ? t("prov.disabledBadge")
-                    : item.activeNeedsReauth
-                      ? t("pws.status.needsAttention")
-                      : item.tier
-                        ? t("pws.status.ready")
-                        : t("pws.status.needsSetup")}
+                <div className="pws-dashboard-row-info">
+                  <span className="pws-dashboard-row-name">{formatProviderDisplayName(item.name)}</span>
+                  {line && (
+                    <span className="pws-dashboard-row-meta muted">{line}</span>
+                  )}
+                </div>
+                <span className={`pws-dashboard-status pws-dashboard-status--${status.tone}`}>
+                  <StatusMark tone={status.tone} />
+                  {status.label}
                 </span>
                 <IconChevron className="pws-dashboard-row-chevron" aria-hidden="true" />
               </button>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <p className="muted pws-dashboard-empty">{t("pws.dashboard.noConfiguredProviders")}</p>
@@ -263,17 +335,16 @@ export default function ProviderOverviewDashboard({
           {quotaProviders.length > 0 ? (
             <div className="pws-dashboard-rows">
               {quotaProviders.map(({ item, report, card }) => {
-                const rowClass = `pws-dashboard-row${card.status === "error" ? " quota-card-error" : ""}`;
                 const stamp =
                   card.status === "error" ? (
                     <span className="quota-stamp quota-stamp--fout">{t("pws.quota.fout")}</span>
                   ) : card.status === "stale" ? (
-                    <span className="quota-stamp quota-stamp--verouderd">{t("pws.quota.verouderd")} · {report?.updatedAt ? clockTime(report.updatedAt) : "—"}</span>
+                    <span className="quota-stamp quota-stamp--verouderd">{t("pws.quota.verouderd")}{report?.updatedAt ? ` · ${clockTime(report.updatedAt)}` : ""}</span>
                   ) : (
                     <span className="quota-stamp quota-stamp--vers">{t("pws.quota.vers")} · {report?.updatedAt ? clockTime(report.updatedAt) : ""}</span>
                   );
                 return (
-                  <div key={item.name} className={rowClass}>
+                  <div key={item.name} className={`pws-dashboard-quota-row${card.status === "error" ? " quota-card-error" : ""}`}>
                     <div className="pws-dashboard-row-select"
                       role="button" tabIndex={0}
                       onClick={() => onSelectProvider(item.name)}
@@ -342,7 +413,9 @@ export default function ProviderOverviewDashboard({
                   <ProviderIcon name={provider.name} adapter="" baseUrl="" cls="pws-dashboard-row-icon" />
                   <span className="pws-dashboard-row-name">{formatProviderDisplayName(provider.name)}</span>
                   <span className="pws-dashboard-row-count muted">
-                    {t("pws.dashboard.requests", { count: formatRequestCount(provider.requests, locale) })}
+                    {provider.requests === 1
+                      ? t("pws.dashboard.requestOne")
+                      : t("pws.dashboard.requests", { count: formatRequestCount(provider.requests, locale) })}
                   </span>
                   <IconChevron className="pws-dashboard-row-chevron" aria-hidden="true" />
                 </button>
@@ -363,15 +436,6 @@ export default function ProviderOverviewDashboard({
           )}
         </section>
       </div>
-    </div>
-  );
-}
-
-function SummaryCard({ count, label, tone }: { count: number; label: string; tone: "ok" | "warn" | "muted" }) {
-  return (
-    <div className={`pws-dashboard-card pws-dashboard-card--${tone}`}>
-      <span className="pws-dashboard-card-count">{count}</span>
-      <span className="pws-dashboard-card-label">{label}</span>
     </div>
   );
 }

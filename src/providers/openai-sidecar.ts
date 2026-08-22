@@ -1,10 +1,11 @@
-import { providerCredentialFailure, resolveProviderApiKey, tryResolveProviderApiKey } from "./credential";
-import { ProviderSecurityError } from "../provider-security";
+import { selectCandidate } from "../availability";
+import { resolveEnvValue } from "../config";
+import { providerCredentialRef } from "./credential";
 import {
+  CodexDirectAuthenticationError,
+  CodexPoolAuthenticationError,
   headersForCodexAuthContext,
   hasCallerCodexBearer,
-  isCodexAuthContextUsable,
-  resolveCodexAuthContext,
   type CodexAuthContext,
 } from "../codex/auth-context";
 import { recordCodexUpstreamOutcome, type CodexUpstreamOutcome } from "../codex/routing";
@@ -70,6 +71,11 @@ function directSidecarHeaders(
   return selected;
 }
 
+function imagesApiKey(provider: OcxProviderConfig): string | undefined {
+  const raw = providerCredentialRef(provider) ? provider.apiKey : resolveEnvValue(provider.apiKey);
+  return raw?.trim() || undefined;
+}
+
 export async function resolveFirstUsableOpenAiSidecar(
   candidates: readonly OpenAiForwardSidecarCandidate[],
   incomingHeaders: Headers,
@@ -93,12 +99,29 @@ export async function resolveFirstUsableOpenAiSidecar(
         headers,
       };
     }
-    const authContext = await resolveCodexAuthContext(incomingHeaders, config, candidate.accountMode);
-    if (!isCodexAuthContextUsable(authContext, config)) continue;
+    const pick = await selectCandidate({
+      providerName: candidate.providerName,
+      config,
+      routedProvider: candidate.provider,
+      headers: incomingHeaders,
+      mode: candidate.accountMode,
+    });
+    if (!pick.ok) {
+      if (pick.kind === "codex-unusable") continue;
+      if (pick.kind === "codex-cooldown") throw pick.error;
+      if (pick.kind === "codex-reauth") throw pick.error;
+      if (pick.kind === "codex-affinity-expired") throw pick.error;
+      if (pick.kind === "codex-pool-auth") throw new CodexPoolAuthenticationError();
+      if (pick.kind === "codex-direct-auth") throw new CodexDirectAuthenticationError();
+      continue;
+    }
+    if (!pick.authCtx || !pick.headers) continue;
+    const authContext = pick.authCtx;
     return {
       ...candidate,
+      provider: pick.provider,
       authContext,
-      headers: headersForCodexAuthContext(incomingHeaders, authContext),
+      headers: pick.headers,
       ...(authContext.kind === "pool" || authContext.kind === "main-pool"
         ? {
           recordOutcome: (outcome: CodexUpstreamOutcome) => recordCodexUpstreamOutcome(
@@ -126,10 +149,17 @@ export async function selectOpenAiImagesProvider(config: OcxConfig): Promise<Ope
     && provider.authMode !== "forward"
     && provider.baseUrl.replace(/\/+$/, "") === "https://api.openai.com/v1"
   ) {
-    // A chefvault-backed provider has no inline key; lease it here so the keyed tier is armed
-    // with real authentication instead of being skipped as unconfigured.
-    const apiKey = await tryResolveProviderApiKey(provider);
-    if (apiKey) selection.keyed = { providerName: OPENAI_API_PROVIDER_ID, provider, apiKey };
+    const pick = await selectCandidate({
+      providerName: OPENAI_API_PROVIDER_ID,
+      config,
+      routedProvider: provider,
+    });
+    if (pick.ok) {
+      const apiKey = imagesApiKey(pick.provider);
+      if (apiKey) {
+        selection.keyed = { providerName: OPENAI_API_PROVIDER_ID, provider: pick.provider, apiKey };
+      }
+    }
   }
   return selection;
 }
@@ -169,25 +199,29 @@ export async function selectImagesProvider(config: OcxConfig): Promise<OpenAiIma
   // An explicitly configured Images provider has no other tier to fall back to, so a failed
   // ChefVault lease is reported as the credential/authority failure it is rather than as the
   // "no usable API key" configuration error.
-  let apiKey: string | undefined;
-  try {
-    apiKey = await resolveProviderApiKey(provider);
-  } catch (error) {
-    if (!(error instanceof ProviderSecurityError)) throw error;
-    const failure = providerCredentialFailure(providerName, error);
-    return {
-      forwardCandidates: [],
-      error: failure.message,
-      errorStatus: failure.status,
-      errorType: failure.type,
-    };
+  const pick = await selectCandidate({
+    providerName,
+    config,
+    routedProvider: provider,
+  });
+  if (!pick.ok) {
+    if (pick.kind === "vault") {
+      return {
+        forwardCandidates: [],
+        error: pick.message,
+        errorStatus: pick.status,
+        errorType: pick.type,
+      };
+    }
+    return { forwardCandidates: [], error: `images.provider "${providerName}" has no usable API key` };
   }
+  const apiKey = imagesApiKey(pick.provider);
   if (!apiKey) {
     return { forwardCandidates: [], error: `images.provider "${providerName}" has no usable API key` };
   }
 
   return {
     forwardCandidates: [],
-    keyed: { providerName, provider, apiKey },
+    keyed: { providerName, provider: pick.provider, apiKey },
   };
 }

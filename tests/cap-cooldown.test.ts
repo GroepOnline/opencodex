@@ -3,6 +3,7 @@ import {
   activeProviderCooldowns,
   clearProviderCapCooldown,
   expireProviderCooldowns,
+  expireRecordedCooldowns,
   isHardCapMessage,
   parseResetsInMs,
   recordProviderCapCooldown,
@@ -116,6 +117,59 @@ describe("recordProviderCapCooldown (live config)", () => {
     expect(config.providerCooldowns).toBeUndefined();
   });
 
+  test("does not disable a key-pooled provider such as Meta AI", () => {
+    const config = bareConfig({
+      providers: {
+        openai: { baseUrl: "https://api.openai.com/v1", adapter: "openai-responses" },
+        "meta-ai": {
+          adapter: "openai-chat",
+          baseUrl: "https://api.meta.ai/v1",
+          apiKey: "key-a",
+          apiKeyPool: [
+            { id: "k1", key: "key-a" },
+            { id: "k2", key: "key-b" },
+          ],
+        },
+      },
+    });
+    expect(recordProviderCapCooldown(
+      config,
+      "meta-ai",
+      429,
+      'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. The limit resets in 1d 22h"}',
+      { save: false },
+    )).toBeNull();
+    expect(config.providers["meta-ai"]?.disabled).toBeUndefined();
+    expect(config.providerCooldowns?.["meta-ai"]).toBeUndefined();
+  });
+
+  test("allowPooled records a provider window on a key pool", () => {
+    const config = bareConfig({
+      providers: {
+        openai: { baseUrl: "https://api.openai.com/v1", adapter: "openai-responses" },
+        "meta-ai": {
+          adapter: "openai-chat",
+          baseUrl: "https://api.meta.ai/v1",
+          apiKey: "key-a",
+          apiKeyPool: [
+            { id: "k1", key: "key-a" },
+            { id: "k2", key: "key-b" },
+          ],
+        },
+      },
+    });
+    const entry = recordProviderCapCooldown(
+      config,
+      "meta-ai",
+      429,
+      'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. The limit resets in 1d 22h"}',
+      { now: Date.UTC(2026, 6, 31, 0, 0, 0), save: false, allowPooled: true },
+    );
+    expect(entry).not.toBeNull();
+    expect(config.providers["meta-ai"]?.disabled).toBe(true);
+    expect(config.providerCooldowns?.["meta-ai"]?.reason).toBe("INFERENCE_CAP_ERROR");
+  });
+
   test("expire re-enables only cooldown-disabled providers", () => {
     const config = bareConfig();
     const past = 1_000;
@@ -132,6 +186,29 @@ describe("recordProviderCapCooldown (live config)", () => {
     expect(expireProviderCooldowns(config, past + 1)).toBe(true);
     expect(config.providers["cline-pass"]?.disabled).toBeUndefined();
     expect(config.providerCooldowns).toBeUndefined();
+  });
+
+  test("expireRecordedCooldowns still drops expired key windows when a provider window already expired", () => {
+    const now = 2_000;
+    const config = bareConfig({
+      providerCooldowns: {
+        "cline-pass": {
+          until: 1_000,
+          reason: "INFERENCE_CAP_ERROR",
+          message: "cap",
+          source: "upstream-429",
+          disabledProvider: true,
+        },
+      },
+      keyPoolCooldowns: {
+        pooled: { k1: { until: 1_500 } },
+      },
+    });
+    config.providers["cline-pass"].disabled = true;
+    expect(expireRecordedCooldowns(config, now)).toBe(true);
+    expect(config.providerCooldowns).toBeUndefined();
+    expect(config.keyPoolCooldowns).toBeUndefined();
+    expect(config.providers["cline-pass"]?.disabled).toBeUndefined();
   });
 });
 

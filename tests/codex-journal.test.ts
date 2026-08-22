@@ -1,6 +1,5 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,12 +11,17 @@ import {
 const repoRoot = dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
 
 function runScript(codexHome: string, script: string): { stdout: string; stderr: string; status: number } {
-  const result = spawnSync(process.execPath, ["--eval", script], {
+  const result = Bun.spawnSync([process.execPath, "--eval", script], {
     cwd: repoRoot,
     env: { ...process.env, CODEX_HOME: codexHome },
-    encoding: "utf8",
+    stdout: "pipe",
+    stderr: "pipe",
   });
-  return { stdout: result.stdout?.trim() ?? "", stderr: result.stderr?.trim() ?? "", status: result.status ?? 1 };
+  return {
+    stdout: new TextDecoder().decode(result.stdout).trim(),
+    stderr: new TextDecoder().decode(result.stderr).trim(),
+    status: result.exitCode,
+  };
 }
 
 describe("codex-journal", () => {

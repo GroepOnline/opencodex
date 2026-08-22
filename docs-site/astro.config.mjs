@@ -118,6 +118,7 @@ export default defineConfig({
             { label: "Configuration", translations: { ko: "설정", "zh-CN": "配置", ru: "Конфигурация", ja: "設定" }, slug: "reference/configuration" },
             { label: "Adapters", translations: { ko: "어댑터", "zh-CN": "适配器", ru: "Адаптеры", ja: "アダプター" }, slug: "reference/adapters" },
             { label: "Architecture", translations: { ko: "아키텍처", "zh-CN": "架构", ru: "Архитектура", ja: "アーキテクチャ" }, slug: "reference/architecture" },
+            { label: "Management API", translations: { ko: "관리 API", "zh-CN": "管理 API", ru: "Management API", ja: "管理 API" }, slug: "reference/management-api" },
           ],
         },
         {

@@ -65,6 +65,8 @@ import { handleAgentSettingsRoutes } from "./management/agent-settings-routes";
 import { handleOauthAccountRoutes } from "./management/oauth-account-routes";
 import { handleComboRoutes } from "./management/combo-routes";
 import { handleSystemRoutes } from "./management/system-routes";
+import { handleCacheRoutes } from "./management/cache-routes";
+import { handleRouterRoutes } from "./management/router-routes";
 import type { ManagementContext } from "./management/context";
 export type { ManagementApiDeps } from "./management/context";
 import { fetchAllModels } from "./management/shared";
@@ -130,7 +132,9 @@ export async function handleManagementAPI(req: Request, url: URL, config: OcxCon
     ??     (await handleAgentSettingsRoutes(ctx))
     ??     (await handleOauthAccountRoutes(ctx))
     ??     (await handleComboRoutes(ctx))
-    ??     (await handleSystemRoutes(ctx));
+    ??     (await handleSystemRoutes(ctx))
+    ??     (await handleCacheRoutes(ctx))
+    ??     (await handleRouterRoutes(ctx));
   if (routed) return routed;
 
   if (url.pathname === "/api/stop" && req.method === "POST") {

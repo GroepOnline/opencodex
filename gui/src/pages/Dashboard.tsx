@@ -56,6 +56,11 @@ function tijd(ts: number, locale: string): string {
   return new Date(ts).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+/** Formats a 0..1 ratio as a rounded percentage; em-dash when absent. */
+function formatRatio(value: number | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? `${Math.round(value * 100)}%` : "—";
+}
+
 /**
  * Displays proxy health, usage statistics, provider rankings, and recent traffic activity.
  *
@@ -113,11 +118,9 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
   /** Provider usage ranking (top 5 by request count, 30d from /api/usage). */
   const usageProviders = useMemo(() => {
     const ps = summary?.providers ?? [];
-    return [...ps].sort((a, b) => b.requests - a.requests).slice(0, 5);
+    return ps.toSorted((a, b) => b.requests - a.requests).slice(0, 5);
   }, [summary]);
 
-  const formatRatio = (value: number | undefined): string =>
-    typeof value === "number" && Number.isFinite(value) ? `${Math.round(value * 100)}%` : "—";
   const costUsd = typeof summary?.summary.estimatedCostUsd === "number" && Number.isFinite(summary.summary.estimatedCostUsd)
     ? new Intl.NumberFormat(locale, { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(summary.summary.estimatedCostUsd)
     : "—";
@@ -125,7 +128,7 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
   const pct429 = formatRatio(summary?.summary.ratio429);
   const pct502 = formatRatio(summary?.summary.ratio502);
 
-  /* Last 8 bon entries for the live feed */
+  /* Last 8 traffic entries for the live feed */
   const recentBons = useMemo(() => logs.slice(0, 8), [logs]);
 
   const proxyOnline = health.data ? true : health.error ? false : null;
@@ -137,39 +140,39 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
       </div>
 
       {/* Health strip */}
-      <div className="pws-dashboard-summary" style={{ marginBottom: 24 }}>
-        <div className="pws-dashboard-card pws-dashboard-card--ok">
+      <div className="pws-dashboard-stats pws-dashboard-stats--fit" role="group" aria-label={t("dash.healthAria")}>
+        <div className="pws-dashboard-stat">
           {proxyOnline === null ? (
-            <span className="pws-dashboard-card-count spin" aria-label={t("common.loading")} />
+            <span className="pws-dashboard-stat-count spin" aria-label={t("common.loading")} />
           ) : (
-            <span className="pws-dashboard-card-count">
+            <span className="pws-dashboard-stat-count">
               {proxyOnline ? <IconCheck size={18} aria-hidden /> : <IconAlert size={18} aria-hidden />}
             </span>
           )}
-          <span className="pws-dashboard-card-label">
+          <span className="pws-dashboard-stat-label caps">
             {proxyOnline === null ? t("common.loading") : proxyOnline ? t("proxy.online") : t("proxy.offline")}
           </span>
         </div>
         {health.data && (
           <>
-            <div className="pws-dashboard-card pws-dashboard-card--muted">
-              <span className="pws-dashboard-card-count" style={{ fontSize: "1rem" }}>{health.data.version}</span>
-              <span className="pws-dashboard-card-label">{t("dash.version")}</span>
+            <div className="pws-dashboard-stat">
+              <span className="pws-dashboard-stat-count num">{health.data.version}</span>
+              <span className="pws-dashboard-stat-label caps">{t("dash.version")}</span>
             </div>
-            <div className="pws-dashboard-card pws-dashboard-card--muted">
-              <span className="pws-dashboard-card-count" style={{ fontSize: "1rem" }}>{formatUptime(health.data.uptime, locale)}</span>
-              <span className="pws-dashboard-card-label">{t("dash.uptime")}</span>
+            <div className="pws-dashboard-stat">
+              <span className="pws-dashboard-stat-count num">{formatUptime(health.data.uptime, locale)}</span>
+              <span className="pws-dashboard-stat-label caps">{t("dash.uptime")}</span>
             </div>
-            <div className="pws-dashboard-card pws-dashboard-card--muted">
-              <span className="pws-dashboard-card-count" style={{ fontSize: "1rem" }}>{health.data.pid}</span>
-              <span className="pws-dashboard-card-label">{t("dash.pid")}</span>
+            <div className="pws-dashboard-stat">
+              <span className="pws-dashboard-stat-count num">{health.data.pid}</span>
+              <span className="pws-dashboard-stat-label caps">{t("dash.pid")}</span>
             </div>
           </>
         )}
       </div>
 
       {/* Usage stats */}
-      <div className="stat-strip" role="group" aria-label={t("vk.statsAria")} style={{ marginBottom: 24 }}>
+      <div className="stat-strip" role="group" aria-label={t("vk.statsAria")}>
         <div className="stat-strip-item">
           <span className="stat-strip-waarde">{formatTokens(tokens30d, locale)}</span>
           <span className="stat-strip-label">{t("vk.tokens30d")}</span>
@@ -214,7 +217,9 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
                   <div key={name} className="pws-dashboard-row">
                     <span className="pws-dashboard-row-name">{name}</span>
                     <span className="pws-dashboard-row-count muted">
-                      {t("pws.dashboard.requests", { count: count.toLocaleString(locale) })}
+                      {count === 1
+                        ? t("pws.dashboard.requestOne")
+                        : t("pws.dashboard.requests", { count: count.toLocaleString(locale) })}
                     </span>
                     {/* Mini bar */}
                     <span className="dash-bar-track" aria-hidden="true">

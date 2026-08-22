@@ -2,7 +2,21 @@ import { useCallback } from "react";
 import type { TFn } from "../i18n/shared";
 import { readJsonIfOk, readJsonOrThrow } from "../fetch-json";
 import { writeSessionListCache } from "../session-list-cache";
-import type { OAuthStatus, ProviderQuotaReport, ProvidersConfig } from "./providers-shared";
+import type { AvailabilityProviderView, OAuthStatus, ProviderQuotaReport, ProvidersConfig } from "./providers-shared";
+
+/** Live routing is optional: a down /api/availability must not block /api/config. */
+export async function readAvailabilityProviders(
+  input: Promise<Response | null>,
+): Promise<AvailabilityProviderView[]> {
+  try {
+    const availRes = await input;
+    if (!availRes?.ok) return [];
+    const avail = await readJsonIfOk<{ providers?: AvailabilityProviderView[] }>(availRes);
+    return Array.isArray(avail?.providers) ? avail.providers : [];
+  } catch {
+    return [];
+  }
+}
 
 export function useProvidersFetch({
   apiBase,
@@ -11,6 +25,7 @@ export function useProvidersFetch({
   setOauthProviders,
   setOauthStatus,
   setQuotaReports,
+  setAvailability,
   notify,
   configCacheKey,
 }: {
@@ -20,20 +35,31 @@ export function useProvidersFetch({
   setOauthProviders: React.Dispatch<React.SetStateAction<string[]>>;
   setOauthStatus: React.Dispatch<React.SetStateAction<Record<string, OAuthStatus>>>;
   setQuotaReports: React.Dispatch<React.SetStateAction<Record<string, ProviderQuotaReport>>>;
+  setAvailability?: React.Dispatch<React.SetStateAction<AvailabilityProviderView[]>>;
   notify: (msg: string, ok: boolean) => void;
   /** Session seed key for instant Providers shell paint (no secrets — hasApiKey flags only). */
   configCacheKey?: string;
 }) {
   const fetchConfig = useCallback(async () => {
+    const availAbort = new AbortController();
+    const availPromise = setAvailability
+      ? fetch(`${apiBase}/api/availability`, { signal: availAbort.signal }).catch(() => null)
+      : null;
     try {
       const res = await fetch(`${apiBase}/api/config`);
       const data = await readJsonOrThrow<ProvidersConfig>(res);
       setConfig(data ?? null);
       if (configCacheKey && data) writeSessionListCache(configCacheKey, data);
     } catch {
+      availAbort.abort();
+      if (availPromise) await readAvailabilityProviders(availPromise);
       notify(t("prov.loadConfigFail"), false);
+      return;
     }
-  }, [apiBase, configCacheKey, notify, setConfig, t]);
+    if (setAvailability && availPromise) {
+      setAvailability(await readAvailabilityProviders(availPromise));
+    }
+  }, [apiBase, configCacheKey, notify, setAvailability, setConfig, t]);
 
   const fetchOauth = useCallback(async () => {
     try {
