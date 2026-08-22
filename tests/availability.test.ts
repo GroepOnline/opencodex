@@ -1093,6 +1093,85 @@ describe("handleResponses anthropic oauth pool", () => {
     expect(text.toLowerCase()).not.toContain("unknown error");
     expect(text).toContain("anthropic weekly limit");
   });
+
+  test("402 weekly-limit hops to the next Anthropic OAuth account", async () => {
+    await saveCredential("anthropic", {
+      access: "access-a",
+      refresh: "refresh-a",
+      expires: Date.now() + 3_600_000,
+      accountId: "uuid-aaaa",
+      email: "a@example.test",
+    });
+    await saveCredential("anthropic", {
+      access: "access-b",
+      refresh: "refresh-b",
+      expires: Date.now() + 3_600_000,
+      accountId: "uuid-bbbb",
+      email: "b@example.test",
+    });
+    const set = getAccountSet("anthropic")!;
+    const a = set.accounts.find(acc => acc.credential.accountId === "uuid-aaaa")!;
+    await setActiveAccount("anthropic", a.id);
+
+    let messageCalls = 0;
+    const attempts: string[] = [];
+    globalThis.fetch = (async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes("api.anthropic.com/v1/messages")) {
+        messageCalls += 1;
+        attempts.push(String(messageCalls));
+        if (messageCalls === 1) {
+          return new Response(
+            JSON.stringify({
+              type: "error",
+              error: {
+                type: "billing_error",
+                message: "You have reached your weekly limit. The limit resets in 1d 22h.",
+              },
+            }),
+            { status: 402, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            id: "msg_ok",
+            type: "message",
+            role: "assistant",
+            content: [{ type: "text", text: "ok" }],
+            model: "claude-sonnet-4-6",
+            stop_reason: "end_turn",
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return previousFetch(input as Request);
+    }) as typeof fetch;
+
+    const config = baseConfig({
+      defaultProvider: "anthropic",
+      providers: {
+        anthropic: {
+          adapter: "anthropic",
+          baseUrl: "https://api.anthropic.com",
+          authMode: "oauth",
+          models: ["claude-sonnet-4-6"],
+        },
+      },
+      anthropicAccountPool: { enabled: true },
+    });
+    const response = await handleResponses(
+      new Request("http://localhost/v1/responses", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: "anthropic/claude-sonnet-4-6", input: "hi", stream: false }),
+      }),
+      config,
+      { model: "", provider: "" },
+    );
+    expect(response.status).toBe(200);
+    expect(attempts).toEqual(["1", "2"]);
+  });
 });
 
 describe("selectCodexCandidate", () => {

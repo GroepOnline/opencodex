@@ -10,7 +10,7 @@ import {
   InteractionUpdateSchema,
 } from "../src/adapters/cursor/gen/agent_pb";
 import { clearPoolRotationState } from "../src/codex/pool-rotation";
-import { saveConfig } from "../src/config";
+import { loadConfig, saveConfig } from "../src/config";
 import {
   clearCursorAccountPoolState,
   getCursorAccountHealthSnapshot,
@@ -204,6 +204,30 @@ describe("server Cursor account pool", () => {
           const snapshot = getCursorAccountHealthSnapshot(firstId!);
           expect(snapshot?.cooldownSource).toBe("retry-after");
           expect(snapshot!.cooldownUntil!).toBeGreaterThan(Date.now() + 90_000);
+        } finally {
+          await server.stop(true);
+        }
+      }));
+  });
+
+  test("exhausted pool records provider cap cooldown with allowPooled", async () => {
+    const attempts: string[] = [];
+    await withCursorServer((stream, headers) => {
+      attempts.push(String(headers.authorization ?? ""));
+      stream.respond({ ":status": 200, "content-type": "application/connect+proto" });
+      stream.end(endStreamFrame({
+        code: "resource_exhausted",
+        message: "You have reached your weekly limit. The limit resets in 1d 22h.",
+      }));
+    }, baseUrl => withCursorRegistryBaseUrl(baseUrl, async () => {
+        saveConfig(config(baseUrl));
+        const server = startServer(0);
+        try {
+          const response = await request(server.url, "cursor-pool-exhausted-cap");
+          expect(attempts).toEqual(["Bearer token-a", "Bearer token-b"]);
+          const live = loadConfig();
+          expect(live.providerCooldowns?.cursor).toBeTruthy();
+          expect(live.providers.cursor?.disabled).toBeUndefined();
         } finally {
           await server.stop(true);
         }

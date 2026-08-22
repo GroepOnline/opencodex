@@ -100,6 +100,17 @@ function classifyShared(evidence: UpstreamOutcomeEvidence): UpstreamOutcomeLabel
   if (isContextOverflow(text)) return "context-overflow";
 
   if (
+    status === 402
+    && (
+      text.includes("weekly limit")
+      || text.includes("weekly cap")
+      || text.includes("quota")
+      || text.includes("usage limit")
+      || text.includes("usage cap")
+    )
+  ) return "quota-exhausted";
+
+  if (
     text.includes("billing")
     || text.includes("payment required")
     || text.includes("plan package has expired")

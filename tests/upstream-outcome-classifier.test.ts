@@ -75,6 +75,15 @@ describe("unified upstream outcome labels", () => {
     }
   });
 
+  test("HTTP 402 is quota-exhausted with rotate-eligible policy", () => {
+    const evidence = {
+      status: 402,
+      message: "You have reached your weekly limit. The limit resets in 1d 22h.",
+    };
+    expect(classifyGenericUpstreamOutcome(evidence)).toBe("quota-exhausted");
+    expect(upstreamOutcomePolicy("quota-exhausted").rotateOrCool).toBe(true);
+  });
+
   test("HTTP 529 and overloaded_error hop immediately without same-account retry", () => {
     for (const evidence of [
       { status: 529 },

@@ -68,7 +68,10 @@ import {
 import {
   CURSOR_POOL_MAX_FAILOVERS_PER_REQUEST,
   cursorSessionKeyFromParts,
+  isCursorAccountPoolEnabled,
+  isCursorPoolRotationError,
 } from "../../oauth/cursor-routing";
+import { isHardCapMessage } from "../../providers/cap-cooldown";
 import { buildWebSearchTool, planWebSearch, runWithWebSearch, shouldResolveOpenAiWebSearchSidecar } from "../../web-search";
 import { buildImageTool, buildVideoTool, planImageBridge, planVideoBridge, runWithImageBridge, clampImageMaxRounds, IMAGE_GEN_TOOL_NAME, VIDEO_GEN_TOOL_NAME } from "../../images";
 import { describeImagesInPlace, planVisionSidecar, shouldResolveOpenAiVisionSidecar, stripImagesInPlace } from "../../vision";
@@ -2154,6 +2157,27 @@ export async function handleResponses(
       })();
       return { runTurnAbort, queue, done };
     };
+    const cursorPoolCapStatus = (message: string): number => {
+      const lower = message.toLowerCase();
+      if (lower.includes("402") || lower.includes("payment required") || isHardCapMessage(402, message)) {
+        return 402;
+      }
+      return 429;
+    };
+    const recordCursorRunTurnCapOutcome = (message: string): void => {
+      if (!cursorPoolAccountId || !isCursorAccountPoolEnabled(config)) return;
+      if (!isCursorPoolRotationError(message)) return;
+      recordCapOutcome({
+        config,
+        persistConfig,
+        providerName: route.providerName,
+        status: cursorPoolCapStatus(message),
+        message,
+        ...(isOauthAccountPoolExhausted(config, route.providerName, route.provider)
+          ? { allowPooled: true }
+          : {}),
+      });
+    };
     const rotateCursorRunTurn = async (
       message: string,
       retryAfter?: string | null,
@@ -2198,15 +2222,15 @@ export async function handleResponses(
         eventSource = attempt.queue.stream();
         if (!options.comboAttempt && !cursorPoolAccountId) break;
         const preflight = await preflightAdapterEvents(eventSource);
-        if (
-          preflight.error
-          && await rotateCursorRunTurn(preflight.error.message, preflight.error.retryAfter)
-        ) {
-          attempt.runTurnAbort.abort();
-          attempt.queue.close();
-          await attempt.done;
-          attempt = startRunTurnAttempt();
-          continue;
+        if (preflight.error) {
+          if (await rotateCursorRunTurn(preflight.error.message, preflight.error.retryAfter)) {
+            attempt.runTurnAbort.abort();
+            attempt.queue.close();
+            await attempt.done;
+            attempt = startRunTurnAttempt();
+            continue;
+          }
+          recordCursorRunTurnCapOutcome(preflight.error.message);
         }
         if (preflight.error || preflight.empty) {
           if (options.comboAttempt) {
@@ -2264,11 +2288,11 @@ export async function handleResponses(
       await attempt.done;
       events = await attempt.queue.collect();
       const firstMeaningful = events.find(event => event.type !== "heartbeat");
-      if (
-        firstMeaningful?.type === "error"
-        && await rotateCursorRunTurn(firstMeaningful.message, firstMeaningful.retryAfter)
-      ) {
-        continue;
+      if (firstMeaningful?.type === "error") {
+        if (await rotateCursorRunTurn(firstMeaningful.message, firstMeaningful.retryAfter)) {
+          continue;
+        }
+        recordCursorRunTurnCapOutcome(firstMeaningful.message);
       }
       break;
     }
@@ -2770,36 +2794,34 @@ export async function handleResponses(
         return;
       }
 
-      {
-        // Peeking clones the body (up to the bounded-read stall). Success/5xx
-        // continuations never hop or record a cap, so skip the clone and the
-        // resolveOutcome call. 402 still cools the attempted key without hopping.
-        const needsPoolOutcome = isAccountPoolHopStatus(response.status) || response.status === 402;
-        const hopMessage = needsPoolOutcome
-          ? await peekUpstreamErrorText(response, options.abortSignal)
-          : undefined;
-        if (needsPoolOutcome) {
-          const rotated = resolveOutcome({
-            config,
-            persistConfig,
-            providerName: route.providerName,
-            routedProvider: route.provider,
-            status: response.status,
-            retryAfter: response.headers.get("retry-after"),
-            now: Date.now(),
-            attemptedKey: route.provider.apiKey,
-            promptCacheKey: nextParsed.options.promptCacheKey,
-            message: hopMessage,
-          });
-          if (rotated) {
-            try { void response.body?.cancel().catch(() => {}); } catch { /* already closed */ }
-            route.provider = rotated;
-            activeAdapter = resolveAdapter(
-              resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
-              config.cacheRetention,
-            );
-            continue;
-          }
+      // Peeking clones the body (up to the bounded-read stall). Success/5xx
+      // continuations never hop or record a cap, so skip the clone and the
+      // resolveOutcome call. 402 still cools the attempted key without hopping.
+      const needsPoolOutcome = isAccountPoolHopStatus(response.status) || response.status === 402;
+      const hopMessage = needsPoolOutcome
+        ? await peekUpstreamErrorText(response, options.abortSignal)
+        : undefined;
+      if (needsPoolOutcome) {
+        const rotated = resolveOutcome({
+          config,
+          persistConfig,
+          providerName: route.providerName,
+          routedProvider: route.provider,
+          status: response.status,
+          retryAfter: response.headers.get("retry-after"),
+          now: Date.now(),
+          attemptedKey: route.provider.apiKey,
+          promptCacheKey: nextParsed.options.promptCacheKey,
+          message: hopMessage,
+        });
+        if (rotated) {
+          try { void response.body?.cancel().catch(() => {}); } catch { /* already closed */ }
+          route.provider = rotated;
+          activeAdapter = resolveAdapter(
+            resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
+            config.cacheRetention,
+          );
+          continue;
         }
       }
       if (
@@ -2829,6 +2851,18 @@ export async function handleResponses(
           );
           sealRequestAttemptIdentity(logCtx.activeAttempt, logCtx.provider, activeAdapter.name);
           continue;
+        }
+        if (needsPoolOutcome || isOauthAccountPoolHopStatus(response.status)) {
+          recordCapOutcome({
+            config,
+            persistConfig,
+            providerName: route.providerName,
+            status: response.status,
+            message: hopMessage,
+            ...(isOauthAccountPoolExhausted(config, route.providerName, route.provider)
+              ? { allowPooled: true }
+              : {}),
+          });
         }
       }
       if (shouldAttemptImageTierRetry({
