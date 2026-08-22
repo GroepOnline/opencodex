@@ -42,6 +42,26 @@ describe("Codex config injection", () => {
     const block = buildProviderTableBlock(10100, false, true);
 
     expect(block).toContain(
+      'env_http_headers = { "x-opencodex-api-key" = "OPENCODEX_API_AUTH_TOKEN" }',
+    );
+    expect(block).not.toContain("CF-Access-Client-Id");
+    expect(block).not.toContain("CF-Access-Client-Secret");
+  });
+
+  test("non-loopback LAN bind injects API key only, not CF Access service token headers", () => {
+    const block = buildProviderTableBlock(10100, false, true, "192.168.1.20");
+
+    expect(block).toContain(
+      'env_http_headers = { "x-opencodex-api-key" = "OPENCODEX_API_AUTH_TOKEN" }',
+    );
+    expect(block).not.toContain("CF-Access-Client-Id");
+    expect(block).not.toContain("CF-Access-Client-Secret");
+  });
+
+  test("CF Access-trusted host injects API key plus CF Access service token headers", () => {
+    const block = buildProviderTableBlock(10100, false, true, "ocx.chefgroep.online");
+
+    expect(block).toContain(
       'env_http_headers = { "x-opencodex-api-key" = "OPENCODEX_API_AUTH_TOKEN", "CF-Access-Client-Id" = "CF_ACCESS_CLIENT_ID", "CF-Access-Client-Secret" = "CF_ACCESS_CLIENT_SECRET" }',
     );
   });
@@ -156,6 +176,15 @@ describe("Codex config injection", () => {
 
     expect(profile).toContain('model_catalog_json = "/tmp/opencodex-catalog.json"');
     expect(profile).toContain("supports_websockets = true");
+    expect(profile).toContain(
+      'env_http_headers = { "x-opencodex-api-key" = "OPENCODEX_API_AUTH_TOKEN" }',
+    );
+    expect(profile).not.toContain("CF-Access-Client-Id");
+  });
+
+  test("non-loopback fallback profile for CF Access-trusted host includes all auth headers", () => {
+    const profile = buildProfileFile(10100, "/tmp/opencodex-catalog.json", true, true, "ocx.chefgroep.online");
+
     expect(profile).toContain(
       'env_http_headers = { "x-opencodex-api-key" = "OPENCODEX_API_AUTH_TOKEN", "CF-Access-Client-Id" = "CF_ACCESS_CLIENT_ID", "CF-Access-Client-Secret" = "CF_ACCESS_CLIENT_SECRET" }',
     );

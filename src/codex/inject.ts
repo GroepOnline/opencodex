@@ -19,6 +19,7 @@ import {
   transformManagedSubagentDefaults,
   type ManagedSubagentDefaults,
 } from "./subagent-defaults";
+import { isCfAccessTrustedHost } from "../server/cf-access-auth";
 import type { OcxConfig } from "../types";
 
 // Ownership predicates live in `./injected-marker` so `journal.ts` can reach them
@@ -129,9 +130,14 @@ export function buildProviderTableBlock(port: number, supportsWebsockets = false
   ];
   if (includeApiAuthHeader) {
     // Codex omits an env_http_headers entry when that env var is unset.
-    lines.push(
-      'env_http_headers = { "x-opencodex-api-key" = "OPENCODEX_API_AUTH_TOKEN", "CF-Access-Client-Id" = "CF_ACCESS_CLIENT_ID", "CF-Access-Client-Secret" = "CF_ACCESS_CLIENT_SECRET" }',
-    );
+    const headers = ['"x-opencodex-api-key" = "OPENCODEX_API_AUTH_TOKEN"'];
+    if (isCfAccessTrustedHost(hostname)) {
+      headers.push(
+        '"CF-Access-Client-Id" = "CF_ACCESS_CLIENT_ID"',
+        '"CF-Access-Client-Secret" = "CF_ACCESS_CLIENT_SECRET"',
+      );
+    }
+    lines.push(`env_http_headers = { ${headers.join(", ")} }`);
   }
   if (supportsWebsockets) lines.push("supports_websockets = true");
   return lines.join("\n") + "\n";
