@@ -1,0 +1,49 @@
+/* Verkeer request rail — column grid (Signaal v2/v3 tokens) */
+.traffic-entry { border-bottom: 1px solid var(--border-soft); }
+.traffic-entry-head {
+  display: grid;
+  grid-template-columns: 7.5ch minmax(10rem, 1.6fr) minmax(5rem, 0.8fr) auto auto auto;
+  gap: 8px 12px;
+  align-items: baseline;
+  padding: 10px 4px;
+  font-family: var(--font-code);
+  font-size: var(--text-caption);
+  color: var(--text);
+}
+.traffic-time { color: var(--muted); white-space: nowrap; }
+.traffic-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.traffic-meta { color: var(--muted); white-space: nowrap; }
+.traffic-detail {
+  padding: 0 4px 12px;
+  color: var(--muted);
+  font-family: var(--font-code);
+  font-size: var(--text-caption);
+  display: grid;
+  gap: 4px;
+}
+.traffic-status {
+  justify-self: end;
+  font-family: var(--font-ui);
+  font-size: var(--text-micro);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+.traffic-status--ok { color: var(--green); }
+.traffic-status--err { color: var(--red); }
+
+.traffic-entry-head--grid .traffic-col--status { justify-self: end; }
+.traffic-entry--head {
+  color: var(--muted);
+  border-bottom: 1px solid var(--border-soft);
+}
+.traffic-entry--head + .traffic-entry { margin-top: 0; }
+
+@media (max-width: 720px) {
+  .traffic-entry-head {
+    grid-template-columns: 7.5ch 1fr auto;
+    grid-template-rows: auto auto;
+  }
+  .traffic-title { grid-column: 2 / -1; }
+  .traffic-meta { grid-column: span 1; }
+}
