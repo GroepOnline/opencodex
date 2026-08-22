@@ -176,7 +176,7 @@ describe("probeResponseCache", () => {
 
   test("store ignores non-2xx and event-stream responses", async () => {
     installResponseCache({ port: 10100, providers: {}, responseCache: { enabled: true, ttlMs: 10_000 } } as unknown as OcxConfig);
-    const req = makeReq({ model: "claude-opus-4-8", messages: [{ role: "user", content: "x" }] });
+    const req = makeReq({ model: "claude-opus-4-8", messages: [{ role: "user", content: "x" }] }, { authorization: "Bearer caller" });
     const probe = await probeResponseCache(req, baseConfig(), "messages");
     if ("store" in probe!) {
       probe.store(new Response("rate limited", { status: 429, headers: { "content-type": "application/json" } }));
