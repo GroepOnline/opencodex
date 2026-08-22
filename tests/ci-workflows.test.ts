@@ -2086,7 +2086,7 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).not.toContain("bun@latest");
   });
 
-  test("control-01 deploy refuses a dirty live tree or a tag that would drop live-only commits", async () => {
+  test("az-01 deploy refuses a dirty live tree or a tag that would drop live-only commits", async () => {
     const workflow = await readText(".github/workflows/deploy.yml");
     const guardIndex = workflow.indexOf("Refuse dirty live checkout or dropped commits");
     const deployIndex = workflow.indexOf("Deploy into service checkout (in-place, pinned SHA)");
@@ -2175,7 +2175,7 @@ describe("GitHub Actions hardening", () => {
     expect(actionlintIndex).toBeLessThan(yamllintIndex);
   });
 
-  test("control-01 deploy triggers only on version tags or an explicit dispatch, least-privilege and serialized", async () => {
+  test("az-01 deploy triggers only on version tags or an explicit dispatch, least-privilege and serialized", async () => {
     const text = await readText(".github/workflows/deploy.yml");
     const workflow = Bun.YAML.parse(text) as {
       on?: {
@@ -2197,18 +2197,18 @@ describe("GitHub Actions hardening", () => {
 
     // A second deploy must queue rather than race the first, and a mid-flight
     // cancel could leave the live checkout half-updated with no rollback run.
-    expect(workflow.concurrency?.group).toBe("ocx-deploy-control-01");
+    expect(workflow.concurrency?.group).toBe("ocx-deploy-az-01");
     expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
 
     expect(workflow.jobs?.deploy?.["timeout-minutes"]).toBe(20);
-    expect(workflow.jobs?.deploy?.env?.DEPLOY_PATH).toBe("/home/chef/opencodex-psp");
+    expect(workflow.jobs?.deploy?.env?.DEPLOY_PATH).toBe("/opt/chef/services/opencodex");
 
     expect(text).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");
     expect(text).toContain("oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6");
     expect(text).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
   });
 
-  test("control-01 deploy resolves the dispatch ref via env (not inline interpolation) and validates its shape", async () => {
+  test("az-01 deploy resolves the dispatch ref via env (not inline interpolation) and validates its shape", async () => {
     const text = await readText(".github/workflows/deploy.yml");
     const workflow = Bun.YAML.parse(text) as {
       jobs?: { deploy?: { steps?: Array<{ name?: string; env?: Record<string, string>; run?: string }> } };
@@ -2244,7 +2244,7 @@ describe("GitHub Actions hardening", () => {
     expect(resolve!.run ?? "").toContain("exit 1");
   });
 
-  test("control-01 deploy pins the checkout to a merge-base-verified SHA, never a re-resolved tag name", async () => {
+  test("az-01 deploy pins the checkout to a merge-base-verified SHA, never a re-resolved tag name", async () => {
     const text = await readText(".github/workflows/deploy.yml");
     const workflow = Bun.YAML.parse(text) as {
       jobs?: { deploy?: { steps?: Array<{ name?: string; id?: string; run?: string }> } };
@@ -2270,7 +2270,7 @@ describe("GitHub Actions hardening", () => {
     expect(deploy!.run ?? "").not.toMatch(/git checkout --force "refs\/tags/);
   });
 
-  test("control-01 deploy health-gates the restart for up to 60s and only rolls back to a captured prior SHA", async () => {
+  test("az-01 deploy health-gates the restart for up to 60s and only rolls back to a captured prior SHA", async () => {
     const text = await readText(".github/workflows/deploy.yml");
     const workflow = Bun.YAML.parse(text) as {
       jobs?: {
@@ -2363,7 +2363,7 @@ describe("GitHub Actions hardening", () => {
     // The notes string escapes backticks for the shell (\\` ... \\`); match the
     // raw source exactly rather than the unescaped rendering.
     expect(releaseScript).toContain(
-      "Live rollout to chef-control-01 runs in the \\`Deploy to control-01\\` workflow.",
+      "Live rollout to chef-control-az-01 runs in the \\`Deploy to chef-control-az-01\\` workflow.",
     );
 
     // The hand-off must be documented in-line so the ownership split doesn't
