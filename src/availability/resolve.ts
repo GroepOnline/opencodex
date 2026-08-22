@@ -72,8 +72,10 @@ export function selectKeyPoolCandidate(input: {
  */
 export function resolveOutcome(input: ResolveOutcomeInput): OcxProviderTransport | null {
   recordCapOutcome(input);
-  if (!isAccountPoolHopStatus(input.status)) return null;
   if (!hasKeyPoolFailover(input.routedProvider)) return null;
+  // Hard-cap 402s rotate API-key pools, while OAuth/account pools retain their
+  // existing hop-status semantics.
+  if (!isAccountPoolHopStatus(input.status) && input.status !== 402) return null;
   return rotateProviderTransportOn429(
     input.config,
     input.providerName,
