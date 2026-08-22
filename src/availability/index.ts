@@ -6,6 +6,7 @@
 export {
   classifyAttempt,
   isAccountPoolHopStatus,
+  isOauthAccountPoolHopStatus,
   type AttemptEvidence,
   type AvailabilityDecision,
 } from "./classify";

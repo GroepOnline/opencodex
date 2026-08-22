@@ -8,6 +8,7 @@ import {
   classifyAttempt,
   clearKeyPoolCooldowns,
   isAccountPoolHopStatus,
+  isOauthAccountPoolHopStatus,
   inspectAvailability,
   inspectKeyPool,
   recordCapOutcome,
@@ -66,6 +67,14 @@ describe("isAccountPoolHopStatus", () => {
     expect(isAccountPoolHopStatus(429)).toBe(true);
     expect(isAccountPoolHopStatus(529)).toBe(true);
     expect(isAccountPoolHopStatus(503)).toBe(false);
+    expect(isAccountPoolHopStatus(402)).toBe(false);
+  });
+
+  test("OAuth pools additionally hop account-scoped 402 caps", () => {
+    expect(isOauthAccountPoolHopStatus(429)).toBe(true);
+    expect(isOauthAccountPoolHopStatus(529)).toBe(true);
+    expect(isOauthAccountPoolHopStatus(402)).toBe(true);
+    expect(isOauthAccountPoolHopStatus(503)).toBe(false);
   });
 });
 

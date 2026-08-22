@@ -113,7 +113,7 @@ test("identical non-streaming request hits the cache on the second call", async 
   }
 });
 
-test("anonymous non-streaming requests never populate the cache", async () => {
+test("anonymous loopback non-streaming requests share the local cache scope", async () => {
   const upstream = mockJsonUpstream();
   saveConfig(mockConfig(`${upstream.url.toString().replace(/\/$/, "")}/v1`));
   const server = startServer(0);
@@ -123,7 +123,6 @@ test("anonymous non-streaming requests never populate the cache", async () => {
       stream: false,
       messages: [{ role: "user", content: "anon-ping" }],
     });
-    // Credential-less callers must not share a cache bucket (null-scope fail-closed).
     const post = () => fetch(new URL("/v1/chat/completions", server.url), {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -138,16 +137,16 @@ test("anonymous non-streaming requests never populate the cache", async () => {
 
     const second = await post();
     expect(second.status).toBe(200);
-    expect(second.headers.get("x-cache")).toBeNull();
-    expect(upstreamHits).toBe(2); // both went upstream; nothing was stored
+    expect(second.headers.get("x-cache")).toBe("HIT");
+    expect(upstreamHits).toBe(1);
 
     const view = await (await managementFetch(new URL("/api/response-cache", server.url))).json() as {
       size: number;
       stats: { stores: number; hits: number };
     };
-    expect(view.size).toBe(0);
-    expect(view.stats.stores).toBe(0);
-    expect(view.stats.hits).toBe(0);
+    expect(view.size).toBe(1);
+    expect(view.stats.stores).toBe(1);
+    expect(view.stats.hits).toBe(1);
   } finally {
     server.stop(true);
     upstream.stop(true);

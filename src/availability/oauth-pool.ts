@@ -1,5 +1,5 @@
 import type { OcxConfig, OcxProviderConfig } from "../types";
-import { isAccountPoolHopStatus } from "./classify";
+import { isOauthAccountPoolHopStatus } from "./classify";
 import {
   bindAnthropicSessionAffinity,
   clearAnthropicSessionAffinityForAccount,
@@ -152,7 +152,7 @@ export async function resolveAnthropicPoolOutcome(input: {
   sessionKey?: string | null;
   now?: number;
 }): Promise<OauthPoolHop | null> {
-  if (!isAccountPoolHopStatus(input.status)) return null;
+  if (!isOauthAccountPoolHopStatus(input.status)) return null;
   if (!isAnthropicAccountPoolEnabled(input.config)) return null;
   const nextAccountId = rotateAnthropicAccountOn429(
     input.config,
@@ -189,7 +189,7 @@ export async function resolveGoogleAntigravityPoolOutcome(input: {
   sessionKey?: string | null;
   now?: number;
 }): Promise<OauthPoolHop | null> {
-  if (!isAccountPoolHopStatus(input.status)) return null;
+  if (!isOauthAccountPoolHopStatus(input.status)) return null;
   if (!isGoogleAntigravityAccountPoolEnabled(input.config)) return null;
   const nextAccountId = rotateGoogleAntigravityAccountOn429(
     input.config,

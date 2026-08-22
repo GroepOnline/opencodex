@@ -213,7 +213,7 @@ export interface RecordProviderCapCooldownOpts {
 
 /**
  * True when this provider routes through a multi-account OAuth pool whose per-account
- * rotation owns 429/529/402 handling. A cap message from one pooled account must not
+ * rotation owns account-scoped cap handling. A cap message from one pooled account must not
  * hard-disable the whole provider while other accounts still have capacity.
  */
 function hasOauthAccountPoolFailover(config: OcxConfig, key: string): boolean {
@@ -239,7 +239,7 @@ export function recordProviderCapCooldown(
   if (
     pooled
     && (hasKeyPoolFailover(pooled)
-      || (hasOauthAccountPoolFailover(config, key) && (status === 429 || status === 529)))
+      || (hasOauthAccountPoolFailover(config, key) && (status === 429 || status === 402)))
     && opts?.allowPooled !== true
   ) return null;
   const now = opts?.now ?? Date.now();

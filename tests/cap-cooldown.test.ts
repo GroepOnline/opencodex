@@ -166,6 +166,25 @@ describe("recordProviderCapCooldown (live config)", () => {
     expect(config.providerCooldowns?.anthropic).toBeUndefined();
   });
 
+  test("does not disable an OAuth account-pool provider on an account-scoped 402 cap", () => {
+    const config = bareConfig({
+      anthropicAccountPool: { enabled: true },
+      providers: {
+        openai: { baseUrl: "https://api.openai.com/v1", adapter: "openai-responses" },
+        anthropic: { adapter: "anthropic", baseUrl: "https://api.anthropic.com", authMode: "oauth" },
+      },
+    });
+    expect(recordProviderCapCooldown(
+      config,
+      "anthropic",
+      402,
+      'Error 402: You have reached your weekly limit. The limit resets in 1d 22h.',
+      { save: false },
+    )).toBeNull();
+    expect(config.providers.anthropic?.disabled).toBeUndefined();
+    expect(config.providerCooldowns?.anthropic).toBeUndefined();
+  });
+
   test("records a cap on an OAuth-pool provider when the pool is not enabled", () => {
     const config = bareConfig({
       providers: {
