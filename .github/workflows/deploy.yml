@@ -1,17 +1,18 @@
-name: Deploy to control-01
+name: Deploy to chef-control-az-01
 
-# Rolls a new opencodex version out to the live proxy on chef-control-01.
+# Rolls a new opencodex version out to the live proxy on chef-control-az-01.
 #
 # Triggers:
 #   - push of a `v*.*.*` tag  -> deploy that exact version (the "new version" path)
 #   - workflow_dispatch       -> deploy a tag ref deliberately (the "after merge" path)
 #
-# The job runs on the self-hosted `deploy` runner, which is the control-01 host
+# The job runs on the self-hosted `deploy` runner, which is the Azure control host
 # itself, so it can restart its own systemd service (chef has NOPASSWD sudo) and
 # health-gate the result locally. No SSH keys cross hosts.
 #
-# Requires the runner to be registered on control-01 (ocx-deploy-runner.service).
+# Requires the runner to be registered on chef-control-az-01 (ocx-deploy-runner.service).
 # The service checkout at DEPLOY_PATH is updated in place and restarted.
+# Historical UpCloud chef-control-01 runner is retired.
 
 on:
   push:
@@ -28,7 +29,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ocx-deploy-control-01
+  group: ocx-deploy-az-01
   cancel-in-progress: false
 
 jobs:
@@ -36,7 +37,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, deploy]
     timeout-minutes: 20
     env:
-      DEPLOY_PATH: /home/chef/opencodex-psp
+      DEPLOY_PATH: /opt/chef/services/opencodex
     steps:
       - name: Resolve deploy tag
         id: ref
@@ -111,6 +112,19 @@ jobs:
             exit 1
           fi
 
+      - name: Resolve health URLs
+        run: |
+          set -euo pipefail
+          # Loopback first; Tailscale IPv4 discovered on the deploy host (no hardcoded 100.x).
+          urls="http://127.0.0.1:10100/healthz"
+          ts_ip="$(tailscale ip -4 2>/dev/null | head -n1 || true)"
+          if [ -z "$ts_ip" ]; then
+            echo "::error::chef-control-az-01 has no discoverable Tailscale IPv4; refusing deploy before live checkout mutation"
+            exit 1
+          fi
+          urls="$urls http://${ts_ip}:10100/healthz"
+          echo "OCX_HEALTH_URLS=$urls" >> "$GITHUB_ENV"
+
       - name: Deploy into service checkout (in-place, pinned SHA)
         id: deploy
         run: |
@@ -143,25 +157,36 @@ jobs:
         id: health
         run: |
           set -euo pipefail
-          # Port is the service default (10100) on control-01; the proxy binds it
-          # regardless of any LAN hostname, so the loopback probe is stable.
-          for i in $(seq 1 30); do
-            body="$(curl -fsS -m 5 http://127.0.0.1:10100/healthz || true)"
-            if printf '%s' "$body" | grep -q '"status":"ok"'; then
-              echo "healthy after ${i} tries: $body"
-              echo "status=ok" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            sleep 2
+          main_pid="$(sudo systemctl show -p MainPID --value opencodex-proxy.service)"
+          if [[ ! "$main_pid" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::opencodex-proxy.service has no live MainPID"
+            exit 1
+          fi
+          deadline=$((SECONDS + 60))
+          attempt=0
+          while (( SECONDS < deadline )); do
+            attempt=$((attempt + 1))
+            for url in $OCX_HEALTH_URLS; do
+              remaining=$((deadline - SECONDS))
+              (( remaining > 0 )) || break 2
+              max_time=$((remaining < 2 ? remaining : 2))
+              body="$(curl -fsS --max-time "$max_time" "$url" || true)"
+              if HEALTH_BODY="$body" MAIN_PID="$main_pid" python3 -c 'import json, os; b=json.loads(os.environ["HEALTH_BODY"]); raise SystemExit(0 if b.get("status") == "ok" and b.get("service") == "opencodex" and str(b.get("pid")) == os.environ["MAIN_PID"] else 1)' 2>/dev/null; then
+                echo "healthy after ${attempt} tries via $url (pid=$main_pid)"
+                echo "status=ok" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            done
+            (( SECONDS < deadline )) && sleep 1
           done
-          echo "::error::opencodex did not become healthy within 60s after restart"
+          echo "::error::opencodex did not become identity-verified healthy within 60s after restart"
           exit 1
 
       - name: Rollback on failure
         # Only roll back when we captured a known-good prior SHA (prev step succeeded).
         # If Verify tag / deploy-into-checkout failed before capture, there is nothing
         # safe to roll back to and `failure()` alone would skip the gate silently.
-        if: failure() && steps.prev.outcome == 'success' && steps.live_guard.outcome == 'success'
+        if: failure() && steps.prev.outcome == 'success' && steps.live_guard.outcome == 'success' && steps.deploy.outcome == 'success'
         run: |
           set -euo pipefail
           cd "$DEPLOY_PATH"
@@ -170,14 +195,30 @@ jobs:
           bun install --frozen-lockfile
           bun run build:gui
           sudo systemctl restart opencodex-proxy.service
-          # Re-confirm the rolled-back service is healthy before declaring done.
-          for _ in $(seq 1 15); do
-            body="$(curl -fsS -m 5 http://127.0.0.1:10100/healthz || true)"
-            if printf '%s' "$body" | grep -q '"status":"ok"'; then
-              echo "rolled back to ${{ steps.prev.outputs.sha }} and healthy"
-              exit 0
-            fi
-            sleep 2
+          # Recompute URLs if failure happened before GITHUB_ENV was populated.
+          urls="${OCX_HEALTH_URLS:-http://127.0.0.1:10100/healthz}"
+          if [ -z "${OCX_HEALTH_URLS:-}" ]; then
+            ts_ip="$(tailscale ip -4 2>/dev/null | head -n1 || true)"
+            [ -z "$ts_ip" ] || urls="$urls http://${ts_ip}:10100/healthz"
+          fi
+          main_pid="$(sudo systemctl show -p MainPID --value opencodex-proxy.service)"
+          if [[ ! "$main_pid" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::rollback restarted opencodex-proxy.service without a live MainPID"
+            exit 1
+          fi
+          deadline=$((SECONDS + 30))
+          while (( SECONDS < deadline )); do
+            for url in $urls; do
+              remaining=$((deadline - SECONDS))
+              (( remaining > 0 )) || break 2
+              max_time=$((remaining < 2 ? remaining : 2))
+              body="$(curl -fsS --max-time "$max_time" "$url" || true)"
+              if HEALTH_BODY="$body" MAIN_PID="$main_pid" python3 -c 'import json, os; b=json.loads(os.environ["HEALTH_BODY"]); raise SystemExit(0 if b.get("status") == "ok" and b.get("service") == "opencodex" and str(b.get("pid")) == os.environ["MAIN_PID"] else 1)' 2>/dev/null; then
+                echo "rolled back to ${{ steps.prev.outputs.sha }} and identity-verified healthy via $url (pid=$main_pid)"
+                exit 0
+              fi
+            done
+            (( SECONDS < deadline )) && sleep 1
           done
-          echo "::error::rollback deployed ${{ steps.prev.outputs.sha }} but service not healthy"
+          echo "::error::rollback deployed ${{ steps.prev.outputs.sha }} but service was not identity-verified healthy within 30s"
           exit 1
