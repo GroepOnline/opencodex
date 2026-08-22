@@ -50,6 +50,9 @@ export function getInstalledCache(): ResponseCache | null {
 
 export interface CacheHit {
   hit: Response;
+  /** Route this hit replayed, so the server can log the served request without re-parsing the body. */
+  provider: string;
+  model: string;
 }
 
 export interface CacheMiss {
@@ -183,7 +186,11 @@ export async function probeResponseCache(
     console.warn(
       `[kv-cache] HIT ${ResponseCache.keyPrefix(endpoint, route.providerName, route.modelId, scopedNormalized)} (${hit.body.length}B)`,
     );
-    return { hit: new Response(hit.body, { status: 200, headers }) };
+    return {
+      hit: new Response(hit.body, { status: 200, headers }),
+      provider: route.providerName,
+      model: route.modelId,
+    };
   }
 
   // Rebuild a Request with the re-readable body so the downstream handler can read it again.

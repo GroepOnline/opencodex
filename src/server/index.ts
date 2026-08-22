@@ -27,7 +27,7 @@ import { setStorageCleanupPolicyJobLiveApply } from "../storage/policy-job";
 import { scheduleStorageCleanupStartupRun, startStorageCleanupScheduler } from "../storage/policy-scheduler";
 import { runOpenAiTierStartupMigration } from "../providers/openai-tier-startup";
 import { runAlibabaRegionStartupMigration } from "../providers/alibaba-region-startup";
-import { installResponseCache, probeResponseCache } from "../cache/response-cache-middleware";
+import { installResponseCache, probeResponseCache, type CacheHit } from "../cache/response-cache-middleware";
 import { installAutoRouterLatencyHistory } from "../availability/chain";
 import { p50DurationForModel } from "../usage/latency-history";
 import { isCanonicalOpenAiForwardProvider } from "../providers/openai-tiers";
@@ -740,6 +740,7 @@ export function startServer(port?: number) {
         // rebuilt Request (so the handler can read the body again) + a store callback.
         const responsesCacheProbe = await probeResponseCache(req, config, "responses");
         if (responsesCacheProbe && "hit" in responsesCacheProbe) {
+          logCacheHitRequest(responsesCacheProbe);
           return withCors(responsesCacheProbe.hit, req, config);
         }
         const responsesWorkReq = responsesCacheProbe?.request ?? req;
@@ -811,6 +812,7 @@ export function startServer(port?: number) {
         // rebuilt Request (so the handler can read the body again) + a store callback.
         const messagesCacheProbe = await probeResponseCache(req, config, "messages");
         if (messagesCacheProbe && "hit" in messagesCacheProbe) {
+          logCacheHitRequest(messagesCacheProbe);
           return withCors(messagesCacheProbe.hit, req, config);
         }
         const messagesWorkReq = messagesCacheProbe?.request ?? req;
@@ -845,6 +847,7 @@ export function startServer(port?: number) {
         // rebuilt Request (so the handler can read the body again) + a store callback.
         const chatCacheProbe = await probeResponseCache(req, config, "chat-completions");
         if (chatCacheProbe && "hit" in chatCacheProbe) {
+          logCacheHitRequest(chatCacheProbe);
           return withCors(chatCacheProbe.hit, req, config);
         }
         const chatWorkReq = chatCacheProbe?.request ?? req;
