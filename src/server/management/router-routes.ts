@@ -37,8 +37,10 @@ export async function handleRouterRoutes(ctx: ManagementContext): Promise<Respon
         if (!modelId) continue;
         const targets = usableProviderFallbackTargets(config, { provider: providerName, modelId });
         if (!targets) continue;
+        // Honor the window reorderChainTargets computes from config.router.latencyWindowMs
+        // (passed as sinceMs) so this inspect view matches the order live routing picks.
         const scored = reorderChainTargets(config, targets, {
-          p50DurationMs: (p, m) => p50DurationForModel(p, m, now - 7 * 86_400_000),
+          p50DurationMs: (p, m, sinceMs) => p50DurationForModel(p, m, sinceMs, now),
         }, now);
         chains.push({
           provider: providerName,
