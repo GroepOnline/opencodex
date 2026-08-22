@@ -52,9 +52,12 @@ export function trafficProviderModelLabel(entry: TrafficLogEntry): string | null
   const model = entry.resolvedModel
     ?? (isUnknownTrafficLabel(entry.model) ? entry.requestedModel : entry.model);
   if (isUnknownTrafficLabel(model)) return null;
-  const provider = entry.provider?.trim();
+  const rawProvider = entry.provider?.trim();
   const trimmedModel = model!.trim();
-  if (isUnknownTrafficLabel(provider)) return trimmedModel;
+  if (isUnknownTrafficLabel(rawProvider)) return trimmedModel;
+  // Account suffixes are displayed in the Principal column, not as provider identity.
+  const provider = rawProvider!.replace(/-(?:main|p[0-9a-f]{6})$/, "");
+  if (!provider) return trimmedModel;
   // The model id may already carry its provider namespace (e.g. combo rows log `combo/<id>`);
   // don't prepend the provider again.
   if (trimmedModel === provider || trimmedModel.startsWith(`${provider}/`)) return trimmedModel;

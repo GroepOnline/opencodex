@@ -3,6 +3,7 @@ import Usage from "./Usage";
 import { useI18n } from "../i18n/shared";
 import { formatTokens } from "../format-tokens";
 import { TrafficColumnHead, TrafficRowCells } from "../traffic-row";
+import { statusCodeInfo } from "../status-codes";
 import {
   requestsTodayCount,
   trafficPrincipalLabel,
@@ -106,7 +107,9 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
       const principal = trafficPrincipalLabel(entry, t);
       if (principal !== t("vk.unknown")) names.add(principal);
       const providerModel = trafficProviderModelLabel(entry);
-      if (providerModel?.includes("/")) names.add(providerModel.split("/")[0]!);
+        const provider = entry.provider?.trim() ?? "";
+        const hasAccountSuffix = /-(?:main|p[0-9a-f]{6})$/.test(provider);
+      if (!hasAccountSuffix && providerModel?.includes("/")) names.add(providerModel.split("/")[0]!);
     }
     return [...names].sort();
   }, [logs, t]);
@@ -217,6 +220,9 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
               {isOpen && (
                 <div className="bon-detail">
                   <div>{t("vk.detailStatus", { status: entry.status })}</div>
+                    {statusCodeInfo(entry.status, locale) && (
+                      <div>{statusCodeInfo(entry.status, locale)!.label}: {statusCodeInfo(entry.status, locale)!.description}</div>
+                     )}
                   {entry.errorCode && <div>{t("vk.detailError", { code: entry.errorCode })}</div>}
                   {entry.upstreamError && <div>{t("vk.detailUpstream", { error: entry.upstreamError })}</div>}
                   {entry.usage && (
