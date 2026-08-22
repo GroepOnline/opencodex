@@ -74,6 +74,22 @@ import { isPlainRecord, parseDebugLogQuery, tokPerSecondResult, unavailableCostR
 import type { MetricUnavailableReason, TokPerSecondResult, CostEstimateReason, CostResult, MetricSource } from "./shared";
 import type { ManagementContext } from "./context";
 
+const providerRefreshQueues = new Map<string, Promise<void>>();
+
+async function serializeProviderRefresh<T>(name: string, operation: () => Promise<T>): Promise<T> {
+  const previous = providerRefreshQueues.get(name) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>(resolve => { release = resolve; });
+  providerRefreshQueues.set(name, current);
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (providerRefreshQueues.get(name) === current) providerRefreshQueues.delete(name);
+  }
+}
+
 export async function handleProviderRoutes(ctx: ManagementContext): Promise<Response | null> {
   const { req, url, config, deps, refreshCodexCatalogBestEffort, syncClaudeAgentDefsBestEffort } = ctx;
 
@@ -498,7 +514,8 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
     enrichProviderFromCatalog(name, prov);
     // Clear only the discovery cooldown/backoff so the click is not served from a 30s–15m backoff.
     // The cached rows are kept as the fallback when a live fetch fails.
-    clearProviderDiscoveryStatus(name);
+    return serializeProviderRefresh(name, async () => {
+      clearProviderDiscoveryStatus(name);
     const models = await fetchProviderModels(name, prov, 0, providerContextCap(config, name));
     await refreshCodexCatalogBestEffort();
     const ids = models.map(model => model.id);
@@ -544,6 +561,7 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
       error: "live discovery was not attempted",
       discovery,
     });
+  });
   }
 
   if (url.pathname === "/api/providers" && req.method === "DELETE") {
