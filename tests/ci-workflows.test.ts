@@ -2309,7 +2309,7 @@ describe("GitHub Actions hardening", () => {
     // dirty/ancestry guard passed — otherwise a failure before either of those
     // steps ran has nothing safe to roll back to, and `failure()` alone would
     // attempt a checkout with an empty/garbage output.
-    expect(rollback!.if).toBe("failure() && steps.prev.outcome == 'success' && steps.live_guard.outcome == 'success' && steps.deploy.outcome == 'success'");
+    expect(rollback!.if).toBe("failure() && steps.prev.outcome == 'success' && steps.live_guard.outcome == 'success' && steps.deploy.outcome == 'success' && steps.setup_node.outcome == 'success'");
     expect(rollback!.run ?? "").toContain('git checkout --force "${{ steps.prev.outputs.sha }}"');
     expect(rollback!.run ?? "").toContain('git reset --hard "${{ steps.prev.outputs.sha }}"');
     expect(rollback!.run ?? "").toContain("bun run build:gui");
