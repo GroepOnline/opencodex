@@ -9,6 +9,7 @@ import {
   StartupRecoverySection,
   StartupTraySection,
 } from "./startup-sections";
+import { StartupHealthTable } from "./startup-health-table";
 import {
   isTrayStatusData,
   type StartupHealthData,
@@ -84,6 +85,8 @@ export default function Startup({ apiBase }: { apiBase: string }) {
   const [installResult, setInstallResult] = useState<{ kind: "success" | "error"; action: StartupInstallAction; repair?: boolean; detail?: string } | null>(null);
   const [codexRuntimeWarning, setCodexRuntimeWarning] = useState<string | null>(() => cached?.warning ?? null);
   const [codexRuntimeFix, setCodexRuntimeFix] = useState<string | null>(() => cached?.fix ?? null);
+  const [proxyHealth, setProxyHealth] = useState<{ version: string; uptime: number } | null>(null);
+  const [proxyOnline, setProxyOnline] = useState<boolean | null>(null);
   /** True while settings (runtime notice) are still in flight — reserves notice slot height. */
   const [runtimeNoticePending, setRuntimeNoticePending] = useState(() => !cached?.data);
   const loadGenerationRef = useRef(0);
@@ -177,6 +180,30 @@ export default function Startup({ apiBase }: { apiBase: string }) {
       setLoading(false);
     }
   }, [apiBase, cacheKey, t]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch(`${apiBase}/healthz`);
+        if (!res.ok) throw new Error(String(res.status));
+        const body = await res.json() as { version?: string; uptime?: number };
+        if (cancelled) return;
+        setProxyOnline(true);
+        if (typeof body.version === "string" && typeof body.uptime === "number") {
+          setProxyHealth({ version: body.version, uptime: body.uptime });
+        }
+      } catch {
+        if (!cancelled) {
+          setProxyOnline(false);
+          setProxyHealth(null);
+        }
+      }
+    };
+    void load();
+    const iv = window.setInterval(() => { void load(); }, 15_000);
+    return () => { cancelled = true; window.clearInterval(iv); };
+  }, [apiBase]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -297,6 +324,16 @@ export default function Startup({ apiBase }: { apiBase: string }) {
             </div>
           )}
           <StartupHeroSection failed={failed} data={data} />
+          <StartupHealthTable
+            data={data}
+            failed={failed}
+            proxyVersion={proxyHealth?.version}
+            proxyUptime={proxyHealth?.uptime}
+            proxyOnline={proxyOnline}
+            tray={tray}
+            trayLoading={trayLoading}
+            trayError={trayError}
+          />
           <StartupDetailsSection
             data={data}
             failed={failed}

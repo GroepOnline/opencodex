@@ -185,7 +185,7 @@ export function StartupTraySection({
           <span>{t("startup.tray.notProtection")}</span>
         </div>
         {trayLoading || trayError || !tray
-          ? <span className="badge badge-amber">{t(trayLoading ? "startup.tray.loading" : "startup.tray.unavailable")}</span>
+          ? <StatusBadge status="unknown">{t(trayLoading ? "startup.tray.loading" : "startup.tray.unavailable")}</StatusBadge>
           : <StartupStateBadge
             ok={tray.running && !tray.stale}
             yes={t("startup.tray.running")}
