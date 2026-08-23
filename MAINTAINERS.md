@@ -8,21 +8,22 @@ review and merge policy.
 | GitHub account | Project role | Responsibilities |
 | --- | --- | --- |
 | [@GroepOnline](https://github.com/GroepOnline) | Project owner | Project direction, releases, repository administration, and final governance decisions |
-| [@Ingwannu](https://github.com/Ingwannu) | Maintainer | Issue and pull-request triage, `dev` integration, security review, and repository maintenance |
-| [@Wibias](https://github.com/Wibias) | Maintainer | Issue and pull-request triage, `dev` integration, and provider/CI maintenance |
+| [@Ingwannu](https://github.com/Ingwannu) | Maintainer | Issue and pull-request triage, `main` integration, security review, and repository maintenance |
+| [@Wibias](https://github.com/Wibias) | Maintainer | Issue and pull-request triage, `main` integration, and provider/CI maintenance |
 
 The table describes project responsibilities. Actual repository permissions remain controlled
 through GitHub repository settings.
 
-`dev` is the only integration line. The former `dev2-go` carry duty is retired;
-see [The retired `dev2-go` line](#the-retired-dev2-go-line).
+`main` is the only integration line. The former `dev` integration duty and the
+`dev2-go` carry duty are retired; see [The retired `dev2-go` line](#the-retired-dev2-go-line)
+and `docs/convergence/DEV_RETIREMENT.md`.
 
 ## Review and merge policy
 
-- Pull requests target `dev`. It is the only integration line, and promotion to
-  `main` happens only from `dev`. The target-branch check accepts `dev` alone.
-- The **`enforce-target`** CI check rejects pull requests whose head
-  ancestry sits on the **`main`** tip while far behind **`dev`**, and rejects
+- Pull requests target `main`. It is the only integration line. The
+  target-branch check accepts `main` alone.
+- The **`enforce-target`** CI check rejects pull requests whose head is more
+  than 20 commits behind **`main`**, and rejects
   empty, thin, or malformed descriptions; authors with repository push
   permission skip the ancestry heuristic only. As with the approval requirement
   above, this is enforced by convention until branch protection is configured
@@ -45,7 +46,7 @@ see [The retired `dev2-go` line](#the-retired-dev2-go-line).
   practical.
 - Direct pushes are reserved for maintainer-owned integration work, urgent repairs, or incident
   recovery. The same CI and documentation requirements still apply.
-- Promotion from `dev` to `main` and npm releases is maintainer-controlled.
+- Merges to `main` and npm releases are maintainer-controlled.
 
 ## The retired `dev2-go` line
 
@@ -56,17 +57,17 @@ and ported under `go/`. That policy is withdrawn as of 2026-07-30.
 The dual-track cost outran its return: the carry backlog never cleared (17
 commits and 9 open `needs-go-port` issues at the time of the decision, against
 594 commits of divergence), and dogfooding the Go runtime kept producing new
-defects. Bun-native TypeScript on `dev` is the single runtime line again.
+defects. Bun-native TypeScript on `main` is the single runtime line again.
 
 - The branch has been deleted from this repository. Its full history is
   published at
   [GroepOnline/opencodex-go-archive](https://github.com/GroepOnline/opencodex-go-archive),
   and its final tip stays reachable here as the `archive/dev2-go` tag.
-- A merge into `dev` carries no port obligation. The nine open `needs-go-port`
+- A merge into `main` carries no port obligation. The nine open `needs-go-port`
   issues (#661, #663, #666, #670, #674, #678, #680, #685, #703) were closed as
   not planned, and the `needs-go-port` label no longer exists on the
   repository.
-- Future native work is expected to be an incremental module landing on `dev`
+- Future native work is expected to be an incremental module landing on `main`
   (Rust via N-API is the current candidate), not a second integration branch.
   Reopening a parallel runtime line is an owner decision.
 

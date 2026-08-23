@@ -8,8 +8,6 @@ const {
 } = require(path.join(__dirname, "issue-quality.cjs"));
 
 const ANCESTRY_BEHIND_THRESHOLD = 20;
-/** Cap on ahead_by vs main so stale `dev` forks (many commits ahead of main) are not flagged. */
-const ANCESTRY_AHEAD_MAIN_MAX = 5;
 const MIN_SECTION_LEN = 40;
 const MIN_RICH_SECTIONS = 2;
 const UNSTRUCTURED_MIN_LEN = 120;
@@ -28,17 +26,12 @@ const PR_TEMPLATE_BOILERPLATE_LINES = new Set([
 ]);
 
 function isWrongAncestry({
-  behindMain,
   behindBase,
-  aheadMain = 0,
   threshold = ANCESTRY_BEHIND_THRESHOLD,
-  aheadMainMax = ANCESTRY_AHEAD_MAIN_MAX,
 }) {
-  return (
-    behindMain === 0 &&
-    behindBase >= threshold &&
-    aheadMain <= aheadMainMax
-  );
+  // Stale vs the PR base. A head on current main is correct; sitting on the
+  // main tip while behind `dev` is no longer a failure mode.
+  return behindBase >= threshold;
 }
 
 function authorHasPushPermission(permission) {
@@ -143,7 +136,7 @@ function collectPrQualityFailures({
     failures.push({ code: "wrong_base" });
   } else {
     // Permission lookup fails closed (still evaluate ancestry). Compare API
-    // failures skip ancestry — zeros would falsely pass the #644 heuristic.
+    // failures skip ancestry — zeros would falsely pass a stale-head check.
     // Stacked children skip ancestry against the integration base; their parent
     // PR is the temporary target.
     const skipAncestry =
@@ -167,7 +160,6 @@ function collectPrQualityFailures({
 
 module.exports = {
   ANCESTRY_BEHIND_THRESHOLD,
-  ANCESTRY_AHEAD_MAIN_MAX,
   isWrongAncestry,
   authorHasPushPermission,
   assessPrDescription,

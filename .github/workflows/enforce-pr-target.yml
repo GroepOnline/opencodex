@@ -42,11 +42,11 @@ jobs:
               path.join(process.cwd(), ".github", "scripts", "pr-quality.cjs"),
             );
 
-            // PRs target `dev`, the integration branch. `main` is the release
-            // branch and only moves by promotion, so it is not an allowed base.
+            // PRs target `main`, the only trunk. `dev` is retired as an
+            // integration base and is no longer allowed.
             // (See tests/ci-workflows.test.ts — the allow-list is pinned there.)
-            const DEFAULT_BASE = "dev";
-            const ALLOWED_BASES = ["dev"];
+            const DEFAULT_BASE = "main";
+            const ALLOWED_BASES = ["main"];
             const TITLE_PREFIX = "[WRONG BRANCH] ";
             const COMMENT_MARKER = "<!-- pr-quality-enforcer -->";
             const LEGACY_COMMENT_MARKER = "<!-- wrong-branch-enforcer -->";
@@ -222,9 +222,9 @@ jobs:
                 sections.push(
                   "⚠️ **Wrong branch ancestry**",
                   "",
-                  `This pull request targets ${inlineCode(pr.base.ref)}, but its head appears to sit on the current ${inlineCode("main")} tip while being far behind ${inlineCode(pr.base.ref)}.`,
+                  `This pull request targets ${inlineCode(pr.base.ref)}, but its head is more than 20 commits behind ${inlineCode(pr.base.ref)}.`,
                   "",
-                  `@${pr.user.login} Rebase onto the current ${inlineCode(pr.base.ref)} branch instead of opening from ${inlineCode("main")}. That keeps already-released commits out of the integration branch.`
+                  `@${pr.user.login} Rebase onto the current ${inlineCode(pr.base.ref)} branch. A stale head hides conflicts and already-landed commits from review.`
                 );
               }
 

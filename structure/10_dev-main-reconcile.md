@@ -1,20 +1,20 @@
 # 10 — `dev` ↔ `main` reconcile notes
 
-Status: current (2026-08-10). Historical Phase 0 notes below are retained for
+Status: current (2026-08-23). Historical Phase 0 notes below are retained for
 context; do not treat the 2026-08-03 divergence table as live.
 
 ## Current state
 
-As of 2026-08-10:
+As of 2026-08-23:
 
 | Fact | Value |
 | --- | --- |
-| `dev` tip | tracks `main` (fast-forward) |
-| Integration target for PRs | `dev` |
-| Release branch | `main` (promotion from `dev` only) |
-| Dependabot | enabled, `target-branch: dev` |
+| Integration target for PRs | `main` |
+| Release branch | `main` |
+| `dev` | 5 ahead of `main`; scheduled for retirement — see `docs/convergence/DEV_RETIREMENT.md` |
+| Dependabot | enabled, `target-branch: main` |
 
-Prefer landing work on `dev`, then promoting a coherent tip to `main`.
+Prefer landing work on `main`. Do not open new pull requests against `dev`.
 
 ## Historical divergence (2026-08-03)
 
@@ -52,6 +52,6 @@ old PR comments remain intelligible:
 
 ## Operator checklist
 
-1. Open feature PRs against `dev`.
-2. Promote `dev` → `main` only for release trains / hotfix promotions.
-3. Keep Dependabot targeting `dev` (see `.github/dependabot.yml`).
+1. Open feature PRs against `main`.
+2. Land the five `origin/dev` commits on `main` before deleting `dev` (see `docs/convergence/DEV_RETIREMENT.md`).
+3. Keep Dependabot targeting `main` (see `.github/dependabot.yml`).

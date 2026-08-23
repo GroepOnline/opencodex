@@ -10,13 +10,13 @@ Thanks for helping with opencodex.
 
 ## Branches
 
-- `dev` — the only integration target for pull requests.
-- `main` — releases only; moves by maintainer-controlled promotion from `dev`.
+- `main` — the only integration target for pull requests, and the release line.
 - `preview` — prerelease train.
+- `dev` — retired as an integration branch. Do not open new pull requests against it.
 
 The `dev2-go` Go native-port line has been retired. Its history is archived at
 [GroepOnline/opencodex-go-archive](https://github.com/GroepOnline/opencodex-go-archive),
-and everything now goes to `dev`. See [`MAINTAINERS.md`](./MAINTAINERS.md) for
+and everything now goes to `main`. See [`MAINTAINERS.md`](./MAINTAINERS.md) for
 the reasoning.
 
 Rebase pull requests are welcome: bringing a stale branch onto the current head

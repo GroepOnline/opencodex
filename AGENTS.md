@@ -109,26 +109,26 @@ sha / branch / detached / dirty only — never the diff.
 
 ## Branch policy
 
-- `dev` — the single integration branch and the target for every pull request.
-- `main` — release branch. It only moves by maintainer-controlled promotion
-  from `dev` (releases, docs deploys). Do not open feature PRs against `main`.
+- `main` — the single integration branch, the target for every pull request,
+  and the release line.
 - `preview` — prerelease train (`x.y.z-preview.*` versions).
+- `dev` — retired as an integration branch. Do not open feature PRs against it.
 
-Bun-native TypeScript on `dev` is the only runtime line. If native code
+Bun-native TypeScript on `main` is the only runtime line. If native code
 returns, the expectation is an incremental module (for example Rust via N-API)
-landing on `dev`, not a second full-runtime branch.
+landing on `main`, not a second full-runtime branch.
 
 Stacked child pull requests that target another **open** PR's head branch are
 an intentional review workflow, not an alternate integration line. The
 **`enforce-target`** check skips the wrong-base gate for those children; after
-the parent lands or closes, retarget the child to `dev`.
+the parent lands or closes, retarget the child to `main`.
 
 Rebase pull requests are welcome. Bringing a stale branch onto the current head
 is ordinary maintenance — open it as a normal pull request and name the source
 commits in the description.
 
-The **`enforce-target`** CI check rejects pull requests whose head
-ancestry sits on the **`main`** tip while far behind **`dev`**, and rejects
+The **`enforce-target`** CI check rejects pull requests whose head is more
+than 20 commits behind **`main`**, and rejects
 empty, thin, or malformed descriptions; authors with repository push permission
 skip the ancestry heuristic only. As with approval requirements in
 [`MAINTAINERS.md`](./MAINTAINERS.md), this is enforced by convention until
@@ -147,8 +147,8 @@ reviewers (Codex, CodeRabbit).
   language. Be detailed and specific: name the file and line, describe the
   concrete failure mode, and suggest a fix. Avoid vague or purely stylistic
   commentary.
-- **Branch targeting:** flag any pull request that does not target `dev`
-  (releases and maintainer promotions are the only exceptions).
+- **Branch targeting:** flag any pull request that does not target `main`
+  (stacked children of an open PR are the only exception).
 - **Security boundary (highest priority):** changes touching authentication,
   credential/token handling, OAuth flows, GitHub Actions workflows, release
   automation (`scripts/release.ts`, `.github/workflows/release.yml`), or

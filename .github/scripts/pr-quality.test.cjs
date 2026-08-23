@@ -11,27 +11,27 @@ const {
 } = require("./pr-quality.cjs");
 
 describe("isWrongAncestry", () => {
-  it("flags #644-shaped compares (0 behind main, far behind base, few ahead of main)", () => {
+  it("flags a head far behind the PR base", () => {
     assert.equal(
-      isWrongAncestry({ behindMain: 0, behindBase: 44, aheadMain: 1 }),
+      isWrongAncestry({ behindMain: 44, behindBase: 44, aheadMain: 1 }),
       true,
     );
   });
 
   it("uses threshold 20 by default", () => {
     assert.equal(ANCESTRY_BEHIND_THRESHOLD, 20);
-    assert.equal(isWrongAncestry({ behindMain: 0, behindBase: 20, aheadMain: 1 }), true);
-    assert.equal(isWrongAncestry({ behindMain: 0, behindBase: 19, aheadMain: 1 }), false);
+    assert.equal(isWrongAncestry({ behindMain: 20, behindBase: 20, aheadMain: 1 }), true);
+    assert.equal(isWrongAncestry({ behindMain: 19, behindBase: 19, aheadMain: 1 }), false);
   });
 
-  it("passes when head is behind main (not sitting on main tip)", () => {
-    assert.equal(isWrongAncestry({ behindMain: 1, behindBase: 44, aheadMain: 1 }), false);
+  it("passes a head based on the current main tip", () => {
+    assert.equal(isWrongAncestry({ behindMain: 0, behindBase: 0, aheadMain: 8 }), false);
   });
 
-  it("passes stale dev-based branches that are many commits ahead of main", () => {
+  it("flags a stale feature branch even when it is also ahead of main", () => {
     assert.equal(
-      isWrongAncestry({ behindMain: 0, behindBase: 44, aheadMain: 50 }),
-      false,
+      isWrongAncestry({ behindMain: 44, behindBase: 44, aheadMain: 50 }),
+      true,
     );
   });
 });
@@ -115,11 +115,11 @@ describe("assessPrDescription", () => {
 });
 
 describe("collectPrQualityFailures", () => {
-  const allowed = ["dev"];
+  const allowed = ["main"];
 
   it("reports wrong_base without requiring ancestry inputs", () => {
     const failures = collectPrQualityFailures({
-      baseRef: "main",
+      baseRef: "dev",
       allowedBases: allowed,
       body: "## Summary\n" + "x".repeat(50) + "\n\n## Test plan\n" + "y".repeat(50),
       behindMain: 0,
@@ -130,9 +130,9 @@ describe("collectPrQualityFailures", () => {
     assert.ok(!failures.some((f) => f.code === "wrong_ancestry"));
   });
 
-  it("reports wrong_base and bad_description together for main + empty body", () => {
+  it("reports wrong_base and bad_description together for dev + empty body", () => {
     const failures = collectPrQualityFailures({
-      baseRef: "main",
+      baseRef: "dev",
       allowedBases: allowed,
       body: "",
       behindMain: 0,
@@ -144,9 +144,9 @@ describe("collectPrQualityFailures", () => {
     assert.ok(!failures.some((f) => f.code === "wrong_ancestry"));
   });
 
-  it("reports wrong_ancestry for contributor on #644-shaped compare", () => {
+  it("reports wrong_ancestry for contributor on a stale main-based head", () => {
     const failures = collectPrQualityFailures({
-      baseRef: "dev",
+      baseRef: "main",
       allowedBases: allowed,
       body: [
         "## Summary",
@@ -156,7 +156,7 @@ describe("collectPrQualityFailures", () => {
         "- Launch the tray app after setting CODEX_HOME",
         "- Confirm the listener and launcher use the same workspace root",
       ].join("\n"),
-      behindMain: 0,
+      behindMain: 44,
       behindBase: 44,
       aheadMain: 1,
       authorPermission: "read",
@@ -169,10 +169,10 @@ describe("collectPrQualityFailures", () => {
 
   it("skips ancestry for push permission but still flags bad description", () => {
     const failures = collectPrQualityFailures({
-      baseRef: "dev",
+      baseRef: "main",
       allowedBases: allowed,
       body: "",
-      behindMain: 0,
+      behindMain: 44,
       behindBase: 44,
       aheadMain: 1,
       authorPermission: "write",
@@ -183,7 +183,7 @@ describe("collectPrQualityFailures", () => {
 
   it("applies ancestry when permission lookup failed (fail closed)", () => {
     const failures = collectPrQualityFailures({
-      baseRef: "dev",
+      baseRef: "main",
       allowedBases: allowed,
       body: [
         "## Summary",
@@ -193,7 +193,7 @@ describe("collectPrQualityFailures", () => {
         "- Launch the tray app after setting CODEX_HOME",
         "- Confirm the listener and launcher use the same workspace root",
       ].join("\n"),
-      behindMain: 0,
+      behindMain: 44,
       behindBase: 44,
       aheadMain: 1,
       authorPermission: null,
@@ -202,9 +202,9 @@ describe("collectPrQualityFailures", () => {
     assert.ok(failures.some((f) => f.code === "wrong_ancestry"));
   });
 
-  it("does not flag stale dev-based branches that are far ahead of main", () => {
+  it("flags a stale head even when it is also far ahead of main", () => {
     const failures = collectPrQualityFailures({
-      baseRef: "dev",
+      baseRef: "main",
       allowedBases: allowed,
       body: [
         "## Summary",
@@ -214,17 +214,17 @@ describe("collectPrQualityFailures", () => {
         "- Launch the tray app after setting CODEX_HOME",
         "- Confirm the listener and launcher use the same workspace root",
       ].join("\n"),
-      behindMain: 0,
+      behindMain: 44,
       behindBase: 44,
       aheadMain: 50,
       authorPermission: "read",
     });
-    assert.ok(!failures.some((f) => f.code === "wrong_ancestry"));
+    assert.ok(failures.some((f) => f.code === "wrong_ancestry"));
   });
 
   it("skips ancestry when compare lookup failed (cannot evaluate)", () => {
     const failures = collectPrQualityFailures({
-      baseRef: "dev",
+      baseRef: "main",
       allowedBases: allowed,
       body: [
         "## Summary",
@@ -267,7 +267,7 @@ describe("collectPrQualityFailures", () => {
 
   it("still flags wrong_base for non-allow-list bases without stackedBase", () => {
     const failures = collectPrQualityFailures({
-      baseRef: "main",
+      baseRef: "dev",
       allowedBases: allowed,
       body: "fix stuff",
       behindMain: 0,
