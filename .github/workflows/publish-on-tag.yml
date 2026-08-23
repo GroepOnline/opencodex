@@ -1,8 +1,8 @@
 name: Publish on tag
 
 # Tag a commit on main with `vX.Y.Z` and this workflow publishes
-# `@groeponline/opencodex` to npm. Live rollout to chef-control-01 is owned by
-# `.github/workflows/deploy.yml` (self-hosted `deploy` runner on control-01).
+# `@groeponline/opencodex` to npm. Live rollout to chef-control-az-01 is owned by
+# `.github/workflows/deploy.yml` (self-hosted `deploy` runner on Azure control).
 #
 # Publishing prefers npm Trusted Publishing (OIDC, no token). The Trusted Publisher
 # on npmjs.com is registered for the `Release` workflow, so OIDC is only accepted
@@ -128,10 +128,10 @@ jobs:
             echo "release v${VERSION} already exists — skipping (Deploy workflow owns live rollout)"
             exit 0
           fi
-          notes="Published \`@groeponline/opencodex@${VERSION}\` to npm (dist-tag \`${DIST_TAG}\`). Live rollout to chef-control-01 runs in the \`Deploy to control-01\` workflow."
+          notes="Published \`@groeponline/opencodex@${VERSION}\` to npm (dist-tag \`${DIST_TAG}\`). Live rollout to chef-control-az-01 runs in the \`Deploy to chef-control-az-01\` workflow."
           gh release create "v${VERSION}" --title "v${VERSION}" --notes "$notes"
 
-  # NOTE: live rollout to chef-control-01 is owned by .github/workflows/deploy.yml,
-  # which runs on the self-hosted `deploy` runner (the control-01 host itself) and
+  # NOTE: live rollout to chef-control-az-01 is owned by .github/workflows/deploy.yml,
+  # which runs on the self-hosted `deploy` runner (the Azure control host itself) and
   # health-gates the result. It is triggered by the same `v*.*.*` tag push, so a
   # single `git tag vX.Y.Z && git push --tags` both publishes and deploys.

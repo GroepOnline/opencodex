@@ -2086,7 +2086,7 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).not.toContain("bun@latest");
   });
 
-  test("control-01 deploy refuses a dirty live tree or a tag that would drop live-only commits", async () => {
+  test("az-01 deploy refuses a dirty live tree or a tag that would drop live-only commits", async () => {
     const workflow = await readText(".github/workflows/deploy.yml");
     const guardIndex = workflow.indexOf("Refuse dirty live checkout or dropped commits");
     const deployIndex = workflow.indexOf("Deploy into service checkout (in-place, pinned SHA)");
@@ -2175,7 +2175,7 @@ describe("GitHub Actions hardening", () => {
     expect(actionlintIndex).toBeLessThan(yamllintIndex);
   });
 
-  test("control-01 deploy triggers only on version tags or an explicit dispatch, least-privilege and serialized", async () => {
+  test("az-01 deploy triggers only on version tags or an explicit dispatch, least-privilege and serialized", async () => {
     const text = await readText(".github/workflows/deploy.yml");
     const workflow = Bun.YAML.parse(text) as {
       on?: {
@@ -2191,24 +2191,20 @@ describe("GitHub Actions hardening", () => {
     expect(workflow.on?.workflow_dispatch?.inputs?.ref?.required).toBe(false);
     expect(workflow.on?.workflow_dispatch?.inputs?.ref?.default).toBe("");
 
-    // Read-only token: the job only ever pushes state to the self-hosted host
-    // it runs on (via git/systemctl locally), never back to GitHub.
-    expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(workflow.permissions).toEqual({ contents: "read", actions: "read" });
 
-    // A second deploy must queue rather than race the first, and a mid-flight
-    // cancel could leave the live checkout half-updated with no rollback run.
-    expect(workflow.concurrency?.group).toBe("ocx-deploy-control-01");
+    expect(workflow.concurrency?.group).toBe("ocx-deploy-az-01");
     expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
 
     expect(workflow.jobs?.deploy?.["timeout-minutes"]).toBe(20);
-    expect(workflow.jobs?.deploy?.env?.DEPLOY_PATH).toBe("/home/chef/opencodex-psp");
+    expect(workflow.jobs?.deploy?.env?.DEPLOY_PATH).toBe("/opt/chef/services/opencodex");
 
     expect(text).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");
     expect(text).toContain("oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6");
     expect(text).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
   });
 
-  test("control-01 deploy resolves the dispatch ref via env (not inline interpolation) and validates its shape", async () => {
+  test("az-01 deploy resolves the dispatch ref via env (not inline interpolation) and validates its shape", async () => {
     const text = await readText(".github/workflows/deploy.yml");
     const workflow = Bun.YAML.parse(text) as {
       jobs?: { deploy?: { steps?: Array<{ name?: string; env?: Record<string, string>; run?: string }> } };
@@ -2244,7 +2240,7 @@ describe("GitHub Actions hardening", () => {
     expect(resolve!.run ?? "").toContain("exit 1");
   });
 
-  test("control-01 deploy pins the checkout to a merge-base-verified SHA, never a re-resolved tag name", async () => {
+  test("az-01 deploy pins the checkout to a merge-base-verified SHA, never a re-resolved tag name", async () => {
     const text = await readText(".github/workflows/deploy.yml");
     const workflow = Bun.YAML.parse(text) as {
       jobs?: { deploy?: { steps?: Array<{ name?: string; id?: string; run?: string }> } };
@@ -2270,7 +2266,7 @@ describe("GitHub Actions hardening", () => {
     expect(deploy!.run ?? "").not.toMatch(/git checkout --force "refs\/tags/);
   });
 
-  test("control-01 deploy health-gates the restart for up to 60s and only rolls back to a captured prior SHA", async () => {
+  test("az-01 deploy health-gates the restart for up to 60s and only rolls back to a captured prior SHA", async () => {
     const text = await readText(".github/workflows/deploy.yml");
     const workflow = Bun.YAML.parse(text) as {
       jobs?: {
@@ -2280,32 +2276,64 @@ describe("GitHub Actions hardening", () => {
       };
     };
     const steps = workflow.jobs?.deploy?.steps ?? [];
+    const l1 = steps.find(step => step.id === "l1_process");
     const health = steps.find(step => step.id === "health");
+    const l3 = steps.find(step => step.id === "l3_dependencies");
+    const l4 = steps.find(step => step.id === "l4_product");
     const rollback = steps.find(step => step.name === "Rollback on failure");
+    expect(l1).toBeDefined();
     expect(health).toBeDefined();
+    expect(l3).toBeDefined();
+    expect(l4).toBeDefined();
     expect(rollback).toBeDefined();
 
-    // 30 tries * 2s sleep = 60s, matching the error message's stated budget.
-    expect(health!.run ?? "").toContain("for i in $(seq 1 30)");
-    expect(health!.run ?? "").toContain("sleep 2");
-    expect(health!.run ?? "").toContain("did not become healthy within 60s");
-    expect(health!.run ?? "").toContain('http://127.0.0.1:10100/healthz');
-    expect(health!.run ?? "").toContain('"status":"ok"');
-    expect(health!.run ?? "").toContain("exit 1");
+    expect(l1!.run ?? "").toContain("systemctl is-active --quiet opencodex-proxy.service");
+    expect(l1!.run ?? "").toContain('systemctl show -p MainPID --value opencodex-proxy.service');
 
-    // Rollback must only fire once a known-good prior SHA was captured AND the
-    // dirty/ancestry guard passed — otherwise a failure before either of those
-    // steps ran has nothing safe to roll back to, and `failure()` alone would
-    // attempt a checkout with an empty/garbage output.
-    expect(rollback!.if).toBe("failure() && steps.prev.outcome == 'success' && steps.live_guard.outcome == 'success'");
+    expect(health!.run ?? "").toContain("deadline=$((SECONDS + 60))");
+    expect(health!.run ?? "").toContain('b.get("service") == "opencodex"');
+    expect(health!.run ?? "").toContain('str(b.get("pid")) == os.environ["MAIN_PID"]');
+    expect(health!.run ?? "").toContain('str(b.get("version")) == os.environ["EXPECTED_VERSION"]');
+    expect(health!.run ?? "").toContain("--max-time");
+    expect(health!.run ?? "").toContain("identity-verified healthy within 60s");
+
+    expect(l3!.run ?? "").toContain("/api/startup-health");
+    expect(l3!.run ?? "").toContain("/api/providers");
+    expect(l3!.run ?? "").toContain("admin-api-token");
+
+    expect(l4!.run ?? "").toContain("<title>opencodex · proxy dashboard</title>");
+    expect(l4!.run ?? "").toContain('src="/assets/');
+    expect(l4!.run ?? "").toContain("/api/config");
+    expect(l4!.run ?? "").toContain("/v1/models");
+
+    expect(text).toContain("uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0");
+    expect(text).toContain('node-version: "22.12.0"');
+    expect(text).toContain("Require successful Cross-platform CI");
+
+    const resolveHealthIndex = steps.findIndex(step => step.name === "Resolve health URLs");
+    const deployIndex = steps.findIndex(step => step.name === "Deploy into service checkout (in-place, pinned SHA)");
+    const resolveHealth = steps[resolveHealthIndex];
+    expect(resolveHealthIndex).toBeGreaterThanOrEqual(0);
+    expect(resolveHealthIndex).toBeLessThan(deployIndex);
+    expect(resolveHealth?.run ?? "").toContain("~/.opencodex/config.json");
+    expect(resolveHealth?.run ?? "").toContain("cfg.get('hostname')");
+    expect(resolveHealth?.run ?? "").toContain("http://127.0.0.1:");
+    expect(resolveHealth?.run ?? "").toContain("tailscale ip -4");
+    expect(text).not.toContain("100.109.39.86");
+
+    expect(rollback!.if).toBe("failure() && steps.prev.outcome == 'success' && steps.live_guard.outcome == 'success' && steps.deploy.outcome == 'success'");
     expect(rollback!.run ?? "").toContain('git checkout --force "${{ steps.prev.outputs.sha }}"');
     expect(rollback!.run ?? "").toContain('git reset --hard "${{ steps.prev.outputs.sha }}"');
     expect(rollback!.run ?? "").toContain("bun run build:gui");
     expect(rollback!.run ?? "").toContain("sudo systemctl restart opencodex-proxy.service");
-    // Rollback re-verifies health rather than declaring success on restart alone.
-    expect(rollback!.run ?? "").toContain('"status":"ok"');
+    expect(rollback!.run ?? "").toContain('${OCX_HEALTH_URLS:-http://127.0.0.1:10100/healthz}');
+    expect(rollback!.run ?? "").toContain("tailscale ip -4");
+    expect(rollback!.run ?? "").toContain("deadline=$((SECONDS + 30))");
+    expect(rollback!.run ?? "").toContain('systemctl show -p MainPID --value opencodex-proxy.service');
+    expect(rollback!.run ?? "").toContain('b.get("service") == "opencodex"');
     expect(rollback!.run ?? "").toContain("rollback deployed");
-    expect(rollback!.run ?? "").toContain("but service not healthy");
+    expect(rollback!.run ?? "").toContain("identity-verified healthy within 30s with GUI");
+    expect(rollback!.run ?? "").toContain("<title>opencodex · proxy dashboard</title>");
   });
 
   test("design-system contract only runs when design-system inputs or the GUI change, identically on push and PR", async () => {
@@ -2363,7 +2391,7 @@ describe("GitHub Actions hardening", () => {
     // The notes string escapes backticks for the shell (\\` ... \\`); match the
     // raw source exactly rather than the unescaped rendering.
     expect(releaseScript).toContain(
-      "Live rollout to chef-control-01 runs in the \\`Deploy to control-01\\` workflow.",
+      "Live rollout to chef-control-az-01 runs in the \\`Deploy to chef-control-az-01\\` workflow.",
     );
 
     // The hand-off must be documented in-line so the ownership split doesn't

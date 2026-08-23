@@ -72,6 +72,23 @@ The Release workflow (manual dispatch, `concurrency: release`):
   changelog file is the durable record).
 - Docs deploys are independent of npm release (`deploy-docs.yml` on `main` docs pushes).
 
+## Live deploy path
+
+Production rollout is **not** part of `release.yml`. It is owned by `.github/workflows/deploy.yml`
+on the self-hosted runner `ocx-deploy-az-01` (`chef-control-az-01`).
+
+| Trigger | What happens |
+| --- | --- |
+| `git push origin vX.Y.Z` (tag on `origin/main`, CI green) | `publish-on-tag.yml` publishes to npm **and** `deploy.yml` rolls out to production |
+| `release.yml` via `bun scripts/release.ts --publish` | Creates tag + npm publish + GitHub Release; **does not** deploy — push the tag or dispatch deploy |
+| `workflow_dispatch` on Deploy with `ref: vX.Y.Z` | Deploy only (use for first deploy or re-deploy without re-publishing) |
+
+Both publish and deploy require the tagged commit to be on `origin/main` with a successful
+Cross-platform CI run. Preview tags (`vX.Y.Z-preview.N`) publish to npm `preview` and deploy
+to production the same way as stable tags.
+
+See `docs/convergence/DELIVERY_REPAIR.md` for gate specification and first-deploy procedure.
+
 ## Troubleshooting
 
 | Symptom | Cause / fix |
