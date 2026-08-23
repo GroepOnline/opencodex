@@ -23,7 +23,7 @@ import type { OcxConfig } from "../types";
 import { listOpenAiForwardSidecarCandidates, resolveFirstUsableOpenAiSidecar } from "../providers/openai-sidecar";
 import { readJsonRequestBody } from "./request-decompress";
 import { ForwardAdmissionCredentialError, validateForwardAdmissionCredential } from "./auth-cors";
-import type { RequestLogContext } from "./request-log";
+import { applyRoutedAccount, type RequestLogContext } from "./request-log";
 import { codexLogAccountId, decodeRequestErrorResponse } from "./responses";
 
 /**
@@ -76,6 +76,7 @@ export async function handleSearch(
       );
     }
     logCtx.provider = formatCodexProviderForLog(upstream.providerName, codexLogAccountId(upstream.authContext), config);
+    applyRoutedAccount(logCtx, codexLogAccountId(upstream.authContext));
   } catch (err) {
     if (err instanceof CodexAccountCooldownError) {
       return cooldownErrorResponse(err);

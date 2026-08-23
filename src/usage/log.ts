@@ -2,6 +2,8 @@ import { chmodSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readF
 import { join } from "node:path";
 import { getConfigDir } from "../config";
 import { recordOwnedConfigPath } from "../lib/config-ownership";
+import { sanitizeUsageDurationMs, USAGE_DURATION_HARD_MAX_MS } from "./duration";
+import { assertUsageLogPathIsolatedForTests } from "./isolation";
 import { usageDisplayTotalTokens } from "./totals";
 import type { OcxUsage } from "../types";
 
@@ -48,11 +50,11 @@ export interface PersistedUsageEntry {
   /** Best-effort chat/session correlation for Logs grouping (#330). */
   conversationId?: string;
   /**
-   * Pseudonymized Codex account label extracted from the provider display label at
-   * write time (the `p<hex6>` suffix account-label.ts appends, or legacy `main`).
-   * Absent on rows whose provider carries no account suffix.
+   * Routed account id from the request's routing decision. `null` when the
+   * request had no selected account (API-key providers, unknown pool). Never a
+   * scraped `p<hex6>` display-label hash.
    */
-  account?: string;
+  account?: string | null;
   resolvedModel?: string;
   requestedModel?: string;
   /** Reasoning effort / service-tier metadata for GUI Logs after restart. */
@@ -288,9 +290,9 @@ function normalizeUsageEntry(entry: PersistedUsageEntry): PersistedUsageEntry {
     ...(typeof entry.conversationId === "string" && entry.conversationId.trim()
       ? { conversationId: entry.conversationId.trim().slice(0, 128) }
       : {}),
-    ...(typeof entry.account === "string" && entry.account.trim()
-      ? { account: capMetadataString(entry.account.trim()) }
-      : {}),
+    account: typeof entry.account === "string" && entry.account.trim()
+      ? capMetadataString(entry.account.trim())
+      : null,
     ...(entry.resolvedModel ? { resolvedModel: entry.resolvedModel } : {}),
     ...(entry.requestedModel ? { requestedModel: entry.requestedModel } : {}),
     ...(typeof entry.requestedEffort === "string" && entry.requestedEffort
@@ -423,9 +425,16 @@ function notifyUsageAppendObservers(entry: PersistedUsageEntry): void {
 }
 
 export function appendUsageEntry(entry: PersistedUsageEntry): void {
-  ensureUsageLogDir();
   const path = usageLogPath();
-  const normalized = normalizeUsageEntry(entry);
+  assertUsageLogPathIsolatedForTests(path);
+  ensureUsageLogDir();
+  const normalized = normalizeUsageEntry({
+    ...entry,
+    durationMs: sanitizeUsageDurationMs(entry.durationMs, { uptimeMs: USAGE_DURATION_HARD_MAX_MS }),
+    account: typeof entry.account === "string" && entry.account.trim()
+      ? entry.account
+      : null,
+  });
   appendFileSync(path, `${JSON.stringify(normalized)}\n`, { encoding: "utf-8", mode: 0o600 });
   try { chmodSync(path, 0o600); } catch { /* best-effort on platforms that ignore chmod */ }
   // Notify only after the exact normalized row was appended successfully; an append

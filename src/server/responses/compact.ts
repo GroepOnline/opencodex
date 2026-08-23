@@ -79,6 +79,7 @@ import { redactSecretString } from "../../lib/redact";
 import { readBoundedResponseBody } from "../../lib/bounded-body";
 import { supportedLadderFor } from "../effort-policy";
 import {
+  applyRoutedAccount,
   beginRequestAttempt,
   catalogModelSupportsServiceTier,
   finishRequestAttempt,
@@ -232,6 +233,7 @@ export async function handleResponsesCompact(
           headers.set("authorization", `Bearer ${override.accessToken}`);
           headers.set("chatgpt-account-id", override.chatgptAccountId);
         }
+        applyRoutedAccount(logCtx, authCtx.kind === "pool" || authCtx.kind === "main-pool" ? authCtx.accountId : null);
       }
     } catch (err) {
       if (err instanceof CodexAccountCooldownError) {

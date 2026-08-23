@@ -143,6 +143,7 @@ import {
   recordSubagentQuotaFailureForThreadSpawn,
 } from "../../codex/subagent-model-fallback";
 import {
+  applyRoutedAccount,
   beginRequestAttempt,
   catalogModelSupportsServiceTier,
   finishRequestAttempt,
@@ -443,6 +444,7 @@ async function retryCodexPoolOnAlternateAccount(
     retryAuthCtx.accountId,
     config,
   );
+  applyRoutedAccount(logCtx, retryAuthCtx.accountId);
 
   noteAttemptSend(logCtx.activeAttempt, passthroughEstimate);
   if (options.attemptBudget && !options.attemptBudget.tryBegin()) {
@@ -1432,6 +1434,7 @@ export async function handleResponses(
 
   route.provider = applyCodexAuthContextToProvider(route.provider, authCtx, route.codexAccountMode);
   logCtx.provider = formatCodexProviderForLog(route.providerName, codexLogAccountId(authCtx), config);
+  applyRoutedAccount(logCtx, codexLogAccountId(authCtx));
   // Prefer Codex pool account as the Cursor thread namespace when present. Cursor routes without
   // codexAccountMode still get a credential-derived scope inside the Cursor adapter.
   const identityScope = codexLogAccountId(authCtx);
@@ -1497,6 +1500,7 @@ export async function handleResponses(
         promoteAnthropicActiveAccount(selection.accountId);
         route.provider = { ...route.provider, apiKey: accessToken };
         logCtx.provider = formatAnthropicProviderForLog("anthropic", selection.accountId, config);
+        applyRoutedAccount(logCtx, selection.accountId);
       } else if (
         route.providerName === "google-antigravity"
         && isGoogleAntigravityAccountPoolEnabled(config)
@@ -1534,6 +1538,7 @@ export async function handleResponses(
           project: credential.projectId,
         };
         logCtx.provider = formatGoogleAntigravityProviderForLog(selection.accountId);
+        applyRoutedAccount(logCtx, selection.accountId);
       } else if (
         route.providerName === "cursor"
         && isCursorAccountPoolEnabled(config)
@@ -1562,6 +1567,7 @@ export async function handleResponses(
         parsed._cursorIdentityScope = selection.accountId;
         route.provider = { ...route.provider, apiKey: accessToken };
         logCtx.provider = formatCursorProviderForLog(selection.accountId);
+        applyRoutedAccount(logCtx, selection.accountId);
       } else {
         const resolved = await getValidAccessTokenSnapshot(route.providerName);
         if (isOAuth401ReplayProvider) sentOAuthSnapshot = resolved;
@@ -2344,6 +2350,7 @@ export async function handleResponses(
         route.provider = { ...route.provider, apiKey: accessToken };
         promoteCursorActiveAccount(nextAccountId);
         logCtx.provider = formatCursorProviderForLog(nextAccountId);
+        applyRoutedAccount(logCtx, nextAccountId);
         activeRunTurnAdapter = resolveAdapter(
           resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
           config.cacheRetention,
@@ -2718,6 +2725,7 @@ export async function handleResponses(
           route.provider = { ...route.provider, apiKey: accessToken };
           promoteAnthropicActiveAccount(nextAccountId);
           logCtx.provider = formatAnthropicProviderForLog("anthropic", nextAccountId, config);
+          applyRoutedAccount(logCtx, nextAccountId);
           activeAdapter = resolveAdapter(
             resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
             config.cacheRetention,
@@ -2764,6 +2772,7 @@ export async function handleResponses(
           };
           promoteGoogleAntigravityActiveAccount(nextAccountId);
           logCtx.provider = formatGoogleAntigravityProviderForLog(nextAccountId);
+          applyRoutedAccount(logCtx, nextAccountId);
           activeAdapter = resolveAdapter(
             resolveWireProtocolOverride(
               route.providerName,
@@ -2951,6 +2960,7 @@ export async function handleResponses(
             route.provider = { ...route.provider, apiKey: accessToken };
             promoteAnthropicActiveAccount(nextAccountId);
             logCtx.provider = formatAnthropicProviderForLog("anthropic", nextAccountId, config);
+            applyRoutedAccount(logCtx, nextAccountId);
             activeAdapter = resolveAdapter(
               resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
               config.cacheRetention,

@@ -35,7 +35,7 @@ import { sidecarEnter } from "../lib/sidecar-tracker";
 import type { OcxConfig } from "../types";
 import { resolveFirstUsableOpenAiSidecar, selectOpenAiImagesProvider } from "../providers/openai-sidecar";
 import { ForwardAdmissionCredentialError, validateForwardAdmissionCredential } from "./auth-cors";
-import type { RequestLogContext } from "./request-log";
+import { applyRoutedAccount, type RequestLogContext } from "./request-log";
 import { codexLogAccountId } from "./responses";
 
 /** Voice call create can wait on SDP negotiation; bound a hung upstream. */
@@ -390,6 +390,7 @@ export async function resolveLiveRelay(
           codexLogAccountId(forward.authContext),
           config,
         );
+        applyRoutedAccount(logCtx, codexLogAccountId(forward.authContext));
       }
     } catch (err) {
       if (err instanceof CodexAccountCooldownError) {

@@ -8,3 +8,4 @@
 # The npm script already uses `bun test ./tests/`; this makes a bare `bun test` behave the same.
 [test]
 root = "tests"
+preload = ["./tests/preload-opencodex-home.ts"]

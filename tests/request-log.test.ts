@@ -174,11 +174,12 @@ describe("request log metadata", () => {
   });
 
   test("addFinalRequestLog preserves firstOutputMs; unset stays absent", () => {
+    const start = Date.now();
     const captured: RequestLogEntry[] = [];
-    addFinalRequestLog("ocx-ttft", 0, { model: "m", provider: "p", firstOutputMs: 12 }, 200, undefined, entry => captured.push(entry));
+    addFinalRequestLog("ocx-ttft", start, { model: "m", provider: "p", firstOutputMs: 12 }, 200, undefined, entry => captured.push(entry));
     expect(captured[0]?.firstOutputMs).toBe(12);
     const captured2: RequestLogEntry[] = [];
-    addFinalRequestLog("ocx-nostream", 0, { model: "m", provider: "p" }, 200, undefined, entry => captured2.push(entry));
+    addFinalRequestLog("ocx-nostream", start, { model: "m", provider: "p" }, 200, undefined, entry => captured2.push(entry));
     expect(captured2[0]).not.toHaveProperty("firstOutputMs");
   });
 
@@ -818,20 +819,34 @@ describe("request log metadata", () => {
     });
   });
 
-  test("addFinalRequestLog extracts account suffix from provider display labels", () => {
+  test("addFinalRequestLog writes routed account id, not a scraped label hash", () => {
     const entries: RequestLogEntry[] = [];
     addFinalRequestLog(
       "ocx-test-account",
       Date.now(),
-      { model: "gpt-5.6-sol", provider: "openai-p104398" },
+      { model: "gpt-5.6-sol", provider: "openai-p104398", account: "acct-routed" },
       200,
       undefined,
       entry => entries.push(entry),
     );
     expect(entries[0]).toMatchObject({
       provider: "openai-p104398",
-      account: "p104398",
+      account: "acct-routed",
     });
+    expect(entries[0]!.account).not.toBe("p104398");
+  });
+
+  test("addFinalRequestLog writes account null when routing selected none", () => {
+    const entries: RequestLogEntry[] = [];
+    addFinalRequestLog(
+      "ocx-test-account-unknown",
+      Date.now(),
+      { model: "gpt-5.6-sol", provider: "openai-p104398" },
+      200,
+      undefined,
+      entry => entries.push(entry),
+    );
+    expect(entries[0]!.account).toBeNull();
   });
 
   test("httpStatusFromTerminalError maps Cursor tool catalog limits to 400", () => {
@@ -1220,6 +1235,7 @@ describe("request log restart hydrate", () => {
       timestamp: 1_800_000_000_000,
       provider: "chatgpt-pabcdef",
       model: "gpt-5.6-sol",
+      account: null,
       requestedModel: "gpt-5.6-sol",
       requestedEffort: "high",
       effectiveEffort: "high",

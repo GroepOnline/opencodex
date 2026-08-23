@@ -28,7 +28,7 @@ import { resolveFirstUsableOpenAiSidecar, selectImagesProvider } from "../provid
 import { getProviderRegistryEntry } from "../providers/registry";
 import { readJsonRequestBody } from "./request-decompress";
 import { ForwardAdmissionCredentialError, validateForwardAdmissionCredential } from "./auth-cors";
-import type { RequestLogContext } from "./request-log";
+import { applyRoutedAccount, type RequestLogContext } from "./request-log";
 import { codexLogAccountId, decodeRequestErrorResponse } from "./responses";
 import { getValidAccessToken, getOAuthCredentialProjectId } from "../oauth/index";
 import { safeAntigravityHttpErrorMessage } from "../adapters/google-errors";
@@ -380,7 +380,10 @@ export async function handleImages(
   if (canUseOpenAiForward) {
     try {
       forward = await resolveFirstUsableOpenAiSidecar(candidates.forwardCandidates, req.headers, config);
-      if (forward) logCtx.provider = formatCodexProviderForLog(forward.providerName, codexLogAccountId(forward.authContext), config);
+      if (forward) {
+        logCtx.provider = formatCodexProviderForLog(forward.providerName, codexLogAccountId(forward.authContext), config);
+        applyRoutedAccount(logCtx, codexLogAccountId(forward.authContext));
+      }
     } catch (err) {
       if (err instanceof CodexAccountCooldownError) {
         forwardAuthError = cooldownErrorResponse(err);

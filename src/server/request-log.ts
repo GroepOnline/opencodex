@@ -10,7 +10,7 @@ import { readCodexCatalogPath } from "../codex/catalog";
 import type { OcxUsage } from "../types";
 import type { AdapterRequest } from "../adapters/base";
 import { redactSecretString } from "../lib/redact";
-import { providerAccountLabel } from "../providers/label";
+import { elapsedUsageDurationMs, sanitizeUsageDurationMs } from "../usage/duration";
 import {
   appendUsageEntry,
   isKnownUsageSurface,
@@ -71,6 +71,12 @@ export interface RequestLogContext {
   usageDebugBodyKind?: UsageDebugBodyKind;
   usageDebugBodySample?: string;
   usageDebugContentType?: string;
+  /**
+   * Account id selected by routing for this request. Set via `applyRoutedAccount`
+   * at the routing decision; `null` when no account was chosen. Never derived
+   * from a scraped `p<hex6>` provider-label suffix.
+   */
+  account?: string | null;
   /** Route adapter type ("cursor"/"kiro"/"anthropic"/…): drives estimated-usage detection
    *  independent of the user-chosen provider NAME (devlog 130 B2). */
   providerAdapter?: string;
@@ -121,8 +127,8 @@ export interface RequestLogEntry {
   closeReason?: "terminal" | "client_cancel" | "non_stream" | "body_stall" | "body_overflow";
   /** Secret-redacted upstream error reason, surfaced in /api/logs and the GUI detail modal. */
   upstreamError?: string;
-  /** Pseudonymized account label when the provider display name carries a pool suffix. */
-  account?: string;
+  /** Routed account id, or `null` when routing selected none. */
+  account?: string | null;
   usageStatus: UsageStatus;
   usage?: OcxUsage;
   totalTokens?: number;
@@ -208,7 +214,7 @@ export function requestLogEntryFromPersistedUsage(entry: PersistedUsageEntry): R
     ...(entry.firstOutputMs !== undefined ? { firstOutputMs: entry.firstOutputMs } : {}),
     ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
     ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
-    ...(entry.account ? { account: entry.account } : {}),
+    account: entry.account ?? null,
     ...(entry.requestedModel ? { requestedModel: entry.requestedModel } : {}),
     ...(entry.requestedEffort ? { requestedEffort: entry.requestedEffort } : {}),
     ...(entry.effectiveEffort ? { effectiveEffort: entry.effectiveEffort } : {}),
@@ -289,7 +295,6 @@ export function addRequestLog(entry: RequestLogEntry) {
         ...(entry.upstreamError ? { upstreamError: entry.upstreamError } : {}),
       }
       : {};
-    const account = providerAccountLabel(entry.provider);
     appendUsageEntry({
       requestId: entry.requestId,
       timestamp: entry.timestamp,
@@ -297,7 +302,7 @@ export function addRequestLog(entry: RequestLogEntry) {
       model: entry.model,
       ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
       ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
-      ...(account ? { account } : {}),
+      account: persistedAccountId(entry.account),
       ...(entry.resolvedModel ? { resolvedModel: entry.resolvedModel } : {}),
       ...(entry.requestedModel ? { requestedModel: entry.requestedModel } : {}),
       ...(entry.requestedEffort ? { requestedEffort: entry.requestedEffort } : {}),
@@ -321,9 +326,33 @@ export function addRequestLog(entry: RequestLogEntry) {
       ...(entry.attempts?.length ? { attempts: entry.attempts } : {}),
       ...failureDiagnostics,
     });
-  } catch {
-    /* request logging must never fail a user request */
+  } catch (err) {
+    const code = err && typeof err === "object" && "code" in err
+      ? String((err as { code?: unknown }).code ?? "")
+      : "";
+    console.warn(JSON.stringify({
+      event: "usage_persist_failed",
+      errorName: err instanceof Error ? err.name : "Error",
+      errorCode: code || null,
+    }));
   }
+}
+
+/** Persist the routed account id, or `null` when routing selected none. */
+export function persistedAccountId(account: string | null | undefined): string | null {
+  const trimmed = typeof account === "string" ? account.trim() : "";
+  return trimmed || null;
+}
+
+/**
+ * Record the account id chosen by routing. Call this at the same site as the
+ * provider display-label rewrite — do not scrape the label afterwards.
+ */
+export function applyRoutedAccount(
+  logCtx: RequestLogContext,
+  accountId: string | null | undefined,
+): void {
+  logCtx.account = persistedAccountId(accountId);
 }
 
 export function nextRequestLogId(timestamp = Date.now()): string {
@@ -746,7 +775,7 @@ export function addFinalRequestLog(
     finishRequestAttempt(
       logCtx.activeAttempt,
       effectiveStatus,
-      Date.now() - (logCtx.activeAttemptStartedAt ?? start),
+      elapsedUsageDurationMs(logCtx.activeAttemptStartedAt ?? start),
       logCtx.usage,
     );
   }
@@ -767,13 +796,12 @@ export function addFinalRequestLog(
   const totalTokens = aggregate?.totalTokens ?? existing.totalTokens;
   const provider = isCombo ? "combo" : resolveRequestLogProvider(logCtx);
   const model = isCombo ? (logCtx.requestedModel ?? resolveRequestLogModel(logCtx)) : resolveRequestLogModel(logCtx);
-  const account = providerAccountLabel(provider);
   addLog({
     requestId,
     timestamp: start,
     model,
     provider,
-    ...(account ? { account } : {}),
+    account: persistedAccountId(logCtx.account),
     ...(logCtx.surface ? { surface: logCtx.surface } : {}),
     ...(logCtx.conversationId ? { conversationId: logCtx.conversationId } : {}),
     ...(logCtx.requestedModel ? { requestedModel: logCtx.requestedModel } : {}),
@@ -789,7 +817,7 @@ export function addFinalRequestLog(
     ...(logCtx.responseServiceTier ? { responseServiceTier: logCtx.responseServiceTier } : {}),
     ...(logCtx.resolvedModel ? { resolvedModel: logCtx.resolvedModel } : {}),
     status: effectiveStatus,
-    durationMs: Date.now() - start,
+    durationMs: elapsedUsageDurationMs(start),
     ...(logCtx.firstOutputMs !== undefined ? { firstOutputMs: logCtx.firstOutputMs } : {}),
     ...(errorCode ? { errorCode } : {}),
     ...(meta?.terminalStatus ? { terminalStatus: meta.terminalStatus } : {}),
@@ -936,7 +964,7 @@ export function finishRequestAttempt(
     attempt.inputTokenEstimate,
   );
   attempt.status = status;
-  attempt.durationMs = Math.max(0, durationMs);
+  attempt.durationMs = sanitizeUsageDurationMs(durationMs);
   attempt.usageStatus = finalized.status;
   if (finalized.usage) attempt.usage = finalized.usage;
   else delete attempt.usage;
