@@ -154,6 +154,7 @@ import { handleLive, logLiveSidebandFrame, parseLiveSidebandTarget, resolveLiveS
 import { handleSearch } from "./search";
 import { fetchAllModels, handleManagementAPI, VERSION } from "./management-api";
 import { GIT_SHA } from "./git-sha";
+import { buildProvenanceResponse } from "./management/provenance-routes";
 import { initializeManagementAuthState, issueGuiSession, requireManagementAuth } from "./management-auth";
 import { runtimeMetrics } from "../observability/metrics";
 import { ensureUsageLogMetricsObserver } from "../observability/usage-log-metrics";
@@ -507,10 +508,22 @@ export function startServer(port?: number) {
 
       if (url.pathname.startsWith("/api/")) {
         const desktop3pLibraryGet = url.pathname === "/api/claude-desktop/3p-library" && req.method === "GET";
+        const provenanceGet = url.pathname === "/api/provenance" && req.method === "GET";
         const wrapManagement = (response: Response) => {
           const wrapped = withManagementCors(response, req, config);
           return desktop3pLibraryGet ? withNoStore(wrapped) : wrapped;
         };
+        if (provenanceGet) {
+          const provenanceAuthError = await requireManagementAuth(req, managementAuth, config);
+          const authenticated = provenanceAuthError === null;
+          return wrapManagement(buildProvenanceResponse(
+            config,
+            listenPort,
+            authenticated,
+            managementAuth.available,
+            req,
+          ));
+        }
         const mgmtGate = admission.gate("management", req, requestServer);
         if (mgmtGate.preAuthDeny) return wrapManagement(mgmtGate.preAuthDeny);
         const apiAuthError = await requireManagementAuth(req, managementAuth, config);
@@ -523,7 +536,11 @@ export function startServer(port?: number) {
         }
         const mgmtRateDeny = mgmtGate.commit();
         if (mgmtRateDeny) return wrapManagement(mgmtRateDeny);
-        const mgmtResponse = await handleManagementAPI(req, url, config);
+        const mgmtResponse = await handleManagementAPI(req, url, config, {}, {
+          listenPort,
+          managementAuthAvailable: managementAuth.available,
+          provenanceAuthenticated: true,
+        });
         if (mgmtResponse) return wrapManagement(mgmtResponse);
         return wrapManagement(formatErrorResponse(404, "not_found", `Unknown endpoint: ${req.method} ${url.pathname}`));
       }

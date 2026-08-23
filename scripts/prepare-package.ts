@@ -4,6 +4,15 @@ import { fileURLToPath } from "node:url";
 
 const root = dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
 
+try {
+  const generate = Bun.spawnSync(["bun", "scripts/generate-build-info.ts"], { cwd: root, stdout: "ignore", stderr: "ignore" });
+  if (generate.exitCode !== 0) {
+    console.warn("prepare-package: generate-build-info skipped (non-fatal for local dev)");
+  }
+} catch {
+  /* git-less npm consumers may not have bun on PATH during exotic installs */
+}
+
 function chmodIfExists(path: string, mode: number): void {
   if (!existsSync(path)) return;
   try { chmodSync(path, mode); } catch { /* best-effort for read-only filesystems */ }

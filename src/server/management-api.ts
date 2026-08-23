@@ -67,7 +67,14 @@ import { handleComboRoutes } from "./management/combo-routes";
 import { handleSystemRoutes } from "./management/system-routes";
 import { handleCacheRoutes } from "./management/cache-routes";
 import { handleRouterRoutes } from "./management/router-routes";
+import { handleProvenanceRoutes } from "./management/provenance-routes";
 import type { ManagementContext } from "./management/context";
+
+export interface ManagementRouteOptions {
+  listenPort?: number;
+  managementAuthAvailable?: boolean;
+  provenanceAuthenticated?: boolean;
+}
 export type { ManagementApiDeps } from "./management/context";
 import { fetchAllModels } from "./management/shared";
 
@@ -80,7 +87,13 @@ export const VERSION = (() => {
   }
 })();
 
-export async function handleManagementAPI(req: Request, url: URL, config: OcxConfig, deps: ManagementApiDeps = {}): Promise<Response | null> {
+export async function handleManagementAPI(
+  req: Request,
+  url: URL,
+  config: OcxConfig,
+  deps: ManagementApiDeps = {},
+  routeOpts: ManagementRouteOptions = {},
+): Promise<Response | null> {
   if (!isAllowedManagementOrigin(req, config)) {
     return jsonResponse({ error: "cross-origin request blocked" }, 403, req, config);
   }
@@ -124,8 +137,14 @@ export async function handleManagementAPI(req: Request, url: URL, config: OcxCon
     } catch { /* best-effort */ }
   }
   const ctx: ManagementContext = { req, url, config, deps, refreshCodexCatalogBestEffort, syncClaudeAgentDefsBestEffort };
+  const listenPort = routeOpts.listenPort ?? config.port ?? 10100;
   const routed =
-    (await handleConfigRoutes(ctx))
+    (await handleProvenanceRoutes(ctx, {
+      listenPort,
+      managementAuthAvailable: routeOpts.managementAuthAvailable ?? true,
+      authenticated: routeOpts.provenanceAuthenticated ?? true,
+    }))
+    ?? (await handleConfigRoutes(ctx))
     ??     (await handleLogsUsageRoutes(ctx))
     ??     (await handleProviderRoutes(ctx))
     ??     (await handleModelRoutes(ctx))
