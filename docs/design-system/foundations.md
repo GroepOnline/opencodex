@@ -20,6 +20,23 @@
 `--accent`는 기본 액션과 포커스에 사용한다. 활성 토글은 다크 모드에서 트랙과 핸들이
 겹쳐 보이지 않도록 `--toggle-on-bg`와 `--toggle-dot-color`를 사용한다.
 
+### Operational status
+
+계정·프로바이더·헬스 행·트래픽 셀에 쓰는 상태 semantics:
+
+| 상태 | 토큰 접두 | 용도 |
+|---|---|---|
+| healthy | `--status-healthy-*` | 정상, 연결됨, 사용 가능 |
+| degraded | `--status-degraded-*` | 부분 장애, 경고 |
+| rate-limited | `--status-rate-limited-*` | 429, quota admission |
+| cooldown | `--status-cooldown-*` | 일시 대기, 백오프 |
+| expired | `--status-expired-*` | 자격 만료 |
+| auth-failed | `--status-auth-failed-*` | reauth 필요, 401/403 |
+| disabled | `--status-disabled-*` | 사용자/정책 비활성 |
+| unknown | `--status-unknown-*` | 데이터 없음 |
+
+React에서는 `StatusBadge` (`ui.tsx`) + `statusBadgeClass()` (`design-tokens.ts`)를 사용한다.
+
 ## Typography
 
 ### Font families

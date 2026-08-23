@@ -134,10 +134,10 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
 
   return (
     <>
-      <div className="depas-viewkop">
+      <div className="page-head">
         <h2>{t("shell.navTraffic")}</h2>
       </div>
-      <p className="depas-viewsub">{t("vk.subtitle")}</p>
+      <p className="page-sub">{t("vk.subtitle")}</p>
 
       <div className="stat-strip" role="group" aria-label={t("vk.statsAria")}>
         <div className="stat-strip-item">

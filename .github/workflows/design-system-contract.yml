@@ -29,3 +29,11 @@ jobs:
           persist-credentials: false
       - name: Validate consumer contract
         run: python3 .design-system-validator/scripts/validate-consumer-contract.py .github/design-system.json
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.5"
+      - name: Design token drift gate
+        run: |
+          cd gui
+          bun install --frozen-lockfile
+          bun run lint:design-tokens

@@ -4,6 +4,12 @@ import { createPortal } from "react-dom";
 import { IconCheck, IconAlert } from "./icons";
 import { IconChevron } from "./icons";
 import { computeSelectMenuStyle } from "./select-position";
+import {
+  categoricalBadgeClass,
+  statusBadgeClass,
+  type CategoricalBadgeVariant,
+  type OperationalStatus,
+} from "./design-tokens";
 
 export function Switch({ on, onClick, disabled, label }: { on: boolean; onClick: () => void; disabled?: boolean; label?: string }) {
   return (
@@ -238,6 +244,41 @@ export function EmptyState({ icon, title, children, className, style }: { icon?:
       {children && <div className="text-control">{children}</div>}
     </div>
   );
+}
+
+const STATUS_BADGE_LOOKUP: Record<OperationalStatus, true> = {
+  healthy: true,
+  degraded: true,
+  "rate-limited": true,
+  cooldown: true,
+  expired: true,
+  "auth-failed": true,
+  disabled: true,
+  unknown: true,
+};
+
+export function Badge({ variant = "muted", className, children, ...rest }: {
+  variant?: CategoricalBadgeVariant | OperationalStatus;
+  className?: string;
+  children: ReactNode;
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  const variantClass = variant in STATUS_BADGE_LOOKUP
+    ? statusBadgeClass(variant as OperationalStatus)
+    : categoricalBadgeClass(variant as CategoricalBadgeVariant);
+  const cls = className ? `${variantClass} ${className}` : variantClass;
+  if (rest.onClick || rest.type === "button") {
+    return <button type="button" className={cls} {...rest}>{children}</button>;
+  }
+  return <span className={cls} {...rest}>{children}</span>;
+}
+
+export function StatusBadge({ status, children, className }: {
+  status: OperationalStatus;
+  children: ReactNode;
+  className?: string;
+}) {
+  const cls = className ? `${statusBadgeClass(status)} ${className}` : statusBadgeClass(status);
+  return <span className={cls}>{children}</span>;
 }
 
 /* Hover/focus tooltip — styled replacement for the native `title` attribute. */

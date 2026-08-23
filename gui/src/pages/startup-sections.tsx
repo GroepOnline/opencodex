@@ -6,6 +6,7 @@ import type {
   StartupInstallAction,
   TrayStatusData,
 } from "./startup-shared";
+import { StatusBadge } from "../ui";
 import {
   PROTECTION_KEYS,
   STATUS_KEYS,
@@ -13,7 +14,7 @@ import {
 } from "./startup-shared";
 
 function StartupStateBadge({ ok, yes, no }: { ok: boolean; yes: string; no: string }) {
-  return <span className={`badge ${ok ? "badge-green" : "badge-amber"}`}>{ok ? yes : no}</span>;
+  return <StatusBadge status={ok ? "healthy" : "degraded"}>{ok ? yes : no}</StatusBadge>;
 }
 
 export function StartupHeroSection({
@@ -44,9 +45,9 @@ export function StartupHeroSection({
       <section className={`panel startup-hero ${statusClass}`} aria-live="polite">
         <div className="startup-hero-icon"><StatusIcon /></div>
         <div className="startup-hero-copy">
-          <span className={`badge ${failed || data.status === "at-risk" ? "badge-amber" : "badge-green"}`}>
+          <StatusBadge status={failed || data.status === "at-risk" ? "degraded" : "healthy"}>
             {t(failed ? "startup.status.atRisk" : STATUS_KEYS[data.status])}
-          </span>
+          </StatusBadge>
           <h3>{t(failed ? "startup.error" : SUMMARY_KEYS[data.status])}</h3>
           <p>{failed
             ? t("startup.staleData")

@@ -28,9 +28,9 @@ describe("oauth health badge helpers", () => {
     expect(oauthHealthBadgeTone("cooldown")).toBe("muted");
     expect(oauthHealthBadgeTone("reauth_required")).toBe("warn");
     expect(oauthHealthBadgeTone("warning")).toBe("warn");
-    expect(oauthHealthBadgeClass("healthy")).toBe("badge badge-green");
-    expect(oauthHealthBadgeClass("reauth_required")).toBe("badge badge-amber");
-    expect(oauthHealthBadgeClass("cooldown")).toBe("badge badge-muted");
+    expect(oauthHealthBadgeClass("healthy")).toBe("badge badge-status-healthy");
+    expect(oauthHealthBadgeClass("reauth_required")).toBe("badge badge-status-auth-failed");
+    expect(oauthHealthBadgeClass("cooldown")).toBe("badge badge-status-cooldown");
   });
 
   test("action gates: reauth and doctor, not during cooldown probe", () => {

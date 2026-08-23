@@ -29,10 +29,10 @@ export default function Modellen({ apiBase, target }: { apiBase: string; target?
   }
   return (
     <>
-      <div className="depas-viewkop">
+      <div className="page-head">
         <h2>{t("nav.models")}</h2>
       </div>
-      <p className="depas-viewsub">{t("mod.subtitle")}</p>
+      <p className="page-sub">{t("mod.subtitle")}</p>
       <div className="usage-segmented" role="tablist" aria-label={t("mod.tablistAria")} style={{ marginBottom: 24 }}>
         {TABS.map(({ id, labelKey }) => (
           <button

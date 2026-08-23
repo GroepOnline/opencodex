@@ -6,6 +6,7 @@
 
 import type { TFn, TKey } from "./i18n";
 import { displayAccountId } from "./lib/privacy";
+import { statusBadgeClass, type OperationalStatus } from "./design-tokens";
 
 export type OAuthHealthStatus = "healthy" | "cooldown" | "reauth_required" | "warning";
 
@@ -34,11 +35,20 @@ export function oauthHealthBadgeTone(status: OAuthHealthStatus | undefined): OAu
   return "muted";
 }
 
+export function oauthHealthOperationalStatus(
+  health: OAuthHealthView | undefined,
+): OperationalStatus {
+  if (!health || health.status === "healthy") return "healthy";
+  if (health.status === "cooldown") {
+    return health.reason === "rate_limit" ? "rate-limited" : "cooldown";
+  }
+  if (health.status === "reauth_required") return "auth-failed";
+  if (health.status === "warning") return "degraded";
+  return "unknown";
+}
+
 export function oauthHealthBadgeClass(status: OAuthHealthStatus | undefined): string {
-  const tone = oauthHealthBadgeTone(status);
-  if (tone === "ok") return "badge badge-green";
-  if (tone === "warn") return "badge badge-amber";
-  return "badge badge-muted";
+  return statusBadgeClass(oauthHealthOperationalStatus(status ? { status } : undefined));
 }
 
 /** Whether the UI should offer reauthenticate (not during cooldown-only). */
