@@ -285,16 +285,13 @@ Sections: **General** (theme, locale) · **API access** · **Storage** · **Dang
 
 ## 8. Build verification
 
-Local workstation: Node **v24.5.0**, Bun **1.3.14** (snapshot noted production host Node 18 is too old for Vite ≥20.19).
+Local workstation: Node **v24.5.0**, Bun **1.3.14** (snapshot noted production host Node 18.19.1 is too old for Vite ≥20.19).
 
-Run in `gui/`:
-
-```bash
-bun install --frozen-lockfile
-bun run lint
-bun run lint:design-tokens
-bun run build
-bun run doctor
-```
-
-Results recorded at commit time in git log message.
+| Command | Result |
+|---|---|
+| `bun install --frozen-lockfile` | OK (177 packages) |
+| `bun run lint` | OK — 0 errors, 3 warnings (inline hex fallbacks in Models/OAuthAccountPoolSettings) |
+| `bun run lint:design-tokens` | OK — drift gate PASS (182 files, 0 depas hits, 5 distinct hex in TSX) |
+| `bun run build` | OK — 161 modules, CSS 157.47 kB, JS 766.10 kB, General Sans woff2 bundled |
+| `bun run doctor` | OK — no issues (changed scope vs origin/main) |
+| `bun test tests/oauth-health-display.test.ts` | OK — 9/9 pass |
