@@ -337,7 +337,9 @@ jobs:
               urls="http://${hostname}:${port}/healthz http://127.0.0.1:${port}/healthz"
             fi
             ts_ip="$(tailscale ip -4 2>/dev/null | head -n1 || true)"
-            [ -z "$ts_ip" ] || urls="$urls http://${ts_ip}:10100/healthz"
+            if [ -n "$ts_ip" ] && [ "$ts_ip" != "$hostname" ]; then
+              urls="$urls http://${ts_ip}:${port}/healthz"
+            fi
           fi
           main_pid="$(sudo systemctl show -p MainPID --value opencodex-proxy.service)"
           if [[ ! "$main_pid" =~ ^[1-9][0-9]*$ ]]; then

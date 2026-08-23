@@ -1,7 +1,7 @@
 # Delivery repair — Lane E (OCX 3.0 convergence)
 
 Wave 0 ground truth: `evidence/OCX_STATE_SNAPSHOT.yaml`. This document records root causes,
-fixes, gating design, release-path coherence, Deployment v2 (later), PR #90 relationship,
+fixes, gating design, release-path coherence, Deployment v2 (later), #85/#90 absorption,
 and the safe first-deploy procedure.
 
 ## Root-cause table
@@ -38,18 +38,68 @@ and the safe first-deploy procedure.
 
 - Added “Live deploy path” section documenting tag → publish → deploy coherence.
 
-## Relationship to PR #90
+## Absorbs #85 and #90 (file-level reconciliation)
 
-| Aspect | PR #90 (`fix/azure-gui-deploy-lane` → `dev`) | This lane |
+**Verdict:** Lane E is a strict superset of both `origin/dev` deploy fixes (#85, five-commit promotion) and PR #90 (`fix/azure-gui-deploy-lane` → `dev`). PR2 (`convergence/lane-e-delivery` → `main`) can land independently — it does not require the dev promotion stack and makes #85/#90 redundant on merge.
+
+### Source inventory
+
+| Source | Base | Unique contribution |
 | --- | --- | --- |
-| Node 22.12.0 for Vite | Yes | **Absorbed** |
-| Dashboard `<title>` gate in health/rollback | Yes | **Absorbed** into L4 + rollback |
-| Correct `DEPLOY_PATH` / az-01 naming | Already on `dev`, not in PR #90 diff | **Included** (from `origin/dev`) |
-| Config-driven health URLs | On `dev` (Tailscale discovery) | **Extended** — primary probe from `config.json` hostname |
-| L1–L4 gates, CI gate on deploy | No | **New in this lane** |
-| Base branch | `dev` | `main` via convergence worktree |
+| **#85** (`fix(ci): deploy OpenCodex on chef-control-az-01`, on `dev`) | `origin/dev` deploy.yml | az-01 naming, `/opt/chef/services/opencodex`, Tailscale IPv4 discovery, loopback+TS health URLs, publish-on-tag cross-refs |
+| **#90** (`fix/azure-gui-deploy-lane`, on `dev`) | #85's deploy.yml | Node 22.12.0 pin, dashboard `<title>` gate in health + rollback |
+| **Lane E** (this branch) | `origin/main` | All of the above **plus** config-driven hostname/port (V2), L1–L4 gates, CI gate, deploy SHA verify, extended rollback |
 
-**Verdict:** This work **supersedes PR #90** for merge purposes. When `#90` lands on `dev`, merge/rebase should prefer this branch’s `deploy.yml` and test pins — they are a strict superset. No contradictory paths remain.
+### Line-by-line: PR #85 (`origin/dev:.github/workflows/deploy.yml`)
+
+| #85 unique element | Location in Lane E `deploy.yml` | Notes |
+| --- | --- | --- |
+| `name: Deploy to chef-control-az-01` | L1 | Identical |
+| Header: Azure control host, `ocx-deploy-runner.service` | L3–14 | Extended: names runner `ocx-deploy-az-01`, notes DEPLOY_PATH is the systemd tree |
+| `concurrency.group: ocx-deploy-az-01` | L33 | Identical |
+| `DEPLOY_PATH: /opt/chef/services/opencodex` | L41 | Identical |
+| Dispatch ref via `INPUT_REF` env (not inline `${{ }}`) | L43–50, L53–54 | Identical pattern |
+| Tag shape guard `^v[0-9]+\.[0-9]+\.[0-9]+(-preview\.[0-9]+)?$` | L61–64 | Identical |
+| `Verify tag is on origin/main` + pinned `tag_sha` | L73–84 | Identical semantics |
+| `Refuse dirty live checkout or dropped commits` | L108–121 | Identical |
+| `tailscale ip -4 2>/dev/null \| head -n1` | L146, L339 | **Ported** — used as fallback when TS IP ≠ config hostname |
+| Loopback health URL probe | L142–144 | **Extended** — loopback added only when config hostname ≠ `127.0.0.1` |
+| `http://${ts_ip}:10100/healthz` | L148 | **Extended** — uses config `port`, not hardcoded `10100` |
+| Pinned SHA checkout (`tag_sha`, not tag name) | L155–168 | **Extended** — adds post-checkout SHA equality check |
+| `Setup Bun` + frozen install + `build:gui` | L175–186 | Identical |
+| `sudo systemctl restart opencodex-proxy.service` | L188–189 | Identical |
+| Health gate: MainPID + identity `/healthz` 60s | L191–243 (`L1` + `L2`) | **Extended** — split into L1 process + L2 service; L2 also checks deploy `version` |
+| Rollback: prev SHA + rebuild + restart + 30s re-health | L316–366 | **Extended** — re-health also verifies dashboard `<title>` (from #90) |
+| **Dropped from #85** | — | **Mandatory Tailscale** (`exit 1` if `ts_ip` empty): replaced by config-hostname-primary design; deploy refuses only when `config.json` is missing. **Loopback-first** ordering: config hostname is primary (V2 bind fix). **Hardcoded port 10100** in URL builder: replaced by config `port`. |
+
+### Line-by-line: PR #90 (`gh pr diff 90`)
+
+| #90 unique element | Location in Lane E `deploy.yml` | Notes |
+| --- | --- | --- |
+| `Setup Node for Vite` / `node-version: "22.12.0"` | L170–173 | Identical pin (`actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e`) |
+| Health: fetch `/` and grep `<title>opencodex · proxy dashboard</title>` | L270–287 (`L4 product gate`) | **Relocated** — #90 folded GUI check into the single health step; Lane E keeps identity health in L2 and GUI proof in L4 (+ bundled `src="/assets/` probe) |
+| Health error: `…within 60s with GUI after restart` | L242 | L2 retains identity-only message; L4 emits GUI-specific errors |
+| Rollback: dashboard title re-check after re-health | L356–359 | Identical grep; error text `…within 30s with GUI` at L365 |
+| Test: `node-version: "22.12.0"` assertion | `tests/ci-workflows.test.ts` L2309–2310 | Identical |
+| Test: dashboard title in health + rollback | `tests/ci-workflows.test.ts` L2304–2305, L2336 | **Extended** — title asserted on L4 + rollback (not inlined into L2, which is identity-only) |
+
+### Lane E additions (not in #85 or #90)
+
+| Addition | Location | Why |
+| --- | --- | --- |
+| `permissions.actions: read` + Cross-platform CI gate | L30, L86–99 | Align deploy with `publish-on-tag.yml`; block untested SHAs |
+| `Resolve health URLs` reads `~/.opencodex/config.json` | L123–153 | V2 — primary probe matches bind address systemd uses |
+| `version=${tag#v}` output + L2 version match | L66, L229 | Prove deployed binary reports the tag being rolled out |
+| Deploy SHA mismatch guard | L165–168 | Catch partial/failed checkouts before restart |
+| L3 dependencies gate (`/api/startup-health`, `/api/providers`) | L245–268 | Management plane reachable with persisted config |
+| L4 product gate (`/api/config`, `/v1/models` smoke) | L270–314 | GUI + config version + optional data-plane smoke |
+| `publish-on-tag.yml` az-01 cross-refs | separate file | Matches #85 intent on main |
+
+### Merge guidance
+
+- **PR2 → `main`:** Safe alone. Overlays broken `control-01` / `/home/chef/opencodex-psp` workflow on main with the full az-01 + gate stack.
+- **#85 on `dev`:** Drop from PR3 promotion — fully superseded; merging both would conflict on `deploy.yml` and tests for no gain.
+- **#90 on `dev`:** Close or rebase onto Lane E — every #90 hunk is present; prefer Lane E's L4 separation over inlined GUI check in L2.
 
 ## Four-level health gate specification
 
