@@ -19,6 +19,7 @@ import { isProviderFallbackComboId, providerFallbackIssues } from "./providers/f
 import {
   isWirePinnedModel,
   MODEL_ADAPTER_OVERRIDE_ALLOWED,
+  CONFIG_SCHEMA_VERSION,
   OPENAI_PROVIDER_TIER_VERSION,
   REASONING_SUMMARY_DELIVERY_VALUES,
   type OcxClaudeCodeConfig,
@@ -29,6 +30,8 @@ import { isCanonicalOpenAiForwardProvider, OPENAI_CODEX_PROVIDER_ID } from "./pr
 import { parseDesktopProfile } from "./claude/desktop-profile";
 import { isCodexReasoningEffort, modelRecordValue } from "./reasoning-effort";
 import { DEFAULT_RATE_LIMIT_WEBSOCKET_CONCURRENCY } from "./ratelimit";
+
+export { CONFIG_SCHEMA_VERSION };
 
 let _atomicSeq = 0;
 
@@ -750,6 +753,9 @@ const configSchema = z.object({
   providers: z.record(z.string(), providerConfigSchema),
   defaultProvider: z.string().min(1).default("openai"),
   openaiProviderTierVersion: z.union([z.literal(1), z.literal(2)]).optional(),
+  // Missing on every live file. Invalid values degrade instead of failing the
+  // whole parse — a typo must never trip backup-and-defaults and wipe providers.
+  schemaVersion: z.number().int().positive().optional().catch(undefined),
   providerContextCaps: z.record(z.string(), z.number().int().positive()).optional(),
   contextCapValue: z.number().int().positive().optional(),
   multiAgentGuidanceEnabled: z.boolean().optional(),
@@ -1192,6 +1198,18 @@ function warnDegradedNativeSubagentConfig(rawParsed: unknown, config: OcxConfig)
   }
 }
 
+/**
+ * Live files have no `schemaVersion`. Absence (or a non-numeric typo the schema
+ * already caught) means generation 1. Mutates the in-memory object only — callers
+ * must not treat this as a license to rewrite the file on read.
+ */
+export function applySchemaVersionDefault(config: OcxConfig): OcxConfig {
+  if (typeof config.schemaVersion !== "number") {
+    config.schemaVersion = CONFIG_SCHEMA_VERSION;
+  }
+  return config;
+}
+
 export function loadConfig(): OcxConfig {
   const dir = getConfigDir();
   const configPath = getConfigPath();
@@ -1211,7 +1229,9 @@ export function loadConfig(): OcxConfig {
       warnDegradedHostname(parsed, config);
       warnDegradedClaudeSubagentEffort(parsed);
       warnDegradedNativeSubagentConfig(parsed, config);
-      return normalizeClaudeSubagentEffort(normalizeNativeSubagentSync(config, parsed), parsed);
+      return applySchemaVersionDefault(
+        normalizeClaudeSubagentEffort(normalizeNativeSubagentSync(config, parsed), parsed),
+      );
     }
     // Schema validation failed — merge defaults into the raw object instead of
     // discarding it entirely, so pool accounts and providers survive a missing
@@ -1229,7 +1249,9 @@ export function loadConfig(): OcxConfig {
       warnDegradedHostname(parsed, config);
       warnDegradedClaudeSubagentEffort(parsed);
       warnDegradedNativeSubagentConfig(parsed, config);
-      return normalizeClaudeSubagentEffort(normalizeNativeSubagentSync(config, parsed), parsed);
+      return applySchemaVersionDefault(
+        normalizeClaudeSubagentEffort(normalizeNativeSubagentSync(config, parsed), parsed),
+      );
     }
     // Merge couldn't fix it — truly broken config
     warnAndBackupInvalidConfig(configPath, result.error);
@@ -1265,7 +1287,9 @@ function validFileConfigDiagnostics(config: OcxConfig, rawParsed: unknown): Conf
   // ordinary save persists the normalized absence.
   const syncDisabledReason = nativeSubagentSyncDisabledReason(config, rawParsed);
   const rawEffort = rawClaudeSubagentEffort(rawParsed);
-  const normalized = normalizeClaudeSubagentEffort(normalizeNativeSubagentSync(config, rawParsed), rawParsed);
+  const normalized = applySchemaVersionDefault(
+    normalizeClaudeSubagentEffort(normalizeNativeSubagentSync(config, rawParsed), rawParsed),
+  );
   const warnings = configPlaceholderWarnings(normalized);
   if (rawEffort !== undefined && !isClaudeSubagentEffort(rawEffort)) {
     warnings.push(`claudeCode.subagentEffort ignored: expected one of ${CLAUDE_SUBAGENT_EFFORTS.join(", ")}`);
@@ -1334,7 +1358,7 @@ export function validateConfigCandidate(value: unknown): { ok: true; config: Ocx
   const boundaryError = blankHostnameError(value) ?? claudeSubagentEffortError(value);
   if (boundaryError) return { ok: false, error: boundaryError };
   const result = configSchema.safeParse(value);
-  if (result.success) return { ok: true, config: result.data as OcxConfig };
+  if (result.success) return { ok: true, config: applySchemaVersionDefault(result.data as OcxConfig) };
   return { ok: false, error: schemaDiagnosticsError(result.error) };
 }
 
@@ -1387,6 +1411,7 @@ function persistableConfig(config: OcxConfig): OcxConfig {
 }
 
 export function saveConfig(config: OcxConfig): void {
+  applySchemaVersionDefault(config);
   const dir = getConfigDir();
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -1691,6 +1716,7 @@ export function getDefaultConfig(): OcxConfig {
     // OpenAI shape. Mark them as such so startup does not mistake them for a
     // legacy config and collide with an immutable backup from an earlier setup.
     openaiProviderTierVersion: OPENAI_PROVIDER_TIER_VERSION,
+    schemaVersion: CONFIG_SCHEMA_VERSION,
     providers: {
       openai: {
         adapter: "openai-responses",
