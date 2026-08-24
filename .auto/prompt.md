@@ -31,7 +31,25 @@ Reduce the OpenCodex GUI initial bundle (main `index-*.js`) without breaking run
 - Keep `manualChunks` function pure; no side effects
 - Commit every experiment before measuring; revert on regress
 
-## Status: CONVERGED (2026-08-24) — main_kb at floor, session closed
+## Status: ROUND 2 DONE (2026-08-24, "groter"/doorpakken) — eager 787k -> 321k @ 9720b27f6
+
+Round 2 findings (main_kb no longer the honest metric — use eager_kb = what index.html loads):
+- ROOT CAUSE: App.tsx statically imported ALL pages. manualChunks page splits were cosmetic;
+  index.html preloaded every chunk (787k) on first load regardless of "lazy" names.
+- keep: React.lazy() + Suspense in App.tsx; dropped hand-maintained page manualChunks
+  (Rolldown splits from the lazy imports); vendor-react kept for cache stability.
+- keep: i18n nl.ts now ships overrides ONLY (~2kB chunk); runtime composes {...en,
+  ...nlOverrides}; en stays STATIC so English first paint is sync and all 423 gui tests
+  stay green without async-test churn; dicts.ts remains the sync test registry.
+- verified: tsc 0, eslint 0, 423/423 gui tests, focused server tests pass; browser smoke
+  (vite preview): dashboard, providers, models, combos (heaviest lazy page), system all
+  render from dynamic chunks — no rolldown init-order bugs.
+- dead ends: app-shell catch-all manualChunk (swallowed page-specific components into the
+  eager path); fully-lazy both-locale dicts (breaks 29 sync SSR tests; needs async render
+  churn — not worth it).
+- remaining levers if reopened: CSS 163k ships two full skins eagerly (out of scope);
+  en.ts (~95k min) could go async at the cost of rewriting ~10 sync SSR test files;
+  total_js 793k is now almost entirely on-demand page code.
 
 ## How to Run
 `./.auto/measure.sh` — outputs `METRIC main_kb=XXX` etc. Single run is fine (build is deterministic, not noisy).

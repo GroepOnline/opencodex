@@ -16,4 +16,7 @@ echo "METRIC gzip_kb=$GZIP"
 echo "METRIC total_js_kb=$TOTAL"
 echo "METRIC build_ms=$BUILD_MS"
 echo "METRIC chunks=$CHUNKS"
+# eager_kb: what index.html actually loads on first paint (entry script + modulepreload JS)
+EAGER=$(grep -oP '(?<=src=")/assets/[^"]+|(?<=href=")/assets/[^"]+\.js' dist/index.html 2>/dev/null | sed 's|^/assets/||' | while read -r f; do grep -oP "dist/assets/${f//./\\.}\s+\K[0-9]+\.[0-9]+" /tmp/gui-build.log; done | awk '{sum+=$1} END {print int(sum)}')
+echo "METRIC eager_kb=$EAGER"
 cat /tmp/gui-build.log | grep -E "dist/assets/(index|providers|modellen|claude|grok|dashboard|usage|verkeer)" | head -10

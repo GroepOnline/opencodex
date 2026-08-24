@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { localeDicts, SHIPPED_LOCALES } from "./helpers/locales";
 import { en } from "../src/i18n/en";
-import { DICTS } from "../src/i18n/shared";
+import { DICTS } from "../src/i18n/dicts";
 
 // `nl.ts` is typed `Record<TKey, string>`, so a MISSING key already fails `tsc`. These
 // cases cover what the type cannot see: a key that exists but renders nothing, which

@@ -1,4 +1,4 @@
-import { DICTS, type Locale, type TKey } from "../../src/i18n/shared";
+import { DICTS, type Locale, type TKey } from "../../src/i18n/dicts";
 
 /**
  * Locale gates must follow the registry, never a hand-maintained list. A hardcoded
