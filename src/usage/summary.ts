@@ -539,7 +539,7 @@ export function summarizeUsage(
     // Codex = the historical unlabelled bucket. Before the grok tag existed every
     // non-Claude turn landed here, and `surface !== "claude"` also swallowed
     // claude-desktop — disjoint predicates fix both.
-    if (surface === "codex") return entry.surface === undefined;
+    if (surface === "codex") return entry.surface === undefined || entry.surface === "codex";
     return true;
   });
   const totals = blankTotals();

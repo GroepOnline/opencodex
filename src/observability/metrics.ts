@@ -138,6 +138,7 @@ export function metricSurface(surface: RequestMetricObservation["surface"] | unk
   switch (surface) {
     case undefined:
     case null:
+    case "codex":
       return "codex";
     case "claude":
     case "claude-desktop":
