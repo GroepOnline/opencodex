@@ -34,6 +34,7 @@ import { isCanonicalOpenAiForwardProvider } from "../providers/openai-tiers";
 import { providerCodexAccountMode, setCodexAccountPoolsEnabled } from "../providers/registry";
 import type { StorageCleanupPolicy } from "../types";
 import {
+  activeProviderCooldowns,
   expireRecordedCooldowns,
   startProviderCooldownSweep,
 } from "../providers/cap-cooldown";
@@ -466,7 +467,8 @@ export function startServer(port?: number) {
 
       if (url.pathname === "/healthz" && req.method === "GET") {
         // service/pid/port let CLI liveness reject foreign 200s and verify pid identity.
-        return jsonResponse({ status: "ok", service: "opencodex", version: VERSION, uptime: process.uptime(), pid: process.pid, port: listenPort }, 200, req, config);
+        const cooldowns = activeProviderCooldowns(config);
+        return jsonResponse({ status: "ok", service: "opencodex", version: VERSION, uptime: process.uptime(), pid: process.pid, port: listenPort, providerCooldowns: Object.keys(cooldowns).length }, 200, req, config);
       }
 
       // Canonical Prometheus scrape endpoint. Management plane only: it rides the same
