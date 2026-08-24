@@ -2292,6 +2292,9 @@ describe("GitHub Actions hardening", () => {
     expect(health!.run ?? "").toContain('str(b.get("pid")) == os.environ["MAIN_PID"]');
     expect(health!.run ?? "").toContain("--max-time");
     expect(health!.run ?? "").toContain("identity-verified healthy within 60s");
+    expect(health!.run ?? "").toContain("<title>opencodex · proxy dashboard</title>");
+    expect(text).toContain("uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0");
+    expect(text).toContain('node-version: "22.12.0"');
     const resolveHealthIndex = steps.findIndex(step => step.name === "Resolve health URLs");
     const deployIndex = steps.findIndex(step => step.name === "Deploy into service checkout (in-place, pinned SHA)");
     const resolveHealth = steps[resolveHealthIndex];
@@ -2306,7 +2309,7 @@ describe("GitHub Actions hardening", () => {
     // dirty/ancestry guard passed — otherwise a failure before either of those
     // steps ran has nothing safe to roll back to, and `failure()` alone would
     // attempt a checkout with an empty/garbage output.
-    expect(rollback!.if).toBe("failure() && steps.prev.outcome == 'success' && steps.live_guard.outcome == 'success' && steps.deploy.outcome == 'success'");
+    expect(rollback!.if).toBe("failure() && steps.prev.outcome == 'success' && steps.live_guard.outcome == 'success' && steps.deploy.outcome == 'success' && steps.setup_node.outcome == 'success'");
     expect(rollback!.run ?? "").toContain('git checkout --force "${{ steps.prev.outputs.sha }}"');
     expect(rollback!.run ?? "").toContain('git reset --hard "${{ steps.prev.outputs.sha }}"');
     expect(rollback!.run ?? "").toContain("bun run build:gui");
@@ -2319,6 +2322,7 @@ describe("GitHub Actions hardening", () => {
     expect(rollback!.run ?? "").toContain('b.get("service") == "opencodex"');
     expect(rollback!.run ?? "").toContain("rollback deployed");
     expect(rollback!.run ?? "").toContain("identity-verified healthy within 30s");
+    expect(rollback!.run ?? "").toContain("<title>opencodex · proxy dashboard</title>");
   });
 
   test("design-system contract only runs when design-system inputs or the GUI change, identically on push and PR", async () => {
