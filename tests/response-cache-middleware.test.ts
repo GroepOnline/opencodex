@@ -123,6 +123,43 @@ describe("probeResponseCache", () => {
     expect(sameCaller && "hit" in sameCaller).toBe(true);
   });
 
+  test("loopback (auth not required): identical anonymous requests share one scope and hit", async () => {
+    // Default config has no hostname → loopback → admission gate does not require a credential.
+    // Anonymous callers are the single local principal, so they must still get cache service.
+    installResponseCache({ port: 10100, providers: {}, responseCache: { enabled: true, ttlMs: 10_000 } } as unknown as OcxConfig);
+    const body = { model: "claude-opus-4-8", messages: [{ role: "user", content: "ping" }] };
+    const miss = await probeResponseCache(makeReq(body), baseConfig(), "messages");
+    expect(miss && "store" in miss).toBe(true);
+    if (miss && "store" in miss) {
+      miss.store(new Response(JSON.stringify({ completion: "pong" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+      await new Promise(r => setTimeout(r, 0));
+    }
+
+    const second = await probeResponseCache(makeReq(body), baseConfig(), "messages");
+    expect(second && "hit" in second).toBe(true);
+  });
+
+  test("auth-required bind with no identity material is never cached (fail-safe branch)", async () => {
+    // A non-loopback hostname makes admission mandatory. If a request still carries none of
+    // the scope headers, the probe must fail safe: miss with a no-op store, nothing persisted.
+    const authRequired = { ...baseConfig(), hostname: "0.0.0.0" } as OcxConfig;
+    installResponseCache({ port: 10100, providers: {}, responseCache: { enabled: true, ttlMs: 10_000 } } as unknown as OcxConfig);
+    const body = { model: "claude-opus-4-8", messages: [{ role: "user", content: "ping" }] };
+    const probe = await probeResponseCache(makeReq(body), authRequired, "messages");
+    expect(probe && "miss" in probe).toBe(true);
+    if (probe && "store" in probe) {
+      probe.store(new Response(JSON.stringify({ completion: "pong" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+      await new Promise(r => setTimeout(r, 0));
+    }
+    expect(getInstalledCache()!.size).toBe(0);
+  });
+
   test("returns null when client sends cache-control: no-store (fast path, body untouched)", async () => {
     installResponseCache({ port: 10100, providers: {}, responseCache: { enabled: true } } as unknown as OcxConfig);
     const req = makeReq(
