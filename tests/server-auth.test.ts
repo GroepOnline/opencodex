@@ -694,6 +694,36 @@ describe("server local API auth", () => {
     }
   });
 
+  test("CORS fallback never reflects an untrusted Host when the Origin is disallowed", async () => {
+    if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true });
+    mkdirSync(TEST_DIR, { recursive: true });
+    process.env.OPENCODEX_HOME = TEST_DIR;
+    process.env.OPENCODEX_API_AUTH_TOKEN = "local-secret";
+    saveConfig({
+      ...config("0.0.0.0"),
+      port: 0,
+    });
+
+    const server = startServer(0);
+    try {
+      // Untrusted Host + a disallowed cross-origin Origin. The fallback must be the
+      // server's localhost default, never the attacker-controlled Host or Origin.
+      const response = await fetch(`http://127.0.0.1:${server.port}/healthz`, {
+        headers: {
+          host: `attacker.test:${server.port}`,
+          origin: "https://evil.test",
+        },
+      });
+      expect(response.status).toBe(200);
+      const allowOrigin = response.headers.get("access-control-allow-origin");
+      expect(allowOrigin).toBe(`http://localhost:${server.port}`);
+      expect(allowOrigin).not.toContain("attacker.test");
+      expect(allowOrigin).not.toContain("evil.test");
+    } finally {
+      await server.stop(true);
+    }
+  });
+
   test("websocket upgrade rejects hostile Origin even with a valid API token", async () => {
     if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true });
     mkdirSync(TEST_DIR, { recursive: true });

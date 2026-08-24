@@ -143,7 +143,15 @@ export function corsHeaders(req?: Request, config?: OcxConfig): Record<string, s
   // instead of the localhost default, so production responses do not echo
   // "http://localhost:10100". This never widens access: the reflected value is
   // either the requester's own allowed origin or the server's own origin.
-  const selfOrigin = req && config ? managementRequestOrigin(req, config) : null;
+  //
+  // Only trust the Host-derived origin when the Host is loopback or a
+  // CfAccess-trusted hostname. When API auth is required, managementRequestOrigin
+  // otherwise accepts an arbitrary attacker-controlled Host (and x-forwarded-proto),
+  // which must not be reflected as Access-Control-Allow-Origin.
+  const selfHost = req ? parseHttpHost(req.headers.get("Host")) : null;
+  const selfHostTrusted = !!selfHost
+    && (isLoopbackHostname(selfHost.hostname) || isCfAccessTrustedHost(selfHost.hostname));
+  const selfOrigin = req && config && selfHostTrusted ? managementRequestOrigin(req, config) : null;
   const allowOrigin = origin && req && config && isAllowedRequestOrigin(req, config)
     ? origin
     : (selfOrigin ?? _corsOrigin);
