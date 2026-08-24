@@ -1,8 +1,20 @@
 import { createContext, useContext } from "react";
-import { DICTS, type Locale, type TKey } from "./dicts";
+import { en, type TKey } from "./en";
 
-export type { Locale, TKey };
-export { DICTS };
+export type Locale = "en" | "nl";
+export type { TKey };
+
+/** Static English dict: the fallback language and base for nl composition. */
+export { en };
+
+/**
+ * Per-locale dynamic loaders. Only nl is a separate (tiny overrides-only) chunk; en is
+ * static above. Tests use the sync registry in ./dicts instead.
+ */
+export const DICT_LOADERS: Record<Locale, () => Promise<Record<TKey, string>>> = {
+  en: () => Promise.resolve(en),
+  nl: () => import("./nl").then(m => ({ ...en, ...m.nlOverrides })),
+};
 
 export const LOCALES: { code: Locale; name: string; htmlLang: string }[] = [
   { code: "nl", name: "Nederlands", htmlLang: "nl" },

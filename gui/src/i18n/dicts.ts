@@ -6,9 +6,13 @@
  * read the same source of truth instead of maintaining their own locale list.
  */
 import { en, type TKey } from "./en";
-import { nl } from "./nl";
+import { nlOverrides } from "./nl";
 
 export type Locale = "en" | "nl";
 export type { TKey };
 
-export const DICTS: Record<Locale, Record<TKey, string>> = { en, nl };
+export const DICTS: Record<Locale, Record<TKey, string>> = {
+  en,
+  // Runtime composes the same overlay in i18n/shared DICT_LOADERS.
+  nl: { ...en, ...nlOverrides },
+};

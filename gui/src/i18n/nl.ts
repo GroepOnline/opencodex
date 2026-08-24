@@ -1,9 +1,10 @@
 // Dutch — ChefGroep "De Pas" voice (chefgroep-vault/.ulpi/design/DESIGN.md).
-// Spreads en so pages without a translation fall back to English; the Joep-facing
-// dashboard, nav, and shared chrome are overridden below.
-import { en, type TKey } from "./en";
+// Ships ONLY the overrides (~2 kB chunk): the runtime composes nl = {...en, ...overrides}
+// after lazily loading this module, so English fallbacks come from the static en dict
+// without bundling it twice. Tests compose via ../i18n/dicts.
+import type { TKey } from "./en";
 
-const overrides: Partial<Record<TKey, string>> = {
+export const nlOverrides: Partial<Record<TKey, string>> = {
   // sidebar / nav
   "nav.providers": "Leveranciers",
   "nav.models": "Modellen",
@@ -670,6 +671,4 @@ const overrides: Partial<Record<TKey, string>> = {
   "ops.unitMinutes": "m",
   "ops.unitHours": "u",
   "ops.unitDays": "d",
-};
-
-export const nl: Record<TKey, string> = { ...en, ...overrides };
+}

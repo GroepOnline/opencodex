@@ -1,17 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useKeyedClientResource } from "./client-resource";
-import Providers from "./pages/Providers";
-import Models from "./pages/Models";
-import Combos from "./pages/Combos";
-import Subagents from "./pages/Subagents";
-import Verkeer from "./pages/Verkeer";
-import Usage from "./pages/Usage";
-import Storage from "./pages/Storage";
-import ApiKeys from "./pages/ApiKeys";
-import Claude from "./pages/Claude";
-import Grok from "./pages/Grok";
-import Dashboard from "./pages/Dashboard";
-import Startup from "./pages/Startup";
+// Pages are true dynamic chunks: eager load is entry + app-shell + vendor-react only.
+const Providers = lazy(() => import("./pages/Providers"));
+const Models = lazy(() => import("./pages/Models"));
+const Combos = lazy(() => import("./pages/Combos"));
+const Subagents = lazy(() => import("./pages/Subagents"));
+const Verkeer = lazy(() => import("./pages/Verkeer"));
+const Usage = lazy(() => import("./pages/Usage"));
+const Storage = lazy(() => import("./pages/Storage"));
+const ApiKeys = lazy(() => import("./pages/ApiKeys"));
+const Claude = lazy(() => import("./pages/Claude"));
+const Grok = lazy(() => import("./pages/Grok"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Startup = lazy(() => import("./pages/Startup"));
 import ErrorBoundary from "./components/ErrorBoundary";
 import SettingsSheet from "./components/SettingsSheet";
 import { IconAlert, IconCheck, IconPower, IconSettings } from "./icons";
@@ -187,6 +188,7 @@ export default function App() {
             detailsLabel={t("errorBoundary.details")}
             reloadLabel={t("errorBoundary.reload")}
           >
+            <Suspense fallback={null}>
             {route.view === "dashboard" && <Dashboard apiBase={API_BASE} />}
           {route.view === "leveranciers" && route.sub === null && <Providers apiBase={API_BASE} />}
             {route.view === "leveranciers" && route.sub === "claude" && <Claude apiBase={API_BASE} />}
@@ -199,6 +201,7 @@ export default function App() {
             {route.view === "systeem" && route.sub === null && <Startup apiBase={API_BASE} />}
             {route.view === "systeem" && route.sub === "storage" && <Storage apiBase={API_BASE} />}
             {route.view === "systeem" && route.sub === "api" && <ApiKeys apiBase={API_BASE} />}
+            </Suspense>
           </ErrorBoundary>
           </div>
           {route.view === "systeem" && route.sub === null && <DangerZone />}
