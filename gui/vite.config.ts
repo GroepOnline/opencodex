@@ -46,7 +46,7 @@ function guiSessionPlugin(target: string | undefined) {
 export default defineConfig({
   plugins: [react(), guiSessionPlugin(proxyTarget)],
   define: { __APP_VERSION__: JSON.stringify(version) },
-  build: { rollupOptions: { output: { manualChunks(id) { if (id.includes('src/pages/Usage')) return 'usage'; if (id.includes('src/pages/Verkeer')) return 'verkeer'; if (id.includes('src/pages/Dashboard')) return 'dashboard'; if (id.includes('src/pages/Providers')) return 'providers'; if (id.includes('src/pages/Modellen') || id.includes('src/pages/Models')) return 'modellen'; } } } },
+  build: { rollupOptions: { output: { manualChunks(id) { if (id.includes('src/pages/Usage')) return 'usage'; if (id.includes('src/pages/Verkeer')) return 'verkeer'; if (id.includes('src/pages/Dashboard')) return 'dashboard'; if (id.includes('src/pages/Providers')) return 'providers'; if (id.includes('src/pages/Modellen') || id.includes('src/pages/Models')) return 'modellen'; if (id.includes('src/pages/Claude')) return 'claude'; if (id.includes('src/pages/Grok') || id.includes('src/pages/ApiKeys') || id.includes('api-keys-panels')) return 'grok-apikeys'; } } } },
   /* [Decision Log]
   - 목적: 로컬 Vite GUI가 실행 중인 opencodex API를 same-origin으로 호출해 CORS 잡음 없이 실제 데이터를 보여준다.
   - 대안 분석: API 없이 정적 화면만 띄우면 기능 검증이 불가능하고, 별도 프록시 서버는 유지보수 대상이 늘며, Vite 내장 proxy는 개발 시에만 기존 서버를 재사용한다.
