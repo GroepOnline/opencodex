@@ -14,6 +14,7 @@ interface Healthz {
   uptime: number;
   pid: number;
   port: number;
+  providerCooldowns?: number;
 }
 
 type BonEntry = TrafficLogEntry;
@@ -167,6 +168,12 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
               <span className="pws-dashboard-stat-count num">{health.data.pid}</span>
               <span className="pws-dashboard-stat-label caps">{t("dash.pid")}</span>
             </div>
+            {(health.data.providerCooldowns ?? 0) > 0 && (
+              <div className="pws-dashboard-stat" title={t("dash.cooldownHint", { count: String(health.data.providerCooldowns) })}>
+                <span className="pws-dashboard-stat-count num" style={{ color: "var(--amber)" }}>{health.data.providerCooldowns}</span>
+                <span className="pws-dashboard-stat-label caps">{t("dash.cooldown")}</span>
+              </div>
+            )}
           </>
         )}
       </div>
