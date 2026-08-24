@@ -1061,6 +1061,13 @@ switch (command) {
     process.exitCode = await handleConfigCommand(args.slice(1));
     break;
   }
+  // "ocx claude-desktop" → alias van "ocx claude desktop"
+  case "claude-desktop": {
+    const { handleClaudeDesktopCommand } = await import("./claude-desktop");
+    const exitCode = await handleClaudeDesktopCommand(args.slice(1));
+    if (exitCode !== 0) process.exit(exitCode);
+    break;
+  }
   case "claude": {
     const { cmdClaude } = await import("./claude");
     // "ocx claude desktop" → write Desktop 3P config
