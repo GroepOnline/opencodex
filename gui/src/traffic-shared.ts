@@ -138,7 +138,7 @@ export function trafficStatusLabel(
  * @returns A success class for 2xx statuses, an error class for HTTP errors or status `0`, or an empty string otherwise
  */
 export function trafficStatusClass(entry: TrafficLogEntry): string {
-  if (entry.status >= 200 && entry.status < 300) return "stempel--klaar";
-  if (entry.status >= 400 || entry.status === 0) return "stempel--fout";
+  if (entry.status >= 200 && entry.status < 300) return "traffic-status--ok";
+  if (entry.status >= 400 || entry.status === 0) return "traffic-status--err";
   return "";
 }

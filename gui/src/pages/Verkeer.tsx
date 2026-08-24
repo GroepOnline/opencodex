@@ -194,10 +194,10 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
 
   return (
     <>
-      <div className="depas-viewkop">
+      <div className="page-head">
         <h2>{t("shell.navTraffic")}</h2>
       </div>
-      <p className="depas-viewsub">{t("vk.subtitle")}</p>
+      <p className="page-sub">{t("vk.subtitle")}</p>
 
       <div className="stat-strip" role="group" aria-label={t("vk.statsAria")}>
         <div className="stat-strip-item">
@@ -358,7 +358,7 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
       </div>
 
       {logsFailed && (
-        <p className="text-caption" style={{ color: "var(--wijn)" }} role="status">
+        <p className="text-caption" style={{ color: "var(--red)" }} role="status">
           {t("vk.loadFailed")}
         </p>
       )}
@@ -375,19 +375,19 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
           const tokens = bonTokens(entry);
           const isOpen = openBon === id;
           return (
-            <div key={id} className="bon">
+            <div key={id} className="traffic-entry">
               <button
                 type="button"
-                className="bon-kop bon-kop--grid"
-                style={{ width: "100%", background: "transparent", border: "none", padding: 0, font: "inherit", color: "inherit", cursor: "pointer", textAlign: "left" }}
+                className="traffic-entry-head traffic-entry-head--grid"
+                style={{ width: "100%", background: "transparent", border: "none", color: "inherit", cursor: "pointer", textAlign: "left" }}
                 onClick={() => setOpenBon(current => current === id ? null : id)}
                 aria-expanded={isOpen}
               >
-                <span className="bon-col bon-col--time bon-tijd">{tijd(entry.timestamp, locale)}</span>
+                <span className="traffic-col traffic-col--time traffic-time">{tijd(entry.timestamp, locale)}</span>
                 <TrafficRowCells entry={entry} locale={locale} tokens={tokens} />
               </button>
               {isOpen && (
-                <div className="bon-detail">
+                <div className="traffic-detail">
                   <div>{t("vk.detailStatus", { status: entry.status })}</div>
                   {entry.errorCode && <div>{t("vk.detailError", { code: entry.errorCode })}</div>}
                   {entry.upstreamError && <div>{t("vk.detailUpstream", { error: entry.upstreamError })}</div>}

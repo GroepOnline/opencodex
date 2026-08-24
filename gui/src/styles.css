@@ -21,6 +21,7 @@
 @import "./styles-subagents-workspace.css";
 @import "./styles-claudecode-workspace.css";
 @import "./styles-apikeys-workspace.css";
+@import "./styles/traffic-rail.css";
 
 /* General Sans (design-system v3 §11) — self-hosted, weights 400/500/600.
    Not on fontsource; woff2 vendored from Fontshare (free license). */
@@ -561,6 +562,23 @@ a.btn, a.btn:hover { text-decoration: none; }
 .stat .value { font-size: var(--text-title); font-weight: var(--weight-semibold); letter-spacing: var(--tracking-tight); line-height: var(--leading-tight); font-variant-numeric: tabular-nums; }
 .stat .value.mono { font-family: var(--font-code); font-size: var(--text-subtitle); letter-spacing: 0; }
 
+.stat-strip {
+  display: flex;
+  gap: var(--space-12);
+  flex-wrap: wrap;
+  padding: var(--space-4) 0 var(--space-6);
+}
+.stat-strip-item { display: flex; flex-direction: column; gap: var(--space-0-5); }
+.stat-strip-waarde {
+  font-family: var(--font-code);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-title);
+  line-height: var(--leading-tight);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-tight);
+}
+.stat-strip-label { font-size: var(--text-micro); color: var(--muted); }
+
 .startup-health-bar {
   min-height: var(--control-lg);
   margin: calc(-1 * var(--space-3)) 0 var(--space-6);
@@ -804,11 +822,8 @@ select.input { appearance: none; }
 }
 .switch.on .knob {
   transform: translateX(14px);
-  /* [Decision Log]
-  - 목적: 다크 모드의 활성 트랙과 핸들이 모두 밝게 뭉개지는 문제를 없앤다.
-  - 대안 분석: 테두리만 강화하면 상태 구분이 약하고, 화면별 색상 지정은 중복되며, 공통 토글 토큰은 모든 스위치에 같은 대비 규칙을 적용한다.
-  - 선택 근거: 활성 트랙은 다크 모드 성공 색상, 핸들은 어두운 색으로 분리해 상태와 위치를 동시에 읽기 쉽다.
-  */
+  /* Beslissing: in dark mode scheidt het actieve spoor (succeskleur) en de donkere knop
+     status en positie — geen twee lichte vlakken die in elkaar vloeien. */
   background: var(--toggle-dot-color);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
 }
@@ -1678,8 +1693,8 @@ button.prov-account-row.active { cursor: default; }
 /* ── Toggle switch ── */
 .toggle { position: relative; display: inline-block; width: var(--toggle-w); height: var(--toggle-h); flex-shrink: 0; }
 .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
-.toggle .slider { position: absolute; inset: 0; background: var(--toggle-off-bg); border-radius: var(--radius-pill); cursor: pointer; transition: background var(--motion-normal) ease; }
-.toggle .slider::after { content: ""; position: absolute; top: 50%; left: 3px; width: var(--toggle-dot); height: var(--toggle-dot); background: var(--toggle-dot-color); border-radius: var(--radius-round); transform: translateY(-50%); transition: transform var(--motion-normal) ease; }
+.toggle .slider { position: absolute; inset: 0; background: var(--toggle-off-bg); border-radius: var(--radius-pill); cursor: pointer; transition: background var(--motion-normal) var(--ease-out); }
+.toggle .slider::after { content: ""; position: absolute; top: 50%; left: 3px; width: var(--toggle-dot); height: var(--toggle-dot); background: var(--toggle-dot-color); border-radius: var(--radius-round); transform: translateY(-50%); transition: transform var(--motion-normal) var(--ease-out); }
 .toggle input:checked + .slider { background: var(--toggle-on-bg); }
 .toggle input:checked + .slider::after { transform: translate(calc(var(--toggle-w) - var(--toggle-dot) - 6px), -50%); }
 .toggle input:focus-visible + .slider { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
@@ -2026,48 +2041,6 @@ button.prov-account-row.active { cursor: default; }
 }
 .usage-head .usage-segmented { margin: 0; }
 
-/* Verkeer request rail — column grid (replaces orphan depas .bon flex) */
-.bon { border-bottom: 1px solid var(--border-soft); }
-.bon-kop {
-  display: grid;
-  grid-template-columns: 7.5ch minmax(10rem, 1.6fr) minmax(5rem, 0.8fr) auto auto auto;
-  gap: 8px 12px;
-  align-items: baseline;
-  padding: 10px 4px;
-  font-family: var(--font-code);
-  font-size: var(--text-caption);
-  color: var(--text);
-}
-.bon-tijd { color: var(--muted); white-space: nowrap; }
-.bon-titel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bon-meta { color: var(--muted); white-space: nowrap; }
-.bon-detail {
-  padding: 0 4px 12px;
-  color: var(--muted);
-  font-family: var(--font-code);
-  font-size: var(--text-caption);
-  display: grid;
-  gap: 4px;
-}
-.stempel {
-  justify-self: end;
-  font-family: var(--font-ui);
-  font-size: var(--text-micro);
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  color: var(--muted);
-}
-.stempel--klaar { color: var(--green); }
-.stempel--fout { color: var(--red); }
-
-@media (max-width: 720px) {
-  .bon-kop {
-    grid-template-columns: 7.5ch 1fr auto;
-    grid-template-rows: auto auto;
-  }
-  .bon-titel { grid-column: 2 / -1; }
-  .bon-meta { grid-column: span 1; }
-}
 .sheet-foot { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border-soft); }
 
 /* danger zone (Systeem home) */
