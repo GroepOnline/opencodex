@@ -138,7 +138,15 @@ export function browserSecurityHeaders(): Record<string, string> {
 
 export function corsHeaders(req?: Request, config?: OcxConfig): Record<string, string> {
   const origin = req?.headers.get("Origin");
-  const allowOrigin = origin && req && config && isAllowedRequestOrigin(req, config) ? origin : _corsOrigin;
+  // When the requester's Origin is not an allowed origin, fall back to the
+  // server's own public origin (CfAccess-trusted host behind Cloudflare Tunnel)
+  // instead of the localhost default, so production responses do not echo
+  // "http://localhost:10100". This never widens access: the reflected value is
+  // either the requester's own allowed origin or the server's own origin.
+  const selfOrigin = req && config ? managementRequestOrigin(req, config) : null;
+  const allowOrigin = origin && req && config && isAllowedRequestOrigin(req, config)
+    ? origin
+    : (selfOrigin ?? _corsOrigin);
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
