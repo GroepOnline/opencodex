@@ -44,7 +44,7 @@ export interface PersistedUsageEntry {
   timestamp: number;
   provider: string;
   model: string;
-  surface?: "claude" | "claude-desktop" | "grok";
+  surface?: "claude" | "claude-desktop" | "codex" | "grok";
   /** Best-effort chat/session correlation for Logs grouping (#330). */
   conversationId?: string;
   /**
@@ -87,6 +87,7 @@ export interface PersistedUsageEntry {
 const KNOWN_USAGE_SURFACES = new Set<NonNullable<PersistedUsageEntry["surface"]>>([
   "claude",
   "claude-desktop",
+  "codex",
   "grok",
 ]);
 
