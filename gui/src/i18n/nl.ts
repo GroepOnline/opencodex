@@ -307,6 +307,8 @@ const overrides: Partial<Record<TKey, string>> = {
   "dash.version": "Versie",
   "dash.uptime": "Draait",
   "dash.pid": "PID",
+  "dash.cooldown": "Cooldown",
+  "dash.cooldownHint": "{count} leverancier(s) in cooldown",
   "dash.healthAria": "Proxy-status",
   "dash.providers": "Leveranciers",
   "dash.tokens30d": "Tokens (30d)",
