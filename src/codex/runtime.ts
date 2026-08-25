@@ -220,6 +220,7 @@ export function persistCodexRuntime(
     existing
     && existing.command === runtime.command
     && (existing.selectedVersion ?? null) === (runtime.version ?? null)
+    && existing.source === runtime.source
   ) {
     // Identical selection: keep updatedAt as "last selection change" so the persisted
     // stamp stays stable and resolve/bundled-catalog memos stop churning (each write
@@ -412,7 +413,10 @@ export function resolveCodexRuntime(deps: ResolveCodexRuntimeDeps = {}): Resolve
   }
 
   const result = resolveCodexRuntimeUncached(deps);
-  if (cacheKey) resolveCache = { key: cacheKey, at: Date.now(), value: result };
+  // Do not pin a probe miss: callers retry on the next catalog/sync tick.
+  if (cacheKey && result.runtime.source !== "fallback") {
+    resolveCache = { key: cacheKey, at: Date.now(), value: result };
+  }
   return result;
 }
 
