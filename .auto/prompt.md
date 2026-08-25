@@ -31,6 +31,8 @@ Reduce the OpenCodex GUI initial bundle (main `index-*.js`) without breaking run
 - Keep `manualChunks` function pure; no side effects
 - Commit every experiment before measuring; revert on regress
 
+## Status: SUPERSEDED BY ROUND 4 BELOW
+
 ## Status: ROUND 3 DONE (2026-08-24, doorpakken) — eager 787k -> 227k @ 282155717
 
 Round 3:
@@ -103,3 +105,18 @@ Session autoresearch/gui-bundle-260824 (baseline 280k @ d4a101115):
   - CSS 163k (gzip 29k) is out of scope (styles off limits)
 Final checks on head 541f4cc59: tsc 0, eslint:gui 0, focused tests 79 pass.
 If anyone reopens this: only meaningful lever left is trimming styles.css (needs scope change) or splitting provider-workspace components across pages (fragmentation, near-zero UX gain).
+
+## Status: ROUND 4 CLOSED (2026-08-25) — session exhausted, goal achieved
+
+Round 4 verdict (evidence-based):
+- en.ts is ALREADY lazy post-round-3 (96kB own chunk, verified in dist). The "en.ts
+  (~95k min) could go async" lever was already harvested; nothing left there.
+- vendor-react (188kB) contains ONLY react+react-dom (+rolldown runtime separate).
+  react-virtual is tree-shaken out of the bundle entirely; tightening the manualChunks
+  matcher (`node_modules/react` -> `node_modules/react/`) is a measured NO-OP.
+- Eager first paint = index 37k + rolldown-runtime + vendor-react 188k = ~227kB.
+  Irreducible without lazy-loading react-dom itself (breaks every page) — rejected.
+- Only remaining asset: styles.css 163k eager. Split debunked (round 3) / per-page
+  imports carry cascade-reorder risk for ~10k gzip — stays rejected.
+- Final: eager 787k -> 227k (-71%), total_js 794k almost fully on-demand. Session
+  complete; do not reopen without a NEW workload (e.g. real-user timing data).
