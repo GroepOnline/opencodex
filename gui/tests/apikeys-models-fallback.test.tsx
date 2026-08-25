@@ -11,6 +11,10 @@ import type { Root } from "react-dom/client";
 import { LanguageProvider } from "../src/i18n/provider";
 import ApiKeys from "../src/pages/ApiKeys";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 const originalFetch = globalThis.fetch;
 let restoreGlobals: (() => void) | undefined;
 let previousLanguageDescriptor: PropertyDescriptor | undefined;

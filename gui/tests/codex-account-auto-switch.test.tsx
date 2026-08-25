@@ -13,6 +13,10 @@ import {
 import { CodexAutoSwitchSetting as AutoSwitchSetting } from "../src/components/CodexAutoSwitchSetting";
 import { LanguageProvider } from "../src/i18n/provider";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 let previousLanguage: unknown;
 
 beforeEach(() => {

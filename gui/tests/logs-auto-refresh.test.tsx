@@ -5,6 +5,10 @@ import type { Root } from "react-dom/client";
 import { LanguageProvider } from "../src/i18n/provider";
 import Logs from "../src/pages/Logs";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 const globals = ["document", "window", "navigator", "localStorage", "IS_REACT_ACT_ENVIRONMENT", "ResizeObserver"] as const;
 let previousGlobals: Record<(typeof globals)[number], unknown>;
 let testWindow: Window;

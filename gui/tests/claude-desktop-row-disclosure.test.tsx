@@ -5,6 +5,10 @@ import { createRoot, type Root } from "react-dom/client";
 import ClaudeDesktop from "../src/pages/ClaudeDesktop";
 import { LanguageProvider } from "../src/i18n/provider";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 /**
  * Second disclosure tier: a model row is a one-line summary until opened.
  *

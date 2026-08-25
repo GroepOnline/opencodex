@@ -9,6 +9,10 @@ import {
 import { useAddCodexAccountOAuth } from "../src/components/use-add-codex-account-oauth";
 import { LanguageProvider } from "../src/i18n/provider";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 /**
  * StrictMode reauth latch + login-status single-flight / abort contracts for
  * useAddCodexAccountOAuth (PR #475 blockers).

@@ -10,6 +10,10 @@ import { LanguageProvider } from "../src/i18n/provider";
 import ProviderModels from "../src/components/provider-workspace/ProviderModels";
 import type { WorkspaceItem } from "../src/provider-workspace/catalog";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 const globals = ["document", "window", "navigator", "localStorage", "IS_REACT_ACT_ENVIRONMENT"] as const;
 const originalFetch = globalThis.fetch;
 let previousGlobals: Record<(typeof globals)[number], unknown>;

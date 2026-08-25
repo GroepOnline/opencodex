@@ -5,6 +5,10 @@ import type { Root } from "react-dom/client";
 import { LanguageProvider } from "../src/i18n/provider";
 import { LoginUrlBlock } from "../src/components/login-url-block";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 /**
  * Contract for the shared OAuth login-URL block. It owns the copy state for
  * all three login surfaces, so it also owns invalidating that state when the

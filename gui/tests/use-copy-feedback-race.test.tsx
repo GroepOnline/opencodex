@@ -5,6 +5,10 @@ import type { Root } from "react-dom/client";
 import { LanguageProvider } from "../src/i18n/provider";
 import { useCopyFeedback } from "../src/components/use-copy-feedback";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 /**
  * Clipboard writes settle out of order — a permission prompt can hold the first
  * attempt past a second one. Without a request generation the older completion

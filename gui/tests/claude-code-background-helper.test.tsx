@@ -5,6 +5,10 @@ import { SmallFastModelSetting } from "../src/pages/ClaudeCode";
 import { backgroundHelperOptions } from "../src/pages/claude-code-helper-options";
 import { modelLabel } from "../src/model-display";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 let originalLanguageDescriptor: PropertyDescriptor | undefined;
 
 beforeEach(() => {

@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { DICT_LOADERS, I18nContext, LOCALES, detectInitial, en, interpolate, type TFn, type TKey, type Vars } from "./shared";
+import { cachedDict, I18nContext, LOCALES, loadDict, detectInitial, interpolate, type TFn, type TKey, type Vars } from "./shared";
 import { useI18n } from "./shared";
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [locale, setLocale] = useState(detectInitial);
-  // English is static, so an English first render never waits; nl composes from the
-  // tiny overrides chunk on load.
-  const [dict, setDict] = useState<Record<TKey, string> | null>(() => (locale === "en" ? en : null));
+  // Sync when the dict is already cached (warm SPA navigation, seeded SSR/tests).
+  const [dict, setDict] = useState<Record<TKey, string> | null>(() => cachedDict(locale) ?? null);
 
   useEffect(() => {
     let active = true;
-    void DICT_LOADERS[locale]().then(loaded => {
+    void loadDict(locale).then(loaded => {
       if (active) setDict(loaded);
     });
     return () => { active = false; };

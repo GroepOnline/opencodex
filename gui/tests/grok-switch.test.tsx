@@ -5,6 +5,10 @@ import { createRoot, type Root } from "react-dom/client";
 import Grok from "../src/pages/Grok";
 import { LanguageProvider } from "../src/i18n/provider";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 /**
  * The Grok switch surface. Mounted because the failures worth catching are stateful:
  * dirty tracking, the save/apply sequence, and the policy-skip path that must NOT read

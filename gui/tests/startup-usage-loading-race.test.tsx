@@ -6,6 +6,10 @@ import { LanguageProvider } from "../src/i18n/provider";
 import Startup from "../src/pages/Startup";
 import Usage from "../src/pages/Usage";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 /**
  * Storage already has this coverage (storage-loading-race.test.tsx). Startup and Usage carry the
  * same generation-ownership guard but had no regression of their own, so either could lose it

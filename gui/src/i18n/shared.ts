@@ -1,19 +1,37 @@
 import { createContext, useContext } from "react";
-import { en, type TKey } from "./en";
+import type { TKey } from "./en";
 
 export type Locale = "en" | "nl";
 export type { TKey };
 
-/** Static English dict: the fallback language and base for nl composition. */
-export { en };
-
 /**
- * Per-locale dynamic loaders. Only nl is a separate (tiny overrides-only) chunk; en is
- * static above. Tests use the sync registry in ./dicts instead.
+ * Module-level cache so a warm provider renders synchronously (SSR and tests included).
+ * Tests seed it via tests/helpers/locales seedDicts(); the browser pays one small chunk
+ * fetch on cold load.
  */
-export const DICT_LOADERS: Record<Locale, () => Promise<Record<TKey, string>>> = {
-  en: () => Promise.resolve(en),
-  nl: () => import("./nl").then(m => ({ ...en, ...m.nlOverrides })),
+const DICT_CACHE = new Map<Locale, Record<TKey, string>>();
+
+export function cachedDict(locale: Locale): Record<TKey, string> | undefined {
+  return DICT_CACHE.get(locale);
+}
+
+export function loadDict(locale: Locale): Promise<Record<TKey, string>> {
+  const hit = DICT_CACHE.get(locale);
+  if (hit) return Promise.resolve(hit);
+  return LOADERS[locale]().then(dict => {
+    DICT_CACHE.set(locale, dict);
+    return dict;
+  });
+}
+
+const LOADERS: Record<Locale, () => Promise<Record<TKey, string>>> = {
+  en: () => import("./en").then(m => m.en),
+  // nl composes over en here, so neither dictionary sits in the eager graph while
+  // English fallbacks still survive for Dutch strings.
+  nl: () =>
+    Promise.all([import("./en"), import("./nl")]).then(
+      ([{ en }, { nlOverrides }]) => ({ ...en, ...nlOverrides }),
+    ),
 };
 
 export const LOCALES: { code: Locale; name: string; htmlLang: string }[] = [

@@ -7,6 +7,10 @@ import ProviderAuthPanel from "../src/components/provider-workspace/ProviderAuth
 import type { WorkspaceItem } from "../src/provider-workspace/catalog";
 import type { LoginHint, ProviderAuthHandlers } from "../src/components/provider-workspace/types";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 /**
  * The device-code copy button called navigator.clipboard.writeText directly and
  * swallowed failures with .catch(() => {}). That catch handled nothing: with no

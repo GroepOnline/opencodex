@@ -5,6 +5,10 @@ import type { Root } from "react-dom/client";
 import ProviderWorkspaceShell from "../src/components/provider-workspace/ProviderWorkspaceShell";
 import { LanguageProvider } from "../src/i18n/provider";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 /**
  * WP4 rendered-DOM contract. The sibling .ts file pins source invariants; this file
  * proves the structural claims the reviewer flagged as unprovable by substring checks:

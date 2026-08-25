@@ -5,6 +5,10 @@ import type { Root } from "react-dom/client";
 import { LanguageProvider } from "../src/i18n/provider";
 import AddCodexAccountModal from "../src/components/AddCodexAccountModal";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 /**
  * The Codex account add/reauth modal was the last login surface without a way
  * to obtain the authorization URL: it rendered a copy button and nothing else,

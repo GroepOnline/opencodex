@@ -1,4 +1,13 @@
 import { DICTS, type Locale, type TKey } from "../../src/i18n/dicts";
+import { loadDict } from "../../src/i18n/shared";
+
+/**
+ * Seed the provider's module-level dict cache so LanguageProvider renders synchronously
+ * in SSR tests. Call via top-level `await seedDicts();` at the top of a test file.
+ */
+export async function seedDicts(): Promise<void> {
+  await Promise.all([loadDict("en"), loadDict("nl")]);
+}
 
 /**
  * Locale gates must follow the registry, never a hand-maintained list. A hardcoded

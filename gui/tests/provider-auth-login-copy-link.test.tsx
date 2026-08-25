@@ -7,6 +7,10 @@ import ProviderAuthPanel from "../src/components/provider-workspace/ProviderAuth
 import type { WorkspaceItem } from "../src/provider-workspace/catalog";
 import type { LoginHint, ProviderAuthHandlers } from "../src/components/provider-workspace/types";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 /**
  * Regression guard for the workspace OAuth login wait panel.
  * The copy-link affordance lived only in the Classic providers view, whose

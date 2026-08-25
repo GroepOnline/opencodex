@@ -8,6 +8,10 @@ import ApiKeysWorkspace, {
 } from "../src/components/apikeys-workspace/ApiKeysWorkspace";
 import type { ApiKeyEntry } from "../src/pages/api-keys-utils";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 const globals = ["document", "window", "navigator", "localStorage", "IS_REACT_ACT_ENVIRONMENT"] as const;
 let previousGlobals: Record<(typeof globals)[number], unknown>;
 let testWindow: Window;
