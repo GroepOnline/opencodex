@@ -423,6 +423,100 @@ describe("resolveCodexRuntime", () => {
     }
   });
 
+  test("bundled runtime memo follows CODEX_CLI_PATH changes and self-heals after fallback", async () => {
+    const { chmodSync, mkdirSync } = await import("node:fs");
+    const {
+      loadBundledCodexCatalog,
+      resetBundledCatalogCacheForTests,
+    } = await import("../src/codex/catalog/bundled");
+
+    const home = tempConfigDir();
+    const firstDir = join(home, "first");
+    const secondDir = join(home, "second");
+    mkdirSync(firstDir, { recursive: true });
+    mkdirSync(secondDir, { recursive: true });
+    const firstBin = process.platform === "win32" ? join(firstDir, "codex.cmd") : join(firstDir, "codex");
+    const secondBin = process.platform === "win32" ? join(secondDir, "codex.cmd") : join(secondDir, "codex");
+
+    const writeLauncher = (path: string, version: string, effort: string) => {
+      const catalog = JSON.stringify({
+        models: [{
+          slug: "gpt-5.5",
+          base_instructions: "x",
+          supported_reasoning_levels: [{ effort, description: effort }],
+          default_reasoning_level: effort,
+        }],
+      });
+      const catalogPath = join(dirname(path), "catalog.json");
+      writeFileSync(catalogPath, `${catalog}\n`, "utf8");
+      if (process.platform === "win32") {
+        writeFileSync(path, [
+          "@echo off",
+          `if "%~1"=="--version" ( echo codex-cli ${version} & exit /b 0 )`,
+          `type "%~dp0catalog.json"`,
+          "",
+        ].join("\r\n"), "utf8");
+      } else {
+        writeFileSync(path, [
+          "#!/bin/sh",
+          `if [ "$1" = "--version" ]; then echo "codex-cli ${version}"; exit 0; fi`,
+          `cat "$(dirname "$0")/catalog.json"`,
+          "",
+        ].join("\n"), "utf8");
+        chmodSync(path, 0o755);
+      }
+    };
+    const writeFailingLauncher = (path: string) => {
+      writeFileSync(path, process.platform === "win32" ? "@exit /b 1\r\n" : "#!/bin/sh\nexit 1\n", "utf8");
+      if (process.platform !== "win32") chmodSync(path, 0o755);
+    };
+
+    writeLauncher(firstBin, "0.133.0", "medium");
+    writeLauncher(secondBin, "0.145.0", "max");
+    const previousHome = process.env.OPENCODEX_HOME;
+    const previousCli = process.env.CODEX_CLI_PATH;
+    const previousPath = process.env.PATH;
+    const realDateNow = Date.now;
+    let now = realDateNow();
+    Date.now = () => now;
+    process.env.OPENCODEX_HOME = home;
+    process.env.PATH = NO_CODEX_PATH;
+    resetCodexRuntimeResolveCacheForTests();
+    resetBundledCatalogCacheForTests();
+
+    try {
+      process.env.CODEX_CLI_PATH = firstBin;
+      const firstCatalog = loadBundledCodexCatalog();
+      expect(firstCatalog?.models?.[0]?.default_reasoning_level).toBe("medium");
+
+      // Highest-priority runtime input changed in-process: outer memo must bust immediately.
+      process.env.CODEX_CLI_PATH = secondBin;
+      const secondCatalog = loadBundledCodexCatalog();
+      expect(secondCatalog?.models?.[0]?.default_reasoning_level).toBe("max");
+
+      // A transient probe failure may use the resolver's short cache, but must not be pinned
+      // by the longer bundled-catalog memo for the rest of the process.
+      resetCodexRuntimeResolveCacheForTests();
+      resetBundledCatalogCacheForTests();
+      writeFailingLauncher(secondBin);
+      expect(loadBundledCodexCatalog()).toBeNull();
+      writeLauncher(secondBin, "0.146.0", "high");
+      now += 15_001;
+      const recovered = loadBundledCodexCatalog();
+      expect(recovered?.models?.[0]?.default_reasoning_level).toBe("high");
+    } finally {
+      Date.now = realDateNow;
+      if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
+      else process.env.OPENCODEX_HOME = previousHome;
+      if (previousCli === undefined) delete process.env.CODEX_CLI_PATH;
+      else process.env.CODEX_CLI_PATH = previousCli;
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+      resetCodexRuntimeResolveCacheForTests();
+      resetBundledCatalogCacheForTests();
+    }
+  });
+
   test("clamp diagnostics include unsupported default_reasoning_level changes", async () => {
     const { clampCatalogModelsToCodexSupport } = await import("../src/codex/catalog/effort");
     const diagnostics: Array<{ removedEfforts: string[]; affectedModels: string[] }> = [];
