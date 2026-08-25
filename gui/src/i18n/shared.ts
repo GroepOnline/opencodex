@@ -1,8 +1,38 @@
 import { createContext, useContext } from "react";
-import { DICTS, type Locale, type TKey } from "./dicts";
+import type { TKey } from "./en";
 
-export type { Locale, TKey };
-export { DICTS };
+export type Locale = "en" | "nl";
+export type { TKey };
+
+/**
+ * Module-level cache so a warm provider renders synchronously (SSR and tests included).
+ * Tests seed it via tests/helpers/locales seedDicts(); the browser pays one small chunk
+ * fetch on cold load.
+ */
+const DICT_CACHE = new Map<Locale, Record<TKey, string>>();
+
+export function cachedDict(locale: Locale): Record<TKey, string> | undefined {
+  return DICT_CACHE.get(locale);
+}
+
+export function loadDict(locale: Locale): Promise<Record<TKey, string>> {
+  const hit = DICT_CACHE.get(locale);
+  if (hit) return Promise.resolve(hit);
+  return LOADERS[locale]().then(dict => {
+    DICT_CACHE.set(locale, dict);
+    return dict;
+  });
+}
+
+const LOADERS: Record<Locale, () => Promise<Record<TKey, string>>> = {
+  en: () => import("./en").then(m => m.en),
+  // nl composes over en here, so neither dictionary sits in the eager graph while
+  // English fallbacks still survive for Dutch strings.
+  nl: () =>
+    Promise.all([import("./en"), import("./nl")]).then(
+      ([{ en }, { nlOverrides }]) => ({ ...en, ...nlOverrides }),
+    ),
+};
 
 export const LOCALES: { code: Locale; name: string; htmlLang: string }[] = [
   { code: "nl", name: "Nederlands", htmlLang: "nl" },
