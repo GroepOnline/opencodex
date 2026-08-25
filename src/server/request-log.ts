@@ -6,7 +6,7 @@ import {
   isClientClosedMessage,
 } from "../lib/errors";
 import { CODEX_CONFIG_PATH, readRootTomlString } from "../codex/paths";
-import { codexProviderAccountIdForUsage } from "../codex/account-label";
+import { codexProviderAccountIdForUsage, fallbackCodexAccountLogLabel } from "../codex/account-label";
 import { readCodexCatalogPath } from "../codex/catalog";
 import type { OcxConfig, OcxUsage } from "../types";
 import type { AdapterRequest } from "../adapters/base";
@@ -201,7 +201,7 @@ export function bindLogFromSelectCandidate(
   if (pick.authCtx?.accountId) {
     const accountId = options?.config
       ? codexProviderAccountIdForUsage(pick.authCtx.accountId, options.config)
-      : pick.authCtx.accountId;
+      : fallbackCodexAccountLogLabel(pick.authCtx.accountId);
     bindLogProviderAccount(logCtx, "oauth", "codex", accountId);
     return;
   }
@@ -791,101 +791,112 @@ export function addFinalRequestLog(
   meta?: Pick<RequestLogEntry, "terminalStatus" | "closeReason">,
   addLog: (entry: RequestLogEntry) => void = addRequestLog,
 ): void {
-  // Mid-stream web-search aborts used to emit response.failed and land as 502/upstream_server_error.
-  // Prefer the client-close classification whenever the captured reason says so.
-  const effectiveStatus = status >= 500 && logCtx.upstreamError && isClientClosedMessage(logCtx.upstreamError)
-    ? 499
-    : status;
-  const errorCode = requestLogErrorCode(effectiveStatus, logCtx.upstreamError);
-  // A response.failed whose classified status is 499 is still a client cancel, not an upstream
-  // terminal failure — keep /api/logs closeReason aligned with that.
-  const closeReason = effectiveStatus === 499
-    ? "client_cancel"
-    : meta?.closeReason;
-  if (logCtx.activeAttempt) {
-    finishRequestAttempt(
-      logCtx.activeAttempt,
-      effectiveStatus,
-      Date.now() - (logCtx.activeAttemptStartedAt ?? start),
+  try {
+    // Mid-stream web-search aborts used to emit response.failed and land as 502/upstream_server_error.
+    // Prefer the client-close classification whenever the captured reason says so.
+    const effectiveStatus = status >= 500 && logCtx.upstreamError && isClientClosedMessage(logCtx.upstreamError)
+      ? 499
+      : status;
+    const errorCode = requestLogErrorCode(effectiveStatus, logCtx.upstreamError);
+    // A response.failed whose classified status is 499 is still a client cancel, not an upstream
+    // terminal failure — keep /api/logs closeReason aligned with that.
+    const closeReason = effectiveStatus === 499
+      ? "client_cancel"
+      : meta?.closeReason;
+    if (logCtx.activeAttempt) {
+      finishRequestAttempt(
+        logCtx.activeAttempt,
+        effectiveStatus,
+        Date.now() - (logCtx.activeAttemptStartedAt ?? start),
+        logCtx.usage,
+      );
+    }
+    const existing = finalizedUsage(
+      logCtx.providerAdapter ?? logCtx.provider,
       logCtx.usage,
+      logCtx.usageLogInputTokens,
     );
-  }
-  const existing = finalizedUsage(
-    logCtx.providerAdapter ?? logCtx.provider,
-    logCtx.usage,
-    logCtx.usageLogInputTokens,
-  );
-  const isCombo = logCtx.comboId !== undefined && (logCtx.attempts?.length ?? 0) > 0;
-  const provider = isCombo ? "combo" : resolveRequestLogProvider(logCtx);
-  const model = isCombo ? (logCtx.requestedModel ?? resolveRequestLogModel(logCtx)) : resolveRequestLogModel(logCtx);
-  const account = providerAccountLabel(provider);
-  const providerAccountId = resolveUsageProviderAccountId(logCtx, isCombo ? (logCtx.provider ?? provider) : provider);
-  if (providerAccountId) {
-    for (const attempt of logCtx.attempts ?? []) {
-      if (!attempt.providerAccountId) attempt.providerAccountId = providerAccountId;
+    const isCombo = logCtx.comboId !== undefined && (logCtx.attempts?.length ?? 0) > 0;
+    const provider = isCombo ? "combo" : resolveRequestLogProvider(logCtx);
+    const model = isCombo ? (logCtx.requestedModel ?? resolveRequestLogModel(logCtx)) : resolveRequestLogModel(logCtx);
+    const account = providerAccountLabel(provider);
+    const winningProvider = isCombo ? (logCtx.provider ?? provider) : provider;
+    const providerAccountId = resolveUsageProviderAccountId(logCtx, winningProvider);
+    if (providerAccountId) {
+      for (const attempt of logCtx.attempts ?? []) {
+        if (attempt.providerAccountId) continue;
+        // Combo hops can be different providers; never inherit the winner's account id cross-provider.
+        if (isCombo && attempt.provider !== winningProvider) continue;
+        attempt.providerAccountId = providerAccountId;
+      }
+      if (
+        logCtx.activeAttempt
+        && !logCtx.activeAttempt.providerAccountId
+        && (!isCombo || logCtx.activeAttempt.provider === winningProvider)
+      ) {
+        logCtx.activeAttempt.providerAccountId = providerAccountId;
+      }
     }
-    if (logCtx.activeAttempt && !logCtx.activeAttempt.providerAccountId) {
-      logCtx.activeAttempt.providerAccountId = providerAccountId;
-    }
-  }
-  const attempts = logCtx.attempts?.map(attempt => ({
-    ...attempt,
-    recoveryKinds: [...attempt.recoveryKinds],
-    ...(attempt.usage ? { usage: { ...attempt.usage } } : {}),
-  }));
-  const aggregate = isCombo ? aggregateAttemptUsage(attempts ?? []) : null;
-  const loggedUsage = aggregate?.usage ?? existing.usage;
-  const usageStatus = aggregate?.status ?? existing.status;
-  const totalTokens = aggregate?.totalTokens ?? existing.totalTokens;
-  addLog({
-    requestId,
-    timestamp: start,
-    model,
-    provider,
-    ...(account ? { account } : {}),
-    ...(providerAccountId ? { providerAccountId } : {}),
-    ...(logCtx.surface ? { surface: logCtx.surface } : {}),
-    ...(logCtx.conversationId ? { conversationId: logCtx.conversationId } : {}),
-    ...(logCtx.requestedModel ? { requestedModel: logCtx.requestedModel } : {}),
-    ...(logCtx.requestedEffort ? { requestedEffort: logCtx.requestedEffort } : {}),
-    ...(logCtx.effectiveEffort ? { effectiveEffort: logCtx.effectiveEffort } : {}),
-    ...(logCtx.reasoningWireField ? { reasoningWireField: logCtx.reasoningWireField } : {}),
-    ...(logCtx.reasoningWireValue !== undefined ? { reasoningWireValue: logCtx.reasoningWireValue } : {}),
-    ...(logCtx.requestedServiceTier ? { requestedServiceTier: logCtx.requestedServiceTier } : {}),
-    ...(logCtx.requestedSpeedLabel ? { requestedSpeedLabel: logCtx.requestedSpeedLabel } : {}),
-    ...(logCtx.configuredServiceTier ? { configuredServiceTier: logCtx.configuredServiceTier } : {}),
-    ...(logCtx.configuredSpeedLabel ? { configuredSpeedLabel: logCtx.configuredSpeedLabel } : {}),
-    ...(logCtx.modelSupportsServiceTier !== undefined ? { modelSupportsServiceTier: logCtx.modelSupportsServiceTier } : {}),
-    ...(logCtx.responseServiceTier ? { responseServiceTier: logCtx.responseServiceTier } : {}),
-    ...(logCtx.resolvedModel ? { resolvedModel: logCtx.resolvedModel } : {}),
-    status: effectiveStatus,
-    durationMs: Date.now() - start,
-    ...(logCtx.firstOutputMs !== undefined ? { firstOutputMs: logCtx.firstOutputMs } : {}),
-    ...(errorCode ? { errorCode } : {}),
-    ...(meta?.terminalStatus ? { terminalStatus: meta.terminalStatus } : {}),
-    ...(closeReason ? { closeReason } : {}),
-    ...(logCtx.upstreamError ? { upstreamError: logCtx.upstreamError } : {}),
-    usageStatus,
-    ...(loggedUsage ? { usage: loggedUsage } : {}),
-    ...(totalTokens !== undefined ? { totalTokens } : {}),
-    ...(attempts?.length ? { attempts } : {}),
-    ...(logCtx.affinity ? { affinity: logCtx.affinity } : {}),
-    ...(logCtx.transportPhase ? { transportPhase: logCtx.transportPhase } : {}),
-    ...(logCtx.terminalSource ? { terminalSource: logCtx.terminalSource } : {}),
-  });
-  releaseRequestProviderAccount(logCtx);
-  if (isUsageDebugEnabled()) {
-    appendUsageDebug({
-      ts: Date.now(),
+    const attempts = logCtx.attempts?.map(attempt => ({
+      ...attempt,
+      recoveryKinds: [...attempt.recoveryKinds],
+      ...(attempt.usage ? { usage: { ...attempt.usage } } : {}),
+    }));
+    const aggregate = isCombo ? aggregateAttemptUsage(attempts ?? []) : null;
+    const loggedUsage = aggregate?.usage ?? existing.usage;
+    const usageStatus = aggregate?.status ?? existing.status;
+    const totalTokens = aggregate?.totalTokens ?? existing.totalTokens;
+    addLog({
       requestId,
-      provider: logCtx.provider,
-      model: logCtx.model,
-      upstreamContentType: logCtx.usageDebugContentType ?? null,
-      upstreamStatus: effectiveStatus,
-      bodyKind: logCtx.usageDebugBodyKind ?? "none",
-      bodySample: logCtx.usageDebugBodySample ?? "",
-      extractedUsage: loggedUsage ?? null,
+      timestamp: start,
+      model,
+      provider,
+      ...(account ? { account } : {}),
+      ...(providerAccountId ? { providerAccountId } : {}),
+      ...(logCtx.surface ? { surface: logCtx.surface } : {}),
+      ...(logCtx.conversationId ? { conversationId: logCtx.conversationId } : {}),
+      ...(logCtx.requestedModel ? { requestedModel: logCtx.requestedModel } : {}),
+      ...(logCtx.requestedEffort ? { requestedEffort: logCtx.requestedEffort } : {}),
+      ...(logCtx.effectiveEffort ? { effectiveEffort: logCtx.effectiveEffort } : {}),
+      ...(logCtx.reasoningWireField ? { reasoningWireField: logCtx.reasoningWireField } : {}),
+      ...(logCtx.reasoningWireValue !== undefined ? { reasoningWireValue: logCtx.reasoningWireValue } : {}),
+      ...(logCtx.requestedServiceTier ? { requestedServiceTier: logCtx.requestedServiceTier } : {}),
+      ...(logCtx.requestedSpeedLabel ? { requestedSpeedLabel: logCtx.requestedSpeedLabel } : {}),
+      ...(logCtx.configuredServiceTier ? { configuredServiceTier: logCtx.configuredServiceTier } : {}),
+      ...(logCtx.configuredSpeedLabel ? { configuredSpeedLabel: logCtx.configuredSpeedLabel } : {}),
+      ...(logCtx.modelSupportsServiceTier !== undefined ? { modelSupportsServiceTier: logCtx.modelSupportsServiceTier } : {}),
+      ...(logCtx.responseServiceTier ? { responseServiceTier: logCtx.responseServiceTier } : {}),
+      ...(logCtx.resolvedModel ? { resolvedModel: logCtx.resolvedModel } : {}),
+      status: effectiveStatus,
+      durationMs: Date.now() - start,
+      ...(logCtx.firstOutputMs !== undefined ? { firstOutputMs: logCtx.firstOutputMs } : {}),
+      ...(errorCode ? { errorCode } : {}),
+      ...(meta?.terminalStatus ? { terminalStatus: meta.terminalStatus } : {}),
+      ...(closeReason ? { closeReason } : {}),
+      ...(logCtx.upstreamError ? { upstreamError: logCtx.upstreamError } : {}),
+      usageStatus,
+      ...(loggedUsage ? { usage: loggedUsage } : {}),
+      ...(totalTokens !== undefined ? { totalTokens } : {}),
+      ...(attempts?.length ? { attempts } : {}),
+      ...(logCtx.affinity ? { affinity: logCtx.affinity } : {}),
+      ...(logCtx.transportPhase ? { transportPhase: logCtx.transportPhase } : {}),
+      ...(logCtx.terminalSource ? { terminalSource: logCtx.terminalSource } : {}),
     });
+    if (isUsageDebugEnabled()) {
+      appendUsageDebug({
+        ts: Date.now(),
+        requestId,
+        provider: logCtx.provider,
+        model: logCtx.model,
+        upstreamContentType: logCtx.usageDebugContentType ?? null,
+        upstreamStatus: effectiveStatus,
+        bodyKind: logCtx.usageDebugBodyKind ?? "none",
+        bodySample: logCtx.usageDebugBodySample ?? "",
+        extractedUsage: loggedUsage ?? null,
+      });
+    }
+  } finally {
+    releaseRequestProviderAccount(logCtx);
   }
 }
 

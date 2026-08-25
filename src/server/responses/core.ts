@@ -72,6 +72,7 @@ import {
   isCursorPoolRotationError,
 } from "../../oauth/cursor-routing";
 import { isHardCapMessage } from "../../providers/cap-cooldown";
+import { releaseRequestProviderAccount } from "../../providers/account-runtime";
 import { findKeyPoolEntryId } from "../../providers/api-keys";
 import { buildWebSearchTool, planWebSearch, runWithWebSearch, shouldResolveOpenAiWebSearchSidecar } from "../../web-search";
 import { buildImageTool, buildVideoTool, planImageBridge, planVideoBridge, runWithImageBridge, clampImageMaxRounds, IMAGE_GEN_TOOL_NAME, VIDEO_GEN_TOOL_NAME } from "../../images";
@@ -978,6 +979,7 @@ export async function handleComboResponses(
     let consumedChildFailure: ConsumedComboFailure | undefined;
     const callbackGate = createChildPassthroughCallbackGate(options);
     let response: Response;
+    let bindingAdopted = false;
     try {
       const currentTargetProvider = pick.target.provider;
       const deferCodexResetDerivedCooldown = combo.strategy === "failover"
@@ -1015,95 +1017,102 @@ export async function handleComboResponses(
         onNativePassthroughTerminal: callbackGate.onTerminal,
         onNativePassthroughCancel: callbackGate.onCancel,
       });
-    } catch (error) {
+
+      if (options.abortSignal?.aborted) {
+        callbackGate.discard();
+        retainCancelledAttempt();
+        return clientCancelledResponse();
+      }
+
+      if (response.ok) {
+        sealRequestAttemptIdentity(
+          attempt,
+          childLog.provider,
+          childLog.providerAdapter ?? attempt.adapter,
+        );
+        (logCtx.attempts ??= []).push(attempt);
+        attemptRetained = true;
+        noteComboSuccess(comboId, combo, pick.target);
+        bindingAdopted = true;
+        Object.assign(logCtx, childLog, {
+          ...comboIdentity,
+          attempts: logCtx.attempts,
+          activeAttempt: attempt,
+          activeAttemptStartedAt: started,
+          resolvedModel: childLog.resolvedModel ?? childLog.model,
+        });
+        options.onCodexAuthContextResolved?.(resolvedAuth);
+        options.setTerminalOutcomeRecorder?.(terminalRecorder);
+        callbackGate.commit();
+        return response;
+      }
+
       callbackGate.discard();
+      if (response.status === 499) {
+        retainCancelledAttempt();
+        return clientCancelledResponse();
+      }
+      let failure: ConsumedComboFailure;
+      try {
+        failure = consumedChildFailure
+          ?? await consumeComboFailure(response, options.abortSignal);
+      } catch (error) {
+        if (options.abortSignal?.aborted) {
+          retainCancelledAttempt();
+          return clientCancelledResponse();
+        }
+        throw error;
+      }
       if (options.abortSignal?.aborted) {
         retainCancelledAttempt();
         return clientCancelledResponse();
       }
-      throw error;
-    }
-
-    if (options.abortSignal?.aborted) {
-      callbackGate.discard();
-      retainCancelledAttempt();
-      return clientCancelledResponse();
-    }
-
-    if (response.ok) {
       sealRequestAttemptIdentity(
         attempt,
         childLog.provider,
         childLog.providerAdapter ?? attempt.adapter,
       );
+      finishRequestAttempt(
+        attempt,
+        response.status,
+        Date.now() - started,
+        failure.usage,
+      );
       (logCtx.attempts ??= []).push(attempt);
       attemptRetained = true;
-      noteComboSuccess(comboId, combo, pick.target);
-      Object.assign(logCtx, childLog, {
-        ...comboIdentity,
-        attempts: logCtx.attempts,
-        activeAttempt: attempt,
-        activeAttemptStartedAt: started,
-        resolvedModel: childLog.resolvedModel ?? childLog.model,
+      lastFailure = failure.response;
+      if (classifyAttempt({
+        status: failure.response.status,
+        message: failure.classificationText,
+        code: failure.upstreamCode,
+      }) === "surface") {
+        adoptFailedChildLog(childLog);
+        bindingAdopted = true;
+        return lastFailure;
+      }
+      console.warn(
+        `[combo] ${comboIdLabel(comboId)}: ${targetKey(pick.target)} failed with ${response.status} after ${Date.now() - started}ms`,
+      );
+      const nextPick = advanceComboAfterFailure(config, pick, {
+        retryAfter: failure.retryAfter,
+        now: Date.now(),
+        eligible: payloadEligible,
       });
-      options.onCodexAuthContextResolved?.(resolvedAuth);
-      options.setTerminalOutcomeRecorder?.(terminalRecorder);
-      callbackGate.commit();
-      return response;
-    }
-
-    callbackGate.discard();
-    if (response.status === 499) {
-      retainCancelledAttempt();
-      return clientCancelledResponse();
-    }
-    let failure: ConsumedComboFailure;
-    try {
-      failure = consumedChildFailure
-        ?? await consumeComboFailure(response, options.abortSignal);
+      if (!nextPick) {
+        adoptFailedChildLog(childLog);
+        bindingAdopted = true;
+      }
+      pick = nextPick;
     } catch (error) {
+      callbackGate.discard();
       if (options.abortSignal?.aborted) {
         retainCancelledAttempt();
         return clientCancelledResponse();
       }
       throw error;
+    } finally {
+      if (!bindingAdopted) releaseRequestProviderAccount(childLog);
     }
-    if (options.abortSignal?.aborted) {
-      retainCancelledAttempt();
-      return clientCancelledResponse();
-    }
-    sealRequestAttemptIdentity(
-      attempt,
-      childLog.provider,
-      childLog.providerAdapter ?? attempt.adapter,
-    );
-    finishRequestAttempt(
-      attempt,
-      response.status,
-      Date.now() - started,
-      failure.usage,
-    );
-    (logCtx.attempts ??= []).push(attempt);
-    attemptRetained = true;
-    lastFailure = failure.response;
-    if (classifyAttempt({
-      status: failure.response.status,
-      message: failure.classificationText,
-      code: failure.upstreamCode,
-    }) === "surface") {
-      adoptFailedChildLog(childLog);
-      return lastFailure;
-    }
-    console.warn(
-      `[combo] ${comboIdLabel(comboId)}: ${targetKey(pick.target)} failed with ${response.status} after ${Date.now() - started}ms`,
-    );
-    const nextPick = advanceComboAfterFailure(config, pick, {
-      retryAfter: failure.retryAfter,
-      now: Date.now(),
-      eligible: payloadEligible,
-    });
-    if (!nextPick) adoptFailedChildLog(childLog);
-    pick = nextPick;
   }
   return lastFailure!;
 }

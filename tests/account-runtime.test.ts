@@ -93,6 +93,11 @@ describe("provider account occupancy", () => {
       inFlight: 1,
       lastUsedAt: 10,
     });
+    bindRequestProviderAccount(ctx, "oauth", "anthropic", "aaaa1111", 15);
+    expect(getProviderAccountOccupancy("oauth", "anthropic", "aaaa1111")).toEqual({
+      inFlight: 1,
+      lastUsedAt: 15,
+    });
     bindRequestProviderAccount(ctx, "oauth", "anthropic", "bbbb2222", 20);
     expect(getProviderAccountOccupancy("oauth", "anthropic", "aaaa1111").inFlight).toBe(0);
     expect(getProviderAccountOccupancy("oauth", "anthropic", "bbbb2222")).toEqual({
@@ -223,6 +228,25 @@ describe("store expiry policy + routing", () => {
     expect(row.disabledByExpiry).toBeUndefined();
     expect(row.autoDisableOnExpiry).toBeUndefined();
     expect(isProviderAccountSelectable(row)).toBe(true);
+  });
+
+  test("request-time token snapshot latches and demotes before resolving sibling", async () => {
+    await saveCredential("anthropic", cred({ email: "live@example.com", accountId: "live" }));
+    await saveCredential("anthropic", cred({ email: "old@example.com", accountId: "old" }));
+    const set = getAccountSet("anthropic")!;
+    const liveId = set.accounts.find(row => row.credential.email === "live@example.com")!.id;
+    const oldId = set.accounts.find(row => row.credential.email === "old@example.com")!.id;
+    expect(await setActiveAccount("anthropic", oldId)).toBe(true);
+    expect(await setAccountExpiryPolicy("anthropic", oldId, {
+      accountExpiresAt: 5_000,
+      autoDisableOnExpiry: true,
+    }, 1_000)).toBe(true);
+    expect(getAccountSet("anthropic")?.activeAccountId).toBe(oldId);
+    expect(getAccountSet("anthropic")?.accounts.find(row => row.id === oldId)?.disabledByExpiry).toBeUndefined();
+
+    await expect(getValidAccessToken("anthropic")).resolves.toBe("access-1");
+    expect(getAccountSet("anthropic")?.accounts.find(row => row.id === oldId)?.disabledByExpiry).toBe(true);
+    expect(getAccountSet("anthropic")?.activeAccountId).toBe(liveId);
   });
 
   test("applyExpiredAccountDisables is a no-op when nothing is due", async () => {

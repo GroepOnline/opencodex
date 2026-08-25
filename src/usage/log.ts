@@ -37,7 +37,11 @@ export interface PersistedUsageAttempt {
   effectiveEffort?: string;
   reasoningWireField?: string;
   reasoningWireValue?: string | number;
-  /** Stable store id (OAuth account id or key-pool entry id). Distinct from `account`. */
+  /**
+   * Account identity for attribution. OAuth and key-pool rows carry the stable store id;
+   * Codex rows carry a privacy-safe pseudonym (`main` or `p<hex6>`), never the raw store id.
+   * Distinct from `account`, which remains the display label suffix when present.
+   */
   providerAccountId?: string;
 }
 
@@ -56,8 +60,9 @@ export interface PersistedUsageEntry {
    */
   account?: string;
   /**
-   * Stable store id for the account or key that served this request.
-   * Distinct from `account`, which remains the display label.
+   * Account identity for attribution. OAuth and key-pool rows carry the stable store id;
+   * Codex rows carry a privacy-safe pseudonym (`main` or `p<hex6>`), never the raw store id.
+   * Distinct from `account`, which remains the display label suffix when present.
    */
   providerAccountId?: string;
   resolvedModel?: string;

@@ -4,7 +4,7 @@ import type { OcxConfig, OcxProviderConfig, RefreshPolicy } from "../types";
 import { loadConfig, resolveEnvValue, saveConfig } from "../config";
 import { maskEmail } from "../lib/privacy";
 import { KiroTokenRefreshError, environmentKiroRoutingMetadata, loginKiro, refreshKiroToken, settleKiroLoginTransaction } from "./kiro";
-import { getAccountCredential, getAccountSet, removeAccount, saveAccountCredential, saveCredential, setActiveAccount, getCredential, credentialGeneration, createOAuthRefreshIntentLock, mergeAccountCredential, markAccountNeedsReauthIfGeneration, readOAuthRefreshIntent, writeOAuthRefreshIntent, clearOAuthRefreshIntent } from "./store";
+import { applyExpiredAccountDisables, getAccountCredential, getAccountSet, removeAccount, saveAccountCredential, saveCredential, setActiveAccount, getCredential, credentialGeneration, createOAuthRefreshIntentLock, mergeAccountCredential, markAccountNeedsReauthIfGeneration, readOAuthRefreshIntent, writeOAuthRefreshIntent, clearOAuthRefreshIntent } from "./store";
 import { isAccountDisabledForRouting } from "./account-expiry";
 import { loginXai, refreshXaiToken, XAI_LOCAL_CLI_DETACH_WARNING, XaiTokenRequestError } from "./xai";
 import { ANTHROPIC_OAUTH_BETA, AnthropicTokenError, loginAnthropic, refreshAnthropicToken } from "./anthropic";
@@ -283,6 +283,9 @@ async function resolveAccessSnapshotForAccount(
 }
 
 export async function getValidAccessTokenSnapshot(provider: string): Promise<OAuthAccessSnapshot> {
+  // Latch/demote expired seats on the request path so a healthy same-provider sibling
+  // succeeds even when account pools are off (GRO-1497).
+  await applyExpiredAccountDisables();
   const set = getAccountSet(provider);
   if (!set) throw new OAuthLoginRequiredError(provider);
   return resolveAccessSnapshotForAccount(provider, set.activeAccountId);
