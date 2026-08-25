@@ -1,9 +1,13 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, jest, test } from "bun:test";
 import { Window } from "happy-dom";
 import { act } from "react";
 import type { Root } from "react-dom/client";
 import { LanguageProvider } from "../src/i18n/provider";
 import { LoginUrlBlock } from "../src/components/login-url-block";
+
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
 
 /**
  * Contract for the shared OAuth login-URL block. It owns the copy state for
@@ -49,6 +53,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  jest.useRealTimers();
   if (root) {
     const current = root;
     await act(async () => { current.unmount(); });
@@ -81,7 +86,11 @@ function copyButton(): HTMLButtonElement {
 async function clickCopy() {
   await act(async () => {
     copyButton().dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
-    await new Promise((r) => setTimeout(r, 0));
+    // Microtask flush: works under real AND fake timers (setTimeout(0) would
+    // stall under jest.useFakeTimers).
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
   });
 }
 
@@ -109,15 +118,25 @@ test("reports an unusable clipboard instead of a false success", async () => {
 test("keeps the latest feedback for its full window across repeated copies", async () => {
   await render(URL_A);
 
+  // Virtual clock: assertions care about wipe-timer overlap semantics, not wall time.
+  jest.useFakeTimers();
+
   await clickCopy();
-  await act(async () => { await new Promise((r) => setTimeout(r, 200)); });
+  await act(async () => {
+    jest.advanceTimersByTime(200);
+    await Promise.resolve();
+  });
   await clickCopy();
 
   expect(clipboardWrites).toEqual([URL_A, URL_A]);
 
   // Past the first click's expiry but before the second's: an unguarded timer
   // would already have wiped the second click's label.
-  await act(async () => { await new Promise((r) => setTimeout(r, 2400)); });
+  await act(async () => {
+    jest.advanceTimersByTime(2400);
+    await Promise.resolve();
+    await Promise.resolve();
+  });
   expect(host.textContent).toContain("Copied");
 });
 

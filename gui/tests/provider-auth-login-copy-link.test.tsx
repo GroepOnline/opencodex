@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, jest, test } from "bun:test";
 import { Window } from "happy-dom";
 import { act } from "react";
 import type { Root } from "react-dom/client";
@@ -6,6 +6,10 @@ import { LanguageProvider } from "../src/i18n/provider";
 import ProviderAuthPanel from "../src/components/provider-workspace/ProviderAuthPanel";
 import type { WorkspaceItem } from "../src/provider-workspace/catalog";
 import type { LoginHint, ProviderAuthHandlers } from "../src/components/provider-workspace/types";
+
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
 
 /**
  * Regression guard for the workspace OAuth login wait panel.
@@ -70,6 +74,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  jest.useRealTimers();
   if (root) {
     const current = root;
     await act(async () => { current.unmount(); });
@@ -132,24 +137,40 @@ test("clipboard-less context reports unavailability instead of a false success",
   expect(host.textContent).toContain("Clipboard unavailable");
 });
 
-test("repeated copies keep the latest feedback for its full window", async () => {
+/** Flush pending promise continuations without relying on real timers. */
+async function flushMicrotasks() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+ test("repeated copies keep the latest feedback for its full window", async () => {
   await mountPanel({ provider: "claude", url: AUTH_URL });
+
+  // Virtual clock: the assertions care about wipe-timer overlap semantics,
+  // not about 2.6s of wall time.
+  jest.useFakeTimers();
 
   await act(async () => {
     copyLinkButton().dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
-    await new Promise((r) => setTimeout(r, 0));
+    await flushMicrotasks();
   });
   // Second click lands inside the first click's 2.5s feedback window.
   await act(async () => {
-    await new Promise((r) => setTimeout(r, 200));
+    jest.advanceTimersByTime(200);
     copyLinkButton().dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
-    await new Promise((r) => setTimeout(r, 0));
+    await flushMicrotasks();
   });
   expect(clipboardWrites).toEqual([AUTH_URL, AUTH_URL]);
 
   // Past the FIRST click's expiry but before the second's: an unguarded
   // timer would have already wiped the second click's feedback here.
-  await act(async () => { await new Promise((r) => setTimeout(r, 2400)); });
+  await act(async () => {
+    jest.advanceTimersByTime(2400);
+    await flushMicrotasks();
+  });
   expect(host.textContent).toContain("Copied");
 });
 

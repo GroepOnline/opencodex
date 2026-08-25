@@ -7,6 +7,10 @@ import { LanguageProvider } from "../src/i18n/provider";
 import Debug from "../src/pages/Debug";
 import type { DebugSettings } from "../src/pages/debug-shared";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 const globals = ["document", "window", "navigator", "localStorage", "IS_REACT_ACT_ENVIRONMENT", "ResizeObserver"] as const;
 /** Survives afterEach restore so a late React 19 dispatchSetState can read window.event. */
 const WINDOW_EVENT_STUB: { event: undefined } = { event: undefined };

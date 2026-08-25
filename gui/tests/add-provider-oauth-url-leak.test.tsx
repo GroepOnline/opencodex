@@ -6,6 +6,10 @@ import { LanguageProvider } from "../src/i18n/provider";
 import AddProviderModal from "../src/components/AddProviderModal";
 import { OAUTH_LOGIN_POLL_INTERVAL_MS } from "../src/components/use-add-provider-oauth";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 /**
  * The add-provider OAuth pane renders the authorization URL so a user whose
  * browser never opened can still copy it. That URL arrives asynchronously,

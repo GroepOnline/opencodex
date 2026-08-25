@@ -5,6 +5,10 @@ import { createRoot, type Root } from "react-dom/client";
 import Subagents from "../src/pages/Subagents";
 import { LanguageProvider } from "../src/i18n/provider";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 /**
  * Behavioural contract for the denser Subagents workspace: five-slot cap,
  * add/remove via the rail, and the exact save request.
