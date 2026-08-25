@@ -517,7 +517,7 @@ describe("resolveCodexRuntime", () => {
     }
   });
 
-  test("resolve cache does not pin fallback across an in-process probe recovery", async () => {
+  test("resolve cache throttles fallback probes until TTL, then retries", async () => {
     const { chmodSync, mkdirSync } = await import("node:fs");
     const { delimiter } = await import("node:path");
 
@@ -529,6 +529,9 @@ describe("resolveCodexRuntime", () => {
     const previousHome = process.env.OPENCODEX_HOME;
     const previousCli = process.env.CODEX_CLI_PATH;
     const previousPath = process.env.PATH;
+    const realDateNow = Date.now;
+    let now = realDateNow();
+    Date.now = () => now;
     process.env.OPENCODEX_HOME = home;
     process.env.PATH = `${binDir}${delimiter}${NO_CODEX_PATH}`;
     delete process.env.CODEX_CLI_PATH;
@@ -552,10 +555,16 @@ describe("resolveCodexRuntime", () => {
         chmodSync(recoveredBin, 0o755);
       }
 
+      // Within the 15s hot-path window, fallback stays cached so settings polls
+      // do not spawn a probe per GET on machines without Codex.
+      expect(resolveCodexRuntime().runtime.source).toBe("fallback");
+
+      now += 15_001;
       const recovered = resolveCodexRuntime();
       expect(recovered.runtime.command).toBe(recoveredBin);
       expect(recovered.runtime.source).not.toBe("fallback");
     } finally {
+      Date.now = realDateNow;
       if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
       else process.env.OPENCODEX_HOME = previousHome;
       if (previousCli === undefined) delete process.env.CODEX_CLI_PATH;

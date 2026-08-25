@@ -413,10 +413,7 @@ export function resolveCodexRuntime(deps: ResolveCodexRuntimeDeps = {}): Resolve
   }
 
   const result = resolveCodexRuntimeUncached(deps);
-  // Do not pin a probe miss: callers retry on the next catalog/sync tick.
-  if (cacheKey && result.runtime.source !== "fallback") {
-    resolveCache = { key: cacheKey, at: Date.now(), value: result };
-  }
+  if (cacheKey) resolveCache = { key: cacheKey, at: Date.now(), value: result };
   return result;
 }
 
