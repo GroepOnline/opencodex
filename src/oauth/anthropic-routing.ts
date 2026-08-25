@@ -18,6 +18,7 @@ import { createHash } from "node:crypto";
 import { setActiveAccount, getAccountSet, getAccountCredential } from "./store";
 import { getCachedProviderAccountQuota } from "../providers/quota";
 import { fallbackCodexAccountLogLabel } from "../codex/account-label";
+import { isProviderAccountSelectable } from "./account-expiry";
 import {
   normalizeAccountPoolStickyLimit,
   normalizeAccountPoolStrategy,
@@ -106,6 +107,15 @@ export function getAnthropicAccountHealthSnapshot(
   return { cooldownUntil: entry.cooldownUntil, cooldownSource: entry.cooldownSource };
 }
 
+export function getAnthropicAccountLastUsedAt(accountId: string): number | undefined {
+  let latest: number | undefined;
+  for (const entry of sessionAffinity.values()) {
+    if (entry.accountId !== accountId) continue;
+    if (latest === undefined || entry.lastUsedAt > latest) latest = entry.lastUsedAt;
+  }
+  return latest;
+}
+
 export function clearAnthropicAccountCooldown(accountId: string): boolean {
   return upstreamHealth.delete(accountId);
 }
@@ -149,7 +159,7 @@ export function getEligibleAnthropicAccounts(now = Date.now()): string[] {
   if (!set) return [];
   return set.accounts
     .filter(account =>
-      account.needsReauth !== true
+      isProviderAccountSelectable(account, now)
       && !isCooled(account.id, now)
       && isPoolCredentialUsable(account.id, now))
     .map(account => account.id);
@@ -348,7 +358,7 @@ export function resolveAnthropicAccountForSession(
   if (key) {
     const affined = sessionAffinity.get(key);
     if (affined && now - affined.lastUsedAt <= AFFINITY_IDLE_TTL_MS) {
-      const stillThere = set.accounts.some(a => a.id === affined.accountId && a.needsReauth !== true);
+      const stillThere = set.accounts.some(a => a.id === affined.accountId && isProviderAccountSelectable(a, now));
       if (stillThere && !isCooled(affined.accountId, now) && isPoolCredentialUsable(affined.accountId, now)) {
         affined.lastUsedAt = now;
         return { accountId: affined.accountId, reason: "affinity" };
@@ -362,7 +372,7 @@ export function resolveAnthropicAccountForSession(
   // active under RR/fill-first instead of treating every turn as a new session.
   // Round-robin only when there is a real new-session key (or active is unusable).
   if (!key && (strategy === "round-robin" || strategy === "fill-first")) {
-    const activeOk = set.accounts.some(a => a.id === set.activeAccountId && a.needsReauth !== true)
+    const activeOk = set.accounts.some(a => a.id === set.activeAccountId && isProviderAccountSelectable(a, now))
       && !isCooled(set.activeAccountId, now)
       && isPoolCredentialUsable(set.activeAccountId, now);
     if (activeOk) {
@@ -382,7 +392,7 @@ export function resolveAnthropicAccountForSession(
   }
 
   const threshold = anthropicAutoSwitchThreshold(config);
-  const activeOk = set.accounts.some(a => a.id === set.activeAccountId && a.needsReauth !== true)
+  const activeOk = set.accounts.some(a => a.id === set.activeAccountId && isProviderAccountSelectable(a, now))
     && !isCooled(set.activeAccountId, now)
     && isPoolCredentialUsable(set.activeAccountId, now);
 

@@ -8,6 +8,7 @@ import {
   oauthHealthBadgeClass,
   oauthHealthBadgeTone,
   oauthHealthIsCooldown,
+  oauthHealthIsDisabled,
   oauthHealthShowsDoctor,
   oauthHealthShowsReauth,
 } from "../src/oauth-health-display";
@@ -41,6 +42,8 @@ describe("oauth health badge helpers", () => {
     expect(oauthHealthShowsDoctor("cooldown")).toBe(false);
     expect(oauthHealthIsCooldown("cooldown")).toBe(true);
     expect(oauthHealthIsCooldown("healthy")).toBe(false);
+    expect(oauthHealthIsDisabled("disabled")).toBe(true);
+    expect(oauthHealthShowsReauth("disabled")).toBe(false);
   });
 
   test("accountNeedsReauth combines legacy flag with health-only reauth", () => {
@@ -60,6 +63,10 @@ describe("oauth health badge helpers", () => {
       .toBe("pws.healthLabel.quotaLimited");
     expect(formatOAuthHealthLabel(t, { status: "warning", reason: "refresh_conflict" }))
       .toBe("pws.healthLabel.credentialConflict");
+    expect(formatOAuthHealthLabel(t, { status: "disabled", reason: "expired" }))
+      .toBe("pws.healthLabel.expired");
+    expect(formatOAuthHealthSummary(t, "anthropic", "acct_abcd1234", { status: "disabled", reason: "expired" }))
+      .toBe("pws.healthSummary.expired");
     expect(formatOAuthHealthSummary(t, "xai", "acct_abcd1234", { status: "reauth_required", reason: "refresh_failed" }))
       .toBe("pws.healthSummary.reauthRequired");
     expect(formatOAuthHealthSummary(t, "xai", "acct_abcd1234", { status: "warning", reason: "stale_credentials" }))

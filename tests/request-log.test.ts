@@ -22,17 +22,23 @@ import {
   recordFirstOutput,
   requestLogEntryFromPersistedUsage,
   sealRequestAttemptIdentity,
+  bindLogFromSelectCandidate,
+  bindLogProviderAccount,
   type RequestLogContext,
 } from "../src/server/request-log";
+import { clearProviderAccountRuntimeState, getProviderAccountOccupancy, releaseRequestProviderAccount } from "../src/providers/account-runtime-state";
+import { findKeyPoolEntryId } from "../src/providers/api-keys";
+import { fallbackCodexAccountLogLabel } from "../src/codex/account-label";
 import { bridgeToResponsesSSE } from "../src/bridge";
 import type { AdapterEvent, OcxUsage } from "../src/types";
 import {
   appendUsageEntry,
   readUsageEntries,
   resetUsageReadCacheForTests,
+  usageLogPath,
   type PersistedUsageEntry,
 } from "../src/usage/log";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -334,6 +340,27 @@ describe("request log metadata", () => {
         },
       ],
     });
+  });
+
+  test("combo finalization does not backfill winner account id onto other providers", () => {
+    const entries: RequestLogEntry[] = [];
+    const openaiAttempt = beginRequestAttempt(1, "openai", "gpt", "openai-chat");
+    const anthropicAttempt = beginRequestAttempt(2, "anthropic", "claude", "anthropic");
+    finishRequestAttempt(openaiAttempt, 503, 1);
+    finishRequestAttempt(anthropicAttempt, 200, 2, { inputTokens: 1, outputTokens: 1 });
+    const logCtx: RequestLogContext = {
+      model: "combo/free",
+      provider: "anthropic",
+      requestedModel: "combo/free",
+      comboId: "free",
+      providerAccountId: "anthropic-seat-x",
+      attempts: [openaiAttempt, anthropicAttempt],
+      activeAttempt: anthropicAttempt,
+    };
+    addFinalRequestLog("combo-xprov", Date.now(), logCtx, 200, undefined, entry => entries.push(entry));
+    expect(entries[0]?.providerAccountId).toBe("anthropic-seat-x");
+    expect(entries[0]?.attempts?.[0]?.providerAccountId).toBeUndefined();
+    expect(entries[0]?.attempts?.[1]?.providerAccountId).toBe("anthropic-seat-x");
   });
 
   test("streaming terminal usage updates only the committed final attempt", async () => {
@@ -852,6 +879,75 @@ describe("request log metadata", () => {
       provider: "openai-p104398",
       account: "p104398",
     });
+  });
+
+  test("key-pool bind stamps providerAccountId in usage JSONL without the secret", () => {
+    const home = mkdtempSync(join(tmpdir(), "ocx-req-log-keypool-"));
+    const previousHome = process.env.OPENCODEX_HOME;
+    process.env.OPENCODEX_HOME = home;
+    clearRequestLogsForTests();
+    resetUsageReadCacheForTests();
+    // Placeholder token shape is constrained by scripts/privacy-scan.ts's tests/ allowlist.
+    const secret = "sk-test-000111222333444";
+    try {
+      const attempt = beginRequestAttempt(1, "openai", "gpt-5.5", "openai-chat");
+      const logCtx: RequestLogContext = {
+        model: "gpt-5.5",
+        provider: "openai",
+        activeAttempt: attempt,
+        attempts: [attempt],
+      };
+      const resolvedId = findKeyPoolEntryId(
+        { apiKey: secret, apiKeyPool: [{ id: "k1a2b3c4", key: secret }] },
+        secret,
+      );
+      expect(resolvedId).toBe("k1a2b3c4");
+      bindLogFromSelectCandidate(logCtx, {
+        keyPool: { provider: "openai", accountId: resolvedId! },
+      });
+      bindLogProviderAccount(logCtx, "key-pool", "openai", "k2b3c4d5");
+      expect(getProviderAccountOccupancy("key-pool", "openai", "k2b3c4d5").inFlight).toBe(1);
+      addFinalRequestLog("ocx-key-pool", 1, logCtx, 200);
+      expect(getProviderAccountOccupancy("key-pool", "openai", "k2b3c4d5").inFlight).toBe(0);
+      expect(logCtx.providerAccountId).toBeUndefined();
+      const raw = readFileSync(usageLogPath(), "utf-8");
+      expect(raw).not.toContain(secret);
+      expect(raw).not.toContain("sk-test-000111");
+      const [entry] = readUsageEntries();
+      expect(entry?.providerAccountId).toBe("k2b3c4d5");
+      expect(entry?.attempts?.[0]?.providerAccountId).toBe("k2b3c4d5");
+      expect(entry).not.toHaveProperty("account");
+    } finally {
+      if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
+      else process.env.OPENCODEX_HOME = previousHome;
+      resetUsageReadCacheForTests();
+      clearRequestLogsForTests();
+      clearProviderAccountRuntimeState();
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("codex bind without config hashes providerAccountId for usage", () => {
+    const logCtx: RequestLogContext = { model: "gpt-5", provider: "codex" };
+    bindLogFromSelectCandidate(logCtx, { authCtx: { kind: "pool", accountId: "raw-store-id-12345" } });
+    expect(logCtx.providerAccountId).toBe(fallbackCodexAccountLogLabel("raw-store-id-12345"));
+    expect(logCtx.providerAccountId).not.toBe("raw-store-id-12345");
+    releaseRequestProviderAccount(logCtx);
+  });
+
+  test("addFinalRequestLog releases inFlight when addLog throws", () => {
+    clearProviderAccountRuntimeState();
+    const logCtx: RequestLogContext = {
+      model: "gpt-5",
+      provider: "anthropic",
+      activeAttempt: beginRequestAttempt(1, "anthropic", "claude", "anthropic"),
+    };
+    bindLogProviderAccount(logCtx, "oauth", "anthropic", "aaaa1111");
+    expect(getProviderAccountOccupancy("oauth", "anthropic", "aaaa1111").inFlight).toBe(1);
+    expect(() => addFinalRequestLog("throw-log", Date.now(), logCtx, 500, undefined, () => {
+      throw new Error("persist failed");
+    })).toThrow("persist failed");
+    expect(getProviderAccountOccupancy("oauth", "anthropic", "aaaa1111").inFlight).toBe(0);
   });
 
   test("httpStatusFromTerminalError maps Cursor tool catalog limits to 400", () => {

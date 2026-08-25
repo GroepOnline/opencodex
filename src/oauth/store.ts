@@ -2,7 +2,7 @@
  * OAuth token store at ~/.opencodex/auth.json, keyed by provider name.
  *
  * Multiauth shape (260706): each provider value is a ProviderAccountSet
- * `{ activeAccountId, accounts: [{ id, credential, needsReauth?, addedAt? }] }`.
+ * `{ activeAccountId, accounts: [{ id, credential, needsReauth?, addedAt?, accountExpiresAt?, autoDisableOnExpiry?, disabledByExpiry? }] }`.
  * Legacy single-credential values (`{ access, refresh, expires, ... }`) normalize on load,
  * and the first new-shape persist writes a one-time `auth.json.pre-multiauth` backup so a
  * downgraded loader (which silently drops unknown shapes) cannot destroy refresh tokens.
@@ -21,6 +21,12 @@ import { join } from "node:path";
 import { getConfigDir, atomicWriteFile, backupInvalidConfig, hardenConfigDir, hardenExistingSecret } from "../config";
 import { recordOwnedConfigPath } from "../lib/config-ownership";
 import { validateCopilotApiBaseUrl } from "./github-copilot";
+import {
+  applyExpiryDisableToAccount,
+  demoteExpiryDisabledActiveAccount,
+  shouldAutoDisableExpiredAccount,
+  shouldDemoteExpiryDisabledActiveAccount,
+} from "./account-expiry";
 import type { OAuthCredentialSource, OAuthCredentials, ProviderAccount, ProviderAccountSet } from "./types";
 
 type AuthStore = Record<string, ProviderAccountSet>;
@@ -244,6 +250,19 @@ function newAccountId(cred: OAuthCredentials): string {
   return createHash("sha256").update(identity).digest("hex").slice(0, 8);
 }
 
+function persistAccountMeta(account: ProviderAccount): Omit<ProviderAccount, "id" | "credential"> {
+  return {
+    ...(account.alias ? { alias: account.alias } : {}),
+    ...(account.needsReauth ? { needsReauth: true } : {}),
+    ...(account.addedAt !== undefined ? { addedAt: account.addedAt } : {}),
+    ...(typeof account.accountExpiresAt === "number" && Number.isFinite(account.accountExpiresAt)
+      ? { accountExpiresAt: account.accountExpiresAt }
+      : {}),
+    ...(account.autoDisableOnExpiry ? { autoDisableOnExpiry: true } : {}),
+    ...(account.disabledByExpiry ? { disabledByExpiry: true } : {}),
+  };
+}
+
 function normalizeAccount(value: unknown): ProviderAccount | null {
   if (!value || typeof value !== "object") return null;
   const candidate = value as Partial<ProviderAccount>;
@@ -253,7 +272,12 @@ function normalizeAccount(value: unknown): ProviderAccount | null {
   const account: ProviderAccount = { id: candidate.id, credential };
   if (typeof candidate.alias === "string" && candidate.alias.trim()) account.alias = candidate.alias.trim();
   if (candidate.needsReauth === true) account.needsReauth = true;
-  if (typeof candidate.addedAt === "number") account.addedAt = candidate.addedAt;
+  if (typeof candidate.addedAt === "number" && Number.isFinite(candidate.addedAt)) account.addedAt = candidate.addedAt;
+  if (typeof candidate.accountExpiresAt === "number" && Number.isFinite(candidate.accountExpiresAt)) {
+    account.accountExpiresAt = candidate.accountExpiresAt;
+  }
+  if (candidate.autoDisableOnExpiry === true) account.autoDisableOnExpiry = true;
+  if (candidate.disabledByExpiry === true) account.disabledByExpiry = true;
   return account;
 }
 
@@ -428,6 +452,62 @@ export async function setAccountAlias(provider: string, accountId: string, alias
   });
 }
 
+export async function setAccountExpiryPolicy(
+  provider: string,
+  accountId: string,
+  patch: { accountExpiresAt?: number | null; autoDisableOnExpiry?: boolean | null },
+  now = Date.now(),
+): Promise<boolean> {
+  return await mutateStore(store => {
+    const account = store[provider]?.accounts.find(a => a.id === accountId);
+    if (!account) return false;
+    if (patch.accountExpiresAt === null) delete account.accountExpiresAt;
+    else if (typeof patch.accountExpiresAt === "number" && Number.isFinite(patch.accountExpiresAt)) {
+      account.accountExpiresAt = patch.accountExpiresAt;
+    }
+    if (patch.autoDisableOnExpiry === null || patch.autoDisableOnExpiry === false) {
+      delete account.autoDisableOnExpiry;
+    } else if (patch.autoDisableOnExpiry === true) {
+      account.autoDisableOnExpiry = true;
+    }
+    if (
+      account.autoDisableOnExpiry !== true
+      || typeof account.accountExpiresAt !== "number"
+      || account.accountExpiresAt > now
+    ) {
+      delete account.disabledByExpiry;
+    }
+    applyExpiryDisableToAccount(account, now);
+    const set = store[provider];
+    if (set) demoteExpiryDisabledActiveAccount(set, now);
+    return true;
+  });
+}
+
+/** Latch auto-disable on every expired opted-in seat. Returns how many accounts flipped. */
+export async function applyExpiredAccountDisables(now = Date.now()): Promise<number> {
+  const snapshot = loadAuthStore();
+  let pending = 0;
+  let needsDemote = false;
+  for (const set of Object.values(snapshot)) {
+    for (const account of set.accounts) {
+      if (shouldAutoDisableExpiredAccount(account, now)) pending += 1;
+    }
+    if (shouldDemoteExpiryDisabledActiveAccount(set, now)) needsDemote = true;
+  }
+  if (pending === 0 && !needsDemote) return 0;
+  return await mutateStore(store => {
+    let flipped = 0;
+    for (const set of Object.values(store)) {
+      for (const account of set.accounts) {
+        if (applyExpiryDisableToAccount(account, now)) flipped += 1;
+      }
+      demoteExpiryDisabledActiveAccount(set, now);
+    }
+    return flipped;
+  });
+}
+
 /** Remove one account by id; active removal promotes the first remaining account. */
 export async function removeAccount(provider: string, accountId: string): Promise<boolean> {
   return await mutateStore(store => {
@@ -460,9 +540,7 @@ export async function replaceProviderAccountSet(
       accounts: set.accounts.map(account => ({
         id: account.id,
         credential: { ...account.credential, ...(account.credential.kiro ? { kiro: { ...account.credential.kiro } } : {}) },
-        ...(account.alias ? { alias: account.alias } : {}),
-        ...(account.needsReauth ? { needsReauth: true } : {}),
-        ...(account.addedAt !== undefined ? { addedAt: account.addedAt } : {}),
+        ...persistAccountMeta(account),
       })),
     };
   });

@@ -58,6 +58,51 @@ cooldowns so the new set starts fetch-ready.
 See [Multiple API keys](/guides/providers/#multiple-api-keys) for the operator
 workflow.
 
+## OAuth seat expiry
+
+`PUT /api/oauth/accounts/expiry` sets the operator-owned seat window on one
+OAuth account. This is distinct from `credential.expires` (the access-token
+lifetime returned as `expiresAt` on `GET /api/oauth/accounts`).
+
+```json
+{
+  "provider": "anthropic",
+  "accountId": "aaaa1111",
+  "accountExpiresAt": 1790000000000,
+  "autoDisableOnExpiry": true
+}
+```
+
+- `accountExpiresAt` — unix ms, or `null` to clear the seat date
+- `autoDisableOnExpiry` — when `true`, an elapsed seat date latches
+  `disabledByExpiry` and drops the account from same-provider routing
+
+A `200` response echoes `accountExpiresAt`, `autoDisableOnExpiry`, and
+`disabledByExpiry`. Extending the seat, clearing the date, or turning
+`autoDisableOnExpiry` off clears the latch. If the latched account is the
+active seat and another selectable sibling exists **on that same provider**,
+the sibling becomes active. Other providers are never selected.
+
+Tokens never appear in this payload. `accountId` is the short store id already
+returned by `GET /api/oauth/accounts`.
+
+## Account runtime
+
+`GET /api/accounts/runtime` is the unified read-model for OAuth accounts
+(Anthropic / Cursor / Antigravity) and API-key pool entries (2+ keys). Each
+row includes:
+
+- `provider`, `accountId`, `kind` (`oauth` or `key-pool`)
+- `inFlight`, optional `lastUsedAt`
+- optional `cooldownUntil` / `cooldownSource`
+- OAuth-only: `accountExpiresAt`, `autoDisableOnExpiry`
+- `disabled`, optional `disabledReason` (`expired` or `needs_reauth`)
+- `selectable`
+
+The handler applies pending auto-disable latches first, including the
+same-provider active-seat demote described above. It does not return API keys,
+OAuth tokens, or emails.
+
 ## Auto-router
 
 `GET /api/router` shows what the auto-router would do right now. The auto-router

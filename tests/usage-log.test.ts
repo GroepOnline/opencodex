@@ -102,6 +102,38 @@ describe("usage log", () => {
     })]);
   });
 
+  test("persists providerAccountId separately from the display account label", () => {
+    appendUsageEntry({
+      requestId: "ocx-account-id",
+      timestamp: 1,
+      provider: "anthropic-pab12cd",
+      model: "claude-opus-4",
+      status: 200,
+      durationMs: 1,
+      usageStatus: "reported",
+      account: "pab12cd",
+      providerAccountId: "aaaa1111",
+      attempts: [{
+        ordinal: 1,
+        provider: "anthropic",
+        model: "claude-opus-4",
+        adapter: "anthropic",
+        status: 200,
+        durationMs: 1,
+        sendCount: 1,
+        recoveryKinds: [],
+        usageStatus: "reported",
+        providerAccountId: "aaaa1111",
+      }],
+    });
+    expect(readUsageEntries()).toEqual([expect.objectContaining({
+      requestId: "ocx-account-id",
+      account: "pab12cd",
+      providerAccountId: "aaaa1111",
+      attempts: [expect.objectContaining({ providerAccountId: "aaaa1111" })],
+    })]);
+  });
+
   test("persists an absolute context checkpoint for stateful providers", () => {
     // Kiro reports per-attempt usage only, so contextTotalTokens is the sole carrier of the
     // cumulative context figure once the log stores raw adapter usage (usageFromBridge).

@@ -19,6 +19,7 @@ import {
 import { classifyCursorUpstreamOutcome } from "../lib/upstream-outcome";
 import { getCachedProviderAccountQuota } from "../providers/quota";
 import type { OcxAccountPoolRotationStrategy, OcxConfig } from "../types";
+import { isProviderAccountSelectable } from "./account-expiry";
 import { getAccountCredential, getAccountSet, setActiveAccount } from "./store";
 
 const PROVIDER = "cursor";
@@ -126,6 +127,15 @@ export function getCursorAccountHealthSnapshot(
   };
 }
 
+export function getCursorAccountLastUsedAt(accountId: string): number | undefined {
+  let latest: number | undefined;
+  for (const entry of sessionAffinity.values()) {
+    if (entry.accountId !== accountId) continue;
+    if (latest === undefined || entry.lastUsedAt > latest) latest = entry.lastUsedAt;
+  }
+  return latest;
+}
+
 export function clearCursorAccountCooldown(accountId: string): boolean {
   return upstreamHealth.delete(accountId);
 }
@@ -146,7 +156,7 @@ export function getEligibleCursorAccounts(now = Date.now()): string[] {
   if (!set) return [];
   return set.accounts
     .filter(account =>
-      account.needsReauth !== true
+      isProviderAccountSelectable(account, now)
       && getCursorAccountHealthSnapshot(account.id, now) === null
       && credentialIsUsable(account.id, now))
     .map(account => account.id);

@@ -85,6 +85,15 @@ describe("projectOAuthAccountHealth", () => {
     expect(projectOAuthAccountHealth({})).toEqual({ status: "healthy" });
   });
 
+  test("expired seats project as warning unless auto-disable latches disabled", () => {
+    expect(projectOAuthAccountHealth({ expired: true })).toEqual({ status: "warning", reason: "expired" });
+    expect(projectOAuthAccountHealth({
+      expired: true,
+      autoDisableOnExpiry: true,
+    })).toEqual({ status: "disabled", reason: "expired" });
+    expect(projectOAuthAccountHealth({ disabledByExpiry: true })).toEqual({ status: "disabled", reason: "expired" });
+  });
+
   test("expired cooldown is healthy", () => {
     const until = Date.parse("2026-07-23T14:30:00.000Z");
     expect(projectOAuthAccountHealth({

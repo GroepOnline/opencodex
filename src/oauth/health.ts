@@ -9,13 +9,15 @@ import { maskAccountId } from "../lib/privacy";
 import { loadServiceTokenFromFile } from "../lib/service-secrets";
 import { findLiveProxy, probeHostname } from "../server/proxy-liveness";
 import { loadAuthStore, peekAuthStore, peekOAuthRefreshIntent, readOAuthRefreshIntent } from "./store";
+import { isAccountExpired } from "./account-expiry";
 import type { ProviderAccount } from "./types";
 
 export type OAuthAccountHealth =
   | { status: "healthy" }
   | { status: "cooldown"; until: string; reason: "rate_limit" | "quota" }
   | { status: "reauth_required"; reason: "unauthorized" | "forbidden" | "refresh_failed" }
-  | { status: "warning"; reason: "refresh_conflict" | "metadata_mismatch" | "stale_credentials" };
+  | { status: "disabled"; reason: "expired" }
+  | { status: "warning"; reason: "refresh_conflict" | "metadata_mismatch" | "stale_credentials" | "expired" };
 
 export type OAuthHealthLabel =
   | "Healthy"
@@ -24,7 +26,8 @@ export type OAuthHealthLabel =
   | "Reauthentication required"
   | "Refresh failed"
   | "Metadata mismatch"
-  | "Credential conflict";
+  | "Credential conflict"
+  | "Expired";
 
 /** Shared masked-id fallback when `maskAccountId` returns nullish. */
 export const MASKED_ACCOUNT_FALLBACK = "account-…????";
@@ -53,7 +56,7 @@ export type CollectOAuthHealthOptions = {
   includeLocalCodex?: boolean;
 };
 
-type OAuthWarningReason = "refresh_conflict" | "metadata_mismatch" | "stale_credentials";
+type OAuthWarningReason = "refresh_conflict" | "metadata_mismatch" | "stale_credentials" | "expired";
 
 export function projectOAuthAccountHealth(input: {
   needsReauth?: boolean;
@@ -61,11 +64,17 @@ export function projectOAuthAccountHealth(input: {
   cooldownUntilMs?: number;
   cooldownReason?: "rate_limit" | "quota";
   warningReason?: OAuthWarningReason;
+  expired?: boolean;
+  autoDisableOnExpiry?: boolean;
+  disabledByExpiry?: boolean;
   now?: number;
 }): OAuthAccountHealth {
   const now = input.now ?? Date.now();
   if (input.needsReauth) {
     return { status: "reauth_required", reason: input.reauthReason ?? "refresh_failed" };
+  }
+  if (input.disabledByExpiry === true || (input.autoDisableOnExpiry === true && input.expired === true)) {
+    return { status: "disabled", reason: "expired" };
   }
   if (
     typeof input.cooldownUntilMs === "number"
@@ -77,6 +86,9 @@ export function projectOAuthAccountHealth(input: {
       until: new Date(input.cooldownUntilMs).toISOString(),
       reason: input.cooldownReason ?? "quota",
     };
+  }
+  if (input.expired) {
+    return { status: "warning", reason: "expired" };
   }
   if (input.warningReason) {
     return { status: "warning", reason: input.warningReason };
@@ -91,6 +103,9 @@ function actionFor(provider: string, health: OAuthAccountHealth): string | undef
   if (health.status === "reauth_required") {
     if (provider === "codex") return CODEX_REAUTH_ACTION;
     return `run \`ocx login ${provider}\``;
+  }
+  if (health.status === "disabled") {
+    return "extend accountExpiresAt or turn off autoDisableOnExpiry";
   }
   if (health.status === "cooldown") {
     // Keep the transported deadline machine-readable (ISO); presentation layers localize/format.
@@ -110,6 +125,8 @@ export function oauthHealthLabel(health: OAuthAccountHealth): OAuthHealthLabel {
       return health.reason === "rate_limit" ? "Rate limited" : "Quota limited";
     case "reauth_required":
       return health.reason === "refresh_failed" ? "Refresh failed" : "Reauthentication required";
+    case "disabled":
+      return "Expired";
     case "warning":
       switch (health.reason) {
         case "refresh_conflict":
@@ -118,6 +135,8 @@ export function oauthHealthLabel(health: OAuthAccountHealth): OAuthHealthLabel {
           return "Metadata mismatch";
         case "stale_credentials":
           return "Refresh failed";
+        case "expired":
+          return "Expired";
       }
   }
 }
@@ -146,6 +165,9 @@ export function oauthHealthSummary(
     }
     case "reauth_required":
       summary = `${provider} ${masked}: reauthentication required (${health.reason.replaceAll("_", " ")}).`;
+      break;
+    case "disabled":
+      summary = `${provider} ${masked}: account expired. Routing for this account is paused.`;
       break;
     case "warning":
       summary = `${provider} ${masked}: ${health.reason.replaceAll("_", " ")}.`;
@@ -190,6 +212,9 @@ export function projectStoredOAuthAccountHealth(
     cooldownUntilMs: poolSnapshot?.cooldownUntil,
     cooldownReason: poolSnapshot?.cooldownSource === "retry-after" ? "rate_limit" : poolSnapshot ? "quota" : undefined,
     warningReason: detectOAuthWarning(provider, account, opts.observeOnly === true, now),
+    expired: isAccountExpired(account, now),
+    autoDisableOnExpiry: account.autoDisableOnExpiry === true,
+    disabledByExpiry: account.disabledByExpiry === true,
     now,
   });
 }
@@ -314,7 +339,7 @@ type ProxyCodexAccountHealth = {
   needsReauth?: boolean;
 };
 
-const KNOWN_HEALTH_STATUSES = new Set(["healthy", "cooldown", "reauth_required", "warning"]);
+const KNOWN_HEALTH_STATUSES = new Set(["healthy", "cooldown", "reauth_required", "warning", "disabled"]);
 
 function coerceRemoteAccountHealth(
   account: ProxyCodexAccountHealth,

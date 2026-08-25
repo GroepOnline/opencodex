@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
-import type { CodexAccount } from "../types";
+import type { CodexAccount, OcxConfig } from "../types";
+import { MAIN_CODEX_ACCOUNT_ID } from "./main-account";
 
 export const CODEX_ACCOUNT_LOG_LABEL_RE = /^p[a-f0-9]{6}$/;
 
@@ -20,6 +21,13 @@ export function codexAccountLogLabel(account: CodexAccount): string {
   return CODEX_ACCOUNT_LOG_LABEL_RE.test(account.logLabel ?? "")
     ? account.logLabel!
     : fallbackCodexAccountLogLabel(account.id);
+}
+
+/** Stable, privacy-safe id for usage JSONL and request logs (never raw store ids). */
+export function codexProviderAccountIdForUsage(accountId: string, config: OcxConfig): string {
+  if (accountId === MAIN_CODEX_ACCOUNT_ID) return "main";
+  const account = (config.codexAccounts ?? []).find(candidate => candidate.id === accountId);
+  return account ? codexAccountLogLabel(account) : fallbackCodexAccountLogLabel(accountId);
 }
 
 export function withCodexAccountLogLabel(

@@ -42,6 +42,10 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "pws.quota.fout": "Fout",
   "pws.quota.retry": "Opnieuw proberen",
   "pws.quota.retryAt": "Opnieuw om {time}",
+  "pws.healthLabel.expired": "Verlopen",
+  "pws.healthSummary.expired": "{provider} {account}: de seat-datum is voorbij. Routing voor dit account staat stil.",
+  "pws.accountExpires": "Seat tot {date}",
+  "pws.accountExpired": "Seat verlopen op {date}",
 
   // common
   "common.github": "GitHub",

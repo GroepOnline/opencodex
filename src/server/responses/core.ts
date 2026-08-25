@@ -72,6 +72,8 @@ import {
   isCursorPoolRotationError,
 } from "../../oauth/cursor-routing";
 import { isHardCapMessage } from "../../providers/cap-cooldown";
+import { releaseRequestProviderAccount } from "../../providers/account-runtime";
+import { findKeyPoolEntryId } from "../../providers/api-keys";
 import { buildWebSearchTool, planWebSearch, runWithWebSearch, shouldResolveOpenAiWebSearchSidecar } from "../../web-search";
 import { buildImageTool, buildVideoTool, planImageBridge, planVideoBridge, runWithImageBridge, clampImageMaxRounds, IMAGE_GEN_TOOL_NAME, VIDEO_GEN_TOOL_NAME } from "../../images";
 import { describeImagesInPlace, planVisionSidecar, shouldResolveOpenAiVisionSidecar, stripImagesInPlace } from "../../vision";
@@ -137,6 +139,8 @@ import {
   recordAttemptRequestedEffort,
   requestLogSpeedLabel,
   sealRequestAttemptIdentity,
+  bindLogFromSelectCandidate,
+  bindLogProviderAccount,
   usageFromResponsesPayload,
   type RequestLogContext,
 } from "../request-log";
@@ -975,6 +979,7 @@ export async function handleComboResponses(
     let consumedChildFailure: ConsumedComboFailure | undefined;
     const callbackGate = createChildPassthroughCallbackGate(options);
     let response: Response;
+    let bindingAdopted = false;
     try {
       const currentTargetProvider = pick.target.provider;
       const deferCodexResetDerivedCooldown = combo.strategy === "failover"
@@ -1012,95 +1017,102 @@ export async function handleComboResponses(
         onNativePassthroughTerminal: callbackGate.onTerminal,
         onNativePassthroughCancel: callbackGate.onCancel,
       });
-    } catch (error) {
+
+      if (options.abortSignal?.aborted) {
+        callbackGate.discard();
+        retainCancelledAttempt();
+        return clientCancelledResponse();
+      }
+
+      if (response.ok) {
+        sealRequestAttemptIdentity(
+          attempt,
+          childLog.provider,
+          childLog.providerAdapter ?? attempt.adapter,
+        );
+        (logCtx.attempts ??= []).push(attempt);
+        attemptRetained = true;
+        noteComboSuccess(comboId, combo, pick.target);
+        bindingAdopted = true;
+        Object.assign(logCtx, childLog, {
+          ...comboIdentity,
+          attempts: logCtx.attempts,
+          activeAttempt: attempt,
+          activeAttemptStartedAt: started,
+          resolvedModel: childLog.resolvedModel ?? childLog.model,
+        });
+        options.onCodexAuthContextResolved?.(resolvedAuth);
+        options.setTerminalOutcomeRecorder?.(terminalRecorder);
+        callbackGate.commit();
+        return response;
+      }
+
       callbackGate.discard();
+      if (response.status === 499) {
+        retainCancelledAttempt();
+        return clientCancelledResponse();
+      }
+      let failure: ConsumedComboFailure;
+      try {
+        failure = consumedChildFailure
+          ?? await consumeComboFailure(response, options.abortSignal);
+      } catch (error) {
+        if (options.abortSignal?.aborted) {
+          retainCancelledAttempt();
+          return clientCancelledResponse();
+        }
+        throw error;
+      }
       if (options.abortSignal?.aborted) {
         retainCancelledAttempt();
         return clientCancelledResponse();
       }
-      throw error;
-    }
-
-    if (options.abortSignal?.aborted) {
-      callbackGate.discard();
-      retainCancelledAttempt();
-      return clientCancelledResponse();
-    }
-
-    if (response.ok) {
       sealRequestAttemptIdentity(
         attempt,
         childLog.provider,
         childLog.providerAdapter ?? attempt.adapter,
       );
+      finishRequestAttempt(
+        attempt,
+        response.status,
+        Date.now() - started,
+        failure.usage,
+      );
       (logCtx.attempts ??= []).push(attempt);
       attemptRetained = true;
-      noteComboSuccess(comboId, combo, pick.target);
-      Object.assign(logCtx, childLog, {
-        ...comboIdentity,
-        attempts: logCtx.attempts,
-        activeAttempt: attempt,
-        activeAttemptStartedAt: started,
-        resolvedModel: childLog.resolvedModel ?? childLog.model,
+      lastFailure = failure.response;
+      if (classifyAttempt({
+        status: failure.response.status,
+        message: failure.classificationText,
+        code: failure.upstreamCode,
+      }) === "surface") {
+        adoptFailedChildLog(childLog);
+        bindingAdopted = true;
+        return lastFailure;
+      }
+      console.warn(
+        `[combo] ${comboIdLabel(comboId)}: ${targetKey(pick.target)} failed with ${response.status} after ${Date.now() - started}ms`,
+      );
+      const nextPick = advanceComboAfterFailure(config, pick, {
+        retryAfter: failure.retryAfter,
+        now: Date.now(),
+        eligible: payloadEligible,
       });
-      options.onCodexAuthContextResolved?.(resolvedAuth);
-      options.setTerminalOutcomeRecorder?.(terminalRecorder);
-      callbackGate.commit();
-      return response;
-    }
-
-    callbackGate.discard();
-    if (response.status === 499) {
-      retainCancelledAttempt();
-      return clientCancelledResponse();
-    }
-    let failure: ConsumedComboFailure;
-    try {
-      failure = consumedChildFailure
-        ?? await consumeComboFailure(response, options.abortSignal);
+      if (!nextPick) {
+        adoptFailedChildLog(childLog);
+        bindingAdopted = true;
+      }
+      pick = nextPick;
     } catch (error) {
+      callbackGate.discard();
       if (options.abortSignal?.aborted) {
         retainCancelledAttempt();
         return clientCancelledResponse();
       }
       throw error;
+    } finally {
+      if (!bindingAdopted) releaseRequestProviderAccount(childLog);
     }
-    if (options.abortSignal?.aborted) {
-      retainCancelledAttempt();
-      return clientCancelledResponse();
-    }
-    sealRequestAttemptIdentity(
-      attempt,
-      childLog.provider,
-      childLog.providerAdapter ?? attempt.adapter,
-    );
-    finishRequestAttempt(
-      attempt,
-      response.status,
-      Date.now() - started,
-      failure.usage,
-    );
-    (logCtx.attempts ??= []).push(attempt);
-    attemptRetained = true;
-    lastFailure = failure.response;
-    if (classifyAttempt({
-      status: failure.response.status,
-      message: failure.classificationText,
-      code: failure.upstreamCode,
-    }) === "surface") {
-      adoptFailedChildLog(childLog);
-      return lastFailure;
-    }
-    console.warn(
-      `[combo] ${comboIdLabel(comboId)}: ${targetKey(pick.target)} failed with ${response.status} after ${Date.now() - started}ms`,
-    );
-    const nextPick = advanceComboAfterFailure(config, pick, {
-      retryAfter: failure.retryAfter,
-      now: Date.now(),
-      eligible: payloadEligible,
-    });
-    if (!nextPick) adoptFailedChildLog(childLog);
-    pick = nextPick;
   }
   return lastFailure!;
 }
@@ -1403,6 +1415,7 @@ export async function handleResponses(
     cursorPoolAccountId = pick.oauthPool.accountId;
     parsed._cursorIdentityScope = pick.oauthPool.accountId;
   }
+  bindLogFromSelectCandidate(logCtx, pick, { config });
   if (isOAuth401ReplayProvider && pick.oauthSnapshot) sentOAuthSnapshot = pick.oauthSnapshot;
   if (route.providerName === "kiro" && pick.oauthSnapshot) {
     // `{}` is intentional: this is an account-scoped request with no stored routing metadata.
@@ -2203,6 +2216,7 @@ export async function handleResponses(
       parsed._cursorIdentityScope = hop.accountId;
       route.provider = hop.provider;
       logCtx.provider = hop.logProvider;
+      bindLogProviderAccount(logCtx, "oauth", "cursor", hop.accountId);
       activeRunTurnAdapter = resolveAdapter(
         resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
         config.cacheRetention,
@@ -2211,6 +2225,7 @@ export async function handleResponses(
         logCtx.activeAttempt,
         logCtx.provider,
         activeRunTurnAdapter.name,
+        hop.accountId,
       );
       return true;
     };
@@ -2556,6 +2571,11 @@ export async function handleResponses(
           resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
           config.cacheRetention,
         );
+        const hoppedKeyId = findKeyPoolEntryId(
+          config.providers[route.providerName] ?? rotated,
+          rotated.apiKey,
+        );
+        if (hoppedKeyId) bindLogProviderAccount(logCtx, "key-pool", route.providerName, hoppedKeyId);
         const result = await rebuildAndRefetch("key-429");
         if ("failed" in result) return result.failed;
         upstreamResponse = result;
@@ -2584,9 +2604,10 @@ export async function handleResponses(
             resolveWireProtocolOverride(route.providerName, route.modelId, hop.provider),
             config.cacheRetention,
           );
-          sealRequestAttemptIdentity(logCtx.activeAttempt, hop.logProvider, nextAdapter.name);
+          sealRequestAttemptIdentity(logCtx.activeAttempt, hop.logProvider, nextAdapter.name, hop.accountId);
           anthropicPoolAccountId = hop.accountId;
           anthropicPoolFailovers += 1;
+          bindLogProviderAccount(logCtx, "oauth", "anthropic", hop.accountId);
           route.provider = hop.provider;
           logCtx.provider = hop.logProvider;
           activeAdapter = nextAdapter;
@@ -2633,9 +2654,11 @@ export async function handleResponses(
             logCtx.activeAttempt,
             hop.logProvider,
             nextAdapter.name,
+            hop.accountId,
           );
           googleAntigravityPoolAccountId = hop.accountId;
           googleAntigravityPoolFailovers += 1;
+          bindLogProviderAccount(logCtx, "oauth", "google-antigravity", hop.accountId);
           route.provider = hop.provider;
           logCtx.provider = hop.logProvider;
           activeAdapter = nextAdapter;
@@ -2845,11 +2868,12 @@ export async function handleResponses(
           anthropicPoolFailovers += 1;
           route.provider = hop.provider;
           logCtx.provider = hop.logProvider;
+          bindLogProviderAccount(logCtx, "oauth", "anthropic", hop.accountId);
           activeAdapter = resolveAdapter(
             resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
             config.cacheRetention,
           );
-          sealRequestAttemptIdentity(logCtx.activeAttempt, logCtx.provider, activeAdapter.name);
+          sealRequestAttemptIdentity(logCtx.activeAttempt, logCtx.provider, activeAdapter.name, hop.accountId);
           continue;
         }
         if (needsPoolOutcome || isOauthAccountPoolHopStatus(response.status)) {

@@ -15,6 +15,7 @@ import { loadConfig } from "../config";
 import type { OcxConfig, OcxTokenGuardianConfig } from "../types";
 import { listAccounts } from "./store";
 import { getValidAccessTokenForAccount, listOAuthProviders, OAuthLoginRequiredError, resolveRefreshPolicy } from "./index";
+import { isAccountDisabledForRouting } from "./account-expiry";
 import {
   getValidCodexToken,
   listCodexAccountIds,
@@ -131,6 +132,7 @@ export async function guardianSweep(nowMs: number = Date.now()): Promise<Guardia
     if (resolveRefreshPolicy(provider, config) !== "proactive") continue;
     for (const account of listAccounts(provider)) {
       if (account.needsReauth) continue;
+      if (isAccountDisabledForRouting(account, nowMs)) continue;
       if (account.credential.expires > nowMs + horizonMs) continue;
       const key = `oauth:${provider}:${account.id}`;
       if (inBackoff(key, nowMs)) { result.skippedBackoff.push(key); continue; }

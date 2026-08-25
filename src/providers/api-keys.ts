@@ -7,7 +7,7 @@
  * A provider with a legacy bare `apiKey` is seeded into a one-entry pool on first touch.
  */
 import { createHash } from "node:crypto";
-import { saveConfigPreservingClaudeCode } from "../config";
+import { resolveEnvValue, saveConfigPreservingClaudeCode } from "../config";
 import type { OcxConfig, OcxProviderConfig } from "../types";
 
 export interface ProviderApiKeyInfo {
@@ -71,6 +71,28 @@ function activeEntryId(provider: OcxProviderConfig): string | null {
   const pool = provider.apiKeyPool ?? [];
   if (pool.length === 0) return null;
   return (pool.find(e => e.key === provider.apiKey) ?? pool[0]!).id;
+}
+
+/**
+ * Stable pool-entry id for the live API key. Returns the stored `id` only — never
+ * the secret, and never a hash of a resolved env value.
+ */
+export function findKeyPoolEntryId(
+  provider: Pick<OcxProviderConfig, "authMode" | "apiKey" | "apiKeyPool">,
+  liveApiKey?: string,
+): string | undefined {
+  if (provider.authMode === "oauth" || provider.authMode === "forward") return undefined;
+  const pool = provider.apiKeyPool;
+  if (!pool || pool.length === 0) return undefined;
+  const live = liveApiKey ?? provider.apiKey;
+  if (!live) return undefined;
+  const direct = pool.find(entry => entry.key === live);
+  if (direct) return direct.id;
+  const resolved = pool.find(entry => {
+    const value = resolveEnvValue(entry.key);
+    return Boolean(value) && value === live;
+  });
+  return resolved?.id;
 }
 
 export function listProviderApiKeys(config: OcxConfig, name: string): { activeId: string | null; keys: ProviderApiKeyInfo[] } {

@@ -4,7 +4,8 @@ import type { OcxConfig, OcxProviderConfig, RefreshPolicy } from "../types";
 import { loadConfig, resolveEnvValue, saveConfig } from "../config";
 import { maskEmail } from "../lib/privacy";
 import { KiroTokenRefreshError, environmentKiroRoutingMetadata, loginKiro, refreshKiroToken, settleKiroLoginTransaction } from "./kiro";
-import { getAccountCredential, getAccountSet, removeAccount, saveAccountCredential, saveCredential, setActiveAccount, getCredential, credentialGeneration, createOAuthRefreshIntentLock, mergeAccountCredential, markAccountNeedsReauthIfGeneration, readOAuthRefreshIntent, writeOAuthRefreshIntent, clearOAuthRefreshIntent } from "./store";
+import { applyExpiredAccountDisables, getAccountCredential, getAccountSet, removeAccount, saveAccountCredential, saveCredential, setActiveAccount, getCredential, credentialGeneration, createOAuthRefreshIntentLock, mergeAccountCredential, markAccountNeedsReauthIfGeneration, readOAuthRefreshIntent, writeOAuthRefreshIntent, clearOAuthRefreshIntent } from "./store";
+import { isAccountDisabledForRouting } from "./account-expiry";
 import { loginXai, refreshXaiToken, XAI_LOCAL_CLI_DETACH_WARNING, XaiTokenRequestError } from "./xai";
 import { ANTHROPIC_OAUTH_BETA, AnthropicTokenError, loginAnthropic, refreshAnthropicToken } from "./anthropic";
 import { loginKimi, refreshKimiToken } from "./kimi";
@@ -211,6 +212,14 @@ export class OAuthLoginRequiredError extends Error {
   }
 }
 
+/** Operator-owned seat expiry with auto-disable; not a re-login signal. */
+export class OAuthAccountDisabledError extends Error {
+  constructor(public readonly provider: string, public readonly accountId: string) {
+    super(`${provider} account is expired and disabled`);
+    this.name = "OAuthAccountDisabledError";
+  }
+}
+
 function accessSnapshot(provider: string, accountId: string, cred: OAuthCredentials): OAuthAccessSnapshot {
   const storedKiroRouting = {
     ...(cred.kiro?.profileArn ? { profileArn: cred.kiro.profileArn } : {}),
@@ -241,6 +250,10 @@ async function resolveAccessSnapshotForAccount(
 ): Promise<OAuthAccessSnapshot> {
   const def = OAUTH_PROVIDERS[provider];
   if (!def) throw new UnsupportedOAuthProviderError(provider);
+  const account = getAccountSet(provider)?.accounts.find(row => row.id === accountId);
+  if (account && isAccountDisabledForRouting(account)) {
+    throw new OAuthAccountDisabledError(provider, accountId);
+  }
   const cred = getAccountCredential(provider, accountId);
   if (!cred) throw new OAuthLoginRequiredError(provider);
   const current = accessSnapshot(provider, accountId, cred);
@@ -270,6 +283,9 @@ async function resolveAccessSnapshotForAccount(
 }
 
 export async function getValidAccessTokenSnapshot(provider: string): Promise<OAuthAccessSnapshot> {
+  // Latch/demote expired seats on the request path so a healthy same-provider sibling
+  // succeeds even when account pools are off (GRO-1497).
+  await applyExpiredAccountDisables();
   const set = getAccountSet(provider);
   if (!set) throw new OAuthLoginRequiredError(provider);
   return resolveAccessSnapshotForAccount(provider, set.activeAccountId);
@@ -922,7 +938,17 @@ export function submitManualLoginCode(provider: string, input: string): { ok: tr
   return { ok: true };
 }
 
-export interface OAuthAccountSummary { id: string; alias?: string; email?: string; active: boolean; needsReauth?: boolean; expiresAt?: number }
+export interface OAuthAccountSummary {
+  id: string;
+  alias?: string;
+  email?: string;
+  active: boolean;
+  needsReauth?: boolean;
+  expiresAt?: number;
+  accountExpiresAt?: number;
+  autoDisableOnExpiry?: boolean;
+  disabledByExpiry?: boolean;
+}
 
 export function getLoginStatus(provider: string): { loggedIn: boolean; email?: string; source?: OAuthCredentials["source"]; error?: string; done: boolean; activeAccountId?: string; accounts?: OAuthAccountSummary[] } {
   const cred = getCredential(provider);
@@ -935,6 +961,9 @@ export function getLoginStatus(provider: string): { loggedIn: boolean; email?: s
     active: a.id === set.activeAccountId,
     ...(a.needsReauth ? { needsReauth: true } : {}),
     expiresAt: a.credential.expires,
+    ...(typeof a.accountExpiresAt === "number" ? { accountExpiresAt: a.accountExpiresAt } : {}),
+    ...(a.autoDisableOnExpiry ? { autoDisableOnExpiry: true } : {}),
+    ...(a.disabledByExpiry ? { disabledByExpiry: true } : {}),
   }));
   return {
     loggedIn: !!cred,

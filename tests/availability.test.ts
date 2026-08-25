@@ -725,6 +725,8 @@ describe("selectCandidate", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.provider.apiKey).toBe("key-beta-444555666777");
+    expect(result.keyPool).toEqual({ provider: "p", accountId: "k2" });
+    expect(JSON.stringify(result.keyPool)).not.toContain("key-");
   });
 
   test("with headers and no Codex mode forwards the caller bearer then skips a cooling key", async () => {

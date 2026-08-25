@@ -21,6 +21,7 @@ import type {
   OcxConfig,
   OcxParsedRequest,
 } from "../types";
+import { isProviderAccountSelectable } from "./account-expiry";
 import { getAccountCredential, getAccountSet, setActiveAccount } from "./store";
 
 const PROVIDER = "google-antigravity";
@@ -145,6 +146,15 @@ export function getGoogleAntigravityAccountHealthSnapshot(
   };
 }
 
+export function getGoogleAntigravityAccountLastUsedAt(accountId: string): number | undefined {
+  let latest: number | undefined;
+  for (const entry of sessionAffinity.values()) {
+    if (entry.accountId !== accountId) continue;
+    if (latest === undefined || entry.lastUsedAt > latest) latest = entry.lastUsedAt;
+  }
+  return latest;
+}
+
 export function clearGoogleAntigravityAccountCooldown(accountId: string): boolean {
   return upstreamHealth.delete(accountId);
 }
@@ -170,7 +180,7 @@ export function getEligibleGoogleAntigravityAccounts(now = Date.now()): string[]
   if (!set) return [];
   return set.accounts
     .filter(account =>
-      account.needsReauth !== true
+      isProviderAccountSelectable(account, now)
       && !isCooled(account.id, now)
       && credentialIsUsable(account.id, now))
     .map(account => account.id);

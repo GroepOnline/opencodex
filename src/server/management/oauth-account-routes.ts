@@ -174,13 +174,14 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
   if (url.pathname === "/api/oauth/accounts" && req.method === "GET") {
     const provider = (url.searchParams.get("provider") ?? "").trim().toLowerCase();
     if (!isPublicOAuthProvider(provider)) return jsonResponse({ error: "unknown oauth provider" }, 400);
-    const status = getLoginStatus(provider);
-    const { getAccountSet } = await import("../../oauth/store");
+    const { getAccountSet, applyExpiredAccountDisables } = await import("../../oauth/store");
+    await applyExpiredAccountDisables();
     const {
       oauthAccountHealthFields,
       projectOAuthAccountHealth,
       projectStoredOAuthAccountHealth,
     } = await import("../../oauth/health");
+    const { oauthAccountRuntimeFields } = await import("../../providers/account-runtime");
     const projectAccounts = () => {
       const set = getAccountSet(provider);
       const current = getLoginStatus(provider);
@@ -194,7 +195,12 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
               needsReauth: summary.needsReauth === true,
               reauthReason: summary.needsReauth === true ? "refresh_failed" : undefined,
             });
-          return { ...summary, ...oauthAccountHealthFields(provider, summary.id, health) };
+          const runtime = oauthAccountRuntimeFields(provider, summary.id);
+          return {
+            ...summary,
+            ...oauthAccountHealthFields(provider, summary.id, health),
+            ...(runtime ?? {}),
+          };
         }),
       };
     };
@@ -420,6 +426,46 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
     const { setAccountAlias } = await import("../../oauth/store");
     if (!(await setAccountAlias(provider, accountId, alias || undefined))) return jsonResponse({ error: "account not found" }, 404);
     return jsonResponse({ ok: true, provider, accountId, alias: alias || null });
+  }
+  if (url.pathname === "/api/oauth/accounts/expiry" && req.method === "PUT") {
+    const body = await req.json().catch(() => ({})) as {
+      provider?: unknown;
+      accountId?: unknown;
+      accountExpiresAt?: unknown;
+      autoDisableOnExpiry?: unknown;
+    };
+    const provider = typeof body.provider === "string" ? body.provider.trim().toLowerCase() : "";
+    const accountId = typeof body.accountId === "string" ? body.accountId.trim() : "";
+    if (!isPublicOAuthProvider(provider)) return jsonResponse({ error: "unknown oauth provider" }, 400);
+    if (!accountId) return jsonResponse({ error: "missing accountId" }, 400);
+    const patch: { accountExpiresAt?: number | null; autoDisableOnExpiry?: boolean | null } = {};
+    if (body.accountExpiresAt === null) patch.accountExpiresAt = null;
+    else if (typeof body.accountExpiresAt === "number" && Number.isFinite(body.accountExpiresAt)) {
+      patch.accountExpiresAt = body.accountExpiresAt;
+    } else if (body.accountExpiresAt !== undefined) {
+      return jsonResponse({ error: "accountExpiresAt must be a finite epoch ms or null" }, 400);
+    }
+    if (body.autoDisableOnExpiry === null || body.autoDisableOnExpiry === false) patch.autoDisableOnExpiry = false;
+    else if (body.autoDisableOnExpiry === true) patch.autoDisableOnExpiry = true;
+    else if (body.autoDisableOnExpiry !== undefined) {
+      return jsonResponse({ error: "autoDisableOnExpiry must be a boolean or null" }, 400);
+    }
+    if (patch.accountExpiresAt === undefined && patch.autoDisableOnExpiry === undefined) {
+      return jsonResponse({ error: "missing accountExpiresAt or autoDisableOnExpiry" }, 400);
+    }
+    const { setAccountExpiryPolicy, getAccountSet } = await import("../../oauth/store");
+    if (!(await setAccountExpiryPolicy(provider, accountId, patch))) {
+      return jsonResponse({ error: "account not found" }, 404);
+    }
+    const account = getAccountSet(provider)?.accounts.find(row => row.id === accountId);
+    return jsonResponse({
+      ok: true,
+      provider,
+      accountId,
+      accountExpiresAt: account?.accountExpiresAt ?? null,
+      autoDisableOnExpiry: account?.autoDisableOnExpiry === true,
+      disabledByExpiry: account?.disabledByExpiry === true,
+    });
   }
   if (url.pathname === "/api/oauth/accounts" && req.method === "DELETE") {
     const provider = (url.searchParams.get("provider") ?? "").trim().toLowerCase();
