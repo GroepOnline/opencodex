@@ -864,7 +864,8 @@ describe("request log metadata", () => {
     process.env.OPENCODEX_HOME = home;
     clearRequestLogsForTests();
     resetUsageReadCacheForTests();
-    const secret = "sk-live-super-secret-key-pool-entry";
+    // Placeholder token shape is constrained by scripts/privacy-scan.ts's tests/ allowlist.
+    const secret = "sk-test-000111222333444";
     try {
       const attempt = beginRequestAttempt(1, "openai", "gpt-5.5", "openai-chat");
       const logCtx: RequestLogContext = {
@@ -880,7 +881,7 @@ describe("request log metadata", () => {
       addFinalRequestLog("ocx-key-pool", 1, logCtx, 200);
       const raw = readFileSync(usageLogPath(), "utf-8");
       expect(raw).not.toContain(secret);
-      expect(raw).not.toContain("sk-live");
+      expect(raw).not.toContain("sk-test-000111");
       const [entry] = readUsageEntries();
       expect(entry?.providerAccountId).toBe("k2b3c4d5");
       expect(entry?.attempts?.[0]?.providerAccountId).toBe("k2b3c4d5");

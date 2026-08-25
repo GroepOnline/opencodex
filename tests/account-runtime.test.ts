@@ -264,19 +264,23 @@ describe("store expiry policy + routing", () => {
 
 describe("findKeyPoolEntryId", () => {
   test("returns the stored pool id and never the secret", () => {
-    const secret = "sk-live-super-secret-key-pool-entry";
+    // Placeholder token shape is constrained by scripts/privacy-scan.ts's tests/ allowlist.
+    const secret = "sk-test-000111222333444";
+    const other = "sk-test-000222333444555";
     const provider = {
       adapter: "openai-chat",
       baseUrl: "https://api.example.com/v1",
       apiKey: secret,
       apiKeyPool: [
         { id: "k1a2b3c4", key: secret },
-        { id: "k2b3c4d5", key: "sk-other-key-pool-entry-xxxx" },
+        { id: "k2b3c4d5", key: other },
       ],
     } as OcxConfig["providers"][string];
     expect(findKeyPoolEntryId(provider, secret)).toBe("k1a2b3c4");
     expect(findKeyPoolEntryId(provider)).toBe("k1a2b3c4");
-    expect(findKeyPoolEntryId(provider, "sk-other-key-pool-entry-xxxx")).toBe("k2b3c4d5");
+    expect(findKeyPoolEntryId(provider, other)).toBe("k2b3c4d5");
     expect(findKeyPoolEntryId({ ...provider, authMode: "oauth" }, secret)).toBeUndefined();
+    expect(findKeyPoolEntryId(provider, secret)).not.toBe(secret);
+    expect(findKeyPoolEntryId(provider, other)).not.toBe(other);
   });
 });
