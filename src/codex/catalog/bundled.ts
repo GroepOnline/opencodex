@@ -34,7 +34,7 @@ import upstreamModelsSnapshot from "../data/upstream-models.json";
 import { activeCodexModelsCachePath, catalogBackupPathFor, findNativeTemplate, isDefaultCatalogPath, legacyCatalogBackupPath, parseCatalogJson, readCatalog, readCatalogBackup, readCodexCatalogPath } from "./parsing";
 import type { RawCatalog, RawEntry } from "./parsing";
 import { codexExecInvocation, isSpawnableCodexCandidate } from "../exec-invocation";
-import { resolveAndPersistCodexRuntime } from "../runtime";
+import { loadPersistedCodexRuntime, resolveAndPersistCodexRuntime } from "../runtime";
 import type { EffortClampDiagnostic } from "../runtime";
 
 export { isSpawnableCodexCandidate, codexExecInvocation } from "../exec-invocation";
@@ -50,6 +50,16 @@ export let bundledCatalogCache: {
 
 /** Memoized runtime resolution so cache-hit checks don't re-probe binaries (~350ms under load). */
 let resolvedRuntimeMemo: { fingerprint: string; command: string; version: string } | null = null;
+
+/** Cheap persisted-selection read so doctor-style upgrades (same env, new binary) bust the memo. */
+function persistedSelectionStamp(deps: BundledCatalogDeps): string {
+  try {
+    const persisted = loadPersistedCodexRuntime({ configDir: deps.configDir, readFileSync: deps.readFileSync });
+    return persisted ? `${persisted.command}|${persisted.selectedVersion ?? ""}` : "";
+  } catch {
+    return "";
+  }
+}
 
 /** Test-only: clear the bundled-catalog cache (owned here; sync.ts calls this instead of assigning the import). */
 export function resetBundledCatalogCacheForTests(): void {
@@ -158,14 +168,15 @@ export function loadBundledCodexCatalog(deps: BundledCatalogDeps = {}): RawCatal
   // call, which made even bundled-catalog cache HITS cost ~350ms under load. Memoize the
   // resolved identity per environment fingerprint; invalidation semantics are unchanged
   // because the catalog cache key still embeds command+version and a changed environment
-  // (OPENCODEX_HOME / PATH / platform) simply produces a new fingerprint.
-  const envFingerprint = useCache
-    ? [process.env.OPENCODEX_HOME ?? "", process.env.PATH ?? "", process.platform].join("\0")
-    : null;
+  // (OPENCODEX_HOME / PATH / platform / persisted selection) simply produces a new fingerprint.
+  const envParts = [process.env.OPENCODEX_HOME ?? "", process.env.PATH ?? "", process.platform];
+  const envFingerprint = useCache ? [...envParts, persistedSelectionStamp(deps)].join("\0") : null;
   const candidates = deps.commandCandidates?.() ?? (() => {
     let runtimeCommand: string;
+    let runtimeVersion = "";
     if (useCache && resolvedRuntimeMemo && resolvedRuntimeMemo.fingerprint === envFingerprint) {
       runtimeCommand = resolvedRuntimeMemo.command;
+      runtimeVersion = resolvedRuntimeMemo.version;
     } else {
       const resolved = resolveAndPersistCodexRuntime({
         execFileSync: execFile,
@@ -178,12 +189,22 @@ export function loadBundledCodexCatalog(deps: BundledCatalogDeps = {}): RawCatal
         discoverAlternatives: deps.discoverAlternatives,
       });
       runtimeCommand = resolved.runtime.command;
-      if (useCache) resolvedRuntimeMemo = { fingerprint: envFingerprint!, command: runtimeCommand, version: resolved.runtime.version ?? "" };
+      runtimeVersion = resolved.runtime.version ?? "";
+      if (useCache) {
+        // Re-read the persisted stamp AFTER resolution: persistCodexRuntime may have just
+        // (re)written it, and a stale pre-call stamp would force one redundant re-probe.
+        const postStamp = persistedSelectionStamp(deps);
+        resolvedRuntimeMemo = {
+          fingerprint: [...envParts, postStamp].join("\0"),
+          command: runtimeCommand,
+          version: runtimeVersion,
+        };
+      }
     }
     if (useCache) {
       cacheKey = [
         runtimeCommand,
-        resolvedRuntimeMemo?.version ?? "",
+        runtimeVersion,
         process.env.OPENCODEX_HOME ?? "",
       ].join("\0");
     }
