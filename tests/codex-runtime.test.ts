@@ -517,6 +517,85 @@ describe("resolveCodexRuntime", () => {
     }
   });
 
+  test("resolve cache throttles fallback probes until TTL, then retries", async () => {
+    const { chmodSync, mkdirSync } = await import("node:fs");
+
+    const home = tempConfigDir();
+    const binDir = join(home, "bin");
+    mkdirSync(binDir, { recursive: true });
+    const recoveredBin = process.platform === "win32" ? join(binDir, "codex.cmd") : join(binDir, "codex");
+
+    const previousHome = process.env.OPENCODEX_HOME;
+    const previousCli = process.env.CODEX_CLI_PATH;
+    const previousPath = process.env.PATH;
+    const realDateNow = Date.now;
+    let now = realDateNow();
+    Date.now = () => now;
+    process.env.OPENCODEX_HOME = home;
+    process.env.PATH = binDir;
+    delete process.env.CODEX_CLI_PATH;
+    resetCodexRuntimeResolveCacheForTests();
+
+    try {
+      expect(resolveCodexRuntime().runtime.source).toBe("fallback");
+
+      if (process.platform === "win32") {
+        writeFileSync(recoveredBin, [
+          "@echo off",
+          `if "%~1"=="--version" ( echo codex-cli 0.145.0-alpha.30 & exit /b 0 )`,
+          "",
+        ].join("\r\n"), "utf8");
+      } else {
+        writeFileSync(recoveredBin, [
+          "#!/bin/sh",
+          `if [ "$1" = "--version" ]; then echo "codex-cli 0.145.0-alpha.30"; exit 0; fi`,
+          "",
+        ].join("\n"), "utf8");
+        chmodSync(recoveredBin, 0o755);
+      }
+
+      // Within the 15s hot-path window, fallback stays cached so settings polls
+      // do not spawn a probe per GET on machines without Codex.
+      expect(resolveCodexRuntime().runtime.source).toBe("fallback");
+
+      now += 15_001;
+      const recovered = resolveCodexRuntime();
+      expect(recovered.runtime.command).toBe(recoveredBin);
+      expect(recovered.runtime.source).not.toBe("fallback");
+    } finally {
+      Date.now = realDateNow;
+      if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
+      else process.env.OPENCODEX_HOME = previousHome;
+      if (previousCli === undefined) delete process.env.CODEX_CLI_PATH;
+      else process.env.CODEX_CLI_PATH = previousCli;
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+      resetCodexRuntimeResolveCacheForTests();
+    }
+  });
+
+  test("persistCodexRuntime does not rewrite when only source differs", () => {
+    const configDir = tempConfigDir();
+    persistCodexRuntime({
+      command: "C:\\keep\\codex.exe",
+      version: "0.145.0",
+      source: "path",
+    }, { configDir, now: () => Date.parse("2026-01-01T00:00:00.000Z") });
+    persistCodexRuntime({
+      command: "C:\\keep\\codex.exe",
+      version: "0.145.0",
+      source: "environment",
+    }, { configDir, now: () => Date.parse("2026-02-01T00:00:00.000Z") });
+    persistCodexRuntime({
+      command: "C:\\keep\\codex.exe",
+      version: "0.145.0",
+      source: "configured",
+    }, { configDir, now: () => Date.parse("2026-03-01T00:00:00.000Z") });
+    const persisted = loadPersistedCodexRuntime({ configDir });
+    expect(persisted?.source).toBe("path");
+    expect(persisted?.updatedAt).toBe("2026-01-01T00:00:00.000Z");
+  });
+
   test("clamp diagnostics include unsupported default_reasoning_level changes", async () => {
     const { clampCatalogModelsToCodexSupport } = await import("../src/codex/catalog/effort");
     const diagnostics: Array<{ removedEfforts: string[]; affectedModels: string[] }> = [];

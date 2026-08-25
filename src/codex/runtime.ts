@@ -221,9 +221,9 @@ export function persistCodexRuntime(
     && existing.command === runtime.command
     && (existing.selectedVersion ?? null) === (runtime.version ?? null)
   ) {
-    // Identical selection: keep updatedAt as "last selection change" so the persisted
-    // stamp stays stable and resolve/bundled-catalog memos stop churning (each write
-    // previously bumped updatedAt, busting the very cache keys that include it).
+    // Identical binary+version: keep updatedAt stable even when source labels
+    // differ (path vs configured vs environment for the same command). Mixed
+    // CODEX_CLI_PATH / PATH processes would otherwise ping-pong the file.
     return;
   }
   mkdirSync(configDir, { recursive: true, mode: 0o700 });
