@@ -220,6 +220,8 @@ function resolveReasoningEffort(raw: Rec): string | undefined {
   if (isRec(raw.reasoning) && typeof raw.reasoning.effort === "string" && OUTPUT_CONFIG_EFFORTS.has(raw.reasoning.effort)) {
     return raw.reasoning.effort;
   }
+  const model = typeof raw.model === "string" ? raw.model.toLowerCase() : "";
+  if (!model.includes("deepseek")) return undefined;
   if (raw.enable_thinking === true) return "high";
   if (raw.enable_thinking === false) return undefined;
   return thinkingToggleToEffort(raw.thinking);

@@ -230,6 +230,16 @@ test("chatCompletionsToResponsesBody maps DeepSeek thinking toggles to effort an
     thinking: { type: "enabled" },
   });
   expect(explicitWins.reasoning).toEqual({ effort: "low" });
+
+  const unrelated = chatCompletionsToResponsesBody({
+    model: "azure-foundry/Kimi-K2.6",
+    messages: [{ role: "user", content: "hi" }],
+    thinking: { type: "enabled" },
+    enable_thinking: true,
+  });
+  expect(unrelated.reasoning).toBeUndefined();
+  expect(unrelated).not.toHaveProperty("thinking");
+  expect(unrelated).not.toHaveProperty("enable_thinking");
 });
 
 test("chatCompletionsToResponsesBody rejects missing model", () => {
