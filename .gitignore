@@ -31,6 +31,9 @@ devlog/
 **/.omo/
 .serena/
 **/.serena/
+.codebase-index/
+**/.codebase-index/
+.cursor/hooks/state/
 
 # Test-generated artifacts
 tests/.tmp-*/
