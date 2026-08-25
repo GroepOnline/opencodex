@@ -215,6 +215,17 @@ export function persistCodexRuntime(
   deps: ResolveCodexRuntimeDeps = {},
 ): void {
   const configDir = deps.configDir ?? getConfigDir();
+  const existing = loadPersistedCodexRuntime({ ...deps, configDir });
+  if (
+    existing
+    && existing.command === runtime.command
+    && (existing.selectedVersion ?? null) === (runtime.version ?? null)
+  ) {
+    // Identical selection: keep updatedAt as "last selection change" so the persisted
+    // stamp stays stable and resolve/bundled-catalog memos stop churning (each write
+    // previously bumped updatedAt, busting the very cache keys that include it).
+    return;
+  }
   mkdirSync(configDir, { recursive: true, mode: 0o700 });
   const payload: PersistedRuntimeState = {
     version: 1,
