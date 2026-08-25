@@ -55,6 +55,8 @@ describe("Xiaomi MiMo provider", () => {
     expect(entry?.modelMaxOutputTokens?.["mimo-v2.5-pro"]).toBe(131_072);
     expect(entry?.modelInputModalities?.["mimo-v2.5-pro"]).toEqual(["text"]);
     expect(entry?.modelInputModalities?.["mimo-v2.5"]).toEqual(["text", "image"]);
+    expect(entry?.noVisionModels).toEqual(["mimo-v2.5-pro", "mimo-v2.5-pro-ultraspeed"]);
+    expect(entry?.noVisionModels).not.toContain("mimo-v2.5");
     expect(entry?.thinkingToggleModels).toEqual(["mimo-v2.5-pro", "mimo-v2.5", "mimo-v2.5-pro-ultraspeed"]);
     expect(entry?.preserveReasoningContentModels).toContain("mimo-v2.5-pro");
   });

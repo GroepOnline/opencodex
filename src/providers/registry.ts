@@ -319,6 +319,7 @@ const XIAOMI_TOKEN_PLAN_BASE_URL = "https://token-plan-cn.xiaomimimo.com/v1";
 const XIAOMI_DASHBOARD_URL = "https://platform.xiaomimimo.com";
 const XIAOMI_CHAT_MODELS = ["mimo-v2.5-pro", "mimo-v2.5"];
 const XIAOMI_THINKING_TOGGLE_MODELS = ["mimo-v2.5-pro", "mimo-v2.5", "mimo-v2.5-pro-ultraspeed"];
+const XIAOMI_TEXT_ONLY_MODELS = ["mimo-v2.5-pro", "mimo-v2.5-pro-ultraspeed"];
 const XIAOMI_CONTEXT_WINDOW = 1_048_576;
 const XIAOMI_MAX_OUTPUT_TOKENS = 131_072;
 const XIAOMI_CHAT_FIELDS = {
@@ -339,6 +340,8 @@ const XIAOMI_CHAT_FIELDS = {
   modelReasoningEfforts: Object.fromEntries(XIAOMI_THINKING_TOGGLE_MODELS.map(id => [id, THINKING_TOGGLE_EFFORTS])),
   modelReasoningEffortMap: Object.fromEntries(XIAOMI_THINKING_TOGGLE_MODELS.map(id => [id, THINKING_TOGGLE_MAP])),
   preserveReasoningContentModels: XIAOMI_THINKING_TOGGLE_MODELS,
+  // Text-only chat ids: catalog still advertises image so Codex attachments reach the vision sidecar.
+  noVisionModels: XIAOMI_TEXT_ONLY_MODELS,
 };
 const OPENCODE_GO_THINKING_TOGGLE_MODELS = [
   "mimo-v2.5", "mimo-v2.5-pro", "mimo-v2-omni", "mimo-v2-pro", "glm-5", "glm-5.1",
