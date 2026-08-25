@@ -6,8 +6,9 @@ import {
   isClientClosedMessage,
 } from "../lib/errors";
 import { CODEX_CONFIG_PATH, readRootTomlString } from "../codex/paths";
+import { codexProviderAccountIdForUsage } from "../codex/account-label";
 import { readCodexCatalogPath } from "../codex/catalog";
-import type { OcxUsage } from "../types";
+import type { OcxConfig, OcxUsage } from "../types";
 import type { AdapterRequest } from "../adapters/base";
 import { redactSecretString } from "../lib/redact";
 import { providerAccountLabel, baseProviderLabel } from "../providers/label";
@@ -191,13 +192,17 @@ export function bindLogFromSelectCandidate(
     keyPool?: { provider: string; accountId: string };
     authCtx?: { accountId: string | null };
   },
+  options?: { config?: OcxConfig },
 ): void {
   if (pick.oauthPool?.accountId) {
     bindLogProviderAccount(logCtx, "oauth", pick.oauthPool.pool, pick.oauthPool.accountId);
     return;
   }
   if (pick.authCtx?.accountId) {
-    bindLogProviderAccount(logCtx, "oauth", "codex", pick.authCtx.accountId);
+    const accountId = options?.config
+      ? codexProviderAccountIdForUsage(pick.authCtx.accountId, options.config)
+      : pick.authCtx.accountId;
+    bindLogProviderAccount(logCtx, "oauth", "codex", accountId);
     return;
   }
   if (pick.keyPool?.accountId) {

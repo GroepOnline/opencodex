@@ -1406,7 +1406,7 @@ export async function handleResponses(
     cursorPoolAccountId = pick.oauthPool.accountId;
     parsed._cursorIdentityScope = pick.oauthPool.accountId;
   }
-  bindLogFromSelectCandidate(logCtx, pick);
+  bindLogFromSelectCandidate(logCtx, pick, { config });
   if (isOAuth401ReplayProvider && pick.oauthSnapshot) sentOAuthSnapshot = pick.oauthSnapshot;
   if (route.providerName === "kiro" && pick.oauthSnapshot) {
     // `{}` is intentional: this is an account-scoped request with no stored routing metadata.
