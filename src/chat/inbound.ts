@@ -195,6 +195,24 @@ function responseFormatToText(format: unknown): Rec | undefined {
   throw new ChatCompletionsRequestError(`unsupported response_format.type: ${String(format.type)}`);
 }
 
+/**
+ * DeepSeek-native clients (Pi, DSH, some Cursor/OpenCode paths) send
+ * `thinking: { type: "enabled" }` or `enable_thinking`. Azure Foundry
+ * DeepSeek-V4-Flash-0731 rejects those fields with
+ * `unrecognized_request_argument: thinking`. Map them onto the internal
+ * effort ladder so openai-chat can emit `reasoning_effort` instead. The
+ * rebuilt upstream body never forwards `thinking`.
+ */
+function thinkingToggleToEffort(thinking: unknown): string | undefined {
+  if (thinking === true) return "high";
+  if (thinking === false) return undefined;
+  if (!isRec(thinking)) return undefined;
+  const type = thinking.type;
+  if (type === "disabled" || type === "none" || type === false) return undefined;
+  if (type === "enabled" || type === "adaptive" || type === "auto" || type === true) return "high";
+  return undefined;
+}
+
 function resolveReasoningEffort(raw: Rec): string | undefined {
   if (typeof raw.reasoning_effort === "string" && OUTPUT_CONFIG_EFFORTS.has(raw.reasoning_effort)) {
     return raw.reasoning_effort;
@@ -202,7 +220,11 @@ function resolveReasoningEffort(raw: Rec): string | undefined {
   if (isRec(raw.reasoning) && typeof raw.reasoning.effort === "string" && OUTPUT_CONFIG_EFFORTS.has(raw.reasoning.effort)) {
     return raw.reasoning.effort;
   }
-  return undefined;
+  const model = typeof raw.model === "string" ? raw.model.toLowerCase() : "";
+  if (!model.includes("deepseek")) return undefined;
+  if (raw.enable_thinking === true) return "high";
+  if (raw.enable_thinking === false) return undefined;
+  return thinkingToggleToEffort(raw.thinking);
 }
 
 /**
