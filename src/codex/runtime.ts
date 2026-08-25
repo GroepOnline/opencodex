@@ -78,6 +78,20 @@ interface PersistedRuntimeState {
   updatedAt: string;
 }
 
+/** True when a new resolve is the same on-disk selection (do not bump updatedAt). */
+function samePersistedSelection(
+  existing: PersistedRuntimeState,
+  runtime: ResolvedCodexRuntime,
+): boolean {
+  if (existing.command !== runtime.command) return false;
+  if ((existing.selectedVersion ?? null) !== (runtime.version ?? null)) return false;
+  if (existing.source === runtime.source) return true;
+  // A PATH/shim hit is stored as path|shim, then the next resolve re-ranks the
+  // persisted command as configured. That is not a new selection.
+  return runtime.source === "configured"
+    && (existing.source === "path" || existing.source === "shim");
+}
+
 const PERSIST_FILE = "codex-runtime.json";
 const CLAMP_PERSIST_FILE = "codex-runtime-clamp.json";
 
@@ -216,12 +230,7 @@ export function persistCodexRuntime(
 ): void {
   const configDir = deps.configDir ?? getConfigDir();
   const existing = loadPersistedCodexRuntime({ ...deps, configDir });
-  if (
-    existing
-    && existing.command === runtime.command
-    && (existing.selectedVersion ?? null) === (runtime.version ?? null)
-    && existing.source === runtime.source
-  ) {
+  if (existing && samePersistedSelection(existing, runtime)) {
     // Identical selection: keep updatedAt as "last selection change" so the persisted
     // stamp stays stable and resolve/bundled-catalog memos stop churning (each write
     // previously bumped updatedAt, busting the very cache keys that include it).
