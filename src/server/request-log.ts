@@ -183,6 +183,28 @@ export function bindLogProviderAccount(
   if (logCtx.activeAttempt && accountId) logCtx.activeAttempt.providerAccountId = accountId;
 }
 
+/** Bind usage attribution from the pre-request candidate pick. OAuth wins over key-pool. */
+export function bindLogFromSelectCandidate(
+  logCtx: RequestLogContext,
+  pick: {
+    oauthPool?: { pool: string; accountId: string };
+    keyPool?: { provider: string; accountId: string };
+    authCtx?: { accountId: string | null };
+  },
+): void {
+  if (pick.oauthPool?.accountId) {
+    bindLogProviderAccount(logCtx, "oauth", pick.oauthPool.pool, pick.oauthPool.accountId);
+    return;
+  }
+  if (pick.authCtx?.accountId) {
+    bindLogProviderAccount(logCtx, "oauth", "codex", pick.authCtx.accountId);
+    return;
+  }
+  if (pick.keyPool?.accountId) {
+    bindLogProviderAccount(logCtx, "key-pool", pick.keyPool.provider, pick.keyPool.accountId);
+  }
+}
+
 /**
  * Resolves the model label recorded for a request log entry.
  *

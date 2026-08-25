@@ -45,7 +45,7 @@ export interface ProviderAccount {
   accountExpiresAt?: number;
   /** When true, an elapsed `accountExpiresAt` removes the account from routing. */
   autoDisableOnExpiry?: boolean;
-  /** Latched after auto-disable fires; cleared when the operator extends the seat. */
+  /** Latched after auto-disable fires; cleared when the operator extends or clears the seat, or turns off auto-disable. */
   disabledByExpiry?: boolean;
 }
 

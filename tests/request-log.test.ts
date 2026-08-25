@@ -22,17 +22,21 @@ import {
   recordFirstOutput,
   requestLogEntryFromPersistedUsage,
   sealRequestAttemptIdentity,
+  bindLogFromSelectCandidate,
+  bindLogProviderAccount,
   type RequestLogContext,
 } from "../src/server/request-log";
+import { clearProviderAccountRuntimeState } from "../src/providers/account-runtime-state";
 import { bridgeToResponsesSSE } from "../src/bridge";
 import type { AdapterEvent, OcxUsage } from "../src/types";
 import {
   appendUsageEntry,
   readUsageEntries,
   resetUsageReadCacheForTests,
+  usageLogPath,
   type PersistedUsageEntry,
 } from "../src/usage/log";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -852,6 +856,43 @@ describe("request log metadata", () => {
       provider: "openai-p104398",
       account: "p104398",
     });
+  });
+
+  test("key-pool bind stamps providerAccountId in usage JSONL without the secret", () => {
+    const home = mkdtempSync(join(tmpdir(), "ocx-req-log-keypool-"));
+    const previousHome = process.env.OPENCODEX_HOME;
+    process.env.OPENCODEX_HOME = home;
+    clearRequestLogsForTests();
+    resetUsageReadCacheForTests();
+    const secret = "sk-live-super-secret-key-pool-entry";
+    try {
+      const attempt = beginRequestAttempt(1, "openai", "gpt-5.5", "openai-chat");
+      const logCtx: RequestLogContext = {
+        model: "gpt-5.5",
+        provider: "openai",
+        activeAttempt: attempt,
+        attempts: [attempt],
+      };
+      bindLogFromSelectCandidate(logCtx, {
+        keyPool: { provider: "openai", accountId: "k1a2b3c4" },
+      });
+      bindLogProviderAccount(logCtx, "key-pool", "openai", "k2b3c4d5");
+      addFinalRequestLog("ocx-key-pool", 1, logCtx, 200);
+      const raw = readFileSync(usageLogPath(), "utf-8");
+      expect(raw).not.toContain(secret);
+      expect(raw).not.toContain("sk-live");
+      const [entry] = readUsageEntries();
+      expect(entry?.providerAccountId).toBe("k2b3c4d5");
+      expect(entry?.attempts?.[0]?.providerAccountId).toBe("k2b3c4d5");
+      expect(entry).not.toHaveProperty("account");
+    } finally {
+      if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
+      else process.env.OPENCODEX_HOME = previousHome;
+      resetUsageReadCacheForTests();
+      clearRequestLogsForTests();
+      clearProviderAccountRuntimeState();
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   test("httpStatusFromTerminalError maps Cursor tool catalog limits to 400", () => {

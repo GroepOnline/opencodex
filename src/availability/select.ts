@@ -20,6 +20,7 @@ import {
 import { redactSecretString } from "../lib/redact";
 import { providerCredentialFailure, providerCredentialRef, withResolvedProviderCredential } from "../providers/credential";
 import { resolveProviderTransport } from "../providers/xai-transport";
+import { findKeyPoolEntryId } from "../providers/api-keys";
 import { selectCodexCandidate } from "./codex-pool";
 import { selectOauthPoolCandidate, type OauthPoolName } from "./oauth-pool";
 import { selectKeyPoolCandidate } from "./resolve";
@@ -42,6 +43,7 @@ export type SelectCandidateOk = {
   provider: OcxProviderConfig;
   logProvider?: string;
   oauthPool?: { pool: OauthPoolName; accountId: string };
+  keyPool?: { provider: string; accountId: string };
   oauthSnapshot?: OAuthAccessSnapshot;
   authCtx?: CodexAuthContext;
   headers?: Headers;
@@ -193,11 +195,18 @@ export async function selectCandidate(input: SelectCandidateInput): Promise<Sele
     input.providerName === "github-copilot" ? getOAuthCredentialApiBaseUrl(input.providerName) : undefined,
   );
 
+  const keyPoolSource = input.config.providers[input.providerName] ?? provider;
+  const keyPoolAccountId = findKeyPoolEntryId(keyPoolSource, provider.apiKey);
+  const keyPool = keyPoolAccountId
+    ? { provider: input.providerName, accountId: keyPoolAccountId }
+    : undefined;
+
   return {
     ok: true,
     provider,
     ...(logProvider ? { logProvider } : {}),
     ...(oauthPool ? { oauthPool } : {}),
+    ...(keyPool ? { keyPool } : {}),
     ...(oauthSnapshot ? { oauthSnapshot } : {}),
     ...(authCtx ? { authCtx } : {}),
     ...(headers ? { headers } : {}),

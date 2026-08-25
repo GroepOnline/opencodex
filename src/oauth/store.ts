@@ -21,7 +21,12 @@ import { join } from "node:path";
 import { getConfigDir, atomicWriteFile, backupInvalidConfig, hardenConfigDir, hardenExistingSecret } from "../config";
 import { recordOwnedConfigPath } from "../lib/config-ownership";
 import { validateCopilotApiBaseUrl } from "./github-copilot";
-import { applyExpiryDisableToAccount, shouldAutoDisableExpiredAccount } from "./account-expiry";
+import {
+  applyExpiryDisableToAccount,
+  demoteExpiryDisabledActiveAccount,
+  shouldAutoDisableExpiredAccount,
+  shouldDemoteExpiryDisabledActiveAccount,
+} from "./account-expiry";
 import type { OAuthCredentialSource, OAuthCredentials, ProviderAccount, ProviderAccountSet } from "./types";
 
 type AuthStore = Record<string, ProviderAccountSet>;
@@ -465,10 +470,16 @@ export async function setAccountExpiryPolicy(
     } else if (patch.autoDisableOnExpiry === true) {
       account.autoDisableOnExpiry = true;
     }
-    if (typeof account.accountExpiresAt === "number" && account.accountExpiresAt > now) {
+    if (
+      account.autoDisableOnExpiry !== true
+      || typeof account.accountExpiresAt !== "number"
+      || account.accountExpiresAt > now
+    ) {
       delete account.disabledByExpiry;
     }
     applyExpiryDisableToAccount(account, now);
+    const set = store[provider];
+    if (set) demoteExpiryDisabledActiveAccount(set, now);
     return true;
   });
 }
@@ -477,18 +488,21 @@ export async function setAccountExpiryPolicy(
 export async function applyExpiredAccountDisables(now = Date.now()): Promise<number> {
   const snapshot = loadAuthStore();
   let pending = 0;
+  let needsDemote = false;
   for (const set of Object.values(snapshot)) {
     for (const account of set.accounts) {
       if (shouldAutoDisableExpiredAccount(account, now)) pending += 1;
     }
+    if (shouldDemoteExpiryDisabledActiveAccount(set, now)) needsDemote = true;
   }
-  if (pending === 0) return 0;
+  if (pending === 0 && !needsDemote) return 0;
   return await mutateStore(store => {
     let flipped = 0;
     for (const set of Object.values(store)) {
       for (const account of set.accounts) {
         if (applyExpiryDisableToAccount(account, now)) flipped += 1;
       }
+      demoteExpiryDisabledActiveAccount(set, now);
     }
     return flipped;
   });

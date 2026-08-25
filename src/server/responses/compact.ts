@@ -76,6 +76,7 @@ import {
   readConfiguredCodexServiceTier,
   requestLogSpeedLabel,
   sealRequestAttemptIdentity,
+  bindLogFromSelectCandidate,
   usageFromResponsesPayload,
   type RequestLogContext,
 } from "../request-log";
@@ -214,6 +215,7 @@ export async function handleResponsesCompact(
         : {}),
     });
     if (!pick.ok) return selectCandidateFailResponse(pick, { providerName: route.providerName, config });
+    bindLogFromSelectCandidate(logCtx, pick);
     const compactProvider = pick.provider;
     const authCtx: CodexAuthContext = pick.authCtx ?? { kind: "main", accountId: null };
     // Codex/OAuth compact reuses the caller's ChatGPT session. Key-auth compact must not:

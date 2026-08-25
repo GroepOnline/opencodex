@@ -72,6 +72,7 @@ import {
   isCursorPoolRotationError,
 } from "../../oauth/cursor-routing";
 import { isHardCapMessage } from "../../providers/cap-cooldown";
+import { findKeyPoolEntryId } from "../../providers/api-keys";
 import { buildWebSearchTool, planWebSearch, runWithWebSearch, shouldResolveOpenAiWebSearchSidecar } from "../../web-search";
 import { buildImageTool, buildVideoTool, planImageBridge, planVideoBridge, runWithImageBridge, clampImageMaxRounds, IMAGE_GEN_TOOL_NAME, VIDEO_GEN_TOOL_NAME } from "../../images";
 import { describeImagesInPlace, planVisionSidecar, shouldResolveOpenAiVisionSidecar, stripImagesInPlace } from "../../vision";
@@ -137,6 +138,7 @@ import {
   recordAttemptRequestedEffort,
   requestLogSpeedLabel,
   sealRequestAttemptIdentity,
+  bindLogFromSelectCandidate,
   bindLogProviderAccount,
   usageFromResponsesPayload,
   type RequestLogContext,
@@ -1404,11 +1406,7 @@ export async function handleResponses(
     cursorPoolAccountId = pick.oauthPool.accountId;
     parsed._cursorIdentityScope = pick.oauthPool.accountId;
   }
-  if (pick.oauthPool?.accountId) {
-    bindLogProviderAccount(logCtx, "oauth", pick.oauthPool.pool, pick.oauthPool.accountId);
-  } else if (authCtx.accountId) {
-    bindLogProviderAccount(logCtx, "oauth", "codex", authCtx.accountId);
-  }
+  bindLogFromSelectCandidate(logCtx, pick);
   if (isOAuth401ReplayProvider && pick.oauthSnapshot) sentOAuthSnapshot = pick.oauthSnapshot;
   if (route.providerName === "kiro" && pick.oauthSnapshot) {
     // `{}` is intentional: this is an account-scoped request with no stored routing metadata.
@@ -2564,6 +2562,11 @@ export async function handleResponses(
           resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
           config.cacheRetention,
         );
+        const hoppedKeyId = findKeyPoolEntryId(
+          config.providers[route.providerName] ?? rotated,
+          rotated.apiKey,
+        );
+        if (hoppedKeyId) bindLogProviderAccount(logCtx, "key-pool", route.providerName, hoppedKeyId);
         const result = await rebuildAndRefetch("key-429");
         if ("failed" in result) return result.failed;
         upstreamResponse = result;
