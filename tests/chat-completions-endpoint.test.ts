@@ -184,6 +184,54 @@ test("chatCompletionsToResponsesBody maps messages/tools/system", () => {
   expect(input.some(i => i.type === "function_call_output" && i.call_id === "call_1")).toBe(true);
 });
 
+test("chatCompletionsToResponsesBody maps DeepSeek thinking toggles to effort and drops the field", () => {
+  const enabled = chatCompletionsToResponsesBody({
+    model: "azure-foundry/DeepSeek-V4-Flash-0731",
+    messages: [{ role: "user", content: "hi" }],
+    thinking: { type: "enabled" },
+  });
+  expect(enabled.reasoning).toEqual({ effort: "high" });
+  expect(enabled).not.toHaveProperty("thinking");
+
+  const adaptive = chatCompletionsToResponsesBody({
+    model: "azure-foundry/DeepSeek-V4-Flash-0731",
+    messages: [{ role: "user", content: "hi" }],
+    thinking: { type: "adaptive" },
+  });
+  expect(adaptive.reasoning).toEqual({ effort: "high" });
+
+  const boolOn = chatCompletionsToResponsesBody({
+    model: "azure-foundry/DeepSeek-V4-Flash-0731",
+    messages: [{ role: "user", content: "hi" }],
+    thinking: true,
+  });
+  expect(boolOn.reasoning).toEqual({ effort: "high" });
+
+  const qwen = chatCompletionsToResponsesBody({
+    model: "azure-foundry/DeepSeek-V4-Flash-0731",
+    messages: [{ role: "user", content: "hi" }],
+    enable_thinking: true,
+  });
+  expect(qwen.reasoning).toEqual({ effort: "high" });
+  expect(qwen).not.toHaveProperty("enable_thinking");
+
+  const disabled = chatCompletionsToResponsesBody({
+    model: "azure-foundry/DeepSeek-V4-Flash-0731",
+    messages: [{ role: "user", content: "hi" }],
+    thinking: { type: "disabled" },
+  });
+  expect(disabled.reasoning).toBeUndefined();
+  expect(disabled).not.toHaveProperty("thinking");
+
+  const explicitWins = chatCompletionsToResponsesBody({
+    model: "azure-foundry/DeepSeek-V4-Flash-0731",
+    messages: [{ role: "user", content: "hi" }],
+    reasoning_effort: "low",
+    thinking: { type: "enabled" },
+  });
+  expect(explicitWins.reasoning).toEqual({ effort: "low" });
+});
+
 test("chatCompletionsToResponsesBody rejects missing model", () => {
   expect(() => chatCompletionsToResponsesBody({ messages: [{ role: "user", content: "x" }] }))
     .toThrow(ChatCompletionsRequestError);
