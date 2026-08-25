@@ -574,7 +574,7 @@ describe("resolveCodexRuntime", () => {
     }
   });
 
-  test("persistCodexRuntime rewrites when source changes for the same binary", () => {
+  test("persistCodexRuntime does not rewrite when only source differs", () => {
     const configDir = tempConfigDir();
     persistCodexRuntime({
       command: "C:\\keep\\codex.exe",
@@ -586,23 +586,11 @@ describe("resolveCodexRuntime", () => {
       version: "0.145.0",
       source: "environment",
     }, { configDir, now: () => Date.parse("2026-02-01T00:00:00.000Z") });
-    const persisted = loadPersistedCodexRuntime({ configDir });
-    expect(persisted?.source).toBe("environment");
-    expect(persisted?.updatedAt).toBe("2026-02-01T00:00:00.000Z");
-  });
-
-  test("persistCodexRuntime does not rewrite path-to-configured promotion", () => {
-    const configDir = tempConfigDir();
-    persistCodexRuntime({
-      command: "C:\\keep\\codex.exe",
-      version: "0.145.0",
-      source: "path",
-    }, { configDir, now: () => Date.parse("2026-01-01T00:00:00.000Z") });
     persistCodexRuntime({
       command: "C:\\keep\\codex.exe",
       version: "0.145.0",
       source: "configured",
-    }, { configDir, now: () => Date.parse("2026-02-01T00:00:00.000Z") });
+    }, { configDir, now: () => Date.parse("2026-03-01T00:00:00.000Z") });
     const persisted = loadPersistedCodexRuntime({ configDir });
     expect(persisted?.source).toBe("path");
     expect(persisted?.updatedAt).toBe("2026-01-01T00:00:00.000Z");
