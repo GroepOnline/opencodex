@@ -88,7 +88,7 @@ const usageSummaryCache = new Map<string, {
 function usageEntryMatchesSurface(entry: PersistedUsageEntry, surface: UsageSurface): boolean {
   if (surface === "claude") return entry.surface === "claude" || entry.surface === "claude-desktop";
   if (surface === "grok") return entry.surface === "grok";
-  if (surface === "codex") return entry.surface === undefined;
+  if (surface === "codex") return entry.surface === undefined || entry.surface === "codex";
   return true;
 }
 

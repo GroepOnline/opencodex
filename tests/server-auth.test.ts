@@ -572,7 +572,7 @@ describe("server local API auth", () => {
       const health = await fetch(`http://127.0.0.1:${server.port}/healthz`);
       expect(health.status).toBe(200);
       const healthBody = await health.json() as Record<string, unknown>;
-      expect(Object.keys(healthBody).sort()).toEqual(["pid", "port", "service", "status", "uptime", "version"]);
+      expect(Object.keys(healthBody).sort()).toEqual(["pid", "port", "providerCooldowns", "service", "status", "uptime", "version"]);
       expect("rss" in healthBody).toBe(false);
     } finally {
       await server.stop(true);
@@ -689,6 +689,36 @@ describe("server local API auth", () => {
       });
       expect(ok.status).toBe(200);
       expect(ok.headers.get("access-control-allow-origin")).toBe(origin);
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  test("CORS fallback never reflects an untrusted Host when the Origin is disallowed", async () => {
+    if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true });
+    mkdirSync(TEST_DIR, { recursive: true });
+    process.env.OPENCODEX_HOME = TEST_DIR;
+    process.env.OPENCODEX_API_AUTH_TOKEN = "local-secret";
+    saveConfig({
+      ...config("0.0.0.0"),
+      port: 0,
+    });
+
+    const server = startServer(0);
+    try {
+      // Untrusted Host + a disallowed cross-origin Origin. The fallback must be the
+      // server's localhost default, never the attacker-controlled Host or Origin.
+      const response = await fetch(`http://127.0.0.1:${server.port}/healthz`, {
+        headers: {
+          host: `attacker.test:${server.port}`,
+          origin: "https://evil.test",
+        },
+      });
+      expect(response.status).toBe(200);
+      const allowOrigin = response.headers.get("access-control-allow-origin");
+      expect(allowOrigin).toBe(`http://localhost:${server.port}`);
+      expect(allowOrigin).not.toContain("attacker.test");
+      expect(allowOrigin).not.toContain("evil.test");
     } finally {
       await server.stop(true);
     }

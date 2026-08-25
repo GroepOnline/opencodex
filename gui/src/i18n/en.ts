@@ -151,6 +151,8 @@ export const en = {
   "dash.version": "Version",
   "dash.uptime": "Uptime",
   "dash.pid": "PID",
+  "dash.cooldown": "Cooldown",
+  "dash.cooldownHint": "{count} provider(s) in cooldown",
   "dash.healthAria": "Proxy health",
   "dash.providers": "Providers",
   "dash.tokens30d": "Tokens (30d)",

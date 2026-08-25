@@ -191,7 +191,7 @@ const helpEntries: Record<string, HelpEntry> = {
       "Older versions: pick models via ANTHROPIC_MODEL or /model <id> directly (any string passes through).",
       "User-exported ANTHROPIC_* variables always take precedence.",
       "",
-      "Claude Desktop profile:",
+      "Claude Desktop profile (alias: ocx claude-desktop <sub>):",
       "  ocx claude desktop [apply]                         Save and apply the four-family profile",
       "  ocx claude desktop show [--json]                   Show routes, families, and defaults",
       "  ocx claude desktop move <route> <family> [--default]",

@@ -485,7 +485,6 @@ describe("usage log", () => {
       "headers",
       "messages",
       "profileArn",
-      "\"surface\"",
     ]) {
       expect(raw).not.toContain(leaked);
     }
@@ -494,6 +493,7 @@ describe("usage log", () => {
       timestamp: 2,
       provider: "openai",
       model: "gpt-5.5",
+      surface: "codex",
       status: 200,
       durationMs: 12,
       usageStatus: "reported",

@@ -42,7 +42,7 @@ export type MetricTerminalStatus = "completed" | "incomplete" | "failed" | "none
 export type MetricTokenType = "input" | "output" | "cache_read" | "cache_write" | "reasoning_output";
 
 export interface RequestMetricObservation {
-  surface?: "claude" | "claude-desktop" | "grok";
+  surface?: "claude" | "claude-desktop" | "codex" | "grok";
   status: number;
   durationMs: number;
   firstOutputMs?: number;
@@ -138,6 +138,7 @@ export function metricSurface(surface: RequestMetricObservation["surface"] | unk
   switch (surface) {
     case undefined:
     case null:
+    case "codex":
       return "codex";
     case "claude":
     case "claude-desktop":

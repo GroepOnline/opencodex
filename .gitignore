@@ -23,6 +23,10 @@ devlog/
 # becomes tracked again.
 .codexclaw/
 **/.codexclaw/
+.codex/
+**/.codex/
+.pi/
+**/.pi/
 .omo/
 **/.omo/
 .serena/
