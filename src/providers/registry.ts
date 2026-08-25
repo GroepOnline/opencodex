@@ -306,6 +306,43 @@ const THINKING_TOGGLE_MAP: Record<string, string> = {
   xhigh: "enabled",
   max: "enabled",
 };
+/**
+ * Xiaomi MiMo Open Platform chat contract (docs 2026-07-15/16):
+ * https://mimo.mi.com/docs/en-US/quick-start/summary/model
+ * https://mimo.mi.com/docs/en-US/quick-start/summary/first-api-call
+ * Pay-as-you-go is `sk-…` on api.xiaomimimo.com; Token Plan is `tp-…` on token-plan-cn.
+ * V2 ids (`mimo-v2-pro` / omni / flash) retired 2026-06-30. Wire thinking is
+ * `thinking: {type: enabled|disabled}`; tool-call turns must replay `reasoning_content`.
+ */
+const XIAOMI_PAYG_BASE_URL = "https://api.xiaomimimo.com/v1";
+const XIAOMI_TOKEN_PLAN_BASE_URL = "https://token-plan-cn.xiaomimimo.com/v1";
+const XIAOMI_DASHBOARD_URL = "https://platform.xiaomimimo.com";
+const XIAOMI_CHAT_MODELS = ["mimo-v2.5-pro", "mimo-v2.5"];
+const XIAOMI_THINKING_TOGGLE_MODELS = ["mimo-v2.5-pro", "mimo-v2.5", "mimo-v2.5-pro-ultraspeed"];
+const XIAOMI_TEXT_ONLY_MODELS = ["mimo-v2.5-pro", "mimo-v2.5-pro-ultraspeed"];
+const XIAOMI_CONTEXT_WINDOW = 1_048_576;
+const XIAOMI_MAX_OUTPUT_TOKENS = 131_072;
+const XIAOMI_CHAT_FIELDS = {
+  adapter: "openai-chat" as const,
+  authKind: "key" as const,
+  jawcodeBundle: "xiaomi",
+  defaultModel: "mimo-v2.5-pro",
+  models: XIAOMI_CHAT_MODELS,
+  liveModels: false,
+  modelContextWindows: Object.fromEntries(XIAOMI_THINKING_TOGGLE_MODELS.map(id => [id, XIAOMI_CONTEXT_WINDOW])),
+  modelMaxOutputTokens: Object.fromEntries(XIAOMI_THINKING_TOGGLE_MODELS.map(id => [id, XIAOMI_MAX_OUTPUT_TOKENS])),
+  modelInputModalities: {
+    "mimo-v2.5-pro": ["text"],
+    "mimo-v2.5": ["text", "image"],
+    "mimo-v2.5-pro-ultraspeed": ["text"],
+  } as Record<string, string[]>,
+  thinkingToggleModels: XIAOMI_THINKING_TOGGLE_MODELS,
+  modelReasoningEfforts: Object.fromEntries(XIAOMI_THINKING_TOGGLE_MODELS.map(id => [id, THINKING_TOGGLE_EFFORTS])),
+  modelReasoningEffortMap: Object.fromEntries(XIAOMI_THINKING_TOGGLE_MODELS.map(id => [id, THINKING_TOGGLE_MAP])),
+  preserveReasoningContentModels: XIAOMI_THINKING_TOGGLE_MODELS,
+  // Text-only chat ids: catalog still advertises image so Codex attachments reach the vision sidecar.
+  noVisionModels: XIAOMI_TEXT_ONLY_MODELS,
+};
 const OPENCODE_GO_THINKING_TOGGLE_MODELS = [
   "mimo-v2.5", "mimo-v2.5-pro", "mimo-v2-omni", "mimo-v2-pro", "glm-5", "glm-5.1",
 ];
@@ -1298,7 +1335,23 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     preserveReasoningContentModels: OPENCODE_FREE_DEEPSEEK_MODELS,
     noVisionModels: OPENCODE_FREE_DEEPSEEK_MODELS,
   },
-  { id: "xiaomi", label: "Xiaomi MiMo", baseUrl: "https://api.xiaomimimo.com/anthropic", adapter: "anthropic", authKind: "key", dashboardUrl: "https://xiaomimimo.com", defaultModel: "mimo-v2.5-pro" },
+  {
+    id: "xiaomi",
+    label: "Xiaomi MiMo",
+    baseUrl: XIAOMI_PAYG_BASE_URL,
+    featured: true,
+    dashboardUrl: XIAOMI_DASHBOARD_URL,
+    note: "Pay-as-you-go (`sk-…`). OpenAI Chat Completions; 1M context, thinking toggle, tool-call reasoning replay. Token Plan keys live on the Xiaomi Token Plan preset.",
+    ...XIAOMI_CHAT_FIELDS,
+  },
+  {
+    id: "xiaomi-token-plan",
+    label: "Xiaomi MiMo Token Plan",
+    baseUrl: XIAOMI_TOKEN_PLAN_BASE_URL,
+    dashboardUrl: XIAOMI_DASHBOARD_URL,
+    note: "Token Plan (`tp-…`) on token-plan-cn.xiaomimimo.com — same models as Xiaomi MiMo, different host and billing.",
+    ...XIAOMI_CHAT_FIELDS,
+  },
   { id: "kilo", label: "Kilo", baseUrl: "https://api.kilo.ai/api/gateway", adapter: "openai-chat", authKind: "key", dashboardUrl: "https://kilo.ai" },
   {
     id: "mimo-free",

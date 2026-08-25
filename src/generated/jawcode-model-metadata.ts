@@ -30,7 +30,9 @@ const PROVIDER_ALIASES: Record<string, string> = {
   "moonshot": "moonshot",
   "zhipu-bigmodel": "zai",
   "minimax": "minimax",
-  "minimax-cn": "minimax"
+  "minimax-cn": "minimax",
+  "xiaomi": "xiaomi",
+  "xiaomi-token-plan": "xiaomi"
 } as const;
 
 type Row = readonly [id: string, contextWindow?: number | null, maxTokens?: number | null, input?: string | null, reasoning?: 0 | 1 | null, wireModelId?: string | null, costInput?: number | null, costOutput?: number | null, costCacheRead?: number | null, costCacheWrite?: number | null];

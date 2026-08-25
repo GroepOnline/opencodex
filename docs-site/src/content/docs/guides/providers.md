@@ -185,7 +185,7 @@ selectors, then retry. Signing in from a machine with no existing `kiro-cli` ses
 
 ## 3. API-key catalog
 
-opencodex ships 53 built-in presets: 42 key-based, seven OAuth, three local, and the default
+opencodex ships 54 built-in presets: 43 key-based, seven OAuth, three local, and the default
 ChatGPT-forward preset. The dashboard's **Add provider** picker opens a key provider's dashboard,
 validates the key, and stores it. Notable entries:
 
@@ -212,7 +212,8 @@ validates the key, and stores it. Notable entries:
 | Qwen Cloud | Token plan (default): `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1` · Pay as you go: `https://dashscope.aliyuncs.com/compatible-mode/v1` · or Custom |
 | Tencent Cloud Coding Plan | `https://api.lkeap.cloud.tencent.com/coding/v3` |
 | SiliconFlow | `https://api.siliconflow.cn/v1` |
-| Xiaomi MiMo | `https://api.xiaomimimo.com/anthropic` |
+| Xiaomi MiMo | `https://api.xiaomimimo.com/v1` |
+| Xiaomi MiMo Token Plan | `https://token-plan-cn.xiaomimimo.com/v1` |
 | Kilo | `https://api.kilo.ai/api/gateway` |
 | GitLab Duo | `https://cloud.gitlab.com/ai/v1/proxy/openai/v1` |
 | Cloudflare AI Gateway | `https://gateway.ai.cloudflare.com/v1/{account-id}/{gateway}/anthropic` |
@@ -220,7 +221,15 @@ validates the key, and stores it. Notable entries:
 | …and more | opencode zen, Vercel AI Gateway, Venice, NanoGPT, Synthetic, Qianfan, Alibaba, Parallel, ZenMux, LiteLLM |
 
 Most use the `openai-chat` adapter with a bearer key; a few that expose only an Anthropic-compatible
-endpoint (e.g. **Xiaomi MiMo**) use the `anthropic` adapter (`x-api-key`).
+endpoint (e.g. **Cloudflare AI Gateway**) use the `anthropic` adapter (`x-api-key`).
+
+> **Two Xiaomi MiMo routes:** `xiaomi` is pay-as-you-go (`sk-…` on `api.xiaomimimo.com`).
+> `xiaomi-token-plan` is the Token Plan subscription (`tp-…` on `token-plan-cn.xiaomimimo.com`).
+> Same models (`mimo-v2.5-pro`, `mimo-v2.5`), different hosts and keys — a key issued for one will
+> not authenticate against the other. Both use OpenAI Chat Completions with Xiaomi's binary
+> `thinking: {type}` knob and replay `reasoning_content` on tool-call turns. The Anthropic-compatible
+> host (`https://api.xiaomimimo.com/anthropic`) is not the opencodex preset; point Claude Code at it
+> directly if you need Messages-API clients.
 
 > **Tencent Cloud Coding Plan usage restriction:** Tencent documents this subscription for
 > interactive coding tools only. General API automation, custom application backends, and

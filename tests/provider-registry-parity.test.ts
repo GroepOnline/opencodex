@@ -35,7 +35,7 @@ const EXPECTED_KEY_PROVIDER_IDS = [
   "huggingface", "nvidia", "venice", "zai", "zhipu-bigmodel", "nanogpt", "synthetic", "siliconflow", "qwen-cloud", "tencent-coding-plan",
   "qianfan", "alibaba", "alibaba-token-plan", "alibaba-token-plan-intl", "parallel", "zenmux", "litellm", "ollama-cloud", "mistral",
   "minimax", "minimax-cn", "kimi-code", "opencode-zen", "vercel-ai-gateway",
-  "opencode-free", "xiaomi", "kilo", "mimo-free", "cloudflare-ai-gateway", "cloudflare-workers-ai", "gitlab-duo", "meta-ai",
+  "opencode-free", "xiaomi", "xiaomi-token-plan", "kilo", "mimo-free", "cloudflare-ai-gateway", "cloudflare-workers-ai", "gitlab-duo", "meta-ai",
   "omniroute",
 ];
 
@@ -657,7 +657,7 @@ describe("provider registry parity", () => {
     expect(featured).toEqual([
       "openai", "xai", "anthropic", "anthropic-apikey", "kimi", "openai-apikey", "umans", "opencode-go", "openrouter",
       "groq", "google", "azure-openai", "ollama", "vllm", "lm-studio", "opencode-free",
-      "mimo-free", "meta-ai",
+      "xiaomi", "mimo-free", "meta-ai",
       "omniroute",
     ]);
 
@@ -739,6 +739,8 @@ describe("provider registry parity", () => {
       minimax: "minimax",
       "minimax-cn": "minimax",
       "zhipu-bigmodel": "zai",
+      xiaomi: "xiaomi",
+      "xiaomi-token-plan": "xiaomi",
     });
     expect(resolveJawcodeProvider("gemini")).toBe("google");
     expect(resolveJawcodeProvider("minimax-cn")).toBe("minimax");
