@@ -6,6 +6,10 @@ import { LanguageProvider } from "../src/i18n/provider";
 import type { ProviderUpdatePatch } from "../src/components/provider-workspace/types";
 import type { WorkspaceItem } from "../src/provider-workspace/catalog";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 let previousLanguageDescriptor: PropertyDescriptor | undefined;
 
 beforeEach(() => {

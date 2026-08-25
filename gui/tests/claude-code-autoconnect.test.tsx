@@ -4,6 +4,10 @@ import { LanguageProvider } from "../src/i18n/provider";
 import { reconcileAutoConnectState } from "../src/pages/claude-autoconnect";
 import { AutoConnectSetting } from "../src/pages/ClaudeCode";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 // Bun defines `navigator` but not `navigator.language`; gui/src/i18n/shared.ts
 // reads it during locale detection, so pin it deterministically for SSR.
 let previousLanguage: unknown;

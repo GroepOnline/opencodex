@@ -5,6 +5,10 @@ import { createRoot, type Root } from "react-dom/client";
 import ClaudeDesktop from "../src/pages/ClaudeDesktop";
 import { LanguageProvider } from "../src/i18n/provider";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 /**
  * The family stack is vertical and collapsible. These are mounted rather than
  * source-shape tests because the interesting failures are interactive: a folded family

@@ -6,6 +6,10 @@ import { LanguageProvider } from "../src/i18n/provider";
 import { ClaudeCodeSettingsCard } from "../src/pages/claude-code-sections";
 import type { ClaudeCodeState } from "../src/pages/claude-code-types";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 const globals = ["document", "window", "navigator", "localStorage", "IS_REACT_ACT_ENVIRONMENT"] as const;
 let previousGlobals: Record<(typeof globals)[number], PropertyDescriptor | undefined>;
 let testWindow: Window;

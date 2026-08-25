@@ -18,6 +18,10 @@ import {
 } from "../../src/codex/model-cache";
 import { handleManagementAPI } from "../../src/server/management-api";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 let previousLanguage: unknown;
 const originalFetch = globalThis.fetch;
 

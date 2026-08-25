@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, jest, test } from "bun:test";
 import { Window } from "happy-dom";
 import { act, StrictMode, useReducer } from "react";
 import type { Root } from "react-dom/client";
@@ -8,6 +8,10 @@ import {
 } from "../src/components/add-codex-account-reducer";
 import { useAddCodexAccountOAuth } from "../src/components/use-add-codex-account-oauth";
 import { LanguageProvider } from "../src/i18n/provider";
+
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
 
 /**
  * StrictMode reauth latch + login-status single-flight / abort contracts for
@@ -79,6 +83,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  jest.useRealTimers();
   for (const holder of statusHolders.splice(0)) {
     holder.resolve(Response.json({ status: "pending" }));
   }
@@ -111,14 +116,21 @@ function Probe({ reauthAccountId }: { reauthAccountId: string }) {
   return <div data-testid="oauth-probe" data-step={ui.step} />;
 }
 
-async function mountProbe(strict: boolean) {
+async function mountProbe(strict: boolean, opts?: { skipRealWait?: boolean }) {
   const { createRoot } = await import("react-dom/client");
   await act(async () => {
     root = createRoot(host);
     const tree = <LanguageProvider><Probe reauthAccountId="acct-1" /></LanguageProvider>;
     root.render(strict ? <StrictMode>{tree}</StrictMode> : tree);
   });
-  await act(async () => { await new Promise((r) => setTimeout(r, 40)); });
+  if (!opts?.skipRealWait) {
+    await act(async () => { await new Promise((r) => setTimeout(r, 40)); });
+  }
+}
+
+/** Deep microtask drain so promise chains settle without real timers. */
+async function drain(): Promise<void> {
+  for (let i = 0; i < 20; i++) await Promise.resolve();
 }
 
 test("StrictMode remount clears the reauth latch and starts OAuth again", async () => {
@@ -132,11 +144,22 @@ test("StrictMode remount clears the reauth latch and starts OAuth again", async 
 });
 
 test("slow login-status polls stay single-flight and abort on unmount", async () => {
-  await mountProbe(false);
-  await act(async () => { await new Promise((r) => setTimeout(r, 40)); });
+  // Virtual clock BEFORE mount so every product timer (poll interval included)
+  // is fake and advanceable. The contract is about tick COUNTS (single-flight
+  // across two poll intervals, no re-poll after unmount), not about 7s wall time.
+  jest.useFakeTimers();
+  const advance = async (ms: number) => {
+    await act(async () => {
+      jest.advanceTimersByTime(ms);
+      await drain();
+    });
+  };
 
+  await mountProbe(false, { skipRealWait: true });
+  await advance(40);
   // Wait past two interval ticks while the first status response is still held.
-  await act(async () => { await new Promise((r) => setTimeout(r, 4500)); });
+  await advance(2000);
+  await advance(2500);
 
   const statusCalls = calls.filter((c) => c.path.includes("/api/codex-auth/login-status"));
   expect(statusCalls.length).toBe(1);
@@ -154,7 +177,7 @@ test("slow login-status polls stay single-flight and abort on unmount", async ()
   expect(inFlightSignal!.aborted).toBe(true);
 
   // A late tick must not open a second in-flight poll after cleanup.
-  await act(async () => { await new Promise((r) => setTimeout(r, 2500)); });
+  await advance(2500);
   const statusAfter = calls.filter((c) => c.path.includes("/api/codex-auth/login-status"));
   expect(statusAfter.length).toBe(1);
 }, { timeout: 20_000 });

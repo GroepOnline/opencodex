@@ -5,6 +5,10 @@ import type { Root } from "react-dom/client";
 import { LanguageProvider } from "../src/i18n/provider";
 import ClaudeCode from "../src/pages/ClaudeCode";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 const originalFetch = globalThis.fetch;
 let previousLanguageDescriptor: PropertyDescriptor | undefined;
 let restoreGlobals: (() => void) | undefined;

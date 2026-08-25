@@ -7,6 +7,10 @@ import ProviderAuthPanel from "../src/components/provider-workspace/ProviderAuth
 import type { WorkspaceItem } from "../src/provider-workspace/catalog";
 import type { OAuthAccountRow, ProviderAuthHandlers } from "../src/components/provider-workspace/types";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 const globals = ["document", "window", "navigator", "localStorage", "IS_REACT_ACT_ENVIRONMENT", "fetch"] as const;
 let previous: Record<(typeof globals)[number], unknown>;
 let win: Window;

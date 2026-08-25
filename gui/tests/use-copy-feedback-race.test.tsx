@@ -1,9 +1,13 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, jest, test } from "bun:test";
 import { Window } from "happy-dom";
 import { act } from "react";
 import type { Root } from "react-dom/client";
 import { LanguageProvider } from "../src/i18n/provider";
 import { useCopyFeedback } from "../src/components/use-copy-feedback";
+
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
 
 /**
  * Clipboard writes settle out of order — a permission prompt can hold the first
@@ -62,6 +66,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  jest.useRealTimers();
   if (root) {
     const current = root;
     await act(async () => { current.unmount(); });
@@ -138,7 +143,13 @@ test("a stale timer cannot expire the newer feedback", async () => {
   await settle(0, true);
 
   // Past the stale attempt's would-be expiry, inside the current one's window.
-  await act(async () => { await new Promise((r) => setTimeout(r, 2400)); });
+  // Virtual clock: the assertion cares about which wipe timer fires, not wall time.
+  jest.useFakeTimers();
+  await act(async () => {
+    jest.advanceTimersByTime(2400);
+    await Promise.resolve();
+    await Promise.resolve();
+  });
   expect(text("b")).toBe("copied");
 });
 

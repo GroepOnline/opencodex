@@ -5,6 +5,10 @@ import { createRoot, type Root } from "react-dom/client";
 import Subagents from "../src/pages/Subagents";
 import { LanguageProvider } from "../src/i18n/provider";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 /**
  * While a Subagents save is in flight, toggle/remove/reorder must be blocked;
  * after success, `chosen` reconciles from `d.applied`.

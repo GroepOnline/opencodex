@@ -15,6 +15,10 @@ import AccountPoolStrategyControls from "../src/components/AccountPoolStrategyCo
 import CodexPoolStrategySetting from "../src/components/CodexPoolStrategySetting";
 import { LanguageProvider } from "../src/i18n/provider";
 
+import { seedDicts } from "./helpers/locales";
+
+await seedDicts();
+
 let previousLanguage: unknown;
 
 const domGlobals = ["document", "window", "navigator", "fetch", "IS_REACT_ACT_ENVIRONMENT"] as const;
