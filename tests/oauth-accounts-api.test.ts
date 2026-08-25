@@ -175,6 +175,51 @@ describe("multiauth accounts API", () => {
     }
   });
 
+  test("PUT expiry policy is distinct from credential.expires and GET returns it", async () => {
+    const server = startServer(0);
+    try {
+      const seat = Date.now() + 86_400_000;
+      const put = await fetch(new URL("/api/oauth/accounts/expiry", server.url), {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          provider: "anthropic",
+          accountId: "aaaa1111",
+          accountExpiresAt: seat,
+          autoDisableOnExpiry: true,
+        }),
+      });
+      expect(put.status).toBe(200);
+      const listed = await fetch(new URL("/api/oauth/accounts?provider=anthropic", server.url));
+      expect(listed.status).toBe(200);
+      const body = await listed.json() as {
+        accounts: Array<{
+          id: string;
+          expiresAt?: number;
+          accountExpiresAt?: number;
+          autoDisableOnExpiry?: boolean;
+          inFlight?: number;
+        }>;
+      };
+      const row = body.accounts.find(account => account.id === "aaaa1111");
+      expect(row?.accountExpiresAt).toBe(seat);
+      expect(row?.autoDisableOnExpiry).toBe(true);
+      expect(row?.expiresAt).not.toBe(seat);
+      expect(row?.inFlight).toBe(0);
+
+      const runtime = await fetch(new URL("/api/accounts/runtime", server.url));
+      expect(runtime.status).toBe(200);
+      const runtimeBody = await runtime.json() as {
+        accounts: Array<{ provider: string; accountId: string; kind: string; selectable: boolean }>;
+      };
+      expect(runtimeBody.accounts.some(account =>
+        account.provider === "anthropic" && account.accountId === "aaaa1111" && account.kind === "oauth" && account.selectable === true
+      )).toBe(true);
+    } finally {
+      await server.stop(true);
+    }
+  });
+
   test("DELETE removes one account; active removal promotes the other", async () => {
     const server = startServer(0);
     try {

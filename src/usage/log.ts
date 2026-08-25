@@ -37,6 +37,8 @@ export interface PersistedUsageAttempt {
   effectiveEffort?: string;
   reasoningWireField?: string;
   reasoningWireValue?: string | number;
+  /** Stable store id (OAuth account id or key-pool entry id). Distinct from `account`. */
+  providerAccountId?: string;
 }
 
 export interface PersistedUsageEntry {
@@ -53,6 +55,11 @@ export interface PersistedUsageEntry {
    * Absent on rows whose provider carries no account suffix.
    */
   account?: string;
+  /**
+   * Stable store id for the account or key that served this request.
+   * Distinct from `account`, which remains the display label.
+   */
+  providerAccountId?: string;
   resolvedModel?: string;
   requestedModel?: string;
   /** Reasoning effort / service-tier metadata for GUI Logs after restart. */
@@ -243,6 +250,9 @@ function normalizeUsageAttempt(raw: unknown): PersistedUsageAttempt | null {
       ? { totalTokens: attempt.totalTokens }
       : {}),
     ...(typeof attempt.errorCode === "string" ? { errorCode: attempt.errorCode } : {}),
+    ...(typeof attempt.providerAccountId === "string" && attempt.providerAccountId.trim()
+      ? { providerAccountId: capMetadataString(attempt.providerAccountId.trim()) }
+      : {}),
     ...(typeof attempt.requestedEffort === "string" && attempt.requestedEffort
       ? { requestedEffort: capMetadataString(attempt.requestedEffort) }
       : {}),
@@ -291,6 +301,9 @@ function normalizeUsageEntry(entry: PersistedUsageEntry): PersistedUsageEntry {
       : {}),
     ...(typeof entry.account === "string" && entry.account.trim()
       ? { account: capMetadataString(entry.account.trim()) }
+      : {}),
+    ...(typeof entry.providerAccountId === "string" && entry.providerAccountId.trim()
+      ? { providerAccountId: capMetadataString(entry.providerAccountId.trim()) }
       : {}),
     ...(entry.resolvedModel ? { resolvedModel: entry.resolvedModel } : {}),
     ...(entry.requestedModel ? { requestedModel: entry.requestedModel } : {}),

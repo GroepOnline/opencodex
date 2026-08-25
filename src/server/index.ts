@@ -305,6 +305,9 @@ export function startServer(port?: number) {
   // Availability mutates THIS live object when it records a cap-cooldown.
   hydrateKeyPoolCooldowns(config);
   if (expireRecordedCooldowns(config)) saveConfig(config);
+  void import("../oauth/store").then(({ applyExpiredAccountDisables }) => {
+    void applyExpiredAccountDisables();
+  });
   // Auto-pausing a capped provider is only safe if it auto-recovers without the dashboard.
   startProviderCooldownSweep(config);
   applyProxyEnv(config);

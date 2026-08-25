@@ -38,7 +38,7 @@ export interface ProviderModelUsageRow {
 }
 
 // Auth types consumed by ProviderAuthPanel (WP091).
-export type OAuthAccountHealthStatus = "healthy" | "cooldown" | "reauth_required" | "warning";
+export type OAuthAccountHealthStatus = "healthy" | "cooldown" | "reauth_required" | "warning" | "disabled";
 
 export type OAuthAccountRow = {
   id: string;
@@ -46,6 +46,9 @@ export type OAuthAccountRow = {
   email?: string;
   active: boolean;
   needsReauth?: boolean;
+  accountExpiresAt?: number;
+  autoDisableOnExpiry?: boolean;
+  disabledByExpiry?: boolean;
   health?: { status: OAuthAccountHealthStatus; reason?: string; until?: string };
   healthLabel?: string;
   healthSummary?: string;

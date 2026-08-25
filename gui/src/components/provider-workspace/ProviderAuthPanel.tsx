@@ -15,6 +15,7 @@ import {
   formatOAuthHealthSummary,
   oauthHealthBadgeClass,
   oauthHealthIsCooldown,
+  oauthHealthIsDisabled,
   oauthHealthShowsDoctor,
   oauthHealthShowsReauth,
 } from "../../oauth-health-display";
@@ -279,6 +280,8 @@ export default function ProviderAuthPanel({
                   const showReauth = Boolean(account.needsReauth) || oauthHealthShowsReauth(healthStatus);
                   const showDoctor = oauthHealthShowsDoctor(healthStatus);
                   const inCooldown = oauthHealthIsCooldown(healthStatus);
+                  const expired = oauthHealthIsDisabled(healthStatus) || Boolean(account.disabledByExpiry);
+                  const blocked = Boolean(showReauth || inCooldown || expired || (switchingAccountId && !switching));
                   const maskedId = displayAccountId(account.id);
                   const healthLabel = formatOAuthHealthLabel(t, account.health);
                   const healthSummary = formatOAuthHealthSummary(t, item.name, account.id, account.health);
@@ -287,14 +290,21 @@ export default function ProviderAuthPanel({
                   <li key={account.id} className={`pwi-auth-acct${account.active ? " pwi-auth-acct--active" : ""}`}>
                     <div className={`pwi-auth-row${account.active ? " pwi-auth-row--active" : ""}`}>
                     <button type="button" className="pwi-auth-row-main"
-                      onClick={() => { if (!account.active && !showReauth && !inCooldown && !switchingAccountId) void authHandlers.onSwitchAccount(item.name, account); }}
+                      onClick={() => { if (!account.active && !showReauth && !inCooldown && !expired && !switchingAccountId) void authHandlers.onSwitchAccount(item.name, account); }}
                       aria-current={account.active ? "true" : undefined}
                       aria-label={`${label}${account.active ? ` — ${t("pws.accountCurrent")}` : ""}`}
-                      disabled={Boolean(showReauth || inCooldown || (switchingAccountId && !switching))}>
-                      <span className={`pwi-auth-dot ${showReauth ? "pwi-auth-dot--warn" : account.active ? "pwi-auth-dot--ok" : "pwi-auth-dot--off"}`} aria-hidden="true" />
+                      disabled={blocked}>
+                      <span className={`pwi-auth-dot ${showReauth || expired ? "pwi-auth-dot--warn" : account.active ? "pwi-auth-dot--ok" : "pwi-auth-dot--off"}`} aria-hidden="true" />
                       <span className="pwi-auth-row-copy">
                         <span className="pwi-auth-row-label">{label}</span>
                         <span className="pwi-auth-row-secondary">{[account.email, `${t("prov.accountId")}: ${maskedId}`].filter(Boolean).join(" · ")}</span>
+                        {typeof account.accountExpiresAt === "number" && (
+                          <span className="pwi-auth-row-secondary faint">
+                            {t(account.accountExpiresAt <= nowMs ? "pws.accountExpired" : "pws.accountExpires", {
+                              date: new Date(account.accountExpiresAt).toLocaleString(locale),
+                            })}
+                          </span>
+                        )}
                         {healthSummary && (
                           <span className="pwi-auth-row-secondary faint">{healthSummary}</span>
                         )}

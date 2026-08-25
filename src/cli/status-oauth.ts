@@ -17,6 +17,8 @@ function describeHealth(health: OAuthAccountHealth): string {
       return health.reason === "rate_limit"
         ? `rate limited until ${health.until}`
         : `quota limited until ${health.until}`;
+    case "disabled":
+      return "expired";
     case "warning":
       switch (health.reason) {
         case "refresh_conflict":
@@ -25,6 +27,8 @@ function describeHealth(health: OAuthAccountHealth): string {
           return "metadata mismatch";
         case "stale_credentials":
           return "stale credentials";
+        case "expired":
+          return "expired";
         default:
           return "warning";
       }

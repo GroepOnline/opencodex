@@ -38,6 +38,15 @@ export interface ProviderAccount {
   /** Terminal refresh failure (invalid_grant / reused / revoked) — re-login required. */
   needsReauth?: boolean;
   addedAt?: number;
+  /**
+   * Operator-owned seat/subscription expiry (epoch ms). Distinct from `credential.expires`,
+   * which is the OAuth access-token lifetime.
+   */
+  accountExpiresAt?: number;
+  /** When true, an elapsed `accountExpiresAt` removes the account from routing. */
+  autoDisableOnExpiry?: boolean;
+  /** Latched after auto-disable fires; cleared when the operator extends the seat. */
+  disabledByExpiry?: boolean;
 }
 
 /** auth.json value per provider: N accounts + which one requests use. */

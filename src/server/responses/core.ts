@@ -137,6 +137,7 @@ import {
   recordAttemptRequestedEffort,
   requestLogSpeedLabel,
   sealRequestAttemptIdentity,
+  bindLogProviderAccount,
   usageFromResponsesPayload,
   type RequestLogContext,
 } from "../request-log";
@@ -1403,6 +1404,11 @@ export async function handleResponses(
     cursorPoolAccountId = pick.oauthPool.accountId;
     parsed._cursorIdentityScope = pick.oauthPool.accountId;
   }
+  if (pick.oauthPool?.accountId) {
+    bindLogProviderAccount(logCtx, "oauth", pick.oauthPool.pool, pick.oauthPool.accountId);
+  } else if (authCtx.accountId) {
+    bindLogProviderAccount(logCtx, "oauth", "codex", authCtx.accountId);
+  }
   if (isOAuth401ReplayProvider && pick.oauthSnapshot) sentOAuthSnapshot = pick.oauthSnapshot;
   if (route.providerName === "kiro" && pick.oauthSnapshot) {
     // `{}` is intentional: this is an account-scoped request with no stored routing metadata.
@@ -2203,6 +2209,7 @@ export async function handleResponses(
       parsed._cursorIdentityScope = hop.accountId;
       route.provider = hop.provider;
       logCtx.provider = hop.logProvider;
+      bindLogProviderAccount(logCtx, "oauth", "cursor", hop.accountId);
       activeRunTurnAdapter = resolveAdapter(
         resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
         config.cacheRetention,
@@ -2211,6 +2218,7 @@ export async function handleResponses(
         logCtx.activeAttempt,
         logCtx.provider,
         activeRunTurnAdapter.name,
+        hop.accountId,
       );
       return true;
     };
@@ -2584,9 +2592,10 @@ export async function handleResponses(
             resolveWireProtocolOverride(route.providerName, route.modelId, hop.provider),
             config.cacheRetention,
           );
-          sealRequestAttemptIdentity(logCtx.activeAttempt, hop.logProvider, nextAdapter.name);
+          sealRequestAttemptIdentity(logCtx.activeAttempt, hop.logProvider, nextAdapter.name, hop.accountId);
           anthropicPoolAccountId = hop.accountId;
           anthropicPoolFailovers += 1;
+          bindLogProviderAccount(logCtx, "oauth", "anthropic", hop.accountId);
           route.provider = hop.provider;
           logCtx.provider = hop.logProvider;
           activeAdapter = nextAdapter;
@@ -2633,9 +2642,11 @@ export async function handleResponses(
             logCtx.activeAttempt,
             hop.logProvider,
             nextAdapter.name,
+            hop.accountId,
           );
           googleAntigravityPoolAccountId = hop.accountId;
           googleAntigravityPoolFailovers += 1;
+          bindLogProviderAccount(logCtx, "oauth", "google-antigravity", hop.accountId);
           route.provider = hop.provider;
           logCtx.provider = hop.logProvider;
           activeAdapter = nextAdapter;
@@ -2845,11 +2856,12 @@ export async function handleResponses(
           anthropicPoolFailovers += 1;
           route.provider = hop.provider;
           logCtx.provider = hop.logProvider;
+          bindLogProviderAccount(logCtx, "oauth", "anthropic", hop.accountId);
           activeAdapter = resolveAdapter(
             resolveWireProtocolOverride(route.providerName, route.modelId, route.provider),
             config.cacheRetention,
           );
-          sealRequestAttemptIdentity(logCtx.activeAttempt, logCtx.provider, activeAdapter.name);
+          sealRequestAttemptIdentity(logCtx.activeAttempt, logCtx.provider, activeAdapter.name, hop.accountId);
           continue;
         }
         if (needsPoolOutcome || isOauthAccountPoolHopStatus(response.status)) {

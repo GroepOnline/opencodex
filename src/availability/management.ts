@@ -2,9 +2,14 @@ import { saveConfigPreservingClaudeCode } from "../config";
 import { configuredKeyCount, listProviderApiKeys, type ProviderApiKeyInfo } from "../providers/api-keys";
 import { activeProviderCooldowns } from "../providers/cap-cooldown";
 import { clearKeyCooldowns, getKeyCooldownUntil } from "../providers/key-failover";
+import { getProviderAccountOccupancy } from "../providers/account-runtime-state";
 import type { OcxConfig } from "../types";
 
-export type InspectedApiKey = ProviderApiKeyInfo & { cooldownUntil?: number };
+export type InspectedApiKey = ProviderApiKeyInfo & {
+  cooldownUntil?: number;
+  lastUsedAt?: number;
+  inFlight?: number;
+};
 
 /** Management adapter: drop key-pool cooldowns after the operator edits keys. */
 export function clearKeyPoolCooldowns(providerName?: string, config?: OcxConfig): void {
@@ -24,7 +29,13 @@ export function inspectKeyPool(
     activeId: listed.activeId,
     keys: listed.keys.map(key => {
       const cooldownUntil = getKeyCooldownUntil(name, key.id, now);
-      return cooldownUntil ? { ...key, cooldownUntil } : key;
+      const occ = getProviderAccountOccupancy("key-pool", name, key.id);
+      return {
+        ...key,
+        ...(cooldownUntil ? { cooldownUntil } : {}),
+        ...(occ.lastUsedAt ? { lastUsedAt: occ.lastUsedAt } : {}),
+        ...(occ.inFlight > 0 ? { inFlight: occ.inFlight } : {}),
+      };
     }),
   };
 }

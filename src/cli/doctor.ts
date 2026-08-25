@@ -100,6 +100,8 @@ function describeDoctorHealth(entry: OAuthHealthEntry): string {
       return health.reason === "rate_limit"
         ? `Account ${masked} is rate limited until ${health.until}`
         : `Account ${masked} is quota limited until ${health.until}`;
+    case "disabled":
+      return `Account ${masked} is expired and disabled`;
     case "warning":
       switch (health.reason) {
         case "refresh_conflict":
@@ -108,6 +110,10 @@ function describeDoctorHealth(entry: OAuthHealthEntry): string {
           return `Account ${masked} has a metadata mismatch`;
         case "stale_credentials":
           return `Account ${masked} has incomplete credentials`;
+        case "expired":
+          return `Account ${masked} has an expired seat`;
+        default:
+          return `Account ${masked} needs attention`;
       }
     case "healthy":
       return `Account ${masked} is healthy`;

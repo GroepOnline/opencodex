@@ -10,7 +10,13 @@ import { readCodexCatalogPath } from "../codex/catalog";
 import type { OcxUsage } from "../types";
 import type { AdapterRequest } from "../adapters/base";
 import { redactSecretString } from "../lib/redact";
-import { providerAccountLabel } from "../providers/label";
+import { providerAccountLabel, baseProviderLabel } from "../providers/label";
+import { getAccountSet } from "../oauth/store";
+import {
+  bindRequestProviderAccount,
+  releaseRequestProviderAccount,
+  type RequestAccountBinding,
+} from "../providers/account-runtime-state";
 import {
   appendUsageEntry,
   isKnownUsageSurface,
@@ -73,6 +79,13 @@ export interface RequestLogContext {
   /** Route adapter type ("cursor"/"kiro"/"anthropic"/…): drives estimated-usage detection
    *  independent of the user-chosen provider NAME (devlog 130 B2). */
   providerAdapter?: string;
+  /**
+   * Stable store id for the OAuth account or key-pool entry that served this request.
+   * Distinct from the display `account` label persisted on the usage row.
+   */
+  providerAccountId?: string;
+  providerAccountKind?: RequestAccountBinding["providerAccountKind"];
+  providerAccountProvider?: string;
   /** Set when the bridge reported raw adapter usage via onUsage: the bridged wire now always
    *  carries synthetic zero-default token-detail objects (strict-client normalization, see
    *  responsesUsage in src/bridge.ts), so SSE/JSON re-parsing must not overwrite the raw
@@ -122,6 +135,8 @@ export interface RequestLogEntry {
   upstreamError?: string;
   /** Pseudonymized account label when the provider display name carries a pool suffix. */
   account?: string;
+  /** Stable store id for the account or key that served this request. */
+  providerAccountId?: string;
   usageStatus: UsageStatus;
   usage?: OcxUsage;
   totalTokens?: number;
@@ -141,6 +156,32 @@ let requestLogSeq = 0;
 let requestLogsHydratedFromDisk = false;
 
 const UNKNOWN_LOG_LABEL = "unknown";
+
+function resolveUsageProviderAccountId(
+  logCtx: Pick<RequestLogContext, "providerAccountId" | "attempts">,
+  provider: string,
+): string | undefined {
+  if (typeof logCtx.providerAccountId === "string" && logCtx.providerAccountId.trim()) {
+    return logCtx.providerAccountId.trim();
+  }
+  const attemptId = [...(logCtx.attempts ?? [])].reverse().find(attempt => attempt.providerAccountId)?.providerAccountId;
+  if (typeof attemptId === "string" && attemptId.trim()) return attemptId.trim();
+  const base = baseProviderLabel(provider);
+  if (base === "anthropic" || base === "cursor" || base === "google-antigravity") {
+    return getAccountSet(base)?.activeAccountId;
+  }
+  return undefined;
+}
+
+export function bindLogProviderAccount(
+  logCtx: RequestLogContext,
+  kind: NonNullable<RequestAccountBinding["providerAccountKind"]>,
+  provider: string,
+  accountId: string,
+): void {
+  bindRequestProviderAccount(logCtx, kind, provider, accountId);
+  if (logCtx.activeAttempt && accountId) logCtx.activeAttempt.providerAccountId = accountId;
+}
 
 /**
  * Resolves the model label recorded for a request log entry.
@@ -208,6 +249,7 @@ export function requestLogEntryFromPersistedUsage(entry: PersistedUsageEntry): R
     ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
     ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
     ...(entry.account ? { account: entry.account } : {}),
+    ...(entry.providerAccountId ? { providerAccountId: entry.providerAccountId } : {}),
     ...(entry.requestedModel ? { requestedModel: entry.requestedModel } : {}),
     ...(entry.requestedEffort ? { requestedEffort: entry.requestedEffort } : {}),
     ...(entry.effectiveEffort ? { effectiveEffort: entry.effectiveEffort } : {}),
@@ -297,6 +339,7 @@ export function addRequestLog(entry: RequestLogEntry) {
       ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
       ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
       ...(account ? { account } : {}),
+      ...(entry.providerAccountId ? { providerAccountId: entry.providerAccountId } : {}),
       ...(entry.resolvedModel ? { resolvedModel: entry.resolvedModel } : {}),
       ...(entry.requestedModel ? { requestedModel: entry.requestedModel } : {}),
       ...(entry.requestedEffort ? { requestedEffort: entry.requestedEffort } : {}),
@@ -745,25 +788,35 @@ export function addFinalRequestLog(
     logCtx.usage,
     logCtx.usageLogInputTokens,
   );
+  const isCombo = logCtx.comboId !== undefined && (logCtx.attempts?.length ?? 0) > 0;
+  const provider = isCombo ? "combo" : resolveRequestLogProvider(logCtx);
+  const model = isCombo ? (logCtx.requestedModel ?? resolveRequestLogModel(logCtx)) : resolveRequestLogModel(logCtx);
+  const account = providerAccountLabel(provider);
+  const providerAccountId = resolveUsageProviderAccountId(logCtx, isCombo ? (logCtx.provider ?? provider) : provider);
+  if (providerAccountId) {
+    for (const attempt of logCtx.attempts ?? []) {
+      if (!attempt.providerAccountId) attempt.providerAccountId = providerAccountId;
+    }
+    if (logCtx.activeAttempt && !logCtx.activeAttempt.providerAccountId) {
+      logCtx.activeAttempt.providerAccountId = providerAccountId;
+    }
+  }
   const attempts = logCtx.attempts?.map(attempt => ({
     ...attempt,
     recoveryKinds: [...attempt.recoveryKinds],
     ...(attempt.usage ? { usage: { ...attempt.usage } } : {}),
   }));
-  const isCombo = logCtx.comboId !== undefined && (attempts?.length ?? 0) > 0;
   const aggregate = isCombo ? aggregateAttemptUsage(attempts ?? []) : null;
   const loggedUsage = aggregate?.usage ?? existing.usage;
   const usageStatus = aggregate?.status ?? existing.status;
   const totalTokens = aggregate?.totalTokens ?? existing.totalTokens;
-  const provider = isCombo ? "combo" : resolveRequestLogProvider(logCtx);
-  const model = isCombo ? (logCtx.requestedModel ?? resolveRequestLogModel(logCtx)) : resolveRequestLogModel(logCtx);
-  const account = providerAccountLabel(provider);
   addLog({
     requestId,
     timestamp: start,
     model,
     provider,
     ...(account ? { account } : {}),
+    ...(providerAccountId ? { providerAccountId } : {}),
     ...(logCtx.surface ? { surface: logCtx.surface } : {}),
     ...(logCtx.conversationId ? { conversationId: logCtx.conversationId } : {}),
     ...(logCtx.requestedModel ? { requestedModel: logCtx.requestedModel } : {}),
@@ -793,6 +846,7 @@ export function addFinalRequestLog(
     ...(logCtx.transportPhase ? { transportPhase: logCtx.transportPhase } : {}),
     ...(logCtx.terminalSource ? { terminalSource: logCtx.terminalSource } : {}),
   });
+  releaseRequestProviderAccount(logCtx);
   if (isUsageDebugEnabled()) {
     appendUsageDebug({
       ts: Date.now(),
@@ -891,10 +945,14 @@ export function sealRequestAttemptIdentity(
   attempt: PersistedUsageAttempt | undefined,
   provider: string,
   adapter: string,
+  providerAccountId?: string,
 ): void {
   if (!attempt) return;
   attempt.provider = provider;
   attempt.adapter = adapter;
+  if (typeof providerAccountId === "string" && providerAccountId.trim()) {
+    attempt.providerAccountId = providerAccountId.trim();
+  }
 }
 
 export function noteAttemptSend(

@@ -14,6 +14,7 @@ import type { OcxConfig, OcxProviderConfig } from "../types";
 import { hasKeyPoolFailover } from "./api-keys";
 import { isHardCapMessage, parseResetsInMs } from "./cap-cooldown";
 import { resolveProviderTransport, type OcxProviderTransport } from "./xai-transport";
+import { noteProviderAccountUsed } from "./account-runtime-state";
 
 export { hasKeyPoolFailover } from "./api-keys";
 
@@ -254,6 +255,7 @@ export function rotateKeyOn429(
       // Log ids only — labels are user-supplied free text and could carry secret material.
       `[key-failover] ${providerName}: 429 on key ${currentEntry?.id ?? "?"}; rotating to key ${candidate.id}`,
     );
+    noteProviderAccountUsed("key-pool", providerName, candidate.id, now);
     return { ...provider };
   }
 
@@ -378,6 +380,7 @@ export function pickUncooledApiKey(
   if (candidate.key === provider.apiKey) return { kind: "noop" };
   provider.apiKey = candidate.key;
   saveConfigPreservingClaudeCode(config);
+  noteProviderAccountUsed("key-pool", providerName, candidate.id, now);
   return { kind: "swapped", provider: { ...provider } };
 }
 

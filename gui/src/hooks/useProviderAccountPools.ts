@@ -18,7 +18,10 @@ export interface OAuthAccount {
   active: boolean;
   needsReauth?: boolean;
   expiresAt?: number;
-  health?: { status: "healthy" | "cooldown" | "reauth_required" | "warning"; reason?: string; until?: string };
+  accountExpiresAt?: number;
+  autoDisableOnExpiry?: boolean;
+  disabledByExpiry?: boolean;
+  health?: { status: "healthy" | "cooldown" | "reauth_required" | "warning" | "disabled"; reason?: string; until?: string };
   healthLabel?: string;
   healthSummary?: string;
   healthAction?: string;

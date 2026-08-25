@@ -7,7 +7,7 @@
 import type { TFn, TKey } from "./i18n";
 import { displayAccountId } from "./lib/privacy";
 
-export type OAuthHealthStatus = "healthy" | "cooldown" | "reauth_required" | "warning";
+export type OAuthHealthStatus = "healthy" | "cooldown" | "reauth_required" | "warning" | "disabled";
 
 export type OAuthHealthReason =
   | "rate_limit"
@@ -17,7 +17,8 @@ export type OAuthHealthReason =
   | "refresh_failed"
   | "refresh_conflict"
   | "metadata_mismatch"
-  | "stale_credentials";
+  | "stale_credentials"
+  | "expired";
 
 export type OAuthHealthView = {
   status: OAuthHealthStatus;
@@ -30,7 +31,7 @@ export type OAuthHealthBadgeTone = "ok" | "warn" | "muted";
 export function oauthHealthBadgeTone(status: OAuthHealthStatus | undefined): OAuthHealthBadgeTone {
   if (status === "healthy") return "ok";
   if (status === "cooldown") return "muted";
-  if (status === "reauth_required" || status === "warning") return "warn";
+  if (status === "reauth_required" || status === "warning" || status === "disabled") return "warn";
   return "muted";
 }
 
@@ -56,6 +57,11 @@ export function accountNeedsReauth(
   return Boolean(account?.needsReauth) || oauthHealthShowsReauth(account?.health?.status);
 }
 
+/** Expired seats are not switchable, same as reauth. */
+export function oauthHealthIsDisabled(status: OAuthHealthStatus | undefined): boolean {
+  return status === "disabled";
+}
+
 /** Cooldown: show wait copy; do not urge probing or immediate retry. */
 export function oauthHealthIsCooldown(status: OAuthHealthStatus | undefined): boolean {
   return status === "cooldown";
@@ -78,6 +84,7 @@ export function oauthHealthLabelKey(health: OAuthHealthView | undefined): TKey |
       ? "pws.healthLabel.refreshFailed"
       : "pws.healthLabel.reauthRequired";
   }
+  if (health.status === "disabled") return "pws.healthLabel.expired";
   switch (health.reason) {
     case "refresh_conflict":
       return "pws.healthLabel.credentialConflict";
@@ -85,6 +92,8 @@ export function oauthHealthLabelKey(health: OAuthHealthView | undefined): TKey |
       return "pws.healthLabel.metadataMismatch";
     case "stale_credentials":
       return "pws.healthLabel.refreshFailed";
+    case "expired":
+      return "pws.healthLabel.expired";
     default:
       return "pws.healthLabel.reauthRequired";
   }
@@ -112,6 +121,9 @@ export function formatOAuthHealthSummary(
   }
   if (health.status === "reauth_required") {
     return t("pws.healthSummary.reauthRequired", { provider, account });
+  }
+  if (health.status === "disabled" || health.reason === "expired") {
+    return t("pws.healthSummary.expired", { provider, account });
   }
   if (health.reason === "refresh_conflict") {
     return t("pws.healthSummary.credentialConflict", { provider, account });

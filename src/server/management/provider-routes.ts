@@ -82,6 +82,13 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
     return jsonResponse(inspectAvailability(config));
   }
 
+  if (url.pathname === "/api/accounts/runtime" && req.method === "GET") {
+    const { applyExpiredAccountDisables } = await import("../../oauth/store");
+    await applyExpiredAccountDisables();
+    const { collectProviderAccountRuntimes } = await import("../../providers/account-runtime");
+    return jsonResponse({ accounts: collectProviderAccountRuntimes(config) });
+  }
+
   if (url.pathname === "/api/provider-quotas" && req.method === "GET") {
     const forceRefresh = url.searchParams.get("refresh") === "1" || url.searchParams.get("refresh") === "true";
     const providerName = url.searchParams.get("provider");
