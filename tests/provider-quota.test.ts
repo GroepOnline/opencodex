@@ -12,6 +12,17 @@ const originalFetch = globalThis.fetch;
 const previousOpencodexHome = process.env.OPENCODEX_HOME;
 const previousCodexHome = process.env.CODEX_HOME;
 
+/** Exact-host (or dot-prefixed subdomain) match — substring checks on full URL
+ * strings match attacker-shaped hosts like evilgrok.com (CodeQL url-substring-sanitization). */
+function urlHostMatches(url: string, domain: string): boolean {
+  try {
+    const h = new URL(url).hostname;
+    return h === domain || h.endsWith(`.${domain}`);
+  } catch {
+    return false;
+  }
+}
+
 let opencodexHome: string;
 let codexHome: string;
 
@@ -223,10 +234,10 @@ describe("fetchProviderQuotaReports", () => {
     expect(serialized).not.toContain("kimi-user-secret");
     expect(serialized).not.toContain("kimi-business-secret");
     expect(serialized).not.toContain("TYPE_PURCHASE");
-    expect(seen.find(row => row.url.includes("grok.com"))?.authorization).toBe("Bearer xai-access-secret");
-    expect(seen.find(row => row.url.includes("anthropic.com"))?.authorization).toBe("Bearer claude-access-secret");
-    expect(seen.find(row => row.url.includes("cloudcode-pa.googleapis.com"))?.authorization).toBe("Bearer agy-access-secret");
-    expect(seen.find(row => row.url.includes("cloudcode-pa.googleapis.com"))?.body).toBe(JSON.stringify({ project: "agy-project-secret" }));
+    expect(seen.find(row => urlHostMatches(row.url, "grok.com"))?.authorization).toBe("Bearer xai-access-secret");
+    expect(seen.find(row => urlHostMatches(row.url, "anthropic.com"))?.authorization).toBe("Bearer claude-access-secret");
+    expect(seen.find(row => urlHostMatches(row.url, "daily-cloudcode-pa.googleapis.com"))?.authorization).toBe("Bearer agy-access-secret");
+    expect(seen.find(row => urlHostMatches(row.url, "daily-cloudcode-pa.googleapis.com"))?.body).toBe(JSON.stringify({ project: "agy-project-secret" }));
     expect(seen.find(row => row.url === "https://api.kimi.com/coding/v1/usages")?.authorization).toBe("Bearer kimi-access-secret");
   });
 
@@ -697,7 +708,7 @@ describe("fetchProviderQuotaReports", () => {
         await cursorGate;
         return new Response(JSON.stringify({ planUsage: { totalPercentUsed: 33 } }), { status: 200, headers: { "content-type": "application/json" } });
       }
-      if (url.includes("grok.com")) {
+      if (urlHostMatches(url, "grok.com")) {
         return new Response(JSON.stringify({ config: { monthlyLimit: { val: 100 }, used: { val: 1 } } }), { status: 200, headers: { "content-type": "application/json" } });
       }
       return new Response("not found", { status: 404 });

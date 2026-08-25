@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { OcxContentPart, OcxParsedRequest } from "../types";
 import { antigravityUserAgent } from "./client-fingerprint";
 
@@ -65,7 +65,7 @@ export function antigravitySessionId(
   const text = firstUserText(parsed);
   const sessionId = text
     ? `-${(createHash("sha256").update(text, "utf8").digest().readBigUInt64BE(0) & 0x7fffffffffffffffn).toString()}`
-    : `-${Math.floor(Math.random() * 9e18).toString()}`;
+    : `-${(randomBytes(8).readBigUInt64BE() >> 1n).toString()}`;
   generatedSessionIds.set(parsed, sessionId);
   return sessionId;
 }

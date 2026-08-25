@@ -29,9 +29,18 @@ function unwrapSingleEnclosingFence(text) {
  * Shared strip/trim/unwrap used by placeholder and unusable-stand-in matchers.
  * Returns null when the value is absent after normalisation.
  */
+/**
+ * Strip HTML comments completely: an unterminated tail ("<!--" without "-->") is
+ * removed too, so no crafted opener can survive and re-open later content
+ * (CodeQL incomplete-multi-character-sanitization).
+ */
+function stripHtmlComments(s) {
+  return s.replace(/<!--[\s\S]*?(?:-->|$)/g, "");
+}
+
 function normalizeRawSectionValue(raw) {
   if (typeof raw !== "string") return null;
-  let value = raw.replace(/<!--[\s\S]*?-->/g, "").trim();
+  let value = stripHtmlComments(raw).trim();
   if (!value) return null;
 
   // A lone fenced block whose entire body is a stand-in is still a stand-in
@@ -56,7 +65,7 @@ function isPlaceholderOnlyValue(raw) {
  */
 function clean(raw) {
   if (typeof raw !== "string") return "";
-  let s = raw.replace(/<!--[\s\S]*?-->/g, "");
+  let s = stripHtmlComments(raw);
   // Whole-value placeholders first (including a single enclosing fence), so
   // line-by-line stripping cannot leave bare fence markers behind.
   if (isPlaceholderOnlyValue(s)) return "";

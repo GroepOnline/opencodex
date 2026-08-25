@@ -102,7 +102,8 @@ function assessPrDescription(body) {
   const withoutTemplate = stripPrTemplateBoilerplate(body);
   const cleaned = clean(withoutTemplate);
   if (!cleaned) {
-    const strippedComments = withoutTemplate.replace(/<!--[\s\S]*?-->/g, "").trim();
+    // Unterminated comment tails removed as well — see stripHtmlComments in issue-quality.cjs.
+    const strippedComments = withoutTemplate.replace(/<!--[\s\S]*?(?:-->|$)/g, "").trim();
     if (!strippedComments) return { ok: false, reason: "empty" };
     if (isPlaceholderOnlyValue(strippedComments)) {
       return { ok: false, reason: "placeholder" };

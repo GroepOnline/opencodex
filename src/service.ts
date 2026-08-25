@@ -1075,9 +1075,10 @@ function taskXmlSection(xml: string, tag: string): string {
   return new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`, "i").exec(xml)?.[1] ?? "";
 }
 
-/** Drop comments and CDATA so a commented-out decoy cannot satisfy any check. */
+/** Drop comments and CDATA in ONE pass, including unterminated tails, so a
+ * commented-out decoy cannot satisfy any check (CodeQL incomplete-multi-character-sanitization). */
 function taskXmlWithoutCommentsAndCdata(xml: string): string {
-  return xml.replace(/<!--[\s\S]*?-->/g, "").replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, "");
+  return xml.replace(/<!--[\s\S]*?(?:-->|$)|<!\[CDATA\[[\s\S]*?(?:\]\]>|$)/g, "");
 }
 
 /**

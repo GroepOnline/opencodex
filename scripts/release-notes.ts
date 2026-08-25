@@ -163,7 +163,11 @@ export function stripGenerateNotesCompareLink(body: string): string {
 export function isEmptyGeneratedNotes(body: string): boolean {
   const withoutComment = stripGenerateNotesCompareLink(body)
     .split("\n")
-    .filter(line => !/^<!--.*-->$/.test(line.trim()))
+    .filter(line => {
+      const t = line.trim();
+      // Delimiter check instead of a .* regex — CodeQL bad-tag-filter.
+      return !(t.startsWith("<!--") && t.endsWith("-->") && t.length >= 7);
+    })
     .join("\n");
   return !hasNonWhitespace(withoutComment);
 }
