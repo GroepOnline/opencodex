@@ -119,9 +119,9 @@ describe("catalog capability bit", () => {
     );
     expect(optedOut.parallelToolCalls).toBeUndefined();
     const nonChat = applyProviderConfigHints(
-      "xiaomi",
-      { adapter: "anthropic", baseUrl: "https://api.xiaomimimo.com/anthropic" },
-      { id: "mimo-v2.5-pro", provider: "xiaomi" },
+      "umans",
+      { adapter: "anthropic", baseUrl: "https://api.code.umans.ai" },
+      { id: "umans-coder", provider: "umans" },
     );
     expect(nonChat.parallelToolCalls).toBeUndefined();
   });

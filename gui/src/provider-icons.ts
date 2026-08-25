@@ -42,6 +42,7 @@ const PROVIDER_ICON_ALIASES: Record<string, string> = {
   xai: "grok-color.svg",
   "mimo-free": "xiaomi-color.svg",
   xiaomi: "xiaomi-color.svg",
+  "xiaomi-token-plan": "xiaomi-color.svg",
 };
 
 /**
@@ -62,7 +63,8 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   "ollama-cloud": "Ollama Cloud",
   xai: "xAI Grok",
   "mimo-free": "MiMo Free",
-  xiaomi: "Xiaomi",
+  xiaomi: "Xiaomi MiMo",
+  "xiaomi-token-plan": "Xiaomi Token Plan",
   cursor: "Cursor",
   deepseek: "DeepSeek",
   github: "GitHub",
