@@ -533,7 +533,10 @@ export async function fetchProviderModels(name: string, prov: OcxProviderConfig,
   }
   const discovery = resolveProviderModelDiscovery(name, prov);
   const { url, headers } = buildModelsRequest(prov, apiKey, name);
-  const urlClass = new URL(url).hostname.endsWith("aiplatform.googleapis.com")
+  // Exact host or dot-prefixed subdomain — a bare endsWith would match
+  // attacker-controlled hosts like evilaiplatform.googleapis.com (CodeQL).
+  const hostname = new URL(url).hostname;
+  const urlClass = (hostname === "aiplatform.googleapis.com" || hostname.endsWith(".aiplatform.googleapis.com"))
     ? "vertex-aiplatform"
     : "provider-models";
   const failedDiscoveryFallback = (

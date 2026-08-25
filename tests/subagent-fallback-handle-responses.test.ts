@@ -9,6 +9,29 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { saveCodexAccountCredential } from "../src/codex/account-store";
+
+/**
+ * Exact-host (or dot-prefixed subdomain) match — substring checks on full URL
+ * strings match attacker-shaped hosts like evilgrok.com (CodeQL url-substring-sanitization).
+ */
+function urlHostMatches(url: string, domain: string): boolean {
+  try {
+    const h = new URL(url).hostname;
+    return h === domain || h.endsWith(`.${domain}`);
+  } catch {
+    return false;
+  }
+}
+
+
+function urlHasHostAndPath(url: string, domain: string, path: string): boolean {
+  try {
+    const u = new URL(url);
+    return (u.hostname === domain || u.hostname.endsWith(`.${domain}`)) && u.pathname.startsWith(path);
+  } catch {
+    return false;
+  }
+}
 import {
   clearAccountQuota,
   updateAccountQuota,
@@ -219,7 +242,7 @@ describe("subagent fallback without primary auth cooldown failure", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(capture.urls.some((url) => url.includes("api.x.ai"))).toBe(true);
+    expect(capture.urls.some((url) => urlHostMatches(url, "api.x.ai"))).toBe(true);
     expect(response.status).not.toBe(429);
     expect(getCodexUpstreamHealth("pool-a")?.probeLeaseId).toBeUndefined();
     // No auth is resolved before final route; routed final publishes undefined.
@@ -289,7 +312,7 @@ describe("subagent fallback without primary auth cooldown failure", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(capture.urls.some((url) => url.includes("chatgpt.com/backend-api/codex"))).toBe(true);
+    expect(capture.urls.some((url) => urlHasHostAndPath(url, "chatgpt.com", "/backend-api/codex"))).toBe(true);
     expect(finalAuth).toMatchObject({ kind: "pool", accountId: "pool-a" });
     expect((finalAuth as { probeLeaseId?: string }).probeLeaseId).toBeTruthy();
     expect(authPublications).toHaveLength(1);
@@ -403,7 +426,7 @@ describe("subagent fallback final-route normalization", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(capture.urls.some((url) => url.includes("api.openai.com"))).toBe(true);
+    expect(capture.urls.some((url) => urlHostMatches(url, "api.openai.com"))).toBe(true);
     const body = JSON.parse(capture.bodies[0]!) as {
       model?: string;
       reasoning?: { effort?: string; mode?: string };
@@ -459,7 +482,7 @@ describe("subagent fallback final-route normalization", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(capture.urls.some((url) => url.includes("chatgpt.com/backend-api/codex"))).toBe(true);
+    expect(capture.urls.some((url) => urlHasHostAndPath(url, "chatgpt.com", "/backend-api/codex"))).toBe(true);
     const body = JSON.parse(capture.bodies[0]!) as {
       model?: string;
       reasoning?: { effort?: string };
@@ -539,7 +562,7 @@ describe("subagent fallback final-route normalization", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(capture.urls.some((url) => url.includes("api.x.ai"))).toBe(true);
+    expect(capture.urls.some((url) => urlHostMatches(url, "api.x.ai"))).toBe(true);
     const body = JSON.parse(capture.bodies[0]!) as { reasoning?: { effort?: string } };
     // Routed adapters own effort mapping; the native clamp must not rewrite to xhigh.
     expect(body.reasoning?.effort).not.toBe("xhigh");
@@ -580,7 +603,7 @@ describe("subagent fallback final-route normalization", () => {
       const body = await response.text();
       throw new Error(`expected 200, got ${response.status}: ${body}`);
     }
-    expect(capture.urls.some((url) => url.includes("chatgpt.com/backend-api/codex"))).toBe(true);
+    expect(capture.urls.some((url) => urlHasHostAndPath(url, "chatgpt.com", "/backend-api/codex"))).toBe(true);
     expect(capture.bodies[0]).toContain(FERNET_TASK);
   });
 
@@ -615,7 +638,7 @@ describe("subagent fallback final-route normalization", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(capture.urls.some((url) => url.includes("api.x.ai"))).toBe(true);
+    expect(capture.urls.some((url) => urlHostMatches(url, "api.x.ai"))).toBe(true);
   });
 });
 
@@ -672,7 +695,7 @@ describe("native fallback account preview", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(capture.urls.some((url) => url.includes("chatgpt.com/backend-api/codex"))).toBe(true);
+    expect(capture.urls.some((url) => urlHasHostAndPath(url, "chatgpt.com", "/backend-api/codex"))).toBe(true);
     expect(finalAuth).toMatchObject({ kind: "pool", accountId: "pool-b" });
     expect(capture.auths.some((auth) => auth?.includes("pool-b_token"))).toBe(true);
   });
@@ -722,8 +745,8 @@ describe("native fallback account preview", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(capture.urls.some((url) => url.includes("api.x.ai"))).toBe(true);
-    expect(capture.urls.some((url) => url.includes("chatgpt.com"))).toBe(false);
+    expect(capture.urls.some((url) => urlHostMatches(url, "api.x.ai"))).toBe(true);
+    expect(capture.urls.some((url) => urlHostMatches(url, "chatgpt.com"))).toBe(false);
   });
 
   test("preview selection does not mutate affinity or acquire probe leases", async () => {

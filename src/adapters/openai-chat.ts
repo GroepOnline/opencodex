@@ -17,7 +17,15 @@ import { resolveProviderCompat } from "../providers/compat";
 // Z.AI needs this because its OpenAI path rejects glm-5.2[1m] with 400 code 1211;
 // unflagged OpenAI-compatible providers and the Anthropic adapter keep ids verbatim.
 export function stripBracketedModelSuffix(modelId: string): string {
-  return modelId.replace(/\[[^\]]*\]\s*$/, "");
+  // Linear scan (CodeQL polynomial-redos): find the last "[..." group that closes
+  // at the end (modulo trailing whitespace) without an inner "]".
+  let end = modelId.length;
+  while (end > 0 && /\s/.test(modelId[end - 1])) end--;
+  if (end === 0 || modelId[end - 1] !== "]") return modelId;
+  let open = end - 2;
+  while (open >= 0 && modelId[open] !== "]" && modelId[open] !== "[") open--;
+  if (open < 0 || modelId[open] !== "[") return modelId;
+  return modelId.slice(0, open);
 }
 
 // 260715 (issue #126): surface upstream error detail through the web-search sidecar loop.
@@ -351,7 +359,10 @@ function ensureZenRootObjectSchema(schema: unknown): Record<string, unknown> {
 }
 
 function shouldSanitizeZenToolParameters(provider: OcxProviderConfig): boolean {
-  const baseUrl = provider.baseUrl.replace(/\/+$/, "");
+  const base = provider.baseUrl;
+  let end = base.length;
+  while (end > 0 && base[end - 1] === "/") end--; // linear trailing-slash strip (CodeQL redos)
+  const baseUrl = base.slice(0, end);
   return baseUrl === "https://opencode.ai/zen/v1"
     || baseUrl === "https://opencode.ai/zen/go/v1";
 }

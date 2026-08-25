@@ -271,7 +271,9 @@ function isImageCapableModel(modelId: string): boolean {
  * filesystem paths leaking into the transcript.
  */
 function artifactMarkdownUrl(filePath: string): string {
-  return artifactHttpUrl(filePath).replace(/([()])/g, "\\$1");
+  // Escape backslashes first, then parens — otherwise a literal "\\(" in the path
+  // would be re-escaped into an over-escaped sequence (CodeQL incomplete-sanitization).
+  return artifactHttpUrl(filePath).replace(/[\\()]/g, "\\$&");
 }
 
 export function createGoogleAdapter(provider: OcxProviderConfig): ProviderAdapter {

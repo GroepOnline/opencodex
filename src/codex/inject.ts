@@ -328,7 +328,7 @@ function stripRootRoutedModel(content: string): string {
     .filter((line, i) => {
       const isRoot = firstTable === -1 || i < firstTable;
       if (!isRoot) return true;
-      const m = line.match(/^\s*model\s*=\s*("(?:\\.|[^"])*"|'[^']*')\s*$/);
+      const m = line.match(/^\s*model\s*=\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\s*$/);
       if (!m) return true;
       const model = parseTomlString(m[1]);
       return !model?.includes("/");
@@ -363,7 +363,7 @@ function setRootModelCatalogPath(content: string, catalogPath: string): string {
   const key = `model_catalog_json = ${tomlString(catalogPath)}`;
   const rootEnd = firstTable === -1 ? lines.length : firstTable;
   for (let i = 0; i < rootEnd; i++) {
-    const m = lines[i].match(/^\s*model_catalog_json\s*=\s*("(?:\\.|[^"])*"|'[^']*')\s*$/);
+    const m = lines[i].match(/^\s*model_catalog_json\s*=\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\s*$/);
     if (!m) continue;
     const existing = parseTomlString(m[1]);
     if (isOpencodexCatalogPath(existing)) {
@@ -436,7 +436,7 @@ function stripOpencodexCatalogPath(content: string): string {
   return content
     .split("\n")
     .filter(line => {
-      const m = line.match(/^\s*model_catalog_json\s*=\s*("(?:\\.|[^"])*"|'[^']*')\s*$/);
+      const m = line.match(/^\s*model_catalog_json\s*=\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\s*$/);
       return !m || !isOpencodexCatalogPath(parseTomlString(m[1]));
     })
     .join("\n");
