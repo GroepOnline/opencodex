@@ -519,7 +519,6 @@ describe("resolveCodexRuntime", () => {
 
   test("resolve cache throttles fallback probes until TTL, then retries", async () => {
     const { chmodSync, mkdirSync } = await import("node:fs");
-    const { delimiter } = await import("node:path");
 
     const home = tempConfigDir();
     const binDir = join(home, "bin");
@@ -533,7 +532,7 @@ describe("resolveCodexRuntime", () => {
     let now = realDateNow();
     Date.now = () => now;
     process.env.OPENCODEX_HOME = home;
-    process.env.PATH = `${binDir}${delimiter}${NO_CODEX_PATH}`;
+    process.env.PATH = binDir;
     delete process.env.CODEX_CLI_PATH;
     resetCodexRuntimeResolveCacheForTests();
 
