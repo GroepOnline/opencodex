@@ -48,14 +48,19 @@ export let bundledCatalogCache: {
   value: RawCatalog | null;
 } | null = null;
 
+/** Memoized runtime resolution so cache-hit checks don't re-probe binaries (~350ms under load). */
+let resolvedRuntimeMemo: { fingerprint: string; command: string; version: string } | null = null;
+
 /** Test-only: clear the bundled-catalog cache (owned here; sync.ts calls this instead of assigning the import). */
 export function resetBundledCatalogCacheForTests(): void {
   bundledCatalogCache = null;
+  resolvedRuntimeMemo = null;
 }
 
 /** Drop the process-local bundled catalog memo (e.g. after runtime selection changes). */
 export function invalidateBundledCatalogCache(): void {
   bundledCatalogCache = null;
+  resolvedRuntimeMemo = null;
 }
 
 export type ExecFile = (
@@ -149,25 +154,40 @@ export function loadBundledCodexCatalog(deps: BundledCatalogDeps = {}): RawCatal
   // Prefer the single resolved runtime so sync/clamp never probe a different binary
   // than OpenCodex will launch. Tests may inject commandCandidates to stub probing.
   let cacheKey: string | null = null;
+  // resolveAndPersistCodexRuntime probes binaries (spawning codex --version etc.) on every
+  // call, which made even bundled-catalog cache HITS cost ~350ms under load. Memoize the
+  // resolved identity per environment fingerprint; invalidation semantics are unchanged
+  // because the catalog cache key still embeds command+version and a changed environment
+  // (OPENCODEX_HOME / PATH / platform) simply produces a new fingerprint.
+  const envFingerprint = useCache
+    ? [process.env.OPENCODEX_HOME ?? "", process.env.PATH ?? "", process.platform].join("\0")
+    : null;
   const candidates = deps.commandCandidates?.() ?? (() => {
-    const resolved = resolveAndPersistCodexRuntime({
-      execFileSync: execFile,
-      configDir: deps.configDir,
-      env: deps.env,
-      platform: deps.platform,
-      existsSync: deps.existsSync,
-      readFileSync: deps.readFileSync,
-      now: deps.now,
-      discoverAlternatives: deps.discoverAlternatives,
-    });
+    let runtimeCommand: string;
+    if (useCache && resolvedRuntimeMemo && resolvedRuntimeMemo.fingerprint === envFingerprint) {
+      runtimeCommand = resolvedRuntimeMemo.command;
+    } else {
+      const resolved = resolveAndPersistCodexRuntime({
+        execFileSync: execFile,
+        configDir: deps.configDir,
+        env: deps.env,
+        platform: deps.platform,
+        existsSync: deps.existsSync,
+        readFileSync: deps.readFileSync,
+        now: deps.now,
+        discoverAlternatives: deps.discoverAlternatives,
+      });
+      runtimeCommand = resolved.runtime.command;
+      if (useCache) resolvedRuntimeMemo = { fingerprint: envFingerprint!, command: runtimeCommand, version: resolved.runtime.version ?? "" };
+    }
     if (useCache) {
       cacheKey = [
-        resolved.runtime.command,
-        resolved.runtime.version ?? "",
+        runtimeCommand,
+        resolvedRuntimeMemo?.version ?? "",
         process.env.OPENCODEX_HOME ?? "",
       ].join("\0");
     }
-    return [resolved.runtime.command];
+    return [runtimeCommand];
   })();
   if (
     useCache
