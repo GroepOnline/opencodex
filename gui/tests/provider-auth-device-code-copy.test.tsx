@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, expect, jest, mock, test } from "bun:test";
 import { Window } from "happy-dom";
 import { act } from "react";
 import type { Root } from "react-dom/client";
@@ -79,6 +79,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  jest.useRealTimers();
   if (root) {
     const current = root;
     await act(async () => { current.unmount(); });
@@ -118,7 +119,11 @@ function copyCodeButton(): HTMLButtonElement {
 async function clickCopy() {
   await act(async () => {
     copyCodeButton().dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
-    await new Promise((r) => setTimeout(r, 0));
+    // Microtask flush: works under real AND fake timers (setTimeout(0) would
+    // stall under jest.useFakeTimers).
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
   });
 }
 
@@ -176,13 +181,23 @@ test("a new device code does not inherit the previous code's feedback", async ()
 test("keeps the latest feedback for its full window across repeated copies", async () => {
   await mountPanel({ provider: "claude", deviceCode: DEVICE_CODE });
 
+  // Virtual clock: assertions care about wipe-timer overlap semantics, not wall time.
+  jest.useFakeTimers();
+
   await clickCopy();
-  await act(async () => { await new Promise((r) => setTimeout(r, 200)); });
+  await act(async () => {
+    jest.advanceTimersByTime(200);
+    await Promise.resolve();
+  });
   await clickCopy();
 
   expect(clipboardWrites).toEqual([DEVICE_CODE, DEVICE_CODE]);
 
   // Past the first click's expiry but before the second's.
-  await act(async () => { await new Promise((r) => setTimeout(r, 2400)); });
+  await act(async () => {
+    jest.advanceTimersByTime(2400);
+    await Promise.resolve();
+    await Promise.resolve();
+  });
   expect(host.textContent).toContain("Code copied");
 });
