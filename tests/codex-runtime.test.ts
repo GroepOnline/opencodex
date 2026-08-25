@@ -1,4 +1,15 @@
 import { describe, expect, test } from "bun:test";
+
+/**
+ * PATH for the runtime test that must stop PATH-based codex DISCOVERY while keeping its
+ * fake launcher runnable. The launcher is a /bin/sh script that calls `dirname` and `cat`,
+ * so the child still needs the standard utilities. `PATH = ""` used to work by accident:
+ * Bun 1.3.14 (the CI pin) leaked the parent PATH into children; Bun 1.4 passes the empty
+ * value through faithfully, the script then dies with "dirname: not found", and
+ * loadBundledCodexCatalog() returns null. "/usr/bin:/bin" keeps the utilities reachable
+ * and contains no `codex`, which is the only property this test depends on.
+ */
+const NO_CODEX_PATH = "/usr/bin:/bin";
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -370,7 +381,7 @@ describe("resolveCodexRuntime", () => {
     const previousCli = process.env.CODEX_CLI_PATH;
     const previousPath = process.env.PATH;
     process.env.OPENCODEX_HOME = home;
-    process.env.PATH = "";
+    process.env.PATH = NO_CODEX_PATH;
     resetCodexRuntimeResolveCacheForTests();
     resetBundledCatalogCacheForTests();
 
