@@ -163,8 +163,9 @@ export function injectMimoSystemMarker(body: unknown): unknown {
  */
 export function createMimoFreeAdapter(provider: OcxProviderConfig): ProviderAdapter {
   const base = createOpenAIChatAdapter(provider);
-  // Per-adapter session-affinity id (random, per process instance).
-  const sessionId = `ses_${Math.random().toString(36).slice(2, 26)}`;
+  // Per-adapter session-affinity id (random, per process instance). CSPRNG —
+  // Math.random is predictable (CodeQL insecure-randomness).
+  const sessionId = `ses_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
 
   return {
     ...base,

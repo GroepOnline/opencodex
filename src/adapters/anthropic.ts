@@ -683,9 +683,12 @@ export function createAnthropicAdapter(provider: OcxProviderConfig, cacheRetenti
 
       const base = provider.baseUrl.replace(/\/v1\/?$/, "");
       const url = `${base}/v1/messages`;
-      const unresolvedPlaceholder = url.match(/\{[^}]*\}/)?.[0];
-      if (unresolvedPlaceholder) {
-        throw new Error(`anthropic baseUrl contains unresolved ${unresolvedPlaceholder}`);
+      // Linear unresolved-placeholder scan (CodeQL polynomial-redos).
+      const braceStart = url.indexOf("{");
+      const braceClose = braceStart === -1 ? -1 : url.indexOf("}", braceStart);
+      const hasUnresolvedPlaceholder = braceStart !== -1 && braceClose !== -1;
+      if (hasUnresolvedPlaceholder) {
+        throw new Error(`anthropic baseUrl contains unresolved ${url.slice(braceStart, (braceClose ?? -1) + 1)}`);
       }
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
