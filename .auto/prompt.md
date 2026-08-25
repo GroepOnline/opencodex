@@ -31,9 +31,22 @@ Reduce the OpenCodex GUI initial bundle (main `index-*.js`) without breaking run
 - Keep `manualChunks` function pure; no side effects
 - Commit every experiment before measuring; revert on regress
 
-## Status: ROUND 2 DONE (2026-08-24, "groter"/doorpakken) — eager 787k -> 321k @ 9720b27f6
+## Status: ROUND 3 DONE (2026-08-24, doorpakken) — eager 787k -> 227k @ 282155717
 
-Round 2 findings (main_kb no longer the honest metric — use eager_kb = what index.html loads):
+Round 3:
+- keep: fully-lazy dicts. loadDict() per locale + module-level DICT_CACHE; provider reads
+  cache synchronously when warm; nl loader composes {...en, ...nlOverrides} itself so the
+  eager graph carries NO dictionary. Tests: top-level `await seedDicts()` in every file
+  rendering LanguageProvider (40 files, one uniform line) — all 423 stay sync and green.
+  Eager JS now ~67k gzip (index 37k + vendor-react 178k).
+- discard (evidence): CSS strak split. The strak skin is ONLY a 1.8k token block
+  (:root[data-style=strak]); the 91k tail of styles.css is shared component CSS that
+  happens to sit after it. Earlier "two full skins duplicated" was an awk measurement
+  error (found-flag never reset). Split saves nothing, adds FOUC — reverted.
+- rejected with reasoning: en.ts static stays out (done in round 3); per-page workspace
+  CSS imports would reorder cascade dynamically (~10k gzip win, visual-regression risk).
+
+## Round 2 findings (superseded in part by round 3): (main_kb no longer the honest metric — use eager_kb = what index.html loads):
 - ROOT CAUSE: App.tsx statically imported ALL pages. manualChunks page splits were cosmetic;
   index.html preloaded every chunk (787k) on first load regardless of "lazy" names.
 - keep: React.lazy() + Suspense in App.tsx; dropped hand-maintained page manualChunks
