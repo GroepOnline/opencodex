@@ -27,8 +27,7 @@ the packaged dashboard at `GET /` is produced by `bun run build:gui` (`gui/dist`
 `.husky/` (pre-commit and pre-push). If hooks are missing after clone, run `bun run setup:hooks`
 once.
 
-- **Pre-commit:** `lint-staged` (Prettier on staged files), then `typecheck`, then `test`.
-  Skip with `git commit --no-verify`.
+- **Pre-commit:** `lint-staged` (Prettier on staged files). Skip with `git commit --no-verify`.
 - **Pre-push:** `bun run prepush` (`typecheck`, `lint:gui`, `test`, `privacy:scan`, and
   `doctor:gui:if-changed` when `gui/` changed). Skip with `git push --no-verify`.
 

@@ -34,15 +34,14 @@ Bun runtime for end users, but contributor commands such as `bun install`, `bun 
 ## Git hooks
 
 `bun install` runs Husky via the `prepare` script and installs committed hooks from
-`.husky/` (pre-commit and pre-push). Linked worktrees and non-default `core.hooksPath`
-setups are supported the same way. If hooks are missing after clone, run once:
+`.husky/` (pre-commit and pre-push). If hooks are missing after clone, run once:
 
 ```sh
 bun run setup:hooks
 ```
 
-**Pre-commit** runs `lint-staged` (Prettier on staged files), then `typecheck`, then
-`test`. Skip in an emergency with `git commit --no-verify`.
+**Pre-commit** runs `lint-staged` (Prettier on staged files). Skip in an emergency with
+`git commit --no-verify`.
 
 **Pre-push** runs `bun run prepush` — `typecheck`, `lint:gui`, `test`, `privacy:scan`,
 and `doctor:gui:if-changed` — before every `git push`. The same checks run on

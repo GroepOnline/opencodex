@@ -10,12 +10,12 @@ test("husky hook wiring is committed and documented", () => {
   ) as {
     scripts: Record<string, string>;
   };
-  expect(pkg.scripts.prepare).toBe("husky");
+  expect(pkg.scripts.prepare).toBe("husky || true");
 
   const preCommit = readFileSync(join(repoRoot, ".husky/pre-commit"), "utf8");
   expect(preCommit).toContain("bunx lint-staged");
-  expect(preCommit).toContain("bun run typecheck");
-  expect(preCommit).toContain("bun run test");
+  expect(preCommit).not.toContain("bun run typecheck");
+  expect(preCommit).not.toContain("bun run test");
 
   const prePush = readFileSync(join(repoRoot, ".husky/pre-push"), "utf8");
   expect(prePush).toContain("bun run prepush");

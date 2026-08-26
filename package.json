@@ -45,7 +45,7 @@
     "build:gui": "cd gui && bun install && bun run build && cd .. && bun run prepare:package",
     "prepare:package": "bun scripts/prepare-package.ts",
     "prepack": "bun run prepare:package",
-    "prepare": "husky",
+    "prepare": "husky || true",
     "prepublishOnly": "bun run typecheck && bun run build:gui",
     "release": "bun scripts/release.ts",
     "release:watch": "bun scripts/release.ts watch",

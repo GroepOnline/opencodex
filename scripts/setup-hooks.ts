@@ -1,5 +1,5 @@
 /**
- * Ensures Husky git hooks are active after clone or in linked worktrees.
+ * Ensures Husky git hooks are active after clone.
  * Normally automatic via `bun install` → prepare → husky.
  * Run manually if hooks are missing: bun run setup:hooks
  */
