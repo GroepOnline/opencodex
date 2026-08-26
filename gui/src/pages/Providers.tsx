@@ -31,10 +31,8 @@ export default function Providers({ apiBase }: { apiBase: string }) {
   const [statusOk, setStatusOk] = useState(false);
   const [oauthProviders, setOauthProviders] = useState<string[]>([]);
   const [oauthStatus, setOauthStatus] = useState<Record<string, import("./providers-shared").OAuthStatus>>({});
-  // Value is unread: the workspace shell fetches its own quota view. The setter stays
-  // because the refresh path still primes this cache for that shell.
-  const [, setQuotaReports] = useState<Record<string, import("./providers-shared").ProviderQuotaReport>>({});
   const [availability, setAvailability] = useState<AvailabilityProviderView[]>([]);
+  const [quotaEpoch, setQuotaEpoch] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
   const [loginInfo, setLoginInfo] = useState<{ provider: string; url?: string; instructions?: string; deviceCode?: string } | null>(null);
   const [workspaceSelected, setWorkspaceSelected] = useState<string | null>(null);
@@ -82,10 +80,15 @@ export default function Providers({ apiBase }: { apiBase: string }) {
       return rank;
     },
   );
-  const { fetchConfig, fetchOauth, fetchProviderQuotas } = useProvidersFetch({
-    apiBase, t, setConfig, setOauthProviders, setOauthStatus, setQuotaReports, setAvailability, notify,
+  const { fetchConfig, fetchOauth } = useProvidersFetch({
+    apiBase, t, setConfig, setOauthProviders, setOauthStatus, setAvailability, notify,
     configCacheKey,
   });
+  // Workspace shell owns /api/provider-quotas. Mutations bump this so quotaRefreshKey
+  // re-probes the live cards instead of writing an unread page-level cache.
+  const fetchProviderQuotas = useCallback(async () => {
+    setQuotaEpoch(n => n + 1);
+  }, []);
 
   // WP3: one Codex account controller for the whole Providers page, shared by the
   // Overview tab and the Accounts tab so a mutation on either is instantly visible on
@@ -128,11 +131,13 @@ export default function Providers({ apiBase }: { apiBase: string }) {
     removeAccount, activeAccountNeedsReauth,
   } = pools;
   const quotaRefreshKey = useMemo(
-    () => Object.entries(accountSets)
-      .map(([provider, set]) => `${provider}:${set.activeAccountId ?? ""}`)
-      .sort()
-      .join("|"),
-    [accountSets],
+    () => [
+      String(quotaEpoch),
+      ...Object.entries(accountSets)
+        .map(([provider, set]) => `${provider}:${set.activeAccountId ?? ""}`)
+        .sort(),
+    ].join("|"),
+    [accountSets, quotaEpoch],
   );
   const jsonEditor = useJsonConfigEditor({
     apiBase, config,
@@ -359,7 +364,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
           notify(t("prov.added", { name, cmd: "ocx sync" }), true);
           fetchConfig();
           fetchOauth();
-          fetchProviderQuotas(true);
+          fetchProviderQuotas();
           bumpModelsRefresh();
         }}
         onAccountLogin={onAccountLogin}
@@ -372,7 +377,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
           notify(t("prov.loginOk", { provider: formatProviderDisplayName("openai"), cmd: "ocx sync" }), true);
           void fetchConfig();
           void fetchOauth();
-          void fetchProviderQuotas(true);
+          void fetchProviderQuotas();
           bumpModelsRefresh();
         }}
         onCancelRemove={() => setRemoveConfirmName(null)}
