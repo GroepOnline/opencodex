@@ -213,6 +213,7 @@ describe("collectProjectCodexConfigWarnings", () => {
   test("skips untrusted projects even when they define bypass config", () => {
     const escaped = testDir.replace(/\\/g, "\\\\");
     const projectDir = join(testDir, "proj");
+    const codexConfigPath = join(process.env.CODEX_HOME!, "config.toml");
     writeGlobalRoutingConfig(`
 [projects.'${escaped}\\proj']
 trust_level = "untrusted"
@@ -223,7 +224,8 @@ model_provider = "anthropic"
 [model_providers.anthropic]
 name = "anthropic"
 `);
-    expect(collectProjectCodexConfigWarnings()).toEqual([]);
+    // Parent discovery may walk to the operator's real ~/.codex above the repo cwd.
+    expect(collectProjectCodexConfigWarnings({ cwd: testDir, codexConfigPath })).toEqual([]);
   });
 
   test("uncached collection reflects project config changes", () => {
