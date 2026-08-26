@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { saveConfig } from "../src/config";
 import { startServer } from "../src/server";
 import type { OcxConfig } from "../src/types";
-import { installStandaloneRuntimeEnv, type StandaloneRuntimeEnv } from "./helpers/standalone-env";
+import {
+  installStandaloneRuntimeEnv,
+  type StandaloneRuntimeEnv,
+} from "./helpers/standalone-env";
 
 let env: StandaloneRuntimeEnv | null = null;
 let upstream: ReturnType<typeof Bun.serve> | null = null;
@@ -24,7 +27,10 @@ function mockResponsesUpstream(onRequest?: () => void) {
     async fetch(req) {
       const url = new URL(req.url);
       if (!url.pathname.endsWith("/responses")) {
-        return Response.json({ error: { message: `unexpected path ${url.pathname}` } }, { status: 404 });
+        return Response.json(
+          { error: { message: `unexpected path ${url.pathname}` } },
+          { status: 404 },
+        );
       }
       await req.json();
       onRequest?.();
@@ -32,11 +38,13 @@ function mockResponsesUpstream(onRequest?: () => void) {
         id: "resp_standalone",
         object: "response",
         status: "completed",
-        output: [{
-          type: "message",
-          role: "assistant",
-          content: [{ type: "output_text", text: "ok" }],
-        }],
+        output: [
+          {
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: "ok" }],
+          },
+        ],
         usage: { input_tokens: 3, output_tokens: 2, total_tokens: 5 },
       });
     },
@@ -44,9 +52,11 @@ function mockResponsesUpstream(onRequest?: () => void) {
 }
 
 describe("standalone HTTP core without Codex CLI", () => {
-  test("startServer serves /healthz and one /v1/responses turn with no codex on PATH", async () => {
+  test("startServer serves health identity, models, management, and one /v1/responses turn with no codex on PATH", async () => {
     let upstreamHits = 0;
-    upstream = mockResponsesUpstream(() => { upstreamHits += 1; });
+    upstream = mockResponsesUpstream(() => {
+      upstreamHits += 1;
+    });
 
     const config: OcxConfig = {
       port: 0,
@@ -67,16 +77,32 @@ describe("standalone HTTP core without Codex CLI", () => {
     try {
       const health = await fetch(new URL("/healthz", server.url));
       expect(health.status).toBe(200);
-      const healthBody = await health.json() as {
+      const healthBody = (await health.json()) as {
         status: string;
         service: string;
         pid: number;
         port: number;
+        version: string;
+        gitSha: string | null;
       };
       expect(healthBody.status).toBe("ok");
       expect(healthBody.service).toBe("opencodex");
       expect(typeof healthBody.pid).toBe("number");
       expect(typeof healthBody.port).toBe("number");
+      expect(typeof healthBody.version).toBe("string");
+      expect(healthBody.version.length).toBeGreaterThan(0);
+      // Contract is string | null. This worktree has .git, so HEAD must resolve.
+      expect(
+        healthBody.gitSha === null || typeof healthBody.gitSha === "string",
+      ).toBe(true);
+      expect(typeof healthBody.gitSha).toBe("string");
+      expect(healthBody.gitSha).toMatch(/^[0-9a-f]{7,40}$/i);
+
+      const models = await fetch(new URL("/v1/models", server.url));
+      expect(models.status).toBe(200);
+
+      const providers = await fetch(new URL("/api/providers", server.url));
+      expect(providers.status).toBeLessThan(500);
 
       const response = await fetch(new URL("/v1/responses", server.url), {
         method: "POST",
@@ -88,7 +114,10 @@ describe("standalone HTTP core without Codex CLI", () => {
         }),
       });
       expect(response.status).toBe(200);
-      const body = await response.json() as { status?: string; output?: unknown[] };
+      const body = (await response.json()) as {
+        status?: string;
+        output?: unknown[];
+      };
       expect(body.status).toBe("completed");
       expect(upstreamHits).toBe(1);
     } finally {
