@@ -270,6 +270,15 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toContain("printf 'registry=https://registry.npmjs.org/\\n'");
     expect(workflow).toContain("OIDC publish failed");
     expect(workflow).toContain("retrying with NPM_TOKEN");
+    expect(workflow).toContain("--ignore-scripts");
+    expect(workflow).toContain("need_token_fallback");
+    const oidcStep = workflow.slice(
+      workflow.indexOf("- name: Publish (or dry-run)"),
+      workflow.indexOf("- name: Publish token fallback"),
+    );
+    expect(oidcStep).not.toContain("NPM_TOKEN:");
+    expect(oidcStep).not.toContain("NODE_AUTH_TOKEN:");
+    expect(workflow).toContain("- name: Publish token fallback");
 
     // Immutable action references.
     expect(workflow).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");

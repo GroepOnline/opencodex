@@ -263,34 +263,28 @@ jobs:
             fi
           fi
 
+      # Lifecycle scripts (prepublishOnly) run here with no publish secret in env.
       - name: Publish (or dry-run)
+        id: publish
         env:
           DRY_RUN: ${{ inputs.dry-run }}
           NPM_DIST_TAG: ${{ inputs.tag }}
           FIRST_PUBLISH: ${{ inputs.first-publish }}
-          # TEMPORARY (GRO-1004): bootstrap-only token for the very first
-          # publish of a new scope. Trusted Publishing takes over afterwards.
-          # FIRST_PUBLISH_NPM_TOKEN marker is asserted by tests/ci-workflows.test.ts.
-          NODE_AUTH_TOKEN: ${{ inputs.first-publish == true && secrets.NPM_TOKEN || '' }}
-          # Org secret. OIDC is first; this is the same fallback publish-on-tag.yml
-          # uses when the npm Trusted Publisher is bound to this Release workflow
-          # but setup-node still trips the CLI into classic auth.
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           npm_bin="${NPM_PUBLISH_BIN:?npm binary was not pinned before bun install}"
+          echo "need_token_fallback=false" >> "$GITHUB_OUTPUT"
           if [ "$DRY_RUN" = "true" ]; then
             echo "::notice::DRY RUN — building + packing, not publishing"
             npm run prepublishOnly
             npm pack --dry-run
             exit 0
           fi
+          # Build once without a token. Both OIDC and the token fallback publish
+          # with --ignore-scripts so package scripts never see NPM_TOKEN.
+          npm run prepublishOnly
           if [ "$FIRST_PUBLISH" = "true" ]; then
-            if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-              echo "::error::first-publish is true but NPM_TOKEN is empty"
-              exit 1
-            fi
-            "$npm_bin" publish --tag "$NPM_DIST_TAG" --access public
+            echo "need_token_fallback=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # setup-node registry-url writes always-auth + ${_authToken=${NODE_AUTH_TOKEN}}.
@@ -305,18 +299,36 @@ jobs:
           echo "OIDC_ENV=${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
           echo "npm_bin=${npm_bin}"
           set +e
-          "$npm_bin" publish --tag "$NPM_DIST_TAG" --access public
+          "$npm_bin" publish --tag "$NPM_DIST_TAG" --access public --ignore-scripts
           code=$?
           set -e
           if [ "$code" -eq 0 ]; then
             exit 0
           fi
+          echo "need_token_fallback=true" >> "$GITHUB_OUTPUT"
+          echo "::warning::OIDC publish failed (code $code); token fallback step will retry"
+
+      # TEMPORARY (GRO-1004): FIRST_PUBLISH_NPM_TOKEN. Also the org-token fallback
+      # when OIDC still fails. Isolated so lifecycle scripts never inherit the secret.
+      - name: Publish token fallback
+        if: ${{ inputs.dry-run != true && (inputs.first-publish == true || steps.publish.outputs.need_token_fallback == 'true') }}
+        env:
+          NPM_DIST_TAG: ${{ inputs.tag }}
+          FIRST_PUBLISH: ${{ inputs.first-publish }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          npm_bin="${NPM_PUBLISH_BIN:?npm binary was not pinned before bun install}"
           if [ -z "${NPM_TOKEN:-}" ]; then
-            echo "::error::npm publish failed (code ${code}). Trusted Publisher on npmjs.com must use workflow filename release.yml, not the display name Release. No NPM_TOKEN available for fallback."
-            exit "$code"
+            if [ "$FIRST_PUBLISH" = "true" ]; then
+              echo "::error::first-publish is true but NPM_TOKEN is empty"
+            else
+              echo "::error::npm publish failed. Trusted Publisher on npmjs.com must use workflow filename release.yml, not the display name Release. No NPM_TOKEN available for fallback."
+            fi
+            exit 1
           fi
-          echo "::warning::OIDC publish failed (code $code); retrying with NPM_TOKEN"
-          NODE_AUTH_TOKEN="$NPM_TOKEN" "$npm_bin" publish --tag "$NPM_DIST_TAG" --access public
+          echo "::warning::retrying with NPM_TOKEN"
+          NODE_AUTH_TOKEN="$NPM_TOKEN" "$npm_bin" publish --tag "$NPM_DIST_TAG" --access public --ignore-scripts
 
       # Confirm the registry actually has the new version (real publishes only).
       - name: Post-publish registry smoke
