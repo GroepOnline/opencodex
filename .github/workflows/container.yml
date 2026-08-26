@@ -52,6 +52,10 @@ jobs:
           image="ghcr.io/$(printf '%s' "$REPOSITORY" | tr '[:upper:]' '[:lower:]')"
           tags="${image}:${SHA}"
           if [[ "$REF" == refs/tags/v* ]]; then
+            if [[ "${REF_NAME#v}" != "$version" ]]; then
+              echo "git tag ${REF_NAME} does not match package.json version ${version}" >&2
+              exit 1
+            fi
             tags="${tags}"$'\n'"${image}:${REF_NAME}"
             tags="${tags}"$'\n'"${image}:${version}"
           fi
