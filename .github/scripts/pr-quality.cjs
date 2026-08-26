@@ -125,6 +125,34 @@ function assessPrDescription(body) {
   return { ok: false, reason: "thin" };
 }
 
+/**
+ * Fail-closed same-repository check. A fork can name its head `dev`; that is
+ * not a maintainer promotion. Prefer numeric GitHub repo ids; fall back to
+ * `full_name`, then owner/name. Missing fields never compare equal.
+ */
+function isSameGithubRepo(headRepo, baseRepo) {
+  if (!headRepo || !baseRepo || typeof headRepo !== "object" || typeof baseRepo !== "object") {
+    return false;
+  }
+  if (typeof headRepo.id === "number" && typeof baseRepo.id === "number") {
+    return headRepo.id === baseRepo.id;
+  }
+  const headFull = typeof headRepo.full_name === "string" ? headRepo.full_name : "";
+  const baseFull = typeof baseRepo.full_name === "string" ? baseRepo.full_name : "";
+  if (headFull && baseFull) {
+    return headFull === baseFull;
+  }
+  const headOwner = headRepo.owner && headRepo.owner.login;
+  const baseOwner = baseRepo.owner && baseRepo.owner.login;
+  return Boolean(
+    headOwner &&
+      baseOwner &&
+      headOwner === baseOwner &&
+      headRepo.name &&
+      headRepo.name === baseRepo.name,
+  );
+}
+
 function collectPrQualityFailures({
   baseRef,
   allowedBases,
@@ -137,11 +165,14 @@ function collectPrQualityFailures({
   ancestryLookupFailed = false,
   /** True when baseRef is another open PR's head (stacked child). */
   stackedBase = false,
-  /** PR head ref. Promotion is only `baseRef === "main" && headRef === "dev"`. */
+  /** PR head ref. Promotion also requires same-repository head. */
   headRef,
+  /** True only when head and base resolve to the same GitHub repository. */
+  headFromSameRepo = false,
 }) {
   const failures = [];
-  const promotionBase = baseRef === "main" && headRef === "dev";
+  const promotionBase =
+    baseRef === "main" && headRef === "dev" && headFromSameRepo === true;
   const wrongBase = !allowedBases.includes(baseRef) && !stackedBase && !promotionBase;
   if (wrongBase) {
     failures.push({ code: "wrong_base" });
@@ -173,6 +204,7 @@ module.exports = {
   ANCESTRY_BEHIND_THRESHOLD,
   ANCESTRY_AHEAD_MAIN_MAX,
   isWrongAncestry,
+  isSameGithubRepo,
   authorHasPushPermission,
   assessPrDescription,
   collectPrQualityFailures,

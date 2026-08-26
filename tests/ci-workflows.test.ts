@@ -742,6 +742,7 @@ describe("GitHub Actions hardening", () => {
     expect(script).toMatch(/const ALLOWED_BASES = \["dev"\];/);
     expect(script).toMatch(/const DEFAULT_BASE = "dev";/);
     expect(script).toContain("headRef: pr.head.ref");
+    expect(script).toContain("headFromSameRepo: isSameGithubRepo(pr.head.repo, pr.base.repo)");
 
     // Every mutation targets the PR the event fired for. `pull_number` is the
     // only handle the script has, and an audit round repointed it at
@@ -1087,7 +1088,15 @@ describe("GitHub Actions hardening", () => {
       const result = await run({
         pr: {
           base: { ref: "main" },
-          head: { ref: "dev" },
+          head: {
+            ref: "dev",
+            repo: {
+              id: 1001,
+              name: "opencodex",
+              full_name: "GroepOnline/opencodex",
+              owner: { login: "GroepOnline" },
+            },
+          },
           title: "Promote 1.2.3 to main",
           draft: false,
         },
@@ -1098,6 +1107,28 @@ describe("GitHub Actions hardening", () => {
       expect(callsTo(result, "graphql")).toEqual([]);
       expect(result.logs.join(" ")).toContain("All PR quality gates passed");
       expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(false);
+    });
+
+    test("a fork head named dev targeting main stays wrong-base", async () => {
+      const result = await run({
+        pr: {
+          base: { ref: "main" },
+          head: { ref: "dev" },
+          title: "Promote 1.2.3 to main",
+          draft: false,
+        },
+      });
+
+      expect(methodsOf(result)).toEqual(readsWrongBase([
+        "issues.createComment",
+        "pulls.update",
+        "issues.updateComment",
+        "graphql",
+        "issues.updateComment",
+        "issues.updateComment",
+      ]));
+      expect(lastEnforcerCommentBody(result)).toContain("Wrong target branch");
+      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(true);
     });
 
     test("a feature head targeting main stays wrong-base", async () => {

@@ -109,6 +109,8 @@ description.
 ## Pull requests
 
 - Target **`dev`**. Do not open feature or fix pull requests against **`main`**.
+  The required **`enforce-target`** check allows only a same-repository
+  maintainer promotion from **`dev`** onto **`main`**.
 - Branch from the current **`dev`** tip, not from **`main`**. The required **`enforce-target`** check rejects heads whose merge base sits on the **`main`** tip while the branch is far behind the pull request base (the failure mode seen in #644).
 - Write a real description: a **Summary** of what changed and why, plus a **Test plan** (or equivalent substance). Empty bodies, placeholder-only text, and descriptions that use escaped `\n` instead of real line breaks fail the check.
 - Workflow changes in this repository use **`pull_request_target`**. Updated enforcement logic applies only after the workflow is promoted to the repository default branch — the same operational caveat documented in #631.
