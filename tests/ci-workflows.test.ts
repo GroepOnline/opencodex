@@ -265,6 +265,8 @@ describe("GitHub Actions hardening", () => {
       expect(workflow).not.toContain("secrets.NPM_TOKEN");
       expect(workflow).not.toContain("NODE_AUTH_TOKEN:");
     }
+    expect(workflow).toContain("unset NODE_AUTH_TOKEN");
+    expect(workflow).toContain("rm -f \"$NPM_CONFIG_USERCONFIG\"");
 
     // Immutable action references.
     expect(workflow).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");

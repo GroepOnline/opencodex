@@ -264,18 +264,35 @@ jobs:
         env:
           DRY_RUN: ${{ inputs.dry-run }}
           NPM_DIST_TAG: ${{ inputs.tag }}
+          FIRST_PUBLISH: ${{ inputs.first-publish }}
           # TEMPORARY (GRO-1004): bootstrap-only token for the very first
           # publish of a new scope. Trusted Publishing takes over afterwards.
           # FIRST_PUBLISH_NPM_TOKEN marker is asserted by tests/ci-workflows.test.ts.
           NODE_AUTH_TOKEN: ${{ inputs.first-publish == true && secrets.NPM_TOKEN || '' }}
         run: |
+          set -euo pipefail
           if [ "$DRY_RUN" = "true" ]; then
             echo "::notice::DRY RUN — building + packing, not publishing"
             npm run prepublishOnly
             npm pack --dry-run
-          else
-            npm publish --tag "$NPM_DIST_TAG" --access public
+            exit 0
           fi
+          if [ "$FIRST_PUBLISH" = "true" ]; then
+            if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+              echo "::error::first-publish is true but NPM_TOKEN is empty"
+              exit 1
+            fi
+            npm publish --tag "$NPM_DIST_TAG" --access public
+            exit 0
+          fi
+          # setup-node registry-url writes always-auth + ${_authToken=${NODE_AUTH_TOKEN}}.
+          # An empty NODE_AUTH_TOKEN then makes npm send a blank bearer token and
+          # skip Trusted Publishing (ENEEDAUTH on 1.2.2). Drop that userconfig.
+          unset NODE_AUTH_TOKEN
+          if [ -n "${NPM_CONFIG_USERCONFIG:-}" ] && [ -f "$NPM_CONFIG_USERCONFIG" ]; then
+            rm -f "$NPM_CONFIG_USERCONFIG"
+          fi
+          npm publish --tag "$NPM_DIST_TAG" --access public
 
       # Confirm the registry actually has the new version (real publishes only).
       - name: Post-publish registry smoke
