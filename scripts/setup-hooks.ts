@@ -18,7 +18,9 @@ try {
   process.exit(1);
 }
 
-execFileSync("bunx", ["husky"], { cwd: repoRoot, stdio: "inherit" });
+// shell: true so Windows resolves the `bunx` shim (.cmd/.exe) via PATH;
+// execFileSync alone can't launch a .cmd without a shell.
+execFileSync("bunx", ["husky"], { cwd: repoRoot, stdio: "inherit", shell: true });
 console.log("Husky hooks installed (.husky/pre-commit and .husky/pre-push).");
 console.log(
   "Skip in an emergency with: git commit --no-verify / git push --no-verify",
