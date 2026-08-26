@@ -23,7 +23,13 @@ export function installStandaloneRuntimeEnv(prefix = "ocx-standalone-"): Standal
   const previousOpencodexHome = process.env.OPENCODEX_HOME;
 
   const codexHome = installIsolatedCodexHome(`${prefix}codex-`);
-  const opencodexHome = mkdtempSync(join(tmpdir(), `${prefix}home-`));
+  let opencodexHome: string;
+  try {
+    opencodexHome = mkdtempSync(join(tmpdir(), `${prefix}home-`));
+  } catch (err) {
+    codexHome.restore();
+    throw err;
+  }
 
   process.env.PATH = NO_CODEX_PATH;
   delete process.env.CODEX_CLI_PATH;
