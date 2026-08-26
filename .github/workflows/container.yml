@@ -96,11 +96,39 @@ jobs:
     permissions:
       contents: read
       packages: write
+      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify commit is on main
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "::error::Commit ${SHA} is not on origin/main — GHCR version tags must sit on main"
+            exit 1
+          fi
+
+      - name: Require successful Cross-platform CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          ci_url="$(gh run list --workflow ci.yml --commit "$SHA" \
+            --status success --limit 1 --json url --jq '.[0].url // ""')"
+          if [ -z "$ci_url" ]; then
+            echo "::error::No successful Cross-platform CI run for ${SHA}"
+            gh run list --workflow ci.yml --commit "$SHA" --limit 5 || true
+            exit 1
+          fi
+          echo "Cross-platform CI passed: ${ci_url}"
 
       - name: Resolve build metadata
         id: meta

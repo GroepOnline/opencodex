@@ -2748,7 +2748,11 @@ describe("GitHub Actions hardening", () => {
     expect(image?.["timeout-minutes"]).toBe(20);
     expect(publish?.["timeout-minutes"]).toBe(20);
     expect(image?.permissions).toEqual({ contents: "read", packages: "none" });
-    expect(publish?.permissions).toEqual({ contents: "read", packages: "write" });
+    expect(publish?.permissions).toEqual({
+      contents: "read",
+      packages: "write",
+      actions: "read",
+    });
     expect(text).not.toMatch(/packages:\s*\$\{\{/);
     expect(String(image?.if ?? "")).toContain("pull_request");
     expect(String(image?.if ?? "")).toContain("refs/heads/dev");
@@ -2770,6 +2774,18 @@ describe("GitHub Actions hardening", () => {
 
     const imageSteps = image?.steps ?? [];
     const publishSteps = publish?.steps ?? [];
+    const imageCheckout = imageSteps.find(step => step.name === "Checkout");
+    const publishCheckout = publishSteps.find(step => step.name === "Checkout");
+    expect(imageCheckout?.with?.["persist-credentials"]).toBe(false);
+    expect(publishCheckout?.with?.["persist-credentials"]).toBe(false);
+    expect(publishCheckout?.with?.["fetch-depth"]).toBe(0);
+    const onMain = publishSteps.find(step => step.name === "Verify commit is on main");
+    const requireCi = publishSteps.find(step => step.name === "Require successful Cross-platform CI");
+    expect(onMain?.run ?? "").toContain("merge-base --is-ancestor");
+    expect(onMain?.run ?? "").toContain("origin/main");
+    expect(onMain?.run ?? "").not.toContain("${{");
+    expect(requireCi?.run ?? "").toContain("gh run list --workflow ci.yml");
+    expect(requireCi?.run ?? "").not.toContain("${{");
     expect(imageSteps.find(step => step.name === "Log in to GHCR")).toBeUndefined();
     const login = publishSteps.find(step => step.name === "Log in to GHCR");
     const imageBuild = imageSteps.find(step => step.id === "build");
