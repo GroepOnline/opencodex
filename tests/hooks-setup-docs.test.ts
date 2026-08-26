@@ -31,4 +31,13 @@ test("husky hook wiring is committed and documented", () => {
   );
   expect(docsContributing).toContain("Husky");
   expect(docsContributing).toContain("lint-staged");
+
+  const setupHooks = readFileSync(
+    join(repoRoot, "scripts/setup-hooks.ts"),
+    "utf8",
+  );
+  expect(setupHooks).toContain("process.execPath");
+  expect(setupHooks).toContain('"x", "husky"');
+  expect(setupHooks).not.toContain("shell: true");
+  expect(setupHooks).not.toContain('"bunx"');
 });
