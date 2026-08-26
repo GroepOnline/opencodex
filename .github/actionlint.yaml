@@ -2,3 +2,8 @@ self-hosted-runner:
   labels:
     - deploy
     - opencodex
+
+paths:
+  .github/workflows/release.yml:
+    ignore:
+      - 'shellcheck reported issue in this script: SC2016:info:18:5: Expressions don''t expand in single quotes, use double quotes for that'

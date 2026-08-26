@@ -331,8 +331,6 @@ jobs:
           # could not skip Trusted Publishing. NODE_AUTH_TOKEN in the environment
           # is ignored unless that placeholder is restored (ENEEDAUTH on 1.2.2).
           if [ -n "${NPM_CONFIG_USERCONFIG:-}" ]; then
-            # Keep the npmrc placeholder literal; npm expands NODE_AUTH_TOKEN later.
-            # shellcheck disable=SC2016
             printf '%s\n' \
               'registry=https://registry.npmjs.org/' \
               'always-auth=true' \
