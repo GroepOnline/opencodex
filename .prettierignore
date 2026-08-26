@@ -1,0 +1,11 @@
+node_modules/
+dist/
+gui/dist/
+gui/node_modules/
+docs-site/dist/
+docs-site/node_modules/
+coverage/
+*.lock
+bun.lock
+gui/bun.lock
+docs-site/bun.lock

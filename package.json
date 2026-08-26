@@ -45,6 +45,7 @@
     "build:gui": "cd gui && bun install && bun run build && cd .. && bun run prepare:package",
     "prepare:package": "bun scripts/prepare-package.ts",
     "prepack": "bun run prepare:package",
+    "prepare": "husky || true",
     "prepublishOnly": "bun run typecheck && bun run build:gui",
     "release": "bun scripts/release.ts",
     "release:watch": "bun scripts/release.ts watch",
@@ -63,6 +64,9 @@
   },
   "devDependencies": {
     "@types/bun": "1.3.14",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.3.0",
+    "prettier": "^3.9.6",
     "typescript": "5.9.3"
   },
   "overrides": {

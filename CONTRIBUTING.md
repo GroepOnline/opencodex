@@ -31,19 +31,19 @@ Source development requires the `bun` CLI on your `PATH`. The published npm pack
 Bun runtime for end users, but contributor commands such as `bun install`, `bun run test`, and
 `bun run prepush` run from your local Bun installation.
 
-## Pre-push hook
+## Git hooks
 
-After cloning, run once to install a local pre-push hook that runs the typecheck,
-GUI eslint, unit-test, privacy-scan, and (when `gui/` changed) React Doctor
-portions of the CI gate:
+`bun install` runs Husky via the `prepare` script and installs committed hooks from
+`.husky/` (pre-commit and pre-push). If hooks are missing after clone, run once:
 
 ```sh
 bun run setup:hooks
 ```
 
-This installs a `pre-push` hook (into the hooks dir git reports, so worktrees and
-`core.hooksPath` work) that runs `bun run prepush` — `typecheck`, `lint:gui`,
-`test`, `privacy:scan`, and `doctor:gui:if-changed` — before every `git push`.
-The same checks run on ubuntu-latest, macos-latest, and windows-latest in CI (CI
-additionally builds the GUI and smoke-tests the CLI). Skip in an emergency with
-`git push --no-verify`.
+**Pre-commit** runs `lint-staged` (Prettier on staged files). Skip in an emergency with
+`git commit --no-verify`.
+
+**Pre-push** runs `bun run prepush` — `typecheck`, `lint:gui`, `test`, `privacy:scan`,
+and `doctor:gui:if-changed` — before every `git push`. The same checks run on
+ubuntu-latest, macos-latest, and windows-latest in CI (CI additionally builds the GUI
+and smoke-tests the CLI). Skip in an emergency with `git push --no-verify`.
