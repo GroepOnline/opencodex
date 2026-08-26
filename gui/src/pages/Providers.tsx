@@ -364,7 +364,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
           notify(t("prov.added", { name, cmd: "ocx sync" }), true);
           fetchConfig();
           fetchOauth();
-          fetchProviderQuotas(true);
+          fetchProviderQuotas();
           bumpModelsRefresh();
         }}
         onAccountLogin={onAccountLogin}
@@ -377,7 +377,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
           notify(t("prov.loginOk", { provider: formatProviderDisplayName("openai"), cmd: "ocx sync" }), true);
           void fetchConfig();
           void fetchOauth();
-          void fetchProviderQuotas(true);
+          void fetchProviderQuotas();
           bumpModelsRefresh();
         }}
         onCancelRemove={() => setRemoveConfirmName(null)}
