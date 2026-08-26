@@ -91,7 +91,7 @@ describe("route resolution", () => {
       ["models", "modellen"],
       ["combos", "modellen/combos"],
       ["subagents", "modellen/subagents"],
-      ["usage", "verkeer"],
+      ["usage", "verbruik"],
       ["logs", "verkeer"],
       ["logs/debug", "verkeer/debug"],
       ["debug", "verkeer/debug"],
