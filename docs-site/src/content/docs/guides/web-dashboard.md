@@ -60,8 +60,9 @@ coverage, and 429/502 error-ratio insight cards. Dashboard sections are addressa
 `#dashboard` opens Overview, and `#dashboard/providers` and `#dashboard/models` open the other two.
 Reload, bookmark, and Back all keep the section you were on. **Verkeer** (traffic logs) and
 **Verbruik** use canonical hashes `#verkeer`, `#verkeer/debug`, and `#verbruik`. Legacy bookmarks
-`#logs`, `#logs/debug`, and `#usage` redirect to those views. An older `#providers/workspace`
-bookmark now lands on `#leveranciers`.
+map explicitly: `#logs` → `#verkeer`, `#logs/debug` → `#verkeer/debug`, and the historical
+`#usage` bookmark → `#verkeer`. An older `#providers/workspace` bookmark now lands on
+`#leveranciers`.
 
 Cost values in **Logs** and **Usage** are API list-price equivalents calculated from reported tokens.
 They are not billing receipts or evidence of an actual charge; subscription usage or provider credits
