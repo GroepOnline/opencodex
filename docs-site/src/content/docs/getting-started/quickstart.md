@@ -1,9 +1,10 @@
 ---
 title: Quickstart
-description: Configure your first provider and route OpenAI Codex through opencodex in three commands.
+description: Configure your first provider, start the proxy, and send a request — with or without Codex.
 ---
 
-This guide takes you from a fresh install to running Codex against a non-OpenAI model.
+This guide takes you from a fresh install to a running proxy. Codex is optional; verify with the
+dashboard or `curl` first, then add Codex when you want it.
 
 ## 1. Run the setup wizard
 
@@ -18,10 +19,12 @@ ocx init
 2. **API key** — paste a key, or reference an environment variable like `${ANTHROPIC_API_KEY}`.
 3. **Default model** — for key, local, and custom providers, accept the preset or enter a model id.
 4. **Proxy port** — defaults to `10100`.
-5. **Inject into Codex?** — on a normal loopback setup, opencodex adds a root `openai_base_url` to
-   `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`) so Codex's built-in `openai` provider
-   targets the proxy. Remote/LAN binds use a dedicated provider entry with an API-auth header instead.
-6. **Install the autostart shim?** — when enabled, launching `codex` runs `ocx ensure` first.
+5. **Inject into Codex?** — optional. Skip or decline if you do not use Codex yet. When enabled on a
+   normal loopback setup, opencodex adds a root `openai_base_url` to `$CODEX_HOME/config.toml`
+   (default `~/.codex/config.toml`) so Codex's built-in `openai` provider targets the proxy.
+   Remote/LAN binds use a dedicated provider entry with an API-auth header instead.
+6. **Install the autostart shim?** — optional; only relevant when Codex is installed. When enabled,
+   launching `codex` runs `ocx ensure` first.
 
 The result is saved to `$OPENCODEX_HOME/config.json` (default `~/.opencodex/config.json`).
 
@@ -42,23 +45,27 @@ ocx start --port 8080
 On start, opencodex:
 
 - writes its PID to `~/.opencodex/ocx.pid` (and refuses to start twice),
-- discovers live models where the provider supports it and **syncs native and routed entries into
-  Codex's model catalog**,
+- discovers live models where the provider supports it and, when Codex integration is enabled,
+  **syncs native and routed entries into Codex's model catalog**,
 - listens on `http://localhost:<port>/v1`.
 
 If the requested port is busy, `ocx start` selects a free port, records it in `runtime-port.json`,
-and updates Codex to use the live listener.
+and updates Codex to use the live listener when Codex integration is active.
 
-Check it:
+## 3. Verify the proxy
 
 ```bash
 ocx status
 ocx gui       # open the dashboard on the live port
+curl -sS "http://127.0.0.1:<port>/healthz"
 ```
 
-## 3. Use Codex
+The proxy exposes `/healthz` and `/v1/*` for any Responses-compatible client. You do not need Codex
+installed for this step.
 
-Codex now talks to opencodex transparently:
+## 4. Use Codex (optional)
+
+If you enabled Codex injection in step 1, Codex talks to opencodex transparently:
 
 ```bash
 codex "Refactor this function for readability"
@@ -73,10 +80,11 @@ codex -m "ollama-cloud/glm-5.2"      "Write a SQL migration"
 
 ## Choose sub-agent models (optional)
 
-A fresh config features five native models in Codex's sub-agent picker: `gpt-5.5`,
-`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, and `gpt-5.4-mini`. Open `ocx gui` to replace or
-reorder up to five native or routed models. The dashboard can also set one preferred sub-agent model
-and reasoning effort; opencodex adds that guidance to v1 collaboration requests.
+When Codex integration is enabled, a fresh config features five native models in Codex's sub-agent
+picker: `gpt-5.5`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, and `gpt-5.4-mini`. Open
+`ocx gui` to replace or reorder up to five native or routed models. The dashboard can also set one
+preferred sub-agent model and reasoning effort; opencodex adds that guidance to v1 collaboration
+requests.
 
 ## Logging in instead of pasting a key
 
@@ -87,13 +95,14 @@ ocx login xai          # or: anthropic, kimi, kiro, google-antigravity, cursor
 ocx logout xai
 ```
 
-OpenAI itself needs **no key** — the default provider forwards your existing `codex login`
-credentials straight through (see [Providers](/guides/providers/)).
+OpenAI itself needs **no key** when you route Codex through the proxy — the default provider
+forwards your existing `codex login` credentials straight through (see
+[Providers](/guides/providers/)).
 
 ## Stopping & restoring
 
 ```bash
-ocx stop          # stop the proxy and restore native Codex
+ocx stop          # stop the proxy and restore native Codex when integration was enabled
 ocx restore       # restore native Codex without stopping (alias: ocx eject)
 ocx restore back  # route Codex through the still-running proxy again
 ```

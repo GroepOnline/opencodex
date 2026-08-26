@@ -54,13 +54,15 @@ auto-generated `~/.opencodex/admin-api-token` file).
 
 ### Linking to a section
 
-There is a single layout, so there is no layout switch to configure. The top-level **Usage** tab
-(`verbruik`) provides detailed usage and debugging views, while the Dashboard also shows estimated
-cost, coverage, and 429/502 error-ratio insight cards. Dashboard sections are addressable instead:
+There is a single layout, so there is no layout switch to configure. The top-level **Verbruik**
+(usage) view provides detailed usage analytics, while the Dashboard also shows estimated cost,
+coverage, and 429/502 error-ratio insight cards. Dashboard sections are addressable instead:
 `#dashboard` opens Overview, and `#dashboard/providers` and `#dashboard/models` open the other two.
-Reload, bookmark, and Back all keep the section you were on. **Logs** works the same way with
-`#logs` and `#logs/debug`; the Logs home is also available at `#verkeer`. An older
-`#providers/workspace` bookmark now lands on `#providers`.
+Reload, bookmark, and Back all keep the section you were on. **Verkeer** (traffic logs) and
+**Verbruik** use canonical hashes `#verkeer`, `#verkeer/debug`, and `#verbruik`. Legacy bookmarks
+map explicitly: `#logs` → `#verkeer`, `#logs/debug` → `#verkeer/debug`, and the historical
+`#usage` bookmark → `#verbruik`. An older `#providers/workspace` bookmark now lands on
+`#leveranciers`.
 
 Cost values in **Logs** and **Usage** are API list-price equivalents calculated from reported tokens.
 They are not billing receipts or evidence of an actual charge; subscription usage or provider credits
