@@ -2717,6 +2717,7 @@ describe("GitHub Actions hardening", () => {
       jobs?: Record<
         string,
         {
+          if?: string;
           "runs-on"?: string;
           "timeout-minutes"?: number;
           permissions?: Record<string, string>;
@@ -2739,16 +2740,21 @@ describe("GitHub Actions hardening", () => {
     expect(workflow.permissions).toEqual({ contents: "read" });
 
     const jobs = Object.keys(workflow.jobs ?? {});
-    expect(jobs).toEqual(["image"]);
-    const job = workflow.jobs?.image;
-    expect(job?.["runs-on"]).toBe("ubuntu-latest");
-    expect(job?.["timeout-minutes"]).toBe(20);
-    expect(job?.permissions?.contents).toBe("read");
-    expect(String(job?.permissions?.packages ?? "")).toContain("refs/tags/v");
-    expect(String(job?.permissions?.packages ?? "")).toContain("workflow_dispatch");
-    expect(String(job?.permissions?.packages ?? "")).toContain("refs/heads/main");
-    expect(String(job?.permissions?.packages ?? "")).toContain("'write'");
-    expect(String(job?.permissions?.packages ?? "")).toContain("'none'");
+    expect(jobs).toEqual(["image", "publish"]);
+    const image = workflow.jobs?.image;
+    const publish = workflow.jobs?.publish;
+    expect(image?.["runs-on"]).toBe("ubuntu-latest");
+    expect(publish?.["runs-on"]).toBe("ubuntu-latest");
+    expect(image?.["timeout-minutes"]).toBe(20);
+    expect(publish?.["timeout-minutes"]).toBe(20);
+    expect(image?.permissions).toEqual({ contents: "read", packages: "none" });
+    expect(publish?.permissions).toEqual({ contents: "read", packages: "write" });
+    expect(text).not.toMatch(/packages:\s*\$\{\{/);
+    expect(String(image?.if ?? "")).toContain("pull_request");
+    expect(String(image?.if ?? "")).toContain("refs/heads/dev");
+    expect(String(publish?.if ?? "")).toContain("refs/tags/v");
+    expect(String(publish?.if ?? "")).toContain("workflow_dispatch");
+    expect(String(publish?.if ?? "")).toContain("refs/heads/main");
 
     expect(text).not.toContain("self-hosted");
     expect(text).not.toContain("chef-control");
@@ -2762,35 +2768,53 @@ describe("GitHub Actions hardening", () => {
     expect(text).toContain("docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0");
     expect(text).toContain("docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0");
 
-    const steps = job?.steps ?? [];
-    const meta = steps.find(step => step.id === "meta");
-    const login = steps.find(step => step.name === "Log in to GHCR");
-    const build = steps.find(step => step.id === "build");
-    const summary = steps.find(step => step.name === "Record digest");
-    expect(meta).toBeDefined();
+    const imageSteps = image?.steps ?? [];
+    const publishSteps = publish?.steps ?? [];
+    expect(imageSteps.find(step => step.name === "Log in to GHCR")).toBeUndefined();
+    const login = publishSteps.find(step => step.name === "Log in to GHCR");
+    const imageBuild = imageSteps.find(step => step.id === "build");
+    const publishBuild = publishSteps.find(step => step.id === "build");
+    const publishMeta = publishSteps.find(step => step.id === "meta");
+    const imageSummary = imageSteps.find(step => step.name === "Record digest");
+    const publishSummary = publishSteps.find(step => step.name === "Record digest");
     expect(login).toBeDefined();
-    expect(build).toBeDefined();
-    expect(summary).toBeDefined();
+    expect(imageBuild).toBeDefined();
+    expect(publishBuild).toBeDefined();
+    expect(publishMeta).toBeDefined();
+    expect(imageSummary).toBeDefined();
+    expect(publishSummary).toBeDefined();
 
-    expect(login!.if).toBe("steps.meta.outputs.push == 'true'");
+    expect(login!.if).toBeUndefined();
     expect(login!.uses).toBe("docker/login-action@dbcb813823bdd20940b903addbd779551569679f");
-    expect(build!.uses).toBe("docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a");
-    expect(build!.with?.push).toBe("${{ steps.meta.outputs.push == 'true' }}");
-    expect(build!.with?.load).toBe("${{ steps.meta.outputs.push != 'true' }}");
-    expect(build!.with?.provenance).toBe(false);
-    expect(build!.with?.sbom).toBe(false);
-    expect(String(build!.with?.["build-args"] ?? "")).toContain("VCS_REF=${{ github.sha }}");
-    expect(String(build!.with?.["build-args"] ?? "")).toContain("VERSION=${{ steps.meta.outputs.version }}");
+    expect(imageBuild!.uses).toBe("docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a");
+    expect(publishBuild!.uses).toBe("docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a");
+    expect(imageBuild!.with?.push).toBe(false);
+    expect(imageBuild!.with?.load).toBe(true);
+    expect(publishBuild!.with?.push).toBe(true);
+    expect(publishBuild!.with?.load).toBe(false);
+    expect(imageBuild!.with?.provenance).toBe(false);
+    expect(publishBuild!.with?.provenance).toBe(false);
+    expect(imageBuild!.with?.sbom).toBe(false);
+    expect(publishBuild!.with?.sbom).toBe(false);
+    expect(String(imageBuild!.with?.["build-args"] ?? "")).toContain("VCS_REF=${{ github.sha }}");
+    expect(String(publishBuild!.with?.["build-args"] ?? "")).toContain("VCS_REF=${{ github.sha }}");
+    expect(String(publishBuild!.with?.["build-args"] ?? "")).toContain("VERSION=${{ steps.meta.outputs.version }}");
 
-    expect(meta!.run ?? "").toContain("json.load(open('package.json'))['version']");
-    expect(meta!.run ?? "").not.toContain("${{");
+    expect(publishMeta!.run ?? "").toContain("json.load(open('package.json'))['version']");
+    expect(publishMeta!.run ?? "").not.toContain("${{");
+    expect(publishMeta!.run ?? "").toContain("publish job ran outside the push gate");
 
-    const match = (meta!.run ?? "").match(/=~ (\^\S+\$) \]\]/);
+    const match = (publishMeta!.run ?? "").match(/=~ (\^\S+\$) \]\]/);
     expect(match).not.toBeNull();
     const tagShape = new RegExp(match![1]!);
-    const shouldPush = (event: string, ref: string) =>
-      (event === "push" && tagShape.test(ref))
+    const publishIf = String(publish?.if ?? "");
+    const shouldPublishJob = (event: string, ref: string) =>
+      (event === "push" && publishIf.includes("refs/tags/v") && ref.startsWith("refs/tags/v"))
       || (event === "workflow_dispatch" && ref === "refs/heads/main");
+    const shouldPush = (event: string, ref: string) =>
+      shouldPublishJob(event, ref)
+      && ((event === "push" && tagShape.test(ref))
+        || (event === "workflow_dispatch" && ref === "refs/heads/main"));
     expect(shouldPush("push", "refs/tags/v1.2.3")).toBe(true);
     expect(shouldPush("push", "refs/tags/v1.2.3-preview.4")).toBe(true);
     expect(shouldPush("workflow_dispatch", "refs/heads/main")).toBe(true);
@@ -2800,8 +2824,8 @@ describe("GitHub Actions hardening", () => {
     expect(shouldPush("push", "refs/tags/v1.2")).toBe(false);
     expect(shouldPush("push", "refs/tags/vfoo")).toBe(false);
 
-    expect(summary!.run ?? "").toContain("GITHUB_STEP_SUMMARY");
-    expect(summary!.run ?? "").toContain("digest");
+    expect(imageSummary!.run ?? "").toContain("GITHUB_STEP_SUMMARY");
+    expect(publishSummary!.run ?? "").toContain("digest");
   });
 
   test("React Doctor workflow is SHA-pinned, engine-pinned, gating, and read-only", async () => {
