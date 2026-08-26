@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -35,7 +42,11 @@ import {
   tryPickComboModel,
   UnknownComboError,
 } from "../src/combos";
-import { getConfigPath, readConfigDiagnostics, saveConfig } from "../src/config";
+import {
+  getConfigPath,
+  readConfigDiagnostics,
+  saveConfig,
+} from "../src/config";
 import { routeModel } from "../src/router";
 import { handleManagementAPI } from "../src/server/management-api";
 import { handleResponses } from "../src/server/responses";
@@ -50,9 +61,24 @@ function baseConfig(overrides: Partial<OcxConfig> = {}): OcxConfig {
     port: 10100,
     defaultProvider: "a",
     providers: {
-      a: { adapter: "openai-chat", baseUrl: "https://a.example/v1", apiKey: "ka", models: ["m1"] },
-      b: { adapter: "openai-chat", baseUrl: "https://b.example/v1", apiKey: "kb", models: ["m2"] },
-      c: { adapter: "openai-chat", baseUrl: "https://c.example/v1", apiKey: "kc", models: ["m3"] },
+      a: {
+        adapter: "openai-chat",
+        baseUrl: "https://a.example/v1",
+        apiKey: "ka",
+        models: ["m1"],
+      },
+      b: {
+        adapter: "openai-chat",
+        baseUrl: "https://b.example/v1",
+        apiKey: "kb",
+        models: ["m2"],
+      },
+      c: {
+        adapter: "openai-chat",
+        baseUrl: "https://c.example/v1",
+        apiKey: "kc",
+        models: ["m3"],
+      },
     },
     combos: {
       free: {
@@ -95,7 +121,9 @@ function successfulPicks(config: OcxConfig, count: number): string[] {
   });
 }
 
-async function withTempHome<T>(run: (dir: string) => Promise<T> | T): Promise<T> {
+async function withTempHome<T>(
+  run: (dir: string) => Promise<T> | T,
+): Promise<T> {
   const previousHome = process.env.OPENCODEX_HOME;
   const previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
   const dir = mkdtempSync(join(tmpdir(), "ocx-combos-"));
@@ -106,7 +134,8 @@ async function withTempHome<T>(run: (dir: string) => Promise<T> | T): Promise<T>
   } finally {
     if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
     else process.env.OPENCODEX_HOME = previousHome;
-    if (previousClaudeConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    if (previousClaudeConfigDir === undefined)
+      delete process.env.CLAUDE_CONFIG_DIR;
     else process.env.CLAUDE_CONFIG_DIR = previousClaudeConfigDir;
     rmSync(dir, { recursive: true, force: true });
   }
@@ -125,7 +154,8 @@ async function comboApi(
 ): Promise<Response | null> {
   const req = new Request(`http://localhost${path}`, {
     method,
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    headers:
+      body === undefined ? undefined : { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   return handleManagementAPI(req, new URL(req.url), config, {
@@ -133,7 +163,12 @@ async function comboApi(
   });
 }
 
-async function comboApiRaw(config: OcxConfig, method: string, path: string, body: string): Promise<Response | null> {
+async function comboApiRaw(
+  config: OcxConfig,
+  method: string,
+  path: string,
+  body: string,
+): Promise<Response | null> {
   const req = new Request(`http://localhost${path}`, {
     method,
     headers: { "content-type": "application/json" },
@@ -144,7 +179,9 @@ async function comboApiRaw(config: OcxConfig, method: string, path: string, body
   });
 }
 
-async function responseJson(response: Response | null): Promise<Record<string, unknown>> {
+async function responseJson(
+  response: Response | null,
+): Promise<Record<string, unknown>> {
   expect(response).not.toBeNull();
   return response!.json() as Promise<Record<string, unknown>>;
 }
@@ -173,7 +210,10 @@ describe("combo namespace primitives", () => {
     const config = baseConfig({
       combos: {
         free: { ...VALID_COMBO, alias: "combo/other" },
-        other: { targets: [{ provider: "b", model: "m2" }], alias: "vendor/flash" },
+        other: {
+          targets: [{ provider: "b", model: "m2" }],
+          alias: "vendor/flash",
+        },
       },
     });
     expect(resolveComboId(config, "combo/other")).toBe("other");
@@ -181,7 +221,9 @@ describe("combo namespace primitives", () => {
     expect(resolveComboId(config, "unknown-bare")).toBeNull();
     expect(tryPickComboModel(config, "vendor/flash")?.comboId).toBe("other");
     expect(tryPickComboModel(config, "unknown-bare")).toBeNull();
-    expect(() => tryPickComboModel(config, "combo/missing")).toThrow(UnknownComboError);
+    expect(() => tryPickComboModel(config, "combo/missing")).toThrow(
+      UnknownComboError,
+    );
   });
 });
 
@@ -191,47 +233,101 @@ describe("combo request cloning", () => {
   afterEach(() => resetComboEffortWarningStateForTests());
 
   test("detects canonical and alias combo model ids in raw request records", () => {
-    const config = baseConfig({ combos: { free: { ...VALID_COMBO, alias: "deepseek-v4-flash" } } });
+    const config = baseConfig({
+      combos: { free: { ...VALID_COMBO, alias: "deepseek-v4-flash" } },
+    });
     expect(comboIdFromRawBody({ model: "combo/free" }, config)).toBe("free");
-    expect(comboIdFromRawBody({ model: "deepseek-v4-flash" }, config)).toBe("free");
+    expect(comboIdFromRawBody({ model: "deepseek-v4-flash" }, config)).toBe(
+      "free",
+    );
     expect(comboIdFromRawBody({ model: "a/m1" }, config)).toBeNull();
     expect(comboIdFromRawBody({ model: 1 }, config)).toBeNull();
     expect(comboIdFromRawBody(null, config)).toBeNull();
   });
 
   test("clones the untouched body and injects an omitted combo default", () => {
-    const raw = { model: "combo/free", input: [{ role: "user", content: "hi" }] };
-    const concrete = concreteComboRequestBody(raw, target, "high", ["low", "high"]);
+    const raw = {
+      model: "combo/free",
+      input: [{ role: "user", content: "hi" }],
+    };
+    const concrete = concreteComboRequestBody(raw, target, "high", [
+      "low",
+      "high",
+    ]);
     expect(concrete).toEqual({
       model: "a/m1",
       input: [{ role: "user", content: "hi" }],
       reasoning: { effort: "high" },
     });
-    expect(raw).toEqual({ model: "combo/free", input: [{ role: "user", content: "hi" }] });
+    expect(raw).toEqual({
+      model: "combo/free",
+      input: [{ role: "user", content: "hi" }],
+    });
     expect(concrete.input).not.toBe(raw.input);
   });
 
   test("combo default respects client-owned ignored reasoning values", () => {
-    expect(concreteComboRequestBody({ model: "combo/x", reasoning: null }, target, "high", []).reasoning).toBeNull();
-    expect(concreteComboRequestBody(
-      { model: "combo/x", reasoning: { effort: "" } }, target, "high", [],
-    ).reasoning).toEqual({ effort: "" });
-    expect(concreteComboRequestBody(
-      { model: "combo/x", reasoning: { effort: "banana" } }, target, "high", [],
-    ).reasoning).toEqual({ effort: "banana" });
-    expect(concreteComboRequestBody(
-      { model: "combo/x", reasoning: { effort: null } }, target, "high", [],
-    ).reasoning).toEqual({ effort: null });
-    expect(concreteComboRequestBody(
-      { model: "combo/x", reasoning: { summary: "concise" } }, target, "high", ["high"],
-    ).reasoning).toEqual({ summary: "concise", effort: "high" });
+    expect(
+      concreteComboRequestBody(
+        { model: "combo/x", reasoning: null },
+        target,
+        "high",
+        [],
+      ).reasoning,
+    ).toBeNull();
+    expect(
+      concreteComboRequestBody(
+        { model: "combo/x", reasoning: { effort: "" } },
+        target,
+        "high",
+        [],
+      ).reasoning,
+    ).toEqual({ effort: "" });
+    expect(
+      concreteComboRequestBody(
+        { model: "combo/x", reasoning: { effort: "banana" } },
+        target,
+        "high",
+        [],
+      ).reasoning,
+    ).toEqual({ effort: "banana" });
+    expect(
+      concreteComboRequestBody(
+        { model: "combo/x", reasoning: { effort: null } },
+        target,
+        "high",
+        [],
+      ).reasoning,
+    ).toEqual({ effort: null });
+    expect(
+      concreteComboRequestBody(
+        { model: "combo/x", reasoning: { summary: "concise" } },
+        target,
+        "high",
+        ["high"],
+      ).reasoning,
+    ).toEqual({ summary: "concise", effort: "high" });
   });
 
   test("omits combo defaults for unset, unsupported, and unknown target capabilities", () => {
-    expect(concreteComboRequestBody({ model: "combo/x" }, target, null, ["high"]).reasoning).toBeUndefined();
-    expect(concreteComboRequestBody({ model: "combo/x" }, target, "high", []).reasoning).toBeUndefined();
-    expect(concreteComboRequestBody({ model: "combo/x" }, target, "high", undefined).reasoning).toBeUndefined();
-    expect(concreteComboRequestBody({ model: "combo/x" }, target, "high", ["low", "medium"]).reasoning).toBeUndefined();
+    expect(
+      concreteComboRequestBody({ model: "combo/x" }, target, null, ["high"])
+        .reasoning,
+    ).toBeUndefined();
+    expect(
+      concreteComboRequestBody({ model: "combo/x" }, target, "high", [])
+        .reasoning,
+    ).toBeUndefined();
+    expect(
+      concreteComboRequestBody({ model: "combo/x" }, target, "high", undefined)
+        .reasoning,
+    ).toBeUndefined();
+    expect(
+      concreteComboRequestBody({ model: "combo/x" }, target, "high", [
+        "low",
+        "medium",
+      ]).reasoning,
+    ).toBeUndefined();
   });
 
   test("debug-warns once per unsupported combo default", () => {
@@ -257,8 +353,12 @@ describe("combo target cooldowns", () => {
     expect(parseRetryAfterMs("0.001", now)).toBe(1);
     expect(parseRetryAfterMs("120", now)).toBe(120_000);
     expect(parseRetryAfterMs("999999", now)).toBe(600_000);
-    expect(parseRetryAfterMs(new Date(now + 90_000).toUTCString(), now)).toBe(90_000);
-    expect(parseRetryAfterMs(new Date(now + 900_000).toUTCString(), now)).toBe(600_000);
+    expect(parseRetryAfterMs(new Date(now + 90_000).toUTCString(), now)).toBe(
+      90_000,
+    );
+    expect(parseRetryAfterMs(new Date(now + 900_000).toUTCString(), now)).toBe(
+      600_000,
+    );
   });
 
   test("rejects missing malformed zero and expired Retry-After values", () => {
@@ -267,7 +367,9 @@ describe("combo target cooldowns", () => {
     expect(parseRetryAfterMs("", now)).toBeUndefined();
     expect(parseRetryAfterMs("0", now)).toBeUndefined();
     expect(parseRetryAfterMs("not-a-date", now)).toBeUndefined();
-    expect(parseRetryAfterMs(new Date(now - 1_000).toUTCString(), now)).toBeUndefined();
+    expect(
+      parseRetryAfterMs(new Date(now - 1_000).toUTCString(), now),
+    ).toBeUndefined();
   });
 
   test("expires cooldowns and clears only the requested combo", () => {
@@ -286,7 +388,10 @@ describe("combo target cooldowns", () => {
     // spreads traffic over many model names never asks about most ids again and the lazy
     // expiry in isComboTargetInCooldown cannot reclaim them.
     for (let i = 0; i < 400; i++) {
-      coolComboTarget(`provider-fallback\u0000a\u0000m${i}`, target, { now: 1_000, cooldownMs: 100 });
+      coolComboTarget(`provider-fallback\u0000a\u0000m${i}`, target, {
+        now: 1_000,
+        cooldownMs: 100,
+      });
     }
     expect(comboTargetCooldownCountForTests()).toBeGreaterThan(256);
 
@@ -303,11 +408,20 @@ describe("combo failure policy and advancement", () => {
       expect(comboFailureDecision(status, "provider failure")).toBe("hop");
     }
     expect(comboFailureDecision(400, "context_length_exceeded")).toBe("stop");
-    expect(comboFailureDecision(403, '{"code":"origin_rejected"}')).toBe("stop");
+    expect(comboFailureDecision(403, '{"code":"origin_rejected"}')).toBe(
+      "stop",
+    );
     expect(comboFailureDecision(413, "request too large")).toBe("stop");
     expect(comboFailureDecision(409, "conflict")).toBe("stop");
     expect(comboFailureDecision(499, "client cancelled")).toBe("stop");
     expect(comboFailureDecision(422, "invalid_api_key")).toBe("hop");
+    expect(
+      comboFailureDecision(
+        402,
+        "You have reached your weekly limit. The limit resets in 1d 22h.",
+      ),
+    ).toBe("hop");
+    expect(comboFailureDecision(402, "Payment Required")).toBe("stop");
   });
 
   test("failure clears the active sticky target without adding a success", () => {
@@ -356,7 +470,7 @@ describe("combo failure policy and advancement", () => {
     const first = pickComboTarget(config, "free")!;
     const next = advanceComboAfterFailure(config, first, {
       now: 1_000,
-      eligible: target => target.provider === "c",
+      eligible: (target) => target.provider === "c",
     });
     expect(next?.target.provider).toBe("c");
     expect(next?.attempted).toEqual(["a/m1", "c/m3"]);
@@ -367,15 +481,30 @@ describe("deterministic combo selection", () => {
   test("equal-weight RR rotates exactly", () => {
     const config = rrConfig(1, [1, 1, 1]);
     expect(successfulPicks(config, 6)).toEqual([
-      "a/m1", "b/m2", "c/m3", "a/m1", "b/m2", "c/m3",
+      "a/m1",
+      "b/m2",
+      "c/m3",
+      "a/m1",
+      "b/m2",
+      "c/m3",
     ]);
   });
 
   test("smooth weights and sticky successes have a deterministic sequence", () => {
     const config = rrConfig(2, [2, 1]);
     expect(successfulPicks(config, 12)).toEqual([
-      "a/m1", "a/m1", "b/m2", "b/m2", "a/m1", "a/m1",
-      "a/m1", "a/m1", "b/m2", "b/m2", "a/m1", "a/m1",
+      "a/m1",
+      "a/m1",
+      "b/m2",
+      "b/m2",
+      "a/m1",
+      "a/m1",
+      "a/m1",
+      "a/m1",
+      "b/m2",
+      "b/m2",
+      "a/m1",
+      "a/m1",
     ]);
   });
 
@@ -406,9 +535,15 @@ describe("deterministic combo selection", () => {
 
   test("eligibility, exclusions, and state reset are deterministic", () => {
     const config = rrConfig(1, [1, 1]);
-    expect(pickComboTarget(config, "free", { exclude: ["a/m1"] })?.target.provider).toBe("b");
+    expect(
+      pickComboTarget(config, "free", { exclude: ["a/m1"] })?.target.provider,
+    ).toBe("b");
     clearComboSelectionState("free");
-    expect(pickComboTarget(config, "free", { eligible: target => target.provider !== "a" })?.target.provider).toBe("b");
+    expect(
+      pickComboTarget(config, "free", {
+        eligible: (target) => target.provider !== "a",
+      })?.target.provider,
+    ).toBe("b");
     clearComboSelectionState("free");
     expect(pickComboTarget(config, "free")?.target.provider).toBe("a");
   });
@@ -418,8 +553,12 @@ describe("deterministic combo selection", () => {
     config.providers.a!.disabled = true;
     expect(pickComboTarget(config, "free")?.target.provider).toBe("b");
     config.providers.b!.disabled = true;
-    expect(() => tryPickComboModel(config, "combo/free")).toThrow(NoAvailableComboTargetsError);
-    expect(() => routeModel(config, "combo/free")).toThrow(NoAvailableComboTargetsError);
+    expect(() => tryPickComboModel(config, "combo/free")).toThrow(
+      NoAvailableComboTargetsError,
+    );
+    expect(() => routeModel(config, "combo/free")).toThrow(
+      NoAvailableComboTargetsError,
+    );
   });
 
   test("missing members are skipped after unsupported in-memory corruption", () => {
@@ -437,12 +576,20 @@ describe("combo validation and normalization", () => {
     };
     expect(comboAliasIssues("new", "plain-model", combos)).toEqual([]);
     expect(comboAliasIssues("new", "vendor/model", combos)).toEqual([]);
-    expect(comboAliasIssues("new", "combo/model", combos)[0]?.message).toContain("reserved");
-    expect(comboAliasIssues("new", "gpt-5", combos)[0]?.message).toContain("OpenAI native family");
-    expect(comboAliasIssues("new", "deepseek-v4-flash", combos)[0]?.message).toContain("already used");
-    expect(comboAliasIssues("renamed", "deepseek-v4-flash", combos, {
-      excludeComboId: "free",
-    })).toEqual([]);
+    expect(
+      comboAliasIssues("new", "combo/model", combos)[0]?.message,
+    ).toContain("reserved");
+    expect(comboAliasIssues("new", "gpt-5", combos)[0]?.message).toContain(
+      "OpenAI native family",
+    );
+    expect(
+      comboAliasIssues("new", "deepseek-v4-flash", combos)[0]?.message,
+    ).toContain("already used");
+    expect(
+      comboAliasIssues("renamed", "deepseek-v4-flash", combos, {
+        excludeComboId: "free",
+      }),
+    ).toEqual([]);
   });
 
   test("reports every validation row with a stable path and message", () => {
@@ -456,17 +603,50 @@ describe("combo validation and normalization", () => {
       message: string;
     }> = [
       { id: "-bad", raw: VALID_COMBO, path: [], message: "combo id" },
-      { raw: VALID_COMBO, providers: { combo: providers.a! }, path: [], message: 'reserved "combo/" namespace' },
+      {
+        raw: VALID_COMBO,
+        providers: { combo: providers.a! },
+        path: [],
+        message: 'reserved "combo/" namespace',
+      },
       { id: "a", raw: VALID_COMBO, path: [], message: 'combo id "a" collides' },
       { raw: null, path: [], message: "combo must be an object" },
-      { raw: { ...VALID_COMBO, strategy: "random" }, path: ["strategy"], message: "failover" },
-      { raw: { ...VALID_COMBO, stickyLimit: 1.5 }, path: ["stickyLimit"], message: "integer from 1 to 100" },
-      { raw: { ...VALID_COMBO, defaultEffort: "turbo" }, path: ["defaultEffort"], message: "low, medium, high" },
+      {
+        raw: { ...VALID_COMBO, strategy: "random" },
+        path: ["strategy"],
+        message: "failover",
+      },
+      {
+        raw: { ...VALID_COMBO, stickyLimit: 1.5 },
+        path: ["stickyLimit"],
+        message: "integer from 1 to 100",
+      },
+      {
+        raw: { ...VALID_COMBO, defaultEffort: "turbo" },
+        path: ["defaultEffort"],
+        message: "low, medium, high",
+      },
       { raw: { targets: [] }, path: ["targets"], message: "non-empty array" },
-      { raw: { targets: [null] }, path: ["targets", 0], message: "must be an object" },
-      { raw: { targets: [{ provider: " ", model: "m1" }] }, path: ["targets", 0, "provider"], message: "is required" },
-      { raw: { targets: [{ provider: "missing", model: "m1" }] }, path: ["targets", 0, "provider"], message: "not configured" },
-      { raw: { targets: [{ provider: "a", model: " " }] }, path: ["targets", 0, "model"], message: "is required" },
+      {
+        raw: { targets: [null] },
+        path: ["targets", 0],
+        message: "must be an object",
+      },
+      {
+        raw: { targets: [{ provider: " ", model: "m1" }] },
+        path: ["targets", 0, "provider"],
+        message: "is required",
+      },
+      {
+        raw: { targets: [{ provider: "missing", model: "m1" }] },
+        path: ["targets", 0, "provider"],
+        message: "not configured",
+      },
+      {
+        raw: { targets: [{ provider: "a", model: " " }] },
+        path: ["targets", 0, "model"],
+        message: "is required",
+      },
       {
         raw: VALID_COMBO,
         providers: { a: { ...providers.a!, disabled: true } },
@@ -474,9 +654,18 @@ describe("combo validation and normalization", () => {
         path: ["targets"],
         message: "at least one enabled provider",
       },
-      { raw: { targets: [{ provider: "a", model: "m1", weight: 1.5 }] }, path: ["targets", 0, "weight"], message: "integer from 1 to 10000" },
       {
-        raw: { targets: [{ provider: " a ", model: " m1 " }, { provider: "a", model: "m1" }] },
+        raw: { targets: [{ provider: "a", model: "m1", weight: 1.5 }] },
+        path: ["targets", 0, "weight"],
+        message: "integer from 1 to 10000",
+      },
+      {
+        raw: {
+          targets: [
+            { provider: " a ", model: " m1 " },
+            { provider: "a", model: "m1" },
+          ],
+        },
         path: ["targets", 1],
         message: 'duplicate combo target "a/m1"',
       },
@@ -488,7 +677,7 @@ describe("combo validation and normalization", () => {
         row.raw,
         row.providers ?? providers,
         row.options,
-      ).find(candidate => candidate.path.join(".") === row.path.join("."));
+      ).find((candidate) => candidate.path.join(".") === row.path.join("."));
       expect(issue?.path).toEqual(row.path);
       expect(issue?.message).toContain(row.message);
     }
@@ -496,40 +685,83 @@ describe("combo validation and normalization", () => {
 
   test("rejects every non-integer or out-of-range numeric edge without healing", () => {
     const providers = baseConfig().providers;
-    for (const stickyLimit of [0, 1.5, 101, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(comboConfigIssues("free", { ...VALID_COMBO, stickyLimit }, providers)[0]).toMatchObject({
+    for (const stickyLimit of [
+      0,
+      1.5,
+      101,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+    ]) {
+      expect(
+        comboConfigIssues(
+          "free",
+          { ...VALID_COMBO, stickyLimit },
+          providers,
+        )[0],
+      ).toMatchObject({
         path: ["stickyLimit"],
       });
     }
-    for (const weight of [0, 1.5, 10_001, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(comboConfigIssues("free", {
-        targets: [{ provider: "a", model: "m1", weight }],
-      }, providers)[0]).toMatchObject({ path: ["targets", 0, "weight"] });
+    for (const weight of [
+      0,
+      1.5,
+      10_001,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+    ]) {
+      expect(
+        comboConfigIssues(
+          "free",
+          {
+            targets: [{ provider: "a", model: "m1", weight }],
+          },
+          providers,
+        )[0],
+      ).toMatchObject({ path: ["targets", 0, "weight"] });
     }
   });
 
   test("normalizes valid values and returns defensive default efforts", () => {
-    expect(normalizeComboConfig({
-      defaultEffort: "high",
-      targets: [{ provider: " a ", model: " m1 ", weight: 2 }],
-    })).toEqual({
+    expect(
+      normalizeComboConfig({
+        defaultEffort: "high",
+        targets: [{ provider: " a ", model: " m1 ", weight: 2 }],
+      }),
+    ).toEqual({
       strategy: "failover",
       stickyLimit: 1,
       defaultEffort: "high",
       alias: null,
       targets: [{ provider: "a", model: "m1", weight: 2 }],
     });
-    expect(normalizeComboConfig({ targets: [{ provider: "a", model: "m1" }] }).defaultEffort).toBeNull();
+    expect(
+      normalizeComboConfig({ targets: [{ provider: "a", model: "m1" }] })
+        .defaultEffort,
+    ).toBeNull();
     expect(comboDefaultEffort(baseConfig(), "free")).toBeNull();
     const aliased = baseConfig({
       combos: { free: { ...VALID_COMBO, alias: "  deepseek-v4-flash  " } },
     });
     expect(getCombo(aliased, "free")?.alias).toBe("deepseek-v4-flash");
-    expect(comboPublicModelId("free", getCombo(aliased, "free")!)).toBe("deepseek-v4-flash");
-    expect(comboDefaultEffort(baseConfig({
-      combos: { free: { defaultEffort: "xhigh", targets: [{ provider: "a", model: "m1" }] } },
-    }), "free")).toBe("xhigh");
-    const corrupt = baseConfig() as OcxConfig & { combos: Record<string, { defaultEffort: string; targets: [] }> };
+    expect(comboPublicModelId("free", getCombo(aliased, "free")!)).toBe(
+      "deepseek-v4-flash",
+    );
+    expect(
+      comboDefaultEffort(
+        baseConfig({
+          combos: {
+            free: {
+              defaultEffort: "xhigh",
+              targets: [{ provider: "a", model: "m1" }],
+            },
+          },
+        }),
+        "free",
+      ),
+    ).toBe("xhigh");
+    const corrupt = baseConfig() as OcxConfig & {
+      combos: Record<string, { defaultEffort: string; targets: [] }>;
+    };
     corrupt.combos.free!.defaultEffort = "turbo";
     expect(comboDefaultEffort(corrupt, "free")).toBeNull();
   });
@@ -539,9 +771,13 @@ describe("combo validation and normalization", () => {
     for (const id of ["constructor", "toString"]) {
       expect(getCombo(config, id)).toBeUndefined();
       expect(comboDefaultEffort(config, id)).toBeNull();
-      expect(() => tryPickComboModel(config, `combo/${id}`)).toThrow(UnknownComboError);
+      expect(() => tryPickComboModel(config, `combo/${id}`)).toThrow(
+        UnknownComboError,
+      );
     }
-    expect(() => tryPickComboModel(config, "combo/ free ")).toThrow(UnknownComboError);
+    expect(() => tryPickComboModel(config, "combo/ free ")).toThrow(
+      UnknownComboError,
+    );
   });
 
   test("preserves a physical provider named combo while no combos are configured", () => {
@@ -553,16 +789,34 @@ describe("combo validation and normalization", () => {
       },
     };
     expect(preservesPhysicalComboProvider(config)).toBeTrue();
-    expect(preservesPhysicalComboProvider({ ...config, combos: {} })).toBeTrue();
-    expect(preservesPhysicalComboProvider({ providers: {}, combos: {} })).toBeFalse();
-    expect(preservesPhysicalComboProvider({ ...config, combos: { free: VALID_COMBO } })).toBeFalse();
-    const inheritedProviders = Object.create({ combo: config.providers.combo }) as OcxConfig["providers"];
-    expect(preservesPhysicalComboProvider({ providers: inheritedProviders, combos: {} })).toBeFalse();
+    expect(
+      preservesPhysicalComboProvider({ ...config, combos: {} }),
+    ).toBeTrue();
+    expect(
+      preservesPhysicalComboProvider({ providers: {}, combos: {} }),
+    ).toBeFalse();
+    expect(
+      preservesPhysicalComboProvider({
+        ...config,
+        combos: { free: VALID_COMBO },
+      }),
+    ).toBeFalse();
+    const inheritedProviders = Object.create({
+      combo: config.providers.combo,
+    }) as OcxConfig["providers"];
+    expect(
+      preservesPhysicalComboProvider({
+        providers: inheritedProviders,
+        combos: {},
+      }),
+    ).toBeFalse();
     expect(routeModel(config, "combo/model")).toMatchObject({
       providerName: "combo",
       modelId: "model",
     });
-    expect(comboConfigError("free", VALID_COMBO, config.providers)).toContain("reserved");
+    expect(comboConfigError("free", VALID_COMBO, config.providers)).toContain(
+      "reserved",
+    );
   });
 });
 
@@ -577,15 +831,33 @@ describe("persisted combo config parity", () => {
         error: expect.stringContaining("combos must be an object"),
       });
 
-      const rows: Array<{ id: string; combo: unknown; providers?: OcxConfig["providers"] }> = [
+      const rows: Array<{
+        id: string;
+        combo: unknown;
+        providers?: OcxConfig["providers"];
+      }> = [
         { id: "free", combo: { ...VALID_COMBO, strategy: "random" } },
         { id: "free", combo: { ...VALID_COMBO, stickyLimit: 0 } },
         { id: "free", combo: { ...VALID_COMBO, defaultEffort: "turbo" } },
         { id: "free", combo: { targets: [] } },
-        { id: "free", combo: { targets: [{ provider: "missing", model: "m1" }] } },
+        {
+          id: "free",
+          combo: { targets: [{ provider: "missing", model: "m1" }] },
+        },
         { id: "free", combo: { targets: [{ provider: "a", model: " " }] } },
-        { id: "free", combo: { targets: [{ provider: "a", model: "m1", weight: 1.5 }] } },
-        { id: "free", combo: { targets: [{ provider: " a ", model: " m1 " }, { provider: "a", model: "m1" }] } },
+        {
+          id: "free",
+          combo: { targets: [{ provider: "a", model: "m1", weight: 1.5 }] },
+        },
+        {
+          id: "free",
+          combo: {
+            targets: [
+              { provider: " a ", model: " m1 " },
+              { provider: "a", model: "m1" },
+            ],
+          },
+        },
         { id: "free", combo: VALID_COMBO, providers: { combo: providers.a! } },
         { id: "a", combo: VALID_COMBO },
       ];
@@ -635,7 +907,10 @@ describe("persisted combo config parity", () => {
             strategy: "round-robin",
             stickyLimit: 3,
             defaultEffort: "high",
-            targets: [{ provider: "a", model: "m1", weight: 2 }, { provider: "b", model: "m2" }],
+            targets: [
+              { provider: "a", model: "m1", weight: 2 },
+              { provider: "b", model: "m2" },
+            ],
           },
         },
       });
@@ -652,9 +927,11 @@ describe("persisted combo config parity", () => {
       expect(allDisabled.source).toBe("file");
       expect(allDisabled.error).toBeNull();
       expect(allDisabled.config.combos).toEqual(config.combos);
-      expect(comboConfigError("free", config.combos!.free, config.providers, {
-        requireEnabledTarget: true,
-      })).toContain("at least one enabled");
+      expect(
+        comboConfigError("free", config.combos!.free, config.providers, {
+          requireEnabledTarget: true,
+        }),
+      ).toContain("at least one enabled");
     });
   });
 });

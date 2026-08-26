@@ -29,7 +29,11 @@ import {
   clearAnthropicAccountPoolState,
   rotateAnthropicAccountOn429,
 } from "../src/oauth/anthropic-routing";
-import { getAccountSet, saveCredential, setActiveAccount } from "../src/oauth/store";
+import {
+  getAccountSet,
+  saveCredential,
+  setActiveAccount,
+} from "../src/oauth/store";
 import type { OcxConfig, OcxProviderConfig } from "../src/types";
 
 function restoreOpenCodexHome(previous: string | undefined): void {
@@ -42,9 +46,24 @@ function baseConfig(overrides: Partial<OcxConfig> = {}): OcxConfig {
     port: 10100,
     defaultProvider: "a",
     providers: {
-      a: { adapter: "openai-chat", baseUrl: "https://a.example/v1", apiKey: "ka", models: ["m1"] },
-      b: { adapter: "openai-chat", baseUrl: "https://b.example/v1", apiKey: "kb", models: ["m2"] },
-      c: { adapter: "openai-chat", baseUrl: "https://c.example/v1", apiKey: "kc", models: ["m3"] },
+      a: {
+        adapter: "openai-chat",
+        baseUrl: "https://a.example/v1",
+        apiKey: "ka",
+        models: ["m1"],
+      },
+      b: {
+        adapter: "openai-chat",
+        baseUrl: "https://b.example/v1",
+        apiKey: "kb",
+        models: ["m2"],
+      },
+      c: {
+        adapter: "openai-chat",
+        baseUrl: "https://c.example/v1",
+        apiKey: "kc",
+        models: ["m3"],
+      },
     },
     ...overrides,
   };
@@ -52,14 +71,43 @@ function baseConfig(overrides: Partial<OcxConfig> = {}): OcxConfig {
 
 describe("classifyAttempt", () => {
   test("surfaces 499 and context overflows", () => {
-    expect(classifyAttempt({ status: 499, message: "cancelled" })).toBe("surface");
-    expect(classifyAttempt({ status: 400, message: "too long", code: "context_length_exceeded" })).toBe("surface");
+    expect(classifyAttempt({ status: 499, message: "cancelled" })).toBe(
+      "surface",
+    );
+    expect(
+      classifyAttempt({
+        status: 400,
+        message: "too long",
+        code: "context_length_exceeded",
+      }),
+    ).toBe("surface");
   });
 
   test("hops 429, 529, and 5xx", () => {
     expect(classifyAttempt({ status: 429, message: "rate" })).toBe("hop");
     expect(classifyAttempt({ status: 529, message: "overloaded" })).toBe("hop");
-    expect(classifyAttempt({ status: 503, message: "unavailable" })).toBe("hop");
+    expect(classifyAttempt({ status: 503, message: "unavailable" })).toBe(
+      "hop",
+    );
+  });
+
+  test("hops 402 weekly/inference caps and surfaces bare payment-required", () => {
+    expect(
+      classifyAttempt({
+        status: 402,
+        message:
+          "You have reached your weekly limit. The limit resets in 1d 22h.",
+      }),
+    ).toBe("hop");
+    expect(
+      classifyAttempt({
+        status: 402,
+        message: '{"code":"INFERENCE_CAP_ERROR","message":"weekly limit"}',
+      }),
+    ).toBe("hop");
+    expect(classifyAttempt({ status: 402, message: "Payment Required" })).toBe(
+      "surface",
+    );
   });
 });
 
@@ -82,11 +130,18 @@ describe("isAccountPoolHopStatus", () => {
 describe("selectHopChain", () => {
   test("returns the routed target first, then fallback providers", () => {
     const config = baseConfig();
-    config.providers.a!.fallback = [{ provider: "b", model: "m2" }, { provider: "c", model: "m3" }];
+    config.providers.a!.fallback = [
+      { provider: "b", model: "m2" },
+      { provider: "c", model: "m3" },
+    ];
     const chain = selectHopChain(config, { provider: "a", modelId: "m1" });
     expect(chain).not.toBeNull();
     expect(chain!.preservePhysicalIdentity).toBe(true);
-    expect(getCombo(chain!.config, chain!.comboId)!.targets.map(({ provider, model }) => ({ provider, model }))).toEqual([
+    expect(
+      getCombo(chain!.config, chain!.comboId)!.targets.map(
+        ({ provider, model }) => ({ provider, model }),
+      ),
+    ).toEqual([
       { provider: "a", model: "m1" },
       { provider: "b", model: "m2" },
       { provider: "c", model: "m3" },
@@ -95,7 +150,9 @@ describe("selectHopChain", () => {
   });
 
   test("is null when there is no fallback list", () => {
-    expect(selectHopChain(baseConfig(), { provider: "a", modelId: "m1" })).toBeNull();
+    expect(
+      selectHopChain(baseConfig(), { provider: "a", modelId: "m1" }),
+    ).toBeNull();
   });
 
   test("is null when every fallback provider is disabled", () => {
@@ -126,7 +183,11 @@ describe("canHopNativeClaudePierce", () => {
   });
 
   test("is true when the Anthropic account pool is on", () => {
-    expect(canHopNativeClaudePierce(baseConfig({ anthropicAccountPool: { enabled: true } }))).toBe(true);
+    expect(
+      canHopNativeClaudePierce(
+        baseConfig({ anthropicAccountPool: { enabled: true } }),
+      ),
+    ).toBe(true);
   });
 
   test("is true when the Anthropic provider has a hop chain", () => {
@@ -182,20 +243,24 @@ describe("resolveOutcome", () => {
 
   test("surfaces 503 and single-key providers", () => {
     const config = poolConfig();
-    expect(resolveOutcome({
-      config,
-      providerName: "p",
-      routedProvider: config.providers.p!,
-      status: 503,
-    })).toBeNull();
+    expect(
+      resolveOutcome({
+        config,
+        providerName: "p",
+        routedProvider: config.providers.p!,
+        status: 503,
+      }),
+    ).toBeNull();
     const single = poolConfig();
     delete single.providers.p!.apiKeyPool;
-    expect(resolveOutcome({
-      config: single,
-      providerName: "p",
-      routedProvider: single.providers.p!,
-      status: 429,
-    })).toBeNull();
+    expect(
+      resolveOutcome({
+        config: single,
+        providerName: "p",
+        routedProvider: single.providers.p!,
+        status: 429,
+      }),
+    ).toBeNull();
   });
 
   test("hops 429 to the next key and records cooldown", () => {
@@ -256,11 +321,13 @@ describe("resolveOutcome", () => {
 
   test("selectKeyPoolCandidate is a no-op when the live key is eligible", () => {
     const config = poolConfig();
-    expect(selectKeyPoolCandidate({
-      config,
-      providerName: "p",
-      routedProvider: config.providers.p!,
-    })).toEqual({ kind: "live" });
+    expect(
+      selectKeyPoolCandidate({
+        config,
+        providerName: "p",
+        routedProvider: config.providers.p!,
+      }),
+    ).toEqual({ kind: "live" });
   });
 
   test("selectKeyPoolCandidate keeps a resolved env-ref secret on the live key", () => {
@@ -284,11 +351,13 @@ describe("resolveOutcome", () => {
         },
       });
       const routed = { ...config.providers.p!, apiKey: pool[0]!.key };
-      expect(selectKeyPoolCandidate({
-        config,
-        providerName: "p",
-        routedProvider: routed,
-      })).toEqual({ kind: "live" });
+      expect(
+        selectKeyPoolCandidate({
+          config,
+          providerName: "p",
+          routedProvider: routed,
+        }),
+      ).toEqual({ kind: "live" });
       expect(config.providers.p!.apiKey).toBe("$OCX_AVAIL_POOL_KEY_A");
     } finally {
       if (prevA === undefined) delete process.env.OCX_AVAIL_POOL_KEY_A;
@@ -377,7 +446,8 @@ describe("resolveOutcome", () => {
       routedProvider: config.providers.b!,
       status: 429,
       now: 1_000_000,
-      message: 'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly Clinepass limit. The limit resets in 1d 22h"}',
+      message:
+        'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly Clinepass limit. The limit resets in 1d 22h"}',
       save: false,
     });
     expect(next).toBeNull();
@@ -394,7 +464,8 @@ describe("resolveOutcome", () => {
       status: 429,
       now: 1_000_000,
       attemptedKey: pool[0]!.key,
-      message: 'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. The limit resets in 2d"}',
+      message:
+        'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. The limit resets in 2d"}',
       save: false,
     });
     expect(config.providers.p!.disabled).toBeUndefined();
@@ -409,7 +480,8 @@ describe("resolveOutcome", () => {
       baseUrl: "https://other.example/v1",
       apiKey: "ko",
     };
-    const cap = 'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. The limit resets in 2d"}';
+    const cap =
+      'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. The limit resets in 2d"}';
     const now = 1_000_000;
     resolveOutcome({
       config,
@@ -446,14 +518,16 @@ describe("resolveOutcome", () => {
       status: 402,
       now,
       attemptedKey: pool[0]!.key,
-      message: 'Error 402: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. The limit resets in 2d"}',
+      message:
+        'Error 402: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. The limit resets in 2d"}',
       save: false,
     });
     expect(next).toBeNull();
     expect(config.providers.p!.apiKey).toBe(pool[0]!.key);
-    expect(inspectKeyPool(config, "p", now).keys.find(key => key.id === "k1")?.cooldownUntil).toBe(
-      now + 2 * 24 * 60 * 60 * 1000,
-    );
+    expect(
+      inspectKeyPool(config, "p", now).keys.find((key) => key.id === "k1")
+        ?.cooldownUntil,
+    ).toBe(now + 2 * 24 * 60 * 60 * 1000);
     expect(config.providers.p!.disabled).toBeUndefined();
   });
 });
@@ -461,13 +535,15 @@ describe("resolveOutcome", () => {
 describe("recordCapOutcome", () => {
   test("is a no-op for ordinary rate limits", () => {
     const config = baseConfig();
-    expect(recordCapOutcome({
-      config,
-      providerName: "b",
-      status: 429,
-      message: "Too many requests",
-      save: false,
-    })).toBeNull();
+    expect(
+      recordCapOutcome({
+        config,
+        providerName: "b",
+        status: 429,
+        message: "Too many requests",
+        save: false,
+      }),
+    ).toBeNull();
     expect(config.providers.b!.disabled).toBeUndefined();
   });
 
@@ -478,7 +554,10 @@ describe("recordCapOutcome", () => {
       combos: { synth: { targets: [{ provider: "a", model: "m1" }] } },
     };
     const saved: configModule.OcxConfig[] = [];
-    const spy = spyOn(configModule, "saveConfigPreservingClaudeCode").mockImplementation((cfg) => {
+    const spy = spyOn(
+      configModule,
+      "saveConfigPreservingClaudeCode",
+    ).mockImplementation((cfg) => {
       saved.push(cfg);
     });
     try {
@@ -487,7 +566,8 @@ describe("recordCapOutcome", () => {
         persistConfig: live,
         providerName: "b",
         status: 429,
-        message: 'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. The limit resets in 1d 22h"}',
+        message:
+          'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. The limit resets in 1d 22h"}',
       });
       expect(saved).toEqual([live]);
       expect(live.combos).toBeUndefined();
@@ -500,18 +580,27 @@ describe("recordCapOutcome", () => {
     const config = baseConfig();
     const warnings: string[] = [];
     const originalWarn = console.warn;
-    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(" ")); };
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args.map(String).join(" "));
+    };
     try {
-      expect(recordCapOutcome({
-        config,
-        providerName: "b",
-        status: 429,
-        message: 'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. The limit resets in 2d"}',
-        save: () => {
-          throw new Error("disk-secret-path");
-        },
-      })).toBeNull();
-      expect(warnings.some(line => line.includes("Failed to persist provider cap cooldown"))).toBe(true);
+      expect(
+        recordCapOutcome({
+          config,
+          providerName: "b",
+          status: 429,
+          message:
+            'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly limit. The limit resets in 2d"}',
+          save: () => {
+            throw new Error("disk-secret-path");
+          },
+        }),
+      ).toBeNull();
+      expect(
+        warnings.some((line) =>
+          line.includes("Failed to persist provider cap cooldown"),
+        ),
+      ).toBe(true);
       expect(warnings.join("\n")).not.toContain("disk-secret-path");
     } finally {
       console.warn = originalWarn;
@@ -541,7 +630,10 @@ describe("handleResponses records cap-cooldown", () => {
       if (url.includes("api.cline.bot")) {
         return new Response(
           JSON.stringify({
-            error: { code: "INFERENCE_CAP_ERROR", message: "weekly Clinepass limit. The limit resets in 1d 22h" },
+            error: {
+              code: "INFERENCE_CAP_ERROR",
+              message: "weekly Clinepass limit. The limit resets in 1d 22h",
+            },
           }),
           { status: 429, headers: { "content-type": "application/json" } },
         );
@@ -552,7 +644,12 @@ describe("handleResponses records cap-cooldown", () => {
     const config = baseConfig({
       defaultProvider: "a",
       providers: {
-        a: { adapter: "openai-chat", baseUrl: "https://a.example/v1", apiKey: "ka", models: ["m1"] },
+        a: {
+          adapter: "openai-chat",
+          baseUrl: "https://a.example/v1",
+          apiKey: "ka",
+          models: ["m1"],
+        },
         "cline-pass": {
           adapter: "openai-chat",
           baseUrl: "https://api.cline.bot/v1",
@@ -565,14 +662,20 @@ describe("handleResponses records cap-cooldown", () => {
       new Request("http://localhost/v1/responses", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model: "cline-pass/cline-sonnet", input: "hi", stream: false }),
+        body: JSON.stringify({
+          model: "cline-pass/cline-sonnet",
+          input: "hi",
+          stream: false,
+        }),
       }),
       config,
       { model: "", provider: "" },
     );
     expect(response.status).toBe(429);
     expect(config.providers["cline-pass"]?.disabled).toBe(true);
-    expect(config.providerCooldowns?.["cline-pass"]?.reason).toBe("INFERENCE_CAP_ERROR");
+    expect(config.providerCooldowns?.["cline-pass"]?.reason).toBe(
+      "INFERENCE_CAP_ERROR",
+    );
   });
 });
 
@@ -618,8 +721,8 @@ describe("inspectKeyPool", () => {
       save: false,
     });
     const view = inspectKeyPool(config, "p", now + 1);
-    const cooled = view.keys.find(key => key.id === "k1");
-    const live = view.keys.find(key => key.id === "k2");
+    const cooled = view.keys.find((key) => key.id === "k1");
+    const live = view.keys.find((key) => key.id === "k2");
     expect(cooled?.cooldownUntil).toBeGreaterThan(now);
     expect(live?.cooldownUntil).toBeUndefined();
     expect(live?.active).toBe(true);
@@ -651,7 +754,9 @@ describe("inspectKeyPool", () => {
       attemptedKey: "key-alpha-000111222333",
       save: false,
     });
-    const view = inspectAvailability(config, now + 1).providers.find(row => row.name === "p");
+    const view = inspectAvailability(config, now + 1).providers.find(
+      (row) => row.name === "p",
+    );
     expect(view?.keyPoolCount).toBe(2);
     expect(view?.coolingKeyCount).toBe(1);
     expect(view?.hopProvider).toBe("b");
@@ -669,7 +774,9 @@ describe("inspectKeyPool", () => {
         },
       },
     });
-    const view = inspectAvailability(config).providers.find(row => row.name === "a");
+    const view = inspectAvailability(config).providers.find(
+      (row) => row.name === "a",
+    );
     expect(view?.keyPoolCount).toBe(1);
   });
 });
@@ -821,7 +928,10 @@ describe("selectCandidate", () => {
     const result = await selectCandidate({
       config,
       providerName: "p",
-      routedProvider: { ...config.providers.p!, apiKey: "key-alpha-000111222333" },
+      routedProvider: {
+        ...config.providers.p!,
+        apiKey: "key-alpha-000111222333",
+      },
       now: now + 1,
     });
     expect(result.ok).toBe(false);
@@ -854,7 +964,10 @@ describe("selectCandidate", () => {
       const result = await selectCandidate({
         config,
         providerName: "p",
-        routedProvider: { ...config.providers.p!, apiKey: "key-alpha-000111222333" },
+        routedProvider: {
+          ...config.providers.p!,
+          apiKey: "key-alpha-000111222333",
+        },
       });
       expect(result.ok).toBe(true);
       if (!result.ok) return;
@@ -875,9 +988,13 @@ describe("selectCandidate", () => {
     );
     expect(response.status).toBe(429);
     expect(response.headers.get("Retry-After")).toBe("12");
-    const body = await response.json() as { error: { type: string; message: string } };
+    const body = (await response.json()) as {
+      error: { type: string; message: string };
+    };
     expect(body.error.type).toBe("rate_limit_error");
-    expect(body.error.message).toBe("All API keys are temporarily rate-limited");
+    expect(body.error.message).toBe(
+      "All API keys are temporarily rate-limited",
+    );
   });
 });
 
@@ -885,18 +1002,22 @@ describe("oauth pool resolveOutcome", () => {
   test("surfaces statuses that are not 429/529 without touching accounts", async () => {
     const config = baseConfig();
     const routed = config.providers.a!;
-    expect(await resolveAnthropicPoolOutcome({
-      config,
-      status: 400,
-      failedAccountId: "acct-1",
-      routedProvider: routed,
-    })).toBeNull();
-    expect(await resolveGoogleAntigravityPoolOutcome({
-      config,
-      status: 503,
-      failedAccountId: "acct-1",
-      routedProvider: routed,
-    })).toBeNull();
+    expect(
+      await resolveAnthropicPoolOutcome({
+        config,
+        status: 400,
+        failedAccountId: "acct-1",
+        routedProvider: routed,
+      }),
+    ).toBeNull();
+    expect(
+      await resolveGoogleAntigravityPoolOutcome({
+        config,
+        status: 503,
+        failedAccountId: "acct-1",
+        routedProvider: routed,
+      }),
+    ).toBeNull();
   });
 });
 
@@ -938,7 +1059,9 @@ describe("selectOauthPoolCandidate", () => {
       email: "b@example.test",
     });
     const set = getAccountSet("anthropic")!;
-    const a = set.accounts.find(acc => acc.credential.accountId === "uuid-aaaa")!;
+    const a = set.accounts.find(
+      (acc) => acc.credential.accountId === "uuid-aaaa",
+    )!;
     await setActiveAccount("anthropic", a.id);
     return { aId: a.id };
   }
@@ -980,7 +1103,9 @@ describe("selectOauthPoolCandidate", () => {
   test("returns all-cooled when every Anthropic account is cooling", async () => {
     const { aId } = await seedAnthropicPair();
     const config = poolConfig(true);
-    const bId = getAccountSet("anthropic")!.accounts.find(acc => acc.id !== aId)!.id;
+    const bId = getAccountSet("anthropic")!.accounts.find(
+      (acc) => acc.id !== aId,
+    )!.id;
     expect(rotateAnthropicAccountOn429(config, aId, "120")).toBe(bId);
     expect(rotateAnthropicAccountOn429(config, bId, "120")).toBeNull();
     const result = await selectOauthPoolCandidate({
@@ -998,20 +1123,25 @@ describe("selectOauthPoolCandidate", () => {
   test("exhausted OAuth pool is visible to cap recording", async () => {
     const { aId } = await seedAnthropicPair();
     const config = poolConfig(true);
-    const bId = getAccountSet("anthropic")!.accounts.find(acc => acc.id !== aId)!.id;
+    const bId = getAccountSet("anthropic")!.accounts.find(
+      (acc) => acc.id !== aId,
+    )!.id;
     expect(rotateAnthropicAccountOn429(config, aId, "120")).toBe(bId);
     expect(rotateAnthropicAccountOn429(config, bId, "120")).toBeNull();
     expect(isOauthAccountPoolExhausted(config, "anthropic", routed)).toBe(true);
 
-    const cap = "You have reached your weekly limit. The limit resets in 1d 22h.";
-    expect(resolveOutcome({
-      config,
-      providerName: "anthropic",
-      routedProvider: routed,
-      status: 429,
-      message: cap,
-      save: false,
-    })).toBeNull();
+    const cap =
+      "You have reached your weekly limit. The limit resets in 1d 22h.";
+    expect(
+      resolveOutcome({
+        config,
+        providerName: "anthropic",
+        routedProvider: routed,
+        status: 429,
+        message: cap,
+        save: false,
+      }),
+    ).toBeNull();
     expect(config.providerCooldowns?.anthropic).toBeTruthy();
     // Default provider stays selectable; combo/fallback still sees the window.
     expect(config.providers.anthropic?.disabled).toBeUndefined();
@@ -1052,7 +1182,9 @@ describe("handleResponses anthropic oauth pool", () => {
       email: "b@example.test",
     });
     const set = getAccountSet("anthropic")!;
-    const a = set.accounts.find(acc => acc.credential.accountId === "uuid-aaaa")!;
+    const a = set.accounts.find(
+      (acc) => acc.credential.accountId === "uuid-aaaa",
+    )!;
     await setActiveAccount("anthropic", a.id);
 
     globalThis.fetch = (async (input) => {
@@ -1061,9 +1193,18 @@ describe("handleResponses anthropic oauth pool", () => {
         return new Response(
           JSON.stringify({
             type: "error",
-            error: { type: "rate_limit_error", message: "anthropic weekly limit" },
+            error: {
+              type: "rate_limit_error",
+              message: "anthropic weekly limit",
+            },
           }),
-          { status: 429, headers: { "content-type": "application/json", "retry-after": "12" } },
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json",
+              "retry-after": "12",
+            },
+          },
         );
       }
       return previousFetch(input as Request);
@@ -1085,7 +1226,11 @@ describe("handleResponses anthropic oauth pool", () => {
       new Request("http://localhost/v1/responses", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model: "anthropic/claude-sonnet-4-6", input: "hi", stream: false }),
+        body: JSON.stringify({
+          model: "anthropic/claude-sonnet-4-6",
+          input: "hi",
+          stream: false,
+        }),
       }),
       config,
       { model: "", provider: "" },
@@ -1112,7 +1257,9 @@ describe("handleResponses anthropic oauth pool", () => {
       email: "b@example.test",
     });
     const set = getAccountSet("anthropic")!;
-    const a = set.accounts.find(acc => acc.credential.accountId === "uuid-aaaa")!;
+    const a = set.accounts.find(
+      (acc) => acc.credential.accountId === "uuid-aaaa",
+    )!;
     await setActiveAccount("anthropic", a.id);
 
     let messageCalls = 0;
@@ -1128,7 +1275,8 @@ describe("handleResponses anthropic oauth pool", () => {
               type: "error",
               error: {
                 type: "billing_error",
-                message: "You have reached your weekly limit. The limit resets in 1d 22h.",
+                message:
+                  "You have reached your weekly limit. The limit resets in 1d 22h.",
               },
             }),
             { status: 402, headers: { "content-type": "application/json" } },
@@ -1166,7 +1314,11 @@ describe("handleResponses anthropic oauth pool", () => {
       new Request("http://localhost/v1/responses", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model: "anthropic/claude-sonnet-4-6", input: "hi", stream: false }),
+        body: JSON.stringify({
+          model: "anthropic/claude-sonnet-4-6",
+          input: "hi",
+          stream: false,
+        }),
       }),
       config,
       { model: "", provider: "" },
