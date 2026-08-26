@@ -11,6 +11,7 @@ const TEST_DIR = join(import.meta.dir, ".tmp-service-test");
 const previousOpenCodexHome = process.env.OPENCODEX_HOME;
 const previousCodexHome = process.env.CODEX_HOME;
 const previousApiAuthToken = process.env.OPENCODEX_API_AUTH_TOKEN;
+const previousBindHost = process.env.OPENCODEX_BIND_HOST;
 
 afterEach(() => {
   if (previousOpenCodexHome === undefined) delete process.env.OPENCODEX_HOME;
@@ -19,6 +20,8 @@ afterEach(() => {
   else process.env.CODEX_HOME = previousCodexHome;
   if (previousApiAuthToken === undefined) delete process.env.OPENCODEX_API_AUTH_TOKEN;
   else process.env.OPENCODEX_API_AUTH_TOKEN = previousApiAuthToken;
+  if (previousBindHost === undefined) delete process.env.OPENCODEX_BIND_HOST;
+  else process.env.OPENCODEX_BIND_HOST = previousBindHost;
   if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true });
 });
 
@@ -191,6 +194,21 @@ describe("service install auth preflight", () => {
     } as OcxConfig);
 
     expect(() => assertServiceAuthEnvironment()).not.toThrow();
+  });
+
+  test("rejects service install when OPENCODEX_BIND_HOST=0.0.0.0 without a token and unset config.hostname", () => {
+    if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true });
+    mkdirSync(TEST_DIR, { recursive: true });
+    process.env.OPENCODEX_HOME = TEST_DIR;
+    delete process.env.OPENCODEX_API_AUTH_TOKEN;
+    process.env.OPENCODEX_BIND_HOST = "0.0.0.0";
+    saveConfig({
+      port: 10100,
+      providers: { openai: { adapter: "openai-chat", baseUrl: "https://api.example.test/v1" } },
+      defaultProvider: "openai",
+    } as OcxConfig);
+
+    expect(() => assertServiceAuthEnvironment()).toThrow("OPENCODEX_API_AUTH_TOKEN");
   });
 
   test("rejects restore operations from a different CODEX_HOME than service install", () => {

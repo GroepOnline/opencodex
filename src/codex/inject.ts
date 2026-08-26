@@ -20,6 +20,7 @@ import {
   type ManagedSubagentDefaults,
 } from "./subagent-defaults";
 import { isCfAccessTrustedHost } from "../server/cf-access-auth";
+import { isApiAuthRequired } from "../server/auth-cors";
 import type { OcxConfig } from "../types";
 
 // Ownership predicates live in `./injected-marker` so `journal.ts` can reach them
@@ -114,7 +115,7 @@ export function providerBaseHost(hostname: string | undefined): string {
 }
 
 export function shouldInjectApiAuthHeader(config: Pick<OcxConfig, "hostname"> | undefined): boolean {
-  return !isLoopbackHostname(config?.hostname);
+  return isApiAuthRequired((config ?? {}) as OcxConfig);
 }
 
 export function buildProviderTableBlock(port: number, supportsWebsockets = false, includeApiAuthHeader = false, hostname?: string): string {

@@ -398,6 +398,27 @@ describe("injectCodexConfig integration (Design B)", () => {
     expect(config).not.toContain("openai_base_url");
   });
 
+  test("OPENCODEX_BIND_HOST=0.0.0.0 with unset config.hostname injects x-opencodex-api-key into config.toml", () => {
+    const previousBindHost = process.env.OPENCODEX_BIND_HOST;
+    try {
+      process.env.OPENCODEX_BIND_HOST = "0.0.0.0";
+      writeFileSync(join(codexHome, "config.toml"), 'model = "gpt-5.5"\n', "utf8");
+
+      const r = runInject(codexHome, ocxHome, "{}");
+      expect(r.status).toBe(0);
+      expect(JSON.parse(r.stdout).success).toBe(true);
+
+      const config = readFileSync(join(codexHome, "config.toml"), "utf8");
+      expect(config).toContain('model_provider = "opencodex"');
+      expect(config).toContain("[model_providers.opencodex]");
+      expect(config).toContain('x-opencodex-api-key" = "OPENCODEX_API_AUTH_TOKEN"');
+      expect(config).not.toContain("openai_base_url");
+    } finally {
+      if (previousBindHost === undefined) delete process.env.OPENCODEX_BIND_HOST;
+      else process.env.OPENCODEX_BIND_HOST = previousBindHost;
+    }
+  });
+
   test("CRLF config (Windows-edited) stays uniformly CRLF after injection", () => {
     writeFileSync(join(codexHome, "config.toml"), 'model = "gpt-5.5"\r\n\r\n[features]\r\nfast_mode = true\r\n', "utf8");
 
