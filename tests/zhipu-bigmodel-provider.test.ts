@@ -59,8 +59,8 @@ describe("Zhipu BigModel provider", () => {
     expect(entry?.modelInputModalities?.["glm-4.6v"]).toEqual(["text", "image"]);
     expect(entry?.noVisionModels).toBeUndefined();
 
-    // A live-discovery claim we have not seen answer would produce an empty picker at runtime.
-    expect(entry?.liveModels).toBeUndefined();
+    // Static catalog only: we have not verified a live /models response for this host.
+    expect(entry?.liveModels).toBe(false);
     expect(entry?.models).toContain("glm-4.6v");
   });
 
@@ -110,7 +110,7 @@ describe("Zhipu BigModel provider", () => {
       baseUrl: BASE_URL,
       defaultModel: "glm-4.6",
     });
-    expect(KEY_LOGIN_PROVIDERS["zhipu-bigmodel"]).not.toHaveProperty("liveModels");
+    expect(KEY_LOGIN_PROVIDERS["zhipu-bigmodel"]?.liveModels).toBe(false);
     expect(deriveProviderPresets().find(preset => preset.id === "zhipu-bigmodel")).toMatchObject({
       auth: "key",
       defaultModel: "glm-4.6",
