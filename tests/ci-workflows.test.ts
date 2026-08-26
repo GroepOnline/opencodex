@@ -2705,6 +2705,105 @@ describe("GitHub Actions hardening", () => {
     expect(helperSrc).not.toContain(".ocx-translation-state");
   });
 
+  test("container image workflow builds on ubuntu-latest and pushes only gated GHCR digests", async () => {
+    const text = await readText(".github/workflows/container.yml");
+    const workflow = Bun.YAML.parse(text) as {
+      on?: {
+        pull_request?: { branches?: string[] };
+        push?: { branches?: string[]; tags?: string[] };
+        workflow_dispatch?: unknown;
+      };
+      permissions?: Record<string, string>;
+      jobs?: Record<
+        string,
+        {
+          "runs-on"?: string;
+          "timeout-minutes"?: number;
+          permissions?: Record<string, string>;
+          steps?: Array<{
+            name?: string;
+            id?: string;
+            uses?: string;
+            if?: string;
+            with?: Record<string, unknown>;
+            run?: string;
+          }>;
+        }
+      >;
+    };
+
+    expect([...(workflow.on?.pull_request?.branches ?? [])].sort()).toEqual(["dev", "main"]);
+    expect([...(workflow.on?.push?.branches ?? [])]).toEqual(["dev"]);
+    expect(workflow.on?.push?.tags).toEqual(["v*.*.*"]);
+    expect(workflow.on).toHaveProperty("workflow_dispatch");
+    expect(workflow.permissions).toEqual({ contents: "read" });
+
+    const jobs = Object.keys(workflow.jobs ?? {});
+    expect(jobs).toEqual(["image"]);
+    const job = workflow.jobs?.image;
+    expect(job?.["runs-on"]).toBe("ubuntu-latest");
+    expect(job?.["timeout-minutes"]).toBe(20);
+    expect(job?.permissions?.contents).toBe("read");
+    expect(String(job?.permissions?.packages ?? "")).toContain("refs/tags/v");
+    expect(String(job?.permissions?.packages ?? "")).toContain("workflow_dispatch");
+    expect(String(job?.permissions?.packages ?? "")).toContain("refs/heads/main");
+    expect(String(job?.permissions?.packages ?? "")).toContain("'write'");
+    expect(String(job?.permissions?.packages ?? "")).toContain("'none'");
+
+    expect(text).not.toContain("self-hosted");
+    expect(text).not.toContain("chef-control");
+    expect(text).not.toContain("/home/joep");
+    expect(text).not.toContain("deploy.yml");
+    expect(text).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
+    expect(text).not.toMatch(
+      /^\s*-\s+uses:\s+\S+@(?![0-9a-f]{40}(?=[ \t]*(?:#.*)?$))\S+/m,
+    );
+    expect(text).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7");
+    expect(text).toContain("docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0");
+    expect(text).toContain("docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0");
+
+    const steps = job?.steps ?? [];
+    const meta = steps.find(step => step.id === "meta");
+    const login = steps.find(step => step.name === "Log in to GHCR");
+    const build = steps.find(step => step.id === "build");
+    const summary = steps.find(step => step.name === "Record digest");
+    expect(meta).toBeDefined();
+    expect(login).toBeDefined();
+    expect(build).toBeDefined();
+    expect(summary).toBeDefined();
+
+    expect(login!.if).toBe("steps.meta.outputs.push == 'true'");
+    expect(login!.uses).toBe("docker/login-action@dbcb813823bdd20940b903addbd779551569679f");
+    expect(build!.uses).toBe("docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a");
+    expect(build!.with?.push).toBe("${{ steps.meta.outputs.push == 'true' }}");
+    expect(build!.with?.load).toBe("${{ steps.meta.outputs.push != 'true' }}");
+    expect(build!.with?.provenance).toBe(false);
+    expect(build!.with?.sbom).toBe(false);
+    expect(String(build!.with?.["build-args"] ?? "")).toContain("VCS_REF=${{ github.sha }}");
+    expect(String(build!.with?.["build-args"] ?? "")).toContain("VERSION=${{ steps.meta.outputs.version }}");
+
+    expect(meta!.run ?? "").toContain("json.load(open('package.json'))['version']");
+    expect(meta!.run ?? "").not.toContain("${{");
+
+    const match = (meta!.run ?? "").match(/=~ (\^\S+\$) \]\]/);
+    expect(match).not.toBeNull();
+    const tagShape = new RegExp(match![1]!);
+    const shouldPush = (event: string, ref: string) =>
+      (event === "push" && tagShape.test(ref))
+      || (event === "workflow_dispatch" && ref === "refs/heads/main");
+    expect(shouldPush("push", "refs/tags/v1.2.3")).toBe(true);
+    expect(shouldPush("push", "refs/tags/v1.2.3-preview.4")).toBe(true);
+    expect(shouldPush("workflow_dispatch", "refs/heads/main")).toBe(true);
+    expect(shouldPush("push", "refs/heads/dev")).toBe(false);
+    expect(shouldPush("pull_request", "refs/pull/1/merge")).toBe(false);
+    expect(shouldPush("workflow_dispatch", "refs/heads/dev")).toBe(false);
+    expect(shouldPush("push", "refs/tags/v1.2")).toBe(false);
+    expect(shouldPush("push", "refs/tags/vfoo")).toBe(false);
+
+    expect(summary!.run ?? "").toContain("GITHUB_STEP_SUMMARY");
+    expect(summary!.run ?? "").toContain("digest");
+  });
+
   test("React Doctor workflow is SHA-pinned, engine-pinned, gating, and read-only", async () => {
     const workflow = await readText(".github/workflows/react-doctor.yml");
 

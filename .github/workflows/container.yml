@@ -1,0 +1,110 @@
+name: Container image
+
+# Builds the OpenCodex image on GitHub-hosted ubuntu-latest (has Docker).
+# Push to GHCR is tag v*.*.* or workflow_dispatch on main only.
+# Pull requests and push to dev build-and-load. They do not push.
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [dev]
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-image-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: ${{ ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')) && 'write' || 'none' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Resolve build metadata
+        id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REPOSITORY: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          push=false
+          if [[ "$EVENT_NAME" == "push" && "$REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-preview\.[0-9]+)?$ ]]; then
+            push=true
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" && "$REF" == "refs/heads/main" ]]; then
+            push=true
+          fi
+          version="$(python3 -c "import json; print(json.load(open('package.json'))['version'])")"
+          image="ghcr.io/$(printf '%s' "$REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          tags="${image}:${SHA}"
+          if [[ "$REF" == refs/tags/v* ]]; then
+            tags="${tags}"$'\n'"${image}:${REF_NAME}"
+            tags="${tags}"$'\n'"${image}:${version}"
+          fi
+          {
+            echo "push=${push}"
+            echo "version=${version}"
+            echo "image=${image}"
+            echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "tags<<EOF"
+            printf '%s\n' "$tags"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        if: steps.meta.outputs.push == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: Dockerfile
+          push: ${{ steps.meta.outputs.push == 'true' }}
+          load: ${{ steps.meta.outputs.push != 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          provenance: false
+          sbom: false
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ steps.meta.outputs.version }}
+            BUILD_DATE=${{ steps.meta.outputs.build_date }}
+
+      - name: Record digest
+        if: steps.build.outcome == 'success'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_ID: ${{ steps.build.outputs.imageid }}
+          PUSH: ${{ steps.meta.outputs.push }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          IMAGE: ${{ steps.meta.outputs.image }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### OpenCodex image"
+            echo ""
+            echo "- image: \`${IMAGE}\`"
+            echo "- version: \`${VERSION}\`"
+            echo "- push: \`${PUSH}\`"
+            echo "- digest: \`${DIGEST:-not-pushed}\`"
+            echo "- imageid: \`${IMAGE_ID:-none}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
