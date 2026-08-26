@@ -91,6 +91,9 @@ jobs:
         run: |
           npm_version="$(npm --version)"
           echo "npm=${npm_version}"
+          # Pin this binary before bun install. Bun prepends ~/.bun/bin and its
+          # npm shim does not do Trusted Publishing (ENEEDAUTH).
+          echo "NPM_PUBLISH_BIN=$(command -v npm)" >> "$GITHUB_ENV"
           # shellcheck disable=SC2016 # the node script deliberately avoids shell expansion
           node -e '
             const [major, minor] = process.argv[1].split(".").map(Number);
@@ -269,8 +272,13 @@ jobs:
           # publish of a new scope. Trusted Publishing takes over afterwards.
           # FIRST_PUBLISH_NPM_TOKEN marker is asserted by tests/ci-workflows.test.ts.
           NODE_AUTH_TOKEN: ${{ inputs.first-publish == true && secrets.NPM_TOKEN || '' }}
+          # Org secret. OIDC is first; this is the same fallback publish-on-tag.yml
+          # uses when the npm Trusted Publisher is bound to this Release workflow
+          # but setup-node still trips the CLI into classic auth.
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
+          npm_bin="${NPM_PUBLISH_BIN:?npm binary was not pinned before bun install}"
           if [ "$DRY_RUN" = "true" ]; then
             echo "::notice::DRY RUN — building + packing, not publishing"
             npm run prepublishOnly
@@ -282,17 +290,33 @@ jobs:
               echo "::error::first-publish is true but NPM_TOKEN is empty"
               exit 1
             fi
-            npm publish --tag "$NPM_DIST_TAG" --access public
+            "$npm_bin" publish --tag "$NPM_DIST_TAG" --access public
             exit 0
           fi
           # setup-node registry-url writes always-auth + ${_authToken=${NODE_AUTH_TOKEN}}.
           # An empty NODE_AUTH_TOKEN then makes npm send a blank bearer token and
-          # skip Trusted Publishing (ENEEDAUTH on 1.2.2). Drop that userconfig.
+          # skip Trusted Publishing (ENEEDAUTH on 1.2.2). Rewrite that userconfig
+          # to registry-only. Deleting the file leaves NPM_CONFIG_USERCONFIG
+          # pointing at a missing path; npm then skips OIDC the same way.
           unset NODE_AUTH_TOKEN
-          if [ -n "${NPM_CONFIG_USERCONFIG:-}" ] && [ -f "$NPM_CONFIG_USERCONFIG" ]; then
-            rm -f "$NPM_CONFIG_USERCONFIG"
+          if [ -n "${NPM_CONFIG_USERCONFIG:-}" ]; then
+            printf 'registry=https://registry.npmjs.org/\n' > "$NPM_CONFIG_USERCONFIG"
           fi
-          npm publish --tag "$NPM_DIST_TAG" --access public
+          echo "OIDC_ENV=${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
+          echo "npm_bin=${npm_bin}"
+          set +e
+          "$npm_bin" publish --tag "$NPM_DIST_TAG" --access public
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            exit 0
+          fi
+          if [ -z "${NPM_TOKEN:-}" ]; then
+            echo "::error::npm publish failed (code ${code}). Trusted Publisher on npmjs.com must use workflow filename release.yml, not the display name Release. No NPM_TOKEN available for fallback."
+            exit "$code"
+          fi
+          echo "::warning::OIDC publish failed (code $code); retrying with NPM_TOKEN"
+          NODE_AUTH_TOKEN="$NPM_TOKEN" "$npm_bin" publish --tag "$NPM_DIST_TAG" --access public
 
       # Confirm the registry actually has the new version (real publishes only).
       - name: Post-publish registry smoke
