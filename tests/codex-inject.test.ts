@@ -7,6 +7,7 @@ import {
   chooseCatalogPathForInjection,
   dominantEol,
   setRootOpenaiBaseUrl,
+  shouldInjectApiAuthHeader,
   stripInjectedOpenaiBaseUrl,
   stripOpencodexConfig,
   stripRootContextWindowOverrides,
@@ -64,6 +65,21 @@ describe("Codex config injection", () => {
     expect(block).toContain(
       'env_http_headers = { "x-opencodex-api-key" = "OPENCODEX_API_AUTH_TOKEN", "CF-Access-Client-Id" = "CF_ACCESS_CLIENT_ID", "CF-Access-Client-Secret" = "CF_ACCESS_CLIENT_SECRET" }',
     );
+  });
+
+  test("shouldInjectApiAuthHeader follows OPENCODEX_BIND_HOST when config.hostname is unset", () => {
+    const previousBindHost = process.env.OPENCODEX_BIND_HOST;
+    try {
+      process.env.OPENCODEX_BIND_HOST = "0.0.0.0";
+      expect(shouldInjectApiAuthHeader({})).toBe(true);
+      expect(shouldInjectApiAuthHeader(undefined)).toBe(true);
+
+      process.env.OPENCODEX_BIND_HOST = "127.0.0.1";
+      expect(shouldInjectApiAuthHeader({})).toBe(false);
+    } finally {
+      if (previousBindHost === undefined) delete process.env.OPENCODEX_BIND_HOST;
+      else process.env.OPENCODEX_BIND_HOST = previousBindHost;
+    }
   });
 
   test("injected base_url matches the actual bind: literal 127.0.0.1 for loopback/wildcard (Windows resolves localhost to ::1 first)", () => {

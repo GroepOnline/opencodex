@@ -13,6 +13,7 @@ import type { OcxConfig, OcxRateLimitConfig } from "../src/types";
 const previousHome = process.env.OPENCODEX_HOME;
 const previousDataToken = process.env.OPENCODEX_API_AUTH_TOKEN;
 const previousAdminToken = process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
+const previousBindHost = process.env.OPENCODEX_BIND_HOST;
 let testHome = "";
 
 const KEY_A = "ocx_data_admitted-key-a";
@@ -88,6 +89,8 @@ afterEach(() => {
   else process.env.OPENCODEX_API_AUTH_TOKEN = previousDataToken;
   if (previousAdminToken === undefined) delete process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
   else process.env.OPENCODEX_ADMIN_AUTH_TOKEN = previousAdminToken;
+  if (previousBindHost === undefined) delete process.env.OPENCODEX_BIND_HOST;
+  else process.env.OPENCODEX_BIND_HOST = previousBindHost;
   if (testHome) rmSync(testHome, { recursive: true, force: true });
   testHome = "";
 });
@@ -603,6 +606,42 @@ describe("admission control unit boundaries", () => {
     admission.reset();
     expect(admission.snapshot().requests).toEqual([]);
     expect(admission.gate("responses-http", req, requestServer).commit()).toBeNull();
+  });
+
+  test("OPENCODEX_BIND_HOST=0.0.0.0 is not loopback-bound when config hostname is loopback", () => {
+    process.env.OPENCODEX_BIND_HOST = "0.0.0.0";
+    const config = {
+      ...remoteConfig({
+        enabled: true,
+        loopbackBypass: true,
+        surfaces: { "responses-http": { requestsPerMinute: 1, burst: 1 } },
+      }),
+      hostname: "127.0.0.1",
+    };
+    const admission = createServerAdmissionControl(config, initializeManagementAuthState(config));
+    const req = new Request("http://example.test/v1/responses", {
+      headers: { "x-opencodex-api-key": KEY_A },
+    });
+    const unknownAddress = fakeRequestServer(null);
+    expect(admission.gate("responses-http", req, unknownAddress).commit()).toBeNull();
+    expect(admission.gate("responses-http", req, unknownAddress).commit()).not.toBeNull();
+  });
+
+  test("loopback OPENCODEX_BIND_HOST stays loopback-bound when requestIP is unavailable", () => {
+    process.env.OPENCODEX_BIND_HOST = "127.0.0.1";
+    const config = remoteConfig({
+      enabled: true,
+      loopbackBypass: true,
+      surfaces: { "responses-http": { requestsPerMinute: 1, burst: 1 } },
+    });
+    const admission = createServerAdmissionControl(config, initializeManagementAuthState(config));
+    const req = new Request("http://example.test/v1/responses", {
+      headers: { "x-opencodex-api-key": KEY_A },
+    });
+    const unknownAddress = fakeRequestServer(null);
+    for (let i = 0; i < 3; i++) {
+      expect(admission.gate("responses-http", req, unknownAddress).commit()).toBeNull();
+    }
   });
 
   test("loopback bypass keys on the trusted socket address, never on Origin", () => {

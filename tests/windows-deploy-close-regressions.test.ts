@@ -51,10 +51,19 @@ describe("systemd detection tolerates a no-DBUS SSH session (F9)", () => {
 describe("server bind canonicalizes explicit localhost but preserves wildcards (F4 symmetry)", () => {
   const src = read("src/server/index.ts");
   test("literal localhost binds to 127.0.0.1; 0.0.0.0/:: exposure is untouched", () => {
-    expect(src).toContain("const configuredHost = config.hostname?.trim();");
+    expect(src).toContain("const configuredHost = effectiveBindHostname(config);");
     expect(src).toContain('!configuredHost || /^localhost$/i.test(configuredHost) ? "127.0.0.1"');
     expect(src).toContain("hostname: bindHost,");
     // Must not blanket-rewrite the bind host (that would break intentional 0.0.0.0 exposure).
     expect(src).not.toContain('hostname: "127.0.0.1",');
+  });
+  test("OPENCODEX_BIND_HOST resolves at runtime via effectiveBindHostname, not loadConfig mutation", () => {
+    // Functional coverage lives in server-auth / container-image. This locks env-only bind
+    // to effectiveBindHostname so listen/auth/rate-limit share one hostname without persisting it.
+    const authSrc = read("src/server/auth-cors.ts");
+    expect(authSrc).toContain("process.env.OPENCODEX_BIND_HOST?.trim()");
+    expect(src).toContain("const configuredHost = effectiveBindHostname(config);");
+    expect(src).not.toContain("if (configuredHost) config.hostname = bindHost;");
+    expect(read("src/config.ts")).not.toContain("OPENCODEX_BIND_HOST");
   });
 });

@@ -17,6 +17,7 @@ import { isWslRuntime } from "./codex/home";
 import { durableBunPath, durableBunRuntime } from "./lib/bun-runtime";
 import { isProcessAlive, stopProxy } from "./lib/process-control";
 import { serviceApiTokenFilePath } from "./lib/service-secrets";
+import { effectiveBindHostname, isLoopbackHostname } from "./server/auth-cors";
 import { randomUUID } from "node:crypto";
 import {
   ELEVATION_REQUEST_TIMEOUT_MS,
@@ -237,14 +238,9 @@ function plistString(value: string): string {
     .replace(/'/g, "&apos;");
 }
 
-function isLoopbackHostname(hostname: string | undefined): boolean {
-  const normalized = (hostname ?? "127.0.0.1").trim().toLowerCase();
-  return normalized === "" || normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]";
-}
-
 export function assertServiceAuthEnvironment(): void {
   const config = loadConfig();
-  if (isLoopbackHostname(config.hostname)) return;
+  if (isLoopbackHostname(effectiveBindHostname(config))) return;
   if (process.env.OPENCODEX_API_AUTH_TOKEN?.trim()) return;
   throw new Error(
     "OPENCODEX_API_AUTH_TOKEN is required before installing a service for non-loopback hostname. " +

@@ -117,6 +117,7 @@ import {
   corsHeaders,
   managementCorsHeaders,
   hasValidApiAuth,
+  effectiveBindHostname,
   isAllowedRequestOrigin,
   isAllowedManagementOrigin,
   isApiAuthRequired,
@@ -134,6 +135,7 @@ import {
 export {
   assertServerAuthConfig,
   corsHeaders,
+  effectiveBindHostname,
   hasValidApiAuth,
   isApiAuthRequired,
   isLoopbackHostname,
@@ -293,6 +295,12 @@ function attachLiveSidebandUpstream(ws: ServerWebSocket<WsData>): void {
 
 export function startServer(port?: number) {
   const config = runAlibabaRegionStartupMigration(runOpenAiTierStartupMigration(loadConfig()));
+  // Canonicalize an explicit "localhost" bind to IPv4 so it matches the injected base_url (which
+  // resolves localhost→127.0.0.1): on Windows `localhost` resolves ::1-first, but the injected URL
+  // is 127.0.0.1, so binding literal "localhost" would reintroduce the F4 refusal. Wildcards
+  // (0.0.0.0/::) and specific hosts are left untouched so intentional exposure is preserved.
+  const configuredHost = effectiveBindHostname(config);
+  const bindHost = !configuredHost || /^localhost$/i.test(configuredHost) ? "127.0.0.1" : configuredHost;
   // Bind the Codex-account-pool master switch so every resolver sees one source of truth.
   // When false, opencodex runs standalone (no ChatGPT account pool / quota windows / history remap).
   setCodexAccountPoolsEnabled(codexAccountPoolsEnabled(config));
@@ -387,13 +395,6 @@ export function startServer(port?: number) {
 
   const listenPort = port ?? config.port ?? 10100;
   setCorsOrigin(listenPort);
-
-  // Canonicalize an explicit "localhost" bind to IPv4 so it matches the injected base_url (which
-  // resolves localhost→127.0.0.1): on Windows `localhost` resolves ::1-first, but the injected URL
-  // is 127.0.0.1, so binding literal "localhost" would reintroduce the F4 refusal. Wildcards
-  // (0.0.0.0/::) and specific hosts are left untouched so intentional exposure is preserved.
-  const configuredHost = config.hostname?.trim();
-  const bindHost = !configuredHost || /^localhost$/i.test(configuredHost) ? "127.0.0.1" : configuredHost;
 
   // Codex treats empty / non-JSON 503 bodies as "Unknown error" (#452). Keep Retry-After and
   // the server_is_overloaded code so clients can back off, but always return a JSON envelope.

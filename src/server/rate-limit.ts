@@ -15,7 +15,7 @@ import {
   type RateLimitSurface,
 } from "../ratelimit";
 import type { OcxConfig } from "../types";
-import { isLoopbackHostname } from "./auth-cors";
+import { effectiveBindHostname, isLoopbackHostname } from "./auth-cors";
 import { resolveManagementRateLimitPrincipal, type ManagementAuthState } from "./management-auth";
 import { resolveDataPlaneRateLimitPrincipal } from "./rate-limit-auth";
 import type { WsData } from "./ws-bridge";
@@ -165,7 +165,7 @@ function resolveSettings(config: OcxConfig): ResolvedRateLimitSettings | null {
     loopbackBypass: rateLimit.loopbackBypass === true,
     // The actual bound listener is a trust signal the caller cannot forge: when the proxy only
     // listens on loopback, every accepted socket is loopback even if requestIP is unavailable.
-    boundLoopback: isLoopbackHostname(config.hostname),
+    boundLoopback: isLoopbackHostname(effectiveBindHostname(config)),
     policies,
     websocket: {
       perPrincipal: rateLimit.websocket?.perPrincipal ?? DEFAULT_RATE_LIMIT_WEBSOCKET_CONCURRENCY.perPrincipal,

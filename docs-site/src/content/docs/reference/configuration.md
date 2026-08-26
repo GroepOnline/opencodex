@@ -324,6 +324,23 @@ Binding to `0.0.0.0` exposes your proxy — and all configured provider credenti
 network. Only do this on trusted networks, and always set a strong `OPENCODEX_API_AUTH_TOKEN`.
 :::
 
+### Container image
+
+The container image binds `0.0.0.0` by default via the `OPENCODEX_BIND_HOST` environment variable,
+so the published port is reachable without a persisted `config.json`. Because that is a non-loopback
+bind, the same token requirement applies: the proxy refuses to start unless a token is supplied. The
+`deploy/container/compose.example.yml` example wires this through a file-backed Docker secret and
+`OPENCODEX_API_AUTH_TOKEN_FILE`, which `scripts/container-entrypoint.sh` reads into
+`OPENCODEX_API_AUTH_TOKEN` at startup. A bare `docker run` of the image **fails closed** unless you
+provide the token yourself — either mount a token file and set `OPENCODEX_API_AUTH_TOKEN_FILE`, or
+pass `OPENCODEX_API_AUTH_TOKEN` directly.
+
+Under `read_only: true` the only writable paths are the `/var/lib/opencodex` volume (`OPENCODEX_HOME`)
+and the `/tmp` tmpfs. A clean image ships no Codex install, so Codex-config injection is skipped and
+the proxy writes nothing outside those paths. If you mount a real Codex home into the container,
+point `CODEX_HOME` at a **writable** location — the proxy rewrites `config.toml` and the model catalog
+there on startup, and a read-only mount will fail closed.
+
 ### SSH port forwarding
 
 You do not need a non-loopback bind to use a proxy on another machine. Forward the port
