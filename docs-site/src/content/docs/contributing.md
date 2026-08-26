@@ -21,6 +21,17 @@ bun run test         # bun test ./tests/
 `bun run dev` remains an alias for `bun run dev:proxy`. The dashboard dev server is `bun run dev:gui`;
 the packaged dashboard at `GET /` is produced by `bun run build:gui` (`gui/dist`).
 
+## Git hooks
+
+`bun install` runs Husky via the `prepare` script and installs committed hooks from
+`.husky/` (pre-commit and pre-push). If hooks are missing after clone, run `bun run setup:hooks`
+once.
+
+- **Pre-commit:** `lint-staged` (Prettier on staged files), then `typecheck`, then `test`.
+  Skip with `git commit --no-verify`.
+- **Pre-push:** `bun run prepush` (`typecheck`, `lint:gui`, `test`, `privacy:scan`, and
+  `doctor:gui:if-changed` when `gui/` changed). Skip with `git push --no-verify`.
+
 ## Build and test commands
 
 The root package is Bun-native TypeScript; there is no separate server compile step. Use the checked-in
