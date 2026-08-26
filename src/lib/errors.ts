@@ -23,15 +23,10 @@ export function isCyberPolicyMessage(text: string): boolean {
   if (/"code"\s*:\s*"cyber_policy"/.test(lower)) return true;
   if (/\bcode\s*[:=]\s*["']?cyber_policy\b/.test(lower)) return true;
   if (lower.includes("high-risk cybersecurity")) return true;
-  if (
-    lower.includes("high-risk cyber activity") ||
-    lower.includes("high-risk cyber ")
-  )
-    return true;
+  if (lower.includes("high-risk cyber activity") || lower.includes("high-risk cyber ")) return true;
   if (lower.includes("possible cybersecurity risk")) return true;
   if (lower.includes("flagged") && lower.includes("cybersecurity")) return true;
-  if (lower.includes("flagged") && lower.includes("cyber activity"))
-    return true;
+  if (lower.includes("flagged") && lower.includes("cyber activity")) return true;
   return false;
 }
 
@@ -49,14 +44,16 @@ function isSubscriptionGateMessage(text: string): boolean {
 }
 
 function isAuthenticationMessage(text: string): boolean {
-  const accessDeniedWithCredentialCue =
-    (text.includes("access denied") ||
-      text.includes("accessdeniedexception")) &&
-    (text.includes("authentication") ||
-      text.includes("credential") ||
-      text.includes("api key") ||
-      text.includes("token") ||
-      text.includes("signature"));
+  const accessDeniedWithCredentialCue = (
+    text.includes("access denied") ||
+    text.includes("accessdeniedexception")
+  ) && (
+    text.includes("authentication") ||
+    text.includes("credential") ||
+    text.includes("api key") ||
+    text.includes("token") ||
+    text.includes("signature")
+  );
   return (
     text.includes("authentication failed") ||
     text.includes("authentication") ||
@@ -105,11 +102,7 @@ export function isClientClosedMessage(text: string): boolean {
   );
 }
 
-export function classifyError(
-  status: number,
-  type: string,
-  message: string,
-): OcxErrorPayload {
+export function classifyError(status: number, type: string, message: string): OcxErrorPayload {
   const text = message.toLowerCase();
   // Preserve explicit cancel types used by compact/combo JSON errors; unify message-inferred
   // client closes (web-search abort text) onto client_closed_request for /api/logs.
@@ -121,20 +114,12 @@ export function classifyError(
     type === "client_closed_request" ||
     isClientClosedMessage(text)
   ) {
-    return {
-      message,
-      type: "invalid_request_error",
-      code: "client_closed_request",
-    };
+    return { message, type: "invalid_request_error", code: "client_closed_request" };
   }
   // Codex only shows the dedicated cyber UI when error.code === "cyber_policy".
   // Prefer that code (and invalid_request_error) over generic remaps / 502 upstream_server_error.
   if (type === CYBER_POLICY_ERROR_CODE || isCyberPolicyMessage(text)) {
-    return {
-      message,
-      type: "invalid_request_error",
-      code: CYBER_POLICY_ERROR_CODE,
-    };
+    return { message, type: "invalid_request_error", code: CYBER_POLICY_ERROR_CODE };
   }
   if (
     text.includes("context_length_exceeded") ||
@@ -143,21 +128,13 @@ export function classifyError(
     text.includes("maximum context") ||
     text.includes("too many tokens")
   ) {
-    return {
-      message,
-      type: "invalid_request_error",
-      code: "context_length_exceeded",
-    };
+    return { message, type: "invalid_request_error", code: "context_length_exceeded" };
   }
   // "Cursor resource limit exceeded" is emitted only for explicit request-size overflow
   // details (isCursorRequestTooLargeDetail in cursor-errors.ts); quota-style resource
   // exhaustion arrives as "Cursor rate limit exceeded" and falls through to 429 below.
   if (text.includes("cursor resource limit exceeded")) {
-    return {
-      message,
-      type: "invalid_request_error",
-      code: "tool_catalog_too_large",
-    };
+    return { message, type: "invalid_request_error", code: "tool_catalog_too_large" };
   }
   // The Cursor adapter's classified rate-limit prefix is authoritative: its DETAIL may echo
   // quota wording ("... quota exhausted") that would otherwise hit the insufficient_quota
@@ -240,21 +217,13 @@ export function classifyError(
     text.includes("wrong region") ||
     text.includes("invalid region")
   ) {
-    return {
-      message,
-      type: "invalid_request_error",
-      code: "invalid_request_error",
-    };
+    return { message, type: "invalid_request_error", code: "invalid_request_error" };
   }
   if (status >= 500) {
     return { message, type: "server_error", code: "upstream_server_error" };
   }
   if (status === 400 || type === "invalid_request_error") {
-    return {
-      message,
-      type: "invalid_request_error",
-      code: "invalid_request_error",
-    };
+    return { message, type: "invalid_request_error", code: "invalid_request_error" };
   }
   return { message, type, code: type || null };
 }
@@ -268,14 +237,13 @@ export function isRateLimitOrQuotaFailureMessage(message: string): boolean {
   if (!normalized) return false;
   const numericStatus = Number(normalized);
   if (numericStatus === 429 || numericStatus === 402) return true;
-  const statusHint =
-    Number.isInteger(numericStatus) && numericStatus > 0 ? numericStatus : 0;
+  const statusHint = Number.isInteger(numericStatus) && numericStatus > 0 ? numericStatus : 0;
   const classified = classifyError(statusHint, "", normalized);
   if (
-    classified.type === "rate_limit_error" ||
-    classified.code === "rate_limit_exceeded" ||
-    classified.type === "insufficient_quota" ||
-    classified.code === "insufficient_quota"
+    classified.type === "rate_limit_error"
+    || classified.code === "rate_limit_exceeded"
+    || classified.type === "insufficient_quota"
+    || classified.code === "insufficient_quota"
   ) {
     return true;
   }
@@ -284,9 +252,7 @@ export function isRateLimitOrQuotaFailureMessage(message: string): boolean {
 }
 
 /** Best-effort parse of a retry delay embedded in an upstream error message. */
-export function parseRetryAfterFromMessage(
-  message: string,
-): number | undefined {
+export function parseRetryAfterFromMessage(message: string): number | undefined {
   const patterns = [
     /try again in (\d+(?:\.\d+)?)\s*s(?:ec(?:ond)?s?)?/i,
     /retry after (\d+(?:\.\d+)?)\s*s(?:ec(?:ond)?s?)?/i,
@@ -317,63 +283,54 @@ export function inferHttpStatusFromAdapterMessage(message: string): number {
     lower.includes("rate limit") ||
     lower.includes("too many requests") ||
     lower.includes("throttling")
-  )
-    return 429;
+  ) return 429;
   // Strong authentication signals win when a message contains mixed auth and
   // subscription/permission wording.
   if (isAuthenticationMessage(lower)) return 401;
-  if (isSubscriptionGateMessage(lower) || isPermissionMessage(lower))
-    return 403;
+  if (isSubscriptionGateMessage(lower) || isPermissionMessage(lower)) return 403;
   if (
     lower.includes("unavailable") ||
     lower.includes("overloaded") ||
     lower.includes("temporarily") ||
     lower.includes("server is busy")
-  )
-    return 503;
+  ) return 503;
   if (
     lower.includes("invalid") ||
     lower.includes("not found") ||
     lower.includes("unsupported") ||
     lower.includes("malformed") ||
     lower.includes("unimplemented")
-  )
-    return 400;
+  ) return 400;
   if (
     lower.includes("timed out") ||
     lower.includes("timeout") ||
     lower.includes("etimedout") ||
     lower.includes("deadline")
-  )
-    return 504;
+  ) return 504;
   return 502;
 }
 
 /** Map an adapter terminal error message to HTTP status + classified Codex error payload. */
-export function adapterFailureFromMessage(message: string): {
-  httpStatus: number;
-  error: OcxErrorPayload;
-} {
+export function adapterFailureFromMessage(message: string): { httpStatus: number; error: OcxErrorPayload } {
   const httpStatus = inferHttpStatusFromAdapterMessage(message);
   let finalMessage = message;
   const retryAfterSeconds = parseRetryAfterFromMessage(message);
   if (retryAfterSeconds && !/please try again in /i.test(message)) {
     finalMessage = `${message} Please try again in ${retryAfterSeconds}s.`;
   }
-  const errorType =
-    httpStatus === 499
-      ? "client_closed_request"
-      : httpStatus === 429
-        ? "rate_limit_error"
-        : httpStatus === 401
-          ? "authentication_error"
-          : httpStatus === 403
-            ? "permission_error"
-            : httpStatus === 503 || httpStatus === 504
-              ? "server_error"
-              : httpStatus === 400
-                ? "invalid_request_error"
-                : "upstream_error";
+  const errorType = httpStatus === 499
+    ? "client_closed_request"
+    : httpStatus === 429
+      ? "rate_limit_error"
+      : httpStatus === 401
+        ? "authentication_error"
+        : httpStatus === 403
+          ? "permission_error"
+          : httpStatus === 503 || httpStatus === 504
+            ? "server_error"
+            : httpStatus === 400
+              ? "invalid_request_error"
+              : "upstream_error";
   return {
     httpStatus,
     error: classifyError(httpStatus, errorType, finalMessage),
@@ -381,44 +338,25 @@ export function adapterFailureFromMessage(message: string): {
 }
 
 /** Map a terminal Responses error object to the HTTP status we record in /api/logs. */
-export function httpStatusFromTerminalError(
-  error:
-    | {
-        type?: string;
-        code?: string | null;
-        message?: string;
-      }
-    | undefined,
-): number {
+export function httpStatusFromTerminalError(error: {
+  type?: string;
+  code?: string | null;
+  message?: string;
+} | undefined): number {
   if (!error) return 502;
-  if (
-    error.code === "client_closed_request" ||
-    error.code === "client_cancelled"
-  )
-    return 499;
-  if (
-    isCyberPolicyCode(error.code) ||
-    (error.message ? isCyberPolicyMessage(error.message) : false)
-  ) {
+  if (error.code === "client_closed_request" || error.code === "client_cancelled") return 499;
+  if (isCyberPolicyCode(error.code) || (error.message ? isCyberPolicyMessage(error.message) : false)) {
     return 400;
   }
-  if (error.type === "rate_limit_error" || error.code === "rate_limit_exceeded")
-    return 429;
-  if (error.type === "authentication_error" || error.code === "invalid_api_key")
-    return 401;
+  if (error.type === "rate_limit_error" || error.code === "rate_limit_exceeded") return 429;
+  if (error.type === "authentication_error" || error.code === "invalid_api_key") return 401;
   if (
     error.type === "permission_error" ||
     error.code === "permission_denied" ||
     error.code === "subscription_required"
-  )
-    return 403;
-  if (
-    error.type === "insufficient_quota" ||
-    error.code === "insufficient_quota"
-  )
-    return 429;
-  if (error.type === "server_error" && error.code === "server_is_overloaded")
-    return 503;
+  ) return 403;
+  if (error.type === "insufficient_quota" || error.code === "insufficient_quota") return 429;
+  if (error.type === "server_error" && error.code === "server_is_overloaded") return 503;
   // Client-closed messages often arrive as invalid_request_error after classifyError; check message
   // before treating every invalid_request_error as HTTP 400.
   const message = error.message ?? "";
