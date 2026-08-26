@@ -431,7 +431,7 @@ export default function ProviderModels({
             <button
               type="button"
               className="btn btn-ghost btn-sm text-caption"
-              disabled={controlsBusy || allOn || models.length === 0}
+              disabled={controlsBusy || allOn || models.length === 0 || item.disabled === true}
               onClick={() => { void bulkToggle(true); }}
             >
               {t("models.allOn")}
@@ -439,7 +439,7 @@ export default function ProviderModels({
             <button
               type="button"
               className="btn btn-ghost btn-sm text-caption"
-              disabled={controlsBusy || allOff || models.length === 0}
+              disabled={controlsBusy || allOff || models.length === 0 || item.disabled === true}
               onClick={() => { void bulkToggle(false); }}
             >
               {t("models.allOff")}
