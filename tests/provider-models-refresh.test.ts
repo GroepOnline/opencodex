@@ -163,6 +163,21 @@ describe("POST /api/providers/models/refresh", () => {
     expect(String(body.error)).toContain("503");
   });
 
+  test("overlapping refresh POSTs for one provider run serially", async () => {
+    let activeFetches = 0;
+    let maxConcurrentFetches = 0;
+    globalThis.fetch = (async () => {
+      activeFetches += 1;
+      maxConcurrentFetches = Math.max(maxConcurrentFetches, activeFetches);
+      await new Promise(resolve => setTimeout(resolve, 40));
+      activeFetches -= 1;
+      return new Response(JSON.stringify({ data: [{ id: "serial" }] }), { status: 200 });
+    }) as typeof fetch;
+    const config = baseConfig({ live: liveChat() });
+    await Promise.all([refresh(config, "live"), refresh(config, "live")]);
+    expect(maxConcurrentFetches).toBe(1);
+  });
+
   test("static catalog providers do not hit upstream", async () => {
     let fetches = 0;
     globalThis.fetch = (async () => {
