@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconRefresh } from "../icons";
 import { type TFn, useI18n } from "../i18n/shared";
 import { readSessionListCache, writeSessionListCache } from "../session-list-cache";
+import MemoryObservabilityCard from "../components/MemoryObservabilityCard";
 import { EmptyState } from "../ui";
 import {
   StartupDetailsSection,
@@ -315,6 +316,7 @@ export default function Startup({ apiBase }: { apiBase: string }) {
             />
           )}
           <StartupRecoverySection data={data} copied={copied} onCopy={(command) => { void copyCommand(command); }} />
+          <MemoryObservabilityCard apiBase={apiBase} />
         </>
       ) : null}
     </>

@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import type { TFn } from "../i18n/shared";
 import { readJsonIfOk, readJsonOrThrow } from "../fetch-json";
 import { writeSessionListCache } from "../session-list-cache";
-import type { AvailabilityProviderView, OAuthStatus, ProviderQuotaReport, ProvidersConfig } from "./providers-shared";
+import type { AvailabilityProviderView, OAuthStatus, ProvidersConfig } from "./providers-shared";
 
 /** Live routing is optional: a down /api/availability must not block /api/config. */
 export async function readAvailabilityProviders(
@@ -24,7 +24,6 @@ export function useProvidersFetch({
   setConfig,
   setOauthProviders,
   setOauthStatus,
-  setQuotaReports,
   setAvailability,
   notify,
   configCacheKey,
@@ -34,7 +33,6 @@ export function useProvidersFetch({
   setConfig: React.Dispatch<React.SetStateAction<ProvidersConfig | null>>;
   setOauthProviders: React.Dispatch<React.SetStateAction<string[]>>;
   setOauthStatus: React.Dispatch<React.SetStateAction<Record<string, OAuthStatus>>>;
-  setQuotaReports: React.Dispatch<React.SetStateAction<Record<string, ProviderQuotaReport>>>;
   setAvailability?: React.Dispatch<React.SetStateAction<AvailabilityProviderView[]>>;
   notify: (msg: string, ok: boolean) => void;
   /** Session seed key for instant Providers shell paint (no secrets — hasApiKey flags only). */
@@ -77,20 +75,5 @@ export function useProvidersFetch({
     } catch { /* ignore */ }
   }, [apiBase, setOauthProviders, setOauthStatus]);
 
-  const fetchProviderQuotas = useCallback(async (refresh = false) => {
-    try {
-      const res = await fetch(`${apiBase}/api/provider-quotas${refresh ? "?refresh=1" : ""}`);
-      const data = await readJsonIfOk<{ reports?: ProviderQuotaReport[] }>(res);
-      if (!data) return;
-      setQuotaReports(prev => {
-        const next = { ...prev };
-        for (const report of data.reports ?? []) {
-          if (report?.provider) next[report.provider] = report;
-        }
-        return next;
-      });
-    } catch { /* keep last-good */ }
-  }, [apiBase, setQuotaReports]);
-
-  return { fetchConfig, fetchOauth, fetchProviderQuotas };
+  return { fetchConfig, fetchOauth };
 }

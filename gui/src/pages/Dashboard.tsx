@@ -6,6 +6,7 @@ import { formatUptime } from "../formatUptime";
 import { TrafficRowCells } from "../traffic-row";
 import { requestsTodayCount, type TrafficLogEntry } from "../traffic-shared";
 import { IconCheck, IconAlert } from "../icons";
+import { Notice } from "../ui";
 
 interface Healthz {
   status: string;
@@ -84,6 +85,8 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
 
   const [summary, setSummary] = useState<UsageSummary | null>(null);
   const [logs, setLogs] = useState<BonEntry[]>([]);
+  const [usageFailed, setUsageFailed] = useState(false);
+  const [logsFailed, setLogsFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -95,13 +98,28 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
         ]);
         if (usageRes.ok) {
           const data = (await usageRes.json()) as UsageSummary;
-          if (!cancelled) setSummary(data);
+          if (!cancelled) {
+            setSummary(data);
+            setUsageFailed(false);
+          }
+        } else if (!cancelled) {
+          setUsageFailed(true);
         }
         if (logsRes.ok) {
           const data = (await logsRes.json()) as BonEntry[];
-          if (!cancelled) setLogs(Array.isArray(data) ? data.toSorted((a, b) => b.timestamp - a.timestamp) : []);
+          if (!cancelled) {
+            setLogs(Array.isArray(data) ? data.toSorted((a, b) => b.timestamp - a.timestamp) : []);
+            setLogsFailed(false);
+          }
+        } else if (!cancelled) {
+          setLogsFailed(true);
         }
-      } catch { /* keep last-good */ }
+      } catch {
+        if (!cancelled) {
+          setUsageFailed(true);
+          setLogsFailed(true);
+        }
+      }
     };
     void load();
     const iv = setInterval(() => void load(), 30_000);
@@ -139,6 +157,8 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
       <div className="page-head">
         <h2>{t("nav.dashboard")}</h2>
       </div>
+      {usageFailed && <Notice tone="err">{t("usage.loadError")}</Notice>}
+      {logsFailed && <Notice tone="err">{t("vk.loadFailed")}</Notice>}
 
       {/* Health strip */}
       <div className="pws-dashboard-stats pws-dashboard-stats--fit" role="group" aria-label={t("dash.healthAria")}>

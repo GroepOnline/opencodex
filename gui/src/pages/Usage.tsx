@@ -659,11 +659,15 @@ export default function Usage({ apiBase }: { apiBase: string }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    const timeout = window.setTimeout(() => {
-      void fetchUsage(range, surface, controller.signal);
-    }, 0);
+    const run = () => { void fetchUsage(range, surface, controller.signal); };
+    const timeout = window.setTimeout(run, 0);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      run();
+    }, 30_000);
     return () => {
       window.clearTimeout(timeout);
+      window.clearInterval(interval);
       // Invalidate before abort so a superseded request's finally cannot clear
       // loading in the gap before the deferred replacement increments generation.
       loadGenerationRef.current += 1;
