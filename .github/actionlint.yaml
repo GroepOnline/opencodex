@@ -2,3 +2,11 @@ self-hosted-runner:
   labels:
     - deploy
     - opencodex
+
+# release.yml intentionally writes a literal ${NODE_AUTH_TOKEN} placeholder
+# into npmrc for setup-node/npm token fallback. Shell expansion there would be
+# a functional bug, so keep this SC2016 exception scoped to that workflow only.
+paths:
+  .github/workflows/release.yml:
+    ignore:
+      - 'shellcheck reported issue in this script: SC2016:.+'
