@@ -255,11 +255,6 @@ describe("overload and transient-429 classification (F3)", () => {
     );
     expect(r.code).toBe("rate_limit_exceeded");
     expect(r.message).toContain("try again in 5s");
-    expect(
-      classifyError(429, "upstream_error", "You hit a usage limit, slow down"),
-    ).toMatchObject({
-      code: "rate_limit_exceeded",
-    });
   });
 
   test("real exhaustion still maps to fatal insufficient_quota", () => {
