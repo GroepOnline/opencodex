@@ -95,9 +95,9 @@ jobs:
             prev_image="$(grep -E '^OPENCODEX_IMAGE=' "$COMPOSE_ENV" | head -n1 | cut -d= -f2- || true)"
           fi
           if [ -z "$prev_image" ]; then
-            running_id="$(docker ps --filter 'name=opencodex' --format '{{.ID}}' 2>/dev/null | head -n1 || true)"
+            running_id="$(sudo docker ps --filter 'name=opencodex' --format '{{.ID}}' 2>/dev/null | head -n1 || true)"
             if [ -n "$running_id" ]; then
-              prev_image="$(docker inspect --format='{{index .RepoDigests 0}}' "$running_id" 2>/dev/null || true)"
+              prev_image="$(sudo docker inspect --format='{{index .RepoDigests 0}}' "$running_id" 2>/dev/null || true)"
             fi
           fi
           bun_runtime=false
@@ -139,23 +139,30 @@ jobs:
           tag_sha="${{ steps.verify.outputs.tag_sha }}"
           deadline=$((SECONDS + 900))
           while (( SECONDS < deadline )); do
-            if gh run list --workflow container.yml --commit "$tag_sha" --status success --limit 1 --json url --jq '.[0].url // ""' | grep -q .; then
-              echo "container.yml publish succeeded for ${tag_sha}"
-              exit 0
-            fi
-            echo "waiting for container.yml publish on ${tag_sha}..."
+            ids="$(gh run list --workflow container.yml --commit "$tag_sha" --limit 20 --json databaseId --jq '.[].databaseId')"
+            for id in $ids; do
+              pub="$(gh run view "$id" --json jobs --jq '[.jobs[] | select(.name=="publish") | .conclusion] | .[0] // "none"')"
+              if [ "$pub" = "success" ]; then
+                echo "container.yml publish job succeeded on run ${id} for ${tag_sha}"
+                exit 0
+              fi
+            done
+            echo "waiting for container.yml publish job on ${tag_sha}..."
             sleep 15
           done
-          echo "::error::no successful container.yml publish for ${tag_sha} within 15m"
+          echo "::error::no successful container.yml publish job for ${tag_sha} within 15m"
           gh run list --workflow container.yml --commit "$tag_sha" --limit 5 || true
           exit 1
 
+      # chef on az-01 is not in the docker group; login-action talks to the
+      # unprivileged socket and cannot pull. Pipe the token to sudo docker.
       - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | sudo docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
       - name: Resolve immutable image digest
         id: image
@@ -166,8 +173,8 @@ jobs:
           set -euo pipefail
           image="ghcr.io/$(printf '%s' "$REPOSITORY" | tr '[:upper:]' '[:lower:]')"
           ref="${image}:${TAG_SHA}"
-          docker pull "$ref"
-          digest_ref="$(docker inspect --format='{{index .RepoDigests 0}}' "$ref")"
+          sudo docker pull "$ref"
+          digest_ref="$(sudo docker inspect --format='{{index .RepoDigests 0}}' "$ref")"
           if [[ ! "$digest_ref" =~ @sha256:[0-9a-f]{64}$ ]]; then
             echo "::error::could not resolve immutable digest for ${ref}"
             exit 1
@@ -182,7 +189,7 @@ jobs:
           PINNED_IMAGE: ${{ steps.image.outputs.ref }}
         run: |
           set -euo pipefail
-          token_file="${OPENCODEX_API_TOKEN_FILE:-/etc/chef/opencodex/api-token}"
+          token_file="${OPENCODEX_API_TOKEN_FILE:-/etc/chef/opencodex/service-api-token}"
           if [ ! -f "$token_file" ]; then
             echo "::error::runtime API token file missing at ${token_file} (set OPENCODEX_API_TOKEN_FILE on the host)"
             exit 1
@@ -244,7 +251,7 @@ jobs:
           set -euo pipefail
           prev_image="${{ steps.prev.outputs.image }}"
           if [ -n "$prev_image" ]; then
-            token_file="${OPENCODEX_API_TOKEN_FILE:-/etc/chef/opencodex/api-token}"
+            token_file="${OPENCODEX_API_TOKEN_FILE:-/etc/chef/opencodex/service-api-token}"
             {
               printf 'OPENCODEX_IMAGE=%s\n' "$prev_image"
               printf 'OPENCODEX_STATE_DIR=%s\n' "$STATE_DIR"

@@ -2177,11 +2177,14 @@ describe("GitHub Actions hardening", () => {
   test("az-01 deploy waits for GHCR publish and pins an immutable digest (no host bun build)", async () => {
     const workflow = await readText(".github/workflows/deploy.yml");
     expect(workflow).toContain("Wait for GHCR publish (container.yml)");
-    expect(workflow).toContain('gh run list --workflow container.yml --commit "$tag_sha" --status success');
+    expect(workflow).toContain('select(.name=="publish")');
+    expect(workflow).not.toContain("--status success");
     expect(workflow).not.toContain("gh run watch");
-    expect(workflow).toContain("docker/login-action@dbcb813823bdd20940b903addbd779551569679f");
-    expect(workflow).toContain("docker pull");
-    expect(workflow).toContain("docker inspect --format='{{index .RepoDigests 0}}'");
+    expect(workflow).not.toContain("docker/login-action@");
+    expect(workflow).toContain("sudo docker login ghcr.io");
+    expect(workflow).toContain("sudo docker pull");
+    expect(workflow).toContain("sudo docker inspect --format='{{index .RepoDigests 0}}'");
+    expect(workflow).toContain("/etc/chef/opencodex/service-api-token");
     expect(workflow).toContain("OPENCODEX_IMAGE=");
     expect(workflow).toContain("@sha256:");
     expect(workflow).not.toContain("bun run build:gui");
@@ -2297,7 +2300,8 @@ describe("GitHub Actions hardening", () => {
     expect(workflow.jobs?.deploy?.env?.COMPOSE_DIR).toBe("/opt/chef/deploy/opencodex");
 
     expect(text).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");
-    expect(text).toContain("docker/login-action@dbcb813823bdd20940b903addbd779551569679f");
+    expect(text).toContain("sudo docker login ghcr.io");
+    expect(text).not.toContain("docker/login-action@");
     expect(text).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
   });
 
