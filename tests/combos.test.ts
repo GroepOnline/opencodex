@@ -308,6 +308,8 @@ describe("combo failure policy and advancement", () => {
     expect(comboFailureDecision(409, "conflict")).toBe("stop");
     expect(comboFailureDecision(499, "client cancelled")).toBe("stop");
     expect(comboFailureDecision(422, "invalid_api_key")).toBe("hop");
+    expect(comboFailureDecision(402, "You have reached your weekly limit. The limit resets in 1d 22h.")).toBe("hop");
+    expect(comboFailureDecision(402, "Payment Required")).toBe("stop");
   });
 
   test("failure clears the active sticky target without adding a success", () => {

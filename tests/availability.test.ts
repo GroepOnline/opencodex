@@ -61,6 +61,18 @@ describe("classifyAttempt", () => {
     expect(classifyAttempt({ status: 529, message: "overloaded" })).toBe("hop");
     expect(classifyAttempt({ status: 503, message: "unavailable" })).toBe("hop");
   });
+
+  test("hops 402 weekly/inference caps and surfaces bare payment-required", () => {
+    expect(classifyAttempt({
+      status: 402,
+      message: "You have reached your weekly limit. The limit resets in 1d 22h.",
+    })).toBe("hop");
+    expect(classifyAttempt({
+      status: 402,
+      message: '{"code":"INFERENCE_CAP_ERROR","message":"weekly limit"}',
+    })).toBe("hop");
+    expect(classifyAttempt({ status: 402, message: "Payment Required" })).toBe("surface");
+  });
 });
 
 describe("isAccountPoolHopStatus", () => {

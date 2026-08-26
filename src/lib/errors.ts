@@ -148,7 +148,14 @@ export function classifyError(status: number, type: string, message: string): Oc
     text.includes("quota exhausted") ||
     text.includes("account quota exceeded") ||
     text.includes("monthly quota exceeded") ||
-    text.includes("daily quota exceeded")
+    text.includes("daily quota exceeded") ||
+    // Weekly/inference-cap cues already used by classifyShared + isHardCapMessage.
+    // Bare "usage limit" stays out: F3 keeps those 429s as rate_limit_exceeded.
+    text.includes("weekly limit") ||
+    text.includes("weekly cap") ||
+    text.includes("inference_cap") ||
+    text.includes("package has expired") ||
+    text.includes("out of usage")
   ) {
     return { message, type: "insufficient_quota", code: "insufficient_quota" };
   }

@@ -42,6 +42,18 @@ describe("error fidelity", () => {
       type: "insufficient_quota",
       code: "insufficient_quota",
     });
+    expect(classifyError(402, "upstream_error", "You have reached your weekly limit. The limit resets in 1d 22h.")).toMatchObject({
+      type: "insufficient_quota",
+      code: "insufficient_quota",
+    });
+    expect(classifyError(402, "upstream_error", '{"code":"INFERENCE_CAP_ERROR"}')).toMatchObject({
+      type: "insufficient_quota",
+      code: "insufficient_quota",
+    });
+    expect(classifyError(402, "upstream_error", "Payment Required")).toMatchObject({
+      type: "upstream_error",
+      code: "upstream_error",
+    });
     expect(classifyError(403, "origin_rejected", "WebSocket upgrade blocked: non-local Origin")).toMatchObject({
       type: "invalid_request_error",
       code: "origin_rejected",
