@@ -117,6 +117,7 @@ import {
   corsHeaders,
   managementCorsHeaders,
   hasValidApiAuth,
+  effectiveBindHostname,
   isAllowedRequestOrigin,
   isAllowedManagementOrigin,
   isApiAuthRequired,
@@ -299,7 +300,7 @@ export function startServer(port?: number) {
   // OPENCODEX_BIND_HOST is already on config.hostname from loadConfig; write the canonical
   // bind back onto the same field so auth, rate-limit boundLoopback, listen, and runtime-port
   // share one hostname.
-  const configuredHost = config.hostname?.trim();
+  const configuredHost = effectiveBindHostname(config);
   const bindHost = !configuredHost || /^localhost$/i.test(configuredHost) ? "127.0.0.1" : configuredHost;
   if (configuredHost) config.hostname = bindHost;
   // Bind the Codex-account-pool master switch so every resolver sees one source of truth.

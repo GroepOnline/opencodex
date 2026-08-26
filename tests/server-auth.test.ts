@@ -366,6 +366,21 @@ describe("server local API auth", () => {
     expect(() => assertServerAuthConfig(loaded)).not.toThrow();
   });
 
+  test("OPENCODEX_BIND_HOST non-loopback override requires auth even with loopback config", () => {
+    process.env.OPENCODEX_BIND_HOST = "0.0.0.0";
+    delete process.env.OPENCODEX_API_AUTH_TOKEN;
+
+    expect(isApiAuthRequired(config("127.0.0.1"))).toBe(true);
+    expect(() => assertServerAuthConfig(config("127.0.0.1"))).toThrow("OPENCODEX_API_AUTH_TOKEN");
+
+    process.env.OPENCODEX_API_AUTH_TOKEN = "container-secret";
+    expect(() => assertServerAuthConfig(config("127.0.0.1"))).not.toThrow();
+    expect(hasValidApiAuth(new Request("http://localhost/api/config"), config("127.0.0.1"))).toBe(false);
+    expect(hasValidApiAuth(new Request("http://localhost/api/config", {
+      headers: { "x-opencodex-api-key": "container-secret" },
+    }), config("127.0.0.1"))).toBe(true);
+  });
+
   test("auth header must match env token when non-loopback auth is required", () => {
     process.env.OPENCODEX_API_AUTH_TOKEN = "local-secret";
     const cfg = config("0.0.0.0");
