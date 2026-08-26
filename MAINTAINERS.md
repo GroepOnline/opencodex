@@ -20,7 +20,10 @@ see [The retired `dev2-go` line](#the-retired-dev2-go-line).
 ## Review and merge policy
 
 - Pull requests target `dev`. It is the only integration line, and promotion to
-  `main` happens only from `dev`. The target-branch check accepts `dev` alone.
+  `main` happens only from `dev`. The target-branch check accepts `dev` as the
+  integration base. The only exception is a same-repository maintainer
+  promotion from `dev` onto `main`; a fork or feature head targeting `main`
+  stays `wrong_base`.
 - The **`enforce-target`** CI check rejects pull requests whose head
   ancestry sits on the **`main`** tip while far behind **`dev`**, and rejects
   empty, thin, or malformed descriptions; authors with repository push

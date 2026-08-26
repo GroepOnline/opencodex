@@ -44,7 +44,14 @@ export type PullRequestState = {
   title?: string;
   body?: string;
   draft?: boolean;
-  base?: { ref: string };
+  base?: {
+    ref: string;
+    repo?: { id?: number; name?: string; full_name?: string; owner?: { login?: string } };
+  };
+  head?: {
+    ref: string;
+    repo?: { id?: number; name?: string; full_name?: string; owner?: { login?: string } };
+  };
   user?: { login: string };
 };
 
@@ -133,13 +140,23 @@ const DEFAULT_PR = {
     ref: "dev",
     sha: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
     label: "GroepOnline:dev",
-    repo: { name: "opencodex", owner: { login: "GroepOnline" } },
+    repo: {
+      id: 1001,
+      name: "opencodex",
+      full_name: "GroepOnline/opencodex",
+      owner: { login: "GroepOnline" },
+    },
   },
   head: {
     ref: "feature",
     sha: "3f1c0de0a6a4d0a3f9a1b2c3d4e5f60718293a4b",
     label: "contributor:feature",
-    repo: { name: "opencodex", owner: { login: "contributor" } },
+    repo: {
+      id: 2002,
+      name: "opencodex",
+      full_name: "contributor/opencodex",
+      owner: { login: "contributor" },
+    },
   },
   user: { login: "contributor", id: 67890, type: "User" },
   labels: [] as unknown[],
