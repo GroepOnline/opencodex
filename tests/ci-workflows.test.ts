@@ -2705,6 +2705,145 @@ describe("GitHub Actions hardening", () => {
     expect(helperSrc).not.toContain(".ocx-translation-state");
   });
 
+  test("container image workflow builds on ubuntu-latest and pushes only gated GHCR digests", async () => {
+    const text = await readText(".github/workflows/container.yml");
+    const workflow = Bun.YAML.parse(text) as {
+      on?: {
+        pull_request?: { branches?: string[] };
+        push?: { branches?: string[]; tags?: string[] };
+        workflow_dispatch?: unknown;
+      };
+      permissions?: Record<string, string>;
+      jobs?: Record<
+        string,
+        {
+          if?: string;
+          "runs-on"?: string;
+          "timeout-minutes"?: number;
+          permissions?: Record<string, string>;
+          steps?: Array<{
+            name?: string;
+            id?: string;
+            uses?: string;
+            if?: string;
+            with?: Record<string, unknown>;
+            run?: string;
+          }>;
+        }
+      >;
+    };
+
+    expect([...(workflow.on?.pull_request?.branches ?? [])].sort()).toEqual(["dev", "main"]);
+    expect([...(workflow.on?.push?.branches ?? [])]).toEqual(["dev"]);
+    expect(workflow.on?.push?.tags).toEqual(["v*.*.*"]);
+    expect(workflow.on).toHaveProperty("workflow_dispatch");
+    expect(workflow.permissions).toEqual({ contents: "read" });
+
+    const jobs = Object.keys(workflow.jobs ?? {});
+    expect(jobs).toEqual(["image", "publish"]);
+    const image = workflow.jobs?.image;
+    const publish = workflow.jobs?.publish;
+    expect(image?.["runs-on"]).toBe("ubuntu-latest");
+    expect(publish?.["runs-on"]).toBe("ubuntu-latest");
+    expect(image?.["timeout-minutes"]).toBe(20);
+    expect(publish?.["timeout-minutes"]).toBe(20);
+    expect(image?.permissions).toEqual({ contents: "read", packages: "none" });
+    expect(publish?.permissions).toEqual({
+      contents: "read",
+      packages: "write",
+      actions: "read",
+    });
+    expect(text).not.toMatch(/packages:\s*\$\{\{/);
+    expect(String(image?.if ?? "")).toContain("pull_request");
+    expect(String(image?.if ?? "")).toContain("refs/heads/dev");
+    expect(String(publish?.if ?? "")).toContain("refs/tags/v");
+    expect(String(publish?.if ?? "")).toContain("workflow_dispatch");
+    expect(String(publish?.if ?? "")).toContain("refs/heads/main");
+
+    expect(text).not.toContain("self-hosted");
+    expect(text).not.toContain("chef-control");
+    expect(text).not.toContain("/home/joep");
+    expect(text).not.toContain("deploy.yml");
+    expect(text).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
+    expect(text).not.toMatch(
+      /^\s*-\s+uses:\s+\S+@(?![0-9a-f]{40}(?=[ \t]*(?:#.*)?$))\S+/m,
+    );
+    expect(text).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7");
+    expect(text).toContain("docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0");
+    expect(text).toContain("docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0");
+
+    const imageSteps = image?.steps ?? [];
+    const publishSteps = publish?.steps ?? [];
+    const imageCheckout = imageSteps.find(step => step.name === "Checkout");
+    const publishCheckout = publishSteps.find(step => step.name === "Checkout");
+    expect(imageCheckout?.with?.["persist-credentials"]).toBe(false);
+    expect(publishCheckout?.with?.["persist-credentials"]).toBe(false);
+    expect(publishCheckout?.with?.["fetch-depth"]).toBe(0);
+    const onMain = publishSteps.find(step => step.name === "Verify commit is on main");
+    const requireCi = publishSteps.find(step => step.name === "Require successful Cross-platform CI");
+    expect(onMain?.run ?? "").toContain("merge-base --is-ancestor");
+    expect(onMain?.run ?? "").toContain("origin/main");
+    expect(onMain?.run ?? "").not.toContain("${{");
+    expect(requireCi?.run ?? "").toContain("gh run list --workflow ci.yml");
+    expect(requireCi?.run ?? "").not.toContain("${{");
+    expect(imageSteps.find(step => step.name === "Log in to GHCR")).toBeUndefined();
+    const login = publishSteps.find(step => step.name === "Log in to GHCR");
+    const imageBuild = imageSteps.find(step => step.id === "build");
+    const publishBuild = publishSteps.find(step => step.id === "build");
+    const publishMeta = publishSteps.find(step => step.id === "meta");
+    const imageSummary = imageSteps.find(step => step.name === "Record digest");
+    const publishSummary = publishSteps.find(step => step.name === "Record digest");
+    expect(login).toBeDefined();
+    expect(imageBuild).toBeDefined();
+    expect(publishBuild).toBeDefined();
+    expect(publishMeta).toBeDefined();
+    expect(imageSummary).toBeDefined();
+    expect(publishSummary).toBeDefined();
+
+    expect(login!.if).toBeUndefined();
+    expect(login!.uses).toBe("docker/login-action@dbcb813823bdd20940b903addbd779551569679f");
+    expect(imageBuild!.uses).toBe("docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a");
+    expect(publishBuild!.uses).toBe("docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a");
+    expect(imageBuild!.with?.push).toBe(false);
+    expect(imageBuild!.with?.load).toBe(true);
+    expect(publishBuild!.with?.push).toBe(true);
+    expect(publishBuild!.with?.load).toBe(false);
+    expect(imageBuild!.with?.provenance).toBe(false);
+    expect(publishBuild!.with?.provenance).toBe(false);
+    expect(imageBuild!.with?.sbom).toBe(false);
+    expect(publishBuild!.with?.sbom).toBe(false);
+    expect(String(imageBuild!.with?.["build-args"] ?? "")).toContain("VCS_REF=${{ github.sha }}");
+    expect(String(publishBuild!.with?.["build-args"] ?? "")).toContain("VCS_REF=${{ github.sha }}");
+    expect(String(publishBuild!.with?.["build-args"] ?? "")).toContain("VERSION=${{ steps.meta.outputs.version }}");
+
+    expect(publishMeta!.run ?? "").toContain("json.load(open('package.json'))['version']");
+    expect(publishMeta!.run ?? "").not.toContain("${{");
+    expect(publishMeta!.run ?? "").toContain("publish job ran outside the push gate");
+
+    const match = (publishMeta!.run ?? "").match(/=~ (\^\S+\$) \]\]/);
+    expect(match).not.toBeNull();
+    const tagShape = new RegExp(match![1]!);
+    const publishIf = String(publish?.if ?? "");
+    const shouldPublishJob = (event: string, ref: string) =>
+      (event === "push" && publishIf.includes("refs/tags/v") && ref.startsWith("refs/tags/v"))
+      || (event === "workflow_dispatch" && ref === "refs/heads/main");
+    const shouldPush = (event: string, ref: string) =>
+      shouldPublishJob(event, ref)
+      && ((event === "push" && tagShape.test(ref))
+        || (event === "workflow_dispatch" && ref === "refs/heads/main"));
+    expect(shouldPush("push", "refs/tags/v1.2.3")).toBe(true);
+    expect(shouldPush("push", "refs/tags/v1.2.3-preview.4")).toBe(true);
+    expect(shouldPush("workflow_dispatch", "refs/heads/main")).toBe(true);
+    expect(shouldPush("push", "refs/heads/dev")).toBe(false);
+    expect(shouldPush("pull_request", "refs/pull/1/merge")).toBe(false);
+    expect(shouldPush("workflow_dispatch", "refs/heads/dev")).toBe(false);
+    expect(shouldPush("push", "refs/tags/v1.2")).toBe(false);
+    expect(shouldPush("push", "refs/tags/vfoo")).toBe(false);
+
+    expect(imageSummary!.run ?? "").toContain("GITHUB_STEP_SUMMARY");
+    expect(publishSummary!.run ?? "").toContain("digest");
+  });
+
   test("React Doctor workflow is SHA-pinned, engine-pinned, gating, and read-only", async () => {
     const workflow = await readText(".github/workflows/react-doctor.yml");
 

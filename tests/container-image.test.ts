@@ -59,6 +59,12 @@ describe("container image", () => {
       'ENTRYPOINT ["/usr/bin/tini", "--", "/app/scripts/container-entrypoint.sh"]',
     );
     expect(dockerfile).toContain("OPENCODEX_GIT_SHA=${VCS_REF}");
+    const workflow = await Bun.file(
+      join(repoRoot, ".github/workflows/container.yml"),
+    ).text();
+    expect(workflow).toContain("VCS_REF=${{ github.sha }}");
+    expect(workflow).toContain("runs-on: ubuntu-latest");
+    expect(workflow).not.toContain("self-hosted");
     expect(compose).toContain("OPENCODEX_IMAGE:?pin an immutable image digest");
     expect(compose).toContain(
       "OPENCODEX_API_AUTH_TOKEN_FILE: /run/secrets/opencodex_api_token",

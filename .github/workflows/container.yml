@@ -1,0 +1,214 @@
+name: Container image
+
+# Builds the OpenCodex image on GitHub-hosted ubuntu-latest (has Docker).
+# Push to GHCR is a separate job: tag v*.*.* or workflow_dispatch on main.
+# Pull requests, push to dev, and off-main dispatch build-and-load. They do not push.
+# packages permissions stay static literals. actionlint rejects expressions there.
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [dev]
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-image-${{ github.ref }}
+  cancel-in-progress: ${{ !((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')) }}
+
+jobs:
+  image:
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev') || (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: none
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Resolve build metadata
+        id: meta
+        env:
+          REPOSITORY: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          version="$(python3 -c "import json; print(json.load(open('package.json'))['version'])")"
+          image="ghcr.io/$(printf '%s' "$REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          {
+            echo "push=false"
+            echo "version=${version}"
+            echo "image=${image}"
+            echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "tags<<EOF"
+            printf '%s\n' "${image}:${SHA}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          provenance: false
+          sbom: false
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ steps.meta.outputs.version }}
+            BUILD_DATE=${{ steps.meta.outputs.build_date }}
+
+      - name: Record digest
+        if: steps.build.outcome == 'success'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_ID: ${{ steps.build.outputs.imageid }}
+          PUSH: ${{ steps.meta.outputs.push }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          IMAGE: ${{ steps.meta.outputs.image }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### OpenCodex image"
+            echo ""
+            echo "- image: \`${IMAGE}\`"
+            echo "- version: \`${VERSION}\`"
+            echo "- push: \`${PUSH}\`"
+            echo "- digest: \`${DIGEST:-not-pushed}\`"
+            echo "- imageid: \`${IMAGE_ID:-none}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify commit is on main
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "::error::Commit ${SHA} is not on origin/main — GHCR version tags must sit on main"
+            exit 1
+          fi
+
+      - name: Require successful Cross-platform CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          ci_url="$(gh run list --workflow ci.yml --commit "$SHA" \
+            --status success --limit 1 --json url --jq '.[0].url // ""')"
+          if [ -z "$ci_url" ]; then
+            echo "::error::No successful Cross-platform CI run for ${SHA}"
+            gh run list --workflow ci.yml --commit "$SHA" --limit 5 || true
+            exit 1
+          fi
+          echo "Cross-platform CI passed: ${ci_url}"
+
+      - name: Resolve build metadata
+        id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REPOSITORY: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            if [[ ! "$REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-preview\.[0-9]+)?$ ]]; then
+              echo "ref ${REF} is not a semver or preview tag" >&2
+              exit 1
+            fi
+          elif [[ "$EVENT_NAME" != "workflow_dispatch" || "$REF" != "refs/heads/main" ]]; then
+            echo "publish job ran outside the push gate" >&2
+            exit 1
+          fi
+          version="$(python3 -c "import json; print(json.load(open('package.json'))['version'])")"
+          image="ghcr.io/$(printf '%s' "$REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          tags="${image}:${SHA}"
+          if [[ "$REF" == refs/tags/v* ]]; then
+            if [[ "${REF_NAME#v}" != "$version" ]]; then
+              echo "git tag ${REF_NAME} does not match package.json version ${version}" >&2
+              exit 1
+            fi
+            tags="${tags}"$'\n'"${image}:${REF_NAME}"
+            tags="${tags}"$'\n'"${image}:${version}"
+          fi
+          {
+            echo "push=true"
+            echo "version=${version}"
+            echo "image=${image}"
+            echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "tags<<EOF"
+            printf '%s\n' "$tags"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          load: false
+          tags: ${{ steps.meta.outputs.tags }}
+          provenance: false
+          sbom: false
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ steps.meta.outputs.version }}
+            BUILD_DATE=${{ steps.meta.outputs.build_date }}
+
+      - name: Record digest
+        if: steps.build.outcome == 'success'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_ID: ${{ steps.build.outputs.imageid }}
+          PUSH: ${{ steps.meta.outputs.push }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          IMAGE: ${{ steps.meta.outputs.image }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### OpenCodex image"
+            echo ""
+            echo "- image: \`${IMAGE}\`"
+            echo "- version: \`${VERSION}\`"
+            echo "- push: \`${PUSH}\`"
+            echo "- digest: \`${DIGEST:-not-pushed}\`"
+            echo "- imageid: \`${IMAGE_ID:-none}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
