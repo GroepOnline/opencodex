@@ -290,6 +290,68 @@ test("a failed Usage refresh keeps last-good data on screen", async () => {
   container.remove();
 });
 
+test("a failed Usage range switch shows an error instead of last-good data", async () => {
+  const { createRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  document.body.append(container);
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (!url.includes("/api/usage")) return new Response(null, { status: 404 });
+    if (url.includes("range=30d")) {
+      return Response.json({
+        range: "30d",
+        surface: "all",
+        since: null,
+        generatedAt: 1,
+        summary: {
+          requests: 42,
+          measuredRequests: 42,
+          reportedRequests: 42,
+          unreportedRequests: 0,
+          unsupportedRequests: 0,
+          estimatedRequests: 0,
+          inputTokens: 100,
+          outputTokens: 200,
+          cachedInputTokens: 0,
+          reasoningOutputTokens: 0,
+          totalTokens: 300,
+          coverageRatio: 1,
+        },
+        days: [],
+        models: [],
+        providers: [],
+      });
+    }
+    return new Response(null, { status: 503 });
+  }) as typeof fetch;
+
+  let root!: Root;
+  await act(async () => {
+    root = createRoot(container);
+    root.render(
+      <LanguageProvider>
+        <Usage apiBase="http://test" />
+      </LanguageProvider>,
+    );
+  });
+  await settle();
+  await waitFor(() => (container.textContent ?? "").includes("42"));
+
+  const range7d = container.querySelector<HTMLButtonElement>('button[aria-label="7d"]');
+  expect(range7d).toBeTruthy();
+  await act(async () => {
+    range7d!.click();
+  });
+  await settle();
+  await waitFor(() => (container.textContent ?? "").includes("Could not load usage data"));
+
+  expect(container.textContent).not.toContain("42");
+
+  await act(async () => { root.unmount(); });
+  container.remove();
+});
+
 test("Usage shows an error when the first load fails with no data", async () => {
   const { createRoot } = await import("react-dom/client");
   const container = document.createElement("div");

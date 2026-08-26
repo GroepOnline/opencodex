@@ -8,6 +8,10 @@ import { modelLabel } from "../model-display";
 type Range = "all" | "30d" | "7d";
 type UsageSurface = "all" | "codex" | "claude" | "grok";
 
+function usagePayloadKey(range: Range, surface: UsageSurface): string {
+  return `${range}:${surface}`;
+}
+
 interface UsageSummaryTotals {
   requests: number;
   measuredRequests: number;
@@ -635,22 +639,28 @@ export default function Usage({ apiBase }: { apiBase: string }) {
   const [modelQuery, setModelQuery] = useState("");
   const loadGenerationRef = useRef(0);
   const dataRef = useRef<UsageResponse | null>(null);
+  const lastGoodKeyRef = useRef<string | null>(null);
 
   const fetchUsage = useCallback(async (nextRange: Range, nextSurface: UsageSurface, signal: AbortSignal) => {
     const generation = ++loadGenerationRef.current;
+    const requestKey = usagePayloadKey(nextRange, nextSurface);
     setLoading(true);
     try {
       const res = await fetch(`${apiBase}/api/usage?range=${nextRange}&surface=${nextSurface}`, { signal });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`.trim());
       const json = await res.json() as UsageResponse;
       if (signal.aborted || generation !== loadGenerationRef.current) return;
+      lastGoodKeyRef.current = requestKey;
       dataRef.current = json;
       setData(json);
       setError(null);
     } catch (cause) {
       // A stale request (range/apiBase changed, or unmount) must not overwrite newer state.
       if (signal.aborted || generation !== loadGenerationRef.current) return;
-      if (dataRef.current) return;
+      // Last-good applies only when the same range+surface is already on screen.
+      if (lastGoodKeyRef.current === requestKey && dataRef.current) return;
+      dataRef.current = null;
+      setData(null);
       const detail = cause instanceof Error ? cause.message : "";
       setError(detail ? `${t("usage.loadError")} ${detail}` : t("usage.loadError"));
     } finally {

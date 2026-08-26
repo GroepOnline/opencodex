@@ -86,7 +86,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
   });
   // Workspace shell owns /api/provider-quotas. Mutations bump this so quotaRefreshKey
   // re-probes the live cards instead of writing an unread page-level cache.
-  const fetchProviderQuotas = useCallback(async (_refresh?: boolean) => {
+  const fetchProviderQuotas = useCallback(async () => {
     setQuotaEpoch(n => n + 1);
   }, []);
 
