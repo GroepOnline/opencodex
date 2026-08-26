@@ -572,7 +572,7 @@ describe("server local API auth", () => {
       const health = await fetch(`http://127.0.0.1:${server.port}/healthz`);
       expect(health.status).toBe(200);
       const healthBody = await health.json() as Record<string, unknown>;
-      expect(Object.keys(healthBody).sort()).toEqual(["pid", "port", "providerCooldowns", "service", "status", "uptime", "version"]);
+      expect(Object.keys(healthBody).sort()).toEqual(["gitSha", "pid", "port", "providerCooldowns", "service", "status", "uptime", "version"]);
       expect("rss" in healthBody).toBe(false);
     } finally {
       await server.stop(true);
