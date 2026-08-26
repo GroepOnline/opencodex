@@ -12,6 +12,8 @@ Thanks for helping with opencodex.
 
 - `dev` — the only integration target for pull requests.
 - `main` — releases only; moves by maintainer-controlled promotion from `dev`.
+  The required `enforce-target` check allows that same-repository `dev` → `main`
+  promotion and rejects every other `main`-targeted head.
 - `preview` — prerelease train.
 
 The `dev2-go` Go native-port line has been retired. Its history is archived at

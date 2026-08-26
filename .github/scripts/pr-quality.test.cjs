@@ -8,6 +8,7 @@ const {
   authorHasPushPermission,
   assessPrDescription,
   collectPrQualityFailures,
+  isSameGithubRepo,
 } = require("./pr-quality.cjs");
 
 describe("isWrongAncestry", () => {
@@ -276,5 +277,111 @@ describe("collectPrQualityFailures", () => {
       stackedBase: false,
     });
     assert.ok(failures.some((f) => f.code === "wrong_base"));
+  });
+
+  it("does not flag wrong_base for same-repo maintainer promotion main + head dev", () => {
+    const failures = collectPrQualityFailures({
+      baseRef: "main",
+      headRef: "dev",
+      headFromSameRepo: true,
+      allowedBases: allowed,
+      body: [
+        "## Summary",
+        "This change updates the Windows tray launcher so it resolves CODEX_HOME through the shared helper instead of a hardcoded path.",
+        "",
+        "## Test plan",
+        "- Launch the tray app after setting CODEX_HOME",
+        "- Confirm the listener and launcher use the same workspace root",
+      ].join("\n"),
+      behindMain: 0,
+      behindBase: 0,
+      authorPermission: "write",
+    });
+    assert.ok(!failures.some((f) => f.code === "wrong_base"));
+    assert.ok(!failures.some((f) => f.code === "wrong_ancestry"));
+  });
+
+  it("still flags wrong_base for a fork head named dev targeting main", () => {
+    const failures = collectPrQualityFailures({
+      baseRef: "main",
+      headRef: "dev",
+      headFromSameRepo: false,
+      allowedBases: allowed,
+      body: [
+        "## Summary",
+        "This change updates the Windows tray launcher so it resolves CODEX_HOME through the shared helper instead of a hardcoded path.",
+        "",
+        "## Test plan",
+        "- Launch the tray app after setting CODEX_HOME",
+        "- Confirm the listener and launcher use the same workspace root",
+      ].join("\n"),
+      behindMain: 0,
+      behindBase: 0,
+      authorPermission: "write",
+    });
+    assert.ok(failures.some((f) => f.code === "wrong_base"));
+  });
+
+  it("still flags wrong_base for main + head other", () => {
+    const failures = collectPrQualityFailures({
+      baseRef: "main",
+      headRef: "feat/other",
+      allowedBases: allowed,
+      body: [
+        "## Summary",
+        "This change updates the Windows tray launcher so it resolves CODEX_HOME through the shared helper instead of a hardcoded path.",
+        "",
+        "## Test plan",
+        "- Launch the tray app after setting CODEX_HOME",
+        "- Confirm the listener and launcher use the same workspace root",
+      ].join("\n"),
+      behindMain: 0,
+      behindBase: 0,
+      authorPermission: "read",
+    });
+    assert.ok(failures.some((f) => f.code === "wrong_base"));
+  });
+});
+
+describe("isSameGithubRepo", () => {
+  it("matches numeric ids and rejects a fork id", () => {
+    assert.equal(isSameGithubRepo({ id: 1 }, { id: 1 }), true);
+    assert.equal(isSameGithubRepo({ id: 1 }, { id: 2 }), false);
+  });
+
+  it("does not treat missing ids as equal", () => {
+    assert.equal(isSameGithubRepo({}, {}), false);
+    assert.equal(isSameGithubRepo(null, { id: 1 }), false);
+  });
+
+  it("falls back to full_name then owner/name", () => {
+    assert.equal(
+      isSameGithubRepo(
+        { full_name: "GroepOnline/opencodex" },
+        { full_name: "GroepOnline/opencodex" },
+      ),
+      true,
+    );
+    assert.equal(
+      isSameGithubRepo(
+        { full_name: "fork/opencodex" },
+        { full_name: "GroepOnline/opencodex" },
+      ),
+      false,
+    );
+    assert.equal(
+      isSameGithubRepo(
+        { name: "opencodex", owner: { login: "GroepOnline" } },
+        { name: "opencodex", owner: { login: "GroepOnline" } },
+      ),
+      true,
+    );
+    assert.equal(
+      isSameGithubRepo(
+        { name: "opencodex", owner: { login: "contributor" } },
+        { name: "opencodex", owner: { login: "GroepOnline" } },
+      ),
+      false,
+    );
   });
 });

@@ -38,12 +38,14 @@ jobs:
         with:
           script: |
             const path = require("path");
-            const { collectPrQualityFailures } = require(
+            const { collectPrQualityFailures, isSameGithubRepo } = require(
               path.join(process.cwd(), ".github", "scripts", "pr-quality.cjs"),
             );
 
             // PRs target `dev`, the integration branch. `main` is the release
-            // branch and only moves by promotion, so it is not an allowed base.
+            // branch and is not an allowed base. Maintainer promotion is an
+            // explicit exception in collectPrQualityFailures: base main + head
+            // dev on the same repository. Do not add `main` to this list.
             // (See tests/ci-workflows.test.ts — the allow-list is pinned there.)
             const DEFAULT_BASE = "dev";
             const ALLOWED_BASES = ["dev"];
@@ -346,6 +348,8 @@ jobs:
 
             const failures = collectPrQualityFailures({
               baseRef: pr.base.ref,
+              headRef: pr.head.ref,
+              headFromSameRepo: isSameGithubRepo(pr.head.repo, pr.base.repo),
               allowedBases: ALLOWED_BASES,
               body: pr.body,
               behindMain,

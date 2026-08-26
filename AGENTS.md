@@ -127,10 +127,12 @@ Rebase pull requests are welcome. Bringing a stale branch onto the current head
 is ordinary maintenance — open it as a normal pull request and name the source
 commits in the description.
 
-The **`enforce-target`** CI check rejects pull requests whose head
-ancestry sits on the **`main`** tip while far behind **`dev`**, and rejects
-empty, thin, or malformed descriptions; authors with repository push permission
-skip the ancestry heuristic only. As with approval requirements in
+The **`enforce-target`** CI check accepts **`dev`** as the only integration
+base. The only other legal target is a same-repository maintainer promotion
+from **`dev`** onto **`main`**. It rejects pull requests whose head ancestry
+sits on the **`main`** tip while far behind **`dev`**, and rejects empty, thin,
+or malformed descriptions; authors with repository push permission skip the
+ancestry heuristic only. As with approval requirements in
 [`MAINTAINERS.md`](./MAINTAINERS.md), this is enforced by convention until
 branch protection is configured.
 
