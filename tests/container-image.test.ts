@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadConfig } from "../src/config";
-import { assertServerAuthConfig, hasValidApiAuth, isApiAuthRequired, startServer } from "../src/server";
+import { loadConfig, saveConfig } from "../src/config";
+import { assertServerAuthConfig, effectiveBindHostname, hasValidApiAuth, isApiAuthRequired, startServer } from "../src/server";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const healthScript = join(repoRoot, "scripts/container-health.ts");
@@ -84,7 +84,8 @@ describe("container image", () => {
       delete process.env.OPENCODEX_API_AUTH_TOKEN;
       process.env.OPENCODEX_BIND_HOST = "0.0.0.0";
       const loaded = loadConfig();
-      expect(loaded.hostname).toBe("0.0.0.0");
+      expect(loaded.hostname).toBeUndefined();
+      expect(effectiveBindHostname(loaded)).toBe("0.0.0.0");
       expect(isApiAuthRequired(loaded)).toBe(true);
       expect(() => assertServerAuthConfig(loaded)).toThrow("OPENCODEX_API_AUTH_TOKEN");
       expect(() => startServer(0)).toThrow("OPENCODEX_API_AUTH_TOKEN");
@@ -118,6 +119,28 @@ describe("container image", () => {
       } finally {
         await server.stop(true);
       }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  test("OPENCODEX_BIND_HOST env bind stays out of config.json after startServer", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ocx-container-bind-persist-"));
+    try {
+      process.env.OPENCODEX_HOME = dir;
+      process.env.OPENCODEX_API_AUTH_TOKEN = "container-secret";
+      process.env.OPENCODEX_BIND_HOST = "0.0.0.0";
+      saveConfig(loadConfig());
+
+      const server = startServer(0);
+      try {
+        expect(server.hostname).toBe("0.0.0.0");
+      } finally {
+        await server.stop(true);
+      }
+
+      const raw = JSON.parse(await Bun.file(join(dir, "config.json")).text()) as Record<string, unknown>;
+      expect(raw.hostname).toBeUndefined();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

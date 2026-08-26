@@ -20,6 +20,7 @@ import {
   assertServerAuthConfig,
   corsHeaders,
   disableResponsesRequestTimeout,
+  effectiveBindHostname,
   hasValidApiAuth,
   isApiAuthRequired,
   isLoopbackHostname,
@@ -307,10 +308,28 @@ describe("server local API auth", () => {
     process.env.OPENCODEX_BIND_HOST = "0.0.0.0";
 
     const loaded = loadConfig();
-    expect(loaded.hostname).toBe("0.0.0.0");
+    expect(loaded.hostname).toBeUndefined();
+    expect(effectiveBindHostname(loaded)).toBe("0.0.0.0");
     expect(isApiAuthRequired(loaded)).toBe(true);
     expect(() => assertServerAuthConfig(loaded)).toThrow("OPENCODEX_API_AUTH_TOKEN");
     expect(() => startServer(0)).toThrow("OPENCODEX_API_AUTH_TOKEN");
+  });
+
+  test("saveConfig(loadConfig()) does not persist OPENCODEX_BIND_HOST onto disk", () => {
+    if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true });
+    mkdirSync(TEST_DIR, { recursive: true });
+    process.env.OPENCODEX_HOME = TEST_DIR;
+    process.env.OPENCODEX_API_AUTH_TOKEN = "local-secret";
+    process.env.OPENCODEX_BIND_HOST = "0.0.0.0";
+    saveConfig(loadConfig());
+
+    const raw = JSON.parse(readFileSync(join(TEST_DIR, "config.json"), "utf-8")) as Record<string, unknown>;
+    expect(raw.hostname).toBeUndefined();
+
+    const reloaded = loadConfig();
+    expect(reloaded.hostname).toBeUndefined();
+    expect(effectiveBindHostname(reloaded)).toBe("0.0.0.0");
+    expect(isApiAuthRequired(reloaded)).toBe(true);
   });
 
   test("OPENCODEX_BIND_HOST=0.0.0.0 with a token requires it on data-plane requests", async () => {
@@ -332,7 +351,8 @@ describe("server local API auth", () => {
     } as OcxConfig);
 
     const loaded = loadConfig();
-    expect(loaded.hostname).toBe("0.0.0.0");
+    expect(loaded.hostname).toBeUndefined();
+    expect(effectiveBindHostname(loaded)).toBe("0.0.0.0");
     expect(isApiAuthRequired(loaded)).toBe(true);
     expect(hasValidApiAuth(new Request("http://127.0.0.1/v1/models"), loaded)).toBe(false);
     expect(hasValidApiAuth(new Request("http://127.0.0.1/v1/models", {
@@ -361,7 +381,8 @@ describe("server local API auth", () => {
     process.env.OPENCODEX_BIND_HOST = "localhost";
 
     const loaded = loadConfig();
-    expect(loaded.hostname).toBe("127.0.0.1");
+    expect(loaded.hostname).toBeUndefined();
+    expect(effectiveBindHostname(loaded)).toBe("127.0.0.1");
     expect(isApiAuthRequired(loaded)).toBe(false);
     expect(() => assertServerAuthConfig(loaded)).not.toThrow();
   });

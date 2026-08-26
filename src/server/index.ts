@@ -135,6 +135,7 @@ import {
 export {
   assertServerAuthConfig,
   corsHeaders,
+  effectiveBindHostname,
   hasValidApiAuth,
   isApiAuthRequired,
   isLoopbackHostname,
@@ -297,12 +298,8 @@ export function startServer(port?: number) {
   // resolves localhost→127.0.0.1): on Windows `localhost` resolves ::1-first, but the injected URL
   // is 127.0.0.1, so binding literal "localhost" would reintroduce the F4 refusal. Wildcards
   // (0.0.0.0/::) and specific hosts are left untouched so intentional exposure is preserved.
-  // OPENCODEX_BIND_HOST is already on config.hostname from loadConfig; write the canonical
-  // bind back onto the same field so auth, rate-limit boundLoopback, listen, and runtime-port
-  // share one hostname.
   const configuredHost = effectiveBindHostname(config);
   const bindHost = !configuredHost || /^localhost$/i.test(configuredHost) ? "127.0.0.1" : configuredHost;
-  if (configuredHost) config.hostname = bindHost;
   // Bind the Codex-account-pool master switch so every resolver sees one source of truth.
   // When false, opencodex runs standalone (no ChatGPT account pool / quota windows / history remap).
   setCodexAccountPoolsEnabled(codexAccountPoolsEnabled(config));

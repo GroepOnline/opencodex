@@ -1192,18 +1192,6 @@ function warnDegradedNativeSubagentConfig(rawParsed: unknown, config: OcxConfig)
   }
 }
 
-/**
- * Container / compose sets OPENCODEX_BIND_HOST without a persisted hostname.
- * Overlay it here so every loadConfig caller (auth assert, rate-limit, runtime-port,
- * listen) sees one hostname. Literal localhost still collapses to 127.0.0.1.
- */
-function applyBindHostOverride(config: OcxConfig): OcxConfig {
-  const envBindHost = process.env.OPENCODEX_BIND_HOST?.trim();
-  if (!envBindHost) return config;
-  config.hostname = /^localhost$/i.test(envBindHost) ? "127.0.0.1" : envBindHost;
-  return config;
-}
-
 export function loadConfig(): OcxConfig {
   const dir = getConfigDir();
   const configPath = getConfigPath();
@@ -1211,7 +1199,7 @@ export function loadConfig(): OcxConfig {
   hardenExistingSecret(configPath);
   hardenExistingSecret(join(dir, "auth.json"));
   if (!existsSync(configPath)) {
-    return applyBindHostOverride(getDefaultConfig());
+    return getDefaultConfig();
   }
   try {
     const raw = readFileSync(configPath, "utf-8").replace(/^\uFEFF/, "");
@@ -1223,7 +1211,7 @@ export function loadConfig(): OcxConfig {
       warnDegradedHostname(parsed, config);
       warnDegradedClaudeSubagentEffort(parsed);
       warnDegradedNativeSubagentConfig(parsed, config);
-      return applyBindHostOverride(normalizeClaudeSubagentEffort(normalizeNativeSubagentSync(config, parsed), parsed));
+      return normalizeClaudeSubagentEffort(normalizeNativeSubagentSync(config, parsed), parsed);
     }
     // Schema validation failed — merge defaults into the raw object instead of
     // discarding it entirely, so pool accounts and providers survive a missing
@@ -1241,14 +1229,14 @@ export function loadConfig(): OcxConfig {
       warnDegradedHostname(parsed, config);
       warnDegradedClaudeSubagentEffort(parsed);
       warnDegradedNativeSubagentConfig(parsed, config);
-      return applyBindHostOverride(normalizeClaudeSubagentEffort(normalizeNativeSubagentSync(config, parsed), parsed));
+      return normalizeClaudeSubagentEffort(normalizeNativeSubagentSync(config, parsed), parsed);
     }
     // Merge couldn't fix it — truly broken config
     warnAndBackupInvalidConfig(configPath, result.error);
-    return applyBindHostOverride(getDefaultConfig());
+    return getDefaultConfig();
   } catch (error) {
     warnAndBackupInvalidConfig(configPath, error);
-    return applyBindHostOverride(getDefaultConfig());
+    return getDefaultConfig();
   }
 }
 

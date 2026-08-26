@@ -57,12 +57,13 @@ describe("server bind canonicalizes explicit localhost but preserves wildcards (
     // Must not blanket-rewrite the bind host (that would break intentional 0.0.0.0 exposure).
     expect(src).not.toContain('hostname: "127.0.0.1",');
   });
-  test("OPENCODEX_BIND_HOST overlays hostname in loadConfig before auth assert", () => {
-    // Functional coverage lives in server-auth / container-image. This locks the overlay
-    // at loadConfig so bind, auth, rate-limit, and runtime-port share one hostname.
-    const configSrc = read("src/config.ts");
-    expect(configSrc).toContain("process.env.OPENCODEX_BIND_HOST?.trim()");
+  test("OPENCODEX_BIND_HOST resolves at runtime via effectiveBindHostname, not loadConfig mutation", () => {
+    // Functional coverage lives in server-auth / container-image. This locks env-only bind
+    // to effectiveBindHostname so listen/auth/rate-limit share one hostname without persisting it.
+    const authSrc = read("src/server/auth-cors.ts");
+    expect(authSrc).toContain("process.env.OPENCODEX_BIND_HOST?.trim()");
     expect(src).toContain("const configuredHost = effectiveBindHostname(config);");
-    expect(src).toContain("if (configuredHost) config.hostname = bindHost;");
+    expect(src).not.toContain("if (configuredHost) config.hostname = bindHost;");
+    expect(read("src/config.ts")).not.toContain("OPENCODEX_BIND_HOST");
   });
 });

@@ -237,7 +237,9 @@ export function isLoopbackHostname(hostname: string | undefined): boolean {
 
 export function effectiveBindHostname(config: OcxConfig): string | undefined {
   const envBindHost = process.env.OPENCODEX_BIND_HOST?.trim();
-  return envBindHost || config.hostname?.trim();
+  const host = envBindHost || config.hostname?.trim();
+  if (!host) return undefined;
+  return /^localhost$/i.test(host) ? "127.0.0.1" : host;
 }
 
 export function isApiAuthRequired(config: OcxConfig): boolean {
