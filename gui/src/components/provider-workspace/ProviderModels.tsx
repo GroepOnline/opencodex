@@ -344,6 +344,7 @@ export default function ProviderModels({
   const allOn = models.length > 0 && models.every(isModelOn);
   const allOff = models.length > 0 && models.every(id => !isModelOn(id));
   const controlsBusy = Boolean(busyId) || bulkBusy || fetching;
+  const providerDisabled = item.disabled === true;
 
   return (
     <div className="pws-section">
@@ -431,7 +432,7 @@ export default function ProviderModels({
             <button
               type="button"
               className="btn btn-ghost btn-sm text-caption"
-              disabled={controlsBusy || allOn || models.length === 0 || item.disabled === true}
+              disabled={controlsBusy || allOn || models.length === 0 || providerDisabled}
               onClick={() => { void bulkToggle(true); }}
             >
               {t("models.allOn")}
@@ -439,7 +440,7 @@ export default function ProviderModels({
             <button
               type="button"
               className="btn btn-ghost btn-sm text-caption"
-              disabled={controlsBusy || allOff || models.length === 0 || item.disabled === true}
+              disabled={controlsBusy || allOff || models.length === 0 || providerDisabled}
               onClick={() => { void bulkToggle(false); }}
             >
               {t("models.allOff")}
@@ -477,7 +478,7 @@ export default function ProviderModels({
                 <Switch
                   on={on}
                   onClick={() => { void toggleModel(modelId); }}
-                  disabled={controlsBusy || item.disabled === true}
+                  disabled={controlsBusy || providerDisabled}
                   label={modelId}
                 />
                 <button
