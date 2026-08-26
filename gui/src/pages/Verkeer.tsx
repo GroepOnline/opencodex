@@ -70,9 +70,8 @@ function tijd(ts: number, locale: string): string {
  * Displays traffic statistics, recent requests, provider filters, and optional usage analysis.
  *
  * @param apiBase - The base URL for API requests.
- * @param target - The navigation target used to open usage analysis.
  */
-export default function Verkeer({ apiBase, target }: { apiBase: string; target?: string }) {
+export default function Verkeer({ apiBase }: { apiBase: string }) {
   const { locale, t } = useI18n();
   const [summary30d, setSummary30d] = useState<UsageSummary | null>(null);
   const [logs, setLogs] = useState<TrafficLogEntry[]>([]);
@@ -80,7 +79,7 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
   const [providerFilter, setProviderFilter] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   const [openBon, setOpenBon] = useState<string | null>(null);
-  const [analyseOpen, setAnalyseOpen] = useState(target === "usage");
+  const [analyseOpen, setAnalyseOpen] = useState(false);
   const [opsOpen, setOpsOpen] = useState(false);
   // Proxy response-cache hit-rate (hits / (hits+misses)) from GET /api/response-cache — the same
   // source ResponseCachePanel reads. null when the cache is off or the endpoint is unreachable.
@@ -88,12 +87,6 @@ export default function Verkeer({ apiBase, target }: { apiBase: string; target?:
   const [proxyCacheRatio, setProxyCacheRatio] = useState<number | null>(null);
   const pausedRef = useRef(paused);
   useEffect(() => { pausedRef.current = paused; }, [paused]);
-
-  const [seenTarget, setSeenTarget] = useState(target);
-  if (target !== seenTarget) {
-    setSeenTarget(target);
-    if (target === "usage") setAnalyseOpen(true);
-  }
 
   useEffect(() => {
     let cancelled = false;

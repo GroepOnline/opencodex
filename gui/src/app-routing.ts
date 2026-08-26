@@ -53,7 +53,7 @@ const LEGACY_HASH_MAP: Record<string, string> = {
   models: "modellen",
   combos: "modellen/combos",
   subagents: "modellen/subagents",
-  usage: "verkeer",
+  usage: "verbruik",
   logs: "verkeer",
   "logs/debug": "verkeer/debug",
   debug: "verkeer/debug",

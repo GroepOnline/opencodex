@@ -8,7 +8,7 @@ export function readTabFromHash(): LogsTab {
 }
 
 export function selectLogsTab(next: LogsTab) {
-  window.location.hash = next === "debug" ? "verkeer/debug" : "verkeer/logs";
+  window.location.hash = next === "debug" ? "verkeer/debug" : "verkeer";
 }
 
 export function logsTabKeyDown(e: KeyboardEvent) {

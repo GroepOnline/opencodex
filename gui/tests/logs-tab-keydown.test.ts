@@ -62,7 +62,7 @@ test("selectLogsTab writes the matching hash", () => {
   expect(testWindow.location.hash).toBe("#verkeer/debug");
 
   selectLogsTab("logs");
-  expect(testWindow.location.hash).toBe("#verkeer/logs");
+  expect(testWindow.location.hash).toBe("#verkeer");
 });
 
 test("ArrowLeft and Home select logs and focus the logs tab", () => {
@@ -75,7 +75,7 @@ test("ArrowLeft and Home select logs and focus the logs tab", () => {
     const e = keyEvent(key);
     logsTabKeyDown(e);
     expect(e.prevented).toBe(true);
-    expect(testWindow.location.hash).toBe("#verkeer/logs");
+    expect(testWindow.location.hash).toBe("#verkeer");
     expect(testWindow.document.activeElement).toBe(logs);
   }
 });
@@ -85,7 +85,7 @@ test("ArrowRight and End select debug and focus the debug tab", () => {
   logs.focus();
 
   for (const key of ["ArrowRight", "End"] as const) {
-    testWindow.location.hash = "#verkeer/logs";
+    testWindow.location.hash = "#verkeer";
     logs.focus();
     const e = keyEvent(key);
     logsTabKeyDown(e);
@@ -97,9 +97,9 @@ test("ArrowRight and End select debug and focus the debug tab", () => {
 
 test("unrelated keys do not navigate or preventDefault", () => {
   mountTabs();
-  testWindow.location.hash = "#verkeer/logs";
+  testWindow.location.hash = "#verkeer";
   const e = keyEvent("ArrowDown");
   logsTabKeyDown(e);
   expect(e.prevented).toBe(false);
-  expect(testWindow.location.hash).toBe("#verkeer/logs");
+  expect(testWindow.location.hash).toBe("#verkeer");
 });
