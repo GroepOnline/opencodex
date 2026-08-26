@@ -51,7 +51,7 @@ describe("systemd detection tolerates a no-DBUS SSH session (F9)", () => {
 describe("server bind canonicalizes explicit localhost but preserves wildcards (F4 symmetry)", () => {
   const src = read("src/server/index.ts");
   test("literal localhost binds to 127.0.0.1; 0.0.0.0/:: exposure is untouched", () => {
-    expect(src).toContain("const configuredHost = config.hostname?.trim();");
+    expect(src).toContain("const configuredHost = effectiveBindHostname(config);");
     expect(src).toContain('!configuredHost || /^localhost$/i.test(configuredHost) ? "127.0.0.1"');
     expect(src).toContain("hostname: bindHost,");
     // Must not blanket-rewrite the bind host (that would break intentional 0.0.0.0 exposure).
@@ -60,7 +60,6 @@ describe("server bind canonicalizes explicit localhost but preserves wildcards (
   test("OPENCODEX_BIND_HOST overrides config.hostname so the container image can bind 0.0.0.0", () => {
     // The container sets OPENCODEX_BIND_HOST=0.0.0.0 without a persisted config.json; the env
     // value must win over config.hostname, feeding the same localhost canonicalization below.
-    expect(src).toContain("const envBindHost = process.env.OPENCODEX_BIND_HOST?.trim();");
-    expect(src).toContain("const configuredHost = envBindHost || config.hostname?.trim();");
+    expect(src).toContain("const configuredHost = effectiveBindHostname(config);");
   });
 });

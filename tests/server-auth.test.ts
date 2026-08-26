@@ -35,6 +35,7 @@ import { installIsolatedCodexHome, type IsolatedCodexHome } from "./helpers/isol
 import { configuredAdminToken } from "../src/lib/admin-secrets";
 
 const previousApiToken = process.env.OPENCODEX_API_AUTH_TOKEN;
+const previousBindHost = process.env.OPENCODEX_BIND_HOST;
 const previousOpencodexHome = process.env.OPENCODEX_HOME;
 const originalGlobalFetch = globalThis.fetch;
 // A per-run directory, not a fixed path. This used to be
@@ -120,6 +121,8 @@ afterEach(() => {
   globalThis.fetch = originalGlobalFetch;
   if (previousApiToken === undefined) delete process.env.OPENCODEX_API_AUTH_TOKEN;
   else process.env.OPENCODEX_API_AUTH_TOKEN = previousApiToken;
+  if (previousBindHost === undefined) delete process.env.OPENCODEX_BIND_HOST;
+  else process.env.OPENCODEX_BIND_HOST = previousBindHost;
   if (previousOpencodexHome === undefined) delete process.env.OPENCODEX_HOME;
   else process.env.OPENCODEX_HOME = previousOpencodexHome;
   isolatedCodexHome?.restore();
@@ -294,6 +297,21 @@ describe("server local API auth", () => {
 
     process.env.OPENCODEX_API_AUTH_TOKEN = "local-secret";
     expect(() => assertServerAuthConfig(config("0.0.0.0"))).not.toThrow();
+  });
+
+  test("OPENCODEX_BIND_HOST non-loopback override requires auth even with loopback config", () => {
+    process.env.OPENCODEX_BIND_HOST = "0.0.0.0";
+    delete process.env.OPENCODEX_API_AUTH_TOKEN;
+
+    expect(isApiAuthRequired(config("127.0.0.1"))).toBe(true);
+    expect(() => assertServerAuthConfig(config("127.0.0.1"))).toThrow("OPENCODEX_API_AUTH_TOKEN");
+
+    process.env.OPENCODEX_API_AUTH_TOKEN = "container-secret";
+    expect(() => assertServerAuthConfig(config("127.0.0.1"))).not.toThrow();
+    expect(hasValidApiAuth(new Request("http://localhost/api/config"), config("127.0.0.1"))).toBe(false);
+    expect(hasValidApiAuth(new Request("http://localhost/api/config", {
+      headers: { "x-opencodex-api-key": "container-secret" },
+    }), config("127.0.0.1"))).toBe(true);
   });
 
   test("auth header must match env token when non-loopback auth is required", () => {

@@ -117,6 +117,7 @@ import {
   corsHeaders,
   managementCorsHeaders,
   hasValidApiAuth,
+  effectiveBindHostname,
   isAllowedRequestOrigin,
   isAllowedManagementOrigin,
   isApiAuthRequired,
@@ -394,8 +395,7 @@ export function startServer(port?: number) {
   // OPENCODEX_BIND_HOST (set by the container image / compose) overrides config.hostname so a
   // packaged image can bind 0.0.0.0 without a persisted config.json; the same canonicalization
   // rules apply so an env value of "localhost" still collapses to 127.0.0.1.
-  const envBindHost = process.env.OPENCODEX_BIND_HOST?.trim();
-  const configuredHost = envBindHost || config.hostname?.trim();
+  const configuredHost = effectiveBindHostname(config);
   const bindHost = !configuredHost || /^localhost$/i.test(configuredHost) ? "127.0.0.1" : configuredHost;
 
   // Codex treats empty / non-JSON 503 bodies as "Unknown error" (#452). Keep Retry-After and
