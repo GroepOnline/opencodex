@@ -151,6 +151,7 @@ import { handleImages } from "./images";
 import { handleLive, logLiveSidebandFrame, parseLiveSidebandTarget, resolveLiveSidebandUpgrade } from "./live";
 import { handleSearch } from "./search";
 import { fetchAllModels, handleManagementAPI, VERSION } from "./management-api";
+import { GIT_SHA } from "./git-sha";
 import { initializeManagementAuthState, issueGuiSession, requireManagementAuth } from "./management-auth";
 import { runtimeMetrics } from "../observability/metrics";
 import { ensureUsageLogMetricsObserver } from "../observability/usage-log-metrics";
@@ -471,7 +472,7 @@ export function startServer(port?: number) {
       if (url.pathname === "/healthz" && req.method === "GET") {
         // service/pid/port let CLI liveness reject foreign 200s and verify pid identity.
         const cooldowns = activeProviderCooldowns(config);
-        return jsonResponse({ status: "ok", service: "opencodex", version: VERSION, uptime: process.uptime(), pid: process.pid, port: listenPort, providerCooldowns: Object.keys(cooldowns).length }, 200, req, config);
+        return jsonResponse({ status: "ok", service: "opencodex", version: VERSION, gitSha: GIT_SHA, uptime: process.uptime(), pid: process.pid, port: listenPort, providerCooldowns: Object.keys(cooldowns).length }, 200, req, config);
       }
 
       // Canonical Prometheus scrape endpoint. Management plane only: it rides the same
