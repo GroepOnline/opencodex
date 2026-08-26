@@ -388,7 +388,8 @@ function persistedRuntimeCacheStamp(deps: ResolveCodexRuntimeDeps): string {
 
 function resolveCacheKey(deps: ResolveCodexRuntimeDeps): string | null {
   // Only memoize uninjected process-env resolves (settings/status hot paths).
-  if (deps.execFileSync || deps.existsSync || deps.readFileSync || deps.configDir || deps.now) {
+  // `now` is a clock, not a stub: tests inject it so they do not patch global Date.now.
+  if (deps.execFileSync || deps.existsSync || deps.readFileSync || deps.configDir) {
     return null;
   }
   const env = deps.env ?? process.env;
@@ -407,12 +408,13 @@ function resolveCacheKey(deps: ResolveCodexRuntimeDeps): string | null {
  */
 export function resolveCodexRuntime(deps: ResolveCodexRuntimeDeps = {}): ResolveCodexRuntimeResult {
   const cacheKey = resolveCacheKey(deps);
-  if (cacheKey && resolveCache && resolveCache.key === cacheKey && Date.now() - resolveCache.at < RESOLVE_CACHE_MS) {
+  const nowMs = (deps.now ?? Date.now)();
+  if (cacheKey && resolveCache && resolveCache.key === cacheKey && nowMs - resolveCache.at < RESOLVE_CACHE_MS) {
     return resolveCache.value;
   }
 
   const result = resolveCodexRuntimeUncached(deps);
-  if (cacheKey) resolveCache = { key: cacheKey, at: Date.now(), value: result };
+  if (cacheKey) resolveCache = { key: cacheKey, at: nowMs, value: result };
   return result;
 }
 

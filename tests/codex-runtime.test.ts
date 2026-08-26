@@ -476,9 +476,8 @@ describe("resolveCodexRuntime", () => {
     const previousHome = process.env.OPENCODEX_HOME;
     const previousCli = process.env.CODEX_CLI_PATH;
     const previousPath = process.env.PATH;
-    const realDateNow = Date.now;
-    let now = realDateNow();
-    Date.now = () => now;
+    let now = Date.now();
+    const clock = () => now;
     process.env.OPENCODEX_HOME = home;
     process.env.PATH = NO_CODEX_PATH;
     resetCodexRuntimeResolveCacheForTests();
@@ -486,12 +485,12 @@ describe("resolveCodexRuntime", () => {
 
     try {
       process.env.CODEX_CLI_PATH = firstBin;
-      const firstCatalog = loadBundledCodexCatalog();
+      const firstCatalog = loadBundledCodexCatalog({ now: clock });
       expect(firstCatalog?.models?.[0]?.default_reasoning_level).toBe("medium");
 
       // Highest-priority runtime input changed in-process: outer memo must bust immediately.
       process.env.CODEX_CLI_PATH = secondBin;
-      const secondCatalog = loadBundledCodexCatalog();
+      const secondCatalog = loadBundledCodexCatalog({ now: clock });
       expect(secondCatalog?.models?.[0]?.default_reasoning_level).toBe("max");
 
       // A transient probe failure may use the resolver's short cache, but must not be pinned
@@ -499,13 +498,12 @@ describe("resolveCodexRuntime", () => {
       resetCodexRuntimeResolveCacheForTests();
       resetBundledCatalogCacheForTests();
       writeFailingLauncher(secondBin);
-      expect(loadBundledCodexCatalog()).toBeNull();
+      expect(loadBundledCodexCatalog({ now: clock })).toBeNull();
       writeLauncher(secondBin, "0.146.0", "high");
       now += 15_001;
-      const recovered = loadBundledCodexCatalog();
+      const recovered = loadBundledCodexCatalog({ now: clock });
       expect(recovered?.models?.[0]?.default_reasoning_level).toBe("high");
     } finally {
-      Date.now = realDateNow;
       if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
       else process.env.OPENCODEX_HOME = previousHome;
       if (previousCli === undefined) delete process.env.CODEX_CLI_PATH;
@@ -528,16 +526,15 @@ describe("resolveCodexRuntime", () => {
     const previousHome = process.env.OPENCODEX_HOME;
     const previousCli = process.env.CODEX_CLI_PATH;
     const previousPath = process.env.PATH;
-    const realDateNow = Date.now;
-    let now = realDateNow();
-    Date.now = () => now;
+    let now = Date.now();
+    const clock = () => now;
     process.env.OPENCODEX_HOME = home;
     process.env.PATH = binDir;
     delete process.env.CODEX_CLI_PATH;
     resetCodexRuntimeResolveCacheForTests();
 
     try {
-      expect(resolveCodexRuntime().runtime.source).toBe("fallback");
+      expect(resolveCodexRuntime({ now: clock }).runtime.source).toBe("fallback");
 
       if (process.platform === "win32") {
         writeFileSync(recoveredBin, [
@@ -556,14 +553,13 @@ describe("resolveCodexRuntime", () => {
 
       // Within the 15s hot-path window, fallback stays cached so settings polls
       // do not spawn a probe per GET on machines without Codex.
-      expect(resolveCodexRuntime().runtime.source).toBe("fallback");
+      expect(resolveCodexRuntime({ now: clock }).runtime.source).toBe("fallback");
 
       now += 15_001;
-      const recovered = resolveCodexRuntime();
+      const recovered = resolveCodexRuntime({ now: clock });
       expect(recovered.runtime.command).toBe(recoveredBin);
       expect(recovered.runtime.source).not.toBe("fallback");
     } finally {
-      Date.now = realDateNow;
       if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
       else process.env.OPENCODEX_HOME = previousHome;
       if (previousCli === undefined) delete process.env.CODEX_CLI_PATH;
