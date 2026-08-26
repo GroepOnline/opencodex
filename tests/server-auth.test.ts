@@ -36,6 +36,7 @@ import { configuredAdminToken } from "../src/lib/admin-secrets";
 
 const previousApiToken = process.env.OPENCODEX_API_AUTH_TOKEN;
 const previousOpencodexHome = process.env.OPENCODEX_HOME;
+const previousBindHost = process.env.OPENCODEX_BIND_HOST;
 const originalGlobalFetch = globalThis.fetch;
 // A per-run directory, not a fixed path. This used to be
 // join(import.meta.dir, ".tmp-server-auth-test"), the exact same literal that
@@ -122,6 +123,8 @@ afterEach(() => {
   else process.env.OPENCODEX_API_AUTH_TOKEN = previousApiToken;
   if (previousOpencodexHome === undefined) delete process.env.OPENCODEX_HOME;
   else process.env.OPENCODEX_HOME = previousOpencodexHome;
+  if (previousBindHost === undefined) delete process.env.OPENCODEX_BIND_HOST;
+  else process.env.OPENCODEX_BIND_HOST = previousBindHost;
   isolatedCodexHome?.restore();
   isolatedCodexHome = null;
   clearCodexUpstreamHealth();
@@ -294,6 +297,73 @@ describe("server local API auth", () => {
 
     process.env.OPENCODEX_API_AUTH_TOKEN = "local-secret";
     expect(() => assertServerAuthConfig(config("0.0.0.0"))).not.toThrow();
+  });
+
+  test("OPENCODEX_BIND_HOST=0.0.0.0 without a token fails closed at loadConfig", () => {
+    if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true });
+    mkdirSync(TEST_DIR, { recursive: true });
+    process.env.OPENCODEX_HOME = TEST_DIR;
+    delete process.env.OPENCODEX_API_AUTH_TOKEN;
+    process.env.OPENCODEX_BIND_HOST = "0.0.0.0";
+
+    const loaded = loadConfig();
+    expect(loaded.hostname).toBe("0.0.0.0");
+    expect(isApiAuthRequired(loaded)).toBe(true);
+    expect(() => assertServerAuthConfig(loaded)).toThrow("OPENCODEX_API_AUTH_TOKEN");
+    expect(() => startServer(0)).toThrow("OPENCODEX_API_AUTH_TOKEN");
+  });
+
+  test("OPENCODEX_BIND_HOST=0.0.0.0 with a token requires it on data-plane requests", async () => {
+    if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true });
+    mkdirSync(TEST_DIR, { recursive: true });
+    process.env.OPENCODEX_HOME = TEST_DIR;
+    process.env.OPENCODEX_API_AUTH_TOKEN = "local-secret";
+    process.env.OPENCODEX_BIND_HOST = "0.0.0.0";
+    saveConfig({
+      port: 0,
+      defaultProvider: "chatgpt",
+      providers: {
+        chatgpt: {
+          adapter: "openai-responses",
+          baseUrl: "https://chatgpt.com/backend-api/codex",
+          authMode: "forward",
+        },
+      },
+    } as OcxConfig);
+
+    const loaded = loadConfig();
+    expect(loaded.hostname).toBe("0.0.0.0");
+    expect(isApiAuthRequired(loaded)).toBe(true);
+    expect(hasValidApiAuth(new Request("http://127.0.0.1/v1/models"), loaded)).toBe(false);
+    expect(hasValidApiAuth(new Request("http://127.0.0.1/v1/models", {
+      headers: { "x-opencodex-api-key": "local-secret" },
+    }), loaded)).toBe(true);
+
+    const server = startServer(0);
+    const modelsUrl = `http://127.0.0.1:${server.port}/v1/models`;
+    try {
+      expect(server.hostname).toBe("0.0.0.0");
+      expect((await fetch(modelsUrl)).status).toBe(401);
+      const ok = await fetch(modelsUrl, {
+        headers: { "x-opencodex-api-key": "local-secret" },
+      });
+      expect(ok.status).toBe(200);
+    } finally {
+      await server.stop(true);
+    }
+  }, 15_000);
+
+  test("OPENCODEX_BIND_HOST localhost canonicalizes to 127.0.0.1 and stays loopback", () => {
+    if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true });
+    mkdirSync(TEST_DIR, { recursive: true });
+    process.env.OPENCODEX_HOME = TEST_DIR;
+    delete process.env.OPENCODEX_API_AUTH_TOKEN;
+    process.env.OPENCODEX_BIND_HOST = "localhost";
+
+    const loaded = loadConfig();
+    expect(loaded.hostname).toBe("127.0.0.1");
+    expect(isApiAuthRequired(loaded)).toBe(false);
+    expect(() => assertServerAuthConfig(loaded)).not.toThrow();
   });
 
   test("auth header must match env token when non-loopback auth is required", () => {

@@ -292,6 +292,16 @@ function attachLiveSidebandUpstream(ws: ServerWebSocket<WsData>): void {
 
 export function startServer(port?: number) {
   const config = runAlibabaRegionStartupMigration(runOpenAiTierStartupMigration(loadConfig()));
+  // Canonicalize an explicit "localhost" bind to IPv4 so it matches the injected base_url (which
+  // resolves localhost→127.0.0.1): on Windows `localhost` resolves ::1-first, but the injected URL
+  // is 127.0.0.1, so binding literal "localhost" would reintroduce the F4 refusal. Wildcards
+  // (0.0.0.0/::) and specific hosts are left untouched so intentional exposure is preserved.
+  // OPENCODEX_BIND_HOST is already on config.hostname from loadConfig; write the canonical
+  // bind back onto the same field so auth, rate-limit boundLoopback, listen, and runtime-port
+  // share one hostname.
+  const configuredHost = config.hostname?.trim();
+  const bindHost = !configuredHost || /^localhost$/i.test(configuredHost) ? "127.0.0.1" : configuredHost;
+  if (configuredHost) config.hostname = bindHost;
   // Bind the Codex-account-pool master switch so every resolver sees one source of truth.
   // When false, opencodex runs standalone (no ChatGPT account pool / quota windows / history remap).
   setCodexAccountPoolsEnabled(codexAccountPoolsEnabled(config));
@@ -386,17 +396,6 @@ export function startServer(port?: number) {
 
   const listenPort = port ?? config.port ?? 10100;
   setCorsOrigin(listenPort);
-
-  // Canonicalize an explicit "localhost" bind to IPv4 so it matches the injected base_url (which
-  // resolves localhost→127.0.0.1): on Windows `localhost` resolves ::1-first, but the injected URL
-  // is 127.0.0.1, so binding literal "localhost" would reintroduce the F4 refusal. Wildcards
-  // (0.0.0.0/::) and specific hosts are left untouched so intentional exposure is preserved.
-  // OPENCODEX_BIND_HOST (set by the container image / compose) overrides config.hostname so a
-  // packaged image can bind 0.0.0.0 without a persisted config.json; the same canonicalization
-  // rules apply so an env value of "localhost" still collapses to 127.0.0.1.
-  const envBindHost = process.env.OPENCODEX_BIND_HOST?.trim();
-  const configuredHost = envBindHost || config.hostname?.trim();
-  const bindHost = !configuredHost || /^localhost$/i.test(configuredHost) ? "127.0.0.1" : configuredHost;
 
   // Codex treats empty / non-JSON 503 bodies as "Unknown error" (#452). Keep Retry-After and
   // the server_is_overloaded code so clients can back off, but always return a JSON envelope.

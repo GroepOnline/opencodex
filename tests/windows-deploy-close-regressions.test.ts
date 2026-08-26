@@ -57,10 +57,11 @@ describe("server bind canonicalizes explicit localhost but preserves wildcards (
     // Must not blanket-rewrite the bind host (that would break intentional 0.0.0.0 exposure).
     expect(src).not.toContain('hostname: "127.0.0.1",');
   });
-  test("OPENCODEX_BIND_HOST overrides config.hostname so the container image can bind 0.0.0.0", () => {
-    // The container sets OPENCODEX_BIND_HOST=0.0.0.0 without a persisted config.json; the env
-    // value must win over config.hostname, feeding the same localhost canonicalization below.
-    expect(src).toContain("const envBindHost = process.env.OPENCODEX_BIND_HOST?.trim();");
-    expect(src).toContain("const configuredHost = envBindHost || config.hostname?.trim();");
+  test("OPENCODEX_BIND_HOST overlays hostname in loadConfig before auth assert", () => {
+    // Functional coverage lives in server-auth / container-image. This locks the overlay
+    // at loadConfig so bind, auth, rate-limit, and runtime-port share one hostname.
+    const configSrc = read("src/config.ts");
+    expect(configSrc).toContain("process.env.OPENCODEX_BIND_HOST?.trim()");
+    expect(src).toContain("if (configuredHost) config.hostname = bindHost;");
   });
 });

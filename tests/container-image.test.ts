@@ -1,12 +1,26 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadConfig } from "../src/config";
+import { assertServerAuthConfig, hasValidApiAuth, isApiAuthRequired, startServer } from "../src/server";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const healthScript = join(repoRoot, "scripts/container-health.ts");
 const entrypoint = join(repoRoot, "scripts/container-entrypoint.sh");
+const previousHome = process.env.OPENCODEX_HOME;
+const previousToken = process.env.OPENCODEX_API_AUTH_TOKEN;
+const previousBindHost = process.env.OPENCODEX_BIND_HOST;
+
+afterEach(() => {
+  if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
+  else process.env.OPENCODEX_HOME = previousHome;
+  if (previousToken === undefined) delete process.env.OPENCODEX_API_AUTH_TOKEN;
+  else process.env.OPENCODEX_API_AUTH_TOKEN = previousToken;
+  if (previousBindHost === undefined) delete process.env.OPENCODEX_BIND_HOST;
+  else process.env.OPENCODEX_BIND_HOST = previousBindHost;
+});
 
 async function runHealth(port: number) {
   const proc = Bun.spawn([process.execPath, healthScript], {
@@ -62,6 +76,52 @@ describe("container image", () => {
       bad.stop(true);
     }
   });
+
+  test("OPENCODEX_BIND_HOST=0.0.0.0 without a token fails closed like a bare docker run", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ocx-container-bind-"));
+    try {
+      process.env.OPENCODEX_HOME = dir;
+      delete process.env.OPENCODEX_API_AUTH_TOKEN;
+      process.env.OPENCODEX_BIND_HOST = "0.0.0.0";
+      const loaded = loadConfig();
+      expect(loaded.hostname).toBe("0.0.0.0");
+      expect(isApiAuthRequired(loaded)).toBe(true);
+      expect(() => assertServerAuthConfig(loaded)).toThrow("OPENCODEX_API_AUTH_TOKEN");
+      expect(() => startServer(0)).toThrow("OPENCODEX_API_AUTH_TOKEN");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("OPENCODEX_BIND_HOST=0.0.0.0 with a token requires it on data-plane requests", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ocx-container-bind-"));
+    try {
+      process.env.OPENCODEX_HOME = dir;
+      process.env.OPENCODEX_API_AUTH_TOKEN = "container-secret";
+      process.env.OPENCODEX_BIND_HOST = "0.0.0.0";
+      const loaded = loadConfig();
+      expect(isApiAuthRequired(loaded)).toBe(true);
+      expect(hasValidApiAuth(new Request("http://127.0.0.1/v1/models"), loaded)).toBe(false);
+      expect(hasValidApiAuth(new Request("http://127.0.0.1/v1/models", {
+        headers: { "x-opencodex-api-key": "container-secret" },
+      }), loaded)).toBe(true);
+
+      const server = startServer(0);
+      const modelsUrl = `http://127.0.0.1:${server.port}/v1/models`;
+      try {
+        expect(server.hostname).toBe("0.0.0.0");
+        expect((await fetch(modelsUrl)).status).toBe(401);
+        const ok = await fetch(modelsUrl, {
+          headers: { "x-opencodex-api-key": "container-secret" },
+        });
+        expect(ok.status).toBe(200);
+      } finally {
+        await server.stop(true);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
 
   test("entrypoint exports token from file and execs the command", () => {
     const dir = mkdtempSync(join(tmpdir(), "ocx-container-"));
