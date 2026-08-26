@@ -2,8 +2,3 @@ self-hosted-runner:
   labels:
     - deploy
     - opencodex
-
-paths:
-  .github/workflows/release.yml:
-    ignore:
-      - 'shellcheck reported issue in this script: SC2016:.+'
