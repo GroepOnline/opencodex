@@ -1,0 +1,35 @@
+services:
+  opencodex:
+    image: ${OPENCODEX_IMAGE:?pin an immutable image digest}
+    restart: unless-stopped
+    read_only: true
+    environment:
+      OPENCODEX_HOME: /var/lib/opencodex
+      OPENCODEX_BIND_HOST: 0.0.0.0
+      OPENCODEX_HEALTH_HOST: 127.0.0.1
+      OPENCODEX_HEALTH_PORT: "10100"
+      OPENCODEX_API_AUTH_TOKEN_FILE: /run/secrets/opencodex_api_token
+    secrets:
+      - opencodex_api_token
+    volumes:
+      - ${OPENCODEX_STATE_DIR:-/opt/chef/state/opencodex}:/var/lib/opencodex
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=256m,uid=1000,gid=1000
+    ports:
+      - "${OPENCODEX_BIND_IP:-127.0.0.1}:10100:10100"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "bun", "run", "scripts/container-health.ts"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+
+secrets:
+  opencodex_api_token:
+    file: ${OPENCODEX_API_TOKEN_FILE:?path to runtime token file}
