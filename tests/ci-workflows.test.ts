@@ -741,6 +741,7 @@ describe("GitHub Actions hardening", () => {
     // at once while every behavioural scenario below still passes.
     expect(script).toMatch(/const ALLOWED_BASES = \["dev"\];/);
     expect(script).toMatch(/const DEFAULT_BASE = "dev";/);
+    expect(script).toContain("headRef: pr.head.ref");
 
     // Every mutation targets the PR the event fired for. `pull_number` is the
     // only handle the script has, and an audit round repointed it at
@@ -1080,6 +1081,45 @@ describe("GitHub Actions hardening", () => {
       expect(commentBody).toContain("must target one of `dev`");
       expect(commentBody).toContain("Please retarget this PR to `dev`");
       expect(commentBody).not.toContain("dev2-go");
+    });
+
+    test("a maintainer promotion PR from dev onto main is not wrong-base", async () => {
+      const result = await run({
+        pr: {
+          base: { ref: "main" },
+          head: { ref: "dev" },
+          title: "Promote 1.2.3 to main",
+          draft: false,
+        },
+      });
+
+      expect(methodsOf(result)).toEqual(readsWrongBase());
+      expect(callsTo(result, "pulls.update")).toEqual([]);
+      expect(callsTo(result, "graphql")).toEqual([]);
+      expect(result.logs.join(" ")).toContain("All PR quality gates passed");
+      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(false);
+    });
+
+    test("a feature head targeting main stays wrong-base", async () => {
+      const result = await run({
+        pr: {
+          base: { ref: "main" },
+          head: { ref: "feat/other" },
+          title: "Add a thing",
+          draft: false,
+        },
+      });
+
+      expect(methodsOf(result)).toEqual(readsWrongBase([
+        "issues.createComment",
+        "pulls.update",
+        "issues.updateComment",
+        "graphql",
+        "issues.updateComment",
+        "issues.updateComment",
+      ]));
+      expect(lastEnforcerCommentBody(result)).toContain("Wrong target branch");
+      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(true);
     });
 
     test("a PR targeting main is prefixed, drafted, and explained — and nothing else", async () => {

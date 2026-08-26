@@ -137,9 +137,12 @@ function collectPrQualityFailures({
   ancestryLookupFailed = false,
   /** True when baseRef is another open PR's head (stacked child). */
   stackedBase = false,
+  /** PR head ref. Promotion is only `baseRef === "main" && headRef === "dev"`. */
+  headRef,
 }) {
   const failures = [];
-  const wrongBase = !allowedBases.includes(baseRef) && !stackedBase;
+  const promotionBase = baseRef === "main" && headRef === "dev";
+  const wrongBase = !allowedBases.includes(baseRef) && !stackedBase && !promotionBase;
   if (wrongBase) {
     failures.push({ code: "wrong_base" });
   } else {

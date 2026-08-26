@@ -45,6 +45,7 @@ export type PullRequestState = {
   body?: string;
   draft?: boolean;
   base?: { ref: string };
+  head?: { ref: string };
   user?: { login: string };
 };
 
