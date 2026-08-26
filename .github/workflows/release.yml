@@ -327,6 +327,16 @@ jobs:
             fi
             exit 1
           fi
+          # OIDC rewrote userconfig to registry-only so an empty NODE_AUTH_TOKEN
+          # could not skip Trusted Publishing. NODE_AUTH_TOKEN in the environment
+          # is ignored unless that placeholder is restored (ENEEDAUTH on 1.2.2).
+          if [ -n "${NPM_CONFIG_USERCONFIG:-}" ]; then
+            printf '%s\n' \
+              'registry=https://registry.npmjs.org/' \
+              'always-auth=true' \
+              '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}' \
+              > "$NPM_CONFIG_USERCONFIG"
+          fi
           echo "::warning::retrying with NPM_TOKEN"
           NODE_AUTH_TOKEN="$NPM_TOKEN" "$npm_bin" publish --tag "$NPM_DIST_TAG" --access public --ignore-scripts
 

@@ -279,6 +279,9 @@ describe("GitHub Actions hardening", () => {
     expect(oidcStep).not.toContain("NPM_TOKEN:");
     expect(oidcStep).not.toContain("NODE_AUTH_TOKEN:");
     expect(workflow).toContain("- name: Publish token fallback");
+    const fallbackStep = workflow.slice(workflow.indexOf("- name: Publish token fallback"));
+    expect(fallbackStep).toContain("//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}");
+    expect(fallbackStep).toContain("always-auth=true");
 
     // Immutable action references.
     expect(workflow).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");
