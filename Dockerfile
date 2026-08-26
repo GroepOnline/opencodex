@@ -53,6 +53,7 @@ COPY --from=build --chown=bun:bun /app/src ./src
 COPY --from=build --chown=bun:bun /app/gui/dist ./gui/dist
 COPY --from=build --chown=bun:bun /app/assets ./assets
 COPY --from=build --chown=bun:bun /app/scripts/container-health.ts ./scripts/container-health.ts
+COPY --from=build --chown=bun:bun --chmod=0555 /app/scripts/container-entrypoint.sh ./scripts/container-entrypoint.sh
 
 ENV NODE_ENV=production \
     OPENCODEX_HOME=/var/lib/opencodex \
@@ -68,5 +69,5 @@ STOPSIGNAL SIGTERM
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=4 \
   CMD ["bun", "run", "scripts/container-health.ts"]
 
-ENTRYPOINT ["/usr/bin/tini", "--"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/app/scripts/container-entrypoint.sh"]
 CMD ["bun", "run", "src/cli/index.ts", "start", "--port", "10100"]
