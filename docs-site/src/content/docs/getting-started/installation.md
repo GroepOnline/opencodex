@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: Install the opencodex (ocx) proxy, its prerequisites, and verify it runs.
+description: Install the opencodex (ocx) proxy and verify it runs standalone or with optional clients.
 ---
 
 opencodex installs two equivalent command names, `ocx` and `opencodex`. Both launch the same small
@@ -12,8 +12,17 @@ vision and web-search sidecars can also use your ChatGPT login when a routed mod
 | Requirement | Why |
 | --- | --- |
 | **[Node](https://nodejs.org) ≥ 18** | `ocx` runs on the Bun runtime, but the runtime is bundled automatically on `npm install` — you do **not** need to install Bun yourself. |
-| **[OpenAI Codex](https://openai.com/codex)** (CLI, App, or SDK) | The client opencodex sits in front of. opencodex writes to `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`). |
 | A provider account or API key | Anthropic, xAI, Kimi, Ollama Cloud, OpenRouter, an OpenAI-compatible endpoint, or your ChatGPT login. |
+
+## Optional clients
+
+opencodex is a standalone local proxy. You do **not** need Codex installed to run `ocx start`, open
+the dashboard, or call `/v1/*`.
+
+| Client | When you need it |
+| --- | --- |
+| **[OpenAI Codex](https://openai.com/codex)** (CLI, App, or SDK) | Route Codex through the proxy; opencodex writes to `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`) when you opt in during setup. |
+| **Claude Code**, **OpenCode**, or any Responses-compatible tool | Point the client at `http://localhost:<port>/v1` instead of OpenAI. |
 
 ## Install
 
@@ -50,6 +59,15 @@ ocx --version
 opencodex --version
 ```
 
+Verify the proxy runs without Codex on your machine:
+
+```bash
+ocx init    # pick a provider; decline Codex injection if you do not use Codex yet
+ocx start
+curl -sS "http://127.0.0.1:10100/healthz"
+ocx gui
+```
+
 ### Release channels
 
 The stable `latest` channel already includes GPT-5.6 Sol/Terra/Luna catalog support for ChatGPT,
@@ -81,8 +99,8 @@ has produced `gui/dist`. While hacking on the dashboard, run the frontend separa
 
 ## What gets created
 
-opencodex state lives under `$OPENCODEX_HOME` (default `~/.opencodex`). Codex integration files live
-under `$CODEX_HOME` (default `~/.codex`).
+opencodex state lives under `$OPENCODEX_HOME` (default `~/.opencodex`). When you enable Codex
+integration, files also appear under `$CODEX_HOME` (default `~/.codex`).
 
 | Path | Purpose |
 | --- | --- |
