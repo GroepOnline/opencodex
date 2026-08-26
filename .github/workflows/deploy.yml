@@ -1,17 +1,18 @@
 name: Deploy to chef-control-az-01
 
-# Rolls a new opencodex version out to the live proxy on chef-control-az-01.
+# Rolls a new opencodex version out to the live proxy on chef-control-az-01
+# from an immutable GHCR digest (not a git-pull + host Bun build).
 #
 # Triggers:
 #   - push of a `v*.*.*` tag  -> deploy that exact version (the "new version" path)
 #   - workflow_dispatch       -> deploy a tag ref deliberately (the "after merge" path)
 #
 # The job runs on the self-hosted `deploy` runner, which is the Azure control host
-# itself, so it can restart its own systemd service (chef has NOPASSWD sudo) and
+# itself, so it can manage its own systemd service (chef has NOPASSWD sudo) and
 # health-gate the result locally. No SSH keys cross hosts.
 #
 # Requires the runner to be registered on chef-control-az-01 (ocx-deploy-runner.service).
-# The service checkout at DEPLOY_PATH is updated in place and restarted.
+# Runtime is Docker Compose under COMPOSE_DIR with a digest-pinned image from GHCR.
 # Historical UpCloud chef-control-01 runner is retired.
 
 on:
@@ -27,6 +28,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: ocx-deploy-az-01
@@ -38,6 +40,9 @@ jobs:
     timeout-minutes: 20
     env:
       DEPLOY_PATH: /opt/chef/services/opencodex
+      COMPOSE_DIR: /opt/chef/deploy/opencodex
+      STATE_DIR: /opt/chef/state/opencodex
+      COMPOSE_ENV: /opt/chef/deploy/opencodex/.env
     steps:
       - name: Resolve deploy tag
         id: ref
@@ -54,12 +59,9 @@ jobs:
           elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             tag="${GITHUB_REF_NAME}"
           else
-            # Tag-triggered deploys are the primary path; a bare push/dispatch with no
-            # tag is not a valid deploy trigger.
             echo "::error::no tag resolved for deploy (ref=${GITHUB_REF})"
             exit 1
           fi
-          # Basic shape guard: a vX.Y.Z (or vX.Y.Z-preview.N) tag only.
           if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-preview\.[0-9]+)?$ ]]; then
             echo "::error::ref '$tag' is not a valid deploy tag"
             exit 1
@@ -77,97 +79,139 @@ jobs:
           set -euo pipefail
           tag="${{ steps.ref.outputs.tag }}"
           git fetch --force --tags origin
-          # The tag must be an ancestor of the remote main so we never deploy a
-          # ref that has not been merged to main (mirrors publish-on-tag.yml gating).
           if ! git merge-base --is-ancestor "refs/tags/$tag" "origin/main"; then
             echo "::error::tag $tag is not on origin/main — refusing to deploy an unmerged ref"
             exit 1
           fi
-          # Pin the tag to its resolved commit SHA now — a Git tag is a mutable ref,
-          # so the deploy step must checkout this exact SHA, not re-resolve the tag
-          # name (which could have been force-moved in the meantime).
           echo "tag_sha=$(git rev-parse "refs/tags/$tag")" >> "$GITHUB_OUTPUT"
           echo "$tag is on origin/main ($(git rev-parse "refs/tags/$tag"))"
 
-      - name: Capture pre-deploy HEAD (for rollback)
+      - name: Capture pre-deploy runtime state (for rollback)
         id: prev
         run: |
           set -euo pipefail
-          cd "$DEPLOY_PATH"
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Refuse dirty live checkout or dropped commits
-        id: live_guard
-        run: |
-          set -euo pipefail
-          cd "$DEPLOY_PATH"
-          # Porcelain as a boolean only — do not print the listing (paths can be sensitive).
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "::error::live checkout is dirty; refusing force checkout (would drop unpublished work)"
-            exit 1
+          prev_image=""
+          if [ -f "$COMPOSE_ENV" ]; then
+            prev_image="$(grep -E '^OPENCODEX_IMAGE=' "$COMPOSE_ENV" | head -n1 | cut -d= -f2- || true)"
           fi
-          tag_sha="${{ steps.verify.outputs.tag_sha }}"
-          if ! git merge-base --is-ancestor HEAD "$tag_sha"; then
-            echo "::error::live HEAD is not an ancestor of $tag_sha (would drop live-only commits)"
-            exit 1
+          if [ -z "$prev_image" ]; then
+            running_id="$(docker ps --filter 'name=opencodex' --format '{{.ID}}' 2>/dev/null | head -n1 || true)"
+            if [ -n "$running_id" ]; then
+              prev_image="$(docker inspect --format='{{index .RepoDigests 0}}' "$running_id" 2>/dev/null || true)"
+            fi
           fi
+          bun_runtime=false
+          if systemctl is-active --quiet opencodex-proxy.service 2>/dev/null; then
+            exec_line="$(systemctl show -p ExecStart --value opencodex-proxy.service 2>/dev/null || true)"
+            if printf '%s' "$exec_line" | grep -qE '(^|[[:space:]/])(bun|node)([[:space:]]|$)'; then
+              bun_runtime=true
+            fi
+          fi
+          unit_backup=""
+          if [ -f /etc/systemd/system/opencodex-proxy.service ]; then
+            unit_backup="${GITHUB_WORKSPACE}/.opencodex-proxy.service.bak"
+            sudo cp /etc/systemd/system/opencodex-proxy.service "$unit_backup"
+            sudo chown "$(id -un):$(id -gn)" "$unit_backup"
+          fi
+          {
+            echo "image=${prev_image}"
+            echo "bun_runtime=${bun_runtime}"
+            echo "unit_backup=${unit_backup}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Resolve health URLs
         run: |
           set -euo pipefail
-          # Loopback first; Tailscale IPv4 discovered on the deploy host (no hardcoded 100.x).
           urls="http://127.0.0.1:10100/healthz"
           ts_ip="$(tailscale ip -4 2>/dev/null | head -n1 || true)"
           if [ -z "$ts_ip" ]; then
-            echo "::error::chef-control-az-01 has no discoverable Tailscale IPv4; refusing deploy before live checkout mutation"
+            echo "::error::chef-control-az-01 has no discoverable Tailscale IPv4; refusing deploy before runtime cutover"
             exit 1
           fi
           urls="$urls http://${ts_ip}:10100/healthz"
           echo "OCX_HEALTH_URLS=$urls" >> "$GITHUB_ENV"
 
-      - name: Deploy into service checkout (in-place, pinned SHA)
-        id: deploy
+      - name: Wait for GHCR publish (container.yml)
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          cd "$DEPLOY_PATH"
-          git fetch --force --tags origin
-          # Checkout the SHA verified above (not the tag name) so a force-moved tag
-          # cannot swap in an unverified commit after the origin/main check passed.
-          git checkout --force "${{ steps.verify.outputs.tag_sha }}"
-          git reset --hard "${{ steps.verify.outputs.tag_sha }}"
-          echo "deployed_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          tag_sha="${{ steps.verify.outputs.tag_sha }}"
+          deadline=$((SECONDS + 900))
+          while (( SECONDS < deadline )); do
+            if gh run list --workflow container.yml --commit "$tag_sha" --status success --limit 1 --json url --jq '.[0].url // ""' | grep -q .; then
+              echo "container.yml publish succeeded for ${tag_sha}"
+              exit 0
+            fi
+            echo "waiting for container.yml publish on ${tag_sha}..."
+            sleep 15
+          done
+          echo "::error::no successful container.yml publish for ${tag_sha} within 15m"
+          gh run list --workflow container.yml --commit "$tag_sha" --limit 5 || true
+          exit 1
 
-      - name: Setup Node for Vite
-        id: setup_node
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
-          node-version: "22.12.0"
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: 1.3.14
+      - name: Resolve immutable image digest
+        id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
+          TAG_SHA: ${{ steps.verify.outputs.tag_sha }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/$(printf '%s' "$REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          ref="${image}:${TAG_SHA}"
+          docker pull "$ref"
+          digest_ref="$(docker inspect --format='{{index .RepoDigests 0}}' "$ref")"
+          if [[ ! "$digest_ref" =~ @sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::could not resolve immutable digest for ${ref}"
+            exit 1
+          fi
+          echo "ref=${digest_ref}" >> "$GITHUB_OUTPUT"
+          echo "pinned ${digest_ref}"
 
-      - name: Install dependencies (in service checkout)
-        working-directory: ${{ env.DEPLOY_PATH }}
-        run: bun install --frozen-lockfile
+      - name: Deploy digest-pinned container (in-place cutover)
+        id: deploy
+        env:
+          TAG_SHA: ${{ steps.verify.outputs.tag_sha }}
+          PINNED_IMAGE: ${{ steps.image.outputs.ref }}
+        run: |
+          set -euo pipefail
+          token_file="${OPENCODEX_API_TOKEN_FILE:-/etc/chef/opencodex/api-token}"
+          if [ ! -f "$token_file" ]; then
+            echo "::error::runtime API token file missing at ${token_file} (set OPENCODEX_API_TOKEN_FILE on the host)"
+            exit 1
+          fi
+          echo "api_token_file=${token_file} (sha256:$(sha256sum "$token_file" | awk '{print substr($1,1,12)}'))"
 
-      - name: Build GUI (in service checkout)
-        working-directory: ${{ env.DEPLOY_PATH }}
-        run: bun run build:gui
+          sudo mkdir -p "$COMPOSE_DIR" "$STATE_DIR"
+          sudo cp deploy/container/compose.example.yml "$COMPOSE_DIR/docker-compose.yml"
+          sudo cp deploy/container/opencodex-proxy.service /etc/systemd/system/opencodex-proxy.service
 
-      - name: Restart opencodex-proxy
-        run: sudo systemctl restart opencodex-proxy.service
+          {
+            printf 'OPENCODEX_IMAGE=%s\n' "$PINNED_IMAGE"
+            printf 'OPENCODEX_STATE_DIR=%s\n' "$STATE_DIR"
+            printf 'OPENCODEX_API_TOKEN_FILE=%s\n' "$token_file"
+            printf 'OPENCODEX_BIND_IP=127.0.0.1\n'
+          } | sudo tee "$COMPOSE_ENV" > /dev/null
+
+          sudo systemctl stop opencodex-proxy.service || true
+          sudo systemctl daemon-reload
+          sudo systemctl enable opencodex-proxy.service
+          sudo systemctl start opencodex-proxy.service
+          echo "deployed_image=${PINNED_IMAGE}" >> "$GITHUB_OUTPUT"
 
       - name: Health gate
         id: health
+        env:
+          TAG_SHA: ${{ steps.verify.outputs.tag_sha }}
         run: |
           set -euo pipefail
-          main_pid="$(sudo systemctl show -p MainPID --value opencodex-proxy.service)"
-          if [[ ! "$main_pid" =~ ^[1-9][0-9]*$ ]]; then
-            echo "::error::opencodex-proxy.service has no live MainPID"
-            exit 1
-          fi
           deadline=$((SECONDS + 60))
           attempt=0
           while (( SECONDS < deadline )); do
@@ -177,11 +221,11 @@ jobs:
               (( remaining > 0 )) || break 2
               max_time=$((remaining < 2 ? remaining : 2))
               body="$(curl -fsS --max-time "$max_time" "$url" || true)"
-              if HEALTH_BODY="$body" MAIN_PID="$main_pid" python3 -c 'import json, os; b=json.loads(os.environ["HEALTH_BODY"]); raise SystemExit(0 if b.get("status") == "ok" and b.get("service") == "opencodex" and str(b.get("pid")) == os.environ["MAIN_PID"] else 1)' 2>/dev/null; then
+              if HEALTH_BODY="$body" TAG_SHA="$TAG_SHA" python3 -c 'import json, os; b=json.loads(os.environ["HEALTH_BODY"]); raise SystemExit(0 if b.get("status") == "ok" and b.get("service") == "opencodex" and b.get("gitSha") == os.environ["TAG_SHA"] else 1)' 2>/dev/null; then
                 root_url="${url%/healthz}/"
                 dashboard="$(curl -fsS --max-time "$max_time" "$root_url" || true)"
                 if printf '%s' "$dashboard" | grep -Fq '<title>opencodex · proxy dashboard</title>'; then
-                  echo "healthy with GUI after ${attempt} tries via $url (pid=$main_pid)"
+                  echo "healthy after ${attempt} tries via $url (gitSha=${TAG_SHA})"
                   echo "status=ok" >> "$GITHUB_OUTPUT"
                   exit 0
                 fi
@@ -189,32 +233,40 @@ jobs:
             done
             (( SECONDS < deadline )) && sleep 1
           done
-          echo "::error::opencodex did not become identity-verified healthy within 60s with GUI after restart"
+          echo "::error::opencodex did not become gitSha-verified healthy within 60s with GUI after cutover"
           exit 1
 
       - name: Rollback on failure
-        # Only roll back when we captured a known-good prior SHA (prev step succeeded).
-        # If Verify tag / deploy-into-checkout failed before capture, there is nothing
-        # safe to roll back to and `failure()` alone would skip the gate silently.
-        if: failure() && steps.prev.outcome == 'success' && steps.live_guard.outcome == 'success' && steps.deploy.outcome == 'success' && steps.setup_node.outcome == 'success'
+        if: failure() && steps.prev.outcome == 'success' && steps.deploy.outcome == 'success'
+        env:
+          TAG_SHA: ${{ steps.verify.outputs.tag_sha }}
         run: |
           set -euo pipefail
-          cd "$DEPLOY_PATH"
-          git checkout --force "${{ steps.prev.outputs.sha }}"
-          git reset --hard "${{ steps.prev.outputs.sha }}"
-          bun install --frozen-lockfile
-          bun run build:gui
-          sudo systemctl restart opencodex-proxy.service
-          # Recompute URLs if failure happened before GITHUB_ENV was populated.
+          prev_image="${{ steps.prev.outputs.image }}"
+          if [ -n "$prev_image" ]; then
+            token_file="${OPENCODEX_API_TOKEN_FILE:-/etc/chef/opencodex/api-token}"
+            {
+              printf 'OPENCODEX_IMAGE=%s\n' "$prev_image"
+              printf 'OPENCODEX_STATE_DIR=%s\n' "$STATE_DIR"
+              printf 'OPENCODEX_API_TOKEN_FILE=%s\n' "$token_file"
+              printf 'OPENCODEX_BIND_IP=127.0.0.1\n'
+            } | sudo tee "$COMPOSE_ENV" > /dev/null
+            sudo systemctl restart opencodex-proxy.service
+          elif [ "${{ steps.prev.outputs.bun_runtime }}" = "true" ] && [ -n "${{ steps.prev.outputs.unit_backup }}" ]; then
+            sudo docker compose -f "$COMPOSE_DIR/docker-compose.yml" down || true
+            sudo cp "${{ steps.prev.outputs.unit_backup }}" /etc/systemd/system/opencodex-proxy.service
+            sudo systemctl daemon-reload
+            sudo systemctl enable opencodex-proxy.service
+            sudo systemctl restart opencodex-proxy.service
+          else
+            echo "::error::no previous digest and no bun runtime to roll back to"
+            exit 1
+          fi
+
           urls="${OCX_HEALTH_URLS:-http://127.0.0.1:10100/healthz}"
           if [ -z "${OCX_HEALTH_URLS:-}" ]; then
             ts_ip="$(tailscale ip -4 2>/dev/null | head -n1 || true)"
             [ -z "$ts_ip" ] || urls="$urls http://${ts_ip}:10100/healthz"
-          fi
-          main_pid="$(sudo systemctl show -p MainPID --value opencodex-proxy.service)"
-          if [[ ! "$main_pid" =~ ^[1-9][0-9]*$ ]]; then
-            echo "::error::rollback restarted opencodex-proxy.service without a live MainPID"
-            exit 1
           fi
           deadline=$((SECONDS + 30))
           while (( SECONDS < deadline )); do
@@ -223,16 +275,16 @@ jobs:
               (( remaining > 0 )) || break 2
               max_time=$((remaining < 2 ? remaining : 2))
               body="$(curl -fsS --max-time "$max_time" "$url" || true)"
-              if HEALTH_BODY="$body" MAIN_PID="$main_pid" python3 -c 'import json, os; b=json.loads(os.environ["HEALTH_BODY"]); raise SystemExit(0 if b.get("status") == "ok" and b.get("service") == "opencodex" and str(b.get("pid")) == os.environ["MAIN_PID"] else 1)' 2>/dev/null; then
+              if HEALTH_BODY="$body" python3 -c 'import json, os; b=json.loads(os.environ["HEALTH_BODY"]); raise SystemExit(0 if b.get("status") == "ok" and b.get("service") == "opencodex" else 1)' 2>/dev/null; then
                 root_url="${url%/healthz}/"
                 dashboard="$(curl -fsS --max-time "$max_time" "$root_url" || true)"
                 if printf '%s' "$dashboard" | grep -Fq '<title>opencodex · proxy dashboard</title>'; then
-                  echo "rolled back to ${{ steps.prev.outputs.sha }} and identity-verified healthy with GUI via $url (pid=$main_pid)"
+                  echo "rolled back and healthy with GUI via $url"
                   exit 0
                 fi
               fi
             done
             (( SECONDS < deadline )) && sleep 1
           done
-          echo "::error::rollback deployed ${{ steps.prev.outputs.sha }} but service was not identity-verified healthy within 30s with GUI"
+          echo "::error::rollback did not restore a healthy service within 30s with GUI"
           exit 1

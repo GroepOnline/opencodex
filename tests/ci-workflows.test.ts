@@ -2174,19 +2174,23 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).not.toContain("bun@latest");
   });
 
-  test("az-01 deploy refuses a dirty live tree or a tag that would drop live-only commits", async () => {
+  test("az-01 deploy waits for GHCR publish and pins an immutable digest (no host bun build)", async () => {
     const workflow = await readText(".github/workflows/deploy.yml");
-    const guardIndex = workflow.indexOf("Refuse dirty live checkout or dropped commits");
-    const deployIndex = workflow.indexOf("Deploy into service checkout (in-place, pinned SHA)");
-    const resetIndex = workflow.indexOf("git reset --hard \"${{ steps.verify.outputs.tag_sha }}\"");
-    expect(guardIndex).toBeGreaterThan(-1);
-    expect(deployIndex).toBeGreaterThan(guardIndex);
-    expect(resetIndex).toBeGreaterThan(deployIndex);
-    expect(workflow).toContain("git status --porcelain");
-    expect(workflow).toContain("git merge-base --is-ancestor HEAD");
-    expect(workflow).toContain("would drop unpublished work");
-    expect(workflow).toContain("would drop live-only commits");
-    expect(workflow).toContain("steps.live_guard.outcome == 'success'");
+    expect(workflow).toContain("Wait for GHCR publish (container.yml)");
+    expect(workflow).toContain('gh run list --workflow container.yml --commit "$tag_sha" --status success');
+    expect(workflow).not.toContain("gh run watch");
+    expect(workflow).toContain("docker/login-action@dbcb813823bdd20940b903addbd779551569679f");
+    expect(workflow).toContain("docker pull");
+    expect(workflow).toContain("docker inspect --format='{{index .RepoDigests 0}}'");
+    expect(workflow).toContain("OPENCODEX_IMAGE=");
+    expect(workflow).toContain("@sha256:");
+    expect(workflow).not.toContain("bun run build:gui");
+    expect(workflow).not.toContain("bun install --frozen-lockfile");
+    expect(workflow).not.toContain("git checkout --force");
+    expect(workflow).not.toContain("git reset --hard");
+    expect(workflow).not.toContain("Refuse dirty live checkout or dropped commits");
+    expect(workflow).not.toContain("oven-sh/setup-bun@");
+    expect(workflow).not.toContain("actions/setup-node@");
   });
 
   test("actionlint config declares exactly the self-hosted labels the deploy workflow requires", async () => {
@@ -2279,9 +2283,9 @@ describe("GitHub Actions hardening", () => {
     expect(workflow.on?.workflow_dispatch?.inputs?.ref?.required).toBe(false);
     expect(workflow.on?.workflow_dispatch?.inputs?.ref?.default).toBe("");
 
-    // Read-only token: the job only ever pushes state to the self-hosted host
-    // it runs on (via git/systemctl locally), never back to GitHub.
-    expect(workflow.permissions).toEqual({ contents: "read" });
+    // Read-only token plus GHCR pull: the job reads container metadata and pulls
+    // a digest-pinned image; it never pushes packages or mutates GitHub state.
+    expect(workflow.permissions).toEqual({ contents: "read", packages: "read" });
 
     // A second deploy must queue rather than race the first, and a mid-flight
     // cancel could leave the live checkout half-updated with no rollback run.
@@ -2290,9 +2294,10 @@ describe("GitHub Actions hardening", () => {
 
     expect(workflow.jobs?.deploy?.["timeout-minutes"]).toBe(20);
     expect(workflow.jobs?.deploy?.env?.DEPLOY_PATH).toBe("/opt/chef/services/opencodex");
+    expect(workflow.jobs?.deploy?.env?.COMPOSE_DIR).toBe("/opt/chef/deploy/opencodex");
 
     expect(text).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");
-    expect(text).toContain("oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6");
+    expect(text).toContain("docker/login-action@dbcb813823bdd20940b903addbd779551569679f");
     expect(text).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
   });
 
@@ -2332,33 +2337,33 @@ describe("GitHub Actions hardening", () => {
     expect(resolve!.run ?? "").toContain("exit 1");
   });
 
-  test("az-01 deploy pins the checkout to a merge-base-verified SHA, never a re-resolved tag name", async () => {
+  test("az-01 deploy verifies tag ancestry then cutovers via compose (never a floating version tag)", async () => {
     const text = await readText(".github/workflows/deploy.yml");
     const workflow = Bun.YAML.parse(text) as {
       jobs?: { deploy?: { steps?: Array<{ name?: string; id?: string; run?: string }> } };
     };
     const steps = workflow.jobs?.deploy?.steps ?? [];
     const verify = steps.find(step => step.id === "verify");
-    const deploy = steps.find(step => step.name === "Deploy into service checkout (in-place, pinned SHA)");
+    const deploy = steps.find(step => step.name === "Deploy digest-pinned container (in-place cutover)");
     expect(verify).toBeDefined();
     expect(deploy).toBeDefined();
 
-    // The origin/main ancestry check must gate before the tag is ever pinned
-    // to a SHA, mirroring publish-on-tag.yml's own main-ancestry gate.
     expect(verify!.run ?? "").toContain('git merge-base --is-ancestor "refs/tags/$tag" "origin/main"');
     expect(verify!.run ?? "").toContain("is not on origin/main");
     expect(verify!.run ?? "").toContain('tag_sha=$(git rev-parse "refs/tags/$tag")');
 
-    // The deploy step must check out `steps.verify.outputs.tag_sha`, not
-    // re-resolve `$tag`/the tag ref — otherwise a tag force-moved between the
-    // verify step and this one could smuggle in an unverified commit.
-    expect(deploy!.run ?? "").toContain('git checkout --force "${{ steps.verify.outputs.tag_sha }}"');
-    expect(deploy!.run ?? "").toContain('git reset --hard "${{ steps.verify.outputs.tag_sha }}"');
-    expect(deploy!.run ?? "").not.toContain("git checkout --force \"$tag\"");
-    expect(deploy!.run ?? "").not.toMatch(/git checkout --force "refs\/tags/);
+    expect(deploy!.run ?? "").toContain("deploy/container/compose.example.yml");
+    expect(deploy!.run ?? "").toContain("deploy/container/opencodex-proxy.service");
+    expect(deploy!.run ?? "").toContain("systemctl stop opencodex-proxy.service");
+    expect(deploy!.run ?? "").toContain("systemctl start opencodex-proxy.service");
+    const unit = await readText("deploy/container/opencodex-proxy.service");
+    expect(unit).toContain("docker compose up");
+    expect(deploy!.run ?? "").not.toContain("git checkout --force");
+    expect(deploy!.run ?? "").not.toContain("git reset --hard");
+    expect(text).not.toMatch(/ghcr\.io\/groeponline\/opencodex:v[0-9]/);
   });
 
-  test("az-01 deploy health-gates the restart for up to 60s and only rolls back to a captured prior SHA", async () => {
+  test("az-01 deploy health-gates gitSha for up to 60s and rolls back to a captured prior digest", async () => {
     const text = await readText(".github/workflows/deploy.yml");
     const workflow = Bun.YAML.parse(text) as {
       jobs?: {
@@ -2373,18 +2378,16 @@ describe("GitHub Actions hardening", () => {
     expect(health).toBeDefined();
     expect(rollback).toBeDefined();
 
-    // A wall-clock deadline bounds serial endpoint probes; identity must match the systemd unit.
     expect(health!.run ?? "").toContain("deadline=$((SECONDS + 60))");
-    expect(health!.run ?? "").toContain('systemctl show -p MainPID --value opencodex-proxy.service');
+    expect(health!.run ?? "").toContain('b.get("gitSha") == os.environ["TAG_SHA"]');
     expect(health!.run ?? "").toContain('b.get("service") == "opencodex"');
-    expect(health!.run ?? "").toContain('str(b.get("pid")) == os.environ["MAIN_PID"]');
+    expect(health!.run ?? "").not.toContain("MainPID");
+    expect(health!.run ?? "").not.toContain('b.get("pid")');
     expect(health!.run ?? "").toContain("--max-time");
-    expect(health!.run ?? "").toContain("identity-verified healthy within 60s");
+    expect(health!.run ?? "").toContain("gitSha-verified healthy within 60s");
     expect(health!.run ?? "").toContain("<title>opencodex · proxy dashboard</title>");
-    expect(text).toContain("uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0");
-    expect(text).toContain('node-version: "22.12.0"');
     const resolveHealthIndex = steps.findIndex(step => step.name === "Resolve health URLs");
-    const deployIndex = steps.findIndex(step => step.name === "Deploy into service checkout (in-place, pinned SHA)");
+    const deployIndex = steps.findIndex(step => step.name === "Deploy digest-pinned container (in-place cutover)");
     const resolveHealth = steps[resolveHealthIndex];
     expect(resolveHealthIndex).toBeGreaterThanOrEqual(0);
     expect(resolveHealthIndex).toBeLessThan(deployIndex);
@@ -2393,23 +2396,18 @@ describe("GitHub Actions hardening", () => {
     expect(resolveHealth?.run ?? "").toContain("no discoverable Tailscale IPv4");
     expect(text).not.toContain("100.109.39.86");
 
-    // Rollback must only fire once a known-good prior SHA was captured AND the
-    // dirty/ancestry guard passed — otherwise a failure before either of those
-    // steps ran has nothing safe to roll back to, and `failure()` alone would
-    // attempt a checkout with an empty/garbage output.
-    expect(rollback!.if).toBe("failure() && steps.prev.outcome == 'success' && steps.live_guard.outcome == 'success' && steps.deploy.outcome == 'success' && steps.setup_node.outcome == 'success'");
-    expect(rollback!.run ?? "").toContain('git checkout --force "${{ steps.prev.outputs.sha }}"');
-    expect(rollback!.run ?? "").toContain('git reset --hard "${{ steps.prev.outputs.sha }}"');
-    expect(rollback!.run ?? "").toContain("bun run build:gui");
+    expect(rollback!.if).toBe("failure() && steps.prev.outcome == 'success' && steps.deploy.outcome == 'success'");
+    expect(rollback!.run ?? "").toContain("OPENCODEX_IMAGE=");
+    expect(rollback!.run ?? "").not.toContain("bun run build:gui");
+    expect(rollback!.run ?? "").not.toContain("git checkout --force");
+    expect(rollback!.run ?? "").not.toContain("git reset --hard");
     expect(rollback!.run ?? "").toContain("sudo systemctl restart opencodex-proxy.service");
-    // Rollback is independent of prior GITHUB_ENV and applies the same identity contract.
     expect(rollback!.run ?? "").toContain('${OCX_HEALTH_URLS:-http://127.0.0.1:10100/healthz}');
     expect(rollback!.run ?? "").toContain("tailscale ip -4");
     expect(rollback!.run ?? "").toContain("deadline=$((SECONDS + 30))");
-    expect(rollback!.run ?? "").toContain('systemctl show -p MainPID --value opencodex-proxy.service');
+    expect(rollback!.run ?? "").not.toContain("MainPID");
     expect(rollback!.run ?? "").toContain('b.get("service") == "opencodex"');
-    expect(rollback!.run ?? "").toContain("rollback deployed");
-    expect(rollback!.run ?? "").toContain("identity-verified healthy within 30s");
+    expect(rollback!.run ?? "").toContain("rolled back and healthy");
     expect(rollback!.run ?? "").toContain("<title>opencodex · proxy dashboard</title>");
   });
 
