@@ -456,6 +456,11 @@ describe("provider registry parity", () => {
     expect(cf?.modelContextWindows?.["@cf/zai-org/glm-5.2"]).toBe(262_144);
   });
 
+  test("zhipu-bigmodel keeps liveModels false until GET /models is verified", () => {
+    const entry = PROVIDER_REGISTRY.find(row => row.id === "zhipu-bigmodel");
+    expect(entry?.liveModels).toBe(false);
+  });
+
   test("freeTier propagates through config seed, enrich backfill, and presets without overwriting user config", async () => {
     const { enrichProviderFromRegistry } = await import("../src/providers/derive");
     const nvidia = PROVIDER_REGISTRY.find(entry => entry.id === "nvidia")!;

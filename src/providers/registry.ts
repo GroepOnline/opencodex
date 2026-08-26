@@ -1114,8 +1114,9 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       ZHIPU_BIGMODEL_THINKING_TOGGLE_MODELS.map(id => [id, THINKING_TOGGLE_MAP]),
     ),
     preserveReasoningContentModels: ZHIPU_BIGMODEL_THINKING_TOGGLE_MODELS,
-    // No liveModels: GET /api/paas/v4/models has not been observed to answer on this host, and a
-    // false live claim yields an empty picker at runtime. Flip it on once someone verifies it.
+    // GET /api/paas/v4/models has not been observed to answer on this host; omitting liveModels
+    // makes provider-fetch treat discovery as live and yields an empty picker at runtime.
+    liveModels: false,
     note: "Domestic BigModel pay-as-you-go endpoint (open.bigmodel.cn)",
   },
   { id: "nanogpt", label: "NanoGPT", baseUrl: "https://nano-gpt.com/api/v1", adapter: "openai-chat", authKind: "key", dashboardUrl: "https://nano-gpt.com/api" },
