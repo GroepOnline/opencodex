@@ -391,7 +391,11 @@ export function startServer(port?: number) {
   // resolves localhost→127.0.0.1): on Windows `localhost` resolves ::1-first, but the injected URL
   // is 127.0.0.1, so binding literal "localhost" would reintroduce the F4 refusal. Wildcards
   // (0.0.0.0/::) and specific hosts are left untouched so intentional exposure is preserved.
-  const configuredHost = config.hostname?.trim();
+  // OPENCODEX_BIND_HOST (set by the container image / compose) overrides config.hostname so a
+  // packaged image can bind 0.0.0.0 without a persisted config.json; the same canonicalization
+  // rules apply so an env value of "localhost" still collapses to 127.0.0.1.
+  const envBindHost = process.env.OPENCODEX_BIND_HOST?.trim();
+  const configuredHost = envBindHost || config.hostname?.trim();
   const bindHost = !configuredHost || /^localhost$/i.test(configuredHost) ? "127.0.0.1" : configuredHost;
 
   // Codex treats empty / non-JSON 503 bodies as "Unknown error" (#452). Keep Retry-After and
