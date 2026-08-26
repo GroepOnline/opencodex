@@ -16,7 +16,7 @@ await seedDicts();
  * silently. The shape is identical: start a replacement request, then settle the superseded one
  * afterwards and assert it neither clears loading nor installs its stale payload.
  */
-const globals = ["document", "window", "navigator", "localStorage", "IS_REACT_ACT_ENVIRONMENT"] as const;
+const globals = ["document", "window", "navigator", "localStorage", "IS_REACT_ACT_ENVIRONMENT", "ResizeObserver"] as const;
 let previousGlobals: Record<(typeof globals)[number], unknown>;
 let testWindow: Window;
 const originalFetch = globalThis.fetch;
@@ -31,6 +31,13 @@ beforeEach(() => {
     localStorage: { configurable: true, value: testWindow.localStorage },
   });
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  Object.defineProperty(globalThis, "ResizeObserver", { configurable: true, value: ResizeObserverStub });
+  Object.defineProperty(testWindow, "ResizeObserver", { configurable: true, value: ResizeObserverStub });
 });
 
 afterEach(() => {
@@ -209,6 +216,104 @@ test("an aborted Usage fetch must not clear loading while its replacement is in 
     await Promise.resolve();
   });
   await waitFor(() => !(container.textContent ?? "").includes("Loading usage data"));
+
+  await act(async () => { root.unmount(); });
+  container.remove();
+});
+
+test("a failed Usage refresh keeps last-good data on screen", async () => {
+  const { createRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  document.body.append(container);
+
+  let call = 0;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (!url.includes("/api/usage")) return new Response(null, { status: 404 });
+    call += 1;
+    if (call === 1) {
+      return Response.json({
+        range: "30d",
+        surface: "all",
+        since: null,
+        generatedAt: 1,
+        summary: {
+          requests: 42,
+          measuredRequests: 42,
+          reportedRequests: 42,
+          unreportedRequests: 0,
+          unsupportedRequests: 0,
+          estimatedRequests: 0,
+          inputTokens: 100,
+          outputTokens: 200,
+          cachedInputTokens: 0,
+          reasoningOutputTokens: 0,
+          totalTokens: 300,
+          coverageRatio: 1,
+        },
+        days: [],
+        models: [],
+        providers: [],
+      });
+    }
+    return new Response(null, { status: 503 });
+  }) as typeof fetch;
+
+  function Harness() {
+    const [apiBase, setApiBase] = useState("http://old");
+    (window as unknown as { __bumpApiBase?: () => void }).__bumpApiBase = () => setApiBase("http://new");
+    return (
+      <LanguageProvider>
+        <Usage apiBase={apiBase} />
+      </LanguageProvider>
+    );
+  }
+
+  let root!: Root;
+  await act(async () => {
+    root = createRoot(container);
+    root.render(<Harness />);
+  });
+  await settle();
+  await waitFor(() => (container.textContent ?? "").includes("42"));
+
+  await act(async () => {
+    (window as unknown as { __bumpApiBase: () => void }).__bumpApiBase();
+  });
+  await settle();
+  await waitFor(() => call >= 2);
+
+  expect(container.textContent).toContain("42");
+  expect(container.textContent).not.toContain("Could not load usage data");
+
+  await act(async () => { root.unmount(); });
+  container.remove();
+});
+
+test("Usage shows an error when the first load fails with no data", async () => {
+  const { createRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  document.body.append(container);
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (!url.includes("/api/usage")) return new Response(null, { status: 404 });
+    return new Response(null, { status: 503 });
+  }) as typeof fetch;
+
+  let root!: Root;
+  await act(async () => {
+    root = createRoot(container);
+    root.render(
+      <LanguageProvider>
+        <Usage apiBase="http://test" />
+      </LanguageProvider>,
+    );
+  });
+  await settle();
+  await waitFor(() => (container.textContent ?? "").includes("Could not load usage data"));
+
+  expect(container.textContent).toContain("Retry");
 
   await act(async () => { root.unmount(); });
   container.remove();

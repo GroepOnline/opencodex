@@ -634,20 +634,23 @@ export default function Usage({ apiBase }: { apiBase: string }) {
   const [error, setError] = useState<string | null>(null);
   const [modelQuery, setModelQuery] = useState("");
   const loadGenerationRef = useRef(0);
+  const dataRef = useRef<UsageResponse | null>(null);
 
   const fetchUsage = useCallback(async (nextRange: Range, nextSurface: UsageSurface, signal: AbortSignal) => {
     const generation = ++loadGenerationRef.current;
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`${apiBase}/api/usage?range=${nextRange}&surface=${nextSurface}`, { signal });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`.trim());
       const json = await res.json() as UsageResponse;
       if (signal.aborted || generation !== loadGenerationRef.current) return;
+      dataRef.current = json;
       setData(json);
+      setError(null);
     } catch (cause) {
       // A stale request (range/apiBase changed, or unmount) must not overwrite newer state.
       if (signal.aborted || generation !== loadGenerationRef.current) return;
+      if (dataRef.current) return;
       const detail = cause instanceof Error ? cause.message : "";
       setError(detail ? `${t("usage.loadError")} ${detail}` : t("usage.loadError"));
     } finally {
@@ -703,7 +706,7 @@ export default function Usage({ apiBase }: { apiBase: string }) {
       </div>
       <p className="page-sub">{t("usage.subtitle")}</p>
 
-      {error ? (
+      {error && !data ? (
         <Notice tone="err">
           {error}{" "}
           <button
