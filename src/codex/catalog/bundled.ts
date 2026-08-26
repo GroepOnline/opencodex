@@ -160,6 +160,8 @@ export function runCodexDebugModels(
 }
 
 export function loadBundledCodexCatalog(deps: BundledCatalogDeps = {}): RawCatalog | null {
+  // `now` is a clock. Treating it as a cache bypass forced tests to patch
+  // global Date.now and flake the full suite under shared isolates.
   const useCache = !deps.commandCandidates
     && !deps.execFileSync
     && !deps.configDir
@@ -167,8 +169,8 @@ export function loadBundledCodexCatalog(deps: BundledCatalogDeps = {}): RawCatal
     && !deps.platform
     && !deps.existsSync
     && !deps.readFileSync
-    && !deps.now
     && deps.discoverAlternatives === undefined;
+  const nowMs = (deps.now ?? Date.now)();
   const execFile = deps.execFileSync ?? (execFileSync as unknown as ExecFile);
   // Prefer the single resolved runtime so sync/clamp never probe a different binary
   // than OpenCodex will launch. Tests may inject commandCandidates to stub probing.
@@ -183,7 +185,7 @@ export function loadBundledCodexCatalog(deps: BundledCatalogDeps = {}): RawCatal
   const candidates = deps.commandCandidates?.() ?? (() => {
     let runtimeCommand: string;
     let runtimeVersion = "";
-    if (useCache && resolvedRuntimeMemo && resolvedRuntimeMemo.fingerprint === envFingerprint && resolvedRuntimeMemo.expiresAt > Date.now()) {
+    if (useCache && resolvedRuntimeMemo && resolvedRuntimeMemo.fingerprint === envFingerprint && resolvedRuntimeMemo.expiresAt > nowMs) {
       runtimeCommand = resolvedRuntimeMemo.command;
       runtimeVersion = resolvedRuntimeMemo.version;
     } else {
@@ -209,7 +211,7 @@ export function loadBundledCodexCatalog(deps: BundledCatalogDeps = {}): RawCatal
           fingerprint: [...envParts, postStamp].join("\0"),
           command: runtimeCommand,
           version: runtimeVersion,
-          expiresAt: Date.now() + RESOLVED_RUNTIME_MEMO_MS,
+          expiresAt: nowMs + RESOLVED_RUNTIME_MEMO_MS,
         };
       } else if (useCache) {
         resolvedRuntimeMemo = null;
@@ -220,6 +222,7 @@ export function loadBundledCodexCatalog(deps: BundledCatalogDeps = {}): RawCatal
         runtimeCommand,
         runtimeVersion,
         process.env.OPENCODEX_HOME ?? "",
+        process.env.CODEX_CLI_PATH ?? "",
       ].join("\0");
     }
     return [runtimeCommand];
@@ -229,7 +232,7 @@ export function loadBundledCodexCatalog(deps: BundledCatalogDeps = {}): RawCatal
     && cacheKey
     && bundledCatalogCache
     && bundledCatalogCache.key === cacheKey
-    && bundledCatalogCache.expiresAt > Date.now()
+    && bundledCatalogCache.expiresAt > nowMs
   ) {
     return bundledCatalogCache.value;
   }
@@ -240,7 +243,7 @@ export function loadBundledCodexCatalog(deps: BundledCatalogDeps = {}): RawCatal
         if (useCache && cacheKey) {
           bundledCatalogCache = {
             key: cacheKey,
-            expiresAt: Date.now() + BUNDLED_CATALOG_CACHE_MS,
+            expiresAt: nowMs + BUNDLED_CATALOG_CACHE_MS,
             value: catalog,
           };
         }
@@ -251,7 +254,7 @@ export function loadBundledCodexCatalog(deps: BundledCatalogDeps = {}): RawCatal
   if (useCache && cacheKey) {
     bundledCatalogCache = {
       key: cacheKey,
-      expiresAt: Date.now() + BUNDLED_CATALOG_CACHE_MS,
+      expiresAt: nowMs + BUNDLED_CATALOG_CACHE_MS,
       value: null,
     };
   }
