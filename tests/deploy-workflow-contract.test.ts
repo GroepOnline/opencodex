@@ -14,6 +14,14 @@ describe("digest deploy workflow contract", () => {
     expect(workflow).toContain("gh run view");
   });
 
+  test("dispatch checkout and deploy identity are pinned to the validated tag commit", async () => {
+    const workflow = await deployWorkflow();
+    expect(workflow).toContain("ref: ${{ steps.ref.outputs.tag }}");
+    expect(workflow).toContain('tag_sha=$(git rev-parse "refs/tags/$tag")');
+    expect(workflow).toContain('tag_sha=$(git rev-parse "refs/tags/$tag^{}")');
+    expect(workflow).toContain('echo "tag_sha=$tag_sha" >> "$GITHUB_OUTPUT"');
+  });
+
   test("rollback remains armed after cutover starts even if start fails", async () => {
     const workflow = await deployWorkflow();
     expect(workflow).toContain('echo "cutover_started=true" >> "$GITHUB_OUTPUT"');
