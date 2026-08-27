@@ -324,6 +324,14 @@ jobs:
           if [ -d /home/chef/.opencodex ]; then
             sudo rsync -a --ignore-existing /home/chef/.opencodex/ "$STATE_DIR"
           fi
+          # The carried bun-runtime config pins hostname to the host Tailscale
+          # IPv4, which does not exist inside the bridge network; the container
+          # then refuses to bind (PortUnavailableError, exit 1 crash-loop).
+          # Strip it so the container binds 0.0.0.0 via OPENCODEX_BIND_HOST
+          # and keeps the rest of the carried settings.
+          if sudo test -f "$STATE_DIR/config.json"; then
+            sudo python3 deploy/container/strip-hostname.py "$STATE_DIR/config.json" || true
+          fi
           sudo chown -R "$container_uid:$container_gid" "$STATE_DIR"
           sudo cp deploy/container/compose.example.yml "$COMPOSE_DIR/docker-compose.yml"
           sudo cp deploy/container/opencodex-proxy.service /etc/systemd/system/opencodex-proxy.service
