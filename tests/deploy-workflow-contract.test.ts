@@ -59,21 +59,33 @@ describe("digest deploy workflow contract", () => {
     );
   });
 
-  test("state dir is handed to the container user (bun uid 1000) before start", async () => {
+  test("state migration quiesces the old runtime and repairs ownership before start", async () => {
     const workflow = await deployWorkflow();
-    expect(workflow).toContain('sudo chown -R 1000:1000 "$STATE_DIR"');
     const deployScript = workflow.slice(
       workflow.indexOf("- name: Deploy digest-pinned container"),
       workflow.indexOf("- name: Health gate"),
     );
+    expect(deployScript).toContain("--network none --read-only --entrypoint /usr/bin/id");
+    expect(deployScript).toContain('sudo chown -R "$container_uid:$container_gid" "$STATE_DIR"');
+    expect(deployScript).not.toContain('sudo chown -R 1000:1000 "$STATE_DIR"');
+    expect(deployScript).toContain("opencodex-proxy.service remained active after stop");
     const sMkdir = deployScript.indexOf("sudo mkdir -p");
-    const sChown = deployScript.indexOf("sudo chown -R 1000:1000");
+    const sStop = deployScript.indexOf("sudo systemctl stop");
     const sRsync = deployScript.indexOf("sudo rsync -a --ignore-existing");
+    const sChown = deployScript.indexOf('sudo chown -R "$container_uid:$container_gid"');
     const sStart = deployScript.indexOf("sudo systemctl start");
     expect(sMkdir).toBeGreaterThan(-1);
-    expect(sChown).toBeGreaterThan(sMkdir);
-    expect(sRsync).toBeGreaterThan(sChown);
-    expect(sStart).toBeGreaterThan(sRsync);
+    expect(sStop).toBeGreaterThan(sMkdir);
+    expect(sRsync).toBeGreaterThan(sStop);
+    expect(sChown).toBeGreaterThan(sRsync);
+    expect(sStart).toBeGreaterThan(sChown);
+    expect(deployScript).toContain("port 10100 still bound after stopping");
+    expect(deployScript).toContain("sudo docker rm -f opencodex-opencodex-1");
+    expect(deployScript.indexOf("sudo docker rm -f opencodex-opencodex-1")).toBeGreaterThan(sStop);
+    expect(deployScript.indexOf("port 10100 still bound after stopping")).toBeGreaterThan(
+      deployScript.indexOf("sudo docker rm -f opencodex-opencodex-1"),
+    );
+    expect(sRsync).toBeGreaterThan(deployScript.indexOf("port 10100 still bound after stopping"));
   });
 
   test("rollback remains armed after cutover starts even if start fails", async () => {
@@ -106,25 +118,37 @@ describe("digest deploy workflow contract", () => {
     expect(workflow).toContain('OCX_HEALTH_URLS must include loopback and Tailscale');
     expect(workflow).toContain('read -r -a health_urls <<< "$OCX_HEALTH_URLS"');
     expect(workflow).not.toContain("set -- $OCX_HEALTH_URLS");
+    expect(workflow).toContain("docker inspect opencodex-opencodex-1 --format 'Status={{.State.Status}} Exit={{.State.ExitCode}} Error={{.State.Error}}'");
     expect(compose).toContain('"127.0.0.1:10100:10100"');
     expect(compose).toContain("${OPENCODEX_BIND_IP:?set the host Tailscale IPv4}:10100:10100");
   });
 
-  test("bun-runtime rollback wins over a stale compose image and requires every health URL", async () => {
+  test("rollback verifies the exact pre-deploy runtime health contract", async () => {
     const workflow = await deployWorkflow();
+    const capture = workflow.slice(
+      workflow.indexOf("- name: Capture pre-deploy runtime state"),
+      workflow.indexOf("- name: Resolve health URLs"),
+    );
     const rollback = workflow.slice(
       workflow.indexOf("- name: Rollback on failure"),
       workflow.indexOf("- name: Log out of GHCR"),
     );
+    expect(capture).toContain('echo "health_urls=${prev_health_urls}"');
+    expect(capture).toContain("http://127.0.0.1:10100/healthz");
+    expect(capture).toContain("http://${ts_ip}:10100/healthz");
+    expect(capture).toContain("bun runtime is active but no healthy pre-deploy endpoint was captured");
+    expect(rollback).toContain("PREV_HEALTH_URLS: ${{ steps.prev.outputs.health_urls }}");
+    expect(rollback).toContain('urls="$PREV_HEALTH_URLS"');
+    expect(rollback).toContain('read -r -a rollback_urls <<< "$urls"');
+    expect(rollback).toContain("no pre-deploy healthy endpoint was captured for rollback verification");
+    expect(rollback).not.toContain('OCX_HEALTH_URLS must include loopback and Tailscale');
     expect(rollback).toContain("BUN_RUNTIME: ${{ steps.prev.outputs.bun_runtime }}");
     expect(rollback.indexOf("BUN_RUNTIME:")).toBeLessThan(rollback.indexOf('elif [ -n "$prev_image" ]'));
     expect(rollback).toContain('[ "$bun_runtime" = "true" ]');
     expect(rollback).toContain("bun runtime detected but unit backup missing");
     expect(rollback).not.toContain('[ "$bun_runtime" = "true" ] && [ -n "$unit_backup" ]');
-    expect(rollback).toContain('read -r -a rollback_urls <<< "$urls"');
     expect(rollback).toContain('echo "rolled back and healthy with GUI via $urls"');
     expect(rollback).toContain("all_ok=1");
-    expect(rollback).toContain('OCX_HEALTH_URLS must include loopback and Tailscale');
     expect(workflow).toContain(
       'sudo docker compose --env-file "$COMPOSE_ENV" -f "$COMPOSE_DIR/docker-compose.yml" down',
     );
