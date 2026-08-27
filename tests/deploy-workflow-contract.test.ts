@@ -141,6 +141,9 @@ describe("digest deploy workflow contract", () => {
     expect(rollback).toContain('urls="$PREV_HEALTH_URLS"');
     expect(rollback).toContain('read -r -a rollback_urls <<< "$urls"');
     expect(rollback).toContain("no pre-deploy healthy endpoint was captured for rollback verification");
+    expect(rollback).toContain("sudo docker rm -f opencodex-opencodex-1");
+    expect(rollback).toContain("port 10100 still bound before restoring the previous runtime");
+    expect(rollback).not.toContain("logs --tail 120");
     expect(rollback).not.toContain('OCX_HEALTH_URLS must include loopback and Tailscale');
     expect(rollback).toContain("BUN_RUNTIME: ${{ steps.prev.outputs.bun_runtime }}");
     expect(rollback.indexOf("BUN_RUNTIME:")).toBeLessThan(rollback.indexOf('elif [ -n "$prev_image" ]'));

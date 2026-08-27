@@ -364,8 +364,6 @@ jobs:
             (( SECONDS < deadline )) && sleep 1
           done
           echo "::error::opencodex did not become gitSha-verified healthy within 60s with GUI after cutover"
-          sudo docker compose --env-file "$COMPOSE_ENV" -f "$COMPOSE_DIR/docker-compose.yml" ps -a || true
-          sudo docker compose --env-file "$COMPOSE_ENV" -f "$COMPOSE_DIR/docker-compose.yml" logs --tail 120 || true
           sudo docker inspect opencodex-opencodex-1 --format 'Status={{.State.Status}} Exit={{.State.ExitCode}} Error={{.State.Error}}' 2>/dev/null || true
           sudo ss -ltnp | awk '$4 ~ /:10100$/ { print }' || true
           exit 1
@@ -391,8 +389,27 @@ jobs:
             echo "::error::bun runtime detected but unit backup missing"
             exit 1
           fi
-          if [ "$bun_runtime" = "true" ]; then
+
+          # Mirror deploy cleanup: a leftover compose unit holding the
+          # Tailscale listener makes bun restart fail the same EADDRINUSE way.
+          if [ -f "$COMPOSE_DIR/docker-compose.yml" ]; then
             sudo docker compose --env-file "$COMPOSE_ENV" -f "$COMPOSE_DIR/docker-compose.yml" down || true
+          fi
+          sudo docker rm -f opencodex-opencodex-1 2>/dev/null || true
+          deadline=$((SECONDS + 20))
+          while (( SECONDS < deadline )); do
+            if ! sudo ss -ltn | awk '$4 ~ /:10100$/ { found=1 } END { exit !found }'; then
+              break
+            fi
+            sleep 1
+          done
+          if sudo ss -ltn | awk '$4 ~ /:10100$/ { found=1 } END { exit !found }'; then
+            echo "::error::port 10100 still bound before restoring the previous runtime"
+            sudo ss -ltnp | awk '$4 ~ /:10100$/ { print }' || true
+            exit 1
+          fi
+
+          if [ "$bun_runtime" = "true" ]; then
             sudo cp "$unit_backup" /etc/systemd/system/opencodex-proxy.service
             sudo systemctl daemon-reload
             sudo systemctl enable opencodex-proxy.service
