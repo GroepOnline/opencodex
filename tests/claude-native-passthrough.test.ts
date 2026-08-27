@@ -7,7 +7,10 @@ import { saveConfig } from "../src/config";
 import { startServer } from "../src/server";
 import { shouldReplayNativePassthroughOverload } from "../src/server/claude-messages";
 import type { OcxConfig } from "../src/types";
-import { installIsolatedCodexHome, type IsolatedCodexHome } from "./helpers/isolated-codex-home";
+import {
+  installIsolatedCodexHome,
+  type IsolatedCodexHome,
+} from "./helpers/isolated-codex-home";
 
 let testDir = "";
 let previousHome: string | undefined;
@@ -28,14 +31,24 @@ afterEach(() => {
   if (testDir) rmSync(testDir, { recursive: true, force: true });
 });
 
-interface Captured { path: string; headers: Headers; body: any }
+interface Captured {
+  path: string;
+  headers: Headers;
+  body: any;
+}
 
 function mockAnthropicUpstream(captured: Captured[]) {
   return Bun.serve({
     port: 0,
     async fetch(req) {
       const url = new URL(req.url);
-      captured.push({ path: url.pathname + url.search, headers: req.headers, body: await req.json() });
+      if (req.method !== "POST")
+        return new Response("not found", { status: 404 });
+      captured.push({
+        path: url.pathname + url.search,
+        headers: req.headers,
+        body: await req.json(),
+      });
       if (url.pathname.endsWith("/count_tokens")) {
         return Response.json({ input_tokens: 4242 });
       }
@@ -47,17 +60,29 @@ function mockAnthropicUpstream(captured: Captured[]) {
         `event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 42 } })}\n\n`,
         `event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}\n\n`,
       ];
-      return new Response(frames.join(""), { headers: { "Content-Type": "text/event-stream" } });
+      return new Response(frames.join(""), {
+        headers: { "Content-Type": "text/event-stream" },
+      });
     },
   });
 }
 
-function cfg(anthropicBaseUrl: string, extraClaude?: Record<string, unknown>): OcxConfig {
+function cfg(
+  anthropicBaseUrl: string,
+  extraClaude?: Record<string, unknown>,
+): OcxConfig {
   return {
     port: 0,
     defaultProvider: "mock",
     providers: {
-      mock: { adapter: "openai-chat", baseUrl: "http://127.0.0.1:1/v1", apiKey: "k", allowPrivateNetwork: true, liveModels: false, models: ["test-model"] },
+      mock: {
+        adapter: "openai-chat",
+        baseUrl: "http://127.0.0.1:1/v1",
+        apiKey: "k",
+        allowPrivateNetwork: true,
+        liveModels: false,
+        models: ["test-model"],
+      },
     },
     connectTimeoutMs: 250,
     claudeCode: { anthropicBaseUrl, ...extraClaude },
@@ -67,8 +92,9 @@ function cfg(anthropicBaseUrl: string, extraClaude?: Record<string, unknown>): O
 const OAUTH_HEADERS = {
   "content-type": "application/json",
   "anthropic-version": "2023-06-01",
-  "anthropic-beta": "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14",
-  "authorization": "Bearer sk-ant-oat01-tst",
+  "anthropic-beta":
+    "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14",
+  authorization: "Bearer sk-ant-oat01-tst",
   "user-agent": "claude-cli/2.1.200",
   "x-app": "cli",
 };
@@ -78,11 +104,23 @@ function claudeBody(): Record<string, unknown> {
     model: "claude-fable-5",
     max_tokens: 32000,
     stream: true,
-    system: [{ type: "text", text: "You are Claude Code.", cache_control: { type: "ephemeral" } }],
+    system: [
+      {
+        type: "text",
+        text: "You are Claude Code.",
+        cache_control: { type: "ephemeral" },
+      },
+    ],
     messages: [
       {
         role: "assistant",
-        content: [{ type: "thinking", thinking: "prior thoughts", signature: "sig-real" }],
+        content: [
+          {
+            type: "thinking",
+            thinking: "prior thoughts",
+            signature: "sig-real",
+          },
+        ],
       },
       { role: "user", content: "hi" },
     ],
@@ -110,15 +148,19 @@ test("unmapped claude model + sk-ant credential passes through verbatim", async 
     expect(hit.path).toBe("/v1/messages?beta=true");
     // Caller's own OAuth credential and beta headers forwarded verbatim.
     expect(hit.headers.get("authorization")).toBe("Bearer sk-ant-oat01-tst");
-    expect(hit.headers.get("anthropic-beta")).toBe(OAUTH_HEADERS["anthropic-beta"]);
+    expect(hit.headers.get("anthropic-beta")).toBe(
+      OAUTH_HEADERS["anthropic-beta"],
+    );
     expect(hit.headers.get("user-agent")).toBe("claude-cli/2.1.200");
     expect(hit.headers.get("x-app")).toBe("cli");
     // Body untouched: thinking signature, cache_control, max_tokens all intact.
     expect(hit.body).toEqual(claudeBody());
 
     // Request log: native provider tag + usage incl. cache detail from the SSE tap.
-    const logs = await (await fetch(new URL("/api/logs", server.url))).json() as any[];
-    const row = logs.find(l => l.provider === "anthropic-native");
+    const logs = (await (
+      await fetch(new URL("/api/logs", server.url))
+    ).json()) as any[];
+    const row = logs.find((l) => l.provider === "anthropic-native");
     expect(row).toBeDefined();
     expect(row.status).toBe(200);
     expect(row.model).toBe("claude-fable-5");
@@ -127,16 +169,28 @@ test("unmapped claude model + sk-ant credential passes through verbatim", async 
     expect(row.usage.outputTokens).toBe(42);
     expect(row.usage.cacheReadInputTokens).toBe(690000);
 
-    const claudeUsage = await fetch(new URL("/api/usage?range=all&surface=claude", server.url)).then(response => response.json()) as {
+    const claudeUsage = (await fetch(
+      new URL("/api/usage?range=all&surface=claude", server.url),
+    ).then((response) => response.json())) as {
       surface: string;
       summary: { requests: number; totalTokens: number };
       models: Array<{ provider: string; model: string }>;
     };
     expect(claudeUsage.surface).toBe("claude");
-    expect(claudeUsage.summary).toMatchObject({ requests: 1, totalTokens: 1391042 });
-    expect(claudeUsage.models).toEqual([expect.objectContaining({ provider: "anthropic-native", model: "claude-fable-5" })]);
+    expect(claudeUsage.summary).toMatchObject({
+      requests: 1,
+      totalTokens: 1391042,
+    });
+    expect(claudeUsage.models).toEqual([
+      expect.objectContaining({
+        provider: "anthropic-native",
+        model: "claude-fable-5",
+      }),
+    ]);
 
-    const codexUsage = await fetch(new URL("/api/usage?range=all&surface=codex", server.url)).then(response => response.json()) as {
+    const codexUsage = (await fetch(
+      new URL("/api/usage?range=all&surface=codex", server.url),
+    ).then((response) => response.json())) as {
       surface: string;
       summary: { requests: number };
     };
@@ -150,7 +204,8 @@ test("unmapped claude model + sk-ant credential passes through verbatim", async 
 
 test("native passthrough persists conversationId from metadata.user_id", async () => {
   const { createHash } = await import("node:crypto");
-  const { clearRequestLogsForTests } = await import("../src/server/request-log");
+  const { clearRequestLogsForTests } =
+    await import("../src/server/request-log");
   clearRequestLogsForTests();
   const captured: Captured[] = [];
   const upstream = mockAnthropicUpstream(captured);
@@ -169,13 +224,17 @@ test("native passthrough persists conversationId from metadata.user_id", async (
     expect(res.status).toBe(200);
     await res.text();
 
-    const logs = await (await fetch(new URL("/api/logs?tail=1", server.url))).json() as Array<{
+    const logs = (await (
+      await fetch(new URL("/api/logs?tail=1", server.url))
+    ).json()) as Array<{
       provider?: string;
       conversationId?: string;
     }>;
     expect(logs).toHaveLength(1);
     expect(logs[0]?.provider).toBe("anthropic-native");
-    expect(logs[0]?.conversationId).toBe(createHash("sha256").update(userId).digest("hex").slice(0, 32));
+    expect(logs[0]?.conversationId).toBe(
+      createHash("sha256").update(userId).digest("hex").slice(0, 32),
+    );
   } finally {
     server.stop(true);
     upstream.stop(true);
@@ -192,7 +251,10 @@ test("count_tokens passes through with native credentials", async () => {
     const res = await fetch(new URL("/v1/messages/count_tokens", server.url), {
       method: "POST",
       headers: { ...withoutAuth, "x-api-key": "sk-ant-api03-key" },
-      body: JSON.stringify({ model: "claude-fable-5", messages: [{ role: "user", content: "hi" }] }),
+      body: JSON.stringify({
+        model: "claude-fable-5",
+        messages: [{ role: "user", content: "hi" }],
+      }),
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ input_tokens: 4242 });
@@ -208,14 +270,22 @@ test("count_tokens passes through with native credentials", async () => {
 test("alias/mapped models and non-anthropic credentials do NOT pass through", async () => {
   const captured: Captured[] = [];
   const upstream = mockAnthropicUpstream(captured);
-  saveConfig(cfg(upstream.url.toString().replace(/\/$/, ""), { modelMap: { "claude-haiku-4-5": "mock/test-model" } }));
+  saveConfig(
+    cfg(upstream.url.toString().replace(/\/$/, ""), {
+      modelMap: { "claude-haiku-4-5": "mock/test-model" },
+    }),
+  );
   const server = startServer(0);
   try {
     // Mapped claude id with sk-ant creds -> translate path (mock provider is unreachable -> upstream error, NOT passthrough).
     const mapped = await fetch(new URL("/v1/messages", server.url), {
       method: "POST",
       headers: OAUTH_HEADERS,
-      body: JSON.stringify({ model: "claude-haiku-4-5", max_tokens: 10, messages: [{ role: "user", content: "x" }] }),
+      body: JSON.stringify({
+        model: "claude-haiku-4-5",
+        max_tokens: 10,
+        messages: [{ role: "user", content: "x" }],
+      }),
     });
     expect(mapped.status).not.toBe(200);
 
@@ -223,15 +293,26 @@ test("alias/mapped models and non-anthropic credentials do NOT pass through", as
     const alias = await fetch(new URL("/v1/messages", server.url), {
       method: "POST",
       headers: OAUTH_HEADERS,
-      body: JSON.stringify({ model: "claude-ocx-mock--test-model", max_tokens: 10, messages: [{ role: "user", content: "x" }] }),
+      body: JSON.stringify({
+        model: "claude-ocx-mock--test-model",
+        max_tokens: 10,
+        messages: [{ role: "user", content: "x" }],
+      }),
     });
     expect(alias.status).not.toBe(200);
 
     // Claude model with placeholder bearer -> translate path (no sk-ant credential).
     const placeholder = await fetch(new URL("/v1/messages", server.url), {
       method: "POST",
-      headers: { "content-type": "application/json", "authorization": "Bearer opencodex-local" },
-      body: JSON.stringify({ model: "claude-fable-5", max_tokens: 10, messages: [{ role: "user", content: "x" }] }),
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer opencodex-local",
+      },
+      body: JSON.stringify({
+        model: "claude-fable-5",
+        max_tokens: 10,
+        messages: [{ role: "user", content: "x" }],
+      }),
     });
     expect(placeholder.status).not.toBe(200);
 
@@ -245,13 +326,21 @@ test("alias/mapped models and non-anthropic credentials do NOT pass through", as
 test("nativePassthrough:false disables the pierce", async () => {
   const captured: Captured[] = [];
   const upstream = mockAnthropicUpstream(captured);
-  saveConfig(cfg(upstream.url.toString().replace(/\/$/, ""), { nativePassthrough: false }));
+  saveConfig(
+    cfg(upstream.url.toString().replace(/\/$/, ""), {
+      nativePassthrough: false,
+    }),
+  );
   const server = startServer(0);
   try {
     const res = await fetch(new URL("/v1/messages", server.url), {
       method: "POST",
       headers: OAUTH_HEADERS,
-      body: JSON.stringify({ model: "claude-fable-5", max_tokens: 10, messages: [{ role: "user", content: "x" }] }),
+      body: JSON.stringify({
+        model: "claude-fable-5",
+        max_tokens: 10,
+        messages: [{ role: "user", content: "x" }],
+      }),
     });
     expect(res.status).not.toBe(200);
     expect(captured).toHaveLength(0);
@@ -262,23 +351,29 @@ test("nativePassthrough:false disables the pierce", async () => {
 });
 
 test("shouldReplayNativePassthroughOverload requires an Anthropic pool or fallback", () => {
-  expect(shouldReplayNativePassthroughOverload(cfg("https://api.anthropic.com"))).toBe(false);
-  expect(shouldReplayNativePassthroughOverload({
-    ...cfg("https://api.anthropic.com"),
-    providers: {
-      ...cfg("https://api.anthropic.com").providers,
-      anthropic: {
-        adapter: "anthropic",
-        baseUrl: "https://api.anthropic.com",
-        authMode: "oauth",
-        fallback: [{ provider: "mock", model: "test-model" }],
+  expect(
+    shouldReplayNativePassthroughOverload(cfg("https://api.anthropic.com")),
+  ).toBe(false);
+  expect(
+    shouldReplayNativePassthroughOverload({
+      ...cfg("https://api.anthropic.com"),
+      providers: {
+        ...cfg("https://api.anthropic.com").providers,
+        anthropic: {
+          adapter: "anthropic",
+          baseUrl: "https://api.anthropic.com",
+          authMode: "oauth",
+          fallback: [{ provider: "mock", model: "test-model" }],
+        },
       },
-    },
-  } as OcxConfig)).toBe(true);
-  expect(shouldReplayNativePassthroughOverload({
-    ...cfg("https://api.anthropic.com"),
-    anthropicAccountPool: { enabled: true },
-  } as OcxConfig)).toBe(true);
+    } as OcxConfig),
+  ).toBe(true);
+  expect(
+    shouldReplayNativePassthroughOverload({
+      ...cfg("https://api.anthropic.com"),
+      anthropicAccountPool: { enabled: true },
+    } as OcxConfig),
+  ).toBe(true);
 });
 
 test("native HTTP 529 without hop targets is forwarded to the client", async () => {
@@ -292,8 +387,14 @@ test("native HTTP 529 without hop targets is forwarded to the client", async () 
         body: await req.json(),
       });
       return Response.json(
-        { type: "error", error: { type: "overloaded_error", message: "Overloaded" } },
-        { status: 529, headers: { "retry-after": "2", "content-type": "application/json" } },
+        {
+          type: "error",
+          error: { type: "overloaded_error", message: "Overloaded" },
+        },
+        {
+          status: 529,
+          headers: { "retry-after": "2", "content-type": "application/json" },
+        },
       );
     },
   });
@@ -303,11 +404,16 @@ test("native HTTP 529 without hop targets is forwarded to the client", async () 
     const res = await fetch(new URL("/v1/messages", server.url), {
       method: "POST",
       headers: OAUTH_HEADERS,
-      body: JSON.stringify({ model: "claude-fable-5", max_tokens: 10, stream: false, messages: [{ role: "user", content: "x" }] }),
+      body: JSON.stringify({
+        model: "claude-fable-5",
+        max_tokens: 10,
+        stream: false,
+        messages: [{ role: "user", content: "x" }],
+      }),
     });
     expect(res.status).toBe(529);
     expect(captured).toHaveLength(1);
-    const json = await res.json() as { error?: { type?: string } };
+    const json = (await res.json()) as { error?: { type?: string } };
     expect(json.error?.type).toBe("overloaded_error");
   } finally {
     server.stop(true);
@@ -324,12 +430,18 @@ const ONE_PX_PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 async function realPng(width: number, height: number): Promise<string> {
-  const buf = await new Bun.Image(Buffer.from(ONE_PX_PNG, "base64")).resize(width, height).png().toBuffer();
+  const buf = await new Bun.Image(Buffer.from(ONE_PX_PNG, "base64"))
+    .resize(width, height)
+    .png()
+    .toBuffer();
   return Buffer.from(buf).toString("base64");
 }
 
 function imgBlock(data: string): Record<string, unknown> {
-  return { type: "image", source: { type: "base64", media_type: "image/png", data } };
+  return {
+    type: "image",
+    source: { type: "base64", media_type: "image/png", data },
+  };
 }
 
 function imageBody(blocks: unknown[]): Record<string, unknown> {
@@ -337,20 +449,39 @@ function imageBody(blocks: unknown[]): Record<string, unknown> {
     model: "claude-fable-5",
     max_tokens: 1000,
     stream: true,
-    messages: [{ role: "user", content: [{ type: "text", text: "look" }, ...blocks] }],
+    messages: [
+      { role: "user", content: [{ type: "text", text: "look" }, ...blocks] },
+    ],
   };
 }
 
-type WireBlock = { type: string; source?: { type?: string; media_type?: string; data?: string; file_id?: string } };
+type WireBlock = {
+  type: string;
+  source?: {
+    type?: string;
+    media_type?: string;
+    data?: string;
+    file_id?: string;
+  };
+};
 
 function capturedBlocks(captured: Captured[]): WireBlock[] {
-  const msgs = (captured[0].body as { messages: Array<{ content: unknown }> }).messages;
+  const msgs = (captured[0].body as { messages: Array<{ content: unknown }> })
+    .messages;
   const content = msgs[0].content;
   return (Array.isArray(content) ? content : []) as WireBlock[];
 }
 
-async function postNative(serverUrl: string, path: string, body: Record<string, unknown>): Promise<Response> {
-  return fetch(new URL(path, serverUrl), { method: "POST", headers: OAUTH_HEADERS, body: JSON.stringify(body) });
+async function postNative(
+  serverUrl: string,
+  path: string,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  return fetch(new URL(path, serverUrl), {
+    method: "POST",
+    headers: OAUTH_HEADERS,
+    body: JSON.stringify(body),
+  });
 }
 
 test("P1: 30-image history arrives age-tiered — newest pass through, older shrink, none dropped", async () => {
@@ -361,9 +492,13 @@ test("P1: 30-image history arrives age-tiered — newest pass through, older shr
   const server = startServer(0);
   try {
     const src = await realPng(1500, 1000);
-    const res = await postNative(String(server.url), "/v1/messages", imageBody(Array.from({ length: 30 }, () => imgBlock(src))));
+    const res = await postNative(
+      String(server.url),
+      "/v1/messages",
+      imageBody(Array.from({ length: 30 }, () => imgBlock(src))),
+    );
     expect(res.status).toBe(200);
-    const images = capturedBlocks(captured).filter(b => b.type === "image");
+    const images = capturedBlocks(captured).filter((b) => b.type === "image");
     expect(images).toHaveLength(30);
     // Wire order oldest first: 0-9 tier2 (<=700 jpeg), 10-23 tier1 (<=1024), 24-29 tier0 pass-through png.
     for (let i = 0; i < 10; i++) {
@@ -388,9 +523,13 @@ test("P2: dimension-oversized image is re-encoded (normalized), not dropped", as
   saveConfig(cfg(upstream.url.toString().replace(/\/$/, "")));
   const server = startServer(0);
   try {
-    const res = await postNative(String(server.url), "/v1/messages", imageBody([imgBlock(await realPng(4000, 3000))]));
+    const res = await postNative(
+      String(server.url),
+      "/v1/messages",
+      imageBody([imgBlock(await realPng(4000, 3000))]),
+    );
     expect(res.status).toBe(200);
-    const [img] = capturedBlocks(captured).filter(b => b.type === "image");
+    const [img] = capturedBlocks(captured).filter((b) => b.type === "image");
     expect(img.source?.media_type).toBe("image/jpeg");
     const d = sniffImageDimensions(img.source?.data ?? "");
     expect(Math.max(d!.width, d!.height)).toBeLessThanOrEqual(2000);
@@ -407,11 +546,17 @@ test("P2b: 101 images trip the guard's 100-cap — exactly one oldest textified"
   saveConfig(cfg(upstream.url.toString().replace(/\/$/, "")));
   const server = startServer(0);
   try {
-    const res = await postNative(String(server.url), "/v1/messages", imageBody(Array.from({ length: 101 }, () => imgBlock(ONE_PX_PNG))));
+    const res = await postNative(
+      String(server.url),
+      "/v1/messages",
+      imageBody(Array.from({ length: 101 }, () => imgBlock(ONE_PX_PNG))),
+    );
     expect(res.status).toBe(200);
     const blocks = capturedBlocks(captured);
-    expect(blocks.filter(b => b.type === "image")).toHaveLength(100);
-    expect(blocks.filter(b => b.type === "text").length).toBeGreaterThanOrEqual(2); // original text + 1 omitted note
+    expect(blocks.filter((b) => b.type === "image")).toHaveLength(100);
+    expect(
+      blocks.filter((b) => b.type === "text").length,
+    ).toBeGreaterThanOrEqual(2); // original text + 1 omitted note
   } finally {
     server.stop(true);
     upstream.stop(true);
@@ -427,9 +572,13 @@ test("P4: count_tokens body is normalized identically to the real send", async (
   try {
     const body = imageBody([imgBlock(await realPng(4000, 3000))]);
     delete body.stream;
-    const res = await postNative(String(server.url), "/v1/messages/count_tokens", body);
+    const res = await postNative(
+      String(server.url),
+      "/v1/messages/count_tokens",
+      body,
+    );
     expect(res.status).toBe(200);
-    const [img] = capturedBlocks(captured).filter(b => b.type === "image");
+    const [img] = capturedBlocks(captured).filter((b) => b.type === "image");
     expect(img.source?.media_type).toBe("image/jpeg");
   } finally {
     server.stop(true);
@@ -444,10 +593,17 @@ test("P5: Files API image source passes through untouched", async () => {
   saveConfig(cfg(upstream.url.toString().replace(/\/$/, "")));
   const server = startServer(0);
   try {
-    const fileBlock = { type: "image", source: { type: "file", file_id: "file_abc123" } };
-    const res = await postNative(String(server.url), "/v1/messages", imageBody([fileBlock]));
+    const fileBlock = {
+      type: "image",
+      source: { type: "file", file_id: "file_abc123" },
+    };
+    const res = await postNative(
+      String(server.url),
+      "/v1/messages",
+      imageBody([fileBlock]),
+    );
     expect(res.status).toBe(200);
-    const [img] = capturedBlocks(captured).filter(b => b.type === "image");
+    const [img] = capturedBlocks(captured).filter((b) => b.type === "image");
     expect(img.source).toEqual({ type: "file", file_id: "file_abc123" });
   } finally {
     server.stop(true);
