@@ -2183,7 +2183,7 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).not.toContain("docker/login-action@");
     expect(workflow).toContain("sudo docker login ghcr.io");
     expect(workflow).toContain("sudo docker pull");
-    expect(workflow).toContain("sudo docker inspect --format='{{index .RepoDigests 0}}'");
+    expect(workflow).toContain("sudo docker image inspect --format='{{index .RepoDigests 0}}'");
     expect(workflow).toContain("/etc/chef/opencodex/service-api-token");
     expect(workflow).toContain("OPENCODEX_IMAGE=");
     expect(workflow).toContain("@sha256:");
@@ -2288,7 +2288,7 @@ describe("GitHub Actions hardening", () => {
 
     // Read-only token plus GHCR pull: the job reads container metadata and pulls
     // a digest-pinned image; it never pushes packages or mutates GitHub state.
-    expect(workflow.permissions).toEqual({ contents: "read", packages: "read" });
+    expect(workflow.permissions).toEqual({ contents: "read", packages: "read", actions: "read" });
 
     // A second deploy must queue rather than race the first, and a mid-flight
     // cancel could leave the live checkout half-updated with no rollback run.
@@ -2400,7 +2400,7 @@ describe("GitHub Actions hardening", () => {
     expect(resolveHealth?.run ?? "").toContain("no discoverable Tailscale IPv4");
     expect(text).not.toContain("100.109.39.86");
 
-    expect(rollback!.if).toBe("failure() && steps.prev.outcome == 'success' && steps.deploy.outcome == 'success'");
+    expect(rollback!.if).toBe("failure() && steps.prev.outcome == 'success' && steps.deploy.outputs.cutover_started == 'true'");
     expect(rollback!.run ?? "").toContain("OPENCODEX_IMAGE=");
     expect(rollback!.run ?? "").not.toContain("bun run build:gui");
     expect(rollback!.run ?? "").not.toContain("git checkout --force");

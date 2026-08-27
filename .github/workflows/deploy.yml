@@ -178,7 +178,7 @@ jobs:
           image="ghcr.io/$(printf '%s' "$REPOSITORY" | tr '[:upper:]' '[:lower:]')"
           ref="${image}:${TAG_SHA}"
           sudo docker pull "$ref"
-          digest_ref="$(sudo docker inspect --format='{{index .RepoDigests 0}}' "$ref")"
+          digest_ref="$(sudo docker image inspect --format='{{index .RepoDigests 0}}' "$ref")"
           if [[ ! "$digest_ref" =~ @sha256:[0-9a-f]{64}$ ]]; then
             echo "::error::could not resolve immutable digest for ${ref}"
             exit 1
@@ -200,6 +200,9 @@ jobs:
           fi
           echo "api_token_file=${token_file} (sha256:$(sha256sum "$token_file" | awk '{print substr($1,1,12)}'))"
 
+          # Arm rollback before any persistent unit/.env mutation.
+          echo "cutover_started=true" >> "$GITHUB_OUTPUT"
+
           sudo mkdir -p "$COMPOSE_DIR" "$STATE_DIR"
           sudo cp deploy/container/compose.example.yml "$COMPOSE_DIR/docker-compose.yml"
           sudo cp deploy/container/opencodex-proxy.service /etc/systemd/system/opencodex-proxy.service
@@ -211,7 +214,6 @@ jobs:
             printf 'OPENCODEX_BIND_IP=127.0.0.1\n'
           } | sudo tee "$COMPOSE_ENV" > /dev/null
 
-          echo "cutover_started=true" >> "$GITHUB_OUTPUT"
           sudo systemctl stop opencodex-proxy.service || true
           sudo systemctl daemon-reload
           sudo systemctl enable opencodex-proxy.service

@@ -19,6 +19,11 @@ describe("digest deploy workflow contract", () => {
     expect(workflow).toContain('echo "cutover_started=true" >> "$GITHUB_OUTPUT"');
     expect(workflow).toContain("steps.deploy.outputs.cutover_started == 'true'");
     expect(workflow).not.toContain("steps.deploy.outcome == 'success'");
+    const deployScript = workflow.slice(
+      workflow.indexOf("- name: Deploy digest-pinned container"),
+      workflow.indexOf("- name: Health gate"),
+    );
+    expect(deployScript.indexOf("cutover_started=true")).toBeLessThan(deployScript.indexOf("sudo mkdir -p"));
   });
 
   test("previous digest fallback inspects the running image, not the container", async () => {
