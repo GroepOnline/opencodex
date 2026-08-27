@@ -47,6 +47,16 @@ describe("digest deploy workflow contract", () => {
     expect(workflow).toContain("OPENCODEX_BIND_IP=127.0.0.1");
   });
 
+  test("bun-runtime rollback passes the compose env file explicitly", async () => {
+    const workflow = await deployWorkflow();
+    expect(workflow).toContain(
+      'sudo docker compose --env-file "$COMPOSE_ENV" -f "$COMPOSE_DIR/docker-compose.yml" down',
+    );
+    expect(workflow).not.toContain(
+      'sudo docker compose -f "$COMPOSE_DIR/docker-compose.yml" down',
+    );
+  });
+
   test("previous digest fallback inspects the running image, not the container", async () => {
     const workflow = await deployWorkflow();
     expect(workflow).toContain("docker inspect --format='{{.Image}}'");

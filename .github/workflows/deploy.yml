@@ -274,7 +274,7 @@ jobs:
             } | sudo tee "$COMPOSE_ENV" > /dev/null
             sudo systemctl restart opencodex-proxy.service
           elif [ "${{ steps.prev.outputs.bun_runtime }}" = "true" ] && [ -n "${{ steps.prev.outputs.unit_backup }}" ]; then
-            sudo docker compose -f "$COMPOSE_DIR/docker-compose.yml" down || true
+            sudo docker compose --env-file "$COMPOSE_ENV" -f "$COMPOSE_DIR/docker-compose.yml" down || true
             sudo cp "${{ steps.prev.outputs.unit_backup }}" /etc/systemd/system/opencodex-proxy.service
             sudo systemctl daemon-reload
             sudo systemctl enable opencodex-proxy.service
