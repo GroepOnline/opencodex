@@ -340,6 +340,9 @@ jobs:
 
           {
             printf 'OPENCODEX_IMAGE=%s\n' "$PINNED_IMAGE"
+            printf 'CF_ACCESS_TEAM_DOMAIN=%s\n' 'chefgroep.cloudflareaccess.com'
+            printf 'CF_ACCESS_AUD=%s\n' '113d678ff9b96cabf41e8e2076166fa692bc078db28e792019c9302fa0e53286'
+            printf 'CF_ACCESS_ALLOWED_HOSTS=%s\n' 'ocx.chefgroep.online'
             printf 'OPENCODEX_STATE_DIR=%s\n' "$STATE_DIR"
             printf 'OPENCODEX_API_TOKEN_FILE=%s\n' "$token_file"
             printf 'OPENCODEX_BIND_IP=%s\n' "$OPENCODEX_BIND_IP"
@@ -460,6 +463,9 @@ jobs:
             token_file="${OPENCODEX_API_TOKEN_FILE:-/etc/chef/opencodex/service-api-token}"
             {
               printf 'OPENCODEX_IMAGE=%s\n' "$prev_image"
+              printf 'CF_ACCESS_TEAM_DOMAIN=%s\n' 'chefgroep.cloudflareaccess.com'
+              printf 'CF_ACCESS_AUD=%s\n' '113d678ff9b96cabf41e8e2076166fa692bc078db28e792019c9302fa0e53286'
+              printf 'CF_ACCESS_ALLOWED_HOSTS=%s\n' 'ocx.chefgroep.online'
               printf 'OPENCODEX_STATE_DIR=%s\n' "$STATE_DIR"
               printf 'OPENCODEX_API_TOKEN_FILE=%s\n' "$token_file"
               printf 'OPENCODEX_BIND_IP=%s\n' "$OPENCODEX_BIND_IP"

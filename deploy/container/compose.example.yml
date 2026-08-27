@@ -9,6 +9,9 @@ services:
       OPENCODEX_HEALTH_HOST: 127.0.0.1
       OPENCODEX_HEALTH_PORT: "10100"
       OPENCODEX_API_AUTH_TOKEN_FILE: /run/secrets/opencodex_api_token
+      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
+      CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
+      CF_ACCESS_ALLOWED_HOSTS: ${CF_ACCESS_ALLOWED_HOSTS:-ocx.chefgroep.online}
     secrets:
       - opencodex_api_token
     volumes:
