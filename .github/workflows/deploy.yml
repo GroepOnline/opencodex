@@ -29,6 +29,7 @@ on:
 permissions:
   contents: read
   packages: read
+  actions: read
 
 concurrency:
   group: ocx-deploy-az-01
@@ -97,7 +98,10 @@ jobs:
           if [ -z "$prev_image" ]; then
             running_id="$(sudo docker ps --filter 'name=opencodex' --format '{{.ID}}' 2>/dev/null | head -n1 || true)"
             if [ -n "$running_id" ]; then
-              prev_image="$(sudo docker inspect --format='{{index .RepoDigests 0}}' "$running_id" 2>/dev/null || true)"
+              image_id="$(sudo docker inspect --format='{{.Image}}' "$running_id" 2>/dev/null || true)"
+              if [ -n "$image_id" ]; then
+                prev_image="$(sudo docker image inspect --format='{{index .RepoDigests 0}}' "$image_id" 2>/dev/null || true)"
+              fi
             fi
           fi
           bun_runtime=false
@@ -207,6 +211,7 @@ jobs:
             printf 'OPENCODEX_BIND_IP=127.0.0.1\n'
           } | sudo tee "$COMPOSE_ENV" > /dev/null
 
+          echo "cutover_started=true" >> "$GITHUB_OUTPUT"
           sudo systemctl stop opencodex-proxy.service || true
           sudo systemctl daemon-reload
           sudo systemctl enable opencodex-proxy.service
@@ -244,7 +249,7 @@ jobs:
           exit 1
 
       - name: Rollback on failure
-        if: failure() && steps.prev.outcome == 'success' && steps.deploy.outcome == 'success'
+        if: failure() && steps.prev.outcome == 'success' && steps.deploy.outputs.cutover_started == 'true'
         env:
           TAG_SHA: ${{ steps.verify.outputs.tag_sha }}
         run: |
