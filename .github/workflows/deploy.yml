@@ -73,7 +73,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Verify tag is on origin/main
         id: verify
@@ -85,7 +85,6 @@ jobs:
             echo "::error::tag $tag is not on origin/main — refusing to deploy an unmerged ref"
             exit 1
           fi
-          tag_sha=$(git rev-parse "refs/tags/$tag")
           tag_sha=$(git rev-parse "refs/tags/$tag^{}")
           echo "tag_sha=$tag_sha" >> "$GITHUB_OUTPUT"
           echo "$tag is on origin/main ($tag_sha)"
@@ -118,8 +117,8 @@ jobs:
             fi
           fi
           bun_runtime=false
-          if systemctl is-active --quiet opencodex-proxy.service 2>/dev/null; then
-            exec_line="$(systemctl show -p ExecStart --value opencodex-proxy.service 2>/dev/null || true)"
+          if sudo systemctl is-active --quiet opencodex-proxy.service 2>/dev/null; then
+            exec_line="$(sudo systemctl show -p ExecStart --value opencodex-proxy.service 2>/dev/null || true)"
             if printf '%s' "$exec_line" | grep -qE '(^|[[:space:]/])(bun|node)([[:space:]]|$)'; then
               bun_runtime=true
             fi
@@ -148,7 +147,6 @@ jobs:
           # Host publish must include the Tailscale IPv4. ocx-tunnel and the
           # Cloudflare origin reach :10100 on that address, not on loopback.
           urls="$urls http://${ts_ip}:10100/healthz"
-          echo "tailscale_ipv4=${ts_ip}"
           echo "OPENCODEX_BIND_IP=$ts_ip" >> "$GITHUB_ENV"
           echo "OCX_HEALTH_URLS=$urls" >> "$GITHUB_ENV"
 
@@ -160,27 +158,33 @@ jobs:
           tag_sha="${{ steps.verify.outputs.tag_sha }}"
           deadline=$((SECONDS + 900))
           while (( SECONDS < deadline )); do
-            ids="$(gh run list --workflow container.yml --commit "$tag_sha" --limit 20 --json databaseId --jq '.[].databaseId')"
-            saw_pending=0
-            saw_failure=0
+            ids="$(gh run list --workflow container.yml --commit "$tag_sha" --limit 20 --json databaseId,createdAt --jq 'sort_by(.createdAt) | reverse | .[].databaseId')"
+            decided=""
             for id in $ids; do
               pub="$(gh run view "$id" --json jobs --jq '[.jobs[] | select(.name=="publish") | .conclusion] | .[0] // "none"')"
-              if [ "$pub" = "success" ]; then
-                echo "container.yml publish job succeeded on run ${id} for ${tag_sha}"
-                exit 0
-              fi
-              if [ "$pub" = "failure" ] || [ "$pub" = "cancelled" ]; then
-                saw_failure=1
-              else
-                saw_pending=1
-              fi
+              case "$pub" in
+                skipped|none)
+                  continue
+                  ;;
+                success)
+                  echo "container.yml publish job succeeded on run ${id} for ${tag_sha}"
+                  exit 0
+                  ;;
+                failure|cancelled|timed_out)
+                  echo "::error::newest container.yml publish job is ${pub} for ${tag_sha} (run ${id})"
+                  gh run list --workflow container.yml --commit "$tag_sha" --limit 5 || true
+                  exit 1
+                  ;;
+                *)
+                  decided=pending
+                  echo "waiting for container.yml publish job on run ${id} (${pub})..."
+                  break
+                  ;;
+              esac
             done
-            if [ -n "$ids" ] && [ "$saw_failure" = 1 ] && [ "$saw_pending" = 0 ]; then
-              echo "::error::container.yml publish job failed for ${tag_sha}; not waiting out the 15m budget"
-              gh run list --workflow container.yml --commit "$tag_sha" --limit 5 || true
-              exit 1
+            if [ -z "$decided" ]; then
+              echo "waiting for container.yml publish job on ${tag_sha}..."
             fi
-            echo "waiting for container.yml publish job on ${tag_sha}..."
             sleep 15
           done
           echo "::error::no successful container.yml publish job for ${tag_sha} within 15m"
@@ -231,7 +235,7 @@ jobs:
             echo "::error::runtime API token file missing at ${token_file} (set OPENCODEX_API_TOKEN_FILE on the host)"
             exit 1
           fi
-          echo "api_token_file=${token_file} (sha256:$(sha256sum "$token_file" | awk '{print substr($1,1,12)}'))"
+          echo "api_token_file=${token_file} (sha256:$(sudo sha256sum "$token_file" | awk '{print substr($1,1,12)}'))"
 
           # Arm rollback before any persistent unit/.env mutation.
           echo "cutover_started=true" >> "$GITHUB_OUTPUT"
@@ -301,14 +305,21 @@ jobs:
         if: (failure() || cancelled()) && steps.prev.outcome == 'success' && steps.deploy.outputs.cutover_started == 'true'
         env:
           TAG_SHA: ${{ steps.verify.outputs.tag_sha }}
+          PREV_IMAGE: ${{ steps.prev.outputs.image }}
+          BUN_RUNTIME: ${{ steps.prev.outputs.bun_runtime }}
+          UNIT_BACKUP: ${{ steps.prev.outputs.unit_backup }}
         run: |
           set -euo pipefail
-          prev_image="${{ steps.prev.outputs.image }}"
-          bun_runtime="${{ steps.prev.outputs.bun_runtime }}"
-          unit_backup="${{ steps.prev.outputs.unit_backup }}"
+          prev_image="$PREV_IMAGE"
+          bun_runtime="$BUN_RUNTIME"
+          unit_backup="$UNIT_BACKUP"
           # Live bun wins over a leftover compose OPENCODEX_IMAGE from a prior
           # partial cutover. Restoring that digest would skip the bun unit.
-          if [ "$bun_runtime" = "true" ] && [ -n "$unit_backup" ]; then
+          if [ "$bun_runtime" = "true" ] && [ -z "$unit_backup" ]; then
+            echo "::error::bun runtime detected but unit backup missing"
+            exit 1
+          fi
+          if [ "$bun_runtime" = "true" ]; then
             sudo docker compose --env-file "$COMPOSE_ENV" -f "$COMPOSE_DIR/docker-compose.yml" down || true
             sudo cp "$unit_backup" /etc/systemd/system/opencodex-proxy.service
             sudo systemctl daemon-reload

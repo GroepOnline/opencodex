@@ -2,8 +2,24 @@ import { describe, expect, test } from "bun:test";
 
 const root = new URL("../", import.meta.url);
 
+type DeployStep = {
+  name?: string;
+  id?: string;
+  uses?: string;
+  env?: Record<string, string>;
+  with?: Record<string, unknown>;
+  run?: string;
+};
+
 async function deployWorkflow(): Promise<string> {
   return await Bun.file(new URL(".github/workflows/deploy.yml", root)).text();
+}
+
+async function deploySteps(): Promise<DeployStep[]> {
+  const parsed = Bun.YAML.parse(await deployWorkflow()) as {
+    jobs?: { deploy?: { steps?: DeployStep[] } };
+  };
+  return parsed.jobs?.deploy?.steps ?? [];
 }
 
 describe("digest deploy workflow contract", () => {
@@ -14,16 +30,28 @@ describe("digest deploy workflow contract", () => {
     expect(workflow).toContain("actions: read # gh run list/view container.yml publish");
     expect(workflow).toContain("gh run list --workflow container.yml");
     expect(workflow).toContain("gh run view");
-    expect(workflow).toContain("persist-credentials: false");
+    expect(workflow).toContain("sort_by(.createdAt) | reverse");
+    expect(workflow).toContain("timed_out");
+    expect(workflow).toContain("skipped|none");
     expect(workflow).toContain("sudo docker logout ghcr.io");
+    expect(workflow).toContain('sudo sha256sum "$token_file"');
+
+    const checkouts = (await deploySteps()).filter(step => step.uses?.startsWith("actions/checkout@"));
+    expect(checkouts).toHaveLength(2);
+    for (const checkout of checkouts) {
+      expect(checkout.with?.["persist-credentials"]).toBe(false);
+    }
   });
 
   test("dispatch checkout and deploy identity are pinned to the validated tag commit", async () => {
     const workflow = await deployWorkflow();
     expect(workflow).not.toContain("ref: ${{ steps.ref.outputs.tag }}");
     expect(workflow).toContain("ref: ${{ steps.verify.outputs.tag_sha }}");
-    expect(workflow).toContain('tag_sha=$(git rev-parse "refs/tags/$tag")');
-    expect(workflow).toContain('tag_sha=$(git rev-parse "refs/tags/$tag^{}")');
+    const verify = (await deploySteps()).find(step => step.id === "verify");
+    const assigns = [...(verify?.run ?? "").matchAll(/tag_sha=\$\(git rev-parse [^)]+\)/g)].map(
+      match => match[0],
+    );
+    expect(assigns).toEqual(['tag_sha=$(git rev-parse "refs/tags/$tag^{}")']);
     expect(workflow).toContain('echo "tag_sha=$tag_sha" >> "$GITHUB_OUTPUT"');
     expect(workflow.indexOf("- name: Verify tag is on origin/main")).toBeLessThan(
       workflow.indexOf("- name: Checkout peeled tag commit"),
@@ -73,7 +101,9 @@ describe("digest deploy workflow contract", () => {
     expect(rollback.indexOf('bun_runtime="${{ steps.prev.outputs.bun_runtime }}"')).toBeLessThan(
       rollback.indexOf('elif [ -n "$prev_image" ]'),
     );
-    expect(rollback).toContain('[ "$bun_runtime" = "true" ] && [ -n "$unit_backup" ]');
+    expect(rollback).toContain('[ "$bun_runtime" = "true" ]');
+    expect(rollback).toContain("bun runtime detected but unit backup missing");
+    expect(rollback).not.toContain('[ "$bun_runtime" = "true" ] && [ -n "$unit_backup" ]');
     expect(rollback).toContain('read -r -a rollback_urls <<< "$urls"');
     expect(rollback).toContain('echo "rolled back and healthy with GUI via $url"');
     expect(rollback).not.toContain("all_ok=1");

@@ -2178,6 +2178,9 @@ describe("GitHub Actions hardening", () => {
     const workflow = await readText(".github/workflows/deploy.yml");
     expect(workflow).toContain("Wait for GHCR publish (container.yml)");
     expect(workflow).toContain('select(.name=="publish")');
+    expect(workflow).toContain("sort_by(.createdAt) | reverse");
+    expect(workflow).toContain("timed_out");
+    expect(workflow).toContain("skipped|none");
     expect(workflow).not.toContain("--status success");
     expect(workflow).not.toContain("gh run watch");
     expect(workflow).not.toContain("docker/login-action@");
@@ -2185,6 +2188,7 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toContain("sudo docker pull");
     expect(workflow).toContain("sudo docker image inspect --format='{{index .RepoDigests 0}}'");
     expect(workflow).toContain("/etc/chef/opencodex/service-api-token");
+    expect(workflow).toContain('sudo sha256sum "$token_file"');
     expect(workflow).toContain("OPENCODEX_IMAGE=");
     expect(workflow).toContain("@sha256:");
     expect(workflow).not.toContain("bun run build:gui");
@@ -2345,7 +2349,17 @@ describe("GitHub Actions hardening", () => {
   test("az-01 deploy verifies tag ancestry then cutovers via compose (never a floating version tag)", async () => {
     const text = await readText(".github/workflows/deploy.yml");
     const workflow = Bun.YAML.parse(text) as {
-      jobs?: { deploy?: { steps?: Array<{ name?: string; id?: string; run?: string }> } };
+      jobs?: {
+        deploy?: {
+          steps?: Array<{
+            name?: string;
+            id?: string;
+            uses?: string;
+            run?: string;
+            with?: Record<string, unknown>;
+          }>;
+        };
+      };
     };
     const steps = workflow.jobs?.deploy?.steps ?? [];
     const verify = steps.find(step => step.id === "verify");
@@ -2353,10 +2367,18 @@ describe("GitHub Actions hardening", () => {
     expect(verify).toBeDefined();
     expect(deploy).toBeDefined();
 
+    const checkouts = steps.filter(step => step.uses?.startsWith("actions/checkout@"));
+    expect(checkouts).toHaveLength(2);
+    for (const checkout of checkouts) {
+      expect(checkout.with?.["persist-credentials"]).toBe(false);
+    }
+
     expect(verify!.run ?? "").toContain('git merge-base --is-ancestor "refs/tags/$tag" "origin/main"');
     expect(verify!.run ?? "").toContain("is not on origin/main");
-    expect(verify!.run ?? "").toContain('tag_sha=$(git rev-parse "refs/tags/$tag")');
-    expect(verify!.run ?? "").toContain('tag_sha=$(git rev-parse "refs/tags/$tag^{}")');
+    const tagShaAssigns = [...(verify!.run ?? "").matchAll(/tag_sha=\$\(git rev-parse [^)]+\)/g)].map(
+      match => match[0],
+    );
+    expect(tagShaAssigns).toEqual(['tag_sha=$(git rev-parse "refs/tags/$tag^{}")']);
 
     const verifyIndex = steps.findIndex(step => step.id === "verify");
     const peeledCheckout = steps.findIndex(step => step.name === "Checkout peeled tag commit");
@@ -2381,7 +2403,13 @@ describe("GitHub Actions hardening", () => {
     const workflow = Bun.YAML.parse(text) as {
       jobs?: {
         deploy?: {
-          steps?: Array<{ name?: string; id?: string; if?: string; run?: string }>;
+          steps?: Array<{
+            name?: string;
+            id?: string;
+            if?: string;
+            run?: string;
+            env?: Record<string, string>;
+          }>;
         };
       };
     };
@@ -2409,10 +2437,15 @@ describe("GitHub Actions hardening", () => {
     expect(resolveHealth?.run ?? "").toContain("no discoverable Tailscale IPv4");
     expect(resolveHealth?.run ?? "").toContain('urls="$urls http://${ts_ip}:10100/healthz"');
     expect(resolveHealth?.run ?? "").toContain("OPENCODEX_BIND_IP=$ts_ip");
+    expect(resolveHealth?.run ?? "").not.toContain("tailscale_ipv4=");
     expect(text).not.toContain("100.109.39.86");
     expect(text).not.toContain("OPENCODEX_BIND_IP=127.0.0.1");
 
     expect(rollback!.if).toBe("(failure() || cancelled()) && steps.prev.outcome == 'success' && steps.deploy.outputs.cutover_started == 'true'");
+    expect(rollback!.env?.PREV_IMAGE).toBe("${{ steps.prev.outputs.image }}");
+    expect(rollback!.env?.BUN_RUNTIME).toBe("${{ steps.prev.outputs.bun_runtime }}");
+    expect(rollback!.env?.UNIT_BACKUP).toBe("${{ steps.prev.outputs.unit_backup }}");
+    expect(rollback!.run ?? "").not.toContain("${{ steps.prev.outputs");
     expect(rollback!.run ?? "").toContain("OPENCODEX_IMAGE=");
     expect(rollback!.run ?? "").not.toContain("bun run build:gui");
     expect(rollback!.run ?? "").not.toContain("git checkout --force");
