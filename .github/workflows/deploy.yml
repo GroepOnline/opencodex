@@ -131,20 +131,36 @@ jobs:
           # Capture the health/exposure contract of the runtime that rollback
           # would restore. Do not reuse the candidate container topology.
           prev_health_urls=""
-          ts_ip="$(tailscale ip -4 2>/dev/null | head -n1 || true)"
-          probe_urls=("http://127.0.0.1:10100/healthz")
-          if [[ "$ts_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [ "$ts_ip" != "127.0.0.1" ]; then
-            probe_urls+=("http://${ts_ip}:10100/healthz")
-          fi
-          for url in "${probe_urls[@]}"; do
-            body="$(curl -fsS --max-time 2 "$url" || true)"
-            if HEALTH_BODY="$body" python3 -c 'import json, os; b=json.loads(os.environ["HEALTH_BODY"]); raise SystemExit(0 if b.get("status") == "ok" and b.get("service") == "opencodex" else 1)' 2>/dev/null; then
-              root_url="${url%/healthz}/"
-              dashboard="$(curl -fsS --max-time 2 "$root_url" || true)"
-              if printf '%s' "$dashboard" | grep -Fq '<title>opencodex · proxy dashboard</title>'; then
-                prev_health_urls="${prev_health_urls}${prev_health_urls:+ }${url}"
-              fi
+          # Tailscale discovery and health can blip independently. Resolve the
+          # address with a short bounded retry before snapshotting rollback
+          # endpoints, then retry each endpoint before declaring it unhealthy.
+          ts_ip=""
+          discovery_deadline=$((SECONDS + 10))
+          while (( SECONDS < discovery_deadline )); do
+            ts_ip="$(tailscale ip -4 2>/dev/null | head -n1 || true)"
+            if [[ "$ts_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [ "$ts_ip" != "127.0.0.1" ]; then
+              break
             fi
+            sleep 1
+          done
+          if [[ ! "$ts_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [ "$ts_ip" = "127.0.0.1" ]; then
+            echo "::error::no discoverable Tailscale IPv4 while capturing pre-deploy health"
+            exit 1
+          fi
+          probe_urls=("http://127.0.0.1:10100/healthz" "http://${ts_ip}:10100/healthz")
+          for url in "${probe_urls[@]}"; do
+            for attempt in 1 2 3 4 5; do
+              body="$(curl -fsS --max-time 2 "$url" || true)"
+              if HEALTH_BODY="$body" python3 -c 'import json, os; b=json.loads(os.environ["HEALTH_BODY"]); raise SystemExit(0 if b.get("status") == "ok" and b.get("service") == "opencodex" else 1)' 2>/dev/null; then
+                root_url="${url%/healthz}/"
+                dashboard="$(curl -fsS --max-time 2 "$root_url" || true)"
+                if printf '%s' "$dashboard" | grep -Fq '<title>opencodex · proxy dashboard</title>'; then
+                  prev_health_urls="${prev_health_urls}${prev_health_urls:+ }${url}"
+                  break
+                fi
+              fi
+              [ "$attempt" -lt 5 ] && sleep 1
+            done
           done
           if [ "$bun_runtime" = "true" ] && [ -z "$prev_health_urls" ]; then
             echo "::error::bun runtime is active but no healthy pre-deploy endpoint was captured"
@@ -415,6 +431,16 @@ jobs:
             sudo systemctl enable opencodex-proxy.service
             sudo systemctl restart opencodex-proxy.service
           elif [ -n "$prev_image" ]; then
+            # A prior image may run as a different uid/gid than the candidate.
+            # Restore state ownership to that image before starting it.
+            sudo docker image inspect "$prev_image" >/dev/null 2>&1 || sudo docker pull "$prev_image" >/dev/null
+            prev_uid="$(sudo docker run --rm --network none --read-only --entrypoint /usr/bin/id "$prev_image" -u)"
+            prev_gid="$(sudo docker run --rm --network none --read-only --entrypoint /usr/bin/id "$prev_image" -g)"
+            if [[ ! "$prev_uid" =~ ^[0-9]+$ ]] || [[ ! "$prev_gid" =~ ^[0-9]+$ ]]; then
+              echo "::error::could not resolve previous container uid/gid for rollback"
+              exit 1
+            fi
+            sudo chown -R "$prev_uid:$prev_gid" "$STATE_DIR"
             token_file="${OPENCODEX_API_TOKEN_FILE:-/etc/chef/opencodex/service-api-token}"
             {
               printf 'OPENCODEX_IMAGE=%s\n' "$prev_image"
