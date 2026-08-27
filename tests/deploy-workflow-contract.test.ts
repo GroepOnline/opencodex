@@ -75,7 +75,7 @@ describe("digest deploy workflow contract", () => {
     const sChown = deployScript.indexOf('sudo chown -R "$container_uid:$container_gid"');
     const sStart = deployScript.indexOf("sudo systemctl start");
     const sTokenMode = deployScript.indexOf('sudo chmod 0644 "$token_file"');
-    const sConfigStrip = deployScript.indexOf("deploy/container/strip-hostname.py");
+    const sConfigStrip = deployScript.indexOf("stripped hostname from carried config");
     expect(sMkdir).toBeGreaterThan(-1);
     expect(sStop).toBeGreaterThan(sMkdir);
     expect(sRsync).toBeGreaterThan(sStop);
