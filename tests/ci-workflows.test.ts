@@ -2180,7 +2180,8 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toContain('select(.name=="publish")');
     expect(workflow).toContain("sort_by(.createdAt) | reverse");
     expect(workflow).toContain("timed_out");
-    expect(workflow).toContain("skipped|none");
+    expect(workflow).toContain("skipped|missing");
+    expect(workflow).toContain('conclusion // "pending"');
     expect(workflow).not.toContain("--status success");
     expect(workflow).not.toContain("gh run watch");
     expect(workflow).not.toContain("docker/login-action@");

@@ -32,7 +32,8 @@ describe("digest deploy workflow contract", () => {
     expect(workflow).toContain("gh run view");
     expect(workflow).toContain("sort_by(.createdAt) | reverse");
     expect(workflow).toContain("timed_out");
-    expect(workflow).toContain("skipped|none");
+    expect(workflow).toContain("skipped|missing");
+    expect(workflow).toContain('conclusion // "pending"');
     expect(workflow).toContain("sudo docker logout ghcr.io");
     expect(workflow).toContain('sudo sha256sum "$token_file"');
 
@@ -92,21 +93,21 @@ describe("digest deploy workflow contract", () => {
     expect(compose).toContain("${OPENCODEX_BIND_IP:?set the host Tailscale IPv4}:10100:10100");
   });
 
-  test("bun-runtime rollback wins over a stale compose image and probes any healthy URL", async () => {
+  test("bun-runtime rollback wins over a stale compose image and requires every health URL", async () => {
     const workflow = await deployWorkflow();
     const rollback = workflow.slice(
       workflow.indexOf("- name: Rollback on failure"),
       workflow.indexOf("- name: Log out of GHCR"),
     );
-    expect(rollback.indexOf('bun_runtime="${{ steps.prev.outputs.bun_runtime }}"')).toBeLessThan(
-      rollback.indexOf('elif [ -n "$prev_image" ]'),
-    );
+    expect(rollback).toContain("BUN_RUNTIME: ${{ steps.prev.outputs.bun_runtime }}");
+    expect(rollback.indexOf("BUN_RUNTIME:")).toBeLessThan(rollback.indexOf('elif [ -n "$prev_image" ]'));
     expect(rollback).toContain('[ "$bun_runtime" = "true" ]');
     expect(rollback).toContain("bun runtime detected but unit backup missing");
     expect(rollback).not.toContain('[ "$bun_runtime" = "true" ] && [ -n "$unit_backup" ]');
     expect(rollback).toContain('read -r -a rollback_urls <<< "$urls"');
-    expect(rollback).toContain('echo "rolled back and healthy with GUI via $url"');
-    expect(rollback).not.toContain("all_ok=1");
+    expect(rollback).toContain('echo "rolled back and healthy with GUI via $urls"');
+    expect(rollback).toContain("all_ok=1");
+    expect(rollback).toContain('OCX_HEALTH_URLS must include loopback and Tailscale');
     expect(workflow).toContain(
       'sudo docker compose --env-file "$COMPOSE_ENV" -f "$COMPOSE_DIR/docker-compose.yml" down',
     );

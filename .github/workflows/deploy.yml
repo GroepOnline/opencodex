@@ -161,9 +161,9 @@ jobs:
             ids="$(gh run list --workflow container.yml --commit "$tag_sha" --limit 20 --json databaseId,createdAt --jq 'sort_by(.createdAt) | reverse | .[].databaseId')"
             decided=""
             for id in $ids; do
-              pub="$(gh run view "$id" --json jobs --jq '[.jobs[] | select(.name=="publish") | .conclusion] | .[0] // "none"')"
+              pub="$(gh run view "$id" --json jobs --jq '[.jobs[] | select(.name=="publish")] | if length == 0 then "missing" else (.[0].conclusion // "pending") end')"
               case "$pub" in
-                skipped|none)
+                skipped|missing)
                   continue
                   ;;
                 success)
@@ -341,22 +341,32 @@ jobs:
 
           urls="${OCX_HEALTH_URLS:-http://127.0.0.1:10100/healthz}"
           read -r -a rollback_urls <<< "$urls"
+          if [ "${#rollback_urls[@]}" -lt 2 ]; then
+            echo "::error::OCX_HEALTH_URLS must include loopback and Tailscale"
+            exit 1
+          fi
           deadline=$((SECONDS + 30))
           while (( SECONDS < deadline )); do
             remaining=$((deadline - SECONDS))
             (( remaining > 0 )) || break
             max_time=$((remaining < 2 ? remaining : 2))
+            all_ok=1
             for url in "${rollback_urls[@]}"; do
               body="$(curl -fsS --max-time "$max_time" "$url" || true)"
               if HEALTH_BODY="$body" python3 -c 'import json, os; b=json.loads(os.environ["HEALTH_BODY"]); raise SystemExit(0 if b.get("status") == "ok" and b.get("service") == "opencodex" else 1)' 2>/dev/null; then
                 root_url="${url%/healthz}/"
                 dashboard="$(curl -fsS --max-time "$max_time" "$root_url" || true)"
                 if printf '%s' "$dashboard" | grep -Fq '<title>opencodex · proxy dashboard</title>'; then
-                  echo "rolled back and healthy with GUI via $url"
-                  exit 0
+                  continue
                 fi
               fi
+              all_ok=0
+              break
             done
+            if [ "$all_ok" = 1 ]; then
+              echo "rolled back and healthy with GUI via $urls"
+              exit 0
+            fi
             (( SECONDS < deadline )) && sleep 1
           done
           echo "::error::rollback did not restore a healthy service within 30s with GUI"
