@@ -27,11 +27,13 @@ describe("Token Harbor provider", () => {
   test("uses only verified free ids as the offline fallback seed", () => {
     expect(entry?.models).toEqual([
       "deepseek-v4-flash:free",
+      "mimo-v2.5:free",
       "qwen3.8-27b:free",
     ]);
     expect(entry?.modelContextWindows?.["deepseek-v4-flash:free"]).toBe(
       1_000_000,
     );
+    expect(entry?.modelContextWindows?.["mimo-v2.5:free"]).toBe(1_048_576);
   });
 
   test("derives into key-login and featured provider surfaces", () => {

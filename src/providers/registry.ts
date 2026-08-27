@@ -1181,9 +1181,10 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     defaultModel: "deepseek-v4-flash:free",
     // Static seed is deliberately limited to exact free ids verified from first-party pages.
     // The authenticated /v1/models response is authoritative and may add/retire free routes.
-    models: ["deepseek-v4-flash:free", "qwen3.8-27b:free"],
+    models: ["deepseek-v4-flash:free", "mimo-v2.5:free", "qwen3.8-27b:free"],
     modelContextWindows: {
       "deepseek-v4-flash:free": 1_000_000,
+      "mimo-v2.5:free": 1_048_576,
       "qwen3.8-27b:free": 262_144,
     },
     note: "Universal-key OpenAI-compatible gateway with live model discovery. Current permanent free access includes DeepSeek V4 Flash, MiMo V2.5 and Qwen3.8 27B. Free routes are opt-in and may retain prompts/responses; default to public-only. Paid routes are described by Token Harbor as ZDR. Kater/ChefFactory remains cost/privacy routing authority; do not delegate company policy to TH Orchestra.",
