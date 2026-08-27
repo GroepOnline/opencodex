@@ -68,10 +68,12 @@ describe("digest deploy workflow contract", () => {
     );
     const sMkdir = deployScript.indexOf("sudo mkdir -p");
     const sChown = deployScript.indexOf("sudo chown -R 1000:1000");
+    const sRsync = deployScript.indexOf("sudo rsync -a --ignore-existing");
     const sStart = deployScript.indexOf("sudo systemctl start");
     expect(sMkdir).toBeGreaterThan(-1);
     expect(sChown).toBeGreaterThan(sMkdir);
-    expect(sStart).toBeGreaterThan(sChown);
+    expect(sRsync).toBeGreaterThan(sChown);
+    expect(sStart).toBeGreaterThan(sRsync);
   });
 
   test("rollback remains armed after cutover starts even if start fails", async () => {
