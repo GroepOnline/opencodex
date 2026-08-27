@@ -2301,6 +2301,7 @@ describe("GitHub Actions hardening", () => {
 
     expect(text).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");
     expect(text).toContain("sudo docker login ghcr.io");
+    expect(text).toContain("sudo docker logout ghcr.io");
     expect(text).not.toContain("docker/login-action@");
     expect(text).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
   });

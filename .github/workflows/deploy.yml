@@ -28,8 +28,8 @@ on:
 
 permissions:
   contents: read
-  packages: read
-  actions: read
+  packages: read # GHCR digest pull
+  actions: read # gh run list/view container.yml publish
 
 concurrency:
   group: ocx-deploy-az-01
@@ -73,6 +73,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
+          persist-credentials: true
 
       - name: Verify tag is on origin/main
         id: verify
@@ -96,6 +97,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
           ref: ${{ steps.verify.outputs.tag_sha }}
 
       - name: Capture pre-deploy runtime state (for rollback)
@@ -257,8 +259,8 @@ jobs:
           TAG_SHA: ${{ steps.verify.outputs.tag_sha }}
         run: |
           set -euo pipefail
-          set -- $OCX_HEALTH_URLS
-          if [ "$#" -lt 2 ]; then
+          read -r -a health_urls <<< "$OCX_HEALTH_URLS"
+          if [ "${#health_urls[@]}" -lt 2 ]; then
             echo "::error::OCX_HEALTH_URLS must include loopback and Tailscale"
             exit 1
           fi
@@ -270,7 +272,7 @@ jobs:
             (( remaining > 0 )) || break
             max_time=$((remaining < 2 ? remaining : 2))
             all_ok=1
-            for url in $OCX_HEALTH_URLS; do
+            for url in "${health_urls[@]}"; do
               body="$(curl -fsS --max-time "$max_time" "$url" || true)"
               if ! HEALTH_BODY="$body" TAG_SHA="$TAG_SHA" python3 -c 'import json, os; b=json.loads(os.environ["HEALTH_BODY"]); raise SystemExit(0 if b.get("status") == "ok" and b.get("service") == "opencodex" and b.get("gitSha") == os.environ["TAG_SHA"] else 1)' 2>/dev/null; then
                 all_ok=0
@@ -302,7 +304,17 @@ jobs:
         run: |
           set -euo pipefail
           prev_image="${{ steps.prev.outputs.image }}"
-          if [ -n "$prev_image" ]; then
+          bun_runtime="${{ steps.prev.outputs.bun_runtime }}"
+          unit_backup="${{ steps.prev.outputs.unit_backup }}"
+          # Live bun wins over a leftover compose OPENCODEX_IMAGE from a prior
+          # partial cutover. Restoring that digest would skip the bun unit.
+          if [ "$bun_runtime" = "true" ] && [ -n "$unit_backup" ]; then
+            sudo docker compose --env-file "$COMPOSE_ENV" -f "$COMPOSE_DIR/docker-compose.yml" down || true
+            sudo cp "$unit_backup" /etc/systemd/system/opencodex-proxy.service
+            sudo systemctl daemon-reload
+            sudo systemctl enable opencodex-proxy.service
+            sudo systemctl restart opencodex-proxy.service
+          elif [ -n "$prev_image" ]; then
             token_file="${OPENCODEX_API_TOKEN_FILE:-/etc/chef/opencodex/service-api-token}"
             {
               printf 'OPENCODEX_IMAGE=%s\n' "$prev_image"
@@ -311,42 +323,34 @@ jobs:
               printf 'OPENCODEX_BIND_IP=%s\n' "$OPENCODEX_BIND_IP"
             } | sudo tee "$COMPOSE_ENV" > /dev/null
             sudo systemctl restart opencodex-proxy.service
-          elif [ "${{ steps.prev.outputs.bun_runtime }}" = "true" ] && [ -n "${{ steps.prev.outputs.unit_backup }}" ]; then
-            sudo docker compose --env-file "$COMPOSE_ENV" -f "$COMPOSE_DIR/docker-compose.yml" down || true
-            sudo cp "${{ steps.prev.outputs.unit_backup }}" /etc/systemd/system/opencodex-proxy.service
-            sudo systemctl daemon-reload
-            sudo systemctl enable opencodex-proxy.service
-            sudo systemctl restart opencodex-proxy.service
           else
             echo "::error::no previous digest and no bun runtime to roll back to"
             exit 1
           fi
 
           urls="${OCX_HEALTH_URLS:-http://127.0.0.1:10100/healthz}"
+          read -r -a rollback_urls <<< "$urls"
           deadline=$((SECONDS + 30))
           while (( SECONDS < deadline )); do
             remaining=$((deadline - SECONDS))
             (( remaining > 0 )) || break
             max_time=$((remaining < 2 ? remaining : 2))
-            all_ok=1
-            for url in $urls; do
+            for url in "${rollback_urls[@]}"; do
               body="$(curl -fsS --max-time "$max_time" "$url" || true)"
-              if ! HEALTH_BODY="$body" python3 -c 'import json, os; b=json.loads(os.environ["HEALTH_BODY"]); raise SystemExit(0 if b.get("status") == "ok" and b.get("service") == "opencodex" else 1)' 2>/dev/null; then
-                all_ok=0
-                break
-              fi
-              root_url="${url%/healthz}/"
-              dashboard="$(curl -fsS --max-time "$max_time" "$root_url" || true)"
-              if ! printf '%s' "$dashboard" | grep -Fq '<title>opencodex · proxy dashboard</title>'; then
-                all_ok=0
-                break
+              if HEALTH_BODY="$body" python3 -c 'import json, os; b=json.loads(os.environ["HEALTH_BODY"]); raise SystemExit(0 if b.get("status") == "ok" and b.get("service") == "opencodex" else 1)' 2>/dev/null; then
+                root_url="${url%/healthz}/"
+                dashboard="$(curl -fsS --max-time "$max_time" "$root_url" || true)"
+                if printf '%s' "$dashboard" | grep -Fq '<title>opencodex · proxy dashboard</title>'; then
+                  echo "rolled back and healthy with GUI via $url"
+                  exit 0
+                fi
               fi
             done
-            if [ "$all_ok" = 1 ]; then
-              echo "rolled back and healthy with GUI via $urls"
-              exit 0
-            fi
             (( SECONDS < deadline )) && sleep 1
           done
           echo "::error::rollback did not restore a healthy service within 30s with GUI"
           exit 1
+
+      - name: Log out of GHCR
+        if: always()
+        run: sudo docker logout ghcr.io || true
