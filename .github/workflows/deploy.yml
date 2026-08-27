@@ -40,7 +40,6 @@ jobs:
     runs-on: [self-hosted, Linux, X64, deploy]
     timeout-minutes: 30
     env:
-      DEPLOY_PATH: /opt/chef/services/opencodex
       COMPOSE_DIR: /opt/chef/deploy/opencodex
       STATE_DIR: /opt/chef/state/opencodex
       COMPOSE_ENV: /opt/chef/deploy/opencodex/.env

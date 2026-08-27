@@ -2301,7 +2301,7 @@ describe("GitHub Actions hardening", () => {
     expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
 
     expect(workflow.jobs?.deploy?.["timeout-minutes"]).toBe(30);
-    expect(workflow.jobs?.deploy?.env?.DEPLOY_PATH).toBe("/opt/chef/services/opencodex");
+    expect(workflow.jobs?.deploy?.env?.DEPLOY_PATH).toBeUndefined();
     expect(workflow.jobs?.deploy?.env?.COMPOSE_DIR).toBe("/opt/chef/deploy/opencodex");
 
     expect(text).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");
@@ -2394,6 +2394,8 @@ describe("GitHub Actions hardening", () => {
     expect(deploy!.run ?? "").toContain("systemctl start opencodex-proxy.service");
     const unit = await readText("deploy/container/opencodex-proxy.service");
     expect(unit).toContain("docker compose up");
+    expect(unit).toContain("After=docker.service network-online.target tailscaled.service");
+    expect(unit).toContain("Wants=network-online.target tailscaled.service");
     expect(deploy!.run ?? "").not.toContain("git checkout --force");
     expect(deploy!.run ?? "").not.toContain("git reset --hard");
     expect(text).not.toMatch(/ghcr\.io\/groeponline\/opencodex:v[0-9]/);
