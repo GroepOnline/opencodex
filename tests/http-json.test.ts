@@ -20,6 +20,11 @@ describe("stringifyHttpJson", () => {
     expect(body).not.toContain("relay.ts");
     expect(JSON.parse(body)).toEqual({ error: "upstream failed" });
   });
+
+  test("keeps ordinary multiline text that is not a stack frame", () => {
+    const body = stringifyHttpJson({ text: "Meet\n    at 9:00", note: "look at this" });
+    expect(JSON.parse(body)).toEqual({ text: "Meet\n    at 9:00", note: "look at this" });
+  });
 });
 
 describe("formatErrorResponse", () => {

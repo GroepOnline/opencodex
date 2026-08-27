@@ -280,7 +280,7 @@ describe("GitHub Actions hardening", () => {
     expect(oidcStep).not.toContain("NODE_AUTH_TOKEN:");
     expect(workflow).toContain("- name: Publish token fallback");
     const fallbackStep = workflow.slice(workflow.indexOf("- name: Publish token fallback"));
-    expect(fallbackStep).toContain("//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}");
+    expect(fallbackStep).toContain("//registry.npmjs.org/:_authToken=\\${NODE_AUTH_TOKEN}");
     expect(fallbackStep).toContain("always-auth=true");
 
     // Immutable action references.

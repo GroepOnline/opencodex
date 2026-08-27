@@ -53,7 +53,10 @@ function isAnthropicApiHost(input: Request | URL | string): boolean {
 function isAnthropicMessagesUrl(input: Request | URL | string): boolean {
   try {
     const parsed = new URL(fetchUrl(input));
-    return parsed.hostname === "api.anthropic.com" && parsed.pathname.startsWith("/v1/messages");
+    const path = parsed.pathname.endsWith("/") && parsed.pathname.length > 1
+      ? parsed.pathname.slice(0, -1)
+      : parsed.pathname;
+    return parsed.hostname === "api.anthropic.com" && path === "/v1/messages";
   } catch {
     return false;
   }

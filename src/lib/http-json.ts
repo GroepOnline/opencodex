@@ -1,12 +1,12 @@
-/** V8/JSC stack-frame tails interpolated into error text. */
-const STACK_FRAME_TAIL_RE = /(?:\r?\n[ \t]*at[ \t][^\n]+)+/g;
+/** V8/JSC frames look like `at name (file:line:col)`, not `at 9:00`. */
+const STACK_FRAME_TAIL_RE = /(?:\r?\n[ \t]+at [^\n]+ \([^)]+:\d+:\d+\))+/g;
 
 /**
  * JSON for an HTTP response body. Never serializes `Error.stack`.
  *
  * Catch-clause values stay out of the wire format: Error instances become
- * `.toString()` (message only in V8; CodeQL's stack-trace barrier), and any
- * leftover stack-frame lines are stripped from strings.
+ * `.toString()` (message only in V8; CodeQL's stack-trace barrier). Interpolated
+ * stack-frame tails are stripped only when they match a `(file:line:col)` frame.
  */
 export function stringifyHttpJson(data: unknown): string {
   return JSON.stringify(data, httpJsonReplacer);
