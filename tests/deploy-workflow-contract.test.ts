@@ -26,6 +26,7 @@ describe("digest deploy workflow contract", () => {
     const workflow = await deployWorkflow();
     expect(workflow).toContain('echo "cutover_started=true" >> "$GITHUB_OUTPUT"');
     expect(workflow).toContain("steps.deploy.outputs.cutover_started == 'true'");
+    expect(workflow).toContain("(failure() || cancelled())");
     expect(workflow).not.toContain("steps.deploy.outcome == 'success'");
     const deployScript = workflow.slice(
       workflow.indexOf("- name: Deploy digest-pinned container"),

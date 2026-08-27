@@ -38,7 +38,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: [self-hosted, Linux, X64, deploy]
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       DEPLOY_PATH: /opt/chef/services/opencodex
       COMPOSE_DIR: /opt/chef/deploy/opencodex
@@ -256,7 +256,9 @@ jobs:
           exit 1
 
       - name: Rollback on failure
-        if: failure() && steps.prev.outcome == 'success' && steps.deploy.outputs.cutover_started == 'true'
+        # failure() does not fire on job timeout/cancellation. A timed-out
+        # cutover would otherwise leave the host half-updated with no rollback.
+        if: (failure() || cancelled()) && steps.prev.outcome == 'success' && steps.deploy.outputs.cutover_started == 'true'
         env:
           TAG_SHA: ${{ steps.verify.outputs.tag_sha }}
         run: |

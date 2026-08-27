@@ -2295,7 +2295,7 @@ describe("GitHub Actions hardening", () => {
     expect(workflow.concurrency?.group).toBe("ocx-deploy-az-01");
     expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
 
-    expect(workflow.jobs?.deploy?.["timeout-minutes"]).toBe(20);
+    expect(workflow.jobs?.deploy?.["timeout-minutes"]).toBe(30);
     expect(workflow.jobs?.deploy?.env?.DEPLOY_PATH).toBe("/opt/chef/services/opencodex");
     expect(workflow.jobs?.deploy?.env?.COMPOSE_DIR).toBe("/opt/chef/deploy/opencodex");
 
@@ -2402,7 +2402,7 @@ describe("GitHub Actions hardening", () => {
     expect(resolveHealth?.run ?? "").not.toContain('urls="$urls http://${ts_ip}:10100/healthz"');
     expect(text).not.toContain("100.109.39.86");
 
-    expect(rollback!.if).toBe("failure() && steps.prev.outcome == 'success' && steps.deploy.outputs.cutover_started == 'true'");
+    expect(rollback!.if).toBe("(failure() || cancelled()) && steps.prev.outcome == 'success' && steps.deploy.outputs.cutover_started == 'true'");
     expect(rollback!.run ?? "").toContain("OPENCODEX_IMAGE=");
     expect(rollback!.run ?? "").not.toContain("bun run build:gui");
     expect(rollback!.run ?? "").not.toContain("git checkout --force");
