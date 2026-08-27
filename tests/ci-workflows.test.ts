@@ -2448,13 +2448,16 @@ describe("GitHub Actions hardening", () => {
     expect(rollback!.env?.PREV_IMAGE).toBe("${{ steps.prev.outputs.image }}");
     expect(rollback!.env?.BUN_RUNTIME).toBe("${{ steps.prev.outputs.bun_runtime }}");
     expect(rollback!.env?.UNIT_BACKUP).toBe("${{ steps.prev.outputs.unit_backup }}");
+    expect(rollback!.env?.PREV_HEALTH_URLS).toBe("${{ steps.prev.outputs.health_urls }}");
     expect(rollback!.run ?? "").not.toContain("${{ steps.prev.outputs");
     expect(rollback!.run ?? "").toContain("OPENCODEX_IMAGE=");
     expect(rollback!.run ?? "").not.toContain("bun run build:gui");
     expect(rollback!.run ?? "").not.toContain("git checkout --force");
     expect(rollback!.run ?? "").not.toContain("git reset --hard");
     expect(rollback!.run ?? "").toContain("sudo systemctl restart opencodex-proxy.service");
-    expect(rollback!.run ?? "").toContain('${OCX_HEALTH_URLS:-http://127.0.0.1:10100/healthz}');
+    expect(rollback!.run ?? "").toContain('urls="$PREV_HEALTH_URLS"');
+    expect(rollback!.run ?? "").toContain("no pre-deploy healthy endpoint was captured for rollback verification");
+    expect(rollback!.run ?? "").not.toContain('${OCX_HEALTH_URLS:-http://127.0.0.1:10100/healthz}');
     expect(rollback!.run ?? "").toContain("printf 'OPENCODEX_BIND_IP=%s\\n' \"$OPENCODEX_BIND_IP\"");
     expect(rollback!.run ?? "").toContain("deadline=$((SECONDS + 30))");
     expect(rollback!.run ?? "").not.toContain("MainPID");
