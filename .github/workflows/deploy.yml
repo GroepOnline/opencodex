@@ -335,6 +335,12 @@ jobs:
             printf 'OPENCODEX_BIND_IP=%s\n' "$OPENCODEX_BIND_IP"
           } | sudo tee "$COMPOSE_ENV" > /dev/null
 
+          # The container reads the API token via a compose file-secret bind
+          # mount, which preserves the host file's mode. The host file is
+          # 0640 root:chef, but the container runs as bun (uid 1000); the
+          # entrypoint exits 78 when the token is unreadable (observed
+          # crash-loop). Grant world-read now; root keeps write for rotation.
+          sudo chmod 0644 "$token_file"
           sudo systemctl daemon-reload
           sudo systemctl enable opencodex-proxy.service
           sudo systemctl start opencodex-proxy.service

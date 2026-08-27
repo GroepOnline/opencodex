@@ -74,12 +74,15 @@ describe("digest deploy workflow contract", () => {
     const sRsync = deployScript.indexOf("sudo rsync -a --ignore-existing");
     const sChown = deployScript.indexOf('sudo chown -R "$container_uid:$container_gid"');
     const sStart = deployScript.indexOf("sudo systemctl start");
+    const sTokenMode = deployScript.indexOf('sudo chmod 0644 "$token_file"');
     expect(sMkdir).toBeGreaterThan(-1);
     expect(sStop).toBeGreaterThan(sMkdir);
     expect(sRsync).toBeGreaterThan(sStop);
     expect(sChown).toBeGreaterThan(sRsync);
     expect(sStart).toBeGreaterThan(sChown);
     expect(deployScript).toContain("port 10100 still bound after stopping");
+    expect(sTokenMode).toBeGreaterThan(-1);
+    expect(sStart).toBeGreaterThan(sTokenMode);
     expect(deployScript).toContain("sudo docker rm -f opencodex-opencodex-1");
     expect(deployScript.indexOf("sudo docker rm -f opencodex-opencodex-1")).toBeGreaterThan(sStop);
     expect(deployScript.indexOf("port 10100 still bound after stopping")).toBeGreaterThan(
