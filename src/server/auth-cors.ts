@@ -12,6 +12,7 @@ import {
   reasoningSummaryDeliveryRecordConfigError,
 } from "../config";
 import { providerDestinationConfigError } from "../lib/destination-policy";
+import { stringifyHttpJson } from "../lib/http-json";
 import { getProviderRegistryEntry, providerCodexAccountMode, providerMatchesRegistryTransport } from "../providers/registry";
 import { providerConfigSeed } from "../providers/derive";
 import { configuredKeyCount } from "../providers/api-keys";
@@ -201,7 +202,7 @@ export function withManagementCors(response: Response, req: Request, config: Ocx
 }
 
 export function jsonResponse(data: unknown, status = 200, req?: Request, config?: OcxConfig): Response {
-  return new Response(JSON.stringify(data), {
+  return new Response(stringifyHttpJson(data), {
     status,
     headers: { "Content-Type": "application/json", ...corsHeaders(req, config) },
   });

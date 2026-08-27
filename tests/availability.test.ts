@@ -37,6 +37,31 @@ function restoreOpenCodexHome(previous: string | undefined): void {
   else process.env.OPENCODEX_HOME = previous;
 }
 
+function fetchUrl(input: Request | URL | string): string {
+  if (input instanceof Request) return input.url;
+  return String(input);
+}
+
+function isAnthropicApiHost(input: Request | URL | string): boolean {
+  try {
+    return new URL(fetchUrl(input)).hostname === "api.anthropic.com";
+  } catch {
+    return false;
+  }
+}
+
+function isAnthropicMessagesUrl(input: Request | URL | string): boolean {
+  try {
+    const parsed = new URL(fetchUrl(input));
+    const path = parsed.pathname.endsWith("/") && parsed.pathname.length > 1
+      ? parsed.pathname.slice(0, -1)
+      : parsed.pathname;
+    return parsed.hostname === "api.anthropic.com" && path === "/v1/messages";
+  } catch {
+    return false;
+  }
+}
+
 function baseConfig(overrides: Partial<OcxConfig> = {}): OcxConfig {
   return {
     port: 10100,
@@ -1068,8 +1093,7 @@ describe("handleResponses anthropic oauth pool", () => {
     await setActiveAccount("anthropic", a.id);
 
     globalThis.fetch = (async (input) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (url.includes("api.anthropic.com")) {
+      if (isAnthropicApiHost(input as Request | URL | string)) {
         return new Response(
           JSON.stringify({
             type: "error",
@@ -1130,8 +1154,7 @@ describe("handleResponses anthropic oauth pool", () => {
     let messageCalls = 0;
     const attempts: string[] = [];
     globalThis.fetch = (async (input) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (url.includes("api.anthropic.com/v1/messages")) {
+      if (isAnthropicMessagesUrl(input as Request | URL | string)) {
         messageCalls += 1;
         attempts.push(String(messageCalls));
         if (messageCalls === 1) {

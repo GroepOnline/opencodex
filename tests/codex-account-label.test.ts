@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import {
   CODEX_ACCOUNT_LOG_LABEL_RE,
@@ -45,6 +46,7 @@ describe("codex account privacy labels", () => {
     expect(first).toBe(second);
     expect(first).toMatch(CODEX_ACCOUNT_LOG_LABEL_RE);
     expect(first).not.toContain(accountId);
+    expect(first).toBe(`p${createHash("sha256").update(accountId).digest("hex").slice(0, 6)}`);
     expect(codexAccountLogLabel({ id: accountId, email: "raw@example.test", isMain: false })).toBe(first);
   });
 });

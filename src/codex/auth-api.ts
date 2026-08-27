@@ -64,6 +64,7 @@ import type { CodexAccount, OcxConfig } from "../types";
 import { isCanonicalOpenAiForwardProvider, OPENAI_CODEX_PROVIDER_ID } from "../providers/openai-tiers";
 import { providerCodexAccountMode } from "../providers/registry";
 import { readBoundedResponseBody } from "../lib/bounded-body";
+import { stringifyHttpJson } from "../lib/http-json";
 import {
   oauthAccountHealthFields,
   projectCodexAccountHealth,
@@ -79,7 +80,7 @@ import {
 import { codexAccountIdNamespaceCollisionError } from "./account-namespace-match";
 
 function jsonResponse(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
+  return new Response(stringifyHttpJson(data), {
     status,
     headers: { "Content-Type": "application/json" },
   });
@@ -1174,7 +1175,7 @@ export async function handleCodexAuthAPI(
       codexAuthLoginState.set(flowId, { status: "pending" });
       return jsonResponse({ ok: true, flowId, url: result.url, instructions: result.instructions });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = e instanceof Error ? e.message : "login failed";
       if (msg.includes("already in progress")) {
         return jsonResponse({ error: msg, status: "pending" }, 409);
       }
