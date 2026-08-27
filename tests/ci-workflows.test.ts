@@ -2357,6 +2357,13 @@ describe("GitHub Actions hardening", () => {
     expect(verify!.run ?? "").toContain('tag_sha=$(git rev-parse "refs/tags/$tag")');
     expect(verify!.run ?? "").toContain('tag_sha=$(git rev-parse "refs/tags/$tag^{}")');
 
+    const verifyIndex = steps.findIndex(step => step.id === "verify");
+    const peeledCheckout = steps.findIndex(step => step.name === "Checkout peeled tag commit");
+    expect(verifyIndex).toBeGreaterThanOrEqual(0);
+    expect(peeledCheckout).toBeGreaterThan(verifyIndex);
+    expect(text).toContain("ref: ${{ steps.verify.outputs.tag_sha }}");
+    expect(text).not.toContain("ref: ${{ steps.ref.outputs.tag }}");
+
     expect(deploy!.run ?? "").toContain("deploy/container/compose.example.yml");
     expect(deploy!.run ?? "").toContain("deploy/container/opencodex-proxy.service");
     expect(deploy!.run ?? "").toContain("systemctl stop opencodex-proxy.service");
