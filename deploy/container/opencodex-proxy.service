@@ -1,0 +1,19 @@
+[Unit]
+Description=OpenCodex proxy (Docker Compose)
+Documentation=https://github.com/GroepOnline/opencodex
+After=docker.service network-online.target tailscaled.service
+Requires=docker.service
+Wants=network-online.target tailscaled.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/chef/deploy/opencodex
+EnvironmentFile=-/opt/chef/deploy/opencodex/.env
+ExecStart=/usr/bin/docker compose up -d --remove-orphans
+ExecStop=/usr/bin/docker compose down
+TimeoutStartSec=120
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

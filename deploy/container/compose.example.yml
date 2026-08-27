@@ -16,7 +16,8 @@ services:
     tmpfs:
       - /tmp:rw,nosuid,nodev,noexec,size=256m,uid=1000,gid=1000
     ports:
-      - "${OPENCODEX_BIND_IP:-127.0.0.1}:10100:10100"
+      - "127.0.0.1:10100:10100"
+      - "${OPENCODEX_BIND_IP:?set the host Tailscale IPv4}:10100:10100"
     cap_drop:
       - ALL
     security_opt:
