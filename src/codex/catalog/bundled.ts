@@ -1,73 +1,15 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-} from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
-import {
-  atomicWriteFile,
-  expandUserPath,
-  getConfigDir,
-  websocketsEnabled,
-} from "../../config";
-import {
-  CODEX_CONFIG_PATH,
-  CODEX_MODELS_CACHE_PATH,
-  DEFAULT_CATALOG_PATH,
-  readRootTomlString,
-  resolveCodexConfigPath,
-} from "../paths";
-import {
-  clearModelCache,
-  DEFAULT_MODEL_CACHE_TTL_MS,
-  getFreshCached,
-  getStaleCached,
-  isModelsFetchCoolingDown,
-  markModelsFetchFailure,
-  setCached,
-} from "../model-cache";
+import { atomicWriteFile, getConfigDir } from "../../config";
 import { buildModelsRequest, resolveModelsAuthToken } from "../../oauth";
 import type { OcxConfig, OcxProviderConfig } from "../../types";
 import { modelInList } from "../../types";
-import {
-  CODEX_REASONING_LEVELS,
-  codexEffortRank,
-  configuredReasoningEfforts,
-  modelRecordValue,
-  sanitizeCodexReasoningEfforts,
-} from "../../reasoning-effort";
-import {
-  getJawcodeModelMetadata,
-  getJawcodeModelMetadataCaseInsensitive,
-  listJawcodeModelMetadata,
-  resolveJawcodeProvider,
-} from "../../generated/jawcode-model-metadata";
-import {
-  enrichProviderFromRegistry,
-  shouldCaseFoldMetadataModelId,
-} from "../../providers/derive";
 import { getProviderRegistryEntry } from "../../providers/registry";
-import {
-  applyProviderContextCap,
-  providerContextCap,
-} from "../../providers/context-cap";
-import {
-  routedSlug,
-  slugEquals,
-  slugsEquivalent,
-} from "../../providers/slug-codec";
 import { CODEX_GPT5_IDENTITY_LINE } from "../../adapters/identity";
 import { filterCursorConfiguredModelsByLiveDiscovery } from "../../adapters/cursor/discovery";
 import { fetchCursorUsableModels } from "../../adapters/cursor/live-models";
-import {
-  isCanonicalOpenAiForwardProvider,
-  OPENAI_API_PROVIDER_ID,
-  OPENAI_CODEX_PROVIDER_ID,
-} from "../../providers/openai-tiers";
 import {
   COMBO_NAMESPACE,
   comboModelId,
