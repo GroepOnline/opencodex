@@ -328,9 +328,11 @@ jobs:
           # IPv4, which does not exist inside the bridge network; the container
           # then refuses to bind (PortUnavailableError, exit 1 crash-loop).
           # Strip it so the container binds 0.0.0.0 via OPENCODEX_BIND_HOST
-          # and keeps the rest of the carried settings.
+          # and keeps the rest of the carried settings. Inline (not a repo
+          # file): the deploy job checks out the deployed tag, so any script
+          # the workflow needs must already exist in that tag.
           if sudo test -f "$STATE_DIR/config.json"; then
-            sudo python3 deploy/container/strip-hostname.py "$STATE_DIR/config.json" || true
+            sudo python3 -c 'import json,os,sys; p=sys.argv[1]; d=json.load(open(p,encoding="utf-8")); del d["hostname"]; json.dump(d,open(p+".t","w",encoding="utf-8"),indent=2); os.chmod(p+".t",0o600); os.replace(p+".t",p); print("stripped hostname from carried config")' "$STATE_DIR/config.json" 2>/dev/null || true
           fi
           sudo chown -R "$container_uid:$container_gid" "$STATE_DIR"
           sudo cp deploy/container/compose.example.yml "$COMPOSE_DIR/docker-compose.yml"
