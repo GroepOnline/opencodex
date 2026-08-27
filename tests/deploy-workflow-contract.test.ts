@@ -75,11 +75,15 @@ describe("digest deploy workflow contract", () => {
     const sChown = deployScript.indexOf('sudo chown -R "$container_uid:$container_gid"');
     const sStart = deployScript.indexOf("sudo systemctl start");
     const sTokenMode = deployScript.indexOf('sudo chmod 0644 "$token_file"');
+    const sConfigStrip = deployScript.indexOf("deploy/container/strip-hostname.py");
     expect(sMkdir).toBeGreaterThan(-1);
     expect(sStop).toBeGreaterThan(sMkdir);
     expect(sRsync).toBeGreaterThan(sStop);
     expect(sChown).toBeGreaterThan(sRsync);
+    expect(sConfigStrip).toBeGreaterThan(sRsync);
+    expect(sChown).toBeGreaterThan(sConfigStrip);
     expect(sStart).toBeGreaterThan(sChown);
+    expect(deployScript).toContain('if sudo test -f "$STATE_DIR/config.json"');
     expect(deployScript).toContain("port 10100 still bound after stopping");
     expect(sTokenMode).toBeGreaterThan(-1);
     expect(sStart).toBeGreaterThan(sTokenMode);
