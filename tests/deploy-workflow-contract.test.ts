@@ -39,16 +39,23 @@ describe("digest deploy workflow contract", () => {
     expect(deployScript.indexOf("cutover_started=true")).toBeLessThan(deployScript.indexOf("sudo mkdir -p"));
   });
 
-  test("health probes loopback only while Tailscale remains a host presence gate", async () => {
+  test("host publish includes Tailscale IPv4; health requires loopback and that address", async () => {
     const workflow = await deployWorkflow();
+    const compose = await Bun.file(new URL("deploy/container/compose.example.yml", root)).text();
     const resolve = workflow.slice(
       workflow.indexOf("- name: Resolve health URLs"),
       workflow.indexOf("- name: Wait for GHCR publish"),
     );
     expect(resolve).toContain("http://127.0.0.1:10100/healthz");
     expect(resolve).toContain("tailscale ip -4");
-    expect(resolve).not.toContain('urls="$urls http://${ts_ip}:10100/healthz"');
-    expect(workflow).toContain("OPENCODEX_BIND_IP=127.0.0.1");
+    expect(resolve).toContain('urls="$urls http://${ts_ip}:10100/healthz"');
+    expect(resolve).toContain("OPENCODEX_BIND_IP=$ts_ip");
+    expect(workflow).toContain("printf 'OPENCODEX_BIND_IP=%s\\n' \"$OPENCODEX_BIND_IP\"");
+    expect(workflow).not.toContain("OPENCODEX_BIND_IP=127.0.0.1");
+    expect(workflow).not.toContain("100.109.39.86");
+    expect(workflow).toContain('OCX_HEALTH_URLS must include loopback and Tailscale');
+    expect(compose).toContain('"127.0.0.1:10100:10100"');
+    expect(compose).toContain("${OPENCODEX_BIND_IP:?set the host Tailscale IPv4}:10100:10100");
   });
 
   test("bun-runtime rollback passes the compose env file explicitly", async () => {

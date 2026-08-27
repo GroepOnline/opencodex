@@ -2406,8 +2406,10 @@ describe("GitHub Actions hardening", () => {
     expect(resolveHealth?.run ?? "").toContain("http://127.0.0.1:10100/healthz");
     expect(resolveHealth?.run ?? "").toContain("tailscale ip -4");
     expect(resolveHealth?.run ?? "").toContain("no discoverable Tailscale IPv4");
-    expect(resolveHealth?.run ?? "").not.toContain('urls="$urls http://${ts_ip}:10100/healthz"');
+    expect(resolveHealth?.run ?? "").toContain('urls="$urls http://${ts_ip}:10100/healthz"');
+    expect(resolveHealth?.run ?? "").toContain("OPENCODEX_BIND_IP=$ts_ip");
     expect(text).not.toContain("100.109.39.86");
+    expect(text).not.toContain("OPENCODEX_BIND_IP=127.0.0.1");
 
     expect(rollback!.if).toBe("(failure() || cancelled()) && steps.prev.outcome == 'success' && steps.deploy.outputs.cutover_started == 'true'");
     expect(rollback!.run ?? "").toContain("OPENCODEX_IMAGE=");
@@ -2416,7 +2418,7 @@ describe("GitHub Actions hardening", () => {
     expect(rollback!.run ?? "").not.toContain("git reset --hard");
     expect(rollback!.run ?? "").toContain("sudo systemctl restart opencodex-proxy.service");
     expect(rollback!.run ?? "").toContain('${OCX_HEALTH_URLS:-http://127.0.0.1:10100/healthz}');
-    expect(rollback!.run ?? "").not.toContain('urls="$urls http://${ts_ip}:10100/healthz"');
+    expect(rollback!.run ?? "").toContain("printf 'OPENCODEX_BIND_IP=%s\\n' \"$OPENCODEX_BIND_IP\"");
     expect(rollback!.run ?? "").toContain("deadline=$((SECONDS + 30))");
     expect(rollback!.run ?? "").not.toContain("MainPID");
     expect(rollback!.run ?? "").toContain('b.get("service") == "opencodex"');

@@ -139,13 +139,15 @@ jobs:
           set -euo pipefail
           urls="http://127.0.0.1:10100/healthz"
           ts_ip="$(tailscale ip -4 2>/dev/null | head -n1 || true)"
-          if [ -z "$ts_ip" ]; then
+          if [[ ! "$ts_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [ "$ts_ip" = "127.0.0.1" ]; then
             echo "::error::chef-control-az-01 has no discoverable Tailscale IPv4; refusing deploy before runtime cutover"
             exit 1
           fi
-          # Compose publishes 127.0.0.1:10100 only. Probe loopback, not $ts_ip:10100
-          # (that address is permanently unreachable without changing the bind).
+          # Host publish must include the Tailscale IPv4. ocx-tunnel and the
+          # Cloudflare origin reach :10100 on that address, not on loopback.
+          urls="$urls http://${ts_ip}:10100/healthz"
           echo "tailscale_ipv4=${ts_ip}"
+          echo "OPENCODEX_BIND_IP=$ts_ip" >> "$GITHUB_ENV"
           echo "OCX_HEALTH_URLS=$urls" >> "$GITHUB_ENV"
 
       - name: Wait for GHCR publish (container.yml)
@@ -157,13 +159,25 @@ jobs:
           deadline=$((SECONDS + 900))
           while (( SECONDS < deadline )); do
             ids="$(gh run list --workflow container.yml --commit "$tag_sha" --limit 20 --json databaseId --jq '.[].databaseId')"
+            saw_pending=0
+            saw_failure=0
             for id in $ids; do
               pub="$(gh run view "$id" --json jobs --jq '[.jobs[] | select(.name=="publish") | .conclusion] | .[0] // "none"')"
               if [ "$pub" = "success" ]; then
                 echo "container.yml publish job succeeded on run ${id} for ${tag_sha}"
                 exit 0
               fi
+              if [ "$pub" = "failure" ] || [ "$pub" = "cancelled" ]; then
+                saw_failure=1
+              else
+                saw_pending=1
+              fi
             done
+            if [ -n "$ids" ] && [ "$saw_failure" = 1 ] && [ "$saw_pending" = 0 ]; then
+              echo "::error::container.yml publish job failed for ${tag_sha}; not waiting out the 15m budget"
+              gh run list --workflow container.yml --commit "$tag_sha" --limit 5 || true
+              exit 1
+            fi
             echo "waiting for container.yml publish job on ${tag_sha}..."
             sleep 15
           done
@@ -206,6 +220,10 @@ jobs:
           PINNED_IMAGE: ${{ steps.image.outputs.ref }}
         run: |
           set -euo pipefail
+          if [[ ! "$OPENCODEX_BIND_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [ "$OPENCODEX_BIND_IP" = "127.0.0.1" ]; then
+            echo "::error::OPENCODEX_BIND_IP must be the host Tailscale IPv4 (got '${OPENCODEX_BIND_IP:-empty}')"
+            exit 1
+          fi
           token_file="${OPENCODEX_API_TOKEN_FILE:-/etc/chef/opencodex/service-api-token}"
           if [ ! -f "$token_file" ]; then
             echo "::error::runtime API token file missing at ${token_file} (set OPENCODEX_API_TOKEN_FILE on the host)"
@@ -224,7 +242,7 @@ jobs:
             printf 'OPENCODEX_IMAGE=%s\n' "$PINNED_IMAGE"
             printf 'OPENCODEX_STATE_DIR=%s\n' "$STATE_DIR"
             printf 'OPENCODEX_API_TOKEN_FILE=%s\n' "$token_file"
-            printf 'OPENCODEX_BIND_IP=127.0.0.1\n'
+            printf 'OPENCODEX_BIND_IP=%s\n' "$OPENCODEX_BIND_IP"
           } | sudo tee "$COMPOSE_ENV" > /dev/null
 
           sudo systemctl stop opencodex-proxy.service || true
@@ -239,25 +257,37 @@ jobs:
           TAG_SHA: ${{ steps.verify.outputs.tag_sha }}
         run: |
           set -euo pipefail
+          set -- $OCX_HEALTH_URLS
+          if [ "$#" -lt 2 ]; then
+            echo "::error::OCX_HEALTH_URLS must include loopback and Tailscale"
+            exit 1
+          fi
           deadline=$((SECONDS + 60))
           attempt=0
           while (( SECONDS < deadline )); do
             attempt=$((attempt + 1))
+            remaining=$((deadline - SECONDS))
+            (( remaining > 0 )) || break
+            max_time=$((remaining < 2 ? remaining : 2))
+            all_ok=1
             for url in $OCX_HEALTH_URLS; do
-              remaining=$((deadline - SECONDS))
-              (( remaining > 0 )) || break 2
-              max_time=$((remaining < 2 ? remaining : 2))
               body="$(curl -fsS --max-time "$max_time" "$url" || true)"
-              if HEALTH_BODY="$body" TAG_SHA="$TAG_SHA" python3 -c 'import json, os; b=json.loads(os.environ["HEALTH_BODY"]); raise SystemExit(0 if b.get("status") == "ok" and b.get("service") == "opencodex" and b.get("gitSha") == os.environ["TAG_SHA"] else 1)' 2>/dev/null; then
-                root_url="${url%/healthz}/"
-                dashboard="$(curl -fsS --max-time "$max_time" "$root_url" || true)"
-                if printf '%s' "$dashboard" | grep -Fq '<title>opencodex · proxy dashboard</title>'; then
-                  echo "healthy after ${attempt} tries via $url (gitSha=${TAG_SHA})"
-                  echo "status=ok" >> "$GITHUB_OUTPUT"
-                  exit 0
-                fi
+              if ! HEALTH_BODY="$body" TAG_SHA="$TAG_SHA" python3 -c 'import json, os; b=json.loads(os.environ["HEALTH_BODY"]); raise SystemExit(0 if b.get("status") == "ok" and b.get("service") == "opencodex" and b.get("gitSha") == os.environ["TAG_SHA"] else 1)' 2>/dev/null; then
+                all_ok=0
+                break
+              fi
+              root_url="${url%/healthz}/"
+              dashboard="$(curl -fsS --max-time "$max_time" "$root_url" || true)"
+              if ! printf '%s' "$dashboard" | grep -Fq '<title>opencodex · proxy dashboard</title>'; then
+                all_ok=0
+                break
               fi
             done
+            if [ "$all_ok" = 1 ]; then
+              echo "healthy after ${attempt} tries via ${OCX_HEALTH_URLS} (gitSha=${TAG_SHA})"
+              echo "status=ok" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             (( SECONDS < deadline )) && sleep 1
           done
           echo "::error::opencodex did not become gitSha-verified healthy within 60s with GUI after cutover"
@@ -278,7 +308,7 @@ jobs:
               printf 'OPENCODEX_IMAGE=%s\n' "$prev_image"
               printf 'OPENCODEX_STATE_DIR=%s\n' "$STATE_DIR"
               printf 'OPENCODEX_API_TOKEN_FILE=%s\n' "$token_file"
-              printf 'OPENCODEX_BIND_IP=127.0.0.1\n'
+              printf 'OPENCODEX_BIND_IP=%s\n' "$OPENCODEX_BIND_IP"
             } | sudo tee "$COMPOSE_ENV" > /dev/null
             sudo systemctl restart opencodex-proxy.service
           elif [ "${{ steps.prev.outputs.bun_runtime }}" = "true" ] && [ -n "${{ steps.prev.outputs.unit_backup }}" ]; then
@@ -295,20 +325,27 @@ jobs:
           urls="${OCX_HEALTH_URLS:-http://127.0.0.1:10100/healthz}"
           deadline=$((SECONDS + 30))
           while (( SECONDS < deadline )); do
+            remaining=$((deadline - SECONDS))
+            (( remaining > 0 )) || break
+            max_time=$((remaining < 2 ? remaining : 2))
+            all_ok=1
             for url in $urls; do
-              remaining=$((deadline - SECONDS))
-              (( remaining > 0 )) || break 2
-              max_time=$((remaining < 2 ? remaining : 2))
               body="$(curl -fsS --max-time "$max_time" "$url" || true)"
-              if HEALTH_BODY="$body" python3 -c 'import json, os; b=json.loads(os.environ["HEALTH_BODY"]); raise SystemExit(0 if b.get("status") == "ok" and b.get("service") == "opencodex" else 1)' 2>/dev/null; then
-                root_url="${url%/healthz}/"
-                dashboard="$(curl -fsS --max-time "$max_time" "$root_url" || true)"
-                if printf '%s' "$dashboard" | grep -Fq '<title>opencodex · proxy dashboard</title>'; then
-                  echo "rolled back and healthy with GUI via $url"
-                  exit 0
-                fi
+              if ! HEALTH_BODY="$body" python3 -c 'import json, os; b=json.loads(os.environ["HEALTH_BODY"]); raise SystemExit(0 if b.get("status") == "ok" and b.get("service") == "opencodex" else 1)' 2>/dev/null; then
+                all_ok=0
+                break
+              fi
+              root_url="${url%/healthz}/"
+              dashboard="$(curl -fsS --max-time "$max_time" "$root_url" || true)"
+              if ! printf '%s' "$dashboard" | grep -Fq '<title>opencodex · proxy dashboard</title>'; then
+                all_ok=0
+                break
               fi
             done
+            if [ "$all_ok" = 1 ]; then
+              echo "rolled back and healthy with GUI via $urls"
+              exit 0
+            fi
             (( SECONDS < deadline )) && sleep 1
           done
           echo "::error::rollback did not restore a healthy service within 30s with GUI"
