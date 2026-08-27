@@ -40,3 +40,6 @@ tests/.tmp-*/
 .claude/
 *.html
 !.gitignore
+
+# Compound Engineering checkout-local settings (tracked: config.yaml + example)
+.compound-engineering/*.local.yaml
