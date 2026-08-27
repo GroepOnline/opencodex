@@ -240,6 +240,16 @@ jobs:
           echo "cutover_started=true" >> "$GITHUB_OUTPUT"
 
           sudo mkdir -p "$COMPOSE_DIR" "$STATE_DIR"
+          # Container runs as bun (uid 1000, read_only rootfs); the state dir is
+          # its only writable volume. root-owned mkdir breaks home init and the
+          # app never binds :10100, so hand it to uid 1000 before start.
+          sudo chown -R 1000:1000 "$STATE_DIR"
+          # Carry the live bun runtime's state (OAuth/creds live in
+          # /home/chef/.opencodex) forward once, --ignore-existing, so the
+          # container never starts cold and later deploys keep container state.
+          if [ -d /home/chef/.opencodex ]; then
+            sudo rsync -a --ignore-existing /home/chef/.opencodex/ "$STATE_DIR"
+          fi
           sudo cp deploy/container/compose.example.yml "$COMPOSE_DIR/docker-compose.yml"
           sudo cp deploy/container/opencodex-proxy.service /etc/systemd/system/opencodex-proxy.service
 
