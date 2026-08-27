@@ -2355,6 +2355,7 @@ describe("GitHub Actions hardening", () => {
     expect(verify!.run ?? "").toContain('git merge-base --is-ancestor "refs/tags/$tag" "origin/main"');
     expect(verify!.run ?? "").toContain("is not on origin/main");
     expect(verify!.run ?? "").toContain('tag_sha=$(git rev-parse "refs/tags/$tag")');
+    expect(verify!.run ?? "").toContain('tag_sha=$(git rev-parse "refs/tags/$tag^{}")');
 
     expect(deploy!.run ?? "").toContain("deploy/container/compose.example.yml");
     expect(deploy!.run ?? "").toContain("deploy/container/opencodex-proxy.service");
@@ -2398,6 +2399,7 @@ describe("GitHub Actions hardening", () => {
     expect(resolveHealth?.run ?? "").toContain("http://127.0.0.1:10100/healthz");
     expect(resolveHealth?.run ?? "").toContain("tailscale ip -4");
     expect(resolveHealth?.run ?? "").toContain("no discoverable Tailscale IPv4");
+    expect(resolveHealth?.run ?? "").not.toContain('urls="$urls http://${ts_ip}:10100/healthz"');
     expect(text).not.toContain("100.109.39.86");
 
     expect(rollback!.if).toBe("failure() && steps.prev.outcome == 'success' && steps.deploy.outputs.cutover_started == 'true'");
@@ -2407,7 +2409,7 @@ describe("GitHub Actions hardening", () => {
     expect(rollback!.run ?? "").not.toContain("git reset --hard");
     expect(rollback!.run ?? "").toContain("sudo systemctl restart opencodex-proxy.service");
     expect(rollback!.run ?? "").toContain('${OCX_HEALTH_URLS:-http://127.0.0.1:10100/healthz}');
-    expect(rollback!.run ?? "").toContain("tailscale ip -4");
+    expect(rollback!.run ?? "").not.toContain('urls="$urls http://${ts_ip}:10100/healthz"');
     expect(rollback!.run ?? "").toContain("deadline=$((SECONDS + 30))");
     expect(rollback!.run ?? "").not.toContain("MainPID");
     expect(rollback!.run ?? "").toContain('b.get("service") == "opencodex"');

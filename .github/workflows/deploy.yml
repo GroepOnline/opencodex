@@ -135,7 +135,9 @@ jobs:
             echo "::error::chef-control-az-01 has no discoverable Tailscale IPv4; refusing deploy before runtime cutover"
             exit 1
           fi
-          urls="$urls http://${ts_ip}:10100/healthz"
+          # Compose publishes 127.0.0.1:10100 only. Probe loopback, not $ts_ip:10100
+          # (that address is permanently unreachable without changing the bind).
+          echo "tailscale_ipv4=${ts_ip}"
           echo "OCX_HEALTH_URLS=$urls" >> "$GITHUB_ENV"
 
       - name: Wait for GHCR publish (container.yml)
@@ -281,10 +283,6 @@ jobs:
           fi
 
           urls="${OCX_HEALTH_URLS:-http://127.0.0.1:10100/healthz}"
-          if [ -z "${OCX_HEALTH_URLS:-}" ]; then
-            ts_ip="$(tailscale ip -4 2>/dev/null | head -n1 || true)"
-            [ -z "$ts_ip" ] || urls="$urls http://${ts_ip}:10100/healthz"
-          fi
           deadline=$((SECONDS + 30))
           while (( SECONDS < deadline )); do
             for url in $urls; do

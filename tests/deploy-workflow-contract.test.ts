@@ -34,6 +34,18 @@ describe("digest deploy workflow contract", () => {
     expect(deployScript.indexOf("cutover_started=true")).toBeLessThan(deployScript.indexOf("sudo mkdir -p"));
   });
 
+  test("health probes loopback only while Tailscale remains a host presence gate", async () => {
+    const workflow = await deployWorkflow();
+    const resolve = workflow.slice(
+      workflow.indexOf("- name: Resolve health URLs"),
+      workflow.indexOf("- name: Wait for GHCR publish"),
+    );
+    expect(resolve).toContain("http://127.0.0.1:10100/healthz");
+    expect(resolve).toContain("tailscale ip -4");
+    expect(resolve).not.toContain('urls="$urls http://${ts_ip}:10100/healthz"');
+    expect(workflow).toContain("OPENCODEX_BIND_IP=127.0.0.1");
+  });
+
   test("previous digest fallback inspects the running image, not the container", async () => {
     const workflow = await deployWorkflow();
     expect(workflow).toContain("docker inspect --format='{{.Image}}'");
