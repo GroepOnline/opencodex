@@ -16,6 +16,7 @@
  *   extracts JWT `sub` — both append distinct accounts under multiauth.
  */
 import { createHash, randomUUID } from "node:crypto";
+import { stableSha256Hex } from "../lib/stable-fingerprint";
 import { chmodSync, closeSync, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getConfigDir, atomicWriteFile, backupInvalidConfig, hardenConfigDir, hardenExistingSecret } from "../config";
@@ -247,7 +248,7 @@ function normalizeCredential(cred: unknown): OAuthCredentials | null {
  */
 function newAccountId(cred: OAuthCredentials): string {
   const identity = cred.accountId ?? cred.email ?? cred.refresh;
-  return createHash("sha256").update(identity).digest("hex").slice(0, 8);
+  return stableSha256Hex(identity).slice(0, 8);
 }
 
 function persistAccountMeta(account: ProviderAccount): Omit<ProviderAccount, "id" | "credential"> {

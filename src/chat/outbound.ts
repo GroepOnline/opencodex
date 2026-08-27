@@ -9,6 +9,7 @@ type Rec = Record<string, unknown>;
 
 import { decodeServerSentEvents } from "../lib/sse-decoder";
 import { classifyError, CYBER_POLICY_ERROR_CODE, isCyberPolicyCode, isCyberPolicyMessage } from "../lib/errors";
+import { stringifyHttpJson } from "../lib/http-json";
 
 function isRec(v: unknown): v is Rec {
   return !!v && typeof v === "object" && !Array.isArray(v);
@@ -84,7 +85,7 @@ export function chatCompletionsErrorResponse(
   const body = chatCompletionsErrorBody(status, message, type, code);
   const err = body.error as { code?: string | null };
   const finalStatus = err.code === CYBER_POLICY_ERROR_CODE ? 400 : status;
-  return new Response(JSON.stringify(body), {
+  return new Response(stringifyHttpJson(body), {
     status: finalStatus,
     headers: { "Content-Type": "application/json" },
   });

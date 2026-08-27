@@ -1,4 +1,5 @@
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
+import { stableSha256Hex } from "../lib/stable-fingerprint";
 import type { CodexAccount, OcxConfig } from "../types";
 import { MAIN_CODEX_ACCOUNT_ID } from "./main-account";
 
@@ -14,7 +15,7 @@ export function createCodexAccountLogLabel(existingLabels: Iterable<string | und
 }
 
 export function fallbackCodexAccountLogLabel(accountId: string): string {
-  return `p${createHash("sha256").update(accountId).digest("hex").slice(0, 6)}`;
+  return `p${stableSha256Hex(accountId).slice(0, 6)}`;
 }
 
 export function codexAccountLogLabel(account: CodexAccount): string {

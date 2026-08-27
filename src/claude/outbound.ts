@@ -9,6 +9,7 @@
  *  - message_delta.usage is cumulative; message_start embeds a full message snapshot.
  *  - errors: {type:"error", error:{type,message}}; may arrive mid-stream after HTTP 200.
  */
+import { stringifyHttpJson } from "../lib/http-json";
 import { isTransientUpstreamStatus } from "../lib/upstream-retry";
 
 type Rec = Record<string, unknown>;
@@ -43,7 +44,7 @@ export function anthropicErrorBody(status: number, message: string, type?: strin
 }
 
 export function anthropicErrorResponse(status: number, message: string, type?: string): Response {
-  return new Response(JSON.stringify(anthropicErrorBody(status, message, type)), {
+  return new Response(stringifyHttpJson(anthropicErrorBody(status, message, type)), {
     status,
     headers: { "Content-Type": "application/json" },
   });

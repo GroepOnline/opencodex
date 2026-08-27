@@ -1,5 +1,6 @@
 import type { AdapterEvent, OcxMessagePhase, OcxProviderContinuationState, OcxUsage } from "./types";
 import { adapterFailureFromMessage, classifyError, CYBER_POLICY_ERROR_CODE, isCyberPolicyCode, type OcxErrorPayload } from "./lib/errors";
+import { stringifyHttpJson } from "./lib/http-json";
 import { encodeCompactionSummary } from "./responses/compaction";
 import { encodeReasoningEnvelope, type ReasoningEnvelope } from "./responses/reasoning-envelope";
 import { resolveStallTimeoutSec } from "./stall-timeout";
@@ -1215,7 +1216,7 @@ export function formatErrorResponse(
   if (retryAfter && retryAfter.length > 0 && retryAfter.length <= 128) {
     headers.set("Retry-After", retryAfter);
   }
-  return new Response(JSON.stringify({ error }), {
+  return new Response(stringifyHttpJson({ error }), {
     status: finalStatus,
     headers,
   });

@@ -213,6 +213,20 @@ describe("validateIssue - feature", () => {
     }
   });
 
+  it("keeps documentation URLs with dots inside a section", () => {
+    const body = [
+      "### Upstream documentation",
+      "https://docs.anthropic.com/en/api/messages",
+      "https://docs.example.com",
+      "### Current behaviour",
+      "Returns 400.",
+    ].join("\n");
+    assert.equal(
+      extractSection(body, "Upstream documentation"),
+      "https://docs.anthropic.com/en/api/messages\nhttps://docs.example.com",
+    );
+  });
+
   it("rejects issue #208-style duplicate content", () => {
     const repeated = "Add support for streaming responses in the proxy";
     const body = [

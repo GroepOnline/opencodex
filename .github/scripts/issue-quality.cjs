@@ -111,6 +111,27 @@ function canonicalise(raw) {
  * Extract the text content of a markdown ### section by heading name.
  * Returns null when the heading is absent.
  */
+/**
+ * CommonMark closing fence: 0–3 spaces/tabs, then at least `length` copies of
+ * the opener marker (` or ~), then only spaces/tabs. Parsed as characters so
+ * issue-body hostnames never flow into `new RegExp` (CodeQL js/incomplete-hostname-regexp).
+ */
+function isClosingFence(line, marker, length) {
+  if (marker !== "`" && marker !== "~") return false;
+  if (typeof length !== "number" || length < 3) return false;
+  let i = 0;
+  while (i < line.length && (line[i] === " " || line[i] === "\t")) i += 1;
+  if (i > 3) return false;
+  let n = 0;
+  while (i < line.length && line[i] === marker) {
+    n += 1;
+    i += 1;
+  }
+  if (n < length) return false;
+  while (i < line.length && (line[i] === " " || line[i] === "\t")) i += 1;
+  return i === line.length;
+}
+
 function extractSection(body, heading) {
   if (typeof body !== "string") return null;
   const lines = body.split("\n");
@@ -121,7 +142,7 @@ function extractSection(body, heading) {
   const out = [];
   for (const line of lines) {
     if (fence) {
-      if (new RegExp(`^[ \\t]{0,3}${fence.marker}{${fence.length},}[ \\t]*$`).test(line)) {
+      if (isClosingFence(line, fence.marker, fence.length)) {
         fence = null;
       }
       if (capturing) out.push(line);
