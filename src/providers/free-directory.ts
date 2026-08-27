@@ -353,8 +353,8 @@ const CONNECTABLE: Record<string, ConnectableOverride> = {
       documentationUrl: "https://free.empero.org/",
       discovery: "static",
       liveModels: false,
-      models: ["Qwen/Qwen3.8-Flash-Next-FP8"],
-      note: "Community research endpoint. Any API key is accepted, but prompts/completions are logged for model training and the operator explicitly disallows VPN/datacenter traffic. Desktop/public benchmark only; do not use from deployed OCX fleet hosts.",
+      models: ["glm-5.3-flash"],
+      note: "Community research endpoint. Any API key is accepted; the current free model is GLM 5.3 Flash. Prompts/completions are logged with hashed IPs for model-training research, and the free model may rotate without notice. Desktop/public benchmark only; do not use for private ChefGroep traffic.",
     },
   ),
   ovhcloud: openAi(

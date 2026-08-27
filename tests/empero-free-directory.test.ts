@@ -16,7 +16,7 @@ describe("Empero free discovery entry", () => {
       supportLevel: "reference",
       verification: "primary",
       liveModels: false,
-      models: ["Qwen/Qwen3.8-Flash-Next-FP8"],
+      models: ["glm-5.3-flash"],
     });
     expect(
       PROVIDER_REGISTRY.some((provider) => provider.id === "empero-free"),
@@ -25,7 +25,8 @@ describe("Empero free discovery entry", () => {
 
   test("pins the provider-use restrictions in operator-visible metadata", () => {
     const note = entry?.note?.toLowerCase() ?? "";
-    expect(note).toContain("datacenter");
+    expect(note).toContain("hashed ips");
+    expect(note).toContain("private chefgroep");
     expect(note).toContain("logged");
     expect(note).toContain("training");
     expect(note).toContain("desktop/public benchmark only");
