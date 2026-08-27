@@ -59,6 +59,21 @@ describe("digest deploy workflow contract", () => {
     );
   });
 
+  test("state dir is handed to the container user (bun uid 1000) before start", async () => {
+    const workflow = await deployWorkflow();
+    expect(workflow).toContain('sudo chown -R 1000:1000 "$STATE_DIR"');
+    const deployScript = workflow.slice(
+      workflow.indexOf("- name: Deploy digest-pinned container"),
+      workflow.indexOf("- name: Health gate"),
+    );
+    const sMkdir = deployScript.indexOf("sudo mkdir -p");
+    const sChown = deployScript.indexOf("sudo chown -R 1000:1000");
+    const sStart = deployScript.indexOf("sudo systemctl start");
+    expect(sMkdir).toBeGreaterThan(-1);
+    expect(sChown).toBeGreaterThan(sMkdir);
+    expect(sStart).toBeGreaterThan(sChown);
+  });
+
   test("rollback remains armed after cutover starts even if start fails", async () => {
     const workflow = await deployWorkflow();
     expect(workflow).toContain('echo "cutover_started=true" >> "$GITHUB_OUTPUT"');

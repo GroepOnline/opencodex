@@ -240,6 +240,10 @@ jobs:
           echo "cutover_started=true" >> "$GITHUB_OUTPUT"
 
           sudo mkdir -p "$COMPOSE_DIR" "$STATE_DIR"
+          # Container runs as bun (uid 1000, read_only rootfs); the state dir is
+          # its only writable volume. root-owned mkdir breaks home init and the
+          # app never binds :10100, so hand it to uid 1000 before start.
+          sudo chown -R 1000:1000 "$STATE_DIR"
           sudo cp deploy/container/compose.example.yml "$COMPOSE_DIR/docker-compose.yml"
           sudo cp deploy/container/opencodex-proxy.service /etc/systemd/system/opencodex-proxy.service
 
