@@ -1280,12 +1280,15 @@ test("keyed/forward relay streams the upstream body and passes payload + status 
 }, 5_000);
 
 test("keyed/forward relay rejects an oversized streamed body mid-stream with 502", async () => {
-  // Regression for the streaming bounded reader: an upstream that streams more
-  // than IMAGES_RESPONSE_MAX_BYTES (100 MiB) must be rejected mid-stream with 502
-  // rather than fully buffered via arrayBuffer(). We stream 1 MiB chunks from a
-  // single reused buffer so the process never allocates the full 100+ MiB at once.
-  const CHUNK = new Uint8Array(1024 * 1024); // 1 MiB, reused for every enqueue
-  const MAX_BYTES = 100 * 1024 * 1024;
+  // Regression for the streaming bounded reader: an upstream body exceeding the
+  // cap must be rejected mid-stream with 502 rather than fully buffered via
+  // arrayBuffer(). We shrink the cap via OPENCODEX_IMAGES_RESPONSE_MAX_BYTES so
+  // the test stays fast and never allocates 100+ MiB — the bounded-reader logic
+  // (imagesResponseMaxBytes()) is identical regardless of the cap value.
+  const previousMax = process.env.OPENCODEX_IMAGES_RESPONSE_MAX_BYTES;
+  process.env.OPENCODEX_IMAGES_RESPONSE_MAX_BYTES = String(4 * 1024); // 4 KiB cap
+  const CHUNK = new Uint8Array(1024); // 1 KiB, reused for every enqueue
+  const MAX_BYTES = 4 * 1024;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const requestUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const url = new URL(requestUrl);
@@ -1326,8 +1329,10 @@ test("keyed/forward relay rejects an oversized streamed body mid-stream with 502
     expect(json.error.message).toMatch(/too large/i);
   } finally {
     await server.stop(true);
+    if (previousMax === undefined) delete process.env.OPENCODEX_IMAGES_RESPONSE_MAX_BYTES;
+    else process.env.OPENCODEX_IMAGES_RESPONSE_MAX_BYTES = previousMax;
   }
-}, 30_000);
+}, 5_000);
 
 test("keyed/forward relay returns 502 when the upstream response has no body", async () => {
   // Regression for the streaming bounded reader: a 204/no-body upstream response
