@@ -33,7 +33,9 @@ export default defineConfig({
       },
       favicon: "/favicon.ico",
       customCss: [
-        "@fontsource-variable/geist",
+        "@fontsource/instrument-serif/400.css",
+        "@fontsource/instrument-serif/400-italic.css",
+        "@fontsource-variable/jetbrains-mono",
         "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css",
         "./src/styles/custom.css",
       ],
