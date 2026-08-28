@@ -59,12 +59,16 @@ const IMAGES_UPSTREAM_TIMEOUT_MS = 300_000;
  * response from exhausting process memory. Overridable via OPENCODEX_IMAGES_RESPONSE_MAX_BYTES
  * (a positive integer byte count) so tests can exercise the bounded reader without streaming the
  * full 100 MiB; a missing/invalid value falls back to the 100 MiB default.
+ *
+ * Read the env var per-call rather than caching a module-load constant: tests import this module
+ * (transitively via startServer) before their bodies run, so a load-time constant could never be
+ * overridden. Resolving at request time keeps the override effective and stays negligibly cheap.
  */
-const IMAGES_RESPONSE_MAX_BYTES = (() => {
+function imagesResponseMaxBytes(): number {
   const raw = Bun.env.OPENCODEX_IMAGES_RESPONSE_MAX_BYTES?.trim();
   const parsed = raw ? Number(raw) : NaN;
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 100 * 1024 * 1024;
-})();
+}
 
 const CCA_IMAGE_MODEL = "gemini-3.1-flash-image";
 
@@ -289,17 +293,18 @@ async function tryCcaImageGeneration(
       }
       const chunks: Uint8Array[] = [];
       let total = 0;
+      const maxBytes = imagesResponseMaxBytes();
       try {
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
           total += value.byteLength;
-          if (total > IMAGES_RESPONSE_MAX_BYTES) {
+          if (total > maxBytes) {
             await reader.cancel().catch(() => {});
             return formatErrorResponse(
               502,
               "upstream_error",
-              `CCA image response too large (exceeded ${IMAGES_RESPONSE_MAX_BYTES} bytes)`,
+              `CCA image response too large (exceeded ${maxBytes} bytes)`,
             );
           }
           chunks.push(value);
