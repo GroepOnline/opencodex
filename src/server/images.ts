@@ -663,17 +663,18 @@ export async function handleImages(
       }
       const chunks: Uint8Array[] = [];
       let total = 0;
+      const maxBytes = imagesResponseMaxBytes();
       try {
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
           total += value.byteLength;
-          if (total > IMAGES_RESPONSE_MAX_BYTES) {
+          if (total > maxBytes) {
             await reader.cancel().catch(() => {});
             return formatErrorResponse(
               502,
               "upstream_error",
-              `image ${endpoint} response too large (exceeded ${IMAGES_RESPONSE_MAX_BYTES} bytes)`,
+              `image ${endpoint} response too large (exceeded ${maxBytes} bytes)`,
             );
           }
           chunks.push(value);
