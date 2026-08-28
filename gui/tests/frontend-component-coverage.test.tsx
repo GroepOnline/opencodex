@@ -3,11 +3,12 @@ import { Window } from "happy-dom";
 import { act } from "react";
 import type { Root } from "react-dom/client";
 import { LanguageProvider } from "../src/i18n/provider";
+import { hideRedundantChatGptForwardProviders } from "../src/provider-workspace/catalog";
 import { seedDicts } from "./helpers/locales";
 
 await seedDicts();
 
-const globals = ["document", "window", "navigator", "localStorage", "IS_REACT_ACT_ENVIRONMENT"] as const;
+const globals = ["document", "window", "navigator", "localStorage", "ResizeObserver", "IS_REACT_ACT_ENVIRONMENT"] as const;
 type GlobalsKey = (typeof globals)[number];
 
 interface TestEnv {
@@ -36,6 +37,7 @@ async function setupEnv(): Promise<TestEnv & { cleanup: () => Promise<void> }> {
     window: { configurable: true, value: testWindow },
     navigator: { configurable: true, value: testWindow.navigator },
     localStorage: { configurable: true, value: testWindow.localStorage },
+    ResizeObserver: { configurable: true, value: testWindow.ResizeObserver },
   });
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -89,14 +91,19 @@ test("Storage renders catalog backup section", async () => {
     mockFetch((url) => {
       callCount++;
       if (url.includes("/api/storage")) {
-        return Response.json({ catalog_backup_exists: true, catalog_backup_path: "/tmp/catalog.json" });
+        return Response.json({
+          codexHome: "/home/user/.codex",
+          generatedAt: Date.now(),
+          total: { bytes: 0, fileCount: 0 },
+          buckets: [],
+        });
       }
       return Response.json({});
     });
 
     await mount(env, <Storage apiBase="http://localhost" />);
-    const text = env.container.textContent ?? "";
-    expect(text).toContain("Catalog");
+    expect(env.container.querySelector("#storage-page-title")?.textContent).toBe("Storage");
+    expect(env.container.textContent ?? "").toContain("Diagnostics for CODEX_HOME disk use.");
     expect(callCount).toBeGreaterThan(0);
   } finally {
     await env.cleanup();
@@ -110,8 +117,9 @@ test("Storage shows loading state initially", async () => {
     mockFetch(() => new Promise(() => {})); // never resolves
 
     await mount(env, <Storage apiBase="http://localhost" />);
-    // Should render without crashing while loading
-    expect(env.container.querySelector(".muted")).toBeTruthy();
+    // With no cached report and an in-flight fetch, Storage renders the
+    // "Scanning storage…" EmptyState (gui/src/pages/Storage.tsx loading branch).
+    expect(env.container.textContent ?? "").toContain("Scanning storage");
   } finally {
     await env.cleanup();
   }
@@ -125,7 +133,29 @@ test("Usage renders usage report panels", async () => {
     const { default: Usage } = await import("../src/pages/Usage");
     mockFetch((url) => {
       if (url.includes("/api/usage")) {
-        return Response.json({ rows: [], total_tokens: 0, total_requests: 0 });
+        return Response.json({
+          range: "7d",
+          surface: "all",
+          since: null,
+          generatedAt: Date.now(),
+          summary: {
+            requests: 3,
+            measuredRequests: 3,
+            reportedRequests: 3,
+            unreportedRequests: 0,
+            unsupportedRequests: 0,
+            estimatedRequests: 0,
+            inputTokens: 0,
+            outputTokens: 0,
+            cachedInputTokens: 0,
+            reasoningOutputTokens: 0,
+            totalTokens: 0,
+            coverageRatio: 0,
+          },
+          days: [],
+          models: [],
+          providers: [],
+        });
       }
       if (url.includes("/healthz")) {
         return Response.json({ status: "ok", version: "1.0.0" });
@@ -134,8 +164,8 @@ test("Usage renders usage report panels", async () => {
     });
 
     await mount(env, <Usage apiBase="http://localhost" />);
-    const text = env.container.textContent ?? "";
-    expect(text.length).toBeGreaterThan(0);
+    expect(env.container.querySelector("#usage-quality-title")?.textContent).toBe("Request quality");
+    expect(env.container.querySelector('[role="group"][aria-label="Proxy usage"]')).not.toBeNull();
   } finally {
     await env.cleanup();
   }
@@ -164,14 +194,18 @@ test("Logs renders log viewer with tabs", async () => {
     const { default: Logs } = await import("../src/pages/Logs");
     mockFetch((url) => {
       if (url.includes("/api/logs")) {
-        return Response.json({ lines: [] });
+        // /api/logs returns a bare array (src/server/management/logs-usage-routes.ts).
+        return Response.json([]);
       }
       return Response.json({});
     });
 
     await mount(env, <Logs apiBase="http://localhost" />);
-    const text = env.container.textContent ?? "";
-    expect(text).toContain("Logs");
+    const tabs = env.container.querySelectorAll('[role="tab"]');
+    expect(tabs.length).toBe(2);
+    expect(tabs[0]?.textContent).toBe("Logs");
+    expect(tabs[0]?.getAttribute("aria-selected")).toBe("true");
+    expect(tabs[1]?.textContent).toBe("Debug");
   } finally {
     await env.cleanup();
   }
@@ -183,15 +217,14 @@ test("Logs shows empty state when no logs", async () => {
     const { default: Logs } = await import("../src/pages/Logs");
     mockFetch((url) => {
       if (url.includes("/api/logs")) {
-        return Response.json({ lines: [] });
+        // /api/logs returns a bare array (src/server/management/logs-usage-routes.ts).
+        return Response.json([]);
       }
       return Response.json({});
     });
 
     await mount(env, <Logs apiBase="http://localhost" />);
-    // Should show empty state message
-    const text = env.container.textContent ?? "";
-    expect(text.length).toBeGreaterThan(0);
+    expect(env.container.textContent ?? "").toContain("No requests yet.");
   } finally {
     await env.cleanup();
   }
@@ -199,38 +232,30 @@ test("Logs shows empty state when no logs", async () => {
 
 // ─── ProviderWorkspaceShell.tsx tests ───
 
-test("ProviderWorkspaceShell renders provider workspace", async () => {
+test("ProviderWorkspaceShell renders an explicit empty state when no providers exist", async () => {
   const env = await setupEnv();
   try {
     const { default: ProviderWorkspaceShell } = await import("../src/components/provider-workspace/ProviderWorkspaceShell");
-    mockFetch((url) => {
-      if (url.includes("/api/providers?name=openai")) {
-        return Response.json({ name: "openai", label: "OpenAI", models: [], quota: {} });
-      }
-      if (url.includes("/api/usage")) {
-        return Response.json({ rows: [], total_tokens: 0, total_requests: 0 });
-      }
-      return Response.json({});
-    });
 
-    await mount(env, <ProviderWorkspaceShell apiBase="http://localhost" provider="openai" />);
-    const text = env.container.textContent ?? "";
-    expect(text.length).toBeGreaterThan(0);
+    await mount(env, (
+      <ProviderWorkspaceShell
+        providers={{}}
+        apiBase="http://localhost"
+        defaultProvider=""
+        selectedName={null}
+        onSelect={() => {}}
+        onAddProvider={() => {}}
+      />
+    ));
+
+    expect(env.container.querySelector("h2")?.textContent).toBe("Connect your first provider");
+    expect(env.container.querySelectorAll("button").length).toBe(3);
   } finally {
     await env.cleanup();
   }
 });
 
-test("ProviderWorkspaceShell handles provider fetch failure", async () => {
-  const env = await setupEnv();
-  try {
-    const { default: ProviderWorkspaceShell } = await import("../src/components/provider-workspace/ProviderWorkspaceShell");
-    mockFetch(() => new Response("error", { status: 500 }));
-
-    await mount(env, <ProviderWorkspaceShell apiBase="http://localhost" provider="openai" />);
-    // Should render error state, not crash
-    expect(env.container.textContent).toBeTruthy();
-  } finally {
-    await env.cleanup();
-  }
+test("nullish provider catalogs normalize to an empty map", () => {
+  expect(hideRedundantChatGptForwardProviders(undefined)).toEqual({});
+  expect(hideRedundantChatGptForwardProviders(null)).toEqual({});
 });
