@@ -153,138 +153,154 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
   const proxyOnline = health.data ? true : health.error ? false : null;
 
   return (
-    <>
-      <div className="page-head">
-        <h2>{t("nav.dashboard")}</h2>
-      </div>
+    <div className="page-vanguard">
+      <div className="ethereal-bg" />
+      
+      <div className="vanguard-eyebrow delay-100">{t("dash.eyebrow")}</div>
+      <h2 className="vanguard-h2 delay-100" style={{ opacity: 0, animation: 'vanguard-fade-up 0.9s var(--ease-vanguard) forwards' }}>{t("nav.dashboard")}</h2>
+
       {usageFailed && <Notice tone="err">{t("usage.loadError")}</Notice>}
       {logsFailed && <Notice tone="err">{t("vk.loadFailed")}</Notice>}
 
-      {/* Health strip */}
-      <div className="pws-dashboard-stats pws-dashboard-stats--fit" role="group" aria-label={t("dash.healthAria")}>
-        <div className="pws-dashboard-stat">
-          {proxyOnline === null ? (
-            <span className="pws-dashboard-stat-count spin" aria-label={t("common.loading")} />
-          ) : (
-            <span className="pws-dashboard-stat-count">
-              {proxyOnline ? <IconCheck size={18} aria-hidden /> : <IconAlert size={18} aria-hidden />}
-            </span>
-          )}
-          <span className="pws-dashboard-stat-label caps">
-            {proxyOnline === null ? t("common.loading") : proxyOnline ? t("proxy.online") : t("proxy.offline")}
-          </span>
-        </div>
-        {health.data && (
-          <>
-            <div className="pws-dashboard-stat">
-              <span className="pws-dashboard-stat-count num">{health.data.version}</span>
-              <span className="pws-dashboard-stat-label caps">{t("dash.version")}</span>
-            </div>
-            <div className="pws-dashboard-stat">
-              <span className="pws-dashboard-stat-count num">{formatUptime(health.data.uptime, locale)}</span>
-              <span className="pws-dashboard-stat-label caps">{t("dash.uptime")}</span>
-            </div>
-            <div className="pws-dashboard-stat">
-              <span className="pws-dashboard-stat-count num">{health.data.pid}</span>
-              <span className="pws-dashboard-stat-label caps">{t("dash.pid")}</span>
-            </div>
-            {(health.data.providerCooldowns ?? 0) > 0 && (
-              <div className="pws-dashboard-stat" title={t("dash.cooldownHint", { count: String(health.data.providerCooldowns) })}>
-                <span className="pws-dashboard-stat-count num" style={{ color: "var(--amber)", display: "inline-flex", alignItems: "center", gap: 4 }}><IconAlert size={13} aria-hidden />{health.data.providerCooldowns}</span>
-                <span className="pws-dashboard-stat-label caps">{t("dash.cooldown")}</span>
+      <div className="bento-grid">
+        
+        {/* Health / System Status (col-span-12) */}
+        <div className="vanguard-shell col-span-12 delay-100">
+          <div className="vanguard-core" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: '32px', alignItems: 'center' }}>
+            <div>
+              <div className="vanguard-value-label" style={{ marginTop: 0 }}>{t("dash.proxyStatus")}</div>
+              <div className="vanguard-value" style={{ fontSize: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {proxyOnline === null ? (
+                  <span className="spin" />
+                ) : proxyOnline ? (
+                  <><IconCheck size={18} color="var(--green)" /> {t("proxy.online")}</>
+                ) : (
+                  <><IconAlert size={18} color="var(--red)" /> {t("proxy.offline")}</>
+                )}
               </div>
+            </div>
+            {health.data && (
+              <>
+                <div>
+                  <div className="vanguard-value-label" style={{ marginTop: 0 }}>{t("dash.version")}</div>
+                  <div className="vanguard-value" style={{ fontSize: '1.5rem', fontFamily: 'var(--mono)' }}>{health.data.version}</div>
+                </div>
+                <div>
+                  <div className="vanguard-value-label" style={{ marginTop: 0 }}>{t("dash.uptime")}</div>
+                  <div className="vanguard-value" style={{ fontSize: '1.5rem', fontFamily: 'var(--mono)' }}>{formatUptime(health.data.uptime, locale)}</div>
+                </div>
+                <div>
+                  <div className="vanguard-value-label" style={{ marginTop: 0 }}>{t("dash.pid")}</div>
+                  <div className="vanguard-value" style={{ fontSize: '1.5rem', fontFamily: 'var(--mono)' }}>{health.data.pid}</div>
+                </div>
+              </>
             )}
-          </>
-        )}
-      </div>
+          </div>
+        </div>
 
-      {/* Usage stats */}
-      <div className="stat-strip" role="group" aria-label={t("vk.statsAria")}>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">{formatTokens(tokens30d, locale)}</span>
-          <span className="stat-strip-label">{t("vk.tokens30d")}</span>
-        </div>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">{requestsVandaag.toLocaleString(locale)}</span>
-          <span className="stat-strip-label">{t("vk.requestsToday")}</span>
-        </div>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">{requests30d.toLocaleString(locale)}</span>
-          <span className="stat-strip-label">{t("vk.requests30d")}</span>
-        </div>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">{costUsd}</span>
-          <span className="stat-strip-label">{t("vk.costUsd")}</span>
-        </div>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">{coveragePct}</span>
-          <span className="stat-strip-label">{t("dash.coverage", { pct: coveragePct })}</span>
-        </div>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">{pct429}</span>
-          <span className="stat-strip-label">429</span>
-        </div>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">{pct502}</span>
-          <span className="stat-strip-label">502</span>
-        </div>
-      </div>
-
-      <div className="pws-dashboard-columns">
-        {/* Top providers */}
-        <section className="pws-dashboard-section pws-dashboard-section--recent"
-          aria-label={t("dash.providers")}>
-          <h3 className="pws-dashboard-section-title">{t("dash.providers")}</h3>
-          {usageProviders.length > 0 ? (
-            <div className="pws-dashboard-rows">
-              {usageProviders.map(p => {
-                const name = p.provider;
-                const count = p.requests;
-                return (
-                  <div key={name} className="pws-dashboard-row">
-                    <span className="pws-dashboard-row-name">{name}</span>
-                    <span className="pws-dashboard-row-count muted">
-                      {count === 1
-                        ? t("pws.dashboard.requestOne")
-                        : t("pws.dashboard.requests", { count: count.toLocaleString(locale) })}
-                    </span>
-                    {/* Mini bar */}
-                    <span className="dash-bar-track" aria-hidden="true">
-                      <span className="dash-bar-fill" style={{ width: `${(count / usageProviders[0].requests) * 100}%` }} />
-                    </span>
-                  </div>
-                );
-              })}
+        {/* Primary Usage Stats (col-span-4) */}
+        <div className="vanguard-shell col-span-4 delay-200">
+          <div className="vanguard-core">
+            <div className="vanguard-eyebrow" style={{ width: 'fit-content' }}>{t("dash.volume30d")}</div>
+            <div className="vanguard-value">{formatTokens(tokens30d, locale)}</div>
+            <div className="vanguard-value-label">{t("vk.tokens30d")}</div>
+            
+            <div style={{ marginTop: 'auto', paddingTop: '32px' }}>
+              <div className="vanguard-value" style={{ fontSize: '2rem' }}>{requests30d.toLocaleString(locale)}</div>
+              <div className="vanguard-value-label">{t("vk.requests30d")}</div>
             </div>
-          ) : (
-            <p className="muted pws-dashboard-empty">{t("pws.dashboard.noUsage")}</p>
-          )}
-        </section>
+          </div>
+        </div>
 
-        {/* Recent traffic */}
-        <section className="pws-dashboard-section pws-dashboard-section--rate-limits"
-          aria-label={t("nav.usage")}>
-          <h3 className="pws-dashboard-section-title">{t("nav.usage")}</h3>
-          {recentBons.length > 0 ? (
-            <div className="pws-dashboard-rows" style={{ gap: 0 }}>
-              {recentBons.map(entry => {
-                const id = entry.requestId ?? `${entry.timestamp}-${entry.provider}-${entry.model}`;
-                const tokens = bonTokens(entry);
-                return (
-                  <div key={id} className="traffic-entry" style={{ borderBottom: "1px solid var(--border-soft)" }}>
-                    <div className="traffic-entry-head traffic-entry-head--grid" style={{ padding: "6px 8px", fontSize: "0.8125rem" }}>
-                      <span className="traffic-col traffic-col--time traffic-time">{tijd(entry.timestamp, locale)}</span>
-                      <TrafficRowCells entry={entry} locale={locale} tokens={tokens} />
+        {/* Financials & Health (col-span-4) */}
+        <div className="vanguard-shell col-span-4 delay-200">
+          <div className="vanguard-core">
+            <div className="vanguard-eyebrow" style={{ width: 'fit-content' }}>{t("dash.economics")}</div>
+            <div className="vanguard-value">{costUsd}</div>
+            <div className="vanguard-value-label">{t("vk.costUsd")}</div>
+
+            <div style={{ marginTop: 'auto', paddingTop: '32px' }}>
+              <div className="vanguard-value" style={{ fontSize: '2rem' }}>{requestsVandaag.toLocaleString(locale)}</div>
+              <div className="vanguard-value-label">{t("vk.requestsToday")}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Reliability (col-span-4) */}
+        <div className="vanguard-shell col-span-4 delay-200">
+          <div className="vanguard-core">
+            <div className="vanguard-eyebrow" style={{ width: 'fit-content' }}>{t("dash.reliability")}</div>
+            <div className="vanguard-value">{coveragePct}</div>
+            <div className="vanguard-value-label">{t("dash.coverage", { pct: coveragePct })}</div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: 'auto', paddingTop: '32px' }}>
+              <div>
+                <div className="vanguard-value" style={{ fontSize: '1.5rem' }}>{pct429}</div>
+                <div className="vanguard-value-label">HTTP 429</div>
+              </div>
+              <div>
+                <div className="vanguard-value" style={{ fontSize: '1.5rem' }}>{pct502}</div>
+                <div className="vanguard-value-label">HTTP 50x</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Top providers (col-span-4, row-span-2) */}
+        <div className="vanguard-shell col-span-4 row-span-2 delay-300">
+          <div className="vanguard-core">
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 500, marginBottom: '24px' }}>{t("dash.providers")}</h3>
+            {usageProviders.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {usageProviders.map(p => {
+                  const name = p.provider;
+                  const count = p.requests;
+                  const pct = (count / usageProviders[0].requests) * 100;
+                  return (
+                    <div key={name} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                        <span>{name}</span>
+                        <span style={{ color: 'var(--muted)', fontFamily: 'var(--mono)' }}>{count.toLocaleString(locale)}</span>
+                      </div>
+                      <div style={{ height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${pct}%`, background: 'var(--accent)', borderRadius: '2px' }} />
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="muted pws-dashboard-empty">{t("vk.empty")}</p>
-          )}
-        </section>
+                  );
+                })}
+              </div>
+            ) : (
+              <p style={{ color: 'var(--muted)' }}>{t("pws.dashboard.noUsage")}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Recent traffic (col-span-8) */}
+        <div className="vanguard-shell col-span-8 row-span-2 delay-400">
+          <div className="vanguard-core">
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 500, marginBottom: '24px' }}>{t("nav.usage")}</h3>
+            {recentBons.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {recentBons.map(entry => {
+                  const id = entry.requestId ?? `${entry.timestamp}-${entry.provider}-${entry.model}`;
+                  const tokens = bonTokens(entry);
+                  return (
+                    <div key={id} style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '16px', paddingBottom: '12px', borderBottom: '1px solid var(--border-soft)', fontSize: '0.875rem' }}>
+                      <span style={{ color: 'var(--muted)', fontFamily: 'var(--mono)' }}>{tijd(entry.timestamp, locale)}</span>
+                      <div>
+                        <TrafficRowCells entry={entry} locale={locale} tokens={tokens} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p style={{ color: 'var(--muted)' }}>{t("vk.empty")}</p>
+            )}
+          </div>
+        </div>
+
       </div>
-    </>
+    </div>
   );
 }

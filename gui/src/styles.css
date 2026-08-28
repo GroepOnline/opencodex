@@ -23,8 +23,7 @@
 @import "./styles-apikeys-workspace.css";
 @import "./styles/traffic-rail.css";
 
-/* General Sans (design-system v3 §11) — self-hosted, weights 400/500/600.
-   Not on fontsource; woff2 vendored from Fontshare (free license). */
+/* General Sans preserved as fallback UI font while Linear tokens apply. */
 @font-face {
   font-family: "General Sans";
   src: url("./assets/fonts/general-sans-400.woff2") format("woff2");
@@ -46,6 +45,9 @@
   font-style: normal;
   font-display: swap;
 }
+
+/* Linear font substitutes via CDN (Inter + JetBrains Mono). */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
 
 :root {
   /* default: follow the OS; [data-theme] below pins color-scheme so light-dark() obeys it */
@@ -1944,6 +1946,9 @@ button.prov-account-row.active { cursor: default; }
 
 .topbar { position: sticky; top: 0; z-index: var(--z-sticky); display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 52px; padding: 0 20px; border-bottom: 1px solid var(--border-soft); background: var(--bg); }
 .topbar .brand { padding: 0; }
+/* Subtle cyan signature on the brand mark — the same accent the landing uses. */
+.topbar .brand .brand-logo { filter: drop-shadow(0 0 6px rgba(92, 200, 255, 0.35)); }
+.topbar .brand .name { letter-spacing: -0.01em; }
 .topbar-right { display: flex; align-items: center; gap: 10px; }
 
 /* proxy stamp: status = color + icon + text */

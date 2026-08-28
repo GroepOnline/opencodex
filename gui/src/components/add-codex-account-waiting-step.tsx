@@ -1,6 +1,7 @@
 import { useT } from "../i18n/shared";
 import { LoginUrlBlock } from "./login-url-block";
 import type { StatusTone } from "./add-codex-account-reducer";
+import { DotMatrix } from "../DotMatrix";
 
 export function AddCodexAccountWaitingStep({
   reauthAccountId,
@@ -79,7 +80,7 @@ export function AddCodexAccountWaitingStep({
       )}
       {error && <div className="notice notice-err" style={{ marginTop: 12 }}>{error}</div>}
       <div style={{ textAlign: "center", padding: "24px 0" }}>
-        <span className="spin go" style={{ width: 24, height: 24 }} />
+        <DotMatrix size={24} dotSize={5} speed={1.1} color="var(--accent-blue)" />
       </div>
       <button type="button" className="btn btn-ghost" onClick={onClose} style={{ width: "100%" }}>
         {t("codexAuth.cancel")}

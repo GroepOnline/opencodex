@@ -102,6 +102,8 @@ export function isTechnicalLiteral(value: string): boolean {
   if (/^Bearer\b/i.test(trimmed)) return true;
   if (/^Content-Type\b/i.test(trimmed)) return true;
   if (/^x-[\w-]+$/i.test(trimmed)) return true;
+  // HTTP status classes shown as metric labels (HTTP 429, HTTP 50x)
+  if (/^HTTP \d{2,3}x?$/.test(trimmed)) return true;
 
   // Debug/tooling field dumps: model=…, resolved=, supportsTier=true
   if (/^[a-zA-Z_][\w]*=/.test(trimmed)) return true;

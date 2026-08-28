@@ -7,12 +7,13 @@
 
 import { normalizeHashPath } from "./hash-routing";
 
-export type View = "dashboard" | "leveranciers" | "modellen" | "verkeer" | "verbruik" | "systeem";
+export type View = "landing" | "dashboard" | "leveranciers" | "modellen" | "verkeer" | "verbruik" | "systeem";
 
-export const VALID_VIEWS = new Set<View>(["dashboard", "leveranciers", "modellen", "verkeer", "verbruik", "systeem"]);
+export const VALID_VIEWS = new Set<View>(["landing", "dashboard", "leveranciers", "modellen", "verkeer", "verbruik", "systeem"]);
 
 /** Sub-views per view (the "/"-suffix, e.g. #leveranciers/claude). */
 export const VIEW_SUBS: Record<View, ReadonlySet<string>> = {
+  landing: new Set(),
   dashboard: new Set(),
   leveranciers: new Set(["claude", "grok"]),
   modellen: new Set(["combos", "subagents"]),
@@ -89,6 +90,8 @@ export function readRouteFromHash(hash?: string): Route {
     const view = head as View;
     return { view, sub: sub && VIEW_SUBS[view].has(sub) ? sub : null };
   }
+  // Unknown hashes keep their historic fallback: the dashboard. The public
+  // landing lives behind the explicit #landing hash only.
   return { view: "dashboard", sub: null };
 }
 
