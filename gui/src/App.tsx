@@ -116,7 +116,7 @@ export default function App() {
       if (!res.ok) throw new Error(String(res.status));
       return { version: readRuntimeVersion(await res.json()) };
     },
-    { pollMs: 30_000 },
+    { pollMs: 30_000, enabled: route.view !== "landing" },
   );
 
   const displayedVersion: string = healthPoll.data?.version ?? __APP_VERSION__;
@@ -138,9 +138,17 @@ export default function App() {
   // no view tabs, no health polling UI. Everything below it is the app.
   if (route.view === "landing") {
     return (
-      <Suspense fallback={null}>
-        <Landing />
-      </Suspense>
+      <ErrorBoundary
+        pageName="OpenCodex"
+        title={t("errorBoundary.title")}
+        message={t("errorBoundary.message")}
+        detailsLabel={t("errorBoundary.details")}
+        reloadLabel={t("errorBoundary.reload")}
+      >
+        <Suspense fallback={<div className="muted" role="status">{t("common.loading")}</div>}>
+          <Landing />
+        </Suspense>
+      </ErrorBoundary>
     );
   }
 

@@ -124,6 +124,12 @@ describe("route resolution", () => {
     expect(resolveAppHashChange("systeem/nope").replaceTo).toBe("systeem");
   });
 
+  test("landing only accepts the exact canonical hash", () => {
+    expect(readRouteFromHash("#landing")).toEqual({ view: "landing", sub: null });
+    expect(readRouteFromHash("#landing/")).toEqual({ view: "dashboard", sub: null });
+    expect(readRouteFromHash("#landing/pricing")).toEqual({ view: "dashboard", sub: null });
+  });
+
   test("an unknown hash falls back to Dashboard", () => {
     expect(readRouteFromHash("#nonsense").view).toBe("dashboard");
     expect(resolveAppHashChange("nonsense").replaceTo).toBe("dashboard");

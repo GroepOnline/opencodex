@@ -1,3 +1,4 @@
+import type { MouseEvent } from "react";
 import HeroCanvas from "./HeroCanvas";
 
 /**
@@ -13,6 +14,13 @@ import HeroCanvas from "./HeroCanvas";
 
 const GITHUB_URL = "https://github.com/GroepOnline/opencodex";
 const DOCS_URL = "https://groeponline.github.io/opencodex/";
+
+function landingAnchor(id: string) {
+  return (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    document.getElementById(id)?.scrollIntoView({ behavior: "auto", block: "start" });
+  };
+}
 
 function Mark({ size = 24 }: { size?: number }) {
   return (
@@ -95,15 +103,15 @@ export default function Landing() {
     <div className="lp">
       {/* ── Sticky nav ── */}
       <header className="lp-nav">
-        <a className="lp-nav__brand" href="#top" aria-label="OpenCodex home">
+        <a className="lp-nav__brand" href="#top" onClick={landingAnchor("top")} aria-label="OpenCodex home">
           <Mark />
           <span className="lp-nav__name">OpenCodex</span>
         </a>
         <nav className="lp-nav__links" aria-label="Primary">
           <a href={DOCS_URL} target="_blank" rel="noreferrer">Docs</a>
-          <a href="#pricing">Pricing</a>
-          <a href="#signin">Sign in</a>
-          <a className="lp-btn lp-btn--primary lp-btn--sm" href="#get-started">
+          <a href="#pricing" onClick={landingAnchor("pricing")}>Pricing</a>
+          <a href="#signin" onClick={landingAnchor("signin")}>Sign in</a>
+          <a className="lp-btn lp-btn--primary lp-btn--sm" href="#get-started" onClick={landingAnchor("get-started")}>
             Start building
           </a>
         </nav>
@@ -124,7 +132,7 @@ export default function Landing() {
             model without changing a line.
           </p>
           <div className="lp-cta-row">
-            <a className="lp-btn lp-btn--primary" href="#get-started">Start building</a>
+            <a className="lp-btn lp-btn--primary" href="#get-started" onClick={landingAnchor("get-started")}>Start building</a>
             <a className="lp-btn lp-btn--ghost" href={GITHUB_URL} target="_blank" rel="noreferrer">
               View on GitHub
             </a>
