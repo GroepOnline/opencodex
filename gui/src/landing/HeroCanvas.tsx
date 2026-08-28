@@ -3,16 +3,16 @@ import { lazy, Suspense, useEffect, useState } from "react";
 /**
  * HeroCanvas — lazy ThreeUI ParticleNetwork as the landing hero background.
  *
- * Gates (all must pass before the WebGL iframe is even imported):
+ * Gates (all must pass before the effect iframe is even imported):
  *  - viewport >= 768px (mobile gets the static poster)
  *  - no prefers-reduced-motion
- *  - WebGL available
+ *  - 2D canvas available (the ParticleNetwork is a canvas-2d effect, no WebGL)
  *  - tab visible (render pauses when hidden via the effect's own rAF, but we
  *    also avoid mounting while hidden)
  *
  * The ThreeUI effect renders inside a sandboxed iframe with pointer-events
- * off, capped DPR, and a slow drift. Colors are driven into the cyan palette
- * via the effect's hue/saturation controls plus a CSS tint fallback.
+ * off and a slow drift. Its dark-mode base color is already the Signaal
+ * accent blue (#6A9DED), so hue stays at 0: any rotation turns it cyan.
  */
 
 const ParticleNetwork = lazy(async () => {
@@ -20,16 +20,11 @@ const ParticleNetwork = lazy(async () => {
   return { default: mod.ParticleNetwork };
 });
 
-function useWebGLSupport(): boolean {
+function useCanvas2DSupport(): boolean {
   const [supported] = useState(() => {
     if (typeof window === "undefined") return false;
     try {
-      const canvas = document.createElement("canvas");
-      return !!(
-        canvas.getContext("webgl2") ||
-        canvas.getContext("webgl") ||
-        canvas.getContext("experimental-webgl")
-      );
+      return !!document.createElement("canvas").getContext("2d");
     } catch {
       return false;
     }
@@ -51,7 +46,7 @@ function useMedia(query: string): boolean {
 }
 
 export default function HeroCanvas() {
-  const webgl = useWebGLSupport();
+  const canvas2d = useCanvas2DSupport();
   const reducedMotion = useMedia("(prefers-reduced-motion: reduce)");
   const isPhone = useMedia("(max-width: 767px)");
   const [visible, setVisible] = useState(
@@ -64,7 +59,7 @@ export default function HeroCanvas() {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
-  const enabled = webgl && !reducedMotion && !isPhone && visible;
+  const enabled = canvas2d && !reducedMotion && !isPhone && visible;
 
   return (
     <div className="hero-canvas" aria-hidden="true">
@@ -76,12 +71,12 @@ export default function HeroCanvas() {
           <div className="hero-canvas__scene">
             <ParticleNetwork
               mode="dark"
-              speed={0.35}
-              density={1.1}
-              opacity={0.85}
-              hue={150}
-              saturation={1.2}
-              brightness={0.9}
+              speed={0.3}
+              density={1}
+              opacity={0.72}
+              hue={0}
+              saturation={1}
+              brightness={0.95}
               style={{ pointerEvents: "none" }}
             />
           </div>

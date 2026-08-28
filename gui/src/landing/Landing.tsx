@@ -5,8 +5,10 @@ import HeroCanvas from "./HeroCanvas";
  *
  * Standalone route, rendered outside the authenticated dashboard shell.
  * One WebGL scene (HeroCanvas) lives behind the hero copy; everything below
- * the fold is flat 2D. No i18n keys: this page is English-only by design
- * (public marketing surface, not product UI).
+ * the fold is flat 2D. Design language: Signaal v3 (one accent, hairlines,
+ * Instrument Serif display, General Sans body, JetBrains Mono for data).
+ * No i18n keys: this page is English-only by design (public marketing
+ * surface, not product UI).
  */
 
 const GITHUB_URL = "https://github.com/GroepOnline/opencodex";
@@ -23,18 +25,21 @@ function Mark({ size = 24 }: { size?: number }) {
       className="lp-mark"
     >
       <path
+        pathLength={100}
         d="M8 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H8"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"
       />
       <path
+        pathLength={100}
         d="M16 4h2.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H16"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"
       />
       <path
+        pathLength={100}
         d="M9.2 15.5c-1.9-1.4-1.9-5.6 0-7 1.5-1.1 4.1-1.1 5.6 0 1.9 1.4 1.9 5.6 0 7-1.5 1.1-4.1 1.1-5.6 0Z"
         stroke="currentColor"
         strokeWidth="1.6"
@@ -44,18 +49,46 @@ function Mark({ size = 24 }: { size?: number }) {
   );
 }
 
-const TICKER_ITEMS = [
-  "claude-opus-4.6",
-  "gemini-3.1-pro",
-  "grok-4.6",
-  "deepseek-v4-flash",
-  "ollama / local",
-  "gpt-5.6",
-  "qwen3-coder",
-  "kimi-k3",
-  "llama-4-maverick",
-  "mistral-large-3",
+/* Hero headline as word-level split text (Signaal §16): each word rises out
+   of an overflow-hidden mask, staggered by CSS animation-delay. The h1 keeps
+   a plain aria-label so assistive tech reads one sentence. */
+const H1_WORDS: Array<{ t: string; accent?: boolean; breakAfter?: boolean }> = [
+  { t: "Code" },
+  { t: "that" },
+  { t: "ships.", accent: true, breakAfter: true },
+  { t: "Not" },
+  { t: "slides." },
 ];
+
+function HeroTitle() {
+  return (
+    <h1 className="lp-h1" aria-label="Code that ships. Not slides.">
+      {H1_WORDS.map((w, i) => (
+        <span key={w.t}>
+          <span className="lp-w" aria-hidden="true">
+            <span
+              className={w.accent ? "lp-wi lp-h1__accent" : "lp-wi"}
+              style={{ animationDelay: `${140 + i * 75}ms` }}
+            >
+              {w.t}
+            </span>
+          </span>
+          {w.breakAfter ? <br /> : null}
+        </span>
+      ))}
+    </h1>
+  );
+}
+
+function SectionEyebrow({ index, children }: { index: string; children: string }) {
+  return (
+    <p className="lp-section__eyebrow">
+      <span className="lp-section__index">{index}</span>
+      {children}
+      <span className="lp-section__rule" aria-hidden="true" />
+    </p>
+  );
+}
 
 export default function Landing() {
   return (
@@ -81,17 +114,13 @@ export default function Landing() {
         <HeroCanvas />
         <div className="lp-hero__inner">
           <p className="lp-eyebrow">
-            <span className="lp-eyebrow__pulse" aria-hidden="true" />
+            <span className="lp-eyebrow__tick" aria-hidden="true" />
             Open-source coding agent
           </p>
-          <h1 className="lp-h1">
-            Code that <em className="lp-h1__glow">ships</em>.
-            <br />
-            Not slides.
-          </h1>
+          <HeroTitle />
           <p className="lp-sub">
             OpenCodex routes Claude, Gemini, Grok, DeepSeek and Ollama through
-            one local endpoint — so your Codex CLI, app or SDK talks to every
+            one local endpoint, so your Codex CLI, app or SDK talks to every
             model without changing a line.
           </p>
           <div className="lp-cta-row">
@@ -109,7 +138,7 @@ export default function Landing() {
           </p>
         </div>
 
-        {/* Live-instrument readout pinned to the hero edge */}
+        {/* Instrument readout pinned to the hero edge: real values, mono. */}
         <div className="lp-hero__readout" aria-hidden="true">
           <div className="lp-readout-row">
             <span className="lp-readout-key">endpoint</span>
@@ -126,46 +155,34 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── Model ticker ── */}
-      <div className="lp-ticker" aria-hidden="true">
-        <div className="lp-ticker__track">
-          {[...TICKER_ITEMS, ...TICKER_ITEMS].map((m, i) => (
-            <span className="lp-ticker__item" key={i}>
-              {m}
-              <span className="lp-ticker__sep">·</span>
-            </span>
-          ))}
-        </div>
-      </div>
-
       {/* ── Features ── */}
       <section className="lp-section" id="features">
-        <p className="lp-section__eyebrow">Why OpenCodex</p>
+        <SectionEyebrow index="01">Why OpenCodex</SectionEyebrow>
         <div className="lp-features">
-          <article className="lp-feature">
+          <article className="lp-feature lp-reveal">
             <span className="lp-feature__index">/01</span>
             <h2>One endpoint, every provider</h2>
             <p>
               Point Codex at <code>localhost</code> once. Switch between Claude,
-              Gemini, Grok, DeepSeek or a local Ollama model from the dashboard —
-              no client reconfiguration, no SDK forks.
+              Gemini, Grok, DeepSeek or a local Ollama model from the dashboard.
+              No client reconfiguration, no SDK forks.
             </p>
           </article>
-          <article className="lp-feature">
+          <article className="lp-feature lp-reveal">
             <span className="lp-feature__index">/02</span>
             <h2>Quota-aware routing</h2>
             <p>
-              Per-account rate limits and credit balances are tracked live.
+              Rate limits and credit balances are tracked per account, live.
               When one key hits a wall, traffic moves to the next eligible
               account before your session stalls.
             </p>
           </article>
-          <article className="lp-feature">
+          <article className="lp-feature lp-reveal">
             <span className="lp-feature__index">/03</span>
             <h2>Your keys stay home</h2>
             <p>
               The proxy runs as a single Bun process on your machine or fleet.
-              Credentials never leave your infrastructure; request bodies are
+              Credentials never leave your infrastructure. Request bodies are
               never logged.
             </p>
           </article>
@@ -174,31 +191,30 @@ export default function Landing() {
 
       {/* ── Terminal strip ── */}
       <section className="lp-section lp-section--term">
-        <div className="lp-term">
+        <SectionEyebrow index="02">In the terminal</SectionEyebrow>
+        <div className="lp-term lp-reveal">
           <div className="lp-term__bar">
-            <span className="lp-term__dot" />
-            <span className="lp-term__dot" />
-            <span className="lp-term__dot" />
-            <span className="lp-term__title">terminal</span>
+            <span className="lp-term__title">ocx</span>
+            <span className="lp-term__meta">session · local</span>
           </div>
-          <pre className="lp-term__body"><code>{`$ bun install -g opencodex
-$ ocx
-  opencodex 2.7.1 — proxy listening on http://localhost:8317
-  dashboard  → http://localhost:8317/#dashboard
-  providers  → 5 connected, 0 exhausted
-
-$ export OPENAI_BASE_URL=http://localhost:8317
-$ codex "refactor the routing layer"
-  ✓ routed via claude-opus-4.6 (quota 82%)
-  ✓ 14 files changed, tests green`}</code></pre>
+          <pre className="lp-term__body"><code>{''}<span className="lp-t-line"><span className="lp-t-prompt">$</span> bun install -g opencodex</span>
+<span className="lp-t-line"><span className="lp-t-prompt">$</span> ocx</span>
+<span className="lp-t-line lp-t-out">  opencodex 2.7.1 · proxy listening on http://localhost:8317</span>
+<span className="lp-t-line lp-t-out">  dashboard  → http://localhost:8317/#dashboard</span>
+<span className="lp-t-line lp-t-out">  providers  → 5 connected, 0 exhausted</span>
+<span className="lp-t-line"> </span>
+<span className="lp-t-line"><span className="lp-t-prompt">$</span> export OPENAI_BASE_URL=http://localhost:8317</span>
+<span className="lp-t-line"><span className="lp-t-prompt">$</span> codex "refactor the routing layer"</span>
+<span className="lp-t-line lp-t-ok">  ✓ routed via claude-opus-4.6 <span className="lp-t-dim">(quota 82%)</span></span>
+<span className="lp-t-line lp-t-ok">  ✓ 14 files changed, tests green</span></code></pre>
         </div>
       </section>
 
       {/* ── How it works ── */}
-      <section className="lp-section lp-section--alt" id="how">
-        <p className="lp-section__eyebrow">How it works</p>
+      <section className="lp-section" id="how">
+        <SectionEyebrow index="03">How it works</SectionEyebrow>
         <ol className="lp-steps">
-          <li className="lp-step">
+          <li className="lp-step lp-reveal">
             <span className="lp-step__num">01</span>
             <h3>Install and start</h3>
             <p>
@@ -206,7 +222,7 @@ $ codex "refactor the routing layer"
               dashboard opens on a local port with the proxy already listening.
             </p>
           </li>
-          <li className="lp-step">
+          <li className="lp-step lp-reveal">
             <span className="lp-step__num">02</span>
             <h3>Add your providers</h3>
             <p>
@@ -214,7 +230,7 @@ $ codex "refactor the routing layer"
               account and learns its models, limits and latency profile.
             </p>
           </li>
-          <li className="lp-step">
+          <li className="lp-step lp-reveal">
             <span className="lp-step__num">03</span>
             <h3>Point your tools at it</h3>
             <p>
@@ -227,16 +243,16 @@ $ codex "refactor the routing layer"
 
       {/* ── Pricing stub ── */}
       <section className="lp-section" id="pricing">
-        <p className="lp-section__eyebrow">Pricing</p>
+        <SectionEyebrow index="04">Pricing</SectionEyebrow>
         <div className="lp-pricing">
-          <div className="lp-price-card">
+          <div className="lp-price-card lp-reveal">
             <h2>Free, as in MIT</h2>
             <p className="lp-price-card__amount">
               €0 <span>/ forever</span>
             </p>
             <p>
               The full proxy, dashboard and every provider adapter. Self-hosted,
-              no account required, no usage caps from us — your providers' limits
+              no account required, no usage caps from us. Your providers' limits
               are the only limits.
             </p>
             <a className="lp-btn lp-btn--ghost" href={GITHUB_URL} target="_blank" rel="noreferrer">
@@ -248,8 +264,10 @@ $ codex "refactor the routing layer"
 
       {/* ── Get started / sign-in anchor ── */}
       <section className="lp-section lp-section--cta" id="get-started">
-        <h2>Ready when you <em className="lp-h1__glow">are</em>.</h2>
-        <pre className="lp-install"><code>bun install -g opencodex && ocx</code></pre>
+        <h2 className="lp-cta-title">
+          Ready when you <em className="lp-h1__accent">are</em>.
+        </h2>
+        <pre className="lp-install"><code><span className="lp-t-prompt">$ </span>bun install -g opencodex && ocx</code></pre>
         <div className="lp-cta-row">
           <a className="lp-btn lp-btn--primary" href={DOCS_URL} target="_blank" rel="noreferrer">
             Read the docs
