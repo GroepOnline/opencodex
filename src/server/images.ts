@@ -56,9 +56,15 @@ const IMAGES_UPSTREAM_TIMEOUT_MS = 300_000;
 /**
  * Cap for the buffered upstream response body (100 MiB). Images responses are JSON documents
  * containing base64-encoded images — typically a few MB. This prevents an oversized or malicious
- * response from exhausting process memory.
+ * response from exhausting process memory. Overridable via OPENCODEX_IMAGES_RESPONSE_MAX_BYTES
+ * (a positive integer byte count) so tests can exercise the bounded reader without streaming the
+ * full 100 MiB; a missing/invalid value falls back to the 100 MiB default.
  */
-const IMAGES_RESPONSE_MAX_BYTES = 100 * 1024 * 1024;
+const IMAGES_RESPONSE_MAX_BYTES = (() => {
+  const raw = Bun.env.OPENCODEX_IMAGES_RESPONSE_MAX_BYTES?.trim();
+  const parsed = raw ? Number(raw) : NaN;
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 100 * 1024 * 1024;
+})();
 
 const CCA_IMAGE_MODEL = "gemini-3.1-flash-image";
 
