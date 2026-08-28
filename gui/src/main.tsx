@@ -9,7 +9,6 @@ import App from "./App";
 import { LanguageProvider } from "./i18n/provider";
 import { initPostHog } from "./posthog";
 import "./styles.css";
-import "./styles-linear.css";
 import "./landing/landing.css";
 
 initPostHog();

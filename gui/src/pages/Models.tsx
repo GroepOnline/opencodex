@@ -1023,7 +1023,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
             </>
           )}
           {v2.enabled && v2.agentsMaxThreadsConflict && (
-            <span className="mono text-label" style={{ color: "var(--err, #e5484d)" }}>{t("models.v2Conflict")}</span>
+            <span className="mono text-label" style={{ color: "var(--red)" }}>{t("models.v2Conflict")}</span>
           )}
           {v2Note && <span className="muted text-label">{v2Note}</span>}
         </div>
