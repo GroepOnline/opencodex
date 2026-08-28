@@ -689,17 +689,22 @@ export async function handleImages(
           `image ${endpoint} request canceled by client`,
         );
       }
-      if (err instanceof Error && err.name === "TimeoutError") {
+      if (
+        (err instanceof Error && err.name === "TimeoutError") ||
+        linkedSignal.signal.aborted
+      ) {
+        forward?.recordOutcome?.("timeout");
         return formatErrorResponse(
           504,
           "upstream_error",
           `image ${endpoint} upstream timed out during body read`,
         );
       }
+      const rawMsg = err instanceof Error ? err.message : String(err);
       return formatErrorResponse(
         502,
         "upstream_error",
-        `image ${endpoint} body read failed: ${err instanceof Error ? err.message : String(err)}`,
+        `image ${endpoint} body read failed: ${sanitizeUpstreamErrorText(rawMsg)}`,
       );
     }
     forward?.recordOutcome?.(upstreamResponse.status);
