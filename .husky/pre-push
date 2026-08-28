@@ -1,3 +1,9 @@
 #!/usr/bin/env sh
 set -e
+
+# Git exports repository-local GIT_* variables to hooks. The test suite creates
+# temporary repositories, so let child git processes rediscover their own repo
+# from cwd instead of mutating this checkout's shared worktree metadata.
+unset $(git rev-parse --local-env-vars)
+
 exec bun run prepush
