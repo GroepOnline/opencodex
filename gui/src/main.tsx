@@ -2,6 +2,9 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 // Bundled JetBrains Mono restored for module resolution.
 import "@fontsource-variable/jetbrains-mono";
+// Instrument Serif: the display voice of the public landing (Signaal §4).
+import "@fontsource/instrument-serif/400.css";
+import "@fontsource/instrument-serif/400-italic.css";
 import App from "./App";
 import { LanguageProvider } from "./i18n/provider";
 import { initPostHog } from "./posthog";
