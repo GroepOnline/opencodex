@@ -89,7 +89,11 @@ jobs:
             'k\.chefgroep\.online'
             '113d678ff9b96cabf41e8e2076166fa692bc078db28e792019c9302fa0e53286'
           )
-          EXCLUDE_DIRS='tests/ structure/ devlog/ .compound-engineering/ docs-site/'
+          # --exclude-dir matches a directory's base name, so these must NOT
+          # carry trailing slashes (e.g. "tests", not "tests/"). ".github" is
+          # excluded because this workflow itself lists the patterns above as
+          # detection strings — scanning it would always self-match.
+          EXCLUDE_DIRS='tests structure devlog .compound-engineering docs-site .github'
           FINDINGS=""
           for pattern in "${PATTERNS[@]}"; do
             # Build grep exclude-dir flags
