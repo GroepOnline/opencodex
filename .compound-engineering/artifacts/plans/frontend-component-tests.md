@@ -32,7 +32,7 @@ These components handle critical user-facing functionality (provider management,
 **Out of scope:**
 - E2E browser tests (Playwright) — separate effort
 - Visual regression testing
-- Fixing the pre-existing `hideRedundantChatGptForwardProviders` null defect (7 failures) — tracked as residual
+- `hideRedundantChatGptForwardProviders` nullish inputs are normalized by `catalog.ts`; the former residual is resolved
 - Testing already-covered components (Dashboard, Providers, etc.)
 
 ## Requirements
@@ -122,7 +122,7 @@ Replace module-level `beforeEach`/`afterEach` with per-test `setupEnv()` helper:
 
 3. **Mock at `globalThis.fetch` level** — These are render/state tests, not API contract tests. Mocking fetch is the established repo pattern.
 
-4. **Don't fix `hideRedundantChatGptForwardProviders` null defect** — Pre-existing, separate concern. Track as residual review finding.
+4. **`hideRedundantChatGptForwardProviders` nullish-input handling is resolved** — `catalog.ts` normalizes null/undefined to an empty map; keep unrelated residuals separate.
 
 ## Risks
 
