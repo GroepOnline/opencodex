@@ -361,7 +361,7 @@ const CONNECTABLE: Record<string, ConnectableOverride> = {
     lastVerified: "2026-08-28",
     documentationUrl: "https://flex.ai/token-factory",
     modelsUrl: "https://api.flex.ai/v1/models",
-    note: "$10/month of free Token Factory credits for the first three months. Shared-service retention posture must be verified before private ChefGroep traffic.",
+    note: "$10/month of free Token Factory credits for the first three months. Shared-service retention posture must be verified before routing private or sensitive traffic.",
   }),
   "wandb-inference": openAi(
     "https://api.inference.wandb.ai/v1",
@@ -418,7 +418,7 @@ const CONNECTABLE: Record<string, ConnectableOverride> = {
       discovery: "static",
       liveModels: false,
       models: ["glm-5.3-flash"],
-      note: "Community research endpoint. Any API key is accepted; the current free model is GLM 5.3 Flash. Prompts/completions are logged with hashed IPs for model-training research, and the free model may rotate without notice. Desktop/public benchmark only; do not use for private ChefGroep traffic.",
+      note: "Community research endpoint. Any API key is accepted; the current free model is GLM 5.3 Flash. Prompts/completions are logged with hashed IPs for model-training research, and the free model may rotate without notice. Desktop/public benchmark only; do not use for private or sensitive traffic.",
     },
   ),
   ovhcloud: openAi(
@@ -436,7 +436,7 @@ const CONNECTABLE: Record<string, ConnectableOverride> = {
       verification: "primary",
       documentationUrl: "https://www.optracloud.com/docs.html",
       modelsUrl: "https://api.optracloud.com/v1/models",
-      note: "Large promotional free-output-token grant and OpenAI-compatible API. Shared inference is operated from India; treat as public-only until ChefGroep accepts the jurisdiction/DPA posture.",
+      note: "Large promotional free-output-token grant and OpenAI-compatible API. Shared inference is operated from India; treat as public-only until your organisation accepts the jurisdiction/DPA posture.",
     },
   ),
   pollinations: openAi(

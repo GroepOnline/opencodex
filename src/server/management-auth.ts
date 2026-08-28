@@ -45,11 +45,11 @@ export interface GuiSessionBootstrap extends GuiSessionRecord {
 
 export type ManagementAuthState =
   | {
-    available: true;
-    token: string;
-    source: "environment" | "file";
-    sessions: Map<string, GuiSessionRecord>;
-  }
+      available: true;
+      token: string;
+      source: "environment" | "file";
+      sessions: Map<string, GuiSessionRecord>;
+    }
   | { available: false; reason: string };
 
 function fail(reason: string): ManagementAuthState {
@@ -59,10 +59,14 @@ function fail(reason: string): ManagementAuthState {
 function assertSafeDirectory(path: string): void {
   mkdirSync(path, { recursive: true, mode: 0o700 });
   const stat = lstatSync(path);
-  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("management token directory is not a regular directory");
+  if (!stat.isDirectory() || stat.isSymbolicLink())
+    throw new Error("management token directory is not a regular directory");
   chmodSync(path, 0o700);
   const hardened = hardenSecretDir(path, { required: true });
-  if (!hardened.ok) throw new Error("management token directory ACL hardening did not complete");
+  if (!hardened.ok)
+    throw new Error(
+      "management token directory ACL hardening did not complete",
+    );
 }
 
 function readExistingToken(path: string): string {
@@ -72,14 +76,20 @@ function readExistingToken(path: string): string {
   }
   chmodSync(path, 0o600);
   const hardened = hardenSecretPath(path, { required: true });
-  if (!hardened.ok) throw new Error("management token file ACL hardening did not complete");
+  if (!hardened.ok)
+    throw new Error("management token file ACL hardening did not complete");
   const token = readFileSync(path, "utf8").trim();
-  if (!/^ocx_admin_[A-Za-z0-9_-]{43}$/.test(token)) throw new Error("management token file is invalid");
+  if (!/^ocx_admin_[A-Za-z0-9_-]{43}$/.test(token))
+    throw new Error("management token file is invalid");
   return token;
 }
 
 function removeBestEffort(path: string): void {
-  try { unlinkSync(path); } catch { /* fail-closed state is preserved by the caller */ }
+  try {
+    unlinkSync(path);
+  } catch {
+    /* fail-closed state is preserved by the caller */
+  }
 }
 
 function createTokenFile(path: string): string {
@@ -96,36 +106,51 @@ function createTokenFile(path: string): string {
     fd = null;
     chmodSync(temporary, 0o600);
     const temporaryHardened = hardenSecretPath(temporary, { required: true });
-    if (!temporaryHardened.ok) throw new Error("management token temporary ACL hardening did not complete");
+    if (!temporaryHardened.ok)
+      throw new Error(
+        "management token temporary ACL hardening did not complete",
+      );
     try {
       linkSync(temporary, path);
       linked = true;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "EEXIST") return readExistingToken(path);
+      if ((error as NodeJS.ErrnoException).code === "EEXIST")
+        return readExistingToken(path);
       throw error;
     }
     const finalHardened = hardenSecretPath(path, { required: true });
-    if (!finalHardened.ok) throw new Error("management token file ACL hardening did not complete");
+    if (!finalHardened.ok)
+      throw new Error("management token file ACL hardening did not complete");
     return token;
   } catch (error) {
     if (linked) removeBestEffort(path);
     throw error;
   } finally {
     if (fd !== null) {
-      try { closeSync(fd); } catch { /* best effort */ }
+      try {
+        closeSync(fd);
+      } catch {
+        /* best effort */
+      }
     }
     removeBestEffort(temporary);
   }
 }
 
-function ready(token: string, source: "environment" | "file", config: OcxConfig): ManagementAuthState {
+function ready(
+  token: string,
+  source: "environment" | "file",
+  config: OcxConfig,
+): ManagementAuthState {
   if (isDataPlaneAdmissionSecret(token, config)) {
     return fail("management credential conflicts with a data-plane credential");
   }
   return { available: true, token, source, sessions: new Map() };
 }
 
-export function initializeManagementAuthState(config: OcxConfig): ManagementAuthState {
+export function initializeManagementAuthState(
+  config: OcxConfig,
+): ManagementAuthState {
   const environmentToken = process.env.OPENCODEX_ADMIN_AUTH_TOKEN?.trim();
   if (environmentToken) {
     return ready(environmentToken, "environment", config);
@@ -142,7 +167,11 @@ export function initializeManagementAuthState(config: OcxConfig): ManagementAuth
     }
     return ready(token, "file", config);
   } catch (error) {
-    return fail(error instanceof Error ? error.message : "management token initialization failed");
+    return fail(
+      error instanceof Error
+        ? error.message
+        : "management token initialization failed",
+    );
   }
 }
 
@@ -153,7 +182,10 @@ function equalSecret(actual: string, expected: string): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-function removeExpiredSessions(state: Extract<ManagementAuthState, { available: true }>, now = Date.now()): void {
+function removeExpiredSessions(
+  state: Extract<ManagementAuthState, { available: true }>,
+  now = Date.now(),
+): void {
   for (const [token, session] of state.sessions) {
     if (session.expiresAt <= now) state.sessions.delete(token);
   }
@@ -168,15 +200,26 @@ export async function issueGuiSession(
   config: OcxConfig,
   state: ManagementAuthState,
 ): Promise<GuiSessionBootstrap | null> {
-  if (!state.available || req.method !== "GET" || !isAllowedManagementOrigin(req, config)) return null;
+  if (
+    !state.available ||
+    req.method !== "GET" ||
+    !isAllowedManagementOrigin(req, config)
+  )
+    return null;
   const host = parseHttpHost(req.headers.get("Host"));
   if (!host) return null;
 
   // Loopback GUI session (laptop tunnel / local bind) — unchanged trust model.
-  const loopbackSession = !isApiAuthRequired(config) && isLoopbackHostname(host.hostname);
-  // Public ocx.chefgroep.online: mint only when Cloudflare Access JWT is valid.
+  const loopbackSession =
+    !isApiAuthRequired(config) && isLoopbackHostname(host.hostname);
+  // Public trusted host (e.g. behind Cloudflare Access): mint only when a valid
+  // Cloudflare Access JWT is present.
   let accessSession = false;
-  if (!loopbackSession && cfAccessConfigured() && isCfAccessTrustedHost(host.hostname)) {
+  if (
+    !loopbackSession &&
+    cfAccessConfigured() &&
+    isCfAccessTrustedHost(host.hostname)
+  ) {
     accessSession = !!(await verifyCfAccessRequest(req));
   }
   if (!loopbackSession && !accessSession) return null;
@@ -212,12 +255,18 @@ export function resolveManagementRateLimitPrincipal(
   remoteAddress: string | null | undefined,
 ): RateLimitPrincipal {
   if (state.available) {
-    const actual = req.headers.get("x-opencodex-api-key")?.trim()
-      || req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
+    const actual =
+      req.headers.get("x-opencodex-api-key")?.trim() ||
+      req.headers
+        .get("authorization")
+        ?.replace(/^Bearer\s+/i, "")
+        .trim();
     if (actual) {
-      if (equalSecret(actual, state.token)) return rateLimitFingerprinter.management(state.token);
+      if (equalSecret(actual, state.token))
+        return rateLimitFingerprinter.management(state.token);
       removeExpiredSessions(state);
-      if (state.sessions.has(actual)) return rateLimitFingerprinter.management(actual);
+      if (state.sessions.has(actual))
+        return rateLimitFingerprinter.management(actual);
     }
   }
   const address = remoteAddress?.trim();
@@ -231,10 +280,17 @@ export async function requireManagementAuth(
   config?: OcxConfig,
 ): Promise<Response | null> {
   if (!state.available) {
-    return Response.json({ error: "management API unavailable" }, { status: 503 });
+    return Response.json(
+      { error: "management API unavailable" },
+      { status: 503 },
+    );
   }
-  const actual = req.headers.get("x-opencodex-api-key")?.trim()
-    || req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
+  const actual =
+    req.headers.get("x-opencodex-api-key")?.trim() ||
+    req.headers
+      .get("authorization")
+      ?.replace(/^Bearer\s+/i, "")
+      .trim();
   if (actual && equalSecret(actual, state.token)) return null;
   if (actual && config) {
     removeExpiredSessions(state);
@@ -243,12 +299,19 @@ export async function requireManagementAuth(
       const requestOrigin = managementRequestOrigin(req, config);
       const claimedOrigin = req.headers.get("x-opencodex-gui-origin");
       const browserOrigin = req.headers.get("Origin");
-      const sameOrigin = requestOrigin === session.origin
-        && claimedOrigin === session.origin
-        && (!browserOrigin || browserOrigin === session.origin);
+      const sameOrigin =
+        requestOrigin === session.origin &&
+        claimedOrigin === session.origin &&
+        (!browserOrigin || browserOrigin === session.origin);
       const safeMethod = req.method === "GET" || req.method === "HEAD";
       const csrf = req.headers.get("x-opencodex-csrf-token")?.trim();
-      if (sameOrigin && (safeMethod || (browserOrigin === session.origin && !!csrf && equalSecret(csrf, session.csrfToken)))) {
+      if (
+        sameOrigin &&
+        (safeMethod ||
+          (browserOrigin === session.origin &&
+            !!csrf &&
+            equalSecret(csrf, session.csrfToken)))
+      ) {
         return null;
       }
     }
@@ -259,11 +322,17 @@ export async function requireManagementAuth(
     const host = parseHttpHost(req.headers.get("Host"));
     const safeMethod = req.method === "GET" || req.method === "HEAD";
     const origin = req.headers.get("Origin");
-    if (host && isCfAccessTrustedHost(host.hostname)
-      && isAllowedManagementOrigin(req, config)
-      && (safeMethod || !!origin)) {
+    if (
+      host &&
+      isCfAccessTrustedHost(host.hostname) &&
+      isAllowedManagementOrigin(req, config) &&
+      (safeMethod || !!origin)
+    ) {
       if (await verifyCfAccessRequest(req)) return null;
     }
   }
-  return Response.json({ error: "opencodex admin token required" }, { status: 401 });
+  return Response.json(
+    { error: "opencodex admin token required" },
+    { status: 401 },
+  );
 }
