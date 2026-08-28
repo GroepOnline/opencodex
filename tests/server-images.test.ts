@@ -1366,6 +1366,118 @@ test("keyed/forward relay returns 502 when the upstream response has no body", a
   }
 }, 5_000);
 
+test("keyed/forward relay body-read timeout returns 504 when upstream stalls after sending headers", async () => {
+  // Regression for the streaming bounded reader on the keyed/forward path: the
+  // upstream returns 200 OK headers immediately but the body stream never
+  // produces data. The linked signal's timeout aborts reader.read(), which the
+  // body-read catch must map to 504 (not 502) via the linkedSignal.signal.aborted
+  // check — the abort surfaces as a generic AbortError, not TimeoutError.
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const requestUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const url = new URL(requestUrl);
+    if (url.hostname === "api.openai.com" && url.pathname.startsWith("/v1")) {
+      const fetchSignal = init?.signal;
+      const stalledBody = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const abortError = new DOMException("The operation was aborted.", "AbortError");
+          if (fetchSignal) {
+            if (fetchSignal.aborted) controller.error(abortError);
+            else fetchSignal.addEventListener("abort", () => controller.error(abortError), { once: true });
+          }
+        },
+      });
+      return new Response(stalledBody, { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return originalFetch(input, init);
+  }) as typeof fetch;
+
+  saveConfig({
+    port: 0,
+    defaultProvider: "openai-apikey",
+    openaiProviderTierVersion: 2,
+    images: { timeoutMs: 100 },
+    providers: {
+      openai: disabledOpenAiProvider,
+      "openai-apikey": keyedProvider(),
+    },
+  } as OcxConfig);
+
+  const server = startServer(0);
+  try {
+    const response = await fetch(new URL("/v1/images/generations", server.url), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "a cat", model: "gpt-image-2" }),
+    });
+    expect(response.status).toBe(504);
+    const json = await response.json() as { error: { message: string } };
+    expect(json.error.message).toMatch(/body read|timed out/i);
+  } finally {
+    await server.stop(true);
+  }
+}, 5_000);
+
+test("keyed/forward relay body-read client cancellation returns 499, not 504", async () => {
+  // Regression for the streaming bounded reader on the keyed/forward path: when
+  // the client aborts during the body-read phase, both the parent and linked
+  // signals abort. The body-read catch must check the PARENT signal first (499)
+  // before the linked signal (504), otherwise client cancellation is misreported
+  // as an upstream timeout.
+  //
+  // We call handleImages directly (not via server fetch) because a client-side
+  // fetch abort tears down the connection before the server response can be read.
+  const { handleImages } = await import("../src/server/images");
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const requestUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const url = new URL(requestUrl);
+    if (url.hostname === "api.openai.com" && url.pathname.startsWith("/v1")) {
+      const fetchSignal = init?.signal;
+      const stalledBody = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const abortError = new DOMException("The operation was aborted.", "AbortError");
+          if (fetchSignal) {
+            if (fetchSignal.aborted) controller.error(abortError);
+            else fetchSignal.addEventListener("abort", () => controller.error(abortError), { once: true });
+          }
+        },
+      });
+      return new Response(stalledBody, { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return originalFetch(input, init);
+  }) as typeof fetch;
+
+  // Use a long timeout so the deadline does NOT fire — only the client abort triggers.
+  const cfg = {
+    port: 0,
+    defaultProvider: "openai-apikey",
+    openaiProviderTierVersion: 2,
+    images: { timeoutMs: 30_000 },
+    providers: {
+      openai: disabledOpenAiProvider,
+      "openai-apikey": keyedProvider(),
+    },
+  } as OcxConfig;
+  saveConfig(cfg);
+
+  const ctrl = new AbortController();
+  const req = new Request("http://localhost:0/v1/images/generations", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ prompt: "a cat", model: "gpt-image-2" }),
+    signal: ctrl.signal,
+  });
+  const logCtx = { model: "", provider: "" } as never;
+
+  // Start the handler — it enters the body-read loop and stalls on the mocked body.
+  const responsePromise = handleImages(req, cfg, "generations", logCtx);
+  // Abort the parent signal after the body read has started.
+  setTimeout(() => ctrl.abort(), 100);
+  const response = await responsePromise;
+  expect(response.status).toBe(499);
+  const json = await response.json() as { error: { message: string } };
+  expect(json.error.message).toContain("canceled");
+}, 5_000);
+
 test("CCA body-read timeout returns 504 when upstream stalls after sending headers", async () => {
   // Mock: CCA returns 200 OK headers immediately but the body stream never
   // produces data. The linked signal's timeout aborts reader.read(), which
