@@ -71,3 +71,53 @@ describe("new free-provider discovery candidates", () => {
     expect(optra?.note?.toLowerCase()).toContain("public-only");
   });
 });
+
+describe("2026-08-28 inference supply candidates", () => {
+  test("catalogues newly verified OpenAI-compatible endpoints", () => {
+    const expected: Record<string, string> = {
+      entrim: "https://api.entrim.ai/v1",
+      freeinference: "https://freeinference.org/v1",
+      flexai: "https://api.flex.ai/v1",
+      "wandb-inference": "https://api.inference.wandb.ai/v1",
+      "simplellm-eu": "https://api.simplellm.eu/v1",
+      "ai-vps-cz": "https://ai.vps.cz/api/v1",
+    };
+    for (const [id, baseUrl] of Object.entries(expected)) {
+      expect(
+        FREE_PROVIDER_DIRECTORY.find((provider) => provider.id === id),
+      ).toMatchObject({ adapter: "openai-chat", baseUrl });
+      expect(PROVIDER_REGISTRY.some((provider) => provider.id === id)).toBe(
+        false,
+      );
+    }
+  });
+
+  test("keeps sensitive-use caveats attached to research and unverified-retention routes", () => {
+    const freeInference = FREE_PROVIDER_DIRECTORY.find(
+      (provider) => provider.id === "freeinference",
+    );
+    const flex = FREE_PROVIDER_DIRECTORY.find(
+      (provider) => provider.id === "flexai",
+    );
+    const simple = FREE_PROVIDER_DIRECTORY.find(
+      (provider) => provider.id === "simplellm-eu",
+    );
+    expect(freeInference?.note?.toLowerCase()).toContain("public-only");
+    expect(freeInference?.note?.toLowerCase()).toContain("logged");
+    expect(flex?.note?.toLowerCase()).toContain("retention");
+    expect(simple?.note?.toLowerCase()).toContain("zero retention");
+  });
+
+  test("keeps Aelius visible as reference-only because its current API is not OpenAI chat-completions compatible", () => {
+    const aelius = FREE_PROVIDER_DIRECTORY.find(
+      (provider) => provider.id === "aelius",
+    );
+    expect(aelius).toMatchObject({
+      supportLevel: "reference",
+      verification: "unverified",
+      discovery: "unsupported",
+      liveModels: false,
+    });
+    expect(aelius?.baseUrl).toBe("");
+  });
+});
