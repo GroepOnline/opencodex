@@ -20,16 +20,15 @@ describe("Cloudflare Access container deploy contract", () => {
     const workflow = await Bun.file(
       new URL(".github/workflows/deploy.yml", root),
     ).text();
-    // Both deploy and rollback steps must reference the CF Access env vars,
-    // sourced from GitHub secrets rather than hardcoded deployment values.
-    expect(
-      workflow.match(/CF_ACCESS_TEAM_DOMAIN/g)?.length,
-    ).toBeGreaterThanOrEqual(4);
-    expect(workflow.match(/CF_ACCESS_AUD/g)?.length).toBeGreaterThanOrEqual(4);
-    expect(
-      workflow.match(/CF_ACCESS_ALLOWED_HOSTS/g)?.length,
-    ).toBeGreaterThanOrEqual(4);
-    // No hardcoded deployment-specific values in the workflow.
+    for (const name of ["TEAM_DOMAIN", "AUD", "ALLOWED_HOSTS"]) {
+      expect(
+        workflow.match(new RegExp(`secrets\\.OCX_CF_ACCESS_${name}`, "g"))
+          ?.length,
+      ).toBe(2);
+      expect(
+        workflow.split(`printf 'CF_ACCESS_${name}=%s\\n'`).length - 1,
+      ).toBe(2);
+    }
     expect(workflow).not.toContain("chefgroep.cloudflareaccess.com");
     expect(workflow).not.toContain(
       "113d678ff9b96cabf41e8e2076166fa692bc078db28e792019c9302fa0e53286",
