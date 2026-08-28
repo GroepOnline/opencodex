@@ -37,7 +37,7 @@ export function cfAccessTrustedHosts(): Set<string> {
   const raw =
     Bun.env.CF_ACCESS_ALLOWED_HOSTS?.trim() ||
     Bun.env.CF_ACCESS_HOST?.trim() ||
-    "ocx.chefgroep.online";
+    "";
   return new Set(
     raw
       .split(",")
