@@ -1,0 +1,197 @@
+name: Security & Config Audit
+
+# Automated audit that checks for the categories of issues found during the
+# PR #147 full-systematic review:
+#   1. Hardcoded deployment-specific hosts/domains (fail-closed hygiene)
+#   2. Hardcoded credentials or secrets in workflow files
+#   3. Memory-exhaustion patterns (arrayBuffer / text() before size check)
+#   4. Privacy scan (credential/token/email leakage in tracked files)
+#   5. TypeScript strict typecheck
+#
+# Runs on every PR targeting dev, on push to dev/main, and on manual dispatch.
+# A finding blocks merge — the fix is always a code change, never a suppression.
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - "src/**"
+      - "gui/src/**"
+      - "bin/**"
+      - "tests/**"
+      - "scripts/**"
+      - ".github/workflows/**"
+      - "deploy/**"
+      - "Dockerfile"
+      - "package.json"
+      - "tsconfig.json"
+  push:
+    branches: [dev, main]
+    paths:
+      - "src/**"
+      - "gui/src/**"
+      - "bin/**"
+      - "tests/**"
+      - "scripts/**"
+      - ".github/workflows/**"
+      - "deploy/**"
+      - "Dockerfile"
+      - "package.json"
+      - "tsconfig.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+          cache: true
+          cache-bin: true
+
+      - name: Install root dependencies
+        run: bun install --frozen-lockfile
+
+      # ── 1. TypeScript strict typecheck ──────────────────────────────
+      - name: TypeScript strict typecheck
+        run: bun x tsc --noEmit
+
+      # ── 2. Privacy scan (credential/token/email leakage) ────────────
+      - name: Privacy scan
+        run: bun run privacy:scan
+
+      # ── 3. Hardcoded deployment-specific values ──────────────────────
+      # Fail if deployment-specific hostnames, team domains, or AUDs are
+      # hardcoded in source (non-test, non-structure, non-devlog files).
+      - name: Check for hardcoded deployment values
+        run: |
+          set -euo pipefail
+          # Patterns that indicate deployment-specific configuration baked
+          # into source code. Test files and internal structure docs are
+          # excluded — they legitimately reference deployment hostnames as
+          # fixtures or architecture notes.
+          PATTERNS=(
+            'chefgroep\.cloudflareaccess\.com'
+            'k\.chefgroep\.online'
+            '113d678ff9b96cabf41e8e2076166fa692bc078db28e792019c9302fa0e53286'
+          )
+          EXCLUDE_DIRS='tests/ structure/ devlog/ .compound-engineering/ docs-site/'
+          FINDINGS=""
+          for pattern in "${PATTERNS[@]}"; do
+            # Build grep exclude-dir flags
+            EXCLUDE_ARGS=""
+            for dir in $EXCLUDE_DIRS; do
+              EXCLUDE_ARGS="$EXCLUDE_ARGS --exclude-dir=$dir"
+            done
+            MATCHES=$(grep -rn "$pattern" . $EXCLUDE_ARGS --include='*.ts' --include='*.tsx' --include='*.yml' --include='*.yaml' --include='*.json' --include='*.toml' --include='*.md' --include='*.sh' --include='*.mjs' 2>/dev/null || true)
+            if [ -n "$MATCHES" ]; then
+              FINDINGS="${FINDINGS}\n${MATCHES}"
+            fi
+          done
+          # Also check for ocx.chefgroep.online used as a DEFAULT (not as a
+          # test fixture or architecture reference). We look for it in
+          # assignment/default contexts in src/ only.
+          SRC_MATCHES=$(grep -rn 'ocx\.chefgroep\.online' src/ --include='*.ts' 2>/dev/null || true)
+          if [ -n "$SRC_MATCHES" ]; then
+            FINDINGS="${FINDINGS}\n[hardcoded-default-host in src/]\n${SRC_MATCHES}"
+          fi
+          if [ -n "$FINDINGS" ]; then
+            echo "::error::Hardcoded deployment-specific values found in source code:"
+            echo -e "$FINDINGS"
+            echo ""
+            echo "Deployment configuration (hostnames, team domains, AUDs) must"
+            echo "come from environment variables or GitHub secrets, not source."
+            echo "See PR #147 for the pattern."
+            exit 1
+          fi
+          echo "✓ No hardcoded deployment-specific values found"
+
+      # ── 4. Hardcoded secrets in workflow files ───────────────────────
+      # Fail if any workflow file contains literal CF_ACCESS_AUD values
+      # or other credential-looking strings instead of ${{ secrets.* }}.
+      - name: Check for hardcoded secrets in workflows
+        run: |
+          set -euo pipefail
+          # A 64-char hex string in a workflow file is almost certainly a
+          # hardcoded AUD or API key, not a SHA reference.
+          SECRET_PATTERN='[0-9a-f]{64}'
+          MATCHES=$(grep -rn "$SECRET_PATTERN" .github/workflows/ --include='*.yml' --include='*.yaml' 2>/dev/null \
+            | grep -v 'actions/checkout' \
+            | grep -v 'setup-bun' \
+            | grep -v 'actionlint' \
+            | grep -v 'action-yamllint' \
+            | grep -v 'raven-actions' \
+            | grep -v 'ibiqlik' \
+            | grep -v '# ' \
+            || true)
+          if [ -n "$MATCHES" ]; then
+            echo "::error::Potential hardcoded secrets in workflow files:"
+            echo "$MATCHES"
+            echo ""
+            echo "Use GitHub secrets (\${{ secrets.* }}) or environment variables"
+            echo "instead of literal credential values in workflow files."
+            exit 1
+          fi
+          echo "✓ No hardcoded secrets in workflow files"
+
+      # ── 5. Memory-exhaustion pattern detection ────────────────────────
+      # Flag arrayBuffer() or text() calls on upstream responses that are
+      # not followed by a streaming size check. This catches the pattern
+      # that PR #147 fixed in src/server/images.ts.
+      - name: Check for unbounded response buffering
+        run: |
+          set -euo pipefail
+          # Look for .arrayBuffer() calls in src/ that are not already
+          # wrapped in a bounded-reader pattern. This is a heuristic —
+          # false positives are acceptable (they prompt review).
+          BUFFER_CALLS=$(grep -rn '\.arrayBuffer()' src/ --include='*.ts' 2>/dev/null || true)
+          if [ -n "$BUFFER_CALLS" ]; then
+            # Check if any of these lack a preceding size constant or
+            # streaming reader pattern nearby
+            UNBOUNDED=""
+            for match in $BUFFER_CALLS; do
+              file=$(echo "$match" | cut -d: -f1)
+              line=$(echo "$match" | cut -d: -f2)
+              # Check 10 lines before for a MAX_*_BYTES constant or bounded reader
+              context=$(sed -n "$((line > 10 ? line - 10 : 1)),$((line + 5))p" "$file" 2>/dev/null || true)
+              if ! echo "$context" | grep -qi 'MAX_.*BYTES\|bounded.*reader\|getReader\|streaming'; then
+                UNBOUNDED="${UNBOUNDED}\n${match}"
+              fi
+            done
+            if [ -n "$UNBOUNDED" ]; then
+              echo "::warning::Potential unbounded response buffering (arrayBuffer without size guard):"
+              echo -e "$UNBOUNDED"
+              echo ""
+              echo "Consider using a streaming bounded reader to reject oversized"
+              echo "responses mid-stream instead of buffering the entire body."
+              echo "See src/server/images.ts for the pattern (PR #147)."
+              # Warning only — does not fail the check. Human review needed
+              # to confirm whether the call site has a legitimate reason.
+            fi
+          fi
+          echo "✓ Memory-exhaustion pattern check complete"
+
+      # ── 6. Deployment-specific branding in public artifacts ───────────
+      - name: Check for deployment-specific branding in Dockerfile
+        run: |
+          set -euo pipefail
+          if grep -qi 'ChefGroep' Dockerfile 2>/dev/null; then
+            echo "::error::Dockerfile contains deployment-specific 'ChefGroep' branding."
+            echo "Use a generic description in OCI labels."
+            exit 1
+          fi
+          echo "✓ Dockerfile is clean of deployment-specific branding"
