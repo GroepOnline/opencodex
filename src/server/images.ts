@@ -701,6 +701,10 @@ export async function handleImages(
         );
       }
       const rawMsg = err instanceof Error ? err.message : String(err);
+      // A mid-stream read failure is an upstream transport failure just like a
+      // fetch/connect error. Record it so pool cooldown/rotation accounting does
+      // not keep selecting an account whose response body repeatedly breaks.
+      forward?.recordOutcome?.("connect_error");
       return formatErrorResponse(
         502,
         "upstream_error",
