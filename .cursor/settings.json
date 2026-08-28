@@ -1,0 +1,10 @@
+{
+  "plugins": {
+    "__DEFAULT__/kater": {
+      "enabled": true
+    },
+    "compound-engineering": {
+      "enabled": false
+    }
+  }
+}

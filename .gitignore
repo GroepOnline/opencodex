@@ -40,3 +40,9 @@ tests/.tmp-*/
 .claude/
 *.html
 !.gitignore
+# Compound Engineering artifacts are intentional repository output; allow HTML
+# under the tracked artifact root while keeping unrelated generated HTML ignored.
+!.compound-engineering/artifacts/**/*.html
+
+# Compound Engineering checkout-local settings (tracked: config.yaml + example)
+.compound-engineering/*.local.yaml

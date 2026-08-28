@@ -1,17 +1,23 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { atomicWriteFile, getConfigDir } from "../config";
-import { codexExecInvocation, isSpawnableCodexCandidate } from "./exec-invocation";
+import {
+  codexExecInvocation,
+  isSpawnableCodexCandidate,
+} from "./exec-invocation";
 import { redactSecretString, redactUserPath } from "../lib/redact";
 
 export type CodexRuntimeSource =
-  | "environment"
-  | "configured"
-  | "shim"
-  | "path"
-  | "fallback";
+  "environment" | "configured" | "shim" | "path" | "fallback";
 
 export interface ResolvedCodexRuntime {
   command: string;
@@ -68,6 +74,8 @@ export interface ResolveCodexRuntimeDeps {
    * newerAvailable discovery). Use for hot UI/status paths.
    */
   discoverAlternatives?: boolean;
+  /** Override the final bare-command fallback; primarily useful for hermetic callers/tests. */
+  fallbackCommand?: string;
 }
 
 interface PersistedRuntimeState {
@@ -81,11 +89,15 @@ interface PersistedRuntimeState {
 const PERSIST_FILE = "codex-runtime.json";
 const CLAMP_PERSIST_FILE = "codex-runtime-clamp.json";
 
-export function codexRuntimeStatePath(configDir: string = getConfigDir()): string {
+export function codexRuntimeStatePath(
+  configDir: string = getConfigDir(),
+): string {
   return join(configDir, PERSIST_FILE);
 }
 
-export function codexRuntimeClampStatePath(configDir: string = getConfigDir()): string {
+export function codexRuntimeClampStatePath(
+  configDir: string = getConfigDir(),
+): string {
   return join(configDir, CLAMP_PERSIST_FILE);
 }
 
@@ -98,16 +110,25 @@ export function loadLastEffortClamp(
   deps: ResolveCodexRuntimeDeps = {},
 ): EffortClampDiagnostic | null {
   const configDir = deps.configDir ?? getConfigDir();
-  const read = deps.readFileSync ?? ((path, encoding) => readFileSync(path, encoding));
+  const read =
+    deps.readFileSync ?? ((path, encoding) => readFileSync(path, encoding));
   try {
-    const raw = JSON.parse(read(codexRuntimeClampStatePath(configDir), "utf8")) as PersistedClampState;
+    const raw = JSON.parse(
+      read(codexRuntimeClampStatePath(configDir), "utf8"),
+    ) as PersistedClampState;
     if (raw?.version !== 1 || !Array.isArray(raw.removedEfforts)) return null;
     return {
-      runtimePath: typeof raw.runtimePath === "string" ? raw.runtimePath : "codex",
-      runtimeVersion: typeof raw.runtimeVersion === "string" ? raw.runtimeVersion : null,
-      removedEfforts: raw.removedEfforts.filter((item): item is string => typeof item === "string"),
+      runtimePath:
+        typeof raw.runtimePath === "string" ? raw.runtimePath : "codex",
+      runtimeVersion:
+        typeof raw.runtimeVersion === "string" ? raw.runtimeVersion : null,
+      removedEfforts: raw.removedEfforts.filter(
+        (item): item is string => typeof item === "string",
+      ),
       affectedModels: Array.isArray(raw.affectedModels)
-        ? raw.affectedModels.filter((item): item is string => typeof item === "string")
+        ? raw.affectedModels.filter(
+            (item): item is string => typeof item === "string",
+          )
         : [],
     };
   } catch {
@@ -154,7 +175,10 @@ export function parseCodexVersionOutput(raw: string): string | null {
 }
 
 /** Compare dotted Codex versions. Returns negative if a < b. */
-export function compareCodexVersions(a: string | null, b: string | null): number {
+export function compareCodexVersions(
+  a: string | null,
+  b: string | null,
+): number {
   if (!a && !b) return 0;
   if (!a) return -1;
   if (!b) return 1;
@@ -162,10 +186,14 @@ export function compareCodexVersions(a: string | null, b: string | null): number
     const dash = value.indexOf("-");
     const core = dash < 0 ? value : value.slice(0, dash);
     const pre = dash < 0 ? "" : value.slice(dash + 1);
-    const parts = core.split(".").map(part => Number.parseInt(part, 10) || 0);
+    const parts = core.split(".").map((part) => Number.parseInt(part, 10) || 0);
     // SemVer prerelease identifiers are '.'-separated; keep hyphenated ids intact.
     const preParts = pre
-      ? pre.split(".").map(part => (/^\d+$/.test(part) ? Number.parseInt(part, 10) : part))
+      ? pre
+          .split(".")
+          .map((part) =>
+            /^\d+$/.test(part) ? Number.parseInt(part, 10) : part,
+          )
       : [];
     return { parts, preParts };
   };
@@ -200,10 +228,18 @@ export function loadPersistedCodexRuntime(
   deps: ResolveCodexRuntimeDeps = {},
 ): PersistedRuntimeState | null {
   const configDir = deps.configDir ?? getConfigDir();
-  const read = deps.readFileSync ?? ((path, encoding) => readFileSync(path, encoding));
+  const read =
+    deps.readFileSync ?? ((path, encoding) => readFileSync(path, encoding));
   try {
-    const raw = JSON.parse(read(codexRuntimeStatePath(configDir), "utf8")) as PersistedRuntimeState;
-    if (raw?.version !== 1 || typeof raw.command !== "string" || !raw.command.trim()) return null;
+    const raw = JSON.parse(
+      read(codexRuntimeStatePath(configDir), "utf8"),
+    ) as PersistedRuntimeState;
+    if (
+      raw?.version !== 1 ||
+      typeof raw.command !== "string" ||
+      !raw.command.trim()
+    )
+      return null;
     return raw;
   } catch {
     return null;
@@ -217,9 +253,9 @@ export function persistCodexRuntime(
   const configDir = deps.configDir ?? getConfigDir();
   const existing = loadPersistedCodexRuntime({ ...deps, configDir });
   if (
-    existing
-    && existing.command === runtime.command
-    && (existing.selectedVersion ?? null) === (runtime.version ?? null)
+    existing &&
+    existing.command === runtime.command &&
+    (existing.selectedVersion ?? null) === (runtime.version ?? null)
   ) {
     // Identical binary+version: keep updatedAt stable even when source labels
     // differ (path vs configured vs environment for the same command). Mixed
@@ -234,7 +270,10 @@ export function persistCodexRuntime(
     selectedVersion: runtime.version,
     updatedAt: new Date((deps.now ?? Date.now)()).toISOString(),
   };
-  atomicWriteFile(codexRuntimeStatePath(configDir), `${JSON.stringify(payload, null, 2)}\n`);
+  atomicWriteFile(
+    codexRuntimeStatePath(configDir),
+    `${JSON.stringify(payload, null, 2)}\n`,
+  );
   // Same-process consumers must re-resolve; catalog cache is keyed by runtime identity.
   resolveCache = null;
 }
@@ -244,14 +283,22 @@ function probeVersion(
   deps: ResolveCodexRuntimeDeps,
 ): { ok: true; version: string } | { ok: false; reason: string } {
   const platform = deps.platform ?? process.platform;
-  if (command.includes("/") || command.includes("\\") || /^[A-Za-z]:/.test(command)) {
+  if (
+    command.includes("/") ||
+    command.includes("\\") ||
+    /^[A-Za-z]:/.test(command)
+  ) {
     const exists = deps.existsSync ?? existsSync;
     if (!exists(command)) return { ok: false, reason: "path does not exist" };
     if (!isSpawnableCodexCandidate(command, platform)) {
-      return { ok: false, reason: "not a spawnable Codex launcher on this platform" };
+      return {
+        ok: false,
+        reason: "not a spawnable Codex launcher on this platform",
+      };
     }
   }
-  const execFile = deps.execFileSync ?? (execFileSync as unknown as RuntimeExecFile);
+  const execFile =
+    deps.execFileSync ?? (execFileSync as unknown as RuntimeExecFile);
   // Sandbox the probe's CODEX_HOME: a real Codex CLI creates state (tmp/, logs) under
   // CODEX_HOME even for `--version`, and the probe inherits the caller's env — so a
   // read-only `ocx status` would dirty the user's CODEX_HOME. Redirect it to a
@@ -285,26 +332,44 @@ function probeVersion(
   } finally {
     if (probeHome) {
       // Nested catch: a transient Windows EBUSY must never mask the probe result.
-      try { rmSync(probeHome, { recursive: true, force: true }); } catch { /* best effort */ }
+      try {
+        rmSync(probeHome, { recursive: true, force: true });
+      } catch {
+        /* best effort */
+      }
     }
   }
 }
 
 function shimCandidates(deps: ResolveCodexRuntimeDeps): string[] {
   const configDir = deps.configDir ?? getConfigDir();
-  const read = deps.readFileSync ?? ((path, encoding) => readFileSync(path, encoding));
+  const read =
+    deps.readFileSync ?? ((path, encoding) => readFileSync(path, encoding));
   const platform = deps.platform ?? process.platform;
   try {
-    const state = JSON.parse(read(join(configDir, "codex-shim.json"), "utf8")) as {
+    const state = JSON.parse(
+      read(join(configDir, "codex-shim.json"), "utf8"),
+    ) as {
       wrapperPath?: unknown;
       originalPath?: unknown;
       backupPath?: unknown;
-      wrappers?: Array<{ wrapperPath?: unknown; originalPath?: unknown; backupPath?: unknown }>;
+      wrappers?: Array<{
+        wrapperPath?: unknown;
+        originalPath?: unknown;
+        backupPath?: unknown;
+      }>;
     };
-    const files = Array.isArray(state.wrappers) && state.wrappers.length > 0 ? state.wrappers : [state];
+    const files =
+      Array.isArray(state.wrappers) && state.wrappers.length > 0
+        ? state.wrappers
+        : [state];
     const out: string[] = [];
     for (const file of files) {
-      for (const value of [file.backupPath, file.originalPath, file.wrapperPath]) {
+      for (const value of [
+        file.backupPath,
+        file.originalPath,
+        file.wrapperPath,
+      ]) {
         if (typeof value !== "string" || value.length === 0) continue;
         if (!isSpawnableCodexCandidate(value, platform)) continue;
         out.push(value);
@@ -342,7 +407,11 @@ function tryCandidate(
 ): ResolvedCodexRuntime | null {
   const probed = probeVersion(candidate.command, deps);
   if (!probed.ok) {
-    failures.push({ command: candidate.command, source: candidate.source, reason: probed.reason });
+    failures.push({
+      command: candidate.command,
+      source: candidate.source,
+      reason: probed.reason,
+    });
     return null;
   }
   return {
@@ -364,21 +433,28 @@ export function effortClampAppliesToRuntime(
   if (!diagnostic || diagnostic.removedEfforts.length === 0) return false;
   if (sameRuntimeCommand(diagnostic.runtimePath, runtime.command)) return true;
   return Boolean(
-    diagnostic.runtimeVersion
-    && runtime.version
-    && diagnostic.runtimeVersion === runtime.version,
+    diagnostic.runtimeVersion &&
+    runtime.version &&
+    diagnostic.runtimeVersion === runtime.version,
   );
 }
 
 const RESOLVE_CACHE_MS = 15_000;
-let resolveCache: { key: string; at: number; value: ResolveCodexRuntimeResult } | null = null;
+let resolveCache: {
+  key: string;
+  at: number;
+  value: ResolveCodexRuntimeResult;
+} | null = null;
 
 function persistedRuntimeCacheStamp(deps: ResolveCodexRuntimeDeps): string {
   // Include on-disk selection so doctor --fix in another process busts this memo.
   const configDir = deps.configDir ?? getConfigDir();
-  const read = deps.readFileSync ?? ((path, encoding) => readFileSync(path, encoding));
+  const read =
+    deps.readFileSync ?? ((path, encoding) => readFileSync(path, encoding));
   try {
-    const raw = JSON.parse(read(codexRuntimeStatePath(configDir), "utf8")) as PersistedRuntimeState;
+    const raw = JSON.parse(
+      read(codexRuntimeStatePath(configDir), "utf8"),
+    ) as PersistedRuntimeState;
     if (raw?.version !== 1 || typeof raw.command !== "string") return "";
     return `${raw.command}|${raw.selectedVersion ?? ""}|${raw.updatedAt ?? ""}`;
   } catch {
@@ -389,7 +465,12 @@ function persistedRuntimeCacheStamp(deps: ResolveCodexRuntimeDeps): string {
 function resolveCacheKey(deps: ResolveCodexRuntimeDeps): string | null {
   // Only memoize uninjected process-env resolves (settings/status hot paths).
   // `now` is a clock, not a stub: tests inject it so they do not patch global Date.now.
-  if (deps.execFileSync || deps.existsSync || deps.readFileSync || deps.configDir) {
+  if (
+    deps.execFileSync ||
+    deps.existsSync ||
+    deps.readFileSync ||
+    deps.configDir
+  ) {
     return null;
   }
   const env = deps.env ?? process.env;
@@ -398,6 +479,7 @@ function resolveCacheKey(deps: ResolveCodexRuntimeDeps): string | null {
     path: env.PATH ?? "",
     platform: deps.platform ?? process.platform,
     discover: deps.discoverAlternatives !== false,
+    fallback: deps.fallbackCommand ?? "codex",
     home: process.env.OPENCODEX_HOME ?? "",
     persisted: persistedRuntimeCacheStamp(deps),
   });
@@ -406,10 +488,17 @@ function resolveCacheKey(deps: ResolveCodexRuntimeDeps): string | null {
 /**
  * Resolve the single Codex runtime OpenCodex should use for sync, clamp, and probes.
  */
-export function resolveCodexRuntime(deps: ResolveCodexRuntimeDeps = {}): ResolveCodexRuntimeResult {
+export function resolveCodexRuntime(
+  deps: ResolveCodexRuntimeDeps = {},
+): ResolveCodexRuntimeResult {
   const cacheKey = resolveCacheKey(deps);
   const nowMs = (deps.now ?? Date.now)();
-  if (cacheKey && resolveCache && resolveCache.key === cacheKey && nowMs - resolveCache.at < RESOLVE_CACHE_MS) {
+  if (
+    cacheKey &&
+    resolveCache &&
+    resolveCache.key === cacheKey &&
+    nowMs - resolveCache.at < RESOLVE_CACHE_MS
+  ) {
     return resolveCache.value;
   }
 
@@ -423,7 +512,9 @@ export function resetCodexRuntimeResolveCacheForTests(): void {
   resolveCache = null;
 }
 
-function resolveCodexRuntimeUncached(deps: ResolveCodexRuntimeDeps = {}): ResolveCodexRuntimeResult {
+function resolveCodexRuntimeUncached(
+  deps: ResolveCodexRuntimeDeps = {},
+): ResolveCodexRuntimeResult {
   const env = deps.env ?? process.env;
   const failures: RuntimeProbeFailure[] = [];
   const ordered: RankedCandidate[] = [];
@@ -442,7 +533,8 @@ function resolveCodexRuntimeUncached(deps: ResolveCodexRuntimeDeps = {}): Resolv
   for (const command of pathCandidates(deps)) {
     ordered.push({ command, source: "path" });
   }
-  ordered.push({ command: "codex", source: "fallback" });
+  const fallbackCommand = deps.fallbackCommand ?? "codex";
+  ordered.push({ command: fallbackCommand, source: "fallback" });
 
   const seen = new Set<string>();
   const valid: ResolvedCodexRuntime[] = [];
@@ -458,7 +550,7 @@ function resolveCodexRuntimeUncached(deps: ResolveCodexRuntimeDeps = {}): Resolv
 
   if (valid.length === 0) {
     return {
-      runtime: { command: "codex", version: null, source: "fallback" },
+      runtime: { command: fallbackCommand, version: null, source: "fallback" },
       failures,
     };
   }
@@ -468,37 +560,55 @@ function resolveCodexRuntimeUncached(deps: ResolveCodexRuntimeDeps = {}): Resolv
   let replacedConfigured: ResolveCodexRuntimeResult["replacedConfigured"];
 
   const envValid = envPath
-    ? valid.find(item => sameRuntimeCommand(item.command, envPath) && item.source === "environment")
+    ? valid.find(
+        (item) =>
+          sameRuntimeCommand(item.command, envPath) &&
+          item.source === "environment",
+      )
     : undefined;
   if (envValid) selected = envValid;
 
   if (persisted?.command) {
-    const configuredStillValid = valid.some(item => sameRuntimeCommand(item.command, persisted.command));
+    const configuredStillValid = valid.some((item) =>
+      sameRuntimeCommand(item.command, persisted.command),
+    );
     // Only emit replacement diagnostics when we actually searched alternatives or
     // the preferred configured runtime was probed and rejected.
-    const configuredRejected = failures.some(item => sameRuntimeCommand(item.command, persisted.command));
-    if (!configuredStillValid && (configuredRejected || deps.discoverAlternatives !== false) && !envValid) {
+    const configuredRejected = failures.some((item) =>
+      sameRuntimeCommand(item.command, persisted.command),
+    );
+    if (
+      !configuredStillValid &&
+      (configuredRejected || deps.discoverAlternatives !== false) &&
+      !envValid
+    ) {
       replacedConfigured = {
         from: {
           command: persisted.command,
           version: persisted.selectedVersion,
           source: "configured",
         },
-        reason: failures.find(item => sameRuntimeCommand(item.command, persisted.command))?.reason
-          ?? "configured runtime is no longer valid",
+        reason:
+          failures.find((item) =>
+            sameRuntimeCommand(item.command, persisted.command),
+          )?.reason ?? "configured runtime is no longer valid",
       };
       // Keep priority-selected replacement (already in `selected`).
     } else if (!envValid && configuredStillValid) {
       // Stick to configured even when a later PATH entry is also valid.
-      selected = valid.find(item => sameRuntimeCommand(item.command, persisted.command)) ?? selected;
+      selected =
+        valid.find((item) =>
+          sameRuntimeCommand(item.command, persisted.command),
+        ) ?? selected;
     }
   }
 
   const newerAvailable = valid
-    .filter(item => !sameRuntimeCommand(item.command, selected.command))
+    .filter((item) => !sameRuntimeCommand(item.command, selected.command))
     .sort((a, b) => compareCodexVersions(b.version, a.version))[0];
   const newer =
-    newerAvailable && compareCodexVersions(newerAvailable.version, selected.version) > 0
+    newerAvailable &&
+    compareCodexVersions(newerAvailable.version, selected.version) > 0
       ? newerAvailable
       : undefined;
 
@@ -520,8 +630,13 @@ export function resolveAndPersistCodexRuntime(
       persistCodexRuntime(result.runtime, deps);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const persistError = redactUserPath(redactSecretString(message)).slice(0, 200);
-      console.warn(`[opencodex] Failed to persist Codex runtime selection: ${persistError}`);
+      const persistError = redactUserPath(redactSecretString(message)).slice(
+        0,
+        200,
+      );
+      console.warn(
+        `[opencodex] Failed to persist Codex runtime selection: ${persistError}`,
+      );
       return { ...result, persistError };
     }
   }
@@ -533,7 +648,9 @@ export function formatRuntimeLogLine(runtime: ResolvedCodexRuntime): string {
   return `[opencodex] Codex runtime: ${path} (version=${runtime.version ?? "unknown"}, source=${runtime.source})`;
 }
 
-export function formatClampLogLines(diagnostic: EffortClampDiagnostic): string[] {
+export function formatClampLogLines(
+  diagnostic: EffortClampDiagnostic,
+): string[] {
   const efforts = diagnostic.removedEfforts.join(", ");
   return [
     `[opencodex] Removed unsupported reasoning efforts: ${efforts}`,
