@@ -89,19 +89,18 @@ jobs:
             'k\.chefgroep\.online'
             '113d678ff9b96cabf41e8e2076166fa692bc078db28e792019c9302fa0e53286'
           )
-          # --exclude-dir matches a directory's base name, so these must NOT
-          # carry trailing slashes (e.g. "tests", not "tests/"). ".github" is
-          # excluded because this workflow itself lists the patterns above as
-          # detection strings — scanning it would always self-match.
-          EXCLUDE_DIRS='tests structure devlog .compound-engineering docs-site .github'
+          # --exclude-dir matches a directory base name, so no trailing slashes.
+          # .github is excluded because this workflow lists the patterns above
+          # as detection strings — scanning it would always self-match.
+          EXCLUDE_DIRS=(tests structure devlog .compound-engineering docs-site .github)
           FINDINGS=""
           for pattern in "${PATTERNS[@]}"; do
             # Build grep exclude-dir flags
-            EXCLUDE_ARGS=""
-            for dir in $EXCLUDE_DIRS; do
-              EXCLUDE_ARGS="$EXCLUDE_ARGS --exclude-dir=$dir"
+            EXCLUDE_ARGS=()
+            for dir in "${EXCLUDE_DIRS[@]}"; do
+              EXCLUDE_ARGS+=("--exclude-dir=$dir")
             done
-            MATCHES=$(grep -rn "$pattern" . $EXCLUDE_ARGS --include='*.ts' --include='*.tsx' --include='*.yml' --include='*.yaml' --include='*.json' --include='*.toml' --include='*.md' --include='*.sh' --include='*.mjs' 2>/dev/null || true)
+            MATCHES=$(grep -rn "$pattern" . "${EXCLUDE_ARGS[@]}" --include='*.ts' --include='*.tsx' --include='*.yml' --include='*.yaml' --include='*.json' --include='*.toml' --include='*.md' --include='*.sh' --include='*.mjs' 2>/dev/null || true)
             if [ -n "$MATCHES" ]; then
               FINDINGS="${FINDINGS}\n${MATCHES}"
             fi
@@ -126,7 +125,7 @@ jobs:
 
       # ── 4. Hardcoded secrets in workflow files ───────────────────────
       # Fail if any workflow file contains literal CF_ACCESS_AUD values
-      # or other credential-looking strings instead of ${{ secrets.* }}.
+      # or other credential-looking strings instead of GitHub secrets.
       - name: Check for hardcoded secrets in workflows
         run: |
           set -euo pipefail
@@ -141,12 +140,13 @@ jobs:
             | grep -v 'raven-actions' \
             | grep -v 'ibiqlik' \
             | grep -v '# ' \
+            | grep -v 'security-audit.yml' \
             || true)
           if [ -n "$MATCHES" ]; then
             echo "::error::Potential hardcoded secrets in workflow files:"
             echo "$MATCHES"
             echo ""
-            echo "Use GitHub secrets (\${{ secrets.* }}) or environment variables"
+            echo "Use GitHub secrets (e.g. secrets.*) or environment variables"
             echo "instead of literal credential values in workflow files."
             exit 1
           fi
