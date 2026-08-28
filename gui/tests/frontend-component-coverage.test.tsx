@@ -23,9 +23,9 @@ interface TestEnv {
  * even if the test throws — preventing global state leaking into other files.
  */
 async function setupEnv(): Promise<TestEnv & { cleanup: () => Promise<void> }> {
-  const previousGlobals = Object.fromEntries(
-    globals.map(key => [key, Reflect.get(globalThis, key)]),
-  ) as Record<GlobalsKey, unknown>;
+  const previousGlobalDescriptors = Object.fromEntries(
+    globals.map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]),
+  ) as Record<GlobalsKey, PropertyDescriptor | undefined>;
 
   const originalFetch = globalThis.fetch;
 
@@ -54,7 +54,9 @@ async function setupEnv(): Promise<TestEnv & { cleanup: () => Promise<void> }> {
       container.remove();
       testWindow.close();
       for (const key of globals) {
-        Object.defineProperty(globalThis, key, { configurable: true, value: previousGlobals[key] });
+        const descriptor = previousGlobalDescriptors[key];
+        if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+        else Reflect.deleteProperty(globalThis, key);
       }
     },
   };

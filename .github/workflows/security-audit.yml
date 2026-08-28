@@ -55,6 +55,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -87,12 +89,12 @@ jobs:
           PATTERNS=(
             'chefgroep\.cloudflareaccess\.com'
             'k\.chefgroep\.online'
-            '113d678ff9b96cabf41e8e2076166fa692bc078db28e792019c9302fa0e53286'
+            '113d678ff9b96cabf41e8e2076166fa6''92bc078db28e792019c9302fa0e53286'
           )
           # --exclude-dir matches a directory base name, so no trailing slashes.
-          # .github is excluded because this workflow lists the patterns above
-          # as detection strings — scanning it would always self-match.
-          EXCLUDE_DIRS=(tests structure devlog .compound-engineering docs-site .github)
+          # Keep other workflow files in scope; exclude only this scanner file
+          # to avoid self-matching its detection strings.
+          EXCLUDE_DIRS=(tests structure devlog .compound-engineering docs-site)
           FINDINGS=""
           for pattern in "${PATTERNS[@]}"; do
             # Build grep exclude-dir flags
@@ -100,7 +102,7 @@ jobs:
             for dir in "${EXCLUDE_DIRS[@]}"; do
               EXCLUDE_ARGS+=("--exclude-dir=$dir")
             done
-            MATCHES=$(grep -rn "$pattern" . "${EXCLUDE_ARGS[@]}" --include='*.ts' --include='*.tsx' --include='*.yml' --include='*.yaml' --include='*.json' --include='*.toml' --include='*.md' --include='*.sh' --include='*.mjs' 2>/dev/null || true)
+            MATCHES=$(grep -rn "$pattern" . "${EXCLUDE_ARGS[@]}" --exclude='security-audit.yml' --include='*.ts' --include='*.tsx' --include='*.yml' --include='*.yaml' --include='*.json' --include='*.toml' --include='*.md' --include='*.sh' --include='*.mjs' 2>/dev/null || true)
             if [ -n "$MATCHES" ]; then
               FINDINGS="${FINDINGS}\n${MATCHES}"
             fi
@@ -159,25 +161,26 @@ jobs:
       - name: Check for unbounded response buffering
         run: |
           set -euo pipefail
-          # Look for .arrayBuffer() calls in src/ that are not already
+          # Look for .arrayBuffer() or .text() calls in src/ that are not already
           # wrapped in a bounded-reader pattern. This is a heuristic —
           # false positives are acceptable (they prompt review).
-          BUFFER_CALLS=$(grep -rn '\.arrayBuffer()' src/ --include='*.ts' 2>/dev/null || true)
+          BUFFER_CALLS=$(grep -Enr '\.(arrayBuffer|text)\(\)' src/ --include='*.ts' 2>/dev/null || true)
           if [ -n "$BUFFER_CALLS" ]; then
             # Check if any of these lack a preceding size constant or
             # streaming reader pattern nearby
             UNBOUNDED=""
-            while IFS= read -r match; do
-              file=$(echo "$match" | cut -d: -f1)
-              line=$(echo "$match" | cut -d: -f2)
+            while IFS=: read -r file line rest; do
+              [[ "$line" =~ ^[0-9]+$ ]] || continue
               # Check 10 lines before for a MAX_*_BYTES constant or bounded reader
-              context=$(sed -n "$((line > 10 ? line - 10 : 1)),$((line + 5))p" "$file" 2>/dev/null || true)
+              start=$((line > 10 ? line - 10 : 1))
+              end=$((line + 5))
+              context=$(sed -n "${start},${end}p" "$file" 2>/dev/null || true)
               if ! echo "$context" | grep -qi 'MAX_.*BYTES\|bounded.*reader\|getReader\|streaming'; then
-                UNBOUNDED="${UNBOUNDED}\n${match}"
+                UNBOUNDED="${UNBOUNDED}\n${file}:${line}:${rest}"
               fi
             done <<< "$BUFFER_CALLS"
             if [ -n "$UNBOUNDED" ]; then
-              echo "::warning::Potential unbounded response buffering (arrayBuffer without size guard):"
+              echo "::warning::Potential unbounded response buffering (arrayBuffer/text without size guard):"
               echo -e "$UNBOUNDED"
               echo ""
               echo "Consider using a streaming bounded reader to reject oversized"
