@@ -23,10 +23,7 @@
 @import "./styles-apikeys-workspace.css";
 @import "./styles/traffic-rail.css";
 
-/* Linear font substitutes via CDN (Inter + JetBrains Mono). */
-@import "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap";
-
-/* General Sans preserved as fallback UI font while Linear tokens apply. */
+/* General Sans is the UI font (self-hosted, design-system v3 §11). */
 @font-face {
   font-family: "General Sans";
   src: url("./assets/fonts/general-sans-400.woff2") format("woff2");
@@ -49,6 +46,8 @@
   font-display: swap;
 }
 
+/* Fonts are self-hosted: General Sans @font-face above, JetBrains Mono
+   Variable via @fontsource in main.tsx. No CDN fonts on any surface. */
 :root {
   /* default: follow the OS; [data-theme] below pins color-scheme so light-dark() obeys it */
   color-scheme: light dark;
@@ -875,6 +874,13 @@ select.input { appearance: none; }
   45% { transform: scaleX(1); transform-origin: left; }
   46% { transform-origin: right; }
   100% { transform: scaleX(0.15); transform-origin: right; }
+}
+
+/* Loading skeleton: a quiet raised block. No shimmer loop — activity is the
+   ripple's job; the skeleton only reserves layout. */
+.skeleton {
+  background: var(--raised);
+  border-radius: var(--radius-sm);
 }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
@@ -1947,7 +1953,6 @@ button.prov-account-row.active { cursor: default; }
 .topbar { position: sticky; top: 0; z-index: var(--z-sticky); display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 52px; padding: 0 20px; border-bottom: 1px solid var(--border-soft); background: var(--bg); }
 .topbar .brand { padding: 0; }
 /* Subtle cyan signature on the brand mark — the same accent the landing uses. */
-.topbar .brand .brand-logo { filter: drop-shadow(0 0 6px rgba(92, 200, 255, 0.35)); }
 .topbar .brand .name { letter-spacing: -0.01em; }
 .topbar-right { display: flex; align-items: center; gap: 10px; }
 

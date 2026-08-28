@@ -503,5 +503,5 @@
 .pwi-remove-confirm-desc { margin: 0 0 18px; font-size: var(--text-control); line-height: var(--leading-body); }
 .pwi-json-unsaved-actions,
 .pwi-remove-confirm-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.pwi-remove-confirm-danger { background: var(--red) !important; color: #fff !important; border-color: transparent !important; }
-.pwi-remove-confirm-danger:hover:not(:disabled) { filter: brightness(1.08); }
+.pwi-remove-confirm-danger { background: var(--red) !important; color: #ffffff !important; border-color: transparent !important; }
+.pwi-remove-confirm-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--red) 88%, var(--text)) !important; }
