@@ -22,6 +22,7 @@ const Claude = lazy(() => import("./pages/Claude"));
 const Grok = lazy(() => import("./pages/Grok"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Startup = lazy(() => import("./pages/Startup"));
+const Landing = lazy(() => import("./landing/Landing"));
 
 installApiAuthFetch();
 
@@ -42,6 +43,9 @@ const VIEW_TABS: { view: View; tkey: TKey }[] = [
 
 /** Sub-tabs per view; `null` is the view's home target. */
 const SUB_TABS: Record<View, { sub: string | null; tkey: TKey }[]> = {
+  landing: [
+    { sub: null, tkey: "nav.dashboard" },
+  ],
   dashboard: [
     { sub: null, tkey: "nav.dashboard" },
   ],
@@ -129,6 +133,16 @@ export default function App() {
       <span className="ver">v{displayedVersion}</span>
     </div>
   );
+
+  // The public landing page renders outside the dashboard shell: no topbar,
+  // no view tabs, no health polling UI. Everything below it is the app.
+  if (route.view === "landing") {
+    return (
+      <Suspense fallback={null}>
+        <Landing />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="app">

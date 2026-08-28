@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ProviderWorkspaceShell, { type AddProviderIntent } from "../components/provider-workspace/ProviderWorkspaceShell";
 import ProviderDetails from "../components/provider-workspace/ProviderDetails";
+import { DotMatrix } from "../DotMatrix";
 import type { WorkspaceProvider } from "../provider-workspace/catalog";
 import { ensureOpenAiProvider, openAiAccountProviderState, OpenAiEnableError } from "../provider-payload";
 import { oauthTosRisk } from "../oauth-tos-risk";
@@ -200,7 +201,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
             <div className="providers-workspace providers-workspace--boot" aria-busy="true">
               <div className="providers-workspace-rail providers-workspace-rail--boot" aria-hidden="true" />
               <div className="providers-workspace-main">
-                <p className="muted"><span className="spin go" aria-hidden="true" /> {t("prov.loadingConfig")}</p>
+                <p className="muted"><DotMatrix size={14} dotSize={3} speed={1.1} color="var(--accent)" aria-hidden="true" /> {t("prov.loadingConfig")}</p>
               </div>
             </div>
           )}
