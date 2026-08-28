@@ -284,8 +284,9 @@ export function binProviderStatus(p: WorkspaceProvider | WorkspaceItem): Provide
  * the workspace should show one row per passthrough surface.
  */
 export function hideRedundantChatGptForwardProviders<T extends WorkspaceProvider>(
-  providers: Record<string, T>,
+  providers: Record<string, T> | null | undefined,
 ): Record<string, T> {
+  if (!providers) return {};
   const openai = providers.openai;
   const chatgpt = providers.chatgpt;
   if (!openai || !chatgpt) return providers;
