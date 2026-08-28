@@ -341,6 +341,26 @@ jobs:
           sudo cp deploy/container/compose.example.yml "$COMPOSE_DIR/docker-compose.yml"
           sudo cp deploy/container/opencodex-proxy.service /etc/systemd/system/opencodex-proxy.service
 
+          # Secrets win. Empty GitHub secrets must not wipe a live COMPOSE_ENV —
+          # #147 moved Access identity out of source and the repo may not have
+          # OCX_CF_ACCESS_* secrets yet. Carry the live values, then fail closed
+          # if the identity is still incomplete.
+          if sudo test -f "$COMPOSE_ENV"; then
+            if [ -z "${CF_ACCESS_TEAM_DOMAIN:-}" ]; then
+              CF_ACCESS_TEAM_DOMAIN="$(sudo awk -F= '$1=="CF_ACCESS_TEAM_DOMAIN"{v=substr($0,index($0,"=")+1)} END{print v}' "$COMPOSE_ENV")"
+            fi
+            if [ -z "${CF_ACCESS_AUD:-}" ]; then
+              CF_ACCESS_AUD="$(sudo awk -F= '$1=="CF_ACCESS_AUD"{v=substr($0,index($0,"=")+1)} END{print v}' "$COMPOSE_ENV")"
+            fi
+            if [ -z "${CF_ACCESS_ALLOWED_HOSTS:-}" ]; then
+              CF_ACCESS_ALLOWED_HOSTS="$(sudo awk -F= '$1=="CF_ACCESS_ALLOWED_HOSTS"{v=substr($0,index($0,"=")+1)} END{print v}' "$COMPOSE_ENV")"
+            fi
+          fi
+          if [ -z "${CF_ACCESS_TEAM_DOMAIN:-}" ] || [ -z "${CF_ACCESS_AUD:-}" ] || [ -z "${CF_ACCESS_ALLOWED_HOSTS:-}" ]; then
+            echo "::error::CF Access identity incomplete after secret+live merge. Set OCX_CF_ACCESS_* repo secrets or keep them in ${COMPOSE_ENV}."
+            exit 1
+          fi
+
           {
             printf 'OPENCODEX_IMAGE=%s\n' "$PINNED_IMAGE"
             printf 'CF_ACCESS_TEAM_DOMAIN=%s\n' "${CF_ACCESS_TEAM_DOMAIN:-}"
@@ -467,6 +487,21 @@ jobs:
             fi
             sudo chown -R "$prev_uid:$prev_gid" "$STATE_DIR"
             token_file="${OPENCODEX_API_TOKEN_FILE:-/etc/chef/opencodex/service-api-token}"
+            if sudo test -f "$COMPOSE_ENV"; then
+              if [ -z "${CF_ACCESS_TEAM_DOMAIN:-}" ]; then
+                CF_ACCESS_TEAM_DOMAIN="$(sudo awk -F= '$1=="CF_ACCESS_TEAM_DOMAIN"{v=substr($0,index($0,"=")+1)} END{print v}' "$COMPOSE_ENV")"
+              fi
+              if [ -z "${CF_ACCESS_AUD:-}" ]; then
+                CF_ACCESS_AUD="$(sudo awk -F= '$1=="CF_ACCESS_AUD"{v=substr($0,index($0,"=")+1)} END{print v}' "$COMPOSE_ENV")"
+              fi
+              if [ -z "${CF_ACCESS_ALLOWED_HOSTS:-}" ]; then
+                CF_ACCESS_ALLOWED_HOSTS="$(sudo awk -F= '$1=="CF_ACCESS_ALLOWED_HOSTS"{v=substr($0,index($0,"=")+1)} END{print v}' "$COMPOSE_ENV")"
+              fi
+            fi
+            if [ -z "${CF_ACCESS_TEAM_DOMAIN:-}" ] || [ -z "${CF_ACCESS_AUD:-}" ] || [ -z "${CF_ACCESS_ALLOWED_HOSTS:-}" ]; then
+              echo "::error::CF Access identity incomplete during rollback after secret+live merge. Set OCX_CF_ACCESS_* repo secrets or keep them in ${COMPOSE_ENV}."
+              exit 1
+            fi
             {
               printf 'OPENCODEX_IMAGE=%s\n' "$prev_image"
               printf 'CF_ACCESS_TEAM_DOMAIN=%s\n' "${CF_ACCESS_TEAM_DOMAIN:-}"
