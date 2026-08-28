@@ -40,3 +40,36 @@ tests/.tmp-*/
 .claude/
 *.html
 !.gitignore
+
+# ChefGroep standard ignores (OS / Xcode / local env / CE)
+.compound-engineering/*.local.yaml
+
+# OS / editors
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+Desktop.ini
+.idea/
+*.swp
+*.swo
+*~
+
+# Xcode / iOS
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+*.xcodeproj/
+*.xcworkspace/
+*.ipa
+*.dSYM
+*.dSYM.zip
+Pods/
+
+# Local env
+.env
+.env.local
+.env.*.local
