@@ -1,23 +1,15 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
-import { atomicWriteFile, expandUserPath, getConfigDir, websocketsEnabled } from "../../config";
-import { CODEX_CONFIG_PATH, CODEX_MODELS_CACHE_PATH, DEFAULT_CATALOG_PATH, readRootTomlString, resolveCodexConfigPath } from "../paths";
-import { clearModelCache, DEFAULT_MODEL_CACHE_TTL_MS, getFreshCached, getStaleCached, isModelsFetchCoolingDown, markModelsFetchFailure, setCached } from "../model-cache";
+import { atomicWriteFile, getConfigDir } from "../../config";
 import { buildModelsRequest, resolveModelsAuthToken } from "../../oauth";
 import type { OcxConfig, OcxProviderConfig } from "../../types";
 import { modelInList } from "../../types";
-import { CODEX_REASONING_LEVELS, codexEffortRank, configuredReasoningEfforts, modelRecordValue, sanitizeCodexReasoningEfforts } from "../../reasoning-effort";
-import { getJawcodeModelMetadata, getJawcodeModelMetadataCaseInsensitive, listJawcodeModelMetadata, resolveJawcodeProvider } from "../../generated/jawcode-model-metadata";
-import { enrichProviderFromRegistry, shouldCaseFoldMetadataModelId } from "../../providers/derive";
 import { getProviderRegistryEntry } from "../../providers/registry";
-import { applyProviderContextCap, providerContextCap } from "../../providers/context-cap";
-import { routedSlug, slugEquals, slugsEquivalent } from "../../providers/slug-codec";
 import { CODEX_GPT5_IDENTITY_LINE } from "../../adapters/identity";
 import { filterCursorConfiguredModelsByLiveDiscovery } from "../../adapters/cursor/discovery";
 import { fetchCursorUsableModels } from "../../adapters/cursor/live-models";
-import { isCanonicalOpenAiForwardProvider, OPENAI_API_PROVIDER_ID, OPENAI_CODEX_PROVIDER_ID } from "../../providers/openai-tiers";
 import {
   COMBO_NAMESPACE,
   comboModelId,
@@ -30,14 +22,32 @@ import { providerDestinationResolvedError } from "../../lib/destination-policy";
 import { redactSecretString } from "../../lib/redact";
 import upstreamModelsSnapshot from "../data/upstream-models.json";
 
-
-import { activeCodexModelsCachePath, catalogBackupPathFor, findNativeTemplate, isDefaultCatalogPath, legacyCatalogBackupPath, parseCatalogJson, readCatalog, readCatalogBackup, readCodexCatalogPath } from "./parsing";
+import {
+  activeCodexModelsCachePath,
+  catalogBackupPathFor,
+  findNativeTemplate,
+  isDefaultCatalogPath,
+  legacyCatalogBackupPath,
+  parseCatalogJson,
+  readCatalog,
+  readCatalogBackup,
+  readCodexCatalogPath,
+} from "./parsing";
 import type { RawCatalog, RawEntry } from "./parsing";
-import { codexExecInvocation, isSpawnableCodexCandidate } from "../exec-invocation";
-import { loadPersistedCodexRuntime, resolveAndPersistCodexRuntime } from "../runtime";
+import {
+  codexExecInvocation,
+  isSpawnableCodexCandidate,
+} from "../exec-invocation";
+import {
+  loadPersistedCodexRuntime,
+  resolveAndPersistCodexRuntime,
+} from "../runtime";
 import type { EffortClampDiagnostic } from "../runtime";
 
-export { isSpawnableCodexCandidate, codexExecInvocation } from "../exec-invocation";
+export {
+  isSpawnableCodexCandidate,
+  codexExecInvocation,
+} from "../exec-invocation";
 
 export const BUNDLED_CATALOG_CACHE_MS = 60_000;
 const RESOLVED_RUNTIME_MEMO_MS = 15_000;
@@ -50,13 +60,23 @@ export let bundledCatalogCache: {
 } | null = null;
 
 /** Memoized runtime resolution so cache-hit checks don't re-probe binaries (~350ms under load). */
-let resolvedRuntimeMemo: { fingerprint: string; command: string; version: string; expiresAt: number } | null = null;
+let resolvedRuntimeMemo: {
+  fingerprint: string;
+  command: string;
+  version: string;
+  expiresAt: number;
+} | null = null;
 
 /** Cheap persisted-selection read so doctor-style upgrades (same env, new binary) bust the memo. */
 function persistedSelectionStamp(deps: BundledCatalogDeps): string {
   try {
-    const persisted = loadPersistedCodexRuntime({ configDir: deps.configDir, readFileSync: deps.readFileSync });
-    return persisted ? `${persisted.command}|${persisted.selectedVersion ?? ""}` : "";
+    const persisted = loadPersistedCodexRuntime({
+      configDir: deps.configDir,
+      readFileSync: deps.readFileSync,
+    });
+    return persisted
+      ? `${persisted.command}|${persisted.selectedVersion ?? ""}`
+      : "";
   } catch {
     return "";
   }
@@ -98,6 +118,7 @@ export interface BundledCatalogDeps {
   readFileSync?: (path: string, encoding: "utf8") => string;
   now?: () => number;
   discoverAlternatives?: boolean;
+  fallbackCommand?: string;
 }
 
 export function unique(values: string[]): string[] {
@@ -109,7 +130,9 @@ export function codexCommandCandidates(): string[] {
   const candidates = envPath ? [envPath] : [];
   candidates.push(...codexShimCommandCandidates());
   if (process.platform === "win32") {
-    for (const dir of (process.env.PATH ?? "").split(delimiter).filter(Boolean)) {
+    for (const dir of (process.env.PATH ?? "")
+      .split(delimiter)
+      .filter(Boolean)) {
       candidates.push(join(dir, "codex.exe"), join(dir, "codex.cmd"));
     }
   }
@@ -119,16 +142,29 @@ export function codexCommandCandidates(): string[] {
 
 export function codexShimCommandCandidates(): string[] {
   try {
-    const state = JSON.parse(readFileSync(join(getConfigDir(), "codex-shim.json"), "utf8")) as {
+    const state = JSON.parse(
+      readFileSync(join(getConfigDir(), "codex-shim.json"), "utf8"),
+    ) as {
       wrapperPath?: unknown;
       originalPath?: unknown;
       backupPath?: unknown;
-      wrappers?: Array<{ wrapperPath?: unknown; originalPath?: unknown; backupPath?: unknown }>;
+      wrappers?: Array<{
+        wrapperPath?: unknown;
+        originalPath?: unknown;
+        backupPath?: unknown;
+      }>;
     };
-    const files = Array.isArray(state.wrappers) && state.wrappers.length > 0 ? state.wrappers : [state];
+    const files =
+      Array.isArray(state.wrappers) && state.wrappers.length > 0
+        ? state.wrappers
+        : [state];
     const out: string[] = [];
     for (const file of files) {
-      for (const value of [file.backupPath, file.originalPath, file.wrapperPath]) {
+      for (const value of [
+        file.backupPath,
+        file.originalPath,
+        file.wrapperPath,
+      ]) {
         if (typeof value !== "string" || value.length === 0) continue;
         if (!isSpawnableCodexCandidate(value)) continue;
         out.push(value);
@@ -146,10 +182,15 @@ export function runCodexDebugModels(
   deps: Pick<BundledCatalogDeps, "env" | "platform" | "existsSync"> = {},
 ): string {
   const args = ["debug", "models", "--bundled"];
-  const invocation = codexExecInvocation(command, args, deps.platform ?? process.platform, {
-    env: deps.env,
-    exists: deps.existsSync,
-  });
+  const invocation = codexExecInvocation(
+    command,
+    args,
+    deps.platform ?? process.platform,
+    {
+      env: deps.env,
+      exists: deps.existsSync,
+    },
+  );
   return execFile(invocation.file, invocation.args, {
     encoding: "utf8" as const,
     stdio: ["ignore", "pipe", "ignore"] as ["ignore", "pipe", "ignore"],
@@ -159,19 +200,22 @@ export function runCodexDebugModels(
   });
 }
 
-export function loadBundledCodexCatalog(deps: BundledCatalogDeps = {}): RawCatalog | null {
+export function loadBundledCodexCatalog(
+  deps: BundledCatalogDeps = {},
+): RawCatalog | null {
   // `now` is a clock. Treating it as a cache bypass forced tests to patch
   // global Date.now and flake the full suite under shared isolates.
-  const useCache = !deps.commandCandidates
-    && !deps.execFileSync
-    && !deps.configDir
-    && !deps.env
-    && !deps.platform
-    && !deps.existsSync
-    && !deps.readFileSync
-    && deps.discoverAlternatives === undefined;
+  const useCache =
+    !deps.commandCandidates &&
+    !deps.execFileSync &&
+    !deps.existsSync &&
+    !deps.readFileSync &&
+    deps.discoverAlternatives === undefined;
   const nowMs = (deps.now ?? Date.now)();
   const execFile = deps.execFileSync ?? (execFileSync as unknown as ExecFile);
+  const runtimeEnv = deps.env ?? process.env;
+  const runtimePlatform = deps.platform ?? process.platform;
+  const runtimeConfigDir = deps.configDir ?? getConfigDir();
   // Prefer the single resolved runtime so sync/clamp never probe a different binary
   // than OpenCodex will launch. Tests may inject commandCandidates to stub probing.
   let cacheKey: string | null = null;
@@ -180,65 +224,83 @@ export function loadBundledCodexCatalog(deps: BundledCatalogDeps = {}): RawCatal
   // resolved identity per environment fingerprint. The memo is deliberately shorter than
   // the catalog cache so in-place upgrades are periodically re-probed; environment/runtime
   // selection changes produce a new fingerprint immediately.
-  const envParts = [process.env.OPENCODEX_HOME ?? "", process.env.CODEX_CLI_PATH ?? "", process.env.PATH ?? "", process.platform];
-  const envFingerprint = useCache ? [...envParts, persistedSelectionStamp(deps)].join("\0") : null;
-  const candidates = deps.commandCandidates?.() ?? (() => {
-    let runtimeCommand: string;
-    let runtimeVersion = "";
-    if (useCache && resolvedRuntimeMemo && resolvedRuntimeMemo.fingerprint === envFingerprint && resolvedRuntimeMemo.expiresAt > nowMs) {
-      runtimeCommand = resolvedRuntimeMemo.command;
-      runtimeVersion = resolvedRuntimeMemo.version;
-    } else {
-      const resolved = resolveAndPersistCodexRuntime({
-        execFileSync: execFile,
-        configDir: deps.configDir,
-        env: deps.env,
-        platform: deps.platform,
-        existsSync: deps.existsSync,
-        readFileSync: deps.readFileSync,
-        now: deps.now,
-        discoverAlternatives: deps.discoverAlternatives,
-      });
-      runtimeCommand = resolved.runtime.command;
-      runtimeVersion = resolved.runtime.version ?? "";
-      if (useCache && resolved.runtime.source !== "fallback") {
-        // Re-read the persisted stamp AFTER resolution: persistCodexRuntime may have just
-        // (re)written it, and a stale pre-call stamp would force one redundant re-probe.
-        // Keep this memo shorter than the catalog TTL so in-place binary upgrades self-heal,
-        // and never memoize an ephemeral fallback after a transient probe failure.
-        const postStamp = persistedSelectionStamp(deps);
-        resolvedRuntimeMemo = {
-          fingerprint: [...envParts, postStamp].join("\0"),
-          command: runtimeCommand,
-          version: runtimeVersion,
-          expiresAt: nowMs + RESOLVED_RUNTIME_MEMO_MS,
-        };
-      } else if (useCache) {
-        resolvedRuntimeMemo = null;
+  const envParts = [
+    runtimeEnv.OPENCODEX_HOME ?? "",
+    runtimeEnv.CODEX_CLI_PATH ?? "",
+    runtimeEnv.PATH ?? "",
+    runtimePlatform,
+    runtimeConfigDir,
+  ];
+  const envFingerprint = useCache
+    ? [...envParts, persistedSelectionStamp(deps)].join("\0")
+    : null;
+  const candidates =
+    deps.commandCandidates?.() ??
+    (() => {
+      let runtimeCommand: string;
+      let runtimeVersion = "";
+      if (
+        useCache &&
+        resolvedRuntimeMemo &&
+        resolvedRuntimeMemo.fingerprint === envFingerprint &&
+        resolvedRuntimeMemo.expiresAt > nowMs
+      ) {
+        runtimeCommand = resolvedRuntimeMemo.command;
+        runtimeVersion = resolvedRuntimeMemo.version;
+      } else {
+        const resolved = resolveAndPersistCodexRuntime({
+          execFileSync: execFile,
+          configDir: deps.configDir,
+          env: deps.env,
+          platform: deps.platform,
+          existsSync: deps.existsSync,
+          readFileSync: deps.readFileSync,
+          now: deps.now,
+          discoverAlternatives: deps.discoverAlternatives,
+          fallbackCommand: deps.fallbackCommand,
+        });
+        runtimeCommand = resolved.runtime.command;
+        runtimeVersion = resolved.runtime.version ?? "";
+        if (useCache && resolved.runtime.source !== "fallback") {
+          // Re-read the persisted stamp AFTER resolution: persistCodexRuntime may have just
+          // (re)written it, and a stale pre-call stamp would force one redundant re-probe.
+          // Keep this memo shorter than the catalog TTL so in-place binary upgrades self-heal,
+          // and never memoize an ephemeral fallback after a transient probe failure.
+          const postStamp = persistedSelectionStamp(deps);
+          resolvedRuntimeMemo = {
+            fingerprint: [...envParts, postStamp].join("\0"),
+            command: runtimeCommand,
+            version: runtimeVersion,
+            expiresAt: nowMs + RESOLVED_RUNTIME_MEMO_MS,
+          };
+        } else if (useCache) {
+          resolvedRuntimeMemo = null;
+        }
       }
-    }
-    if (useCache) {
-      cacheKey = [
-        runtimeCommand,
-        runtimeVersion,
-        process.env.OPENCODEX_HOME ?? "",
-        process.env.CODEX_CLI_PATH ?? "",
-      ].join("\0");
-    }
-    return [runtimeCommand];
-  })();
+      if (useCache) {
+        cacheKey = [
+          runtimeCommand,
+          runtimeVersion,
+          runtimeEnv.OPENCODEX_HOME ?? "",
+          runtimeEnv.CODEX_CLI_PATH ?? "",
+        ].join("\0");
+      }
+      return [runtimeCommand];
+    })();
   if (
-    useCache
-    && cacheKey
-    && bundledCatalogCache
-    && bundledCatalogCache.key === cacheKey
-    && bundledCatalogCache.expiresAt > nowMs
+    useCache &&
+    cacheKey &&
+    bundledCatalogCache &&
+    bundledCatalogCache.key === cacheKey &&
+    bundledCatalogCache.expiresAt > nowMs
   ) {
     return bundledCatalogCache.value;
   }
   for (const command of unique(candidates)) {
     try {
-      const catalog = parseCatalogJson(runCodexDebugModels(command, execFile, deps));
+      const catalog = parseCatalogJson(
+        runCodexDebugModels(command, execFile, deps),
+      );
       if (catalog && findNativeTemplate(catalog)) {
         if (useCache && cacheKey) {
           bundledCatalogCache = {
@@ -249,7 +311,9 @@ export function loadBundledCodexCatalog(deps: BundledCatalogDeps = {}): RawCatal
         }
         return catalog;
       }
-    } catch { /* try next candidate */ }
+    } catch {
+      /* try next candidate */
+    }
   }
   if (useCache && cacheKey) {
     bundledCatalogCache = {
@@ -261,7 +325,10 @@ export function loadBundledCodexCatalog(deps: BundledCatalogDeps = {}): RawCatal
   return null;
 }
 
-export function materializeBundledCodexCatalog(path: string, deps: BundledCatalogDeps = {}): RawCatalog | null {
+export function materializeBundledCodexCatalog(
+  path: string,
+  deps: BundledCatalogDeps = {},
+): RawCatalog | null {
   const catalog = loadBundledCodexCatalog(deps);
   if (!catalog) return null;
   try {
@@ -278,25 +345,32 @@ export function loadCatalogForSync(path: string): RawCatalog | null {
   if (bundled) return JSON.parse(JSON.stringify(bundled)) as RawCatalog;
   const catalog = readCatalog(path);
   if (catalog && findNativeTemplate(catalog)) return catalog;
-  return readCatalog(catalogBackupPathFor(path))
-    ?? (isDefaultCatalogPath(path) ? readCatalog(legacyCatalogBackupPath()) : null)
-    ?? readCatalog(activeCodexModelsCachePath())
-    ?? materializeBundledCodexCatalog(path)
-    ?? catalog;
+  return (
+    readCatalog(catalogBackupPathFor(path)) ??
+    (isDefaultCatalogPath(path)
+      ? readCatalog(legacyCatalogBackupPath())
+      : null) ??
+    readCatalog(activeCodexModelsCachePath()) ??
+    materializeBundledCodexCatalog(path) ??
+    catalog
+  );
 }
 
 export function readCurrentCatalogOrCache(): RawCatalog | null {
   const path = readCodexCatalogPath();
-  return (isDefaultCatalogPath(path) ? loadBundledCodexCatalog() : null)
-    ?? readCatalog(path)
-    ?? readCatalog(activeCodexModelsCachePath());
+  return (
+    (isDefaultCatalogPath(path) ? loadBundledCodexCatalog() : null) ??
+    readCatalog(path) ??
+    readCatalog(activeCodexModelsCachePath())
+  );
 }
 
 export function loadCatalogTemplate(): RawEntry | null {
   const catalogPath = readCodexCatalogPath();
-  const native = findNativeTemplate(readCatalog(catalogPath))
-    ?? findNativeTemplate(readCatalogBackup(catalogPath))
-    ?? findNativeTemplate(readCatalog(activeCodexModelsCachePath()))
-    ?? findNativeTemplate(loadBundledCodexCatalog());
+  const native =
+    findNativeTemplate(readCatalog(catalogPath)) ??
+    findNativeTemplate(readCatalogBackup(catalogPath)) ??
+    findNativeTemplate(readCatalog(activeCodexModelsCachePath())) ??
+    findNativeTemplate(loadBundledCodexCatalog());
   return native ? JSON.parse(JSON.stringify(native)) : null;
 }
