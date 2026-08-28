@@ -182,3 +182,5 @@ Use the canonical labels `needs-triage`, `needs-info`, `ready-for-agent`, `ready
 ### Domain docs
 
 This repository uses a single-context domain layout with root `CONTEXT.md` (when present) and `docs/adr/`. See `docs/agents/domain.md`.
+
+Compound Engineering overlay: `.compound-engineering/` (tracked `config.yaml`, gitignored `config.local.yaml`). Artifact root `.compound-engineering/artifacts/`. Portable skills `~/.agents/skills/ce-*`; native Cursor plugin is fallback only when this overlay is absent.

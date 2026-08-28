@@ -1,0 +1,5 @@
+# Compound Engineering — tracked defaults.
+# Live checkout overrides: config.local.yaml (gitignored).
+# Native Cursor plugin is fallback only when this directory is absent.
+
+docs_root: .compound-engineering/artifacts
