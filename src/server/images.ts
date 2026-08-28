@@ -24,17 +24,29 @@ import { formatCodexProviderForLog } from "../codex/routing";
 import { signalWithTimeout } from "../lib/abort";
 import { sidecarEnter } from "../lib/sidecar-tracker";
 import type { OcxConfig } from "../types";
-import { resolveFirstUsableOpenAiSidecar, selectImagesProvider } from "../providers/openai-sidecar";
+import {
+  resolveFirstUsableOpenAiSidecar,
+  selectImagesProvider,
+} from "../providers/openai-sidecar";
 import { getProviderRegistryEntry } from "../providers/registry";
 import { readJsonRequestBody } from "./request-decompress";
-import { ForwardAdmissionCredentialError, validateForwardAdmissionCredential } from "./auth-cors";
+import {
+  ForwardAdmissionCredentialError,
+  validateForwardAdmissionCredential,
+} from "./auth-cors";
 import type { RequestLogContext } from "./request-log";
 import { codexLogAccountId, decodeRequestErrorResponse } from "./responses";
-import { getValidAccessToken, getOAuthCredentialProjectId } from "../oauth/index";
+import {
+  getValidAccessToken,
+  getOAuthCredentialProjectId,
+} from "../oauth/index";
 import { safeAntigravityHttpErrorMessage } from "../adapters/google-errors";
 import { sanitizeUpstreamErrorText } from "../adapters/upstream-http-error";
 import { ANTIGRAVITY_REQUEST_UA } from "../adapters/google-antigravity-wire";
-import { decodeValidatedImageBase64, MAX_ENCODED_BYTES_PER_IMAGE } from "../images/artifacts";
+import {
+  decodeValidatedImageBase64,
+  MAX_ENCODED_BYTES_PER_IMAGE,
+} from "../images/artifacts";
 
 export type ImagesEndpoint = "generations" | "edits";
 
@@ -70,16 +82,32 @@ const CCA_BLOCKING_FINISH_REASONS: ReadonlySet<string> = new Set([
  * the HTTP request behind it may still complete. Used to make the non-cancellable
  * OAuth refresh chain responsive to client cancellation and deadline expiry.
  */
-function abortableRace<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+function abortableRace<T>(
+  promise: Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
   if (signal.aborted) {
-    return Promise.reject(signal.reason ?? new DOMException("The operation was aborted.", "AbortError"));
+    return Promise.reject(
+      signal.reason ??
+        new DOMException("The operation was aborted.", "AbortError"),
+    );
   }
   return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(signal.reason ?? new DOMException("The operation was aborted.", "AbortError"));
+    const onAbort = () =>
+      reject(
+        signal.reason ??
+          new DOMException("The operation was aborted.", "AbortError"),
+      );
     signal.addEventListener("abort", onAbort, { once: true });
     promise.then(
-      (val) => { signal.removeEventListener("abort", onAbort); resolve(val); },
-      (err) => { signal.removeEventListener("abort", onAbort); reject(err); },
+      (val) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(val);
+      },
+      (err) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(err);
+      },
     );
   });
 }
@@ -97,14 +125,22 @@ async function tryCcaImageGeneration(
 
   const prompt = (body as { prompt?: unknown })?.prompt;
   if (typeof prompt !== "string" || !prompt.trim()) {
-    return formatErrorResponse(400, "invalid_request_error", "prompt is required and must not be empty");
+    return formatErrorResponse(
+      400,
+      "invalid_request_error",
+      "prompt is required and must not be empty",
+    );
   }
 
   const nRaw = (body as { n?: unknown })?.n;
   if (nRaw !== undefined && nRaw !== null) {
     const n = typeof nRaw === "number" ? nRaw : Number(nRaw);
     if (!Number.isInteger(n) || n !== 1) {
-      return formatErrorResponse(400, "invalid_request_error", "CCA image generation supports n=1 only");
+      return formatErrorResponse(
+        400,
+        "invalid_request_error",
+        "CCA image generation supports n=1 only",
+      );
     }
   }
 
@@ -121,7 +157,10 @@ async function tryCcaImageGeneration(
     // threading signal through the entire chain, race the whole call against
     // linkedSignal: when the signal aborts we stop awaiting and surface the
     // cancellation immediately instead of hanging on the refresh HTTP call.
-    token = await abortableRace(getValidAccessToken("google-antigravity"), linkedSignal.signal);
+    token = await abortableRace(
+      getValidAccessToken("google-antigravity"),
+      linkedSignal.signal,
+    );
   } catch (err) {
     linkedSignal.cleanup();
     // abortableRace rejects immediately when the signal fires, so client
@@ -129,17 +168,33 @@ async function tryCcaImageGeneration(
     // into the linked signal, so check parent first (499) before the linked
     // signal (504).
     if (signal.aborted) {
-      return formatErrorResponse(499, "client_closed_request", "CCA image request canceled by client");
+      return formatErrorResponse(
+        499,
+        "client_closed_request",
+        "CCA image request canceled by client",
+      );
     }
     if (linkedSignal.signal.aborted) {
-      return formatErrorResponse(504, "upstream_error", "CCA image generation timed out during authentication");
+      return formatErrorResponse(
+        504,
+        "upstream_error",
+        "CCA image generation timed out during authentication",
+      );
     }
     // Missing/revoked credential → 401 (re-login required); transient refresh/network → 502.
     const errName = err instanceof Error ? err.name : "";
     if (errName === "OAuthLoginRequiredError") {
-      return formatErrorResponse(401, "invalid_request_error", "Google Antigravity login required: run 'ocx login google-antigravity'");
+      return formatErrorResponse(
+        401,
+        "invalid_request_error",
+        "Google Antigravity login required: run 'ocx login google-antigravity'",
+      );
     }
-    return formatErrorResponse(502, "upstream_error", "CCA image generation failed: OAuth token refresh failed");
+    return formatErrorResponse(
+      502,
+      "upstream_error",
+      "CCA image generation failed: OAuth token refresh failed",
+    );
   }
   const project = getOAuthCredentialProjectId("google-antigravity");
   if (!project) {
@@ -156,7 +211,8 @@ async function tryCcaImageGeneration(
 
   // Pin to the registry endpoint — never use a config-level baseUrl override for OAuth token transmission.
   const registryEntry = getProviderRegistryEntry("google-antigravity");
-  const baseUrl = registryEntry?.baseUrl ?? "https://daily-cloudcode-pa.googleapis.com";
+  const baseUrl =
+    registryEntry?.baseUrl ?? "https://daily-cloudcode-pa.googleapis.com";
   const envelope = {
     model: CCA_IMAGE_MODEL,
     userAgent: "antigravity",
@@ -176,16 +232,25 @@ async function tryCcaImageGeneration(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
           "User-Agent": ANTIGRAVITY_REQUEST_UA,
         },
         body: JSON.stringify(envelope),
         signal: linkedSignal.signal,
       });
     } catch (err) {
-      if (signal.aborted) return formatErrorResponse(499, "client_closed_request", "CCA image request canceled by client");
+      if (signal.aborted)
+        return formatErrorResponse(
+          499,
+          "client_closed_request",
+          "CCA image request canceled by client",
+        );
       if (err instanceof Error && err.name === "TimeoutError") {
-        return formatErrorResponse(504, "upstream_error", "CCA image generation timed out");
+        return formatErrorResponse(
+          504,
+          "upstream_error",
+          "CCA image generation timed out",
+        );
       }
       // Network/DNS/runtime errors may embed the request URL or headers verbatim
       // (e.g. "fetch failed: https://…/v1internal:generateContent"). The token
@@ -197,7 +262,11 @@ async function tryCcaImageGeneration(
         /https?:\/\/[^\s"'<>]+/gi,
         "[upstream-url]",
       );
-      return formatErrorResponse(502, "upstream_error", `CCA image generation failed: ${safeMsg}`);
+      return formatErrorResponse(
+        502,
+        "upstream_error",
+        `CCA image generation failed: ${safeMsg}`,
+      );
     }
 
     // Stream the upstream body with a bounded reader so an oversized or malicious
@@ -206,7 +275,11 @@ async function tryCcaImageGeneration(
     try {
       const reader = upstream.body?.getReader();
       if (!reader) {
-        return formatErrorResponse(502, "upstream_error", "CCA image response had no body");
+        return formatErrorResponse(
+          502,
+          "upstream_error",
+          "CCA image response had no body",
+        );
       }
       const chunks: Uint8Array[] = [];
       let total = 0;
@@ -217,12 +290,20 @@ async function tryCcaImageGeneration(
           total += value.byteLength;
           if (total > IMAGES_RESPONSE_MAX_BYTES) {
             await reader.cancel().catch(() => {});
-            return formatErrorResponse(502, "upstream_error", `CCA image response too large (exceeded ${IMAGES_RESPONSE_MAX_BYTES} bytes)`);
+            return formatErrorResponse(
+              502,
+              "upstream_error",
+              `CCA image response too large (exceeded ${IMAGES_RESPONSE_MAX_BYTES} bytes)`,
+            );
           }
           chunks.push(value);
         }
       } finally {
-        try { await reader.cancel(); } catch { /* ignore */ }
+        try {
+          await reader.cancel();
+        } catch {
+          /* ignore */
+        }
         reader.releaseLock();
       }
       payload = new Uint8Array(total);
@@ -239,14 +320,29 @@ async function tryCcaImageGeneration(
       // check the parent first: parent abort → 499 (client cancelled); linked-only
       // abort → 504 (upstream stall); anything else → 502 body-read failure.
       if (signal.aborted) {
-        return formatErrorResponse(499, "client_closed_request", "CCA image request canceled by client");
+        return formatErrorResponse(
+          499,
+          "client_closed_request",
+          "CCA image request canceled by client",
+        );
       }
       if (linkedSignal.signal.aborted) {
-        return formatErrorResponse(504, "upstream_error", "CCA image response timed out during body read");
+        return formatErrorResponse(
+          504,
+          "upstream_error",
+          "CCA image response timed out during body read",
+        );
       }
       const rawMsg = err instanceof Error ? err.message : String(err);
-      const safeMsg = sanitizeUpstreamErrorText(rawMsg).replace(/https?:\/\/[^\s"'<>]+/gi, "[upstream-url]");
-      return formatErrorResponse(502, "upstream_error", `CCA image body read failed: ${safeMsg}`);
+      const safeMsg = sanitizeUpstreamErrorText(rawMsg).replace(
+        /https?:\/\/[^\s"'<>]+/gi,
+        "[upstream-url]",
+      );
+      return formatErrorResponse(
+        502,
+        "upstream_error",
+        `CCA image body read failed: ${safeMsg}`,
+      );
     }
 
     if (!upstream.ok) {
@@ -262,12 +358,27 @@ async function tryCcaImageGeneration(
 
     let json: Record<string, unknown>;
     try {
-      json = JSON.parse(new TextDecoder().decode(payload)) as Record<string, unknown>;
+      json = JSON.parse(new TextDecoder().decode(payload)) as Record<
+        string,
+        unknown
+      >;
     } catch {
-      return formatErrorResponse(502, "upstream_error", "CCA image response was not valid JSON");
+      return formatErrorResponse(
+        502,
+        "upstream_error",
+        "CCA image response was not valid JSON",
+      );
     }
     const resp = (json.response ?? json) as {
-      candidates?: { content?: { parts?: { inlineData?: { mimeType?: string; data?: string }; text?: string }[] }; finishReason?: string }[];
+      candidates?: {
+        content?: {
+          parts?: {
+            inlineData?: { mimeType?: string; data?: string };
+            text?: string;
+          }[];
+        };
+        finishReason?: string;
+      }[];
       promptFeedback?: { blockReason?: string };
     };
     // Safety blocks are permanent for the same prompt — return 400 (non-retryable)
@@ -277,16 +388,31 @@ async function tryCcaImageGeneration(
     // candidate.finishReason (generation cut off by a content filter).
     const blockReason = resp.promptFeedback?.blockReason;
     if (typeof blockReason === "string" && blockReason.trim()) {
-      return formatErrorResponse(400, "invalid_request_error", `CCA image generation blocked by safety filter (promptFeedback.blockReason: ${blockReason})`);
+      return formatErrorResponse(
+        400,
+        "invalid_request_error",
+        `CCA image generation blocked by safety filter (promptFeedback.blockReason: ${blockReason})`,
+      );
     }
     const candidate = resp.candidates?.[0];
     const finishReason = candidate?.finishReason;
-    if (typeof finishReason === "string" && CCA_BLOCKING_FINISH_REASONS.has(finishReason)) {
-      return formatErrorResponse(400, "invalid_request_error", `CCA image generation blocked by safety filter (finishReason: ${finishReason})`);
+    if (
+      typeof finishReason === "string" &&
+      CCA_BLOCKING_FINISH_REASONS.has(finishReason)
+    ) {
+      return formatErrorResponse(
+        400,
+        "invalid_request_error",
+        `CCA image generation blocked by safety filter (finishReason: ${finishReason})`,
+      );
     }
     const parts = candidate?.content?.parts;
     if (!Array.isArray(parts)) {
-      return formatErrorResponse(502, "upstream_error", "CCA image response had no valid parts array");
+      return formatErrorResponse(
+        502,
+        "upstream_error",
+        "CCA image response had no valid parts array",
+      );
     }
     const images: { b64_json: string }[] = [];
     for (const part of parts) {
@@ -294,25 +420,40 @@ async function tryCcaImageGeneration(
       const data = part.inlineData?.data;
       if (typeof data !== "string" || data.length === 0) continue;
       if (data.length > MAX_ENCODED_BYTES_PER_IMAGE) {
-        return formatErrorResponse(502, "upstream_error", "CCA image payload exceeds per-image size cap");
+        return formatErrorResponse(
+          502,
+          "upstream_error",
+          "CCA image payload exceeds per-image size cap",
+        );
       }
       try {
         decodeValidatedImageBase64(data);
       } catch {
-        return formatErrorResponse(502, "upstream_error", "CCA image payload failed base64/magic validation");
+        return formatErrorResponse(
+          502,
+          "upstream_error",
+          "CCA image payload failed base64/magic validation",
+        );
       }
       images.push({ b64_json: data });
     }
     if (images.length === 0) {
-      return formatErrorResponse(502, "upstream_error", "CCA image model returned no image data");
+      return formatErrorResponse(
+        502,
+        "upstream_error",
+        "CCA image model returned no image data",
+      );
     }
     // Only `{created, data:[{b64_json}]}` is returned — no token, projectId, or
     // upstream metadata leak through. The Authorization header is consumed by the
     // fetch above and never copied onto this Response.
-    return new Response(JSON.stringify({ created: Math.floor(Date.now() / 1000), data: images }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ created: Math.floor(Date.now() / 1000), data: images }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      },
+    );
   } finally {
     linkedSignal.cleanup();
   }
@@ -332,14 +473,16 @@ export async function handleImages(
       candidates.error,
     );
   }
-  const explicitKeyedProvider = config.images?.provider !== undefined && candidates.keyed !== undefined;
+  const explicitKeyedProvider =
+    config.images?.provider !== undefined && candidates.keyed !== undefined;
   // Admission bearer is valid proxy auth (requireApiAuth already passed) but must never be
   // forwarded as OpenAI ChatGPT credentials. When the caller sent it, skip OpenAI forward
   // and allow CCA / keyed paths instead of rejecting the whole request.
   let skipOpenAiForwardForAdmissionBearer = false;
   if (!explicitKeyedProvider) {
-    try { validateForwardAdmissionCredential(req.headers, config); }
-    catch (err) {
+    try {
+      validateForwardAdmissionCredential(req.headers, config);
+    } catch (err) {
       if (err instanceof ForwardAdmissionCredentialError) {
         skipOpenAiForwardForAdmissionBearer = true;
       } else {
@@ -356,19 +499,27 @@ export async function handleImages(
   const model = (body as { model?: unknown } | null)?.model;
   if (typeof model === "string" && model) logCtx.model = model;
 
-  const canUseOpenAiForward = !skipOpenAiForwardForAdmissionBearer && candidates.forwardCandidates.length > 0;
+  const canUseOpenAiForward =
+    !skipOpenAiForwardForAdmissionBearer &&
+    candidates.forwardCandidates.length > 0;
 
   if (!canUseOpenAiForward && !candidates.keyed) {
-    const ccaResponse = await tryCcaImageGeneration(body, config, logCtx, req.signal, endpoint);
+    const ccaResponse = await tryCcaImageGeneration(
+      body,
+      config,
+      logCtx,
+      req.signal,
+      endpoint,
+    );
     if (ccaResponse) return ccaResponse;
     // 400, not 5xx: codex retries every 5xx up to 5 total attempts, and this is a permanent
     // configuration state that must surface on the first attempt.
     return formatErrorResponse(
       400,
       "invalid_request_error",
-      "Built-in image generation needs an OpenAI upstream (ChatGPT login or an OpenAI API-key provider) "
-      + "or a logged-in Google Antigravity (Cloud Code Assist) provider, "
-      + "but none is configured in opencodex. Add a provider or disable the tool with `codex features disable image_generation`.",
+      "Built-in image generation needs an OpenAI upstream (ChatGPT login or an OpenAI API-key provider) " +
+        "or a logged-in Google Antigravity (Cloud Code Assist) provider, " +
+        "but none is configured in opencodex. Add a provider or disable the tool with `codex features disable image_generation`.",
     );
   }
 
@@ -379,26 +530,55 @@ export async function handleImages(
   let forwardAuthError: Response | undefined;
   if (canUseOpenAiForward) {
     try {
-      forward = await resolveFirstUsableOpenAiSidecar(candidates.forwardCandidates, req.headers, config);
-      if (forward) logCtx.provider = formatCodexProviderForLog(forward.providerName, codexLogAccountId(forward.authContext), config);
+      forward = await resolveFirstUsableOpenAiSidecar(
+        candidates.forwardCandidates,
+        req.headers,
+        config,
+      );
+      if (forward)
+        logCtx.provider = formatCodexProviderForLog(
+          forward.providerName,
+          codexLogAccountId(forward.authContext),
+          config,
+        );
     } catch (err) {
       if (err instanceof CodexAccountCooldownError) {
         forwardAuthError = cooldownErrorResponse(err);
       } else if (err instanceof CodexThreadAffinityExpiredError) {
-        forwardAuthError = formatErrorResponse(409, "invalid_request_error", "Codex thread account affinity expired; start a new session");
+        forwardAuthError = formatErrorResponse(
+          409,
+          "invalid_request_error",
+          "Codex thread account affinity expired; start a new session",
+        );
       } else if (err instanceof CodexAuthContextError) {
-        const safeAccountLabel = formatCodexProviderForLog("openai", err.accountId, config);
-        console.error(`[images] Pool account ${safeAccountLabel} token failed; reauthentication required`);
-        forwardAuthError = formatErrorResponse(401, "authentication_error", "Selected Codex account needs reauthentication");
+        const safeAccountLabel = formatCodexProviderForLog(
+          "openai",
+          err.accountId,
+          config,
+        );
+        console.error(
+          `[images] Pool account ${safeAccountLabel} token failed; reauthentication required`,
+        );
+        forwardAuthError = formatErrorResponse(
+          401,
+          "authentication_error",
+          "Selected Codex account needs reauthentication",
+        );
       } else if (err instanceof CodexPoolAuthenticationError) {
-        forwardAuthError = formatErrorResponse(401, "authentication_error", err.message);
+        forwardAuthError = formatErrorResponse(
+          401,
+          "authentication_error",
+          err.message,
+        );
       } else {
         throw err;
       }
     }
   }
 
-  const headers: Record<string, string> = { "content-type": "application/json" };
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
   let url: string;
   if (forward) {
     const { provider } = forward;
@@ -409,7 +589,13 @@ export async function handleImages(
   } else if (forwardAuthError) {
     // Before surfacing the OpenAI auth failure, try CCA — the user may have a
     // valid Google Antigravity login even though their OpenAI pool is broken.
-    const ccaResponse = await tryCcaImageGeneration(body, config, logCtx, req.signal, endpoint);
+    const ccaResponse = await tryCcaImageGeneration(
+      body,
+      config,
+      logCtx,
+      req.signal,
+      endpoint,
+    );
     if (ccaResponse) return ccaResponse;
     // No CCA either: a configured OpenAI pool mode owns its authentication failure.
     // Do not hide a broken/expired pool behind separately billed API-key image generation.
@@ -423,7 +609,13 @@ export async function handleImages(
     url = `${provider.baseUrl.replace(/\/v1\/?$/, "")}/v1/images/${endpoint}`;
   } else {
     // No usable OpenAI credential — try CCA before giving up.
-    const ccaResponse = await tryCcaImageGeneration(body, config, logCtx, req.signal, endpoint);
+    const ccaResponse = await tryCcaImageGeneration(
+      body,
+      config,
+      logCtx,
+      req.signal,
+      endpoint,
+    );
     if (ccaResponse) return ccaResponse;
     return formatErrorResponse(
       401,
@@ -444,28 +636,98 @@ export async function handleImages(
       body: JSON.stringify(body),
       signal: linkedSignal.signal,
     });
-    // Buffer rather than stream: the payload is one JSON document (base64 image, typically a few
-    // MB), and buffering keeps the timeout window covering the whole exchange. Cap the size to
-    // prevent an oversized response from exhausting process memory.
-    const payload = await upstreamResponse.arrayBuffer();
-    if (payload.byteLength > IMAGES_RESPONSE_MAX_BYTES) {
-      return formatErrorResponse(502, "upstream_error", `image ${endpoint} response too large (${payload.byteLength} bytes)`);
+    // Stream the upstream body with a bounded reader so an oversized or malicious
+    // response is rejected mid-stream rather than after a full arrayBuffer() allocation.
+    // The payload is one JSON document (base64 image, typically a few MB), but a
+    // missing/lying Content-Length or a compromised upstream could exhaust memory.
+    let payload: Uint8Array;
+    try {
+      const reader = upstreamResponse.body?.getReader();
+      if (!reader) {
+        return formatErrorResponse(
+          502,
+          "upstream_error",
+          `image ${endpoint} response had no body`,
+        );
+      }
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          total += value.byteLength;
+          if (total > IMAGES_RESPONSE_MAX_BYTES) {
+            await reader.cancel().catch(() => {});
+            return formatErrorResponse(
+              502,
+              "upstream_error",
+              `image ${endpoint} response too large (exceeded ${IMAGES_RESPONSE_MAX_BYTES} bytes)`,
+            );
+          }
+          chunks.push(value);
+        }
+      } finally {
+        try {
+          await reader.cancel();
+        } catch {
+          /* ignore */
+        }
+        reader.releaseLock();
+      }
+      payload = new Uint8Array(total);
+      let offset = 0;
+      for (const chunk of chunks) {
+        payload.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+    } catch (err) {
+      if (req.signal.aborted) {
+        return formatErrorResponse(
+          499,
+          "client_closed_request",
+          `image ${endpoint} request canceled by client`,
+        );
+      }
+      if (err instanceof Error && err.name === "TimeoutError") {
+        return formatErrorResponse(
+          504,
+          "upstream_error",
+          `image ${endpoint} upstream timed out during body read`,
+        );
+      }
+      return formatErrorResponse(
+        502,
+        "upstream_error",
+        `image ${endpoint} body read failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
     forward?.recordOutcome?.(upstreamResponse.status);
     const relayHeaders: Record<string, string> = {};
     const contentType = upstreamResponse.headers.get("content-type");
     if (contentType) relayHeaders["content-type"] = contentType;
-    return new Response(payload, { status: upstreamResponse.status, headers: relayHeaders });
+    return new Response(payload as BodyInit, {
+      status: upstreamResponse.status,
+      headers: relayHeaders,
+    });
   } catch (err) {
     // Client cancel first: it aborts the linked signal too, and must not be logged as an
     // upstream failure (499 maps to client_closed_request in the request log).
     if (req.signal.aborted) {
-      return formatErrorResponse(499, "client_closed_request", `image ${endpoint} request canceled by client`);
+      return formatErrorResponse(
+        499,
+        "client_closed_request",
+        `image ${endpoint} request canceled by client`,
+      );
     }
     if (err instanceof Error && err.name === "TimeoutError") {
       forward?.recordOutcome?.("timeout");
       // codex retries 5xx up to 4 more times; a retried 504 is acceptable for a transient hang.
-      return formatErrorResponse(504, "upstream_error", `image ${endpoint} upstream timed out`);
+      return formatErrorResponse(
+        504,
+        "upstream_error",
+        `image ${endpoint} upstream timed out`,
+      );
     }
     forward?.recordOutcome?.("connect_error");
     return formatErrorResponse(

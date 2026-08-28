@@ -263,6 +263,9 @@ jobs:
         env:
           TAG_SHA: ${{ steps.verify.outputs.tag_sha }}
           PINNED_IMAGE: ${{ steps.image.outputs.ref }}
+          CF_ACCESS_TEAM_DOMAIN: ${{ secrets.OCX_CF_ACCESS_TEAM_DOMAIN }}
+          CF_ACCESS_AUD: ${{ secrets.OCX_CF_ACCESS_AUD }}
+          CF_ACCESS_ALLOWED_HOSTS: ${{ secrets.OCX_CF_ACCESS_ALLOWED_HOSTS }}
         run: |
           set -euo pipefail
           if [[ ! "$OPENCODEX_BIND_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [ "$OPENCODEX_BIND_IP" = "127.0.0.1" ]; then
@@ -340,9 +343,9 @@ jobs:
 
           {
             printf 'OPENCODEX_IMAGE=%s\n' "$PINNED_IMAGE"
-            printf 'CF_ACCESS_TEAM_DOMAIN=%s\n' 'chefgroep.cloudflareaccess.com'
-            printf 'CF_ACCESS_AUD=%s\n' '113d678ff9b96cabf41e8e2076166fa692bc078db28e792019c9302fa0e53286'
-            printf 'CF_ACCESS_ALLOWED_HOSTS=%s\n' 'ocx.chefgroep.online'
+            printf 'CF_ACCESS_TEAM_DOMAIN=%s\n' "${CF_ACCESS_TEAM_DOMAIN:-}"
+            printf 'CF_ACCESS_AUD=%s\n' "${CF_ACCESS_AUD:-}"
+            printf 'CF_ACCESS_ALLOWED_HOSTS=%s\n' "${CF_ACCESS_ALLOWED_HOSTS:-}"
             printf 'OPENCODEX_STATE_DIR=%s\n' "$STATE_DIR"
             printf 'OPENCODEX_API_TOKEN_FILE=%s\n' "$token_file"
             printf 'OPENCODEX_BIND_IP=%s\n' "$OPENCODEX_BIND_IP"
@@ -413,6 +416,9 @@ jobs:
           BUN_RUNTIME: ${{ steps.prev.outputs.bun_runtime }}
           UNIT_BACKUP: ${{ steps.prev.outputs.unit_backup }}
           PREV_HEALTH_URLS: ${{ steps.prev.outputs.health_urls }}
+          CF_ACCESS_TEAM_DOMAIN: ${{ secrets.OCX_CF_ACCESS_TEAM_DOMAIN }}
+          CF_ACCESS_AUD: ${{ secrets.OCX_CF_ACCESS_AUD }}
+          CF_ACCESS_ALLOWED_HOSTS: ${{ secrets.OCX_CF_ACCESS_ALLOWED_HOSTS }}
         run: |
           set -euo pipefail
           prev_image="$PREV_IMAGE"
@@ -463,9 +469,9 @@ jobs:
             token_file="${OPENCODEX_API_TOKEN_FILE:-/etc/chef/opencodex/service-api-token}"
             {
               printf 'OPENCODEX_IMAGE=%s\n' "$prev_image"
-              printf 'CF_ACCESS_TEAM_DOMAIN=%s\n' 'chefgroep.cloudflareaccess.com'
-              printf 'CF_ACCESS_AUD=%s\n' '113d678ff9b96cabf41e8e2076166fa692bc078db28e792019c9302fa0e53286'
-              printf 'CF_ACCESS_ALLOWED_HOSTS=%s\n' 'ocx.chefgroep.online'
+              printf 'CF_ACCESS_TEAM_DOMAIN=%s\n' "${CF_ACCESS_TEAM_DOMAIN:-}"
+              printf 'CF_ACCESS_AUD=%s\n' "${CF_ACCESS_AUD:-}"
+              printf 'CF_ACCESS_ALLOWED_HOSTS=%s\n' "${CF_ACCESS_ALLOWED_HOSTS:-}"
               printf 'OPENCODEX_STATE_DIR=%s\n' "$STATE_DIR"
               printf 'OPENCODEX_API_TOKEN_FILE=%s\n' "$token_file"
               printf 'OPENCODEX_BIND_IP=%s\n' "$OPENCODEX_BIND_IP"
