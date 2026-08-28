@@ -34,5 +34,9 @@ describe("Cloudflare Access container deploy contract", () => {
       "113d678ff9b96cabf41e8e2076166fa692bc078db28e792019c9302fa0e53286",
     );
     expect(workflow).not.toContain("ocx.chefgroep.online");
+    expect(workflow).toContain("secret+live merge");
+    expect(
+      workflow.split("OCX_CF_ACCESS_* repo secrets or keep them").length - 1,
+    ).toBe(2);
   });
 });
