@@ -59,12 +59,51 @@ describe("Codex config injection", () => {
     expect(block).not.toContain("CF-Access-Client-Secret");
   });
 
-  test("CF Access-trusted host injects API key plus CF Access service token headers", () => {
-    const block = buildProviderTableBlock(10100, false, true, "ocx.chefgroep.online");
+  test("hostname alone does not grant CF Access service-token trust", () => {
+    const previousAllowed = process.env.CF_ACCESS_ALLOWED_HOSTS;
+    const previousHost = process.env.CF_ACCESS_HOST;
+    try {
+      delete process.env.CF_ACCESS_ALLOWED_HOSTS;
+      delete process.env.CF_ACCESS_HOST;
+      const block = buildProviderTableBlock(
+        10100,
+        false,
+        true,
+        "ocx.chefgroep.online",
+      );
 
-    expect(block).toContain(
-      'env_http_headers = { "x-opencodex-api-key" = "OPENCODEX_API_AUTH_TOKEN", "CF-Access-Client-Id" = "CF_ACCESS_CLIENT_ID", "CF-Access-Client-Secret" = "CF_ACCESS_CLIENT_SECRET" }',
-    );
+      expect(block).toContain(
+        'env_http_headers = { "x-opencodex-api-key" = "OPENCODEX_API_AUTH_TOKEN" }',
+      );
+      expect(block).not.toContain("CF-Access-Client-Id");
+      expect(block).not.toContain("CF-Access-Client-Secret");
+    } finally {
+      if (previousAllowed === undefined)
+        delete process.env.CF_ACCESS_ALLOWED_HOSTS;
+      else process.env.CF_ACCESS_ALLOWED_HOSTS = previousAllowed;
+      if (previousHost === undefined) delete process.env.CF_ACCESS_HOST;
+      else process.env.CF_ACCESS_HOST = previousHost;
+    }
+  });
+
+  test("explicitly configured CF Access-trusted host injects API key plus CF Access service token headers", () => {
+    const previous = process.env.CF_ACCESS_ALLOWED_HOSTS;
+    try {
+      process.env.CF_ACCESS_ALLOWED_HOSTS = "ocx.chefgroep.online";
+      const block = buildProviderTableBlock(
+        10100,
+        false,
+        true,
+        "ocx.chefgroep.online",
+      );
+
+      expect(block).toContain(
+        'env_http_headers = { "x-opencodex-api-key" = "OPENCODEX_API_AUTH_TOKEN", "CF-Access-Client-Id" = "CF_ACCESS_CLIENT_ID", "CF-Access-Client-Secret" = "CF_ACCESS_CLIENT_SECRET" }',
+      );
+    } finally {
+      if (previous === undefined) delete process.env.CF_ACCESS_ALLOWED_HOSTS;
+      else process.env.CF_ACCESS_ALLOWED_HOSTS = previous;
+    }
   });
 
   test("shouldInjectApiAuthHeader follows OPENCODEX_BIND_HOST when config.hostname is unset", () => {
@@ -77,34 +116,53 @@ describe("Codex config injection", () => {
       process.env.OPENCODEX_BIND_HOST = "127.0.0.1";
       expect(shouldInjectApiAuthHeader({})).toBe(false);
     } finally {
-      if (previousBindHost === undefined) delete process.env.OPENCODEX_BIND_HOST;
+      if (previousBindHost === undefined)
+        delete process.env.OPENCODEX_BIND_HOST;
       else process.env.OPENCODEX_BIND_HOST = previousBindHost;
     }
   });
 
   test("injected base_url matches the actual bind: literal 127.0.0.1 for loopback/wildcard (Windows resolves localhost to ::1 first)", () => {
-    expect(buildProviderTableBlock(10100, false, false, undefined)).toContain('base_url = "http://127.0.0.1:10100/v1"');
-    expect(buildProviderTableBlock(10100, false, false, "localhost")).toContain('base_url = "http://127.0.0.1:10100/v1"');
-    expect(buildProviderTableBlock(10100, false, false, "0.0.0.0")).toContain('base_url = "http://127.0.0.1:10100/v1"');
-    expect(buildProviderTableBlock(10100, false, false, "::")).toContain('base_url = "http://127.0.0.1:10100/v1"');
-    expect(buildProviderTableBlock(10100, false, false, "::1")).toContain('base_url = "http://[::1]:10100/v1"');
-    expect(buildProviderTableBlock(10100, false, false, "[::1]")).toContain('base_url = "http://[::1]:10100/v1"');
-    expect(buildProviderTableBlock(10100, false, false, "192.168.1.20")).toContain('base_url = "http://192.168.1.20:10100/v1"');
-    expect(buildProviderTableBlock(10100, false, false, "2001:db8::5")).toContain('base_url = "http://[2001:db8::5]:10100/v1"');
+    expect(buildProviderTableBlock(10100, false, false, undefined)).toContain(
+      'base_url = "http://127.0.0.1:10100/v1"',
+    );
+    expect(buildProviderTableBlock(10100, false, false, "localhost")).toContain(
+      'base_url = "http://127.0.0.1:10100/v1"',
+    );
+    expect(buildProviderTableBlock(10100, false, false, "0.0.0.0")).toContain(
+      'base_url = "http://127.0.0.1:10100/v1"',
+    );
+    expect(buildProviderTableBlock(10100, false, false, "::")).toContain(
+      'base_url = "http://127.0.0.1:10100/v1"',
+    );
+    expect(buildProviderTableBlock(10100, false, false, "::1")).toContain(
+      'base_url = "http://[::1]:10100/v1"',
+    );
+    expect(buildProviderTableBlock(10100, false, false, "[::1]")).toContain(
+      'base_url = "http://[::1]:10100/v1"',
+    );
+    expect(
+      buildProviderTableBlock(10100, false, false, "192.168.1.20"),
+    ).toContain('base_url = "http://192.168.1.20:10100/v1"');
+    expect(
+      buildProviderTableBlock(10100, false, false, "2001:db8::5"),
+    ).toContain('base_url = "http://[2001:db8::5]:10100/v1"');
   });
 
   test("strips stale root context-window overrides on injection so the catalog drives model context (gpt-5.5 regression)", () => {
-    const cleaned = stripRootContextWindowOverrides([
-      'model_provider = "opencodex"',
-      "model_context_window = 1000000",
-      "model_auto_compact_token_limit = 900000",
-      'model = "gpt-5.5"',
-      "",
-      "[model_providers.opencodex]",
-      "# a nested table key must survive",
-      "model_context_window = 272000",
-      "",
-    ].join("\n"));
+    const cleaned = stripRootContextWindowOverrides(
+      [
+        'model_provider = "opencodex"',
+        "model_context_window = 1000000",
+        "model_auto_compact_token_limit = 900000",
+        'model = "gpt-5.5"',
+        "",
+        "[model_providers.opencodex]",
+        "# a nested table key must survive",
+        "model_context_window = 272000",
+        "",
+      ].join("\n"),
+    );
 
     // Root-level overrides (before the first table header) are removed.
     expect(cleaned).not.toMatch(/^model_context_window = 1000000$/m);
@@ -117,17 +175,19 @@ describe("Codex config injection", () => {
   });
 
   test("preserves user root context-window overrides when restoring native Codex", () => {
-    const stripped = stripOpencodexConfig([
-      'model = "gpt-5.5"',
-      'model_context_window = 1000000',
-      'model_auto_compact_token_limit = 900000',
-      'model_catalog_json = "/tmp/opencodex-catalog.json"',
-      'model_provider = "opencodex"',
-      "",
-      "[features]",
-      "fast_mode = true",
-      "",
-    ].join("\n"));
+    const stripped = stripOpencodexConfig(
+      [
+        'model = "gpt-5.5"',
+        "model_context_window = 1000000",
+        "model_auto_compact_token_limit = 900000",
+        'model_catalog_json = "/tmp/opencodex-catalog.json"',
+        'model_provider = "opencodex"',
+        "",
+        "[features]",
+        "fast_mode = true",
+        "",
+      ].join("\n"),
+    );
 
     expect(stripped).toContain('model = "gpt-5.5"');
     expect(stripped).toContain("model_context_window = 1000000");
@@ -137,31 +197,35 @@ describe("Codex config injection", () => {
   });
 
   test("removes root routed model names when restoring native Codex", () => {
-    const stripped = stripOpencodexConfig([
-      'model_provider = "opencodex"',
-      'model = "opencode-go/minimax-m3"',
-      'model_verbosity = "high"',
-      "",
-      "[features]",
-      "fast_mode = true",
-      "",
-    ].join("\n"));
+    const stripped = stripOpencodexConfig(
+      [
+        'model_provider = "opencodex"',
+        'model = "opencode-go/minimax-m3"',
+        'model_verbosity = "high"',
+        "",
+        "[features]",
+        "fast_mode = true",
+        "",
+      ].join("\n"),
+    );
 
     expect(stripped).not.toContain('model = "opencode-go/minimax-m3"');
     expect(stripped).toContain('model_verbosity = "high"');
   });
 
   test("preserves non-opencodex routed model names during fallback restore", () => {
-    const stripped = stripOpencodexConfig([
-      'model_provider = "proxy"',
-      'model = "openrouter/foo"',
-      "",
-      "[model_providers.proxy]",
-      'name = "Existing Proxy"',
-      'base_url = "https://proxy.example.test/v1"',
-      'wire_api = "responses"',
-      "",
-    ].join("\n"));
+    const stripped = stripOpencodexConfig(
+      [
+        'model_provider = "proxy"',
+        'model = "openrouter/foo"',
+        "",
+        "[model_providers.proxy]",
+        'name = "Existing Proxy"',
+        'base_url = "https://proxy.example.test/v1"',
+        'wire_api = "responses"',
+        "",
+      ].join("\n"),
+    );
 
     expect(stripped).toContain('model_provider = "proxy"');
     expect(stripped).toContain('model = "openrouter/foo"');
@@ -188,9 +252,16 @@ describe("Codex config injection", () => {
   });
 
   test("non-loopback fallback profile mirrors websocket and API auth provider options", () => {
-    const profile = buildProfileFile(10100, "/tmp/opencodex-catalog.json", true, true);
+    const profile = buildProfileFile(
+      10100,
+      "/tmp/opencodex-catalog.json",
+      true,
+      true,
+    );
 
-    expect(profile).toContain('model_catalog_json = "/tmp/opencodex-catalog.json"');
+    expect(profile).toContain(
+      'model_catalog_json = "/tmp/opencodex-catalog.json"',
+    );
     expect(profile).toContain("supports_websockets = true");
     expect(profile).toContain(
       'env_http_headers = { "x-opencodex-api-key" = "OPENCODEX_API_AUTH_TOKEN" }',
@@ -198,37 +269,55 @@ describe("Codex config injection", () => {
     expect(profile).not.toContain("CF-Access-Client-Id");
   });
 
-  test("non-loopback fallback profile for CF Access-trusted host includes all auth headers", () => {
-    const profile = buildProfileFile(10100, "/tmp/opencodex-catalog.json", true, true, "ocx.chefgroep.online");
+  test("non-loopback fallback profile for an explicitly trusted CF Access host includes all auth headers", () => {
+    const previous = process.env.CF_ACCESS_ALLOWED_HOSTS;
+    try {
+      process.env.CF_ACCESS_ALLOWED_HOSTS = "ocx.chefgroep.online";
+      const profile = buildProfileFile(
+        10100,
+        "/tmp/opencodex-catalog.json",
+        true,
+        true,
+        "ocx.chefgroep.online",
+      );
 
-    expect(profile).toContain(
-      'env_http_headers = { "x-opencodex-api-key" = "OPENCODEX_API_AUTH_TOKEN", "CF-Access-Client-Id" = "CF_ACCESS_CLIENT_ID", "CF-Access-Client-Secret" = "CF_ACCESS_CLIENT_SECRET" }',
-    );
+      expect(profile).toContain(
+        'env_http_headers = { "x-opencodex-api-key" = "OPENCODEX_API_AUTH_TOKEN", "CF-Access-Client-Id" = "CF_ACCESS_CLIENT_ID", "CF-Access-Client-Secret" = "CF_ACCESS_CLIENT_SECRET" }',
+      );
+    } finally {
+      if (previous === undefined) delete process.env.CF_ACCESS_ALLOWED_HOSTS;
+      else process.env.CF_ACCESS_ALLOWED_HOSTS = previous;
+    }
   });
 
   test("honors an explicit unavailable catalog decision", () => {
-    const path = chooseCatalogPathForInjection('model_catalog_json = "/tmp/opencodex-catalog.json"\n', null);
+    const path = chooseCatalogPathForInjection(
+      'model_catalog_json = "/tmp/opencodex-catalog.json"\n',
+      null,
+    );
 
     expect(path).toBeNull();
   });
 
   test("strips injected TOML sections without swallowing later indented tables", () => {
-    const stripped = stripOpencodexConfig([
-      'model_provider = "opencodex"',
-      "",
-      "# Auto-injected by opencodex",
-      " [model_providers.opencodex]",
-      'name = "OpenCodex Proxy"',
-      'base_url = "http://localhost:10100/v1"',
-      " [plugins.safe]",
-      "enabled = true",
-      "",
-      " [profiles.opencodex]",
-      'model_provider = "opencodex"',
-      " [profiles.work]",
-      'model = "gpt-5.5"',
-      "",
-    ].join("\n"));
+    const stripped = stripOpencodexConfig(
+      [
+        'model_provider = "opencodex"',
+        "",
+        "# Auto-injected by opencodex",
+        " [model_providers.opencodex]",
+        'name = "OpenCodex Proxy"',
+        'base_url = "http://localhost:10100/v1"',
+        " [plugins.safe]",
+        "enabled = true",
+        "",
+        " [profiles.opencodex]",
+        'model_provider = "opencodex"',
+        " [profiles.work]",
+        'model = "gpt-5.5"',
+        "",
+      ].join("\n"),
+    );
 
     expect(stripped).toContain("[plugins.safe]");
     expect(stripped).toContain("enabled = true");
@@ -239,16 +328,18 @@ describe("Codex config injection", () => {
   });
 
   test("strip removes only marker-owned native subagent defaults", () => {
-    const stripped = stripOpencodexConfig([
-      MANAGED_AGENTS_TABLE_MARKER,
-      "[agents]",
-      MANAGED_SUBAGENT_DEFAULT_MARKER,
-      'default_subagent_model = "gpt-5.6-sol"',
-      MANAGED_SUBAGENT_DEFAULT_MARKER,
-      'default_subagent_reasoning_effort = "high"',
-      "max_threads = 8",
-      "",
-    ].join("\n"));
+    const stripped = stripOpencodexConfig(
+      [
+        MANAGED_AGENTS_TABLE_MARKER,
+        "[agents]",
+        MANAGED_SUBAGENT_DEFAULT_MARKER,
+        'default_subagent_model = "gpt-5.6-sol"',
+        MANAGED_SUBAGENT_DEFAULT_MARKER,
+        'default_subagent_reasoning_effort = "high"',
+        "max_threads = 8",
+        "",
+      ].join("\n"),
+    );
 
     expect(stripped).toContain("[agents]");
     expect(stripped).toContain("max_threads = 8");
@@ -261,32 +352,42 @@ describe("Codex config injection", () => {
 
 describe("Design B openai_base_url injection", () => {
   test("buildOpenaiBaseUrlLine matches the actual bind host", () => {
-    expect(buildOpenaiBaseUrlLine(10100)).toBe('openai_base_url = "http://127.0.0.1:10100/v1"');
-    expect(buildOpenaiBaseUrlLine(10100, "localhost")).toBe('openai_base_url = "http://127.0.0.1:10100/v1"');
-    expect(buildOpenaiBaseUrlLine(10100, "::1")).toBe('openai_base_url = "http://[::1]:10100/v1"');
+    expect(buildOpenaiBaseUrlLine(10100)).toBe(
+      'openai_base_url = "http://127.0.0.1:10100/v1"',
+    );
+    expect(buildOpenaiBaseUrlLine(10100, "localhost")).toBe(
+      'openai_base_url = "http://127.0.0.1:10100/v1"',
+    );
+    expect(buildOpenaiBaseUrlLine(10100, "::1")).toBe(
+      'openai_base_url = "http://[::1]:10100/v1"',
+    );
   });
 
   test("inserts marker + root key before the first table header", () => {
-    const { content, keptUserBaseUrl } = setRootOpenaiBaseUrl([
-      'model = "gpt-5.5"',
-      "",
-      "[features]",
-      "fast_mode = true",
-      "",
-    ].join("\n"), 10100);
+    const { content, keptUserBaseUrl } = setRootOpenaiBaseUrl(
+      ['model = "gpt-5.5"', "", "[features]", "fast_mode = true", ""].join(
+        "\n",
+      ),
+      10100,
+    );
 
     expect(keptUserBaseUrl).toBe(false);
     const lines = content.split("\n");
-    const markerIdx = lines.findIndex(l => l.includes("Auto-injected by opencodex"));
-    const keyIdx = lines.findIndex(l => l.startsWith("openai_base_url"));
-    const tableIdx = lines.findIndex(l => l.trim() === "[features]");
+    const markerIdx = lines.findIndex((l) =>
+      l.includes("Auto-injected by opencodex"),
+    );
+    const keyIdx = lines.findIndex((l) => l.startsWith("openai_base_url"));
+    const tableIdx = lines.findIndex((l) => l.trim() === "[features]");
     expect(markerIdx).toBeGreaterThanOrEqual(0);
     expect(keyIdx).toBe(markerIdx + 1);
     expect(keyIdx).toBeLessThan(tableIdx);
   });
 
   test("re-inject is idempotent and rewrites the marker-owned line on port change", () => {
-    const first = setRootOpenaiBaseUrl("model = \"gpt-5.5\"\n\n[features]\nfast_mode = true\n", 10100).content;
+    const first = setRootOpenaiBaseUrl(
+      'model = "gpt-5.5"\n\n[features]\nfast_mode = true\n',
+      10100,
+    ).content;
     const second = setRootOpenaiBaseUrl(first, 10190).content;
 
     expect(second.match(/openai_base_url/g)?.length).toBe(1);
@@ -309,25 +410,32 @@ describe("Design B openai_base_url injection", () => {
   });
 
   test("strip removes only the marker-owned pair; a user's own line survives", () => {
-    const injected = setRootOpenaiBaseUrl("model = \"gpt-5.5\"\n\n[features]\nfast_mode = true\n", 10100).content;
+    const injected = setRootOpenaiBaseUrl(
+      'model = "gpt-5.5"\n\n[features]\nfast_mode = true\n',
+      10100,
+    ).content;
     const stripped = stripInjectedOpenaiBaseUrl(injected);
     expect(stripped).not.toContain("openai_base_url");
     expect(stripped).not.toContain("Auto-injected by opencodex");
 
-    const userOwned = 'openai_base_url = "https://my-own-gateway.example/v1"\n\n[features]\n';
+    const userOwned =
+      'openai_base_url = "https://my-own-gateway.example/v1"\n\n[features]\n';
     expect(stripInjectedOpenaiBaseUrl(userOwned)).toBe(userOwned);
   });
 
   test("stripOpencodexConfig removes the Design B form including routed root models", () => {
-    const injected = setRootOpenaiBaseUrl([
-      'model = "opencode-go/minimax-m3"',
-      'model_verbosity = "high"',
-      'model_catalog_json = "/tmp/opencodex-catalog.json"',
-      "",
-      "[features]",
-      "fast_mode = true",
-      "",
-    ].join("\n"), 10100).content;
+    const injected = setRootOpenaiBaseUrl(
+      [
+        'model = "opencode-go/minimax-m3"',
+        'model_verbosity = "high"',
+        'model_catalog_json = "/tmp/opencodex-catalog.json"',
+        "",
+        "[features]",
+        "fast_mode = true",
+        "",
+      ].join("\n"),
+      10100,
+    ).content;
     const stripped = stripOpencodexConfig(injected);
 
     expect(stripped).not.toContain("openai_base_url");
