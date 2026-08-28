@@ -167,7 +167,7 @@ jobs:
             # Check if any of these lack a preceding size constant or
             # streaming reader pattern nearby
             UNBOUNDED=""
-            for match in $BUFFER_CALLS; do
+            while IFS= read -r match; do
               file=$(echo "$match" | cut -d: -f1)
               line=$(echo "$match" | cut -d: -f2)
               # Check 10 lines before for a MAX_*_BYTES constant or bounded reader
@@ -175,7 +175,7 @@ jobs:
               if ! echo "$context" | grep -qi 'MAX_.*BYTES\|bounded.*reader\|getReader\|streaming'; then
                 UNBOUNDED="${UNBOUNDED}\n${match}"
               fi
-            done
+            done <<< "$BUFFER_CALLS"
             if [ -n "$UNBOUNDED" ]; then
               echo "::warning::Potential unbounded response buffering (arrayBuffer without size guard):"
               echo -e "$UNBOUNDED"
