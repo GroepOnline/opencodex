@@ -236,11 +236,11 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: 'auto', paddingTop: '32px' }}>
               <div>
                 <div className="vanguard-value" style={{ fontSize: '1.5rem' }}>{pct429}</div>
-                <div className="vanguard-value-label">HTTP 429</div>
+                <div className="vanguard-value-label">{t("dash.http429")}</div>
               </div>
               <div>
                 <div className="vanguard-value" style={{ fontSize: '1.5rem' }}>{pct502}</div>
-                <div className="vanguard-value-label">HTTP 50x</div>
+                <div className="vanguard-value-label">{t("dash.http50x")}</div>
               </div>
             </div>
           </div>
@@ -255,7 +255,7 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
                 {usageProviders.map(p => {
                   const name = p.provider;
                   const count = p.requests;
-                  const pct = (count / usageProviders[0].requests) * 100;
+                  const pct = Math.max(0, Math.min(100, p.shareRatio * 100));
                   return (
                     <div key={name} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>

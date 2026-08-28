@@ -508,4 +508,6 @@
   .lp-feature h2,
   .lp-nav__links > a:not(.lp-btn),
   .lp-footer__links a { transition: none; }
+  .lp-btn:active,
+  .lp-feature:hover { transform: none; }
 }

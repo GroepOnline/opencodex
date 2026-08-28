@@ -23,6 +23,9 @@
 @import "./styles-apikeys-workspace.css";
 @import "./styles/traffic-rail.css";
 
+/* Linear font substitutes via CDN (Inter + JetBrains Mono). */
+@import "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap";
+
 /* General Sans preserved as fallback UI font while Linear tokens apply. */
 @font-face {
   font-family: "General Sans";
@@ -45,9 +48,6 @@
   font-style: normal;
   font-display: swap;
 }
-
-/* Linear font substitutes via CDN (Inter + JetBrains Mono). */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
 
 :root {
   /* default: follow the OS; [data-theme] below pins color-scheme so light-dark() obeys it */

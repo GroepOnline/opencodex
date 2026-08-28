@@ -88,6 +88,9 @@ export function readRouteFromHash(hash?: string): Route {
   const [head, sub] = canonical.split("/");
   if (VALID_VIEWS.has(head as View)) {
     const view = head as View;
+    if (view === "landing" && canonical !== "landing") {
+      return { view: "dashboard", sub: null };
+    }
     return { view, sub: sub && VIEW_SUBS[view].has(sub) ? sub : null };
   }
   // Unknown hashes keep their historic fallback: the dashboard. The public

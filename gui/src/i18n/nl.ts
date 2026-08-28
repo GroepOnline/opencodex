@@ -344,6 +344,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "dash.volume30d": "Volume (30d)",
   "dash.economics": "Kosten",
   "dash.reliability": "Betrouwbaarheid",
+  "dash.http429": "HTTP 429",
+  "dash.http50x": "HTTP 50x",
   "dash.cooldown": "Cooldown",
   "dash.cooldownHint": "{count} leverancier(s) in cooldown",
   "dash.healthAria": "Proxy-status",

@@ -156,6 +156,8 @@ export const en = {
   "dash.volume30d": "Volume (30d)",
   "dash.economics": "Economics",
   "dash.reliability": "Reliability",
+  "dash.http429": "HTTP 429",
+  "dash.http50x": "HTTP 50x",
   "dash.cooldown": "Cooldown",
   "dash.cooldownHint": "{count} provider(s) in cooldown",
   "dash.healthAria": "Proxy health",
