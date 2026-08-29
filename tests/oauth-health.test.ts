@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -202,6 +202,29 @@ describe("collectOAuthHealthEntriesForCli", () => {
       reason: "rate_limit",
     });
     expect(remote?.action).toContain("wait until");
+  });
+
+  test("management health uses the admin credential, not the data-plane service token", async () => {
+    const ocxHome = process.env.OPENCODEX_HOME!;
+    mkdirSync(ocxHome, { recursive: true });
+    const adminToken = `ocx_admin_${"a".repeat(43)}`;
+    writeFileSync(join(ocxHome, "admin-api-token"), `${adminToken}\n`, { mode: 0o600 });
+    process.env.OPENCODEX_API_AUTH_TOKEN = "service-token-must-not-be-used";
+    let authorization: string | null = null;
+    try {
+      const report = await collectOAuthHealthEntriesForCli(Date.now(), {
+        findLiveProxyImpl: async () => ({ hostname: "127.0.0.1", port: 19191, pid: null }),
+        fetchImpl: async (_input, init) => {
+          authorization = new Headers(init?.headers).get("authorization");
+          return new Response(JSON.stringify({ accounts: [] }), { status: 200 });
+        },
+      });
+      expect(report.codexHealthSource).toBe("management-api");
+      expect(authorization).toBe(`Bearer ${adminToken}`);
+      expect(authorization).not.toContain("service-token-must-not-be-used");
+    } finally {
+      delete process.env.OPENCODEX_API_AUTH_TOKEN;
+    }
   });
 
   test("labels unavailable fallback and omits process-local Codex maps", async () => {
