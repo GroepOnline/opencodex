@@ -11,7 +11,7 @@ import { accessSync, constants, existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { getConfigDir, getConfigPath, readConfigDiagnostics, readPid, readRuntimePort, resolveEnvValue } from "../config";
-import { findLiveProxy } from "../server/proxy-liveness";
+import { findReachableProxyForCli } from "../server/proxy-liveness";
 import { gracefulStopHost } from "../lib/process-control";
 import { maskAccountId } from "../lib/privacy";
 import { PROXY_ENV_KEYS, proxyEnvPresent } from "../lib/proxy-env";
@@ -155,7 +155,7 @@ export async function collectOAuthDoctorChecks(
     checks.push({
       level: "WARN",
       message:
-        "Codex account health unavailable (proxy not running). Action: start the proxy and re-run `ocx doctor` to inspect live cooldown/reauth",
+        "Codex account health unavailable (management API unreachable). Action: verify the configured OCX endpoint/tunnel and re-run `ocx doctor`",
     });
   }
   for (const entry of report.entries) {
@@ -733,7 +733,7 @@ export async function runDoctor(args: string[] = []): Promise<void> {
 
   // #618: identity-verified liveness first so pid-file absence does not hide a live service.
   // Reuse the diagnostics config already loaded above so doctor stays read-only on malformed JSON.
-  const live = await findLiveProxy({
+  const live = await findReachableProxyForCli({
     configFn: () => ({ port: doctorConfig.port, hostname: doctorConfig.hostname }),
   });
   const livePid = live ? live.pid : readPid();
@@ -744,6 +744,8 @@ export async function runDoctor(args: string[] = []): Promise<void> {
   const currentProxyEnv = collectProxyEnv();
   const configuredProxy = collectConfiguredProxy();
   const runningProxyEnv = collectRunningProxyEnv({
+    // A pidless live endpoint is intentionally not mapped back to a stale pid file:
+    // it can be a socket-activated forward to a remote OCX instance.
     readPidFn: () => (live ? live.pid : readPid()),
   });
 
@@ -757,7 +759,9 @@ export async function runDoctor(args: string[] = []): Promise<void> {
 
   console.log("\nRunning proxy process proxy env (presence only)");
   if (runningProxyEnv.status === "not_running") {
-    console.log("  --     no running ocx proxy process found");
+    console.log(live
+      ? "  --     no verified local ocx process; endpoint is reachable (forwarded/remote is valid)"
+      : "  --     no running ocx proxy process found");
   } else if (runningProxyEnv.status === "unavailable") {
     console.log(`  --     pid ${runningProxyEnv.pid}: ${runningProxyEnv.reason}`);
   } else {
@@ -772,7 +776,7 @@ export async function runDoctor(args: string[] = []): Promise<void> {
     const runtime = liveRuntime;
     if (!runtime || !live) {
       console.log(`  --     doctor process Bun ${Bun.version} (this is NOT the service process)`);
-      console.log("  --     no running ocx proxy found (no live pid/runtime record)");
+      console.log("  --     no reachable ocx endpoint found");
     } else {
       const token = configuredAdminToken();
       const report = await fetchServiceMemory(gracefulStopHost(runtime.hostname), runtime.port, token);

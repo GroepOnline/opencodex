@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { findLiveProxy, isOpencodexHealthz, probeHostname, proxyIdentityAt } from "../src/server/proxy-liveness";
+import { findLiveProxy, findReachableProxyForCli, isOpencodexHealthz, probeHostname, proxyIdentityAt } from "../src/server/proxy-liveness";
 
 function healthz(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status });
@@ -60,6 +60,7 @@ describe("findLiveProxy", () => {
       readPidFn: () => 4242,
       readRuntimeFn: pid => (pid === 4242 ? { port: 58195 } : null),
       configFn: () => ({ port: 10100 }),
+      verifyPidFn: candidate => candidate,
       fetchFn: (async (url: string | URL | Request) => {
         urls.push(String(url));
         return healthz(OURS);
@@ -75,10 +76,24 @@ describe("findLiveProxy", () => {
       readPidFn: () => null,
       readRuntimeFn: () => null,
       configFn: () => ({ port: 10100 }),
+      verifyPidFn: candidate => candidate,
       fetchFn: (async () => healthz(OURS)) as typeof fetch,
     });
 
     expect(live).toEqual({ pid: 4242, port: 10100, source: "config" });
+  });
+
+
+  test("a configured forwarded endpoint never exposes its remote healthz pid as a local kill target", async () => {
+    const live = await findLiveProxy({
+      readPidFn: () => null,
+      verifyPidFn: () => null,
+      readRuntimeFn: () => null,
+      configFn: () => ({ port: 10100 }),
+      fetchFn: (async () => healthz({ ...OURS, pid: 7 })) as typeof fetch,
+    });
+
+    expect(live).toEqual({ pid: null, port: 10100, hostname: undefined, source: "config" });
   });
 
   test("a foreign listener on the configured port is not treated as our proxy", async () => {
@@ -98,6 +113,7 @@ describe("findLiveProxy", () => {
       readPidFn: () => null,
       readRuntimeFn: () => ({ pid: 4242, port: 58195, hostname: "::1" }),
       configFn: () => ({ port: 10100 }),
+      verifyPidFn: candidate => candidate,
       fetchFn: (async (url: string | URL | Request) => {
         urls.push(String(url));
         return healthz(OURS);
@@ -140,6 +156,7 @@ describe("findLiveProxy", () => {
       readPidFn: () => 1111,
       readRuntimeFn: () => ({ port: 58195 }),
       configFn: () => ({ port: 58195 }),
+      verifyPidFn: candidate => candidate,
       fetchFn: (async () => healthz({ ...OURS, pid: 9999 })) as typeof fetch,
     });
 
@@ -190,5 +207,27 @@ describe("findLiveProxy", () => {
     });
 
     expect(live).toEqual({ pid: null, port: 58195, hostname: undefined, source: "runtime" });
+  });
+});
+
+
+describe("findReachableProxyForCli", () => {
+  test("retries the configured endpoint for a socket-activated forward", async () => {
+    let attempts = 0;
+    const live = await findReachableProxyForCli({
+      readPidFn: () => null,
+      verifyPidFn: () => null,
+      readRuntimeFn: () => null,
+      configFn: () => ({ port: 10100 }),
+      timeoutMs: 20,
+      fetchFn: (async () => {
+        attempts += 1;
+        if (attempts === 1) throw new Error("cold forward");
+        return healthz({ ...OURS, pid: 7 });
+      }) as typeof fetch,
+    });
+
+    expect(attempts).toBe(2);
+    expect(live).toEqual({ pid: null, port: 10100, hostname: undefined, source: "config" });
   });
 });

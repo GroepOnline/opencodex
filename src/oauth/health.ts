@@ -6,8 +6,8 @@ import { isAccountNeedsReauth } from "../codex/account-runtime-state";
 import { getCodexAccountCredential, listCodexAccountIds } from "../codex/account-store";
 import { MAIN_CODEX_ACCOUNT_ID } from "../codex/main-account";
 import { maskAccountId } from "../lib/privacy";
-import { loadServiceTokenFromFile } from "../lib/service-secrets";
-import { findLiveProxy, probeHostname } from "../server/proxy-liveness";
+import { configuredAdminToken } from "../lib/admin-secrets";
+import { findLiveProxy, findReachableProxyForCli, probeHostname } from "../server/proxy-liveness";
 import { loadAuthStore, peekAuthStore, peekOAuthRefreshIntent, readOAuthRefreshIntent } from "./store";
 import { isAccountExpired } from "./account-expiry";
 import type { ProviderAccount } from "./types";
@@ -355,9 +355,13 @@ async function fetchCodexHealthFromLiveProxy(
   fetchImpl: typeof fetch = fetch,
   findLiveProxyImpl: typeof findLiveProxy = findLiveProxy,
 ): Promise<OAuthHealthEntry[] | null> {
-  const live = await findLiveProxyImpl();
+  const live = findLiveProxyImpl === findLiveProxy
+    ? await findReachableProxyForCli()
+    : await findLiveProxyImpl();
   if (!live) return null;
-  const token = process.env.OPENCODEX_API_AUTH_TOKEN ?? loadServiceTokenFromFile(process.env);
+  // This is a management API route. Data-plane/service credentials must never be
+  // reused here; the server intentionally keeps those trust domains separate.
+  const token = configuredAdminToken();
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   try {
@@ -389,7 +393,7 @@ export type OAuthCliHealthReport = {
 
 /** Shown by `ocx status` / `ocx doctor` when the proxy management API is unreachable. */
 export const CODEX_HEALTH_UNAVAILABLE_NOTE =
-  "Codex health: unavailable (proxy not running; live cooldown/reauth requires the management API)";
+  "Codex health: unavailable (management API unreachable; live cooldown/reauth requires the management API)";
 
 /**
  * CLI/doctor collector: observe-only OAuth store reads, and Codex health only from the

@@ -1,7 +1,7 @@
 import { durableBunRuntime } from "../lib/bun-runtime";
 import { codexAutoStartEnabled, getConfigPath, getPidPath, readConfigDiagnostics, readPid, readRuntimePort, type RuntimePortState } from "../config";
 import { diagnoseCodexBundledPlugins, type CodexPluginsDiagnostic } from "../codex/plugins-doctor";
-import { findLiveProxy, isOpencodexHealthz, probeHostname } from "../server/proxy-liveness";
+import { findReachableProxyForCli, isOpencodexHealthz, probeHostname } from "../server/proxy-liveness";
 import type { OcxConfig } from "../types";
 import { diagnoseService } from "../service";
 import { collectStartupHealth, type StartupHealth } from "../codex/autostart-health";
@@ -145,7 +145,7 @@ export async function collectStatus(): Promise<CliStatusView> {
   // Prefer identity-verified liveness (runtime-port + /healthz) over ocx.pid alone (#618).
   // Pass the already-resolved diagnostics config so findLiveProxy does not re-load and
   // warn on malformed config.json (status --json must stay stderr-clean).
-  const live = await findLiveProxy({
+  const live = await findReachableProxyForCli({
     configFn: () => ({ port: config.port, hostname: config.hostname }),
   });
   const pidFile = readPid();
@@ -160,12 +160,14 @@ export async function collectStatus(): Promise<CliStatusView> {
       dashboardUrl: `http://localhost:${live.port}/`,
     }
     : selectListenTarget(config, pidFile, pidFile ? readRuntimePort(pidFile) : null);
-  // findLiveProxy already identity-probed /healthz; avoid a second fetch that can race.
-  const health = live
+  // A pidless reachable endpoint is commonly a local socket/SSH/Tailscale forward.
+  // Probe it once more for the human-friendly version/uptime label; a verified local
+  // process keeps the single-probe fast path.
+  const health = live?.pid
     ? {
       ok: true,
       url: listen.healthUrl,
-      message: `ok (pid ${live.pid ?? "unknown"})`,
+      message: `ok (pid ${live.pid})`,
       label: `${listen.healthUrl} ok (live)`,
     }
     : await checkProxyHealth(listen);
@@ -263,7 +265,9 @@ export async function collectStatus(): Promise<CliStatusView> {
     },
   };
   const proxyLabel = live
-    ? `running (PID ${live.pid ?? pid ?? "unknown"})`
+    ? live.pid
+      ? `running (PID ${live.pid})`
+      : "reachable (no verified local PID; forwarded/remote endpoint)"
     : pid && health.ok
       ? `running (PID ${pid})`
       : pid
