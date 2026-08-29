@@ -71,7 +71,7 @@ describe("findLiveProxy", () => {
     expect(urls).toEqual(["http://127.0.0.1:58195/healthz"]);
   });
 
-  test("falls back to config.port only when no runtime record answers, taking pid from the body", async () => {
+  test("falls back to config.port as a pidless endpoint when no runtime record answers", async () => {
     const live = await findLiveProxy({
       readPidFn: () => null,
       readRuntimeFn: () => null,
@@ -80,14 +80,14 @@ describe("findLiveProxy", () => {
       fetchFn: (async () => healthz(OURS)) as typeof fetch,
     });
 
-    expect(live).toEqual({ pid: 4242, port: 10100, source: "config" });
+    expect(live).toEqual({ pid: null, port: 10100, source: "config" });
   });
 
 
   test("a configured forwarded endpoint never exposes its remote healthz pid as a local kill target", async () => {
     const live = await findLiveProxy({
       readPidFn: () => null,
-      verifyPidFn: () => null,
+      verifyPidFn: candidate => candidate, // simulate a same-numbered local OCX PID collision
       readRuntimeFn: () => null,
       configFn: () => ({ port: 10100 }),
       fetchFn: (async () => healthz({ ...OURS, pid: 7 })) as typeof fetch,
@@ -161,8 +161,9 @@ describe("findLiveProxy", () => {
     });
 
     // The runtime probe fails the pid check; the config fallback probes the same port
-    // without a pid expectation and adopts the reported live pid instead.
-    expect(live).toEqual({ pid: 9999, port: 58195, source: "config" });
+    // without a pid expectation. Config-only discovery stays pidless because it has no
+    // proof that a same-numbered local process owns the endpoint.
+    expect(live).toEqual({ pid: null, port: 58195, source: "config" });
   });
 
   test("a pidless legacy healthz never promotes an unverified cheap pid to a kill target", async () => {
@@ -216,7 +217,7 @@ describe("findReachableProxyForCli", () => {
     let attempts = 0;
     const live = await findReachableProxyForCli({
       readPidFn: () => null,
-      verifyPidFn: () => null,
+      verifyPidFn: candidate => candidate, // collision must still remain non-killable
       readRuntimeFn: () => null,
       configFn: () => ({ port: 10100 }),
       timeoutMs: 20,

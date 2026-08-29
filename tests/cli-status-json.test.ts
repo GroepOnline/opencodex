@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync, mkdirSync 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveStatusPid, selectListenTarget } from "../src/cli/status";
+import { collectStatus, resolveStatusPid, selectListenTarget } from "../src/cli/status";
 
 const repoRoot = dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
 const cliPath = join(repoRoot, "src", "cli", "index.ts");
@@ -268,6 +268,45 @@ describe("CLI status JSON", () => {
       expect(serialized).not.toContain("sk-status-secret");
       expect(serialized).not.toContain("apiKey");
     } finally {
+      rmSync(opencodexHome, { recursive: true, force: true });
+    }
+  });
+
+  test("collectStatus keeps a config-discovered forwarded endpoint pidless and labels it", async () => {
+    const opencodexHome = mkdtempSync(join(tmpdir(), "ocx-status-forwarded-"));
+    const previousOcxHome = process.env.OPENCODEX_HOME;
+    const originalFetch = globalThis.fetch;
+    let healthProbes = 0;
+    try {
+      process.env.OPENCODEX_HOME = opencodexHome;
+      writeFileSync(join(opencodexHome, "config.json"), JSON.stringify({
+        port: 19191,
+        hostname: "127.0.0.1",
+        providers: {},
+        defaultProvider: "openai",
+      }), "utf8");
+      globalThis.fetch = (async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url === "http://127.0.0.1:19191/healthz") {
+          healthProbes += 1;
+          return new Response(JSON.stringify({
+            status: "ok", service: "opencodex", version: "1.2.2", uptime: 10, pid: 7, port: 10100,
+          }), { status: 200 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }) as typeof fetch;
+
+      const view = await collectStatus();
+      expect(view.proxyLabel).toBe("reachable (no verified local PID; forwarded/remote endpoint)");
+      expect(view.json.proxy.running).toBe(true);
+      expect(view.json.proxy.pid).toBeNull();
+      expect(view.json.proxy.health.ok).toBe(true);
+      expect(view.json.proxy.health.message).toContain("v1.2.2");
+      expect(healthProbes).toBeGreaterThanOrEqual(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousOcxHome === undefined) delete process.env.OPENCODEX_HOME;
+      else process.env.OPENCODEX_HOME = previousOcxHome;
       rmSync(opencodexHome, { recursive: true, force: true });
     }
   });

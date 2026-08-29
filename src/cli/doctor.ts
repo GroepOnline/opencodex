@@ -155,7 +155,7 @@ export async function collectOAuthDoctorChecks(
     checks.push({
       level: "WARN",
       message:
-        "Codex account health unavailable (management API unreachable). Action: verify the configured OCX endpoint/tunnel and re-run `ocx doctor`",
+        "Codex account health unavailable (management API unavailable). Action: verify the configured OCX endpoint/tunnel and re-run `ocx doctor`",
     });
   }
   for (const entry of report.entries) {

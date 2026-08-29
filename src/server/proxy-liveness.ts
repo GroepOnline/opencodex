@@ -151,9 +151,10 @@ export async function findLiveProxy(io: LivenessIo = {}): Promise<LiveProxy | nu
   const identity = await proxyIdentityAt(port, { hostname: config.hostname }, io);
   if (identity) {
     return {
-      // Configured localhost may be a socket-activated SSH/Tailscale forward. Treat the
-      // endpoint as live, but never trust its reported remote PID as a local kill target.
-      pid: identity.pid === null ? killablePid(pid) : killablePid(identity.pid),
+      // Config-source discovery proves endpoint identity, not local socket ownership. A
+      // forwarded remote PID can numerically collide with an unrelated local OCX process,
+      // so config-only discovery is never a destructive/killable PID source.
+      pid: null,
       port,
       hostname: config.hostname,
       source: "config",
@@ -180,9 +181,7 @@ export async function findReachableProxyForCli(io: LivenessIo = {}): Promise<Liv
   const identity = await proxyIdentityAt(port, { hostname: config.hostname }, retryIo);
   if (!identity) return null;
 
-  const verifyPidFn = io.verifyPidFn ?? verifyPidIdentity;
-  const verifiedPid = identity.pid !== null && verifyPidFn(identity.pid) === identity.pid
-    ? identity.pid
-    : null;
-  return { pid: verifiedPid, port, hostname: config.hostname, source: "config" };
+  // Same safety rule as the first config probe: reachability does not prove that a
+  // same-numbered local process owns this endpoint. Keep destructive callers pidless.
+  return { pid: null, port, hostname: config.hostname, source: "config" };
 }
