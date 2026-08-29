@@ -5,6 +5,7 @@ import { applyProxyEnv, loadConfig } from "../config";
 import type { OcxConfig } from "../types";
 import { collectOrcaCodexHomeDiagnostic } from "./home";
 import { summarizeComboCatalogOmissions, type ComboCatalogOmission } from "./catalog/aggregation";
+import { syncExternalOcxCatalog } from "./external-ocx-catalog";
 
 export interface CodexSyncResult {
   ok: boolean;
@@ -26,6 +27,7 @@ interface CodexSyncDeps {
   injectCodexConfig: typeof injectCodexConfig;
   currentExternalCodexModelProvider?: typeof currentExternalCodexModelProvider;
   collectCodexHomeDiagnostic?: typeof collectOrcaCodexHomeDiagnostic;
+  syncExternalOcxCatalog?: typeof syncExternalOcxCatalog;
 }
 
 const defaultDeps: CodexSyncDeps = {
@@ -55,6 +57,35 @@ export async function syncModelsToCodex(
   const p = port ?? config.port ?? 10100;
   const externalProvider = (deps.currentExternalCodexModelProvider ?? currentExternalCodexModelProvider)();
   if (externalProvider) {
+    try {
+      const remoteCatalog = await (deps.syncExternalOcxCatalog ?? syncExternalOcxCatalog)();
+      if (remoteCatalog.handled) {
+        const result = await deps.injectCodexConfig(p, config, {});
+        log?.log(`   + ${remoteCatalog.models} models mirrored from the central OCX catalog (${remoteCatalog.catalogPath})`);
+        log?.log(result.message);
+        reportCodexHomeTarget(log, deps.collectCodexHomeDiagnostic ?? collectOrcaCodexHomeDiagnostic);
+        return {
+          ok: result.success,
+          added: remoteCatalog.models,
+          catalogPath: remoteCatalog.catalogPath,
+          catalogExists: true,
+          catalogWritten: true,
+          cacheSynced: remoteCatalog.cacheSynced,
+          message: result.message,
+          ...(result.nativeSubagentDefaultsWarning ? { nativeSubagentDefaultsWarning: result.nativeSubagentDefaultsWarning } : {}),
+        };
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        added: 0,
+        catalogPath: null,
+        catalogExists: false,
+        catalogWritten: false,
+        cacheSynced: false,
+        message: `OCX remote catalog sync failed: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
     const result = await deps.injectCodexConfig(p, config, {});
     log?.log(result.message);
     reportCodexHomeTarget(log, deps.collectCodexHomeDiagnostic ?? collectOrcaCodexHomeDiagnostic);
