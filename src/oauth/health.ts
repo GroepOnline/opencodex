@@ -8,6 +8,7 @@ import { MAIN_CODEX_ACCOUNT_ID } from "../codex/main-account";
 import { maskAccountId } from "../lib/privacy";
 import { configuredAdminToken } from "../lib/admin-secrets";
 import { findLiveProxy, findReachableProxyForCli, probeHostname } from "../server/proxy-liveness";
+import { isLoopbackHostname } from "../server/auth-cors";
 import { loadAuthStore, peekAuthStore, peekOAuthRefreshIntent, readOAuthRefreshIntent } from "./store";
 import { isAccountExpired } from "./account-expiry";
 import type { ProviderAccount } from "./types";
@@ -362,11 +363,15 @@ async function fetchCodexHealthFromLiveProxy(
   // This is a management API route. Data-plane/service credentials must never be
   // reused here; the server intentionally keeps those trust domains separate.
   const token = configuredAdminToken();
+  const managementHost = probeHostname(live.hostname);
   const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
+  // The admin bearer may traverse plain HTTP only when the actual request target is
+  // loopback (including wildcard binds normalized by probeHostname). Non-loopback
+  // endpoints are still probed, but never receive the management credential.
+  if (token && isLoopbackHostname(managementHost)) headers.Authorization = `Bearer ${token}`;
   try {
     const res = await fetchImpl(
-      `http://${probeHostname(live.hostname)}:${live.port}/api/codex-auth/accounts`,
+      `http://${managementHost}:${live.port}/api/codex-auth/accounts`,
       { headers, signal: AbortSignal.timeout(4000) },
     );
     if (!res.ok) return null;
@@ -393,7 +398,7 @@ export type OAuthCliHealthReport = {
 
 /** Shown by `ocx status` / `ocx doctor` when the proxy management API is unreachable. */
 export const CODEX_HEALTH_UNAVAILABLE_NOTE =
-  "Codex health: unavailable (management API unreachable; live cooldown/reauth requires the management API)";
+  "Codex health: unavailable (management API unavailable; live cooldown/reauth requires the management API)";
 
 /**
  * CLI/doctor collector: observe-only OAuth store reads, and Codex health only from the

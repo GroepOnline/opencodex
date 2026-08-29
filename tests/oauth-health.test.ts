@@ -209,6 +209,9 @@ describe("collectOAuthHealthEntriesForCli", () => {
     mkdirSync(ocxHome, { recursive: true });
     const adminToken = `ocx_admin_${"a".repeat(43)}`;
     writeFileSync(join(ocxHome, "admin-api-token"), `${adminToken}\n`, { mode: 0o600 });
+    const previousAdminToken = process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
+    const previousServiceToken = process.env.OPENCODEX_API_AUTH_TOKEN;
+    delete process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
     process.env.OPENCODEX_API_AUTH_TOKEN = "service-token-must-not-be-used";
     let authorization: string | null = null;
     try {
@@ -223,7 +226,33 @@ describe("collectOAuthHealthEntriesForCli", () => {
       expect(authorization).toBe(`Bearer ${adminToken}`);
       expect(authorization).not.toContain("service-token-must-not-be-used");
     } finally {
-      delete process.env.OPENCODEX_API_AUTH_TOKEN;
+      if (previousAdminToken === undefined) delete process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
+      else process.env.OPENCODEX_ADMIN_AUTH_TOKEN = previousAdminToken;
+      if (previousServiceToken === undefined) delete process.env.OPENCODEX_API_AUTH_TOKEN;
+      else process.env.OPENCODEX_API_AUTH_TOKEN = previousServiceToken;
+    }
+  });
+
+  test("never sends the admin bearer to a non-loopback HTTP management endpoint", async () => {
+    const previousAdminToken = process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
+    process.env.OPENCODEX_ADMIN_AUTH_TOKEN = `ocx_admin_${"b".repeat(43)}`;
+    let authorization: string | null = "not-called";
+    let requestedUrl = "";
+    try {
+      const report = await collectOAuthHealthEntriesForCli(Date.now(), {
+        findLiveProxyImpl: async () => ({ hostname: "192.0.2.10", port: 19191, pid: null }),
+        fetchImpl: async (input, init) => {
+          requestedUrl = String(input);
+          authorization = new Headers(init?.headers).get("authorization");
+          return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
+        },
+      });
+      expect(requestedUrl).toBe("http://192.0.2.10:19191/api/codex-auth/accounts");
+      expect(authorization).toBeNull();
+      expect(report.codexHealthSource).toBe("unavailable");
+    } finally {
+      if (previousAdminToken === undefined) delete process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
+      else process.env.OPENCODEX_ADMIN_AUTH_TOKEN = previousAdminToken;
     }
   });
 

@@ -15,6 +15,7 @@ import {
   probeWham,
   proxyDownRestartHint,
   resolveCodexHomeDir,
+  runDoctor,
   type ServiceMemoryData,
 } from "../src/cli/doctor";
 import { collectOrcaCodexHomeDiagnostic } from "../src/codex/home";
@@ -57,6 +58,40 @@ describe("doctor", () => {
     if (prevProxyRef === undefined) delete process.env.OCX_TEST_PROXY_REF;
     else process.env.OCX_TEST_PROXY_REF = prevProxyRef;
     if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true });
+  });
+
+  test("runDoctor treats a reachable pidless forwarded endpoint as valid without claiming a local process", async () => {
+    writeFileSync(join(TEST_OPENCODEX_HOME, "config.json"), JSON.stringify({
+      port: 19191,
+      hostname: "127.0.0.1",
+      providers: {},
+      defaultProvider: "openai",
+    }), "utf8");
+    const originalFetch = globalThis.fetch;
+    const originalLog = console.log;
+    const logs: string[] = [];
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url === "http://127.0.0.1:19191/healthz") {
+        return new Response(JSON.stringify({
+          status: "ok", service: "opencodex", version: "1.2.2", uptime: 10, pid: 7, port: 10100,
+        }), { status: 200 });
+      }
+      if (url === "http://127.0.0.1:19191/api/codex-auth/accounts") {
+        return new Response(JSON.stringify({ accounts: [] }), { status: 200 });
+      }
+      throw new Error(`offline in test: ${url}`);
+    }) as typeof fetch;
+    console.log = (...args: unknown[]) => { logs.push(args.map(String).join(" ")); };
+    try {
+      await runDoctor();
+      const text = logs.join("\n");
+      expect(text).toContain("no verified local ocx process; endpoint is reachable (forwarded/remote is valid)");
+      expect(text).not.toContain("no running ocx proxy process found");
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.log = originalLog;
+    }
   });
 
   test("path report flips auth.json/config.json from absent to present", () => {
