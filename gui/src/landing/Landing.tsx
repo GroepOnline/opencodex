@@ -1,4 +1,5 @@
 import type { MouseEvent } from "react";
+import { useT } from "../i18n/shared";
 import HeroCanvas from "./HeroCanvas";
 
 /**
@@ -8,8 +9,7 @@ import HeroCanvas from "./HeroCanvas";
  * One WebGL scene (HeroCanvas) lives behind the hero copy; everything below
  * the fold is flat 2D. Design language: Signaal v3 (one accent, hairlines,
  * Instrument Serif display, General Sans body, JetBrains Mono for data).
- * No i18n keys: this page is English-only by design (public marketing
- * surface, not product UI).
+ * Public copy follows the same EN/NL locale contract as the product UI.
  */
 
 const GITHUB_URL = "https://github.com/GroepOnline/opencodex";
@@ -60,19 +60,21 @@ function Mark({ size = 24 }: { size?: number }) {
 /* Hero headline as word-level split text (Signaal §16): each word rises out
    of an overflow-hidden mask, staggered by CSS animation-delay. The h1 keeps
    a plain aria-label so assistive tech reads one sentence. */
-const H1_WORDS: Array<{ t: string; accent?: boolean; breakAfter?: boolean }> = [
-  { t: "Code" },
-  { t: "that" },
-  { t: "ships.", accent: true, breakAfter: true },
-  { t: "Not" },
-  { t: "slides." },
-];
-
 function HeroTitle() {
+  const t = useT();
+  const prefix = t("landing.hero.titlePrefix");
+  const accent = t("landing.hero.titleAccent");
+  const suffix = t("landing.hero.titleSuffix");
+  const words: Array<{ t: string; accent?: boolean; breakAfter?: boolean }> = [
+    ...prefix.split(" ").map((word) => ({ t: word })),
+    { t: accent, accent: true, breakAfter: true },
+    ...suffix.split(" ").map((word) => ({ t: word })),
+  ];
+
   return (
-    <h1 className="lp-h1" aria-label="Code that ships. Not slides.">
-      {H1_WORDS.map((w, i) => (
-        <span key={w.t}>
+    <h1 className="lp-h1" aria-label={`${prefix} ${accent} ${suffix}`}>
+      {words.map((w, i) => (
+        <span key={`${i}:${w.t}`}>
           <span className="lp-w" aria-hidden="true">
             <span
               className={w.accent ? "lp-wi lp-h1__accent" : "lp-wi"}
@@ -99,20 +101,22 @@ function SectionEyebrow({ index, children }: { index: string; children: string }
 }
 
 export default function Landing() {
+  const t = useT();
+
   return (
     <div className="lp">
       {/* ── Sticky nav ── */}
       <header className="lp-nav">
-        <a className="lp-nav__brand" href="#top" onClick={landingAnchor("top")} aria-label="OpenCodex home">
+        <a className="lp-nav__brand" href="#top" onClick={landingAnchor("top")} aria-label={t("landing.nav.homeAria")}>
           <Mark />
           <span className="lp-nav__name">OpenCodex</span>
         </a>
-        <nav className="lp-nav__links" aria-label="Primary">
-          <a href={DOCS_URL} target="_blank" rel="noreferrer">Docs</a>
-          <a href="#pricing" onClick={landingAnchor("pricing")}>Pricing</a>
-          <a href="#signin" onClick={landingAnchor("signin")}>Sign in</a>
+        <nav className="lp-nav__links" aria-label={t("landing.nav.primaryAria")}>
+          <a href={DOCS_URL} target="_blank" rel="noreferrer">{t("landing.nav.docs")}</a>
+          <a href="#pricing" onClick={landingAnchor("pricing")}>{t("landing.nav.pricing")}</a>
+          <a href="#signin" onClick={landingAnchor("signin")}>{t("landing.nav.signIn")}</a>
           <a className="lp-btn lp-btn--primary lp-btn--sm" href="#get-started" onClick={landingAnchor("get-started")}>
-            Start building
+            {t("landing.nav.start")}
           </a>
         </nav>
       </header>
@@ -123,41 +127,37 @@ export default function Landing() {
         <div className="lp-hero__inner">
           <p className="lp-eyebrow">
             <span className="lp-eyebrow__tick" aria-hidden="true" />
-            Open-source coding agent
+            {t("landing.hero.eyebrow")}
           </p>
           <HeroTitle />
-          <p className="lp-sub">
-            OpenCodex routes Claude, Gemini, Grok, DeepSeek and Ollama through
-            one local endpoint, so your Codex CLI, app or SDK talks to every
-            model without changing a line.
-          </p>
+          <p className="lp-sub">{t("landing.hero.sub")}</p>
           <div className="lp-cta-row">
-            <a className="lp-btn lp-btn--primary" href="#get-started" onClick={landingAnchor("get-started")}>Start building</a>
+            <a className="lp-btn lp-btn--primary" href="#get-started" onClick={landingAnchor("get-started")}>{t("landing.nav.start")}</a>
             <a className="lp-btn lp-btn--ghost" href={GITHUB_URL} target="_blank" rel="noreferrer">
-              View on GitHub
+              {t("landing.hero.github")}
             </a>
           </div>
           <p className="lp-proof">
-            <span>MIT licensed</span>
+            <span>{t("landing.hero.proofLicense")}</span>
             <span className="lp-proof__dot" aria-hidden="true" />
-            <span>Runs locally</span>
+            <span>{t("landing.hero.proofLocal")}</span>
             <span className="lp-proof__dot" aria-hidden="true" />
-            <span>One Bun process</span>
+            <span>{t("landing.hero.proofProcess")}</span>
           </p>
         </div>
 
         {/* Instrument readout pinned to the hero edge: real values, mono. */}
         <div className="lp-hero__readout" aria-hidden="true">
           <div className="lp-readout-row">
-            <span className="lp-readout-key">endpoint</span>
+            <span className="lp-readout-key">{t("landing.readout.endpoint")}</span>
             <span className="lp-readout-val">http://localhost:8317</span>
           </div>
           <div className="lp-readout-row">
-            <span className="lp-readout-key">routing</span>
-            <span className="lp-readout-val lp-readout-val--ok">quota-aware</span>
+            <span className="lp-readout-key">{t("landing.readout.routing")}</span>
+            <span className="lp-readout-val lp-readout-val--ok">{t("landing.readout.quotaAware")}</span>
           </div>
           <div className="lp-readout-row">
-            <span className="lp-readout-key">providers</span>
+            <span className="lp-readout-key">{t("landing.readout.providers")}</span>
             <span className="lp-readout-val">claude · gemini · grok · deepseek · ollama</span>
           </div>
         </div>
@@ -165,106 +165,81 @@ export default function Landing() {
 
       {/* ── Features ── */}
       <section className="lp-section" id="features">
-        <SectionEyebrow index="01">Why OpenCodex</SectionEyebrow>
+        <SectionEyebrow index="01">{t("landing.features.eyebrow")}</SectionEyebrow>
         <div className="lp-features">
           <article className="lp-feature lp-reveal">
             <span className="lp-feature__index">/01</span>
-            <h2>One endpoint, every provider</h2>
-            <p>
-              Point Codex at <code>localhost</code> once. Switch between Claude,
-              Gemini, Grok, DeepSeek or a local Ollama model from the dashboard.
-              No client reconfiguration, no SDK forks.
-            </p>
+            <h2>{t("landing.features.oneTitle")}</h2>
+            <p>{t("landing.features.oneBody")}</p>
           </article>
           <article className="lp-feature lp-reveal">
             <span className="lp-feature__index">/02</span>
-            <h2>Quota-aware routing</h2>
-            <p>
-              Rate limits and credit balances are tracked per account, live.
-              When one key hits a wall, traffic moves to the next eligible
-              account before your session stalls.
-            </p>
+            <h2>{t("landing.features.twoTitle")}</h2>
+            <p>{t("landing.features.twoBody")}</p>
           </article>
           <article className="lp-feature lp-reveal">
             <span className="lp-feature__index">/03</span>
-            <h2>Your keys stay home</h2>
-            <p>
-              The proxy runs as a single Bun process on your machine or fleet.
-              Credentials never leave your infrastructure. Request bodies are
-              never logged.
-            </p>
+            <h2>{t("landing.features.threeTitle")}</h2>
+            <p>{t("landing.features.threeBody")}</p>
           </article>
         </div>
       </section>
 
       {/* ── Terminal strip ── */}
       <section className="lp-section lp-section--term">
-        <SectionEyebrow index="02">In the terminal</SectionEyebrow>
+        <SectionEyebrow index="02">{t("landing.terminal.eyebrow")}</SectionEyebrow>
         <div className="lp-term lp-reveal">
           <div className="lp-term__bar">
             <span className="lp-term__title">ocx</span>
-            <span className="lp-term__meta">session · local</span>
+            <span className="lp-term__meta">{t("landing.terminal.meta")}</span>
           </div>
           <pre className="lp-term__body"><code>{''}<span className="lp-t-line"><span className="lp-t-prompt">$</span> bun install -g opencodex</span>
 <span className="lp-t-line"><span className="lp-t-prompt">$</span> ocx</span>
-<span className="lp-t-line lp-t-out">  opencodex 2.7.1 · proxy listening on http://localhost:8317</span>
-<span className="lp-t-line lp-t-out">  dashboard  → http://localhost:8317/#dashboard</span>
-<span className="lp-t-line lp-t-out">  providers  → 5 connected, 0 exhausted</span>
+<span className="lp-t-line lp-t-out">  {t("landing.terminal.proxyListening")}</span>
+<span className="lp-t-line lp-t-out">  {t("landing.terminal.dashboard")}</span>
+<span className="lp-t-line lp-t-out">  {t("landing.terminal.providers")}</span>
 <span className="lp-t-line"> </span>
 <span className="lp-t-line"><span className="lp-t-prompt">$</span> export OPENAI_BASE_URL=http://localhost:8317</span>
-<span className="lp-t-line"><span className="lp-t-prompt">$</span> codex "refactor the routing layer"</span>
-<span className="lp-t-line lp-t-ok">  ✓ routed via claude-opus-4.6 <span className="lp-t-dim">(quota 82%)</span></span>
-<span className="lp-t-line lp-t-ok">  ✓ 14 files changed, tests green</span></code></pre>
+<span className="lp-t-line"><span className="lp-t-prompt">$</span> codex "{t("landing.terminal.prompt")}"</span>
+<span className="lp-t-line lp-t-ok">  {t("landing.terminal.routed", { model: "claude-opus-4.6", quota: 82 })}</span>
+<span className="lp-t-line lp-t-ok">  {t("landing.terminal.changed", { files: 14 })}</span></code></pre>
         </div>
       </section>
 
       {/* ── How it works ── */}
       <section className="lp-section" id="how">
-        <SectionEyebrow index="03">How it works</SectionEyebrow>
+        <SectionEyebrow index="03">{t("landing.how.eyebrow")}</SectionEyebrow>
         <ol className="lp-steps">
           <li className="lp-step lp-reveal">
             <span className="lp-step__num">01</span>
-            <h3>Install and start</h3>
-            <p>
-              <code>bun install -g opencodex</code>, then <code>ocx</code>. The
-              dashboard opens on a local port with the proxy already listening.
-            </p>
+            <h3>{t("landing.how.oneTitle")}</h3>
+            <p>{t("landing.how.oneBody")}</p>
           </li>
           <li className="lp-step lp-reveal">
             <span className="lp-step__num">02</span>
-            <h3>Add your providers</h3>
-            <p>
-              Sign in with OAuth or paste API keys. OpenCodex validates each
-              account and learns its models, limits and latency profile.
-            </p>
+            <h3>{t("landing.how.twoTitle")}</h3>
+            <p>{t("landing.how.twoBody")}</p>
           </li>
           <li className="lp-step lp-reveal">
             <span className="lp-step__num">03</span>
-            <h3>Point your tools at it</h3>
-            <p>
-              Set one base URL in Codex CLI, the desktop app or your SDK.
-              Routing, failover and usage accounting happen behind it.
-            </p>
+            <h3>{t("landing.how.threeTitle")}</h3>
+            <p>{t("landing.how.threeBody")}</p>
           </li>
         </ol>
       </section>
 
       {/* ── Pricing stub ── */}
       <section className="lp-section" id="pricing">
-        <SectionEyebrow index="04">Pricing</SectionEyebrow>
+        <SectionEyebrow index="04">{t("landing.pricing.eyebrow")}</SectionEyebrow>
         <div className="lp-pricing">
           <div className="lp-price-card lp-reveal">
-            <h2>Free, as in MIT</h2>
+            <h2>{t("landing.pricing.title")}</h2>
             <p className="lp-price-card__amount">
-              €0 <span>/ forever</span>
+              €0 <span>{t("landing.pricing.forever")}</span>
             </p>
-            <p>
-              The full proxy, dashboard and every provider adapter. Self-hosted,
-              no account required, no usage caps from us. Your providers' limits
-              are the only limits.
-            </p>
+            <p>{t("landing.pricing.body")}</p>
             <a className="lp-btn lp-btn--ghost" href={GITHUB_URL} target="_blank" rel="noreferrer">
-              Clone the repo
+              {t("landing.pricing.clone")}
             </a>
           </div>
         </div>
@@ -273,15 +248,15 @@ export default function Landing() {
       {/* ── Get started / sign-in anchor ── */}
       <section className="lp-section lp-section--cta" id="get-started">
         <h2 className="lp-cta-title">
-          Ready when you <em className="lp-h1__accent">are</em>.
+          {t("landing.cta.readyPrefix")} <em className="lp-h1__accent">{t("landing.cta.readyAccent")}</em>.
         </h2>
         <pre className="lp-install"><code><span className="lp-t-prompt">$ </span>bun install -g opencodex && ocx</code></pre>
         <div className="lp-cta-row">
           <a className="lp-btn lp-btn--primary" href={DOCS_URL} target="_blank" rel="noreferrer">
-            Read the docs
+            {t("landing.cta.docs")}
           </a>
           <a className="lp-btn lp-btn--ghost" id="signin" href="/#dashboard">
-            Open the dashboard
+            {t("landing.cta.dashboard")}
           </a>
         </div>
       </section>
@@ -292,12 +267,12 @@ export default function Landing() {
           <Mark size={18} />
           <span>OpenCodex</span>
         </div>
-        <nav className="lp-footer__links" aria-label="Footer">
+        <nav className="lp-footer__links" aria-label={t("landing.footer.aria")}>
           <a href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a>
-          <a href={DOCS_URL} target="_blank" rel="noreferrer">Docs</a>
-          <a href={`${GITHUB_URL}/blob/main/LICENSE`} target="_blank" rel="noreferrer">MIT License</a>
+          <a href={DOCS_URL} target="_blank" rel="noreferrer">{t("landing.nav.docs")}</a>
+          <a href={`${GITHUB_URL}/blob/main/LICENSE`} target="_blank" rel="noreferrer">{t("landing.footer.license")}</a>
         </nav>
-        <p className="lp-footer__note">A GroepOnline project.</p>
+        <p className="lp-footer__note">{t("landing.footer.note")}</p>
       </footer>
     </div>
   );
