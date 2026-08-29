@@ -93,8 +93,6 @@ export default function App() {
   const { route, navigateTo } = useAppRouteState();
   const [theme, setTheme] = useState<Theme>(readStoredTheme);
   const t = useT();
-  const [settingsOpen, setSettingsOpen] = useState(false);
-
   useEffect(() => {
     const el = document.documentElement;
     if (theme === "system") el.removeAttribute("data-theme");
@@ -106,33 +104,6 @@ export default function App() {
       // Theme persistence is optional; blocked storage must not break rendering.
     }
   }, [theme]);
-
-  const healthPoll = useKeyedClientResource(
-    `app-healthz:${API_BASE}`,
-    [],
-    async (signal) => {
-      const res = await fetch(`${API_BASE}/healthz`, { signal });
-      // Non-OK healthz is a technical fetch failure — the status code is the payload.
-      if (!res.ok) throw new Error(String(res.status));
-      return { version: readRuntimeVersion(await res.json()) };
-    },
-    { pollMs: 30_000, enabled: route.view !== "landing" },
-  );
-
-  const displayedVersion: string = healthPoll.data?.version ?? __APP_VERSION__;
-  // null = first poll still in flight: no stamp until the first verdict.
-  const proxyOnline: boolean | null = healthPoll.error ? false : healthPoll.data ? true : null;
-
-  const activeTkey =
-    SUB_TABS[route.view].find(s => s.sub === route.sub)?.tkey ?? "nav.providers";
-
-  const brand = (
-    <div className="brand">
-      <span className="brand-logo" role="img" aria-label={t("app.logoAria")} />
-      <span className="name">opencodex</span>
-      <span className="ver">v{displayedVersion}</span>
-    </div>
-  );
 
   // The public landing page renders outside the dashboard shell: no topbar,
   // no view tabs, no health polling UI. Everything below it is the app.
@@ -151,6 +122,49 @@ export default function App() {
       </ErrorBoundary>
     );
   }
+
+  return <DashboardShell route={route} navigateTo={navigateTo} theme={theme} setTheme={setTheme} />;
+}
+
+function DashboardShell({
+  route,
+  navigateTo,
+  theme,
+  setTheme,
+}: {
+  route: ReturnType<typeof useAppRouteState>["route"];
+  navigateTo: ReturnType<typeof useAppRouteState>["navigateTo"];
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+}) {
+  const t = useT();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const healthPoll = useKeyedClientResource(
+    `app-healthz:${API_BASE}`,
+    [],
+    async (signal) => {
+      const res = await fetch(`${API_BASE}/healthz`, { signal });
+      // Non-OK healthz is a technical fetch failure — the status code is the payload.
+      if (!res.ok) throw new Error(String(res.status));
+      return { version: readRuntimeVersion(await res.json()) };
+    },
+    { pollMs: 30_000 },
+  );
+
+  const displayedVersion: string = healthPoll.data?.version ?? __APP_VERSION__;
+  // null = first poll still in flight: no stamp until the first verdict.
+  const proxyOnline: boolean | null = healthPoll.error ? false : healthPoll.data ? true : null;
+
+  const activeTkey =
+    SUB_TABS[route.view].find(s => s.sub === route.sub)?.tkey ?? "nav.providers";
+
+  const brand = (
+    <div className="brand">
+      <span className="brand-logo" role="img" aria-label={t("app.logoAria")} />
+      <span className="name">opencodex</span>
+      <span className="ver">v{displayedVersion}</span>
+    </div>
+  );
 
   return (
     <div className="app">
