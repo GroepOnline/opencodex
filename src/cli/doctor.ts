@@ -10,18 +10,39 @@
 import { accessSync, constants, existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { getConfigDir, getConfigPath, readConfigDiagnostics, readPid, readRuntimePort, resolveEnvValue } from "../config";
+import {
+  getConfigDir,
+  getConfigPath,
+  readConfigDiagnostics,
+  readPid,
+  readRuntimePort,
+  resolveEnvValue,
+} from "../config";
 import { findReachableProxyForCli } from "../server/proxy-liveness";
+import { isLoopbackHostname } from "../server/auth-cors";
 import { gracefulStopHost } from "../lib/process-control";
 import { maskAccountId } from "../lib/privacy";
 import { PROXY_ENV_KEYS, proxyEnvPresent } from "../lib/proxy-env";
 import { configuredAdminToken } from "../lib/admin-secrets";
 import { readCodexTokens } from "../codex/auth-collision";
-import { collectOrcaCodexHomeDiagnostic, resolveCodexHomeDir as resolveCodexHomeDirImpl, isWslRuntime, listWslWindowsCodexHomes, wslAutomountRoot, type CodexHomeDeps } from "../codex/home";
+import {
+  collectOrcaCodexHomeDiagnostic,
+  resolveCodexHomeDir as resolveCodexHomeDirImpl,
+  isWslRuntime,
+  listWslWindowsCodexHomes,
+  wslAutomountRoot,
+  type CodexHomeDeps,
+} from "../codex/home";
 import { findCodexOnPath, isWindowsInteropDir } from "../codex/shim";
 import { countPendingOpencodexHistory } from "../codex/history-provider";
-import { collectProjectCodexConfigWarnings, formatProjectCodexConfigWarningsForDoctor } from "../codex/project-config-warnings";
-import { collectStartupHealth, startupHealthSummary } from "../codex/autostart-health";
+import {
+  collectProjectCodexConfigWarnings,
+  formatProjectCodexConfigWarningsForDoctor,
+} from "../codex/project-config-warnings";
+import {
+  collectStartupHealth,
+  startupHealthSummary,
+} from "../codex/autostart-health";
 import { formatLiveCheckoutDoctorLines } from "../lib/live-checkout";
 import {
   displayCodexRuntimePath,
@@ -30,7 +51,12 @@ import {
   resolveAndPersistCodexRuntime,
   resolveCodexRuntime,
 } from "../codex/runtime";
-import { CODEX_REAUTH_ACTION, collectOAuthHealthEntriesForCli, MASKED_ACCOUNT_FALLBACK, type OAuthHealthEntry } from "../oauth/health";
+import {
+  CODEX_REAUTH_ACTION,
+  collectOAuthHealthEntriesForCli,
+  MASKED_ACCOUNT_FALLBACK,
+  type OAuthHealthEntry,
+} from "../oauth/health";
 import { collectProviderSecurityDoctorChecks } from "../provider-security/status";
 import { getAuthRefreshIntentLockPath, getAuthStorePath } from "../oauth/store";
 export { resolveCodexHomeDir } from "../codex/home";
@@ -66,7 +92,10 @@ function isOAuthCredentialStorageWritable(): boolean {
 /** Observe-only: refresh lock paths resolve and their parent dir is writable. */
 function isOAuthRefreshSingleFlightReady(): boolean {
   try {
-    const sample = getAuthRefreshIntentLockPath("doctor-probe", "probe-account");
+    const sample = getAuthRefreshIntentLockPath(
+      "doctor-probe",
+      "probe-account",
+    );
     if (!sample.includes("auth.refresh.")) return false;
     const dir = getConfigDir();
     if (existsSync(dir)) return pathIsWritable(dir);
@@ -81,10 +110,16 @@ function actionForDoctorEntry(entry: OAuthHealthEntry): string {
   if (entry.provider === "codex") {
     return CODEX_REAUTH_ACTION;
   }
-  if (entry.health.status === "warning" && entry.health.reason === "stale_credentials") {
+  if (
+    entry.health.status === "warning" &&
+    entry.health.reason === "stale_credentials"
+  ) {
     return `run \`ocx login ${entry.provider}\``;
   }
-  if (entry.health.status === "warning" && entry.health.reason === "metadata_mismatch") {
+  if (
+    entry.health.status === "warning" &&
+    entry.health.reason === "metadata_mismatch"
+  ) {
     return `run \`ocx login ${entry.provider}\` to refresh credentials`;
   }
   return `run \`ocx doctor\` again after fixing OAuth state for ${entry.provider}`;
@@ -131,7 +166,11 @@ export async function collectOAuthDoctorChecks(
   const checks: OAuthDoctorCheck[] = [];
 
   if (isOAuthCredentialStorageWritable()) {
-    checks.push({ level: "OK", message: "OAuth credential storage directory is writable for atomic auth.json updates." });
+    checks.push({
+      level: "OK",
+      message:
+        "OAuth credential storage directory is writable for atomic auth.json updates.",
+    });
   } else {
     checks.push({
       level: "WARN",
@@ -141,7 +180,10 @@ export async function collectOAuthDoctorChecks(
   }
 
   if (isOAuthRefreshSingleFlightReady()) {
-    checks.push({ level: "OK", message: "Token refresh single-flight is active." });
+    checks.push({
+      level: "OK",
+      message: "Token refresh single-flight is active.",
+    });
   } else {
     checks.push({
       level: "WARN",
@@ -170,7 +212,8 @@ export async function collectOAuthDoctorChecks(
   // Build-time / architecture note — not a runtime fabrication scanner.
   checks.push({
     level: "OK",
-    message: "Codex forward path uses pass-through client metadata (build-time invariant; not a runtime scan).",
+    message:
+      "Codex forward path uses pass-through client metadata (build-time invariant; not a runtime scan).",
   });
 
   return checks;
@@ -186,21 +229,42 @@ export function collectPaths(): PathRow[] {
   const opencodexHome = getConfigDir();
   return [
     { label: "CODEX_HOME", path: codexHome, exists: existsSync(codexHome) },
-    { label: "CODEX_HOME/auth.json", path: join(codexHome, "auth.json"), exists: existsSync(join(codexHome, "auth.json")) },
-    { label: "OPENCODEX_HOME", path: opencodexHome, exists: existsSync(opencodexHome) },
-    { label: "OPENCODEX_HOME/config.json", path: getConfigPath(), exists: existsSync(getConfigPath()) },
+    {
+      label: "CODEX_HOME/auth.json",
+      path: join(codexHome, "auth.json"),
+      exists: existsSync(join(codexHome, "auth.json")),
+    },
+    {
+      label: "OPENCODEX_HOME",
+      path: opencodexHome,
+      exists: existsSync(opencodexHome),
+    },
+    {
+      label: "OPENCODEX_HOME/config.json",
+      path: getConfigPath(),
+      exists: existsSync(getConfigPath()),
+    },
   ];
 }
 
-export type FsTypeInfo = { fstype: string; mount: string; isDrvfs: boolean; isMntDrive: boolean };
+export type FsTypeInfo = {
+  fstype: string;
+  mount: string;
+  isDrvfs: boolean;
+  isMntDrive: boolean;
+};
 
 /**
  * Parse `/proc/mounts`-shaped content and return the longest mount-point prefix
  * covering `path`. `mountsContent` is injectable for testing; in production the
  * caller passes the real file (or null off-Linux -> "n/a").
  */
-export function detectFsType(path: string, mountsContent: string | null): FsTypeInfo {
-  const isMntDrive = /^\/mnt\/[a-z]\//i.test(path) || /^\/mnt\/[a-z]$/i.test(path);
+export function detectFsType(
+  path: string,
+  mountsContent: string | null,
+): FsTypeInfo {
+  const isMntDrive =
+    /^\/mnt\/[a-z]\//i.test(path) || /^\/mnt\/[a-z]$/i.test(path);
   if (!mountsContent) {
     return { fstype: "n/a", mount: "", isDrvfs: false, isMntDrive };
   }
@@ -210,7 +274,11 @@ export function detectFsType(path: string, mountsContent: string | null): FsType
     if (parts.length < 3) continue;
     const mount = parts[1]!;
     const fstype = parts[2]!;
-    if (path === mount || path.startsWith(mount.endsWith("/") ? mount : `${mount}/`) || mount === "/") {
+    if (
+      path === mount ||
+      path.startsWith(mount.endsWith("/") ? mount : `${mount}/`) ||
+      mount === "/"
+    ) {
       if (!best || mount.length > best.mount.length) best = { mount, fstype };
     }
   }
@@ -225,7 +293,9 @@ export function detectFsType(path: string, mountsContent: string | null): FsType
 
 function readMounts(): string | null {
   try {
-    return process.platform === "linux" ? readFileSync("/proc/mounts", "utf-8") : null;
+    return process.platform === "linux"
+      ? readFileSync("/proc/mounts", "utf-8")
+      : null;
   } catch {
     return null;
   }
@@ -253,9 +323,12 @@ type WslDualInstallDeps = CodexHomeDeps & {
  * on PATH is actually the Windows launcher reached through drive interop.
  * Read-only; hints are printed by runDoctor, never applied.
  */
-export function collectWslDualInstall(deps: WslDualInstallDeps = {}): WslDualInstallDiagnostic {
+export function collectWslDualInstall(
+  deps: WslDualInstallDeps = {},
+): WslDualInstallDiagnostic {
   const wsl = isWslRuntime(deps);
-  const effectiveCodexHome = deps.effectiveCodexHome ?? resolveCodexHomeDirImpl(deps);
+  const effectiveCodexHome =
+    deps.effectiveCodexHome ?? resolveCodexHomeDirImpl(deps);
   if (!wsl) {
     return {
       wsl: false,
@@ -271,7 +344,8 @@ export function collectWslDualInstall(deps: WslDualInstallDeps = {}): WslDualIns
   const automountRoot = wslAutomountRoot(deps);
   const exists = deps.existsSync ?? existsSync;
   const home = (deps.homedir ?? homedir)();
-  const linuxCodexConfigured = !!home && exists(join(home, ".codex", "config.toml"));
+  const linuxCodexConfigured =
+    !!home && exists(join(home, ".codex", "config.toml"));
   const windowsCodexHomes = listWslWindowsCodexHomes(deps);
   const onPath = findCodexOnPath({
     pathValue: deps.pathValue ?? process.env.PATH,
@@ -280,14 +354,24 @@ export function collectWslDualInstall(deps: WslDualInstallDeps = {}): WslDualIns
     automountRoot,
     // When a fake fs is injected (tests), the real lstat/readFile would miss its
     // synthetic paths; treat every injected hit as a plain non-shim file.
-    ...(deps.existsSync ? { exists: deps.existsSync, isShimFile: () => false, isDirectory: () => false } : {}),
+    ...(deps.existsSync
+      ? {
+          exists: deps.existsSync,
+          isShimFile: () => false,
+          isDirectory: () => false,
+        }
+      : {}),
   });
-  const interopCodexOnPath = onPath && isWindowsInteropDir(onPath, automountRoot) ? onPath : null;
+  const interopCodexOnPath =
+    onPath && isWindowsInteropDir(onPath, automountRoot) ? onPath : null;
   return {
     wsl,
     automountRoot,
     effectiveCodexHome,
-    effectiveIsWindowsMount: isWindowsInteropDir(effectiveCodexHome, automountRoot),
+    effectiveIsWindowsMount: isWindowsInteropDir(
+      effectiveCodexHome,
+      automountRoot,
+    ),
     linuxCodexConfigured,
     windowsCodexHomes,
     dualInstall: linuxCodexConfigured && windowsCodexHomes.length > 0,
@@ -301,7 +385,7 @@ export type EnvMap = Record<string, string | undefined>;
 /** Report only presence/absence of proxy env vars - never the value (it may
  * embed credentials). Checks both upper- and lower-case forms. */
 export function collectProxyEnv(env: EnvMap = process.env): ProxyEnvRow[] {
-  return PROXY_ENV_KEYS.map(key => ({
+  return PROXY_ENV_KEYS.map((key) => ({
     key,
     present: proxyEnvPresent(key, env),
   }));
@@ -324,7 +408,10 @@ function envReferenceName(value: string): string | null {
 
 export function collectConfiguredProxy(): ConfiguredProxyDiagnostic {
   const diagnostics = readConfigDiagnostics();
-  const rawProxy = typeof diagnostics.config.proxy === "string" ? diagnostics.config.proxy.trim() : "";
+  const rawProxy =
+    typeof diagnostics.config.proxy === "string"
+      ? diagnostics.config.proxy.trim()
+      : "";
   if (diagnostics.error) {
     return {
       key: "config.proxy",
@@ -361,7 +448,9 @@ export function collectConfiguredProxy(): ConfiguredProxyDiagnostic {
     present: false,
     configured: true,
     source: diagnostics.source,
-    detail: envName ? `env reference ${envName} is unset` : "empty after resolution",
+    detail: envName
+      ? `env reference ${envName} is unset`
+      : "empty after resolution",
   };
 }
 
@@ -401,7 +490,9 @@ function readProcessEnviron(pid: number): string | null {
  * - Alternatives: Rename the old section only; parse service-manager env for each OS; read the recorded proxy PID's env presence.
  * - Rationale: PID env presence is the narrowest useful diagnostic on Linux/WSL, avoids secret value output, and keeps unsupported platforms explicit.
  */
-export function collectRunningProxyEnv(deps: RunningProxyEnvDeps = {}): RunningProxyEnvDiagnostic {
+export function collectRunningProxyEnv(
+  deps: RunningProxyEnvDeps = {},
+): RunningProxyEnvDiagnostic {
   const rowsWhenEmpty = () => collectProxyEnv({});
   const pid = (deps.readPidFn ?? readPid)();
   if (!pid) return { status: "not_running", rows: rowsWhenEmpty() };
@@ -446,7 +537,9 @@ export type WhamProbeResult = {
  * headers when present) so the probe fails exactly where the real path fails.
  * `fetchImpl` is injectable for testing.
  */
-export async function probeWham(fetchImpl: typeof fetch = fetch): Promise<WhamProbeResult> {
+export async function probeWham(
+  fetchImpl: typeof fetch = fetch,
+): Promise<WhamProbeResult> {
   const tokens = readCodexTokens();
   const headers: Record<string, string> = {};
   if (tokens) {
@@ -455,7 +548,10 @@ export async function probeWham(fetchImpl: typeof fetch = fetch): Promise<WhamPr
   }
   const start = performance.now();
   try {
-    const resp = await fetchImpl(WHAM_USAGE_URL, { headers, signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+    const resp = await fetchImpl(WHAM_USAGE_URL, {
+      headers,
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    });
     const durationMs = Math.round(performance.now() - start);
     return {
       ok: resp.ok,
@@ -467,10 +563,17 @@ export async function probeWham(fetchImpl: typeof fetch = fetch): Promise<WhamPr
   } catch (err) {
     const durationMs = Math.round(performance.now() - start);
     const name = err instanceof Error ? err.name : String(err);
-    const classification = name === "TimeoutError" || name === "AbortError"
-      ? "timeout"
-      : "connect_error";
-    return { ok: false, status: null, durationMs, classification, authenticated: !!tokens };
+    const classification =
+      name === "TimeoutError" || name === "AbortError"
+        ? "timeout"
+        : "connect_error";
+    return {
+      ok: false,
+      status: null,
+      durationMs,
+      classification,
+      authenticated: !!tokens,
+    };
   }
 }
 
@@ -495,7 +598,12 @@ export type ServiceMemoryData = {
   jscHeap: { heapSize: number } | null;
   streamMode: string;
   eagerRelay: { useEagerRelay: boolean; reason: string } | null;
-  watchdog: { warnThresholdBytes: number; lastWarnAt: number | null; observedBytes?: number; observedMetric?: MemoryMetric } | null;
+  watchdog: {
+    warnThresholdBytes: number;
+    lastWarnAt: number | null;
+    observedBytes?: number;
+    observedMetric?: MemoryMetric;
+  } | null;
 };
 
 export type ServiceMemoryReport =
@@ -507,7 +615,11 @@ const SERVICE_MEMORY_TIMEOUT_MS = 2000;
 const DEFAULT_MEMORY_THRESHOLD_BYTES = 4 * 1024 ** 3;
 type MemoryMetric = "rss" | "external" | "arrayBuffers";
 
-function observedMemory(data: { rss: number; external?: number; arrayBuffers?: number }): {
+function observedMemory(data: {
+  rss: number;
+  external?: number;
+  arrayBuffers?: number;
+}): {
   bytes: number;
   metric: MemoryMetric;
 } {
@@ -516,7 +628,10 @@ function observedMemory(data: { rss: number; external?: number; arrayBuffers?: n
     { metric: "external", bytes: data.external ?? 0 },
     { metric: "arrayBuffers", bytes: data.arrayBuffers ?? 0 },
   ];
-  return values.reduce((best, next) => next.bytes > best.bytes ? next : best, values[0]);
+  return values.reduce(
+    (best, next) => (next.bytes > best.bytes ? next : best),
+    values[0],
+  );
 }
 
 export async function fetchServiceMemory(
@@ -527,13 +642,23 @@ export async function fetchServiceMemory(
 ): Promise<ServiceMemoryReport> {
   try {
     const res = await fetchImpl(`http://${host}:${port}/api/system/memory`, {
-      headers: token ? { "x-opencodex-api-key": token } : {},
+      // Never put the management credential on plain HTTP to a non-loopback target.
+      // Callers additionally require a liveness-verified local process before passing it.
+      headers:
+        token && isLoopbackHostname(host)
+          ? { "x-opencodex-api-key": token }
+          : {},
       signal: AbortSignal.timeout(SERVICE_MEMORY_TIMEOUT_MS),
     });
-    if (res.status === 401 || res.status === 403) return { status: "unauthorized" };
+    if (res.status === 401 || res.status === 403)
+      return { status: "unauthorized" };
     if (!res.ok) return { status: "unreachable", error: `http ${res.status}` };
-    const body = await res.json() as Partial<ServiceMemoryData>;
-    if (typeof body.pid !== "number" || typeof body.bunVersion !== "string" || typeof body.rss !== "number") {
+    const body = (await res.json()) as Partial<ServiceMemoryData>;
+    if (
+      typeof body.pid !== "number" ||
+      typeof body.bunVersion !== "string" ||
+      typeof body.rss !== "number"
+    ) {
       return { status: "unreachable", error: "malformed response" };
     }
     return {
@@ -545,41 +670,72 @@ export async function fetchServiceMemory(
         rss: body.rss,
         heapUsed: typeof body.heapUsed === "number" ? body.heapUsed : 0,
         external: typeof body.external === "number" ? body.external : 0,
-        arrayBuffers: typeof body.arrayBuffers === "number" ? body.arrayBuffers : 0,
-        observedBytes: typeof body.observedBytes === "number" ? body.observedBytes : undefined,
-        observedMetric: body.observedMetric === "rss" || body.observedMetric === "external" || body.observedMetric === "arrayBuffers"
-          ? body.observedMetric
-          : undefined,
-        jscHeap: body.jscHeap && typeof body.jscHeap.heapSize === "number" ? { heapSize: body.jscHeap.heapSize } : null,
-        streamMode: typeof body.streamMode === "string" ? body.streamMode : "auto",
-        eagerRelay: body.eagerRelay && typeof body.eagerRelay.reason === "string"
-          ? { useEagerRelay: body.eagerRelay.useEagerRelay === true, reason: body.eagerRelay.reason }
-          : null,
-        watchdog: body.watchdog && typeof body.watchdog.warnThresholdBytes === "number"
-          ? {
-            warnThresholdBytes: body.watchdog.warnThresholdBytes,
-            lastWarnAt: body.watchdog.lastWarnAt ?? null,
-            observedBytes: typeof body.watchdog.observedBytes === "number" ? body.watchdog.observedBytes : undefined,
-            observedMetric: body.watchdog.observedMetric === "rss" || body.watchdog.observedMetric === "external" || body.watchdog.observedMetric === "arrayBuffers"
-              ? body.watchdog.observedMetric
-              : undefined,
-          }
-          : null,
+        arrayBuffers:
+          typeof body.arrayBuffers === "number" ? body.arrayBuffers : 0,
+        observedBytes:
+          typeof body.observedBytes === "number"
+            ? body.observedBytes
+            : undefined,
+        observedMetric:
+          body.observedMetric === "rss" ||
+          body.observedMetric === "external" ||
+          body.observedMetric === "arrayBuffers"
+            ? body.observedMetric
+            : undefined,
+        jscHeap:
+          body.jscHeap && typeof body.jscHeap.heapSize === "number"
+            ? { heapSize: body.jscHeap.heapSize }
+            : null,
+        streamMode:
+          typeof body.streamMode === "string" ? body.streamMode : "auto",
+        eagerRelay:
+          body.eagerRelay && typeof body.eagerRelay.reason === "string"
+            ? {
+                useEagerRelay: body.eagerRelay.useEagerRelay === true,
+                reason: body.eagerRelay.reason,
+              }
+            : null,
+        watchdog:
+          body.watchdog && typeof body.watchdog.warnThresholdBytes === "number"
+            ? {
+                warnThresholdBytes: body.watchdog.warnThresholdBytes,
+                lastWarnAt: body.watchdog.lastWarnAt ?? null,
+                observedBytes:
+                  typeof body.watchdog.observedBytes === "number"
+                    ? body.watchdog.observedBytes
+                    : undefined,
+                observedMetric:
+                  body.watchdog.observedMetric === "rss" ||
+                  body.watchdog.observedMetric === "external" ||
+                  body.watchdog.observedMetric === "arrayBuffers"
+                    ? body.watchdog.observedMetric
+                    : undefined,
+              }
+            : null,
       },
     };
   } catch (err) {
-    return { status: "unreachable", error: err instanceof Error ? err.name : "fetch failed" };
+    return {
+      status: "unreachable",
+      error: err instanceof Error ? err.name : "fetch failed",
+    };
   }
 }
 
 const mb = (bytes: number): string => `${Math.round(bytes / (1024 * 1024))}MB`;
 
 /** Render the doctor "Memory / runtime" section lines (testable without console capture). */
-export function formatServiceMemoryLines(report: ServiceMemoryReport): string[] {
+export function formatServiceMemoryLines(
+  report: ServiceMemoryReport,
+): string[] {
   const lines: string[] = [];
-  lines.push(`  --     doctor process Bun ${Bun.version} (this is NOT the service process)`);
+  lines.push(
+    `  --     doctor process Bun ${Bun.version} (this is NOT the service process)`,
+  );
   if (report.status === "unauthorized") {
-    lines.push("  --     proxy reachable but rejected the request — set OPENCODEX_ADMIN_AUTH_TOKEN to match the service");
+    lines.push(
+      "  --     proxy reachable but rejected the request — set OPENCODEX_ADMIN_AUTH_TOKEN to match the service",
+    );
     return lines;
   }
   if (report.status === "unreachable") {
@@ -587,39 +743,65 @@ export function formatServiceMemoryLines(report: ServiceMemoryReport): string[] 
     return lines;
   }
   const d = report.data;
-  lines.push(`  ok     service pid ${d.pid}: Bun ${d.bunVersion} on ${d.platform}`);
+  lines.push(
+    `  ok     service pid ${d.pid}: Bun ${d.bunVersion} on ${d.platform}`,
+  );
   const observed = observedMemory(d);
-  const observedBytes = d.observedBytes ?? d.watchdog?.observedBytes ?? observed.bytes;
-  const observedMetric = d.observedMetric ?? d.watchdog?.observedMetric ?? observed.metric;
-  lines.push(`         rss=${mb(d.rss)}, external=${mb(d.external)}, arrayBuffers=${mb(d.arrayBuffers)}, heapUsed=${mb(d.heapUsed)}${d.jscHeap ? `, jscHeap=${mb(d.jscHeap.heapSize)}` : ""}`);
+  const observedBytes =
+    d.observedBytes ?? d.watchdog?.observedBytes ?? observed.bytes;
+  const observedMetric =
+    d.observedMetric ?? d.watchdog?.observedMetric ?? observed.metric;
+  lines.push(
+    `         rss=${mb(d.rss)}, external=${mb(d.external)}, arrayBuffers=${mb(d.arrayBuffers)}, heapUsed=${mb(d.heapUsed)}${d.jscHeap ? `, jscHeap=${mb(d.jscHeap.heapSize)}` : ""}`,
+  );
   lines.push(`         observed=${mb(observedBytes)} (${observedMetric})`);
-  lines.push(`         streamMode=${d.streamMode}${d.eagerRelay ? ` (eager relay: ${d.eagerRelay.useEagerRelay ? "on" : "off"}, ${d.eagerRelay.reason})` : ""}`);
+  lines.push(
+    `         streamMode=${d.streamMode}${d.eagerRelay ? ` (eager relay: ${d.eagerRelay.useEagerRelay ? "on" : "off"}, ${d.eagerRelay.reason})` : ""}`,
+  );
   if (d.watchdog) {
-    lines.push(`         watchdog threshold=${mb(d.watchdog.warnThresholdBytes)}${d.watchdog.lastWarnAt ? `, last warn ${new Date(d.watchdog.lastWarnAt).toISOString()}` : ", no warnings"}`);
+    lines.push(
+      `         watchdog threshold=${mb(d.watchdog.warnThresholdBytes)}${d.watchdog.lastWarnAt ? `, last warn ${new Date(d.watchdog.lastWarnAt).toISOString()}` : ", no warnings"}`,
+    );
   }
   // Interpretation rule: reuse the watchdog threshold and the same max-of
   // observed memory counters, so doctor and watchdog never disagree about
   // "high". RSS/working-set can under-report committed retention on Windows, and
   // Bun 1.3.14 heap counters are not standalone leak proof.
-  const threshold = d.watchdog?.warnThresholdBytes ?? DEFAULT_MEMORY_THRESHOLD_BYTES;
-  const jsShare = d.rss > 0 ? Math.max(d.heapUsed, d.jscHeap?.heapSize ?? 0) / d.rss : 0;
+  const threshold =
+    d.watchdog?.warnThresholdBytes ?? DEFAULT_MEMORY_THRESHOLD_BYTES;
+  const jsShare =
+    d.rss > 0 ? Math.max(d.heapUsed, d.jscHeap?.heapSize ?? 0) / d.rss : 0;
   if (observedBytes < threshold) {
     lines.push("         memory usage looks normal");
   } else if (observedMetric !== "rss") {
-    lines.push(`  !!     high observed memory via ${observedMetric}; Windows RSS/working-set counters may be blind. See docs: troubleshooting/windows-memory`);
+    lines.push(
+      `  !!     high observed memory via ${observedMetric}; Windows RSS/working-set counters may be blind. See docs: troubleshooting/windows-memory`,
+    );
   } else if (jsShare < 0.25) {
-    lines.push("  !!     high RSS with a small JS heap — native-side growth (Bun runtime buffers/handles). See docs: troubleshooting/windows-memory");
+    lines.push(
+      "  !!     high RSS with a small JS heap — native-side growth (Bun runtime buffers/handles). See docs: troubleshooting/windows-memory",
+    );
   } else if (jsShare >= 0.5) {
-    lines.push("  !!     high RSS with large JS/JSC counters — possible JS-side retention; compare responseState/external samples before filing an app leak");
+    lines.push(
+      "  !!     high RSS with large JS/JSC counters — possible JS-side retention; compare responseState/external samples before filing an app leak",
+    );
   } else {
-    lines.push("  !!     high RSS, indeterminate split — capture two doctor runs over time to see the trend");
+    lines.push(
+      "  !!     high RSS, indeterminate split — capture two doctor runs over time to see the trend",
+    );
   }
   // Version-claiming (never binary-claiming): the endpoint cannot distinguish
   // the bundled binary from an OPENCODEX_BUN_PATH override of the same version.
   if (d.platform === "win32" && d.eagerRelay?.reason === "auto-known-bad") {
-    lines.push(`         service is running Bun ${d.bunVersion} on Windows — a version affected by the upstream Bun memory issue.`);
-    lines.push("         Options: wait for a bundled runtime update, or set OPENCODEX_BUN_PATH to a runtime you trust (unvalidated — own risk),");
-    lines.push("         or opt into streamMode \"eager-relay\" via PUT /api/settings (crash risk on this runtime; see docs).");
+    lines.push(
+      `         service is running Bun ${d.bunVersion} on Windows — a version affected by the upstream Bun memory issue.`,
+    );
+    lines.push(
+      "         Options: wait for a bundled runtime update, or set OPENCODEX_BUN_PATH to a runtime you trust (unvalidated — own risk),",
+    );
+    lines.push(
+      '         or opt into streamMode "eager-relay" via PUT /api/settings (crash risk on this runtime; see docs).',
+    );
   }
   return lines;
 }
@@ -647,12 +829,16 @@ export async function runDoctor(args: string[] = []): Promise<void> {
     if (!resolved.newerAvailable) {
       console.log("No newer Codex runtime found; keeping current selection.");
       const current = resolveAndPersistCodexRuntime();
-      console.log(`Selected: ${displayCodexRuntimePath(current.runtime.command)} (${current.runtime.version ?? "unknown"})`);
+      console.log(
+        `Selected: ${displayCodexRuntimePath(current.runtime.command)} (${current.runtime.version ?? "unknown"})`,
+      );
       return;
     }
     if (resolved.runtime.source === "environment") {
       console.log("CODEX_CLI_PATH currently overrides configured runtimes.");
-      console.log(`Unset or update CODEX_CLI_PATH to use ${displayCodexRuntimePath(resolved.newerAvailable.command)} (${resolved.newerAvailable.version ?? "unknown"}).`);
+      console.log(
+        `Unset or update CODEX_CLI_PATH to use ${displayCodexRuntimePath(resolved.newerAvailable.command)} (${resolved.newerAvailable.version ?? "unknown"}).`,
+      );
       console.log("Then run ocx sync.");
       return;
     }
@@ -661,7 +847,9 @@ export async function runDoctor(args: string[] = []): Promise<void> {
       version: resolved.newerAvailable.version,
       source: "configured",
     });
-    console.log(`Updated Codex runtime to ${displayCodexRuntimePath(resolved.newerAvailable.command)} (${resolved.newerAvailable.version ?? "unknown"}).`);
+    console.log(
+      `Updated Codex runtime to ${displayCodexRuntimePath(resolved.newerAvailable.command)} (${resolved.newerAvailable.version ?? "unknown"}).`,
+    );
     console.log("Run ocx sync to refresh the catalog against this runtime.");
     return;
   }
@@ -676,14 +864,22 @@ export async function runDoctor(args: string[] = []): Promise<void> {
   console.log("Paths");
   for (const row of paths) {
     const fs = detectFsType(row.path, mounts);
-    const flags = [fs.fstype !== "n/a" ? `fs=${fs.fstype}` : null, fs.isDrvfs || fs.isMntDrive ? "WSL /mnt drive" : null]
-      .filter(Boolean).join(", ");
-    console.log(`  ${row.exists ? "ok " : "-- "} ${row.label}: ${row.path}${flags ? `  (${flags})` : ""}`);
+    const flags = [
+      fs.fstype !== "n/a" ? `fs=${fs.fstype}` : null,
+      fs.isDrvfs || fs.isMntDrive ? "WSL /mnt drive" : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    console.log(
+      `  ${row.exists ? "ok " : "-- "} ${row.label}: ${row.path}${flags ? `  (${flags})` : ""}`,
+    );
   }
 
   const orcaHome = collectOrcaCodexHomeDiagnostic();
   console.log("\nCodex app home targeting");
-  console.log(`  ${orcaHome.mismatch ? "!! " : "ok "} Effective Codex home: ${orcaHome.effectiveCodexHome}`);
+  console.log(
+    `  ${orcaHome.mismatch ? "!! " : "ok "} Effective Codex home: ${orcaHome.effectiveCodexHome}`,
+  );
   if (orcaHome.mismatch) {
     console.log(`  !!  ${orcaHome.warning}`);
     console.log(`      Action: ${orcaHome.action}`);
@@ -694,11 +890,22 @@ export async function runDoctor(args: string[] = []): Promise<void> {
   const doctorConfig = readConfigDiagnostics().config;
   const startup = collectStartupHealth(doctorConfig);
   console.log("\nCodex restart safety");
-  console.log(`  ${startup.rebootSafe ? "ok " : "!! "} ${startupHealthSummary(startup)}`);
-  console.log(`       routing=${startup.routingKind}, service=${startup.serviceViable ? "viable" : startup.serviceInstalled ? "installed-but-unhealthy" : "absent"}, shim=${startup.shimHealthy ? "healthy" : startup.shimInstalled ? "stale" : "absent"}`);
+  console.log(
+    `  ${startup.rebootSafe ? "ok " : "!! "} ${startupHealthSummary(startup)}`,
+  );
+  console.log(
+    `       routing=${startup.routingKind}, service=${startup.serviceViable ? "viable" : startup.serviceInstalled ? "installed-but-unhealthy" : "absent"}, shim=${startup.shimHealthy ? "healthy" : startup.shimInstalled ? "stale" : "absent"}`,
+  );
 
   console.log("\nLive checkout");
-  for (const line of formatLiveCheckoutDoctorLines(startup.liveCheckout ?? { sha: null, branch: null, detached: false, dirty: false })) {
+  for (const line of formatLiveCheckoutDoctorLines(
+    startup.liveCheckout ?? {
+      sha: null,
+      branch: null,
+      detached: false,
+      dirty: false,
+    },
+  )) {
     console.log(line);
   }
 
@@ -706,40 +913,61 @@ export async function runDoctor(args: string[] = []): Promise<void> {
   {
     const resolved = resolveCodexRuntime();
     const selected = resolved.runtime;
-    console.log(`  ok  Selected runtime: ${displayCodexRuntimePath(selected.command)} (${selected.version ?? "unknown"}, source=${selected.source})`);
-    const envFailures = resolved.failures.filter(item => item.source === "environment");
+    console.log(
+      `  ok  Selected runtime: ${displayCodexRuntimePath(selected.command)} (${selected.version ?? "unknown"}, source=${selected.source})`,
+    );
+    const envFailures = resolved.failures.filter(
+      (item) => item.source === "environment",
+    );
     for (const failure of envFailures) {
       console.log(`  !!  Invalid CODEX_CLI_PATH: ${failure.reason}`);
     }
-    const shimFailures = resolved.failures.filter(item => item.source === "shim");
+    const shimFailures = resolved.failures.filter(
+      (item) => item.source === "shim",
+    );
     if (shimFailures.length > 0) {
       console.log(`  !!  Stale shim target rejected (${shimFailures.length})`);
     }
     if (resolved.replacedConfigured) {
-      console.log(`  !!  Preferred runtime unavailable; fell back to ${displayCodexRuntimePath(selected.command)}`);
+      console.log(
+        `  !!  Preferred runtime unavailable; fell back to ${displayCodexRuntimePath(selected.command)}`,
+      );
     }
     if (resolved.newerAvailable) {
       console.log(`  !!  Multiple Codex installations found.`);
-      console.log(`  ok  Newer usable runtime found: ${displayCodexRuntimePath(resolved.newerAvailable.command)} (${resolved.newerAvailable.version ?? "unknown"})`);
-      console.log("       Suggested: set CODEX_CLI_PATH to the desired binary and run ocx sync.");
+      console.log(
+        `  ok  Newer usable runtime found: ${displayCodexRuntimePath(resolved.newerAvailable.command)} (${resolved.newerAvailable.version ?? "unknown"})`,
+      );
+      console.log(
+        "       Suggested: set CODEX_CLI_PATH to the desired binary and run ocx sync.",
+      );
       console.log("       Optional: ocx doctor --fix-codex-runtime");
     }
     const lastClamp = loadLastEffortClamp();
     if (lastClamp && lastClamp.removedEfforts.length > 0) {
-      console.log(`  !!  ${lastClamp.removedEfforts.join(" and ")} were removed during catalog sync.`);
-      console.log("       Suggested: set CODEX_CLI_PATH to a newer Codex binary and run ocx sync.");
+      console.log(
+        `  !!  ${lastClamp.removedEfforts.join(" and ")} were removed during catalog sync.`,
+      );
+      console.log(
+        "       Suggested: set CODEX_CLI_PATH to a newer Codex binary and run ocx sync.",
+      );
     }
   }
 
   // #618: identity-verified liveness first so pid-file absence does not hide a live service.
   // Reuse the diagnostics config already loaded above so doctor stays read-only on malformed JSON.
   const live = await findReachableProxyForCli({
-    configFn: () => ({ port: doctorConfig.port, hostname: doctorConfig.hostname }),
+    configFn: () => ({
+      port: doctorConfig.port,
+      hostname: doctorConfig.hostname,
+    }),
   });
   const livePid = live ? live.pid : readPid();
   const liveRuntime = live
     ? { pid: live.pid ?? 0, port: live.port, hostname: live.hostname }
-    : (livePid ? readRuntimePort(livePid) : null);
+    : livePid
+      ? readRuntimePort(livePid)
+      : null;
 
   const currentProxyEnv = collectProxyEnv();
   const configuredProxy = collectConfiguredProxy();
@@ -755,15 +983,21 @@ export async function runDoctor(args: string[] = []): Promise<void> {
   }
 
   console.log("\nConfigured proxy (value hidden)");
-  console.log(`  ${configuredProxy.present ? "set    " : "unset  "} ${configuredProxy.key} (${configuredProxy.source}; ${configuredProxy.detail})`);
+  console.log(
+    `  ${configuredProxy.present ? "set    " : "unset  "} ${configuredProxy.key} (${configuredProxy.source}; ${configuredProxy.detail})`,
+  );
 
   console.log("\nRunning proxy process proxy env (presence only)");
   if (runningProxyEnv.status === "not_running") {
-    console.log(live
-      ? "  --     no verified local ocx process; endpoint is reachable (forwarded/remote is valid)"
-      : "  --     no running ocx proxy process found");
+    console.log(
+      live
+        ? "  --     no verified local ocx process; endpoint is reachable (forwarded/remote is valid)"
+        : "  --     no running ocx proxy process found",
+    );
   } else if (runningProxyEnv.status === "unavailable") {
-    console.log(`  --     pid ${runningProxyEnv.pid}: ${runningProxyEnv.reason}`);
+    console.log(
+      `  --     pid ${runningProxyEnv.pid}: ${runningProxyEnv.reason}`,
+    );
   } else {
     console.log(`  ok     pid ${runningProxyEnv.pid}`);
     for (const row of runningProxyEnv.rows) {
@@ -775,20 +1009,37 @@ export async function runDoctor(args: string[] = []): Promise<void> {
   {
     const runtime = liveRuntime;
     if (!runtime || !live) {
-      console.log(`  --     doctor process Bun ${Bun.version} (this is NOT the service process)`);
+      console.log(
+        `  --     doctor process Bun ${Bun.version} (this is NOT the service process)`,
+      );
       console.log("  --     no reachable ocx endpoint found");
     } else {
-      const token = configuredAdminToken();
-      const report = await fetchServiceMemory(gracefulStopHost(runtime.hostname), runtime.port, token);
+      const managementHost = gracefulStopHost(runtime.hostname);
+      // A pidless endpoint may be an SSH/Tailscale forward or a spoofed local listener.
+      // Only a liveness-verified local OCX process may receive the admin token over HTTP.
+      const token =
+        live.pid !== null && isLoopbackHostname(managementHost)
+          ? configuredAdminToken()
+          : null;
+      const report = await fetchServiceMemory(
+        managementHost,
+        runtime.port,
+        token,
+      );
       for (const line of formatServiceMemoryLines(report)) console.log(line);
     }
   }
 
   console.log("\nWHAM reachability");
   const probe = await probeWham();
-  const detail = probe.status !== null ? `status=${probe.status}` : `error=${probe.classification}`;
+  const detail =
+    probe.status !== null
+      ? `status=${probe.status}`
+      : `error=${probe.classification}`;
   console.log(`  ${probe.ok ? "ok " : "-- "} ${WHAM_USAGE_URL}`);
-  console.log(`       ${detail}, ${probe.durationMs}ms, ${probe.authenticated ? "authenticated" : "unauthenticated"}`);
+  console.log(
+    `       ${detail}, ${probe.durationMs}ms, ${probe.authenticated ? "authenticated" : "unauthenticated"}`,
+  );
 
   // Design B upgrade visibility: threads still tagged opencodex are invisible to the native
   // Codex app until the one-time migration lands. Read-only probe (readonly sqlite, 100ms
@@ -796,11 +1047,15 @@ export async function runDoctor(args: string[] = []): Promise<void> {
   console.log("\nCodex history migration");
   const pending = countPendingOpencodexHistory();
   if (pending.failed) {
-    console.log("  --     state DB locked or unreadable (Codex app open?) — migration state unknown");
+    console.log(
+      "  --     state DB locked or unreadable (Codex app open?) — migration state unknown",
+    );
   } else if (pending.pendingRows === 0 && pending.backupEntries === 0) {
     console.log("  ok     no legacy opencodex-tagged threads pending");
   } else {
-    console.log(`  --     ${pending.pendingRows} thread(s) still tagged opencodex, ${pending.backupEntries} backup manifest entr${pending.backupEntries === 1 ? "y" : "ies"}`);
+    console.log(
+      `  --     ${pending.pendingRows} thread(s) still tagged opencodex, ${pending.backupEntries} backup manifest entr${pending.backupEntries === 1 ? "y" : "ies"}`,
+    );
   }
 
   console.log("\nProject Codex configs");
@@ -808,7 +1063,9 @@ export async function runDoctor(args: string[] = []): Promise<void> {
   if (projectWarnings.length === 0) {
     console.log("  ok     no project-local provider bypass detected");
   } else {
-    for (const line of formatProjectCodexConfigWarningsForDoctor(projectWarnings)) {
+    for (const line of formatProjectCodexConfigWarningsForDoctor(
+      projectWarnings,
+    )) {
       console.log(line);
     }
   }
@@ -816,15 +1073,24 @@ export async function runDoctor(args: string[] = []): Promise<void> {
   const dual = collectWslDualInstall();
   if (dual.wsl) {
     console.log("\nWSL Codex installs");
-    console.log(`  ${dual.linuxCodexConfigured ? "ok " : "-- "} Linux ~/.codex/config.toml`);
+    console.log(
+      `  ${dual.linuxCodexConfigured ? "ok " : "-- "} Linux ~/.codex/config.toml`,
+    );
     if (dual.windowsCodexHomes.length > 0) {
-      for (const winHome of dual.windowsCodexHomes) console.log(`  ok  Windows ${winHome}`);
+      for (const winHome of dual.windowsCodexHomes)
+        console.log(`  ok  Windows ${winHome}`);
     } else {
-      console.log("  --  no Windows-profile .codex detected under /mnt/c/Users");
+      console.log(
+        "  --  no Windows-profile .codex detected under /mnt/c/Users",
+      );
     }
-    console.log(`      effective CODEX_HOME: ${dual.effectiveCodexHome}${dual.effectiveIsWindowsMount ? " (Windows mount)" : ""}`);
+    console.log(
+      `      effective CODEX_HOME: ${dual.effectiveCodexHome}${dual.effectiveIsWindowsMount ? " (Windows mount)" : ""}`,
+    );
     if (dual.interopCodexOnPath) {
-      console.log(`  --  codex on PATH is the Windows launcher via interop: ${dual.interopCodexOnPath}`);
+      console.log(
+        `  --  codex on PATH is the Windows launcher via interop: ${dual.interopCodexOnPath}`,
+      );
     }
   }
 
@@ -847,32 +1113,57 @@ export async function runDoctor(args: string[] = []): Promise<void> {
     serviceViable: startup.serviceViable,
   });
   if (proxyDown) hints.push(proxyDown);
-  const anyDrvfs = paths.some(p => detectFsType(p.path, mounts).isDrvfs || detectFsType(p.path, mounts).isMntDrive);
-  const noProxy = currentProxyEnv.every(p => !p.present) && !configuredProxy.present;
+  const anyDrvfs = paths.some(
+    (p) =>
+      detectFsType(p.path, mounts).isDrvfs ||
+      detectFsType(p.path, mounts).isMntDrive,
+  );
+  const noProxy =
+    currentProxyEnv.every((p) => !p.present) && !configuredProxy.present;
   if (!startup.rebootSafe) {
-    const command = startup.recommendedCommand ?? startup.commands.restoreNative;
-    hints.push(`Codex is pinned to the local proxy without persistent startup protection. After restart, requests can reconnect indefinitely. Run '${command}'.`);
+    const command =
+      startup.recommendedCommand ?? startup.commands.restoreNative;
+    hints.push(
+      `Codex is pinned to the local proxy without persistent startup protection. After restart, requests can reconnect indefinitely. Run '${command}'.`,
+    );
   }
   if (anyDrvfs) {
-    hints.push("State dir is on a Windows-mounted (/mnt) drive. Prefer the Linux home (~) under WSL for token/lock reliability.");
+    hints.push(
+      "State dir is on a Windows-mounted (/mnt) drive. Prefer the Linux home (~) under WSL for token/lock reliability.",
+    );
   }
   if (!probe.ok) {
-    if (probe.classification === "timeout" || probe.classification === "connect_error") {
-      hints.push("WHAM probe could not reach chatgpt.com. On WSL2 this is often NAT/DNS/VPN. Quota cannot prime, so auto-switch stays on unknown scores.");
+    if (
+      probe.classification === "timeout" ||
+      probe.classification === "connect_error"
+    ) {
+      hints.push(
+        "WHAM probe could not reach chatgpt.com. On WSL2 this is often NAT/DNS/VPN. Quota cannot prime, so auto-switch stays on unknown scores.",
+      );
       if (noProxy) {
-        hints.push("No proxy is visible to this doctor process and config.proxy is unset or unresolved. If Windows uses a proxy/VPN, set config.proxy or start ocx from a shell with HTTP(S)_PROXY.");
+        hints.push(
+          "No proxy is visible to this doctor process and config.proxy is unset or unresolved. If Windows uses a proxy/VPN, set config.proxy or start ocx from a shell with HTTP(S)_PROXY.",
+        );
       }
     }
   }
   if (pending.failed || pending.pendingRows > 0 || pending.backupEntries > 0) {
-    hints.push("Legacy chat threads are still tagged opencodex (or the DB was locked). The running proxy retries the migration automatically; to force it now, close the Codex app and run 'ocx sync'.");
+    hints.push(
+      "Legacy chat threads are still tagged opencodex (or the DB was locked). The running proxy retries the migration automatically; to force it now, close the Codex app and run 'ocx sync'.",
+    );
   }
   if (dual.dualInstall && !dual.effectiveIsWindowsMount) {
-    hints.push(`Codex is installed on BOTH WSL and Windows. Each side keeps its own ~/.codex (logins, config, catalog are separate); ocx here manages the Linux one. To share a single home, set CODEX_HOME=${dual.windowsCodexHomes[0] ?? `${dual.automountRoot}/c/Users/<you>/.codex`} in WSL (drvfs file locking is less reliable).`);
-    hints.push("localhost is one-way in WSL2 NAT mode: Windows-side codex reaches this WSL proxy via localhost (localhostForwarding, on by default), but a Windows-side proxy is NOT reachable from WSL via localhost — use networkingMode=mirrored in .wslconfig for both directions.");
+    hints.push(
+      `Codex is installed on BOTH WSL and Windows. Each side keeps its own ~/.codex (logins, config, catalog are separate); ocx here manages the Linux one. To share a single home, set CODEX_HOME=${dual.windowsCodexHomes[0] ?? `${dual.automountRoot}/c/Users/<you>/.codex`} in WSL (drvfs file locking is less reliable).`,
+    );
+    hints.push(
+      "localhost is one-way in WSL2 NAT mode: Windows-side codex reaches this WSL proxy via localhost (localhostForwarding, on by default), but a Windows-side proxy is NOT reachable from WSL via localhost — use networkingMode=mirrored in .wslconfig for both directions.",
+    );
   }
   if (dual.interopCodexOnPath) {
-    hints.push("The `codex` found on PATH is the Windows launcher reached through WSL interop; ocx will not shim it (a WSL shim breaks Windows invocations). Install codex inside WSL (npm i -g @openai/codex) or run 'ocx ensure' from Windows.");
+    hints.push(
+      "The `codex` found on PATH is the Windows launcher reached through WSL interop; ocx will not shim it (a WSL shim breaks Windows invocations). Install codex inside WSL (npm i -g @openai/codex) or run 'ocx ensure' from Windows.",
+    );
   }
   if (hints.length > 0) {
     console.log("\nHints");
