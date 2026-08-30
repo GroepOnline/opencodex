@@ -78,6 +78,30 @@ export type CliStatusView = {
   healthLabel: string;
 };
 
+/** Human `ocx status` keys off reachability, not a local killable PID. */
+export function proxyStatusIsUp(status: CliStatusView): boolean {
+  return status.json.proxy.running;
+}
+
+export function proxyRestartHintLines(status: CliStatusView): string[] {
+  if (proxyStatusIsUp(status)) return [];
+  return [
+    "   ↳ Not running — Codex/Claude requests will fail with connection errors.",
+    "     Restart with 'ocx start', or install the persistent service: 'ocx service install'.",
+  ];
+}
+
+function healthFromLive(
+  live: { pid: number | null; version?: string; uptime?: number },
+  url: string,
+): HealthCheck {
+  const version = typeof live.version === "string" ? ` v${live.version}` : "";
+  const uptime = typeof live.uptime === "number" ? `, uptime ${Math.round(live.uptime)}s` : "";
+  const pidNote = live.pid ? ` (pid ${live.pid})` : "";
+  const message = `ok${version}${uptime}${pidNote}`;
+  return { ok: true, url, message, label: `${url} ${message}` };
+}
+
 
 export type ListenTarget = {
   port: number;
@@ -161,16 +185,9 @@ export async function collectStatus(): Promise<CliStatusView> {
     }
     : selectListenTarget(config, pidFile, pidFile ? readRuntimePort(pidFile) : null);
   // A pidless reachable endpoint is commonly a local socket/SSH/Tailscale forward.
-  // Probe it once more for the human-friendly version/uptime label; a verified local
-  // process keeps the single-probe fast path.
-  const health = live?.pid
-    ? {
-      ok: true,
-      url: listen.healthUrl,
-      message: `ok (pid ${live.pid})`,
-      label: `${listen.healthUrl} ok (live)`,
-    }
-    : await checkProxyHealth(listen);
+  // Do not re-probe with a shorter timeout: liveness already proved /healthz, and a
+  // cold forward can fail the follow-up while `running` stays true.
+  const health = live ? healthFromLive(live, listen.healthUrl) : await checkProxyHealth(listen);
   const bunRuntime = durableBunRuntime();
   const service = diagnoseService();
   const serviceSummary = service.summary;

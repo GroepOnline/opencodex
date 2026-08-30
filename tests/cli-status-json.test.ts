@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync, mkdirSync 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { collectStatus, resolveStatusPid, selectListenTarget } from "../src/cli/status";
+import { collectStatus, proxyRestartHintLines, proxyStatusIsUp, resolveStatusPid, selectListenTarget } from "../src/cli/status";
 
 const repoRoot = dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
 const cliPath = join(repoRoot, "src", "cli", "index.ts");
@@ -302,7 +302,52 @@ describe("CLI status JSON", () => {
       expect(view.json.proxy.pid).toBeNull();
       expect(view.json.proxy.health.ok).toBe(true);
       expect(view.json.proxy.health.message).toContain("v1.2.2");
-      expect(healthProbes).toBeGreaterThanOrEqual(2);
+      expect(healthProbes).toBe(1);
+      expect(proxyStatusIsUp(view)).toBe(true);
+      expect(proxyRestartHintLines(view)).toEqual([]);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousOcxHome === undefined) delete process.env.OPENCODEX_HOME;
+      else process.env.OPENCODEX_HOME = previousOcxHome;
+      rmSync(opencodexHome, { recursive: true, force: true });
+    }
+  });
+
+  test("pidless liveness stays up when a follow-up health fetch would fail", async () => {
+    const opencodexHome = mkdtempSync(join(tmpdir(), "ocx-status-forwarded-followup-"));
+    const previousOcxHome = process.env.OPENCODEX_HOME;
+    const originalFetch = globalThis.fetch;
+    let healthProbes = 0;
+    try {
+      process.env.OPENCODEX_HOME = opencodexHome;
+      writeFileSync(join(opencodexHome, "config.json"), JSON.stringify({
+        port: 19192,
+        hostname: "127.0.0.1",
+        providers: {},
+        defaultProvider: "openai",
+      }), "utf8");
+      globalThis.fetch = (async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url === "http://127.0.0.1:19192/healthz") {
+          healthProbes += 1;
+          if (healthProbes === 1) {
+            return new Response(JSON.stringify({
+              status: "ok", service: "opencodex", version: "1.2.2", uptime: 10, pid: 7, port: 10100,
+            }), { status: 200 });
+          }
+          throw new Error("cold forward timed out");
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }) as typeof fetch;
+
+      const view = await collectStatus();
+      expect(view.json.proxy.running).toBe(true);
+      expect(view.json.proxy.pid).toBeNull();
+      expect(view.json.proxy.health.ok).toBe(true);
+      expect(view.proxyLabel).toContain("forwarded/remote");
+      expect(healthProbes).toBe(1);
+      expect(proxyStatusIsUp(view)).toBe(true);
+      expect(proxyRestartHintLines(view).join("\n")).not.toContain("Not running");
     } finally {
       globalThis.fetch = originalFetch;
       if (previousOcxHome === undefined) delete process.env.OPENCODEX_HOME;

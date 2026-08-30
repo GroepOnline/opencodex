@@ -42,7 +42,7 @@ describe("probeHostname", () => {
 describe("proxyIdentityAt", () => {
   test("returns the reported pid for our proxy", async () => {
     const identity = await proxyIdentityAt(10100, {}, { fetchFn: (async () => healthz(OURS)) as typeof fetch });
-    expect(identity).toEqual({ pid: 4242 });
+    expect(identity).toEqual({ pid: 4242, version: "2.6.17", uptime: 12 });
   });
 
   test("rejects foreign 200s, non-OK responses, and pid mismatches", async () => {
@@ -67,7 +67,7 @@ describe("findLiveProxy", () => {
       }) as typeof fetch,
     });
 
-    expect(live).toEqual({ pid: 4242, port: 58195, source: "runtime" });
+    expect(live).toEqual({ pid: 4242, port: 58195, source: "runtime", version: "2.6.17", uptime: 12 });
     expect(urls).toEqual(["http://127.0.0.1:58195/healthz"]);
   });
 
@@ -80,7 +80,7 @@ describe("findLiveProxy", () => {
       fetchFn: (async () => healthz(OURS)) as typeof fetch,
     });
 
-    expect(live).toEqual({ pid: null, port: 10100, source: "config" });
+    expect(live).toEqual({ pid: null, port: 10100, source: "config", version: "2.6.17", uptime: 12 });
   });
 
 
@@ -93,7 +93,7 @@ describe("findLiveProxy", () => {
       fetchFn: (async () => healthz({ ...OURS, pid: 7 })) as typeof fetch,
     });
 
-    expect(live).toEqual({ pid: null, port: 10100, hostname: undefined, source: "config" });
+    expect(live).toEqual({ pid: null, port: 10100, hostname: undefined, source: "config", version: "2.6.17", uptime: 12 });
   });
 
   test("a foreign listener on the configured port is not treated as our proxy", async () => {
@@ -120,7 +120,7 @@ describe("findLiveProxy", () => {
       }) as typeof fetch,
     });
 
-    expect(live).toEqual({ pid: 4242, port: 58195, hostname: "::1", source: "runtime" });
+    expect(live).toEqual({ pid: 4242, port: 58195, hostname: "::1", source: "runtime", version: "2.6.17", uptime: 12 });
     expect(urls).toEqual(["http://[::1]:58195/healthz"]);
   });
 
@@ -136,7 +136,7 @@ describe("findLiveProxy", () => {
 
     // The record's pid 1111 may be dead/reused — synthesizing it would let `ocx stop`
     // kill an unrelated process via the taskkill/kill fallback.
-    expect(live).toEqual({ pid: null, port: 58195, hostname: undefined, source: "runtime" });
+    expect(live).toEqual({ pid: null, port: 58195, hostname: undefined, source: "runtime", version: "2.6.16", uptime: 5 });
   });
 
   test("an orphaned record whose healthz pid mismatches is rejected (config fallback still runs)", async () => {
@@ -163,7 +163,7 @@ describe("findLiveProxy", () => {
     // The runtime probe fails the pid check; the config fallback probes the same port
     // without a pid expectation. Config-only discovery stays pidless because it has no
     // proof that a same-numbered local process owns the endpoint.
-    expect(live).toEqual({ pid: null, port: 58195, source: "config" });
+    expect(live).toEqual({ pid: null, port: 58195, source: "config", version: "2.6.17", uptime: 12 });
   });
 
   test("a pidless legacy healthz never promotes an unverified cheap pid to a kill target", async () => {
@@ -176,7 +176,7 @@ describe("findLiveProxy", () => {
       fetchFn: (async () => healthz(legacyBody)) as typeof fetch,
     });
 
-    expect(live).toEqual({ pid: null, port: 58195, hostname: undefined, source: "runtime" });
+    expect(live).toEqual({ pid: null, port: 58195, hostname: undefined, source: "runtime", version: "2.6.16", uptime: 5 });
   });
 
   test("a pidless legacy healthz returns the cheap pid once full identity verification echoes it", async () => {
@@ -194,7 +194,7 @@ describe("findLiveProxy", () => {
     });
 
     expect(verified).toEqual([1111]);
-    expect(live).toEqual({ pid: 1111, port: 58195, hostname: undefined, source: "runtime" });
+    expect(live).toEqual({ pid: 1111, port: 58195, hostname: undefined, source: "runtime", version: "2.6.16", uptime: 5 });
   });
 
   test("a verifier answering with a DIFFERENT pid than the candidate is rejected (TOCTOU guard)", async () => {
@@ -207,7 +207,7 @@ describe("findLiveProxy", () => {
       fetchFn: (async () => healthz(legacyBody)) as typeof fetch,
     });
 
-    expect(live).toEqual({ pid: null, port: 58195, hostname: undefined, source: "runtime" });
+    expect(live).toEqual({ pid: null, port: 58195, hostname: undefined, source: "runtime", version: "2.6.16", uptime: 5 });
   });
 });
 
@@ -229,6 +229,6 @@ describe("findReachableProxyForCli", () => {
     });
 
     expect(attempts).toBe(2);
-    expect(live).toEqual({ pid: null, port: 10100, hostname: undefined, source: "config" });
+    expect(live).toEqual({ pid: null, port: 10100, hostname: undefined, source: "config", version: "2.6.17", uptime: 12 });
   });
 });

@@ -32,6 +32,12 @@ export interface LivenessIo {
   timeoutMs?: number;
 }
 
+export interface ProxyIdentity {
+  pid: number | null;
+  version?: string;
+  uptime?: number;
+}
+
 export interface LiveProxy {
   pid: number | null;
   port: number;
@@ -39,6 +45,15 @@ export interface LiveProxy {
   hostname?: string;
   /** Whether the successful probe used runtime-port metadata or the configured listen port. */
   source: "runtime" | "config";
+  version?: string;
+  uptime?: number;
+}
+
+function healthzMeta(body: HealthzIdentity | null): Pick<ProxyIdentity, "version" | "uptime"> {
+  return {
+    ...(typeof body?.version === "string" ? { version: body.version } : {}),
+    ...(typeof body?.uptime === "number" ? { uptime: body.uptime } : {}),
+  };
 }
 
 /**
@@ -70,7 +85,7 @@ export async function proxyIdentityAt(
   port: number,
   opts: { hostname?: string; expectedPid?: number } = {},
   io: LivenessIo = {},
-): Promise<{ pid: number | null } | null> {
+): Promise<ProxyIdentity | null> {
   const fetchFn = io.fetchFn ?? fetch;
   try {
     const res = await fetchFn(`http://${probeHostname(opts.hostname)}:${port}/healthz`, {
@@ -81,7 +96,7 @@ export async function proxyIdentityAt(
     if (!isOpencodexHealthz(body)) return null;
     const pid = typeof body?.pid === "number" ? body.pid : null;
     if (opts.expectedPid !== undefined && pid !== null && pid !== opts.expectedPid) return null;
-    return { pid };
+    return { pid, ...healthzMeta(body) };
   } catch {
     return null;
   }
@@ -122,7 +137,14 @@ export async function findLiveProxy(io: LivenessIo = {}): Promise<LiveProxy | nu
         // that the same PID is actually our process on this machine. Never expose an
         // unverified healthz PID to destructive callers such as `ocx stop`.
         const trusted = killablePid(identity.pid ?? pid);
-        return { pid: trusted, port: runtime.port, hostname: runtime.hostname, source: "runtime" };
+        return {
+          pid: trusted,
+          port: runtime.port,
+          hostname: runtime.hostname,
+          source: "runtime",
+          version: identity.version,
+          uptime: identity.uptime,
+        };
       }
     }
   }
@@ -142,6 +164,8 @@ export async function findLiveProxy(io: LivenessIo = {}): Promise<LiveProxy | nu
         port: record.port,
         hostname: record.hostname,
         source: "runtime",
+        version: identity.version,
+        uptime: identity.uptime,
       };
     }
   }
@@ -158,6 +182,8 @@ export async function findLiveProxy(io: LivenessIo = {}): Promise<LiveProxy | nu
       port,
       hostname: config.hostname,
       source: "config",
+      version: identity.version,
+      uptime: identity.uptime,
     };
   }
   return null;
@@ -183,5 +209,12 @@ export async function findReachableProxyForCli(io: LivenessIo = {}): Promise<Liv
 
   // Same safety rule as the first config probe: reachability does not prove that a
   // same-numbered local process owns this endpoint. Keep destructive callers pidless.
-  return { pid: null, port, hostname: config.hostname, source: "config" };
+  return {
+    pid: null,
+    port,
+    hostname: config.hostname,
+    source: "config",
+    version: identity.version,
+    uptime: identity.uptime,
+  };
 }
