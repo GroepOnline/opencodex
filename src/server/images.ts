@@ -655,6 +655,7 @@ export async function handleImages(
     try {
       const reader = upstreamResponse.body?.getReader();
       if (!reader) {
+        forward?.recordOutcome?.("connect_error");
         return formatErrorResponse(
           502,
           "upstream_error",
@@ -671,6 +672,7 @@ export async function handleImages(
           total += value.byteLength;
           if (total > maxBytes) {
             await reader.cancel().catch(() => {});
+            forward?.recordOutcome?.("connect_error");
             return formatErrorResponse(
               502,
               "upstream_error",

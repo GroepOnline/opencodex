@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { readAppliedDesktop3pLibrary } from "../../claude/desktop-3p";
 import type { CatalogModel } from "../../codex/catalog";
-import { catalogModelSlug, invalidateCodexModelsCache, nativeModelRows, uniqueCatalogModelsForPublicList } from "../../codex/catalog";
+import {
+  catalogModelSlug,
+  invalidateCodexModelsCache,
+  nativeModelRows,
+  uniqueCatalogModelsForPublicList,
+} from "../../codex/catalog";
 import {
   DEFAULT_SUBAGENT_MODELS,
   codexAutoStartEnabled,
@@ -25,19 +30,37 @@ import {
 } from "../../oauth";
 import { removeCredential } from "../../oauth/store";
 import { providerDestinationResolvedError } from "../../lib/destination-policy";
-import { enrichProviderFromCatalog, listKeyLoginProviders } from "../../oauth/key-providers";
+import {
+  enrichProviderFromCatalog,
+  listKeyLoginProviders,
+} from "../../oauth/key-providers";
 import { deriveProviderPresets } from "../../providers/derive";
 import { providerCodexAccountMode } from "../../providers/registry";
 import { routedSlug, slugEquals } from "../../providers/slug-codec";
-import { clearProviderQuotaCache, fetchProviderQuotaReports } from "../../providers/quota";
+import {
+  clearProviderQuotaCache,
+  fetchProviderQuotaReports,
+} from "../../providers/quota";
 import { isCanonicalOpenAiForwardProvider } from "../../providers/openai-tiers";
 import { clearThreadAccountMap } from "../../codex/routing";
 import { primeCodexPoolQuotas } from "../../codex/auth-api";
-import { DEFAULT_PROVIDER_CONTEXT_CAP, globalContextCapValue, providerContextCap, providerContextCaps, setAllProviderContextCaps, setGlobalContextCapValue, setProviderContextCap } from "../../providers/context-cap";
+import {
+  DEFAULT_PROVIDER_CONTEXT_CAP,
+  globalContextCapValue,
+  providerContextCap,
+  providerContextCaps,
+  setAllProviderContextCaps,
+  setGlobalContextCapValue,
+  setProviderContextCap,
+} from "../../providers/context-cap";
 import { resolveCodexHomeDir } from "../../codex/home";
 import { readUsageEntries } from "../../usage/log";
 import { getUsageDebugLogEntries } from "../../usage/debug";
-import { parseRange, parseUsageSurface, summarizeUsage } from "../../usage/summary";
+import {
+  parseRange,
+  parseUsageSurface,
+  summarizeUsage,
+} from "../../usage/summary";
 import { stripCodexRuntimeProviderFields } from "../../codex/auth-context";
 import { getProviderRegistryEntry } from "../../providers/registry";
 import { getDebugLogEntries } from "../../lib/debug-log-buffer";
@@ -49,16 +72,54 @@ import {
   setDebugSettings,
   type DebugFlag,
 } from "../../lib/debug-settings";
-import type { OcxClaudeCodeConfig, OcxConfig, OcxCustomModel, OcxProviderConfig } from "../../types";
+import type {
+  OcxClaudeCodeConfig,
+  OcxConfig,
+  OcxCustomModel,
+  OcxProviderConfig,
+} from "../../types";
 import { drainAndShutdown } from "../lifecycle";
-import { filterRequestLogs, getRequestLogEntries, type RequestLogEntry } from "../request-log";
-import { estimateComboCost, estimateRequestCost, normalizeCostTokens, tokensPerSecond } from "../../usage/cost";
+import {
+  filterRequestLogs,
+  getRequestLogEntries,
+  type RequestLogEntry,
+} from "../request-log";
+import {
+  estimateComboCost,
+  estimateRequestCost,
+  normalizeCostTokens,
+  tokensPerSecond,
+} from "../../usage/cost";
 import type { PersistedUsageAttempt } from "../../usage/log";
-import { isAllowedRequestOrigin, jsonResponse, providerManagementConfigError, publicProviderBaseUrl, safeConfigDTO, withNoStore } from "../auth-cors";
+import {
+  isAllowedRequestOrigin,
+  jsonResponse,
+  providerManagementConfigError,
+  publicProviderBaseUrl,
+  safeConfigDTO,
+  withNoStore,
+} from "../auth-cors";
 import { applySystemEnvToggle } from "../system-env";
 
-import { isPlainRecord, parseDebugLogQuery, tokPerSecondResult, unavailableCostReason, costResult, requestLogDto, stripRegistryOnlyStaticHeaders, fetchAllModels, fetchGrokCandidateModels, buildClaudeDesktopState } from "./shared";
-import type { MetricUnavailableReason, TokPerSecondResult, CostEstimateReason, CostResult, MetricSource } from "./shared";
+import {
+  isPlainRecord,
+  parseDebugLogQuery,
+  tokPerSecondResult,
+  unavailableCostReason,
+  costResult,
+  requestLogDto,
+  stripRegistryOnlyStaticHeaders,
+  fetchAllModels,
+  fetchGrokCandidateModels,
+  buildClaudeDesktopState,
+} from "./shared";
+import type {
+  MetricUnavailableReason,
+  TokPerSecondResult,
+  CostEstimateReason,
+  CostResult,
+  MetricSource,
+} from "./shared";
 
 let grokApplyChain: Promise<unknown> = Promise.resolve();
 /**
@@ -72,8 +133,17 @@ function queueGrokApply<T>(run: () => Promise<T>): Promise<T> {
 }
 import type { ManagementContext } from "./context";
 
-export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise<Response | null> {
-  const { req, url, config, deps, refreshCodexCatalogBestEffort, syncClaudeAgentDefsBestEffort } = ctx;
+export async function handleAgentSettingsRoutes(
+  ctx: ManagementContext,
+): Promise<Response | null> {
+  const {
+    req,
+    url,
+    config,
+    deps,
+    refreshCodexCatalogBestEffort,
+    syncClaudeAgentDefsBestEffort,
+  } = ctx;
 
   /** Best-effort Desktop 3P config auto-reconcile when providers change. */
   async function autoApplyDesktopBestEffort(): Promise<void> {
@@ -81,9 +151,14 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
       if (config.claudeCode?.desktopAutoApply === false) return;
       if (!config.claudeCode?.desktopProfile) return;
       const { writeDesktop3pConfig } = await import("../../claude/desktop-3p");
-      const { visibleNativeSlugs, filterCatalogVisibleModels } = await import("../../codex/catalog");
+      const { visibleNativeSlugs, filterCatalogVisibleModels } =
+        await import("../../codex/catalog");
       const allModels = await fetchAllModels(config);
-      const routed = filterCatalogVisibleModels(allModels, config).map(m => ({ provider: m.provider, id: m.id, contextWindow: m.contextWindow }));
+      const routed = filterCatalogVisibleModels(allModels, config).map((m) => ({
+        provider: m.provider,
+        id: m.id,
+        contextWindow: m.contextWindow,
+      }));
       const result = writeDesktop3pConfig(
         config.port ?? 10100,
         [...visibleNativeSlugs(config)],
@@ -93,10 +168,19 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
         config.claudeCode.desktopProfile,
       );
       if (result.written && result.fingerprint) {
-        config.claudeCode = { ...config.claudeCode, desktopProfile: { ...config.claudeCode.desktopProfile, appliedFingerprint: result.fingerprint, appliedAt: new Date().toISOString() } };
+        config.claudeCode = {
+          ...config.claudeCode,
+          desktopProfile: {
+            ...config.claudeCode.desktopProfile,
+            appliedFingerprint: result.fingerprint,
+            appliedAt: new Date().toISOString(),
+          },
+        };
         saveConfigPreservingClaudeCode(config);
       }
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
   }
 
   // multi_agent_v2 surface toggle. GET reports the flag + the agents.max_threads
@@ -105,7 +189,8 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
   // itself never writes config — this endpoint is the only server-side mutation
   // surface for the flag.
   if (url.pathname === "/api/v2" && req.method === "GET") {
-    const { isMultiAgentV2Enabled, hasAgentsMaxThreads, getLogicalMaxThreads } = await import("../../codex/features");
+    const { isMultiAgentV2Enabled, hasAgentsMaxThreads, getLogicalMaxThreads } =
+      await import("../../codex/features");
     const enabled = isMultiAgentV2Enabled();
     return jsonResponse({
       enabled,
@@ -115,27 +200,71 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
     });
   }
   if (url.pathname === "/api/v2" && req.method === "PUT") {
-    let body: { enabled?: unknown; maxConcurrentThreadsPerSession?: unknown; multiAgentMode?: unknown };
-    try { body = await req.json(); } catch { return jsonResponse({ error: "invalid JSON body" }, 400); }
+    let body: {
+      enabled?: unknown;
+      maxConcurrentThreadsPerSession?: unknown;
+      multiAgentMode?: unknown;
+    };
+    try {
+      body = await req.json();
+    } catch {
+      return jsonResponse({ error: "invalid JSON body" }, 400);
+    }
     const wantsFlag = body.enabled !== undefined;
     const wantsThreads = body.maxConcurrentThreadsPerSession !== undefined;
     const wantsMode = body.multiAgentMode !== undefined;
-    if (!wantsFlag && !wantsThreads && !wantsMode) return jsonResponse({ error: "body must set enabled, multiAgentMode, and/or maxConcurrentThreadsPerSession" }, 400);
-    if (wantsFlag && typeof body.enabled !== "boolean") return jsonResponse({ error: "body.enabled must be a boolean" }, 400);
-    if (wantsMode && body.multiAgentMode !== "v1" && body.multiAgentMode !== "default" && body.multiAgentMode !== "v2") {
-      return jsonResponse({ error: "body.multiAgentMode must be 'v1', 'default', or 'v2'" }, 400);
+    if (!wantsFlag && !wantsThreads && !wantsMode)
+      return jsonResponse(
+        {
+          error:
+            "body must set enabled, multiAgentMode, and/or maxConcurrentThreadsPerSession",
+        },
+        400,
+      );
+    if (wantsFlag && typeof body.enabled !== "boolean")
+      return jsonResponse({ error: "body.enabled must be a boolean" }, 400);
+    if (
+      wantsMode &&
+      body.multiAgentMode !== "v1" &&
+      body.multiAgentMode !== "default" &&
+      body.multiAgentMode !== "v2"
+    ) {
+      return jsonResponse(
+        { error: "body.multiAgentMode must be 'v1', 'default', or 'v2'" },
+        400,
+      );
     }
-    if (wantsThreads && (typeof body.maxConcurrentThreadsPerSession !== "number" || !Number.isInteger(body.maxConcurrentThreadsPerSession) || body.maxConcurrentThreadsPerSession < 1)) {
-      return jsonResponse({ error: "body.maxConcurrentThreadsPerSession must be an integer >= 1" }, 400);
+    if (
+      wantsThreads &&
+      (typeof body.maxConcurrentThreadsPerSession !== "number" ||
+        !Number.isInteger(body.maxConcurrentThreadsPerSession) ||
+        body.maxConcurrentThreadsPerSession < 1)
+    ) {
+      return jsonResponse(
+        {
+          error: "body.maxConcurrentThreadsPerSession must be an integer >= 1",
+        },
+        400,
+      );
     }
-    const mode = wantsMode ? body.multiAgentMode as "v1" | "default" | "v2" : undefined;
+    const mode = wantsMode
+      ? (body.multiAgentMode as "v1" | "default" | "v2")
+      : undefined;
     const modeFlag = mode === "v2" ? true : mode === "v1" ? false : undefined;
     if (wantsFlag && modeFlag !== undefined && body.enabled !== modeFlag) {
-      return jsonResponse({ error: `body.enabled conflicts with multiAgentMode '${mode}'` }, 400);
+      return jsonResponse(
+        { error: `body.enabled conflicts with multiAgentMode '${mode}'` },
+        400,
+      );
     }
-    const { isMultiAgentV2Enabled, hasAgentsMaxThreads, getLogicalMaxThreads, transitionMultiAgentV2 } = await import("../../codex/features");
+    const {
+      isMultiAgentV2Enabled,
+      hasAgentsMaxThreads,
+      getLogicalMaxThreads,
+      transitionMultiAgentV2,
+    } = await import("../../codex/features");
     const warnings: string[] = [];
-    const requestedFlag = wantsFlag ? body.enabled as boolean : modeFlag;
+    const requestedFlag = wantsFlag ? (body.enabled as boolean) : modeFlag;
     if (requestedFlag !== undefined || wantsThreads) {
       const targetFlag = requestedFlag ?? isMultiAgentV2Enabled();
       let toggle = deps.toggleCodexMultiAgentV2;
@@ -144,24 +273,42 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
         const { codexFeaturesInvocation } = await import("../../cli/v2");
         toggle = (enabled: boolean) => {
           const inv = codexFeaturesInvocation(enabled ? "enable" : "disable");
-          execFileSync(inv.file, inv.args,
-            { stdio: ["ignore", "pipe", "pipe"], timeout: 15_000, windowsHide: true, ...inv.options });
+          execFileSync(inv.file, inv.args, {
+            stdio: ["ignore", "pipe", "pipe"],
+            timeout: 15_000,
+            windowsHide: true,
+            ...inv.options,
+          });
         };
       }
       const result = transitionMultiAgentV2(targetFlag, toggle, {
-        ...(wantsThreads ? { threadLimit: body.maxConcurrentThreadsPerSession as number } : {}),
+        ...(wantsThreads
+          ? { threadLimit: body.maxConcurrentThreadsPerSession as number }
+          : {}),
       });
-      if (!result.ok) return jsonResponse({ error: `multi_agent_v2 transition failed: ${result.error}` }, 502);
-      if (result.changed && result.threadLimit !== null) warnings.push(`Thread limit ${result.threadLimit} preserved for ${targetFlag ? "v2" : "v1"}.`);
+      if (!result.ok)
+        return jsonResponse(
+          { error: `multi_agent_v2 transition failed: ${result.error}` },
+          502,
+        );
+      if (result.changed && result.threadLimit !== null)
+        warnings.push(
+          `Thread limit ${result.threadLimit} preserved for ${targetFlag ? "v2" : "v1"}.`,
+        );
     }
     if (wantsMode) {
       if (mode === "default") delete config.multiAgentMode;
       else config.multiAgentMode = mode;
       saveConfigPreservingClaudeCode(config);
-      warnings.push(`Multi-agent mode set to '${mode}'. Applies to new sessions.`);
+      warnings.push(
+        `Multi-agent mode set to '${mode}'. Applies to new sessions.`,
+      );
     }
     await refreshCodexCatalogBestEffort();
-    if (requestedFlag !== undefined) warnings.push("Applies to new sessions; restart the Codex app or wait out its picker cache to see the ladder change.");
+    if (requestedFlag !== undefined)
+      warnings.push(
+        "Applies to new sessions; restart the Codex app or wait out its picker cache to see the ladder change.",
+      );
     const enabled = isMultiAgentV2Enabled();
     return jsonResponse({
       ok: true,
@@ -183,29 +330,44 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
     const { listCatalogNativeSlugs } = await import("../../codex/catalog");
     const { CODEX_REASONING_LEVELS } = await import("../../reasoning-effort");
     const nativeModels = listCatalogNativeSlugs()
-      .filter(slug => !disabled.has(slug))
-      .map(slug => ({ provider: "openai", model: slug, namespaced: slug }));
+      .filter((slug) => !disabled.has(slug))
+      .map((slug) => ({ provider: "openai", model: slug, namespaced: slug }));
     const routedModels = uniqueCatalogModelsForPublicList(models)
-      .map(m => ({ provider: m.provider, model: m.id, namespaced: catalogModelSlug(m) }))
-      .filter(m => ![...disabled].some(stored => (
-        stored === m.namespaced || slugEquals(stored, m.provider, m.model)
-      )));
+      .map((m) => ({
+        provider: m.provider,
+        model: m.id,
+        namespaced: catalogModelSlug(m),
+      }))
+      .filter(
+        (m) =>
+          ![...disabled].some(
+            (stored) =>
+              stored === m.namespaced ||
+              slugEquals(stored, m.provider, m.model),
+          ),
+      );
     return jsonResponse({
       multiAgentGuidanceEnabled: multiAgentGuidanceEnabled(config),
       syncCodexSubagentDefaults: subagentDefaultSyncEffective(config),
       model: config.injectionModel ?? null,
       effort: config.injectionEffort ?? null,
       prompt: config.injectionPrompt ?? null,
-      efforts: CODEX_REASONING_LEVELS.map(l => l.effort),
+      efforts: CODEX_REASONING_LEVELS.map((l) => l.effort),
       available: [...nativeModels, ...routedModels],
     });
   }
   if (url.pathname === "/api/injection-model" && req.method === "PUT") {
     let parsedBody: unknown;
-    try { parsedBody = await req.json(); } catch {
+    try {
+      parsedBody = await req.json();
+    } catch {
       return jsonResponse({ error: "invalid JSON body" }, 400);
     }
-    if (!parsedBody || typeof parsedBody !== "object" || Array.isArray(parsedBody)) {
+    if (
+      !parsedBody ||
+      typeof parsedBody !== "object" ||
+      Array.isArray(parsedBody)
+    ) {
       return jsonResponse({ error: "body must be a JSON object" }, 400);
     }
     const body = parsedBody as {
@@ -227,33 +389,53 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
 
     if ("multiAgentGuidanceEnabled" in body) {
       if (typeof body.multiAgentGuidanceEnabled !== "boolean") {
-        return jsonResponse({ error: "multiAgentGuidanceEnabled must be a boolean" }, 400);
+        return jsonResponse(
+          { error: "multiAgentGuidanceEnabled must be a boolean" },
+          400,
+        );
       }
       nextEnabled = body.multiAgentGuidanceEnabled;
     }
     if ("syncCodexSubagentDefaults" in body) {
       if (typeof body.syncCodexSubagentDefaults !== "boolean") {
-        return jsonResponse({ error: "syncCodexSubagentDefaults must be a boolean" }, 400);
+        return jsonResponse(
+          { error: "syncCodexSubagentDefaults must be a boolean" },
+          400,
+        );
       }
       nextSyncCodexSubagentDefaults = body.syncCodexSubagentDefaults;
     }
     if ("model" in body) {
       if (body.model === null || body.model === "") nextModel = undefined;
-      else if (typeof body.model === "string" && body.model.trim().length > 0) nextModel = body.model;
-      else return jsonResponse({ error: "model must be a nonblank string or null" }, 400);
+      else if (typeof body.model === "string" && body.model.trim().length > 0)
+        nextModel = body.model;
+      else
+        return jsonResponse(
+          { error: "model must be a nonblank string or null" },
+          400,
+        );
     }
     if ("effort" in body) {
       if (body.effort === null || body.effort === "") nextEffort = undefined;
-      else if (typeof body.effort === "string" && isCodexReasoningEffort(body.effort)) {
+      else if (
+        typeof body.effort === "string" &&
+        isCodexReasoningEffort(body.effort)
+      ) {
         nextEffort = body.effort;
       } else {
-        return jsonResponse({ error: `unknown reasoning effort "${String(body.effort)}"` }, 400);
+        return jsonResponse(
+          { error: `unknown reasoning effort "${String(body.effort)}"` },
+          400,
+        );
       }
     }
     if ("prompt" in body) {
-      if (typeof body.prompt === "string" && body.prompt.trim().length > 0) nextPrompt = body.prompt;
-      else if (body.prompt === null || body.prompt === "") nextPrompt = undefined;
-      else return jsonResponse({ error: "prompt must be a string or null" }, 400);
+      if (typeof body.prompt === "string" && body.prompt.trim().length > 0)
+        nextPrompt = body.prompt;
+      else if (body.prompt === null || body.prompt === "")
+        nextPrompt = undefined;
+      else
+        return jsonResponse({ error: "prompt must be a string or null" }, 400);
     }
     // Clearing the model always clears model-dependent settings before sync/effort gates.
     if (!nextModel) {
@@ -261,10 +443,23 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
       nextSyncCodexSubagentDefaults = false;
     }
     if (body.syncCodexSubagentDefaults === true && !nextModel?.trim()) {
-      return jsonResponse({ error: "syncCodexSubagentDefaults requires an injection model" }, 400);
+      return jsonResponse(
+        { error: "syncCodexSubagentDefaults requires an injection model" },
+        400,
+      );
     }
-    if (nextSyncCodexSubagentDefaults && nextEffort !== undefined && !isCodexReasoningEffort(nextEffort)) {
-      return jsonResponse({ error: "syncCodexSubagentDefaults requires a supported Codex reasoning effort" }, 400);
+    if (
+      nextSyncCodexSubagentDefaults &&
+      nextEffort !== undefined &&
+      !isCodexReasoningEffort(nextEffort)
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "syncCodexSubagentDefaults requires a supported Codex reasoning effort",
+        },
+        400,
+      );
     }
 
     config.multiAgentGuidanceEnabled = nextEnabled;
@@ -296,24 +491,38 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
     return jsonResponse({
       effortCap: config.effortCap ?? null,
       subagentEffortCap: config.subagentEffortCap ?? null,
-      efforts: CODEX_REASONING_LEVELS.map(l => l.effort),
+      efforts: CODEX_REASONING_LEVELS.map((l) => l.effort),
     });
   }
   if (url.pathname === "/api/effort-caps" && req.method === "PUT") {
     let body: { effortCap?: unknown; subagentEffortCap?: unknown };
-    try { body = await req.json(); } catch { return jsonResponse({ error: "invalid JSON body" }, 400); }
+    try {
+      body = await req.json();
+    } catch {
+      return jsonResponse({ error: "invalid JSON body" }, 400);
+    }
     const { isCodexReasoningEffort } = await import("../../reasoning-effort");
     for (const key of ["effortCap", "subagentEffortCap"] as const) {
       if (!(key in body)) continue;
       const value = body[key];
-      if (value === null || value === "") { delete config[key]; continue; }
+      if (value === null || value === "") {
+        delete config[key];
+        continue;
+      }
       if (typeof value !== "string" || !isCodexReasoningEffort(value)) {
-        return jsonResponse({ error: `unknown reasoning effort "${String(value)}"` }, 400);
+        return jsonResponse(
+          { error: `unknown reasoning effort "${String(value)}"` },
+          400,
+        );
       }
       config[key] = value;
     }
     saveConfigPreservingClaudeCode(config);
-    return jsonResponse({ ok: true, effortCap: config.effortCap ?? null, subagentEffortCap: config.subagentEffortCap ?? null });
+    return jsonResponse({
+      ok: true,
+      effortCap: config.effortCap ?? null,
+      subagentEffortCap: config.subagentEffortCap ?? null,
+    });
   }
 
   // Subagent model picker: which ≤5 routed models Codex's spawn_agent advertises (it shows the
@@ -324,23 +533,41 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
     // Native gpt (passthrough) are also valid subagent picks — they're picker-visible models in the
     // catalog, just buried by priority. List them first so the user can feature them over routed.
     const { listCatalogNativeSlugs } = await import("../../codex/catalog");
-    const visibleRouted = [...new Set(models
-      .filter(m => ![...disabled].some(stored =>
-        stored === catalogModelSlug(m) || slugEquals(stored, m.provider, m.id)
-      ))
-      .map(catalogModelSlug))];
+    const visibleRouted = [
+      ...new Set(
+        models
+          .filter(
+            (m) =>
+              ![...disabled].some(
+                (stored) =>
+                  stored === catalogModelSlug(m) ||
+                  slugEquals(stored, m.provider, m.id),
+              ),
+          )
+          .map(catalogModelSlug),
+      ),
+    ];
     const available = [
-      ...listCatalogNativeSlugs().filter(ns => !disabled.has(ns)),
+      ...listCatalogNativeSlugs().filter((ns) => !disabled.has(ns)),
       ...visibleRouted,
     ];
     return jsonResponse({ chosen: config.subagentModels ?? [], available });
   }
   if (url.pathname === "/api/subagent-models" && req.method === "PUT") {
     let body: { models?: unknown };
-    try { body = await req.json(); } catch { return jsonResponse({ error: "invalid JSON body" }, 400); }
-    const chosen = Array.isArray(body.models) ? body.models.filter((m): m is string => typeof m === "string").slice(0, 5) : [];
+    try {
+      body = await req.json();
+    } catch {
+      return jsonResponse({ error: "invalid JSON body" }, 400);
+    }
+    const chosen = Array.isArray(body.models)
+      ? body.models
+          .filter((m): m is string => typeof m === "string")
+          .slice(0, 5)
+      : [];
     config.subagentModels = chosen;
-    const { saveConfigPreservingClaudeCode: save } = await import("../../config");
+    const { saveConfigPreservingClaudeCode: save } =
+      await import("../../config");
     save(config);
     await refreshCodexCatalogBestEffort();
     await syncClaudeAgentDefsBestEffort();
@@ -353,13 +580,22 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
     const models = await fetchAllModels(config);
     const disabled = new Set(config.disabledModels ?? []);
     const { listCatalogNativeSlugs } = await import("../../codex/catalog");
-    const visibleRouted = [...new Set(models
-      .filter(m => ![...disabled].some(stored =>
-        stored === catalogModelSlug(m) || slugEquals(stored, m.provider, m.id)
-      ))
-      .map(catalogModelSlug))];
+    const visibleRouted = [
+      ...new Set(
+        models
+          .filter(
+            (m) =>
+              ![...disabled].some(
+                (stored) =>
+                  stored === catalogModelSlug(m) ||
+                  slugEquals(stored, m.provider, m.id),
+              ),
+          )
+          .map(catalogModelSlug),
+      ),
+    ];
     const available = [
-      ...listCatalogNativeSlugs().filter(ns => !disabled.has(ns)),
+      ...listCatalogNativeSlugs().filter((ns) => !disabled.has(ns)),
       ...visibleRouted,
     ];
     return jsonResponse({
@@ -381,16 +617,20 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
     let nextModels = config.subagentModelFallback;
     let nextPollMs = config.subagentModelFallbackPollMs;
     if ("models" in body) {
-      if (!Array.isArray(body.models)) return jsonResponse({ error: "models must be an array" }, 400);
+      if (!Array.isArray(body.models))
+        return jsonResponse({ error: "models must be an array" }, 400);
       const models: string[] = [];
       for (let i = 0; i < body.models.length; i++) {
         const entry = body.models[i];
         if (typeof entry !== "string" || entry.trim().length === 0) {
-          return jsonResponse({
-            error: `models[${i}] must be a non-empty string`,
-            index: i,
-            value: entry,
-          }, 400);
+          return jsonResponse(
+            {
+              error: `models[${i}] must be a non-empty string`,
+              index: i,
+              value: entry,
+            },
+            400,
+          );
         }
         models.push(entry.trim());
       }
@@ -399,15 +639,24 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
     if ("pollMs" in body) {
       const pollMs = body.pollMs;
       if (pollMs === null || pollMs === "") nextPollMs = undefined;
-      else if (typeof pollMs === "number" && Number.isInteger(pollMs) && pollMs >= 5_000 && pollMs <= 600_000) {
+      else if (
+        typeof pollMs === "number" &&
+        Number.isInteger(pollMs) &&
+        pollMs >= 5_000 &&
+        pollMs <= 600_000
+      ) {
         nextPollMs = pollMs;
       } else {
-        return jsonResponse({ error: "pollMs must be an integer between 5000 and 600000" }, 400);
+        return jsonResponse(
+          { error: "pollMs must be an integer between 5000 and 600000" },
+          400,
+        );
       }
     }
     if (nextModels !== undefined) config.subagentModelFallback = nextModels;
     else delete config.subagentModelFallback;
-    if (nextPollMs !== undefined) config.subagentModelFallbackPollMs = nextPollMs;
+    if (nextPollMs !== undefined)
+      config.subagentModelFallbackPollMs = nextPollMs;
     else delete config.subagentModelFallbackPollMs;
     saveConfigPreservingClaudeCode(config);
     return jsonResponse({
@@ -432,7 +681,10 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
         excluded: config.grokExcludedModels ?? [],
       });
     } catch (error) {
-      return jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 400);
+      return jsonResponse(
+        { error: error instanceof Error ? error.message : String(error) },
+        400,
+      );
     }
   }
 
@@ -440,15 +692,26 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
   // injectGrokConfig, through the apply route below — this route cannot touch that file.
   if (url.pathname === "/api/grok/selection" && req.method === "PUT") {
     let body: { excluded?: unknown };
-    try { body = await req.json(); } catch { return jsonResponse({ error: "invalid JSON body" }, 400); }
+    try {
+      body = await req.json();
+    } catch {
+      return jsonResponse({ error: "invalid JSON body" }, 400);
+    }
     const raw = body.excluded;
-    if (!Array.isArray(raw) || raw.some(entry => typeof entry !== "string" || entry.length === 0)) {
-      return jsonResponse({ error: "excluded must be an array of model ids" }, 400);
+    if (
+      !Array.isArray(raw) ||
+      raw.some((entry) => typeof entry !== "string" || entry.length === 0)
+    ) {
+      return jsonResponse(
+        { error: "excluded must be an array of model ids" },
+        400,
+      );
     }
     // Dedupe + sort so the stored list is stable, and cap it so a hostile client
     // cannot grow config.json without bound.
     const excluded = [...new Set(raw as string[])].sort();
-    if (excluded.length > 2000) return jsonResponse({ error: "excluded list is too large" }, 400);
+    if (excluded.length > 2000)
+      return jsonResponse({ error: "excluded list is too large" }, 400);
     if (excluded.length === 0) delete config.grokExcludedModels;
     else config.grokExcludedModels = excluded;
     saveConfigPreservingClaudeCode(config);
@@ -469,21 +732,31 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
       const runtime = readRuntimePort(process.pid);
       const port = runtime?.port ?? config.port;
       const hostname = runtime?.hostname ?? config.hostname;
-      const result = await queueGrokApply(() => syncGrokConfig(
-        port,
-        config,
-        hostname !== undefined ? { hostname } : {},
-      ));
+      const result = await queueGrokApply(() =>
+        syncGrokConfig(
+          port,
+          config,
+          hostname !== undefined ? { hostname } : {},
+        ),
+      );
       // A policy skip (non-loopback, no ~/.grok) is not a server error: report it as a
       // result the page can explain rather than a 500 the user cannot act on.
-      return jsonResponse({
-        ok: result.ok,
-        changed: result.changed,
-        message: result.message,
-        ...(result.skippedReason ? { skippedReason: result.skippedReason } : {}),
-      }, result.ok ? 200 : 500);
+      return jsonResponse(
+        {
+          ok: result.ok,
+          changed: result.changed,
+          message: result.message,
+          ...(result.skippedReason
+            ? { skippedReason: result.skippedReason }
+            : {}),
+        },
+        result.ok ? 200 : 500,
+      );
     } catch (error) {
-      return jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 400);
+      return jsonResponse(
+        { error: error instanceof Error ? error.message : String(error) },
+        400,
+      );
     }
   }
 
@@ -494,52 +767,84 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
       const runtimePort = Number(url.port) || config.port;
       return jsonResponse({ ...state, port: runtimePort });
     } catch (error) {
-      return jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 400);
+      return jsonResponse(
+        { error: error instanceof Error ? error.message : String(error) },
+        400,
+      );
     }
   }
   if (url.pathname === "/api/claude-desktop" && req.method === "PUT") {
     let body: { profile?: unknown };
-    try { body = await req.json(); } catch { return jsonResponse({ error: "invalid JSON body" }, 400); }
     try {
-      const { parseDesktopProfile, reconcileDesktopProfile } = await import("../../claude/desktop-profile");
+      body = await req.json();
+    } catch {
+      return jsonResponse({ error: "invalid JSON body" }, 400);
+    }
+    try {
+      const { parseDesktopProfile } =
+        await import("../../claude/desktop-profile");
       const parsed = parseDesktopProfile(body.profile);
       const current = await buildClaudeDesktopState(config);
-      for (const model of current.models.filter(item => !item.available)) {
+      for (const model of current.models.filter((item) => !item.available)) {
         const before = current.profile.assignments[model.route];
         const after = parsed.assignments[model.route];
         if (JSON.stringify(before) !== JSON.stringify(after)) {
-          throw new Error(`현재 사용할 수 없는 모델은 옮길 수 없습니다: ${model.route}`);
+          throw new Error(
+            `현재 사용할 수 없는 모델은 옮길 수 없습니다: ${model.route}`,
+          );
         }
       }
       for (const family of ["opus", "fable", "sonnet", "haiku"] as const) {
         const nextDefault = parsed.defaults[family];
-        const target = nextDefault ? current.models.find(model => model.route === nextDefault) : undefined;
-        if (target && !target.available && current.profile.defaults[family] !== nextDefault) {
-          throw new Error(`현재 사용할 수 없는 모델은 기본값으로 지정할 수 없습니다: ${nextDefault}`);
+        const target = nextDefault
+          ? current.models.find((model) => model.route === nextDefault)
+          : undefined;
+        if (
+          target &&
+          !target.available &&
+          current.profile.defaults[family] !== nextDefault
+        ) {
+          throw new Error(
+            `현재 사용할 수 없는 모델은 기본값으로 지정할 수 없습니다: ${nextDefault}`,
+          );
         }
       }
-      const state = await buildClaudeDesktopState(config, parsed);
-      config.claudeCode = { ...(config.claudeCode ?? {}), desktopProfile: reconcileDesktopProfile(state.profile, state.models) };
+      config.claudeCode = {
+        ...(config.claudeCode ?? {}),
+        desktopProfile: parsed,
+      };
       saveConfigPreservingClaudeCode(config);
       const saved = await buildClaudeDesktopState(config);
       const runtimePort = Number(url.port) || config.port;
       return jsonResponse({ ok: true, ...saved, port: runtimePort });
     } catch (error) {
-      return jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 400);
+      return jsonResponse(
+        { error: error instanceof Error ? error.message : String(error) },
+        400,
+      );
     }
   }
   if (url.pathname === "/api/claude-desktop/apply" && req.method === "POST") {
     try {
       const state = await buildClaudeDesktopState(config);
-      config.claudeCode = { ...(config.claudeCode ?? {}), desktopProfile: state.profile };
+      config.claudeCode = {
+        ...(config.claudeCode ?? {}),
+        desktopProfile: state.profile,
+      };
       saveConfigPreservingClaudeCode(config);
       const { writeDesktop3pConfig } = await import("../../claude/desktop-3p");
       const { visibleNativeSlugs } = await import("../../codex/catalog");
       const routed = state.models
-        .filter(model => model.available && !model.route.startsWith("native/"))
-        .map(model => {
+        .filter(
+          (model) => model.available && !model.route.startsWith("native/"),
+        )
+        .map((model) => {
           const slash = model.route.indexOf("/");
-          return { provider: model.route.slice(0, slash), id: model.route.slice(slash + 1), contextWindow: model.contextWindow };
+          return {
+            provider: model.route.slice(0, slash),
+            id: model.route.slice(slash + 1),
+            contextWindow: model.contextWindow,
+          };
         });
       const result = writeDesktop3pConfig(
         Number(url.port) || config.port,
@@ -549,29 +854,62 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
         "static",
         state.profile,
       );
-      if (!result.written) return jsonResponse({ error: result.reason ?? "Claude Desktop apply failed", saved: true, path: result.path }, 500);
+      if (!result.written)
+        return jsonResponse(
+          {
+            error: result.reason ?? "Claude Desktop apply failed",
+            saved: true,
+            path: result.path,
+          },
+          500,
+        );
       // Persist applied fingerprint + timestamp so GUI can show saved-vs-applied state.
       if (result.fingerprint) {
-        config.claudeCode = { ...(config.claudeCode ?? {}), desktopProfile: { ...state.profile, appliedFingerprint: result.fingerprint, appliedAt: new Date().toISOString() } };
+        config.claudeCode = {
+          ...(config.claudeCode ?? {}),
+          desktopProfile: {
+            ...state.profile,
+            appliedFingerprint: result.fingerprint,
+            appliedAt: new Date().toISOString(),
+          },
+        };
         saveConfigPreservingClaudeCode(config);
       }
-      return jsonResponse({ ok: true, saved: true, applied: true, path: result.path, fingerprint: result.fingerprint, laptopSync: "ocx-desktop://sync" });
+      return jsonResponse({
+        ok: true,
+        saved: true,
+        applied: true,
+        path: result.path,
+        fingerprint: result.fingerprint,
+        laptopSync: "ocx-desktop://sync",
+      });
     } catch (error) {
-      return jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 400);
+      return jsonResponse(
+        { error: error instanceof Error ? error.message : String(error) },
+        400,
+      );
     }
   }
 
   // Laptop Claude Desktop reads ~/.config/Claude-3p, not chef's homedir on the
   // proxy host. This payload is the applied 3P library so a local handler can
   // copy it through the ocx-tunnel without SSH.
-  if (url.pathname === "/api/claude-desktop/3p-library" && req.method === "GET") {
-    const noStoreJson = (data: unknown, status = 200) => withNoStore(jsonResponse(data, status, req, config));
+  if (
+    url.pathname === "/api/claude-desktop/3p-library" &&
+    req.method === "GET"
+  ) {
+    const noStoreJson = (data: unknown, status = 200) =>
+      withNoStore(jsonResponse(data, status, req, config));
     try {
       const library = readAppliedDesktop3pLibrary();
-      if (!library.ok) return noStoreJson({ error: library.error }, library.status);
+      if (!library.ok)
+        return noStoreJson({ error: library.error }, library.status);
       return noStoreJson(library);
     } catch (error) {
-      return noStoreJson({ error: error instanceof Error ? error.message : String(error) }, 400);
+      return noStoreJson(
+        { error: error instanceof Error ? error.message : String(error) },
+        400,
+      );
     }
   }
 
@@ -581,7 +919,8 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
       const { readFileSync: readFile, existsSync } = await import("node:fs");
       const { createHash } = await import("node:crypto");
       const { join } = await import("node:path");
-      const { resolveDesktop3pConfigLibraryPath } = await import("../../claude/desktop-3p");
+      const { resolveDesktop3pConfigLibraryPath } =
+        await import("../../claude/desktop-3p");
       const libraryPath = resolveDesktop3pConfigLibraryPath();
       const metaPath = join(libraryPath, "_meta.json");
       let onDiskFingerprint: string | null = null;
@@ -593,22 +932,41 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
       if (existsSync(metaPath)) {
         try {
           const meta = JSON.parse(readFile(metaPath, "utf8"));
-          const entry = Array.isArray(meta.entries) ? meta.entries.find((e: { name?: string }) => e?.name === "opencodex") : undefined;
-          const appliedId = typeof meta.appliedId === "string" ? meta.appliedId : null;
+          const entry = Array.isArray(meta.entries)
+            ? meta.entries.find(
+                (e: { name?: string }) => e?.name === "opencodex",
+              )
+            : undefined;
+          const appliedId =
+            typeof meta.appliedId === "string" ? meta.appliedId : null;
           // A readable appliedId with no opencodex entry is a KNOWN false, not unknown.
-          activeProfile = appliedId === null ? null : (entry?.id ? appliedId === entry.id : false);
+          activeProfile =
+            appliedId === null
+              ? null
+              : entry?.id
+                ? appliedId === entry.id
+                : false;
           if (entry?.id) {
             configPath = join(libraryPath, `${entry.id}.json`);
             if (existsSync(configPath)) {
               const onDisk = readFile(configPath, "utf8");
-              onDiskFingerprint = createHash("sha256").update(onDisk).digest("hex").slice(0, 16);
+              onDiskFingerprint = createHash("sha256")
+                .update(onDisk)
+                .digest("hex")
+                .slice(0, 16);
             }
           }
-        } catch { /* unreadable metadata */ }
+        } catch {
+          /* unreadable metadata */
+        }
       }
-      const savedFingerprint = config.claudeCode?.desktopProfile?.appliedFingerprint ?? null;
+      const savedFingerprint =
+        config.claudeCode?.desktopProfile?.appliedFingerprint ?? null;
       const appliedAt = config.claudeCode?.desktopProfile?.appliedAt ?? null;
-      const stale = savedFingerprint !== null && onDiskFingerprint !== null && savedFingerprint !== onDiskFingerprint;
+      const stale =
+        savedFingerprint !== null &&
+        onDiskFingerprint !== null &&
+        savedFingerprint !== onDiskFingerprint;
       const { getDesktopHealth } = await import("../../claude/desktop-health");
       const health = getDesktopHealth();
       return jsonResponse({
@@ -622,7 +980,10 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
         health,
       });
     } catch (error) {
-      return jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 400);
+      return jsonResponse(
+        { error: error instanceof Error ? error.message : String(error) },
+        400,
+      );
     }
   }
 
@@ -630,37 +991,55 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
   if (url.pathname === "/api/claude-code" && req.method === "GET") {
     const models = await fetchAllModels(config);
     const { listCatalogNativeSlugs } = await import("../../codex/catalog");
-    const { claudeCodeAlias, claudeCodeNativeAlias } = await import("../../claude/alias");
-    const { buildClaudeContextWindows, effectiveModelEnv } = await import("../../claude/context-windows");
+    const { claudeCodeAlias, claudeCodeNativeAlias } =
+      await import("../../claude/alias");
+    const { buildClaudeContextWindows, effectiveModelEnv } =
+      await import("../../claude/context-windows");
     const { visibleNativeSlugs } = await import("../../codex/catalog");
     const disabled = new Set(config.disabledModels ?? []);
     const isDisabled = (provider: string, id: string) =>
-      [...disabled].some(stored => slugEquals(stored, provider, id));
+      [...disabled].some((stored) => slugEquals(stored, provider, id));
     const available = [
-      ...listCatalogNativeSlugs().filter(ns => !disabled.has(ns)),
+      ...listCatalogNativeSlugs().filter((ns) => !disabled.has(ns)),
       // Claude-facing values stay RAW native selectors (resolved inbound via routeModel,
       // which accepts the raw full-slash form); only the disabled check goes tolerant.
-      ...models.filter(m => !isDisabled(m.provider, m.id)).map(m => `${m.provider}/${m.id}`),
+      ...models
+        .filter((m) => !isDisabled(m.provider, m.id))
+        .map((m) => `${m.provider}/${m.id}`),
     ];
     const aliases: { id: string; display_name: string }[] = [];
     for (const slug of listCatalogNativeSlugs()) {
       // Readable CLI-surface alias with hash fallback (devlog 050 / audit 051 #2) —
       // the same shared helper the /v1/models ?ids=cli path uses.
-      if (!disabled.has(slug)) aliases.push({ id: claudeCodeNativeAlias(slug), display_name: `${slug} (native)` });
+      if (!disabled.has(slug))
+        aliases.push({
+          id: claudeCodeNativeAlias(slug),
+          display_name: `${slug} (native)`,
+        });
     }
     for (const m of models) {
       if (isDisabled(m.provider, m.id)) continue;
-      aliases.push({ id: claudeCodeAlias(m.provider, m.id), display_name: `${m.id} (${m.provider})` });
+      aliases.push({
+        id: claudeCodeAlias(m.provider, m.id),
+        display_name: `${m.id} (${m.provider})`,
+      });
     }
-    const contextWindows = buildClaudeContextWindows([...visibleNativeSlugs(config)], models);
+    const contextWindows = buildClaudeContextWindows(
+      [...visibleNativeSlugs(config)],
+      models,
+    );
     const webSearchOverride = config.claudeCode?.webSearchSidecar;
     const visionOverride = config.claudeCode?.visionSidecar;
     // Auto is a RESOLUTION, recomputed per request — never stored state. Detection is
     // daemon-side, so it cannot see a key exported only in the user's terminal; the
     // GUI labels the badge with detectionScope for exactly that reason.
-    const { defaultAuthDetectDeps, detectClaudeAuth, ownAdmissionTokens } = await import("../../claude/auth-detect");
-    const { authModeIntent, resolveClaudeAuthMode } = await import("../../claude/auth-mode");
-    const authDetection = detectClaudeAuth(defaultAuthDetectDeps(process.env, ownAdmissionTokens(config)));
+    const { defaultAuthDetectDeps, detectClaudeAuth, ownAdmissionTokens } =
+      await import("../../claude/auth-detect");
+    const { authModeIntent, resolveClaudeAuthMode } =
+      await import("../../claude/auth-mode");
+    const authDetection = detectClaudeAuth(
+      defaultAuthDetectDeps(process.env, ownAdmissionTokens(config)),
+    );
     const resolvedAuthMode = resolveClaudeAuthMode(config, authDetection);
     return jsonResponse({
       enabled: config.claudeCode?.enabled !== false,
@@ -671,7 +1050,9 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
       /** Does the opencodex dummy marker get injected — NOT a claim about native auth. */
       markerMode: resolvedAuthMode.markerMode,
       authModeOrigin: resolvedAuthMode.origin,
-      ...(resolvedAuthMode.foundBy ? { authFoundBy: resolvedAuthMode.foundBy } : {}),
+      ...(resolvedAuthMode.foundBy
+        ? { authFoundBy: resolvedAuthMode.foundBy }
+        : {}),
       authDetectionUnknown: authDetection.presence === "unknown",
       // Separate axis: with an admission key configured a token is injected regardless
       // of mode, so the GUI must never present subscription as "no token anywhere".
@@ -690,10 +1071,20 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
       blockedSkills: config.claudeCode?.blockedSkills ?? null,
       injectAgents: config.claudeCode?.injectAgents !== false,
       ...(webSearchOverride && Object.keys(webSearchOverride).length > 0
-        ? { webSearchSidecar: { backend: webSearchOverride.backend, model: webSearchOverride.model } }
+        ? {
+            webSearchSidecar: {
+              backend: webSearchOverride.backend,
+              model: webSearchOverride.model,
+            },
+          }
         : {}),
       ...(visionOverride && Object.keys(visionOverride).length > 0
-        ? { visionSidecar: { backend: visionOverride.backend, model: visionOverride.model } }
+        ? {
+            visionSidecar: {
+              backend: visionOverride.backend,
+              model: visionOverride.model,
+            },
+          }
         : {}),
       fastMode: config.fastMode,
       contextWindows,
@@ -711,21 +1102,57 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
     // regardless on 2.1.207). PUT keeps validating them so hand-written configs
     // and older GUIs stay safe; GUI saves omit them and the spread preserves them.
     let parsedBody: unknown;
-    try { parsedBody = await req.json(); } catch { return jsonResponse({ error: "invalid JSON body" }, 400); }
-    const isPlainObject = (value: unknown): value is Record<string, unknown> => {
-      if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+    try {
+      parsedBody = await req.json();
+    } catch {
+      return jsonResponse({ error: "invalid JSON body" }, 400);
+    }
+    const isPlainObject = (
+      value: unknown,
+    ): value is Record<string, unknown> => {
+      if (value === null || typeof value !== "object" || Array.isArray(value))
+        return false;
       const prototype = Object.getPrototypeOf(value);
       return prototype === Object.prototype || prototype === null;
     };
-    if (!isPlainObject(parsedBody)) return jsonResponse({ error: "body must be an object" }, 400);
-    const body = parsedBody as { enabled?: unknown; authMode?: unknown; model?: unknown; smallFastModel?: unknown; modelMap?: unknown; systemEnv?: unknown; fastMode?: unknown; maxContextTokens?: unknown; alwaysEnableEffort?: unknown; tierModels?: unknown; autoContext?: unknown; autoCompactWindow?: unknown; blockedSkills?: unknown; injectAgents?: unknown; webSearchSidecar?: unknown; visionSidecar?: unknown };
+    if (!isPlainObject(parsedBody))
+      return jsonResponse({ error: "body must be an object" }, 400);
+    const body = parsedBody as {
+      enabled?: unknown;
+      authMode?: unknown;
+      model?: unknown;
+      smallFastModel?: unknown;
+      modelMap?: unknown;
+      systemEnv?: unknown;
+      fastMode?: unknown;
+      maxContextTokens?: unknown;
+      alwaysEnableEffort?: unknown;
+      tierModels?: unknown;
+      autoContext?: unknown;
+      autoCompactWindow?: unknown;
+      blockedSkills?: unknown;
+      injectAgents?: unknown;
+      webSearchSidecar?: unknown;
+      visionSidecar?: unknown;
+    };
     for (const field of ["webSearchSidecar", "visionSidecar"] as const) {
       const section = body[field];
       if (section === undefined || section === null) continue;
-      if (!isPlainObject(section)) return jsonResponse({ error: `${field} must be an object or null` }, 400);
-      if (section.backend !== undefined && section.backend !== null
-        && section.backend !== "openai" && section.backend !== "anthropic") {
-        return jsonResponse({ error: `${field}.backend must be openai, anthropic, or null` }, 400);
+      if (!isPlainObject(section))
+        return jsonResponse(
+          { error: `${field} must be an object or null` },
+          400,
+        );
+      if (
+        section.backend !== undefined &&
+        section.backend !== null &&
+        section.backend !== "openai" &&
+        section.backend !== "anthropic"
+      ) {
+        return jsonResponse(
+          { error: `${field}.backend must be openai, anthropic, or null` },
+          400,
+        );
       }
       if (section.model !== undefined && typeof section.model !== "string") {
         return jsonResponse({ error: `${field}.model must be a string` }, 400);
@@ -735,21 +1162,31 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
     for (const field of ["webSearchSidecar", "visionSidecar"] as const) {
       const section = body[field];
       if (section === undefined) continue;
-      if (section === null || Object.keys(section as Record<string, unknown>).length === 0) {
+      if (
+        section === null ||
+        Object.keys(section as Record<string, unknown>).length === 0
+      ) {
         delete next[field];
         continue;
       }
-      const requested = section as { backend?: "openai" | "anthropic" | null; model?: string };
-      const override: NonNullable<OcxClaudeCodeConfig[typeof field]> = { ...next[field] };
+      const requested = section as {
+        backend?: "openai" | "anthropic" | null;
+        model?: string;
+      };
+      const override: NonNullable<OcxClaudeCodeConfig[typeof field]> = {
+        ...next[field],
+      };
       if (requested.backend === null) delete override.backend;
-      else if (requested.backend !== undefined) override.backend = requested.backend;
+      else if (requested.backend !== undefined)
+        override.backend = requested.backend;
       if (requested.model === "") delete override.model;
       else if (requested.model !== undefined) override.model = requested.model;
       if (Object.keys(override).length > 0) next[field] = override;
       else delete next[field];
     }
     if (body.enabled !== undefined) {
-      if (typeof body.enabled !== "boolean") return jsonResponse({ error: "enabled must be a boolean" }, 400);
+      if (typeof body.enabled !== "boolean")
+        return jsonResponse({ error: "enabled must be a boolean" }, 400);
       next.enabled = body.enabled;
     }
     if (body.authMode !== undefined) {
@@ -758,18 +1195,30 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
       // auth on every launch. The 260720 round-trip contract survives as a superset —
       // storing "subscription" literally is also backward-safe, since older readers
       // only ever recognised "proxy".
-      if (body.authMode !== "proxy" && body.authMode !== "subscription" && body.authMode !== "auto") {
-        return jsonResponse({ error: "authMode must be \"auto\", \"proxy\", or \"subscription\"" }, 400);
+      if (
+        body.authMode !== "proxy" &&
+        body.authMode !== "subscription" &&
+        body.authMode !== "auto"
+      ) {
+        return jsonResponse(
+          { error: 'authMode must be "auto", "proxy", or "subscription"' },
+          400,
+        );
       }
       if (body.authMode === "auto") delete next.authMode;
       else next.authMode = body.authMode;
     }
     if (body.systemEnv !== undefined) {
-      if (typeof body.systemEnv !== "boolean") return jsonResponse({ error: "systemEnv must be a boolean" }, 400);
+      if (typeof body.systemEnv !== "boolean")
+        return jsonResponse({ error: "systemEnv must be a boolean" }, 400);
       next.systemEnv = body.systemEnv;
     }
     if (body.alwaysEnableEffort !== undefined) {
-      if (typeof body.alwaysEnableEffort !== "boolean") return jsonResponse({ error: "alwaysEnableEffort must be a boolean" }, 400);
+      if (typeof body.alwaysEnableEffort !== "boolean")
+        return jsonResponse(
+          { error: "alwaysEnableEffort must be a boolean" },
+          400,
+        );
       if (body.alwaysEnableEffort) next.alwaysEnableEffort = true;
       else delete next.alwaysEnableEffort;
     }
@@ -778,21 +1227,30 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
       // null clears; otherwise a positive integer (devlog 136 B6).
       if (body.maxContextTokens === null) {
         delete next.maxContextTokens;
-      } else if (typeof body.maxContextTokens !== "number" || !Number.isInteger(body.maxContextTokens) || body.maxContextTokens <= 0) {
-        return jsonResponse({ error: "maxContextTokens must be a positive integer or null" }, 400);
+      } else if (
+        typeof body.maxContextTokens !== "number" ||
+        !Number.isInteger(body.maxContextTokens) ||
+        body.maxContextTokens <= 0
+      ) {
+        return jsonResponse(
+          { error: "maxContextTokens must be a positive integer or null" },
+          400,
+        );
       } else {
         next.maxContextTokens = body.maxContextTokens;
       }
     }
     if (body.autoContext !== undefined) {
       // Default-on boolean (devlog 260712 020): true = drop the key, false = store.
-      if (typeof body.autoContext !== "boolean") return jsonResponse({ error: "autoContext must be a boolean" }, 400);
+      if (typeof body.autoContext !== "boolean")
+        return jsonResponse({ error: "autoContext must be a boolean" }, 400);
       if (body.autoContext) delete next.autoContext;
       else next.autoContext = false;
     }
     if (body.injectAgents !== undefined) {
       // Default-on boolean (devlog 260712 070): true = drop the key, false = store.
-      if (typeof body.injectAgents !== "boolean") return jsonResponse({ error: "injectAgents must be a boolean" }, 400);
+      if (typeof body.injectAgents !== "boolean")
+        return jsonResponse({ error: "injectAgents must be a boolean" }, 400);
       if (body.injectAgents) delete next.injectAgents;
       else next.injectAgents = false;
     }
@@ -801,8 +1259,19 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
       // 100_000..1_000_000 (2.1.207 pSo/yDs — audit 021 #1).
       if (body.autoCompactWindow === null) {
         delete next.autoCompactWindow;
-      } else if (typeof body.autoCompactWindow !== "number" || !Number.isInteger(body.autoCompactWindow) || body.autoCompactWindow < 100_000 || body.autoCompactWindow > 1_000_000) {
-        return jsonResponse({ error: "autoCompactWindow must be an integer between 100000 and 1000000, or null" }, 400);
+      } else if (
+        typeof body.autoCompactWindow !== "number" ||
+        !Number.isInteger(body.autoCompactWindow) ||
+        body.autoCompactWindow < 100_000 ||
+        body.autoCompactWindow > 1_000_000
+      ) {
+        return jsonResponse(
+          {
+            error:
+              "autoCompactWindow must be an integer between 100000 and 1000000, or null",
+          },
+          400,
+        );
       } else {
         next.autoCompactWindow = body.autoCompactWindow;
       }
@@ -812,10 +1281,21 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
       // must contain non-empty strings (devlog 060).
       if (body.blockedSkills === null) {
         delete next.blockedSkills;
-      } else if (!Array.isArray(body.blockedSkills) || body.blockedSkills.some(s => typeof s !== "string" || s.trim() === "")) {
-        return jsonResponse({ error: "blockedSkills must be an array of non-empty strings, or null" }, 400);
+      } else if (
+        !Array.isArray(body.blockedSkills) ||
+        body.blockedSkills.some((s) => typeof s !== "string" || s.trim() === "")
+      ) {
+        return jsonResponse(
+          {
+            error:
+              "blockedSkills must be an array of non-empty strings, or null",
+          },
+          400,
+        );
       } else {
-        next.blockedSkills = (body.blockedSkills as string[]).map(s => s.trim());
+        next.blockedSkills = (body.blockedSkills as string[]).map((s) =>
+          s.trim(),
+        );
       }
     }
     if (body.tierModels !== undefined) {
@@ -823,31 +1303,47 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
       if (body.tierModels === null) {
         delete next.tierModels;
       } else if (!isPlainObject(body.tierModels)) {
-        return jsonResponse({ error: "tierModels must be an object with string values, or null" }, 400);
+        return jsonResponse(
+          { error: "tierModels must be an object with string values, or null" },
+          400,
+        );
       } else {
         for (const [tier, value] of Object.entries(body.tierModels)) {
-          if (typeof value !== "string") return jsonResponse({ error: `tierModels.${tier} must be a string` }, 400);
+          if (typeof value !== "string")
+            return jsonResponse(
+              { error: `tierModels.${tier} must be a string` },
+              400,
+            );
         }
         const tierModels = body.tierModels as Record<string, string>;
         const tiers: Record<string, string> = {};
         for (const tier of ["opus", "sonnet", "haiku", "fable"] as const) {
           const value = tierModels[tier];
-          if (value !== undefined && value.trim() !== "") tiers[tier] = value.trim();
+          if (value !== undefined && value.trim() !== "")
+            tiers[tier] = value.trim();
         }
         if (Object.keys(tiers).length > 0) next.tierModels = tiers;
         else delete next.tierModels;
       }
     }
     if (body.fastMode !== undefined) {
-      if (body.fastMode !== true && body.fastMode !== false && body.fastMode !== null) {
-        return jsonResponse({ error: "fastMode must be true, false, or null" }, 400);
+      if (
+        body.fastMode !== true &&
+        body.fastMode !== false &&
+        body.fastMode !== null
+      ) {
+        return jsonResponse(
+          { error: "fastMode must be true, false, or null" },
+          400,
+        );
       }
       config.fastMode = body.fastMode === null ? undefined : body.fastMode;
     }
     for (const field of ["model", "smallFastModel"] as const) {
       const value = body[field];
       if (value === undefined) continue;
-      if (typeof value !== "string") return jsonResponse({ error: `${field} must be a string` }, 400);
+      if (typeof value !== "string")
+        return jsonResponse({ error: `${field} must be a string` }, 400);
       if (value.trim() === "") delete next[field];
       else next[field] = value.trim();
     }
@@ -856,12 +1352,18 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
         delete next.modelMap;
       } else {
         if (!isPlainObject(body.modelMap)) {
-          return jsonResponse({ error: "modelMap must be an object of string->string, or null" }, 400);
+          return jsonResponse(
+            { error: "modelMap must be an object of string->string, or null" },
+            400,
+          );
         }
         const map: Record<string, string> = {};
         for (const [k, v] of Object.entries(body.modelMap)) {
           if (typeof v !== "string" || k.trim() === "" || v.trim() === "") {
-            return jsonResponse({ error: "modelMap entries must be non-empty strings" }, 400);
+            return jsonResponse(
+              { error: "modelMap entries must be non-empty strings" },
+              400,
+            );
           }
           map[k.trim()] = v.trim();
         }
@@ -877,8 +1379,10 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
     // merely toggling Claude on (App.tsx PUTs `{enabled}` alone and creates the block)
     // would be converted into a sticky manual subscription by the next startServer, and
     // auto would survive exactly one proxy lifetime with no way back.
-    if (!next.authModeMigratedAt) next.authModeMigratedAt = new Date().toISOString();
-    const { saveConfigPreservingClaudeCode: save } = await import("../../config");
+    if (!next.authModeMigratedAt)
+      next.authModeMigratedAt = new Date().toISOString();
+    const { saveConfigPreservingClaudeCode: save } =
+      await import("../../config");
     save(config);
     const warnings: string[] = [];
     // authMode changes must reconcile the injected system env too: switching back to
@@ -888,13 +1392,19 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
       try {
         await applySystemEnvToggle(config, config.port);
       } catch (err) {
-        warnings.push(`Failed to apply system environment setting: ${err instanceof Error ? err.message : String(err)}`);
+        warnings.push(
+          `Failed to apply system environment setting: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
     // Keep the file-backed live registry symmetric: OFF prunes immediately, while
     // ON and config changes restore definitions without requiring a restart.
     await syncClaudeAgentDefsBestEffort();
-    return jsonResponse({ ok: true, enabled: next.enabled !== false, warnings });
+    return jsonResponse({
+      ok: true,
+      enabled: next.enabled !== false,
+      warnings,
+    });
   }
   return null;
 }

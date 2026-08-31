@@ -26,7 +26,10 @@ const DATE_ALIAS = /^claude-opus-4-8-(2026\d{4})$/;
 const DAY_COUNT_2026 = 365;
 
 export class DesktopProfileError extends Error {
-  constructor(message: string, readonly path = "profile") {
+  constructor(
+    message: string,
+    readonly path = "profile",
+  ) {
     super(`${path}: ${message}`);
     this.name = "DesktopProfileError";
   }
@@ -44,10 +47,15 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-function assertExactKeys(value: Record<string, unknown>, keys: readonly string[], path: string): void {
+function assertExactKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  path: string,
+): void {
   const allowed = new Set(keys);
   for (const key of Object.keys(value)) {
-    if (!allowed.has(key)) throw new DesktopProfileError(`unknown field "${key}"`, path);
+    if (!allowed.has(key))
+      throw new DesktopProfileError(`unknown field "${key}"`, path);
   }
 }
 
@@ -60,18 +68,28 @@ function assertExactKeys(value: Record<string, unknown>, keys: readonly string[]
  * another family — would erase the fingerprint the apply route wrote, and the GUI would report
  * "not applied" for a config that is applied on disk.
  */
-function appliedMarkers(source: { appliedFingerprint?: unknown; appliedAt?: unknown }): {
+function appliedMarkers(source: {
+  appliedFingerprint?: unknown;
+  appliedAt?: unknown;
+}): {
   appliedFingerprint?: string;
   appliedAt?: string;
 } {
   return {
-    ...(typeof source.appliedFingerprint === "string" ? { appliedFingerprint: source.appliedFingerprint } : {}),
-    ...(typeof source.appliedAt === "string" ? { appliedAt: source.appliedAt } : {}),
+    ...(typeof source.appliedFingerprint === "string"
+      ? { appliedFingerprint: source.appliedFingerprint }
+      : {}),
+    ...(typeof source.appliedAt === "string"
+      ? { appliedAt: source.appliedAt }
+      : {}),
   };
 }
 
 function isFamily(value: unknown): value is DesktopFamily {
-  return typeof value === "string" && (DESKTOP_FAMILIES as readonly string[]).includes(value);
+  return (
+    typeof value === "string" &&
+    (DESKTOP_FAMILIES as readonly string[]).includes(value)
+  );
 }
 
 function routeModelId(route: string): string {
@@ -90,7 +108,11 @@ function validDateAlias(alias: string): boolean {
   const month = Number(match[1]!.slice(4, 6));
   const day = Number(match[1]!.slice(6, 8));
   const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
 }
 
 export function parseDesktopProfile(value: unknown): DesktopProfile {
@@ -98,13 +120,26 @@ export function parseDesktopProfile(value: unknown): DesktopProfile {
   // `appliedFingerprint`/`appliedAt` are written back by the apply route once a profile
   // reaches Claude Desktop (see server/management/agent-settings-routes.ts). Rejecting them
   // here made every reload after the first apply fail with `unknown field`.
-  assertExactKeys(value, ["version", "assignments", "defaults", "appliedFingerprint", "appliedAt"], "profile");
-  if (value.version !== 1) throw new DesktopProfileError("version must be 1", "profile.version");
-  if (!isPlainObject(value.assignments)) throw new DesktopProfileError("must be an object", "profile.assignments");
-  if (!isPlainObject(value.defaults)) throw new DesktopProfileError("must be an object", "profile.defaults");
+  assertExactKeys(
+    value,
+    ["version", "assignments", "defaults", "appliedFingerprint", "appliedAt"],
+    "profile",
+  );
+  if (value.version !== 1)
+    throw new DesktopProfileError("version must be 1", "profile.version");
+  if (!isPlainObject(value.assignments))
+    throw new DesktopProfileError("must be an object", "profile.assignments");
+  if (!isPlainObject(value.defaults))
+    throw new DesktopProfileError("must be an object", "profile.defaults");
   assertExactKeys(value.defaults, DESKTOP_FAMILIES, "profile.defaults");
-  if (value.appliedFingerprint !== undefined && typeof value.appliedFingerprint !== "string") {
-    throw new DesktopProfileError("must be a string", "profile.appliedFingerprint");
+  if (
+    value.appliedFingerprint !== undefined &&
+    typeof value.appliedFingerprint !== "string"
+  ) {
+    throw new DesktopProfileError(
+      "must be a string",
+      "profile.appliedFingerprint",
+    );
   }
   if (value.appliedAt !== undefined && typeof value.appliedAt !== "string") {
     throw new DesktopProfileError("must be a string", "profile.appliedAt");
@@ -113,17 +148,44 @@ export function parseDesktopProfile(value: unknown): DesktopProfile {
   const assignments: Record<string, OcxClaudeDesktopAssignment> = {};
   const aliases = new Set<string>();
   for (const [route, raw] of Object.entries(value.assignments)) {
-    if (!route.trim() || !route.includes("/")) throw new DesktopProfileError("route must be provider/model", `profile.assignments.${route || "<empty>"}`);
-    if (!isPlainObject(raw)) throw new DesktopProfileError("must be an object", `profile.assignments.${route}`);
+    if (!route.trim() || !route.includes("/"))
+      throw new DesktopProfileError(
+        "route must be provider/model",
+        `profile.assignments.${route || "<empty>"}`,
+      );
+    if (!isPlainObject(raw))
+      throw new DesktopProfileError(
+        "must be an object",
+        `profile.assignments.${route}`,
+      );
     assertExactKeys(raw, ["family", "alias"], `profile.assignments.${route}`);
-    if (!isFamily(raw.family)) throw new DesktopProfileError("unknown family", `profile.assignments.${route}.family`);
-    if (typeof raw.alias !== "string" || !raw.alias) throw new DesktopProfileError("must be a non-empty string", `profile.assignments.${route}.alias`);
+    if (!isFamily(raw.family))
+      throw new DesktopProfileError(
+        "unknown family",
+        `profile.assignments.${route}.family`,
+      );
+    if (typeof raw.alias !== "string" || !raw.alias)
+      throw new DesktopProfileError(
+        "must be a non-empty string",
+        `profile.assignments.${route}.alias`,
+      );
     if (isRealAnthropicRoute(route)) {
-      if (raw.alias !== routeModelId(route)) throw new DesktopProfileError("real Anthropic routes must keep their exact model id", `profile.assignments.${route}.alias`);
+      if (raw.alias !== routeModelId(route))
+        throw new DesktopProfileError(
+          "real Anthropic routes must keep their exact model id",
+          `profile.assignments.${route}.alias`,
+        );
     } else if (!validDateAlias(raw.alias)) {
-      throw new DesktopProfileError("must be a valid claude-opus-4-8-2026MMDD alias", `profile.assignments.${route}.alias`);
+      throw new DesktopProfileError(
+        "must be a valid claude-opus-4-8-2026MMDD alias",
+        `profile.assignments.${route}.alias`,
+      );
     }
-    if (aliases.has(raw.alias)) throw new DesktopProfileError(`duplicate alias "${raw.alias}"`, `profile.assignments.${route}.alias`);
+    if (aliases.has(raw.alias))
+      throw new DesktopProfileError(
+        `duplicate alias "${raw.alias}"`,
+        `profile.assignments.${route}.alias`,
+      );
     aliases.add(raw.alias);
     assignments[route] = { family: raw.family, alias: raw.alias };
   }
@@ -131,15 +193,32 @@ export function parseDesktopProfile(value: unknown): DesktopProfile {
   const defaults = {} as DesktopProfile["defaults"];
   for (const family of DESKTOP_FAMILIES) {
     const route = value.defaults[family];
-    if (route !== null && typeof route !== "string") throw new DesktopProfileError("must be a route or null", `profile.defaults.${family}`);
-    const members = Object.keys(assignments).filter(key => assignments[key]!.family === family).sort();
+    if (route !== null && typeof route !== "string")
+      throw new DesktopProfileError(
+        "must be a route or null",
+        `profile.defaults.${family}`,
+      );
+    const members = Object.keys(assignments)
+      .filter((key) => assignments[key]!.family === family)
+      .sort();
     if (members.length === 0) {
-      if (route !== null) throw new DesktopProfileError("must be null for an empty family", `profile.defaults.${family}`);
+      if (route !== null)
+        throw new DesktopProfileError(
+          "must be null for an empty family",
+          `profile.defaults.${family}`,
+        );
       defaults[family] = null;
       continue;
     }
-    if (typeof route !== "string" || !assignments[route] || assignments[route]!.family !== family) {
-      throw new DesktopProfileError("must reference a member of this family", `profile.defaults.${family}`);
+    if (
+      typeof route !== "string" ||
+      !assignments[route] ||
+      assignments[route]!.family !== family
+    ) {
+      throw new DesktopProfileError(
+        "must reference a member of this family",
+        `profile.defaults.${family}`,
+      );
     }
     defaults[family] = route;
   }
@@ -155,7 +234,9 @@ function dayOfYearAlias(dayIndex: number): string {
 }
 
 function routeStartDay(route: string): number {
-  return createHash("sha256").update(route).digest().readUInt32BE(0) % DAY_COUNT_2026;
+  return (
+    createHash("sha256").update(route).digest().readUInt32BE(0) % DAY_COUNT_2026
+  );
 }
 
 function allocateAlias(route: string, used: Set<string>): string {
@@ -165,31 +246,95 @@ function allocateAlias(route: string, used: Set<string>): string {
     const alias = dayOfYearAlias((start + offset) % DAY_COUNT_2026);
     if (!used.has(alias)) return alias;
   }
-  throw new DesktopProfileError("all 365 encoded date slots are occupied", `profile.assignments.${route}.alias`);
+  throw new DesktopProfileError(
+    "all 365 encoded date slots are occupied",
+    `profile.assignments.${route}.alias`,
+  );
 }
 
 export function reconcileDesktopProfile(
   stored: unknown,
   models: readonly DesktopProfileModel[],
 ): DesktopProfile {
-  const profile = stored === undefined || stored === null ? emptyDesktopProfile() : parseDesktopProfile(stored);
+  const profile =
+    stored === undefined || stored === null
+      ? emptyDesktopProfile()
+      : parseDesktopProfile(stored);
   const assignments: DesktopProfile["assignments"] = Object.fromEntries(
-    Object.entries(profile.assignments).map(([route, assignment]) => [route, { ...assignment }]),
+    Object.entries(profile.assignments).map(([route, assignment]) => [
+      route,
+      { ...assignment },
+    ]),
   );
-  const used = new Set(Object.values(assignments).map(value => value.alias));
-  for (const model of [...models].sort((a, b) => a.route.localeCompare(b.route))) {
+  const used = new Set(Object.values(assignments).map((value) => value.alias));
+  for (const model of [...models].sort((a, b) =>
+    a.route.localeCompare(b.route),
+  )) {
     if (assignments[model.route]) continue;
-    const alias = allocateAlias(model.route, used);
-    used.add(alias);
-    assignments[model.route] = { family: "opus", alias };
+    try {
+      const alias = allocateAlias(model.route, used);
+      used.add(alias);
+      assignments[model.route] = { family: "opus", alias };
+    } catch (error) {
+      // Claude Desktop only has 365 dated opus-4-8 aliases for non-Anthropic
+      // routes. A live catalog is larger than that; skip extras instead of
+      // taking down GET /api/claude-desktop when someone adds e.g. Voxtral.
+      if (
+        error instanceof DesktopProfileError &&
+        error.message.includes("365 encoded date slots")
+      ) {
+        continue;
+      }
+      throw error;
+    }
   }
   const defaults = { ...profile.defaults };
   for (const family of DESKTOP_FAMILIES) {
-    const members = Object.keys(assignments).filter(route => assignments[route]!.family === family).sort();
+    const members = Object.keys(assignments)
+      .filter((route) => assignments[route]!.family === family)
+      .sort();
     const current = defaults[family];
-    defaults[family] = current && assignments[current]?.family === family ? current : (members[0] ?? null);
+    defaults[family] =
+      current && assignments[current]?.family === family
+        ? current
+        : (members[0] ?? null);
   }
-  return parseDesktopProfile({ version: 1, assignments, defaults, ...appliedMarkers(profile) });
+  return parseDesktopProfile({
+    version: 1,
+    assignments,
+    defaults,
+    ...appliedMarkers(profile),
+  });
+}
+
+export function removeDesktopRoute(
+  profile: DesktopProfile,
+  route: string,
+): DesktopProfile {
+  const parsed = parseDesktopProfile(profile);
+  if (!parsed.assignments[route]) {
+    throw new DesktopProfileError(
+      "route is not assigned",
+      `profile.assignments.${route}`,
+    );
+  }
+  const assignments = { ...parsed.assignments };
+  delete assignments[route];
+  const defaults = { ...parsed.defaults };
+  for (const family of DESKTOP_FAMILIES) {
+    if (defaults[family] === route) {
+      defaults[family] =
+        Object.keys(assignments)
+          .filter((key) => assignments[key]!.family === family)
+          .sort()[0] ?? null;
+    }
+  }
+  return parseDesktopProfile({
+    version: 1,
+    assignments,
+    defaults,
+    ...appliedMarkers(parsed),
+  });
 }
 
 export function moveDesktopRoute(
@@ -200,20 +345,47 @@ export function moveDesktopRoute(
 ): DesktopProfile {
   const parsed = parseDesktopProfile(profile);
   const current = parsed.assignments[route];
-  if (!current) throw new DesktopProfileError("route is not assigned", `profile.assignments.${route}`);
+  if (!current)
+    throw new DesktopProfileError(
+      "route is not assigned",
+      `profile.assignments.${route}`,
+    );
   const oldFamily = current.family;
   if (oldFamily === family) {
-    return makeDefault ? setDesktopFamilyDefault(parsed, family, route) : parsed;
+    return makeDefault
+      ? setDesktopFamilyDefault(parsed, family, route)
+      : parsed;
   }
-  const assignments = { ...parsed.assignments, [route]: { ...current, family } };
+  const assignments = {
+    ...parsed.assignments,
+    [route]: { ...current, family },
+  };
   const defaults = { ...parsed.defaults };
   if (defaults[oldFamily] === route) {
-    defaults[oldFamily] = Object.keys(assignments).filter(key => key !== route && assignments[key]!.family === oldFamily).sort()[0] ?? null;
+    defaults[oldFamily] =
+      Object.keys(assignments)
+        .filter(
+          (key) => key !== route && assignments[key]!.family === oldFamily,
+        )
+        .sort()[0] ?? null;
   }
-  const destinationMembers = Object.keys(assignments).filter(key => assignments[key]!.family === family).sort();
-  if (makeDefault || !defaults[family] || assignments[defaults[family]!]?.family !== family) defaults[family] = route;
-  if (!defaults[family] && destinationMembers.length > 0) defaults[family] = destinationMembers[0]!;
-  return parseDesktopProfile({ version: 1, assignments, defaults, ...appliedMarkers(parsed) });
+  const destinationMembers = Object.keys(assignments)
+    .filter((key) => assignments[key]!.family === family)
+    .sort();
+  if (
+    makeDefault ||
+    !defaults[family] ||
+    assignments[defaults[family]!]?.family !== family
+  )
+    defaults[family] = route;
+  if (!defaults[family] && destinationMembers.length > 0)
+    defaults[family] = destinationMembers[0]!;
+  return parseDesktopProfile({
+    version: 1,
+    assignments,
+    defaults,
+    ...appliedMarkers(parsed),
+  });
 }
 
 export function setDesktopFamilyDefault(
@@ -222,10 +394,23 @@ export function setDesktopFamilyDefault(
   route: string | null,
 ): DesktopProfile {
   const parsed = parseDesktopProfile(profile);
-  const members = Object.keys(parsed.assignments).filter(key => parsed.assignments[key]!.family === family);
-  if (route === null && members.length > 0) throw new DesktopProfileError("cannot clear a non-empty family default", `profile.defaults.${family}`);
-  if (route !== null && parsed.assignments[route]?.family !== family) throw new DesktopProfileError("route is not a member of this family", `profile.defaults.${family}`);
-  return parseDesktopProfile({ ...parsed, defaults: { ...parsed.defaults, [family]: route } });
+  const members = Object.keys(parsed.assignments).filter(
+    (key) => parsed.assignments[key]!.family === family,
+  );
+  if (route === null && members.length > 0)
+    throw new DesktopProfileError(
+      "cannot clear a non-empty family default",
+      `profile.defaults.${family}`,
+    );
+  if (route !== null && parsed.assignments[route]?.family !== family)
+    throw new DesktopProfileError(
+      "route is not a member of this family",
+      `profile.defaults.${family}`,
+    );
+  return parseDesktopProfile({
+    ...parsed,
+    defaults: { ...parsed.defaults, [family]: route },
+  });
 }
 
 export function renderDesktopProfile(
@@ -233,23 +418,29 @@ export function renderDesktopProfile(
   models: readonly DesktopProfileModel[],
 ): RenderedDesktopModel[] {
   const parsed = parseDesktopProfile(profile);
-  const modelByRoute = new Map(models.map(model => [model.route, model]));
+  const modelByRoute = new Map(models.map((model) => [model.route, model]));
   const activeByFamily = new Map<DesktopFamily, string[]>();
   for (const family of DESKTOP_FAMILIES) activeByFamily.set(family, []);
   for (const [route, assignment] of Object.entries(parsed.assignments)) {
-    if (modelByRoute.has(route)) activeByFamily.get(assignment.family)!.push(route);
+    if (modelByRoute.has(route))
+      activeByFamily.get(assignment.family)!.push(route);
   }
   for (const routes of activeByFamily.values()) routes.sort();
   const effectiveDefaults = {} as Record<DesktopFamily, string | null>;
   for (const family of DESKTOP_FAMILIES) {
     const active = activeByFamily.get(family)!;
     const stored = parsed.defaults[family];
-    effectiveDefaults[family] = stored && active.includes(stored) ? stored : (active[0] ?? null);
+    effectiveDefaults[family] =
+      stored && active.includes(stored) ? stored : (active[0] ?? null);
   }
-  const defaultOrder = DESKTOP_FAMILIES.map(family => effectiveDefaults[family]).filter((route): route is string => !!route);
+  const defaultOrder = DESKTOP_FAMILIES.map(
+    (family) => effectiveDefaults[family],
+  ).filter((route): route is string => !!route);
   const defaultSet = new Set(defaultOrder);
-  const rest = Object.keys(parsed.assignments).filter(route => modelByRoute.has(route) && !defaultSet.has(route)).sort();
-  return [...defaultOrder, ...rest].map(route => {
+  const rest = Object.keys(parsed.assignments)
+    .filter((route) => modelByRoute.has(route) && !defaultSet.has(route))
+    .sort();
+  return [...defaultOrder, ...rest].map((route) => {
     const model = modelByRoute.get(route)!;
     const assignment = parsed.assignments[route]!;
     return {
@@ -257,7 +448,9 @@ export function renderDesktopProfile(
       name: assignment.alias,
       family: assignment.family,
       isFamilyDefault: effectiveDefaults[assignment.family] === route,
-      supports1m: typeof model.contextWindow === "number" && model.contextWindow >= 1_000_000,
+      supports1m:
+        typeof model.contextWindow === "number" &&
+        model.contextWindow >= 1_000_000,
     };
   });
 }
