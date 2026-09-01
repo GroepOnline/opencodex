@@ -32,6 +32,12 @@ export interface LivenessIo {
   timeoutMs?: number;
 }
 
+export interface ProxyIdentity {
+  pid: number | null;
+  version?: string;
+  uptime?: number;
+}
+
 export interface LiveProxy {
   pid: number | null;
   port: number;
@@ -39,6 +45,15 @@ export interface LiveProxy {
   hostname?: string;
   /** Whether the successful probe used runtime-port metadata or the configured listen port. */
   source: "runtime" | "config";
+  version?: string;
+  uptime?: number;
+}
+
+function healthzMeta(body: HealthzIdentity | null): Pick<ProxyIdentity, "version" | "uptime"> {
+  return {
+    ...(typeof body?.version === "string" ? { version: body.version } : {}),
+    ...(typeof body?.uptime === "number" ? { uptime: body.uptime } : {}),
+  };
 }
 
 /**
@@ -70,7 +85,7 @@ export async function proxyIdentityAt(
   port: number,
   opts: { hostname?: string; expectedPid?: number } = {},
   io: LivenessIo = {},
-): Promise<{ pid: number | null } | null> {
+): Promise<ProxyIdentity | null> {
   const fetchFn = io.fetchFn ?? fetch;
   try {
     const res = await fetchFn(`http://${probeHostname(opts.hostname)}:${port}/healthz`, {
@@ -81,7 +96,7 @@ export async function proxyIdentityAt(
     if (!isOpencodexHealthz(body)) return null;
     const pid = typeof body?.pid === "number" ? body.pid : null;
     if (opts.expectedPid !== undefined && pid !== null && pid !== opts.expectedPid) return null;
-    return { pid };
+    return { pid, ...healthzMeta(body) };
   } catch {
     return null;
   }
@@ -117,10 +132,19 @@ export async function findLiveProxy(io: LivenessIo = {}): Promise<LiveProxy | nu
       probedPort = runtime.port;
       const identity = await proxyIdentityAt(runtime.port, { hostname: runtime.hostname, expectedPid: pid }, io);
       if (identity) {
-        // healthz confirmed the pid itself → trusted; a pidless legacy body did not,
-        // so the cheap pid must pass full identity verification before it is returned.
-        const trusted = identity.pid === pid ? pid : killablePid(pid);
-        return { pid: trusted, port: runtime.port, hostname: runtime.hostname, source: "runtime" };
+        // A health response can arrive through a local forward/tunnel. Its reported PID
+        // therefore belongs to the endpoint host until the local process verifier proves
+        // that the same PID is actually our process on this machine. Never expose an
+        // unverified healthz PID to destructive callers such as `ocx stop`.
+        const trusted = killablePid(identity.pid ?? pid);
+        return {
+          pid: trusted,
+          port: runtime.port,
+          hostname: runtime.hostname,
+          source: "runtime",
+          version: identity.version,
+          uptime: identity.uptime,
+        };
       }
     }
   }
@@ -132,11 +156,17 @@ export async function findLiveProxy(io: LivenessIo = {}): Promise<LiveProxy | nu
   if (record?.port && record.port !== probedPort) {
     const expectedPid = typeof record.pid === "number" ? record.pid : undefined;
     const identity = await proxyIdentityAt(record.port, { hostname: record.hostname, expectedPid }, io);
-    // Only the healthz-reported pid is authoritative here. The record's pid may be stale
-    // (its process dead, the port reused by a pidless legacy proxy) — synthesizing it
-    // would hand destructive callers (stopProxy → kill fallback) a reusable pid.
+    // The runtime record and healthz can both describe a remote endpoint reached through
+    // a forward. Only a PID that also passes local process identity verification is killable.
     if (identity) {
-      return { pid: identity.pid ?? null, port: record.port, hostname: record.hostname, source: "runtime" };
+      return {
+        pid: identity.pid === null ? null : killablePid(identity.pid),
+        port: record.port,
+        hostname: record.hostname,
+        source: "runtime",
+        version: identity.version,
+        uptime: identity.uptime,
+      };
     }
   }
 
@@ -145,11 +175,46 @@ export async function findLiveProxy(io: LivenessIo = {}): Promise<LiveProxy | nu
   const identity = await proxyIdentityAt(port, { hostname: config.hostname }, io);
   if (identity) {
     return {
-      pid: identity.pid ?? killablePid(pid),
+      // Config-source discovery proves endpoint identity, not local socket ownership. A
+      // forwarded remote PID can numerically collide with an unrelated local OCX process,
+      // so config-only discovery is never a destructive/killable PID source.
+      pid: null,
       port,
       hostname: config.hostname,
       source: "config",
+      version: identity.version,
+      uptime: identity.uptime,
     };
   }
   return null;
+}
+
+/**
+ * Non-destructive CLI reachability probe. `findLiveProxy` intentionally uses a short
+ * timeout because start/stop/ensure call it on hot paths. A socket-activated SSH/Tailscale
+ * forward can need longer than that on the first connection, so status/doctor/OAuth get
+ * one bounded retry against the configured endpoint. Returned PIDs retain the same local
+ * identity-verification guarantee as `findLiveProxy`.
+ */
+export async function findReachableProxyForCli(io: LivenessIo = {}): Promise<LiveProxy | null> {
+  const live = await findLiveProxy(io);
+  if (live) return live;
+
+  const configFn = io.configFn ?? loadConfig;
+  const config = configFn();
+  const port = config.port ?? 10100;
+  const retryIo: LivenessIo = { ...io, timeoutMs: io.timeoutMs ?? 2000 };
+  const identity = await proxyIdentityAt(port, { hostname: config.hostname }, retryIo);
+  if (!identity) return null;
+
+  // Same safety rule as the first config probe: reachability does not prove that a
+  // same-numbered local process owns this endpoint. Keep destructive callers pidless.
+  return {
+    pid: null,
+    port,
+    hostname: config.hostname,
+    source: "config",
+    version: identity.version,
+    uptime: identity.uptime,
+  };
 }
