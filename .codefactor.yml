@@ -1,0 +1,17 @@
+# ChefGroep CodeFactor policy.
+# Rate authored runtime/UI code. Tests remain analyzable; generated dependency
+# and build artifacts must not distort the repository grade.
+ratings:
+  paths:
+    - "src/**"
+    - "gui/src/**"
+    - "packages/**"
+    - "scripts/**"
+
+exclude:
+  - "**/node_modules/**"
+  - "**/coverage/**"
+  - "**/dist/**"
+  - "**/build/**"
+  - "**/.tmp/**"
+  - "**/.cache/**"
