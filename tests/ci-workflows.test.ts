@@ -67,9 +67,9 @@ describe("GitHub Actions hardening", () => {
     }
 
     const designSystem = await readText(".github/workflows/design-system-contract.yml");
-    expect(count(designSystem, "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2")).toBe(2);
+    expect(count(designSystem, "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1")).toBe(2);
     expect(designSystem).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
-    expect(workflow).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");
+    expect(workflow).toContain("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1");
     expect(workflow).toContain("oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6");
     expect(workflow).toContain("actions/setup-node@820762786026740c76f36085b0efc47a31fe5020");
     // Both test paths must go through the canonical isolated-environment entry points, never a
@@ -284,7 +284,7 @@ describe("GitHub Actions hardening", () => {
     expect(fallbackStep).toContain("always-auth=true");
 
     // Immutable action references.
-    expect(workflow).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");
+    expect(workflow).toContain("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1");
     expect(workflow).toContain("oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6");
     expect(workflow).toContain("actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e");
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
@@ -690,7 +690,7 @@ describe("GitHub Actions hardening", () => {
     const [checkout, scriptStep] = steps as [WorkflowStep, WorkflowStep];
     expect(Object.keys(checkout).sort()).toEqual(["name", "uses", "with"]);
     expect(checkout.uses).toBe(
-      "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
+      "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
     );
     expect(Object.keys(checkout.with ?? {}).sort()).toEqual([
       "persist-credentials",
@@ -2159,7 +2159,7 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toContain("cancel-in-progress: false");
     expect(workflow).toContain("timeout-minutes: 15");
     expect(workflow).toContain("timeout-minutes: 10");
-    expect(workflow).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");
+    expect(workflow).toContain("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1");
     expect(workflow).toContain("withastro/action@e84f40bd8d2caa9e768ec82ad30dd81f0b280853");
     expect(workflow).toContain("actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128");
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
@@ -2304,7 +2304,7 @@ describe("GitHub Actions hardening", () => {
     expect(workflow.jobs?.deploy?.env?.DEPLOY_PATH).toBeUndefined();
     expect(workflow.jobs?.deploy?.env?.COMPOSE_DIR).toBe("/opt/chef/deploy/opencodex");
 
-    expect(text).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0");
+    expect(text).toContain("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1");
     expect(text).toContain("sudo docker login ghcr.io");
     expect(text).toContain("sudo docker logout ghcr.io");
     expect(text).not.toContain("docker/login-action@");
@@ -2838,7 +2838,7 @@ describe("GitHub Actions hardening", () => {
     expect(text).not.toMatch(
       /^\s*-\s+uses:\s+\S+@(?![0-9a-f]{40}(?=[ \t]*(?:#.*)?$))\S+/m,
     );
-    expect(text).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7");
+    expect(text).toContain("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7");
     expect(text).toContain("docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0");
     expect(text).toContain("docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0");
 
@@ -2917,7 +2917,7 @@ describe("GitHub Actions hardening", () => {
   test("React Doctor workflow is SHA-pinned, engine-pinned, gating, and read-only", async () => {
     const workflow = await readText(".github/workflows/react-doctor.yml");
 
-    expect(workflow).toContain("actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8");
+    expect(workflow).toContain("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1");
     expect(workflow).toContain("millionco/react-doctor@938008119a288f2fb47c66a69cd9279a21f31784");
     expect(workflow).not.toMatch(
       /^\s*-\s+uses:\s+\S+@(?![0-9a-f]{40}(?=[ \t]*(?:#.*)?$))\S+/m,
