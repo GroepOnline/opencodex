@@ -2918,7 +2918,7 @@ describe("GitHub Actions hardening", () => {
     const workflow = await readText(".github/workflows/react-doctor.yml");
 
     expect(workflow).toContain("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1");
-    expect(workflow).toContain("millionco/react-doctor@938008119a288f2fb47c66a69cd9279a21f31784");
+    expect(workflow).toContain("millionco/react-doctor@013f7373f91a3b9e68bd1dc7d4d354f4b041b117");
     expect(workflow).not.toMatch(
       /^\s*-\s+uses:\s+\S+@(?![0-9a-f]{40}(?=[ \t]*(?:#.*)?$))\S+/m,
     );
