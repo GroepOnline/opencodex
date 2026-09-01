@@ -19,7 +19,7 @@
   --lp-accent-hi: #8ab4ff;
   --lp-green: #3fb950;
   --lp-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --lp-display: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --lp-display: "Instrument Serif", georgia, "Times New Roman", serif;
   --lp-font: "General Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --lp-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, menlo, monospace;
 
@@ -30,7 +30,7 @@
   font-size: 16px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+  text-rendering: optimizelegibility;
 }
 
 .lp ::selection { background: rgba(92, 151, 255, 0.28); }

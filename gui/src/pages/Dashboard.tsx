@@ -297,11 +297,11 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
         </div>
         <div className="stat-strip-item">
           <span className="stat-strip-waarde">{pct429}</span>
-          <span className="stat-strip-label">429</span>
+          <span className="stat-strip-label">{t("dash.http429")}</span>
         </div>
         <div className="stat-strip-item">
           <span className="stat-strip-waarde">{pct502}</span>
-          <span className="stat-strip-label">502</span>
+          <span className="stat-strip-label">{t("dash.http50x")}</span>
         </div>
       </div>
 
@@ -317,6 +317,9 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
               {usageProviders.map((p) => {
                 const name = p.provider;
                 const count = p.requests;
+                const sharePct = Number.isFinite(p.shareRatio)
+                  ? Math.min(100, Math.max(0, p.shareRatio * 100))
+                  : 0;
                 return (
                   <div key={name} className="pws-dashboard-row">
                     <span className="pws-dashboard-row-name">{name}</span>
@@ -332,7 +335,7 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
                       <span
                         className="dash-bar-fill"
                         style={{
-                          width: `${(count / usageProviders[0].requests) * 100}%`,
+                          width: `${sharePct}%`,
                         }}
                       />
                     </span>

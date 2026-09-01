@@ -38,6 +38,14 @@ test("dead page-level use-provider-quotas hook stays deleted", async () => {
   expect(await Bun.file(new URL("../src/use-provider-quotas.ts", import.meta.url)).exists()).toBe(false);
 });
 
+test("Dashboard uses absolute provider share and localized HTTP labels", async () => {
+  const src = await Bun.file(new URL("../src/pages/Dashboard.tsx", import.meta.url)).text();
+  expect(src).toContain("Math.min(100, Math.max(0, p.shareRatio * 100))");
+  expect(src).not.toContain("usageProviders[0].requests");
+  expect(src).toContain('t("dash.http429")');
+  expect(src).toContain('t("dash.http50x")');
+});
+
 const globals = ["document", "window", "navigator", "localStorage", "IS_REACT_ACT_ENVIRONMENT"] as const;
 let previousGlobals: Record<(typeof globals)[number], unknown>;
 let testWindow: Window;
