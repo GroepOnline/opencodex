@@ -263,6 +263,9 @@ jobs:
         env:
           TAG_SHA: ${{ steps.verify.outputs.tag_sha }}
           PINNED_IMAGE: ${{ steps.image.outputs.ref }}
+          CF_ACCESS_TEAM_DOMAIN: ${{ secrets.OCX_CF_ACCESS_TEAM_DOMAIN }}
+          CF_ACCESS_AUD: ${{ secrets.OCX_CF_ACCESS_AUD }}
+          CF_ACCESS_ALLOWED_HOSTS: ${{ secrets.OCX_CF_ACCESS_ALLOWED_HOSTS }}
         run: |
           set -euo pipefail
           if [[ ! "$OPENCODEX_BIND_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [ "$OPENCODEX_BIND_IP" = "127.0.0.1" ]; then
@@ -286,7 +289,26 @@ jobs:
           fi
           echo "container runtime uid:gid=${container_uid}:${container_gid}"
 
-          # Arm rollback before any persistent unit/.env mutation or service stop.
+          # Secrets win. Empty GitHub secrets must not wipe a live COMPOSE_ENV.
+          # Resolve + fail-closed BEFORE cutover_started so an incomplete
+          # identity exits without stopping the running service.
+          if sudo test -f "$COMPOSE_ENV"; then
+            if [ -z "${CF_ACCESS_TEAM_DOMAIN:-}" ]; then
+              CF_ACCESS_TEAM_DOMAIN="$(sudo awk -F= '$1=="CF_ACCESS_TEAM_DOMAIN"{v=substr($0,index($0,"=")+1)} END{print v}' "$COMPOSE_ENV")"
+            fi
+            if [ -z "${CF_ACCESS_AUD:-}" ]; then
+              CF_ACCESS_AUD="$(sudo awk -F= '$1=="CF_ACCESS_AUD"{v=substr($0,index($0,"=")+1)} END{print v}' "$COMPOSE_ENV")"
+            fi
+            if [ -z "${CF_ACCESS_ALLOWED_HOSTS:-}" ]; then
+              CF_ACCESS_ALLOWED_HOSTS="$(sudo awk -F= '$1=="CF_ACCESS_ALLOWED_HOSTS"{v=substr($0,index($0,"=")+1)} END{print v}' "$COMPOSE_ENV")"
+            fi
+          fi
+          if [ -z "${CF_ACCESS_TEAM_DOMAIN:-}" ] || [ -z "${CF_ACCESS_AUD:-}" ] || [ -z "${CF_ACCESS_ALLOWED_HOSTS:-}" ]; then
+            echo "::error::CF Access identity incomplete after secret+live merge. Set OCX_CF_ACCESS_* repo secrets or keep them in ${COMPOSE_ENV}."
+            exit 1
+          fi
+
+          # Arm rollback only after Access preflight succeeded.
           echo "cutover_started=true" >> "$GITHUB_OUTPUT"
 
           sudo mkdir -p "$COMPOSE_DIR" "$STATE_DIR"
@@ -340,9 +362,9 @@ jobs:
 
           {
             printf 'OPENCODEX_IMAGE=%s\n' "$PINNED_IMAGE"
-            printf 'CF_ACCESS_TEAM_DOMAIN=%s\n' 'chefgroep.cloudflareaccess.com'
-            printf 'CF_ACCESS_AUD=%s\n' '113d678ff9b96cabf41e8e2076166fa692bc078db28e792019c9302fa0e53286'
-            printf 'CF_ACCESS_ALLOWED_HOSTS=%s\n' 'ocx.chefgroep.online'
+            printf 'CF_ACCESS_TEAM_DOMAIN=%s\n' "${CF_ACCESS_TEAM_DOMAIN:-}"
+            printf 'CF_ACCESS_AUD=%s\n' "${CF_ACCESS_AUD:-}"
+            printf 'CF_ACCESS_ALLOWED_HOSTS=%s\n' "${CF_ACCESS_ALLOWED_HOSTS:-}"
             printf 'OPENCODEX_STATE_DIR=%s\n' "$STATE_DIR"
             printf 'OPENCODEX_API_TOKEN_FILE=%s\n' "$token_file"
             printf 'OPENCODEX_BIND_IP=%s\n' "$OPENCODEX_BIND_IP"
@@ -413,6 +435,9 @@ jobs:
           BUN_RUNTIME: ${{ steps.prev.outputs.bun_runtime }}
           UNIT_BACKUP: ${{ steps.prev.outputs.unit_backup }}
           PREV_HEALTH_URLS: ${{ steps.prev.outputs.health_urls }}
+          CF_ACCESS_TEAM_DOMAIN: ${{ secrets.OCX_CF_ACCESS_TEAM_DOMAIN }}
+          CF_ACCESS_AUD: ${{ secrets.OCX_CF_ACCESS_AUD }}
+          CF_ACCESS_ALLOWED_HOSTS: ${{ secrets.OCX_CF_ACCESS_ALLOWED_HOSTS }}
         run: |
           set -euo pipefail
           prev_image="$PREV_IMAGE"
@@ -423,6 +448,26 @@ jobs:
           if [ "$bun_runtime" = "true" ] && [ -z "$unit_backup" ]; then
             echo "::error::bun runtime detected but unit backup missing"
             exit 1
+          fi
+
+          # Digest rollback rewrites COMPOSE_ENV. Validate Access before
+          # tearing down whatever is still running.
+          if [ "$bun_runtime" != "true" ]; then
+            if sudo test -f "$COMPOSE_ENV"; then
+              if [ -z "${CF_ACCESS_TEAM_DOMAIN:-}" ]; then
+                CF_ACCESS_TEAM_DOMAIN="$(sudo awk -F= '$1=="CF_ACCESS_TEAM_DOMAIN"{v=substr($0,index($0,"=")+1)} END{print v}' "$COMPOSE_ENV")"
+              fi
+              if [ -z "${CF_ACCESS_AUD:-}" ]; then
+                CF_ACCESS_AUD="$(sudo awk -F= '$1=="CF_ACCESS_AUD"{v=substr($0,index($0,"=")+1)} END{print v}' "$COMPOSE_ENV")"
+              fi
+              if [ -z "${CF_ACCESS_ALLOWED_HOSTS:-}" ]; then
+                CF_ACCESS_ALLOWED_HOSTS="$(sudo awk -F= '$1=="CF_ACCESS_ALLOWED_HOSTS"{v=substr($0,index($0,"=")+1)} END{print v}' "$COMPOSE_ENV")"
+              fi
+            fi
+            if [ -z "${CF_ACCESS_TEAM_DOMAIN:-}" ] || [ -z "${CF_ACCESS_AUD:-}" ] || [ -z "${CF_ACCESS_ALLOWED_HOSTS:-}" ]; then
+              echo "::error::CF Access identity incomplete during rollback after secret+live merge. Set OCX_CF_ACCESS_* repo secrets or keep them in ${COMPOSE_ENV}."
+              exit 1
+            fi
           fi
 
           # Mirror deploy cleanup: a leftover compose unit holding the
@@ -463,9 +508,9 @@ jobs:
             token_file="${OPENCODEX_API_TOKEN_FILE:-/etc/chef/opencodex/service-api-token}"
             {
               printf 'OPENCODEX_IMAGE=%s\n' "$prev_image"
-              printf 'CF_ACCESS_TEAM_DOMAIN=%s\n' 'chefgroep.cloudflareaccess.com'
-              printf 'CF_ACCESS_AUD=%s\n' '113d678ff9b96cabf41e8e2076166fa692bc078db28e792019c9302fa0e53286'
-              printf 'CF_ACCESS_ALLOWED_HOSTS=%s\n' 'ocx.chefgroep.online'
+              printf 'CF_ACCESS_TEAM_DOMAIN=%s\n' "${CF_ACCESS_TEAM_DOMAIN:-}"
+              printf 'CF_ACCESS_AUD=%s\n' "${CF_ACCESS_AUD:-}"
+              printf 'CF_ACCESS_ALLOWED_HOSTS=%s\n' "${CF_ACCESS_ALLOWED_HOSTS:-}"
               printf 'OPENCODEX_STATE_DIR=%s\n' "$STATE_DIR"
               printf 'OPENCODEX_API_TOKEN_FILE=%s\n' "$token_file"
               printf 'OPENCODEX_BIND_IP=%s\n' "$OPENCODEX_BIND_IP"
