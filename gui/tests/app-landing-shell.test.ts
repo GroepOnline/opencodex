@@ -37,15 +37,21 @@ test("landing terminal binds its version to the build-time package version", asy
     new URL("../src/i18n/nl.ts", import.meta.url),
   ).text();
 
-  expect(landing).toContain(
-    't("landing.terminal.proxyListening", { version: __APP_VERSION__ })',
+  const proxyCall = landing.slice(
+    landing.indexOf('t("landing.terminal.proxyListening"'),
+    landing.indexOf('t("landing.terminal.proxyListening"') + 180,
   );
-  expect(en).toContain(
-    '"landing.terminal.proxyListening": "opencodex {version} · proxy listening',
+  expect(proxyCall).toContain("version: __APP_VERSION__");
+  const enProxy = en.slice(
+    en.indexOf('"landing.terminal.proxyListening"'),
+    en.indexOf('"landing.terminal.proxyListening"') + 180,
   );
-  expect(nl).toContain(
-    '"landing.terminal.proxyListening": "opencodex {version} · proxy luistert',
+  const nlProxy = nl.slice(
+    nl.indexOf('"landing.terminal.proxyListening"'),
+    nl.indexOf('"landing.terminal.proxyListening"') + 180,
   );
+  expect(enProxy).toContain("opencodex {version} · proxy listening");
+  expect(nlProxy).toContain("opencodex {version} · proxy luistert");
   expect(en).not.toMatch(
     /landing\.terminal\.proxyListening.*opencodex \d+\.\d+\.\d+/,
   );
