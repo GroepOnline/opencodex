@@ -331,14 +331,20 @@ export function requireDataPlaneAdmissionAuth(req: Request, config: OcxConfig): 
 }
 
 /**
- * Admission for OpenAI Responses transports whose Authorization header belongs to
- * Codex Direct. Remote binds must use the dedicated proxy header so the two bearer
- * domains can never be confused.
+ * Admission for OpenAI Responses-style transports. A dedicated
+ * `x-opencodex-api-key` remains preferred because Authorization can belong to
+ * Codex Direct, but OpenAI-compatible proxy clients may send the OCX data-plane
+ * credential as a Bearer token. Accept that bearer only when it exactly matches
+ * a configured data-plane admission secret. Forwarding paths independently
+ * reject proxy admission credentials, so this cannot turn an OCX bearer into an
+ * upstream provider credential.
  */
 export function requireResponsesApiAuth(req: Request, config: OcxConfig): Response | null {
   if (!isApiAuthRequired(config)) return null;
-  const actual = req.headers.get("x-opencodex-api-key")?.trim();
-  if (actual && isDataPlaneAdmissionSecret(actual, config)) return null;
+  const dedicated = req.headers.get("x-opencodex-api-key")?.trim();
+  if (dedicated && isDataPlaneAdmissionSecret(dedicated, config)) return null;
+  const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
+  if (bearer && isDataPlaneAdmissionSecret(bearer, config)) return null;
   return formatErrorResponse(401, "authentication_error", "opencodex API key required");
 }
 
