@@ -77,7 +77,7 @@ jobs:
 
       - name: Cache GUI node_modules
         if: ${{ matrix.run_quality || matrix.run_tests }}
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: gui/node_modules
           key: gui-node-modules-${{ runner.os }}-${{ hashFiles('gui/bun.lock') }}
