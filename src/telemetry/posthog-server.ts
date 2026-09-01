@@ -10,11 +10,23 @@
  * error codes, and codex account-pool outcomes. Never request bodies, headers,
  * auth tokens, user prompts, or filenames.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  chmodSync,
+} from "node:fs";
 import { join } from "node:path";
 import { getConfigDir } from "../config";
 
-const DEFAULT_HOST = "https://k.chefgroep.online";
+/**
+ * PostHog host. When OCX_POSTHOG_KEY is set, the host defaults to the official
+ * EU-hosted PostHog cloud. Override via OCX_POSTHOG_HOST for a self-hosted
+ * instance. A deployment-specific default must NOT be hardcoded here —
+ * telemetry destination is operator configuration, not source code.
+ */
+const DEFAULT_HOST = "https://eu.i.posthog.com";
 const FLUSH_INTERVAL_MS = 10_000;
 const MAX_BATCH_SIZE = 50;
 /** Hard cap on buffered events; the oldest are dropped once exceeded. */
@@ -33,7 +45,8 @@ export const TELEMETRY_EVENTS = {
   BUDGET_EXCEEDED: "proxy_budget_exceeded",
 } as const;
 
-export type TelemetryEvent = (typeof TELEMETRY_EVENTS)[keyof typeof TELEMETRY_EVENTS];
+export type TelemetryEvent =
+  (typeof TELEMETRY_EVENTS)[keyof typeof TELEMETRY_EVENTS];
 
 interface QueuedEvent {
   event: string;
@@ -50,19 +63,33 @@ interface QueuedEvent {
  */
 const ALLOWED_PROPERTY_KEYS = new Set([
   // Request outcome.
-  "provider", "model", "adapter", "status", "outcome",
+  "provider",
+  "model",
+  "adapter",
+  "status",
+  "outcome",
   // Latency.
-  "durationMs", "firstOutputMs",
+  "durationMs",
+  "firstOutputMs",
   // Token counts.
-  "inputTokens", "outputTokens", "cachedTokens", "reasoningTokens",
+  "inputTokens",
+  "outputTokens",
+  "cachedTokens",
+  "reasoningTokens",
   // Errors and codex account-pool outcomes.
-  "errorCode", "accountMode", "cooldownMs",
+  "errorCode",
+  "accountMode",
+  "cooldownMs",
   // Quota and budget thresholds.
-  "type", "threshold", "actual",
+  "type",
+  "threshold",
+  "actual",
 ]);
 
 /** Keep only allowlisted metric keys with primitive values, capping string length. */
-function sanitizeProperties(props: Record<string, unknown> | undefined): Record<string, unknown> {
+function sanitizeProperties(
+  props: Record<string, unknown> | undefined,
+): Record<string, unknown> {
   if (!props || typeof props !== "object") return {};
   const clean: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(props)) {
@@ -93,7 +120,11 @@ function loadOrCreateDistinctId(): string {
     // Random UUID-style id; completely anonymous.
     const id = crypto.randomUUID();
     writeFileSync(idPath, id, { mode: 0o600 });
-    try { chmodSync(idPath, 0o600); } catch { /* best-effort */ }
+    try {
+      chmodSync(idPath, 0o600);
+    } catch {
+      /* best-effort */
+    }
     return id;
   } catch {
     // Fallback: ephemeral random id if disk is unavailable.
@@ -165,7 +196,8 @@ export class PosthogClient {
     if (retryable.length === 0) return;
     this.queue.unshift(...retryable);
     this.enforceQueueBound();
-    this.retryAfterMs = Date.now() + RETRY_BASE_DELAY_MS * 2 ** (maxAttempts - 1);
+    this.retryAfterMs =
+      Date.now() + RETRY_BASE_DELAY_MS * 2 ** (maxAttempts - 1);
   }
 
   /** Flush pending events to PostHog /batch/ endpoint. */

@@ -124,7 +124,7 @@ When the provider hostname is trusted for Cloudflare Access, the injector also a
 `CF-Access-Client-Id = "CF_ACCESS_CLIENT_ID"` and
 `CF-Access-Client-Secret = "CF_ACCESS_CLIENT_SECRET"` to `env_http_headers`.
 The hostname must be present in the comma-separated `CF_ACCESS_ALLOWED_HOSTS` environment
-variable (or `CF_ACCESS_HOST`; the default is `ocx.chefgroep.online`). Set these variables
+variable (or `CF_ACCESS_HOST`; no default is assumed — the set is empty when unset). Set these variables
 before running injection, and provide the corresponding service-token credentials to Codex.
 Untrusted hosts receive only the OpenCodex API-key header.
 

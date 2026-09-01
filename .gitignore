@@ -48,10 +48,7 @@ tests/.tmp-*/
 .compound-engineering/*.local.yaml
 
 # ChefGroep standard ignores (OS / Xcode / local env / CE)
-.compound-engineering/*.local.yaml
-
 # OS / editors
-.DS_Store
 .AppleDouble
 .LSOverride
 ._*
@@ -76,6 +73,6 @@ xcuserdata/
 Pods/
 
 # Local env
-.env
 .env.local
 .env.*.local
+package-lock.json

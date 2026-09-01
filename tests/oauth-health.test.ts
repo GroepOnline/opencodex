@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -9,7 +9,11 @@ import {
   collectOAuthHealthEntriesForCli,
   projectOAuthAccountHealth,
 } from "../src/oauth/health";
-import { getAccountSet, markAccountNeedsReauth, saveCredential } from "../src/oauth/store";
+import {
+  getAccountSet,
+  markAccountNeedsReauth,
+  saveCredential,
+} from "../src/oauth/store";
 import {
   clearAccountNeedsReauth,
   markAccountNeedsReauth as markCodexAccountNeedsReauth,
@@ -28,7 +32,10 @@ const origOcxHome = process.env.OPENCODEX_HOME;
 let tmp: string;
 
 beforeEach(() => {
-  tmp = join(tmpdir(), `oauth-health-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  tmp = join(
+    tmpdir(),
+    `oauth-health-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  );
   mkdirSync(tmp, { recursive: true });
   process.env.HOME = tmp;
   process.env.OPENCODEX_HOME = join(tmp, "ocx");
@@ -47,20 +54,24 @@ afterEach(() => {
 
 describe("projectOAuthAccountHealth", () => {
   test("reauth beats cooldown", () => {
-    expect(projectOAuthAccountHealth({
-      needsReauth: true,
-      reauthReason: "refresh_failed",
-      cooldownUntilMs: Date.now() + 60_000,
-    })).toEqual({ status: "reauth_required", reason: "refresh_failed" });
+    expect(
+      projectOAuthAccountHealth({
+        needsReauth: true,
+        reauthReason: "refresh_failed",
+        cooldownUntilMs: Date.now() + 60_000,
+      }),
+    ).toEqual({ status: "reauth_required", reason: "refresh_failed" });
   });
 
   test("active cooldown projects until ISO timestamp", () => {
     const until = Date.parse("2026-07-23T14:30:00.000Z");
-    expect(projectOAuthAccountHealth({
-      cooldownUntilMs: until,
-      cooldownReason: "rate_limit",
-      now: until - 1000,
-    })).toEqual({
+    expect(
+      projectOAuthAccountHealth({
+        cooldownUntilMs: until,
+        cooldownReason: "rate_limit",
+        now: until - 1000,
+      }),
+    ).toEqual({
       status: "cooldown",
       until: "2026-07-23T14:30:00.000Z",
       reason: "rate_limit",
@@ -69,38 +80,52 @@ describe("projectOAuthAccountHealth", () => {
 
   test("cooldown beats warning, warning beats healthy", () => {
     const until = Date.now() + 60_000;
-    expect(projectOAuthAccountHealth({
-      cooldownUntilMs: until,
-      cooldownReason: "quota",
-      warningReason: "refresh_conflict",
-      now: until - 1,
-    })).toEqual({
+    expect(
+      projectOAuthAccountHealth({
+        cooldownUntilMs: until,
+        cooldownReason: "quota",
+        warningReason: "refresh_conflict",
+        now: until - 1,
+      }),
+    ).toEqual({
       status: "cooldown",
       until: new Date(until).toISOString(),
       reason: "quota",
     });
-    expect(projectOAuthAccountHealth({
-      warningReason: "metadata_mismatch",
-    })).toEqual({ status: "warning", reason: "metadata_mismatch" });
+    expect(
+      projectOAuthAccountHealth({
+        warningReason: "metadata_mismatch",
+      }),
+    ).toEqual({ status: "warning", reason: "metadata_mismatch" });
     expect(projectOAuthAccountHealth({})).toEqual({ status: "healthy" });
   });
 
   test("expired seats project as warning unless auto-disable latches disabled", () => {
-    expect(projectOAuthAccountHealth({ expired: true })).toEqual({ status: "warning", reason: "expired" });
-    expect(projectOAuthAccountHealth({
-      expired: true,
-      autoDisableOnExpiry: true,
-    })).toEqual({ status: "disabled", reason: "expired" });
-    expect(projectOAuthAccountHealth({ disabledByExpiry: true })).toEqual({ status: "disabled", reason: "expired" });
+    expect(projectOAuthAccountHealth({ expired: true })).toEqual({
+      status: "warning",
+      reason: "expired",
+    });
+    expect(
+      projectOAuthAccountHealth({
+        expired: true,
+        autoDisableOnExpiry: true,
+      }),
+    ).toEqual({ status: "disabled", reason: "expired" });
+    expect(projectOAuthAccountHealth({ disabledByExpiry: true })).toEqual({
+      status: "disabled",
+      reason: "expired",
+    });
   });
 
   test("expired cooldown is healthy", () => {
     const until = Date.parse("2026-07-23T14:30:00.000Z");
-    expect(projectOAuthAccountHealth({
-      cooldownUntilMs: until,
-      cooldownReason: "rate_limit",
-      now: until,
-    })).toEqual({ status: "healthy" });
+    expect(
+      projectOAuthAccountHealth({
+        cooldownUntilMs: until,
+        cooldownReason: "rate_limit",
+        now: until,
+      }),
+    ).toEqual({ status: "healthy" });
   });
 });
 
@@ -116,7 +141,9 @@ describe("collectOAuthHealthEntries", () => {
     await markAccountNeedsReauth("kimi", accountId, true);
 
     const entries = collectOAuthHealthEntries();
-    const entry = entries.find(e => e.provider === "kimi" && e.accountId === accountId);
+    const entry = entries.find(
+      (e) => e.provider === "kimi" && e.accountId === accountId,
+    );
     expect(entry).toEqual({
       provider: "kimi",
       accountId,
@@ -128,7 +155,9 @@ describe("collectOAuthHealthEntries", () => {
   test("Codex reauth action points at the dashboard pool, not ocx login codex", () => {
     markCodexAccountNeedsReauth(MAIN_CODEX_ACCOUNT_ID);
     const entries = collectOAuthHealthEntries();
-    const entry = entries.find(e => e.provider === "codex" && e.accountId === MAIN_CODEX_ACCOUNT_ID);
+    const entry = entries.find(
+      (e) => e.provider === "codex" && e.accountId === MAIN_CODEX_ACCOUNT_ID,
+    );
     expect(entry).toEqual({
       provider: "codex",
       accountId: MAIN_CODEX_ACCOUNT_ID,
@@ -147,7 +176,9 @@ describe("collectOAuthHealthEntries", () => {
     });
     const accountId = getAccountSet("kiro")!.activeAccountId;
     const entries = collectOAuthHealthEntries();
-    const entry = entries.find(e => e.provider === "kiro" && e.accountId === accountId);
+    const entry = entries.find(
+      (e) => e.provider === "kiro" && e.accountId === accountId,
+    );
     expect(entry?.health).toEqual({ status: "healthy" });
   });
 
@@ -159,7 +190,9 @@ describe("collectOAuthHealthEntries", () => {
       source: "environment",
     });
     const accountId = getAccountSet("kiro")!.activeAccountId;
-    const entry = collectOAuthHealthEntries().find(e => e.provider === "kiro" && e.accountId === accountId);
+    const entry = collectOAuthHealthEntries().find(
+      (e) => e.provider === "kiro" && e.accountId === accountId,
+    );
     expect(entry?.health).toEqual({ status: "healthy" });
   });
 
@@ -171,8 +204,13 @@ describe("collectOAuthHealthEntries", () => {
       source: "manual",
     });
     const accountId = getAccountSet("kiro")!.activeAccountId;
-    const entry = collectOAuthHealthEntries().find(e => e.provider === "kiro" && e.accountId === accountId);
-    expect(entry?.health).toEqual({ status: "warning", reason: "stale_credentials" });
+    const entry = collectOAuthHealthEntries().find(
+      (e) => e.provider === "kiro" && e.accountId === accountId,
+    );
+    expect(entry?.health).toEqual({
+      status: "warning",
+      reason: "stale_credentials",
+    });
   });
 });
 
@@ -180,22 +218,35 @@ describe("collectOAuthHealthEntriesForCli", () => {
   test("uses management API Codex health and does not read CLI process maps", async () => {
     markCodexAccountNeedsReauth(MAIN_CODEX_ACCOUNT_ID);
     const report = await collectOAuthHealthEntriesForCli(Date.now(), {
-      findLiveProxyImpl: async () => ({ hostname: "127.0.0.1", port: 19191, pid: null }),
+      findLiveProxyImpl: async () => ({
+        hostname: "127.0.0.1",
+        port: 19191,
+        pid: null,
+      }),
       fetchImpl: async () =>
-        new Response(JSON.stringify({
-          accounts: [{
-            id: "proxy-codex-acct",
-            health: {
-              status: "cooldown",
-              until: "2026-07-23T14:30:00.000Z",
-              reason: "rate_limit",
-            },
-          }],
-        }), { status: 200 }),
+        new Response(
+          JSON.stringify({
+            accounts: [
+              {
+                id: "proxy-codex-acct",
+                health: {
+                  status: "cooldown",
+                  until: "2026-07-23T14:30:00.000Z",
+                  reason: "rate_limit",
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
     });
     expect(report.codexHealthSource).toBe("management-api");
-    expect(report.entries.some(e => e.accountId === MAIN_CODEX_ACCOUNT_ID)).toBe(false);
-    const remote = report.entries.find(e => e.accountId === "proxy-codex-acct");
+    expect(
+      report.entries.some((e) => e.accountId === MAIN_CODEX_ACCOUNT_ID),
+    ).toBe(false);
+    const remote = report.entries.find(
+      (e) => e.accountId === "proxy-codex-acct",
+    );
     expect(remote?.health).toEqual({
       status: "cooldown",
       until: "2026-07-23T14:30:00.000Z",
@@ -204,13 +255,111 @@ describe("collectOAuthHealthEntriesForCli", () => {
     expect(remote?.action).toContain("wait until");
   });
 
+  test("management health uses the admin credential, not the data-plane service token", async () => {
+    const ocxHome = process.env.OPENCODEX_HOME!;
+    mkdirSync(ocxHome, { recursive: true });
+    const adminToken = `ocx_admin_${"a".repeat(43)}`;
+    writeFileSync(join(ocxHome, "admin-api-token"), `${adminToken}\n`, {
+      mode: 0o600,
+    });
+    const previousAdminToken = process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
+    const previousServiceToken = process.env.OPENCODEX_API_AUTH_TOKEN;
+    delete process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
+    process.env.OPENCODEX_API_AUTH_TOKEN = "service-token-must-not-be-used";
+    let authorization: string | null = null;
+    try {
+      const report = await collectOAuthHealthEntriesForCli(Date.now(), {
+        findLiveProxyImpl: async () => ({
+          hostname: "127.0.0.1",
+          port: 19191,
+          pid: 4242,
+        }),
+        fetchImpl: async (_input, init) => {
+          authorization = new Headers(init?.headers).get("authorization");
+          return new Response(JSON.stringify({ accounts: [] }), {
+            status: 200,
+          });
+        },
+      });
+      expect(report.codexHealthSource).toBe("management-api");
+      expect(authorization).toBe(`Bearer ${adminToken}`);
+      expect(authorization).not.toContain("service-token-must-not-be-used");
+    } finally {
+      if (previousAdminToken === undefined)
+        delete process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
+      else process.env.OPENCODEX_ADMIN_AUTH_TOKEN = previousAdminToken;
+      if (previousServiceToken === undefined)
+        delete process.env.OPENCODEX_API_AUTH_TOKEN;
+      else process.env.OPENCODEX_API_AUTH_TOKEN = previousServiceToken;
+    }
+  });
+
+  test("never sends the admin bearer to a pidless loopback endpoint", async () => {
+    const previousAdminToken = process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
+    process.env.OPENCODEX_ADMIN_AUTH_TOKEN = `ocx_admin_${"c".repeat(43)}`;
+    let authorization: string | null = "not-called";
+    try {
+      const report = await collectOAuthHealthEntriesForCli(Date.now(), {
+        findLiveProxyImpl: async () => ({
+          hostname: "127.0.0.1",
+          port: 19191,
+          pid: null,
+        }),
+        fetchImpl: async (_input, init) => {
+          authorization = new Headers(init?.headers).get("authorization");
+          return new Response(JSON.stringify({ accounts: [] }), {
+            status: 200,
+          });
+        },
+      });
+      expect(authorization).toBeNull();
+      expect(report.codexHealthSource).toBe("management-api");
+    } finally {
+      if (previousAdminToken === undefined)
+        delete process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
+      else process.env.OPENCODEX_ADMIN_AUTH_TOKEN = previousAdminToken;
+    }
+  });
+
+  test("never sends the admin bearer to a non-loopback HTTP management endpoint", async () => {
+    const previousAdminToken = process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
+    process.env.OPENCODEX_ADMIN_AUTH_TOKEN = `ocx_admin_${"b".repeat(43)}`;
+    let authorization: string | null = "not-called";
+    let requestedUrl = "";
+    try {
+      const report = await collectOAuthHealthEntriesForCli(Date.now(), {
+        findLiveProxyImpl: async () => ({
+          hostname: "192.0.2.10",
+          port: 19191,
+          pid: null,
+        }),
+        fetchImpl: async (input, init) => {
+          requestedUrl = String(input);
+          authorization = new Headers(init?.headers).get("authorization");
+          return new Response(JSON.stringify({ error: "unauthorized" }), {
+            status: 401,
+          });
+        },
+      });
+      expect(requestedUrl).toBe(
+        "http://192.0.2.10:19191/api/codex-auth/accounts",
+      );
+      expect(authorization).toBeNull();
+      expect(report.codexHealthSource).toBe("unavailable");
+    } finally {
+      if (previousAdminToken === undefined)
+        delete process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
+      else process.env.OPENCODEX_ADMIN_AUTH_TOKEN = previousAdminToken;
+    }
+  });
+
   test("labels unavailable fallback and omits process-local Codex maps", async () => {
     markCodexAccountNeedsReauth(MAIN_CODEX_ACCOUNT_ID);
     const report = await collectOAuthHealthEntriesForCli(Date.now(), {
       findLiveProxyImpl: async () => null,
     });
     expect(report.codexHealthSource).toBe("unavailable");
-    expect(report.entries.some(e => e.provider === "codex")).toBe(false);
+    expect(report.entries.some((e) => e.provider === "codex")).toBe(false);
     const text = formatOAuthHealthForStatus(report);
     expect(text).toContain(CODEX_HEALTH_UNAVAILABLE_NOTE);
     expect(text).not.toContain(MAIN_CODEX_ACCOUNT_ID);
@@ -218,18 +367,30 @@ describe("collectOAuthHealthEntriesForCli", () => {
 
   test("malformed remote health is re-derived instead of rendering undefined", async () => {
     const report = await collectOAuthHealthEntriesForCli(Date.now(), {
-      findLiveProxyImpl: async () => ({ hostname: "127.0.0.1", port: 19191, pid: null }),
+      findLiveProxyImpl: async () => ({
+        hostname: "127.0.0.1",
+        port: 19191,
+        pid: null,
+      }),
       fetchImpl: async () =>
-        new Response(JSON.stringify({
-          accounts: [{
-            id: "skewed-acct",
-            needsReauth: true,
-            health: { status: "not-a-real-status" },
-          }],
-        }), { status: 200 }),
+        new Response(
+          JSON.stringify({
+            accounts: [
+              {
+                id: "skewed-acct",
+                needsReauth: true,
+                health: { status: "not-a-real-status" },
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
     });
-    const entry = report.entries.find(e => e.accountId === "skewed-acct");
-    expect(entry?.health).toEqual({ status: "reauth_required", reason: "refresh_failed" });
+    const entry = report.entries.find((e) => e.accountId === "skewed-acct");
+    expect(entry?.health).toEqual({
+      status: "reauth_required",
+      reason: "refresh_failed",
+    });
     const text = formatOAuthHealthForStatus(report);
     expect(text).not.toContain("undefined");
   });
@@ -239,7 +400,10 @@ describe("getCodexAccountHealthSnapshot", () => {
   test("exposes active cooldown source without changing write policy", () => {
     const config = { providers: {} } as OcxConfig;
     const now = Date.parse("2026-07-23T14:00:00.000Z");
-    recordCodexUpstreamOutcome(config, "pool-acct", 429, { retryAfter: "120", now });
+    recordCodexUpstreamOutcome(config, "pool-acct", 429, {
+      retryAfter: "120",
+      now,
+    });
 
     expect(getCodexAccountHealthSnapshot("pool-acct", now)).toEqual({
       cooldownUntil: now + 120_000,

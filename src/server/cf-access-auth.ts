@@ -28,25 +28,36 @@ export function resetCfAccessJwksCacheForTests(): void {
 }
 
 export function cfAccessConfigured(): boolean {
-  return !!Bun.env.CF_ACCESS_TEAM_DOMAIN?.trim() && !!Bun.env.CF_ACCESS_AUD?.trim();
+  return (
+    !!Bun.env.CF_ACCESS_TEAM_DOMAIN?.trim() && !!Bun.env.CF_ACCESS_AUD?.trim()
+  );
 }
 
 export function cfAccessTrustedHosts(): Set<string> {
-  const raw = Bun.env.CF_ACCESS_ALLOWED_HOSTS?.trim()
-    || Bun.env.CF_ACCESS_HOST?.trim()
-    || "ocx.chefgroep.online";
+  const raw =
+    Bun.env.CF_ACCESS_ALLOWED_HOSTS?.trim() ||
+    Bun.env.CF_ACCESS_HOST?.trim() ||
+    "";
   return new Set(
-    raw.split(",").map(part => part.trim().toLowerCase()).filter(Boolean),
+    raw
+      .split(",")
+      .map((part) => part.trim().toLowerCase())
+      .filter(Boolean),
   );
 }
 
 export function isCfAccessTrustedHost(hostname: string | undefined): boolean {
   if (!hostname) return false;
-  return cfAccessTrustedHosts().has(hostname.trim().toLowerCase().replace(/\.$/, ""));
+  return cfAccessTrustedHosts().has(
+    hostname.trim().toLowerCase().replace(/\.$/, ""),
+  );
 }
 
 function teamDomain(): string {
-  return Bun.env.CF_ACCESS_TEAM_DOMAIN!.trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+  return Bun.env
+    .CF_ACCESS_TEAM_DOMAIN!.trim()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/$/, "");
 }
 
 function audience(): string {
@@ -54,8 +65,9 @@ function audience(): string {
 }
 
 function extractAccessJwt(req: Request): string | null {
-  const assertion = req.headers.get("cf-access-jwt-assertion")?.trim()
-    || req.headers.get("Cf-Access-Jwt-Assertion")?.trim();
+  const assertion =
+    req.headers.get("cf-access-jwt-assertion")?.trim() ||
+    req.headers.get("Cf-Access-Jwt-Assertion")?.trim();
   if (assertion) return assertion;
 
   const cookie = req.headers.get("cookie") || req.headers.get("Cookie") || "";
@@ -75,18 +87,23 @@ function decodeJwtPart(part: string): unknown {
 
 async function loadJwks(): Promise<Jwk[]> {
   const now = Date.now();
-  if (jwksCache && now - jwksCache.fetchedAt < JWKS_TTL_MS) return jwksCache.keys;
+  if (jwksCache && now - jwksCache.fetchedAt < JWKS_TTL_MS)
+    return jwksCache.keys;
   const url = `https://${teamDomain()}/cdn-cgi/access/certs`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), JWKS_FETCH_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal });
+    response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
   } finally {
     clearTimeout(timeout);
   }
-  if (!response.ok) throw new Error(`CF Access JWKS fetch failed: ${response.status}`);
-  const body = await response.json() as { keys?: Jwk[] };
+  if (!response.ok)
+    throw new Error(`CF Access JWKS fetch failed: ${response.status}`);
+  const body = (await response.json()) as { keys?: Jwk[] };
   const keys = Array.isArray(body.keys) ? body.keys : [];
   if (keys.length === 0) throw new Error("CF Access JWKS empty");
   jwksCache = { keys, fetchedAt: now };
@@ -95,7 +112,7 @@ async function loadJwks(): Promise<Jwk[]> {
 
 function audMatches(claim: unknown, expected: string): boolean {
   if (typeof claim === "string") return claim === expected;
-  if (Array.isArray(claim)) return claim.some(entry => entry === expected);
+  if (Array.isArray(claim)) return claim.some((entry) => entry === expected);
   return false;
 }
 
@@ -107,7 +124,9 @@ export function setVerifyCfAccessRequestForTests(fn: VerifyFn | null): void {
   verifyOverrideForTests = fn;
 }
 
-export async function verifyCfAccessRequest(req: Request): Promise<CfAccessIdentity | null> {
+export async function verifyCfAccessRequest(
+  req: Request,
+): Promise<CfAccessIdentity | null> {
   if (verifyOverrideForTests) return verifyOverrideForTests(req);
   if (!cfAccessConfigured()) return null;
   const token = extractAccessJwt(req);
@@ -118,7 +137,13 @@ export async function verifyCfAccessRequest(req: Request): Promise<CfAccessIdent
   const [headerB64, payloadB64, signatureB64] = parts;
 
   let header: { alg?: string; kid?: string };
-  let payload: { aud?: unknown; iss?: string; exp?: number; email?: string; sub?: string };
+  let payload: {
+    aud?: unknown;
+    iss?: string;
+    exp?: number;
+    email?: string;
+    sub?: string;
+  };
   try {
     header = decodeJwtPart(headerB64) as typeof header;
     payload = decodeJwtPart(payloadB64) as typeof payload;
@@ -126,16 +151,18 @@ export async function verifyCfAccessRequest(req: Request): Promise<CfAccessIdent
     return null;
   }
   if (header.alg !== "RS256" || !header.kid) return null;
-  if (typeof payload.exp !== "number" || payload.exp * 1000 <= Date.now()) return null;
+  if (typeof payload.exp !== "number" || payload.exp * 1000 <= Date.now())
+    return null;
   if (payload.iss !== `https://${teamDomain()}`) return null;
   if (!audMatches(payload.aud, audience())) return null;
-  const email = typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "";
+  const email =
+    typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "";
   const sub = typeof payload.sub === "string" ? payload.sub.trim() : "";
   if (!email || !sub) return null;
 
   try {
     const keys = await loadJwks();
-    const jwk = keys.find(key => key.kid === header.kid);
+    const jwk = keys.find((key) => key.kid === header.kid);
     if (!jwk) return null;
     const key = await crypto.subtle.importKey(
       "jwk",
@@ -146,11 +173,19 @@ export async function verifyCfAccessRequest(req: Request): Promise<CfAccessIdent
     );
     const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
     const signature = Buffer.from(signatureB64, "base64url");
-    const ok = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature, data);
+    const ok = await crypto.subtle.verify(
+      "RSASSA-PKCS1-v1_5",
+      key,
+      signature,
+      data,
+    );
     if (!ok) return null;
     return { email, sub };
   } catch (error) {
-    console.warn("Cloudflare Access verification failed", error instanceof Error ? error.message : "unknown error");
+    console.warn(
+      "Cloudflare Access verification failed",
+      error instanceof Error ? error.message : "unknown error",
+    );
     return null;
   }
 }
