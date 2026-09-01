@@ -26,7 +26,7 @@ describe("Empero free discovery entry", () => {
   test("pins the provider-use restrictions in operator-visible metadata", () => {
     const note = entry?.note?.toLowerCase() ?? "";
     expect(note).toContain("hashed ips");
-    expect(note).toContain("private chefgroep");
+    expect(note).toContain("private or sensitive");
     expect(note).toContain("logged");
     expect(note).toContain("training");
     expect(note).toContain("desktop/public benchmark only");

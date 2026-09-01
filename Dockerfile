@@ -32,7 +32,7 @@ ARG VERSION=dev
 ARG BUILD_DATE=unknown
 
 LABEL org.opencontainers.image.title="OpenCodex" \
-      org.opencontainers.image.description="ChefGroep Responses-compatible routing proxy" \
+      org.opencontainers.image.description="Universal provider proxy for OpenAI Codex and Claude Code" \
       org.opencontainers.image.source="https://github.com/GroepOnline/opencodex" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.version="${VERSION}" \
