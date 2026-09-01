@@ -358,7 +358,7 @@ function readRootModelCatalogPath(content: string): string | null {
   return readRootTomlString(content, "model_catalog_json");
 }
 
-function setRootModelCatalogPath(content: string, catalogPath: string): string {
+export function setRootModelCatalogPath(content: string, catalogPath: string): string {
   const lines = content.split("\n");
   const firstTable = lines.findIndex(l => /^\s*\[/.test(l));
   const key = `model_catalog_json = ${tomlString(catalogPath)}`;
