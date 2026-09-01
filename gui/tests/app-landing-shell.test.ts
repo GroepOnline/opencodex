@@ -25,3 +25,31 @@ test("landing returns before the dashboard health resource is mounted", async ()
   );
   expect(landingBlock).not.toContain("useKeyedClientResource");
 });
+
+test("landing terminal binds its version to the build-time package version", async () => {
+  const landing = await Bun.file(
+    new URL("../src/landing/Landing.tsx", import.meta.url),
+  ).text();
+  const en = await Bun.file(
+    new URL("../src/i18n/en.ts", import.meta.url),
+  ).text();
+  const nl = await Bun.file(
+    new URL("../src/i18n/nl.ts", import.meta.url),
+  ).text();
+
+  expect(landing).toContain(
+    't("landing.terminal.proxyListening", { version: __APP_VERSION__ })',
+  );
+  expect(en).toContain(
+    '"landing.terminal.proxyListening": "opencodex {version} · proxy listening',
+  );
+  expect(nl).toContain(
+    '"landing.terminal.proxyListening": "opencodex {version} · proxy luistert',
+  );
+  expect(en).not.toMatch(
+    /landing\.terminal\.proxyListening.*opencodex \d+\.\d+\.\d+/,
+  );
+  expect(nl).not.toMatch(
+    /landing\.terminal\.proxyListening.*opencodex \d+\.\d+\.\d+/,
+  );
+});

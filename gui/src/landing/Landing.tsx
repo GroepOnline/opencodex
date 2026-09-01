@@ -18,7 +18,9 @@ const DOCS_URL = "https://groeponline.github.io/opencodex/";
 function landingAnchor(id: string) {
   return (event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
-    document.getElementById(id)?.scrollIntoView({ behavior: "auto", block: "start" });
+    document
+      .getElementById(id)
+      ?.scrollIntoView({ behavior: "auto", block: "start" });
   };
 }
 
@@ -90,7 +92,13 @@ function HeroTitle() {
   );
 }
 
-function SectionEyebrow({ index, children }: { index: string; children: string }) {
+function SectionEyebrow({
+  index,
+  children,
+}: {
+  index: string;
+  children: string;
+}) {
   return (
     <p className="lp-section__eyebrow">
       <span className="lp-section__index">{index}</span>
@@ -107,15 +115,33 @@ export default function Landing() {
     <div className="lp">
       {/* ── Sticky nav ── */}
       <header className="lp-nav">
-        <a className="lp-nav__brand" href="#top" onClick={landingAnchor("top")} aria-label={t("landing.nav.homeAria")}>
+        <a
+          className="lp-nav__brand"
+          href="#top"
+          onClick={landingAnchor("top")}
+          aria-label={t("landing.nav.homeAria")}
+        >
           <Mark />
           <span className="lp-nav__name">OpenCodex</span>
         </a>
-        <nav className="lp-nav__links" aria-label={t("landing.nav.primaryAria")}>
-          <a href={DOCS_URL} target="_blank" rel="noreferrer">{t("landing.nav.docs")}</a>
-          <a href="#pricing" onClick={landingAnchor("pricing")}>{t("landing.nav.pricing")}</a>
-          <a href="#signin" onClick={landingAnchor("signin")}>{t("landing.nav.signIn")}</a>
-          <a className="lp-btn lp-btn--primary lp-btn--sm" href="#get-started" onClick={landingAnchor("get-started")}>
+        <nav
+          className="lp-nav__links"
+          aria-label={t("landing.nav.primaryAria")}
+        >
+          <a href={DOCS_URL} target="_blank" rel="noreferrer">
+            {t("landing.nav.docs")}
+          </a>
+          <a href="#pricing" onClick={landingAnchor("pricing")}>
+            {t("landing.nav.pricing")}
+          </a>
+          <a href="#signin" onClick={landingAnchor("signin")}>
+            {t("landing.nav.signIn")}
+          </a>
+          <a
+            className="lp-btn lp-btn--primary lp-btn--sm"
+            href="#get-started"
+            onClick={landingAnchor("get-started")}
+          >
             {t("landing.nav.start")}
           </a>
         </nav>
@@ -132,8 +158,19 @@ export default function Landing() {
           <HeroTitle />
           <p className="lp-sub">{t("landing.hero.sub")}</p>
           <div className="lp-cta-row">
-            <a className="lp-btn lp-btn--primary" href="#get-started" onClick={landingAnchor("get-started")}>{t("landing.nav.start")}</a>
-            <a className="lp-btn lp-btn--ghost" href={GITHUB_URL} target="_blank" rel="noreferrer">
+            <a
+              className="lp-btn lp-btn--primary"
+              href="#get-started"
+              onClick={landingAnchor("get-started")}
+            >
+              {t("landing.nav.start")}
+            </a>
+            <a
+              className="lp-btn lp-btn--ghost"
+              href={GITHUB_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
               {t("landing.hero.github")}
             </a>
           </div>
@@ -149,23 +186,35 @@ export default function Landing() {
         {/* Instrument readout pinned to the hero edge: real values, mono. */}
         <div className="lp-hero__readout" aria-hidden="true">
           <div className="lp-readout-row">
-            <span className="lp-readout-key">{t("landing.readout.endpoint")}</span>
+            <span className="lp-readout-key">
+              {t("landing.readout.endpoint")}
+            </span>
             <span className="lp-readout-val">http://localhost:8317</span>
           </div>
           <div className="lp-readout-row">
-            <span className="lp-readout-key">{t("landing.readout.routing")}</span>
-            <span className="lp-readout-val lp-readout-val--ok">{t("landing.readout.quotaAware")}</span>
+            <span className="lp-readout-key">
+              {t("landing.readout.routing")}
+            </span>
+            <span className="lp-readout-val lp-readout-val--ok">
+              {t("landing.readout.quotaAware")}
+            </span>
           </div>
           <div className="lp-readout-row">
-            <span className="lp-readout-key">{t("landing.readout.providers")}</span>
-            <span className="lp-readout-val">claude · gemini · grok · deepseek · ollama</span>
+            <span className="lp-readout-key">
+              {t("landing.readout.providers")}
+            </span>
+            <span className="lp-readout-val">
+              claude · gemini · grok · deepseek · ollama
+            </span>
           </div>
         </div>
       </section>
 
       {/* ── Features ── */}
       <section className="lp-section" id="features">
-        <SectionEyebrow index="01">{t("landing.features.eyebrow")}</SectionEyebrow>
+        <SectionEyebrow index="01">
+          {t("landing.features.eyebrow")}
+        </SectionEyebrow>
         <div className="lp-features">
           <article className="lp-feature lp-reveal">
             <span className="lp-feature__index">/01</span>
@@ -187,22 +236,59 @@ export default function Landing() {
 
       {/* ── Terminal strip ── */}
       <section className="lp-section lp-section--term">
-        <SectionEyebrow index="02">{t("landing.terminal.eyebrow")}</SectionEyebrow>
+        <SectionEyebrow index="02">
+          {t("landing.terminal.eyebrow")}
+        </SectionEyebrow>
         <div className="lp-term lp-reveal">
           <div className="lp-term__bar">
             <span className="lp-term__title">ocx</span>
             <span className="lp-term__meta">{t("landing.terminal.meta")}</span>
           </div>
-          <pre className="lp-term__body"><code>{''}<span className="lp-t-line"><span className="lp-t-prompt">$</span> bun install -g opencodex</span>
-<span className="lp-t-line"><span className="lp-t-prompt">$</span> ocx</span>
-<span className="lp-t-line lp-t-out">  {t("landing.terminal.proxyListening")}</span>
-<span className="lp-t-line lp-t-out">  {t("landing.terminal.dashboard")}</span>
-<span className="lp-t-line lp-t-out">  {t("landing.terminal.providers")}</span>
-<span className="lp-t-line"> </span>
-<span className="lp-t-line"><span className="lp-t-prompt">$</span> export OPENAI_BASE_URL=http://localhost:8317</span>
-<span className="lp-t-line"><span className="lp-t-prompt">$</span> codex "{t("landing.terminal.prompt")}"</span>
-<span className="lp-t-line lp-t-ok">  {t("landing.terminal.routed", { model: "claude-opus-4.6", quota: 82 })}</span>
-<span className="lp-t-line lp-t-ok">  {t("landing.terminal.changed", { files: 14 })}</span></code></pre>
+          <pre className="lp-term__body">
+            <code>
+              {""}
+              <span className="lp-t-line">
+                <span className="lp-t-prompt">$</span> bun install -g opencodex
+              </span>
+              <span className="lp-t-line">
+                <span className="lp-t-prompt">$</span> ocx
+              </span>
+              <span className="lp-t-line lp-t-out">
+                {" "}
+                {t("landing.terminal.proxyListening", {
+                  version: __APP_VERSION__,
+                })}
+              </span>
+              <span className="lp-t-line lp-t-out">
+                {" "}
+                {t("landing.terminal.dashboard")}
+              </span>
+              <span className="lp-t-line lp-t-out">
+                {" "}
+                {t("landing.terminal.providers")}
+              </span>
+              <span className="lp-t-line"> </span>
+              <span className="lp-t-line">
+                <span className="lp-t-prompt">$</span> export
+                OPENAI_BASE_URL=http://localhost:8317
+              </span>
+              <span className="lp-t-line">
+                <span className="lp-t-prompt">$</span> codex "
+                {t("landing.terminal.prompt")}"
+              </span>
+              <span className="lp-t-line lp-t-ok">
+                {" "}
+                {t("landing.terminal.routed", {
+                  model: "claude-opus-4.6",
+                  quota: 82,
+                })}
+              </span>
+              <span className="lp-t-line lp-t-ok">
+                {" "}
+                {t("landing.terminal.changed", { files: 14 })}
+              </span>
+            </code>
+          </pre>
         </div>
       </section>
 
@@ -230,7 +316,9 @@ export default function Landing() {
 
       {/* ── Pricing stub ── */}
       <section className="lp-section" id="pricing">
-        <SectionEyebrow index="04">{t("landing.pricing.eyebrow")}</SectionEyebrow>
+        <SectionEyebrow index="04">
+          {t("landing.pricing.eyebrow")}
+        </SectionEyebrow>
         <div className="lp-pricing">
           <div className="lp-price-card lp-reveal">
             <h2>{t("landing.pricing.title")}</h2>
@@ -238,7 +326,12 @@ export default function Landing() {
               €0 <span>{t("landing.pricing.forever")}</span>
             </p>
             <p>{t("landing.pricing.body")}</p>
-            <a className="lp-btn lp-btn--ghost" href={GITHUB_URL} target="_blank" rel="noreferrer">
+            <a
+              className="lp-btn lp-btn--ghost"
+              href={GITHUB_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
               {t("landing.pricing.clone")}
             </a>
           </div>
@@ -248,11 +341,22 @@ export default function Landing() {
       {/* ── Get started / sign-in anchor ── */}
       <section className="lp-section lp-section--cta" id="get-started">
         <h2 className="lp-cta-title">
-          {t("landing.cta.readyPrefix")} <em className="lp-h1__accent">{t("landing.cta.readyAccent")}</em>.
+          {t("landing.cta.readyPrefix")}{" "}
+          <em className="lp-h1__accent">{t("landing.cta.readyAccent")}</em>.
         </h2>
-        <pre className="lp-install"><code><span className="lp-t-prompt">$ </span>bun install -g opencodex && ocx</code></pre>
+        <pre className="lp-install">
+          <code>
+            <span className="lp-t-prompt">$ </span>bun install -g opencodex &&
+            ocx
+          </code>
+        </pre>
         <div className="lp-cta-row">
-          <a className="lp-btn lp-btn--primary" href={DOCS_URL} target="_blank" rel="noreferrer">
+          <a
+            className="lp-btn lp-btn--primary"
+            href={DOCS_URL}
+            target="_blank"
+            rel="noreferrer"
+          >
             {t("landing.cta.docs")}
           </a>
           <a className="lp-btn lp-btn--ghost" id="signin" href="/#dashboard">
@@ -268,9 +372,19 @@ export default function Landing() {
           <span>OpenCodex</span>
         </div>
         <nav className="lp-footer__links" aria-label={t("landing.footer.aria")}>
-          <a href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a>
-          <a href={DOCS_URL} target="_blank" rel="noreferrer">{t("landing.nav.docs")}</a>
-          <a href={`${GITHUB_URL}/blob/main/LICENSE`} target="_blank" rel="noreferrer">{t("landing.footer.license")}</a>
+          <a href={GITHUB_URL} target="_blank" rel="noreferrer">
+            GitHub
+          </a>
+          <a href={DOCS_URL} target="_blank" rel="noreferrer">
+            {t("landing.nav.docs")}
+          </a>
+          <a
+            href={`${GITHUB_URL}/blob/main/LICENSE`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {t("landing.footer.license")}
+          </a>
         </nav>
         <p className="lp-footer__note">{t("landing.footer.note")}</p>
       </footer>

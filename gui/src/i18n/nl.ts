@@ -773,7 +773,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "landing.hero.titlePrefix": "Code die",
   "landing.hero.titleAccent": "werkt.",
   "landing.hero.titleSuffix": "Geen slides.",
-  "landing.hero.sub": "OpenCodex routeert Claude, Gemini, Grok, DeepSeek en Ollama via één lokale endpoint, zodat je Codex CLI, app of SDK met elk model praat zonder iets te wijzigen.",
+  "landing.hero.sub":
+    "OpenCodex routeert Claude, Gemini, Grok, DeepSeek en Ollama via één lokale endpoint, zodat je Codex CLI, app of SDK met elk model praat zonder iets te wijzigen.",
   "landing.hero.github": "Bekijk op GitHub",
   "landing.hero.proofLicense": "MIT-licentie",
   "landing.hero.proofLocal": "Draait lokaal",
@@ -784,14 +785,18 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "landing.readout.providers": "providers",
   "landing.features.eyebrow": "Waarom OpenCodex",
   "landing.features.oneTitle": "Eén endpoint, elke provider",
-  "landing.features.oneBody": "Richt Codex één keer op localhost. Wissel daarna in het dashboard tussen Claude, Gemini, Grok, DeepSeek of een lokaal Ollama-model. Geen client-herconfiguratie en geen SDK-forks.",
+  "landing.features.oneBody":
+    "Richt Codex één keer op localhost. Wissel daarna in het dashboard tussen Claude, Gemini, Grok, DeepSeek of een lokaal Ollama-model. Geen client-herconfiguratie en geen SDK-forks.",
   "landing.features.twoTitle": "Quotabewuste routering",
-  "landing.features.twoBody": "Rate limits en tegoeden worden live per account bijgehouden. Als één key zijn limiet bereikt, gaat verkeer naar het volgende geschikte account voordat je sessie vastloopt.",
+  "landing.features.twoBody":
+    "Rate limits en tegoeden worden live per account bijgehouden. Als één key zijn limiet bereikt, gaat verkeer naar het volgende geschikte account voordat je sessie vastloopt.",
   "landing.features.threeTitle": "Je keys blijven thuis",
-  "landing.features.threeBody": "De proxy draait als één Bun-proces op je machine of fleet. Credentials verlaten je infrastructuur niet. Request-bodies worden nooit gelogd.",
+  "landing.features.threeBody":
+    "De proxy draait als één Bun-proces op je machine of fleet. Credentials verlaten je infrastructuur niet. Request-bodies worden nooit gelogd.",
   "landing.terminal.eyebrow": "In de terminal",
   "landing.terminal.meta": "sessie · lokaal",
-  "landing.terminal.proxyListening": "opencodex 2.7.1 · proxy luistert op http://localhost:8317",
+  "landing.terminal.proxyListening":
+    "opencodex {version} · proxy luistert op http://localhost:8317",
   "landing.terminal.dashboard": "dashboard → http://localhost:8317/#dashboard",
   "landing.terminal.providers": "providers → 5 verbonden, 0 uitgeput",
   "landing.terminal.prompt": "refactor de routeringslaag",
@@ -799,15 +804,19 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "landing.terminal.changed": "✓ {files} bestanden gewijzigd, tests groen",
   "landing.how.eyebrow": "Zo werkt het",
   "landing.how.oneTitle": "Installeer en start",
-  "landing.how.oneBody": "Installeer OpenCodex en start daarna ocx. Het dashboard opent op een lokale poort terwijl de proxy al luistert.",
+  "landing.how.oneBody":
+    "Installeer OpenCodex en start daarna ocx. Het dashboard opent op een lokale poort terwijl de proxy al luistert.",
   "landing.how.twoTitle": "Voeg je providers toe",
-  "landing.how.twoBody": "Log in met OAuth of plak API-keys. OpenCodex valideert elk account en leert de modellen, limieten en het latency-profiel.",
+  "landing.how.twoBody":
+    "Log in met OAuth of plak API-keys. OpenCodex valideert elk account en leert de modellen, limieten en het latency-profiel.",
   "landing.how.threeTitle": "Richt je tools erop",
-  "landing.how.threeBody": "Stel één base-URL in voor Codex CLI, de desktopapp of je SDK. Routering, failover en usage-accounting gebeuren daarachter.",
+  "landing.how.threeBody":
+    "Stel één base-URL in voor Codex CLI, de desktopapp of je SDK. Routering, failover en usage-accounting gebeuren daarachter.",
   "landing.pricing.eyebrow": "Prijzen",
   "landing.pricing.title": "Gratis, echt MIT",
   "landing.pricing.forever": "/ voor altijd",
-  "landing.pricing.body": "De volledige proxy, het dashboard en elke provider-adapter. Zelf gehost, geen account nodig en geen gebruikslimieten van ons. Alleen de limieten van je providers gelden.",
+  "landing.pricing.body":
+    "De volledige proxy, het dashboard en elke provider-adapter. Zelf gehost, geen account nodig en geen gebruikslimieten van ons. Alleen de limieten van je providers gelden.",
   "landing.pricing.clone": "Clone de repo",
   "landing.cta.readyPrefix": "Klaar zodra jij",
   "landing.cta.readyAccent": "bent",
