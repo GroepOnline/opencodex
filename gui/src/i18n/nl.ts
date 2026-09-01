@@ -1,4 +1,4 @@
-// Dutch — ChefGroep "De Pas" voice (chefgroep-vault/.ulpi/design/DESIGN.md).
+// Dutch — operator "De Pas" voice (design-system v2 §14).
 // Ships ONLY the overrides (~2 kB chunk): the runtime composes nl = {...en, ...overrides}
 // after lazily loading this module, so English fallbacks come from the static en dict
 // without bundling it twice. Tests compose via ../i18n/dicts.
@@ -43,7 +43,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "pws.quota.retry": "Opnieuw proberen",
   "pws.quota.retryAt": "Opnieuw om {time}",
   "pws.healthLabel.expired": "Verlopen",
-  "pws.healthSummary.expired": "{provider} {account}: de seat-datum is voorbij. Routing voor dit account staat stil.",
+  "pws.healthSummary.expired":
+    "{provider} {account}: de seat-datum is voorbij. Routing voor dit account staat stil.",
   "pws.accountExpires": "Seat tot {date}",
   "pws.accountExpired": "Seat verlopen op {date}",
 
@@ -52,7 +53,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "common.save": "Bewaar",
   "prov.add": "Leverancier toevoegen",
   "prov.editJson": "JSON bewerken",
-  "prov.subtitle": "Zet upstream-leveranciers klaar waar OpenCodex naartoe routeert. Log in, voeg er een toe, of bewerk de ruwe config.",
+  "prov.subtitle":
+    "Zet upstream-leveranciers klaar waar OpenCodex naartoe routeert. Log in, voeg er een toe, of bewerk de ruwe config.",
   "prov.accountLogin": "Account-login",
   "prov.noOauth": "Geen OAuth-leveranciers beschikbaar.",
   "prov.loggedIn": "ingelogd",
@@ -93,9 +95,11 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "pws.status.connected": "Verbonden",
   "pws.cell.defaultModel": "Standaardmodel",
   "pws.liveModels": "Haal modellen live op bij de leverancier",
-  "pws.liveModelsDesc": "Zet uit om alleen de geconfigureerde/statische lijst te gebruiken.",
+  "pws.liveModelsDesc":
+    "Zet uit om alleen de geconfigureerde/statische lijst te gebruiken.",
   "pws.fallback": "Fallback-leveranciers",
-  "pws.fallbackDesc": "Bij 429, 5xx of een afgebroken stream springt OpenCodex in deze volgorde door. Leeg = de fout gaat terug naar de client.",
+  "pws.fallbackDesc":
+    "Bij 429, 5xx of een afgebroken stream springt OpenCodex in deze volgorde door. Leeg = de fout gaat terug naar de client.",
   "pws.fallback.add": "Fallback toevoegen",
   "pws.fallback.provider": "Fallback-leverancier",
   "pws.fallback.model": "Fallback-model",
@@ -103,7 +107,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "pws.fallback.pickModel": "Kies model",
   "pws.fallback.modelPlaceholder": "model-id",
   "pws.fallback.disabled": "{name} (uit)",
-  "pws.fallbackIncomplete": "Elke fallback-rij heeft een leverancier én een model nodig.",
+  "pws.fallbackIncomplete":
+    "Elke fallback-rij heeft een leverancier én een model nodig.",
   "pws.dashboard.title": "Leveranciers",
   "pws.dashboard.subtitle": "Wie de volgende poging mag doen.",
   "pws.statsAria": "Leveranciers-tellingen",
@@ -133,8 +138,10 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "pws.loggedInAs": "Ingelogd als {email}",
   "pws.notLoggedIn": "Niet ingelogd",
   "pws.passthrough": "Codex passthrough",
-  "pws.modelsConfiguredFallback": "Geconfigureerde modellen (live catalogus niet beschikbaar).",
-  "pws.modelsNeedsReauth": "Account moet opnieuw inloggen voor live discovery. Nu de geconfigureerde lijst.",
+  "pws.modelsConfiguredFallback":
+    "Geconfigureerde modellen (live catalogus niet beschikbaar).",
+  "pws.modelsNeedsReauth":
+    "Account moet opnieuw inloggen voor live discovery. Nu de geconfigureerde lijst.",
   "pws.noModels": "Geen modellen gevonden voor deze leverancier.",
   "pws.modelsLoadFailed": "Kon modellen niet laden.",
   "pws.modelsLoading": "Modellen laden…",
@@ -156,7 +163,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "logs.col.duration": "Duur",
   "logs.details": "Details",
   "usage.title": "Verbruik",
-  "usage.subtitle": "Lokale proxy-telling tegenover limieten bij de leverancier. Ontbrekende usage wordt nooit als nul getoond.",
+  "usage.subtitle":
+    "Lokale proxy-telling tegenover limieten bij de leverancier. Ontbrekende usage wordt nooit als nul getoond.",
   "usage.loading": "Verbruik laden…",
   "usage.empty": "Nog geen verbruik. Stuur een request door de proxy.",
   "usage.loadError": "Kon verbruik niet laden.",
@@ -178,14 +186,17 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "cws.addTitle": "Combo toevoegen",
   "cws.create": "Maak combo",
   "cws.overviewTitle": "Combos",
-  "cws.overviewBlurb": "Virtuele modellen die bij een fout overspringen, of gewogen round-robin draaien.",
+  "cws.overviewBlurb":
+    "Virtuele modellen die bij een fout overspringen, of gewogen round-robin draaien.",
   "cws.count.total": "Totaal",
   "cws.count.failover": "Failover",
   "cws.count.roundRobin": "Round-robin",
   "cws.howTitle": "Hoe het werkt",
-  "cws.howBody": "Vraag Codex om de publieke modelnaam van de combo. Zonder alias is dat combo/<id>. OpenCodex kiest een target en springt alleen bij retrybare upstream-fouten. Als er geen target over is, faalt het request in plaats van naar de globale default-leverancier te gaan.",
+  "cws.howBody":
+    "Vraag Codex om de publieke modelnaam van de combo. Zonder alias is dat combo/<id>. OpenCodex kiest een target en springt alleen bij retrybare upstream-fouten. Als er geen target over is, faalt het request in plaats van naar de globale default-leverancier te gaan.",
   "cws.emptyTitle": "Maak je eerste combo",
-  "cws.empty.createDesc": "Geef een virtueel model een naam en ketting twee of meer backends.",
+  "cws.empty.createDesc":
+    "Geef een virtueel model een naam en ketting twee of meer backends.",
   "cws.strategy": "Strategie",
   "cws.strategy.failover": "Failover",
   "cws.strategy.roundRobin": "Round-robin",
@@ -199,7 +210,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "claude.aliases": "Beschikbare modellen",
   "claude.tabCode": "Code",
   "claude.tabDesktop": "Desktop",
-  "models.subtitle": "Zet aan welke modellen Codex ziet. Verborgen blijven uit de picker, maar blijven aanroepbaar op exact id.",
+  "models.subtitle":
+    "Zet aan welke modellen Codex ziet. Verborgen blijven uit de picker, maar blijven aanroepbaar op exact id.",
   "models.workspace.providers": "Leveranciers",
   "models.workspace.allProviders": "Alle leveranciers",
   "models.combosEmpty": "Nog geen combos",
@@ -209,14 +221,16 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "time.justNow": "Net",
   "time.notChecked": "Niet gecheckt",
   "time.minutesAgo": "{n}m geleden",
-  "claudeDesktop.subtitle": "Zet elke Claude-familie op een beschikbaar model via poort {port}.",
+  "claudeDesktop.subtitle":
+    "Zet elke Claude-familie op een beschikbaar model via poort {port}.",
   "claudeDesktop.importJson": "Import JSON",
   "claudeDesktop.exportJson": "Export JSON",
   "claudeDesktop.loading": "Claude Desktop-profiel laden…",
   "claudeDesktop.loadFail": "Kon het Claude Desktop-profiel niet laden.",
   "claudeDesktop.retry": "Opnieuw",
   "claudeDesktop.saveFailed": "Bewaren van het profiel is mislukt.",
-  "claudeDesktop.applyFailed": "Profiel is bewaard, maar toepassen op de proxy mislukte.",
+  "claudeDesktop.applyFailed":
+    "Profiel is bewaard, maar toepassen op de proxy mislukte.",
   "claudeDesktop.updateFailed": "Claude Desktop-update mislukt.",
   "claudeDesktop.saved": "Profiel bewaard.",
   "claudeDesktop.savedAnnounce": "Profiel bewaard.",
@@ -225,13 +239,17 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "claudeDesktop.saving": "Bewaren…",
   "claudeDesktop.applying": "Toepassen…",
   "claudeDesktop.emptyTitle": "Geen modellen",
-  "claudeDesktop.emptyHint": "Zet eerst een leverancier aan, daarna kun je families toewijzen.",
+  "claudeDesktop.emptyHint":
+    "Zet eerst een leverancier aan, daarna kun je families toewijzen.",
   "claudeDesktop.assignmentsLabel": "Claude-familie toewijzingen",
-  "claudeDesktop.laneEmpty": "Sleep hier een model naartoe of gebruik Verplaats.",
-  "claudeDesktop.laneNoMatch": "Geen model in deze familie matcht je zoekopdracht.",
+  "claudeDesktop.laneEmpty":
+    "Sleep hier een model naartoe of gebruik Verplaats.",
+  "claudeDesktop.laneNoMatch":
+    "Geen model in deze familie matcht je zoekopdracht.",
   "claudeDesktop.status.stale": "Config verouderd — opnieuw toepassen",
   "claudeDesktop.status.notApplied": "Nog niet toegepast",
-  "claudeDesktop.status.notActiveProfile": "Desktop gebruikt een ander profiel — opnieuw toepassen",
+  "claudeDesktop.status.notActiveProfile":
+    "Desktop gebruikt een ander profiel — opnieuw toepassen",
   "claudeDesktop.health.lastRequest": "Laatste request",
   "claudeDesktop.available": "Beschikbaar",
   "claudeDesktop.defaultBadge": "Standaard",
@@ -240,7 +258,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "claudeDesktop.move": "Verplaats",
 
   "startup.title": "Opstartveiligheid",
-  "startup.subtitle": "Controleer of Codex opencodex na een herstart nog bereikt, voordat lokale proxy-routing een reconnect-loop wordt.",
+  "startup.subtitle":
+    "Controleer of Codex opencodex na een herstart nog bereikt, voordat lokale proxy-routing een reconnect-loop wordt.",
   "startup.backToDashboard": "Terug naar overzicht",
   "startup.refresh": "Ververs",
   "startup.status.native": "Geen lokale Codex-afhankelijkheid",
@@ -249,8 +268,10 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "startup.summary.native": "Codex hangt niet af van deze lokale proxy",
   "startup.summary.protected": "OpenCodex komt na reboot vanzelf terug",
   "startup.summary.atRisk": "Na reboot kan Codex zijn modellen kwijtraken",
-  "startup.riskDetail": "Codex is op de lokale proxy gezet, maar er is geen duurzame service die hem weer start.",
-  "startup.safeDetail": "Routing en startmechanisme kloppen. Geen handmatige ocx start nodig na reboot.",
+  "startup.riskDetail":
+    "Codex is op de lokale proxy gezet, maar er is geen duurzame service die hem weer start.",
+  "startup.safeDetail":
+    "Routing en startmechanisme kloppen. Geen handmatige ocx start nodig na reboot.",
   "startup.routing": "Codex-routing",
   "startup.routing.proxy": "Lokale proxy",
   "startup.restartProtection": "Herstart-bescherming",
@@ -267,7 +288,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "startup.notInstalled": "Niet geïnstalleerd",
   "startup.unsupported": "Niet ondersteund",
   "startup.shim": "Codex launcher-shim",
-  "startup.shimHint": "Draait ocx ensure als een ondersteunde Codex-launcher start.",
+  "startup.shimHint":
+    "Draait ocx ensure als een ondersteunde Codex-launcher start.",
   "startup.healthy": "Gezond",
   "startup.cliOnly": "Alleen CLI",
   "startup.stale": "Verouderd",
@@ -275,7 +297,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "startup.unhealthy": "Geïnstalleerd maar ongezond",
   "startup.recommended": "Aanbevolen reparatie: {cmd}",
   "startup.recovery": "Reparatie-opties",
-  "startup.recoveryHint": "Gebruik de installers hierboven, of kopieer een commando voor handmatige reparatie. De achtergrondservice is aanbevolen voor Codex Desktop en Windows-executables.",
+  "startup.recoveryHint":
+    "Gebruik de installers hierboven, of kopieer een commando voor handmatige reparatie. De achtergrondservice is aanbevolen voor Codex Desktop en Windows-executables.",
   "startup.command.service": "Achtergrondservice",
   "startup.command.shim": "CLI launcher-shim",
   "startup.command.native": "Fail-safe: zet Codex terug naar native routing",
@@ -284,10 +307,13 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "startup.loading": "Opstartbescherming checken…",
   "startup.error": "Kon opstartbescherming niet lezen.",
   "claudeDesktop.syncLaptop": "Sync naar deze laptop",
-  "claudeDesktop.syncLaptopAnnounce": "Laptop-sync start. Sta het toe als de browser vraagt.",
+  "claudeDesktop.syncLaptopAnnounce":
+    "Laptop-sync start. Sta het toe als de browser vraagt.",
   "claudeDesktop.status.applied": "Gezet op de proxy",
-  "claudeDesktop.savedApplied": "Op de proxy gezet. Gebruik Sync naar deze laptop om Claude Desktop te verversen.",
-  "claudeDesktop.savedAppliedAnnounce": "Op de proxy gezet. Gebruik Sync naar deze laptop om Claude Desktop te verversen.",
+  "claudeDesktop.savedApplied":
+    "Op de proxy gezet. Gebruik Sync naar deze laptop om Claude Desktop te verversen.",
+  "claudeDesktop.savedAppliedAnnounce":
+    "Op de proxy gezet. Gebruik Sync naar deze laptop om Claude Desktop te verversen.",
   "claudeDesktop.saveApply": "Bewaar en toepassen",
   "common.saving": "Bewaren…",
   "common.cancel": "Annuleer",
@@ -305,7 +331,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "lang.label": "Taal",
 
   // dashboard
-  "dash.subtitle": "Live status van de OpenCodex-proxy, z'n leveranciers en de modellen richting Codex.",
+  "dash.subtitle":
+    "Live status van de OpenCodex-proxy, z'n leveranciers en de modellen richting Codex.",
   "dash.status": "Status",
   "dash.online": "Online",
   "dash.offline": "Offline",
@@ -332,38 +359,49 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "dash.stopConfirm": "Proxy stoppen en Codex weer native laten draaien?",
   "dash.stopping": "Stoppen…",
   "dash.codexAutoStart": "Start OpenCodex met Codex mee",
-  "dash.codexAutoStartHint": "De Codex-shim draait ocx ensure voor elke start van Codex CLI/App. Zet uit om Codex met rust te laten.",
+  "dash.codexAutoStartHint":
+    "De Codex-shim draait ocx ensure voor elke start van Codex CLI/App. Zet uit om Codex met rust te laten.",
   "dash.webSearchSidecar": "Web search sidecar",
-  "dash.webSearchSidecarHint": "Model dat web_search afhandelt voor geroute modellen.",
+  "dash.webSearchSidecarHint":
+    "Model dat web_search afhandelt voor geroute modellen.",
   "dash.visionSidecar": "Vision sidecar",
-  "dash.visionSidecarHint": "Model dat afbeeldingen beschrijft voor tekst-only geroute modellen.",
+  "dash.visionSidecarHint":
+    "Model dat afbeeldingen beschrijft voor tekst-only geroute modellen.",
   "dash.shadowCallIntercept": "Shadow call intercept",
-  "dash.shadowCallInterceptHint": "Onderschept de gpt-5.4-mini achtergrondcalls van Codex App (titels, commit-berichten) en stuurt ze naar jouw model. Effort staat vast op low.",
+  "dash.shadowCallInterceptHint":
+    "Onderschept de gpt-5.4-mini achtergrondcalls van Codex App (titels, commit-berichten) en stuurt ze naar jouw model. Effort staat vast op low.",
   "dash.shadowCallModel": "Vervangend model",
-  "dash.shadowCallTooltip": "Codex App gebruikt gpt-5.4-mini op de achtergrond voor threadtitels, commit-berichten en skill-orkestratie. Zet aan om die calls naar jouw model te sturen.",
+  "dash.shadowCallTooltip":
+    "Codex App gebruikt gpt-5.4-mini op de achtergrond voor threadtitels, commit-berichten en skill-orkestratie. Zet aan om die calls naar jouw model te sturen.",
   "dash.sidecarModel": "Model",
   "dash.injectionLabel": "Sub-agent delegatie",
-  "dash.injectionHint": "Kies een geroute model voor de delegatieprompt. De agent gebruikt het voor sub-taken.",
+  "dash.injectionHint":
+    "Kies een geroute model voor de delegatieprompt. De agent gebruikt het voor sub-taken.",
   "dash.injectionActive": "Actief",
   "dash.injectionNone": "Geen",
   "dash.injectionEffortLabel": "Reasoning effort",
   "dash.injectionEffortNone": "Modelstandaard",
   "dash.effortCapLabel": "V2 ultra effort-limiet",
   "dash.subagentEffortCapLabel": "V2 sub-agent effort-limiet",
-  "dash.effortCapHelp": "Begrenst de reasoning effort voor V2 ultra-beurten. Binnenkomende max-effort verzoeken worden afgetopt op het gekozen niveau. De sub-agent limiet geldt alleen voor gestarte child-agents. Limieten verlagen alleen, nooit verhogen. Steunt een model het niveau niet, dan zakt het naar het dichtstbijzijnde wel gesteunde niveau.",
+  "dash.effortCapHelp":
+    "Begrenst de reasoning effort voor V2 ultra-beurten. Binnenkomende max-effort verzoeken worden afgetopt op het gekozen niveau. De sub-agent limiet geldt alleen voor gestarte child-agents. Limieten verlagen alleen, nooit verhogen. Steunt een model het niveau niet, dan zakt het naar het dichtstbijzijnde wel gesteunde niveau.",
   "dash.effortCapNone": "Geen limiet",
   "dash.maintenance": "Onderhoud",
-  "dash.maintenanceHint": "Ververs de modelcatalogus van Codex of installeer een nieuwere OpenCodex.",
+  "dash.maintenanceHint":
+    "Ververs de modelcatalogus van Codex of installeer een nieuwere OpenCodex.",
   "dash.syncModels": "Sync modellen",
   "dash.syncing": "Syncen…",
   "dash.syncOk": "Sync klaar. {count} model(len) toegevoegd.",
-  "dash.syncStaleHint": "Ziet Codex App nog een oude lijst? Herstart z'n app-server proces.",
+  "dash.syncStaleHint":
+    "Ziet Codex App nog een oude lijst? Herstart z'n app-server proces.",
   "dash.syncFailed": "Sync mislukt: {error}",
   "dash.projectConfigTitle": "Project-config omzeilt OpenCodex",
-  "dash.projectConfigHint": "Deze repo-lokale settings gaan om de OpenCodex-proxy heen. Haal ze weg zodat de routing uit ~/.codex/config.toml daar weer geldt.",
+  "dash.projectConfigHint":
+    "Deze repo-lokale settings gaan om de OpenCodex-proxy heen. Haal ze weg zodat de routing uit ~/.codex/config.toml daar weer geldt.",
   "dash.checkUpdate": "Check update",
   "dash.updateTitle": "OpenCodex bijwerken",
-  "dash.updateDesc": "Checkt npm voor het gekozen kanaal. Kies daarna of de proxy na installatie herstart.",
+  "dash.updateDesc":
+    "Checkt npm voor het gekozen kanaal. Kies daarna of de proxy na installatie herstart.",
   "dash.updateChannel": "Kanaal",
   "dash.updateChecking": "Zoeken naar updates…",
   "dash.updateInstalled": "Geïnstalleerd",
@@ -371,8 +409,10 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "dash.updateAvailable": "Update beschikbaar",
   "dash.updateCurrent": "Bij de tijd",
   "dash.updateCommand": "Commando",
-  "dash.updateSource": "Dit is een source checkout. Werk bij via de terminal met het getoonde commando.",
-  "dash.updateUnavailable": "Kon de nieuwste versie niet van npm lezen. Probeer het straks opnieuw.",
+  "dash.updateSource":
+    "Dit is een source checkout. Werk bij via de terminal met het getoonde commando.",
+  "dash.updateUnavailable":
+    "Kon de nieuwste versie niet van npm lezen. Probeer het straks opnieuw.",
   "dash.updateRetry": "Opnieuw",
   "dash.updateRecheck": "Check opnieuw",
   "dash.updateCannotAuto": "Bijwerken met één klik kan niet ({reason}).",
@@ -381,7 +421,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "dash.updateReason.already_latest": "al op de nieuwste",
   "dash.updateReason.unknown": "update niet beschikbaar",
   "dash.updateRestart": "Herstart na update",
-  "dash.updateRestartHint": "Aangeraden. De GUI blijft op de oude code draaien tot de proxy herstart.",
+  "dash.updateRestartHint":
+    "Aangeraden. De GUI blijft op de oude code draaien tot de proxy herstart.",
   "dash.runUpdate": "Werk bij",
   "dash.updateReconnecting": "Wachten op de herstarte proxy…",
   "dash.updateStatus.running": "OpenCodex wordt bijgewerkt.",
@@ -439,7 +480,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "sys.codexAuthDesc": "ChatGPT-accountpool voor de openai-leverancier",
   "sys.claudeCodeDesc": "Claude-integratie en agent-injectie",
   "sys.dangerZone": "Gevarenzone",
-  "sys.stopDesc": "Stopt de proxy volledig. Codex en Cursor verliezen hun verbinding.",
+  "sys.stopDesc":
+    "Stopt de proxy volledig. Codex en Cursor verliezen hun verbinding.",
   "sys.stopConfirmTitle": "Proxy stoppen?",
   "sys.stopConfirmDesc": "Codex en Cursor verliezen hun verbinding.",
   "sys.keepRunning": "Laat draaien",
@@ -465,7 +507,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "vk.all": "Alles",
   "vk.pause": "Pauzeer",
   "vk.follow": "Volg live",
-  "vk.loadFailed": "Verkeer laden lukt niet. Laatste bekende rijen blijven staan.",
+  "vk.loadFailed":
+    "Verkeer laden lukt niet. Laatste bekende rijen blijven staan.",
   "vk.empty": "Nog geen verkeer vandaag.",
   "vk.showAnalysis": "Volledige analyse",
   "vk.hideAnalysis": "Verberg analyse",
@@ -504,28 +547,38 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "pws.fetchModels": "Haal modellen op",
   "pws.fetchingModels": "Ophalen…",
   "pws.fetchModelsOk": "{count} modellen van {provider}.",
-  "pws.fetchModelsStatic": "Live discovery staat uit — dit is de ingestelde lijst ({count}).",
-  "pws.fetchModelsPassthrough": "Passthrough-leveranciers hebben geen upstream /models-catalogus.",
+  "pws.fetchModelsStatic":
+    "Live discovery staat uit — dit is de ingestelde lijst ({count}).",
+  "pws.fetchModelsPassthrough":
+    "Passthrough-leveranciers hebben geen upstream /models-catalogus.",
   "pws.fetchModelsFailed": "Kon modellen niet ophalen: {error}",
 
   // API-toegang (#api)
   "api.title": "API-toegang",
-  "api.subtitle": "Gebruik gegenereerde API-keys om de opencodex-proxy vanuit externe apps te bereiken. Authenticatie verloopt via de {authHeader}- of {altHeader}-header.",
+  "api.subtitle":
+    "Gebruik gegenereerde API-keys om de opencodex-proxy vanuit externe apps te bereiken. Authenticatie verloopt via de {authHeader}- of {altHeader}-header.",
   "api.baseUrl": "Base-URL",
   "api.responsesEndpoint": "Responses API",
   "api.chatCompletionsEndpoint": "Chat Completions API",
   "api.messagesEndpoint": "Messages API",
   "api.modelsEndpoint": "Models API",
-  "api.endpointNote": "Gebruik de base-URL met OpenAI-compatibele clients. Responses en Chat Completions zitten onder /v1.",
+  "api.endpointNote":
+    "Gebruik de base-URL met OpenAI-compatibele clients. Responses en Chat Completions zitten onder /v1.",
   "api.endpointsTitle": "Endpoints",
   "api.authTitle": "Authenticatie",
-  "api.authResponses": "Responses-verzoeken vereisen x-opencodex-api-key, omdat Authorization gereserveerd kan zijn voor Codex Direct passthrough.",
-  "api.authChatCompletions": "Chat Completions en /v1/models accepteren Authorization: Bearer ocx_... of x-opencodex-api-key.",
-  "api.authLoopback": "Loopback-binds (127.0.0.1 of ::1) slaan authenticatie over. Remote binds vereisen een gegenereerde ocx_-key of OPENCODEX_API_AUTH_TOKEN.",
-  "api.authMessages": "Messages accepteert Authorization: Bearer ocx_... of x-opencodex-api-key.",
-  "api.authBaseUrlNote": "Stel clients in met de base-URL en kies daarna hieronder het endpoint per protocol.",
+  "api.authResponses":
+    "Responses-verzoeken vereisen x-opencodex-api-key, omdat Authorization gereserveerd kan zijn voor Codex Direct passthrough.",
+  "api.authChatCompletions":
+    "Chat Completions en /v1/models accepteren Authorization: Bearer ocx_... of x-opencodex-api-key.",
+  "api.authLoopback":
+    "Loopback-binds (127.0.0.1 of ::1) slaan authenticatie over. Remote binds vereisen een gegenereerde ocx_-key of OPENCODEX_API_AUTH_TOKEN.",
+  "api.authMessages":
+    "Messages accepteert Authorization: Bearer ocx_... of x-opencodex-api-key.",
+  "api.authBaseUrlNote":
+    "Stel clients in met de base-URL en kies daarna hieronder het endpoint per protocol.",
   "api.newKeyTitle": "Nieuwe key aangemaakt",
-  "api.newKeyNote": "Kopieer deze key nu; je krijgt 'm niet nog een keer te zien.",
+  "api.newKeyNote":
+    "Kopieer deze key nu; je krijgt 'm niet nog een keer te zien.",
   "api.copy": "Kopieer",
   "api.copied": "Gekopieerd",
   "api.dismiss": "Sluit",
@@ -541,8 +594,10 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "api.workspace.keyDetails": "Key-details",
   "api.workspace.keyPrefix": "Key-prefix",
   "api.workspace.deleteKey": "Verwijder key",
-  "api.workspace.deleteConfirm": "Weet je zeker dat je deze key wilt verwijderen? Dit kan niet ongedaan worden gemaakt.",
-  "api.workspace.noKeysHint": "Nog geen API-keys. Genereer er een om te beginnen.",
+  "api.workspace.deleteConfirm":
+    "Weet je zeker dat je deze key wilt verwijderen? Dit kan niet ongedaan worden gemaakt.",
+  "api.workspace.noKeysHint":
+    "Nog geen API-keys. Genereer er een om te beginnen.",
   "api.workspace.usageExamples": "Voorbeelden",
   "api.copyUrlHint": "Klik om de URL te kopiëren",
   "api.urlCopied": "URL gekopieerd",
@@ -557,7 +612,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "api.modelsCount": "{count} aanroepbare modellen",
   "api.modelsLoading": "Modellen laden…",
   "api.modelsSearch": "Zoek modellen",
-  "api.modelsSubtitle": "Gebruik precies deze model-IDs met /v1/models en je gekozen inbound-protocol.",
+  "api.modelsSubtitle":
+    "Gebruik precies deze model-IDs met /v1/models en je gekozen inbound-protocol.",
   "api.modelsEmpty": "Nog geen extern aanroepbare modellen beschikbaar.",
   "api.modelsLoadFailed": "Kon de externe modelcatalogus niet laden.",
   "api.colModel": "Model",
@@ -586,16 +642,19 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   // provider weekly/inference caps (ported)
   "pws.capCooldown.title": "Wekelijks limiet",
   "pws.capCooldown.section": "Verbruikslimieten",
-  "pws.capCooldown.banner": "{provider} zit aan een wekelijks/inference-plafond. {reset}",
+  "pws.capCooldown.banner":
+    "{provider} zit aan een wekelijks/inference-plafond. {reset}",
   "pws.capCooldown.disabled": "Tijdelijk uitgeschakeld tot de limiet reset.",
-  "pws.capCooldown.paused": "Routing voor deze leverancier staat tot die tijd stil.",
+  "pws.capCooldown.paused":
+    "Routing voor deze leverancier staat tot die tijd stil.",
   "pws.capCooldown.badge": "Vol",
   "pws.attention.capCooldown": "Wekelijks/inference-limiet — {reset}",
 
   "prov.waitingBrowser": "Wachten op de browser…",
   "pws.addAccount": "Account toevoegen",
   "pws.addKey": "API-key toevoegen",
-  "pws.keyPoolHint": "Een tweede key schakelt door bij rate limits. Een weeklimiet koelt alleen die key.",
+  "pws.keyPoolHint":
+    "Een tweede key schakelt door bij rate limits. Een weeklimiet koelt alleen die key.",
   "pws.availability.pools": "Key-pools",
   "pws.availability.pool": "{count} keys",
   "pws.availability.hop": "daarna {provider}",
@@ -603,46 +662,64 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "pws.availability.cooling": "{count} sleutels koelen",
   "pws.keyCooling": "Koelt",
   "pws.keyCoolingUntil": "Koelt tot {reset}",
-  "pws.healthCooldownHint": "Wacht tot de cooldown voorbij is. Deze account nog niet aanraken.",
-  "pws.accountQuotaUnavailable": "Rate-limit data even niet bereikbaar; laatste bekende waarden blijven staan als die er zijn.",
+  "pws.healthCooldownHint":
+    "Wacht tot de cooldown voorbij is. Deze account nog niet aanraken.",
+  "pws.accountQuotaUnavailable":
+    "Rate-limit data even niet bereikbaar; laatste bekende waarden blijven staan als die er zijn.",
 
   "accountPool.strategy": "Rotatiestrategie",
-  "accountPool.strategyDesc": "Hoe nieuwe sessies een account uit de pool kiezen.",
+  "accountPool.strategyDesc":
+    "Hoe nieuwe sessies een account uit de pool kiezen.",
   "accountPool.strategyQuota": "Quota",
   "accountPool.strategyRoundRobin": "Round-robin",
   "accountPool.strategyFillFirst": "Fill-first",
-  "accountPool.strategyHint": "Geldt alleen voor nieuwe sessies; bestaande threads houden hun account.",
+  "accountPool.strategyHint":
+    "Geldt alleen voor nieuwe sessies; bestaande threads houden hun account.",
   "accountPool.stickyLimit": "Plak-successen voor rotatie",
   "accountPool.stickyLimitAria": "Plak-successen voor rotatie",
   "accountPool.stickyLimitInc": "Plaklimiet omhoog",
   "accountPool.stickyLimitDec": "Plaklimiet omlaag",
-  "accountPool.stickyLimitHelp": "Houd het gekozen account dit aantal geslaagde nieuwe-sessie-binds vast voordat er geroteerd wordt.",
+  "accountPool.stickyLimitHelp":
+    "Houd het gekozen account dit aantal geslaagde nieuwe-sessie-binds vast voordat er geroteerd wordt.",
   "accountPool.stickyLimitInvalid": "Vul een heel getal van 1 tot 100 in",
   "accountPool.strategyLoadFailed": "Rotatiestrategie kon niet worden geladen.",
-  "accountPool.strategyUpdateFailed": "Rotatiestrategie kon niet worden bewaard.",
+  "accountPool.strategyUpdateFailed":
+    "Rotatiestrategie kon niet worden bewaard.",
 
   "oauthPool.title.anthropic": "Claude-accountpool (experimenteel)",
   "oauthPool.title.cursor": "Cursor-accountpool (experimenteel)",
-  "oauthPool.title.googleAntigravity": "Antigravity-accountpool (experimenteel)",
-  "oauthPool.enabledDesc.anthropic": "Bij 429 of 529 koelt OpenCodex het account af en springt door. Nieuwe sessies kiezen bij voorkeur onder {threshold}% (5-uursbalk).",
-  "oauthPool.enabledDesc.cursor": "Bij 429 of 529 koelt OpenCodex het account af en springt door. Nieuwe sessies kiezen bij voorkeur onder {threshold}%.",
-  "oauthPool.enabledDesc.googleAntigravity": "Bij 429 of 529 koelt OpenCodex het account af en springt door. Nieuwe sessies kiezen bij voorkeur onder {threshold}%.",
+  "oauthPool.title.googleAntigravity":
+    "Antigravity-accountpool (experimenteel)",
+  "oauthPool.enabledDesc.anthropic":
+    "Bij 429 of 529 koelt OpenCodex het account af en springt door. Nieuwe sessies kiezen bij voorkeur onder {threshold}% (5-uursbalk).",
+  "oauthPool.enabledDesc.cursor":
+    "Bij 429 of 529 koelt OpenCodex het account af en springt door. Nieuwe sessies kiezen bij voorkeur onder {threshold}%.",
+  "oauthPool.enabledDesc.googleAntigravity":
+    "Bij 429 of 529 koelt OpenCodex het account af en springt door. Nieuwe sessies kiezen bij voorkeur onder {threshold}%.",
   "oauthPool.disabledDesc": "Alleen het actieve account tot je de pool aanzet.",
-  "oauthPool.warning.anthropic": "Experimenteel en niet uitgemeten. Anthropic kan accounts beperken die op geautomatiseerde rotatie lijken. Dezelfde organisatie deelt vaak quota — die poolen helpt niet. Laat dit uit tenzij je het risico snapt.",
-  "oauthPool.warning.cursor": "Experimenteel. Cursor kan accounts beperken die op geautomatiseerde rotatie lijken. Twee seats op hetzelfde teamplan delen vaak quota — die poolen helpt niet.",
-  "oauthPool.warning.googleAntigravity": "Experimenteel. Google kan accounts beperken die op geautomatiseerde rotatie lijken. Gedeelde workspace-quota winnen niets bij poolen.",
-  "oauthPool.needTwoAccounts": "Voeg minstens twee accounts toe voordat je de pool aanzet.",
+  "oauthPool.warning.anthropic":
+    "Experimenteel en niet uitgemeten. Anthropic kan accounts beperken die op geautomatiseerde rotatie lijken. Dezelfde organisatie deelt vaak quota — die poolen helpt niet. Laat dit uit tenzij je het risico snapt.",
+  "oauthPool.warning.cursor":
+    "Experimenteel. Cursor kan accounts beperken die op geautomatiseerde rotatie lijken. Twee seats op hetzelfde teamplan delen vaak quota — die poolen helpt niet.",
+  "oauthPool.warning.googleAntigravity":
+    "Experimenteel. Google kan accounts beperken die op geautomatiseerde rotatie lijken. Gedeelde workspace-quota winnen niets bij poolen.",
+  "oauthPool.needTwoAccounts":
+    "Voeg minstens twee accounts toe voordat je de pool aanzet.",
   "oauthPool.threshold": "Gebruiksdrempel voor nieuwe sessies",
   "oauthPool.thresholdAria": "Gebruiksdrempel voor nieuwe sessies, procent",
-  "oauthPool.thresholdHelp": "0 zet quota-keuze uit (alleen affinity + actief account). Standaard 80.",
+  "oauthPool.thresholdHelp":
+    "0 zet quota-keuze uit (alleen affinity + actief account). Standaard 80.",
   "oauthPool.thresholdInvalid": "Vul een heel getal van 0 tot 100 in",
-  "oauthPool.loadFailed": "Accountpool-instellingen konden niet worden geladen.",
-  "oauthPool.saveFailed": "Accountpool-instellingen konden niet worden bewaard.",
+  "oauthPool.loadFailed":
+    "Accountpool-instellingen konden niet worden geladen.",
+  "oauthPool.saveFailed":
+    "Accountpool-instellingen konden niet worden bewaard.",
   "oauthPool.on": "Aan",
   "oauthPool.off": "Uit",
   "oauthPool.importKey": "Cursor API-key toevoegen",
   "oauthPool.importKeyPlaceholder": "Plak een Cursor user API-key (JWT)",
-  "oauthPool.importKeyHelp": "Zelfde Cursor-login: OAuth voor een browseraccount, of plak een user API-key. De key blijft op deze machine en wordt niet opnieuw getoond.",
+  "oauthPool.importKeyHelp":
+    "Zelfde Cursor-login: OAuth voor een browseraccount, of plak een user API-key. De key blijft op deze machine en wordt niet opnieuw getoond.",
   "oauthPool.importKeySubmit": "Key bewaren",
   "oauthPool.importKeyInvalid": "Dat is geen Cursor-JWT met een sub-claim.",
   "oauthPool.importKeyFailed": "De Cursor API-key kon niet worden bewaard.",
@@ -657,12 +734,14 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "ops.cacheEvictions": "evictions (LRU)",
   "ops.cacheExpired": "verlopen",
   "ops.cacheTooLarge": "te groot geweigerd",
-  "ops.cacheConfig": "ttl {ttl}s · max {max} items · body-limiet {cap} kB · persist: {persist}",
+  "ops.cacheConfig":
+    "ttl {ttl}s · max {max} items · body-limiet {cap} kB · persist: {persist}",
   "ops.persistOn": "aan",
   "ops.persistOff": "uit",
   "ops.cacheClear": "Cache legen",
   "ops.clearing": "Legen…",
-  "ops.cacheOff": "De response-cache staat uit. Zet aan met responseCache.enabled in de config.",
+  "ops.cacheOff":
+    "De response-cache staat uit. Zet aan met responseCache.enabled in de config.",
   "ops.cacheFailed": "Kon cache-statistieken niet laden.",
   "ops.poolHead": "Key-pools & beschikbaarheid",
   "ops.poolFailed": "Kon beschikbaarheid niet laden.",
@@ -675,4 +754,4 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "ops.unitMinutes": "m",
   "ops.unitHours": "u",
   "ops.unitDays": "d",
-}
+};

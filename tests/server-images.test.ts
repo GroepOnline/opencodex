@@ -1230,6 +1230,259 @@ test("CCA fetch network failure returns 502 without leaking the timeout timer", 
   }
 }, 5_000);
 
+test("keyed/forward relay streams the upstream body and passes payload + status through", async () => {
+  // Regression for the arrayBuffer() -> streaming bounded reader change on the
+  // keyed/forward relay path: a normal-sized streamed body must still be relayed
+  // verbatim with its status and content-type.
+  const payload = JSON.stringify({ created: 1_767_000_000, data: [{ b64_json: "aGVsbG8=" }] });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const requestUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const url = new URL(requestUrl);
+    if (url.hostname === "api.openai.com" && url.pathname.startsWith("/v1")) {
+      const encoded = new TextEncoder().encode(payload);
+      // Split into two chunks so the bounded reader loop iterates more than once.
+      const mid = Math.floor(encoded.byteLength / 2);
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoded.subarray(0, mid));
+          controller.enqueue(encoded.subarray(mid));
+          controller.close();
+        },
+      });
+      return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return originalFetch(input, init);
+  }) as typeof fetch;
+
+  saveConfig({
+    port: 0,
+    defaultProvider: "openai-apikey",
+    openaiProviderTierVersion: 2,
+    providers: {
+      openai: disabledOpenAiProvider,
+      "openai-apikey": keyedProvider(),
+    },
+  } as OcxConfig);
+
+  const server = startServer(0);
+  try {
+    const response = await fetch(new URL("/v1/images/generations", server.url), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "a cat", model: "gpt-image-2" }),
+    });
+    expect(response.status).toBe(200);
+    const json = await response.json() as { data: { b64_json: string }[] };
+    expect(json.data[0].b64_json).toBe("aGVsbG8=");
+  } finally {
+    await server.stop(true);
+  }
+}, 5_000);
+
+test("keyed/forward relay rejects an oversized streamed body mid-stream with 502", async () => {
+  // Regression for the streaming bounded reader: an upstream body exceeding the
+  // cap must be rejected mid-stream with 502 rather than fully buffered via
+  // arrayBuffer(). We shrink the cap via OPENCODEX_IMAGES_RESPONSE_MAX_BYTES so
+  // the test stays fast and never allocates 100+ MiB — the bounded-reader logic
+  // (imagesResponseMaxBytes()) is identical regardless of the cap value.
+  const previousMax = process.env.OPENCODEX_IMAGES_RESPONSE_MAX_BYTES;
+  process.env.OPENCODEX_IMAGES_RESPONSE_MAX_BYTES = String(4 * 1024); // 4 KiB cap
+  const CHUNK = new Uint8Array(1024); // 1 KiB, reused for every enqueue
+  const MAX_BYTES = 4 * 1024;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const requestUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const url = new URL(requestUrl);
+    if (url.hostname === "api.openai.com" && url.pathname.startsWith("/v1")) {
+      let sent = 0;
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          // Once past the cap, keep going; the relay's bounded reader must cancel us.
+          controller.enqueue(CHUNK.slice());
+          sent += CHUNK.byteLength;
+          if (sent > MAX_BYTES + CHUNK.byteLength) controller.close();
+        },
+      });
+      return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return originalFetch(input, init);
+  }) as typeof fetch;
+
+  saveConfig({
+    port: 0,
+    defaultProvider: "openai-apikey",
+    openaiProviderTierVersion: 2,
+    providers: {
+      openai: disabledOpenAiProvider,
+      "openai-apikey": keyedProvider(),
+    },
+  } as OcxConfig);
+
+  const server = startServer(0);
+  try {
+    const response = await fetch(new URL("/v1/images/generations", server.url), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "a cat", model: "gpt-image-2" }),
+    });
+    expect(response.status).toBe(502);
+    const json = await response.json() as { error: { message: string } };
+    expect(json.error.message).toMatch(/too large/i);
+  } finally {
+    await server.stop(true);
+    if (previousMax === undefined) delete process.env.OPENCODEX_IMAGES_RESPONSE_MAX_BYTES;
+    else process.env.OPENCODEX_IMAGES_RESPONSE_MAX_BYTES = previousMax;
+  }
+}, 5_000);
+
+test("keyed/forward relay returns 502 when the upstream response has no body", async () => {
+  // Regression for the streaming bounded reader: a 204/no-body upstream response
+  // has a null body, which the relay must map to a 502 rather than crashing.
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const requestUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const url = new URL(requestUrl);
+    if (url.hostname === "api.openai.com" && url.pathname.startsWith("/v1")) {
+      return new Response(null, { status: 204 });
+    }
+    return originalFetch(input, init);
+  }) as typeof fetch;
+
+  saveConfig({
+    port: 0,
+    defaultProvider: "openai-apikey",
+    openaiProviderTierVersion: 2,
+    providers: {
+      openai: disabledOpenAiProvider,
+      "openai-apikey": keyedProvider(),
+    },
+  } as OcxConfig);
+
+  const server = startServer(0);
+  try {
+    const response = await fetch(new URL("/v1/images/generations", server.url), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "a cat", model: "gpt-image-2" }),
+    });
+    expect(response.status).toBe(502);
+    const json = await response.json() as { error: { message: string } };
+    expect(json.error.message).toContain("no body");
+  } finally {
+    await server.stop(true);
+  }
+}, 5_000);
+
+test("keyed/forward relay body-read timeout returns 504 when upstream stalls after sending headers", async () => {
+  // Regression for the streaming bounded reader on the keyed/forward path: the
+  // upstream returns 200 OK headers immediately but the body stream never
+  // produces data. The linked signal's timeout aborts reader.read(), which the
+  // body-read catch must map to 504 (not 502) via the linkedSignal.signal.aborted
+  // check — the abort surfaces as a generic AbortError, not TimeoutError.
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const requestUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const url = new URL(requestUrl);
+    if (url.hostname === "api.openai.com" && url.pathname.startsWith("/v1")) {
+      const fetchSignal = init?.signal;
+      const stalledBody = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const abortError = new DOMException("The operation was aborted.", "AbortError");
+          if (fetchSignal) {
+            if (fetchSignal.aborted) controller.error(abortError);
+            else fetchSignal.addEventListener("abort", () => controller.error(abortError), { once: true });
+          }
+        },
+      });
+      return new Response(stalledBody, { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return originalFetch(input, init);
+  }) as typeof fetch;
+
+  saveConfig({
+    port: 0,
+    defaultProvider: "openai-apikey",
+    openaiProviderTierVersion: 2,
+    images: { timeoutMs: 100 },
+    providers: {
+      openai: disabledOpenAiProvider,
+      "openai-apikey": keyedProvider(),
+    },
+  } as OcxConfig);
+
+  const server = startServer(0);
+  try {
+    const response = await fetch(new URL("/v1/images/generations", server.url), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "a cat", model: "gpt-image-2" }),
+    });
+    expect(response.status).toBe(504);
+    const json = await response.json() as { error: { message: string } };
+    expect(json.error.message).toMatch(/body read|timed out/i);
+  } finally {
+    await server.stop(true);
+  }
+}, 5_000);
+
+test("keyed/forward relay body-read client cancellation returns 499, not 504", async () => {
+  // Regression for the streaming bounded reader on the keyed/forward path: when
+  // the client aborts during the body-read phase, both the parent and linked
+  // signals abort. The body-read catch must check the PARENT signal first (499)
+  // before the linked signal (504), otherwise client cancellation is misreported
+  // as an upstream timeout.
+  //
+  // We call handleImages directly (not via server fetch) because a client-side
+  // fetch abort tears down the connection before the server response can be read.
+  const { handleImages } = await import("../src/server/images");
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const requestUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const url = new URL(requestUrl);
+    if (url.hostname === "api.openai.com" && url.pathname.startsWith("/v1")) {
+      const fetchSignal = init?.signal;
+      const stalledBody = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const abortError = new DOMException("The operation was aborted.", "AbortError");
+          if (fetchSignal) {
+            if (fetchSignal.aborted) controller.error(abortError);
+            else fetchSignal.addEventListener("abort", () => controller.error(abortError), { once: true });
+          }
+        },
+      });
+      return new Response(stalledBody, { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return originalFetch(input, init);
+  }) as typeof fetch;
+
+  // Use a long timeout so the deadline does NOT fire — only the client abort triggers.
+  const cfg = {
+    port: 0,
+    defaultProvider: "openai-apikey",
+    openaiProviderTierVersion: 2,
+    images: { timeoutMs: 30_000 },
+    providers: {
+      openai: disabledOpenAiProvider,
+      "openai-apikey": keyedProvider(),
+    },
+  } as OcxConfig;
+  saveConfig(cfg);
+
+  const ctrl = new AbortController();
+  const req = new Request("http://localhost:0/v1/images/generations", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ prompt: "a cat", model: "gpt-image-2" }),
+    signal: ctrl.signal,
+  });
+  const logCtx = { model: "", provider: "" } as never;
+
+  // Start the handler — it enters the body-read loop and stalls on the mocked body.
+  const responsePromise = handleImages(req, cfg, "generations", logCtx);
+  // Abort the parent signal after the body read has started.
+  setTimeout(() => ctrl.abort(), 100);
+  const response = await responsePromise;
+  expect(response.status).toBe(499);
+  const json = await response.json() as { error: { message: string } };
+  expect(json.error.message).toContain("canceled");
+}, 5_000);
+
 test("CCA body-read timeout returns 504 when upstream stalls after sending headers", async () => {
   // Mock: CCA returns 200 OK headers immediately but the body stream never
   // produces data. The linked signal's timeout aborts reader.read(), which

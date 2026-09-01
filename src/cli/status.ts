@@ -1,7 +1,7 @@
 import { durableBunRuntime } from "../lib/bun-runtime";
 import { codexAutoStartEnabled, getConfigPath, getPidPath, readConfigDiagnostics, readPid, readRuntimePort, type RuntimePortState } from "../config";
 import { diagnoseCodexBundledPlugins, type CodexPluginsDiagnostic } from "../codex/plugins-doctor";
-import { findLiveProxy, isOpencodexHealthz, probeHostname } from "../server/proxy-liveness";
+import { findReachableProxyForCli, isOpencodexHealthz, probeHostname } from "../server/proxy-liveness";
 import type { OcxConfig } from "../types";
 import { diagnoseService } from "../service";
 import { collectStartupHealth, type StartupHealth } from "../codex/autostart-health";
@@ -78,6 +78,30 @@ export type CliStatusView = {
   healthLabel: string;
 };
 
+/** Human `ocx status` keys off reachability, not a local killable PID. */
+export function proxyStatusIsUp(status: CliStatusView): boolean {
+  return status.json.proxy.running;
+}
+
+export function proxyRestartHintLines(status: CliStatusView): string[] {
+  if (proxyStatusIsUp(status)) return [];
+  return [
+    "   ↳ Not running — Codex/Claude requests will fail with connection errors.",
+    "     Restart with 'ocx start', or install the persistent service: 'ocx service install'.",
+  ];
+}
+
+function healthFromLive(
+  live: { pid: number | null; version?: string; uptime?: number },
+  url: string,
+): HealthCheck {
+  const version = typeof live.version === "string" ? ` v${live.version}` : "";
+  const uptime = typeof live.uptime === "number" ? `, uptime ${Math.round(live.uptime)}s` : "";
+  const pidNote = live.pid ? ` (pid ${live.pid})` : "";
+  const message = `ok${version}${uptime}${pidNote}`;
+  return { ok: true, url, message, label: `${url} ${message}` };
+}
+
 
 export type ListenTarget = {
   port: number;
@@ -145,7 +169,7 @@ export async function collectStatus(): Promise<CliStatusView> {
   // Prefer identity-verified liveness (runtime-port + /healthz) over ocx.pid alone (#618).
   // Pass the already-resolved diagnostics config so findLiveProxy does not re-load and
   // warn on malformed config.json (status --json must stay stderr-clean).
-  const live = await findLiveProxy({
+  const live = await findReachableProxyForCli({
     configFn: () => ({ port: config.port, hostname: config.hostname }),
   });
   const pidFile = readPid();
@@ -160,15 +184,10 @@ export async function collectStatus(): Promise<CliStatusView> {
       dashboardUrl: `http://localhost:${live.port}/`,
     }
     : selectListenTarget(config, pidFile, pidFile ? readRuntimePort(pidFile) : null);
-  // findLiveProxy already identity-probed /healthz; avoid a second fetch that can race.
-  const health = live
-    ? {
-      ok: true,
-      url: listen.healthUrl,
-      message: `ok (pid ${live.pid ?? "unknown"})`,
-      label: `${listen.healthUrl} ok (live)`,
-    }
-    : await checkProxyHealth(listen);
+  // A pidless reachable endpoint is commonly a local socket/SSH/Tailscale forward.
+  // Do not re-probe with a shorter timeout: liveness already proved /healthz, and a
+  // cold forward can fail the follow-up while `running` stays true.
+  const health = live ? healthFromLive(live, listen.healthUrl) : await checkProxyHealth(listen);
   const bunRuntime = durableBunRuntime();
   const service = diagnoseService();
   const serviceSummary = service.summary;
@@ -263,7 +282,9 @@ export async function collectStatus(): Promise<CliStatusView> {
     },
   };
   const proxyLabel = live
-    ? `running (PID ${live.pid ?? pid ?? "unknown"})`
+    ? live.pid
+      ? `running (PID ${live.pid})`
+      : "reachable (no verified local PID; forwarded/remote endpoint)"
     : pid && health.ok
       ? `running (PID ${pid})`
       : pid

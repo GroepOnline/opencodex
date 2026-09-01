@@ -19,7 +19,7 @@ import {
   writePid,
   writeRuntimePort,
 } from "../config";
-import { collectStatus } from "./status";
+import { collectStatus, proxyRestartHintLines, proxyStatusIsUp } from "./status";
 import { dispatchInternalCliCommand, type InternalCliCommand } from "./internal-dispatch";
 import { runTrayProxyRestart, runTrayProxyStart } from "./tray-proxy";
 import { installCrashGuards } from "../lib/crash-guard";
@@ -646,15 +646,14 @@ async function handleStatus() {
     return;
   }
 
-  if (status.json.proxy.pid || status.json.proxy.health.ok) {
+  if (proxyStatusIsUp(status)) {
     console.log(`✅ Proxy: ${status.proxyLabel}`);
   } else {
     console.log(`❌ Proxy: ${status.proxyLabel}`);
   }
   console.log(`   Health: ${status.healthLabel}`);
-  if (!(status.json.proxy.pid || status.json.proxy.health.ok)) {
-    console.log("   ↳ Not running — Codex/Claude requests will fail with connection errors.");
-    console.log("     Restart with 'ocx start', or install the persistent service: 'ocx service install'.");
+  for (const line of proxyRestartHintLines(status)) {
+    console.log(line);
   }
   console.log(`   Dashboard: ${status.json.dashboard.url}`);
   console.log(`   Config: ${status.json.paths.config}`);
