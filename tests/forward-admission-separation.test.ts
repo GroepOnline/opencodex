@@ -42,7 +42,10 @@ beforeEach(() => {
     const url = new URL(raw);
     if (url.hostname === "chatgpt.com" || url.hostname === "api.openai.com") {
       upstreamAttempts.push(url.toString());
-      return Response.json({ error: "unexpected upstream request" }, { status: 500 });
+      return Response.json(
+        { error: "unexpected upstream request" },
+        { status: 500 },
+      );
     }
     return originalFetch(input, init);
   }) as typeof fetch;
@@ -52,12 +55,80 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
   else process.env.OPENCODEX_HOME = previousHome;
-  if (previousDataToken === undefined) delete process.env.OPENCODEX_API_AUTH_TOKEN;
+  if (previousDataToken === undefined)
+    delete process.env.OPENCODEX_API_AUTH_TOKEN;
   else process.env.OPENCODEX_API_AUTH_TOKEN = previousDataToken;
-  if (previousAdminToken === undefined) delete process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
+  if (previousAdminToken === undefined)
+    delete process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
   else process.env.OPENCODEX_ADMIN_AUTH_TOKEN = previousAdminToken;
   if (testHome) rmSync(testHome, { recursive: true, force: true });
   testHome = "";
+});
+
+test("a data-plane bearer is admitted but never forwarded as the provider credential", async () => {
+  const admissionToken = ["ocx", "data", "agent", "test", "secret"].join("_");
+  process.env.OPENCODEX_API_AUTH_TOKEN = admissionToken;
+  const upstream = Bun.serve({
+    port: 0,
+    async fetch(request) {
+      expect(request.headers.get("authorization")).toBe(
+        "Bearer provider-secret",
+      );
+      expect(request.headers.get("authorization")).not.toContain(
+        admissionToken,
+      );
+      return Response.json({
+        id: "chatcmpl-admission",
+        object: "chat.completion",
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant", content: "ok" },
+            finish_reason: "stop",
+          },
+        ],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      });
+    },
+  });
+
+  saveConfig({
+    port: 0,
+    hostname: "0.0.0.0",
+    defaultProvider: "routed",
+    providers: {
+      routed: {
+        adapter: "openai-chat",
+        baseUrl: `http://127.0.0.1:${upstream.port}/v1`,
+        allowPrivateNetwork: true,
+        authMode: "key",
+        apiKey: "provider-secret",
+      },
+    },
+  } as OcxConfig);
+
+  const server = startServer(0);
+  try {
+    const response = await originalFetch(
+      `http://127.0.0.1:${server.port}/v1/responses`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: ["Bearer", admissionToken].join(" "),
+        },
+        body: JSON.stringify({
+          model: "routed/test-model",
+          input: "hello",
+          stream: false,
+        }),
+      },
+    );
+    expect(response.status).toBe(200);
+  } finally {
+    await server.stop(true);
+    upstream.stop(true);
+  }
 });
 
 describe("management credentials never leave data-plane forwarding paths", () => {
@@ -114,14 +185,17 @@ describe("management credentials never leave data-plane forwarding paths", () =>
       saveConfig(forwardConfig());
       const server = startServer(0);
       try {
-        const response = await originalFetch(new URL(request.path, server.url), {
-          method: "POST",
-          headers: {
-            "content-type": request.contentType,
-            authorization: "Bearer admin-secret",
+        const response = await originalFetch(
+          new URL(request.path, server.url),
+          {
+            method: "POST",
+            headers: {
+              "content-type": request.contentType,
+              authorization: "Bearer admin-secret",
+            },
+            body: request.body,
           },
-          body: request.body,
-        });
+        );
         expect(response.status).toBe(request.expectedStatus);
         expect(upstreamAttempts).toHaveLength(0);
       } finally {

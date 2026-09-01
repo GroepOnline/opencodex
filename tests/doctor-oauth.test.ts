@@ -72,7 +72,9 @@ describe("collectOAuthDoctorChecks", () => {
     const warn = checks.find((c) => c.level === "WARN" && c.message.includes("Codex account health unavailable"));
     expect(warn).toBeTruthy();
     expect(warn!.message).toContain("Action:");
-    expect(warn!.message).toContain("start the proxy");
+    expect(warn!.message).toContain("management API unavailable");
+    expect(warn!.message).not.toContain("management API unreachable");
+    expect(warn!.message).toContain("endpoint/tunnel");
   });
 
   test("Codex needsReauth WARN comes from management API, not CLI process maps", async () => {

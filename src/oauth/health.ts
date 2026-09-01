@@ -1,23 +1,49 @@
-import { getCodexAccountHealthSnapshot, type CodexCooldownSource } from "../codex/routing";
+import {
+  getCodexAccountHealthSnapshot,
+  type CodexCooldownSource,
+} from "../codex/routing";
 import { getAnthropicAccountHealthSnapshot } from "./anthropic-routing";
 import { getGoogleAntigravityAccountHealthSnapshot } from "./google-antigravity-routing";
 import { getCursorAccountHealthSnapshot } from "./cursor-routing";
 import { isAccountNeedsReauth } from "../codex/account-runtime-state";
-import { getCodexAccountCredential, listCodexAccountIds } from "../codex/account-store";
+import {
+  getCodexAccountCredential,
+  listCodexAccountIds,
+} from "../codex/account-store";
 import { MAIN_CODEX_ACCOUNT_ID } from "../codex/main-account";
 import { maskAccountId } from "../lib/privacy";
-import { loadServiceTokenFromFile } from "../lib/service-secrets";
-import { findLiveProxy, probeHostname } from "../server/proxy-liveness";
-import { loadAuthStore, peekAuthStore, peekOAuthRefreshIntent, readOAuthRefreshIntent } from "./store";
+import { configuredAdminToken } from "../lib/admin-secrets";
+import {
+  findLiveProxy,
+  findReachableProxyForCli,
+  probeHostname,
+} from "../server/proxy-liveness";
+import { isLoopbackHostname } from "../server/auth-cors";
+import {
+  loadAuthStore,
+  peekAuthStore,
+  peekOAuthRefreshIntent,
+  readOAuthRefreshIntent,
+} from "./store";
 import { isAccountExpired } from "./account-expiry";
 import type { ProviderAccount } from "./types";
 
 export type OAuthAccountHealth =
   | { status: "healthy" }
   | { status: "cooldown"; until: string; reason: "rate_limit" | "quota" }
-  | { status: "reauth_required"; reason: "unauthorized" | "forbidden" | "refresh_failed" }
+  | {
+      status: "reauth_required";
+      reason: "unauthorized" | "forbidden" | "refresh_failed";
+    }
   | { status: "disabled"; reason: "expired" }
-  | { status: "warning"; reason: "refresh_conflict" | "metadata_mismatch" | "stale_credentials" | "expired" };
+  | {
+      status: "warning";
+      reason:
+        | "refresh_conflict"
+        | "metadata_mismatch"
+        | "stale_credentials"
+        | "expired";
+    };
 
 export type OAuthHealthLabel =
   | "Healthy"
@@ -56,7 +82,8 @@ export type CollectOAuthHealthOptions = {
   includeLocalCodex?: boolean;
 };
 
-type OAuthWarningReason = "refresh_conflict" | "metadata_mismatch" | "stale_credentials" | "expired";
+type OAuthWarningReason =
+  "refresh_conflict" | "metadata_mismatch" | "stale_credentials" | "expired";
 
 export function projectOAuthAccountHealth(input: {
   needsReauth?: boolean;
@@ -71,15 +98,21 @@ export function projectOAuthAccountHealth(input: {
 }): OAuthAccountHealth {
   const now = input.now ?? Date.now();
   if (input.needsReauth) {
-    return { status: "reauth_required", reason: input.reauthReason ?? "refresh_failed" };
+    return {
+      status: "reauth_required",
+      reason: input.reauthReason ?? "refresh_failed",
+    };
   }
-  if (input.disabledByExpiry === true || (input.autoDisableOnExpiry === true && input.expired === true)) {
+  if (
+    input.disabledByExpiry === true ||
+    (input.autoDisableOnExpiry === true && input.expired === true)
+  ) {
     return { status: "disabled", reason: "expired" };
   }
   if (
-    typeof input.cooldownUntilMs === "number"
-    && Number.isFinite(input.cooldownUntilMs)
-    && input.cooldownUntilMs > now
+    typeof input.cooldownUntilMs === "number" &&
+    Number.isFinite(input.cooldownUntilMs) &&
+    input.cooldownUntilMs > now
   ) {
     return {
       status: "cooldown",
@@ -97,9 +130,13 @@ export function projectOAuthAccountHealth(input: {
 }
 
 /** Codex pool accounts are not a public `ocx login` provider; reauth is dashboard-driven. */
-export const CODEX_REAUTH_ACTION = "reauthenticate via the dashboard Codex account pool";
+export const CODEX_REAUTH_ACTION =
+  "reauthenticate via the dashboard Codex account pool";
 
-function actionFor(provider: string, health: OAuthAccountHealth): string | undefined {
+function actionFor(
+  provider: string,
+  health: OAuthAccountHealth,
+): string | undefined {
   if (health.status === "reauth_required") {
     if (provider === "codex") return CODEX_REAUTH_ACTION;
     return `run \`ocx login ${provider}\``;
@@ -124,7 +161,9 @@ export function oauthHealthLabel(health: OAuthAccountHealth): OAuthHealthLabel {
     case "cooldown":
       return health.reason === "rate_limit" ? "Rate limited" : "Quota limited";
     case "reauth_required":
-      return health.reason === "refresh_failed" ? "Refresh failed" : "Reauthentication required";
+      return health.reason === "refresh_failed"
+        ? "Refresh failed"
+        : "Reauthentication required";
     case "disabled":
       return "Expired";
     case "warning":
@@ -159,7 +198,8 @@ export function oauthHealthSummary(
       summary = `${provider} ${masked}: healthy`;
       break;
     case "cooldown": {
-      const why = health.reason === "rate_limit" ? "rate limited" : "quota limited";
+      const why =
+        health.reason === "rate_limit" ? "rate limited" : "quota limited";
       summary = `${provider} ${masked}: ${why} until ${health.until}. Routing for this account is paused until then.`;
       break;
     }
@@ -199,19 +239,30 @@ export function projectStoredOAuthAccountHealth(
   now = Date.now(),
   opts: { observeOnly?: boolean } = {},
 ): OAuthAccountHealth {
-  const poolSnapshot = provider === "anthropic"
-    ? getAnthropicAccountHealthSnapshot(account.id, now)
-    : provider === "google-antigravity"
-      ? getGoogleAntigravityAccountHealthSnapshot(account.id, now)
-      : provider === "cursor"
-        ? getCursorAccountHealthSnapshot(account.id, now)
-        : null;
+  const poolSnapshot =
+    provider === "anthropic"
+      ? getAnthropicAccountHealthSnapshot(account.id, now)
+      : provider === "google-antigravity"
+        ? getGoogleAntigravityAccountHealthSnapshot(account.id, now)
+        : provider === "cursor"
+          ? getCursorAccountHealthSnapshot(account.id, now)
+          : null;
   return projectOAuthAccountHealth({
     needsReauth: account.needsReauth === true,
     reauthReason: account.needsReauth === true ? "refresh_failed" : undefined,
     cooldownUntilMs: poolSnapshot?.cooldownUntil,
-    cooldownReason: poolSnapshot?.cooldownSource === "retry-after" ? "rate_limit" : poolSnapshot ? "quota" : undefined,
-    warningReason: detectOAuthWarning(provider, account, opts.observeOnly === true, now),
+    cooldownReason:
+      poolSnapshot?.cooldownSource === "retry-after"
+        ? "rate_limit"
+        : poolSnapshot
+          ? "quota"
+          : undefined,
+    warningReason: detectOAuthWarning(
+      provider,
+      account,
+      opts.observeOnly === true,
+      now,
+    ),
     expired: isAccountExpired(account, now),
     autoDisableOnExpiry: account.autoDisableOnExpiry === true,
     disabledByExpiry: account.disabledByExpiry === true,
@@ -254,10 +305,10 @@ export function detectOAuthWarning(
   if (!cred?.access) return "stale_credentials";
   if (!cred.refresh) {
     if (
-      provider === "kiro"
-      && typeof cred.expires === "number"
-      && Number.isFinite(cred.expires)
-      && cred.expires > now
+      provider === "kiro" &&
+      typeof cred.expires === "number" &&
+      Number.isFinite(cred.expires) &&
+      cred.expires > now
     ) {
       return undefined;
     }
@@ -295,7 +346,9 @@ function collectLocalCodexEntries(now: number): OAuthHealthEntry[] {
   for (const accountId of codexIds) {
     const snap = getCodexAccountHealthSnapshot(accountId, now);
     const needsReauth = isAccountNeedsReauth(accountId);
-    const hasPoolCredential = accountId !== MAIN_CODEX_ACCOUNT_ID && getCodexAccountCredential(accountId) !== null;
+    const hasPoolCredential =
+      accountId !== MAIN_CODEX_ACCOUNT_ID &&
+      getCodexAccountCredential(accountId) !== null;
     if (!hasPoolCredential && !needsReauth && !snap) continue;
 
     const health = projectOAuthAccountHealth({
@@ -321,7 +374,9 @@ export function collectOAuthHealthEntries(
 
   for (const [provider, set] of Object.entries(store)) {
     for (const account of set.accounts) {
-      const health = projectStoredOAuthAccountHealth(provider, account, now, { observeOnly });
+      const health = projectStoredOAuthAccountHealth(provider, account, now, {
+        observeOnly,
+      });
       pushEntry(entries, provider, account.id, health);
     }
   }
@@ -339,39 +394,70 @@ type ProxyCodexAccountHealth = {
   needsReauth?: boolean;
 };
 
-const KNOWN_HEALTH_STATUSES = new Set(["healthy", "cooldown", "reauth_required", "warning", "disabled"]);
+const KNOWN_HEALTH_STATUSES = new Set([
+  "healthy",
+  "cooldown",
+  "reauth_required",
+  "warning",
+  "disabled",
+]);
 
 function coerceRemoteAccountHealth(
   account: ProxyCodexAccountHealth,
 ): OAuthAccountHealth {
   const raw = account.health;
-  if (raw && typeof raw === "object" && KNOWN_HEALTH_STATUSES.has((raw as { status?: string }).status ?? "")) {
+  if (
+    raw &&
+    typeof raw === "object" &&
+    KNOWN_HEALTH_STATUSES.has((raw as { status?: string }).status ?? "")
+  ) {
     return raw;
   }
-  return projectOAuthAccountHealth({ needsReauth: account.needsReauth === true });
+  return projectOAuthAccountHealth({
+    needsReauth: account.needsReauth === true,
+  });
 }
 
 async function fetchCodexHealthFromLiveProxy(
   fetchImpl: typeof fetch = fetch,
   findLiveProxyImpl: typeof findLiveProxy = findLiveProxy,
 ): Promise<OAuthHealthEntry[] | null> {
-  const live = await findLiveProxyImpl();
+  const live =
+    findLiveProxyImpl === findLiveProxy
+      ? await findReachableProxyForCli()
+      : await findLiveProxyImpl();
   if (!live) return null;
-  const token = process.env.OPENCODEX_API_AUTH_TOKEN ?? loadServiceTokenFromFile(process.env);
+  // This is a management API route. Data-plane/service credentials must never be
+  // reused here; the server intentionally keeps those trust domains separate.
+  const token = configuredAdminToken();
+  const managementHost = probeHostname(live.hostname);
   const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
+  // The admin bearer may traverse plain HTTP only when the actual request target is
+  // loopback (including wildcard binds normalized by probeHostname). Non-loopback
+  // endpoints are still probed, but never receive the management credential.
+  // Loopback reachability alone is not identity: a local process can spoof /healthz.
+  // findLiveProxy only supplies a PID when it verified that the local OCX process owns
+  // the endpoint, so pidless forwards remain readable but never receive the admin bearer.
+  if (token && live.pid !== null && isLoopbackHostname(managementHost)) {
+    headers.Authorization = `Bearer ${token}`;
+  }
   try {
     const res = await fetchImpl(
-      `http://${probeHostname(live.hostname)}:${live.port}/api/codex-auth/accounts`,
+      `http://${managementHost}:${live.port}/api/codex-auth/accounts`,
       { headers, signal: AbortSignal.timeout(4000) },
     );
     if (!res.ok) return null;
-    const json = await res.json() as { accounts?: ProxyCodexAccountHealth[] };
+    const json = (await res.json()) as { accounts?: ProxyCodexAccountHealth[] };
     if (!Array.isArray(json.accounts)) return null;
     const entries: OAuthHealthEntry[] = [];
     for (const account of json.accounts) {
       if (!account?.id || typeof account.id !== "string") continue;
-      pushEntry(entries, "codex", account.id, coerceRemoteAccountHealth(account));
+      pushEntry(
+        entries,
+        "codex",
+        account.id,
+        coerceRemoteAccountHealth(account),
+      );
     }
     return entries;
   } catch {
@@ -389,7 +475,7 @@ export type OAuthCliHealthReport = {
 
 /** Shown by `ocx status` / `ocx doctor` when the proxy management API is unreachable. */
 export const CODEX_HEALTH_UNAVAILABLE_NOTE =
-  "Codex health: unavailable (proxy not running; live cooldown/reauth requires the management API)";
+  "Codex health: unavailable (management API unavailable; live cooldown/reauth requires the management API)";
 
 /**
  * CLI/doctor collector: observe-only OAuth store reads, and Codex health only from the
@@ -402,8 +488,14 @@ export async function collectOAuthHealthEntriesForCli(
     findLiveProxyImpl?: typeof findLiveProxy;
   } = {},
 ): Promise<OAuthCliHealthReport> {
-  const entries = collectOAuthHealthEntries(now, { observeOnly: true, includeLocalCodex: false });
-  const remote = await fetchCodexHealthFromLiveProxy(deps.fetchImpl, deps.findLiveProxyImpl);
+  const entries = collectOAuthHealthEntries(now, {
+    observeOnly: true,
+    includeLocalCodex: false,
+  });
+  const remote = await fetchCodexHealthFromLiveProxy(
+    deps.fetchImpl,
+    deps.findLiveProxyImpl,
+  );
   if (remote) {
     for (const entry of remote) entries.push(entry);
     return { entries, codexHealthSource: "management-api" };
