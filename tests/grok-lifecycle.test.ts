@@ -77,7 +77,7 @@ describe("Grok fence lifecycle wiring", () => {
     // and echo its message.
     const detailEchoes = stopFn.match(/const detail = err instanceof Error \? err\.message : String\(err\);/g);
     expect(detailEchoes).toHaveLength(2);
-    expect(stopFn.match(/if \(detail\) console\.error\(`   \$\{detail\}`\);/g)).toHaveLength(2);
+    expect(stopFn.match(/if \(detail\) console\.error\(` {3}\$\{detail\}`\);/g)).toHaveLength(2);
   });
 
   test("handleStop returns its outcome so restart and the tray can react", () => {

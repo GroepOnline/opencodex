@@ -267,7 +267,7 @@ test("keyed deps changes force loading while retaining previous data until refet
 
   const KEY = `keyed-deps-${Date.now()}`;
   let resolveNext!: (value: string) => void;
-  let nextValue = new Promise<string>((resolve) => {
+  const nextValue = new Promise<string>((resolve) => {
     resolveNext = resolve;
   });
 

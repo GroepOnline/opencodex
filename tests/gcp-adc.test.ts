@@ -209,7 +209,7 @@ describe("gcp-adc token-exchange hardening", () => {
     __resetVertexTokenCache();
     // First resolve with the SA file → caches under source `gac:<saPath>`.
     setEnv("GOOGLE_APPLICATION_CREDENTIALS", saPath);
-    let tokenValue = "tok-source-A";
+    const tokenValue = "tok-source-A";
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
       if (url === OAUTH_TOKEN_URL) return new Response(JSON.stringify({ access_token: tokenValue, expires_in: 3600 }), { status: 200 });

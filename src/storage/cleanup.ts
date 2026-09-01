@@ -1132,7 +1132,7 @@ function snapshotMemoriesInTx(
   if (threadIds.length === 0) return undefined;
   if (!tableExists(db, "stage1_outputs")) throw new Error("missing_stage1_outputs_table");
   const stage1: SqlRow[] = [];
-  let stage1Jobs: SqlRow[] = [];
+  const stage1Jobs: SqlRow[] = [];
   for (const chunk of chunkIds(threadIds, SQLITE_ID_CHUNK * 2)) {
     const placeholders = chunk.map(() => "?").join(",");
     stage1.push(...selectRows(
@@ -1173,7 +1173,7 @@ function snapshotGoalsInTx(
   if (threadIds.length === 0) return undefined;
   if (!tableExists(db, "thread_goals")) throw new Error("missing_thread_goals_table");
   const goals: SqlRow[] = [];
-  let deferrals: SqlRow[] = [];
+  const deferrals: SqlRow[] = [];
   for (const chunk of chunkIds(threadIds, SQLITE_ID_CHUNK * 2)) {
     const placeholders = chunk.map(() => "?").join(",");
     goals.push(...selectRows(

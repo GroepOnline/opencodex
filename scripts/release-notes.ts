@@ -308,7 +308,7 @@ export function capReleaseNotesBody(
   }
 
   const chars = Array.from(body);
-  let tailChars: string[] = [];
+  const tailChars: string[] = [];
   let tailBytes = 0;
   for (let i = chars.length - 1; i >= 0 && tailChars.length < 2_000; i--) {
     const charBytes = byteLength(chars[i]);

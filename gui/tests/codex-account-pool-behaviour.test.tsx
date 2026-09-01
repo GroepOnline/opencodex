@@ -21,7 +21,7 @@ let root: Root | null = null;
 let calls: string[] = [];
 let originalFetch: typeof globalThis.fetch;
 let accounts: unknown[] = [];
-let threshold = 80;
+const threshold = 80;
 let nextAccountsResponseGate: Promise<void> | null = null;
 let pauseResponseActiveId: string | null = null;
 let bulkPausedAccountIds: string[] = ["a2"];

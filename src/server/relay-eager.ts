@@ -74,7 +74,7 @@ export function relaySseEagerBounded(
   const reader = body.getReader();
   let queuedBytes = 0;
   let cancelled = false;
-  let done = false;
+  const done = false;
   // Pause gate: resolved by client pull, client cancel, or upstream abort so a
   // paused producer ALWAYS resumes (audit blocker 2 — no deadlock; onDone and
   // turn unregistration stay reachable, drainAndShutdown never hangs).

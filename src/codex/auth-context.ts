@@ -211,7 +211,7 @@ export async function resolveCodexAuthContext(
       })()
     : resolveCodexAccountForThreadDetailed(threadId, config, Date.now(), quotaScope);
   if (resolution.status === "expired") throw new CodexThreadAffinityExpiredError(resolution.accountId);
-  let accountId = resolution.status === "selected" ? resolution.accountId : null;
+  const accountId = resolution.status === "selected" ? resolution.accountId : null;
   if (!accountId) throw new CodexPoolAuthenticationError();
   // Lazy prime: if the selected account has no quota yet, the pool is likely
   // unprimed (dashboard never opened, or startup prime was blocked). Kick a
