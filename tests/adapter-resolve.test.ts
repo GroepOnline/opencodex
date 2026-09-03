@@ -183,4 +183,52 @@ describe("Azure Responses endpoint compatibility", () => {
     });
     expect(parameters.required).toBeUndefined();
   });
+
+  test("preserves allOf conjunction when branches constrain the same property", async () => {
+    const adapter = resolveAdapter({
+      adapter: "openai-responses",
+      baseUrl: "https://example-resource.openai.azure.com/openai",
+      authMode: "key",
+      apiKey: "test-key",
+    });
+    const request = await adapter.buildRequest({
+      modelId: "Kimi-K2.7-Code",
+      context: { messages: [] },
+      stream: true,
+      options: {},
+      _rawBody: {
+        model: "Kimi-K2.7-Code",
+        input: [],
+        stream: true,
+        tools: [
+          {
+            type: "function",
+            name: "bounded_integer",
+            parameters: {
+              allOf: [
+                {
+                  type: "object",
+                  properties: { value: { type: "integer", minimum: 1 } },
+                },
+                {
+                  type: "object",
+                  properties: { value: { type: "integer", maximum: 10 } },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const body = JSON.parse(request.body) as {
+      tools: Array<{ parameters: { properties: Record<string, unknown> } }>;
+    };
+
+    expect(body.tools[0]?.parameters.properties.value).toEqual({
+      allOf: [
+        { type: "integer", minimum: 1 },
+        { type: "integer", maximum: 10 },
+      ],
+    });
+  });
 });

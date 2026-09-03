@@ -26,6 +26,7 @@ function mergeProperty(
   target: Record<string, unknown>,
   name: string,
   incoming: unknown,
+  composition: "anyOf" | "allOf" = "anyOf",
 ): void {
   const current = target[name];
   if (
@@ -35,7 +36,7 @@ function mergeProperty(
     target[name] = incoming;
     return;
   }
-  target[name] = { anyOf: [current, incoming] };
+  target[name] = { [composition]: [current, incoming] };
 }
 
 function normalizeRootSchema(schema: unknown): Record<string, unknown> {
@@ -61,7 +62,12 @@ function normalizeRootSchema(schema: unknown): Record<string, unknown> {
       const normalized = normalizeRootSchema(branch);
       if (isRecord(normalized.properties)) {
         for (const [name, child] of Object.entries(normalized.properties)) {
-          mergeProperty(properties, name, child);
+          mergeProperty(
+            properties,
+            name,
+            child,
+            key === "allOf" ? "allOf" : "anyOf",
+          );
         }
       }
       if (key === "allOf" && Array.isArray(normalized.required)) {
