@@ -109,29 +109,29 @@ sha / branch / detached / dirty only — never the diff.
 
 ## Branch policy
 
-- `dev` — the single integration branch and the target for every pull request.
-- `main` — release branch. It only moves by maintainer-controlled promotion
-  from `dev` (releases, docs deploys). Do not open feature PRs against `main`.
+- `main` — the single integration branch and the target for every pull request.
+- `dev` — leftover line. Same-repository `dev` → `main` promotion remains an
+  explicit exception in the target-branch check. Do not open feature PRs
+  against `dev`.
 - `preview` — prerelease train (`x.y.z-preview.*` versions).
 
-Bun-native TypeScript on `dev` is the only runtime line. If native code
+Bun-native TypeScript on `main` is the only runtime line. If native code
 returns, the expectation is an incremental module (for example Rust via N-API)
-landing on `dev`, not a second full-runtime branch.
+landing on `main`, not a second full-runtime branch.
 
 Stacked child pull requests that target another **open** PR's head branch are
 an intentional review workflow, not an alternate integration line. The
 **`enforce-target`** check skips the wrong-base gate for those children; after
-the parent lands or closes, retarget the child to `dev`.
+the parent lands or closes, retarget the child to `main`.
 
 Rebase pull requests are welcome. Bringing a stale branch onto the current head
 is ordinary maintenance — open it as a normal pull request and name the source
 commits in the description.
 
-The **`enforce-target`** CI check accepts **`dev`** as the only integration
-base. The only other legal target is a same-repository maintainer promotion
-from **`dev`** onto **`main`**. It rejects pull requests whose head ancestry
-sits on the **`main`** tip while far behind **`dev`**, and rejects empty, thin,
-or malformed descriptions; authors with repository push permission skip the
+The **`enforce-target`** CI check accepts **`main`** as the only integration
+base. A same-repository maintainer promotion from **`dev`** onto **`main`**
+remains an explicit leftover exception. It rejects empty, thin, or malformed
+descriptions; authors with repository push permission skip the leftover
 ancestry heuristic only. As with approval requirements in
 [`MAINTAINERS.md`](./MAINTAINERS.md), this is enforced by convention until
 branch protection is configured.
@@ -149,8 +149,9 @@ reviewers (Codex, CodeRabbit).
   language. Be detailed and specific: name the file and line, describe the
   concrete failure mode, and suggest a fix. Avoid vague or purely stylistic
   commentary.
-- **Branch targeting:** flag any pull request that does not target `dev`
-  (releases and maintainer promotions are the only exceptions).
+- **Branch targeting:** flag any pull request that does not target `main`
+  (same-repository `dev` → `main` promotions and stacked children are the
+  only exceptions).
 - **Security boundary (highest priority):** changes touching authentication,
   credential/token handling, OAuth flows, GitHub Actions workflows, release
   automation (`scripts/release.ts`, `.github/workflows/release.yml`), or

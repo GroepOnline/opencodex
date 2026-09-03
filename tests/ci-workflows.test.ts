@@ -86,12 +86,12 @@ describe("GitHub Actions hardening", () => {
     // These two lists have to move together with enforce-pr-target.yml. A PR
     // that passes the gate but triggers no checks is worse than one that is
     // blocked: it looks reviewable and has nothing behind it. Pin the
-    // pull_request branch lists to the gate's allow-list plus main.
+    // pull_request branch lists to the gate's allow-list (`main`).
     const gate = await readText(".github/workflows/enforce-pr-target.yml");
     const allowed = gate.match(/const ALLOWED_BASES = \[([^\]]*)\];/);
     expect(allowed).not.toBeNull();
     const bases = [...(allowed?.[1] ?? "").matchAll(/"([^"]+)"/g)].map(m => m[1]);
-    expect(bases).toEqual(["dev"]);
+    expect(bases).toEqual(["main"]);
 
     for (const path of [".github/workflows/ci.yml", ".github/workflows/service-lifecycle.yml"]) {
       const workflow = Bun.YAML.parse(await readText(path)) as {
@@ -99,7 +99,7 @@ describe("GitHub Actions hardening", () => {
       };
       const trigger = workflow.on?.pull_request ?? {};
       const branches = (trigger.branches as string[] | undefined) ?? [];
-      expect([...branches].sort()).toEqual(["dev", "main"]);
+      expect([...branches].sort()).toEqual(["main"]);
 
       // Narrowing a default is a mutation that deletes nothing. Omitting
       // `types` means opened + synchronize + reopened; writing
@@ -756,8 +756,8 @@ describe("GitHub Actions hardening", () => {
     // The allow-list is the gate's whole policy, so it is pinned by value and
     // not just by shape: a widened list is the one edit that opens every base
     // at once while every behavioural scenario below still passes.
-    expect(script).toMatch(/const ALLOWED_BASES = \["dev"\];/);
-    expect(script).toMatch(/const DEFAULT_BASE = "dev";/);
+    expect(script).toMatch(/const ALLOWED_BASES = \["main"\];/);
+    expect(script).toMatch(/const DEFAULT_BASE = "main";/);
     expect(script).toContain("headRef: pr.head.ref");
     expect(script).toContain("headFromSameRepo: isSameGithubRepo(pr.head.repo, pr.base.repo)");
 
@@ -904,7 +904,7 @@ describe("GitHub Actions hardening", () => {
      * the check that closes them has to be able to look from the same place.
      */
     async function runProbe(body: string): Promise<Record<string, unknown>> {
-      const result = await runEnforcePrTarget(body, { pr: { base: { ref: "dev" } } });
+      const result = await runEnforcePrTarget(body, { pr: { base: { ref: "main" } } });
       return result.returnValue as Record<string, unknown>;
     }
 
@@ -924,8 +924,8 @@ describe("GitHub Actions hardening", () => {
       };
     }
 
-    test("a PR targeting dev is left completely alone", async () => {
-      const result = await run({ pr: { base: { ref: "dev" } } });
+    test("a PR targeting main is left completely alone", async () => {
+      const result = await run({ pr: { base: { ref: "main" } } });
 
       // Reads only. If a rewrite adds a write here, it appears in this list.
       expect(methodsOf(result)).toEqual(readsAllowedBase());
@@ -938,31 +938,23 @@ describe("GitHub Actions hardening", () => {
       [`dev...${HEAD_SHA}`]: { ahead_by: 0, behind_by: 44 },
     } as const;
 
-    test("wrong ancestry on dev fails without title prefix (#644)", async () => {
+    test("leftover ancestry heuristic cannot fail a main-targeted PR (#644)", async () => {
+      // When the allowed base is `main`, behindMain and behindBase are the same
+      // compare, so the leftover #644 heuristic cannot fire.
       const result = await run({
-        pr: { base: { ref: "dev" } },
+        pr: { base: { ref: "main" } },
         authorPermission: "read",
         compareByBasehead: ANCESTRY_FAIL_COMPARES,
       });
 
+      expect(methodsOf(result)).toEqual(readsAllowedBase());
       expect(callsTo(result, "pulls.update")).toEqual([]);
-      expect(methodsOf(result)).toEqual(readsAllowedBase([
-        "issues.createComment",
-        "issues.updateComment",
-        "graphql",
-        "issues.updateComment",
-        "issues.updateComment",
-      ]));
-      const commentBody = lastEnforcerCommentBody(result);
-      expect(commentBody).toContain("Wrong branch ancestry");
-      expect(commentBody).not.toContain("Wrong target branch");
-      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(true);
-      expect(result.warnings.some((w) => w.includes("wrong ancestry"))).toBe(true);
+      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(false);
     });
 
     test("maintainers skip ancestry enforcement with the same compares", async () => {
       const result = await run({
-        pr: { base: { ref: "dev" } },
+        pr: { base: { ref: "main" } },
         authorPermission: "write",
         compareByBasehead: ANCESTRY_FAIL_COMPARES,
       });
@@ -972,7 +964,7 @@ describe("GitHub Actions hardening", () => {
     });
 
     test("empty PR description fails and drafts", async () => {
-      const result = await run({ pr: { base: { ref: "dev" }, body: "" } });
+      const result = await run({ pr: { base: { ref: "main" }, body: "" } });
 
       expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(true);
       expect(lastEnforcerCommentBody(result)).toContain("Pull request description");
@@ -983,7 +975,7 @@ describe("GitHub Actions hardening", () => {
     test("literal backslash-n in the body fails the description gate", async () => {
       const result = await run({
         pr: {
-          base: { ref: "dev" },
+          base: { ref: "main" },
           body: "## Summary\\n\\nThis uses escaped newlines instead of real breaks.\\n\\n## Test plan\\n\\nAlso escaped here.",
         },
       });
@@ -994,7 +986,7 @@ describe("GitHub Actions hardening", () => {
 
     test("clears prior bot state when every gate passes again", async () => {
       const result = await run({
-        pr: { base: { ref: "dev" }, draft: true },
+        pr: { base: { ref: "main" }, draft: true },
         comments: [botComment({
           version: 1,
           active: true,
@@ -1020,8 +1012,8 @@ describe("GitHub Actions hardening", () => {
       // far. These are the bases a contributor actually reaches for: the
       // release branch, its old name, the prerelease train, the retired Go
       // native-port line, and a topic branch. None of them is an integration
-      // line any more — `dev` is the only one.
-      for (const ref of ["main", "master", "preview", "dev2-go", "feature/x"]) {
+      // line any more — `main` is the only one.
+      for (const ref of ["dev", "master", "preview", "dev2-go", "feature/x"]) {
         const result = await run({ pr: { base: { ref }, title: "Add a thing", draft: false } });
 
         expect(methodsOf(result)).toEqual(readsWrongBase([
@@ -1037,13 +1029,13 @@ describe("GitHub Actions hardening", () => {
       }
     });
 
-    test("a PR retargeted from main to dev is restored, not left prefixed", async () => {
+    test("a PR retargeted from dev to main is restored, not left prefixed", async () => {
       // A contributor who follows the bot's own instruction must end up with
       // their original title and ready state back. If the restoration path
       // does not fire, they are left with a permanently renamed, drafted PR
       // and no state to explain it.
       const result = await run({
-        pr: { base: { ref: "dev" }, draft: true, title: "[WRONG BRANCH] Port the runtime entry" },
+        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Port the runtime entry" },
         comments: [botComment({ version: 1, active: true, autoDraftedByBot: true, titlePrefixedByBot: true })],
       });
 
@@ -1059,15 +1051,15 @@ describe("GitHub Actions hardening", () => {
       expect(cleared.body).toContain('"active":false');
       // The confirmation names where the PR actually went, read from the live
       // PR rather than assumed.
-      expect(cleared.body).toContain("now targets `dev`");
+      expect(cleared.body).toContain("now targets `main`");
     });
 
-    test("a PR moved from dev back to main is enforced again from a cleared state", async () => {
+    test("a PR moved from main back to dev is enforced again from a cleared state", async () => {
       // The other half of the round trip. After a restoration the marker is
       // inactive, so a move back out has to build fresh state rather than
       // reuse the cleared one, and must not stack a second prefix.
       const result = await run({
-        pr: { base: { ref: "main" }, draft: false, title: "Port the runtime entry" },
+        pr: { base: { ref: "dev" }, draft: false, title: "Port the runtime entry" },
         comments: [botComment({ version: 1, active: false, autoDraftedByBot: false, titlePrefixedByBot: false })],
       });
 
@@ -1089,15 +1081,15 @@ describe("GitHub Actions hardening", () => {
     });
 
     test("the wrong-target explanation names the one allowed base", async () => {
-      // `dev` is the only integration line, so the instruction has to name it
+      // `main` is the only integration line, so the instruction has to name it
       // without offering an alternative the gate would then reject.
       const result = await run({
-        pr: { base: { ref: "main" }, title: "Add a thing", draft: false },
+        pr: { base: { ref: "dev" }, title: "Add a thing", draft: false },
       });
       const commentBody = lastEnforcerCommentBody(result);
 
-      expect(commentBody).toContain("must target one of `dev`");
-      expect(commentBody).toContain("Please retarget this PR to `dev`");
+      expect(commentBody).toContain("must target one of `main`");
+      expect(commentBody).toContain("Please retarget this PR to `main`");
       expect(commentBody).not.toContain("dev2-go");
     });
 
@@ -1119,18 +1111,18 @@ describe("GitHub Actions hardening", () => {
         },
       });
 
-      expect(methodsOf(result)).toEqual(readsWrongBase());
+      expect(methodsOf(result)).toEqual(readsAllowedBase());
       expect(callsTo(result, "pulls.update")).toEqual([]);
       expect(callsTo(result, "graphql")).toEqual([]);
       expect(result.logs.join(" ")).toContain("All PR quality gates passed");
       expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(false);
     });
 
-    test("a fork head named dev targeting main stays wrong-base", async () => {
+    test("a fork head named main targeting dev stays wrong-base", async () => {
       const result = await run({
         pr: {
-          base: { ref: "main" },
-          head: { ref: "dev" },
+          base: { ref: "dev" },
+          head: { ref: "main" },
           title: "Promote 1.2.3 to main",
           draft: false,
         },
@@ -1148,10 +1140,10 @@ describe("GitHub Actions hardening", () => {
       expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(true);
     });
 
-    test("a feature head targeting main stays wrong-base", async () => {
+    test("a feature head targeting dev is wrong-base", async () => {
       const result = await run({
         pr: {
-          base: { ref: "main" },
+          base: { ref: "dev" },
           head: { ref: "feat/other" },
           title: "Add a thing",
           draft: false,
@@ -1170,9 +1162,9 @@ describe("GitHub Actions hardening", () => {
       expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(true);
     });
 
-    test("a PR targeting main is prefixed, drafted, and explained — and nothing else", async () => {
+    test("a PR targeting dev is prefixed, drafted, and explained — and nothing else", async () => {
       const result = await run({
-        pr: { base: { ref: "main" }, title: "Add a thing", draft: false },
+        pr: { base: { ref: "dev" }, title: "Add a thing", draft: false },
       });
 
       // Pending ownership first, then title prefix, then claim autoDraftedByBot and
@@ -1286,7 +1278,7 @@ describe("GitHub Actions hardening", () => {
       expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(false);
     });
 
-    test("a non-dev base with no open parent PR is still wrong-base", async () => {
+    test("a non-main base with no open parent PR is still wrong-base", async () => {
       const result = await run({
         pr: { base: { ref: "feature/orphan" }, title: "Orphan stack", draft: false },
         openPulls: [
@@ -1321,7 +1313,7 @@ describe("GitHub Actions hardening", () => {
 
     test("a PR that was already a draft is not un-drafted afterwards", async () => {
       const wrong = await run({
-        pr: { base: { ref: "main" }, draft: true },
+        pr: { base: { ref: "dev" }, draft: true },
       });
 
       // No draft conversion: it is already a draft. Pending ownership first,
@@ -1337,7 +1329,7 @@ describe("GitHub Actions hardening", () => {
 
       // Now retarget it correctly, feeding that state back in.
       const restored = await run({
-        pr: { base: { ref: "dev" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
         comments: [botComment({ version: 1, active: true, autoDraftedByBot: false, titlePrefixedByBot: true })],
       });
 
@@ -1353,7 +1345,7 @@ describe("GitHub Actions hardening", () => {
 
     test("a corrected PR gets its title and ready state back", async () => {
       const result = await run({
-        pr: { base: { ref: "dev" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
         comments: [botComment({ version: 1, active: true, autoDraftedByBot: true, titlePrefixedByBot: true })],
       });
 
@@ -1378,7 +1370,7 @@ describe("GitHub Actions hardening", () => {
 
     test("only this workflow's own prefix is removed, not a contributor's edits", async () => {
       const result = await run({
-        pr: { base: { ref: "dev" }, draft: false, title: "[WRONG BRANCH] Add a thing (v2)" },
+        pr: { base: { ref: "main" }, draft: false, title: "[WRONG BRANCH] Add a thing (v2)" },
         comments: [botComment({ version: 1, active: true, autoDraftedByBot: false, titlePrefixedByBot: true })],
       });
 
@@ -1389,7 +1381,7 @@ describe("GitHub Actions hardening", () => {
 
     test("a rerun on an already-handled PR does not stack prefixes or re-draft", async () => {
       const result = await run({
-        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+        pr: { base: { ref: "dev" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
         comments: [botComment({ version: 1, active: true, autoDraftedByBot: true, titlePrefixedByBot: true })],
       });
 
@@ -1401,14 +1393,14 @@ describe("GitHub Actions hardening", () => {
     });
 
     test("the verdict comes from the fetched PR, not the stale event payload", async () => {
-      // The event fired when the PR still targeted dev; by the time the job
-      // runs it has been retargeted to main. The workflow refetches for exactly
+      // The event fired when the PR still targeted main; by the time the job
+      // runs it has been retargeted to dev. The workflow refetches for exactly
       // this reason, and an audit round undid that with
       // `Object.assign(pr, context.payload.pull_request)` — invisible in a
       // harness where the two were the same object.
       const wentWrong = await run({
-        pr: { base: { ref: "main" }, title: "Add a thing", draft: false },
-        eventPayload: { base: { ref: "dev" }, title: "Add a thing", draft: false },
+        pr: { base: { ref: "dev" }, title: "Add a thing", draft: false },
+        eventPayload: { base: { ref: "main" }, title: "Add a thing", draft: false },
       });
       // Exact equality, not `toContain`. An audit round hung an extra
       // `github.request("POST /repos/attacker/other/issues", …)` off precisely
@@ -1427,8 +1419,8 @@ describe("GitHub Actions hardening", () => {
 
       // …and the reverse: the event says main, the live PR says dev. No writes.
       const wasFixed = await run({
-        pr: { base: { ref: "dev" } },
-        eventPayload: { base: { ref: "main" } },
+        pr: { base: { ref: "main" } },
+        eventPayload: { base: { ref: "dev" } },
       });
       expect(methodsOf(wasFixed)).toEqual(readsAllowedBase());
     });
@@ -1437,27 +1429,27 @@ describe("GitHub Actions hardening", () => {
       // Half of this gate is what it says. Reading `context.payload
       // .pull_request.base.ref` for the message alone keeps every call and
       // every argument identical while the text lies: a PR that actually
-      // targets main gets drafted and told it "currently targets dev", so the
+      // targets dev gets drafted and told it "currently targets main", so the
       // author sees nothing to fix. The corrected-path sentence has the same
       // hole in reverse.
       const wrongTarget = await run({
-        pr: { base: { ref: "main" }, title: "Add a thing", draft: false },
-        eventPayload: { base: { ref: "dev" }, title: "Add a thing", draft: false },
+        pr: { base: { ref: "dev" }, title: "Add a thing", draft: false },
+        eventPayload: { base: { ref: "main" }, title: "Add a thing", draft: false },
       });
-      expect(lastEnforcerCommentBody(wrongTarget)).toContain("currently targets `main`");
-      expect(lastEnforcerCommentBody(wrongTarget)).not.toContain("currently targets `dev`");
+      expect(lastEnforcerCommentBody(wrongTarget)).toContain("currently targets `dev`");
+      expect(lastEnforcerCommentBody(wrongTarget)).not.toContain("currently targets `main`");
 
       // The corrected-path sentence: the event still carries the old wrong
       // base, the live PR is on dev. Naming the event's base here tells the
       // author their retarget did not take.
       const corrected = await run({
-        pr: { base: { ref: "dev" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
-        eventPayload: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+        eventPayload: { base: { ref: "dev" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
         comments: [botComment({ version: 1, active: true, autoDraftedByBot: false, titlePrefixedByBot: true })],
       });
       const [edited] = callsTo(corrected, "issues.updateComment") as [{ body: string }];
-      expect(edited.body).toContain("now targets `dev`");
-      expect(edited.body).not.toContain("now targets `main`");
+      expect(edited.body).toContain("now targets `main`");
+      expect(edited.body).not.toContain("now targets `dev`");
     });
 
     test("the bot finds its own comment even when it has scrolled onto a later page", async () => {
@@ -1472,7 +1464,7 @@ describe("GitHub Actions hardening", () => {
       }));
 
       const result = await run({
-        pr: { base: { ref: "dev" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
         commentPages: [
           filler,
           [botComment({ version: 1, active: true, autoDraftedByBot: true, titlePrefixedByBot: true })],
@@ -1495,7 +1487,7 @@ describe("GitHub Actions hardening", () => {
       // return;` — a wrong-target PR with one corrupted comment became a
       // permanent no-op, and every scenario still passed.
       const result = await run({
-        pr: { base: { ref: "main" }, title: "Add a thing", draft: false },
+        pr: { base: { ref: "dev" }, title: "Add a thing", draft: false },
         comments: [{
           id: 7,
           user: { login: BOT },
@@ -1531,7 +1523,7 @@ describe("GitHub Actions hardening", () => {
 
       // Still wrong: refresh the explanation. Nothing to re-apply.
       const stillWrong = await run({
-        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+        pr: { base: { ref: "dev" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
         comments: [botComment(noRecordedChanges)],
       });
       expect(methodsOf(stillWrong)).toEqual(readsWrongBase([
@@ -1542,7 +1534,7 @@ describe("GitHub Actions hardening", () => {
       // Corrected: nothing to undo, but the state must still be cleared or the
       // next wrong-target event resumes from a stale record.
       const corrected = await run({
-        pr: { base: { ref: "dev" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
         comments: [botComment(noRecordedChanges)],
       });
       expect(methodsOf(corrected)).toEqual(readsAllowedBase(["issues.updateComment"]));
@@ -1553,12 +1545,12 @@ describe("GitHub Actions hardening", () => {
 
     test("a PR undrafted by hand before the retarget still gets its state cleared", async () => {
       // The bot drafted it, the author marked it ready again, then retargeted
-      // to dev. `autoDraftedByBot: true` with `pr.draft: false` is reachable and
+      // to main. `autoDraftedByBot: true` with `pr.draft: false` is reachable and
       // had no scenario, so an audit round added `if (autoDraftedByBot &&
       // !pr.draft) return;` — the state comment stays active forever and the
       // next wrong-target event resumes from a record that no longer matches.
       const result = await run({
-        pr: { base: { ref: "dev" }, draft: false, title: "[WRONG BRANCH] Add a thing" },
+        pr: { base: { ref: "main" }, draft: false, title: "[WRONG BRANCH] Add a thing" },
         comments: [botComment({ version: 1, active: true, autoDraftedByBot: true, titlePrefixedByBot: true })],
       });
 
@@ -1576,7 +1568,7 @@ describe("GitHub Actions hardening", () => {
       // the prefix — the author removed it themselves. Slicing anyway would eat
       // the first 15 characters of their title.
       const result = await run({
-        pr: { base: { ref: "dev" }, draft: true, title: "Add a thing" },
+        pr: { base: { ref: "main" }, draft: true, title: "Add a thing" },
         comments: [botComment({ version: 1, active: true, autoDraftedByBot: true, titlePrefixedByBot: true })],
       });
 
@@ -1594,7 +1586,7 @@ describe("GitHub Actions hardening", () => {
       // both left every other assertion intact, and both leave a contributor
       // staring at a mangled PR with no notification and no next step.
       const result = await run({
-        pr: { base: { ref: "main" }, title: "Add a thing", draft: false, user: { login: "someone-else" } },
+        pr: { base: { ref: "dev" }, title: "Add a thing", draft: false, user: { login: "someone-else" } },
       });
 
       const commentBody = lastEnforcerCommentBody(result);
@@ -1606,7 +1598,7 @@ describe("GitHub Actions hardening", () => {
       expect(commentBody).toContain("`dev`");
       // Points at the documentation rather than assuming the reader knows.
       expect(commentBody).toContain(
-        "https://github.com/GroepOnline/opencodex/blob/dev/CONTRIBUTING.md",
+        "https://github.com/GroepOnline/opencodex/blob/main/CONTRIBUTING.md",
       );
       // And carries the state the next run needs.
       expect(commentBody).toContain(MARKER);
@@ -1620,7 +1612,7 @@ describe("GitHub Actions hardening", () => {
       // that sequence means the bot does not find its own state — so it posts a
       // duplicate and forgets what it changed. Round ten dropped it to 1 and
       // nothing failed.
-      const result = await run({ pr: { base: { ref: "dev" } } });
+      const result = await run({ pr: { base: { ref: "main" } } });
       const [listed] = callsTo(result, "issues.listComments") as [{ per_page: number }];
       expect(listed.per_page).toBe(100);
     });
@@ -1631,12 +1623,12 @@ describe("GitHub Actions hardening", () => {
       // side without teaching the read side is how a PR ends up with state
       // nobody honours — the prefix stays on forever. Round ten bumped it to 2
       // and every test passed, because nothing asserted the value.
-      const wrong = await run({ pr: { base: { ref: "main" }, draft: false } });
+      const wrong = await run({ pr: { base: { ref: "dev" }, draft: false } });
       const [posted] = callsTo(wrong, "issues.createComment") as [{ body: string }];
       expect(posted.body).toContain('"version":1');
 
       const cleared = await run({
-        pr: { base: { ref: "dev" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
         comments: [botComment({ version: 1, active: true, autoDraftedByBot: true, titlePrefixedByBot: true })],
       });
       const [done] = callsTo(cleared, "issues.updateComment") as [{ body: string }];
@@ -1660,7 +1652,7 @@ describe("GitHub Actions hardening", () => {
         // changes are undone, and the marker is rewritten at the version this
         // workflow writes.
         const restored = await run({
-          pr: { base: { ref: "dev" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+          pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
           comments: [botComment(active)],
         });
         expect(methodsOf(restored)).toEqual(readsAllowedBase([
@@ -1679,7 +1671,7 @@ describe("GitHub Actions hardening", () => {
         // unknown version through untouched. Pinning that is what makes a
         // future migration a visible decision rather than a silent rewrite.
         const wrong = await run({
-          pr: { base: { ref: "main" }, draft: false, title: "Add a thing" },
+          pr: { base: { ref: "dev" }, draft: false, title: "Add a thing" },
           comments: [botComment(active)],
         });
         expect(methodsOf(wrong)).toEqual(readsWrongBase([
@@ -1710,7 +1702,7 @@ describe("GitHub Actions hardening", () => {
       // contributor-reachable. It is reachable across a migration, which is
       // exactly when the prefix must still come off.
       const loose = await run({
-        pr: { base: { ref: "dev" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
         comments: [botComment({ version: 1, active: "true", autoDraftedByBot: 1, titlePrefixedByBot: "yes" })],
       });
       expect(methodsOf(loose)).toEqual(readsAllowedBase([
@@ -1725,7 +1717,7 @@ describe("GitHub Actions hardening", () => {
       // And the falsy side is symmetric: `null` and `0` skip their own
       // restoration without stopping the run or the clearing write.
       const falsy = await run({
-        pr: { base: { ref: "dev" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
         comments: [botComment({ version: 1, active: true, autoDraftedByBot: null, titlePrefixedByBot: 0 })],
       });
       expect(methodsOf(falsy)).toEqual(readsAllowedBase(["issues.updateComment"]));
@@ -1737,7 +1729,7 @@ describe("GitHub Actions hardening", () => {
       // Ownership is written before title/draft. autoDraftedByBot is claimed and
       // checkpointed before convertToDraft so a successful convert followed by a
       // failed comment still restores later.
-      const result = await run({ pr: { base: { ref: "main" }, draft: false } });
+      const result = await run({ pr: { base: { ref: "dev" }, draft: false } });
       const methods = methodsOf(result);
       const pending = methods.indexOf("issues.createComment");
       const title = methods.indexOf("pulls.update");
@@ -1759,7 +1751,7 @@ describe("GitHub Actions hardening", () => {
       // PR whose author titles it "[WRONG BRANCH] ". A review round added one
       // and nothing failed.
       const result = await run({
-        pr: { base: { ref: "main" }, title: "[WRONG BRANCH] ", draft: false },
+        pr: { base: { ref: "dev" }, title: "[WRONG BRANCH] ", draft: false },
       });
 
       // Already prefixed, so no title write — but pending/draft/final still run.
@@ -1780,7 +1772,7 @@ describe("GitHub Actions hardening", () => {
       // `if (!pr.title) return;` is the kind of defensive line that looks
       // reasonable in review. It exempts whatever can produce a falsy title.
       const result = await run({
-        pr: { base: { ref: "main" }, title: "", draft: true },
+        pr: { base: { ref: "dev" }, title: "", draft: true },
       });
 
       expect(callsTo(result, "pulls.update")).toEqual([
@@ -1800,7 +1792,7 @@ describe("GitHub Actions hardening", () => {
       // prefix — which only ever matches after the bug already happened —
       // cannot be introduced as if it were the fix.
       const result = await run({
-        pr: { base: { ref: "main" }, title: "[WRONG BRANCH] Add a thing", draft: true },
+        pr: { base: { ref: "dev" }, title: "[WRONG BRANCH] Add a thing", draft: true },
       });
 
       // No second prefix — and the run still does everything else it owes:
@@ -1820,11 +1812,11 @@ describe("GitHub Actions hardening", () => {
       // The prefix is contributor-writable text, so any guard keyed on a
       // doubled prefix is a guard the contributor can satisfy on purpose.
       // Verified reachable: with such a guard in place, a PR titled
-      // "[WRONG BRANCH] [WRONG BRANCH] mine" against main produced only
+      // "[WRONG BRANCH] [WRONG BRANCH] mine" against dev produced only
       // ["pulls.get", "issues.listComments"] — no comment, no draft, complete
       // exemption.
       const result = await run({
-        pr: { base: { ref: "main" }, title: "[WRONG BRANCH] [WRONG BRANCH] mine", draft: false },
+        pr: { base: { ref: "dev" }, title: "[WRONG BRANCH] [WRONG BRANCH] mine", draft: false },
       });
 
       expect(methodsOf(result)).toEqual(readsWrongBase([
@@ -1857,7 +1849,7 @@ describe("GitHub Actions hardening", () => {
         body: [MARKER, `<!-- wrong-branch-enforcer-state:${JSON.stringify({ version: 1, active: false, autoDraftedByBot: false, titlePrefixedByBot: false })} -->`].join("\n"),
       };
       const result = await run({
-        pr: { base: { ref: "dev" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
         comments: [first, second],
       });
 
@@ -1917,7 +1909,7 @@ describe("GitHub Actions hardening", () => {
       // Same argument one level down: `core` is a module, and a probe for any
       // method it exports is a probe the fake has to answer the same way.
       // Transcribed from `@actions/core`'s exports.
-      const result = await run({ pr: { base: { ref: "dev" } } });
+      const result = await run({ pr: { base: { ref: "main" } } });
       expect(result.coreSurface).toEqual([
         "addPath",
         "debug",
@@ -1953,7 +1945,7 @@ describe("GitHub Actions hardening", () => {
       // The mechanism the three round-eight mutations shared: a truthiness or
       // `typeof` check that answers one way on the runner and the other way
       // here. Assert the answers match production for every injected name.
-      const result = await run({ pr: { base: { ref: "dev" } } });
+      const result = await run({ pr: { base: { ref: "main" } } });
       const probe = await runProbe(`
         const seen = {};
         for (const [name, value] of Object.entries({
@@ -2025,7 +2017,7 @@ describe("GitHub Actions hardening", () => {
 
       for (const status of [403, 404, 422, 500]) {
         const result = await runEnforcePrTarget(script, {
-          pr: { base: { ref: "main" }, draft: false },
+          pr: { base: { ref: "dev" }, draft: false },
           failOn: ["graphql"],
           failStatus: status,
         });
@@ -2048,7 +2040,7 @@ describe("GitHub Actions hardening", () => {
       for (const status of [403, 404, 422]) {
         await expect(
           runEnforcePrTarget(script, {
-            pr: { base: { ref: "main" }, draft: false },
+            pr: { base: { ref: "dev" }, draft: false },
             failOn: ["pulls.update"],
             failStatus: status,
           }),
@@ -2059,7 +2051,7 @@ describe("GitHub Actions hardening", () => {
     test("a failed draft conversion does not claim autoDraftedByBot", async () => {
       const { script } = await readEnforcePrTarget();
       const result = await runEnforcePrTarget(script, {
-        pr: { base: { ref: "main" }, draft: false },
+        pr: { base: { ref: "dev" }, draft: false },
         failOn: ["graphql"],
       });
       const commentBody = lastEnforcerCommentBody(result);
@@ -2071,7 +2063,7 @@ describe("GitHub Actions hardening", () => {
     test("a failed ready-for-review conversion keeps ownership active for retry", async () => {
       const { script } = await readEnforcePrTarget();
       const result = await runEnforcePrTarget(script, {
-        pr: { base: { ref: "dev" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
         comments: [
           {
             id: 7,

@@ -137,9 +137,9 @@ const DEFAULT_PR = {
   locked: false,
   html_url: "https://github.com/GroepOnline/opencodex/pull/42",
   base: {
-    ref: "dev",
+    ref: "main",
     sha: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
-    label: "GroepOnline:dev",
+    label: "GroepOnline:main",
     repo: {
       id: 1001,
       name: "opencodex",
