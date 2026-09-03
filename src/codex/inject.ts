@@ -127,7 +127,7 @@ export function buildProviderTableBlock(port: number, supportsWebsockets = false
     'name = "OpenCodex Proxy"',
     `base_url = "http://${host}:${port}/v1"`,
     'wire_api = "responses"',
-    "requires_openai_auth = true",
+    "requires_openai_auth = false",
   ];
   if (includeApiAuthHeader) {
     // Codex omits an env_http_headers entry when that env var is unset.

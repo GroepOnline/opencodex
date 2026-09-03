@@ -18,12 +18,12 @@ import {
 } from "../src/codex/subagent-defaults";
 
 describe("Codex config injection", () => {
-  test("omits provider-level Responses WebSocket support by default", () => {
+  test("keeps the OpenCodex provider independent from ChatGPT account auth", () => {
     const block = buildProviderTableBlock(10100);
 
     expect(block).toContain("[model_providers.opencodex]");
     expect(block).toContain('wire_api = "responses"');
-    expect(block).toContain("requires_openai_auth = true");
+    expect(block).toContain("requires_openai_auth = false");
     expect(block).not.toContain("supports_websockets");
   });
 
