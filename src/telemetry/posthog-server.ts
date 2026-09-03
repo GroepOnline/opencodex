@@ -19,6 +19,9 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { getConfigDir } from "../config";
+import { estimateRequestCost } from "../usage/cost";
+import type { UsageStatus } from "../usage/log";
+import type { OcxUsage } from "../types";
 
 /**
  * PostHog host. When OCX_POSTHOG_KEY is set, the host defaults to the official
@@ -84,6 +87,26 @@ const ALLOWED_PROPERTY_KEYS = new Set([
   "type",
   "threshold",
   "actual",
+  // Canonical PostHog AI observability properties. Content fields are intentionally absent.
+  "$ai_trace_id",
+  "$ai_session_id",
+  "$ai_generation_id",
+  "$ai_model",
+  "$ai_provider",
+  "$ai_latency",
+  "$ai_time_to_first_token",
+  "$ai_input_tokens",
+  "$ai_output_tokens",
+  "$ai_total_cost_usd",
+  "$ai_http_status",
+  "$ai_is_error",
+  "$ai_error",
+  "$ai_stream",
+  "$ai_product",
+  // OCX-only privacy-safe dimensions for fleet diagnostics.
+  "surface",
+  "usageStatus",
+  "usageEstimated",
 ]);
 
 /** Keep only allowlisted metric keys with primitive values, capping string length. */
@@ -249,6 +272,93 @@ export class PosthogClient {
   shutdown(): void {
     if (this.timer) clearInterval(this.timer);
     void this.flush();
+  }
+}
+
+export interface AiGenerationTelemetryInput {
+  requestId: string;
+  provider: string;
+  model: string;
+  resolvedModel?: string;
+  surface?: string;
+  conversationId?: string;
+  status: number;
+  durationMs: number;
+  firstOutputMs?: number;
+  errorCode?: string;
+  usageStatus: UsageStatus;
+  usage?: OcxUsage;
+  stream?: boolean;
+  requestedServiceTier?: string;
+  configuredServiceTier?: string;
+  responseServiceTier?: string;
+}
+
+/**
+ * Build privacy-safe canonical PostHog AI properties for one terminal gateway request.
+ * Prompt/output bodies, raw upstream errors, account identifiers and headers are never accepted.
+ */
+export function aiGenerationProperties(
+  entry: AiGenerationTelemetryInput,
+  traceId: string = crypto.randomUUID(),
+): Record<string, unknown> {
+  const model = entry.resolvedModel?.trim() || entry.model;
+  const serviceTier = entry.responseServiceTier ?? entry.configuredServiceTier ?? entry.requestedServiceTier;
+  const cost = estimateRequestCost({
+    provider: entry.provider,
+    model,
+    usage: entry.usage,
+    usageStatus: entry.usageStatus,
+    ...(serviceTier ? { serviceTier } : {}),
+  });
+  const isError = entry.status >= 400 || Boolean(entry.errorCode);
+  return {
+    $ai_trace_id: traceId,
+    $ai_generation_id: entry.requestId,
+    ...(entry.conversationId ? { $ai_session_id: entry.conversationId } : {}),
+    $ai_model: model,
+    $ai_provider: entry.provider,
+    $ai_latency: Math.max(0, entry.durationMs) / 1_000,
+    ...(entry.firstOutputMs !== undefined
+      ? { $ai_time_to_first_token: Math.max(0, entry.firstOutputMs) / 1_000 }
+      : {}),
+    ...(entry.usage ? {
+      $ai_input_tokens: entry.usage.inputTokens,
+      $ai_output_tokens: entry.usage.outputTokens,
+    } : {}),
+    ...(cost ? { $ai_total_cost_usd: cost.cost.total } : {}),
+    $ai_http_status: entry.status,
+    $ai_is_error: isError,
+    ...(entry.errorCode ? { $ai_error: entry.errorCode } : {}),
+    ...(entry.stream !== undefined ? { $ai_stream: entry.stream } : {}),
+    $ai_product: "opencodex",
+    ...(entry.surface ? { surface: entry.surface } : {}),
+    usageStatus: entry.usageStatus,
+    ...(entry.usage?.estimated !== undefined ? { usageEstimated: entry.usage.estimated } : {}),
+  };
+}
+
+/** Emit both OCX fleet telemetry and canonical PostHog AI generation telemetry. */
+export function captureRequestTelemetry(entry: AiGenerationTelemetryInput): void {
+  const client = getServerPosthog();
+  if (!client) return;
+  try {
+    client.capture(TELEMETRY_EVENTS.REQUEST_TERMINAL, {
+      provider: entry.provider,
+      model: entry.resolvedModel ?? entry.model,
+      status: entry.status,
+      outcome: entry.status >= 400 ? "error" : "success",
+      durationMs: entry.durationMs,
+      ...(entry.firstOutputMs !== undefined ? { firstOutputMs: entry.firstOutputMs } : {}),
+      ...(entry.usage ? {
+        inputTokens: entry.usage.inputTokens,
+        outputTokens: entry.usage.outputTokens,
+      } : {}),
+      ...(entry.errorCode ? { errorCode: entry.errorCode } : {}),
+    });
+    client.capture("$ai_generation", aiGenerationProperties(entry));
+  } catch {
+    // Telemetry is best-effort and must never affect gateway request completion.
   }
 }
 

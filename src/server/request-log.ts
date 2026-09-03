@@ -38,6 +38,7 @@ import {
   type UsageDebugBodyKind,
 } from "../usage/debug";
 import { matchesLogConversationId } from "./request-log-conversation";
+import { captureRequestTelemetry } from "../telemetry/posthog-server";
 
 export interface RequestLogContext {
   model: string;
@@ -345,6 +346,23 @@ export function hydrateRequestLogsFromDisk(
 export function addRequestLog(entry: RequestLogEntry) {
   requestLog.push(entry);
   if (requestLog.length > MAX_LOG_SIZE) requestLog.shift();
+  captureRequestTelemetry({
+    requestId: entry.requestId,
+    provider: entry.provider,
+    model: entry.model,
+    ...(entry.resolvedModel ? { resolvedModel: entry.resolvedModel } : {}),
+    ...(entry.surface ? { surface: entry.surface } : {}),
+    ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
+    status: entry.status,
+    durationMs: entry.durationMs,
+    ...(entry.firstOutputMs !== undefined ? { firstOutputMs: entry.firstOutputMs } : {}),
+    ...(entry.errorCode ? { errorCode: entry.errorCode } : {}),
+    usageStatus: entry.usageStatus,
+    ...(entry.usage ? { usage: entry.usage } : {}),
+    ...(entry.requestedServiceTier ? { requestedServiceTier: entry.requestedServiceTier } : {}),
+    ...(entry.configuredServiceTier ? { configuredServiceTier: entry.configuredServiceTier } : {}),
+    ...(entry.responseServiceTier ? { responseServiceTier: entry.responseServiceTier } : {}),
+  });
   try {
     // Failure diagnostics survive the 200-entry ring buffer by riding the persisted
     // usage entry (devlog/_plan/260716_claudecode_hardening/030). Success rows stay
