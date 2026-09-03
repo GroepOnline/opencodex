@@ -431,6 +431,31 @@ function normalizeXaiToolParameters(parameters: unknown): Record<string, unknown
   return { ...metadata, oneOf: variants };
 }
 
+// Codex multi-agent v2 marks collaboration message parameters with `encrypted: true`.
+// That marker is private to the native ChatGPT Responses backend. Routed OpenAI-chat
+// providers may honor it with provider-scoped ciphertext that a different routed child
+// cannot decrypt. Strip only the schema keyword; preserve fields literally named
+// `encrypted` inside JSON Schema name bags and literal values.
+const CHAT_SCHEMA_NAME_BAG_KEYS = new Set(["properties", "patternProperties", "$defs", "definitions", "dependentSchemas", "dependentRequired", "dependencies"]);
+const CHAT_SCHEMA_LITERAL_VALUE_KEYS = new Set(["const", "default", "enum", "examples"]);
+
+function stripPrivateEncryptedSchemaMarker(node: unknown, inNameBag = false): unknown {
+  if (Array.isArray(node)) return node.map(item => stripPrivateEncryptedSchemaMarker(item));
+  if (!node || typeof node !== "object") return node;
+
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if (inNameBag) {
+      out[key] = stripPrivateEncryptedSchemaMarker(value);
+    } else if (key !== "encrypted") {
+      out[key] = CHAT_SCHEMA_LITERAL_VALUE_KEYS.has(key)
+        ? value
+        : stripPrivateEncryptedSchemaMarker(value, CHAT_SCHEMA_NAME_BAG_KEYS.has(key));
+    }
+  }
+  return out;
+}
+
 function toolsToChatFormat(parsed: OcxParsedRequest, provider: OcxProviderConfig): unknown[] | undefined {
   if (!parsed.context.tools || parsed.context.tools.length === 0) return undefined;
   const allowed = isAllowedToolChoice(parsed.options.toolChoice)
@@ -444,11 +469,12 @@ function toolsToChatFormat(parsed: OcxParsedRequest, provider: OcxProviderConfig
   const kimiTarget = isKimiSchemaTarget(provider);
   const compat = resolveProviderCompat(provider.compat);
   const formatted = tools.flatMap(t => {
+    const plaintextParameters = stripPrivateEncryptedSchemaMarker(t.parameters);
     const parameters = xaiTarget
-      ? normalizeXaiToolParameters(t.parameters)
+      ? normalizeXaiToolParameters(plaintextParameters)
       : kimiTarget
-        ? ensureKimiRootObjectType(t.parameters)
-        : t.parameters;
+        ? ensureKimiRootObjectType(plaintextParameters)
+        : plaintextParameters;
     if (parameters === undefined) return [];
     const strict = t.strict !== undefined
       ? t.strict
