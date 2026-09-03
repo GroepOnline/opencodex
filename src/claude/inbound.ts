@@ -24,7 +24,10 @@ function isRec(v: unknown): v is Rec {
 }
 
 /** Alias first, then modelMap: exact id, then date-suffix-stripped (`-\d{8}$`), else passthrough. */
-export function resolveInboundModel(model: string, cc?: OcxClaudeCodeConfig): string {
+export function resolveInboundModel(
+  model: string,
+  cc?: OcxClaudeCodeConfig,
+): string {
   // Defensive: Desktop/CLI strip the [1m] context-variant marker client-side, but a
   // leaking build must not break alias decode (devlog 138 — the 1M signal is the
   // anthropic-beta header, never the id). Case-insensitive: the CLI matches /\[1m\]/i.
@@ -36,7 +39,8 @@ export function resolveInboundModel(model: string, cc?: OcxClaudeCodeConfig): st
   if (desktop3p) {
     // Native pseudo-provider returns bare slug; routed returns provider/model
     const sep = desktop3p.indexOf("/");
-    if (sep > 0 && desktop3p.slice(0, sep) === "native") return desktop3p.slice(sep + 1);
+    if (sep > 0 && desktop3p.slice(0, sep) === "native")
+      return desktop3p.slice(sep + 1);
     return desktop3p;
   }
   const map = cc?.modelMap ?? {};
@@ -61,11 +65,23 @@ export function effortForThinkingBudget(budget: number): string {
  * capture of claude 2.1.207 and CLIProxyAPI#1540). Forward the level verbatim when it
  * is a known Responses effort; unknown strings are dropped so downstream defaults win.
  */
-const OUTPUT_CONFIG_EFFORTS = new Set(["minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
-export function effortFromOutputConfig(outputConfig: unknown): string | undefined {
+const OUTPUT_CONFIG_EFFORTS = new Set([
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "ultra",
+]);
+export function effortFromOutputConfig(
+  outputConfig: unknown,
+): string | undefined {
   if (!isRec(outputConfig)) return undefined;
   const effort = outputConfig.effort;
-  return typeof effort === "string" && OUTPUT_CONFIG_EFFORTS.has(effort) ? effort : undefined;
+  return typeof effort === "string" && OUTPUT_CONFIG_EFFORTS.has(effort)
+    ? effort
+    : undefined;
 }
 
 function systemToInstructions(system: unknown): string | undefined {
@@ -73,7 +89,12 @@ function systemToInstructions(system: unknown): string | undefined {
   if (Array.isArray(system)) {
     const parts: string[] = [];
     for (const block of system) {
-      if (isRec(block) && block.type === "text" && typeof block.text === "string") parts.push(block.text);
+      if (
+        isRec(block) &&
+        block.type === "text" &&
+        typeof block.text === "string"
+      )
+        parts.push(block.text);
     }
     return parts.length > 0 ? parts.join("\n\n") : undefined;
   }
@@ -84,8 +105,12 @@ function imageBlockToInputImage(block: Rec): Rec | null {
   const source = block.source;
   if (!isRec(source)) return null;
   if (source.type === "base64" && typeof source.data === "string") {
-    const media = typeof source.media_type === "string" ? source.media_type : "image/png";
-    return { type: "input_image", image_url: `data:${media};base64,${source.data}` };
+    const media =
+      typeof source.media_type === "string" ? source.media_type : "image/png";
+    return {
+      type: "input_image",
+      image_url: `data:${media};base64,${source.data}`,
+    };
   }
   if (source.type === "url" && typeof source.url === "string") {
     return { type: "input_image", image_url: source.url };
@@ -96,7 +121,8 @@ function imageBlockToInputImage(block: Rec): Rec | null {
 function toolResultOutput(block: Rec): string | Rec[] {
   const isError = block.is_error === true;
   const content = block.content;
-  if (typeof content === "string") return isError ? `[tool error] ${content}` : content;
+  if (typeof content === "string")
+    return isError ? `[tool error] ${content}` : content;
   if (Array.isArray(content)) {
     const out: Rec[] = [];
     for (const item of content) {
@@ -131,12 +157,18 @@ function pushUserMessage(input: Rec[], blocks: Rec[]): void {
 export const DEFAULT_BLOCKED_SKILLS = ["claude-api"];
 
 /** Shared effective policy for proxy elision and generated routed-agent guards. */
-export function effectiveBlockedSkillNames(cc?: Pick<OcxClaudeCodeConfig, "blockedSkills">): string[] {
+export function effectiveBlockedSkillNames(
+  cc?: Pick<OcxClaudeCodeConfig, "blockedSkills">,
+): string[] {
   const names = cc?.blockedSkills ?? DEFAULT_BLOCKED_SKILLS;
-  return [...new Set(names
-    .filter((name): name is string => typeof name === "string")
-    .map(name => name.trim().toLowerCase())
-    .filter(name => name.length > 0))];
+  return [
+    ...new Set(
+      names
+        .filter((name): name is string => typeof name === "string")
+        .map((name) => name.trim().toLowerCase())
+        .filter((name) => name.length > 0),
+    ),
+  ];
 }
 
 /**
@@ -155,8 +187,11 @@ function systemText(body: unknown): string | null {
   if (typeof system === "string") return system || null;
   if (!Array.isArray(system)) return null;
   const text = system
-    .filter((b): b is Rec => isRec(b) && b.type === "text" && typeof b.text === "string")
-    .map(b => b.text as string)
+    .filter(
+      (b): b is Rec =>
+        isRec(b) && b.type === "text" && typeof b.text === "string",
+    )
+    .map((b) => b.text as string)
     .join("\n");
   return text || null;
 }
@@ -174,11 +209,15 @@ export function extractOcxRouteDirective(body: unknown): string | null {
  * exact generated-agent setting through the same trusted system-body channel as
  * ocx-route so the inbound translator can restore `output_config.effort`.
  */
-export function extractOcxEffortDirective(body: unknown): NonNullable<OcxClaudeCodeConfig["subagentEffort"]> | null {
+export function extractOcxEffortDirective(
+  body: unknown,
+): NonNullable<OcxClaudeCodeConfig["subagentEffort"]> | null {
   const text = systemText(body);
   if (!text) return null;
   const match = OCX_EFFORT_RE.exec(text);
-  return match ? match[1] as NonNullable<OcxClaudeCodeConfig["subagentEffort"]> : null;
+  return match
+    ? (match[1] as NonNullable<OcxClaudeCodeConfig["subagentEffort"]>)
+    : null;
 }
 
 /** Injected-skill payloads below this size are never stubbed (not worth it). */
@@ -205,34 +244,52 @@ function maybeElideSkillText(text: string, names: readonly string[]): string {
   if (names.length === 0 || text.length < SKILL_ELISION_MIN_CHARS) return text;
   if (!text.startsWith(SKILL_TEXT_MARKER)) return text;
   const firstLineEnd = text.indexOf("\n");
-  const dir = text.slice(SKILL_TEXT_MARKER.length, firstLineEnd === -1 ? text.length : firstLineEnd).trim();
+  const dir = text
+    .slice(
+      SKILL_TEXT_MARKER.length,
+      firstLineEnd === -1 ? text.length : firstLineEnd,
+    )
+    .trim();
   // Windows clients send `C:\Users\...\claude-api`; normalize separators before
   // basenaming (repo precedent: src/codex/inject.ts isOpencodexCatalogPath).
-  const base = dir.replace(/\\/g, "/").split("/").filter(Boolean).pop()?.toLowerCase() ?? "";
+  const base =
+    dir.replace(/\\/g, "/").split("/").filter(Boolean).pop()?.toLowerCase() ??
+    "";
   if (!names.includes(base)) return text;
-  return `[opencodex] '${base}' skill document bundle (${text.length} chars) elided for routed models `
-    + "(claudeCode.blockedSkills). The skill is loaded; answer from general knowledge instead of citing the bundle.";
+  return (
+    `[opencodex] '${base}' skill document bundle (${text.length} chars) elided for routed models ` +
+    "(claudeCode.blockedSkills). The skill is loaded; answer from general knowledge instead of citing the bundle."
+  );
 }
 
 function skillElisionStub(callId: string): string {
-  return "[opencodex] Skill document bundle elided for routed models (claudeCode.blockedSkills). "
-    + `The skill loaded, but its reference documents were removed to save context (call ${callId}). `
-    + "Answer from general knowledge instead of citing the bundle.";
+  return (
+    "[opencodex] Skill document bundle elided for routed models (claudeCode.blockedSkills). " +
+    `The skill loaded, but its reference documents were removed to save context (call ${callId}). ` +
+    "Answer from general knowledge instead of citing the bundle."
+  );
 }
 
 /** Collect Skill-tool call ids whose input names a blocked skill. */
-function blockedSkillCallIds(messages: readonly unknown[], blocked: readonly string[]): Set<string> {
+function blockedSkillCallIds(
+  messages: readonly unknown[],
+  blocked: readonly string[],
+): Set<string> {
   const ids = new Set<string>();
   if (blocked.length === 0) return ids;
-  const needles = blocked.map(name => name.toLowerCase()).filter(name => name.length > 0);
+  const needles = blocked
+    .map((name) => name.toLowerCase())
+    .filter((name) => name.length > 0);
   if (needles.length === 0) return ids;
   for (const msg of messages) {
-    if (!isRec(msg) || msg.role !== "assistant" || !Array.isArray(msg.content)) continue;
+    if (!isRec(msg) || msg.role !== "assistant" || !Array.isArray(msg.content))
+      continue;
     for (const block of msg.content) {
-      if (!isRec(block) || block.type !== "tool_use" || block.name !== "Skill") continue;
+      if (!isRec(block) || block.type !== "tool_use" || block.name !== "Skill")
+        continue;
       if (typeof block.id !== "string" || block.id.length === 0) continue;
       const inputJson = JSON.stringify(block.input ?? {}).toLowerCase();
-      if (needles.some(name => inputJson.includes(name))) ids.add(block.id);
+      if (needles.some((name) => inputJson.includes(name))) ids.add(block.id);
     }
   }
   return ids;
@@ -250,14 +307,20 @@ function systemMessageText(content: unknown): string {
   if (!Array.isArray(content)) return "";
   const parts: string[] = [];
   for (const raw of content) {
-    if (isRec(raw) && raw.type === "text" && typeof raw.text === "string") parts.push(raw.text);
+    if (isRec(raw) && raw.type === "text" && typeof raw.text === "string")
+      parts.push(raw.text);
   }
   return parts.join("\n\n");
 }
 
-function userMessageToItems(content: unknown, input: Rec[], elide: SkillElisionContext = NO_ELISION): void {
+function userMessageToItems(
+  content: unknown,
+  input: Rec[],
+  elide: SkillElisionContext = NO_ELISION,
+): void {
   if (typeof content === "string") {
-    if (content.length > 0) pushUserMessage(input, [{ type: "input_text", text: content }]);
+    if (content.length > 0)
+      pushUserMessage(input, [{ type: "input_text", text: content }]);
     return;
   }
   if (!Array.isArray(content)) return;
@@ -268,7 +331,11 @@ function userMessageToItems(content: unknown, input: Rec[], elide: SkillElisionC
     if (!isRec(raw)) continue;
     switch (raw.type) {
       case "text":
-        if (typeof raw.text === "string") pending.push({ type: "input_text", text: maybeElideSkillText(raw.text, elide.names) });
+        if (typeof raw.text === "string")
+          pending.push({
+            type: "input_text",
+            text: maybeElideSkillText(raw.text, elide.names),
+          });
         break;
       case "image": {
         const img = imageBlockToInputImage(raw);
@@ -278,21 +345,29 @@ function userMessageToItems(content: unknown, input: Rec[], elide: SkillElisionC
       case "tool_result": {
         pushUserMessage(input, pending);
         pending = [];
-        if (typeof raw.tool_use_id !== "string" || raw.tool_use_id.length === 0) {
+        if (
+          typeof raw.tool_use_id !== "string" ||
+          raw.tool_use_id.length === 0
+        ) {
           throw new AnthropicRequestError("tool_result requires tool_use_id");
         }
         input.push({
           type: "function_call_output",
           call_id: raw.tool_use_id,
           // Blocked-skill bundles are stubbed out for routed models (devlog 060).
-          output: elide.callIds.has(raw.tool_use_id) ? skillElisionStub(raw.tool_use_id) : toolResultOutput(raw),
+          output: elide.callIds.has(raw.tool_use_id)
+            ? skillElisionStub(raw.tool_use_id)
+            : toolResultOutput(raw),
         });
         break;
       }
       case "document":
         // No Responses equivalent for raw document blocks; surface the title so the
         // model at least sees the attachment happened.
-        pending.push({ type: "input_text", text: `[document${typeof raw.title === "string" ? `: ${raw.title}` : ""}]` });
+        pending.push({
+          type: "input_text",
+          text: `[document${typeof raw.title === "string" ? `: ${raw.title}` : ""}]`,
+        });
         break;
       default:
         break; // thinking/redacted_thinking never appear in user messages; ignore unknowns
@@ -303,27 +378,44 @@ function userMessageToItems(content: unknown, input: Rec[], elide: SkillElisionC
 
 function assistantMessageToItems(content: unknown, input: Rec[]): void {
   if (typeof content === "string") {
-    if (content.length > 0) input.push({ type: "message", role: "assistant", content: [{ type: "output_text", text: content }] });
+    if (content.length > 0)
+      input.push({
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: content }],
+      });
     return;
   }
   if (!Array.isArray(content)) return;
   let pendingText: Rec[] = [];
   const flush = () => {
-    if (pendingText.length > 0) input.push({ type: "message", role: "assistant", content: pendingText });
+    if (pendingText.length > 0)
+      input.push({ type: "message", role: "assistant", content: pendingText });
     pendingText = [];
   };
   for (const raw of content) {
     if (!isRec(raw)) continue;
     switch (raw.type) {
       case "text":
-        if (typeof raw.text === "string") pendingText.push({ type: "output_text", text: raw.text });
+        if (typeof raw.text === "string")
+          pendingText.push({ type: "output_text", text: raw.text });
         break;
       case "tool_use": {
         flush();
-        if (typeof raw.id !== "string" || raw.id.length === 0 || typeof raw.name !== "string" || raw.name.length === 0) {
+        if (
+          typeof raw.id !== "string" ||
+          raw.id.length === 0 ||
+          typeof raw.name !== "string" ||
+          raw.name.length === 0
+        ) {
           throw new AnthropicRequestError("tool_use requires id and name");
         }
-        input.push({ type: "function_call", call_id: raw.id, name: raw.name, arguments: JSON.stringify(raw.input ?? {}) });
+        input.push({
+          type: "function_call",
+          call_id: raw.id,
+          name: raw.name,
+          arguments: JSON.stringify(raw.input ?? {}),
+        });
         break;
       }
       case "thinking":
@@ -346,11 +438,17 @@ function toolsToResponses(tools: unknown): Rec[] | undefined {
       out.push({ type: "web_search" }); // hosted sidecar path
       continue;
     }
-    if (typeof raw.name === "string" && raw.name.length > 0 && isRec(raw.input_schema)) {
+    if (
+      typeof raw.name === "string" &&
+      raw.name.length > 0 &&
+      isRec(raw.input_schema)
+    ) {
       out.push({
         type: "function",
         name: raw.name,
-        ...(typeof raw.description === "string" ? { description: raw.description } : {}),
+        ...(typeof raw.description === "string"
+          ? { description: raw.description }
+          : {}),
         parameters: raw.input_schema as Record<string, unknown>,
       });
       continue;
@@ -362,18 +460,26 @@ function toolsToResponses(tools: unknown): Rec[] | undefined {
 
 function toolChoiceToResponses(choice: unknown, body: Rec): void {
   if (!isRec(choice)) return;
-  if (choice.disable_parallel_tool_use === true) body.parallel_tool_calls = false;
+  if (choice.disable_parallel_tool_use === true)
+    body.parallel_tool_calls = false;
   switch (choice.type) {
-    case "auto": body.tool_choice = "auto"; break;
-    case "none": body.tool_choice = "none"; break;
-    case "any": body.tool_choice = "required"; break;
+    case "auto":
+      body.tool_choice = "auto";
+      break;
+    case "none":
+      body.tool_choice = "none";
+      break;
+    case "any":
+      body.tool_choice = "required";
+      break;
     case "tool":
       if (typeof choice.name !== "string" || choice.name.length === 0) {
         throw new AnthropicRequestError("tool_choice.tool requires a name");
       }
       body.tool_choice = { type: "function", name: choice.name };
       break;
-    default: break;
+    default:
+      break;
   }
 }
 
@@ -381,7 +487,9 @@ function toolChoiceToResponses(choice: unknown, body: Rec): void {
 function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value && typeof value === "object") {
-    const entries = Object.entries(value as Rec).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+    const entries = Object.entries(value as Rec).sort(([a], [b]) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    );
     return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(",")}}`;
   }
   return JSON.stringify(value) ?? "null";
@@ -399,7 +507,10 @@ export interface ClaudeInboundTranslation {
  * Translate an Anthropic Messages request body into a /v1/responses request body.
  * Throws AnthropicRequestError (-> 400 invalid_request_error) on malformed input.
  */
-export function anthropicToResponsesBody(raw: unknown, cc?: OcxClaudeCodeConfig): Rec {
+export function anthropicToResponsesBody(
+  raw: unknown,
+  cc?: OcxClaudeCodeConfig,
+): Rec {
   return anthropicToResponsesTranslation(raw, cc).body;
 }
 
@@ -408,8 +519,12 @@ export function anthropicToResponsesBody(raw: unknown, cc?: OcxClaudeCodeConfig)
  * OUT-OF-BODY tuple (audit 133 R3#1 — an in-body marker would leak upstream through
  * the native Responses forward and 400).
  */
-export function anthropicToResponsesTranslation(raw: unknown, cc?: OcxClaudeCodeConfig): ClaudeInboundTranslation {
-  if (!isRec(raw)) throw new AnthropicRequestError("request body must be a JSON object");
+export function anthropicToResponsesTranslation(
+  raw: unknown,
+  cc?: OcxClaudeCodeConfig,
+): ClaudeInboundTranslation {
+  if (!isRec(raw))
+    throw new AnthropicRequestError("request body must be a JSON object");
   if (typeof raw.model !== "string" || raw.model.length === 0) {
     throw new AnthropicRequestError("model is required");
   }
@@ -427,14 +542,18 @@ export function anthropicToResponsesTranslation(raw: unknown, cc?: OcxClaudeCode
     names: blockedNames,
   };
   for (const msg of raw.messages) {
-    if (!isRec(msg)) throw new AnthropicRequestError("each message must be an object");
+    if (!isRec(msg))
+      throw new AnthropicRequestError("each message must be an object");
     if (msg.role === "user") userMessageToItems(msg.content, input, elide);
-    else if (msg.role === "assistant") assistantMessageToItems(msg.content, input);
+    else if (msg.role === "assistant")
+      assistantMessageToItems(msg.content, input);
     else if (msg.role === "system") {
       const text = systemMessageText(msg.content);
       if (text.length > 0) systemParts.push(text);
-    }
-    else throw new AnthropicRequestError(`unsupported message role: ${String(msg.role)}`);
+    } else
+      throw new AnthropicRequestError(
+        `unsupported message role: ${String(msg.role)}`,
+      );
   }
 
   const body: Rec = {
@@ -450,20 +569,27 @@ export function anthropicToResponsesTranslation(raw: unknown, cc?: OcxClaudeCode
   if (tools) body.tools = tools;
   toolChoiceToResponses(raw.tool_choice, body);
 
-  if (typeof raw.max_tokens === "number") body.max_output_tokens = raw.max_tokens;
+  if (typeof raw.max_tokens === "number")
+    body.max_output_tokens = raw.max_tokens;
   if (typeof raw.temperature === "number") body.temperature = raw.temperature;
   if (typeof raw.top_p === "number") body.top_p = raw.top_p;
   // top_k: accepted and dropped (no Responses equivalent).
   if (Array.isArray(raw.stop_sequences) && raw.stop_sequences.length > 0) {
-    body.stop = raw.stop_sequences.filter((s): s is string => typeof s === "string");
+    body.stop = raw.stop_sequences.filter(
+      (s): s is string => typeof s === "string",
+    );
   }
   let cacheKeySource: ClaudeCacheKeySource = null;
   if (isRec(raw.metadata) && typeof raw.metadata.user_id === "string") {
     // Responses `user` is bounded by upstream providers (OpenAI/Azure reject values >64 chars).
-    // Claude Code metadata.user_id can be much longer, so derive one stable opaque session id and
-    // reuse it for both user attribution and prompt-cache affinity.
-    const sessionKey = createHash("sha256").update(raw.metadata.user_id).digest("hex").slice(0, 32);
-    body.user = raw.metadata.user_id.length <= 64 ? raw.metadata.user_id : sessionKey;
+    // Identifiers ≤64 chars stay raw in body.user; prompt_cache_key always uses sessionKey
+    // (sha256 of metadata.user_id, truncated to 32 hex chars) for stable cache affinity.
+    const sessionKey = createHash("sha256")
+      .update(raw.metadata.user_id)
+      .digest("hex")
+      .slice(0, 32);
+    body.user =
+      raw.metadata.user_id.length <= 64 ? raw.metadata.user_id : sessionKey;
     // OpenAI-side prompt caching is routed by prompt_cache_key (Codex clients send
     // their session id; without it consecutive /v1/messages turns reported
     // cached_tokens: 0 on the ChatGPT backend — devlog 090). Claude Code's
@@ -485,25 +611,35 @@ export function anthropicToResponsesTranslation(raw: unknown, cc?: OcxClaudeCode
     // affinity. Callers must NOT synthesize a session_id header from this fallback
     // (audit 133 R2#3).
     body.prompt_cache_key = createHash("sha256")
-      .update(canonicalJson({
-        version: 2,
-        model: body.model,
-        system: systemParts,
-        tools: Array.isArray(body.tools) ? body.tools : [],
-      }))
-      .digest("hex").slice(0, 32);
+      .update(
+        canonicalJson({
+          version: 2,
+          model: body.model,
+          system: systemParts,
+          tools: Array.isArray(body.tools) ? body.tools : [],
+        }),
+      )
+      .digest("hex")
+      .slice(0, 32);
     cacheKeySource = "system";
   }
 
   const thinking = raw.thinking;
   const outputConfigEffort = effortFromOutputConfig(raw.output_config);
   const thinkingDisabled = isRec(thinking) && thinking.type === "disabled";
-  if (!thinkingDisabled && (isRec(thinking) || outputConfigEffort !== undefined)) {
+  if (
+    !thinkingDisabled &&
+    (isRec(thinking) || outputConfigEffort !== undefined)
+  ) {
     const reasoning: Rec = { summary: "auto" };
     if (outputConfigEffort !== undefined) {
       // Adaptive wire: /effort arrives as output_config.effort (devlog 080).
       reasoning.effort = outputConfigEffort;
-    } else if (isRec(thinking) && thinking.type === "enabled" && typeof thinking.budget_tokens === "number") {
+    } else if (
+      isRec(thinking) &&
+      thinking.type === "enabled" &&
+      typeof thinking.budget_tokens === "number"
+    ) {
       reasoning.effort = effortForThinkingBudget(thinking.budget_tokens);
     }
     body.reasoning = reasoning;

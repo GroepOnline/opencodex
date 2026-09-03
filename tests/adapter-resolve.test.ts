@@ -221,9 +221,17 @@ describe("Azure Responses endpoint compatibility", () => {
       },
     });
     const body = JSON.parse(request.body) as {
-      tools: Array<{ parameters: { properties: Record<string, unknown> } }>;
+      tools: Array<{
+        parameters: {
+          type?: string;
+          allOf?: unknown;
+          properties: Record<string, unknown>;
+        };
+      }>;
     };
 
+    expect(body.tools[0]?.parameters.type).toBe("object");
+    expect(body.tools[0]?.parameters.allOf).toBeUndefined();
     expect(body.tools[0]?.parameters.properties.value).toEqual({
       allOf: [
         { type: "integer", minimum: 1 },

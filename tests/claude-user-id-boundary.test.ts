@@ -17,13 +17,31 @@ describe("Claude Responses user identifier boundary", () => {
     expect(body.user).toBe(body.prompt_cache_key);
   });
 
+  test("preserves short and 64-char metadata.user_id in body.user", () => {
+    const translate = (user_id: string) =>
+      anthropicToResponsesTranslation({
+        model: "mock/test-model",
+        max_tokens: 16,
+        messages: [{ role: "user", content: "hi" }],
+        metadata: { user_id },
+      }).body;
+
+    expect(translate("session-a").user).toBe("session-a");
+    expect(translate("session-a").prompt_cache_key).toMatch(/^[0-9a-f]{32}$/);
+
+    const exact64 = "a".repeat(64);
+    expect(translate(exact64).user).toBe(exact64);
+    expect(translate(exact64).prompt_cache_key).toMatch(/^[0-9a-f]{32}$/);
+  });
+
   test("keeps the derived identifier stable per Claude session", () => {
-    const translate = (user_id: string) => anthropicToResponsesTranslation({
-      model: "mock/test-model",
-      max_tokens: 16,
-      messages: [{ role: "user", content: "hi" }],
-      metadata: { user_id },
-    }).body.user;
+    const translate = (user_id: string) =>
+      anthropicToResponsesTranslation({
+        model: "mock/test-model",
+        max_tokens: 16,
+        messages: [{ role: "user", content: "hi" }],
+        metadata: { user_id },
+      }).body.user;
 
     expect(translate("session-a")).toBe(translate("session-a"));
     expect(translate("session-a")).not.toBe(translate("session-b"));
