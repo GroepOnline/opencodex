@@ -148,6 +148,16 @@ function normalizeBody(body: string): string {
     }
   }
 
+  let additionalTools = parsed.additional_tools;
+  if (Array.isArray(parsed.additional_tools)) {
+    const original = parsed.additional_tools;
+    const normalized = original.map(normalizeTool);
+    if (normalized.some((entry, index) => entry !== original[index])) {
+      additionalTools = normalized;
+      changed = true;
+    }
+  }
+
   let input = parsed.input;
   if (Array.isArray(parsed.input)) {
     let inputChanged = false;
@@ -170,6 +180,9 @@ function normalizeBody(body: string): string {
     ? JSON.stringify({
         ...parsed,
         ...(Array.isArray(parsed.tools) ? { tools } : {}),
+        ...(Array.isArray(parsed.additional_tools)
+          ? { additional_tools: additionalTools }
+          : {}),
         ...(Array.isArray(parsed.input) ? { input } : {}),
       })
     : body;

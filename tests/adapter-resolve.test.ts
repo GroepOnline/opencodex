@@ -231,4 +231,52 @@ describe("Azure Responses endpoint compatibility", () => {
       ],
     });
   });
+  test("normalizes function schemas under additional_tools", async () => {
+    const adapter = resolveAdapter({
+      adapter: "openai-responses",
+      baseUrl: "https://example-resource.openai.azure.com/openai",
+      authMode: "key",
+      apiKey: "test-key",
+    });
+    const request = await adapter.buildRequest({
+      modelId: "Kimi-K2.7-Code",
+      context: { messages: [] },
+      stream: true,
+      options: {},
+      _rawBody: {
+        model: "Kimi-K2.7-Code",
+        input: [],
+        stream: true,
+        additional_tools: [
+          {
+            type: "function",
+            name: "automation_update",
+            parameters: {
+              oneOf: [
+                {
+                  type: "object",
+                  properties: { title: { type: "string" } },
+                },
+                {
+                  type: "object",
+                  properties: { is_enabled: { type: "boolean" } },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const body = JSON.parse(request.body) as {
+      additional_tools: Array<{ parameters: Record<string, unknown> }>;
+    };
+    const parameters = body.additional_tools[0]?.parameters;
+
+    expect(parameters.type).toBe("object");
+    expect(parameters.oneOf).toBeUndefined();
+    expect(parameters.properties).toEqual({
+      title: { type: "string" },
+      is_enabled: { type: "boolean" },
+    });
+  });
 });
