@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import * as capCooldown from "../src/providers/cap-cooldown";
+import * as posthogTelemetry from "../src/telemetry/posthog-server";
 import {
   filterRequestLogs,
   addFinalRequestLog,
@@ -11,6 +12,7 @@ import {
   type RequestLogEntry,
 } from "../src/server";
 import {
+  addRequestLog,
   aggregateAttemptUsage,
   beginRequestAttempt,
   clearRequestLogsForTests,
@@ -58,6 +60,21 @@ function log(overrides: Partial<RequestLogEntry>): RequestLogEntry {
     ...overrides,
   };
 }
+
+describe("request telemetry privacy", () => {
+  test("strips account-scoped provider labels before external telemetry", () => {
+    const telemetry = spyOn(posthogTelemetry, "captureRequestTelemetry").mockImplementation(() => {});
+    clearRequestLogsForTests();
+
+    const entry = log({ provider: "openai-pabcdef" });
+    addRequestLog(entry);
+
+    expect(telemetry).toHaveBeenCalledWith(expect.objectContaining({ provider: "openai" }));
+    expect(getRequestLogEntries()[0]?.provider).toBe("openai-pabcdef");
+    telemetry.mockRestore();
+    clearRequestLogsForTests();
+  });
+});
 
 describe("request log metadata", () => {
   test("records the adapter's exact outbound reasoning parameter", () => {

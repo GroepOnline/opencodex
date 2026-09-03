@@ -348,7 +348,7 @@ export function addRequestLog(entry: RequestLogEntry) {
   if (requestLog.length > MAX_LOG_SIZE) requestLog.shift();
   captureRequestTelemetry({
     requestId: entry.requestId,
-    provider: entry.provider,
+    provider: baseProviderLabel(entry.provider),
     model: entry.model,
     ...(entry.resolvedModel ? { resolvedModel: entry.resolvedModel } : {}),
     ...(entry.surface ? { surface: entry.surface } : {}),
