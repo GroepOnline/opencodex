@@ -22,6 +22,7 @@ const Claude = lazy(() => import("./pages/Claude"));
 const Grok = lazy(() => import("./pages/Grok"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Startup = lazy(() => import("./pages/Startup"));
+const Landing = lazy(() => import("./landing/Landing"));
 
 installApiAuthFetch();
 
@@ -42,6 +43,9 @@ const VIEW_TABS: { view: View; tkey: TKey }[] = [
 
 /** Sub-tabs per view; `null` is the view's home target. */
 const SUB_TABS: Record<View, { sub: string | null; tkey: TKey }[]> = {
+  landing: [
+    { sub: null, tkey: "nav.dashboard" },
+  ],
   dashboard: [
     { sub: null, tkey: "nav.dashboard" },
   ],
@@ -89,8 +93,6 @@ export default function App() {
   const { route, navigateTo } = useAppRouteState();
   const [theme, setTheme] = useState<Theme>(readStoredTheme);
   const t = useT();
-  const [settingsOpen, setSettingsOpen] = useState(false);
-
   useEffect(() => {
     const el = document.documentElement;
     if (theme === "system") el.removeAttribute("data-theme");
@@ -103,6 +105,40 @@ export default function App() {
     }
   }, [theme]);
 
+  // The public landing page renders outside the dashboard shell: no topbar,
+  // no view tabs, no health polling UI. Everything below it is the app.
+  if (route.view === "landing") {
+    return (
+      <ErrorBoundary
+        pageName="OpenCodex"
+        title={t("errorBoundary.title")}
+        message={t("errorBoundary.message")}
+        detailsLabel={t("errorBoundary.details")}
+        reloadLabel={t("errorBoundary.reload")}
+      >
+        <Suspense fallback={<div className="muted" role="status">{t("common.loading")}</div>}>
+          <Landing />
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  return <DashboardShell route={route} navigateTo={navigateTo} theme={theme} setTheme={setTheme} />;
+}
+
+function DashboardShell({
+  route,
+  navigateTo,
+  theme,
+  setTheme,
+}: {
+  route: ReturnType<typeof useAppRouteState>["route"];
+  navigateTo: ReturnType<typeof useAppRouteState>["navigateTo"];
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+}) {
+  const t = useT();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const healthPoll = useKeyedClientResource(
     `app-healthz:${API_BASE}`,
     [],

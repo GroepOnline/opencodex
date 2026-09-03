@@ -1,13 +1,15 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-// ChefGroep design language: General Sans (UI, design-system v2 §4) +
-// JetBrains Mono (data only). Bundled locally so nothing depends on a CDN:
-// General Sans ships as woff2 in src/assets/fonts (@font-face in styles.css).
+// Bundled JetBrains Mono restored for module resolution.
 import "@fontsource-variable/jetbrains-mono";
+// Instrument Serif: the display voice of the public landing (Signaal §4).
+import "@fontsource/instrument-serif/400.css";
+import "@fontsource/instrument-serif/400-italic.css";
 import App from "./App";
 import { LanguageProvider } from "./i18n/provider";
 import { initPostHog } from "./posthog";
 import "./styles.css";
+import "./landing/landing.css";
 
 initPostHog();
 

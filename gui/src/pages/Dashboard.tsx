@@ -42,7 +42,6 @@ interface UsageSummary {
   providers: UsageProviderRow[];
 }
 
-
 /**
  * Determines the total token count for a traffic entry.
  *
@@ -50,17 +49,27 @@ interface UsageSummary {
  * @returns The recorded total tokens, calculated usage tokens, or the entry total tokens
  */
 function bonTokens(entry: BonEntry): number | undefined {
-  if (entry.usage) return entry.usage.totalTokens ?? entry.usage.inputTokens + entry.usage.outputTokens;
+  if (entry.usage)
+    return (
+      entry.usage.totalTokens ??
+      entry.usage.inputTokens + entry.usage.outputTokens
+    );
   return entry.totalTokens;
 }
 
 function tijd(ts: number, locale: string): string {
-  return new Date(ts).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return new Date(ts).toLocaleTimeString(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 /** Formats a 0..1 ratio as a rounded percentage; em-dash when absent. */
 function formatRatio(value: number | undefined): string {
-  return typeof value === "number" && Number.isFinite(value) ? `${Math.round(value * 100)}%` : "—";
+  return typeof value === "number" && Number.isFinite(value)
+    ? `${Math.round(value * 100)}%`
+    : "—";
 }
 
 /**
@@ -108,7 +117,11 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
         if (logsRes.ok) {
           const data = (await logsRes.json()) as BonEntry[];
           if (!cancelled) {
-            setLogs(Array.isArray(data) ? data.toSorted((a, b) => b.timestamp - a.timestamp) : []);
+            setLogs(
+              Array.isArray(data)
+                ? data.toSorted((a, b) => b.timestamp - a.timestamp)
+                : [],
+            );
             setLogsFailed(false);
           }
         } else if (!cancelled) {
@@ -123,7 +136,10 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
     };
     void load();
     const iv = setInterval(() => void load(), 30_000);
-    return () => { cancelled = true; clearInterval(iv); };
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
   }, [apiBase]);
 
   const requestsVandaag = useMemo(
@@ -140,9 +156,15 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
     return ps.toSorted((a, b) => b.requests - a.requests).slice(0, 5);
   }, [summary]);
 
-  const costUsd = typeof summary?.summary.estimatedCostUsd === "number" && Number.isFinite(summary.summary.estimatedCostUsd)
-    ? new Intl.NumberFormat(locale, { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(summary.summary.estimatedCostUsd)
-    : "—";
+  const costUsd =
+    typeof summary?.summary.estimatedCostUsd === "number" &&
+    Number.isFinite(summary.summary.estimatedCostUsd)
+      ? new Intl.NumberFormat(locale, {
+          style: "currency",
+          currency: "USD",
+          maximumFractionDigits: 2,
+        }).format(summary.summary.estimatedCostUsd)
+      : "—";
   const coveragePct = formatRatio(summary?.summary.coverageRatio);
   const pct429 = formatRatio(summary?.summary.ratio429);
   const pct502 = formatRatio(summary?.summary.ratio502);
@@ -161,37 +183,82 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
       {logsFailed && <Notice tone="err">{t("vk.loadFailed")}</Notice>}
 
       {/* Health strip */}
-      <div className="pws-dashboard-stats pws-dashboard-stats--fit" role="group" aria-label={t("dash.healthAria")}>
+      <div
+        className="pws-dashboard-stats pws-dashboard-stats--fit"
+        role="group"
+        aria-label={t("dash.healthAria")}
+      >
         <div className="pws-dashboard-stat">
           {proxyOnline === null ? (
-            <span className="pws-dashboard-stat-count spin" aria-label={t("common.loading")} />
+            <span
+              className="pws-dashboard-stat-count spin"
+              aria-label={t("common.loading")}
+            />
           ) : (
             <span className="pws-dashboard-stat-count">
-              {proxyOnline ? <IconCheck size={18} aria-hidden /> : <IconAlert size={18} aria-hidden />}
+              {proxyOnline ? (
+                <IconCheck size={18} aria-hidden />
+              ) : (
+                <IconAlert size={18} aria-hidden />
+              )}
             </span>
           )}
           <span className="pws-dashboard-stat-label caps">
-            {proxyOnline === null ? t("common.loading") : proxyOnline ? t("proxy.online") : t("proxy.offline")}
+            {proxyOnline === null
+              ? t("common.loading")
+              : proxyOnline
+                ? t("proxy.online")
+                : t("proxy.offline")}
           </span>
         </div>
         {health.data && (
           <>
             <div className="pws-dashboard-stat">
-              <span className="pws-dashboard-stat-count num">{health.data.version}</span>
-              <span className="pws-dashboard-stat-label caps">{t("dash.version")}</span>
+              <span className="pws-dashboard-stat-count num">
+                {health.data.version}
+              </span>
+              <span className="pws-dashboard-stat-label caps">
+                {t("dash.version")}
+              </span>
             </div>
             <div className="pws-dashboard-stat">
-              <span className="pws-dashboard-stat-count num">{formatUptime(health.data.uptime, locale)}</span>
-              <span className="pws-dashboard-stat-label caps">{t("dash.uptime")}</span>
+              <span className="pws-dashboard-stat-count num">
+                {formatUptime(health.data.uptime, locale)}
+              </span>
+              <span className="pws-dashboard-stat-label caps">
+                {t("dash.uptime")}
+              </span>
             </div>
             <div className="pws-dashboard-stat">
-              <span className="pws-dashboard-stat-count num">{health.data.pid}</span>
-              <span className="pws-dashboard-stat-label caps">{t("dash.pid")}</span>
+              <span className="pws-dashboard-stat-count num">
+                {health.data.pid}
+              </span>
+              <span className="pws-dashboard-stat-label caps">
+                {t("dash.pid")}
+              </span>
             </div>
             {(health.data.providerCooldowns ?? 0) > 0 && (
-              <div className="pws-dashboard-stat" title={t("dash.cooldownHint", { count: String(health.data.providerCooldowns) })}>
-                <span className="pws-dashboard-stat-count num" style={{ color: "var(--amber)", display: "inline-flex", alignItems: "center", gap: 4 }}><IconAlert size={13} aria-hidden />{health.data.providerCooldowns}</span>
-                <span className="pws-dashboard-stat-label caps">{t("dash.cooldown")}</span>
+              <div
+                className="pws-dashboard-stat"
+                title={t("dash.cooldownHint", {
+                  count: String(health.data.providerCooldowns),
+                })}
+              >
+                <span
+                  className="pws-dashboard-stat-count num"
+                  style={{
+                    color: "var(--amber)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <IconAlert size={13} aria-hidden />
+                  {health.data.providerCooldowns}
+                </span>
+                <span className="pws-dashboard-stat-label caps">
+                  {t("dash.cooldown")}
+                </span>
               </div>
             )}
           </>
@@ -201,15 +268,21 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
       {/* Usage stats */}
       <div className="stat-strip" role="group" aria-label={t("vk.statsAria")}>
         <div className="stat-strip-item">
-          <span className="stat-strip-waarde">{formatTokens(tokens30d, locale)}</span>
+          <span className="stat-strip-waarde">
+            {formatTokens(tokens30d, locale)}
+          </span>
           <span className="stat-strip-label">{t("vk.tokens30d")}</span>
         </div>
         <div className="stat-strip-item">
-          <span className="stat-strip-waarde">{requestsVandaag.toLocaleString(locale)}</span>
+          <span className="stat-strip-waarde">
+            {requestsVandaag.toLocaleString(locale)}
+          </span>
           <span className="stat-strip-label">{t("vk.requestsToday")}</span>
         </div>
         <div className="stat-strip-item">
-          <span className="stat-strip-waarde">{requests30d.toLocaleString(locale)}</span>
+          <span className="stat-strip-waarde">
+            {requests30d.toLocaleString(locale)}
+          </span>
           <span className="stat-strip-label">{t("vk.requests30d")}</span>
         </div>
         <div className="stat-strip-item">
@@ -218,63 +291,96 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
         </div>
         <div className="stat-strip-item">
           <span className="stat-strip-waarde">{coveragePct}</span>
-          <span className="stat-strip-label">{t("dash.coverage", { pct: coveragePct })}</span>
+          <span className="stat-strip-label">
+            {t("dash.coverage", { pct: coveragePct })}
+          </span>
         </div>
         <div className="stat-strip-item">
           <span className="stat-strip-waarde">{pct429}</span>
-          <span className="stat-strip-label">429</span>
+          <span className="stat-strip-label">{t("dash.http429")}</span>
         </div>
         <div className="stat-strip-item">
           <span className="stat-strip-waarde">{pct502}</span>
-          <span className="stat-strip-label">502</span>
+          <span className="stat-strip-label">{t("dash.http50x")}</span>
         </div>
       </div>
 
       <div className="pws-dashboard-columns">
         {/* Top providers */}
-        <section className="pws-dashboard-section pws-dashboard-section--recent"
-          aria-label={t("dash.providers")}>
+        <section
+          className="pws-dashboard-section pws-dashboard-section--recent"
+          aria-label={t("dash.providers")}
+        >
           <h3 className="pws-dashboard-section-title">{t("dash.providers")}</h3>
           {usageProviders.length > 0 ? (
             <div className="pws-dashboard-rows">
-              {usageProviders.map(p => {
+              {usageProviders.map((p) => {
                 const name = p.provider;
                 const count = p.requests;
+                const sharePct = Number.isFinite(p.shareRatio)
+                  ? Math.min(100, Math.max(0, p.shareRatio * 100))
+                  : 0;
                 return (
                   <div key={name} className="pws-dashboard-row">
                     <span className="pws-dashboard-row-name">{name}</span>
                     <span className="pws-dashboard-row-count muted">
                       {count === 1
                         ? t("pws.dashboard.requestOne")
-                        : t("pws.dashboard.requests", { count: count.toLocaleString(locale) })}
+                        : t("pws.dashboard.requests", {
+                            count: count.toLocaleString(locale),
+                          })}
                     </span>
                     {/* Mini bar */}
                     <span className="dash-bar-track" aria-hidden="true">
-                      <span className="dash-bar-fill" style={{ width: `${(count / usageProviders[0].requests) * 100}%` }} />
+                      <span
+                        className="dash-bar-fill"
+                        style={{
+                          width: `${sharePct}%`,
+                        }}
+                      />
                     </span>
                   </div>
                 );
               })}
             </div>
           ) : (
-            <p className="muted pws-dashboard-empty">{t("pws.dashboard.noUsage")}</p>
+            <p className="muted pws-dashboard-empty">
+              {t("pws.dashboard.noUsage")}
+            </p>
           )}
         </section>
 
         {/* Recent traffic */}
-        <section className="pws-dashboard-section pws-dashboard-section--rate-limits"
-          aria-label={t("nav.usage")}>
+        <section
+          className="pws-dashboard-section pws-dashboard-section--rate-limits"
+          aria-label={t("nav.usage")}
+        >
           <h3 className="pws-dashboard-section-title">{t("nav.usage")}</h3>
           {recentBons.length > 0 ? (
             <div className="pws-dashboard-rows" style={{ gap: 0 }}>
-              {recentBons.map(entry => {
-                const id = entry.requestId ?? `${entry.timestamp}-${entry.provider}-${entry.model}`;
+              {recentBons.map((entry) => {
+                const id =
+                  entry.requestId ??
+                  `${entry.timestamp}-${entry.provider}-${entry.model}`;
                 const tokens = bonTokens(entry);
                 return (
-                  <div key={id} className="traffic-entry" style={{ borderBottom: "1px solid var(--border-soft)" }}>
-                    <div className="traffic-entry-head traffic-entry-head--grid" style={{ padding: "6px 8px", fontSize: "0.8125rem" }}>
-                      <span className="traffic-col traffic-col--time traffic-time">{tijd(entry.timestamp, locale)}</span>
-                      <TrafficRowCells entry={entry} locale={locale} tokens={tokens} />
+                  <div
+                    key={id}
+                    className="traffic-entry"
+                    style={{ borderBottom: "1px solid var(--border-soft)" }}
+                  >
+                    <div
+                      className="traffic-entry-head traffic-entry-head--grid"
+                      style={{ padding: "6px 8px", fontSize: "0.8125rem" }}
+                    >
+                      <span className="traffic-col traffic-col--time traffic-time">
+                        {tijd(entry.timestamp, locale)}
+                      </span>
+                      <TrafficRowCells
+                        entry={entry}
+                        locale={locale}
+                        tokens={tokens}
+                      />
                     </div>
                   </div>
                 );

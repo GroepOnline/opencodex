@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Switch, Notice, EmptyState, Select, Tooltip } from "../ui";
 import { IconChevron, IconBoxes, IconInfo, IconShuffle } from "../icons";
+import { DotMatrix } from "../DotMatrix";
 import { useT } from "../i18n/shared";
 import type { TFn, TKey } from "../i18n/shared";
 import { modelLabel } from "../model-display";
@@ -667,7 +668,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
             </div>
           </div>
         </div>
-        <div className="row muted"><span className="spin go" /> {t("models.loading")}</div>
+        <div className="row muted"><DotMatrix size={14} dotSize={3} speed={1.1} color="var(--accent)" /> {t("models.loading")}</div>
       </>
     );
   }
@@ -1022,7 +1023,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
             </>
           )}
           {v2.enabled && v2.agentsMaxThreadsConflict && (
-            <span className="mono text-label" style={{ color: "var(--err, #e5484d)" }}>{t("models.v2Conflict")}</span>
+            <span className="mono text-label" style={{ color: "var(--red)" }}>{t("models.v2Conflict")}</span>
           )}
           {v2Note && <span className="muted text-label">{v2Note}</span>}
         </div>

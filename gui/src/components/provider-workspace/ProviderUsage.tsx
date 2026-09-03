@@ -5,6 +5,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { useT, useI18n } from "../../i18n/shared";
 import QuotaBars from "../QuotaBars";
+import { DotMatrix } from "../../DotMatrix";
 import type { WorkspaceItem } from "../../provider-workspace/catalog";
 import { IconRefresh } from "../../icons";
 import { formatRelativeTime, relativeTimeLabelsFromT, formatRequestCount, formatTokenCount, formatCostUsd } from "../../provider-workspace/usage";
@@ -148,7 +149,7 @@ export default function ProviderUsage({ item, usageTotals, quotaReport, modelUsa
               disabled={quotaRefreshing}
               aria-label={t("prov.quotaRefreshAria", { name: item.name })}
             >
-              {quotaRefreshing ? <span className="spin go" /> : <IconRefresh />}
+              {quotaRefreshing ? <DotMatrix size={14} dotSize={3} speed={1.1} color="var(--accent)" /> : <IconRefresh />}
               {quotaRefreshing ? t("prov.quotaRefreshing") : quotaFailed ? t("pws.retry") : t("prov.quotaRefresh")}
             </button>
           )}

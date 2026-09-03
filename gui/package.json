@@ -14,11 +14,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@designcodeio/threeui": "^1.1.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource/instrument-serif": "^5.3.0",
     "@tanstack/react-virtual": "^3.14.5",
     "posthog-js": "^1.260.1",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

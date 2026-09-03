@@ -201,9 +201,9 @@ export default function OAuthAccountPoolSettings({
         style={{
           marginTop: 10,
           padding: "8px 10px",
-          border: "1px solid var(--border, #c9a227)",
-          borderRadius: 6,
-          background: "color-mix(in srgb, var(--warn, #c9a227) 12%, transparent)",
+          border: "1px solid color-mix(in srgb, var(--amber) 40%, transparent)",
+          borderRadius: "var(--radius-sm)",
+          background: "var(--amber-soft)",
         }}
       >
         {t(WARNING_KEYS[provider])}

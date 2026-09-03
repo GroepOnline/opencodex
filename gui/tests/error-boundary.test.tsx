@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { Window } from "happy-dom";
-import { act } from "react";
+import { act, lazy, Suspense } from "react";
 import type { Root } from "react-dom/client";
 import ErrorBoundary from "../src/components/ErrorBoundary";
 
@@ -64,6 +64,41 @@ test("shows the failed page and recovers when Reload resets the boundary", async
 
   expect(container.textContent).toContain("Recovered page");
   expect(container.textContent).not.toContain("render exploded");
+
+  await act(async () => {
+    root.unmount();
+  });
+});
+
+
+test("catches a rejected lazy import outside Suspense", async () => {
+  const { createRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const BrokenLazy = lazy(async () => {
+    throw new Error("lazy import exploded");
+  });
+
+  let root: Root;
+  await act(async () => {
+    root = createRoot(container);
+    root.render(
+      <ErrorBoundary
+        pageName="OpenCodex"
+        title="Page failed to load"
+        message="Try again."
+        detailsLabel="Error"
+        reloadLabel="Reload"
+      >
+        <Suspense fallback={<p>Loading</p>}>
+          <BrokenLazy />
+        </Suspense>
+      </ErrorBoundary>,
+    );
+  });
+
+  expect(container.textContent).toContain("OpenCodex: Page failed to load");
+  expect(container.textContent).toContain("lazy import exploded");
 
   await act(async () => {
     root.unmount();
