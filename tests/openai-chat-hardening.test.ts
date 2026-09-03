@@ -89,6 +89,39 @@ describe("openai-chat stream response hardening", () => {
   });
 });
 
+describe("openai-chat V2 collaboration schema compatibility", () => {
+  test("strips private encrypted markers while preserving a property named encrypted", () => {
+    const req = parsed();
+    req.context.tools = [{
+      name: "spawn_agent",
+      description: "Spawn worker",
+      parameters: {
+        type: "object",
+        properties: {
+          message: { type: "string", encrypted: true },
+          encrypted: { type: "boolean" },
+          nested: { type: "object", properties: { value: { type: "string", encrypted: true } } },
+        },
+        required: ["message", "encrypted"],
+        dependentSchemas: { encrypted: { properties: { child: { type: "string", encrypted: true } } } },
+        dependentRequired: { encrypted: ["message"] },
+        dependencies: { encrypted: ["message"] },
+      },
+    }];
+
+    const body = JSON.parse(createOpenAIChatAdapter(provider()).buildRequest(req).body);
+    const parameters = body.tools[0].function.parameters;
+
+    expect(parameters.properties.message.encrypted).toBeUndefined();
+    expect(parameters.properties.nested.properties.value.encrypted).toBeUndefined();
+    expect(parameters.properties.encrypted).toEqual({ type: "boolean" });
+    expect(parameters.required).toEqual(["message", "encrypted"]);
+    expect(parameters.dependentSchemas.encrypted.properties.child.encrypted).toBeUndefined();
+    expect(parameters.dependentRequired.encrypted).toEqual(["message"]);
+    expect(parameters.dependencies.encrypted).toEqual(["message"]);
+  });
+});
+
 describe("openai-chat credential hardening", () => {
   test("key mode rejects a blank credential", () => {
     const adapter = createOpenAIChatAdapter(provider({ apiKey: "   " }));
