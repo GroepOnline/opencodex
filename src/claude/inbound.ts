@@ -463,7 +463,7 @@ export function anthropicToResponsesTranslation(raw: unknown, cc?: OcxClaudeCode
     // Claude Code metadata.user_id can be much longer, so derive one stable opaque session id and
     // reuse it for both user attribution and prompt-cache affinity.
     const sessionKey = createHash("sha256").update(raw.metadata.user_id).digest("hex").slice(0, 32);
-    body.user = sessionKey;
+    body.user = raw.metadata.user_id.length <= 64 ? raw.metadata.user_id : sessionKey;
     // OpenAI-side prompt caching is routed by prompt_cache_key (Codex clients send
     // their session id; without it consecutive /v1/messages turns reported
     // cached_tokens: 0 on the ChatGPT backend — devlog 090). Claude Code's
