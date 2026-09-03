@@ -58,9 +58,9 @@ export default defineConfig({
         { icon: "github", label: "GitHub", href: "https://github.com/GroepOnline/opencodex" },
       ],
       editLink: {
-        // `dev` is the only integration branch (see MAINTAINERS.md); `main` receives
-        // release promotions only, so "Edit page" must open a `dev` edit session.
-        baseUrl: "https://github.com/GroepOnline/opencodex/edit/dev/docs-site/",
+        // `main` is the only integration branch (see MAINTAINERS.md); "Edit page"
+        // must open a `main` edit session so the resulting PR targets `main`.
+        baseUrl: "https://github.com/GroepOnline/opencodex/edit/main/docs-site/",
       },
       lastUpdated: true,
       // English at the site root; Korean under /ko, Simplified Chinese under /zh-cn, Russian under /ru, Japanese under /ja.

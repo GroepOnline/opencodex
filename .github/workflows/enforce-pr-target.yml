@@ -42,13 +42,14 @@ jobs:
               path.join(process.cwd(), ".github", "scripts", "pr-quality.cjs"),
             );
 
-            // PRs target `dev`, the integration branch. `main` is the release
-            // branch and is not an allowed base. Maintainer promotion is an
-            // explicit exception in collectPrQualityFailures: base main + head
-            // dev on the same repository. Do not add `main` to this list.
+            // PRs target `main`, the integration branch. `dev` is not an
+            // allowed feature-PR base. Maintainer promotion remains an
+            // explicit leftover exception in collectPrQualityFailures: base
+            // main + head dev on the same repository. Stacked children that
+            // target another open PR head are also exempt.
             // (See tests/ci-workflows.test.ts — the allow-list is pinned there.)
-            const DEFAULT_BASE = "dev";
-            const ALLOWED_BASES = ["dev"];
+            const DEFAULT_BASE = "main";
+            const ALLOWED_BASES = ["main"];
             const TITLE_PREFIX = "[WRONG BRANCH] ";
             const COMMENT_MARKER = "<!-- pr-quality-enforcer -->";
             const LEGACY_COMMENT_MARKER = "<!-- wrong-branch-enforcer -->";
@@ -224,9 +225,9 @@ jobs:
                 sections.push(
                   "⚠️ **Wrong branch ancestry**",
                   "",
-                  `This pull request targets ${inlineCode(pr.base.ref)}, but its head appears to sit on the current ${inlineCode("main")} tip while being far behind ${inlineCode(pr.base.ref)}.`,
+                  `This pull request targets ${inlineCode(pr.base.ref)}, but its head appears to sit on a stale tip while being far behind ${inlineCode(pr.base.ref)}.`,
                   "",
-                  `@${pr.user.login} Rebase onto the current ${inlineCode(pr.base.ref)} branch instead of opening from ${inlineCode("main")}. That keeps already-released commits out of the integration branch.`
+                  `@${pr.user.login} Rebase onto the current ${inlineCode("main")} branch. That keeps already-released commits out of the integration branch.`
                 );
               }
 

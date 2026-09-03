@@ -92,15 +92,15 @@ bun run release:watch               # watch the newest Release workflow run
 
 ## Branches
 
-- `dev` — the only integration target. Open your pull request here.
-- `main` — releases only. It moves by maintainer-controlled promotion from
-  `dev`; do not open feature pull requests against it.
+- `main` — the only integration target. Open your pull request here.
+- `dev` — leftover line. Same-repository `dev` → `main` promotion remains an
+  explicit exception in the target-branch check. Feature heads must target `main`.
 - `preview` — the prerelease train.
 
 The `dev2-go` line that carried the Go native port has been retired, and the
 dual-track carry policy with it. Its history is published read-only at
 [GroepOnline/opencodex-go-archive](https://github.com/GroepOnline/opencodex-go-archive).
-Bun-native TypeScript on `dev` is the single runtime line.
+Bun-native TypeScript on `main` is the single runtime line.
 
 Rebase pull requests are welcome. Bringing a stale branch onto the current head
 is normal contribution rather than noise — note the source commits in the
@@ -108,10 +108,10 @@ description.
 
 ## Pull requests
 
-- Target **`dev`**. Do not open feature or fix pull requests against **`main`**.
-  The required **`enforce-target`** check allows only a same-repository
+- Target **`main`**. Do not open feature or fix pull requests against **`dev`**.
+  The required **`enforce-target`** check still allows a same-repository
   maintainer promotion from **`dev`** onto **`main`**.
-- Branch from the current **`dev`** tip, not from **`main`**. The required **`enforce-target`** check rejects heads whose merge base sits on the **`main`** tip while the branch is far behind the pull request base (the failure mode seen in #644).
+- Branch from the current **`main`** tip. The required **`enforce-target`** check rejects heads whose merge base sits on a stale tip while the branch is far behind the pull request base (the failure mode seen in #644).
 - Write a real description: a **Summary** of what changed and why, plus a **Test plan** (or equivalent substance). Empty bodies, placeholder-only text, and descriptions that use escaped `\n` instead of real line breaks fail the check.
 - Workflow changes in this repository use **`pull_request_target`**. Updated enforcement logic applies only after the workflow is promoted to the repository default branch — the same operational caveat documented in #631.
 
