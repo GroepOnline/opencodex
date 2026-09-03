@@ -8,8 +8,8 @@ review and merge policy.
 | GitHub account | Project role | Responsibilities |
 | --- | --- | --- |
 | [@GroepOnline](https://github.com/GroepOnline) | Project owner | Project direction, releases, repository administration, and final governance decisions |
-| [@Ingwannu](https://github.com/Ingwannu) | Maintainer | Issue and pull-request triage, `dev` integration, security review, and repository maintenance |
-| [@Wibias](https://github.com/Wibias) | Maintainer | Issue and pull-request triage, `dev` integration, and provider/CI maintenance |
+| [@Ingwannu](https://github.com/Ingwannu) | Maintainer | Issue and pull-request triage, `main` integration, security review, and repository maintenance |
+| [@Wibias](https://github.com/Wibias) | Maintainer | Issue and pull-request triage, `main` integration, and provider/CI maintenance |
 
 The table describes project responsibilities. Actual repository permissions remain controlled
 through GitHub repository settings.
