@@ -10,15 +10,14 @@ Thanks for helping with opencodex.
 
 ## Branches
 
-- `dev` — the only integration target for pull requests.
-- `main` — releases only; moves by maintainer-controlled promotion from `dev`.
-  The required `enforce-target` check allows that same-repository `dev` → `main`
-  promotion and rejects every other `main`-targeted head.
+- `main` — the only integration target for pull requests.
+- `dev` — leftover line. Same-repository `dev` → `main` promotion remains an
+  explicit exception in the target-branch check. Feature heads must target `main`.
 - `preview` — prerelease train.
 
 The `dev2-go` Go native-port line has been retired. Its history is archived at
 [GroepOnline/opencodex-go-archive](https://github.com/GroepOnline/opencodex-go-archive),
-and everything now goes to `dev`. See [`MAINTAINERS.md`](./MAINTAINERS.md) for
+and everything now goes to `main`. See [`MAINTAINERS.md`](./MAINTAINERS.md) for
 the reasoning.
 
 Rebase pull requests are welcome: bringing a stale branch onto the current head

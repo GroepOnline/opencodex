@@ -8,7 +8,7 @@ const {
 } = require(path.join(__dirname, "issue-quality.cjs"));
 
 const ANCESTRY_BEHIND_THRESHOLD = 20;
-/** Cap on ahead_by vs main so stale `dev` forks (many commits ahead of main) are not flagged. */
+/** Cap on ahead_by vs main so heads many commits ahead of main are not flagged. */
 const ANCESTRY_AHEAD_MAIN_MAX = 5;
 const MIN_SECTION_LEN = 40;
 const MIN_RICH_SECTIONS = 2;

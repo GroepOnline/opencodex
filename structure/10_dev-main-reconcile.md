@@ -10,11 +10,12 @@ As of 2026-08-10:
 | Fact | Value |
 | --- | --- |
 | `dev` tip | tracks `main` (fast-forward) |
-| Integration target for PRs | `dev` |
-| Release branch | `main` (promotion from `dev` only) |
-| Dependabot | enabled, `target-branch: dev` |
+| Integration target for PRs | `main` |
+| Release branch | `main` |
+| Dependabot | enabled, `target-branch: main` |
 
-Prefer landing work on `dev`, then promoting a coherent tip to `main`.
+Prefer landing work on `main`. Same-repository `dev` → `main` promotion remains
+an explicit leftover exception in the target-branch check.
 
 ## Historical divergence (2026-08-03)
 
@@ -52,6 +53,6 @@ old PR comments remain intelligible:
 
 ## Operator checklist
 
-1. Open feature PRs against `dev`.
-2. Promote `dev` → `main` only for release trains / hotfix promotions.
-3. Keep Dependabot targeting `dev` (see `.github/dependabot.yml`).
+1. Open feature PRs against `main`.
+2. Same-repository `dev` → `main` promotion remains an explicit leftover exception.
+3. Keep Dependabot targeting `main` (see `.github/dependabot.yml`).
