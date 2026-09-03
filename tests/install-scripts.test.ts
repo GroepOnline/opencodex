@@ -28,7 +28,7 @@ describe("install scripts", () => {
     expect(pkg.main).toBe("./bin/package-main.mjs");
     expect(pkg.exports?.["."]?.bun).toBe("./src/index.ts");
     expect(pkg.exports?.["."]?.default).toBe("./bin/package-main.mjs");
-    expect(pkg.dependencies?.zod).toBe("4.4.3");
+    expect(pkg.dependencies?.zod).toBe("4.5.4");
     expect(pkg.dependencies?.bun).toBe("1.4.0");
     expect(pkg.devDependencies?.typescript).toBe("5.9.3");
     expect(pkg.devDependencies?.["@types/bun"]).toBe("1.4.0");
