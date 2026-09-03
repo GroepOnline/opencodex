@@ -149,6 +149,12 @@ function runExternalJson(command: string, payload: unknown, config: DesktopExecu
 
     child.stdout.on("data", chunk => { stdout += chunk.toString(); });
     child.stderr.on("data", chunk => { stderr += chunk.toString(); });
+    child.stdin.on("error", err => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
     child.on("error", err => {
       if (settled) return;
       settled = true;
