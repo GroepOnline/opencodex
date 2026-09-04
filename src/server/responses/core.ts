@@ -1144,6 +1144,8 @@ export async function handleResponses(
   } catch (err) {
     return decodeRequestErrorResponse(err, "responses");
   }
+  const rawStream = (body as { stream?: unknown } | null)?.stream;
+  if (typeof rawStream === "boolean") logCtx.stream ??= rawStream;
   const comboId = !options.comboAttempt ? comboIdFromRawBody(body, config) : null;
   if (comboId && Object.hasOwn(config.combos ?? {}, comboId)) {
     return handleComboResponses(req, body, comboId, config, logCtx, options);

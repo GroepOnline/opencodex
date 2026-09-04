@@ -541,6 +541,9 @@ export async function handleClaudeMessages(
   let effortOverride: ReturnType<typeof extractOcxEffortDirective> = null;
   try {
     anthropicBody = await readAnthropicBody(req);
+    if (isRec(anthropicBody) && typeof anthropicBody.stream === "boolean") {
+      logCtx.stream ??= anthropicBody.stream;
+    }
     // Defensive [1m] strip (devlog 138): clients normally remove the context-variant
     // marker themselves; the 1M signal we act on is the anthropic-beta header.
     // Case-insensitive — the CLI matches /\[1m\]/i (audit 021 #7).

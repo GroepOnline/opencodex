@@ -164,6 +164,7 @@ test("unmapped claude model + sk-ant credential passes through verbatim", async 
     expect(row).toBeDefined();
     expect(row.status).toBe(200);
     expect(row.model).toBe("claude-fable-5");
+    expect(row.stream).toBe(true);
     // raw input 700000 + cache read 690000 + cache write 1000 (inclusive convention)
     expect(row.usage.inputTokens).toBe(1391000);
     expect(row.usage.outputTokens).toBe(42);
