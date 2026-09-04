@@ -1196,6 +1196,7 @@ export async function handleResponses(
       cursorConversationId: parsed._cursorConversationId,
     });
   }
+  logCtx.stream ??= parsed.stream;
   logCtx.requestedModel = parsed.modelId;
   logCtx.requestedEffort = parsed.options.reasoning;
   logCtx.requestedServiceTier = parsed.options.serviceTier;

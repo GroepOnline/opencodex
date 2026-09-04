@@ -74,6 +74,17 @@ describe("request telemetry privacy", () => {
     telemetry.mockRestore();
     clearRequestLogsForTests();
   });
+
+  test("forwards client streaming state to external generation telemetry", () => {
+    const telemetry = spyOn(posthogTelemetry, "captureRequestTelemetry").mockImplementation(() => {});
+    clearRequestLogsForTests();
+
+    addRequestLog(log({ stream: true }));
+
+    expect(telemetry).toHaveBeenCalledWith(expect.objectContaining({ stream: true }));
+    telemetry.mockRestore();
+    clearRequestLogsForTests();
+  });
 });
 
 describe("request log metadata", () => {
@@ -195,6 +206,12 @@ describe("request log metadata", () => {
     const fresh: RequestLogContext = { model: "m", provider: "p" };
     recordFirstOutput(fresh, Number.NaN, 100);
     expect(fresh.firstOutputMs).toBeUndefined();
+  });
+
+  test("addFinalRequestLog preserves client stream state", () => {
+    const entries: RequestLogEntry[] = [];
+    addFinalRequestLog("ocx-stream", 0, { model: "m", provider: "p", stream: true }, 200, undefined, entry => entries.push(entry));
+    expect(entries[0]?.stream).toBe(true);
   });
 
   test("addFinalRequestLog preserves firstOutputMs; unset stays absent", () => {

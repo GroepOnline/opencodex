@@ -49,6 +49,8 @@ export interface RequestLogContext {
    * provider of that name — so cap-cooldown attribution must use this, never `provider`.
    */
   providerConfigKey?: string;
+  /** Whether the client requested a streamed generation. */
+  stream?: boolean;
   /** TTFT: ms from request start to the first non-empty model output delta (WP4, devlog 040). */
   firstOutputMs?: number;
   /** Best-effort chat/session correlation for Logs grouping (#330). Opaque; omit when unknown. */
@@ -111,6 +113,8 @@ export interface RequestLogEntry {
   timestamp: number;
   model: string;
   provider: string;
+  /** Whether the client requested a streamed generation. */
+  stream?: boolean;
   /** TTFT: ms from request start to the first non-empty model output delta; unset for non-streaming/tool-only. */
   firstOutputMs?: number;
   surface?: "claude" | "claude-desktop" | "codex" | "grok";
@@ -355,6 +359,7 @@ export function addRequestLog(entry: RequestLogEntry) {
     ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
     status: entry.status,
     durationMs: entry.durationMs,
+    ...(entry.stream !== undefined ? { stream: entry.stream } : {}),
     ...(entry.firstOutputMs !== undefined ? { firstOutputMs: entry.firstOutputMs } : {}),
     ...(entry.errorCode ? { errorCode: entry.errorCode } : {}),
     usageStatus: entry.usageStatus,
@@ -887,6 +892,7 @@ export function addFinalRequestLog(
       ...(logCtx.resolvedModel ? { resolvedModel: logCtx.resolvedModel } : {}),
       status: effectiveStatus,
       durationMs: Date.now() - start,
+      ...(logCtx.stream !== undefined ? { stream: logCtx.stream } : {}),
       ...(logCtx.firstOutputMs !== undefined ? { firstOutputMs: logCtx.firstOutputMs } : {}),
       ...(errorCode ? { errorCode } : {}),
       ...(meta?.terminalStatus ? { terminalStatus: meta.terminalStatus } : {}),

@@ -603,6 +603,7 @@ export async function handleClaudeMessages(
 
   const requestedModel = (anthropicBody as Rec).model as string;
   const stream = internalBody.stream === true;
+  logCtx.stream = stream;
   // Routed adapters only support streamed turns; always stream internally and fold
   // the translated Anthropic SSE into a message JSON for non-streaming clients.
   internalBody.stream = true;
