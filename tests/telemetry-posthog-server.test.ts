@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, setSystemTime } from "bun:
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getServerPosthog, PosthogClient, resetServerPosthog } from "../src/telemetry/posthog-server";
+import {
+  captureRequestTelemetry,
+  getServerPosthog,
+  PosthogClient,
+  resetServerPosthog,
+} from "../src/telemetry/posthog-server";
 
 /**
  * `flush()` drains the whole queue before sending it, so a transient PostHog
@@ -146,6 +151,35 @@ describe("PosthogClient telemetry contract", () => {
       durationMs: 1234,
       $lib: "opencodex-server",
     });
+  });
+
+  it("marks terminal telemetry as error when an error code accompanies a successful HTTP status", async () => {
+    const previousKey = process.env["OCX_POSTHOG_KEY"];
+    try {
+      process.env["OCX_POSTHOG_KEY"] = "phc_test";
+      resetServerPosthog();
+      captureRequestTelemetry({
+        requestId: "req-error-code",
+        provider: "openai",
+        model: "gpt-test",
+        status: 200,
+        durationMs: 25,
+        errorCode: "upstream_error",
+        usageStatus: "missing",
+      });
+
+      const client = getServerPosthog();
+      expect(client).not.toBeNull();
+      await client!.flush();
+      const terminal = bodies[0]!.find((event) => event.event === "proxy_request_terminal");
+      const generation = bodies[0]!.find((event) => event.event === "$ai_generation");
+      expect(terminal?.properties["outcome"]).toBe("error");
+      expect(generation?.properties["$ai_is_error"]).toBe(true);
+    } finally {
+      resetServerPosthog();
+      if (previousKey === undefined) delete process.env["OCX_POSTHOG_KEY"];
+      else process.env["OCX_POSTHOG_KEY"] = previousKey;
+    }
   });
 
   it("caps long allowlisted string values", async () => {

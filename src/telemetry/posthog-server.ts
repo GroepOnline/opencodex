@@ -294,6 +294,12 @@ export interface AiGenerationTelemetryInput {
   responseServiceTier?: string;
 }
 
+function requestIsError(
+  entry: Pick<AiGenerationTelemetryInput, "status" | "errorCode">,
+): boolean {
+  return entry.status >= 400 || Boolean(entry.errorCode);
+}
+
 /**
  * Build privacy-safe canonical PostHog AI properties for one terminal gateway request.
  * Prompt/output bodies, raw upstream errors, account identifiers and headers are never accepted.
@@ -311,7 +317,7 @@ export function aiGenerationProperties(
     usageStatus: entry.usageStatus,
     ...(serviceTier ? { serviceTier } : {}),
   });
-  const isError = entry.status >= 400 || Boolean(entry.errorCode);
+  const isError = requestIsError(entry);
   return {
     $ai_trace_id: traceId,
     $ai_generation_id: entry.requestId,
@@ -343,11 +349,12 @@ export function captureRequestTelemetry(entry: AiGenerationTelemetryInput): void
   const client = getServerPosthog();
   if (!client) return;
   try {
+    const isError = requestIsError(entry);
     client.capture(TELEMETRY_EVENTS.REQUEST_TERMINAL, {
       provider: entry.provider,
       model: entry.resolvedModel ?? entry.model,
       status: entry.status,
-      outcome: entry.status >= 400 ? "error" : "success",
+      outcome: isError ? "error" : "success",
       durationMs: entry.durationMs,
       ...(entry.firstOutputMs !== undefined ? { firstOutputMs: entry.firstOutputMs } : {}),
       ...(entry.usage ? {
