@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import * as capCooldown from "../src/providers/cap-cooldown";
+import * as posthogTelemetry from "../src/telemetry/posthog-server";
 import {
   filterRequestLogs,
   addFinalRequestLog,
@@ -11,6 +12,7 @@ import {
   type RequestLogEntry,
 } from "../src/server";
 import {
+  addRequestLog,
   aggregateAttemptUsage,
   beginRequestAttempt,
   clearRequestLogsForTests,
@@ -58,6 +60,55 @@ function log(overrides: Partial<RequestLogEntry>): RequestLogEntry {
     ...overrides,
   };
 }
+
+describe("request telemetry privacy", () => {
+  test("strips account-scoped provider labels before external telemetry", () => {
+    const telemetry = spyOn(posthogTelemetry, "captureRequestTelemetry").mockImplementation(() => {});
+    clearRequestLogsForTests();
+
+    const entry = log({ provider: "openai-pabcdef" });
+    addRequestLog(entry);
+
+    expect(telemetry).toHaveBeenCalledWith(expect.objectContaining({ provider: "openai" }));
+    expect(getRequestLogEntries()[0]?.provider).toBe("openai-pabcdef");
+    telemetry.mockRestore();
+    clearRequestLogsForTests();
+  });
+
+  test("forwards only pricing-safe combo attempt fields to external generation telemetry", () => {
+    const telemetry = spyOn(posthogTelemetry, "captureRequestTelemetry").mockImplementation(() => {});
+    clearRequestLogsForTests();
+
+    addRequestLog(log({
+      provider: "combo",
+      attempts: [{
+        ordinal: 1, provider: "openai-pabcdef", model: "gpt-5.6-sol", adapter: "openai-chat",
+        status: 200, durationMs: 10, sendCount: 1, recoveryKinds: [], usageStatus: "reported",
+        usage: { inputTokens: 10, outputTokens: 2 }, providerAccountId: "must-not-leave-local-log",
+      }],
+    }));
+
+    expect(telemetry).toHaveBeenCalledWith(expect.objectContaining({
+      attempts: [{
+        ordinal: 1, provider: "openai", model: "gpt-5.6-sol", usageStatus: "reported",
+        usage: { inputTokens: 10, outputTokens: 2 },
+      }],
+    }));
+    telemetry.mockRestore();
+    clearRequestLogsForTests();
+  });
+
+  test("forwards client streaming state to external generation telemetry", () => {
+    const telemetry = spyOn(posthogTelemetry, "captureRequestTelemetry").mockImplementation(() => {});
+    clearRequestLogsForTests();
+
+    addRequestLog(log({ stream: true }));
+
+    expect(telemetry).toHaveBeenCalledWith(expect.objectContaining({ stream: true }));
+    telemetry.mockRestore();
+    clearRequestLogsForTests();
+  });
+});
 
 describe("request log metadata", () => {
   test("records the adapter's exact outbound reasoning parameter", () => {
@@ -178,6 +229,12 @@ describe("request log metadata", () => {
     const fresh: RequestLogContext = { model: "m", provider: "p" };
     recordFirstOutput(fresh, Number.NaN, 100);
     expect(fresh.firstOutputMs).toBeUndefined();
+  });
+
+  test("addFinalRequestLog preserves client stream state", () => {
+    const entries: RequestLogEntry[] = [];
+    addFinalRequestLog("ocx-stream", 0, { model: "m", provider: "p", stream: true }, 200, undefined, entry => entries.push(entry));
+    expect(entries[0]?.stream).toBe(true);
   });
 
   test("addFinalRequestLog preserves firstOutputMs; unset stays absent", () => {
@@ -1323,6 +1380,7 @@ describe("request log restart hydrate", () => {
       requestedSpeedLabel: "fast",
       configuredServiceTier: "auto",
       modelSupportsServiceTier: true,
+      stream: true,
       status: 502,
       durationMs: 42,
       usageStatus: "unreported",
@@ -1345,6 +1403,7 @@ describe("request log restart hydrate", () => {
       requestedSpeedLabel: "fast",
       configuredServiceTier: "auto",
       modelSupportsServiceTier: true,
+      stream: true,
       status: 502,
       durationMs: 42,
       usageStatus: "unreported",
