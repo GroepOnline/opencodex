@@ -467,6 +467,21 @@ test("a routed pool account's token overrides the caller bearer on the live rela
   }
 });
 
+test("sideband terminal logging follows the actual upgrade outcome", () => {
+  const source = readFileSync(join(import.meta.dir, "../src/server/index.ts"), "utf8");
+  const start = source.indexOf("// Voice / Realtime sideband WebSocket:");
+  const end = source.indexOf("// Data-plane guard:", start);
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  const block = source.slice(start, end);
+  const upgrade = block.indexOf("if (server.upgrade(req, {");
+  const accepted = block.indexOf("addFinalRequestLog(requestId, start, logCtx, 101);", upgrade);
+  const rejected = block.indexOf("addFinalRequestLog(requestId, start, logCtx, 426);", upgrade);
+  expect(upgrade).toBeGreaterThanOrEqual(0);
+  expect(accepted).toBeGreaterThan(upgrade);
+  expect(rejected).toBeGreaterThan(accepted);
+});
+
 test("sideband GET /v1/live/{callId} upgrades and relays bidirectionally to ChatGPT backend", async () => {
   const seenPaths: string[] = [];
   const seenUpgradeHeaders: Headers[] = [];

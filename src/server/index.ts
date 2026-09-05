@@ -954,7 +954,6 @@ export function startServer(port?: number) {
           addFinalRequestLog(requestId, start, logCtx, 429);
           return withCors(sidebandReservation, req, config);
         }
-        addFinalRequestLog(requestId, start, logCtx, 101);
         if (server.upgrade(req, {
           data: {
             kind: "live-sideband",
@@ -964,8 +963,12 @@ export function startServer(port?: number) {
             liveOpened: false,
             rateLimitRelease: sidebandReservation.release,
           } satisfies WsData,
-        })) return undefined as unknown as Response;
+        })) {
+          addFinalRequestLog(requestId, start, logCtx, 101);
+          return undefined as unknown as Response;
+        }
         sidebandReservation.release();
+        addFinalRequestLog(requestId, start, logCtx, 426);
         return withCors(formatErrorResponse(426, "upgrade_required", "WebSocket upgrade failed"), req, config);
       }
 
