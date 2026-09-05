@@ -19,7 +19,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { getConfigDir } from "../config";
-import { estimateRequestCost } from "../usage/cost";
+import { effectiveServiceTier, estimateRequestCost } from "../usage/cost";
 import type { UsageStatus } from "../usage/log";
 import type { OcxUsage } from "../types";
 
@@ -309,7 +309,7 @@ export function aiGenerationProperties(
   traceId: string = crypto.randomUUID(),
 ): Record<string, unknown> {
   const model = entry.resolvedModel?.trim() || entry.model;
-  const serviceTier = entry.responseServiceTier ?? entry.configuredServiceTier ?? entry.requestedServiceTier;
+  const serviceTier = effectiveServiceTier(entry);
   const cost = estimateRequestCost({
     provider: entry.provider,
     model,
