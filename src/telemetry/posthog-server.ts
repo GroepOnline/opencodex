@@ -19,7 +19,11 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { getConfigDir } from "../config";
-import { effectiveServiceTier, estimateComboCost, estimateRequestCost } from "../usage/cost";
+import {
+  effectiveServiceTier,
+  estimateComboCost,
+  estimateRequestCost,
+} from "../usage/cost";
 import type { PersistedUsageAttempt, UsageStatus } from "../usage/log";
 import type { OcxUsage } from "../types";
 
@@ -288,7 +292,12 @@ export interface AiGenerationTelemetryInput {
   errorCode?: string;
   usageStatus: UsageStatus;
   usage?: OcxUsage;
-  attempts?: Array<Pick<PersistedUsageAttempt, "ordinal" | "provider" | "model" | "usage" | "usageStatus">>;
+  attempts?: Array<
+    Pick<
+      PersistedUsageAttempt,
+      "ordinal" | "provider" | "model" | "usage" | "usageStatus"
+    >
+  >;
   stream?: boolean;
   requestedServiceTier?: string;
   configuredServiceTier?: string;
@@ -314,12 +323,12 @@ export function aiGenerationProperties(
   const cost = entry.attempts?.length
     ? estimateComboCost(entry.attempts, undefined, serviceTier)
     : estimateRequestCost({
-      provider: entry.provider,
-      model,
-      usage: entry.usage,
-      usageStatus: entry.usageStatus,
-      ...(serviceTier ? { serviceTier } : {}),
-    });
+        provider: entry.provider,
+        model,
+        usage: entry.usage,
+        usageStatus: entry.usageStatus,
+        ...(serviceTier ? { serviceTier } : {}),
+      });
   const isError = requestIsError(entry);
   return {
     $ai_trace_id: traceId,
@@ -331,10 +340,12 @@ export function aiGenerationProperties(
     ...(entry.firstOutputMs !== undefined
       ? { $ai_time_to_first_token: Math.max(0, entry.firstOutputMs) / 1_000 }
       : {}),
-    ...(entry.usage ? {
-      $ai_input_tokens: entry.usage.inputTokens,
-      $ai_output_tokens: entry.usage.outputTokens,
-    } : {}),
+    ...(entry.usage
+      ? {
+          $ai_input_tokens: entry.usage.inputTokens,
+          $ai_output_tokens: entry.usage.outputTokens,
+        }
+      : {}),
     ...(cost ? { $ai_total_cost_usd: cost.cost.total } : {}),
     $ai_http_status: entry.status,
     $ai_is_error: isError,
@@ -343,12 +354,16 @@ export function aiGenerationProperties(
     $ai_product: "opencodex",
     ...(entry.surface ? { surface: entry.surface } : {}),
     usageStatus: entry.usageStatus,
-    ...(entry.usage?.estimated !== undefined ? { usageEstimated: entry.usage.estimated } : {}),
+    ...(entry.usage?.estimated !== undefined
+      ? { usageEstimated: entry.usage.estimated }
+      : {}),
   };
 }
 
 /** Emit both OCX fleet telemetry and canonical PostHog AI generation telemetry. */
-export function captureRequestTelemetry(entry: AiGenerationTelemetryInput): void {
+export function captureRequestTelemetry(
+  entry: AiGenerationTelemetryInput,
+): void {
   const client = getServerPosthog();
   if (!client) return;
   try {
@@ -359,14 +374,23 @@ export function captureRequestTelemetry(entry: AiGenerationTelemetryInput): void
       status: entry.status,
       outcome: isError ? "error" : "success",
       durationMs: entry.durationMs,
-      ...(entry.firstOutputMs !== undefined ? { firstOutputMs: entry.firstOutputMs } : {}),
-      ...(entry.usage ? {
-        inputTokens: entry.usage.inputTokens,
-        outputTokens: entry.usage.outputTokens,
-      } : {}),
+      ...(entry.firstOutputMs !== undefined
+        ? { firstOutputMs: entry.firstOutputMs }
+        : {}),
+      ...(entry.usage
+        ? {
+            inputTokens: entry.usage.inputTokens,
+            outputTokens: entry.usage.outputTokens,
+          }
+        : {}),
       ...(entry.errorCode ? { errorCode: entry.errorCode } : {}),
     });
-    client.capture("$ai_generation", aiGenerationProperties(entry));
+    // HTTP 101 is the terminal record for a successful WebSocket transport upgrade,
+    // not a completed model generation. Keep the fleet request event, but do not
+    // contaminate canonical PostHog generation counts with protocol handshakes.
+    if (entry.status !== 101) {
+      client.capture("$ai_generation", aiGenerationProperties(entry));
+    }
   } catch {
     // Telemetry is best-effort and must never affect gateway request completion.
   }
