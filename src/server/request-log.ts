@@ -364,6 +364,13 @@ export function addRequestLog(entry: RequestLogEntry) {
     ...(entry.errorCode ? { errorCode: entry.errorCode } : {}),
     usageStatus: entry.usageStatus,
     ...(entry.usage ? { usage: entry.usage } : {}),
+    ...(entry.attempts?.length ? { attempts: entry.attempts.map(attempt => ({
+      ordinal: attempt.ordinal,
+      provider: baseProviderLabel(attempt.provider),
+      model: attempt.model,
+      usageStatus: attempt.usageStatus,
+      ...(attempt.usage ? { usage: attempt.usage } : {}),
+    })) } : {}),
     ...(entry.requestedServiceTier ? { requestedServiceTier: entry.requestedServiceTier } : {}),
     ...(entry.configuredServiceTier ? { configuredServiceTier: entry.configuredServiceTier } : {}),
     ...(entry.responseServiceTier ? { responseServiceTier: entry.responseServiceTier } : {}),

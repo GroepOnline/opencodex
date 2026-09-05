@@ -19,8 +19,8 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { getConfigDir } from "../config";
-import { effectiveServiceTier, estimateRequestCost } from "../usage/cost";
-import type { UsageStatus } from "../usage/log";
+import { effectiveServiceTier, estimateComboCost, estimateRequestCost } from "../usage/cost";
+import type { PersistedUsageAttempt, UsageStatus } from "../usage/log";
 import type { OcxUsage } from "../types";
 
 /**
@@ -288,6 +288,7 @@ export interface AiGenerationTelemetryInput {
   errorCode?: string;
   usageStatus: UsageStatus;
   usage?: OcxUsage;
+  attempts?: Array<Pick<PersistedUsageAttempt, "ordinal" | "provider" | "model" | "usage" | "usageStatus">>;
   stream?: boolean;
   requestedServiceTier?: string;
   configuredServiceTier?: string;
@@ -310,13 +311,15 @@ export function aiGenerationProperties(
 ): Record<string, unknown> {
   const model = entry.resolvedModel?.trim() || entry.model;
   const serviceTier = effectiveServiceTier(entry);
-  const cost = estimateRequestCost({
-    provider: entry.provider,
-    model,
-    usage: entry.usage,
-    usageStatus: entry.usageStatus,
-    ...(serviceTier ? { serviceTier } : {}),
-  });
+  const cost = entry.attempts?.length
+    ? estimateComboCost(entry.attempts, undefined, serviceTier)
+    : estimateRequestCost({
+      provider: entry.provider,
+      model,
+      usage: entry.usage,
+      usageStatus: entry.usageStatus,
+      ...(serviceTier ? { serviceTier } : {}),
+    });
   const isError = requestIsError(entry);
   return {
     $ai_trace_id: traceId,

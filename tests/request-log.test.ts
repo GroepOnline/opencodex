@@ -75,6 +75,29 @@ describe("request telemetry privacy", () => {
     clearRequestLogsForTests();
   });
 
+  test("forwards only pricing-safe combo attempt fields to external generation telemetry", () => {
+    const telemetry = spyOn(posthogTelemetry, "captureRequestTelemetry").mockImplementation(() => {});
+    clearRequestLogsForTests();
+
+    addRequestLog(log({
+      provider: "combo",
+      attempts: [{
+        ordinal: 1, provider: "openai-pabcdef", model: "gpt-5.6-sol", adapter: "openai-chat",
+        status: 200, durationMs: 10, sendCount: 1, recoveryKinds: [], usageStatus: "reported",
+        usage: { inputTokens: 10, outputTokens: 2 }, providerAccountId: "must-not-leave-local-log",
+      }],
+    }));
+
+    expect(telemetry).toHaveBeenCalledWith(expect.objectContaining({
+      attempts: [{
+        ordinal: 1, provider: "openai", model: "gpt-5.6-sol", usageStatus: "reported",
+        usage: { inputTokens: 10, outputTokens: 2 },
+      }],
+    }));
+    telemetry.mockRestore();
+    clearRequestLogsForTests();
+  });
+
   test("forwards client streaming state to external generation telemetry", () => {
     const telemetry = spyOn(posthogTelemetry, "captureRequestTelemetry").mockImplementation(() => {});
     clearRequestLogsForTests();

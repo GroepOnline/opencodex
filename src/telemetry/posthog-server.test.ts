@@ -52,6 +52,23 @@ describe("aiGenerationProperties", () => {
     expect(conflicting.$ai_total_cost_usd).toBe(requestedOnly.$ai_total_cost_usd);
   });
 
+  test("prices combo telemetry from per-attempt usage instead of the synthetic combo target", () => {
+    const attempts = [
+      { ordinal: 1, provider: "openai", model: "gpt-5.6-sol", usageStatus: "reported" as const,
+        usage: { inputTokens: 1_000_000, outputTokens: 100_000 } },
+      { ordinal: 2, provider: "openai", model: "gpt-5.6-sol", usageStatus: "reported" as const,
+        usage: { inputTokens: 500_000, outputTokens: 50_000 } },
+    ];
+    const props = aiGenerationProperties({
+      requestId: "req-combo", provider: "combo", model: "combo/free",
+      status: 200, durationMs: 500, usageStatus: "reported",
+      usage: { inputTokens: 1_500_000, outputTokens: 150_000 },
+      attempts,
+    }, "trace-combo");
+
+    expect(props.$ai_total_cost_usd).toBeDefined();
+  });
+
   test("reports normalized error code without accepting raw error content", () => {
     const props = aiGenerationProperties({
       requestId: "req-2",
