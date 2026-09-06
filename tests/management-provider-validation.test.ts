@@ -841,7 +841,10 @@ describe("provider management validation", () => {
       expect((await patch({ noReasoningModels: [" Kimi-K2.6 ", "Kimi-K2.6"] })).status).toBe(200);
       expect(loadConfig().providers["reasoning-toggle"]).toEqual({ ...target, noReasoningModels: ["Kimi-K2.6"] });
       expect((await patch({ noReasoningModels: [], apiKey: "replacement-not-allowed" })).status).toBe(400);
-      expect(loadConfig().providers["reasoning-toggle"].apiKey).toBe(target.apiKey);
+      expect(loadConfig().providers["reasoning-toggle"]).toEqual({
+        ...target,
+        noReasoningModels: ["Kimi-K2.6"],
+      });
       expect((await patch({ noReasoningModels: [] })).status).toBe(200);
       expect(loadConfig().providers["reasoning-toggle"]).toEqual({ ...target, noReasoningModels: [] });
     } finally {
