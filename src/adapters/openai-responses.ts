@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { AdapterRateLimitInfo, IncomingMeta, ProviderAdapter } from "./base";
 import { parseOpenAIRateLimit } from "../availability/rate-limit-parse";
-import { namespacedToolName, type AdapterEvent, type OcxParsedRequest, type OcxProviderConfig, type OcxUsage } from "../types";
+import { modelInList, namespacedToolName, type AdapterEvent, type OcxParsedRequest, type OcxProviderConfig, type OcxUsage } from "../types";
 import { catalogModelSupportsReasoningSummaries } from "../codex/catalog";
 import { COMPACT_PROMPT, decodeCompactionSummary, SUMMARY_PREFIX } from "../responses/compaction";
 import { collectResponsesToolGroups } from "../responses/tool-groups";
@@ -57,6 +57,19 @@ export function sanitizeReasoningInputContent(body: unknown): unknown {
   });
 
   return changed ? { ...raw, input } : body;
+}
+
+function stripConfiguredReasoningEffort(body: unknown, provider: OcxProviderConfig, modelId: string): unknown {
+  if (!modelInList(provider.noReasoningModels, modelId)) return body;
+  if (!isPlainObject(body) || !isPlainObject(body.reasoning) || !("effort" in body.reasoning)) return body;
+  // Passthrough uses the raw request, bypassing mapReasoningEffort. Honor the same
+  // explicit model opt-out without dropping unrelated reasoning fields or mutating input.
+  const reasoning = { ...body.reasoning };
+  delete reasoning.effort;
+  const next = { ...body };
+  if (Object.keys(reasoning).length > 0) next.reasoning = reasoning;
+  else delete next.reasoning;
+  return next;
 }
 
 function stripUnsupportedReasoningSummaryDelivery(body: unknown, modelId: string): unknown {
@@ -932,6 +945,7 @@ export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): 
       if (forward || parsed._previousResponseInputExpanded === true) {
         outBody = repairOversizedReplayCallIds(outBody);
       }
+      outBody = stripConfiguredReasoningEffort(outBody, provider, parsed.modelId);
       outBody = stripUnsupportedReasoningSummaryDelivery(outBody, parsed.modelId);
       // Same predicate as the routedCompaction gate in handleResponses(): an
       // authMode check would let a noncanonical custom forward provider skip this

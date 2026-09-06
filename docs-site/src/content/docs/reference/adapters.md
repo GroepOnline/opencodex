@@ -45,6 +45,10 @@ provider — xAI, Kimi, DeepSeek, GLM, Groq, OpenRouter, Ollama (local & cloud),
 streams the response back **untranslated**.
 **Auth:** `forward` (relay the caller's headers) or `key`.
 
+- Models explicitly listed in `provider.noReasoningModels` have `reasoning.effort` removed from
+  the raw outgoing body in both streaming and non-streaming mode. Other reasoning fields are
+  preserved; an empty reasoning object is omitted. Unlisted models are unchanged by this rule.
+
 - `forward` URL → `{baseUrl}/responses`. A `key` provider defaults to the legacy `{baseUrl}/v1/responses` construction.
 - A `key` provider may set a validated relative `responsesPath`; the adapter removes one trailing slash from `baseUrl` and sends `{trimmedBaseUrl}{responsesPath}`. For Ark Agent Plan, use `baseUrl: "https://ark.cn-beijing.volces.com/api/plan/v3"` with `responsesPath: "/responses"`.
 - In `forward` mode only a safe header allowlist is relayed (`FORWARD_HEADERS`): authorization,

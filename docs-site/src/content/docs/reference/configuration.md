@@ -555,7 +555,7 @@ any reason.
 | `modelAdapters?` | `Record<string,string>` | Per-model wire override for a gateway that fronts models speaking different wires. Keys are upstream native model ids; values must be `openai-chat` or `openai-responses`. Useful when one model needs the Responses API for hosted tools such as `web_search` while its siblings are fine on chat completions. Models the upstream pins to a single wire, and the canonical ChatGPT forward provider, reject overrides. |
 | `reasoningEffortMap?` | `Record<string,string>` | Provider-wide wire aliases for reasoning labels. Use only when the upstream expects a different value. |
 | `modelReasoningEffortMap?` | `Record<string,Record<string,string>>` | Model-specific wire aliases for reasoning labels. |
-| `noReasoningModels?` | `string[]` | Models that reject a reasoning/thinking param — the adapter drops `reasoning_effort` for them. |
+| `noReasoningModels?` | `string[]` | Models that reject effort control: Chat Completions omits `reasoning_effort`; Responses passthrough removes only `reasoning.effort`, preserving other reasoning fields and omitting the object if empty. |
 | `noTemperatureModels?` | `string[]` | Models that reject caller-specified `temperature`. |
 | `noTopPModels?` | `string[]` | Models that reject caller-specified `top_p`. |
 | `noPenaltyModels?` | `string[]` | Models that reject presence/frequency penalties. |

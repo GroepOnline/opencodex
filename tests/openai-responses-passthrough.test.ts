@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createResponsesPassthroughAdapter } from "../src/adapters/openai-responses";
 import { sanitizeEncryptedContentInPlace } from "../src/server/responses";
+import { configuredReasoningEfforts } from "../src/reasoning-effort";
 
 const provider = {
   adapter: "openai-responses",
@@ -24,6 +25,53 @@ function buildKeyAuthUrl(baseUrl: string, responsesPath?: string): string {
     _rawBody: { model: "test-model", input: "ping" },
   }, { headers: new Headers() }).url;
 }
+
+describe("Responses noReasoningModels raw-body boundary", () => {
+  const keyProvider = {
+    adapter: "openai-responses",
+    baseUrl: "https://provider.example/v1",
+    authMode: "key" as const,
+    noReasoningModels: ["Kimi-K2.6"],
+  };
+  for (const stream of [true, false]) {
+    for (const reasoning of [{ effort: "low" }, { effort: "low", summary: "auto" }]) {
+      test(`strips only configured effort, stream=${stream}, summary=${reasoning.summary ?? "absent"}`, async () => {
+        const rawBody = Object.freeze({
+          model: "Kimi-K2.6", input: "ping", stream,
+          reasoning: Object.freeze(reasoning),
+          metadata: Object.freeze({ label: "preserve" }),
+        });
+        const original = JSON.stringify(rawBody);
+        const request = await createResponsesPassthroughAdapter(keyProvider).buildRequest({
+          modelId: "Kimi-K2.6", context: { messages: [] }, stream,
+          options: { reasoning: "low" }, _rawBody: rawBody,
+        });
+        const body = JSON.parse(request.body);
+        expect(body).toEqual(reasoning.summary
+          ? { ...rawBody, reasoning: { summary: "auto" } }
+          : { model: rawBody.model, input: "ping", stream, metadata: rawBody.metadata });
+        expect(JSON.stringify(rawBody)).toBe(original);
+        expect(request.reasoningLog).toBeUndefined();
+        expect(configuredReasoningEfforts(keyProvider, "Kimi-K2.6")).toEqual([]);
+      });
+    }
+  }
+  test("unmatched GPT, absent effort, and absent opt-out retain their raw fields", async () => {
+    for (const [modelId, reasoning, noReasoningModels] of [
+      ["gpt-5.5", { effort: "low" }, ["Kimi-K2.6"]],
+      ["Kimi-K2.6", undefined, ["Kimi-K2.6"]],
+      ["Kimi-K2.6", { summary: "auto" }, ["Kimi-K2.6"]],
+      ["Kimi-K2.6", { effort: "low" }, undefined],
+      ["Kimi-K2.6", { effort: "low" }, []],
+    ] as const) {
+      const rawBody = { model: modelId, input: "ping", ...(reasoning ? { reasoning } : {}) };
+      const request = await createResponsesPassthroughAdapter({
+        ...keyProvider, noReasoningModels: noReasoningModels ? [...noReasoningModels] : undefined,
+      }).buildRequest({ modelId, context: { messages: [] }, stream: false, options: {}, _rawBody: rawBody });
+      expect(JSON.parse(request.body)).toEqual(rawBody);
+    }
+  });
+});
 
 describe("OpenAI Responses key-auth URL construction", () => {
   test("BUG-R289 preserves legacy /v1/responses URL when responsesPath is absent", () => {
