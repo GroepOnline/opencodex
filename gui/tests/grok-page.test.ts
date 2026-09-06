@@ -31,22 +31,45 @@ test("the Grok page is routable and present in the nav", async () => {
   const app = await read("../src/App.tsx");
   // New IA: Grok lives as a Leveranciers sub-view; the bare #grok hash is a legacy redirect.
   expect(routing).toContain('grok: "leveranciers/grok"');
-  expect(app).toContain('route.sub === "grok" && <Grok apiBase={API_BASE} />');
+  expect(app).toMatch(
+    /route\.view === "leveranciers" && route\.sub === "grok" && \(\s*<Grok apiBase=\{API_BASE\} \/>\s*\)/,
+  );
   expect(app).toContain('{ sub: "grok", tkey: "nav.grok" }');
 });
 
 test("every locale carries the Grok keys", () => {
-  const keys = ["nav.grok", "grok.title", "grok.subtitle", "grok.loading", "grok.loadFail",
-    "grok.notConfiguredTitle", "grok.notConfiguredHint", "grok.endpoint",
-    "grok.colModel", "grok.colAlias", "grok.colContext",
-    "grok.groupNative", "grok.groupRouted", "grok.enabledCount",
-    "grok.saved", "grok.savedApplied", "grok.saveFailed", "grok.applyFailed",
-    "grok.applySkipped", "grok.saveApply", "grok.saving", "grok.applying",
-    "grok.unsaved", "grok.upToDate", "grok.toggleModel"];
+  const keys = [
+    "nav.grok",
+    "grok.title",
+    "grok.subtitle",
+    "grok.loading",
+    "grok.loadFail",
+    "grok.notConfiguredTitle",
+    "grok.notConfiguredHint",
+    "grok.endpoint",
+    "grok.colModel",
+    "grok.colAlias",
+    "grok.colContext",
+    "grok.groupNative",
+    "grok.groupRouted",
+    "grok.enabledCount",
+    "grok.saved",
+    "grok.savedApplied",
+    "grok.saveFailed",
+    "grok.applyFailed",
+    "grok.applySkipped",
+    "grok.saveApply",
+    "grok.saving",
+    "grok.applying",
+    "grok.unsaved",
+    "grok.upToDate",
+    "grok.toggleModel",
+  ];
   const missing: string[] = [];
   for (const [locale, dict] of localeDicts()) {
     for (const key of keys) {
-      if (!(dict[key as keyof typeof dict] ?? "").trim()) missing.push(`${locale}:${key}`);
+      if (!(dict[key as keyof typeof dict] ?? "").trim())
+        missing.push(`${locale}:${key}`);
     }
   }
   expect(missing).toEqual([]);
