@@ -820,6 +820,38 @@ describe("provider management validation", () => {
     }
   });
 
+  test("noReasoningModels PATCH validates and clears only the selected metadata", async () => {
+    const initial = config("127.0.0.1");
+    const target = {
+      adapter: "openai-responses", baseUrl: "https://api.example.com/v1",
+      apiKey: "fixture-provider-key", headers: { "X-Custom": "fixture-header" },
+      models: ["Kimi-K2.6", "gpt-5.5"], defaultModel: "gpt-5.5", liveModels: false,
+    };
+    initial.providers["reasoning-toggle"] = target;
+    saveConfig(initial);
+    const server = startServer(0);
+    const patch = (body: unknown) => fetch(new URL("/api/providers?name=reasoning-toggle", server.url), {
+      method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+    try {
+      for (const invalid of [null, "Kimi-K2.6", {}, [1], [""], ["   "]]) {
+        expect((await patch({ noReasoningModels: invalid })).status).toBe(400);
+        expect(loadConfig().providers["reasoning-toggle"]).toEqual(target);
+      }
+      expect((await patch({ noReasoningModels: [" Kimi-K2.6 ", "Kimi-K2.6"] })).status).toBe(200);
+      expect(loadConfig().providers["reasoning-toggle"]).toEqual({ ...target, noReasoningModels: ["Kimi-K2.6"] });
+      expect((await patch({ noReasoningModels: [], apiKey: "replacement-not-allowed" })).status).toBe(400);
+      expect(loadConfig().providers["reasoning-toggle"]).toEqual({
+        ...target,
+        noReasoningModels: ["Kimi-K2.6"],
+      });
+      expect((await patch({ noReasoningModels: [] })).status).toBe(200);
+      expect(loadConfig().providers["reasoning-toggle"]).toEqual({ ...target, noReasoningModels: [] });
+    } finally {
+      server.stop(true);
+    }
+  });
+
   test("provider PATCH persists liveModels and provider metadata exposes the normalized state", async () => {
     if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true });
     mkdirSync(TEST_DIR, { recursive: true });

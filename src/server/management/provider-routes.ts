@@ -313,6 +313,15 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
      touched = true;
    }
 
+   if (Object.hasOwn(rawBody, "noReasoningModels")) {
+     const models = rawBody.noReasoningModels;
+     if (!Array.isArray(models) || models.some(model => typeof model !== "string" || !model.trim())) {
+       return jsonResponse({ error: "noReasoningModels must be an array of non-empty strings" }, 400);
+     }
+     next.noReasoningModels = [...new Set(models.map(model => model.trim()))];
+     touched = true;
+   }
+
    if (Object.hasOwn(rawBody, "liveModels")) {
      if (typeof rawBody.liveModels !== "boolean") return jsonResponse({ error: "liveModels must be a boolean" }, 400);
      next.liveModels = rawBody.liveModels;
