@@ -10,6 +10,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -90,6 +91,44 @@ function git(root: string, ...args: string[]): string {
   });
   if (!result.success) throw new Error(`git ${args[0]} failed`);
   return result.stdout.toString().trim();
+}
+
+function prepareIsolatedBuildRoot(
+  sourceRoot: string,
+  sourceSha: string,
+): string {
+  const buildRoot = mkdtempSync(join(tmpdir(), "ocx-client-source-"));
+  try {
+    git(
+      sourceRoot,
+      "clone",
+      "--shared",
+      "--no-checkout",
+      "--quiet",
+      sourceRoot,
+      buildRoot,
+    );
+    git(buildRoot, "checkout", "--detach", "--quiet", sourceSha);
+    const install = Bun.spawnSync(
+      [
+        process.execPath,
+        "install",
+        "--frozen-lockfile",
+        "--ignore-scripts",
+        "--force",
+      ],
+      { cwd: buildRoot, stdout: "pipe", stderr: "pipe" },
+    );
+    if (!install.success) {
+      throw new Error(
+        `Locked dependency refresh failed; refusing artifact build: ${install.stderr.toString().trim()}`,
+      );
+    }
+    return buildRoot;
+  } catch (error) {
+    rmSync(buildRoot, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 // The remote wrapper owns all mutation and lifecycle behavior. Direct bundle use
@@ -291,34 +330,25 @@ export async function buildClientArtifact(destination: string, root = ROOT) {
   const sourceSha = git(root, "rev-parse", "HEAD");
   const packageText = git(root, "show", `${sourceSha}:package.json`) + "\n";
   const lock = readFileSync(join(root, "bun.lock"));
-  // The bundle must be a function of the reviewed source + frozen lock, not of
-  // whatever ignored node_modules tree happens to be present on the builder.
-  // Force a script-free frozen reinstall so tampered/stale installed package
-  // bytes cannot silently enter an artifact while lockSha256 remains unchanged.
-  const install = Bun.spawnSync(
-    [
-      process.execPath,
-      "install",
-      "--frozen-lockfile",
-      "--ignore-scripts",
-      "--force",
-    ],
-    { cwd: root, stdout: "pipe", stderr: "pipe" },
-  );
-  if (!install.success) {
-    throw new Error(
-      `Locked dependency refresh failed; refusing artifact build: ${install.stderr.toString().trim()}`,
-    );
-  }
+  // Bundle from an isolated clean clone so the artifact is a function of the
+  // reviewed source + frozen lock, never of ignored/tampered node_modules in
+  // the caller checkout. The source checkout remains read-only.
+  const buildRoot = prepareIsolatedBuildRoot(root, sourceSha);
   const publicationParent = dirname(output);
   mkdirSync(publicationParent, { recursive: true, mode: 0o700 });
   const publicationParentIdentity =
     assertTrustedPublicationParent(publicationParent);
-  const staging = mkdtempSync(join(publicationParent, ".ocx-client-build-"));
+  let staging: string;
+  try {
+    staging = mkdtempSync(join(publicationParent, ".ocx-client-build-"));
+  } catch (error) {
+    rmSync(buildRoot, { recursive: true, force: true });
+    throw error;
+  }
   try {
     const result = await Bun.build({
-      entrypoints: [join(root, "src/cli/index.ts")],
-      root,
+      entrypoints: [join(buildRoot, "src/cli/index.ts")],
+      root: buildRoot,
       target: "bun",
       format: "esm",
       packages: "bundle",
@@ -392,6 +422,7 @@ export async function buildClientArtifact(destination: string, root = ROOT) {
     return manifest;
   } finally {
     rmSync(staging, { recursive: true, force: true });
+    rmSync(buildRoot, { recursive: true, force: true });
   }
 }
 

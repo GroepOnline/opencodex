@@ -89,6 +89,9 @@ describe("remote client artifact", () => {
     expect(
       readFileSync(join(output, "src/cli/index.js"), "utf8"),
     ).not.toContain("DEPENDENCY_DRIFT_SENTINEL");
+    expect(readFileSync(zodEntry, "utf8")).toContain(
+      "DEPENDENCY_DRIFT_SENTINEL",
+    );
     const locked = readFileSync(join(sourceRoot, "bun.lock"));
     expect(manifest.lockSha256).toBe(
       createHash("sha256").update(locked).digest("hex"),
