@@ -20,6 +20,31 @@ import {
   type IsolatedCodexHome,
 } from "./helpers/isolated-codex-home";
 
+// Wire shapes observed by these fixtures. The production translators return
+// Record<string, unknown>, so describe only the fields asserted at this boundary.
+interface AnthropicMessageFixture {
+  type: string;
+  role: string;
+  model: string;
+  stop_reason: string | null;
+  content: Array<{ type: string; text?: string }>;
+  usage: { input_tokens: number };
+}
+
+interface AnthropicErrorFixture {
+  type: string;
+  error: { type: string; message: string };
+}
+
+interface CapturedResponsesBody extends Record<string, unknown> {
+  reasoning?: { effort?: string };
+  tools?: Array<{ type?: string }>;
+}
+
+interface CapturedChatBody extends Record<string, unknown> {
+  tools?: Array<{ type?: string; function?: { name?: string } }>;
+}
+
 let testDir = "";
 let previousHome: string | undefined;
 let isolatedCodexHome: IsolatedCodexHome | null = null;
@@ -195,7 +220,7 @@ test("non-streaming /v1/messages returns an Anthropic message JSON", async () =>
       }),
     });
     expect(response.status).toBe(200);
-    const json = (await response.json()) as Record<string, any>;
+    const json = (await response.json()) as AnthropicMessageFixture;
     expect(json.type).toBe("message");
     expect(json.role).toBe("assistant");
     expect(json.model).toBe("mock/test-model");
@@ -428,7 +453,7 @@ test("native Anthropic passthrough returns 502 when the upstream connection is r
       }),
     });
     expect(response.status).toBe(502);
-    const json = (await response.json()) as Record<string, any>;
+    const json = (await response.json()) as AnthropicErrorFixture;
     expect(json.error?.type).toBe("api_error");
     expect(String(json.error?.message)).toContain(
       "anthropic passthrough failed",
@@ -730,7 +755,7 @@ test("endpoint wiring: configured bodyStallSec bounds a stalled native passthrou
 test("native openai-responses route carries prompt_cache_key + synthesized session_id header", async () => {
   const capture: {
     headers?: Record<string, string>;
-    body?: Record<string, any>;
+    body?: CapturedResponsesBody;
   } = {};
   const upstream = Bun.serve({
     port: 0,
@@ -743,7 +768,7 @@ test("native openai-responses route carries prompt_cache_key + synthesized sessi
         );
       }
       capture.headers = Object.fromEntries(req.headers);
-      capture.body = (await req.json()) as Record<string, any>;
+      capture.body = (await req.json()) as CapturedResponsesBody;
       const frames = [
         `event: response.created\ndata: ${JSON.stringify({ response: { id: "resp_1", status: "in_progress" } })}\n\n`,
         `event: response.output_text.delta\ndata: ${JSON.stringify({ delta: "Hello" })}\n\n`,
@@ -808,23 +833,21 @@ test("routed Claude requests give OpenAI sidecars main auth without leaking it t
   const visionCaption = "A red OPENCODEX logo on a white background.";
   const sidecarCalls: Array<{
     headers: Headers;
-    body: Record<string, any>;
+    body: CapturedResponsesBody;
     kind: "vision" | "web-search";
   }> = [];
   const routedCalls: Array<{
     authorization: string | null;
-    body: Record<string, any>;
+    body: CapturedChatBody;
   }> = [];
 
   const forward = Bun.serve({
     port: 0,
     async fetch(req) {
-      const body = (await req.json()) as Record<string, any>;
+      const body = (await req.json()) as CapturedResponsesBody;
       const kind =
         Array.isArray(body.tools) &&
-        body.tools.some(
-          (tool: Record<string, unknown>) => tool.type === "web_search",
-        )
+        body.tools.some((tool) => tool.type === "web_search")
           ? "web-search"
           : "vision";
       sidecarCalls.push({ headers: new Headers(req.headers), body, kind });
@@ -844,7 +867,7 @@ test("routed Claude requests give OpenAI sidecars main auth without leaking it t
   const routed = Bun.serve({
     port: 0,
     async fetch(req) {
-      const body = (await req.json()) as Record<string, any>;
+      const body = (await req.json()) as CapturedChatBody;
       routedCalls.push({
         authorization: req.headers.get("authorization"),
         body,
@@ -852,9 +875,7 @@ test("routed Claude requests give OpenAI sidecars main auth without leaking it t
       const choosesWebSearch =
         routedCalls.length === 1 &&
         Array.isArray(body.tools) &&
-        body.tools.some(
-          (tool: Record<string, any>) => tool.function?.name === "web_search",
-        );
+        body.tools.some((tool) => tool.function?.name === "web_search");
       const frames = choosesWebSearch
         ? [
             {
@@ -1035,7 +1056,7 @@ test("bad body -> Anthropic-shaped 400; unknown /v1 path guard intact", async ()
       }),
     });
     expect(bad.status).toBe(400);
-    const badJson = (await bad.json()) as Record<string, any>;
+    const badJson: unknown = await bad.json();
     expect(badJson).toEqual({
       type: "error",
       error: { type: "invalid_request_error", message: "model is required" },
@@ -1093,7 +1114,7 @@ test("claudeCode.enabled=false -> 403 permission_error on both routes", async ()
         }),
       });
       expect(response.status).toBe(403);
-      const json = (await response.json()) as Record<string, any>;
+      const json = (await response.json()) as AnthropicErrorFixture;
       expect(json.error.type).toBe("permission_error");
     }
   } finally {

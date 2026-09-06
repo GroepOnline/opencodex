@@ -197,57 +197,67 @@ test("Models page combines final visibility, atomic actions, discovery status, a
       namespaced: `${provider}/${id}`,
       disabled: disabled.has(id),
     }));
-  globalThis.fetch = (async (input, init) => {
-    const url = String(input);
-    if (url.endsWith("/api/models")) {
+  const readResponses: Record<string, () => Response | Promise<Response>> = {
+    "/api/models": () => {
       modelFetches += 1;
       return modelFetches === 1 ? firstModels : Response.json(rows());
-    }
-    if (url.endsWith("/api/providers")) {
-      return Response.json([
+    },
+    "/api/providers": () =>
+      Response.json([
         {
           name: provider,
           liveModels: true,
           models: ids,
           discovery: { status: "failed", reason: "http", httpStatus: 401 },
         },
-      ]);
-    }
-    if (url.endsWith("/api/selected-models"))
-      return Response.json({
+      ]),
+    "/api/selected-models": () =>
+      Response.json({
         selected: { [provider]: selected },
         available: { [provider]: ids },
-      });
-    if (url.endsWith("/api/provider-context-caps"))
-      return Response.json({ caps: {} });
-    if (url.endsWith("/api/combos")) return Response.json({ combos: [] });
-    if (url.endsWith("/api/shadow-call-settings"))
-      return Response.json({ enabled: true, model: `${provider}/gemini-pro` });
-    if (url.endsWith("/api/model-visibility") && init?.method === "PUT") {
-      const body = JSON.parse(
-        String(init.body),
-      ) as (typeof visibilityBodies)[number];
-      visibilityBodies.push(body);
-      if (failNext) {
-        failNext = false;
-        return Response.json({ error: "failed" }, { status: 500 });
-      }
-      if (body.scope === "provider") {
-        if (body.enabled) {
-          selected = [];
-          disabled.clear();
-        } else for (const target of body.targets) disabled.add(target.id);
-      } else
-        for (const target of body.targets) {
-          if (body.enabled) {
-            if (selected.length > 0 && !selected.includes(target.id))
-              selected.push(target.id);
-            disabled.delete(target.id);
-          } else disabled.add(target.id);
-        }
-      return Response.json({ ok: true });
+      }),
+    "/api/provider-context-caps": () => Response.json({ caps: {} }),
+    "/api/combos": () => Response.json({ combos: [] }),
+    "/api/shadow-call-settings": () =>
+      Response.json({ enabled: true, model: `${provider}/gemini-pro` }),
+  };
+
+  function applyVisibility(body: (typeof visibilityBodies)[number]) {
+    if (body.scope === "provider" && body.enabled) {
+      selected = [];
+      disabled.clear();
+      return;
     }
-    return new Response(null, { status: 404 });
+    for (const target of body.targets) {
+      if (body.enabled) {
+        if (selected.length > 0 && !selected.includes(target.id))
+          selected.push(target.id);
+        disabled.delete(target.id);
+      } else disabled.add(target.id);
+    }
+  }
+
+  function visibilityResponse(requestBody: RequestInit["body"]): Response {
+    const body = JSON.parse(
+      String(requestBody),
+    ) as (typeof visibilityBodies)[number];
+    visibilityBodies.push(body);
+    if (failNext) {
+      failNext = false;
+      return Response.json({ error: "failed" }, { status: 500 });
+    }
+    applyVisibility(body);
+    return Response.json({ ok: true });
+  }
+
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    if (url.endsWith("/api/model-visibility") && init?.method === "PUT")
+      return visibilityResponse(init.body);
+    const read = Object.entries(readResponses).find(([path]) =>
+      url.endsWith(path),
+    )?.[1];
+    return read ? read() : new Response(null, { status: 404 });
   }) as typeof fetch;
 
   try {

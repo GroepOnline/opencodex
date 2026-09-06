@@ -95,6 +95,10 @@ zijn hun gedeelde onderbouw. Bestaande Sheet/ToggleGroup blijven in gebruik.
 
 De nieuwe controls vervangen markup in Models en ModelInspector; ze zijn niet
 alleen geïnstalleerd. De overige legacy-schermen zijn nog geen volledige migratie.
+De pagina houdt state, API-mutaties, selectie en polling; providerkaart/rij/settings,
+geavanceerde controls, combo-overzicht en modals zijn afzonderlijke gecontroleerde
+componenten. Inspectorvelden zijn eveneens los samengesteld, terwijl focus en
+kopieerfeedback hun bestaande lifecycle-eigenaar behouden.
 Modelkeuze en API-mutaties blijven eigendom van de bestaande handlers. Catalogus-
 visibility gebruikt Base UI `role="switch"`/`aria-checked`; selectie houdt
 `aria-pressed`. De providerfilter krijgt een portaled Base UI Select. Legacy

@@ -26,11 +26,125 @@ import {
   EmptyDescription,
 } from "../components/primitives/empty";
 import { Separator } from "../components/primitives/separator";
-import { useCopyFeedback } from "../components/use-copy-feedback";
+import {
+  useCopyFeedback,
+  type CopyOutcome,
+} from "../components/use-copy-feedback";
 import { Switch } from "../components/primitives/switch";
 import { modelLabel } from "../model-display";
 import type { ProviderModelGroup } from "../models-groups";
 import { discoveryFailureLabel, fmtK, type ModelRow } from "./models-shared";
+
+function ModelIdentifier({
+  model,
+  copyOutcome,
+  onCopy,
+}: {
+  model: ModelRow;
+  copyOutcome: CopyOutcome | null;
+  onCopy: (text: string, scope: string) => void;
+}) {
+  const t = useT();
+  return (
+    <div
+      className="model-inspector-identifier"
+      data-copy-outcome={copyOutcome ?? undefined}
+    >
+      <div className="model-inspector-identifier-head">
+        <span>{t("models.workspace.modelId")}</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() =>
+            onCopy(model.native ? model.id : model.namespaced, model.namespaced)
+          }
+        >
+          {copyOutcome === "copied" && <IconCheck size={13} aria-hidden />}
+          <span aria-live="polite">
+            {copyOutcome === "copied"
+              ? t("api.copied")
+              : copyOutcome === "unavailable"
+                ? t("models.workspace.copyUnavailable")
+                : t("models.workspace.copyId")}
+          </span>
+        </Button>
+      </div>
+      <code>{model.native ? model.id : model.namespaced}</code>
+    </div>
+  );
+}
+
+function ModelDiscoveryWarnings({
+  group,
+}: {
+  group?: ProviderModelGroup<ModelRow>;
+}) {
+  const t = useT();
+  return (
+    <>
+      {group?.discovery?.status === "failed" && (
+        <Alert role="status">
+          <AlertDescription>
+            {discoveryFailureLabel(t, group.discovery)}
+          </AlertDescription>
+        </Alert>
+      )}
+      {group?.clientHideReason && (
+        <Alert role="status">
+          <AlertDescription>
+            {group.clientHideReasonLabel ||
+              t(
+                group.clientHidden
+                  ? "models.clientHiddenBadge"
+                  : "models.clientDegradedBadge",
+              )}
+          </AlertDescription>
+        </Alert>
+      )}
+    </>
+  );
+}
+
+function ModelFacts({ model }: { model: ModelRow }) {
+  const t = useT();
+  return (
+    <dl className="model-inspector-facts">
+      <div>
+        <dt>{t("models.tipContext")}</dt>
+        <dd>
+          {model.contextWindow
+            ? fmtK(model.contextWindow)
+            : t("models.workspace.unknown")}
+        </dd>
+      </div>
+      {model.contextCapped && (
+        <div>
+          <dt>{t("models.workspace.contextLimit")}</dt>
+          <dd>
+            {model.contextCap
+              ? fmtK(model.contextCap)
+              : t("models.workspace.unknown")}
+          </dd>
+        </div>
+      )}
+      <div>
+        <dt>{t("models.tipModalities")}</dt>
+        <dd>
+          {model.inputModalities?.length
+            ? model.inputModalities.join(", ")
+            : t("models.workspace.unknown")}
+        </dd>
+      </div>
+      {model.native && (
+        <div>
+          <dt>{t("models.tipProvider")}</dt>
+          <dd>{t("models.nativeGroupLabel")}</dd>
+        </div>
+      )}
+    </dl>
+  );
+}
 
 export default function ModelInspector({
   model,
@@ -93,37 +207,11 @@ export default function ModelInspector({
               <Badge variant="secondary">{t("models.customBadge")}</Badge>
             )}
           </div>
-          <div
-            className="model-inspector-identifier"
-            data-copy-outcome={copyOutcome ?? undefined}
-          >
-            <div className="model-inspector-identifier-head">
-              <span>{t("models.workspace.modelId")}</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  idCopy.copy(
-                    model.native ? model.id : model.namespaced,
-                    model.namespaced,
-                  )
-                }
-              >
-                {copyOutcome === "copied" && (
-                  <IconCheck size={13} aria-hidden />
-                )}
-                <span aria-live="polite">
-                  {copyOutcome === "copied"
-                    ? t("api.copied")
-                    : copyOutcome === "unavailable"
-                      ? t("models.workspace.copyUnavailable")
-                      : t("models.workspace.copyId")}
-                </span>
-              </Button>
-            </div>
-            <code>{model.native ? model.id : model.namespaced}</code>
-          </div>
+          <ModelIdentifier
+            model={model}
+            copyOutcome={copyOutcome}
+            onCopy={idCopy.copy}
+          />
           <FieldGroup className="model-inspector-visibility">
             <Field orientation="horizontal" data-disabled={busy || undefined}>
               <FieldContent>
@@ -148,59 +236,8 @@ export default function ModelInspector({
             </Field>
           </FieldGroup>
           <Separator />
-          {group?.discovery?.status === "failed" && (
-            <Alert role="status">
-              <AlertDescription>
-                {discoveryFailureLabel(t, group.discovery)}
-              </AlertDescription>
-            </Alert>
-          )}
-          {group?.clientHideReason && (
-            <Alert role="status">
-              <AlertDescription>
-                {group.clientHideReasonLabel ||
-                  t(
-                    group.clientHidden
-                      ? "models.clientHiddenBadge"
-                      : "models.clientDegradedBadge",
-                  )}
-              </AlertDescription>
-            </Alert>
-          )}
-          <dl className="model-inspector-facts">
-            <div>
-              <dt>{t("models.tipContext")}</dt>
-              <dd>
-                {model.contextWindow
-                  ? fmtK(model.contextWindow)
-                  : t("models.workspace.unknown")}
-              </dd>
-            </div>
-            {model.contextCapped && (
-              <div>
-                <dt>{t("models.workspace.contextLimit")}</dt>
-                <dd>
-                  {model.contextCap
-                    ? fmtK(model.contextCap)
-                    : t("models.workspace.unknown")}
-                </dd>
-              </div>
-            )}
-            <div>
-              <dt>{t("models.tipModalities")}</dt>
-              <dd>
-                {model.inputModalities?.length
-                  ? model.inputModalities.join(", ")
-                  : t("models.workspace.unknown")}
-              </dd>
-            </div>
-            {model.native && (
-              <div>
-                <dt>{t("models.tipProvider")}</dt>
-                <dd>{t("models.nativeGroupLabel")}</dd>
-              </div>
-            )}
-          </dl>
+          <ModelDiscoveryWarnings group={group} />
+          <ModelFacts model={model} />
           <Accordion className="model-inspector-provenance">
             <AccordionItem value="provenance">
               <AccordionTrigger>

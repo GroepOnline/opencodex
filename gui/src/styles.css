@@ -1953,33 +1953,11 @@ dialog.modal-overlay::backdrop {
   border-radius: var(--radius-2xs);
   background: var(--raised);
 }
-.quota-skel--label {
-  width: 28px;
-}
-.quota-skel--reset {
-  width: 34px;
-}
-.quota-skel--day {
-  width: 36px;
-}
-.quota-skel--time {
-  width: 34px;
-}
-.quota-skel--bar {
-  width: 100%;
-  height: 5px;
-  align-self: center;
-}
-.quota-skel--val {
-  width: 28px;
-  justify-self: end;
-}
 .quota-row {
   display: grid;
-  grid-template-columns: minmax(34px, max-content) 34px minmax(
-      34px,
-      44px
-    ) minmax(38px, 42px) minmax(58px, 1fr) minmax(30px, max-content);
+  grid-template-columns:
+    minmax(34px, max-content) 34px minmax(34px, 44px)
+    minmax(38px, 42px) minmax(58px, 1fr) minmax(30px, max-content);
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -2055,16 +2033,20 @@ dialog.modal-overlay::backdrop {
   width: 38px;
 }
 .quota-skel--bar {
+  height: 5px;
   min-height: 5px;
   width: 100%;
+  align-self: center;
 }
 .quota-skel--val {
   width: 30px;
+  justify-self: end;
 }
 .openai-account-mode-banner__badge-slot--pending {
   visibility: hidden;
 }
 .toggle {
+  display: inline-block;
   width: var(--toggle-w);
   height: var(--toggle-h);
   border-radius: var(--radius-pill);
@@ -3614,13 +3596,6 @@ button.prov-account-row.active {
 }
 
 /* ── Toggle switch ── */
-.toggle {
-  position: relative;
-  display: inline-block;
-  width: var(--toggle-w);
-  height: var(--toggle-h);
-  flex-shrink: 0;
-}
 .toggle input {
   opacity: 0;
   width: 0;
@@ -3939,7 +3914,8 @@ button.prov-account-row.active {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--muted);
+  margin-top: 10px;
+  color: var(--text);
   font-size: 11.5px;
   cursor: pointer;
 }
@@ -4123,10 +4099,6 @@ button.prov-account-row.active {
   font-size: 11.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.claude-default-radio {
-  margin-top: 10px;
-  color: var(--text);
 }
 .claude-move-row {
   display: grid;

@@ -48,6 +48,76 @@ let writes: Array<{
   body: Record<string, unknown> | null;
 }>;
 
+type VisibilityUpdate = {
+  provider: string;
+  targets: Array<{ id: string }>;
+  enabled: boolean;
+};
+
+function updateModelVisibility(update: VisibilityUpdate): Response {
+  if (failVisibility)
+    return Response.json(
+      { error: "visibility update failed" },
+      { status: 500 },
+    );
+  const targetIds = new Set(update.targets.map((target) => target.id));
+  models = models.map((model) =>
+    model.provider === update.provider && targetIds.has(model.id)
+      ? { ...model, disabled: !update.enabled }
+      : model,
+  );
+  const allowed = selected[update.provider];
+  if (update.enabled && allowed?.length) {
+    selected[update.provider] = [...new Set([...allowed, ...targetIds])];
+  }
+  return Response.json({ ok: true });
+}
+
+const readResponses: Record<string, () => unknown> = {
+  "/api/models": () => models,
+  "/api/providers": () =>
+    ["alpha", "beta"].map((name) => ({
+      name,
+      models: models
+        .filter((model) => model.provider === name)
+        .map((model) => model.id),
+      liveModels: false,
+    })),
+  "/api/selected-models": () => ({ selected }),
+  "/api/provider-context-caps": () => ({ caps: {}, value: 350000 }),
+  "/api/combos": () => ({ combos: [] }),
+  "/api/shadow-call-settings": () => ({ enabled: false, model: "" }),
+  "/api/v2": () => ({ enabled: false, multiAgentMode: "default" }),
+};
+
+async function mockWorkspaceFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const path = new URL(String(input), "http://localhost").pathname;
+  const method = init?.method ?? "GET";
+  const body = init?.body
+    ? (JSON.parse(String(init.body)) as Record<string, unknown>)
+    : null;
+  if (method !== "GET") writes.push({ path, method, body });
+  if (path === "/api/model-visibility" && method === "PUT")
+    return updateModelVisibility(body as VisibilityUpdate);
+  if (path.startsWith("/api/custom-models/") && method === "DELETE") {
+    await deletionDelay;
+    const id = decodeURIComponent(path.slice("/api/custom-models/".length));
+    models = models.filter((model) => model.customId !== id);
+    return Response.json({ ok: true });
+  }
+  if (path === "/api/providers/models/refresh" && method === "POST") {
+    if (!providerRefreshResponse)
+      throw new Error("Unexpected provider refresh");
+    return providerRefreshResponse;
+  }
+  const read = readResponses[path];
+  if (read) return Response.json(read());
+  throw new Error(`Unexpected request: ${method} ${path}`);
+}
+
 beforeEach(async () => {
   descriptors = new Map(
     GLOBALS.map((key) => [
@@ -129,73 +199,7 @@ beforeEach(async () => {
   deletionDelay = undefined;
   providerRefreshResponse = undefined;
   writes = [];
-  globalThis.fetch = (async (input, init) => {
-    const path = new URL(String(input), "http://localhost").pathname;
-    const method = init?.method ?? "GET";
-    const body = init?.body
-      ? (JSON.parse(String(init.body)) as Record<string, unknown>)
-      : null;
-    if (method !== "GET") writes.push({ path, method, body });
-    if (path === "/api/model-visibility" && method === "PUT") {
-      if (failVisibility)
-        return Response.json(
-          { error: "visibility update failed" },
-          { status: 500 },
-        );
-      const update = body as {
-        provider: string;
-        targets: Array<{ id: string }>;
-        enabled: boolean;
-      };
-      models = models.map((model) =>
-        model.provider === update.provider &&
-        update.targets.some((target) => target.id === model.id)
-          ? { ...model, disabled: !update.enabled }
-          : model,
-      );
-      const allowed = selected[update.provider];
-      if (update.enabled && allowed?.length) {
-        selected[update.provider] = [
-          ...new Set([
-            ...allowed,
-            ...update.targets.map((target) => target.id),
-          ]),
-        ];
-      }
-      return Response.json({ ok: true });
-    }
-    if (path.startsWith("/api/custom-models/") && method === "DELETE") {
-      await deletionDelay;
-      const id = decodeURIComponent(path.slice("/api/custom-models/".length));
-      models = models.filter((model) => model.customId !== id);
-      return Response.json({ ok: true });
-    }
-    if (path === "/api/providers/models/refresh" && method === "POST") {
-      if (!providerRefreshResponse)
-        throw new Error("Unexpected provider refresh");
-      return providerRefreshResponse;
-    }
-    if (path === "/api/models") return Response.json(models);
-    if (path === "/api/providers")
-      return Response.json(
-        ["alpha", "beta"].map((name) => ({
-          name,
-          models: models
-            .filter((model) => model.provider === name)
-            .map((model) => model.id),
-          liveModels: false,
-        })),
-      );
-    if (path === "/api/selected-models") return Response.json({ selected });
-    if (path === "/api/provider-context-caps")
-      return Response.json({ caps: {}, value: 350000 });
-    if (path === "/api/combos") return Response.json({ combos: [] });
-    if (path === "/api/shadow-call-settings")
-      return Response.json({ enabled: false, model: "" });
-    if (path === "/api/v2")
-      return Response.json({ enabled: false, multiAgentMode: "default" });
-    throw new Error(`Unexpected request: ${method} ${path}`);
-  }) as typeof fetch;
+  globalThis.fetch = mockWorkspaceFetch as typeof fetch;
   root = undefined;
   host = document.createElement("div");
   document.body.append(host);
