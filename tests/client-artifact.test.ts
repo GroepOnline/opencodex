@@ -18,6 +18,7 @@ import { buildClientArtifact } from "../scripts/build-client-artifact";
 
 const scratch = mkdtempSync(join(tmpdir(), "ocx-client-artifact-test-"));
 const powershell = Bun.which("pwsh");
+const posixShell = process.platform !== "win32";
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 describe("remote client artifact", () => {
@@ -242,134 +243,151 @@ describe("remote client artifact", () => {
     );
   }, 30_000);
 
-  test("ships a client shim that cannot select the native Codex home", async () => {
-    const output = join(scratch, "shim-candidate");
-    const manifest = await buildClientArtifact(output);
-    const shim = join(output, "bin/codex.ocx-client");
-    const powershellShim = join(output, "bin/codex.ocx-client.ps1");
-    const home = join(scratch, "shim-home");
-    const nativeHome = join(home, ".codex");
-    const capture = join(scratch, "captured-home");
-    const real = join(scratch, "codex-real");
-    mkdirSync(nativeHome, { recursive: true });
-    writeFileSync(
-      join(nativeHome, "config.toml"),
-      "direct Azure config stays untouched\n",
-    );
-    writeFileSync(
-      real,
-      '#!/usr/bin/env sh\nprintf \'%s\\n\' "$CODEX_HOME" > "$OCX_CAPTURE"\n',
-      { mode: 0o755 },
-    );
-    const env = {
-      ...process.env,
-      HOME: home,
-      CODEX_HOME: nativeHome,
-      OCX_CAPTURE: capture,
-      OCX_CLIENT_CODEX_BIN: real,
-      OCX_CLIENT_OCX_BIN: "/bin/false",
-    };
-
-    expect(statSync(shim).mode & 0o777).toBe(0o755);
-    expect(manifest.files["bin/codex.ocx-client"]).toBe(
-      createHash("sha256").update(readFileSync(shim)).digest("hex"),
-    );
-    expect(manifest.files["bin/codex.ocx-client.ps1"]).toBe(
-      createHash("sha256").update(readFileSync(powershellShim)).digest("hex"),
-    );
-    expect(readFileSync(powershellShim, "utf8")).toContain(
-      "Test-ReparsePointPath",
-    );
-    expect(readFileSync(powershellShim, "utf8")).toContain(
-      "Resolve-PhysicalPath",
-    );
-    expect(readFileSync(powershellShim, "utf8")).toContain(
-      "$item.ResolveLinkTarget($true)",
-    );
-    expect(readFileSync(powershellShim, "utf8")).toContain(
-      "$targets = @($item.Target)",
-    );
-    expect(readFileSync(powershellShim, "utf8")).toContain(
-      "$nativeHome = Resolve-PhysicalPath",
-    );
-    expect(readFileSync(powershellShim, "utf8")).toContain(
-      "$clientHome = Resolve-PhysicalPath",
-    );
-    expect(readFileSync(powershellShim, "utf8")).toContain("$env:USERPROFILE");
-    const defaultRun = Bun.spawnSync([shim, "--version"], { env });
-    expect(defaultRun.exitCode).toBe(0);
-    expect(readFileSync(capture, "utf8")).toBe(join(home, ".codex-ocx") + "\n");
-    expect(readFileSync(join(nativeHome, "config.toml"), "utf8")).toBe(
-      "direct Azure config stays untouched\n",
-    );
-
-    const normalizedNativeRun = Bun.spawnSync([shim, "--version"], {
-      env: { ...env, OCX_CLIENT_CODEX_HOME: join(nativeHome, "..", ".codex") },
-    });
-    expect(normalizedNativeRun.exitCode).toBe(78);
-    expect(normalizedNativeRun.stderr.toString()).toContain(
-      "refusing native Codex home",
-    );
-
-    const nativeAlias = join(home, "native-codex-alias");
-    symlinkSync(nativeHome, nativeAlias);
-    const symlinkedNativeRun = Bun.spawnSync([shim, "--version"], {
-      env: { ...env, OCX_CLIENT_CODEX_HOME: nativeAlias },
-    });
-    expect(symlinkedNativeRun.exitCode).toBe(78);
-    expect(symlinkedNativeRun.stderr.toString()).toContain(
-      "refusing symlinked Codex home path",
-    );
-    expect(readFileSync(join(nativeHome, "config.toml"), "utf8")).toBe(
-      "direct Azure config stays untouched\n",
-    );
-
-    const selected = join(home, ".codex-client-test");
-    const selectedRun = Bun.spawnSync([shim, "--version"], {
-      env: { ...env, OCX_CLIENT_CODEX_HOME: selected },
-    });
-    expect(selectedRun.exitCode).toBe(0);
-    expect(readFileSync(capture, "utf8")).toBe(selected + "\n");
-
-    const nativeRun = Bun.spawnSync([shim, "--version"], {
-      env: { ...env, OCX_CLIENT_CODEX_HOME: nativeHome },
-    });
-    expect(nativeRun.exitCode).toBe(78);
-    expect(nativeRun.stderr.toString()).toContain("refusing native Codex home");
-    expect(readFileSync(capture, "utf8")).toBe(selected + "\n");
-    expect(readFileSync(join(nativeHome, "config.toml"), "utf8")).toBe(
-      "direct Azure config stays untouched\n",
-    );
-  }, 15_000);
-
-  test("refuses the physical target of a symlinked native Codex home", async () => {
-    const output = join(scratch, "symlinked-native-candidate");
-    await buildClientArtifact(output);
-    const shim = join(output, "bin/codex.ocx-client");
-    const home = join(scratch, "symlinked-native-home");
-    const nativeHome = join(home, ".codex");
-    const nativeTarget = join(scratch, "native-codex-target");
-    const real = join(scratch, "symlinked-native-real");
-    mkdirSync(home);
-    mkdirSync(nativeTarget);
-    symlinkSync(nativeTarget, nativeHome, "dir");
-    writeFileSync(join(nativeTarget, "config.toml"), "native config\n");
-    writeFileSync(real, "#!/usr/bin/env sh\nexit 0\n", { mode: 0o755 });
-    const result = Bun.spawnSync([shim, "--version"], {
-      env: {
+  test.skipIf(!posixShell)(
+    "ships a client shim that cannot select the native Codex home",
+    async () => {
+      const output = join(scratch, "shim-candidate");
+      const manifest = await buildClientArtifact(output);
+      const shim = join(output, "bin/codex.ocx-client");
+      const powershellShim = join(output, "bin/codex.ocx-client.ps1");
+      const home = join(scratch, "shim-home");
+      const nativeHome = join(home, ".codex");
+      const capture = join(scratch, "captured-home");
+      const real = join(scratch, "codex-real");
+      mkdirSync(nativeHome, { recursive: true });
+      writeFileSync(
+        join(nativeHome, "config.toml"),
+        "direct Azure config stays untouched\n",
+      );
+      writeFileSync(
+        real,
+        '#!/usr/bin/env sh\nprintf \'%s\\n\' "$CODEX_HOME" > "$OCX_CAPTURE"\n',
+        { mode: 0o755 },
+      );
+      const env = {
         ...process.env,
         HOME: home,
-        OCX_CLIENT_CODEX_HOME: nativeTarget,
+        CODEX_HOME: nativeHome,
+        OCX_CAPTURE: capture,
         OCX_CLIENT_CODEX_BIN: real,
         OCX_CLIENT_OCX_BIN: "/bin/false",
-      },
-    });
-    expect(result.exitCode).toBe(78);
-    expect(result.stderr.toString()).toContain("refusing native Codex home");
-    expect(readFileSync(join(nativeTarget, "config.toml"), "utf8")).toBe(
-      "native config\n",
-    );
-  }, 15_000);
+      };
+
+      expect(statSync(shim).mode & 0o777).toBe(0o755);
+      expect(manifest.files["bin/codex.ocx-client"]).toBe(
+        createHash("sha256").update(readFileSync(shim)).digest("hex"),
+      );
+      expect(manifest.files["bin/codex.ocx-client.ps1"]).toBe(
+        createHash("sha256").update(readFileSync(powershellShim)).digest("hex"),
+      );
+      expect(readFileSync(powershellShim, "utf8")).toContain(
+        "Test-ReparsePointPath",
+      );
+      expect(readFileSync(powershellShim, "utf8")).toContain(
+        "Resolve-PhysicalPath",
+      );
+      expect(readFileSync(powershellShim, "utf8")).toContain(
+        "$item.ResolveLinkTarget($true)",
+      );
+      expect(readFileSync(powershellShim, "utf8")).toContain(
+        "$targets = @($item.Target)",
+      );
+      expect(readFileSync(powershellShim, "utf8")).toContain(
+        "$nativeHome = Resolve-PhysicalPath",
+      );
+      expect(readFileSync(powershellShim, "utf8")).toContain(
+        "$clientHome = Resolve-PhysicalPath",
+      );
+      expect(readFileSync(powershellShim, "utf8")).toContain(
+        "$env:USERPROFILE",
+      );
+      const defaultRun = Bun.spawnSync([shim, "--version"], { env });
+      expect(defaultRun.exitCode).toBe(0);
+      expect(readFileSync(capture, "utf8")).toBe(
+        join(home, ".codex-ocx") + "\n",
+      );
+      expect(readFileSync(join(nativeHome, "config.toml"), "utf8")).toBe(
+        "direct Azure config stays untouched\n",
+      );
+
+      const normalizedNativeRun = Bun.spawnSync([shim, "--version"], {
+        env: {
+          ...env,
+          OCX_CLIENT_CODEX_HOME: join(nativeHome, "..", ".codex"),
+        },
+      });
+      expect(normalizedNativeRun.exitCode).toBe(78);
+      expect(normalizedNativeRun.stderr.toString()).toContain(
+        "refusing native Codex home",
+      );
+
+      const nativeAlias = join(home, "native-codex-alias");
+      symlinkSync(nativeHome, nativeAlias);
+      const symlinkedNativeRun = Bun.spawnSync([shim, "--version"], {
+        env: { ...env, OCX_CLIENT_CODEX_HOME: nativeAlias },
+      });
+      expect(symlinkedNativeRun.exitCode).toBe(78);
+      expect(symlinkedNativeRun.stderr.toString()).toContain(
+        "refusing symlinked Codex home path",
+      );
+      expect(readFileSync(join(nativeHome, "config.toml"), "utf8")).toBe(
+        "direct Azure config stays untouched\n",
+      );
+
+      const selected = join(home, ".codex-client-test");
+      const selectedRun = Bun.spawnSync([shim, "--version"], {
+        env: { ...env, OCX_CLIENT_CODEX_HOME: selected },
+      });
+      expect(selectedRun.exitCode).toBe(0);
+      expect(readFileSync(capture, "utf8")).toBe(selected + "\n");
+
+      const nativeRun = Bun.spawnSync([shim, "--version"], {
+        env: { ...env, OCX_CLIENT_CODEX_HOME: nativeHome },
+      });
+      expect(nativeRun.exitCode).toBe(78);
+      expect(nativeRun.stderr.toString()).toContain(
+        "refusing native Codex home",
+      );
+      expect(readFileSync(capture, "utf8")).toBe(selected + "\n");
+      expect(readFileSync(join(nativeHome, "config.toml"), "utf8")).toBe(
+        "direct Azure config stays untouched\n",
+      );
+    },
+    15_000,
+  );
+
+  test.skipIf(!posixShell)(
+    "refuses the physical target of a symlinked native Codex home",
+    async () => {
+      const output = join(scratch, "symlinked-native-candidate");
+      await buildClientArtifact(output);
+      const shim = join(output, "bin/codex.ocx-client");
+      const home = join(scratch, "symlinked-native-home");
+      const nativeHome = join(home, ".codex");
+      const nativeTarget = join(scratch, "native-codex-target");
+      const real = join(scratch, "symlinked-native-real");
+      mkdirSync(home);
+      mkdirSync(nativeTarget);
+      symlinkSync(nativeTarget, nativeHome, "dir");
+      writeFileSync(join(nativeTarget, "config.toml"), "native config\n");
+      writeFileSync(real, "#!/usr/bin/env sh\nexit 0\n", { mode: 0o755 });
+      const result = Bun.spawnSync([shim, "--version"], {
+        env: {
+          ...process.env,
+          HOME: home,
+          OCX_CLIENT_CODEX_HOME: nativeTarget,
+          OCX_CLIENT_CODEX_BIN: real,
+          OCX_CLIENT_OCX_BIN: "/bin/false",
+        },
+      });
+      expect(result.exitCode).toBe(78);
+      expect(result.stderr.toString()).toContain("refusing native Codex home");
+      expect(readFileSync(join(nativeTarget, "config.toml"), "utf8")).toBe(
+        "native config\n",
+      );
+    },
+    15_000,
+  );
 
   test.skipIf(!powershell)(
     "PowerShell preserves the governed proxy failure exit code",
