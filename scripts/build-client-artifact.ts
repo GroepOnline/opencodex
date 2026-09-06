@@ -188,6 +188,19 @@ export const CODEX_CLIENT_POWERSHELL_SHIM = [
 ].join("\r\n");
 
 export async function buildClientArtifact(destination: string, root = ROOT) {
+  const builderDirty = git(
+    ROOT,
+    "status",
+    "--porcelain",
+    "--untracked-files=all",
+    "--",
+    "scripts/build-client-artifact.ts",
+  );
+  if (builderDirty)
+    throw new Error(
+      "Artifact builder is dirty; commit the reviewed builder before building",
+    );
+  const builderSourceSha = git(ROOT, "rev-parse", "HEAD");
   const output = resolve(destination);
   if (existsSync(output))
     throw new Error(
@@ -258,6 +271,7 @@ export async function buildClientArtifact(destination: string, root = ROOT) {
       sourceSha,
       bunVersion: Bun.version,
       lockSha256: sha256(lock),
+      builderSourceSha,
       builderSha256: sha256(readFileSync(fileURLToPath(import.meta.url))),
       files: {
         "src/cli/index.js": digest,

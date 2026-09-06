@@ -20,7 +20,7 @@ The destination must not exist. This command never activates a candidate,
 changes a `current` link, reads home configuration or starts a proxy. Runtime
 source and lockfile changes must be committed first. Source provenance is the
 checkout HEAD; package metadata comes from that Git revision, while the
-manifest separately records the builder digest and Bun version.
+manifest separately records the committed builder source revision, builder digest and Bun version.
 
 The artifact preserves the remote launcher's contract: `src/cli/index.js`,
 `package.json`, `source-sha` and `index.js.sha256`. It also ships the executable

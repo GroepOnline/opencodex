@@ -37,6 +37,35 @@ describe("remote client artifact", () => {
     );
   });
 
+  test("refuses an uncommitted artifact builder", () => {
+    const root = join(import.meta.dir, "..");
+    const dirtyRoot = join(scratch, "dirty-builder-checkout");
+    const clone = Bun.spawnSync(["git", "clone", "--shared", root, dirtyRoot]);
+    expect(clone.success).toBe(true);
+    const builder = join(dirtyRoot, "scripts/build-client-artifact.ts");
+    writeFileSync(
+      builder,
+      readFileSync(builder, "utf8") + "\n// dirty builder probe\n",
+    );
+    const output = join(scratch, "dirty-builder-candidate");
+    const result = Bun.spawnSync(
+      [
+        process.execPath,
+        builder,
+        "--output",
+        output,
+        "--source-root",
+        dirtyRoot,
+      ],
+      { cwd: dirtyRoot },
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain(
+      "Artifact builder is dirty; commit the reviewed builder before building",
+    );
+    expect(existsSync(output)).toBe(false);
+  });
+
   test("builds a self-contained, SHA-bound candidate without activation", async () => {
     const output = join(scratch, "candidate");
     const manifest = await buildClientArtifact(output);
@@ -73,6 +102,7 @@ describe("remote client artifact", () => {
     expect(manifest.lockSha256).toBe(
       createHash("sha256").update(lock).digest("hex"),
     );
+    expect(manifest.builderSourceSha).toBe(sourceSha);
     expect(manifest.builderSha256).toBe(
       createHash("sha256").update(builder).digest("hex"),
     );
