@@ -353,7 +353,9 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
                   <Button
                     variant="outline"
                     nativeButton={false}
-                    render={<a href="#leveranciers" />}
+                    render={
+                      <a href="#leveranciers" aria-label={t("nav.providers")} />
+                    }
                   >
                     {t("nav.providers")}
                   </Button>
@@ -409,7 +411,7 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
                   <Button
                     variant="outline"
                     nativeButton={false}
-                    render={<a href="#verkeer" />}
+                    render={<a href="#verkeer" aria-label={t("nav.verkeer")} />}
                   >
                     {t("nav.verkeer")}
                   </Button>
