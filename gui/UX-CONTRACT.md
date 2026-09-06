@@ -36,6 +36,17 @@ is `src/pages/ModelInspector.tsx`. Selection uses provider-qualified identity an
 does not mutate configuration. The existing visibility and custom-model API
 handlers retain ownership of writes. No new auth, billing or CRUD backend.
 
+The 2026-09-07 catalog migration uses actual shadcn Base UI Button, InputGroup,
+Select, Badge, Switch, Accordion, Field, Alert, Empty, Separator and Spinner source
+components. The provider filter uses the library Select; other existing authored
+Select consumers retain their owner above. No global replacement in `ui.tsx`.
+Catalog visibility is `role="switch"` / `aria-checked`, independent of selection's
+`aria-pressed`. InputGroup forwards the real search-input ref. Closed Accordion
+panels unmount; bulk operations still use full-provider data, not filtered rows.
+Success alerts are polite status; failures use alerts. Spinners are mounted only
+during actual pending work, accompanied by text, and static with reduced motion.
+The shared source attribution is packaged in `public/third-party-notices.txt`.
+
 ## Behavior and resilience
 
 - Dashboard: pending is not empty; successful zero stays zero; unsuccessful first

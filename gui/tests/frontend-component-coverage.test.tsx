@@ -14,7 +14,18 @@ const globals = [
   "navigator",
   "localStorage",
   "sessionStorage",
+  "HTMLElement",
+  "HTMLInputElement",
+  "Element",
+  "SVGElement",
+  "Node",
+  "Document",
+  "ShadowRoot",
+  "MutationObserver",
   "ResizeObserver",
+  "getComputedStyle",
+  "requestAnimationFrame",
+  "cancelAnimationFrame",
   "IS_REACT_ACT_ENVIRONMENT",
 ] as const;
 type GlobalsKey = (typeof globals)[number];
@@ -46,17 +57,30 @@ async function setupEnv(): Promise<TestEnv & { cleanup: () => Promise<void> }> {
     configurable: true,
     value: "en-US",
   });
-  Object.defineProperties(globalThis, {
-    document: { configurable: true, value: testWindow.document },
-    window: { configurable: true, value: testWindow },
-    navigator: { configurable: true, value: testWindow.navigator },
-    localStorage: { configurable: true, value: testWindow.localStorage },
-    sessionStorage: { configurable: true, value: testWindow.sessionStorage },
-    ResizeObserver: { configurable: true, value: testWindow.ResizeObserver },
-  });
-  (
-    globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
-  ).IS_REACT_ACT_ENVIRONMENT = true;
+  // Base UI/Floating UI perform real DOM type checks and schedule layout work.
+  // Install this window's constructors before importing mounted components;
+  // preserve the package's --isolate module-cache boundary, without mocks.
+  for (const key of globals) {
+    let value =
+      key === "window"
+        ? testWindow
+        : key === "IS_REACT_ACT_ENVIRONMENT"
+          ? true
+          : Reflect.get(testWindow, key);
+    if (
+      [
+        "getComputedStyle",
+        "requestAnimationFrame",
+        "cancelAnimationFrame",
+      ].includes(key)
+    )
+      value = value.bind(testWindow);
+    Object.defineProperty(globalThis, key, {
+      configurable: true,
+      writable: true,
+      value,
+    });
+  }
   testWindow.sessionStorage.clear();
   testWindow.localStorage.clear();
 
@@ -75,7 +99,7 @@ async function setupEnv(): Promise<TestEnv & { cleanup: () => Promise<void> }> {
         root.unmount();
       });
       container.remove();
-      testWindow.close();
+      await testWindow.happyDOM.close();
       for (const key of globals) {
         const descriptor = previousGlobalDescriptors[key];
         if (descriptor) Object.defineProperty(globalThis, key, descriptor);

@@ -85,7 +85,35 @@ Kopieersucces blijft daarnaast leesbare tekst met een check-icoon, nooit alleen 
 - ThreeUI blijft voorlopig eigenaar van de bestaande publieke landing. Die landing
   is nog niet hetzelfde als een volledig herontworpen productpagina.
 
-### Geometrie en responsiviteit
+### Library-componentmigratie — 2026-09-07
+
+Joep vroeg expliciet om daadwerkelijke library-buttons, controls, motion en
+spinners, niet alleen inspiratie of losse effecten. De catalogusslice gebruikt
+nu officiële shadcn `base-nova`-broncomponenten: Button, InputGroup, Select, Badge,
+Switch, Accordion, Field, Alert, Empty, Separator en Spinner. Input/Label/Textarea
+zijn hun gedeelde onderbouw. Bestaande Sheet/ToggleGroup blijven in gebruik.
+
+De nieuwe controls vervangen markup in Models en ModelInspector; ze zijn niet
+alleen geïnstalleerd. De overige legacy-schermen zijn nog geen volledige migratie.
+Modelkeuze en API-mutaties blijven eigendom van de bestaande handlers. Catalogus-
+visibility gebruikt Base UI `role="switch"`/`aria-checked`; selectie houdt
+`aria-pressed`. De providerfilter krijgt een portaled Base UI Select. Legacy
+Selects binnen geavanceerde controls en Settings worden niet stilzwijgend vervangen.
+
+Spinners zijn door deze expliciete opdracht toegestaan bij echte pending acties:
+initiële catalogusload, providerrefresh en custom-model opslaan. Geen loader in
+rust, geen kunstmatige minimumduur; tekst blijft aanwezig en reduced-motion stopt
+de rotatie. Accordion-motion volgt de Base UI-paneelhoogte, 180ms, geen max-height
+hack; keyboard/reduced-motion opent zonder beweging. Dit verfijnt de eerdere
+spinner-ban uitsluitend voor deze gevraagde OCX-opdracht.
+
+Registrybron gelezen via CLI/docs. Aanpassingen blijven in de componentlaag:
+geen `transition-all`, geen tweede dark-palet, gelokaliseerde spinner, een expliciete
+44×44 touchvariant voor Switch, en transparante Accordion-knoppen zonder afhankelijkheid
+van Tailwind preflight. Bronlicentie wordt meegebouwd uit `public/third-party-notices.txt`.
+Lucide React is exact gepind op 1.41.0; geen nieuwe transitieve runtimepackages.
+
+### Geometrie en responsiviteit (actueel)
 
 De catalogusslice heeft een werkvlak tot 1800px en een desktopheader van minimaal
 64px met merk, globale navigatie en status op één regel. Onder 1280px krijgt de

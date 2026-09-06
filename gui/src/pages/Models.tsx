@@ -1,13 +1,40 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Switch, Notice, EmptyState, Select, Tooltip } from "../ui";
+import { Switch, Notice, Select, Tooltip } from "../ui";
+import { Button } from "../components/primitives/button";
+import { Badge } from "../components/primitives/badge";
+import { Switch as LibrarySwitch } from "../components/primitives/switch";
+import { Spinner } from "../components/primitives/spinner";
+import { Alert, AlertDescription } from "../components/primitives/alert";
 import {
-  IconChevron,
-  IconBoxes,
-  IconInfo,
-  IconSearch,
-  IconShuffle,
-} from "../icons";
-import { DotMatrix } from "../DotMatrix";
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyContent,
+  EmptyDescription,
+} from "../components/primitives/empty";
+import {
+  InputGroup,
+  InputGroupInput,
+  InputGroupAddon,
+  InputGroupButton,
+} from "../components/primitives/input-group";
+import {
+  Select as LibrarySelect,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+} from "../components/primitives/select";
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "../components/primitives/accordion";
+import { SearchIcon, XIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
+import { IconChevron, IconBoxes, IconInfo, IconShuffle } from "../icons";
 import { useT } from "../i18n/shared";
 import type { TFn, TKey } from "../i18n/shared";
 import { modelLabel } from "../model-display";
@@ -831,15 +858,19 @@ export default function Models({ apiBase }: { apiBase: string }) {
             </div>
           </div>
         </div>
-        <div className="row muted">
-          <DotMatrix size={14} dotSize={3} speed={1.1} color="var(--accent)" />{" "}
+        <div className="row muted" role="status">
+          <Spinner aria-hidden />
           {t("models.loading")}
         </div>
       </>
     );
   }
   if (!selectedModels) {
-    return <Notice tone="err">{t("models.loadFail")}</Notice>;
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>{t("models.loadFail")}</AlertDescription>
+      </Alert>
+    );
   }
 
   const renderGroup = (group: ProviderModelGroup<ModelRow>) => {
@@ -913,8 +944,9 @@ export default function Models({ apiBase }: { apiBase: string }) {
         <div
           className={`row group-head models-provider-head${isCollapsed ? "" : " open"}`}
         >
-          <button
+          <Button
             type="button"
+            variant="ghost"
             className="row models-provider-toggle"
             onClick={() => toggleCollapse(provider)}
             aria-expanded={!isCollapsed}
@@ -967,81 +999,101 @@ export default function Models({ apiBase }: { apiBase: string }) {
             <span className="muted mono text-label">
               {t("models.active", { active: activeCount, total: rows.length })}
             </span>
-          </button>
-          <details className="models-provider-options">
-            <summary>{t("models.workspace.providerSettings")}</summary>
-            <div className="row models-provider-actions">
-              {canFetchModels && (
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm text-caption"
-                  disabled={busy || fetchingProvider !== null}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void fetchGroupModels(provider);
-                  }}
-                >
-                  {fetchingProvider === provider
-                    ? t("pws.fetchingModels")
-                    : t("pws.fetchModels")}
-                </button>
-              )}
-              {!isNative && (
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm text-caption"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setCustomModalMode("add");
-                    setCustomModalProvider(provider);
-                    setCustomModalId("");
-                    setCustomFormModelId("");
-                    setCustomFormDisplayName("");
-                    setCustomFormContextWindow("");
-                    setCustomFormShowCustomCtx(false);
-                    setCustomFormModalities(["text"]);
-                    setCustomError("");
-                    setCustomModalOpen(true);
-                  }}
-                  aria-label={t("models.customAdd")}
-                  aria-haspopup="dialog"
-                >
-                  +
-                </button>
-              )}
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm text-caption"
-                disabled={busy || allOn}
-                onClick={() => bulkToggle(true)}
-              >
-                {t("models.allOn")}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm text-caption"
-                disabled={busy || allOff}
-                onClick={() => bulkToggle(false)}
-              >
-                {t("models.allOff")}
-              </button>
-              {!isNative && (
-                <>
-                  <Switch
-                    on={capOn}
-                    onClick={() => toggleProviderCap(provider)}
-                    disabled={busy}
-                    label={t("models.capValue", {
-                      value: fmtK(contextCapValue),
-                    })}
-                  />
-                  <span className="muted mono text-label">
-                    {t("models.capValue", { value: fmtK(contextCapValue) })}
-                  </span>
-                </>
-              )}
-            </div>
-          </details>
+          </Button>
+          <Accordion className="models-provider-options">
+            <AccordionItem value="settings">
+              <AccordionTrigger>
+                {t("models.workspace.providerSettings")}
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="row models-provider-actions">
+                  {canFetchModels && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-caption"
+                      disabled={busy || fetchingProvider !== null}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void fetchGroupModels(provider);
+                      }}
+                    >
+                      {fetchingProvider === provider ? (
+                        <Spinner aria-hidden data-icon="inline-start" />
+                      ) : (
+                        <RefreshCwIcon aria-hidden data-icon="inline-start" />
+                      )}
+                      {fetchingProvider === provider
+                        ? t("pws.fetchingModels")
+                        : t("pws.fetchModels")}
+                    </Button>
+                  )}
+                  {!isNative && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-caption"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCustomModalMode("add");
+                        setCustomModalProvider(provider);
+                        setCustomModalId("");
+                        setCustomFormModelId("");
+                        setCustomFormDisplayName("");
+                        setCustomFormContextWindow("");
+                        setCustomFormShowCustomCtx(false);
+                        setCustomFormModalities(["text"]);
+                        setCustomError("");
+                        setCustomModalOpen(true);
+                      }}
+                      aria-label={t("models.customAdd")}
+                      aria-haspopup="dialog"
+                    >
+                      <PlusIcon aria-hidden data-icon="inline-start" />
+                      {t("models.customAdd")}
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-caption"
+                    disabled={busy || allOn}
+                    onClick={() => bulkToggle(true)}
+                  >
+                    {t("models.allOn")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-caption"
+                    disabled={busy || allOff}
+                    onClick={() => bulkToggle(false)}
+                  >
+                    {t("models.allOff")}
+                  </Button>
+                  {!isNative && (
+                    <>
+                      <Switch
+                        on={capOn}
+                        onClick={() => toggleProviderCap(provider)}
+                        disabled={busy}
+                        label={t("models.capValue", {
+                          value: fmtK(contextCapValue),
+                        })}
+                      />
+                      <span className="muted mono text-label">
+                        {t("models.capValue", { value: fmtK(contextCapValue) })}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </div>
         {!isCollapsed && (
           <div className="models-provider-body">
@@ -1064,8 +1116,9 @@ export default function Models({ apiBase }: { apiBase: string }) {
                   key={m.namespaced}
                   className={`models-catalog-row${selectedModelName === m.namespaced ? " is-selected" : ""}`}
                 >
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
                     className="models-catalog-select"
                     aria-label={t("models.workspace.inspect", {
                       model: m.native ? m.id : m.namespaced,
@@ -1086,7 +1139,9 @@ export default function Models({ apiBase }: { apiBase: string }) {
                     <span className="models-catalog-modalities">
                       {m.inputModalities?.length
                         ? m.inputModalities.map((kind) => (
-                            <span key={kind}>{kind}</span>
+                            <Badge key={kind} variant="outline">
+                              {kind}
+                            </Badge>
                           ))
                         : t("models.workspace.unknown")}
                     </span>
@@ -1096,10 +1151,11 @@ export default function Models({ apiBase }: { apiBase: string }) {
                         : t("models.workspace.unknown")}
                     </span>
                     <IconChevron width={14} height={14} aria-hidden="true" />
-                  </button>
-                  <Switch
-                    on={!off}
-                    onClick={() =>
+                  </Button>
+                  <LibrarySwitch
+                    size="touch"
+                    checked={!off}
+                    onCheckedChange={() =>
                       void applyVisibility(
                         "models",
                         provider,
@@ -1108,21 +1164,23 @@ export default function Models({ apiBase }: { apiBase: string }) {
                       )
                     }
                     disabled={busy}
-                    label={m.native ? m.id : m.namespaced}
+                    aria-label={m.native ? m.id : m.namespaced}
                   />
                 </div>
               );
             })}
             {remaining > 0 && (
-              <button
+              <Button
                 type="button"
                 onClick={() =>
                   setLimit((prev) => ({ ...prev, [provider]: shown + PAGE }))
                 }
-                className="btn btn-ghost btn-sm models-show-more"
+                variant="ghost"
+                size="sm"
+                className="models-show-more"
               >
                 {t("models.showMore", { n: remaining })}
-              </button>
+              </Button>
             )}
           </div>
         )}
@@ -1193,7 +1251,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
               aria-label={t("models.v2Label")}
             >
               {(["v1", "default", "v2"] as const).map((mode) => (
-                <button
+                <Button
                   key={mode}
                   type="button"
                   role="radio"
@@ -1213,12 +1271,14 @@ export default function Models({ apiBase }: { apiBase: string }) {
                   onClick={() => void setMultiAgentMode(mode)}
                 >
                   {t(`models.v2Mode_${mode}` as TKey)}
-                </button>
+                </Button>
               ))}
             </div>
-            <button
+            <Button
               type="button"
-              className="btn btn-ghost btn-sm"
+              variant="ghost"
+              size="sm"
+              className=""
               style={{
                 width: 24,
                 height: 24,
@@ -1233,7 +1293,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
               aria-haspopup="dialog"
             >
               <IconInfo width={15} height={15} aria-hidden="true" />
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -1299,9 +1359,10 @@ export default function Models({ apiBase }: { apiBase: string }) {
                     disabled={v2Busy}
                     aria-label={t("models.v2ThreadsLabel")}
                   />
-                  <button
+                  <Button
                     type="button"
-                    className="btn btn-sm"
+                    variant="outline"
+                    size="sm"
                     disabled={v2Busy}
                     onClick={() => {
                       void putV2Threads(
@@ -1310,7 +1371,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
                     }}
                   >
                     {t("models.v2ThreadsApply")}
-                  </button>
+                  </Button>
                 </>
               )}
             </>
@@ -1367,14 +1428,16 @@ export default function Models({ apiBase }: { apiBase: string }) {
               disabled={busy}
               aria-label={t("models.customPlaceholder")}
             />
-            <button
+            <Button
               type="button"
               onClick={applyCustomCap}
               disabled={busy}
-              className="btn btn-ghost btn-sm"
+              variant="ghost"
+              size="sm"
+              className=""
             >
               {t("models.customApply")}
-            </button>
+            </Button>
           </>
         )}
         <Switch
@@ -1424,9 +1487,15 @@ export default function Models({ apiBase }: { apiBase: string }) {
                 {t("models.combosEmpty")}
               </span>
             </div>
-            <a className="btn btn-sm" href="#combos" style={{ flexShrink: 0 }}>
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              render={<a href="#combos" aria-label={t("models.combosSetup")} />}
+              aria-label={t("models.combosSetup")}
+            >
               {t("models.combosSetup")}
-            </a>
+            </Button>
           </div>
         </div>
       )}
@@ -1435,7 +1504,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
           <div
             className={`row group-head models-field-row${combosOpen ? " open" : ""}`}
           >
-            <button
+            <Button
               type="button"
               className="row models-field-row"
               aria-expanded={combosOpen}
@@ -1472,14 +1541,16 @@ export default function Models({ apiBase }: { apiBase: string }) {
               <span className="muted mono text-label">
                 {t("models.combosActive", { count: combos.length })}
               </span>
-            </button>
-            <a
-              className="btn btn-sm btn-ghost"
-              href="#combos"
-              style={{ flexShrink: 0 }}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              nativeButton={false}
+              render={<a href="#combos" aria-label={t("models.combosSetup")} />}
+              aria-label={t("models.combosSetup")}
             >
               {t("models.combosSetup")}
-            </a>
+            </Button>
           </div>
           {combosOpen && (
             <div>
@@ -1503,18 +1574,22 @@ export default function Models({ apiBase }: { apiBase: string }) {
 
   const collapseControls = (
     <div className="row models-collapse-controls">
-      <button
+      <Button
         type="button"
-        className="btn btn-ghost btn-sm text-caption"
+        variant="ghost"
+        size="sm"
+        className="text-caption"
         onClick={() => setAllCollapsed(true)}
         disabled={busy || catalogQuery.trim().length > 0}
       >
         <IconChevron width={13} height={13} aria-hidden="true" />{" "}
         {t("models.collapseAll")}
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
-        className="btn btn-ghost btn-sm text-caption"
+        variant="ghost"
+        size="sm"
+        className="text-caption"
         onClick={() => setAllCollapsed(false)}
         disabled={busy || catalogQuery.trim().length > 0}
       >
@@ -1525,16 +1600,22 @@ export default function Models({ apiBase }: { apiBase: string }) {
           style={{ transform: "rotate(90deg)" }}
         />{" "}
         {t("models.expandAll")}
-      </button>
+      </Button>
     </div>
   );
 
   const emptyStateBlock = (
     <>
       {groups.length === 0 && (
-        <EmptyState icon={<IconBoxes />} title={t("models.noRouted")}>
-          {t("models.noRoutedHint")}
-        </EmptyState>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <IconBoxes aria-hidden />
+            </EmptyMedia>
+            <EmptyTitle>{t("models.noRouted")}</EmptyTitle>
+            <EmptyDescription>{t("models.noRoutedHint")}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
     </>
   );
@@ -1555,14 +1636,16 @@ export default function Models({ apiBase }: { apiBase: string }) {
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
               <h3>{t("models.v2Label")}</h3>
-              <button
+              <Button
                 type="button"
-                className="btn btn-ghost btn-sm"
+                variant="ghost"
+                size="sm"
+                className=""
                 onClick={() => setV2HelpOpen(false)}
                 aria-label={t("common.close")}
               >
                 &times;
-              </button>
+              </Button>
             </div>
             <div
               className="modal-desc leading-relaxed"
@@ -1582,13 +1665,14 @@ export default function Models({ apiBase }: { apiBase: string }) {
               </a>
             </div>
             <div className="modal-actions">
-              <button
+              <Button
                 type="button"
-                className="btn btn-primary"
+                variant="default"
+                className=""
                 onClick={() => setV2HelpOpen(false)}
               >
                 {t("common.ok")}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -1618,15 +1702,17 @@ export default function Models({ apiBase }: { apiBase: string }) {
                       provider: customModalProvider,
                     })}
               </h3>
-              <button
+              <Button
                 type="button"
-                className="btn btn-ghost btn-sm"
+                variant="ghost"
+                size="sm"
+                className=""
                 onClick={() => setCustomModalOpen(false)}
                 disabled={customSaving}
                 aria-label={t("common.close")}
               >
                 &times;
-              </button>
+              </Button>
             </div>
 
             {customError && <Notice tone="err">{customError}</Notice>}
@@ -1728,17 +1814,19 @@ export default function Models({ apiBase }: { apiBase: string }) {
             </div>
 
             <div className="modal-actions">
-              <button
+              <Button
                 type="button"
-                className="btn btn-ghost"
+                variant="ghost"
+                className=""
                 onClick={() => setCustomModalOpen(false)}
                 disabled={customSaving}
               >
                 {t("common.cancel")}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="btn btn-primary"
+                variant="default"
+                className=""
                 disabled={customSaving || !customFormModelId.trim()}
                 onClick={() => {
                   const modelId = customFormModelId.trim();
@@ -1768,12 +1856,15 @@ export default function Models({ apiBase }: { apiBase: string }) {
                   }
                 }}
               >
+                {customSaving && (
+                  <Spinner aria-hidden data-icon="inline-start" />
+                )}
                 {customSaving
                   ? t("models.customSaving")
                   : customModalMode === "add"
                     ? t("models.customAddBtn")
                     : t("models.customEditBtn")}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -1816,17 +1907,32 @@ export default function Models({ apiBase }: { apiBase: string }) {
             {t("models.workspace.description")}
           </p>
         </div>
-        <a className="btn btn-ghost" href="#leveranciers">
+        <Button
+          variant="outline"
+          nativeButton={false}
+          render={
+            <a
+              href="#leveranciers"
+              aria-label={t("models.workspace.manageProviders")}
+            />
+          }
+          aria-label={t("models.workspace.manageProviders")}
+        >
           {t("models.workspace.manageProviders")}
-        </a>
+        </Button>
       </div>
-      {status && <Notice tone={ok ? "ok" : "err"}>{status}</Notice>}
+      {status && (
+        <Alert
+          variant={ok ? "default" : "destructive"}
+          role={ok ? "status" : "alert"}
+        >
+          <AlertDescription>{status}</AlertDescription>
+        </Alert>
+      )}
       <div className="models-catalog-toolbar">
-        <div className="models-search-field">
-          <IconSearch size={18} aria-hidden />
-          <input
+        <InputGroup className="models-search-field">
+          <InputGroupInput
             ref={catalogSearchRef}
-            className="input models-catalog-search"
             type="search"
             placeholder={t("models.workspace.search")}
             aria-label={t("models.workspace.search")}
@@ -1837,22 +1943,58 @@ export default function Models({ apiBase }: { apiBase: string }) {
               setSelectedModelName(null);
             }}
           />
-        </div>
-        <Select
+          <InputGroupAddon>
+            <SearchIcon aria-hidden />
+          </InputGroupAddon>
+          {catalogQuery && (
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton
+                size="icon-sm"
+                aria-label={t("models.workspace.clearSearch")}
+                onClick={() => {
+                  setCatalogQuery("");
+                  setLimit({});
+                  catalogSearchRef.current?.focus();
+                }}
+              >
+                <XIcon aria-hidden />
+              </InputGroupButton>
+            </InputGroupAddon>
+          )}
+        </InputGroup>
+        <LibrarySelect
           value={selectedProvider ?? ""}
-          options={[
+          items={[
             { value: "", label: t("models.workspace.allProviders") },
             ...groups.map((group) => ({
               value: group.provider,
               label: group.provider,
             })),
           ]}
-          label={t("models.workspace.providers")}
-          onChange={(value) => {
+          onValueChange={(value) => {
             setSelectedProvider(value || null);
             setSelectedModelName(null);
           }}
-        />
+        >
+          <SelectTrigger
+            aria-label={t("models.workspace.providers")}
+            className="models-provider-filter"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false} align="start">
+            <SelectGroup>
+              <SelectItem value="">
+                {t("models.workspace.allProviders")}
+              </SelectItem>
+              {groups.map((group) => (
+                <SelectItem key={group.provider} value={group.provider}>
+                  {group.provider}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </LibrarySelect>
         <span className="models-catalog-count">
           {t("models.active", {
             active: effectiveVisibleCount,
@@ -1879,21 +2021,27 @@ export default function Models({ apiBase }: { apiBase: string }) {
             {visibleGroups.map(renderGroup)}
           </div>
           {query && !hasMatches && (
-            <EmptyState
-              icon={<IconBoxes />}
-              title={t("models.workspace.noMatches")}
-            >
-              <button
-                className="btn btn-ghost"
-                type="button"
-                onClick={() => {
-                  setCatalogQuery("");
-                  catalogSearchRef.current?.focus();
-                }}
-              >
-                {t("models.workspace.clearSearch")}
-              </button>
-            </EmptyState>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <SearchIcon aria-hidden />
+                </EmptyMedia>
+                <EmptyTitle>{t("models.workspace.noMatches")}</EmptyTitle>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button
+                  variant="ghost"
+                  className=""
+                  type="button"
+                  onClick={() => {
+                    setCatalogQuery("");
+                    catalogSearchRef.current?.focus();
+                  }}
+                >
+                  {t("models.workspace.clearSearch")}
+                </Button>
+              </EmptyContent>
+            </Empty>
           )}
           {groups.length === 0 && emptyStateBlock}
           {collapseControls}
@@ -1965,11 +2113,15 @@ export default function Models({ apiBase }: { apiBase: string }) {
           }}
         />
       </div>
-      <details className="models-advanced">
-        <summary>{t("models.workspace.advanced")}</summary>
-        {controlsBlock}
-        {combosBlock}
-      </details>
+      <Accordion className="models-advanced">
+        <AccordionItem value="advanced">
+          <AccordionTrigger>{t("models.workspace.advanced")}</AccordionTrigger>
+          <AccordionContent>
+            {controlsBlock}
+            {combosBlock}
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
       {modalsBlock}
     </div>
   );

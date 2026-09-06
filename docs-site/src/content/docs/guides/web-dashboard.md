@@ -93,6 +93,10 @@ release; an installed version may still have the earlier layout.
 - Global caps, shadow-call settings, v1/base/v2 controls and combo summaries remain
   under **Model settings & advanced controls**. Existing route bookmarks still work.
 - New users see expanded provider groups. Saved collapse preferences are retained.
+- The pending catalog uses shared library controls, including a provider dropdown,
+  a search field with a clear action, and collapsible provider/global settings.
+  Refresh and save controls show a spinner only while their real request is pending;
+  reduced-motion mode keeps the loading text without rotation.
 
 The **Models** switches show final Codex visibility: a routed model is on only when its provider allowlist includes it (or no allowlist is set) and it is not disabled. Turning a model on reconciles both filters atomically; **All on** clears the provider allowlist so newly discovered models are also on.
 

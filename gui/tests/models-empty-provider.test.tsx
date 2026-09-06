@@ -5,7 +5,6 @@ import { act } from "react";
 import type { Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LanguageProvider } from "../src/i18n/provider";
-import Models from "../src/pages/Models";
 import { EmptyProviderHint } from "../src/pages/models-provider-hints";
 import type { ProviderDiscoverySummary } from "../src/models-groups";
 import { gatherRoutedModels as gatherRoutedModelsDirect } from "../../src/codex/catalog";
@@ -24,6 +23,67 @@ await seedDicts();
 
 let previousLanguage: unknown;
 const originalFetch = globalThis.fetch;
+
+function installDOM(testWindow: Window): () => void {
+  const globals = [
+    "document",
+    "window",
+    "navigator",
+    "localStorage",
+    "sessionStorage",
+    "HTMLElement",
+    "HTMLInputElement",
+    "Element",
+    "SVGElement",
+    "Node",
+    "Document",
+    "ShadowRoot",
+    "MutationObserver",
+    "ResizeObserver",
+    "getComputedStyle",
+    "requestAnimationFrame",
+    "cancelAnimationFrame",
+    "IS_REACT_ACT_ENVIRONMENT",
+  ] as const;
+  const descriptors = new Map(
+    globals.map((key) => [
+      key,
+      Object.getOwnPropertyDescriptor(globalThis, key),
+    ]),
+  );
+  Object.defineProperty(testWindow.navigator, "language", {
+    configurable: true,
+    value: "en-US",
+  });
+  for (const key of globals) {
+    let value =
+      key === "window"
+        ? testWindow
+        : key === "IS_REACT_ACT_ENVIRONMENT"
+          ? true
+          : Reflect.get(testWindow, key);
+    if (
+      [
+        "getComputedStyle",
+        "requestAnimationFrame",
+        "cancelAnimationFrame",
+      ].includes(key)
+    )
+      value = value.bind(testWindow);
+    Object.defineProperty(globalThis, key, {
+      configurable: true,
+      writable: true,
+      value,
+    });
+  }
+  return () => {
+    for (const key of globals) {
+      const descriptor = descriptors.get(key);
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+  };
+}
 
 /**
  * Discovery runs on the pinned outbound transport, which does not read
@@ -91,19 +151,8 @@ async function providerDto(
 }
 
 test("Models page combines final visibility, atomic actions, discovery status, and serialized polling", async () => {
-  const domGlobals = [
-    "document",
-    "window",
-    "localStorage",
-    "IS_REACT_ACT_ENVIRONMENT",
-  ] as const;
-  const previousDescriptors = Object.fromEntries(
-    domGlobals.map((key) => [
-      key,
-      Object.getOwnPropertyDescriptor(globalThis, key),
-    ]),
-  ) as Record<(typeof domGlobals)[number], PropertyDescriptor | undefined>;
   const testWindow = new Window({ url: "http://localhost/" });
+  const restoreDOM = installDOM(testWindow);
   const container = testWindow.document.createElement("div");
   testWindow.document.body.append(container);
   let root: Root | undefined;
@@ -116,12 +165,6 @@ test("Models page combines final visibility, atomic actions, discovery status, a
     },
   });
 
-  Object.defineProperties(globalThis, {
-    document: { configurable: true, value: testWindow.document },
-    window: { configurable: true, value: testWindow },
-    localStorage: { configurable: true, value: testWindow.localStorage },
-    IS_REACT_ACT_ENVIRONMENT: { configurable: true, value: true },
-  });
   testWindow.localStorage.setItem(
     "ocx-models-collapsed:v2",
     JSON.stringify([]),
@@ -208,6 +251,8 @@ test("Models page combines final visibility, atomic actions, discovery status, a
   }) as typeof fetch;
 
   try {
+    // Base UI must see the DOM before its first import; keep package --isolate.
+    const { default: Models } = await import("../src/pages/Models");
     const { createRoot } = await import("react-dom/client");
     await act(async () => {
       root = createRoot(container);
@@ -230,16 +275,17 @@ test("Models page combines final visibility, atomic actions, discovery status, a
     });
 
     const switchFor = (id: string) =>
-      container.querySelector<HTMLButtonElement>(
-        `button[aria-label="${provider}/${id}"]`,
+      container.querySelector<HTMLElement>(
+        `[role="switch"][aria-label="${provider}/${id}"]`,
       )!;
     const buttonText = (text: string) =>
       [...container.querySelectorAll<HTMLButtonElement>("button")].find(
         (button) => button.textContent === text,
       )!;
     expect(container.textContent).toContain("2/5 visible");
-    expect(switchFor("gemini-pro").getAttribute("aria-pressed")).toBe("true");
-    expect(switchFor("claude-sonnet").getAttribute("aria-pressed")).toBe(
+    expect(switchFor("gemini-pro").getAttribute("role")).toBe("switch");
+    expect(switchFor("gemini-pro").getAttribute("aria-checked")).toBe("true");
+    expect(switchFor("claude-sonnet").getAttribute("aria-checked")).toBe(
       "false",
     );
     expect(
@@ -248,7 +294,11 @@ test("Models page combines final visibility, atomic actions, discovery status, a
     expect(container.textContent).not.toContain("Not selected");
 
     await act(async () =>
-      container.querySelector<HTMLElement>(".models-advanced summary")!.click(),
+      container
+        .querySelector<HTMLElement>(
+          ".models-advanced [data-slot=accordion-trigger]",
+        )!
+        .click(),
     );
     await act(async () =>
       container
@@ -281,12 +331,14 @@ test("Models page combines final visibility, atomic actions, discovery status, a
       switchFor("claude-opus").click();
       await new Promise((resolve) => testWindow.setTimeout(resolve, 0));
     });
-    expect(switchFor("claude-opus").getAttribute("aria-pressed")).toBe("false");
+    expect(switchFor("claude-opus").getAttribute("aria-checked")).toBe("false");
     expect(container.textContent).toContain("Save failed");
 
     await act(async () =>
       container
-        .querySelector<HTMLElement>(".models-provider-options summary")!
+        .querySelector<HTMLElement>(
+          ".models-provider-options [data-slot=accordion-trigger]",
+        )!
         .click(),
     );
     await act(async () => {
@@ -311,12 +363,8 @@ test("Models page combines final visibility, atomic actions, discovery status, a
     if (root) {
       await act(async () => root?.unmount());
     }
-    testWindow.close();
-    for (const key of domGlobals) {
-      const descriptor = previousDescriptors[key];
-      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
-      else delete (globalThis as Record<string, unknown>)[key];
-    }
+    await testWindow.happyDOM.close();
+    restoreDOM();
   }
 });
 
@@ -629,16 +677,8 @@ test("empty static provider explains that live discovery is disabled", () => {
 test("a poll that resolves after a forced refresh cannot overwrite newer models", async () => {
   // Snapshot the globals this test swaps out: leaking a torn-down happy-dom document breaks every
   // later DOM test in the suite.
-  const priorGlobals = {
-    document: Object.getOwnPropertyDescriptor(globalThis, "document"),
-    window: Object.getOwnPropertyDescriptor(globalThis, "window"),
-    localStorage: Object.getOwnPropertyDescriptor(globalThis, "localStorage"),
-    actEnv: Object.getOwnPropertyDescriptor(
-      globalThis,
-      "IS_REACT_ACT_ENVIRONMENT",
-    ),
-  };
   const testWindow = new Window({ url: "http://localhost/" });
+  const restoreDOM = installDOM(testWindow);
   const container = testWindow.document.createElement("div");
   testWindow.document.body.appendChild(container);
   let root: Root | undefined;
@@ -649,12 +689,6 @@ test("a poll that resolves after a forced refresh cannot overwrite newer models"
       poll = handler;
       return 1;
     },
-  });
-  Object.defineProperties(globalThis, {
-    document: { configurable: true, value: testWindow.document },
-    window: { configurable: true, value: testWindow },
-    localStorage: { configurable: true, value: testWindow.localStorage },
-    IS_REACT_ACT_ENVIRONMENT: { configurable: true, value: true },
   });
   testWindow.localStorage.setItem(
     "ocx-models-collapsed:v2",
@@ -710,6 +744,7 @@ test("a poll that resolves after a forced refresh cannot overwrite newer models"
   }) as typeof fetch;
 
   try {
+    const { default: Models } = await import("../src/pages/Models");
     const { createRoot } = await import("react-dom/client");
     await act(async () => {
       root = createRoot(container);
@@ -733,9 +768,10 @@ test("a poll that resolves after a forced refresh cannot overwrite newer models"
     expect(modelFetches).toBe(2);
 
     // A forced refresh finishes while that poll is still in flight and brings the newer catalog.
-    const toggle = container.querySelector<HTMLButtonElement>(
-      `button[aria-label="${provider}/stale-a"]`,
+    const toggle = container.querySelector<HTMLElement>(
+      `[role="switch"][aria-label="${provider}/stale-a"]`,
     );
+    expect(toggle).not.toBeNull();
     await act(async () => {
       toggle?.click();
       await new Promise((resolve) => testWindow.setTimeout(resolve, 0));
@@ -755,14 +791,7 @@ test("a poll that resolves after a forced refresh cannot overwrite newer models"
       root?.unmount();
     });
     container.remove();
-    for (const [key, descriptor] of [
-      ["document", priorGlobals.document],
-      ["window", priorGlobals.window],
-      ["localStorage", priorGlobals.localStorage],
-      ["IS_REACT_ACT_ENVIRONMENT", priorGlobals.actEnv],
-    ] as const) {
-      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
-      else delete (globalThis as Record<string, unknown>)[key];
-    }
+    await testWindow.happyDOM.close();
+    restoreDOM();
   }
 });

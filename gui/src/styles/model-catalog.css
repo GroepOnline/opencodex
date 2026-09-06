@@ -40,39 +40,16 @@
   margin: 24px 0 20px;
 }
 .models-search-field {
-  position: relative;
   flex: 1;
   max-width: 680px;
   min-width: 0;
+  min-height: 44px;
 }
-.models-search-field > svg {
-  position: absolute;
-  left: 13px;
-  top: 13px;
-  color: var(--muted);
-  pointer-events: none;
-}
-.models-catalog-toolbar .models-catalog-search {
-  width: 100%;
-  height: 44px;
-  padding-left: 40px;
-  background: var(--surface);
-  border-color: var(--border-soft);
-  border-radius: 8px;
-}
-.models-catalog-toolbar .models-catalog-search:focus-visible {
-  border-color: var(--accent-ring);
-}
-.models-catalog-toolbar .custom-select {
+.models-catalog-toolbar .models-provider-filter {
   width: 200px;
   flex: 0 1 200px;
   min-width: 0;
-}
-.models-catalog-toolbar .select-trigger {
   min-height: 44px;
-  width: 100%;
-  border-color: var(--border-soft);
-  border-radius: 8px;
 }
 .models-catalog-count {
   margin-left: auto;
@@ -109,6 +86,7 @@
 }
 .models-provider-toggle {
   min-height: 28px;
+  justify-content: flex-start;
 }
 .models-provider-toggle .text-body {
   font-size: var(--text-control);
@@ -127,16 +105,14 @@
   padding: 8px 12px;
 }
 .models-provider-options {
+  width: auto;
   max-width: 100%;
-  color: var(--muted);
-  font-size: var(--text-caption);
 }
-.models-provider-options summary {
-  cursor: pointer;
-  padding: 8px 0;
+.models-provider-options [data-slot="accordion-trigger"] {
   min-height: 36px;
+  gap: 12px;
 }
-.models-provider-options[open] {
+.models-provider-options:has([data-slot="accordion-item"][data-open]) {
   flex-basis: 100%;
 }
 .models-provider-options .models-provider-actions {
@@ -254,12 +230,6 @@
   font-size: 11px;
   color: var(--muted);
 }
-.models-catalog-modalities > span {
-  border: 1px solid var(--border-soft);
-  border-radius: 4px;
-  padding: 2px 6px;
-  line-height: 1.4;
-}
 .models-catalog-select:focus-visible,
 .model-inspector h3:focus-visible,
 .models-provider-options summary:focus-visible,
@@ -280,15 +250,7 @@
   padding: 0 0 24px 28px;
 }
 .model-inspector-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
   min-height: 220px;
-  gap: 16px;
-}
-.model-inspector-empty > svg {
-  color: var(--muted);
 }
 .model-inspector h3 {
   margin: 0;
@@ -335,26 +297,7 @@
   font-size: var(--text-caption);
 }
 .model-inspector-visibility {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  border-bottom: 1px solid var(--border-soft);
   padding: 22px 0;
-}
-.model-inspector-visibility > div {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.model-inspector-visibility strong {
-  font-size: var(--text-control);
-  font-weight: 600;
-}
-.model-inspector-visibility span {
-  font-size: var(--text-caption);
-  color: var(--muted);
-  line-height: 1.5;
 }
 .model-inspector-facts {
   margin: 8px 0 20px;
@@ -428,20 +371,16 @@
   color: var(--muted);
   margin-bottom: 4px;
 }
-.model-inspector-identifier-head .btn {
+.model-inspector-identifier-head [data-slot="button"] {
   min-height: 36px;
   padding: 4px 6px;
   font-size: 12px;
   border: 0;
   background: transparent;
 }
-.model-inspector-provenance summary {
-  cursor: pointer;
+.model-inspector-provenance [data-slot="accordion-trigger"] {
   min-height: 36px;
-  padding: 8px 0;
-}
-.model-inspector-provenance p {
-  margin: 4px 0 0;
+  gap: 12px;
 }
 .model-inspector-actions {
   display: flex;
@@ -456,11 +395,11 @@
   border-top: 1px solid var(--border-soft);
   margin-top: 24px;
 }
-.models-advanced > summary {
-  cursor: pointer;
+.models-advanced
+  > [data-slot="accordion-item"]
+  > h3
+  > [data-slot="accordion-trigger"] {
   padding: 20px 0;
-  font-size: var(--text-control);
-  font-weight: 600;
 }
 @media (prefers-reduced-motion: no-preference) {
   .model-inspector-identifier::after {
@@ -552,7 +491,7 @@
     flex-basis: 100%;
     max-width: none;
   }
-  .models-catalog-toolbar .custom-select {
+  .models-catalog-toolbar .models-provider-filter {
     width: 100%;
     flex-basis: 100%;
   }
@@ -575,7 +514,7 @@
   .model-inspector {
     padding: 0 0 16px;
   }
-  .model-inspector .btn {
+  .model-inspector [data-slot="button"] {
     min-height: 44px;
   }
 }

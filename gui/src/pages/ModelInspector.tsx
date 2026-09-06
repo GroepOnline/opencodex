@@ -2,8 +2,32 @@ import { useEffect, useRef } from "react";
 import { useT } from "../i18n/shared";
 import { IconCheck, IconChevron, IconServer } from "../icons";
 import MatrixMark from "../components/MatrixMark";
+import { Button } from "../components/primitives/button";
+import { Badge } from "../components/primitives/badge";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "../components/primitives/field";
+import { Alert, AlertDescription } from "../components/primitives/alert";
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "../components/primitives/accordion";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+} from "../components/primitives/empty";
+import { Separator } from "../components/primitives/separator";
 import { useCopyFeedback } from "../components/use-copy-feedback";
-import { Switch } from "../ui";
+import { Switch } from "../components/primitives/switch";
 import { modelLabel } from "../model-display";
 import type { ProviderModelGroup } from "../models-groups";
 import { discoveryFailureLabel, fmtK, type ModelRow } from "./models-shared";
@@ -43,9 +67,10 @@ export default function ModelInspector({
     >
       {model ? (
         <>
-          <button
+          <Button
             type="button"
-            className="btn btn-ghost model-inspector-back"
+            variant="ghost"
+            className="model-inspector-back"
             onClick={onClose}
           >
             <IconChevron
@@ -55,7 +80,7 @@ export default function ModelInspector({
               style={{ transform: "rotate(180deg)" }}
             />
             {t("models.workspace.back")}
-          </button>
+          </Button>
           <div className="model-inspector-heading">
             <span className="model-inspector-provider">
               <IconServer size={15} aria-hidden />
@@ -65,7 +90,7 @@ export default function ModelInspector({
               {model.displayName || modelLabel(model.id)}
             </h3>
             {model.custom && (
-              <span className="models-chip">{t("models.customBadge")}</span>
+              <Badge variant="secondary">{t("models.customBadge")}</Badge>
             )}
           </div>
           <div
@@ -74,9 +99,10 @@ export default function ModelInspector({
           >
             <div className="model-inspector-identifier-head">
               <span>{t("models.workspace.modelId")}</span>
-              <button
+              <Button
                 type="button"
-                className="btn btn-ghost btn-sm"
+                variant="ghost"
+                size="sm"
                 onClick={() =>
                   idCopy.copy(
                     model.native ? model.id : model.namespaced,
@@ -94,40 +120,52 @@ export default function ModelInspector({
                       ? t("models.workspace.copyUnavailable")
                       : t("models.workspace.copyId")}
                 </span>
-              </button>
+              </Button>
             </div>
             <code>{model.native ? model.id : model.namespaced}</code>
           </div>
-          <div className="model-inspector-visibility">
-            <div>
-              <strong>{t("models.workspace.visibility")}</strong>
-              <span>
-                {visible
-                  ? t("models.workspace.shown")
-                  : t("models.workspace.hidden")}
-              </span>
-            </div>
-            <Switch
-              on={visible}
-              onClick={onToggle}
-              disabled={busy}
-              label={t("models.workspace.changeVisibility")}
-            />
-          </div>
+          <FieldGroup className="model-inspector-visibility">
+            <Field orientation="horizontal" data-disabled={busy || undefined}>
+              <FieldContent>
+                <FieldLabel htmlFor="model-inspector-visibility">
+                  {t("models.workspace.visibility")}
+                </FieldLabel>
+                <FieldDescription id="model-inspector-visibility-hint">
+                  {visible
+                    ? t("models.workspace.shown")
+                    : t("models.workspace.hidden")}
+                </FieldDescription>
+              </FieldContent>
+              <Switch
+                size="touch"
+                id="model-inspector-visibility"
+                checked={visible}
+                onCheckedChange={onToggle}
+                disabled={busy}
+                aria-label={t("models.workspace.changeVisibility")}
+                aria-describedby="model-inspector-visibility-hint"
+              />
+            </Field>
+          </FieldGroup>
+          <Separator />
           {group?.discovery?.status === "failed" && (
-            <p className="model-inspector-warning" role="status">
-              {discoveryFailureLabel(t, group.discovery)}
-            </p>
+            <Alert role="status">
+              <AlertDescription>
+                {discoveryFailureLabel(t, group.discovery)}
+              </AlertDescription>
+            </Alert>
           )}
           {group?.clientHideReason && (
-            <p className="model-inspector-warning" role="status">
-              {group.clientHideReasonLabel ||
-                t(
-                  group.clientHidden
-                    ? "models.clientHiddenBadge"
-                    : "models.clientDegradedBadge",
-                )}
-            </p>
+            <Alert role="status">
+              <AlertDescription>
+                {group.clientHideReasonLabel ||
+                  t(
+                    group.clientHidden
+                      ? "models.clientHiddenBadge"
+                      : "models.clientDegradedBadge",
+                  )}
+              </AlertDescription>
+            </Alert>
           )}
           <dl className="model-inspector-facts">
             <div>
@@ -163,37 +201,49 @@ export default function ModelInspector({
               </div>
             )}
           </dl>
-          <details className="model-inspector-provenance">
-            <summary>{t("models.workspace.catalogEvidence")}</summary>
-            <p>{t("models.workspace.catalogNotHealth")}</p>
-          </details>
+          <Accordion className="model-inspector-provenance">
+            <AccordionItem value="provenance">
+              <AccordionTrigger>
+                {t("models.workspace.catalogEvidence")}
+              </AccordionTrigger>
+              <AccordionContent>
+                {t("models.workspace.catalogNotHealth")}
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
           {model.custom && model.customId && (
             <div className="model-inspector-actions">
-              <button
+              <Button
                 type="button"
-                className="btn btn-primary"
+                variant="outline"
                 disabled={busy}
                 onClick={onEdit}
               >
                 {t("models.customEdit")}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="btn btn-ghost model-inspector-delete"
+                variant="destructive"
                 disabled={busy}
                 onClick={onDelete}
               >
                 {t("models.customDelete")}
-              </button>
+              </Button>
             </div>
           )}
         </>
       ) : (
-        <div className="model-inspector-empty">
-          <MatrixMark />
-          <h3>{t("models.workspace.chooseModel")}</h3>
-          <p>{t("models.workspace.chooseModelHint")}</p>
-        </div>
+        <Empty className="model-inspector-empty">
+          <EmptyHeader>
+            <EmptyMedia>
+              <MatrixMark />
+            </EmptyMedia>
+            <EmptyTitle>{t("models.workspace.chooseModel")}</EmptyTitle>
+            <EmptyDescription>
+              {t("models.workspace.chooseModelHint")}
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
     </aside>
   );

@@ -6,6 +6,8 @@
 /* Adapt semantic roles; do not introduce a competing palette. */
 @theme inline {
   --color-background: var(--bg);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
   --color-popover: var(--surface);
   --color-popover-foreground: var(--text);
   --color-foreground: var(--text);
@@ -35,6 +37,69 @@
 }
 [data-slot="button"]:disabled {
   cursor: default;
+}
+[data-slot="switch"][data-size="touch"] {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+[data-slot="switch"][data-size="touch"]::before {
+  content: "";
+  position: absolute;
+  inset: 11px 4px;
+  border-radius: 100px;
+  background: var(--border);
+}
+[data-slot="switch"][data-size="touch"][data-checked]::before {
+  background: var(--accent);
+}
+[data-slot="switch"][data-size="touch"]::after {
+  content: none;
+}
+[data-slot="switch"][data-size="touch"] [data-slot="switch-thumb"] {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  margin-left: 7px;
+  background: var(--surface);
+  transform: translateX(0);
+}
+[data-slot="switch"][data-size="touch"][data-checked]
+  [data-slot="switch-thumb"] {
+  background: var(--accent-ink);
+  transform: translateX(14px);
+}
+[data-slot="accordion-trigger"] {
+  cursor: pointer;
+}
+[data-slot="accordion-content"] {
+  height: var(--accordion-panel-height);
+  opacity: 1;
+}
+[data-slot="accordion-content"][data-starting-style],
+[data-slot="accordion-content"][data-ending-style] {
+  height: 0;
+  opacity: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  [data-slot="accordion-content"] {
+    transition:
+      height 180ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 140ms ease-out;
+  }
+  [data-slot="accordion"]:has(:focus-visible) [data-slot="accordion-content"] {
+    transition: none;
+  }
+}
+@media (max-width: 560px) {
+  [data-slot="button"],
+  [data-slot="select-trigger"],
+  [data-slot="select-item"],
+  [data-slot="accordion-trigger"] {
+    min-height: 44px;
+  }
 }
 [data-slot="sheet-content"][data-instant] {
   transform: none;
@@ -81,6 +146,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  [data-slot="switch-thumb"] {
+    transition: none;
+  }
   [data-slot="sheet-content"],
   [data-slot="sheet-overlay"] {
     transform: none;

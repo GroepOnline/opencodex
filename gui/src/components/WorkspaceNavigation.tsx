@@ -2,6 +2,7 @@ import { LayoutGroup, m, useReducedMotion } from "motion/react";
 import { useId, useState, type ComponentType } from "react";
 import type { View } from "../app-routing";
 import { useT, type TKey } from "../i18n/shared";
+import { Button } from "./primitives/button";
 
 export interface WorkspaceDestination {
   view: View;
@@ -26,9 +27,10 @@ export default function WorkspaceNavigation({
     <nav className="workspace-navigation view-tabs" aria-label={t("nav.views")}>
       <LayoutGroup id={groupId}>
         {destinations.map(({ view, tkey, icon: Icon }) => (
-          <button
+          <Button
             key={view}
             type="button"
+            variant="ghost"
             className={`workspace-destination view-tab${active === view ? " active" : ""}`}
             aria-current={active === view ? "page" : undefined}
             onClick={(event) => {
@@ -50,7 +52,7 @@ export default function WorkspaceNavigation({
             )}
             <Icon size={18} aria-hidden />
             <span>{t(tkey)}</span>
-          </button>
+          </Button>
         ))}
       </LayoutGroup>
     </nav>

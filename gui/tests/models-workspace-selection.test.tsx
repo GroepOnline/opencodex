@@ -15,8 +15,13 @@ const GLOBALS = [
   "localStorage",
   "sessionStorage",
   "HTMLElement",
+  "HTMLInputElement",
   "Element",
+  "SVGElement",
   "Node",
+  "Document",
+  "ShadowRoot",
+  "MutationObserver",
   "ResizeObserver",
   "getComputedStyle",
   "requestAnimationFrame",
@@ -35,6 +40,7 @@ let models: ModelRow[];
 let selected: Record<string, string[]>;
 let failVisibility: boolean;
 let deletionDelay: Promise<void> | undefined;
+let providerRefreshResponse: Promise<Response> | undefined;
 let polls: Array<() => void>;
 let writes: Array<{
   path: string;
@@ -121,6 +127,7 @@ beforeEach(async () => {
   selected = { alpha: ["shared"], beta: [] };
   failVisibility = false;
   deletionDelay = undefined;
+  providerRefreshResponse = undefined;
   writes = [];
   globalThis.fetch = (async (input, init) => {
     const path = new URL(String(input), "http://localhost").pathname;
@@ -162,6 +169,11 @@ beforeEach(async () => {
       const id = decodeURIComponent(path.slice("/api/custom-models/".length));
       models = models.filter((model) => model.customId !== id);
       return Response.json({ ok: true });
+    }
+    if (path === "/api/providers/models/refresh" && method === "POST") {
+      if (!providerRefreshResponse)
+        throw new Error("Unexpected provider refresh");
+      return providerRefreshResponse;
     }
     if (path === "/api/models") return Response.json(models);
     if (path === "/api/providers")
@@ -250,6 +262,16 @@ function button(label: string, scope: ParentNode = host): HTMLButtonElement {
   return found;
 }
 
+function switchControl(label: string, scope: ParentNode = host): HTMLElement {
+  // Base UI renders a focusable span[role=switch] plus a hidden checkbox,
+  // not a button. Exercise its public switch surface, not the hidden input.
+  const found = [
+    ...scope.querySelectorAll<HTMLElement>('[role="switch"]'),
+  ].find((node) => node.getAttribute("aria-label") === label);
+  if (!found) throw new Error(`Missing switch: ${label}`);
+  return found;
+}
+
 function inspector(): HTMLElement {
   return host.querySelector<HTMLElement>("#model-inspector")!;
 }
@@ -260,7 +282,7 @@ function inspectButtons() {
     ),
   ];
 }
-async function click(node: HTMLButtonElement) {
+async function click(node: HTMLElement) {
   await act(async () => {
     node.click();
   });
@@ -297,13 +319,17 @@ test("model workspace opens new-user groups and inspects a provider-qualified id
   await mount();
   expect(inspectButtons()).toHaveLength(3);
   expect(inspector().textContent).toContain("Select a model");
-  expect(host.querySelector<HTMLDetailsElement>(".models-advanced")?.open).toBe(
-    false,
-  );
-  for (const options of host.querySelectorAll<HTMLDetailsElement>(
-    ".models-provider-options",
-  ))
-    expect(options.open).toBe(false);
+  const advanced = button("Model settings & advanced controls");
+  expect(advanced.getAttribute("aria-expanded")).toBe("false");
+  expect(
+    host.querySelector(".models-advanced [data-slot=accordion-content]"),
+  ).toBeNull();
+  for (const options of host.querySelectorAll(".models-provider-options")) {
+    expect(
+      button("Provider settings", options).getAttribute("aria-expanded"),
+    ).toBe("false");
+    expect(options.querySelector("[data-slot=accordion-content]")).toBeNull();
+  }
 
   await click(button("Inspect alpha/shared"));
   expect(inspector().querySelector("h3")?.textContent).toBe("Atlas Vision");
@@ -323,6 +349,12 @@ test("model workspace opens new-user groups and inspects a provider-qualified id
   expect(inspector().querySelectorAll("dd")).toHaveLength(2);
   for (const fact of inspector().querySelectorAll("dd"))
     expect(fact.textContent).toBe("Not reported");
+  const evidence = inspector().querySelector<HTMLButtonElement>(
+    "[data-slot=accordion-trigger]",
+  )!;
+  expect(evidence.getAttribute("aria-expanded")).toBe("false");
+  await click(evidence);
+  expect(evidence.getAttribute("aria-expanded")).toBe("true");
   expect(inspector().textContent).toContain("not a live connection test");
   expect(button("Inspect alpha/shared").getAttribute("aria-pressed")).toBe(
     "false",
@@ -414,6 +446,105 @@ test("provider filtering clears the inspector and combines with the global searc
   ).toEqual(["Inspect alpha/shared"]);
   expect(writes).toEqual([]);
 });
+
+test("model search input-group clear action resets filtering and returns focus to the real search input", async () => {
+  await mount();
+  const input = host.querySelector<HTMLInputElement>('input[type="search"]')!;
+  const group = input.closest('[data-slot="input-group"]')!;
+  expect(group).not.toBeNull();
+  expect(input.getAttribute("data-slot")).toBe("input-group-control");
+  expect(input.getAttribute("aria-label")).toBe("Search models or providers…");
+  await search("Atlas Vision");
+  expect(inspectButtons()).toHaveLength(1);
+  const clear = button("Clear search", group);
+  clear.focus();
+  await click(clear);
+  expect(input.value).toBe("");
+  expect(document.activeElement === input).toBe(true);
+  expect(inspectButtons()).toHaveLength(3);
+  expect(group.querySelector('button[aria-label="Clear search"]')).toBeNull();
+  expect(writes).toEqual([]);
+});
+
+test("model accordions expose associated panels only after activation and keep provider actions independent of collapse", async () => {
+  await mount();
+  const group = button("Inspect alpha/shared").closest(
+    ".models-provider-card",
+  )!;
+  const toggle = group.querySelector<HTMLButtonElement>(
+    ".models-provider-toggle",
+  )!;
+  const settings = button("Provider settings", group);
+  expect(group.querySelector(".models-provider-actions")).toBeNull();
+  expect(settings.getAttribute("aria-expanded")).toBe("false");
+  expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  await click(settings);
+  expect(settings.getAttribute("aria-expanded")).toBe("true");
+  const panelId = settings.getAttribute("aria-controls");
+  expect(panelId).toBeTruthy();
+  const panel = document.getElementById(panelId!);
+  expect(panel?.contains(button("Fetch models", group))).toBe(true);
+  expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  await click(settings);
+  expect(settings.getAttribute("aria-expanded")).toBe("false");
+  expect(group.querySelector(".models-provider-actions")).toBeNull();
+
+  const advanced = button("Model settings & advanced controls");
+  expect(
+    host.querySelector(".models-advanced [data-slot=accordion-content]"),
+  ).toBeNull();
+  await click(advanced);
+  expect(advanced.getAttribute("aria-expanded")).toBe("true");
+  expect(
+    host.querySelector(
+      '.models-advanced button.select-trigger[aria-label="Shadow Call Intercept"]',
+    ),
+  ).not.toBeNull();
+  await click(advanced);
+  expect(advanced.getAttribute("aria-expanded")).toBe("false");
+  expect(
+    host.querySelector(".models-advanced [data-slot=accordion-content]"),
+  ).toBeNull();
+  expect(writes).toEqual([]);
+});
+
+for (const outcome of ["success", "error"] as const) {
+  test(`provider refresh Spinner is present only while the request is pending and settles on ${outcome}`, async () => {
+    let finishRefresh!: (response: Response) => void;
+    providerRefreshResponse = new Promise<Response>((resolve) => {
+      finishRefresh = resolve;
+    });
+    await mount();
+    const group = button("Inspect alpha/shared").closest(
+      ".models-provider-card",
+    )!;
+    await click(button("Provider settings", group));
+    expect(host.querySelector('[data-slot="spinner"]')).toBeNull();
+    await click(button("Fetch models", group));
+    const pending = button("Fetching…", group);
+    expect(pending.disabled).toBe(true);
+    expect(pending.querySelectorAll('[data-slot="spinner"]')).toHaveLength(1);
+    expect(writes).toEqual([
+      { path: "/api/providers/models/refresh", method: "POST", body: null },
+    ]);
+    await act(async () => {
+      finishRefresh(
+        outcome === "success"
+          ? Response.json({ ok: true, count: 2, models: ["shared", "hidden"] })
+          : Response.json({ error: "Discovery unavailable" }, { status: 503 }),
+      );
+    });
+    await settle();
+    expect(host.querySelector('[data-slot="spinner"]')).toBeNull();
+    expect(button("Fetch models", group).disabled).toBe(false);
+    expect(host.textContent).toContain(
+      outcome === "success"
+        ? "Fetched 2 models from alpha."
+        : "Could not fetch models: Discovery unavailable",
+    );
+    expect(writes).toHaveLength(1);
+  });
+}
 
 test("search-expanded groups disable collapse controls without overwriting the persisted preference", async () => {
   testWindow.localStorage.setItem(
@@ -538,7 +669,7 @@ for (const removalSource of ["refresh", "confirmed deletion"] as const) {
         await settle();
       } else {
         if (focusLocation === "inspector")
-          button("Show selected model in picker", inspector()).focus();
+          switchControl("Show selected model in picker", inspector()).focus();
         else outsideControl.focus();
         expect(
           Boolean(document.activeElement?.closest("#model-inspector")),
@@ -590,14 +721,22 @@ for (const removalSource of ["refresh", "confirmed deletion"] as const) {
 test("inspector and row switches use the same allowlist visibility and provider-qualified mutation", async () => {
   await mount();
   await click(button("Inspect alpha/hidden"));
-  expect(button("alpha/hidden").getAttribute("aria-pressed")).toBe("false");
+  expect(switchControl("alpha/hidden").getAttribute("role")).toBe("switch");
+  expect(switchControl("alpha/hidden").getAttribute("aria-checked")).toBe(
+    "false",
+  );
   expect(
-    button("Show selected model in picker", inspector()).getAttribute(
-      "aria-pressed",
+    switchControl("Show selected model in picker", inspector()).getAttribute(
+      "role",
+    ),
+  ).toBe("switch");
+  expect(
+    switchControl("Show selected model in picker", inspector()).getAttribute(
+      "aria-checked",
     ),
   ).toBe("false");
   expect(inspector().textContent).toContain("Excluded by your model settings");
-  await click(button("Show selected model in picker", inspector()));
+  await click(switchControl("Show selected model in picker", inspector()));
   expect(writes).toEqual([
     {
       path: "/api/model-visibility",
@@ -610,16 +749,18 @@ test("inspector and row switches use the same allowlist visibility and provider-
       },
     },
   ]);
-  expect(button("alpha/hidden").getAttribute("aria-pressed")).toBe("true");
+  expect(switchControl("alpha/hidden").getAttribute("aria-checked")).toBe(
+    "true",
+  );
   expect(
-    button("Show selected model in picker", inspector()).getAttribute(
-      "aria-pressed",
+    switchControl("Show selected model in picker", inspector()).getAttribute(
+      "aria-checked",
     ),
   ).toBe("true");
-  await click(button("alpha/hidden"));
+  await click(switchControl("alpha/hidden"));
   expect(
-    button("Show selected model in picker", inspector()).getAttribute(
-      "aria-pressed",
+    switchControl("Show selected model in picker", inspector()).getAttribute(
+      "aria-checked",
     ),
   ).toBe("false");
   expect(button("Inspect alpha/hidden").getAttribute("aria-pressed")).toBe(
@@ -627,28 +768,34 @@ test("inspector and row switches use the same allowlist visibility and provider-
   );
 
   await click(button("Inspect beta/shared"));
-  await click(button("Show selected model in picker", inspector()));
+  await click(switchControl("Show selected model in picker", inspector()));
   expect(writes.at(-1)?.body).toEqual({
     scope: "models",
     provider: "beta",
     targets: [{ id: "shared", native: false }],
     enabled: false,
   });
-  expect(button("beta/shared").getAttribute("aria-pressed")).toBe("false");
-  expect(button("alpha/shared").getAttribute("aria-pressed")).toBe("true");
+  expect(switchControl("beta/shared").getAttribute("aria-checked")).toBe(
+    "false",
+  );
+  expect(switchControl("alpha/shared").getAttribute("aria-checked")).toBe(
+    "true",
+  );
 });
 
 test("failed visibility writes keep both switches at the server state and expose the failure", async () => {
   await mount();
   await click(button("Inspect alpha/hidden"));
   failVisibility = true;
-  await click(button("Show selected model in picker", inspector()));
+  await click(switchControl("Show selected model in picker", inspector()));
   expect(writes).toHaveLength(1);
   expect(host.textContent).toContain("Save failed");
-  expect(button("alpha/hidden").getAttribute("aria-pressed")).toBe("false");
+  expect(switchControl("alpha/hidden").getAttribute("aria-checked")).toBe(
+    "false",
+  );
   expect(
-    button("Show selected model in picker", inspector()).getAttribute(
-      "aria-pressed",
+    switchControl("Show selected model in picker", inspector()).getAttribute(
+      "aria-checked",
     ),
   ).toBe("false");
   expect(button("Inspect alpha/hidden").getAttribute("aria-pressed")).toBe(
