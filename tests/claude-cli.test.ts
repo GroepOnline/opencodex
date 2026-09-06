@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { claudeNotFoundHint } from "../src/cli/claude";
 import { commandInvocation } from "../src/lib/win-exec";
-import { buildClaudeEnv, claudeAdmissionToken } from "../src/cli/claude";
+import { attachClaudeAdmissionHeader, buildClaudeEnv, claudeAdmissionToken } from "../src/cli/claude";
 import type { OcxConfig } from "../src/types";
 
 function cfg(extra?: Partial<OcxConfig>): OcxConfig {
@@ -50,6 +50,24 @@ describe("ocx claude env assembly", () => {
       apiKeys: [{ id: "1", name: "main", key: "sk-ocx-123", createdAt: "2026-01-01" }],
     }), 10100, {});
     expect(env.ANTHROPIC_AUTH_TOKEN).toBe("sk-ocx-123");
+  });
+
+  test("service admission header preserves Claude subscription OAuth", () => {
+    const env = buildClaudeEnv(cfg({ claudeCode: {} }), 10100, {}, {}, AUTH_PRESENT);
+    attachClaudeAdmissionHeader(env, "service-token");
+    expect(env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(env.ANTHROPIC_CUSTOM_HEADERS).toBe("x-opencodex-api-key: service-token");
+    expect(env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBeUndefined();
+  });
+
+  test("service admission header preserves existing custom headers and user override", () => {
+    const env = { ANTHROPIC_CUSTOM_HEADERS: "x-trace-id: abc" };
+    attachClaudeAdmissionHeader(env, "service-token");
+    expect(env.ANTHROPIC_CUSTOM_HEADERS).toBe("x-trace-id: abc\nx-opencodex-api-key: service-token");
+
+    const user = { ANTHROPIC_CUSTOM_HEADERS: "X-OpenCodex-API-Key: user-token\nx-trace-id: abc" };
+    attachClaudeAdmissionHeader(user, "service-token");
+    expect(user.ANTHROPIC_CUSTOM_HEADERS).toBe("X-OpenCodex-API-Key: user-token\nx-trace-id: abc");
   });
 
   // Host-managed routing guard (devlog 260720_claude_authmode_persist/020):

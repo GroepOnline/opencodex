@@ -26,6 +26,23 @@ export interface ClaudeLaunchEnv {
 }
 
 /**
+ * Present the central/tunnelled proxy admission credential as an independent
+ * request header. Claude keeps its own subscription OAuth in subscription mode;
+ * the OCX service token is only for admitting the request at the proxy boundary.
+ */
+export function attachClaudeAdmissionHeader(
+  env: ClaudeLaunchEnv,
+  token: string | null,
+): ClaudeLaunchEnv {
+  if (!token) return env;
+  const existing = env.ANTHROPIC_CUSTOM_HEADERS?.trim();
+  const lines = existing ? existing.split(/\r?\n/) : [];
+  if (lines.some(line => /^\s*x-opencodex-api-key\s*:/i.test(line))) return env;
+  env.ANTHROPIC_CUSTOM_HEADERS = [...lines, `x-opencodex-api-key: ${token}`].join("\n");
+  return env;
+}
+
+/**
  * Injectable IO for tests. `env` is deliberately NOT injectable: it is bound to the
  * launch base so detection and the spawned process can never disagree (audit R3-3).
  */
@@ -270,6 +287,11 @@ export async function cmdClaude(args: string[]): Promise<number> {
   }
   const contextWindows = await fetchClaudeContextWindows(config, port);
   const env = buildClaudeEnv(config, port, process.env, contextWindows);
+  // A client-only/tunnelled install has a separate OCX admission credential. Do not
+  // overload ANTHROPIC_AUTH_TOKEN with it: that would replace the user's Claude OAuth.
+  // Claude Code supports newline-delimited ANTHROPIC_CUSTOM_HEADERS, so carry the
+  // service token on x-opencodex-api-key instead.
+  attachClaudeAdmissionHeader(env, resolveDataPlaneAdmissionToken(process.env));
 
   // Agent View sessions load settings.json `env`. Host-managed mode strips those
   // keys — keep it OFF only when we are not injecting an admission token. With a
