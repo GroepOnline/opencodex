@@ -22,8 +22,10 @@ describe("relPath home containment (devlog 260715_cross_platform_audit/030)", ()
   });
 
   afterEach(() => {
-    if (savedUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = savedUserProfile;
-    if (savedHome === undefined) delete process.env.HOME; else process.env.HOME = savedHome;
+    if (savedUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = savedUserProfile;
+    if (savedHome === undefined) delete process.env.HOME;
+    else process.env.HOME = savedHome;
   });
 
   function setHome(value: string) {
@@ -33,7 +35,9 @@ describe("relPath home containment (devlog 260715_cross_platform_audit/030)", ()
 
   test("win32: contained descendants render as ~/, exact home as ~", () => {
     setHome("C:\\Users\\bob");
-    expect(relPath("C:\\Users\\bob\\proj\\.codex\\config.toml", win32)).toBe("~/proj/.codex/config.toml");
+    expect(relPath("C:\\Users\\bob\\proj\\.codex\\config.toml", win32)).toBe(
+      "~/proj/.codex/config.toml",
+    );
     expect(relPath("C:\\Users\\bob", win32)).toBe("~");
     // relative() case-folds on win32 (drive letters and components).
     expect(relPath("c:\\users\\bob\\x", win32)).toBe("~/x");
@@ -41,13 +45,17 @@ describe("relPath home containment (devlog 260715_cross_platform_audit/030)", ()
 
   test("win32: sibling prefix (bob vs bob2) is NOT rendered as home", () => {
     setHome("C:\\Users\\bob");
-    expect(relPath("C:\\Users\\bob2\\proj\\config.toml", win32)).toBe("C:\\Users\\bob2\\proj\\config.toml");
+    expect(relPath("C:\\Users\\bob2\\proj\\config.toml", win32)).toBe(
+      "C:\\Users\\bob2\\proj\\config.toml",
+    );
   });
 
   test("win32: parent and cross-drive paths stay absolute", () => {
     setHome("C:\\Users\\bob");
     expect(relPath("C:\\Users", win32)).toBe("C:\\Users");
-    expect(relPath("D:\\work\\config.toml", win32)).toBe("D:\\work\\config.toml");
+    expect(relPath("D:\\work\\config.toml", win32)).toBe(
+      "D:\\work\\config.toml",
+    );
   });
 
   test("posix: comparison is case-sensitive (no false ~ for different-case home)", () => {
@@ -91,10 +99,13 @@ afterEach(() => {
 function writeGlobalRoutingConfig(extra = ""): void {
   const codexHome = process.env.CODEX_HOME!;
   mkdirSync(codexHome, { recursive: true });
-  writeFileSync(join(codexHome, "config.toml"), `
+  writeFileSync(
+    join(codexHome, "config.toml"),
+    `
 model_provider = "opencodex"
 ${extra}
-`);
+`,
+  );
 }
 
 describe("isGlobalOpencodexRoutingActive", () => {
@@ -128,7 +139,9 @@ trust_level = "untrusted"
 
 [projects.'C:\\repo-c']
 `;
-    expect(parseTrustedProjectPathsFromCodexConfig(text)).toEqual(["C:\\repo-a"]);
+    expect(parseTrustedProjectPathsFromCodexConfig(text)).toEqual([
+      "C:\\repo-a",
+    ]);
   });
 });
 
@@ -171,7 +184,9 @@ describe("analyzeProjectCodexConfig", () => {
 name = "anthropic"
 base_url = "https://api.anthropic.com"
 `;
-    expect(analyzeProjectCodexConfig(text, "C:\\repo\\.codex\\config.toml")).toEqual([]);
+    expect(
+      analyzeProjectCodexConfig(text, "C:\\repo\\.codex\\config.toml"),
+    ).toEqual([]);
   });
 
   test("ignores profile without model_provider override", () => {
@@ -181,7 +196,9 @@ profile = "work"
 [profiles.work]
 approval_policy = "on-request"
 `;
-    expect(analyzeProjectCodexConfig(text, "C:\\repo\\.codex\\config.toml")).toEqual([]);
+    expect(
+      analyzeProjectCodexConfig(text, "C:\\repo\\.codex\\config.toml"),
+    ).toEqual([]);
   });
 
   test("warns when effective provider bypasses proxy", () => {
@@ -194,7 +211,10 @@ model_provider = "anthropic"
 [model_providers.anthropic]
 name = "anthropic"
 `;
-    const warnings = analyzeProjectCodexConfig(text, "C:\\repo\\.codex\\config.toml");
+    const warnings = analyzeProjectCodexConfig(
+      text,
+      "C:\\repo\\.codex\\config.toml",
+    );
     expect(warnings).toHaveLength(1);
     expect(warnings[0]!.code).toBe("model_providers_table");
     expect(warnings[0]!.detail).toBe("anthropic");
@@ -205,27 +225,53 @@ name = "anthropic"
     const text = `
 model_provider = "openai"
 `;
-    expect(analyzeProjectCodexConfig(text, "C:\\repo\\.codex\\config.toml")).toEqual([]);
+    expect(
+      analyzeProjectCodexConfig(text, "C:\\repo\\.codex\\config.toml"),
+    ).toEqual([]);
   });
 });
 
 describe("collectProjectCodexConfigWarnings", () => {
   test("skips untrusted projects even when they define bypass config", () => {
-    const escaped = testDir.replace(/\\/g, "\\\\");
     const projectDir = join(testDir, "proj");
     const codexConfigPath = join(process.env.CODEX_HOME!, "config.toml");
-    writeGlobalRoutingConfig(`
-[projects.'${escaped}\\proj']
-trust_level = "untrusted"
+    const projectConfigPath = join(projectDir, ".codex", "config.toml");
+    const setTrustLevel = (level: "trusted" | "untrusted") => {
+      // TOML literal keys preserve the platform-native path without escaping.
+      writeGlobalRoutingConfig(`
+[projects.'${projectDir}']
+trust_level = "${level}"
 `);
+    };
     mkdirSync(join(projectDir, ".codex"), { recursive: true });
-    writeFileSync(join(projectDir, ".codex", "config.toml"), `
+    writeFileSync(
+      projectConfigPath,
+      `
 model_provider = "anthropic"
 [model_providers.anthropic]
 name = "anthropic"
-`);
-    // Parent discovery may walk to the operator's real ~/.codex above the repo cwd.
-    expect(collectProjectCodexConfigWarnings({ cwd: testDir, codexConfigPath })).toEqual([]);
+`,
+    );
+    // Parent discovery may legitimately find a real user config above TMPDIR, so
+    // scope both assertions to the same fixture project. Keeping cwd outside
+    // that project means it can only be discovered through the trust registry.
+    const collectFixtureWarnings = () => collectProjectCodexConfigWarnings({
+      cwd: testDir,
+      codexConfigPath,
+    }).filter((warning) => warning.path === projectConfigPath);
+
+    // Prove this exact path is discoverable before testing its exclusion.
+    setTrustLevel("trusted");
+    expect(collectFixtureWarnings()).toEqual([
+      expect.objectContaining({
+        path: projectConfigPath,
+        code: "model_providers_table",
+        detail: "anthropic",
+      }),
+    ]);
+
+    setTrustLevel("untrusted");
+    expect(collectFixtureWarnings()).toEqual([]);
   });
 
   test("uncached collection reflects project config changes", () => {
@@ -237,20 +283,27 @@ name = "anthropic"
 trust_level = "trusted"
 `);
     mkdirSync(join(projectDir, ".codex"), { recursive: true });
-    writeFileSync(projectConfigPath, `
+    writeFileSync(
+      projectConfigPath,
+      `
 model_provider = "anthropic"
 [model_providers.anthropic]
 name = "anthropic"
-`);
+`,
+    );
     // Parent discovery may legitimately find a real user config above the OS temp
     // directory, so scope this assertion to the fixture project.
-    const first = collectProjectCodexConfigWarnings({ cwd: testDir, codexConfigPath })
-      .filter(warning => warning.path === projectConfigPath);
+    const first = collectProjectCodexConfigWarnings({
+      cwd: testDir,
+      codexConfigPath,
+    }).filter((warning) => warning.path === projectConfigPath);
     expect(first.length).toBe(1);
     writeFileSync(projectConfigPath, `model_provider = "openai"`);
     // Direct collection bypasses the diagnostics cache and sees the new file.
-    const second = collectProjectCodexConfigWarnings({ cwd: testDir, codexConfigPath })
-      .filter(warning => warning.path === projectConfigPath);
+    const second = collectProjectCodexConfigWarnings({
+      cwd: testDir,
+      codexConfigPath,
+    }).filter((warning) => warning.path === projectConfigPath);
     expect(second.length).toBe(0);
   });
 });
