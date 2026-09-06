@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -91,6 +91,32 @@ function git(root: string, ...args: string[]): string {
   });
   if (!result.success) throw new Error(`git ${args[0]} failed`);
   return result.stdout.toString().trim();
+}
+
+function normalizeGeneratedBundleSourceComments(
+  bundle: Uint8Array,
+  buildRoot: string,
+): Uint8Array {
+  const marker = basename(buildRoot);
+  const text = new TextDecoder().decode(bundle);
+  const normalized = text
+    .split("\n")
+    .map((line) => {
+      if (!line.includes(marker)) return line;
+      if (!line.trimStart().startsWith("// ")) {
+        throw new Error(
+          "Temporary build path escaped generated source comments; refusing nondeterministic artifact",
+        );
+      }
+      return line.replaceAll(marker, "ocx-client-source");
+    })
+    .join("\n");
+  if (normalized.includes(marker)) {
+    throw new Error(
+      "Temporary build path remained in bundle after normalization; refusing nondeterministic artifact",
+    );
+  }
+  return new TextEncoder().encode(normalized);
 }
 
 function prepareIsolatedBuildRoot(
@@ -364,7 +390,8 @@ export async function buildClientArtifact(destination: string, root = ROOT) {
       throw new Error(
         "Unexpected bundle assets; extend the artifact manifest before shipping",
       );
-    const bundle = new Uint8Array(await result.outputs[0]!.arrayBuffer());
+    const rawBundle = new Uint8Array(await result.outputs[0]!.arrayBuffer());
+    const bundle = normalizeGeneratedBundleSourceComments(rawBundle, buildRoot);
     const digest = sha256(bundle);
     mkdirSync(join(staging, "src/cli"), { recursive: true });
     writeFileSync(join(staging, "src/cli/index.js"), bundle);

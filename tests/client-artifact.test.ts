@@ -128,6 +128,9 @@ describe("remote client artifact", () => {
       `${digest}  src/cli/index.js\n`,
     );
     expect(manifest.files["src/cli/index.js"]).toBe(digest);
+    expect(readFileSync(entry, "utf8")).not.toMatch(
+      /ocx-client-source-[A-Za-z0-9_-]+/,
+    );
     expect(manifest.files["package.json"]).toBe(
       createHash("sha256").update(packageText).digest("hex"),
     );

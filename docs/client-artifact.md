@@ -42,8 +42,11 @@ physical target before comparing homes, and fails closed if a target cannot be
 resolved. It separately rejects a client-home override that traverses a
 reparse point, so no link alias can select the native home.
 
-The CLI and its imported dependencies and upstream model snapshot are bundled;
-package metadata remains alongside the bundle for version reporting. This is
+The CLI and its imported dependencies and upstream model snapshot are bundled.
+Generated Bun source-path comments are canonicalized so the random isolated
+build-directory name cannot change artifact bytes between identical builds; a
+temporary build path outside generated comments fails the build closed. Package
+metadata remains alongside the bundle for version reporting. This is
 not a GUI, tray, service or storage-worker distribution. Direct bundle use is
 limited to help and version commands, which exit before CLI auto-repair hooks;
 every other command fails closed and must go through the governed remote
