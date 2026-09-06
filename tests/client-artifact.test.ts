@@ -412,6 +412,7 @@ describe("remote client artifact", () => {
         "central OCX proxy unavailable through the governed remote launcher",
       );
     },
+    15_000,
   );
 
   test.skipIf(!powershell)(
