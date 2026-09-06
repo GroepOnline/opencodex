@@ -366,6 +366,19 @@ describe("remote client artifact", () => {
     },
   );
 
+  test("refuses publication through a symlinked destination parent", async () => {
+    const realParent = join(scratch, "real-publication-parent");
+    const aliasParent = join(scratch, "aliased-publication-parent");
+    mkdirSync(realParent);
+    symlinkSync(realParent, aliasParent, "dir");
+    const destination = join(aliasParent, "candidate");
+
+    await expect(buildClientArtifact(destination)).rejects.toThrow(
+      "Destination path traverses a symlink",
+    );
+    expect(existsSync(join(realParent, "candidate"))).toBe(false);
+  });
+
   test("does not replace an existing destination symlink", async () => {
     const existing = join(scratch, "existing");
     writeFileSync(existing, "preserve");

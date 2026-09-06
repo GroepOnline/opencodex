@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -15,6 +16,32 @@ import { fileURLToPath } from "node:url";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const sha256 = (data: string | Uint8Array) =>
   createHash("sha256").update(data).digest("hex");
+
+function assertNoSymlinkPathComponents(path: string) {
+  let current = resolve(path);
+  while (true) {
+    try {
+      if (lstatSync(current).isSymbolicLink()) {
+        throw new Error(
+          `Destination path traverses a symlink; refusing publication: ${current}`,
+        );
+      }
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        (error as NodeJS.ErrnoException).code === "ENOENT"
+      ) {
+        // Missing components are expected for a fresh candidate path.
+      } else {
+        throw error;
+      }
+    }
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+}
 
 function git(root: string, ...args: string[]): string {
   const result = Bun.spawnSync(["git", ...args], {
@@ -206,6 +233,7 @@ export async function buildClientArtifact(destination: string, root = ROOT) {
     throw new Error(
       "Destination already exists; build a new candidate instead",
     );
+  assertNoSymlinkPathComponents(output);
   // Build only clean, tracked runtime inputs. Tooling/docs edits do not invalidate
   // the runtime revision; package metadata is read from the exact Git object.
   const dirty = git(
@@ -286,6 +314,8 @@ export async function buildClientArtifact(destination: string, root = ROOT) {
       JSON.stringify(manifest, null, 2) + "\n",
     );
     // Never touch `current`; publication creates one new candidate directory.
+    // Re-check path confinement after the potentially long bundle build.
+    assertNoSymlinkPathComponents(output);
     if (existsSync(output))
       throw new Error(
         "Destination appeared during build; refusing replacement",
