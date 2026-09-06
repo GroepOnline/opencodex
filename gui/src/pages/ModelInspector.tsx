@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useT } from "../i18n/shared";
-import { IconBoxes, IconChevron } from "../icons";
+import { IconCheck, IconChevron, IconServer } from "../icons";
+import MatrixMark from "../components/MatrixMark";
+import { useCopyFeedback } from "../components/use-copy-feedback";
 import { Switch } from "../ui";
 import { modelLabel } from "../model-display";
 import type { ProviderModelGroup } from "../models-groups";
@@ -26,6 +28,8 @@ export default function ModelInspector({
   onDelete: () => void;
 }) {
   const t = useT();
+  const idCopy = useCopyFeedback<string>();
+  const copyOutcome = model ? idCopy.outcomeFor(model.namespaced) : null;
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     headingRef.current?.focus({ preventScroll: true });
@@ -53,14 +57,46 @@ export default function ModelInspector({
             {t("models.workspace.back")}
           </button>
           <div className="model-inspector-heading">
-            <span className="model-inspector-provider">{model.provider}</span>
+            <span className="model-inspector-provider">
+              <IconServer size={15} aria-hidden />
+              {model.provider}
+            </span>
             <h3 ref={headingRef} tabIndex={-1}>
               {model.displayName || modelLabel(model.id)}
             </h3>
-            <code>{model.native ? model.id : model.namespaced}</code>
             {model.custom && (
               <span className="models-chip">{t("models.customBadge")}</span>
             )}
+          </div>
+          <div
+            className="model-inspector-identifier"
+            data-copy-outcome={copyOutcome ?? undefined}
+          >
+            <div className="model-inspector-identifier-head">
+              <span>{t("models.workspace.modelId")}</span>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() =>
+                  idCopy.copy(
+                    model.native ? model.id : model.namespaced,
+                    model.namespaced,
+                  )
+                }
+              >
+                {copyOutcome === "copied" && (
+                  <IconCheck size={13} aria-hidden />
+                )}
+                <span aria-live="polite">
+                  {copyOutcome === "copied"
+                    ? t("api.copied")
+                    : copyOutcome === "unavailable"
+                      ? t("models.workspace.copyUnavailable")
+                      : t("models.workspace.copyId")}
+                </span>
+              </button>
+            </div>
+            <code>{model.native ? model.id : model.namespaced}</code>
           </div>
           <div className="model-inspector-visibility">
             <div>
@@ -127,9 +163,10 @@ export default function ModelInspector({
               </div>
             )}
           </dl>
-          <p className="model-inspector-provenance">
-            {t("models.workspace.catalogNotHealth")}
-          </p>
+          <details className="model-inspector-provenance">
+            <summary>{t("models.workspace.catalogEvidence")}</summary>
+            <p>{t("models.workspace.catalogNotHealth")}</p>
+          </details>
           {model.custom && model.customId && (
             <div className="model-inspector-actions">
               <button
@@ -153,7 +190,7 @@ export default function ModelInspector({
         </>
       ) : (
         <div className="model-inspector-empty">
-          <IconBoxes size={24} aria-hidden />
+          <MatrixMark />
           <h3>{t("models.workspace.chooseModel")}</h3>
           <p>{t("models.workspace.chooseModelHint")}</p>
         </div>

@@ -27,16 +27,16 @@
   --text-label: 13px;
   --text-title: 24px;
   --text-display: 32px;
-  --radius-xs: 8px;
-  --radius-sm: 10px;
-  --radius: 12px;
-  --radius-lg: 16px;
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius: 10px;
+  --radius-lg: 12px;
   --control-sm: 32px;
   --control-md: 38px;
   --control-lg: 44px;
   --workspace-rail: 0px;
-  --workspace-header: 52px;
-  --workspace-measure: 1440px;
+  --workspace-header: 64px;
+  --workspace-measure: 1800px;
   --scrollbar-thumb: var(--border);
   --scrollbar-thumb-hover: var(--muted);
   --scrollbar-track: var(--bg);
@@ -76,14 +76,18 @@
 .ocx-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: var(--workspace-header) auto auto 1fr;
-  grid-template-areas: "header" "navigation" "banner" "content";
+  grid-template-rows: auto auto 1fr;
+  grid-template-areas: "header" "banner" "content";
   min-height: 100dvh;
 }
 
 .ocx-workspace .topbar {
   grid-area: header;
-  height: var(--workspace-header);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 28px;
+  min-height: var(--workspace-header);
+  height: auto;
   padding: 0 var(--space-6);
   background: var(--surface);
   border-bottom: 1px solid var(--border-soft);
@@ -102,20 +106,24 @@
   padding: 0;
   border: 0;
   color: var(--muted);
+  font-size: 11px;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .ocx-workspace .offline-banner {
   grid-area: banner;
   margin: 0;
 }
 .ocx-workspace .workspace-navigation {
-  grid-area: navigation;
+  grid-column: 2;
   display: flex;
   flex-direction: row;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-6);
+  gap: 4px;
+  padding: 8px 0;
   border: 0;
-  border-bottom: 1px solid var(--border-soft);
-  background: var(--surface);
+  background: transparent;
   overflow: visible;
 }
 .workspace-navigation .workspace-destination {
@@ -123,19 +131,22 @@
   isolation: isolate;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 8px;
   min-height: var(--control-touch);
-  padding: var(--space-3) var(--space-4);
+  padding: 8px 12px;
   border-radius: var(--radius-sm);
   text-align: left;
   white-space: normal;
   color: var(--muted);
+  font-size: 13px;
   transition:
     color var(--motion-fast),
     transform var(--motion-fast);
 }
 .workspace-navigation .workspace-destination > svg {
   flex-shrink: 0;
+  width: 16px;
+  height: 16px;
 }
 .workspace-navigation .workspace-destination.active {
   color: var(--text);
@@ -161,8 +172,7 @@
 }
 .ocx-workspace .main-inner {
   max-width: var(--workspace-measure);
-  padding: var(--space-6) clamp(var(--space-4), 3vw, var(--space-12))
-    var(--space-12);
+  padding: 24px clamp(20px, 2.5vw, 48px) 40px;
 }
 .ocx-workspace .main-inner.main-inner--combos {
   min-height: calc(100dvh - var(--workspace-header));
@@ -174,21 +184,24 @@
   width: fit-content;
   max-width: 100%;
   gap: var(--space-1);
-  padding: var(--space-1);
-  margin-bottom: var(--space-5);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm);
-  background: var(--rail);
+  padding: 0;
+  margin-bottom: 28px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   overflow-x: auto;
 }
 .ocx-workspace .sub-tab {
   min-height: var(--control-md);
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-xs);
+  padding: 6px 14px;
+  border-radius: 0;
+  font-size: 13px;
+  border-bottom: 2px solid transparent;
 }
 .ocx-workspace .sub-tab.active {
-  background: var(--surface);
+  background: transparent;
   color: var(--text);
+  border-bottom-color: var(--text);
 }
 .ocx-workspace .sub-tab.active::after {
   content: none;
@@ -214,8 +227,28 @@
   border-radius: var(--radius-sm);
 }
 .ocx-workspace .stamp {
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-pill);
+  padding: 4px 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  text-transform: none;
+  font-size: 12px;
+}
+
+@media (max-width: 1280px) {
+  .ocx-workspace .topbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0 16px;
+    padding-top: 8px;
+  }
+  .ocx-workspace .topbar-right {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .ocx-workspace .workspace-navigation {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
 }
 
 @media (max-width: 760px) {
@@ -224,8 +257,8 @@
     flex-direction: column;
   }
   .ocx-workspace .topbar {
-    height: var(--space-16);
-    padding: 0 var(--space-4);
+    height: auto;
+    padding: 8px 12px;
   }
   .ocx-workspace .workspace-navigation {
     display: grid;
@@ -233,7 +266,7 @@
     padding: var(--space-2);
     gap: var(--space-1);
     border-right: 0;
-    border-bottom: 1px solid var(--border-soft);
+    border: 0;
     overflow: visible;
   }
   .workspace-navigation .workspace-destination {
@@ -247,7 +280,7 @@
     padding: var(--space-4);
   }
   .ocx-workspace .sub-tabs {
-    margin-bottom: var(--space-6);
+    margin-bottom: 20px;
   }
   .ocx-workspace .brand .ver {
     display: none;

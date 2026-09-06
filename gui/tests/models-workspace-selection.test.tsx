@@ -29,6 +29,8 @@ let root: Root | undefined;
 let host: HTMLDivElement;
 let Models: typeof import("../src/pages/Models").default;
 let originalFetch: typeof fetch;
+let clipboardDescriptor: PropertyDescriptor | undefined;
+let execCommandDescriptor: PropertyDescriptor | undefined;
 let models: ModelRow[];
 let selected: Record<string, string[]>;
 let failVisibility: boolean;
@@ -49,6 +51,14 @@ beforeEach(async () => {
   );
   originalFetch = globalThis.fetch;
   testWindow = new Window({ url: "http://localhost/" });
+  clipboardDescriptor = Object.getOwnPropertyDescriptor(
+    testWindow.navigator,
+    "clipboard",
+  );
+  execCommandDescriptor = Object.getOwnPropertyDescriptor(
+    testWindow.document,
+    "execCommand",
+  );
   Object.defineProperty(testWindow.navigator, "language", {
     configurable: true,
     value: "en-US",
@@ -188,6 +198,20 @@ afterEach(async () => {
       root!.unmount();
     });
   host.remove();
+  if (clipboardDescriptor)
+    Object.defineProperty(
+      testWindow.navigator,
+      "clipboard",
+      clipboardDescriptor,
+    );
+  else Reflect.deleteProperty(testWindow.navigator, "clipboard");
+  if (execCommandDescriptor)
+    Object.defineProperty(
+      testWindow.document,
+      "execCommand",
+      execCommandDescriptor,
+    );
+  else Reflect.deleteProperty(testWindow.document, "execCommand");
   await testWindow.happyDOM.close();
   globalThis.fetch = originalFetch;
   for (const key of GLOBALS) {
@@ -665,4 +689,155 @@ test("custom inspector actions edit the selected identity and only delete after 
   ]);
   expect(inspector().textContent).toContain("Select a model");
   expect(host.textContent).toContain("Custom model deleted");
+});
+
+function installClipboard(
+  writeText: (text: string) => Promise<void>,
+  execCommand: (command: string) => boolean = () => false,
+) {
+  Object.defineProperty(testWindow.navigator, "clipboard", {
+    configurable: true,
+    value: { writeText },
+  });
+  Object.defineProperty(testWindow.document, "execCommand", {
+    configurable: true,
+    value: execCommand,
+  });
+}
+
+function inspectorCopyOutcome(): string | null {
+  return (
+    inspector()
+      .querySelector(".model-inspector-identifier")
+      ?.getAttribute("data-copy-outcome") ?? null
+  );
+}
+
+test("inspector Copy ID writes the exact namespaced model ID and scopes success to that selection", async () => {
+  const copied: string[] = [];
+  const fallbackCalls: string[] = [];
+  installClipboard(
+    async (text) => {
+      copied.push(text);
+    },
+    (command) => {
+      fallbackCalls.push(command);
+      return false;
+    },
+  );
+  await mount();
+  await click(button("Inspect alpha/shared"));
+  expect(inspectorCopyOutcome()).toBeNull();
+  await click(button("Copy ID", inspector()));
+  expect(copied).toEqual(["alpha/shared"]);
+  expect(fallbackCalls).toEqual([]);
+  expect(inspectorCopyOutcome()).toBe("copied");
+  expect(
+    button("Copied", inspector()).querySelectorAll('svg[aria-hidden="true"]'),
+  ).toHaveLength(1);
+  expect(
+    button("Copied", inspector()).querySelector('[aria-live="polite"]')
+      ?.textContent,
+  ).toBe("Copied");
+
+  // These rows deliberately share the bare ID: the feedback scope must include
+  // the provider, not merely the model ID or current inspector instance.
+  await click(button("Inspect beta/shared"));
+  expect(button("Copy ID", inspector()).textContent).toBe("Copy ID");
+  expect(inspector().textContent).not.toContain("Copied");
+  expect(inspectorCopyOutcome()).toBeNull();
+  expect(button("Copy ID", inspector()).querySelector("svg")).toBeNull();
+  expect(copied).toEqual(["alpha/shared"]);
+  expect(writes).toEqual([]);
+});
+
+test("inspector Copy ID copies native models as bare IDs rather than routing namespaces", async () => {
+  const copied: string[] = [];
+  installClipboard(async (text) => {
+    copied.push(text);
+  });
+  models.push({
+    provider: "openai",
+    id: "gpt-5-native",
+    namespaced: "openai/gpt-5-native",
+    native: true,
+    disabled: false,
+  });
+  await mount();
+  await click(button("Inspect gpt-5-native"));
+  expect(inspector().querySelector("code")?.textContent).toBe("gpt-5-native");
+  await click(button("Copy ID", inspector()));
+  expect(copied).toEqual(["gpt-5-native"]);
+  expect(button("Copied", inspector()).textContent).toBe("Copied");
+  expect(inspectorCopyOutcome()).toBe("copied");
+  expect(writes).toEqual([]);
+});
+
+test("inspector Copy ID reports unavailable clipboard honestly and clears that feedback for another model", async () => {
+  const attempted: string[] = [];
+  const fallbackCalls: string[] = [];
+  installClipboard(
+    async (text) => {
+      attempted.push(text);
+      throw new Error("Clipboard permission denied");
+    },
+    (command) => {
+      fallbackCalls.push(command);
+      return false;
+    },
+  );
+  await mount();
+  await click(button("Inspect alpha/shared"));
+  await click(button("Copy ID", inspector()));
+  expect(attempted).toEqual(["alpha/shared"]);
+  expect(fallbackCalls).toEqual(["copy"]);
+  expect(
+    button("Clipboard unavailable", inspector()).querySelector(
+      '[aria-live="polite"]',
+    )?.textContent,
+  ).toBe("Clipboard unavailable");
+  expect(inspectorCopyOutcome()).toBe("unavailable");
+  expect(inspector().querySelector('[data-copy-outcome="copied"]')).toBeNull();
+  expect(
+    button("Clipboard unavailable", inspector()).querySelector("svg"),
+  ).toBeNull();
+  expect(inspector().textContent).not.toContain("Copied");
+  expect(testWindow.document.querySelector("textarea")).toBeNull();
+
+  await click(button("Inspect beta/shared"));
+  expect(button("Copy ID", inspector()).textContent).toBe("Copy ID");
+  expect(inspector().textContent).not.toContain("Clipboard unavailable");
+  expect(inspector().textContent).not.toContain("Copied");
+  expect(inspectorCopyOutcome()).toBeNull();
+  expect(writes).toEqual([]);
+});
+
+test("inspector Copy ID cannot display a late completion over a different selected model", async () => {
+  const copied: string[] = [];
+  let finishFirstCopy!: () => void;
+  const firstCopy = new Promise<void>((resolve) => {
+    finishFirstCopy = resolve;
+  });
+  installClipboard(async (text) => {
+    copied.push(text);
+    if (text === "alpha/shared") await firstCopy;
+  });
+  await mount();
+  await click(button("Inspect alpha/shared"));
+  await click(button("Copy ID", inspector()));
+  expect(copied).toEqual(["alpha/shared"]);
+  await click(button("Inspect beta/shared"));
+  expect(button("Copy ID", inspector()).textContent).toBe("Copy ID");
+  await act(async () => {
+    finishFirstCopy();
+  });
+  await settle();
+  expect(button("Copy ID", inspector()).textContent).toBe("Copy ID");
+  expect(inspector().textContent).not.toContain("Copied");
+  expect(inspectorCopyOutcome()).toBeNull();
+  await click(button("Copy ID", inspector()));
+  expect(copied).toEqual(["alpha/shared", "beta/shared"]);
+  expect(button("Copied", inspector()).textContent).toBe("Copied");
+  expect(inspectorCopyOutcome()).toBe("copied");
+  expect(writes).toEqual([]);
 });

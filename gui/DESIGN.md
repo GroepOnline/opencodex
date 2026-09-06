@@ -52,6 +52,27 @@ detail vandaag ongewijzigd is of dat hun vormgeving automatisch bij OCX past.
 Ook zwart/neon, crème/terracotta en een krantachtig raster kunnen templates zijn.
 Componentlibraries leveren gedrag en consistentie, niet de productcompositie.
 
+Aanvullende referenties van Joep voor de polishlaag:
+
+- [Kinetics](https://kinetics.colorion.co/#library): retargetbare selectie en
+  beperkte microfeedback. Geen magneetknoppen, springende cijfers of gekopieerde
+  height/left-animaties; de bestaande Motion-laag blijft eigenaar van navigatie.
+- [sv-matrix](https://sv-matrix.vercel.app/): een 5×5 midden-naar-buiten motief in
+  het lege detailpaneel. `MatrixMark` is een eigen React/SVG-implementatie van het
+  motief, geen Svelte-runtime of overgenomen upstreamcomponent. Eén opacity-reveal
+  per lege staat, drie ringgroepen, klaar binnen 820ms; geen loader of live-status.
+- [Libraries.dev Beam](https://libraries.dev/beam): gerichte randfeedback bij een
+  actie. Hier een monochrome lijn langs het model-ID na bewezen kopieersucces,
+  met transform/opacity en zonder loop, shader, gradient of extra dependency.
+- `GroepOnline/design-system` op `2a8da31`: `DESIGN.md` §15–16,
+  `taste/taste-rules.md` en `surfaces/auth-landing.md` bieden relevante
+  product-/eerste-indrukdiscipline. Hun historische blauwe accent, loginontwerp
+  en branding worden niet naar OCX gekopieerd. Die repo blijft ongewijzigd.
+
+De matrix is verborgen voor assistieve technologie. Reduced-motion toont de
+statische eindstaat; toetsenbordgestuurde kopieerfeedback heeft geen lijnbeweging.
+Kopieersucces blijft daarnaast leesbare tekst met een check-icoon, nooit alleen motion.
+
 - `WorkspaceNavigation`: één getypeerde bestemmingencatalogus, iconen, labels,
   actieve pagina en een gedeelde Motion-selectie. Bestaande hashes blijven werken.
 - Shadcn `base-nova` op Base UI levert de gedeelde Button, Sheet, Empty en
@@ -66,9 +87,10 @@ Componentlibraries leveren gedrag en consistentie, niet de productcompositie.
 
 ### Geometrie en responsiviteit
 
-De catalogusslice heeft een werkvlak tot 1440px, horizontale globale navigatie en
-een desktopheader van 52px. De modellenwerkplek gebruikt een ruime vergelijkbare
-lijst en een detailpaneel van 280–340px voor de selectie. Geen drie smalle
+De catalogusslice heeft een werkvlak tot 1800px en een desktopheader van minimaal
+64px met merk, globale navigatie en status op één regel. Onder 1280px krijgt de
+navigatie een eigen regel. De modellenwerkplek gebruikt een vergelijkbare lijst
+en een detailpaneel van 320–400px met een vaste scheidingslijn. Geen drie smalle
 zijbalken of een mini-tabel in een grote kaart. Links uitlijnen, model-id's leesbaar
 houden en numerieke kolommen uitlijnen. Begin bij 14px interfacecopy, 12px metadata
 en 24px paginatitel; toets lange namen en EN/NL vóór verdere verfijning.
@@ -115,6 +137,9 @@ modellenwerkplek is geïmplementeerd in de redesignbranch, nog niet door Joep
 visueel geaccepteerd of uitgerold. `ModelInspector.tsx` vervangt de hoverkaart;
 `styles/model-catalog.css` is eigenaar van lijst/detail-geometrie. Zoekfilter en
 providerkeuze staan boven de lijst; geavanceerde bediening blijft in disclosures.
+Brede schermen tonen modaliteiten als vergelijkingskolom; smallere schermen houden
+die informatie in het detailpaneel. Model-ID kopiëren gebruikt de bestaande
+clipboardlaag, met succes- en foutfeedback die bij de geselecteerde identiteit horen.
 De bestaande API-, locale- en visibilitylogica blijven eigenaar. Verwijderde
 selecties worden bij verversen gewist; focus wordt hersteld als die verloren raakt.
 Detailpanelen, volledige componentmigratie, landing en volledige visuele acceptatie

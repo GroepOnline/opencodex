@@ -73,6 +73,10 @@ handlers retain ownership of writes. No new auth, billing or CRUD backend.
   pane replaces list/header/filter chrome; none of the hidden controls stays tabbable.
 - Visibility switches have 44px targets. Missing context/modalities remain unknown;
   catalog visibility is explicitly not served-model or live-auth proof.
+- Copy ID copies the provider-qualified ID for routed models and the bare native
+  ID for native models. Success/failure feedback is scoped to the selected identity;
+  clipboard failure must never appear as success. Catalog provenance stays explicit
+  in the inspector disclosure summary even when the explanation is collapsed.
 - Provider bulk actions retain full-provider scope under search. Advanced controls
   are disclosed separately, not removed. Existing custom-model confirmation stays.
 
@@ -87,7 +91,7 @@ handlers retain ownership of writes. No new auth, billing or CRUD backend.
   `bun run lint:i18n`, `bun run build`; root checks and docs build per AGENTS.
 - Behavioral evidence: `tests/dashboard-data-states.test.tsx`,
   `tests/settings-sheet.test.tsx`, `tests/workspace-navigation.test.tsx`.
-- Browser matrix: desktop 1440, intermediate 1024, mobile 390; EN/NL, light/dark,
+- Browser matrix: wide 1920×1080, desktop 1440, intermediate 1024, mobile 390; EN/NL, light/dark,
   reduced motion, focus return and nested popup. Any unobserved combination remains
   unverified. Synthetic UI fixtures are explicitly not live runtime evidence.
 - Full provider CRUD, screen-reader audit, all detail panels, public landing,

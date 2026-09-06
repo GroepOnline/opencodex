@@ -207,6 +207,11 @@ function DashboardShell({
         <div className="app ocx-workspace">
           <header className="topbar">
             {brand}
+            <WorkspaceNavigation
+              destinations={VIEW_TABS}
+              active={route.view}
+              onNavigate={(view) => navigateTo({ view, sub: null })}
+            />
             <div className="topbar-right">
               {proxyOnline !== null && (
                 <span
@@ -250,12 +255,6 @@ function DashboardShell({
               </button>
             </div>
           )}
-
-          <WorkspaceNavigation
-            destinations={VIEW_TABS}
-            active={route.view}
-            onNavigate={(view) => navigateTo({ view, sub: null })}
-          />
 
           <main className="main">
             <div

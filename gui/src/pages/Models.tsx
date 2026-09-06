@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Switch, Notice, EmptyState, Select, Tooltip } from "../ui";
-import { IconChevron, IconBoxes, IconInfo, IconShuffle } from "../icons";
+import {
+  IconChevron,
+  IconBoxes,
+  IconInfo,
+  IconSearch,
+  IconShuffle,
+} from "../icons";
 import { DotMatrix } from "../DotMatrix";
 import { useT } from "../i18n/shared";
 import type { TFn, TKey } from "../i18n/shared";
@@ -1077,6 +1083,13 @@ export default function Models({ apiBase }: { apiBase: string }) {
                       </span>
                       <code>{m.native ? m.id : m.namespaced}</code>
                     </span>
+                    <span className="models-catalog-modalities">
+                      {m.inputModalities?.length
+                        ? m.inputModalities.map((kind) => (
+                            <span key={kind}>{kind}</span>
+                          ))
+                        : t("models.workspace.unknown")}
+                    </span>
                     <span className="models-catalog-context">
                       {m.contextWindow
                         ? fmtK(m.contextWindow)
@@ -1809,19 +1822,22 @@ export default function Models({ apiBase }: { apiBase: string }) {
       </div>
       {status && <Notice tone={ok ? "ok" : "err"}>{status}</Notice>}
       <div className="models-catalog-toolbar">
-        <input
-          ref={catalogSearchRef}
-          className="input models-catalog-search"
-          type="search"
-          placeholder={t("models.workspace.search")}
-          aria-label={t("models.workspace.search")}
-          value={catalogQuery}
-          onChange={(event) => {
-            setCatalogQuery(event.target.value);
-            setLimit({});
-            setSelectedModelName(null);
-          }}
-        />
+        <div className="models-search-field">
+          <IconSearch size={18} aria-hidden />
+          <input
+            ref={catalogSearchRef}
+            className="input models-catalog-search"
+            type="search"
+            placeholder={t("models.workspace.search")}
+            aria-label={t("models.workspace.search")}
+            value={catalogQuery}
+            onChange={(event) => {
+              setCatalogQuery(event.target.value);
+              setLimit({});
+              setSelectedModelName(null);
+            }}
+          />
+        </div>
         <Select
           value={selectedProvider ?? ""}
           options={[
@@ -1853,6 +1869,9 @@ export default function Models({ apiBase }: { apiBase: string }) {
         >
           <div className="models-catalog-columns" aria-hidden="true">
             <span>{t("models.workspace.model")}</span>
+            <span className="models-catalog-modalities-label">
+              {t("models.tipModalities")}
+            </span>
             <span>{t("models.tipContext")}</span>
             <span>{t("models.workspace.visibilityColumn")}</span>
           </div>

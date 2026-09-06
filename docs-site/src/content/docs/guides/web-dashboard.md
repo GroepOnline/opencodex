@@ -84,6 +84,9 @@ release; an installed version may still have the earlier layout.
   which model was actually served; missing metadata is shown as **Not reported**.
 - On narrow screens, details replace the list. **Back to models** restores the
   list and focus. Custom-model edit and delete actions are in the inspector.
+- **Copy ID** copies the routed provider-qualified ID, or the bare ID for a native
+  model. Clipboard failures are reported rather than shown as successful copies.
+  Wide catalogs include a modalities column; details retain this data on mobile.
 - Open **Provider settings** in a group for refresh, custom-model creation, bulk
   visibility and its context-cap toggle. Bulk actions affect that entire provider,
   not just search results. Empty providers cannot send an empty bulk operation.
