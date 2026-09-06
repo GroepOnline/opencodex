@@ -1,0 +1,231 @@
+/* OCX Orbit. Product-scoped redesign authorized 2026-09-06; see gui/DESIGN.md.
+   Existing component contracts inherit these tokens, not a second CSS framework. */
+:root,
+:root[data-style] {
+  --bg: light-dark(#eef1f6, #0c1018);
+  --rail: light-dark(#e8edf4, #101620);
+  --surface: light-dark(#ffffff, #151d29);
+  --raised: light-dark(#e3eaf2, #1e2939);
+  --raised-hover: light-dark(#d8e2ee, #29384b);
+  --text: light-dark(#152232, #edf3fc);
+  --muted: light-dark(#506078, #adbbcf);
+  --faint: light-dark(#61718a, #8b9bb3);
+  --border: light-dark(#bac7d9, #36475e);
+  --border-soft: light-dark(#d6deea, #263448);
+  --hover: light-dark(#e5edf6, #223146);
+  --accent: light-dark(#086454, #73e5cc);
+  --accent-hover: light-dark(#064e42, #98efdc);
+  --accent-ink: light-dark(#ffffff, #102a24);
+  --accent-blue: light-dark(#087361, #73e5cc);
+  --accent-blue-ink: light-dark(#086454, #98efdc);
+  --accent-soft: light-dark(#d9f1e9, #163e37);
+  --accent-ring: light-dark(#087361, #73e5cc);
+  --font-ui: "Manrope Variable", system-ui, sans-serif;
+  --font: var(--font-ui);
+  --text-control: 14px;
+  --text-caption: 12px;
+  --text-label: 13px;
+  --text-title: 30px;
+  --text-display: 38px;
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius: 16px;
+  --radius-lg: 20px;
+  --control-sm: 32px;
+  --control-md: 38px;
+  --control-lg: 44px;
+  --workspace-rail: 224px;
+  --workspace-header: 72px;
+  --workspace-measure: 1440px;
+  --workspace-shadow: 0 10px 36px light-dark(#2035570c, #00000024);
+}
+
+.ocx-workspace {
+  display: grid;
+  grid-template-columns: var(--workspace-rail) minmax(0, 1fr);
+  grid-template-rows: var(--workspace-header) auto 1fr;
+  grid-template-areas: "header header" "navigation banner" "navigation content";
+  min-height: 100dvh;
+}
+
+.ocx-workspace .topbar {
+  grid-area: header;
+  height: var(--workspace-header);
+  padding: 0 var(--space-6);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-soft);
+}
+.ocx-workspace .brand {
+  gap: var(--space-3);
+}
+.ocx-workspace .brand .name {
+  font-weight: 700;
+  font-size: var(--text-subtitle);
+  letter-spacing: -0.045em;
+}
+.ocx-workspace .brand .ver {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-xs);
+  color: var(--muted);
+}
+.ocx-workspace .offline-banner {
+  grid-area: banner;
+  margin: 0;
+}
+.ocx-workspace .workspace-navigation {
+  grid-area: navigation;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-3);
+  border: 0;
+  border-right: 1px solid var(--border-soft);
+  background: var(--rail);
+  overflow: visible;
+}
+.workspace-navigation .workspace-destination {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--control-touch);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  color: var(--muted);
+  transition:
+    color var(--motion-fast),
+    transform var(--motion-fast);
+}
+.workspace-navigation .workspace-destination > svg {
+  flex-shrink: 0;
+}
+.workspace-navigation .workspace-destination.active {
+  color: var(--accent-blue-ink);
+}
+.workspace-navigation .workspace-destination.active::after {
+  content: none;
+}
+.workspace-selection {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  box-shadow: var(--workspace-shadow);
+}
+.workspace-destination:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 3px;
+}
+.ocx-workspace .main {
+  grid-area: content;
+  min-width: 0;
+}
+.ocx-workspace .main-inner {
+  max-width: var(--workspace-measure);
+  padding: var(--space-6) clamp(var(--space-4), 3vw, var(--space-12))
+    var(--space-12);
+}
+.ocx-workspace .main-inner.main-inner--combos {
+  min-height: calc(100dvh - var(--workspace-header));
+  height: auto;
+  padding: var(--space-4);
+  overflow: visible;
+}
+.ocx-workspace .sub-tabs {
+  width: fit-content;
+  max-width: 100%;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  margin-bottom: var(--space-8);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--rail);
+  overflow-x: auto;
+}
+.ocx-workspace .sub-tab {
+  min-height: var(--control-md);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-xs);
+}
+.ocx-workspace .sub-tab.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--workspace-shadow);
+}
+.ocx-workspace .sub-tab.active::after {
+  content: none;
+}
+.ocx-workspace .page-head {
+  margin-bottom: var(--space-4);
+}
+.ocx-workspace .page-head h2 {
+  font-weight: 650;
+  letter-spacing: -0.04em;
+}
+.ocx-workspace .card {
+  border-radius: var(--radius);
+  box-shadow: var(--workspace-shadow);
+}
+.ocx-workspace .btn {
+  min-height: var(--control-md);
+  border-radius: var(--radius-sm);
+}
+.ocx-workspace .gbtn {
+  min-width: var(--control-md);
+  min-height: var(--control-md);
+  border-radius: var(--radius-sm);
+}
+.ocx-workspace .stamp {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-pill);
+}
+
+@media (max-width: 1024px) {
+  :root {
+    --workspace-rail: 190px;
+  }
+  .workspace-navigation .workspace-destination {
+    padding: var(--space-3);
+    gap: var(--space-2);
+  }
+}
+@media (max-width: 760px) {
+  .ocx-workspace {
+    display: flex;
+    flex-direction: column;
+  }
+  .ocx-workspace .topbar {
+    height: var(--space-16);
+    padding: 0 var(--space-4);
+  }
+  .ocx-workspace .workspace-navigation {
+    flex-direction: row;
+    padding: var(--space-2);
+    gap: var(--space-1);
+    border-right: 0;
+    border-bottom: 1px solid var(--border-soft);
+    overflow-x: auto;
+  }
+  .workspace-navigation .workspace-destination {
+    flex-shrink: 0;
+  }
+  .ocx-workspace .main-inner {
+    padding: var(--space-4);
+  }
+  .ocx-workspace .sub-tabs {
+    margin-bottom: var(--space-6);
+  }
+  .ocx-workspace .brand .ver {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-destination {
+    transition: none;
+  }
+}

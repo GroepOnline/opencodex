@@ -63,6 +63,12 @@ curl -sS "http://127.0.0.1:<port>/healthz"
 The proxy exposes `/healthz` and `/v1/*` for any Responses-compatible client. You do not need Codex
 installed for this step.
 
+The pending Orbit dashboard redesign keeps the same routes and API. Its desktop navigation
+uses a side rail; smaller screens keep all destinations in a horizontal navigation strip.
+Overview, Providers & accounts, Models, Traffic, Usage and System remain available, including
+existing bookmarked hashes. Navigation motion respects reduced-motion preferences. This
+interface work does not change provider credentials or the proxy's deployment state.
+
 ## 4. Use Codex (optional)
 
 If you enabled Codex injection in step 1, Codex talks to opencodex transparently:

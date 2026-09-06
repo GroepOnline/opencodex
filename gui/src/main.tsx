@@ -10,6 +10,8 @@ import { LanguageProvider } from "./i18n/provider";
 import { initPostHog } from "./posthog";
 import "./styles.css";
 import "./landing/landing.css";
+import "@fontsource-variable/manrope";
+import "./styles/workspace-orbit.css";
 
 initPostHog();
 
@@ -23,12 +25,14 @@ try {
     document.documentElement.setAttribute("data-style", style);
     localStorage.setItem("ocx-style", style);
   }
-} catch { /* ignore */ }
+} catch {
+  /* ignore */
+}
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <LanguageProvider>
       <App />
     </LanguageProvider>
-  </React.StrictMode>
+  </React.StrictMode>,
 );

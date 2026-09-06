@@ -1,8 +1,60 @@
-# gui/DESIGN.md — de ontwerptaal van het dashboard
+# OCX Orbit — nieuwe productidentiteit
+
+## Actuele autoriteit: expliciete redesignopdracht 2026-09-06
+
+Joep heeft voor OCX expliciet een volledig nieuwe identiteit gevraagd: niet de
+bestaande ChefGroep/Signaal-stijl, maar moderner, componentgedreven, met betere
+verhoudingen en meer motion. Deze sectie vervangt daarom de visuele voorschriften
+hieronder voor de nieuwe interface. De historische Signaal-beschrijving blijft
+alleen migratiecontext, niet een reden om nieuw werk terug te draaien. Andere
+ChefGroep-producten en het gedeelde design-system worden hiermee niet gewijzigd.
+
+### Richting en componenten
+
+Orbit is een model-workspace: contrastrijke inktvlakken, heldere lichte oppervlakken,
+mint als interactieaccent en Manrope als interfaceletter. JetBrains Mono blijft
+voor modelnamen en technische gegevens. Geen marketinghero boven dagelijkse data.
+
+- `WorkspaceNavigation`: één getypeerde bestemmingencatalogus, iconen, labels,
+  actieve pagina en een gedeelde Motion-selectie. Bestaande hashes blijven werken.
+- Bestaande controls blijven hun toegankelijke, geteste gedrag behouden. Hun
+  geometrie en uiterlijk komen uit gedeelde tokens, niet uit per-scherm hacks.
+- Motion for React (`LazyMotion`) verzorgt gedeelde layoutovergangen. CSS behandelt
+  eenvoudige hover/press-feedback. Geen React-state-updates per animatieframe.
+- Nieuwe dependencies zijn exact gepind en vereisen de bestaande security-review.
+- ThreeUI blijft voorlopig eigenaar van de bestaande publieke landing. Die landing
+  is nog niet hetzelfde als een volledig herontworpen productpagina.
+
+### Geometrie en responsiviteit
+
+Werkvlak maximaal 1440px; navigatie 224px (190px op kleinere desktops); header 72px.
+Controls 32/38/44px, touch minimaal 44px; radii 8/10/16/20px. Typografie 12/13/14/15/
+30/38px. Mobiel krijgt horizontale navigatie met alle labels behouden. Geen
+afgesneden werkpanelen, paginabrede horizontale overflow of onbereikbare acties.
+
+### Toestanden en motion
+
+Echte API-status blijft leidend: laden, leeg, gedeeltelijk, fout en offline mogen
+niet worden vervangen door mooie voorbeeldcijfers. Selectie beweegt met een
+onderbreekbare spring; toetsenbordnavigatie en reduced-motion slaan die beweging
+over. Focus, contrast en labels blijven zichtbaar in licht én donker.
+
+### Implementatiestatus en acceptatie
+
+De eerste slice vervangt de shell, navigatie, typografie en gedeelde tokens.
+Detailpanelen, volledige componentmigratie, landing, screenshots op 1440/1024/390px
+en alle interactietoestanden blijven expliciete vervolgstappen. Niet als volledig
+redesign of live release presenteren zolang die niet aantoonbaar zijn afgerond.
+Tokens: `src/styles/workspace-orbit.css`; die worden na de bestaande laag geladen.
+Geen nieuwe parallelle app, backend, routing- of authenticatielaag.
+
+---
+
+# Historisch: Signaal-binding vóór de redesignopdracht
 
 > De levende ontwerp- en smaakgids voor het opencodex-dashboard (`gui/`).
 > Dit is de ChefGroep-taal (v3 "Signaal"): een stil, warm, mat instrument.
-> Bron van waarheid voor de *taal*: [`GroepOnline/design-system`](https://github.com/GroepOnline/design-system)
+> Bron van waarheid voor de _taal_: [`GroepOnline/design-system`](https://github.com/GroepOnline/design-system)
 > (`tokens.css`, `DESIGN.md`, `motion-spec.md`). Dit bestand legt vast hoe die
 > taal in dít dashboard leeft, en — belangrijker — **hoe je 'm uitbreidt zonder
 > 'm te breken**.
@@ -31,14 +83,14 @@ aan" zegt is blauw: links, focus-ring, actieve nav, geselecteerde tab, toggles,
 selectie. De **primaire knop** blijft juist monochroom (tekst↔achtergrond
 omgekeerd) — dat is de shadcn-conventie, geen tweede accent.
 
-| Rol | Token |
-|---|---|
-| Achtergrond / rail / kaart | `--bg` · `--rail` · `--surface` · `--raised` |
-| Lijnen | `--border` (sterk) · `--border-soft` (hairline) |
-| Tekst | `--text` · `--muted` · `--faint` |
-| Primaire actie | `--accent` (+ `--accent-ink`) |
-| Het accent | `--accent-blue` · `--accent-blue-ink` · `--accent-soft` (ring/tint) |
-| Semantiek | `--green` (git/PR/toestemming) · `--amber` (wacht-op-jou) · `--red` (destructief) |
+| Rol                        | Token                                                                             |
+| -------------------------- | --------------------------------------------------------------------------------- |
+| Achtergrond / rail / kaart | `--bg` · `--rail` · `--surface` · `--raised`                                      |
+| Lijnen                     | `--border` (sterk) · `--border-soft` (hairline)                                   |
+| Tekst                      | `--text` · `--muted` · `--faint`                                                  |
+| Primaire actie             | `--accent` (+ `--accent-ink`)                                                     |
+| Het accent                 | `--accent-blue` · `--accent-blue-ink` · `--accent-soft` (ring/tint)               |
+| Semantiek                  | `--green` (git/PR/toestemming) · `--amber` (wacht-op-jou) · `--red` (destructief) |
 
 Regels: groen/amber/rood zijn **gereserveerd**, nooit decoratie. Neutraal is
 warm, nooit koudgrijs. Dark mode is basalt-warm, geen zuiver zwart. Elke token
@@ -53,16 +105,16 @@ is `light-dark(licht, donker)` — schrijf beide kanten, altijd.
   diffs, tellers). Geen Archivo/Inter/Geist — design-system v3 §11.
 - Eén type-ladder — gebruik de tokens, nooit losse px:
 
-| Token | px | Gebruik |
-|---|---|---|
-| `--text-micro` | 10.5 | meta, tellers, caps-labels |
-| `--text-caption` | 11.5 | labels, captions |
-| `--text-label` | 12.5 | secundair / beschrijvingen |
-| `--text-control` | 13.5 | **UI-standaard** (body van de app) |
-| `--text-body` | 15 | leestekst |
-| `--text-subtitle` | 15 | kleine titels |
-| `--text-title` | 24 | paginatitels |
-| `--text-display` | 28 | hero-getallen (product-extensie, geen §11-trede) |
+| Token             | px   | Gebruik                                          |
+| ----------------- | ---- | ------------------------------------------------ |
+| `--text-micro`    | 10.5 | meta, tellers, caps-labels                       |
+| `--text-caption`  | 11.5 | labels, captions                                 |
+| `--text-label`    | 12.5 | secundair / beschrijvingen                       |
+| `--text-control`  | 13.5 | **UI-standaard** (body van de app)               |
+| `--text-body`     | 15   | leestekst                                        |
+| `--text-subtitle` | 15   | kleine titels                                    |
+| `--text-title`    | 24   | paginatitels                                     |
+| `--text-display`  | 28   | hero-getallen (product-extensie, geen §11-trede) |
 
 - Koppen: gewicht 500, `letter-spacing: var(--tracking-tight)` (−0.02em),
   `text-wrap: balance`. Leading via `--leading-*` (tight 1.2 / ui 1.45 /

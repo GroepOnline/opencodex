@@ -8,6 +8,18 @@ import { installApiAuthFetch } from "./api";
 import { canonicalHashFor, type View } from "./app-routing";
 import { useAppRouteState } from "./use-app-route-state";
 import { requestProxyStop } from "./stop-proxy";
+import { domAnimation, LazyMotion, MotionConfig } from "motion/react";
+import WorkspaceNavigation, {
+  type WorkspaceDestination,
+} from "./components/WorkspaceNavigation";
+import {
+  IconActivity,
+  IconBoxes,
+  IconGrid,
+  IconList,
+  IconMonitor,
+  IconServer,
+} from "./icons";
 
 const Providers = lazy(() => import("./pages/Providers"));
 const Models = lazy(() => import("./pages/Models"));
@@ -31,24 +43,19 @@ type Theme = "light" | "dark" | "system";
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 const THEME_KEY = "ocx-theme";
 
-/** Five views (design-system v2 IA, 2026-08). Dashboard is home. */
-const VIEW_TABS: { view: View; tkey: TKey }[] = [
-  { view: "dashboard", tkey: "nav.dashboard" },
-  { view: "leveranciers", tkey: "nav.providers" },
-  { view: "modellen", tkey: "nav.models" },
-  { view: "verkeer", tkey: "nav.verkeer" },
-  { view: "verbruik", tkey: "nav.usage" },
-  { view: "systeem", tkey: "nav.systeem" },
+const VIEW_TABS: WorkspaceDestination[] = [
+  { view: "dashboard", tkey: "nav.dashboard", icon: IconGrid },
+  { view: "leveranciers", tkey: "nav.providers", icon: IconServer },
+  { view: "modellen", tkey: "nav.models", icon: IconBoxes },
+  { view: "verkeer", tkey: "nav.verkeer", icon: IconList },
+  { view: "verbruik", tkey: "nav.usage", icon: IconActivity },
+  { view: "systeem", tkey: "nav.systeem", icon: IconMonitor },
 ];
 
 /** Sub-tabs per view; `null` is the view's home target. */
 const SUB_TABS: Record<View, { sub: string | null; tkey: TKey }[]> = {
-  landing: [
-    { sub: null, tkey: "nav.dashboard" },
-  ],
-  dashboard: [
-    { sub: null, tkey: "nav.dashboard" },
-  ],
+  landing: [{ sub: null, tkey: "nav.dashboard" }],
+  dashboard: [{ sub: null, tkey: "nav.dashboard" }],
   leveranciers: [
     { sub: null, tkey: "sub.overview" },
     { sub: "claude", tkey: "nav.claude" },
@@ -63,9 +70,7 @@ const SUB_TABS: Record<View, { sub: string | null; tkey: TKey }[]> = {
     { sub: null, tkey: "sub.logs" },
     { sub: "debug", tkey: "sub.debug" },
   ],
-  verbruik: [
-    { sub: null, tkey: "nav.usage" },
-  ],
+  verbruik: [{ sub: null, tkey: "nav.usage" }],
   systeem: [
     { sub: null, tkey: "sub.status" },
     { sub: "storage", tkey: "nav.storage" },
@@ -116,14 +121,27 @@ export default function App() {
         detailsLabel={t("errorBoundary.details")}
         reloadLabel={t("errorBoundary.reload")}
       >
-        <Suspense fallback={<div className="muted" role="status">{t("common.loading")}</div>}>
+        <Suspense
+          fallback={
+            <div className="muted" role="status">
+              {t("common.loading")}
+            </div>
+          }
+        >
           <Landing />
         </Suspense>
       </ErrorBoundary>
     );
   }
 
-  return <DashboardShell route={route} navigateTo={navigateTo} theme={theme} setTheme={setTheme} />;
+  return (
+    <DashboardShell
+      route={route}
+      navigateTo={navigateTo}
+      theme={theme}
+      setTheme={setTheme}
+    />
+  );
 }
 
 function DashboardShell({
@@ -153,10 +171,15 @@ function DashboardShell({
 
   const displayedVersion: string = healthPoll.data?.version ?? __APP_VERSION__;
   // null = first poll still in flight: no stamp until the first verdict.
-  const proxyOnline: boolean | null = healthPoll.error ? false : healthPoll.data ? true : null;
+  const proxyOnline: boolean | null = healthPoll.error
+    ? false
+    : healthPoll.data
+      ? true
+      : null;
 
   const activeTkey =
-    SUB_TABS[route.view].find(s => s.sub === route.sub)?.tkey ?? "nav.providers";
+    SUB_TABS[route.view].find((s) => s.sub === route.sub)?.tkey ??
+    "nav.providers";
 
   const brand = (
     <div className="brand">
@@ -167,89 +190,142 @@ function DashboardShell({
   );
 
   return (
-    <div className="app">
-      <header className="topbar">
-        {brand}
-        <div className="topbar-right">
-          {proxyOnline !== null && (
-            <span className={`stamp${proxyOnline ? " stamp-ok" : " stamp-err"}`} role="status">
-              {proxyOnline ? <IconCheck size={13} aria-hidden /> : <IconAlert size={13} aria-hidden />}
-              {t(proxyOnline ? "proxy.online" : "proxy.offline")}
-            </span>
-          )}
-          <button type="button" className="gbtn" onClick={() => setSettingsOpen(true)}
-            aria-label={t("settings.open")} title={t("settings.open")}>
-            <IconSettings />
-          </button>
-        </div>
-      </header>
-
-      {proxyOnline === false && (
-        <div className="offline-banner" role="alert">
-          <IconAlert size={15} aria-hidden />
-          <span>{t("offline.banner")}</span>
-          <button type="button" className="link-btn" onClick={() => navigateTo({ view: "systeem", sub: null })}>
-            {t("offline.toSystem")}
-          </button>
-        </div>
-      )}
-
-      <nav className="view-tabs" aria-label={t("nav.views")}>
-        {VIEW_TABS.map(({ view, tkey }) => (
-          <button key={view} type="button"
-            className={`view-tab${route.view === view ? " active" : ""}`}
-            onClick={() => navigateTo({ view, sub: null })}
-            aria-current={route.view === view ? "page" : undefined}>
-            {t(tkey)}
-          </button>
-        ))}
-      </nav>
-
-      <main className="main">
-        <div className={`main-inner${route.view === "modellen" && route.sub === "combos" ? " main-inner--combos" : ""}`}>
-          <nav className="sub-tabs">
-            {SUB_TABS[route.view].map(({ sub, tkey }) => (
-              <button key={sub ?? "home"} type="button"
-                className={`sub-tab${route.sub === sub ? " active" : ""}`}
-                onClick={() => navigateTo({ view: route.view, sub })}
-                aria-current={route.sub === sub ? "page" : undefined}>
-                {t(tkey)}
+    <MotionConfig reducedMotion="user">
+      <LazyMotion features={domAnimation} strict>
+        <div className="app ocx-workspace">
+          <header className="topbar">
+            {brand}
+            <div className="topbar-right">
+              {proxyOnline !== null && (
+                <span
+                  className={`stamp${proxyOnline ? " stamp-ok" : " stamp-err"}`}
+                  role="status"
+                >
+                  {proxyOnline ? (
+                    <IconCheck size={13} aria-hidden />
+                  ) : (
+                    <IconAlert size={13} aria-hidden />
+                  )}
+                  {t(proxyOnline ? "proxy.online" : "proxy.offline")}
+                </span>
+              )}
+              <button
+                type="button"
+                className="gbtn"
+                onClick={() => setSettingsOpen(true)}
+                aria-label={t("settings.open")}
+                title={t("settings.open")}
+              >
+                <IconSettings />
               </button>
-            ))}
-          </nav>
-          <div className="page-reveal" key={canonicalHashFor(route)}>
-          <ErrorBoundary
-            pageName={t(activeTkey)}
-            title={t("errorBoundary.title")}
-            message={t("errorBoundary.message")}
-            detailsLabel={t("errorBoundary.details")}
-            reloadLabel={t("errorBoundary.reload")}
-          >
-            <Suspense fallback={<div className="muted" role="status">{t("common.loading")}</div>}>
-              {route.view === "dashboard" && <Dashboard apiBase={API_BASE} />}
-              {route.view === "leveranciers" && route.sub === null && <Providers apiBase={API_BASE} />}
-              {route.view === "leveranciers" && route.sub === "claude" && <Claude apiBase={API_BASE} />}
-              {route.view === "leveranciers" && route.sub === "grok" && <Grok apiBase={API_BASE} />}
-              {route.view === "modellen" && route.sub === null && <Models apiBase={API_BASE} />}
-              {route.view === "modellen" && route.sub === "combos" && <Combos key={API_BASE} apiBase={API_BASE} />}
-              {route.view === "modellen" && route.sub === "subagents" && <Subagents key={API_BASE} apiBase={API_BASE} />}
-              {route.view === "verkeer" && route.sub === "debug" && <Debug apiBase={API_BASE} />}
-              {route.view === "verkeer" && route.sub !== "debug" && <Verkeer apiBase={API_BASE} />}
-              {route.view === "verbruik" && <Usage apiBase={API_BASE} />}
-              {route.view === "systeem" && route.sub === null && <Startup apiBase={API_BASE} />}
-              {route.view === "systeem" && route.sub === "storage" && <Storage apiBase={API_BASE} />}
-              {route.view === "systeem" && route.sub === "api" && <ApiKeys apiBase={API_BASE} />}
-            </Suspense>
-          </ErrorBoundary>
-          </div>
-          {route.view === "systeem" && route.sub === null && <DangerZone />}
-        </div>
-      </main>
+            </div>
+          </header>
 
-      {settingsOpen && (
-        <SettingsSheet theme={theme} onTheme={setTheme} onClose={() => setSettingsOpen(false)} />
-      )}
-    </div>
+          {proxyOnline === false && (
+            <div className="offline-banner" role="alert">
+              <IconAlert size={15} aria-hidden />
+              <span>{t("offline.banner")}</span>
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => navigateTo({ view: "systeem", sub: null })}
+              >
+                {t("offline.toSystem")}
+              </button>
+            </div>
+          )}
+
+          <WorkspaceNavigation
+            destinations={VIEW_TABS}
+            active={route.view}
+            onNavigate={(view) => navigateTo({ view, sub: null })}
+          />
+
+          <main className="main">
+            <div
+              className={`main-inner${route.view === "modellen" && route.sub === "combos" ? " main-inner--combos" : ""}`}
+            >
+              <nav className="sub-tabs">
+                {SUB_TABS[route.view].map(({ sub, tkey }) => (
+                  <button
+                    key={sub ?? "home"}
+                    type="button"
+                    className={`sub-tab${route.sub === sub ? " active" : ""}`}
+                    onClick={() => navigateTo({ view: route.view, sub })}
+                    aria-current={route.sub === sub ? "page" : undefined}
+                  >
+                    {t(tkey)}
+                  </button>
+                ))}
+              </nav>
+              <div className="page-reveal" key={canonicalHashFor(route)}>
+                <ErrorBoundary
+                  pageName={t(activeTkey)}
+                  title={t("errorBoundary.title")}
+                  message={t("errorBoundary.message")}
+                  detailsLabel={t("errorBoundary.details")}
+                  reloadLabel={t("errorBoundary.reload")}
+                >
+                  <Suspense
+                    fallback={
+                      <div className="muted" role="status">
+                        {t("common.loading")}
+                      </div>
+                    }
+                  >
+                    {route.view === "dashboard" && (
+                      <Dashboard apiBase={API_BASE} />
+                    )}
+                    {route.view === "leveranciers" && route.sub === null && (
+                      <Providers apiBase={API_BASE} />
+                    )}
+                    {route.view === "leveranciers" &&
+                      route.sub === "claude" && <Claude apiBase={API_BASE} />}
+                    {route.view === "leveranciers" && route.sub === "grok" && (
+                      <Grok apiBase={API_BASE} />
+                    )}
+                    {route.view === "modellen" && route.sub === null && (
+                      <Models apiBase={API_BASE} />
+                    )}
+                    {route.view === "modellen" && route.sub === "combos" && (
+                      <Combos key={API_BASE} apiBase={API_BASE} />
+                    )}
+                    {route.view === "modellen" && route.sub === "subagents" && (
+                      <Subagents key={API_BASE} apiBase={API_BASE} />
+                    )}
+                    {route.view === "verkeer" && route.sub === "debug" && (
+                      <Debug apiBase={API_BASE} />
+                    )}
+                    {route.view === "verkeer" && route.sub !== "debug" && (
+                      <Verkeer apiBase={API_BASE} />
+                    )}
+                    {route.view === "verbruik" && <Usage apiBase={API_BASE} />}
+                    {route.view === "systeem" && route.sub === null && (
+                      <Startup apiBase={API_BASE} />
+                    )}
+                    {route.view === "systeem" && route.sub === "storage" && (
+                      <Storage apiBase={API_BASE} />
+                    )}
+                    {route.view === "systeem" && route.sub === "api" && (
+                      <ApiKeys apiBase={API_BASE} />
+                    )}
+                  </Suspense>
+                </ErrorBoundary>
+              </div>
+              {route.view === "systeem" && route.sub === null && <DangerZone />}
+            </div>
+          </main>
+
+          {settingsOpen && (
+            <SettingsSheet
+              theme={theme}
+              onTheme={setTheme}
+              onClose={() => setSettingsOpen(false)}
+            />
+          )}
+        </div>
+      </LazyMotion>
+    </MotionConfig>
   );
 }
 
@@ -264,7 +340,9 @@ function DangerZone() {
   useEffect(() => {
     if (!confirming) return;
     cancelRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !stopping) setConfirming(false); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !stopping) setConfirming(false);
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [confirming, stopping]);
@@ -272,7 +350,8 @@ function DangerZone() {
   const handleStop = async () => {
     setStopping(true);
     const outcome = await requestProxyStop(API_BASE, {
-      formatFailure: status => t("dash.stopFailed", { status: String(status) }),
+      formatFailure: (status) =>
+        t("dash.stopFailed", { status: String(status) }),
     });
     // Refusals and restore failures return normally instead of dropping the connection.
     // In both cases the proxy did not reach a clean-stop result, so surface the server's
@@ -286,32 +365,59 @@ function DangerZone() {
 
   return (
     <section className="danger-zone" aria-labelledby="danger-zone-title">
-      <h3 id="danger-zone-title" className="danger-title">{t("danger.title")}</h3>
+      <h3 id="danger-zone-title" className="danger-title">
+        {t("danger.title")}
+      </h3>
       <div className="danger-row">
         <div className="danger-copy">
           <div className="danger-action">{t("danger.stopAction")}</div>
           <div className="muted">{t("danger.stopBody")}</div>
         </div>
-        <button type="button" className="btn btn-danger" onClick={() => setConfirming(true)}>
+        <button
+          type="button"
+          className="btn btn-danger"
+          onClick={() => setConfirming(true)}
+        >
           <IconPower size={13} aria-hidden /> {t("dash.stop")}
         </button>
       </div>
 
       {confirming && (
-        <div className="modal-overlay" role="alertdialog" aria-modal="true"
-          aria-labelledby="stop-proxy-title" aria-describedby="stop-proxy-desc"
-          onClick={e => { if (e.target === e.currentTarget && !stopping) setConfirming(false); }}>
+        <div
+          className="modal-overlay"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="stop-proxy-title"
+          aria-describedby="stop-proxy-desc"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !stopping) setConfirming(false);
+          }}
+        >
           <div className="modal-card modal-card--narrow">
             <div className="modal-head">
               <h3 id="stop-proxy-title">{t("danger.stopTitle")}</h3>
             </div>
-            <p id="stop-proxy-desc" className="modal-desc">{t("danger.stopBody")}</p>
+            <p id="stop-proxy-desc" className="modal-desc">
+              {t("danger.stopBody")}
+            </p>
             <div className="modal-actions">
-              <button ref={cancelRef} type="button" className="btn" onClick={() => setConfirming(false)} disabled={stopping}>
+              <button
+                ref={cancelRef}
+                type="button"
+                className="btn"
+                onClick={() => setConfirming(false)}
+                disabled={stopping}
+              >
                 {t("common.cancel")}
               </button>
-              <button type="button" className="btn btn-danger" onClick={() => void handleStop()} disabled={stopping}>
-                <IconPower size={13} aria-hidden /> {stopping ? t("dash.stopping") : t("danger.stopAction")}
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={() => void handleStop()}
+                disabled={stopping}
+              >
+                <IconPower size={13} aria-hidden />{" "}
+                {stopping ? t("dash.stopping") : t("danger.stopAction")}
               </button>
             </div>
           </div>
