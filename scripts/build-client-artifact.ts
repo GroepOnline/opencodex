@@ -252,6 +252,25 @@ export async function buildClientArtifact(destination: string, root = ROOT) {
   const sourceSha = git(root, "rev-parse", "HEAD");
   const packageText = git(root, "show", `${sourceSha}:package.json`) + "\n";
   const lock = readFileSync(join(root, "bun.lock"));
+  // The bundle must be a function of the reviewed source + frozen lock, not of
+  // whatever ignored node_modules tree happens to be present on the builder.
+  // Force a script-free frozen reinstall so tampered/stale installed package
+  // bytes cannot silently enter an artifact while lockSha256 remains unchanged.
+  const install = Bun.spawnSync(
+    [
+      process.execPath,
+      "install",
+      "--frozen-lockfile",
+      "--ignore-scripts",
+      "--force",
+    ],
+    { cwd: root, stdout: "pipe", stderr: "pipe" },
+  );
+  if (!install.success) {
+    throw new Error(
+      `Locked dependency refresh failed; refusing artifact build: ${install.stderr.toString().trim()}`,
+    );
+  }
   mkdirSync(dirname(output), { recursive: true });
   const staging = mkdtempSync(join(dirname(output), ".ocx-client-build-"));
   try {

@@ -66,6 +66,34 @@ describe("remote client artifact", () => {
     expect(existsSync(output)).toBe(false);
   });
 
+  test("reinstalls frozen dependencies before bundling", async () => {
+    const root = join(import.meta.dir, "..");
+    const sourceRoot = join(scratch, "dependency-drift-checkout");
+    const clone = Bun.spawnSync(["git", "clone", "--shared", root, sourceRoot]);
+    expect(clone.success).toBe(true);
+    const install = Bun.spawnSync(
+      [process.execPath, "install", "--frozen-lockfile", "--ignore-scripts"],
+      { cwd: sourceRoot },
+    );
+    expect(install.success).toBe(true);
+    const zodEntry = join(sourceRoot, "node_modules/zod/v4/index.js");
+    writeFileSync(
+      zodEntry,
+      readFileSync(zodEntry, "utf8") +
+        '\nconsole.error("DEPENDENCY_DRIFT_SENTINEL");\n',
+    );
+
+    const output = join(scratch, "dependency-drift-candidate");
+    const manifest = await buildClientArtifact(output, sourceRoot);
+    expect(
+      readFileSync(join(output, "src/cli/index.js"), "utf8"),
+    ).not.toContain("DEPENDENCY_DRIFT_SENTINEL");
+    const locked = readFileSync(join(sourceRoot, "bun.lock"));
+    expect(manifest.lockSha256).toBe(
+      createHash("sha256").update(locked).digest("hex"),
+    );
+  });
+
   test("builds a self-contained, SHA-bound candidate without activation", async () => {
     const output = join(scratch, "candidate");
     const manifest = await buildClientArtifact(output);
