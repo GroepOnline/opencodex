@@ -26,10 +26,12 @@ function git(root: string, ...args: string[]): string {
   return result.stdout.toString().trim();
 }
 
-// The remote wrapper intercepts lifecycle commands; reject direct bundle use too.
+// The remote wrapper owns all mutation and lifecycle behavior. Direct bundle use
+// is deliberately limited to a small read-only surface.
 export const CLIENT_GUARD = `
 const clientCommand = process.argv[2] || "";
-if (["start", "stop", "restart", "ensure", "service", "gui", "init", "setup", "uninstall", "remove", "update", "tray", "restore", "eject", "proxy", "daemon"].includes(clientCommand) || clientCommand.startsWith("__")) {
+const clientReadOnlyCommands = new Set(["", "help", "--help", "-h", "version", "--version", "-v", "status", "health"]);
+if (!clientReadOnlyCommands.has(clientCommand)) {
   console.error("OCX client artifact: local lifecycle commands are disabled; use the remote launcher.");
   process.exit(64);
 }
@@ -39,10 +41,39 @@ export const CODEX_CLIENT_SHIM = [
   "#!/usr/bin/env sh",
   "# OpenCodex client-only Codex shim. The proxy remains remote; this only selects an isolated Codex home.",
   "set -eu",
-  'home_dir="${HOME:?HOME is required}"',
+  'home_dir="$(cd -P -- "${HOME:?HOME is required}" && pwd -P)" || {',
+  '  echo "OCX client-only: HOME must name an accessible directory" >&2',
+  "  exit 78",
+  "}",
   'native_home="${home_dir%/}/.codex"',
   'client_home="${OCX_CLIENT_CODEX_HOME:-${home_dir%/}/.codex-ocx}"',
-  'client_home="${client_home%/}"',
+  'case "$client_home" in',
+  "  /*) ;;",
+  '  *) echo "OCX client-only: OCX_CLIENT_CODEX_HOME must be absolute" >&2; exit 78 ;;',
+  "esac",
+  'client_home="$(printf "%s\\n" "$client_home" | awk -F/ \'{',
+  "  n = 0;",
+  "  for (i = 1; i <= NF; i++) {",
+  '    if ($i == "" || $i == ".") continue;',
+  '    if ($i == "..") { if (n > 0) n--; continue; }',
+  "    parts[++n] = $i;",
+  "  }",
+  '  out = "/";',
+  '  for (i = 1; i <= n; i++) out = out (i == 1 ? "" : "/") parts[i];',
+  "  print out;",
+  "}')\"",
+  'path_part=""',
+  'path_rest="${client_home#/}"',
+  'while [ -n "$path_rest" ]; do',
+  '  path_component="${path_rest%%/*}"',
+  '  if [ "$path_rest" = "$path_component" ]; then path_rest=""; else path_rest="${path_rest#*/}"; fi',
+  '  [ -n "$path_component" ] || continue',
+  '  path_part="${path_part}/${path_component}"',
+  '  if [ -L "$path_part" ]; then',
+  '    echo "OCX client-only: refusing symlinked Codex home path $path_part" >&2',
+  "    exit 78",
+  "  fi",
+  "done",
   'if [ "$client_home" = "$native_home" ]; then',
   '  echo "OCX client-only: refusing native Codex home $native_home" >&2',
   "  exit 78",
@@ -71,6 +102,44 @@ export const CODEX_CLIENT_SHIM = [
   'exec "$codex_bin" "$@"',
   "",
 ].join("\n");
+
+export const CODEX_CLIENT_POWERSHELL_SHIM = [
+  "# OpenCodex client-only Codex shim for PowerShell.",
+  "$ErrorActionPreference = 'Stop'",
+  "$homeRoot = if (-not [string]::IsNullOrWhiteSpace($env:HOME)) { $env:HOME } elseif (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) { $env:USERPROFILE } else { Write-Error 'OCX client-only: HOME or USERPROFILE is required'; exit 78 }",
+  "$homeDir = [System.IO.Path]::GetFullPath($homeRoot)",
+  "$nativeHome = [System.IO.Path]::GetFullPath((Join-Path $homeDir '.codex'))",
+  "$clientHomeRaw = if ($env:OCX_CLIENT_CODEX_HOME) { $env:OCX_CLIENT_CODEX_HOME } else { Join-Path $homeDir '.codex-ocx' }",
+  "if (-not [System.IO.Path]::IsPathRooted($clientHomeRaw)) { Write-Error 'OCX client-only: OCX_CLIENT_CODEX_HOME must be absolute'; exit 78 }",
+  "$clientHome = [System.IO.Path]::GetFullPath($clientHomeRaw)",
+  "function Test-ReparsePointPath([string]$Path) {",
+  "  $root = [System.IO.Path]::GetPathRoot($Path)",
+  "  $current = $root",
+  "  $relative = $Path.Substring($root.Length).Split([System.IO.Path]::DirectorySeparatorChar, [System.StringSplitOptions]::RemoveEmptyEntries)",
+  "  foreach ($part in $relative) {",
+  "    $current = Join-Path $current $part",
+  "    if (Test-Path -LiteralPath $current) {",
+  "      if ((Get-Item -Force -LiteralPath $current).Attributes -band [System.IO.FileAttributes]::ReparsePoint) { return $true }",
+  "    }",
+  "  }",
+  "  return $false",
+  "}",
+  "if ([string]::Equals($clientHome, $nativeHome, [System.StringComparison]::OrdinalIgnoreCase) -or (Test-ReparsePointPath $clientHome)) {",
+  '  Write-Error "OCX client-only: refusing native or symlinked Codex home $clientHome"',
+  "  exit 78",
+  "}",
+  "$env:CODEX_HOME = $clientHome",
+  "$tokenFile = if ($env:OCX_CLIENT_TOKEN_FILE) { $env:OCX_CLIENT_TOKEN_FILE } else { Join-Path $homeDir '.opencodex\\service-api-token' }",
+  "if (-not $env:OPENCODEX_API_KEY -and (Test-Path -LiteralPath $tokenFile -PathType Leaf)) { $env:OPENCODEX_API_KEY = (Get-Content -Raw -LiteralPath $tokenFile).Trim() }",
+  "if (-not $env:OPENCODEX_API_AUTH_TOKEN -and $env:OPENCODEX_API_KEY) { $env:OPENCODEX_API_AUTH_TOKEN = $env:OPENCODEX_API_KEY }",
+  "$ocxBin = if ($env:OCX_CLIENT_OCX_BIN) { $env:OCX_CLIENT_OCX_BIN } else { Join-Path $homeDir '.local\\bin\\ocx.cmd' }",
+  "$codexBin = if ($env:OCX_CLIENT_CODEX_BIN) { $env:OCX_CLIENT_CODEX_BIN } else { Join-Path $homeDir '.local\\bin\\codex.opencodex-real.cmd' }",
+  "$skipEnsure = @('agents', 'app-server', 'apply', 'cloud', 'completion', 'doctor', 'exec-server', 'features', 'help', 'login', 'logout', 'mcp-server', 'plugin', 'remote-control', 'update', '--help', '-h', '--version', '-V', 'debug') -contains ($args | Select-Object -First 1)",
+  "if (-not $skipEnsure) { & $ocxBin ensure *> $null; if ($LASTEXITCODE -ne 0) { Write-Error 'Codex: central OCX proxy unavailable through the governed remote launcher'; exit 69 } }",
+  "& $codexBin @args",
+  "exit $LASTEXITCODE",
+  "",
+].join("\r\n");
 
 export async function buildClientArtifact(destination: string, root = ROOT) {
   const output = resolve(destination);
@@ -101,6 +170,7 @@ export async function buildClientArtifact(destination: string, root = ROOT) {
   try {
     const result = await Bun.build({
       entrypoints: [join(root, "src/cli/index.ts")],
+      root,
       target: "bun",
       format: "esm",
       packages: "bundle",
@@ -125,6 +195,10 @@ export async function buildClientArtifact(destination: string, root = ROOT) {
       mode: 0o755,
     });
     chmodSync(join(staging, "bin/codex.ocx-client"), 0o755);
+    writeFileSync(
+      join(staging, "bin/codex.ocx-client.ps1"),
+      CODEX_CLIENT_POWERSHELL_SHIM,
+    );
     // Package metadata is read relative to src/cli/index.js by the CLI.
     // The upstream model JSON and imported dependencies are bundled by Bun.
     writeFileSync(join(staging, "package.json"), packageText);
@@ -142,6 +216,7 @@ export async function buildClientArtifact(destination: string, root = ROOT) {
       files: {
         "src/cli/index.js": digest,
         "bin/codex.ocx-client": sha256(CODEX_CLIENT_SHIM),
+        "bin/codex.ocx-client.ps1": sha256(CODEX_CLIENT_POWERSHELL_SHIM),
         "package.json": sha256(packageText),
       },
       activation: "not-activated",

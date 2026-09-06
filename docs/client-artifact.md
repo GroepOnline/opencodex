@@ -24,16 +24,20 @@ manifest separately records the builder digest and Bun version.
 
 The artifact preserves the remote launcher's contract: `src/cli/index.js`,
 `package.json`, `source-sha` and `index.js.sha256`. It also ships the executable
-`bin/codex.ocx-client` shim for an operator-controlled install step. The shim
-always selects `OCX_CLIENT_CODEX_HOME` or its isolated default `~/.codex-ocx`;
-it ignores an inherited `CODEX_HOME` and explicitly refuses the native
-`~/.codex` home. `OCX_CLIENT_OCX_BIN` and `OCX_CLIENT_CODEX_BIN` can select the
-governed remote launcher and real Codex executable during installation.
+`bin/codex.ocx-client` POSIX shim and `bin/codex.ocx-client.ps1` PowerShell shim
+for an operator-controlled install step. The shims always select
+`OCX_CLIENT_CODEX_HOME` or its isolated default `~/.codex-ocx`;
+they ignore an inherited `CODEX_HOME` and explicitly refuse the native
+`~/.codex` home, including normalized aliases and symlinked paths. An explicit
+`OCX_CLIENT_CODEX_HOME` must be absolute. `OCX_CLIENT_OCX_BIN` and
+`OCX_CLIENT_CODEX_BIN` can select the governed remote launcher and real Codex
+executable during installation.
 
 The CLI and its imported dependencies and upstream model snapshot are bundled;
 package metadata remains alongside the bundle for version reporting. This is
-not a GUI, tray, service or storage-worker distribution. Explicit local
-lifecycle commands fail closed even when the bundle is invoked directly.
+not a GUI, tray, service or storage-worker distribution. Direct bundle use is
+limited to read-only help, version, status, and health commands; every other
+command fails closed and must go through the governed remote launcher.
 Continue using the existing governed remote launcher for remote connectivity
 and command authorization; it prevents indirect lifecycle paths too. Building
 a candidate does not replace a globally installed shim or modify either the
