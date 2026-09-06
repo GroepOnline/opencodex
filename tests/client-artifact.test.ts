@@ -111,6 +111,8 @@ describe("remote client artifact", () => {
       ["v2", "mode", "v2"],
       ["recover-history", "--legacy-openai"],
       ["codex-shim", "install"],
+      ["status"],
+      ["health"],
     ]) {
       const denied = Bun.spawnSync([process.execPath, entry, ...command], {
         env,
@@ -121,6 +123,38 @@ describe("remote client artifact", () => {
         "local lifecycle commands are disabled",
       );
     }
+    const staleShimHome = join(scratch, "stale-shim-home");
+    const staleShimBin = join(scratch, "stale-shim-bin");
+    const staleWrapper = join(staleShimBin, "codex");
+    const staleBackup = join(staleShimBin, "codex.opencodex-real");
+    const staleReplacement =
+      "replacement that direct artifact status must not promote\n";
+    mkdirSync(staleShimHome);
+    mkdirSync(staleShimBin);
+    writeFileSync(staleWrapper, staleReplacement);
+    writeFileSync(staleBackup, "known-good prior launcher\n");
+    writeFileSync(
+      join(staleShimHome, "codex-shim.json"),
+      `${JSON.stringify({
+        platform: process.platform,
+        wrapperPath: staleWrapper,
+        originalPath: staleWrapper,
+        backupPath: staleBackup,
+      })}\n`,
+    );
+    const staleState = readFileSync(join(staleShimHome, "codex-shim.json"));
+    const staleRun = Bun.spawnSync([process.execPath, entry, "status"], {
+      env: { ...env, OPENCODEX_HOME: staleShimHome, PATH: staleShimBin },
+      cwd: scratch,
+    });
+    expect(staleRun.exitCode).toBe(64);
+    expect(readFileSync(staleWrapper, "utf8")).toBe(staleReplacement);
+    expect(readFileSync(staleBackup, "utf8")).toBe(
+      "known-good prior launcher\n",
+    );
+    expect(readFileSync(join(staleShimHome, "codex-shim.json"))).toEqual(
+      staleState,
+    );
     expect(existsSync(join(scratch, "ocx-home", "proxy.pid"))).toBe(false);
     await expect(buildClientArtifact(output)).rejects.toThrow(
       "Destination already exists",
@@ -177,6 +211,15 @@ describe("remote client artifact", () => {
     expect(readFileSync(powershellShim, "utf8")).toContain(
       "Test-ReparsePointPath",
     );
+    expect(readFileSync(powershellShim, "utf8")).toContain(
+      "Resolve-CanonicalPath",
+    );
+    expect(readFileSync(powershellShim, "utf8")).toContain(
+      "$nativeHome = Resolve-CanonicalPath",
+    );
+    expect(readFileSync(powershellShim, "utf8")).toContain(
+      "$clientHome = Resolve-CanonicalPath",
+    );
     expect(readFileSync(powershellShim, "utf8")).toContain("$env:USERPROFILE");
     const defaultRun = Bun.spawnSync([shim, "--version"], { env });
     expect(defaultRun.exitCode).toBe(0);
@@ -221,6 +264,35 @@ describe("remote client artifact", () => {
     expect(readFileSync(capture, "utf8")).toBe(selected + "\n");
     expect(readFileSync(join(nativeHome, "config.toml"), "utf8")).toBe(
       "direct Azure config stays untouched\n",
+    );
+  });
+
+  test("refuses the physical target of a symlinked native Codex home", async () => {
+    const output = join(scratch, "symlinked-native-candidate");
+    await buildClientArtifact(output);
+    const shim = join(output, "bin/codex.ocx-client");
+    const home = join(scratch, "symlinked-native-home");
+    const nativeHome = join(home, ".codex");
+    const nativeTarget = join(scratch, "native-codex-target");
+    const real = join(scratch, "symlinked-native-real");
+    mkdirSync(home);
+    mkdirSync(nativeTarget);
+    symlinkSync(nativeTarget, nativeHome, "dir");
+    writeFileSync(join(nativeTarget, "config.toml"), "native config\n");
+    writeFileSync(real, "#!/usr/bin/env sh\nexit 0\n", { mode: 0o755 });
+    const result = Bun.spawnSync([shim, "--version"], {
+      env: {
+        ...process.env,
+        HOME: home,
+        OCX_CLIENT_CODEX_HOME: nativeTarget,
+        OCX_CLIENT_CODEX_BIN: real,
+        OCX_CLIENT_OCX_BIN: "/bin/false",
+      },
+    });
+    expect(result.exitCode).toBe(78);
+    expect(result.stderr.toString()).toContain("refusing native Codex home");
+    expect(readFileSync(join(nativeTarget, "config.toml"), "utf8")).toBe(
+      "native config\n",
     );
   });
 

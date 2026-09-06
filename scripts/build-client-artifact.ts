@@ -27,10 +27,10 @@ function git(root: string, ...args: string[]): string {
 }
 
 // The remote wrapper owns all mutation and lifecycle behavior. Direct bundle use
-// is deliberately limited to a small read-only surface.
+// stops before the CLI's auto-repair hooks can run.
 export const CLIENT_GUARD = `
 const clientCommand = process.argv[2] || "";
-const clientReadOnlyCommands = new Set(["", "help", "--help", "-h", "version", "--version", "-v", "status", "health"]);
+const clientReadOnlyCommands = new Set(["", "help", "--help", "-h", "version", "--version", "-v"]);
 if (!clientReadOnlyCommands.has(clientCommand)) {
   console.error("OCX client artifact: local lifecycle commands are disabled; use the remote launcher.");
   process.exit(64);
@@ -46,6 +46,12 @@ export const CODEX_CLIENT_SHIM = [
   "  exit 78",
   "}",
   'native_home="${home_dir%/}/.codex"',
+  'if [ -e "$native_home" ] || [ -L "$native_home" ]; then',
+  '  native_home="$(cd -P -- "$native_home" && pwd -P)" || {',
+  '    echo "OCX client-only: native Codex home must resolve to an accessible directory" >&2',
+  "    exit 78",
+  "  }",
+  "fi",
   'client_home="${OCX_CLIENT_CODEX_HOME:-${home_dir%/}/.codex-ocx}"',
   'case "$client_home" in',
   "  /*) ;;",
@@ -74,6 +80,12 @@ export const CODEX_CLIENT_SHIM = [
   "    exit 78",
   "  fi",
   "done",
+  'if [ -e "$client_home" ]; then',
+  '  client_home="$(cd -P -- "$client_home" && pwd -P)" || {',
+  '    echo "OCX client-only: client Codex home must resolve to an accessible directory" >&2',
+  "    exit 78",
+  "  }",
+  "fi",
   'if [ "$client_home" = "$native_home" ]; then',
   '  echo "OCX client-only: refusing native Codex home $native_home" >&2',
   "  exit 78",
@@ -108,10 +120,15 @@ export const CODEX_CLIENT_POWERSHELL_SHIM = [
   "$ErrorActionPreference = 'Stop'",
   "$homeRoot = if (-not [string]::IsNullOrWhiteSpace($env:HOME)) { $env:HOME } elseif (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) { $env:USERPROFILE } else { Write-Error 'OCX client-only: HOME or USERPROFILE is required'; exit 78 }",
   "$homeDir = [System.IO.Path]::GetFullPath($homeRoot)",
-  "$nativeHome = [System.IO.Path]::GetFullPath((Join-Path $homeDir '.codex'))",
+  "function Resolve-CanonicalPath([string]$Path) {",
+  "  $full = [System.IO.Path]::GetFullPath($Path)",
+  "  if (Test-Path -LiteralPath $full) { return (Resolve-Path -LiteralPath $full -ErrorAction Stop).ProviderPath }",
+  "  return $full",
+  "}",
+  "$nativeHome = Resolve-CanonicalPath (Join-Path $homeDir '.codex')",
   "$clientHomeRaw = if ($env:OCX_CLIENT_CODEX_HOME) { $env:OCX_CLIENT_CODEX_HOME } else { Join-Path $homeDir '.codex-ocx' }",
   "if (-not [System.IO.Path]::IsPathRooted($clientHomeRaw)) { Write-Error 'OCX client-only: OCX_CLIENT_CODEX_HOME must be absolute'; exit 78 }",
-  "$clientHome = [System.IO.Path]::GetFullPath($clientHomeRaw)",
+  "$clientHome = Resolve-CanonicalPath $clientHomeRaw",
   "function Test-ReparsePointPath([string]$Path) {",
   "  $root = [System.IO.Path]::GetPathRoot($Path)",
   "  $current = $root",

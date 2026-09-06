@@ -28,7 +28,8 @@ The artifact preserves the remote launcher's contract: `src/cli/index.js`,
 for an operator-controlled install step. The shims always select
 `OCX_CLIENT_CODEX_HOME` or its isolated default `~/.codex-ocx`;
 they ignore an inherited `CODEX_HOME` and explicitly refuse the native
-`~/.codex` home, including normalized aliases and symlinked paths. An explicit
+`~/.codex` home, including normalized aliases, symlinked paths, and the
+physical target of a symlinked native home. An explicit
 `OCX_CLIENT_CODEX_HOME` must be absolute. `OCX_CLIENT_OCX_BIN` and
 `OCX_CLIENT_CODEX_BIN` can select the governed remote launcher and real Codex
 executable during installation.
@@ -36,8 +37,9 @@ executable during installation.
 The CLI and its imported dependencies and upstream model snapshot are bundled;
 package metadata remains alongside the bundle for version reporting. This is
 not a GUI, tray, service or storage-worker distribution. Direct bundle use is
-limited to read-only help, version, status, and health commands; every other
-command fails closed and must go through the governed remote launcher.
+limited to help and version commands, which exit before CLI auto-repair hooks;
+every other command fails closed and must go through the governed remote
+launcher.
 Continue using the existing governed remote launcher for remote connectivity
 and command authorization; it prevents indirect lifecycle paths too. Building
 a candidate does not replace a globally installed shim or modify either the
