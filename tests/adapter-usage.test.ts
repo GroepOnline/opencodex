@@ -372,7 +372,7 @@ describe("openai-chat tool history repair", () => {
       tool_calls: [{
         id: "call_1",
         type: "function",
-        function: { name: "codex_list_mcp_resources", arguments: "{}" },
+        function: { name: "codex_list_mcp_resources_9f17b48d", arguments: "{}" },
       }],
     });
     expect(body.messages[1]).toMatchObject({
@@ -380,6 +380,18 @@ describe("openai-chat tool history repair", () => {
       tool_call_id: "call_1",
       content: '{"resources":[]}',
     });
+    const [call] = (body.messages[0].tool_calls as {
+      id: string; function: { name: string; arguments: string };
+    }[]);
+    expect(call.function.name).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
+    const restored = await adapter.parseResponse!(Response.json({
+      choices: [{ message: { tool_calls: [call] } }],
+    }));
+    expect(restored.slice(0, 3)).toEqual([
+      { type: "tool_call_start", id: "call_1", name: "codex.list_mcp_resources" },
+      { type: "tool_call_delta", arguments: "{}" },
+      { type: "tool_call_end" },
+    ]);
   });
 
   test("keeps paired tool results attached to the prior assistant tool_call", async () => {
