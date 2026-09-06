@@ -1,8 +1,20 @@
-import { afterEach, beforeEach, describe, expect, it, setSystemTime } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  setSystemTime,
+} from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getServerPosthog, PosthogClient, resetServerPosthog } from "../src/telemetry/posthog-server";
+import {
+  captureRequestTelemetry,
+  getServerPosthog,
+  PosthogClient,
+  resetServerPosthog,
+} from "../src/telemetry/posthog-server";
 
 /**
  * `flush()` drains the whole queue before sending it, so a transient PostHog
@@ -148,6 +160,69 @@ describe("PosthogClient telemetry contract", () => {
     });
   });
 
+  it("marks terminal telemetry as error when an error code accompanies a successful HTTP status", async () => {
+    const previousKey = process.env["OCX_POSTHOG_KEY"];
+    try {
+      process.env["OCX_POSTHOG_KEY"] = "phc_test";
+      resetServerPosthog();
+      captureRequestTelemetry({
+        requestId: "req-error-code",
+        provider: "openai",
+        model: "gpt-test",
+        status: 200,
+        durationMs: 25,
+        errorCode: "upstream_error",
+        usageStatus: "missing",
+      });
+
+      const client = getServerPosthog();
+      expect(client).not.toBeNull();
+      await client!.flush();
+      const terminal = bodies[0]!.find(
+        (event) => event.event === "proxy_request_terminal",
+      );
+      const generation = bodies[0]!.find(
+        (event) => event.event === "$ai_generation",
+      );
+      expect(terminal?.properties["outcome"]).toBe("error");
+      expect(generation?.properties["$ai_is_error"]).toBe(true);
+    } finally {
+      resetServerPosthog();
+      if (previousKey === undefined) delete process.env["OCX_POSTHOG_KEY"];
+      else process.env["OCX_POSTHOG_KEY"] = previousKey;
+    }
+  });
+
+  it("does not classify a WebSocket upgrade handshake as an AI generation", async () => {
+    const previousKey = process.env["OCX_POSTHOG_KEY"];
+    try {
+      process.env["OCX_POSTHOG_KEY"] = "phc_test";
+      resetServerPosthog();
+      captureRequestTelemetry({
+        requestId: "req-ws-upgrade",
+        provider: "openai",
+        model: "gpt-live",
+        status: 101,
+        durationMs: 5,
+        usageStatus: "unreported",
+      });
+
+      const client = getServerPosthog();
+      expect(client).not.toBeNull();
+      await client!.flush();
+      expect(
+        bodies[0]!.some((event) => event.event === "proxy_request_terminal"),
+      ).toBe(true);
+      expect(bodies[0]!.some((event) => event.event === "$ai_generation")).toBe(
+        false,
+      );
+    } finally {
+      resetServerPosthog();
+      if (previousKey === undefined) delete process.env["OCX_POSTHOG_KEY"];
+      else process.env["OCX_POSTHOG_KEY"] = previousKey;
+    }
+  });
+
   it("caps long allowlisted string values", async () => {
     const client = new PosthogClient("phc_test");
     client.capture("proxy_request_terminal", { model: "m".repeat(400) });
@@ -159,7 +234,8 @@ describe("PosthogClient telemetry contract", () => {
     const client = new PosthogClient("phc_test");
     // Crossing MAX_BATCH_SIZE starts a flush mid-loop, so the queue keeps
     // growing while a request is in flight; the drain must stay chunked.
-    for (let index = 0; index < 120; index += 1) client.capture(`event_${index}`);
+    for (let index = 0; index < 120; index += 1)
+      client.capture(`event_${index}`);
     await client.flush();
     for (let tick = 0; tick < 20 && posted.flat().length < 120; tick += 1) {
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -186,7 +262,9 @@ describe("PosthogClient telemetry contract", () => {
   });
 
   it("treats a fetch failure as transient and keeps the batch", async () => {
-    globalThis.fetch = (async () => { throw new Error("timeout"); }) as unknown as typeof fetch;
+    globalThis.fetch = (async () => {
+      throw new Error("timeout");
+    }) as unknown as typeof fetch;
     const client = new PosthogClient("phc_test");
     client.capture("proxy_request_terminal");
     await client.flush();

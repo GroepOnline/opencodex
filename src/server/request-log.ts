@@ -38,6 +38,7 @@ import {
   type UsageDebugBodyKind,
 } from "../usage/debug";
 import { matchesLogConversationId } from "./request-log-conversation";
+import { captureRequestTelemetry } from "../telemetry/posthog-server";
 
 export interface RequestLogContext {
   model: string;
@@ -48,6 +49,8 @@ export interface RequestLogContext {
    * provider of that name — so cap-cooldown attribution must use this, never `provider`.
    */
   providerConfigKey?: string;
+  /** Whether the client requested a streamed generation. */
+  stream?: boolean;
   /** TTFT: ms from request start to the first non-empty model output delta (WP4, devlog 040). */
   firstOutputMs?: number;
   /** Best-effort chat/session correlation for Logs grouping (#330). Opaque; omit when unknown. */
@@ -110,6 +113,8 @@ export interface RequestLogEntry {
   timestamp: number;
   model: string;
   provider: string;
+  /** Whether the client requested a streamed generation. */
+  stream?: boolean;
   /** TTFT: ms from request start to the first non-empty model output delta; unset for non-streaming/tool-only. */
   firstOutputMs?: number;
   surface?: "claude" | "claude-desktop" | "codex" | "grok";
@@ -291,6 +296,7 @@ export function requestLogEntryFromPersistedUsage(entry: PersistedUsageEntry): R
       : {}),
     ...(entry.responseServiceTier ? { responseServiceTier: entry.responseServiceTier } : {}),
     ...(entry.resolvedModel ? { resolvedModel: entry.resolvedModel } : {}),
+    ...(entry.stream !== undefined ? { stream: entry.stream } : {}),
     status: entry.status,
     durationMs: entry.durationMs,
     ...(entry.errorCode ? { errorCode: entry.errorCode } : {}),
@@ -345,6 +351,31 @@ export function hydrateRequestLogsFromDisk(
 export function addRequestLog(entry: RequestLogEntry) {
   requestLog.push(entry);
   if (requestLog.length > MAX_LOG_SIZE) requestLog.shift();
+  captureRequestTelemetry({
+    requestId: entry.requestId,
+    provider: baseProviderLabel(entry.provider),
+    model: entry.model,
+    ...(entry.resolvedModel ? { resolvedModel: entry.resolvedModel } : {}),
+    ...(entry.surface ? { surface: entry.surface } : {}),
+    ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
+    status: entry.status,
+    durationMs: entry.durationMs,
+    ...(entry.stream !== undefined ? { stream: entry.stream } : {}),
+    ...(entry.firstOutputMs !== undefined ? { firstOutputMs: entry.firstOutputMs } : {}),
+    ...(entry.errorCode ? { errorCode: entry.errorCode } : {}),
+    usageStatus: entry.usageStatus,
+    ...(entry.usage ? { usage: entry.usage } : {}),
+    ...(entry.attempts?.length ? { attempts: entry.attempts.map(attempt => ({
+      ordinal: attempt.ordinal,
+      provider: baseProviderLabel(attempt.provider),
+      model: attempt.model,
+      usageStatus: attempt.usageStatus,
+      ...(attempt.usage ? { usage: attempt.usage } : {}),
+    })) } : {}),
+    ...(entry.requestedServiceTier ? { requestedServiceTier: entry.requestedServiceTier } : {}),
+    ...(entry.configuredServiceTier ? { configuredServiceTier: entry.configuredServiceTier } : {}),
+    ...(entry.responseServiceTier ? { responseServiceTier: entry.responseServiceTier } : {}),
+  });
   try {
     // Failure diagnostics survive the 200-entry ring buffer by riding the persisted
     // usage entry (devlog/_plan/260716_claudecode_hardening/030). Success rows stay
@@ -381,6 +412,7 @@ export function addRequestLog(entry: RequestLogEntry) {
         ? { modelSupportsServiceTier: entry.modelSupportsServiceTier }
         : {}),
       ...(entry.responseServiceTier ? { responseServiceTier: entry.responseServiceTier } : {}),
+      ...(entry.stream !== undefined ? { stream: entry.stream } : {}),
       status: entry.status,
       durationMs: entry.durationMs,
       ...(entry.firstOutputMs !== undefined ? { firstOutputMs: entry.firstOutputMs } : {}),
@@ -869,6 +901,7 @@ export function addFinalRequestLog(
       ...(logCtx.resolvedModel ? { resolvedModel: logCtx.resolvedModel } : {}),
       status: effectiveStatus,
       durationMs: Date.now() - start,
+      ...(logCtx.stream !== undefined ? { stream: logCtx.stream } : {}),
       ...(logCtx.firstOutputMs !== undefined ? { firstOutputMs: logCtx.firstOutputMs } : {}),
       ...(errorCode ? { errorCode } : {}),
       ...(meta?.terminalStatus ? { terminalStatus: meta.terminalStatus } : {}),

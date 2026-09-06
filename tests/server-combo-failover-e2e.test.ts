@@ -1569,6 +1569,28 @@ describe("server combo failover 030 activation matrix", () => {
     expect(cancels).toBe(0);
   });
 
+  test("pre-aborted combo preserves client stream intent in the terminal log", async () => {
+    const config = comboConfig({
+      a: provider("openai-chat", "http://127.0.0.1:1/v1", "key-a"),
+    });
+    const abort = new AbortController();
+    abort.abort(new DOMException("client closed", "AbortError"));
+
+    const response = await postLogged(config, { stream: true }, { abortSignal: abort.signal });
+    expect(response.status).toBe(499);
+    await response.text();
+
+    const logsResponse = await management(config, "GET", "/api/logs?tail=1");
+    const logs = await logsResponse!.json() as Array<Record<string, unknown>>;
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({
+      provider: "combo",
+      model: "combo/free",
+      stream: true,
+      status: 499,
+    });
+  });
+
   test("connect cancellation wins with 499, no backup, warning, or cooldown", async () => {
     let bHits = 0;
     const aStarted = deferred();

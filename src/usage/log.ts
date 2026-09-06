@@ -79,6 +79,8 @@ export interface PersistedUsageEntry {
   configuredSpeedLabel?: string;
   modelSupportsServiceTier?: boolean;
   responseServiceTier?: string;
+  /** Whether the client requested a streamed generation. */
+  stream?: boolean;
   status: number;
   durationMs: number;
   /** TTFT relative to the request start (WP4); unset for non-streaming/tool-only. */
@@ -344,6 +346,7 @@ function normalizeUsageEntry(entry: PersistedUsageEntry): PersistedUsageEntry {
     ...(typeof entry.responseServiceTier === "string" && entry.responseServiceTier
       ? { responseServiceTier: capMetadataString(entry.responseServiceTier) }
       : {}),
+    ...(typeof entry.stream === "boolean" ? { stream: entry.stream } : {}),
     status: entry.status,
     durationMs: entry.durationMs,
     ...(isNonNegativeFiniteNumber(entry.firstOutputMs)
