@@ -34,6 +34,11 @@ physical target of a symlinked native home. An explicit
 `OCX_CLIENT_CODEX_BIN` can select the governed remote launcher and real Codex
 executable during installation.
 
+The PowerShell shim resolves every existing reparse-point component to its
+physical target before comparing homes, and fails closed if a target cannot be
+resolved. It separately rejects a client-home override that traverses a
+reparse point, so no link alias can select the native home.
+
 The CLI and its imported dependencies and upstream model snapshot are bundled;
 package metadata remains alongside the bundle for version reporting. This is
 not a GUI, tray, service or storage-worker distribution. Direct bundle use is

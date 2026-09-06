@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { buildClientArtifact } from "../scripts/build-client-artifact";
 
 const scratch = mkdtempSync(join(tmpdir(), "ocx-client-artifact-test-"));
+const powershell = Bun.which("pwsh");
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 describe("remote client artifact", () => {
@@ -212,13 +213,19 @@ describe("remote client artifact", () => {
       "Test-ReparsePointPath",
     );
     expect(readFileSync(powershellShim, "utf8")).toContain(
-      "Resolve-CanonicalPath",
+      "Resolve-PhysicalPath",
     );
     expect(readFileSync(powershellShim, "utf8")).toContain(
-      "$nativeHome = Resolve-CanonicalPath",
+      "$item.ResolveLinkTarget($true)",
     );
     expect(readFileSync(powershellShim, "utf8")).toContain(
-      "$clientHome = Resolve-CanonicalPath",
+      "$targets = @($item.Target)",
+    );
+    expect(readFileSync(powershellShim, "utf8")).toContain(
+      "$nativeHome = Resolve-PhysicalPath",
+    );
+    expect(readFileSync(powershellShim, "utf8")).toContain(
+      "$clientHome = Resolve-PhysicalPath",
     );
     expect(readFileSync(powershellShim, "utf8")).toContain("$env:USERPROFILE");
     const defaultRun = Bun.spawnSync([shim, "--version"], { env });
@@ -295,6 +302,39 @@ describe("remote client artifact", () => {
       "native config\n",
     );
   });
+
+  test.skipIf(!powershell)(
+    "PowerShell refuses the physical target of a symlinked native Codex home",
+    async () => {
+      const output = join(scratch, "powershell-symlinked-native-candidate");
+      await buildClientArtifact(output);
+      const shim = join(output, "bin/codex.ocx-client.ps1");
+      const home = join(scratch, "powershell-symlinked-native-home");
+      const nativeHome = join(home, ".codex");
+      const nativeTarget = join(scratch, "powershell-native-codex-target");
+      mkdirSync(home);
+      mkdirSync(nativeTarget);
+      symlinkSync(nativeTarget, nativeHome, "dir");
+      writeFileSync(join(nativeTarget, "config.toml"), "native config\n");
+      const result = Bun.spawnSync(
+        [powershell!, "-NoProfile", "-File", shim, "--version"],
+        {
+          env: {
+            ...process.env,
+            HOME: home,
+            OCX_CLIENT_CODEX_HOME: nativeTarget,
+          },
+        },
+      );
+      expect(result.exitCode).toBe(78);
+      expect(result.stderr.toString()).toContain(
+        "refusing native or symlinked Codex home",
+      );
+      expect(readFileSync(join(nativeTarget, "config.toml"), "utf8")).toBe(
+        "native config\n",
+      );
+    },
+  );
 
   test("does not replace an existing destination symlink", async () => {
     const existing = join(scratch, "existing");
