@@ -208,7 +208,7 @@ export const CODEX_CLIENT_POWERSHELL_SHIM = [
   "$ocxBin = if ($env:OCX_CLIENT_OCX_BIN) { $env:OCX_CLIENT_OCX_BIN } else { Join-Path $homeDir '.local\\bin\\ocx.cmd' }",
   "$codexBin = if ($env:OCX_CLIENT_CODEX_BIN) { $env:OCX_CLIENT_CODEX_BIN } else { Join-Path $homeDir '.local\\bin\\codex.opencodex-real.cmd' }",
   "$skipEnsure = @('agents', 'app-server', 'apply', 'cloud', 'completion', 'doctor', 'exec-server', 'features', 'help', 'login', 'logout', 'mcp-server', 'plugin', 'remote-control', 'update', '--help', '-h', '--version', '-V', 'debug') -contains ($args | Select-Object -First 1)",
-  "if (-not $skipEnsure) { & $ocxBin ensure *> $null; if ($LASTEXITCODE -ne 0) { Write-Error 'Codex: central OCX proxy unavailable through the governed remote launcher'; exit 69 } }",
+  "if (-not $skipEnsure) { & $ocxBin ensure *> $null; if ($LASTEXITCODE -ne 0) { [Console]::Error.WriteLine('Codex: central OCX proxy unavailable through the governed remote launcher'); exit 69 } }",
   "& $codexBin @args",
   "exit $LASTEXITCODE",
   "",

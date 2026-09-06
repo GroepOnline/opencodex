@@ -334,6 +334,31 @@ describe("remote client artifact", () => {
   });
 
   test.skipIf(!powershell)(
+    "PowerShell preserves the governed proxy failure exit code",
+    async () => {
+      const output = join(scratch, "powershell-proxy-failure-candidate");
+      await buildClientArtifact(output);
+      const shim = join(output, "bin/codex.ocx-client.ps1");
+      const home = join(scratch, "powershell-proxy-failure-home");
+      const failingOcx = join(scratch, "failing-ocx.ps1");
+      mkdirSync(home);
+      writeFileSync(failingOcx, "exit 7\n");
+      const result = Bun.spawnSync([powershell!, "-NoProfile", "-File", shim], {
+        env: {
+          ...process.env,
+          HOME: home,
+          OCX_CLIENT_CODEX_HOME: join(home, ".codex-ocx"),
+          OCX_CLIENT_OCX_BIN: failingOcx,
+        },
+      });
+      expect(result.exitCode).toBe(69);
+      expect(result.stderr.toString()).toContain(
+        "central OCX proxy unavailable through the governed remote launcher",
+      );
+    },
+  );
+
+  test.skipIf(!powershell)(
     "PowerShell refuses the physical target of a symlinked native Codex home",
     async () => {
       const output = join(scratch, "powershell-symlinked-native-candidate");
