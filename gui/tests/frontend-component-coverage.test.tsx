@@ -8,7 +8,15 @@ import { seedDicts } from "./helpers/locales";
 
 await seedDicts();
 
-const globals = ["document", "window", "navigator", "localStorage", "sessionStorage", "ResizeObserver", "IS_REACT_ACT_ENVIRONMENT"] as const;
+const globals = [
+  "document",
+  "window",
+  "navigator",
+  "localStorage",
+  "sessionStorage",
+  "ResizeObserver",
+  "IS_REACT_ACT_ENVIRONMENT",
+] as const;
 type GlobalsKey = (typeof globals)[number];
 
 interface TestEnv {
@@ -25,13 +33,19 @@ interface TestEnv {
  */
 async function setupEnv(): Promise<TestEnv & { cleanup: () => Promise<void> }> {
   const previousGlobalDescriptors = Object.fromEntries(
-    globals.map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]),
+    globals.map((key) => [
+      key,
+      Object.getOwnPropertyDescriptor(globalThis, key),
+    ]),
   ) as Record<GlobalsKey, PropertyDescriptor | undefined>;
 
   const originalFetch = globalThis.fetch;
 
   const testWindow = new Window({ url: "http://localhost/" });
-  Object.defineProperty(testWindow.navigator, "language", { configurable: true, value: "en-US" });
+  Object.defineProperty(testWindow.navigator, "language", {
+    configurable: true,
+    value: "en-US",
+  });
   Object.defineProperties(globalThis, {
     document: { configurable: true, value: testWindow.document },
     window: { configurable: true, value: testWindow },
@@ -40,7 +54,9 @@ async function setupEnv(): Promise<TestEnv & { cleanup: () => Promise<void> }> {
     sessionStorage: { configurable: true, value: testWindow.sessionStorage },
     ResizeObserver: { configurable: true, value: testWindow.ResizeObserver },
   });
-  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  (
+    globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT = true;
   testWindow.sessionStorage.clear();
   testWindow.localStorage.clear();
 
@@ -55,7 +71,9 @@ async function setupEnv(): Promise<TestEnv & { cleanup: () => Promise<void> }> {
     container,
     cleanup: async () => {
       globalThis.fetch = originalFetch;
-      await act(async () => { root.unmount(); });
+      await act(async () => {
+        root.unmount();
+      });
       container.remove();
       testWindow.close();
       for (const key of globals) {
@@ -73,11 +91,15 @@ async function mount(env: TestEnv, element: React.ReactElement): Promise<void> {
   });
   // Let effects settle
   await act(async () => {
-    await new Promise<void>(resolve => env.testWindow.setTimeout(resolve, 10));
+    await new Promise<void>((resolve) =>
+      env.testWindow.setTimeout(resolve, 10),
+    );
   });
 }
 
-function mockFetch(handler: (url: string, init?: RequestInit) => Response | Promise<Response>): void {
+function mockFetch(
+  handler: (url: string, init?: RequestInit) => Response | Promise<Response>,
+): void {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     return handler(url, init);
@@ -93,7 +115,8 @@ const STORAGE_SIDE_POLICY = {
 };
 
 function mockStorageSideApis(url: string): Response | null {
-  if (url.includes("/api/storage/cleanup-policy")) return Response.json(STORAGE_SIDE_POLICY);
+  if (url.includes("/api/storage/cleanup-policy"))
+    return Response.json(STORAGE_SIDE_POLICY);
   if (url.includes("/api/storage/trash")) return Response.json({ entries: [] });
   return null;
 }
@@ -132,15 +155,21 @@ function isApiPath(url: string, path: string): boolean {
 
 function mockModelsCatalogApis(url: string): Response | null {
   if (isApiPath(url, "/api/models")) return Response.json([]);
-  if (isApiPath(url, "/api/provider-context-caps")) return Response.json({ value: 350_000, caps: {} });
+  if (isApiPath(url, "/api/provider-context-caps"))
+    return Response.json({ value: 350_000, caps: {} });
   if (isApiPath(url, "/api/providers")) return Response.json([]);
-  if (isApiPath(url, "/api/selected-models")) return Response.json({ selected: {} });
+  if (isApiPath(url, "/api/selected-models"))
+    return Response.json({ selected: {} });
   if (isApiPath(url, "/api/combos")) return Response.json([]);
-  if (isApiPath(url, "/api/shadow-call-settings")) return Response.json({ enabled: false, model: "" });
+  if (isApiPath(url, "/api/shadow-call-settings"))
+    return Response.json({ enabled: false, model: "" });
   if (isApiPath(url, "/api/v2")) {
-    return new Response(JSON.stringify({ enabled: false, multiAgentMode: "default" }), {
-      headers: { "content-type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ enabled: false, multiAgentMode: "default" }),
+      {
+        headers: { "content-type": "application/json" },
+      },
+    );
   }
   return null;
 }
@@ -174,8 +203,12 @@ test("Storage renders catalog backup section", async () => {
     });
 
     await mount(env, <Storage apiBase="http://localhost" />);
-    expect(env.container.querySelector("#storage-page-title")?.textContent).toBe("Storage");
-    expect(env.container.textContent ?? "").toContain("Diagnostics for CODEX_HOME disk use.");
+    expect(
+      env.container.querySelector("#storage-page-title")?.textContent,
+    ).toBe("Storage");
+    expect(env.container.textContent ?? "").toContain(
+      "Diagnostics for CODEX_HOME disk use.",
+    );
     expect(callCount).toBeGreaterThan(0);
   } finally {
     await env.cleanup();
@@ -204,7 +237,8 @@ test("Storage shows error state when the storage report fetch fails", async () =
     mockFetch((url) => {
       const side = mockStorageSideApis(url);
       if (side) return side;
-      if (url.includes("/api/storage")) return new Response("error", { status: 500 });
+      if (url.includes("/api/storage"))
+        return new Response("error", { status: 500 });
       return Response.json({});
     });
 
@@ -240,7 +274,8 @@ test("Models shows error state when catalog APIs fail", async () => {
   try {
     const { default: Models } = await import("../src/pages/Models");
     mockFetch((url) => {
-      if (isApiPath(url, "/api/models")) return new Response("error", { status: 500 });
+      if (isApiPath(url, "/api/models"))
+        return new Response("error", { status: 500 });
       const catalog = mockModelsCatalogApis(url);
       if (catalog) return catalog;
       return Response.json({});
@@ -265,7 +300,12 @@ test("Models renders the workspace after a successful catalog load", async () =>
 
     await mount(env, <Models apiBase="http://localhost" />);
     expect(env.container.querySelector("h2")?.textContent).toBe("Models");
-    expect(env.container.textContent ?? "").toContain("Toggle which models Codex sees");
+    expect(env.container.textContent ?? "").toContain(
+      "Find a model, check its configuration and choose what appears in your client.",
+    );
+    expect(
+      env.container.querySelector('[aria-label="Model catalog"]'),
+    ).not.toBeNull();
   } finally {
     await env.cleanup();
   }
@@ -288,8 +328,12 @@ test("Usage renders usage report panels", async () => {
     });
 
     await mount(env, <Usage apiBase="http://localhost" />);
-    expect(env.container.querySelector("#usage-quality-title")?.textContent).toBe("Request quality");
-    expect(env.container.querySelector('[role="group"][aria-label="Proxy usage"]')).not.toBeNull();
+    expect(
+      env.container.querySelector("#usage-quality-title")?.textContent,
+    ).toBe("Request quality");
+    expect(
+      env.container.querySelector('[role="group"][aria-label="Proxy usage"]'),
+    ).not.toBeNull();
   } finally {
     await env.cleanup();
   }
@@ -316,7 +360,8 @@ test("Usage shows loading state before the first usage report arrives", async ()
     const { default: Usage } = await import("../src/pages/Usage");
     mockFetch((url) => {
       if (url.includes("/api/usage")) return new Promise(() => {});
-      if (url.includes("/healthz")) return Response.json({ status: "ok", version: "1.0.0" });
+      if (url.includes("/healthz"))
+        return Response.json({ status: "ok", version: "1.0.0" });
       return Response.json({});
     });
 
@@ -392,12 +437,15 @@ test("Logs shows error state when the log fetch fails", async () => {
   try {
     const { default: Logs } = await import("../src/pages/Logs");
     mockFetch((url) => {
-      if (url.includes("/api/logs")) return new Response("error", { status: 500 });
+      if (url.includes("/api/logs"))
+        return new Response("error", { status: 500 });
       return Response.json({});
     });
 
     await mount(env, <Logs apiBase="http://localhost" />);
-    expect(env.container.textContent ?? "").toContain("Could not load request logs");
+    expect(env.container.textContent ?? "").toContain(
+      "Could not load request logs",
+    );
   } finally {
     await env.cleanup();
   }
@@ -409,14 +457,16 @@ test("Logs renders log rows after a successful fetch", async () => {
     const { default: Logs } = await import("../src/pages/Logs");
     mockFetch((url) => {
       if (url.includes("/api/logs")) {
-        return Response.json([{
-          timestamp: Date.now(),
-          model: "gpt-4",
-          provider: "openai",
-          status: 200,
-          durationMs: 120,
-          usage: { inputTokens: 10, outputTokens: 20 },
-        }]);
+        return Response.json([
+          {
+            timestamp: Date.now(),
+            model: "gpt-4",
+            provider: "openai",
+            status: 200,
+            durationMs: 120,
+            usage: { inputTokens: 10, outputTokens: 20 },
+          },
+        ]);
       }
       return Response.json({});
     });
@@ -434,9 +484,11 @@ test("Logs renders log rows after a successful fetch", async () => {
 test("ProviderWorkspaceShell renders an explicit empty state when no providers exist", async () => {
   const env = await setupEnv();
   try {
-    const { default: ProviderWorkspaceShell } = await import("../src/components/provider-workspace/ProviderWorkspaceShell");
+    const { default: ProviderWorkspaceShell } =
+      await import("../src/components/provider-workspace/ProviderWorkspaceShell");
 
-    await mount(env, (
+    await mount(
+      env,
       <ProviderWorkspaceShell
         providers={{}}
         apiBase="http://localhost"
@@ -444,10 +496,12 @@ test("ProviderWorkspaceShell renders an explicit empty state when no providers e
         selectedName={null}
         onSelect={() => {}}
         onAddProvider={() => {}}
-      />
-    ));
+      />,
+    );
 
-    expect(env.container.querySelector("h2")?.textContent).toBe("Connect your first provider");
+    expect(env.container.querySelector("h2")?.textContent).toBe(
+      "Connect your first provider",
+    );
     expect(env.container.querySelectorAll("button").length).toBe(3);
   } finally {
     await env.cleanup();
@@ -457,15 +511,18 @@ test("ProviderWorkspaceShell renders an explicit empty state when no providers e
 test("ProviderWorkspaceShell shows usage loading skeleton on the overview dashboard", async () => {
   const env = await setupEnv();
   try {
-    const { default: ProviderWorkspaceShell } = await import("../src/components/provider-workspace/ProviderWorkspaceShell");
+    const { default: ProviderWorkspaceShell } =
+      await import("../src/components/provider-workspace/ProviderWorkspaceShell");
     mockFetch((url) => {
       if (url.includes("/api/usage")) return new Promise(() => {});
       if (url.includes("/api/selected-models")) return Response.json({});
-      if (url.includes("/api/provider-quotas")) return Response.json({ unsupported: true });
+      if (url.includes("/api/provider-quotas"))
+        return Response.json({ unsupported: true });
       return Response.json({});
     });
 
-    await mount(env, (
+    await mount(
+      env,
       <ProviderWorkspaceShell
         providers={{ demo: DEMO_PROVIDER }}
         apiBase="http://localhost"
@@ -473,8 +530,8 @@ test("ProviderWorkspaceShell shows usage loading skeleton on the overview dashbo
         selectedName={null}
         onSelect={() => {}}
         onAddProvider={() => {}}
-      />
-    ));
+      />,
+    );
 
     const recent = env.container.querySelector('[aria-label="Recently used"]');
     expect(recent?.getAttribute("aria-busy")).toBe("true");
@@ -487,7 +544,8 @@ test("ProviderWorkspaceShell shows usage loading skeleton on the overview dashbo
 test("ProviderWorkspaceShell renders overview data after usage and quota APIs succeed", async () => {
   const env = await setupEnv();
   try {
-    const { default: ProviderWorkspaceShell } = await import("../src/components/provider-workspace/ProviderWorkspaceShell");
+    const { default: ProviderWorkspaceShell } =
+      await import("../src/components/provider-workspace/ProviderWorkspaceShell");
     mockFetch((url) => {
       if (url.includes("/api/usage")) {
         return Response.json({
@@ -496,11 +554,13 @@ test("ProviderWorkspaceShell renders overview data after usage and quota APIs su
         });
       }
       if (url.includes("/api/selected-models")) return Response.json({});
-      if (url.includes("/api/provider-quotas")) return Response.json({ unsupported: true });
+      if (url.includes("/api/provider-quotas"))
+        return Response.json({ unsupported: true });
       return Response.json({});
     });
 
-    await mount(env, (
+    await mount(
+      env,
       <ProviderWorkspaceShell
         providers={{ demo: DEMO_PROVIDER }}
         apiBase="http://localhost"
@@ -508,8 +568,8 @@ test("ProviderWorkspaceShell renders overview data after usage and quota APIs su
         selectedName={null}
         onSelect={() => {}}
         onAddProvider={() => {}}
-      />
-    ));
+      />,
+    );
 
     expect(env.container.textContent ?? "").toContain("Demo");
     expect(env.container.textContent ?? "").toContain("4 requests");
@@ -521,15 +581,20 @@ test("ProviderWorkspaceShell renders overview data after usage and quota APIs su
 test("ProviderWorkspaceShell detail slot surfaces model-load failure from the API", async () => {
   const env = await setupEnv();
   try {
-    const { default: ProviderWorkspaceShell } = await import("../src/components/provider-workspace/ProviderWorkspaceShell");
+    const { default: ProviderWorkspaceShell } =
+      await import("../src/components/provider-workspace/ProviderWorkspaceShell");
     mockFetch((url) => {
-      if (url.includes("/api/selected-models")) return new Response("error", { status: 500 });
-      if (url.includes("/api/usage")) return Response.json({ providers: [], models: [] });
-      if (url.includes("/api/provider-quotas")) return Response.json({ unsupported: true });
+      if (url.includes("/api/selected-models"))
+        return new Response("error", { status: 500 });
+      if (url.includes("/api/usage"))
+        return Response.json({ providers: [], models: [] });
+      if (url.includes("/api/provider-quotas"))
+        return Response.json({ unsupported: true });
       return Response.json({});
     });
 
-    await mount(env, (
+    await mount(
+      env,
       <ProviderWorkspaceShell
         providers={{ demo: DEMO_PROVIDER }}
         apiBase="http://localhost"
@@ -539,13 +604,19 @@ test("ProviderWorkspaceShell detail slot surfaces model-load failure from the AP
         onAddProvider={() => {}}
         detail={(_item, data) => (
           <p id="pws-detail-state">
-            {data.modelsLoading ? "models-loading" : data.modelsLoadFailed ? "models-error" : "models-ready"}
+            {data.modelsLoading
+              ? "models-loading"
+              : data.modelsLoadFailed
+                ? "models-error"
+                : "models-ready"}
           </p>
         )}
-      />
-    ));
+      />,
+    );
 
-    expect(env.container.querySelector("#pws-detail-state")?.textContent).toBe("models-error");
+    expect(env.container.querySelector("#pws-detail-state")?.textContent).toBe(
+      "models-error",
+    );
   } finally {
     await env.cleanup();
   }
@@ -554,7 +625,8 @@ test("ProviderWorkspaceShell detail slot surfaces model-load failure from the AP
 test("ProviderWorkspaceShell detail slot receives selected models after a successful fetch", async () => {
   const env = await setupEnv();
   try {
-    const { default: ProviderWorkspaceShell } = await import("../src/components/provider-workspace/ProviderWorkspaceShell");
+    const { default: ProviderWorkspaceShell } =
+      await import("../src/components/provider-workspace/ProviderWorkspaceShell");
     mockFetch((url) => {
       if (isApiPath(url, "/api/selected-models")) {
         return Response.json({
@@ -563,12 +635,15 @@ test("ProviderWorkspaceShell detail slot receives selected models after a succes
           liveModelCounts: { demo: 1 },
         });
       }
-      if (url.includes("/api/usage")) return Response.json({ providers: [], models: [] });
-      if (url.includes("/api/provider-quotas")) return Response.json({ unsupported: true });
+      if (url.includes("/api/usage"))
+        return Response.json({ providers: [], models: [] });
+      if (url.includes("/api/provider-quotas"))
+        return Response.json({ unsupported: true });
       return Response.json({});
     });
 
-    await mount(env, (
+    await mount(
+      env,
       <ProviderWorkspaceShell
         providers={{ demo: DEMO_PROVIDER }}
         apiBase="http://localhost"
@@ -578,13 +653,19 @@ test("ProviderWorkspaceShell detail slot receives selected models after a succes
         onAddProvider={() => {}}
         detail={(_item, data) => (
           <p id="pws-detail-state">
-            {data.modelsLoading ? "models-loading" : data.modelsLoadFailed ? "models-error" : `models-ready:${data.availableModels.join(",")}`}
+            {data.modelsLoading
+              ? "models-loading"
+              : data.modelsLoadFailed
+                ? "models-error"
+                : `models-ready:${data.availableModels.join(",")}`}
           </p>
         )}
-      />
-    ));
+      />,
+    );
 
-    expect(env.container.querySelector("#pws-detail-state")?.textContent).toBe("models-ready:demo/claude");
+    expect(env.container.querySelector("#pws-detail-state")?.textContent).toBe(
+      "models-ready:demo/claude",
+    );
   } finally {
     await env.cleanup();
   }

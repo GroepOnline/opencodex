@@ -12,6 +12,7 @@ import "./styles/app-base.css";
 import "./landing/landing.css";
 import "@fontsource-variable/manrope";
 import "./styles/workspace-orbit.css";
+import "./styles/model-catalog.css";
 import "./styles/primitives.css";
 
 initPostHog();

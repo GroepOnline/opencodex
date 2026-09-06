@@ -1,6 +1,6 @@
 # OCX workspace UX contract
 
-Scope: the pending workspace navigation, Overview and Settings migration. This
+Scope: the pending workspace navigation, Models catalog, Overview and Settings migration. This
 records ownership, not approval of the unfinished visual redesign. Existing
 provider/authentication, deletion, billing and persistence policy stays with its
 runtime owner; this document does not invent replacement business rules.
@@ -31,8 +31,10 @@ runtime owner; this document does not invent replacement business rules.
 | Scrollbar              | Application stylesheet        | `src/styles/workspace-orbit.css`                         | Global semantic roles; forced-colors defers to system                          | Computed styles / browser; platform rendering may differ     |
 | Navigation             | WorkspaceNavigation           | `src/components/WorkspaceNavigation.tsx`, `src/route.ts` | Existing hashes; current page via aria-current                                 | Workspace navigation tests                                   |
 
-There is no new table selection, form submission, date input, toast or CRUD owner
-in this slice. Existing workflows retain their owners pending explicit migration.
+Model selection belongs to `src/pages/Models.tsx`; the persistent detail surface
+is `src/pages/ModelInspector.tsx`. Selection uses provider-qualified identity and
+does not mutate configuration. The existing visibility and custom-model API
+handlers retain ownership of writes. No new auth, billing or CRUD backend.
 
 ## Behavior and resilience
 
@@ -55,13 +57,24 @@ in this slice. Existing workflows retain their owners pending explicit migration
 
 - Document title is localized route name plus opencodex; public landing keeps the
   product name. Single-destination views do not repeat an Overview subtab.
-- Desktop side rail becomes six labelled mobile destinations in two rows. Primary
+- Desktop navigation is a compact horizontal row; six labelled mobile destinations
+  remain visible in two rows. Primary
   navigation and Settings controls keep 44px targets; no page-wide overflow.
 - Mobile readings become compact label/value rows rather than empty KPI cards.
 - Pointer selection has a scoped, interruptible shared-layout spring; keyboard
   navigation and reduced motion are instant. No page entrance animation.
 - Settings movement is at most 200ms, transform/opacity only. Keyboard opening is
   instant; reduced motion suppresses displacement. No ambient animation added.
+- Models uses global search plus provider filtering, preserving empty-provider and
+  discovery-failure states. Search opens matching groups without overwriting saved
+  collapse preferences; collapse controls are disabled while search is active.
+- Selecting a model focuses its inspector heading. Back restores the originating
+  row, or search if that row is no longer rendered. On narrow screens, the detail
+  pane replaces list/header/filter chrome; none of the hidden controls stays tabbable.
+- Visibility switches have 44px targets. Missing context/modalities remain unknown;
+  catalog visibility is explicitly not served-model or live-auth proof.
+- Provider bulk actions retain full-provider scope under search. Advanced controls
+  are disclosed separately, not removed. Existing custom-model confirmation stays.
 
 ## Migration and verification
 

@@ -11,12 +11,46 @@ ChefGroep-producten en het gedeelde design-system worden hiermee niet gewijzigd.
 
 ### Richting en componenten
 
-De eerste inkt/mint-richting (werknaam Orbit) is door Joep afgewezen als generiek.
-De huidige correctie is geen goedgekeurde nieuwe merkidentiteit. Het product heet
-opencodex; we voegen geen nieuw merk of parallelle app toe. De werkinterface gebruikt
-neutrale lichte/grafietoppervlakken, blauw voor acties en Manrope voor interfacecopy.
-JetBrains Mono blijft voor machinedata. Geen marketinghero boven dagelijkse data,
-decoratieve metriekkaarten of herhaalde navigatie zonder extra bestemming.
+Zowel de eerste inkt/mint-richting (werknaam Orbit) als de daaropvolgende blauwe
+dashboardcorrectie zijn door Joep afgewezen als generiek. De bestaande runtime is
+dus geen visueel geaccepteerd ontwerp. Blauw en paars zijn uitgesloten als merk-,
+actie-, selectie- en focusaccent voor het herontwerp; een andere accentkleur op
+dezelfde dashboardcompositie is geen oplossing. Het product blijft opencodex.
+
+De catalogusslice vertrekt vanuit het dagelijkse werk: een model vinden,
+de bijbehorende provider begrijpen en de bestaande instellingen aanpassen. Een
+doorzoekbare modellenlijst met contextueel detail krijgt voorrang boven een
+overzicht van zeven even grote getallen. Bestaande verkeer- en gebruiksschermen
+blijven bereikbaar; metrics verdwijnen niet, maar bepalen niet automatisch de
+hele werkinterface. Geen verzonnen routinggrafiek of nieuwe backend hiervoor.
+
+De voorgestelde basis is monochroom: wit `#ffffff`, lichtgrijs `#f1f1f1`, lijn
+`#d4d4d4`, secundaire inkt `#656565`, donker oppervlak `#262626`, inkt `#161616`.
+Dit zijn de basisrollen van de branch, geen uitgerolde productie-identiteit. Primaire acties
+gebruiken tekst/achtergrond-inversie; selectie gebruikt neutraal vlak plus gewicht
+of contour. Groen, amber en rood blijven betekenisvolle statussen met tekst,
+niet een nieuw merkpalet. Toets focus en tekstcontrast in beide thema's.
+Manrope blijft voorlopig voor interfacecopy, JetBrains Mono voor machinedata:
+een nieuwe fontdependency is niet de oplossing voor gebrekkige hiërarchie.
+
+### Onderzoeksbasis en wat we niet kopiëren
+
+- [Raycast, A fresh look and feel (2022)](https://www.raycast.com/blog/a-fresh-look-and-feel):
+  zoekveld en contextacties krijgen prioriteit; de actiebalk maakt verborgen
+  handelingen vindbaar. [Raycast 2.0 (2026)](https://www.raycast.com/blog/the-new-raycast)
+  behoudt deze actiegerichte opbouw. Geen glaslaag of wallpaper overnemen.
+- [Resend, domeinverificatie (2023)](https://resend.com/blog/new-domain-verification-experience):
+  uitleg en feedback sluiten aan op de gekozen provider en individuele records.
+  [Productrebranding (2025)](https://resend.com/blog/rebranding-resend) toont
+  objectlijsten als hoofdinhoud. Niet hun logo, serifkoppen of statuskleuren kopiëren.
+- [GitButler 0.15 (2025)](https://blog.gitbutler.com/gitbutler-15-quirky-quinceanera):
+  werkobjecten en bewerkingen bepalen de ruimte; herstel en selectie zijn onderdeel
+  van de interface. Geen commit-lanes nabouwen voor modellen zonder zo'n workflow.
+
+Deze bronnen zijn gedateerde primaire ontwerpvoorbeelden, geen bewijs dat ieder
+detail vandaag ongewijzigd is of dat hun vormgeving automatisch bij OCX past.
+Ook zwart/neon, crème/terracotta en een krantachtig raster kunnen templates zijn.
+Componentlibraries leveren gedrag en consistentie, niet de productcompositie.
 
 - `WorkspaceNavigation`: één getypeerde bestemmingencatalogus, iconen, labels,
   actieve pagina en een gedeelde Motion-selectie. Bestaande hashes blijven werken.
@@ -32,18 +66,26 @@ decoratieve metriekkaarten of herhaalde navigatie zonder extra bestemming.
 
 ### Geometrie en responsiviteit
 
-Werkvlak maximaal 1440px; navigatie 224px (190px op kleinere desktops); header 64px.
-Controls 32/38/44px, primaire touch-acties minimaal 44px; radii 8/10/12/16px.
-Typografie 12/13/14/15/28/32px. Mobiel krijgt zes gelabelde bestemmingen in een
-3×2-raster in plaats van een horizontaal verborgen rij. Geen
-afgesneden werkpanelen, paginabrede horizontale overflow of onbereikbare acties.
+De catalogusslice heeft een werkvlak tot 1440px, horizontale globale navigatie en
+een desktopheader van 52px. De modellenwerkplek gebruikt een ruime vergelijkbare
+lijst en een detailpaneel van 280–340px voor de selectie. Geen drie smalle
+zijbalken of een mini-tabel in een grote kaart. Links uitlijnen, model-id's leesbaar
+houden en numerieke kolommen uitlijnen. Begin bij 14px interfacecopy, 12px metadata
+en 24px paginatitel; toets lange namen en EN/NL vóór verdere verfijning.
+Controls mogen compact zijn op desktop, maar primaire touch-acties blijven minimaal
+44px. Mobiel toont lijst of detail met een expliciete terugactie en focusherstel,
+niet een verkleinde desktop. Bestaande hashes en bestemmingen blijven bereikbaar.
+Geen paginabrede horizontale overflow of acties die alleen op hover bestaan.
 
 ### Toestanden en motion
 
 Echte API-status blijft leidend: laden, leeg, gedeeltelijk, fout en offline mogen
-niet worden vervangen door mooie voorbeeldcijfers. Selectie beweegt met een
-onderbreekbare spring; toetsenbordnavigatie en reduced-motion slaan die beweging
-over. Geen automatische page-reveal of pressed-translate in nieuwe controls.
+niet worden vervangen door mooie voorbeeldcijfers. Catalogusvermelding is geen
+bewijs van bereikbaarheid, beschikbaar account of daadwerkelijk geserveerd model.
+Toon alleen relaties/statussen waarvoor de bestaande API bewijs levert.
+Selectiefeedback is direct; een detailovergang mag kort en onderbreekbaar zijn,
+zonder de lijst te laten verspringen. Toetsenbordnavigatie en reduced-motion slaan
+verplaatsing over. Geen automatische page-reveal of pressed-translate in nieuwe controls.
 Sheet opent maximaal 200ms via transform/opacity; toetsenbordopening zonder
 verplaatsing, reduced-motion alleen korte opacity-feedback. Focus, contrast en
 labels blijven zichtbaar in licht én donker. Onbekende waarden zijn geen nullen.
@@ -68,7 +110,13 @@ misleidend. Licht/donker/systeem en EN/NL blijven beschikbaar.
 
 ### Implementatiestatus en acceptatie
 
-De eerste slice vervangt de shell, navigatie, typografie en gedeelde tokens.
+De eerste dashboardcompositie is visueel afgewezen. De daaropvolgende
+modellenwerkplek is geïmplementeerd in de redesignbranch, nog niet door Joep
+visueel geaccepteerd of uitgerold. `ModelInspector.tsx` vervangt de hoverkaart;
+`styles/model-catalog.css` is eigenaar van lijst/detail-geometrie. Zoekfilter en
+providerkeuze staan boven de lijst; geavanceerde bediening blijft in disclosures.
+De bestaande API-, locale- en visibilitylogica blijven eigenaar. Verwijderde
+selecties worden bij verversen gewist; focus wordt hersteld als die verloren raakt.
 Detailpanelen, volledige componentmigratie, landing en volledige visuele acceptatie
 blijven expliciete vervolgstappen. Brave-browserchecks van deze slice zijn geen
 productie- of brede toegankelijkheidscertificering. Niet als volledig
