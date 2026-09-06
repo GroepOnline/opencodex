@@ -43,6 +43,45 @@ function assertNoSymlinkPathComponents(path: string) {
   }
 }
 
+type PublicationParentIdentity = { dev: number; ino: number; uid: number };
+
+function assertTrustedPublicationParent(
+  parentPath: string,
+  expected?: PublicationParentIdentity,
+): PublicationParentIdentity {
+  assertNoSymlinkPathComponents(parentPath);
+  const stats = lstatSync(parentPath);
+  if (!stats.isDirectory()) {
+    throw new Error(`Destination parent is not a directory: ${parentPath}`);
+  }
+  if (process.platform !== "win32") {
+    const currentUid =
+      typeof process.getuid === "function" ? process.getuid() : stats.uid;
+    if (stats.uid !== currentUid) {
+      throw new Error(
+        `Destination parent must be owned by the current user: ${parentPath}`,
+      );
+    }
+    if ((stats.mode & 0o022) !== 0) {
+      throw new Error(
+        `Destination parent must not be group- or world-writable: ${parentPath}`,
+      );
+    }
+  }
+  const identity = { dev: stats.dev, ino: stats.ino, uid: stats.uid };
+  if (
+    expected &&
+    (identity.dev !== expected.dev ||
+      identity.ino !== expected.ino ||
+      identity.uid !== expected.uid)
+  ) {
+    throw new Error(
+      "Destination parent changed during build; refusing publication",
+    );
+  }
+  return identity;
+}
+
 function git(root: string, ...args: string[]): string {
   const result = Bun.spawnSync(["git", ...args], {
     cwd: root,
@@ -271,8 +310,11 @@ export async function buildClientArtifact(destination: string, root = ROOT) {
       `Locked dependency refresh failed; refusing artifact build: ${install.stderr.toString().trim()}`,
     );
   }
-  mkdirSync(dirname(output), { recursive: true });
-  const staging = mkdtempSync(join(dirname(output), ".ocx-client-build-"));
+  const publicationParent = dirname(output);
+  mkdirSync(publicationParent, { recursive: true, mode: 0o700 });
+  const publicationParentIdentity =
+    assertTrustedPublicationParent(publicationParent);
+  const staging = mkdtempSync(join(publicationParent, ".ocx-client-build-"));
   try {
     const result = await Bun.build({
       entrypoints: [join(root, "src/cli/index.ts")],
@@ -333,7 +375,14 @@ export async function buildClientArtifact(destination: string, root = ROOT) {
       JSON.stringify(manifest, null, 2) + "\n",
     );
     // Never touch `current`; publication creates one new candidate directory.
-    // Re-check path confinement after the potentially long bundle build.
+    // The parent is owned by this user and not group/world-writable, so no
+    // unprivileged peer can swap its entries between this identity check and
+    // the same-directory rename. Re-check both confinement and inode identity
+    // after the potentially long bundle build before publishing.
+    assertTrustedPublicationParent(
+      publicationParent,
+      publicationParentIdentity,
+    );
     assertNoSymlinkPathComponents(output);
     if (existsSync(output))
       throw new Error(

@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -431,6 +432,21 @@ describe("remote client artifact", () => {
     );
     expect(existsSync(join(realParent, "candidate"))).toBe(false);
   });
+
+  test.skipIf(process.platform === "win32")(
+    "refuses publication into a group- or world-writable parent",
+    async () => {
+      const unsafeParent = join(scratch, "unsafe-publication-parent");
+      mkdirSync(unsafeParent);
+      chmodSync(unsafeParent, 0o777);
+      const destination = join(unsafeParent, "candidate");
+
+      await expect(buildClientArtifact(destination)).rejects.toThrow(
+        "Destination parent must not be group- or world-writable",
+      );
+      expect(existsSync(destination)).toBe(false);
+    },
+  );
 
   test("does not replace an existing destination symlink", async () => {
     const existing = join(scratch, "existing");

@@ -16,8 +16,11 @@ bun run build:client --output /path/to/client-artifacts/new-candidate \
   --source-root /path/to/clean-pinned-checkout
 ```
 
-The destination must not exist. This command never activates a candidate,
-changes a `current` link, reads home configuration or starts a proxy. Runtime
+The destination must not exist. Its parent must resolve without symlinks; on
+POSIX it must be owned by the current user and not be group- or world-writable.
+This keeps the final same-directory publication confined to a trusted parent.
+This command never activates a candidate, changes a `current` link, reads home
+configuration or starts a proxy. Runtime
 source and lockfile changes must be committed first. Source provenance is the
 checkout HEAD; package metadata comes from that Git revision, while the
 manifest separately records the committed builder source revision, builder digest and Bun version.
