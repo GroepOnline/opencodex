@@ -63,11 +63,15 @@ curl -sS "http://127.0.0.1:<port>/healthz"
 The proxy exposes `/healthz` and `/v1/*` for any Responses-compatible client. You do not need Codex
 installed for this step.
 
-The pending Orbit dashboard redesign keeps the same routes and API. Its desktop navigation
-uses a side rail; smaller screens keep all destinations in a horizontal navigation strip.
+The pending dashboard redesign keeps the same routes and API. Its desktop navigation
+uses a side rail; smaller screens show all six destinations in a labelled two-row grid.
 Overview, Providers & accounts, Models, Traffic, Usage and System remain available, including
 existing bookmarked hashes. Navigation motion respects reduced-motion preferences. This
 interface work does not change provider credentials or the proxy's deployment state.
+Settings opens a keyboard-accessible panel for language and light/dark/system theme.
+The legacy skin selector is removed; stored skin preferences are retained for compatibility.
+Unavailable dashboard readings display a dash rather than an invented zero; failures remain
+visible alongside any previously fetched readings.
 
 ## 4. Use Codex (optional)
 

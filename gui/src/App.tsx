@@ -99,6 +99,16 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(readStoredTheme);
   const t = useT();
   useEffect(() => {
+    const title =
+      route.sub === null
+        ? VIEW_TABS.find((entry) => entry.view === route.view)?.tkey
+        : SUB_TABS[route.view].find((entry) => entry.sub === route.sub)?.tkey;
+    document.title =
+      title && route.view !== "landing"
+        ? t("app.pageTitle", { page: t(title) })
+        : "opencodex";
+  }, [route, t]);
+  useEffect(() => {
     const el = document.documentElement;
     if (theme === "system") el.removeAttribute("data-theme");
     else el.setAttribute("data-theme", theme);
@@ -157,6 +167,8 @@ function DashboardShell({
 }) {
   const t = useT();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInstant, setSettingsInstant] = useState(false);
+  const settingsTriggerRef = useRef<HTMLButtonElement>(null);
   const healthPoll = useKeyedClientResource(
     `app-healthz:${API_BASE}`,
     [],
@@ -210,9 +222,13 @@ function DashboardShell({
                 </span>
               )}
               <button
+                ref={settingsTriggerRef}
                 type="button"
                 className="gbtn"
-                onClick={() => setSettingsOpen(true)}
+                onClick={(event) => {
+                  setSettingsInstant(event.detail === 0);
+                  setSettingsOpen(true);
+                }}
                 aria-label={t("settings.open")}
                 title={t("settings.open")}
               >
@@ -245,20 +261,22 @@ function DashboardShell({
             <div
               className={`main-inner${route.view === "modellen" && route.sub === "combos" ? " main-inner--combos" : ""}`}
             >
-              <nav className="sub-tabs">
-                {SUB_TABS[route.view].map(({ sub, tkey }) => (
-                  <button
-                    key={sub ?? "home"}
-                    type="button"
-                    className={`sub-tab${route.sub === sub ? " active" : ""}`}
-                    onClick={() => navigateTo({ view: route.view, sub })}
-                    aria-current={route.sub === sub ? "page" : undefined}
-                  >
-                    {t(tkey)}
-                  </button>
-                ))}
-              </nav>
-              <div className="page-reveal" key={canonicalHashFor(route)}>
+              {SUB_TABS[route.view].length > 1 && (
+                <nav className="sub-tabs" aria-label={t(activeTkey)}>
+                  {SUB_TABS[route.view].map(({ sub, tkey }) => (
+                    <button
+                      key={sub ?? "home"}
+                      type="button"
+                      className={`sub-tab${route.sub === sub ? " active" : ""}`}
+                      onClick={() => navigateTo({ view: route.view, sub })}
+                      aria-current={route.sub === sub ? "page" : undefined}
+                    >
+                      {t(tkey)}
+                    </button>
+                  ))}
+                </nav>
+              )}
+              <div key={canonicalHashFor(route)}>
                 <ErrorBoundary
                   pageName={t(activeTkey)}
                   title={t("errorBoundary.title")}
@@ -316,13 +334,14 @@ function DashboardShell({
             </div>
           </main>
 
-          {settingsOpen && (
-            <SettingsSheet
-              theme={theme}
-              onTheme={setTheme}
-              onClose={() => setSettingsOpen(false)}
-            />
-          )}
+          <SettingsSheet
+            open={settingsOpen}
+            instant={settingsInstant}
+            returnFocusRef={settingsTriggerRef}
+            theme={theme}
+            onTheme={setTheme}
+            onClose={() => setSettingsOpen(false)}
+          />
         </div>
       </LazyMotion>
     </MotionConfig>

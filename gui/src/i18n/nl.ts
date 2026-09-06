@@ -5,6 +5,7 @@
 import type { TKey } from "./en";
 
 export const nlOverrides: Partial<Record<TKey, string>> = {
+  "app.pageTitle": "{page} | opencodex",
   // sidebar / nav
   "nav.providers": "Leveranciers",
   "nav.models": "Modellen",
@@ -352,6 +353,7 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "dash.providers": "Leveranciers",
   "dash.tokens30d": "Tokens (30d)",
   "dash.coverage": "{pct} dekking",
+  "dash.coverageLabel": "Kostendekking",
   "dash.activeProviders": "Leveranciers",
   "dash.noProviders": "Nog geen leveranciers. Draai {cmd}.",
   "dash.col.name": "Naam",

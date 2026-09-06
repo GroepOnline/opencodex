@@ -1,4 +1,4 @@
-# OCX Orbit — nieuwe productidentiteit
+# OCX — productinterface in herontwerp
 
 ## Actuele autoriteit: expliciete redesignopdracht 2026-09-06
 
@@ -11,14 +11,19 @@ ChefGroep-producten en het gedeelde design-system worden hiermee niet gewijzigd.
 
 ### Richting en componenten
 
-Orbit is een model-workspace: contrastrijke inktvlakken, heldere lichte oppervlakken,
-mint als interactieaccent en Manrope als interfaceletter. JetBrains Mono blijft
-voor modelnamen en technische gegevens. Geen marketinghero boven dagelijkse data.
+De eerste inkt/mint-richting (werknaam Orbit) is door Joep afgewezen als generiek.
+De huidige correctie is geen goedgekeurde nieuwe merkidentiteit. Het product heet
+opencodex; we voegen geen nieuw merk of parallelle app toe. De werkinterface gebruikt
+neutrale lichte/grafietoppervlakken, blauw voor acties en Manrope voor interfacecopy.
+JetBrains Mono blijft voor machinedata. Geen marketinghero boven dagelijkse data,
+decoratieve metriekkaarten of herhaalde navigatie zonder extra bestemming.
 
 - `WorkspaceNavigation`: één getypeerde bestemmingencatalogus, iconen, labels,
   actieve pagina en een gedeelde Motion-selectie. Bestaande hashes blijven werken.
-- Bestaande controls blijven hun toegankelijke, geteste gedrag behouden. Hun
-  geometrie en uiterlijk komen uit gedeelde tokens, niet uit per-scherm hacks.
+- Shadcn `base-nova` op Base UI levert de gedeelde Button, Sheet, Empty en
+  ToggleGroup in `src/components/primitives/`. Geen volledig preset of tweede
+  palet. Bestaande controls, waaronder de authored Select in `src/ui.tsx`, blijven
+  eigenaar totdat hun workflow bewust wordt gemigreerd. Zie `UX-CONTRACT.md`.
 - Motion for React (`LazyMotion`) verzorgt gedeelde layoutovergangen. CSS behandelt
   eenvoudige hover/press-feedback. Geen React-state-updates per animatieframe.
 - Nieuwe dependencies zijn exact gepind en vereisen de bestaande security-review.
@@ -27,9 +32,10 @@ voor modelnamen en technische gegevens. Geen marketinghero boven dagelijkse data
 
 ### Geometrie en responsiviteit
 
-Werkvlak maximaal 1440px; navigatie 224px (190px op kleinere desktops); header 72px.
-Controls 32/38/44px, touch minimaal 44px; radii 8/10/16/20px. Typografie 12/13/14/15/
-30/38px. Mobiel krijgt horizontale navigatie met alle labels behouden. Geen
+Werkvlak maximaal 1440px; navigatie 224px (190px op kleinere desktops); header 64px.
+Controls 32/38/44px, primaire touch-acties minimaal 44px; radii 8/10/12/16px.
+Typografie 12/13/14/15/28/32px. Mobiel krijgt zes gelabelde bestemmingen in een
+3×2-raster in plaats van een horizontaal verborgen rij. Geen
 afgesneden werkpanelen, paginabrede horizontale overflow of onbereikbare acties.
 
 ### Toestanden en motion
@@ -37,13 +43,35 @@ afgesneden werkpanelen, paginabrede horizontale overflow of onbereikbare acties.
 Echte API-status blijft leidend: laden, leeg, gedeeltelijk, fout en offline mogen
 niet worden vervangen door mooie voorbeeldcijfers. Selectie beweegt met een
 onderbreekbare spring; toetsenbordnavigatie en reduced-motion slaan die beweging
-over. Focus, contrast en labels blijven zichtbaar in licht én donker.
+over. Geen automatische page-reveal of pressed-translate in nieuwe controls.
+Sheet opent maximaal 200ms via transform/opacity; toetsenbordopening zonder
+verplaatsing, reduced-motion alleen korte opacity-feedback. Focus, contrast en
+labels blijven zichtbaar in licht én donker. Onbekende waarden zijn geen nullen.
+
+### Token-eigendom en adapters
+
+Runtime CSS is canoniek, niet een gegenereerde tweede tokenbron:
+
+| Eigenaar                         | Verantwoordelijkheid                                                              |
+| -------------------------------- | --------------------------------------------------------------------------------- |
+| `src/styles.css`                 | Bestaande reset, spacing, semantische status en legacy controls                   |
+| `src/styles/workspace-orbit.css` | Actuele kleur-, type-, geometrie- en scrollbarrollen; bestandsnaam is geen merk   |
+| `src/styles/app-base.css`        | Cascadevolgorde; legacy CSS in eigen laag                                         |
+| `src/styles/primitives.css`      | Tailwind-semantieken verwijzen naar runtime-rollen; geen preflight of eigen palet |
+| `components.json`                | Officiële shadcn-registry, Base UI-style en gedeelde componentpaden               |
+
+Tailwind `text-xs/sm/base` verwijzen naar `--text-caption/control/body` met hun
+line-height. Geen rem-afhankelijke tweede letterladder. Historische `devin/strak`
+waarden blijven leesbaar voor compatibiliteit, maar de settings-skinselector is
+verwijderd: de nieuwe tokens oversturen beide skins en twee gelijke keuzes zijn
+misleidend. Licht/donker/systeem en EN/NL blijven beschikbaar.
 
 ### Implementatiestatus en acceptatie
 
 De eerste slice vervangt de shell, navigatie, typografie en gedeelde tokens.
-Detailpanelen, volledige componentmigratie, landing, screenshots op 1440/1024/390px
-en alle interactietoestanden blijven expliciete vervolgstappen. Niet als volledig
+Detailpanelen, volledige componentmigratie, landing en volledige visuele acceptatie
+blijven expliciete vervolgstappen. Brave-browserchecks van deze slice zijn geen
+productie- of brede toegankelijkheidscertificering. Niet als volledig
 redesign of live release presenteren zolang die niet aantoonbaar zijn afgerond.
 Tokens: `src/styles/workspace-orbit.css`; die worden na de bestaande laag geladen.
 Geen nieuwe parallelle app, backend, routing- of authenticatielaag.

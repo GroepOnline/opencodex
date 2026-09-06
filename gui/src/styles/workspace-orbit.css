@@ -2,42 +2,75 @@
    Existing component contracts inherit these tokens, not a second CSS framework. */
 :root,
 :root[data-style] {
-  --bg: light-dark(#eef1f6, #0c1018);
-  --rail: light-dark(#e8edf4, #101620);
-  --surface: light-dark(#ffffff, #151d29);
-  --raised: light-dark(#e3eaf2, #1e2939);
-  --raised-hover: light-dark(#d8e2ee, #29384b);
-  --text: light-dark(#152232, #edf3fc);
-  --muted: light-dark(#506078, #adbbcf);
-  --faint: light-dark(#61718a, #8b9bb3);
-  --border: light-dark(#bac7d9, #36475e);
-  --border-soft: light-dark(#d6deea, #263448);
-  --hover: light-dark(#e5edf6, #223146);
-  --accent: light-dark(#086454, #73e5cc);
-  --accent-hover: light-dark(#064e42, #98efdc);
-  --accent-ink: light-dark(#ffffff, #102a24);
-  --accent-blue: light-dark(#087361, #73e5cc);
-  --accent-blue-ink: light-dark(#086454, #98efdc);
-  --accent-soft: light-dark(#d9f1e9, #163e37);
-  --accent-ring: light-dark(#087361, #73e5cc);
+  --bg: light-dark(#ffffff, #141619);
+  --rail: light-dark(#f1f3f5, #1b1e23);
+  --surface: light-dark(#ffffff, #1b1e23);
+  --raised: light-dark(#e8ecf0, #292e36);
+  --raised-hover: light-dark(#dfe4eb, #333b46);
+  --text: light-dark(#222831, #eef0f4);
+  --muted: light-dark(#53606e, #b5beca);
+  --faint: light-dark(#647080, #96a3b3);
+  --border: light-dark(#b9c2ce, #48515f);
+  --border-soft: light-dark(#e1e5eb, #303741);
+  --hover: light-dark(#e5eaf0, #272d36);
+  --accent: light-dark(#315b94, #b4caff);
+  --accent-hover: light-dark(#244777, #cfddff);
+  --accent-ink: light-dark(#ffffff, #192842);
+  --accent-blue: light-dark(#315b94, #b4caff);
+  --accent-blue-ink: light-dark(#244777, #cfddff);
+  --accent-soft: light-dark(#e7eef9, #29364e);
+  --accent-ring: light-dark(#315b94, #b4caff);
   --font-ui: "Manrope Variable", system-ui, sans-serif;
   --font: var(--font-ui);
   --text-control: 14px;
   --text-caption: 12px;
   --text-label: 13px;
-  --text-title: 30px;
-  --text-display: 38px;
+  --text-title: 28px;
+  --text-display: 32px;
   --radius-xs: 8px;
   --radius-sm: 10px;
-  --radius: 16px;
-  --radius-lg: 20px;
+  --radius: 12px;
+  --radius-lg: 16px;
   --control-sm: 32px;
   --control-md: 38px;
   --control-lg: 44px;
   --workspace-rail: 224px;
-  --workspace-header: 72px;
+  --workspace-header: 64px;
   --workspace-measure: 1440px;
-  --workspace-shadow: 0 10px 36px light-dark(#2035570c, #00000024);
+  --scrollbar-thumb: var(--border);
+  --scrollbar-thumb-hover: var(--muted);
+  --scrollbar-track: var(--bg);
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  scrollbar-width: auto;
+}
+
+:root ::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+:root ::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+:root ::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: var(--radius-xs);
+}
+:root ::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+:root ::-webkit-scrollbar-thumb:active {
+  background: var(--text);
+}
+@media (forced-colors: active) {
+  :root {
+    scrollbar-color: auto;
+  }
+  :root ::-webkit-scrollbar-track {
+    background: Canvas;
+  }
+  :root ::-webkit-scrollbar-thumb {
+    background: ButtonText;
+  }
 }
 
 .ocx-workspace {
@@ -56,17 +89,18 @@
   border-bottom: 1px solid var(--border-soft);
 }
 .ocx-workspace .brand {
+  display: flex;
+  align-items: center;
   gap: var(--space-3);
 }
 .ocx-workspace .brand .name {
   font-weight: 700;
   font-size: var(--text-subtitle);
-  letter-spacing: -0.045em;
+  letter-spacing: -0.025em;
 }
 .ocx-workspace .brand .ver {
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-xs);
+  padding: 0;
+  border: 0;
   color: var(--muted);
 }
 .ocx-workspace .offline-banner {
@@ -94,6 +128,7 @@
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-sm);
   text-align: left;
+  white-space: normal;
   color: var(--muted);
   transition:
     color var(--motion-fast),
@@ -103,7 +138,8 @@
   flex-shrink: 0;
 }
 .workspace-navigation .workspace-destination.active {
-  color: var(--accent-blue-ink);
+  color: var(--text);
+  font-weight: 650;
 }
 .workspace-navigation .workspace-destination.active::after {
   content: none;
@@ -113,9 +149,7 @@
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  border: 1px solid var(--border-soft);
-  background: var(--surface);
-  box-shadow: var(--workspace-shadow);
+  background: var(--raised);
 }
 .workspace-destination:focus-visible {
   outline: 2px solid var(--accent-ring);
@@ -155,7 +189,6 @@
 .ocx-workspace .sub-tab.active {
   background: var(--surface);
   color: var(--text);
-  box-shadow: var(--workspace-shadow);
 }
 .ocx-workspace .sub-tab.active::after {
   content: none;
@@ -165,11 +198,11 @@
 }
 .ocx-workspace .page-head h2 {
   font-weight: 650;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.025em;
 }
 .ocx-workspace .card {
   border-radius: var(--radius);
-  box-shadow: var(--workspace-shadow);
+  box-shadow: none;
 }
 .ocx-workspace .btn {
   min-height: var(--control-md);
@@ -186,7 +219,8 @@
 }
 
 @media (max-width: 1024px) {
-  :root {
+  :root,
+  :root[data-style] {
     --workspace-rail: 190px;
   }
   .workspace-navigation .workspace-destination {
@@ -204,15 +238,20 @@
     padding: 0 var(--space-4);
   }
   .ocx-workspace .workspace-navigation {
-    flex-direction: row;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     padding: var(--space-2);
     gap: var(--space-1);
     border-right: 0;
     border-bottom: 1px solid var(--border-soft);
-    overflow-x: auto;
+    overflow: visible;
   }
   .workspace-navigation .workspace-destination {
-    flex-shrink: 0;
+    min-width: 0;
+    padding: var(--space-2);
+    font-size: var(--text-caption);
+    white-space: normal;
+    line-height: var(--leading-tight);
   }
   .ocx-workspace .main-inner {
     padding: var(--space-4);
@@ -222,6 +261,141 @@
   }
   .ocx-workspace .brand .ver {
     display: none;
+  }
+}
+
+.dashboard-workspace .pws-dashboard-stats {
+  padding: 0 0 var(--space-4);
+  margin-bottom: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.dashboard-workspace .pws-dashboard-stat {
+  flex-direction: row;
+  gap: var(--space-2);
+}
+.dashboard-workspace .pws-dashboard-stat-count {
+  font-size: var(--text-label);
+}
+.dashboard-workspace .pws-dashboard-stat-label {
+  font-size: var(--text-label);
+  text-transform: none;
+  letter-spacing: normal;
+}
+.metric-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-6) var(--space-8);
+  margin: 0 0 var(--space-8);
+  padding: var(--space-6) 0;
+  border-block: 1px solid var(--border-soft);
+}
+.metric-reading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.metric-reading dt {
+  color: var(--muted);
+  font-size: var(--text-label);
+}
+.metric-reading dd {
+  margin: 0;
+  font-size: var(--text-title);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: var(--leading-tight);
+}
+.dashboard-workspace .pws-dashboard-columns {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+  gap: var(--space-8);
+}
+.dashboard-workspace .pws-dashboard-section-title {
+  font-size: var(--text-subtitle);
+  font-weight: 650;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text);
+  margin-bottom: var(--space-4);
+}
+.dashboard-workspace .pws-dashboard-empty {
+  margin: 0;
+  font-size: var(--text-control);
+}
+.dashboard-workspace .pws-dashboard-section {
+  min-height: 0;
+}
+.dashboard-workspace .pws-dashboard-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: var(--space-3) 0;
+  cursor: default;
+}
+.dashboard-workspace .pws-dashboard-row:hover {
+  background: transparent;
+}
+.dashboard-workspace .pws-dashboard-row-name {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.dashboard-workspace .dash-bar-track {
+  grid-column: 1 / -1;
+}
+.dashboard-workspace .dash-bar-fill {
+  transition: none;
+}
+.dashboard-workspace .traffic-entry-head {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "model model status" "principal principal principal" "time tokens duration";
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3) 0;
+  font-size: var(--text-caption);
+}
+.dashboard-workspace .traffic-col--model {
+  grid-area: model;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.dashboard-workspace .traffic-col--principal {
+  grid-area: principal;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.dashboard-workspace .traffic-col--status {
+  grid-area: status;
+}
+.dashboard-workspace .traffic-col--time {
+  grid-area: time;
+}
+.dashboard-workspace .traffic-col--tokens {
+  grid-area: tokens;
+}
+.dashboard-workspace .traffic-col--duration {
+  grid-area: duration;
+}
+@media (max-width: 1024px) {
+  .metric-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dashboard-workspace .pws-dashboard-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 760px) {
+  .metric-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding-block: var(--space-4);
+  }
+  .metric-reading {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  .metric-reading dd {
+    font-size: var(--text-subtitle);
   }
 }
 @media (prefers-reduced-motion: reduce) {

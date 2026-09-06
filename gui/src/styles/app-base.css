@@ -1,0 +1,2 @@
+@layer theme, base, legacy, components, utilities;
+@import "../styles.css" layer(legacy);

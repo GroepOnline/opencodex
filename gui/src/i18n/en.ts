@@ -1,6 +1,7 @@
 // English — source of truth. Its keys define the TKey type; nl overrides a subset (compile-checked).
 // Strings with {cmd} render a <code> chip via <Trans>; {var} are plain interpolations.
 export const en = {
+  "app.pageTitle": "{page} | opencodex",
   // sidebar / nav / common
   "nav.codexAuth": "Codex Auth",
   "nav.verkeer": "Traffic",
@@ -181,6 +182,7 @@ export const en = {
   "dash.providers": "Providers",
   "dash.tokens30d": "Tokens (30d)",
   "dash.coverage": "{pct} coverage",
+  "dash.coverageLabel": "Cost coverage",
   // memory observability card (read-only /api/system/memory)
   "dash.mem.title": "Memory observability",
   "dash.mem.hint":

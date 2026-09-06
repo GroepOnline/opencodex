@@ -1,0 +1,91 @@
+/* No Tailwind preflight: the existing application reset remains the owner. */
+@layer theme, base, legacy, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* Adapt semantic roles; do not introduce a competing palette. */
+@theme inline {
+  --color-background: var(--bg);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-foreground: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-ink);
+  --color-secondary: var(--raised);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--rail);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--hover);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--red);
+  --color-border: var(--border-soft);
+  --color-input: var(--border);
+  --color-ring: var(--accent-ring);
+  --font-sans: var(--font-ui);
+  --text-xs: var(--text-caption);
+  --text-xs--line-height: var(--leading-ui);
+  --text-sm: var(--text-control);
+  --text-sm--line-height: var(--leading-ui);
+  --text-base: var(--text-body);
+  --text-base--line-height: var(--leading-body);
+}
+
+[data-slot="button"] {
+  cursor: pointer;
+}
+[data-slot="button"]:disabled {
+  cursor: default;
+}
+[data-slot="sheet-content"][data-instant] {
+  transform: none;
+  translate: none;
+  transition: none;
+}
+.settings-sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  overflow-y: auto;
+  padding: 0 var(--space-6) var(--space-6);
+  min-height: 0;
+}
+.settings-sheet-body .sheet-label {
+  font-size: var(--text-control);
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: normal;
+}
+.settings-sheet-body .select-trigger {
+  width: 100%;
+  min-height: var(--control-lg);
+  justify-content: space-between;
+}
+.settings-sheet-body [data-slot="toggle-group"] {
+  width: 100%;
+}
+.settings-sheet-body [data-slot="toggle-group-item"] {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--control-lg);
+}
+.settings-sheet-body [data-slot="toggle-group-item"][aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent-blue-ink);
+  border-color: var(--accent);
+}
+[data-slot="sheet-content"] {
+  border-color: var(--border-soft);
+}
+.settings-sheet-body .select-option {
+  min-height: var(--control-lg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="sheet-content"],
+  [data-slot="sheet-overlay"] {
+    transform: none;
+    translate: none;
+    transition-property: opacity;
+    transition-duration: 100ms;
+  }
+}

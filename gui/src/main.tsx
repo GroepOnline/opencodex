@@ -8,10 +8,11 @@ import "@fontsource/instrument-serif/400-italic.css";
 import App from "./App";
 import { LanguageProvider } from "./i18n/provider";
 import { initPostHog } from "./posthog";
-import "./styles.css";
+import "./styles/app-base.css";
 import "./landing/landing.css";
 import "@fontsource-variable/manrope";
 import "./styles/workspace-orbit.css";
+import "./styles/primitives.css";
 
 initPostHog();
 

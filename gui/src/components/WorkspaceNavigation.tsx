@@ -1,5 +1,5 @@
 import { LayoutGroup, m, useReducedMotion } from "motion/react";
-import { useState, type ComponentType } from "react";
+import { useId, useState, type ComponentType } from "react";
 import type { View } from "../app-routing";
 import { useT, type TKey } from "../i18n/shared";
 
@@ -20,10 +20,11 @@ export default function WorkspaceNavigation({
 }) {
   const t = useT();
   const reduceMotion = useReducedMotion();
+  const groupId = useId();
   const [keyboardNavigation, setKeyboardNavigation] = useState(false);
   return (
     <nav className="workspace-navigation view-tabs" aria-label={t("nav.views")}>
-      <LayoutGroup id="workspace-navigation">
+      <LayoutGroup id={groupId}>
         {destinations.map(({ view, tkey, icon: Icon }) => (
           <button
             key={view}
@@ -42,7 +43,7 @@ export default function WorkspaceNavigation({
                 transition={
                   reduceMotion || keyboardNavigation
                     ? { duration: 0 }
-                    : { type: "spring", stiffness: 460, damping: 38 }
+                    : { type: "spring", visualDuration: 0.18, bounce: 0 }
                 }
                 aria-hidden
               />
