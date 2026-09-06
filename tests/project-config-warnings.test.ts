@@ -233,16 +233,19 @@ model_provider = "openai"
 
 describe("collectProjectCodexConfigWarnings", () => {
   test("skips untrusted projects even when they define bypass config", () => {
-    const escaped = testDir.replace(/\\/g, "\\\\");
     const projectDir = join(testDir, "proj");
     const codexConfigPath = join(process.env.CODEX_HOME!, "config.toml");
-    writeGlobalRoutingConfig(`
-[projects.'${escaped}\\proj']
-trust_level = "untrusted"
+    const projectConfigPath = join(projectDir, ".codex", "config.toml");
+    const setTrustLevel = (level: "trusted" | "untrusted") => {
+      // TOML literal keys preserve the platform-native path without escaping.
+      writeGlobalRoutingConfig(`
+[projects.'${projectDir}']
+trust_level = "${level}"
 `);
+    };
     mkdirSync(join(projectDir, ".codex"), { recursive: true });
     writeFileSync(
-      join(projectDir, ".codex", "config.toml"),
+      projectConfigPath,
       `
 model_provider = "anthropic"
 [model_providers.anthropic]
@@ -250,14 +253,25 @@ name = "anthropic"
 `,
     );
     // Parent discovery may legitimately find a real user config above TMPDIR, so
-    // scope this assertion to the untrusted fixture project.
-    const warnings = collectProjectCodexConfigWarnings({
+    // scope both assertions to the same fixture project. Keeping cwd outside
+    // that project means it can only be discovered through the trust registry.
+    const collectFixtureWarnings = () => collectProjectCodexConfigWarnings({
       cwd: testDir,
       codexConfigPath,
-    }).filter(
-      (warning) => warning.path === join(projectDir, ".codex", "config.toml"),
-    );
-    expect(warnings).toEqual([]);
+    }).filter((warning) => warning.path === projectConfigPath);
+
+    // Prove this exact path is discoverable before testing its exclusion.
+    setTrustLevel("trusted");
+    expect(collectFixtureWarnings()).toEqual([
+      expect.objectContaining({
+        path: projectConfigPath,
+        code: "model_providers_table",
+        detail: "anthropic",
+      }),
+    ]);
+
+    setTrustLevel("untrusted");
+    expect(collectFixtureWarnings()).toEqual([]);
   });
 
   test("uncached collection reflects project config changes", () => {
