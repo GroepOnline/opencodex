@@ -356,14 +356,15 @@ export async function buildClientArtifact(destination: string, root = ROOT) {
   const sourceSha = git(root, "rev-parse", "HEAD");
   const packageText = git(root, "show", `${sourceSha}:package.json`) + "\n";
   const lock = readFileSync(join(root, "bun.lock"));
-  // Bundle from an isolated clean clone so the artifact is a function of the
-  // reviewed source + frozen lock, never of ignored/tampered node_modules in
-  // the caller checkout. The source checkout remains read-only.
-  const buildRoot = prepareIsolatedBuildRoot(root, sourceSha);
   const publicationParent = dirname(output);
   mkdirSync(publicationParent, { recursive: true, mode: 0o700 });
   const publicationParentIdentity =
     assertTrustedPublicationParent(publicationParent);
+  // Bundle from an isolated clean clone so the artifact is a function of the
+  // reviewed source + frozen lock, never of ignored/tampered node_modules in
+  // the caller checkout. The source checkout remains read-only. Validate the
+  // publication parent first so unsafe destinations fail before dependency I/O.
+  const buildRoot = prepareIsolatedBuildRoot(root, sourceSha);
   let staging: string;
   try {
     staging = mkdtempSync(join(publicationParent, ".ocx-client-build-"));

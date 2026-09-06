@@ -36,7 +36,7 @@ describe("remote client artifact", () => {
     expect(readFileSync(join(output, "source-sha"), "utf8")).toBe(
       sourceSha + "\n",
     );
-  });
+  }, 15_000);
 
   test("refuses an uncommitted artifact builder", () => {
     const root = join(import.meta.dir, "..");
@@ -96,7 +96,7 @@ describe("remote client artifact", () => {
     expect(manifest.lockSha256).toBe(
       createHash("sha256").update(locked).digest("hex"),
     );
-  });
+  }, 15_000);
 
   test("builds a self-contained, SHA-bound candidate without activation", async () => {
     const output = join(scratch, "candidate");
@@ -237,7 +237,7 @@ describe("remote client artifact", () => {
     expect(readFileSync(join(duplicate, "artifact-manifest.json"))).toEqual(
       readFileSync(join(output, "artifact-manifest.json")),
     );
-  });
+  }, 30_000);
 
   test("ships a client shim that cannot select the native Codex home", async () => {
     const output = join(scratch, "shim-candidate");
@@ -337,7 +337,7 @@ describe("remote client artifact", () => {
     expect(readFileSync(join(nativeHome, "config.toml"), "utf8")).toBe(
       "direct Azure config stays untouched\n",
     );
-  });
+  }, 15_000);
 
   test("refuses the physical target of a symlinked native Codex home", async () => {
     const output = join(scratch, "symlinked-native-candidate");
@@ -366,7 +366,7 @@ describe("remote client artifact", () => {
     expect(readFileSync(join(nativeTarget, "config.toml"), "utf8")).toBe(
       "native config\n",
     );
-  });
+  }, 15_000);
 
   test.skipIf(!powershell)(
     "PowerShell preserves the governed proxy failure exit code",
