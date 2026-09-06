@@ -78,10 +78,13 @@ describe("remote client artifact", () => {
     );
     expect(install.success).toBe(true);
     const zodEntry = join(sourceRoot, "node_modules/zod/v4/index.js");
+    const originalDependency = readFileSync(zodEntry, "utf8");
+    // Bun may hardlink installed package bytes into its shared cache. Unlink the
+    // fixture entry before tampering so this test cannot poison later installs.
+    rmSync(zodEntry);
     writeFileSync(
       zodEntry,
-      readFileSync(zodEntry, "utf8") +
-        '\nconsole.error("DEPENDENCY_DRIFT_SENTINEL");\n',
+      originalDependency + '\nconsole.error("DEPENDENCY_DRIFT_SENTINEL");\n',
     );
 
     const output = join(scratch, "dependency-drift-candidate");
