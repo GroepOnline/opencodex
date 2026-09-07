@@ -43,6 +43,58 @@ export function attachClaudeAdmissionHeader(
 }
 
 /**
+ * Admission credentials are only safe on the loopback origin owned by this OCX
+ * launch. Remote/tunnelled deployments must terminate through a local forward;
+ * an arbitrary ANTHROPIC_BASE_URL must never receive the service credential.
+ */
+export function isManagedClaudeAdmissionRoute(baseUrl: string | undefined, port: number): boolean {
+  if (!baseUrl) return false;
+  try {
+    const parsed = new URL(baseUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    const hostname = parsed.hostname.trim().toLowerCase().replace(/\.$/, "");
+    const loopback = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
+    if (!loopback) return false;
+    const effectivePort = parsed.port ? Number(parsed.port) : parsed.protocol === "https:" ? 443 : 80;
+    return effectivePort === port;
+  } catch {
+    return false;
+  }
+}
+
+/** Remove the OCX admission header while preserving unrelated custom headers. */
+export function stripClaudeAdmissionHeader(env: ClaudeLaunchEnv): ClaudeLaunchEnv {
+  const existing = env.ANTHROPIC_CUSTOM_HEADERS?.trim();
+  if (!existing) return env;
+  const lines = existing.split(/\r?\n/).filter(line => !/^\s*x-opencodex-api-key\s*:/i.test(line));
+  if (lines.length > 0) env.ANTHROPIC_CUSTOM_HEADERS = lines.join("\n");
+  else delete env.ANTHROPIC_CUSTOM_HEADERS;
+  return env;
+}
+
+/**
+ * Attach the service admission credential only when Claude is pointed at the
+ * exact loopback origin owned by the running OCX instance. Returns true when
+ * that managed route has an admission header after the operation.
+ */
+export function attachClaudeAdmissionHeaderForManagedRoute(
+  env: ClaudeLaunchEnv,
+  token: string | null,
+  port: number,
+): boolean {
+  if (!isManagedClaudeAdmissionRoute(env.ANTHROPIC_BASE_URL, port)) {
+    // A stale header inherited from an earlier `ocx claude` launch is just as
+    // dangerous as injecting a new one, so fail closed on non-managed origins.
+    stripClaudeAdmissionHeader(env);
+    return false;
+  }
+  attachClaudeAdmissionHeader(env, token);
+  return (env.ANTHROPIC_CUSTOM_HEADERS ?? "")
+    .split(/\r?\n/)
+    .some(line => /^\s*x-opencodex-api-key\s*:/i.test(line));
+}
+
+/**
  * Claude Code must treat the environment as host-managed whenever OCX supplies
  * either its normal Anthropic credential or the separate tunnel admission
  * credential. Otherwise Agent View can retain settings-sourced provider vars
@@ -305,16 +357,20 @@ export async function cmdClaude(args: string[]): Promise<number> {
   // Claude Code supports newline-delimited ANTHROPIC_CUSTOM_HEADERS, so carry the
   // service token on x-opencodex-api-key instead.
   const dataPlaneAdmissionToken = resolveDataPlaneAdmissionToken(process.env);
-  attachClaudeAdmissionHeader(env, dataPlaneAdmissionToken);
+  const managedAdmissionHeader = attachClaudeAdmissionHeaderForManagedRoute(
+    env,
+    dataPlaneAdmissionToken,
+    port,
+  );
 
   // Agent View sessions load settings.json `env`. Host-managed mode strips those
-  // keys — keep it OFF only when we are not injecting an admission token. With a
-  // real token, host-managed MUST stay ON so Claude Code does not warn that
-  // ANTHROPIC_AUTH_TOKEN competes with a /login OAuth session.
-  if (isClaudeProviderManagedByHost(env, dataPlaneAdmissionToken)) {
-    env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST = "1";
-  } else {
-    env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST = "0";
+  // keys only when OCX actually owns authentication on the selected route. Preserve
+  // an explicit user export (including =0) instead of silently overriding it here.
+  if (env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST === undefined) {
+    env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST = isClaudeProviderManagedByHost(
+      env,
+      managedAdmissionHeader ? dataPlaneAdmissionToken : null,
+    ) ? "1" : "0";
   }
   const persistentEnv = syncClaudePersistentSessionEnv(env, getConfigDir());
   if (!persistentEnv.synced && persistentEnv.warning) {
