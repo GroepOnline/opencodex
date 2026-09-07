@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { claudeNotFoundHint } from "../src/cli/claude";
 import { commandInvocation } from "../src/lib/win-exec";
-import { attachClaudeAdmissionHeader, buildClaudeEnv, claudeAdmissionToken } from "../src/cli/claude";
+import { attachClaudeAdmissionHeader, buildClaudeEnv, claudeAdmissionToken, isClaudeProviderManagedByHost } from "../src/cli/claude";
 import type { OcxConfig } from "../src/types";
 
 function cfg(extra?: Partial<OcxConfig>): OcxConfig {
@@ -86,6 +86,13 @@ describe("ocx claude env assembly", () => {
       apiKeys: [{ id: "1", name: "main", key: "sk-ocx-123", createdAt: "2026-01-01" }],
     }), 10100, {});
     expect(admission.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBe("1");
+  });
+
+  test("a tunnel admission credential makes the spawned Claude environment host-managed", () => {
+    const subscription = buildClaudeEnv(cfg({ claudeCode: {} }), 10100, {}, {}, AUTH_PRESENT);
+    expect(subscription.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(isClaudeProviderManagedByHost(subscription, "service-token")).toBe(true);
+    expect(isClaudeProviderManagedByHost(subscription, null)).toBe(false);
   });
 
   // The gateway model-cache refresh must reach a tunnelled proxy. Our own dummy marker

@@ -43,6 +43,19 @@ export function attachClaudeAdmissionHeader(
 }
 
 /**
+ * Claude Code must treat the environment as host-managed whenever OCX supplies
+ * either its normal Anthropic credential or the separate tunnel admission
+ * credential. Otherwise Agent View can retain settings-sourced provider vars
+ * that override the proxy route after the admission header has been injected.
+ */
+export function isClaudeProviderManagedByHost(
+  env: ClaudeLaunchEnv,
+  admissionToken: string | null,
+): boolean {
+  return Boolean(env.ANTHROPIC_AUTH_TOKEN || admissionToken);
+}
+
+/**
  * Injectable IO for tests. `env` is deliberately NOT injectable: it is bound to the
  * launch base so detection and the spawned process can never disagree (audit R3-3).
  */
@@ -291,13 +304,14 @@ export async function cmdClaude(args: string[]): Promise<number> {
   // overload ANTHROPIC_AUTH_TOKEN with it: that would replace the user's Claude OAuth.
   // Claude Code supports newline-delimited ANTHROPIC_CUSTOM_HEADERS, so carry the
   // service token on x-opencodex-api-key instead.
-  attachClaudeAdmissionHeader(env, resolveDataPlaneAdmissionToken(process.env));
+  const dataPlaneAdmissionToken = resolveDataPlaneAdmissionToken(process.env);
+  attachClaudeAdmissionHeader(env, dataPlaneAdmissionToken);
 
   // Agent View sessions load settings.json `env`. Host-managed mode strips those
   // keys — keep it OFF only when we are not injecting an admission token. With a
   // real token, host-managed MUST stay ON so Claude Code does not warn that
   // ANTHROPIC_AUTH_TOKEN competes with a /login OAuth session.
-  if (env.ANTHROPIC_AUTH_TOKEN) {
+  if (isClaudeProviderManagedByHost(env, dataPlaneAdmissionToken)) {
     env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST = "1";
   } else {
     env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST = "0";
