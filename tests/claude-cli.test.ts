@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { claudeNotFoundHint } from "../src/cli/claude";
 import { commandInvocation } from "../src/lib/win-exec";
-import { buildClaudeEnv, claudeAdmissionToken } from "../src/cli/claude";
+import { attachClaudeAdmissionHeader, attachClaudeAdmissionHeaderForManagedRoute, buildClaudeEnv, claudeAdmissionToken, isClaudeProviderManagedByHost, isManagedClaudeAdmissionRoute } from "../src/cli/claude";
 import type { OcxConfig } from "../src/types";
 
 function cfg(extra?: Partial<OcxConfig>): OcxConfig {
@@ -52,6 +52,51 @@ describe("ocx claude env assembly", () => {
     expect(env.ANTHROPIC_AUTH_TOKEN).toBe("sk-ocx-123");
   });
 
+  test("service admission header preserves Claude subscription OAuth", () => {
+    const env = buildClaudeEnv(cfg({ claudeCode: {} }), 10100, {}, {}, AUTH_PRESENT);
+    attachClaudeAdmissionHeader(env, "service-token");
+    expect(env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(env.ANTHROPIC_CUSTOM_HEADERS).toBe("x-opencodex-api-key: service-token");
+    expect(env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBeUndefined();
+  });
+
+  test("service admission header preserves existing custom headers and user override", () => {
+    const env = { ANTHROPIC_CUSTOM_HEADERS: "x-trace-id: abc" };
+    attachClaudeAdmissionHeader(env, "service-token");
+    expect(env.ANTHROPIC_CUSTOM_HEADERS).toBe("x-trace-id: abc\nx-opencodex-api-key: service-token");
+
+    const user = { ANTHROPIC_CUSTOM_HEADERS: "X-OpenCodex-API-Key: user-token\nx-trace-id: abc" };
+    attachClaudeAdmissionHeader(user, "service-token");
+    expect(user.ANTHROPIC_CUSTOM_HEADERS).toBe("X-OpenCodex-API-Key: user-token\nx-trace-id: abc");
+  });
+
+  test("admission credential is limited to the exact managed loopback route", () => {
+    expect(isManagedClaudeAdmissionRoute("http://127.0.0.1:10100", 10100)).toBe(true);
+    expect(isManagedClaudeAdmissionRoute("http://localhost:10100/v1", 10100)).toBe(true);
+    expect(isManagedClaudeAdmissionRoute("http://127.0.0.1:10101", 10100)).toBe(false);
+    expect(isManagedClaudeAdmissionRoute("https://third-party.example/v1", 10100)).toBe(false);
+    expect(isManagedClaudeAdmissionRoute("not-a-url", 10100)).toBe(false);
+  });
+
+  test("non-managed base URL never receives or retains the OCX admission header", () => {
+    const env = {
+      ANTHROPIC_BASE_URL: "https://third-party.example/v1",
+      ANTHROPIC_CUSTOM_HEADERS: "x-trace-id: abc\nx-opencodex-api-key: stale-service-token",
+    };
+    const attached = attachClaudeAdmissionHeaderForManagedRoute(env, "service-token", 10100);
+    expect(attached).toBe(false);
+    expect(env.ANTHROPIC_CUSTOM_HEADERS).toBe("x-trace-id: abc");
+    expect(isClaudeProviderManagedByHost(env, attached ? "service-token" : null)).toBe(false);
+  });
+
+  test("managed loopback route receives the admission header and becomes host-managed", () => {
+    const env = { ANTHROPIC_BASE_URL: "http://127.0.0.1:10100", ANTHROPIC_CUSTOM_HEADERS: "x-trace-id: abc" };
+    const attached = attachClaudeAdmissionHeaderForManagedRoute(env, "service-token", 10100);
+    expect(attached).toBe(true);
+    expect(env.ANTHROPIC_CUSTOM_HEADERS).toBe("x-trace-id: abc\nx-opencodex-api-key: service-token");
+    expect(isClaudeProviderManagedByHost(env, attached ? "service-token" : null)).toBe(true);
+  });
+
   // Host-managed routing guard (devlog 260720_claude_authmode_persist/020):
   // defends the spawn env against leftover cc-switch/CCR settings.json env hijack.
   test("subscription mode leaves the host-managed auth assertion unset", () => {
@@ -68,6 +113,13 @@ describe("ocx claude env assembly", () => {
       apiKeys: [{ id: "1", name: "main", key: "sk-ocx-123", createdAt: "2026-01-01" }],
     }), 10100, {});
     expect(admission.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBe("1");
+  });
+
+  test("a tunnel admission credential makes the spawned Claude environment host-managed", () => {
+    const subscription = buildClaudeEnv(cfg({ claudeCode: {} }), 10100, {}, {}, AUTH_PRESENT);
+    expect(subscription.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(isClaudeProviderManagedByHost(subscription, "service-token")).toBe(true);
+    expect(isClaudeProviderManagedByHost(subscription, null)).toBe(false);
   });
 
   // The gateway model-cache refresh must reach a tunnelled proxy. Our own dummy marker
