@@ -18,8 +18,11 @@ autostart shim.
 
 ### `ocx start [--port <port>]`
 
-Start the proxy server (preferred port `10100`). If that port is occupied, opencodex selects and
-records another available port. It writes PID/runtime-port state and refuses to start a second live
+Start the proxy server (preferred port `10100`). Without `--port`, if that port is occupied,
+opencodex selects and records another available port. An explicit `--port` stays pinned and
+fails if it remains busy; it never silently switches ports. Temporary availability probes close
+incoming discovery connections immediately so a scanner cannot keep startup waiting.
+It writes PID/runtime-port state and refuses to start a second live
 instance. On start it syncs each provider's models into Codex's catalog. On shutdown it restores
 native Codex — unless it was launched as a managed service (`OCX_SERVICE=1`).
 
@@ -162,15 +165,15 @@ same stale-`app-server` warning and optional `--restart-codex` behavior as `ocx 
 
 Manage the Codex `multi_agent_v2` feature flag and the 3-state multi-agent surface mode.
 
-| Subcommand | Action |
-| --- | --- |
-| `status` (default) | Report the current v2 flag, multi-agent mode, and thread concurrency. |
-| `on` | Enable the `multi_agent_v2` feature in `$CODEX_HOME/config.toml` and resync the catalog. |
-| `off` | Disable the `multi_agent_v2` feature and resync. |
-| `mode v1` | Force ALL models to v1, disable native v2, and preserve the thread limit under `[agents] max_threads`. |
-| `mode default` | Respect upstream model pins (sol/terra=v2, luna=v1, rest=codex flag). Install default. |
-| `mode v2` | Force ALL models to v2, enable native v2, and migrate the same thread limit to the v2 key. |
-| `threads <n>` | Set the active v1/v2 thread limit (integer >= 1). |
+| Subcommand         | Action                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------ |
+| `status` (default) | Report the current v2 flag, multi-agent mode, and thread concurrency.                                  |
+| `on`               | Enable the `multi_agent_v2` feature in `$CODEX_HOME/config.toml` and resync the catalog.               |
+| `off`              | Disable the `multi_agent_v2` feature and resync.                                                       |
+| `mode v1`          | Force ALL models to v1, disable native v2, and preserve the thread limit under `[agents] max_threads`. |
+| `mode default`     | Respect upstream model pins (sol/terra=v2, luna=v1, rest=codex flag). Install default.                 |
+| `mode v2`          | Force ALL models to v2, enable native v2, and migrate the same thread limit to the v2 key.             |
+| `threads <n>`      | Set the active v1/v2 thread limit (integer >= 1).                                                      |
 
 ```bash
 ocx v2 status
@@ -192,16 +195,16 @@ Operational dashboard features are also available without a browser. These comma
 identity-checked running proxy (including a fallback runtime port) and reuse the same management
 routes, validation, live configuration, and catalog refresh side effects as the GUI.
 
-| Resource | Commands |
-| --- | --- |
-| Routing | `ocx combo ...` or `ocx route combo ...` |
-| Agent policy | `ocx agent injection|effort|subagents|fallback|sidecar ...` |
-| Observability | `ocx observe logs|usage|storage|memory|cache|debug ...` |
-| API admission | `ocx access key|endpoints|models|test ...` |
-| Claude Code | `ocx claude config status|set ...` |
-| Grok Build | `ocx grok status|exclude|include|set|clear|apply ...` |
-| Runtime control | `ocx system status|settings|startup|diagnostics|sync|update ...` |
-| Offline config | `ocx config show|get|set|unset|validate|export|import ...` |
+| Resource        | Commands                                 |
+| --------------- | ---------------------------------------- |
+| Routing         | `ocx combo ...` or `ocx route combo ...` |
+| Agent policy    | `ocx agent injection                     | effort    | subagents | fallback    | sidecar ...` |
+| Observability   | `ocx observe logs                        | usage     | storage   | memory      | cache        | debug ...`  |
+| API admission   | `ocx access key                          | endpoints | models    | test ...`   |
+| Claude Code     | `ocx claude config status                | set ...`  |
+| Grok Build      | `ocx grok status                         | exclude   | include   | set         | clear        | apply ...`  |
+| Runtime control | `ocx system status                       | settings  | startup   | diagnostics | sync         | update ...` |
+| Offline config  | `ocx config show                         | get       | set       | unset       | validate     | export      | import ...` |
 
 List/status is the default where unambiguous. Use `--json` for structured snapshots and
 `ocx observe logs --follow --jsonl` for a streaming request-log feed. Destructive removal/import,
@@ -234,19 +237,19 @@ caps; and `shadow` manages background shadow-call interception.
 Non-interactive provider management. Registry entries are seeded by name; a custom name requires
 both `--adapter` and `--base-url`.
 
-| Subcommand | Supported flags | Action |
-| --- | --- | --- |
-| `list` | `--json` | List configured providers and the remaining registry entries. |
-| `add <name>` | `--adapter <adapter>`, `--base-url <url>`, `--api-key <key>`, `--default-model <model>`, `--set-default`, `--force`, `--json`, `--sync` | Add a registry/custom provider. `--force` overwrites; `--sync` refreshes a running proxy in human-output mode. |
-| `edit <name>` | provider field flags, `--json` | Edit validated live provider fields without replacing key pools. |
-| `test <name>` | `--json` | Probe the real upstream model endpoint. |
-| `show <name>` | `--json` | Show config with API keys masked. |
-| `remove <name>` | `--json` | Remove a non-default provider; the last provider cannot be removed. |
-| `set-default <name>` | `--json` | Select an existing provider as the default. |
-| `selected <name>` | `--set <ids>`, `--clear`, `--json` | Read or update the provider model allowlist. |
-| `quota` | `--refresh`, `--json` | Read provider quota reports. |
-| `presets` | `--json` | List dashboard provider presets. |
-| `account-mode` | `pool`, `direct`, `--json` | Select pooled or direct Codex account routing. |
+| Subcommand           | Supported flags                                                                                                                         | Action                                                                                                         |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `list`               | `--json`                                                                                                                                | List configured providers and the remaining registry entries.                                                  |
+| `add <name>`         | `--adapter <adapter>`, `--base-url <url>`, `--api-key <key>`, `--default-model <model>`, `--set-default`, `--force`, `--json`, `--sync` | Add a registry/custom provider. `--force` overwrites; `--sync` refreshes a running proxy in human-output mode. |
+| `edit <name>`        | provider field flags, `--json`                                                                                                          | Edit validated live provider fields without replacing key pools.                                               |
+| `test <name>`        | `--json`                                                                                                                                | Probe the real upstream model endpoint.                                                                        |
+| `show <name>`        | `--json`                                                                                                                                | Show config with API keys masked.                                                                              |
+| `remove <name>`      | `--json`                                                                                                                                | Remove a non-default provider; the last provider cannot be removed.                                            |
+| `set-default <name>` | `--json`                                                                                                                                | Select an existing provider as the default.                                                                    |
+| `selected <name>`    | `--set <ids>`, `--clear`, `--json`                                                                                                      | Read or update the provider model allowlist.                                                                   |
+| `quota`              | `--refresh`, `--json`                                                                                                                   | Read provider quota reports.                                                                                   |
+| `presets`            | `--json`                                                                                                                                | List dashboard provider presets.                                                                               |
+| `account-mode`       | `pool`, `direct`, `--json`                                                                                                              | Select pooled or direct Codex account routing.                                                                 |
 
 ```bash
 ocx provider list --json
@@ -422,16 +425,16 @@ Run opencodex as a login-managed background service (macOS **launchd**, Linux **
 Windows **Task Scheduler**) that auto-starts on login and auto-restarts on crash. Service runs set
 `OCX_SERVICE=1` so a restart doesn't churn the Codex config.
 
-| Subcommand | Action |
-| --- | --- |
-| none | Create/update and start the service. |
-| `install` | Create and start the service. |
-| `start` | Start an installed service. |
-| `stop` | Stop the service and restore native Codex. |
-| `status` | Report whether the service is running. |
-| `repair` | Refresh installed service assets without re-registering (no Task Scheduler UAC). |
-| `uninstall` | Remove the service and restore native Codex. |
-| `remove` | Alias of `uninstall`. |
+| Subcommand  | Action                                                                           |
+| ----------- | -------------------------------------------------------------------------------- |
+| none        | Create/update and start the service.                                             |
+| `install`   | Create and start the service.                                                    |
+| `start`     | Start an installed service.                                                      |
+| `stop`      | Stop the service and restore native Codex.                                       |
+| `status`    | Report whether the service is running.                                           |
+| `repair`    | Refresh installed service assets without re-registering (no Task Scheduler UAC). |
+| `uninstall` | Remove the service and restore native Codex.                                     |
+| `remove`    | Alias of `uninstall`.                                                            |
 
 ```bash
 ocx service
@@ -460,12 +463,12 @@ changing is left untouched and retried later. Repair failures warn without faili
 command; manual fallback: `ocx codex-shim install`. Set `codexShimAutoRestore` to `false`, or set
 `OPENCODEX_CODEX_SHIM_AUTO_RESTORE=0` for a process-level opt-out.
 
-| Subcommand | Action |
-| --- | --- |
-| `install` | Install the shim (or repair if stale). |
+| Subcommand  | Action                                                 |
+| ----------- | ------------------------------------------------------ |
+| `install`   | Install the shim (or repair if stale).                 |
 | `uninstall` | Remove the shim and restore the original Codex binary. |
-| `remove` | Alias of `uninstall`. |
-| `status` | Report shim state (installed / stale / missing). |
+| `remove`    | Alias of `uninstall`.                                  |
+| `status`    | Report shim state (installed / stale / missing).       |
 
 ```bash
 ocx codex-shim install
