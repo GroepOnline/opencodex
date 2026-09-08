@@ -352,6 +352,20 @@ describe("remote client artifact", () => {
       expect(readFileSync(join(nativeHome, "config.toml"), "utf8")).toBe(
         "direct Azure config stays untouched\n",
       );
+
+      const nestedNativeRun = Bun.spawnSync([shim, "--version"], {
+        env: {
+          ...env,
+          OCX_CLIENT_CODEX_HOME: join(nativeHome, "ocx-client"),
+        },
+      });
+      expect(nestedNativeRun.exitCode).toBe(78);
+      expect(nestedNativeRun.stderr.toString()).toContain(
+        "refusing native Codex home",
+      );
+      expect(readFileSync(join(nativeHome, "config.toml"), "utf8")).toBe(
+        "direct Azure config stays untouched\n",
+      );
     },
     15_000,
   );
@@ -446,6 +460,37 @@ describe("remote client artifact", () => {
         "native config\n",
       );
     },
+  );
+
+  test.skipIf(!powershell)(
+    "PowerShell refuses a client home nested under the native Codex home",
+    async () => {
+      const output = join(scratch, "powershell-nested-native-candidate");
+      await buildClientArtifact(output);
+      const shim = join(output, "bin/codex.ocx-client.ps1");
+      const home = join(scratch, "powershell-nested-native-home");
+      const nativeHome = join(home, ".codex");
+      mkdirSync(nativeHome, { recursive: true });
+      writeFileSync(join(nativeHome, "config.toml"), "native config\n");
+      const result = Bun.spawnSync(
+        [powershell!, "-NoProfile", "-File", shim, "--version"],
+        {
+          env: {
+            ...process.env,
+            HOME: home,
+            OCX_CLIENT_CODEX_HOME: join(nativeHome, "ocx-client"),
+          },
+        },
+      );
+      expect(result.exitCode).toBe(78);
+      expect(result.stderr.toString()).toContain(
+        "refusing native or symlinked Codex home",
+      );
+      expect(readFileSync(join(nativeHome, "config.toml"), "utf8")).toBe(
+        "native config\n",
+      );
+    },
+    15_000,
   );
 
   test("refuses publication through a symlinked destination parent", async () => {

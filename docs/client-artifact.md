@@ -32,7 +32,8 @@ for an operator-controlled install step. The shims always select
 `OCX_CLIENT_CODEX_HOME` or its isolated default `~/.codex-ocx`;
 they ignore an inherited `CODEX_HOME` and explicitly refuse the native
 `~/.codex` home, including normalized aliases, symlinked paths, and the
-physical target of a symlinked native home. An explicit
+physical target of a symlinked native home. A client home inside the native
+home is rejected as well. An explicit
 `OCX_CLIENT_CODEX_HOME` must be absolute. `OCX_CLIENT_OCX_BIN` and
 `OCX_CLIENT_CODEX_BIN` can select the governed remote launcher and real Codex
 executable during installation.
