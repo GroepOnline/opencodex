@@ -5,9 +5,35 @@ import {
   collectTestFiles,
   parseInteger,
   parseShardSelection,
+  runAllBatches,
   TEST_ROOT,
   type TestFile,
 } from "../scripts/ci-test-shard";
+
+describe("ci-test-shard batch completion", () => {
+  test.each([
+    [1, 0, 0],
+    [0, 2, 0],
+    [0, 0, 0],
+  ])(
+    "runs every batch and preserves nonzero results %j",
+    async (...codes: number[]) => {
+      const paths = Array.from(
+        { length: 161 },
+        (_, i) => `tests/fixture-${i}.test.ts`,
+      );
+      const visited: string[] = [];
+      let index = 0;
+      const result = await runAllBatches(paths, async (batch) => {
+        visited.push(...batch);
+        return codes[index++]!;
+      });
+      expect(visited).toEqual(paths);
+      expect(index).toBe(3);
+      expect(result).toBe(codes.find((code) => code !== 0) ?? 0);
+    },
+  );
+});
 
 // CI relies on the shard partitioner to run every root test exactly once across the configured
 // shard invocations (Windows currently uses two). A regression in discovery, path normalization,
@@ -18,21 +44,26 @@ describe("ci-test-shard partition invariants", () => {
 
   test("discovers this test file among the root tests", async () => {
     const files = await collectTestFiles(TEST_ROOT);
-    expect(files.map(file => file.path)).toContain("tests/ci-test-shard.test.ts");
+    expect(files.map((file) => file.path)).toContain(
+      "tests/ci-test-shard.test.ts",
+    );
   });
 
-  test.each(shardCounts)("%i shard(s) cover every discovered test exactly once", async shardCount => {
-    const files = await collectTestFiles(TEST_ROOT);
-    expect(files.length).toBeGreaterThan(0);
+  test.each(shardCounts)(
+    "%i shard(s) cover every discovered test exactly once",
+    async (shardCount) => {
+      const files = await collectTestFiles(TEST_ROOT);
+      expect(files.length).toBeGreaterThan(0);
 
-    const shards = assignBalancedShards(files, shardCount);
-    expect(shards.length).toBe(shardCount);
+      const shards = assignBalancedShards(files, shardCount);
+      expect(shards.length).toBe(shardCount);
 
-    const union = shards.flat().map(file => file.path);
-    expect(union.length).toBe(files.length);
-    expect(new Set(union).size).toBe(union.length);
-    expect([...union].sort()).toEqual(files.map(file => file.path).sort());
-  });
+      const union = shards.flat().map((file) => file.path);
+      expect(union.length).toBe(files.length);
+      expect(new Set(union).size).toBe(union.length);
+      expect([...union].sort()).toEqual(files.map((file) => file.path).sort());
+    },
+  );
 
   test("assignment is deterministic regardless of discovery order", () => {
     const files: TestFile[] = [
@@ -43,8 +74,12 @@ describe("ci-test-shard partition invariants", () => {
     ];
     const shuffled = [files[2]!, files[0]!, files[3]!, files[1]!];
 
-    const fromOrdered = assignBalancedShards(files, 2).map(shard => shard.map(file => file.path));
-    const fromShuffled = assignBalancedShards(shuffled, 2).map(shard => shard.map(file => file.path));
+    const fromOrdered = assignBalancedShards(files, 2).map((shard) =>
+      shard.map((file) => file.path),
+    );
+    const fromShuffled = assignBalancedShards(shuffled, 2).map((shard) =>
+      shard.map((file) => file.path),
+    );
     expect(fromShuffled).toEqual(fromOrdered);
   });
 });
@@ -53,12 +88,19 @@ describe("ci-test-shard partition invariants", () => {
 // instead of silently running the wrong slice of the suite, so pin the CLI validation branches.
 describe("ci-test-shard argument validation", () => {
   test("parseInteger rejects missing values", () => {
-    expect(() => parseInteger(undefined, "shardIndex")).toThrow("shardIndex must be an integer; got <missing>");
+    expect(() => parseInteger(undefined, "shardIndex")).toThrow(
+      "shardIndex must be an integer; got <missing>",
+    );
   });
 
-  test.each(["", " ", "two", "1.5", "NaN"])("parseInteger rejects non-integer value %j", value => {
-    expect(() => parseInteger(value, "shardCount")).toThrow(/shardCount must be an integer/);
-  });
+  test.each(["", " ", "two", "1.5", "NaN"])(
+    "parseInteger rejects non-integer value %j",
+    (value) => {
+      expect(() => parseInteger(value, "shardCount")).toThrow(
+        /shardCount must be an integer/,
+      );
+    },
+  );
 
   test("parseInteger accepts integer strings", () => {
     expect(parseInteger("0", "shardIndex")).toBe(0);
@@ -66,16 +108,27 @@ describe("ci-test-shard argument validation", () => {
   });
 
   test("parseShardSelection rejects shardCount below 1", () => {
-    expect(() => parseShardSelection("0", "0")).toThrow("shardCount must be at least 1");
-    expect(() => parseShardSelection("0", "-2")).toThrow("shardCount must be at least 1");
+    expect(() => parseShardSelection("0", "0")).toThrow(
+      "shardCount must be at least 1",
+    );
+    expect(() => parseShardSelection("0", "-2")).toThrow(
+      "shardCount must be at least 1",
+    );
   });
 
   test("parseShardSelection rejects out-of-range shardIndex", () => {
-    expect(() => parseShardSelection("-1", "2")).toThrow("shardIndex must be between 0 and 1; got -1");
-    expect(() => parseShardSelection("2", "2")).toThrow("shardIndex must be between 0 and 1; got 2");
+    expect(() => parseShardSelection("-1", "2")).toThrow(
+      "shardIndex must be between 0 and 1; got -1",
+    );
+    expect(() => parseShardSelection("2", "2")).toThrow(
+      "shardIndex must be between 0 and 1; got 2",
+    );
   });
 
   test("parseShardSelection accepts a valid in-range configuration", () => {
-    expect(parseShardSelection("1", "2")).toEqual({ shardIndex: 1, shardCount: 2 });
+    expect(parseShardSelection("1", "2")).toEqual({
+      shardIndex: 1,
+      shardCount: 2,
+    });
   });
 });
