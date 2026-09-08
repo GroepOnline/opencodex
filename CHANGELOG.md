@@ -17,7 +17,8 @@ All notable changes to the GroepOnline `opencodex` fork. Format follows
 ### Changed
 
 - npm and GHCR publication require successful full-platform CI for the exact
-  release commit. Release verification uses the Bun version bundled in the package.
+  release commit. Release verification and the container runtime use the Bun
+  version bundled in the package.
 
 ## [1.4.1] — 2026-09-08
 

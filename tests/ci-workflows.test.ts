@@ -54,6 +54,8 @@ describe("GitHub Actions hardening", () => {
     expect(setups.length).toBeGreaterThan(0);
     for (const step of setups)
       expect(step.with?.["bun-version"]).toBe(pkg.dependencies.bun);
+    const dockerfile = await readText("Dockerfile");
+    expect(dockerfile).toContain(`ARG BUN_VERSION=${pkg.dependencies.bun}\n`);
   });
 
   test("release and GHCR publication require all platforms before release artifacts", async () => {
