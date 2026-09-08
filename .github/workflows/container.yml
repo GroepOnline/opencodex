@@ -121,14 +121,34 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          ci_url="$(gh run list --workflow ci.yml --commit "$SHA" \
-            --status success --limit 1 --json url --jq '.[0].url // ""')"
-          if [ -z "$ci_url" ]; then
-            echo "::error::No successful Cross-platform CI run for ${SHA}"
+          ci_id="$(
+            gh run list \
+              --workflow ci.yml \
+              --commit "$SHA" \
+              --event workflow_dispatch \
+              --status success \
+              --limit 10 \
+              --json databaseId \
+              --jq '.[0].databaseId // ""'
+          )"
+          if [ -z "$ci_id" ]; then
+            echo "::error::No successful full-platform CI run found for ${SHA}"
             gh run list --workflow ci.yml --commit "$SHA" --limit 5 || true
             exit 1
           fi
-          echo "Cross-platform CI passed: ${ci_url}"
+          if [ "$(gh run view "$ci_id" --json headSha --jq '.headSha')" != "$SHA" ]; then
+            echo "::error::CI run ${ci_id} does not match the image SHA"
+            exit 1
+          fi
+          # shellcheck disable=SC2016 # $run/$passed/$name are jq bindings, not shell variables.
+          matrix_ok="$(gh run view "$ci_id" --json headSha,conclusion,jobs --jq \
+            '. as $run | [.jobs[] | select(.conclusion == "success") | .name] as $passed | ($run.conclusion == "success" and (["ubuntu-latest", "macos-latest", "macos-quality", "windows-latest", "windows-latest shard 2/2", "windows-quality", "npm-global ubuntu-latest", "npm-global macos-latest", "npm-global windows-latest", "Security audit", "Lint GitHub Actions"] | all(.[]; . as $name | $passed | index($name) != null)))')"
+          if [ "$matrix_ok" != "true" ]; then
+            echo "::error::CI run ${ci_id} lacks successful required platform jobs"
+            exit 1
+          fi
+          ci_url="$(gh run view "$ci_id" --json url --jq '.url')"
+          echo "Cross-platform CI passed for ${SHA}: ${ci_url}"
 
       - name: Resolve build metadata
         id: meta
