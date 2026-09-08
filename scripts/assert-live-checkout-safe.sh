@@ -14,7 +14,7 @@ target=${2-}
 # GNU coreutils exposes `timeout`, while macOS commonly exposes it as
 # `gtimeout` when coreutils is installed (and otherwise has no equivalent).
 # Perl is part of macOS and preserves an alarm across exec. Never drop the
-# run_git executes a Git command with a 10-second deadline and returns its exit status.
+# deadline just because GNU coreutils is absent.
 run_git() {
   if command -v timeout >/dev/null 2>&1; then
     timeout 10s git "$@"

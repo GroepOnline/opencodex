@@ -123,6 +123,12 @@ describe("assert-live-checkout-safe.sh", () => {
     "../scripts/assert-live-checkout-safe.sh",
   );
 
+  test("is tracked as an executable script", () => {
+    const repoRoot = join(import.meta.dir, "..");
+    const stage = git(repoRoot, ["ls-files", "--stage", "--", "scripts/assert-live-checkout-safe.sh"]);
+    expect(stage).toMatch(/^100755 [0-9a-f]{40} 0\tscripts\/assert-live-checkout-safe\.sh$/);
+  });
+
   test("refuses dirty porcelain and a HEAD that is not an ancestor of the target", () => {
     if (!Bun.which("bash")) return;
     const dir = initRepo();
