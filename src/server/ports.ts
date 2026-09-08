@@ -13,9 +13,17 @@ export function isAddrInUse(err: unknown): boolean {
   return text.includes("eaddrinuse") || text.includes("in use");
 }
 
-export async function isPortAvailable(port: number, hostname = "127.0.0.1"): Promise<boolean> {
-  return await new Promise(resolve => {
+export async function isPortAvailable(
+  port: number,
+  hostname = "127.0.0.1",
+): Promise<boolean> {
+  return await new Promise((resolve) => {
     const server = createServer();
+    // A local readiness or desktop probe can connect in the small interval after bind
+    // succeeds but before close runs. `server.close()` waits for that accepted socket,
+    // so discard all probe traffic rather than letting port selection hang on a client
+    // that never sends or closes.
+    server.on("connection", (socket) => socket.destroy());
     server.once("error", () => resolve(false));
     server.once("listening", () => {
       server.close(() => resolve(true));
@@ -41,7 +49,7 @@ export async function waitForPortAvailable(
   for (;;) {
     if (await isPortAvailable(port, hostname)) return true;
     if (Date.now() >= deadline) return false;
-    await new Promise(resolve => setTimeout(resolve, intervalMs));
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
 }
 
@@ -60,7 +68,9 @@ export type FindAvailablePortOptions = {
 export class PortUnavailableError extends Error {
   readonly port: number;
   constructor(port: number, hostname: string) {
-    super(`Port ${port} on ${hostname} is still busy after prefer-retry; refusing ephemeral fallback.`);
+    super(
+      `Port ${port} on ${hostname} is still busy after prefer-retry; refusing ephemeral fallback.`,
+    );
     this.name = "PortUnavailableError";
     this.port = port;
   }
@@ -76,13 +86,18 @@ export async function findAvailablePort(
   // Port 0 asks the OS to select an ephemeral port. Resolve it to that concrete
   // port here so callers never persist or advertise an unusable `:0` endpoint.
   if (preferredPort > 0 && preferRetryMs > 0) {
-    if (await waitForPortAvailable(preferredPort, hostname, {
-      timeoutMs: preferRetryMs,
-      intervalMs: opts.preferRetryIntervalMs ?? 50,
-    })) {
+    if (
+      await waitForPortAvailable(preferredPort, hostname, {
+        timeoutMs: preferRetryMs,
+        intervalMs: opts.preferRetryIntervalMs ?? 50,
+      })
+    ) {
       return preferredPort;
     }
-  } else if (preferredPort > 0 && (await isPortAvailable(preferredPort, hostname))) {
+  } else if (
+    preferredPort > 0 &&
+    (await isPortAvailable(preferredPort, hostname))
+  ) {
     return preferredPort;
   }
 
@@ -92,6 +107,9 @@ export async function findAvailablePort(
 
   return await new Promise((resolve, reject) => {
     const server = createServer();
+    // See isPortAvailable: this is also a short-lived probe listener, not a server
+    // that should retain readiness-scanner connections while closing.
+    server.on("connection", (socket) => socket.destroy());
     server.once("error", reject);
     server.once("listening", () => {
       const address = server.address();
