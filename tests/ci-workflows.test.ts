@@ -76,6 +76,14 @@ describe("GitHub Actions hardening", () => {
     }
     expect(release).toContain('--commit "$GITHUB_SHA"');
     expect(container).toContain('--commit "$SHA"');
+    for (const [workflow, shaVariable] of [
+      [release, "GITHUB_SHA"],
+      [container, "SHA"],
+    ]) {
+      expect(workflow).toContain(
+        `if [ "$(gh run view "$ci_id" --json headSha --jq '.headSha')" != "$${shaVariable}" ]; then`,
+      );
+    }
     for (const job of [
       "ubuntu-latest",
       "macos-latest",

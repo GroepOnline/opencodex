@@ -233,6 +233,9 @@ describe("digest deploy workflow contract", () => {
     expect(rollback).toContain(
       "PREV_TOKEN_OWNER: ${{ steps.deploy.outputs.previous_token_owner }}",
     );
+    expect(rollback).toContain(
+      "PREV_TOKEN_MODE: ${{ steps.deploy.outputs.previous_token_mode }}",
+    );
     expect(rollback).toContain('sudo chown "$PREV_TOKEN_OWNER" "$token_file"');
     expect(rollback).toContain('sudo chmod "$PREV_TOKEN_MODE" "$token_file"');
     expect(rollback.indexOf('sudo chmod "$PREV_TOKEN_MODE"')).toBeLessThan(
