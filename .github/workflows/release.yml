@@ -180,6 +180,7 @@ jobs:
             echo "::error::CI run ${ci_id} does not match the release SHA"
             exit 1
           fi
+          # shellcheck disable=SC2016 # $run/$passed/$name are jq bindings, not shell variables.
           matrix_ok="$(gh run view "$ci_id" --json headSha,conclusion,jobs --jq \
             '. as $run | [.jobs[] | select(.conclusion == "success") | .name] as $passed | ($run.conclusion == "success" and (["ubuntu-latest", "macos-latest", "macos-quality", "windows-latest", "windows-latest shard 2/2", "windows-quality", "npm-global ubuntu-latest", "npm-global macos-latest", "npm-global windows-latest", "Security audit", "Lint GitHub Actions"] | all(.[]; . as $name | $passed | index($name) != null)))')"
           if [ "$matrix_ok" != "true" ]; then
