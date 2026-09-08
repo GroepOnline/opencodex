@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
   writeFileSync,
@@ -18,11 +19,24 @@ const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const sha256 = (data: string | Uint8Array) =>
   createHash("sha256").update(data).digest("hex");
 
+export function isTrustedDarwinSystemPathAlias(
+  path: string,
+  physicalTarget: string,
+  platform = process.platform,
+) {
+  return (
+    platform === "darwin" && path === "/var" && physicalTarget === "/private/var"
+  );
+}
+
 function assertNoSymlinkPathComponents(path: string) {
   let current = resolve(path);
   while (true) {
     try {
-      if (lstatSync(current).isSymbolicLink()) {
+      if (
+        lstatSync(current).isSymbolicLink() &&
+        !isTrustedDarwinSystemPathAlias(current, realpathSync(current))
+      ) {
         throw new Error(
           `Destination path traverses a symlink; refusing publication: ${current}`,
         );
@@ -127,14 +141,14 @@ function prepareIsolatedBuildRoot(
   try {
     git(
       sourceRoot,
-      "clone",
-      "--shared",
-      "--no-checkout",
+      "worktree",
+      "add",
+      "--detach",
+      "--force",
       "--quiet",
-      sourceRoot,
       buildRoot,
+      sourceSha,
     );
-    git(buildRoot, "checkout", "--detach", "--quiet", sourceSha);
     const install = Bun.spawnSync(
       [
         process.execPath,
@@ -152,9 +166,23 @@ function prepareIsolatedBuildRoot(
     }
     return buildRoot;
   } catch (error) {
+    Bun.spawnSync(["git", "worktree", "remove", "--force", buildRoot], {
+      cwd: sourceRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
     rmSync(buildRoot, { recursive: true, force: true });
     throw error;
   }
+}
+
+function removeIsolatedBuildRoot(sourceRoot: string, buildRoot: string) {
+  Bun.spawnSync(["git", "worktree", "remove", "--force", buildRoot], {
+    cwd: sourceRoot,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  rmSync(buildRoot, { recursive: true, force: true });
 }
 
 // The remote wrapper owns all mutation and lifecycle behavior. Direct bundle use
@@ -371,7 +399,7 @@ export async function buildClientArtifact(destination: string, root = ROOT) {
   try {
     staging = mkdtempSync(join(publicationParent, ".ocx-client-build-"));
   } catch (error) {
-    rmSync(buildRoot, { recursive: true, force: true });
+    removeIsolatedBuildRoot(root, buildRoot);
     throw error;
   }
   try {
@@ -452,7 +480,7 @@ export async function buildClientArtifact(destination: string, root = ROOT) {
     return manifest;
   } finally {
     rmSync(staging, { recursive: true, force: true });
-    rmSync(buildRoot, { recursive: true, force: true });
+    removeIsolatedBuildRoot(root, buildRoot);
   }
 }
 

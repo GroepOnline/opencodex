@@ -14,14 +14,49 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildClientArtifact } from "../scripts/build-client-artifact";
+import {
+  buildClientArtifact,
+  isTrustedDarwinSystemPathAlias,
+} from "../scripts/build-client-artifact";
 
 const scratch = mkdtempSync(join(tmpdir(), "ocx-client-artifact-test-"));
 const powershell = Bun.which("pwsh");
 const posixShell = process.platform !== "win32";
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
+function addDetachedWorktree(destination: string) {
+  const root = join(import.meta.dir, "..");
+  const result = Bun.spawnSync(
+    ["git", "worktree", "add", "--detach", "--quiet", destination, "HEAD"],
+    { cwd: root },
+  );
+  expect(result.success).toBe(true);
+}
+
+function removeDetachedWorktree(destination: string) {
+  const root = join(import.meta.dir, "..");
+  Bun.spawnSync(["git", "worktree", "remove", "--force", destination], {
+    cwd: root,
+  });
+  rmSync(destination, { recursive: true, force: true });
+}
+
 describe("remote client artifact", () => {
+  test("accepts only the verified macOS /var system alias", () => {
+    expect(
+      isTrustedDarwinSystemPathAlias("/var", "/private/var", "darwin"),
+    ).toBe(true);
+    expect(
+      isTrustedDarwinSystemPathAlias("/var", "/untrusted/var", "darwin"),
+    ).toBe(false);
+    expect(
+      isTrustedDarwinSystemPathAlias("/tmp", "/private/tmp", "darwin"),
+    ).toBe(false);
+    expect(
+      isTrustedDarwinSystemPathAlias("/var", "/private/var", "linux"),
+    ).toBe(false);
+  });
+
   test("CLI builds from an explicit clean source checkout", () => {
     const output = join(scratch, "explicit-source-candidate");
     const root = join(import.meta.dir, "..");
@@ -42,8 +77,7 @@ describe("remote client artifact", () => {
   test("refuses an uncommitted artifact builder", () => {
     const root = join(import.meta.dir, "..");
     const dirtyRoot = join(scratch, "dirty-builder-checkout");
-    const clone = Bun.spawnSync(["git", "clone", "--shared", root, dirtyRoot]);
-    expect(clone.success).toBe(true);
+    addDetachedWorktree(dirtyRoot);
     const builder = join(dirtyRoot, "scripts/build-client-artifact.ts");
     writeFileSync(
       builder,
@@ -66,13 +100,13 @@ describe("remote client artifact", () => {
       "Artifact builder is dirty; commit the reviewed builder before building",
     );
     expect(existsSync(output)).toBe(false);
+    removeDetachedWorktree(dirtyRoot);
   });
 
   test("reinstalls frozen dependencies before bundling", async () => {
     const root = join(import.meta.dir, "..");
     const sourceRoot = join(scratch, "dependency-drift-checkout");
-    const clone = Bun.spawnSync(["git", "clone", "--shared", root, sourceRoot]);
-    expect(clone.success).toBe(true);
+    addDetachedWorktree(sourceRoot);
     const install = Bun.spawnSync(
       [process.execPath, "install", "--frozen-lockfile", "--ignore-scripts"],
       { cwd: sourceRoot },
@@ -100,6 +134,7 @@ describe("remote client artifact", () => {
     expect(manifest.lockSha256).toBe(
       createHash("sha256").update(locked).digest("hex"),
     );
+    removeDetachedWorktree(sourceRoot);
   }, 15_000);
 
   test("builds a self-contained, SHA-bound candidate without activation", async () => {
