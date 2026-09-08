@@ -31,6 +31,10 @@ provider — xAI, Kimi, DeepSeek, GLM, Groq, OpenRouter, Ollama (local & cloud),
 
 - Converts internal messages to OpenAI roles; maps tools to `{type:"function", function:{…}}` and
   `tool_choice` (`auto`/`none`/`required` or a named function).
+- Keeps function names within the 64-character ASCII wire limit using request-local,
+  collision-safe aliases. Declarations, named tool choice and conversation history share the
+  same mapping; streamed and non-streamed replies restore the original tool names without
+  changing call IDs or arguments. Already-valid names stay unchanged.
 - **Rewrites Codex's GPT-5 identity prompt** to a model-agnostic intro so routed models don't claim to
   be OpenAI.
 - **Clamps `reasoning_effort`** to the model's advertised subset when an exact tier is unavailable;
