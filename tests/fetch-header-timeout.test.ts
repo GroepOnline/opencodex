@@ -30,15 +30,23 @@ async function observedEncoding(headers: HeadersInit | undefined, streaming: boo
   return response.text();
 }
 
-function delayedSseStream(delayMs = 80): ReadableStream<Uint8Array> {
+function delayedSseStream(
+  delayMs = 80,
+  onSecondFrame?: () => void,
+): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
+  let timer: ReturnType<typeof setTimeout> | undefined;
   return new ReadableStream({
     start(controller) {
       controller.enqueue(encoder.encode("data: first\n\n"));
-      setTimeout(() => {
+      timer = setTimeout(() => {
+        onSecondFrame?.();
         controller.enqueue(encoder.encode("data: second\n\n"));
         controller.close();
       }, delayMs);
+    },
+    cancel() {
+      if (timer !== undefined) clearTimeout(timer);
     },
   });
 }
@@ -80,6 +88,17 @@ describe("fetchWithHeaderTimeout content-encoding policy", () => {
     expect(await observedEncoding({ "Accept-Encoding": "gzip" }, true)).toBe("gzip");
     expect(await observedEncoding([["aCcEpT-EnCoDiNg", "br"]], true)).toBe("br");
     expect(await observedEncoding(new Headers({ "ACCEPT-ENCODING": "deflate" }), true)).toBe("deflate");
+  });
+
+  test("cancelling an SSE reader clears its delayed fixture enqueue", async () => {
+    let secondFrameEnqueued = false;
+    const reader = delayedSseStream(20, () => {
+      secondFrameEnqueued = true;
+    }).getReader();
+    expect(await readChunk(reader)).toBe("data: first\n\n");
+    await reader.cancel();
+    await Bun.sleep(40);
+    expect(secondFrameEnqueued).toBe(false);
   });
 
   test("identity keeps SSE frames incremental instead of waiting for a gzip block", async () => {

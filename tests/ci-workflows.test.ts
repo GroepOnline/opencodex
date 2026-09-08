@@ -10,14 +10,20 @@ import {
 
 /** Final enforcer comment body after pending/draft checkpoints. */
 function lastEnforcerCommentBody(result: HarnessResult): string {
-  const updates = callsTo(result, "issues.updateComment") as Array<{ body: string }>;
+  const updates = callsTo(result, "issues.updateComment") as Array<{
+    body: string;
+  }>;
   if (updates.length > 0) return updates[updates.length - 1]!.body;
-  const creates = callsTo(result, "issues.createComment") as Array<{ body: string }>;
+  const creates = callsTo(result, "issues.createComment") as Array<{
+    body: string;
+  }>;
   return creates[creates.length - 1]!.body;
 }
 
 const root = new URL("../", import.meta.url);
-const doctorGuiIfChangedScript = fileURLToPath(new URL("../scripts/doctor-gui-if-changed.ts", import.meta.url));
+const doctorGuiIfChangedScript = fileURLToPath(
+  new URL("../scripts/doctor-gui-if-changed.ts", import.meta.url),
+);
 
 async function readText(path: string): Promise<string> {
   return await Bun.file(new URL(path, root)).text();
@@ -28,6 +34,53 @@ function count(text: string, fragment: string): number {
 }
 
 describe("GitHub Actions hardening", () => {
+  test("CI verifies the Bun runtime actually shipped in the package", async () => {
+    const pkg = JSON.parse(await readText("package.json"));
+    const ci = Bun.YAML.parse(await readText(".github/workflows/ci.yml")) as {
+      jobs: Record<
+        string,
+        { steps?: { uses?: string; with?: Record<string, unknown> }[] }
+      >;
+    };
+    const setups = Object.values(ci.jobs)
+      .flatMap((job) => job.steps ?? [])
+      .filter((step) => step.uses?.startsWith("oven-sh/setup-bun@"));
+    expect(setups.length).toBeGreaterThan(0);
+    for (const step of setups)
+      expect(step.with?.["bun-version"]).toBe(pkg.dependencies.bun);
+  });
+
+  test("releases require all platforms before publication, not only after the tag", async () => {
+    const ci = await readText(".github/workflows/ci.yml");
+    const release = await readText(".github/workflows/release.yml");
+    expect(
+      count(
+        ci,
+        "github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')",
+      ),
+    ).toBe(2);
+    expect(release).toContain("--event workflow_dispatch");
+    expect(release).toContain('--commit "$GITHUB_SHA"');
+    expect(release).toContain('select(.conclusion == "success")');
+    expect(release).toContain('$run.conclusion == "success"');
+    expect(release).toContain('if [ "$matrix_ok" != "true" ]; then');
+    for (const job of [
+      "ubuntu-latest",
+      "macos-latest",
+      "macos-quality",
+      "windows-latest",
+      "windows-latest shard 2/2",
+      "windows-quality",
+      "npm-global ubuntu-latest",
+      "npm-global macos-latest",
+      "npm-global windows-latest",
+      "Security audit",
+      "Lint GitHub Actions",
+    ]) {
+      expect(release).toContain(JSON.stringify(job));
+    }
+  });
+
   test("cross-platform CI keeps bounded jobs and immutable action references", async () => {
     const workflow = await readText(".github/workflows/ci.yml");
 
@@ -40,7 +93,12 @@ describe("GitHub Actions hardening", () => {
     // EVERY job must stay bounded — an unbounded job can hang a queue for hours.
     // Derived from the job set rather than a hardcoded count, so adding a job
     // without a ceiling fails here instead of quietly changing the expectation.
-    const jobs = (Bun.YAML.parse(workflow) as { jobs?: Record<string, { "timeout-minutes"?: number }> }).jobs ?? {};
+    const jobs =
+      (
+        Bun.YAML.parse(workflow) as {
+          jobs?: Record<string, { "timeout-minutes"?: number }>;
+        }
+      ).jobs ?? {};
     const unbounded = Object.entries(jobs)
       .filter(([, job]) => typeof job?.["timeout-minutes"] !== "number")
       .map(([name]) => name);
@@ -58,7 +116,12 @@ describe("GitHub Actions hardening", () => {
       ".github/workflows/pr-labeler.yml",
     ]) {
       const text = await readText(path);
-      const parsed = (Bun.YAML.parse(text) as { jobs?: Record<string, { "timeout-minutes"?: number }> }).jobs ?? {};
+      const parsed =
+        (
+          Bun.YAML.parse(text) as {
+            jobs?: Record<string, { "timeout-minutes"?: number }>;
+          }
+        ).jobs ?? {};
       const unboundedAux = Object.entries(parsed)
         .filter(([, job]) => typeof job?.["timeout-minutes"] !== "number")
         .map(([name]) => `${path}: ${name}`);
@@ -66,18 +129,33 @@ describe("GitHub Actions hardening", () => {
       expect(count(text, "timeout-minutes:")).toBe(Object.keys(parsed).length);
     }
 
-    const designSystem = await readText(".github/workflows/design-system-contract.yml");
-    expect(count(designSystem, "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1")).toBe(2);
+    const designSystem = await readText(
+      ".github/workflows/design-system-contract.yml",
+    );
+    expect(
+      count(
+        designSystem,
+        "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
+      ),
+    ).toBe(2);
     expect(designSystem).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
-    expect(workflow).toContain("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1");
-    expect(workflow).toContain("oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6");
-    expect(workflow).toContain("actions/setup-node@820762786026740c76f36085b0efc47a31fe5020");
+    expect(workflow).toContain(
+      "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+    );
+    expect(workflow).toContain(
+      "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
+    );
+    expect(workflow).toContain(
+      "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+    );
     // Both test paths must go through the canonical isolated-environment entry points, never a
     // bare `bun test` that inherits the runner's real HOME and configuration.
     expect(workflow).toContain("bun run scripts/test.ts");
     expect(workflow).toContain("bun run scripts/ci-test-shard.ts");
     expect(workflow).not.toContain("bun test --isolate tests");
-    expect(workflow).toContain("raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7");
+    expect(workflow).toContain(
+      "raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7",
+    );
     expect(workflow).toContain("bun audit --audit-level=high");
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
   });
@@ -90,10 +168,15 @@ describe("GitHub Actions hardening", () => {
     const gate = await readText(".github/workflows/enforce-pr-target.yml");
     const allowed = gate.match(/const ALLOWED_BASES = \[([^\]]*)\];/);
     expect(allowed).not.toBeNull();
-    const bases = [...(allowed?.[1] ?? "").matchAll(/"([^"]+)"/g)].map(m => m[1]);
+    const bases = [...(allowed?.[1] ?? "").matchAll(/"([^"]+)"/g)].map(
+      (m) => m[1],
+    );
     expect(bases).toEqual(["main"]);
 
-    for (const path of [".github/workflows/ci.yml", ".github/workflows/service-lifecycle.yml"]) {
+    for (const path of [
+      ".github/workflows/ci.yml",
+      ".github/workflows/service-lifecycle.yml",
+    ]) {
       const workflow = Bun.YAML.parse(await readText(path)) as {
         on?: { pull_request?: Record<string, unknown> };
       };
@@ -111,7 +194,11 @@ describe("GitHub Actions hardening", () => {
       if ("types" in trigger) {
         // If a future change genuinely needs `types`, it must still cover the
         // three events the default covers.
-        expect([...(trigger.types as string[])].sort()).toEqual(["opened", "reopened", "synchronize"]);
+        expect([...(trigger.types as string[])].sort()).toEqual([
+          "opened",
+          "reopened",
+          "synchronize",
+        ]);
       }
     }
 
@@ -124,7 +211,11 @@ describe("GitHub Actions hardening", () => {
         pull_request?: { paths?: string[] };
       };
     };
-    expect([...(ci.on?.push?.branches ?? [])].sort()).toEqual(["dev", "main", "preview"]);
+    expect([...(ci.on?.push?.branches ?? [])].sort()).toEqual([
+      "dev",
+      "main",
+      "preview",
+    ]);
 
     // The path filter decides whether the job runs at all. Deleting one entry
     // deletes nothing visible: the workflow still exists, still lists the right
@@ -171,13 +262,16 @@ describe("GitHub Actions hardening", () => {
     const workflow = Bun.YAML.parse(text) as {
       on?: Record<string, unknown>;
       permissions?: Record<string, string>;
-      jobs?: Record<string, {
-        steps?: Array<{
-          name?: string;
-          uses?: string;
-          with?: Record<string, unknown>;
-        }>;
-      }>;
+      jobs?: Record<
+        string,
+        {
+          steps?: Array<{
+            name?: string;
+            uses?: string;
+            with?: Record<string, unknown>;
+          }>;
+        }
+      >;
     };
 
     // Branch-selected workflow_dispatch would run an unreviewed YAML with write tokens.
@@ -205,7 +299,9 @@ describe("GitHub Actions hardening", () => {
 
     const stale = steps[1]!;
     expect(stale.name).toBe("Mark and close inactive needs-info issues");
-    expect(stale.uses).toBe("actions/stale@1e223db275d687790206a7acac4d1a11bd6fe629");
+    expect(stale.uses).toBe(
+      "actions/stale@1e223db275d687790206a7acac4d1a11bd6fe629",
+    );
     expect(stale.with?.["only-issue-labels"]).toBe("needs-info");
     expect(stale.with?.["days-before-pr-stale"]).toBe(-1);
     expect(stale.with?.["days-before-pr-close"]).toBe(-1);
@@ -236,7 +332,9 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).not.toContain("Get-ScheduledTask");
     expect(workflow).not.toContain("runs-on: macos");
     expect(workflow).not.toContain("runs-on: windows");
-    expect(workflow).toContain("systemd service has no positive MainPID before crash test");
+    expect(workflow).toContain(
+      "systemd service has no positive MainPID before crash test",
+    );
     expect(workflow).toContain("systemd artifact or proxy survived uninstall");
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
   });
@@ -267,7 +365,9 @@ describe("GitHub Actions hardening", () => {
     }
     expect(workflow).toContain("unset NODE_AUTH_TOKEN");
     expect(workflow).toContain("NPM_PUBLISH_BIN");
-    expect(workflow).toContain("printf 'registry=https://registry.npmjs.org/\\n'");
+    expect(workflow).toContain(
+      "printf 'registry=https://registry.npmjs.org/\\n'",
+    );
     expect(workflow).toContain("OIDC publish failed");
     expect(workflow).toContain("retrying with NPM_TOKEN");
     expect(workflow).toContain("--ignore-scripts");
@@ -279,19 +379,31 @@ describe("GitHub Actions hardening", () => {
     expect(oidcStep).not.toContain("NPM_TOKEN:");
     expect(oidcStep).not.toContain("NODE_AUTH_TOKEN:");
     expect(workflow).toContain("- name: Publish token fallback");
-    const fallbackStep = workflow.slice(workflow.indexOf("- name: Publish token fallback"));
-    expect(fallbackStep).toContain("//registry.npmjs.org/:_authToken=\\${NODE_AUTH_TOKEN}");
+    const fallbackStep = workflow.slice(
+      workflow.indexOf("- name: Publish token fallback"),
+    );
+    expect(fallbackStep).toContain(
+      "//registry.npmjs.org/:_authToken=\\${NODE_AUTH_TOKEN}",
+    );
     expect(fallbackStep).toContain("always-auth=true");
 
     // Immutable action references.
-    expect(workflow).toContain("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1");
-    expect(workflow).toContain("oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6");
-    expect(workflow).toContain("actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e");
+    expect(workflow).toContain(
+      "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+    );
+    expect(workflow).toContain(
+      "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
+    );
+    expect(workflow).toContain(
+      "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e",
+    );
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
 
     // Workflow-dispatch inputs must reach shell code via env, never by direct
     // interpolation into run: source (script-injection hardening).
-    const runBlocks = workflow.split(/\n {6,}- name: /).filter(block => block.includes("run: |"));
+    const runBlocks = workflow
+      .split(/\n {6,}- name: /)
+      .filter((block) => block.includes("run: |"));
     for (const block of runBlocks) {
       const runSource = block.slice(block.indexOf("run: |"));
       expect(runSource).not.toContain("${{ inputs.");
@@ -307,9 +419,9 @@ describe("GitHub Actions hardening", () => {
       .split("push:")[1]!
       .split("workflow_dispatch:")[0]!
       .split("\n")
-      .map(line => line.trim())
-      .filter(line => line.startsWith('- "'))
-      .map(line => line.slice(3, -1));
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('- "'))
+      .map((line) => line.slice(3, -1));
     expect(pushPaths.length).toBeGreaterThanOrEqual(6);
     for (const path of pushPaths) {
       expect(gate.test(path)).toBe(true);
@@ -326,9 +438,9 @@ describe("GitHub Actions hardening", () => {
       .split("pull_request:")[1]!
       .split("push:")[0]!
       .split("\n")
-      .map(line => line.trim())
-      .filter(line => line.startsWith('- "'))
-      .map(line => line.slice(3, -1));
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('- "'))
+      .map((line) => line.slice(3, -1));
     expect([...prPaths].sort()).toEqual([...pushPaths].sort());
     expect(prPaths).toContain("src/cli.ts");
     expect(pushPaths).toContain("src/cli.ts");
@@ -338,8 +450,12 @@ describe("GitHub Actions hardening", () => {
     // Fork release model: everything publishes from main; prerelease semver
     // (any `-*` suffix) must use dist-tag preview, stable must use latest.
     expect(workflow).toContain("Release must run from main;");
-    expect(workflow).toContain("Pre-release versions (${RELEASE_VERSION}) must use dist-tag 'preview'");
-    expect(workflow).toContain("Stable releases (${RELEASE_VERSION}) must use dist-tag 'latest'");
+    expect(workflow).toContain(
+      "Pre-release versions (${RELEASE_VERSION}) must use dist-tag 'preview'",
+    );
+    expect(workflow).toContain(
+      "Stable releases (${RELEASE_VERSION}) must use dist-tag 'latest'",
+    );
     expect(workflow).not.toContain("refs/heads/preview)");
     // Prereleases are restricted to X.Y.Z-preview.N: the update client only parses
     // that suffix, so an -alpha/-beta/-rc publish would never notify preview users.
@@ -348,7 +464,9 @@ describe("GitHub Actions hardening", () => {
     // The release helper must dispatch from the only ref the workflow accepts.
     const releaseHelper = await readText("scripts/release.ts");
     expect(releaseHelper).toContain('const releaseBranch = "main"');
-    expect(releaseHelper).toContain('const expectedTag = isPrerelease ? "preview" : "latest"');
+    expect(releaseHelper).toContain(
+      'const expectedTag = isPrerelease ? "preview" : "latest"',
+    );
     expect(releaseHelper).not.toContain('["main", "preview"]');
 
     // Release notes must include PR categories and the full channel commit range
@@ -356,58 +474,79 @@ describe("GitHub Actions hardening", () => {
     // only create (not edit) is wired. Stable releases also carry matching preview notes.
     expect(workflow).toContain("releases/generate-notes");
     expect(workflow).toContain("git log --pretty=format:'- %s (%h)'");
-    expect(workflow).toContain('commit_range="${notes_range_start}..${GITHUB_SHA}"');
-    expect(workflow).toContain('previous_tag_name=${notes_range_start}');
+    expect(workflow).toContain(
+      'commit_range="${notes_range_start}..${GITHUB_SHA}"',
+    );
+    expect(workflow).toContain("previous_tag_name=${notes_range_start}");
     expect(workflow).toContain("skipping generate-notes (commits-only notes)");
     expect(workflow).toContain("bun scripts/release-notes.ts strip-carried");
     expect(workflow).toContain("bun scripts/release-notes.ts assemble");
-    expect(workflow).toContain("bun scripts/release-notes.ts matching-preview-tags");
-    expect(workflow).toContain("bun scripts/release-notes.ts previous-release-tag");
+    expect(workflow).toContain(
+      "bun scripts/release-notes.ts matching-preview-tags",
+    );
+    expect(workflow).toContain(
+      "bun scripts/release-notes.ts previous-release-tag",
+    );
     expect(workflow).toContain("bun scripts/release-notes.ts has-meaningful");
     expect(workflow).toContain("bun scripts/release-notes.ts join-carried");
     expect(workflow).toContain("bun scripts/release-notes.ts credit-takeovers");
     expect(workflow).toContain('if [ -s "$carried_file" ]; then');
     expect(workflow).toContain('if [ -s "$delta_file" ]; then');
     // Preview notes must baseline any prior release (stable or preview), not preview-only.
-    expect(workflow).toContain('bun scripts/release-notes.ts previous-release-tag "$RELEASE_VERSION"');
+    expect(workflow).toContain(
+      'bun scripts/release-notes.ts previous-release-tag "$RELEASE_VERSION"',
+    );
     expect(workflow).not.toMatch(
       /RELEASE_VERSION" == \*-preview\.\*[\s\S]{0,200}grep -- '-preview\\.'/,
     );
     expect(workflow).toContain("releases/tags/");
-    expect(workflow).toContain('gh api "repos/${GITHUB_REPOSITORY}" --jq \'.full_name\'');
+    expect(workflow).toContain(
+      "gh api \"repos/${GITHUB_REPOSITORY}\" --jq '.full_name'",
+    );
     expect(workflow).toContain("git merge-base --is-ancestor");
     expect(workflow).toContain("operational error, not a missing release");
     expect(workflow).toContain("not an ancestor");
     expect(workflow).toContain("newest_carried_preview_tag");
     expect(workflow).not.toMatch(/newest_preview_tag="\$preview_carry_tag"/);
     expect(workflow).toContain("--commits");
-    expect(workflow).toContain('git tag --list "v${RELEASE_VERSION}-preview.*"');
+    expect(workflow).toContain(
+      'git tag --list "v${RELEASE_VERSION}-preview.*"',
+    );
     expect(workflow).toContain("Carrying preview release notes from");
     // Every subcommand the workflow invokes must be dispatched by the CLI.
     const releaseNotesHelper = await readText("scripts/release-notes.ts");
-    const invoked = [...workflow.matchAll(/bun scripts\/release-notes\.ts ([a-z-]+)/g)]
-      .map(m => m[1]!);
+    const invoked = [
+      ...workflow.matchAll(/bun scripts\/release-notes\.ts ([a-z-]+)/g),
+    ].map((m) => m[1]!);
     expect(invoked.length).toBeGreaterThan(0);
     for (const cmd of new Set(invoked)) {
       expect(releaseNotesHelper).toContain(`"${cmd}"`);
     }
-    expect(workflow).toMatch(/gh release create[\s\S]*?--notes-file "\$notes_file"/);
+    expect(workflow).toMatch(
+      /gh release create[\s\S]*?--notes-file "\$notes_file"/,
+    );
     expect(workflow).not.toContain("gh release edit");
     expect(workflow).not.toContain("--generate-notes");
     // Notes must be assembled before tagging so a notes API failure does not leave
     // a remote tag that blocks release retries at preflight.
-    const createStep = workflow.split("- name: Create GitHub release")[1]!.split(/\n {6}- name:/)[0]!;
+    const createStep = workflow
+      .split("- name: Create GitHub release")[1]!
+      .split(/\n {6}- name:/)[0]!;
     // Preview carry lookup must use tag-specific API status, not `gh release view` stderr prose.
     expect(createStep).toContain("releases/tags/");
     expect(createStep).not.toContain("gh release view");
     // Fail closed: no soft-skip in any spelling around gh api calls in this step.
-    for (const line of createStep.split("\n").filter(l => l.includes("gh api"))) {
+    for (const line of createStep
+      .split("\n")
+      .filter((l) => l.includes("gh api"))) {
       expect(line).not.toMatch(/\|\|\s*(true|echo|:)/);
     }
     expect(createStep).not.toContain("set +e\n            pr_notes");
     expect(createStep.indexOf("gh api")).toBeGreaterThan(-1);
     expect(createStep.indexOf('git tag "$release_tag"')).toBeGreaterThan(-1);
-    expect(createStep.indexOf("gh api")).toBeLessThan(createStep.indexOf('git tag "$release_tag"'));
+    expect(createStep.indexOf("gh api")).toBeLessThan(
+      createStep.indexOf('git tag "$release_tag"'),
+    );
     // First-channel releases must not call generate-notes without an explicit baseline
     // (GitHub would otherwise pick the newest repo tag, possibly from the other channel).
     // Scope to the single if-block that owns generate-notes; createStep has two
@@ -426,13 +565,18 @@ describe("GitHub Actions hardening", () => {
       jobs?: Record<
         string,
         {
-          steps?: Array<{ name?: string; uses?: string; run?: string; with?: Record<string, unknown> }>;
+          steps?: Array<{
+            name?: string;
+            uses?: string;
+            run?: string;
+            with?: Record<string, unknown>;
+          }>;
         }
       >;
     };
 
     const steps = workflow.jobs?.publish?.steps ?? [];
-    const stepNames = steps.map(step => step.name);
+    const stepNames = steps.map((step) => step.name);
 
     // The gate has to run immediately after checkout and before version
     // resolution or any publish step, or a tag pushed on a stray branch could
@@ -491,7 +635,10 @@ describe("GitHub Actions hardening", () => {
     run?: string;
     with?: Record<string, unknown>;
   };
-  type WorkflowJob = Record<string, unknown> & { "runs-on"?: unknown; steps?: WorkflowStep[] };
+  type WorkflowJob = Record<string, unknown> & {
+    "runs-on"?: unknown;
+    steps?: WorkflowStep[];
+  };
   type WorkflowShape = Record<string, unknown> & {
     on?: { pull_request_target?: { types?: string[] } };
     permissions?: Record<string, string> | string;
@@ -515,7 +662,9 @@ describe("GitHub Actions hardening", () => {
     // one. `enforce-target` is not privileged here; it is just the one whose
     // script body the behavioural tests read.
     const allSteps = jobs.flatMap(([, job]) => job?.steps ?? []);
-    const scriptStep = steps!.find(step => typeof step.with?.script === "string");
+    const scriptStep = steps!.find(
+      (step) => typeof step.with?.script === "string",
+    );
     expect(scriptStep).toBeDefined();
     const script = stripComments(String(scriptStep!.with!.script));
     return { workflow, jobs, steps: steps!, allSteps, script };
@@ -584,20 +733,38 @@ describe("GitHub Actions hardening", () => {
       const next = source[i + 1];
 
       if (block) {
-        if (char === "*" && next === "/") { block = false; i += 1; continue; }
+        if (char === "*" && next === "/") {
+          block = false;
+          i += 1;
+          continue;
+        }
         if (char === "\n") out += char;
         continue;
       }
 
       if (quote) {
         out += char;
-        if (char === "\\") { if (next !== undefined) { out += next; i += 1; } continue; }
+        if (char === "\\") {
+          if (next !== undefined) {
+            out += next;
+            i += 1;
+          }
+          continue;
+        }
         if (char === quote) quote = null;
         continue;
       }
 
-      if (char === '"' || char === "'" || char === "`") { quote = char; out += char; continue; }
-      if (char === "/" && next === "*") { block = true; i += 1; continue; }
+      if (char === '"' || char === "'" || char === "`") {
+        quote = char;
+        out += char;
+        continue;
+      }
+      if (char === "/" && next === "*") {
+        block = true;
+        i += 1;
+        continue;
+      }
       if (char === "/" && next === "/") {
         while (i < source.length && source[i] !== "\n") i += 1;
         out += "\n";
@@ -652,7 +819,9 @@ describe("GitHub Actions hardening", () => {
     // particular files change, which on a docs-only PR means never. Both are
     // additive, both look like ordinary scoping in a diff, and neither failed a
     // single assertion.
-    expect(Object.keys(workflow.on?.pull_request_target ?? {})).toEqual(["types"]);
+    expect(Object.keys(workflow.on?.pull_request_target ?? {})).toEqual([
+      "types",
+    ]);
 
     // Exactly the scopes this gate needs. `pull-requests: write` covers title
     // and comment updates. `contents: write` is required for the draft GraphQL
@@ -728,7 +897,9 @@ describe("GitHub Actions hardening", () => {
    */
   test("PR target enforcement's script interpolates nothing from the event", async () => {
     const { steps } = await readEnforcePrTarget();
-    const scriptStep = steps.find(step => typeof step.with?.script === "string");
+    const scriptStep = steps.find(
+      (step) => typeof step.with?.script === "string",
+    );
     const rawScript = String(scriptStep?.with?.script ?? "");
     expect(rawScript).not.toContain("${{");
   });
@@ -751,7 +922,9 @@ describe("GitHub Actions hardening", () => {
     // The verdict is a live PR read plus ancestry/description checks.
     expect(script).toContain("github.rest.pulls.get");
     expect(script).toContain("collectPrQualityFailures");
-    expect(script).toContain("github.rest.repos.getCollaboratorPermissionLevel");
+    expect(script).toContain(
+      "github.rest.repos.getCollaboratorPermissionLevel",
+    );
     expect(script).toContain("github.rest.repos.compareCommitsWithBasehead");
     // The allow-list is the gate's whole policy, so it is pinned by value and
     // not just by shape: a widened list is the one edit that opens every base
@@ -759,7 +932,9 @@ describe("GitHub Actions hardening", () => {
     expect(script).toMatch(/const ALLOWED_BASES = \["main"\];/);
     expect(script).toMatch(/const DEFAULT_BASE = "main";/);
     expect(script).toContain("headRef: pr.head.ref");
-    expect(script).toContain("headFromSameRepo: isSameGithubRepo(pr.head.repo, pr.base.repo)");
+    expect(script).toContain(
+      "headFromSameRepo: isSameGithubRepo(pr.head.repo, pr.base.repo)",
+    );
 
     // Every mutation targets the PR the event fired for. `pull_number` is the
     // only handle the script has, and an audit round repointed it at
@@ -801,7 +976,10 @@ describe("GitHub Actions hardening", () => {
     // argument names by brace-depth, so nested objects do not leak in.
     function callArgs(callee: string): string[][] {
       const found: string[][] = [];
-      const pattern = new RegExp(`${callee.replaceAll(".", "\\.")}\\(\\s*\\{`, "g");
+      const pattern = new RegExp(
+        `${callee.replaceAll(".", "\\.")}\\(\\s*\\{`,
+        "g",
+      );
       for (const match of script.matchAll(pattern)) {
         let depth = 1;
         let i = match.index! + match[0].length;
@@ -853,9 +1031,9 @@ describe("GitHub Actions hardening", () => {
     // These are the only three mutating REST calls. A fourth is a new write
     // nobody reviewed. `pulls.list` is a stacked-base read, not a write.
     const restWrites = [...script.matchAll(/github\.rest\.[\w.]+/g)]
-      .map(match => match[0])
+      .map((match) => match[0])
       .filter(
-        name =>
+        (name) =>
           !name.endsWith(".get") &&
           !name.endsWith(".list") &&
           !name.endsWith(".listComments") &&
@@ -904,7 +1082,9 @@ describe("GitHub Actions hardening", () => {
      * the check that closes them has to be able to look from the same place.
      */
     async function runProbe(body: string): Promise<Record<string, unknown>> {
-      const result = await runEnforcePrTarget(body, { pr: { base: { ref: "main" } } });
+      const result = await runEnforcePrTarget(body, {
+        pr: { base: { ref: "main" } },
+      });
       return result.returnValue as Record<string, unknown>;
     }
 
@@ -949,7 +1129,9 @@ describe("GitHub Actions hardening", () => {
 
       expect(methodsOf(result)).toEqual(readsAllowedBase());
       expect(callsTo(result, "pulls.update")).toEqual([]);
-      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(false);
+      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(
+        false,
+      );
     });
 
     test("maintainers skip ancestry enforcement with the same compares", async () => {
@@ -960,14 +1142,20 @@ describe("GitHub Actions hardening", () => {
       });
 
       expect(methodsOf(result)).toEqual(readsAllowedBase());
-      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(false);
+      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(
+        false,
+      );
     });
 
     test("empty PR description fails and drafts", async () => {
       const result = await run({ pr: { base: { ref: "main" }, body: "" } });
 
-      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(true);
-      expect(lastEnforcerCommentBody(result)).toContain("Pull request description");
+      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(
+        true,
+      );
+      expect(lastEnforcerCommentBody(result)).toContain(
+        "Pull request description",
+      );
       expect(lastEnforcerCommentBody(result)).toContain("body is empty");
       expect(callsTo(result, "graphql")).toHaveLength(1);
     });
@@ -980,29 +1168,38 @@ describe("GitHub Actions hardening", () => {
         },
       });
 
-      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(true);
-      expect(lastEnforcerCommentBody(result)).toContain("literal `\\n` escape sequences");
+      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(
+        true,
+      );
+      expect(lastEnforcerCommentBody(result)).toContain(
+        "literal `\\n` escape sequences",
+      );
     });
 
     test("clears prior bot state when every gate passes again", async () => {
       const result = await run({
         pr: { base: { ref: "main" }, draft: true },
-        comments: [botComment({
-          version: 1,
-          active: true,
-          autoDraftedByBot: true,
-          titlePrefixedByBot: false,
-          ancestryFailed: true,
-          descriptionFailed: true,
-        })],
+        comments: [
+          botComment({
+            version: 1,
+            active: true,
+            autoDraftedByBot: true,
+            titlePrefixedByBot: false,
+            ancestryFailed: true,
+            descriptionFailed: true,
+          }),
+        ],
       });
 
-      expect(methodsOf(result)).toEqual(readsAllowedBase([
-        "graphql",
-        "issues.updateComment",
-      ]));
-      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(false);
-      const [cleared] = callsTo(result, "issues.updateComment") as [{ body: string }];
+      expect(methodsOf(result)).toEqual(
+        readsAllowedBase(["graphql", "issues.updateComment"]),
+      );
+      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(
+        false,
+      );
+      const [cleared] = callsTo(result, "issues.updateComment") as [
+        { body: string },
+      ];
       expect(cleared.body).toContain('"active":false');
       expect(cleared.body).toContain("PR quality gates passed");
     });
@@ -1014,18 +1211,24 @@ describe("GitHub Actions hardening", () => {
       // native-port line, and a topic branch. None of them is an integration
       // line any more — `main` is the only one.
       for (const ref of ["dev", "master", "preview", "dev2-go", "feature/x"]) {
-        const result = await run({ pr: { base: { ref }, title: "Add a thing", draft: false } });
+        const result = await run({
+          pr: { base: { ref }, title: "Add a thing", draft: false },
+        });
 
-        expect(methodsOf(result)).toEqual(readsWrongBase([
-          "issues.createComment",
-          "pulls.update",
-          "issues.updateComment",
-          "graphql",
-          "issues.updateComment",
-          "issues.updateComment",
-        ]));
+        expect(methodsOf(result)).toEqual(
+          readsWrongBase([
+            "issues.createComment",
+            "pulls.update",
+            "issues.updateComment",
+            "graphql",
+            "issues.updateComment",
+            "issues.updateComment",
+          ]),
+        );
         expect(lastEnforcerCommentBody(result)).toContain(`\`${ref}\``);
-        expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(true);
+        expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(
+          true,
+        );
       }
     });
 
@@ -1035,19 +1238,35 @@ describe("GitHub Actions hardening", () => {
       // does not fire, they are left with a permanently renamed, drafted PR
       // and no state to explain it.
       const result = await run({
-        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Port the runtime entry" },
-        comments: [botComment({ version: 1, active: true, autoDraftedByBot: true, titlePrefixedByBot: true })],
+        pr: {
+          base: { ref: "main" },
+          draft: true,
+          title: "[WRONG BRANCH] Port the runtime entry",
+        },
+        comments: [
+          botComment({
+            version: 1,
+            active: true,
+            autoDraftedByBot: true,
+            titlePrefixedByBot: true,
+          }),
+        ],
       });
 
-      expect(methodsOf(result)).toEqual(readsAllowedBase([
-        "pulls.update",
-        "graphql",
-        "issues.updateComment",
-      ]));
+      expect(methodsOf(result)).toEqual(
+        readsAllowedBase(["pulls.update", "graphql", "issues.updateComment"]),
+      );
       expect(callsTo(result, "pulls.update")).toEqual([
-        { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "Port the runtime entry" },
+        {
+          owner: "GroepOnline",
+          repo: "opencodex",
+          pull_number: 42,
+          title: "Port the runtime entry",
+        },
       ]);
-      const [cleared] = callsTo(result, "issues.updateComment") as [{ body: string }];
+      const [cleared] = callsTo(result, "issues.updateComment") as [
+        { body: string },
+      ];
       expect(cleared.body).toContain('"active":false');
       // The confirmation names where the PR actually went, read from the live
       // PR rather than assumed.
@@ -1059,25 +1278,49 @@ describe("GitHub Actions hardening", () => {
       // inactive, so a move back out has to build fresh state rather than
       // reuse the cleared one, and must not stack a second prefix.
       const result = await run({
-        pr: { base: { ref: "dev" }, draft: false, title: "Port the runtime entry" },
-        comments: [botComment({ version: 1, active: false, autoDraftedByBot: false, titlePrefixedByBot: false })],
+        pr: {
+          base: { ref: "dev" },
+          draft: false,
+          title: "Port the runtime entry",
+        },
+        comments: [
+          botComment({
+            version: 1,
+            active: false,
+            autoDraftedByBot: false,
+            titlePrefixedByBot: false,
+          }),
+        ],
       });
 
-      expect(methodsOf(result)).toEqual(readsWrongBase([
-        "issues.updateComment",
-        "pulls.update",
-        "issues.updateComment",
-        "graphql",
-        "issues.updateComment",
-        "issues.updateComment",
-      ]));
+      expect(methodsOf(result)).toEqual(
+        readsWrongBase([
+          "issues.updateComment",
+          "pulls.update",
+          "issues.updateComment",
+          "graphql",
+          "issues.updateComment",
+          "issues.updateComment",
+        ]),
+      );
       expect(callsTo(result, "pulls.update")).toEqual([
-        { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] Port the runtime entry" },
+        {
+          owner: "GroepOnline",
+          repo: "opencodex",
+          pull_number: 42,
+          title: "[WRONG BRANCH] Port the runtime entry",
+        },
       ]);
       expect(lastEnforcerCommentBody(result)).toContain('"active":true');
-      expect(lastEnforcerCommentBody(result)).toContain('"autoDraftedByBot":true');
-      expect(lastEnforcerCommentBody(result)).toContain('"titlePrefixedByBot":true');
-      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(true);
+      expect(lastEnforcerCommentBody(result)).toContain(
+        '"autoDraftedByBot":true',
+      );
+      expect(lastEnforcerCommentBody(result)).toContain(
+        '"titlePrefixedByBot":true',
+      );
+      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(
+        true,
+      );
     });
 
     test("the wrong-target explanation names the one allowed base", async () => {
@@ -1115,7 +1358,9 @@ describe("GitHub Actions hardening", () => {
       expect(callsTo(result, "pulls.update")).toEqual([]);
       expect(callsTo(result, "graphql")).toEqual([]);
       expect(result.logs.join(" ")).toContain("All PR quality gates passed");
-      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(false);
+      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(
+        false,
+      );
     });
 
     test("a fork head named main targeting dev stays wrong-base", async () => {
@@ -1128,16 +1373,20 @@ describe("GitHub Actions hardening", () => {
         },
       });
 
-      expect(methodsOf(result)).toEqual(readsWrongBase([
-        "issues.createComment",
-        "pulls.update",
-        "issues.updateComment",
-        "graphql",
-        "issues.updateComment",
-        "issues.updateComment",
-      ]));
+      expect(methodsOf(result)).toEqual(
+        readsWrongBase([
+          "issues.createComment",
+          "pulls.update",
+          "issues.updateComment",
+          "graphql",
+          "issues.updateComment",
+          "issues.updateComment",
+        ]),
+      );
       expect(lastEnforcerCommentBody(result)).toContain("Wrong target branch");
-      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(true);
+      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(
+        true,
+      );
     });
 
     test("a feature head targeting dev is wrong-base", async () => {
@@ -1150,16 +1399,20 @@ describe("GitHub Actions hardening", () => {
         },
       });
 
-      expect(methodsOf(result)).toEqual(readsWrongBase([
-        "issues.createComment",
-        "pulls.update",
-        "issues.updateComment",
-        "graphql",
-        "issues.updateComment",
-        "issues.updateComment",
-      ]));
+      expect(methodsOf(result)).toEqual(
+        readsWrongBase([
+          "issues.createComment",
+          "pulls.update",
+          "issues.updateComment",
+          "graphql",
+          "issues.updateComment",
+          "issues.updateComment",
+        ]),
+      );
       expect(lastEnforcerCommentBody(result)).toContain("Wrong target branch");
-      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(true);
+      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(
+        true,
+      );
     });
 
     test("a PR targeting dev is prefixed, drafted, and explained — and nothing else", async () => {
@@ -1170,24 +1423,33 @@ describe("GitHub Actions hardening", () => {
       // Pending ownership first, then title prefix, then claim autoDraftedByBot and
       // checkpoint before convertToDraft so a successful convert followed by a
       // failed comment still restores later.
-      expect(methodsOf(result)).toEqual(readsWrongBase([
-        "issues.createComment",
-        "pulls.update",
-        "issues.updateComment",
-        "graphql",
-        "issues.updateComment",
-        "issues.updateComment",
-      ]));
+      expect(methodsOf(result)).toEqual(
+        readsWrongBase([
+          "issues.createComment",
+          "pulls.update",
+          "issues.updateComment",
+          "graphql",
+          "issues.updateComment",
+          "issues.updateComment",
+        ]),
+      );
 
       // The title update carries the title and nothing else. `base`, `state`
       // and `body` are all accepted by this endpoint; an audit round added
       // `base: "main"` here and no static assertion caught it.
       expect(callsTo(result, "pulls.update")).toEqual([
-        { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] Add a thing" },
+        {
+          owner: "GroepOnline",
+          repo: "opencodex",
+          pull_number: 42,
+          title: "[WRONG BRANCH] Add a thing",
+        },
       ]);
 
       // The first comment create addresses this PR, by its own number.
-      const [created] = callsTo(result, "issues.createComment") as [{ issue_number: number; body: string }];
+      const [created] = callsTo(result, "issues.createComment") as [
+        { issue_number: number; body: string },
+      ];
       expect(created.issue_number).toBe(42);
       expect(created.body).toContain(MARKER);
       const commentBody = lastEnforcerCommentBody(result);
@@ -1195,13 +1457,17 @@ describe("GitHub Actions hardening", () => {
       expect(commentBody).toContain('"autoDraftedByBot":true');
 
       // The only GraphQL mutation is the draft conversion — not a retarget.
-      const [draft] = callsTo(result, "graphql") as [{ query: string; variables: unknown }];
+      const [draft] = callsTo(result, "graphql") as [
+        { query: string; variables: unknown },
+      ];
       expect(draft.query).toContain("convertPullRequestToDraft");
       expect(draft.query).not.toContain("updatePullRequest");
       expect(draft.variables).toEqual({ pullRequestId: "PR_kwDOnode42" });
 
       // Wrong-base runs must fail the required check even when mutations succeed.
-      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(true);
+      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(
+        true,
+      );
     });
 
     test("a stacked PR targeting another open PR head is not wrong-base", async () => {
@@ -1232,7 +1498,9 @@ describe("GitHub Actions hardening", () => {
       expect(callsTo(result, "graphql")).toEqual([]);
       expect(result.logs.join(" ")).toContain("treating as stacked");
       expect(result.logs.join(" ")).toContain("All PR quality gates passed");
-      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(false);
+      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(
+        false,
+      );
     });
 
     test("a stacked parent found on open-PR page two is still exempt", async () => {
@@ -1268,19 +1536,27 @@ describe("GitHub Actions hardening", () => {
         ],
       });
 
-      const listPages = callsTo(result, "pulls.list").map(
-        (args) => Number((args as { page?: number }).page ?? 1),
+      const listPages = callsTo(result, "pulls.list").map((args) =>
+        Number((args as { page?: number }).page ?? 1),
       );
       expect(listPages).toEqual([1, 2]);
-      expect(methodsOf(result).filter((m) => m === "pulls.list")).toHaveLength(2);
+      expect(methodsOf(result).filter((m) => m === "pulls.list")).toHaveLength(
+        2,
+      );
       expect(callsTo(result, "pulls.update")).toEqual([]);
       expect(result.logs.join(" ")).toContain("treating as stacked");
-      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(false);
+      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(
+        false,
+      );
     });
 
     test("a non-main base with no open parent PR is still wrong-base", async () => {
       const result = await run({
-        pr: { base: { ref: "feature/orphan" }, title: "Orphan stack", draft: false },
+        pr: {
+          base: { ref: "feature/orphan" },
+          title: "Orphan stack",
+          draft: false,
+        },
         openPulls: [
           {
             number: 99,
@@ -1292,14 +1568,16 @@ describe("GitHub Actions hardening", () => {
         ],
       });
 
-      expect(methodsOf(result)).toEqual(readsWrongBase([
-        "issues.createComment",
-        "pulls.update",
-        "issues.updateComment",
-        "graphql",
-        "issues.updateComment",
-        "issues.updateComment",
-      ]));
+      expect(methodsOf(result)).toEqual(
+        readsWrongBase([
+          "issues.createComment",
+          "pulls.update",
+          "issues.updateComment",
+          "graphql",
+          "issues.updateComment",
+          "issues.updateComment",
+        ]),
+      );
       expect(callsTo(result, "pulls.update")).toEqual([
         {
           owner: "GroepOnline",
@@ -1308,7 +1586,9 @@ describe("GitHub Actions hardening", () => {
           title: "[WRONG BRANCH] Orphan stack",
         },
       ]);
-      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(true);
+      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(
+        true,
+      );
     });
 
     test("a PR that was already a draft is not un-drafted afterwards", async () => {
@@ -1319,50 +1599,85 @@ describe("GitHub Actions hardening", () => {
       // No draft conversion: it is already a draft. Pending ownership first,
       // then title prefix, then final explanation. State records that the bot
       // did not draft — which stops restore from marking it ready.
-      expect(methodsOf(wrong)).toEqual(readsWrongBase([
-        "issues.createComment",
-        "pulls.update",
-        "issues.updateComment",
-      ]));
-      expect(lastEnforcerCommentBody(wrong)).toContain('"autoDraftedByBot":false');
+      expect(methodsOf(wrong)).toEqual(
+        readsWrongBase([
+          "issues.createComment",
+          "pulls.update",
+          "issues.updateComment",
+        ]),
+      );
+      expect(lastEnforcerCommentBody(wrong)).toContain(
+        '"autoDraftedByBot":false',
+      );
       expect(wrong.warnings.some((w) => w.startsWith("setFailed:"))).toBe(true);
 
       // Now retarget it correctly, feeding that state back in.
       const restored = await run({
-        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
-        comments: [botComment({ version: 1, active: true, autoDraftedByBot: false, titlePrefixedByBot: true })],
+        pr: {
+          base: { ref: "main" },
+          draft: true,
+          title: "[WRONG BRANCH] Add a thing",
+        },
+        comments: [
+          botComment({
+            version: 1,
+            active: true,
+            autoDraftedByBot: false,
+            titlePrefixedByBot: true,
+          }),
+        ],
       });
 
       // The prefix comes off; the draft stays. No GraphQL at all.
-      expect(methodsOf(restored)).toEqual(readsAllowedBase([
-        "pulls.update",
-        "issues.updateComment",
-      ]));
+      expect(methodsOf(restored)).toEqual(
+        readsAllowedBase(["pulls.update", "issues.updateComment"]),
+      );
       expect(callsTo(restored, "pulls.update")).toEqual([
-        { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "Add a thing" },
+        {
+          owner: "GroepOnline",
+          repo: "opencodex",
+          pull_number: 42,
+          title: "Add a thing",
+        },
       ]);
     });
 
     test("a corrected PR gets its title and ready state back", async () => {
       const result = await run({
-        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
-        comments: [botComment({ version: 1, active: true, autoDraftedByBot: true, titlePrefixedByBot: true })],
+        pr: {
+          base: { ref: "main" },
+          draft: true,
+          title: "[WRONG BRANCH] Add a thing",
+        },
+        comments: [
+          botComment({
+            version: 1,
+            active: true,
+            autoDraftedByBot: true,
+            titlePrefixedByBot: true,
+          }),
+        ],
       });
 
-      expect(methodsOf(result)).toEqual(readsAllowedBase([
-        "pulls.update",
-        "graphql",
-        "issues.updateComment",
-      ]));
+      expect(methodsOf(result)).toEqual(
+        readsAllowedBase(["pulls.update", "graphql", "issues.updateComment"]),
+      );
       expect(callsTo(result, "pulls.update")).toEqual([
-        { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "Add a thing" },
+        {
+          owner: "GroepOnline",
+          repo: "opencodex",
+          pull_number: 42,
+          title: "Add a thing",
+        },
       ]);
       const [ready] = callsTo(result, "graphql") as [{ query: string }];
       expect(ready.query).toContain("markPullRequestReadyForReview");
 
       // The comment is edited in place, and the state is cleared so a later
       // run does not try to restore twice.
-      const [update] = callsTo(result, "issues.updateComment") as [{ comment_id: number; body: string }];
+      const [update] = callsTo(result, "issues.updateComment") as [
+        { comment_id: number; body: string },
+      ];
       expect(update.comment_id).toBe(7);
       expect(update.body).toContain('"active":false');
       expect(update.body).toContain("PR quality gates passed");
@@ -1370,26 +1685,52 @@ describe("GitHub Actions hardening", () => {
 
     test("only this workflow's own prefix is removed, not a contributor's edits", async () => {
       const result = await run({
-        pr: { base: { ref: "main" }, draft: false, title: "[WRONG BRANCH] Add a thing (v2)" },
-        comments: [botComment({ version: 1, active: true, autoDraftedByBot: false, titlePrefixedByBot: true })],
+        pr: {
+          base: { ref: "main" },
+          draft: false,
+          title: "[WRONG BRANCH] Add a thing (v2)",
+        },
+        comments: [
+          botComment({
+            version: 1,
+            active: true,
+            autoDraftedByBot: false,
+            titlePrefixedByBot: true,
+          }),
+        ],
       });
 
       expect(callsTo(result, "pulls.update")).toEqual([
-        { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "Add a thing (v2)" },
+        {
+          owner: "GroepOnline",
+          repo: "opencodex",
+          pull_number: 42,
+          title: "Add a thing (v2)",
+        },
       ]);
     });
 
     test("a rerun on an already-handled PR does not stack prefixes or re-draft", async () => {
       const result = await run({
-        pr: { base: { ref: "dev" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
-        comments: [botComment({ version: 1, active: true, autoDraftedByBot: true, titlePrefixedByBot: true })],
+        pr: {
+          base: { ref: "dev" },
+          draft: true,
+          title: "[WRONG BRANCH] Add a thing",
+        },
+        comments: [
+          botComment({
+            version: 1,
+            active: true,
+            autoDraftedByBot: true,
+            titlePrefixedByBot: true,
+          }),
+        ],
       });
 
       // The comment is refreshed (pending + final); title and draft are already right.
-      expect(methodsOf(result)).toEqual(readsWrongBase([
-        "issues.updateComment",
-        "issues.updateComment",
-      ]));
+      expect(methodsOf(result)).toEqual(
+        readsWrongBase(["issues.updateComment", "issues.updateComment"]),
+      );
     });
 
     test("the verdict comes from the fetched PR, not the stale event payload", async () => {
@@ -1400,21 +1741,32 @@ describe("GitHub Actions hardening", () => {
       // harness where the two were the same object.
       const wentWrong = await run({
         pr: { base: { ref: "dev" }, title: "Add a thing", draft: false },
-        eventPayload: { base: { ref: "main" }, title: "Add a thing", draft: false },
+        eventPayload: {
+          base: { ref: "main" },
+          title: "Add a thing",
+          draft: false,
+        },
       });
       // Exact equality, not `toContain`. An audit round hung an extra
       // `github.request("POST /repos/attacker/other/issues", …)` off precisely
       // this path because it was the one scenario asserting loosely.
-      expect(methodsOf(wentWrong)).toEqual(readsWrongBase([
-        "issues.createComment",
-        "pulls.update",
-        "issues.updateComment",
-        "graphql",
-        "issues.updateComment",
-        "issues.updateComment",
-      ]));
+      expect(methodsOf(wentWrong)).toEqual(
+        readsWrongBase([
+          "issues.createComment",
+          "pulls.update",
+          "issues.updateComment",
+          "graphql",
+          "issues.updateComment",
+          "issues.updateComment",
+        ]),
+      );
       expect(callsTo(wentWrong, "pulls.update")).toEqual([
-        { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] Add a thing" },
+        {
+          owner: "GroepOnline",
+          repo: "opencodex",
+          pull_number: 42,
+          title: "[WRONG BRANCH] Add a thing",
+        },
       ]);
 
       // …and the reverse: the event says main, the live PR says dev. No writes.
@@ -1434,20 +1786,45 @@ describe("GitHub Actions hardening", () => {
       // hole in reverse.
       const wrongTarget = await run({
         pr: { base: { ref: "dev" }, title: "Add a thing", draft: false },
-        eventPayload: { base: { ref: "main" }, title: "Add a thing", draft: false },
+        eventPayload: {
+          base: { ref: "main" },
+          title: "Add a thing",
+          draft: false,
+        },
       });
-      expect(lastEnforcerCommentBody(wrongTarget)).toContain("currently targets `dev`");
-      expect(lastEnforcerCommentBody(wrongTarget)).not.toContain("currently targets `main`");
+      expect(lastEnforcerCommentBody(wrongTarget)).toContain(
+        "currently targets `dev`",
+      );
+      expect(lastEnforcerCommentBody(wrongTarget)).not.toContain(
+        "currently targets `main`",
+      );
 
       // The corrected-path sentence: the event still carries the old wrong
       // base, the live PR is on dev. Naming the event's base here tells the
       // author their retarget did not take.
       const corrected = await run({
-        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
-        eventPayload: { base: { ref: "dev" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
-        comments: [botComment({ version: 1, active: true, autoDraftedByBot: false, titlePrefixedByBot: true })],
+        pr: {
+          base: { ref: "main" },
+          draft: true,
+          title: "[WRONG BRANCH] Add a thing",
+        },
+        eventPayload: {
+          base: { ref: "dev" },
+          draft: true,
+          title: "[WRONG BRANCH] Add a thing",
+        },
+        comments: [
+          botComment({
+            version: 1,
+            active: true,
+            autoDraftedByBot: false,
+            titlePrefixedByBot: true,
+          }),
+        ],
       });
-      const [edited] = callsTo(corrected, "issues.updateComment") as [{ body: string }];
+      const [edited] = callsTo(corrected, "issues.updateComment") as [
+        { body: string },
+      ];
       expect(edited.body).toContain("now targets `main`");
       expect(edited.body).not.toContain("now targets `dev`");
     });
@@ -1464,20 +1841,33 @@ describe("GitHub Actions hardening", () => {
       }));
 
       const result = await run({
-        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+        pr: {
+          base: { ref: "main" },
+          draft: true,
+          title: "[WRONG BRANCH] Add a thing",
+        },
         commentPages: [
           filler,
-          [botComment({ version: 1, active: true, autoDraftedByBot: true, titlePrefixedByBot: true })],
+          [
+            botComment({
+              version: 1,
+              active: true,
+              autoDraftedByBot: true,
+              titlePrefixedByBot: true,
+            }),
+          ],
         ],
       });
 
       // Found it: the prefix comes off, the PR is marked ready, and the
       // existing comment is edited rather than duplicated.
-      expect(methodsOf(result)).toEqual(readsAllowedBasePaged([
-        "pulls.update",
-        "graphql",
-        "issues.updateComment",
-      ]));
+      expect(methodsOf(result)).toEqual(
+        readsAllowedBasePaged([
+          "pulls.update",
+          "graphql",
+          "issues.updateComment",
+        ]),
+      );
       expect(callsTo(result, "issues.createComment")).toEqual([]);
     });
 
@@ -1488,24 +1878,30 @@ describe("GitHub Actions hardening", () => {
       // permanent no-op, and every scenario still passed.
       const result = await run({
         pr: { base: { ref: "dev" }, title: "Add a thing", draft: false },
-        comments: [{
-          id: 7,
-          user: { login: BOT },
-          body: `${MARKER}\n<!-- wrong-branch-enforcer-state:{not json} -->`,
-        }],
+        comments: [
+          {
+            id: 7,
+            user: { login: BOT },
+            body: `${MARKER}\n<!-- wrong-branch-enforcer-state:{not json} -->`,
+          },
+        ],
       });
 
       // Enforcement still happens, and the unreadable comment is repaired in
       // place rather than duplicated.
-      expect(methodsOf(result)).toEqual(readsWrongBase([
-        "issues.updateComment",
-        "pulls.update",
-        "issues.updateComment",
-        "graphql",
-        "issues.updateComment",
-        "issues.updateComment",
-      ]));
-      expect(result.warnings.join(" ")).toContain("Could not parse stored workflow state");
+      expect(methodsOf(result)).toEqual(
+        readsWrongBase([
+          "issues.updateComment",
+          "pulls.update",
+          "issues.updateComment",
+          "graphql",
+          "issues.updateComment",
+          "issues.updateComment",
+        ]),
+      );
+      expect(result.warnings.join(" ")).toContain(
+        "Could not parse stored workflow state",
+      );
     });
 
     test("an active state that recorded no changes still enforces and still clears", async () => {
@@ -1523,22 +1919,33 @@ describe("GitHub Actions hardening", () => {
 
       // Still wrong: refresh the explanation. Nothing to re-apply.
       const stillWrong = await run({
-        pr: { base: { ref: "dev" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+        pr: {
+          base: { ref: "dev" },
+          draft: true,
+          title: "[WRONG BRANCH] Add a thing",
+        },
         comments: [botComment(noRecordedChanges)],
       });
-      expect(methodsOf(stillWrong)).toEqual(readsWrongBase([
-        "issues.updateComment",
-        "issues.updateComment",
-      ]));
+      expect(methodsOf(stillWrong)).toEqual(
+        readsWrongBase(["issues.updateComment", "issues.updateComment"]),
+      );
 
       // Corrected: nothing to undo, but the state must still be cleared or the
       // next wrong-target event resumes from a stale record.
       const corrected = await run({
-        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+        pr: {
+          base: { ref: "main" },
+          draft: true,
+          title: "[WRONG BRANCH] Add a thing",
+        },
         comments: [botComment(noRecordedChanges)],
       });
-      expect(methodsOf(corrected)).toEqual(readsAllowedBase(["issues.updateComment"]));
-      const [cleared] = callsTo(corrected, "issues.updateComment") as [{ body: string }];
+      expect(methodsOf(corrected)).toEqual(
+        readsAllowedBase(["issues.updateComment"]),
+      );
+      const [cleared] = callsTo(corrected, "issues.updateComment") as [
+        { body: string },
+      ];
       expect(cleared.body).toContain('"active":false');
       expect(cleared.body).toContain("PR quality gates passed");
     });
@@ -1550,16 +1957,28 @@ describe("GitHub Actions hardening", () => {
       // !pr.draft) return;` — the state comment stays active forever and the
       // next wrong-target event resumes from a record that no longer matches.
       const result = await run({
-        pr: { base: { ref: "main" }, draft: false, title: "[WRONG BRANCH] Add a thing" },
-        comments: [botComment({ version: 1, active: true, autoDraftedByBot: true, titlePrefixedByBot: true })],
+        pr: {
+          base: { ref: "main" },
+          draft: false,
+          title: "[WRONG BRANCH] Add a thing",
+        },
+        comments: [
+          botComment({
+            version: 1,
+            active: true,
+            autoDraftedByBot: true,
+            titlePrefixedByBot: true,
+          }),
+        ],
       });
 
       // Nothing to un-draft, the prefix comes off, and the state is cleared.
-      expect(methodsOf(result)).toEqual(readsAllowedBase([
-        "pulls.update",
-        "issues.updateComment",
-      ]));
-      const [cleared] = callsTo(result, "issues.updateComment") as [{ body: string }];
+      expect(methodsOf(result)).toEqual(
+        readsAllowedBase(["pulls.update", "issues.updateComment"]),
+      );
+      const [cleared] = callsTo(result, "issues.updateComment") as [
+        { body: string },
+      ];
       expect(cleared.body).toContain('"active":false');
     });
 
@@ -1569,14 +1988,20 @@ describe("GitHub Actions hardening", () => {
       // the first 15 characters of their title.
       const result = await run({
         pr: { base: { ref: "main" }, draft: true, title: "Add a thing" },
-        comments: [botComment({ version: 1, active: true, autoDraftedByBot: true, titlePrefixedByBot: true })],
+        comments: [
+          botComment({
+            version: 1,
+            active: true,
+            autoDraftedByBot: true,
+            titlePrefixedByBot: true,
+          }),
+        ],
       });
 
       expect(callsTo(result, "pulls.update")).toEqual([]);
-      expect(methodsOf(result)).toEqual(readsAllowedBase([
-        "graphql",
-        "issues.updateComment",
-      ]));
+      expect(methodsOf(result)).toEqual(
+        readsAllowedBase(["graphql", "issues.updateComment"]),
+      );
     });
 
     test("the explanation tells the contributor what to do and where to read", async () => {
@@ -1586,7 +2011,12 @@ describe("GitHub Actions hardening", () => {
       // both left every other assertion intact, and both leave a contributor
       // staring at a mangled PR with no notification and no next step.
       const result = await run({
-        pr: { base: { ref: "dev" }, title: "Add a thing", draft: false, user: { login: "someone-else" } },
+        pr: {
+          base: { ref: "dev" },
+          title: "Add a thing",
+          draft: false,
+          user: { login: "someone-else" },
+        },
       });
 
       const commentBody = lastEnforcerCommentBody(result);
@@ -1613,7 +2043,9 @@ describe("GitHub Actions hardening", () => {
       // duplicate and forgets what it changed. Round ten dropped it to 1 and
       // nothing failed.
       const result = await run({ pr: { base: { ref: "main" } } });
-      const [listed] = callsTo(result, "issues.listComments") as [{ per_page: number }];
+      const [listed] = callsTo(result, "issues.listComments") as [
+        { per_page: number },
+      ];
       expect(listed.per_page).toBe(100);
     });
 
@@ -1624,14 +2056,29 @@ describe("GitHub Actions hardening", () => {
       // nobody honours — the prefix stays on forever. Round ten bumped it to 2
       // and every test passed, because nothing asserted the value.
       const wrong = await run({ pr: { base: { ref: "dev" }, draft: false } });
-      const [posted] = callsTo(wrong, "issues.createComment") as [{ body: string }];
+      const [posted] = callsTo(wrong, "issues.createComment") as [
+        { body: string },
+      ];
       expect(posted.body).toContain('"version":1');
 
       const cleared = await run({
-        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
-        comments: [botComment({ version: 1, active: true, autoDraftedByBot: true, titlePrefixedByBot: true })],
+        pr: {
+          base: { ref: "main" },
+          draft: true,
+          title: "[WRONG BRANCH] Add a thing",
+        },
+        comments: [
+          botComment({
+            version: 1,
+            active: true,
+            autoDraftedByBot: true,
+            titlePrefixedByBot: true,
+          }),
+        ],
       });
-      const [done] = callsTo(cleared, "issues.updateComment") as [{ body: string }];
+      const [done] = callsTo(cleared, "issues.updateComment") as [
+        { body: string },
+      ];
       expect(done.body).toContain('"version":1');
     });
 
@@ -1646,24 +2093,38 @@ describe("GitHub Actions hardening", () => {
       // produced only ["pulls.get", "issues.listComments"]. No title
       // restoration, no ready-for-review, permanently stuck.
       for (const version of [2, 99]) {
-        const active = { version, active: true, autoDraftedByBot: true, titlePrefixedByBot: true };
+        const active = {
+          version,
+          active: true,
+          autoDraftedByBot: true,
+          titlePrefixedByBot: true,
+        };
 
         // Corrected target: the unknown-version state is trusted and both
         // changes are undone, and the marker is rewritten at the version this
         // workflow writes.
         const restored = await run({
-          pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+          pr: {
+            base: { ref: "main" },
+            draft: true,
+            title: "[WRONG BRANCH] Add a thing",
+          },
           comments: [botComment(active)],
         });
-        expect(methodsOf(restored)).toEqual(readsAllowedBase([
-          "pulls.update",
-          "graphql",
-          "issues.updateComment",
-        ]));
+        expect(methodsOf(restored)).toEqual(
+          readsAllowedBase(["pulls.update", "graphql", "issues.updateComment"]),
+        );
         expect(callsTo(restored, "pulls.update")).toEqual([
-          { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "Add a thing" },
+          {
+            owner: "GroepOnline",
+            repo: "opencodex",
+            pull_number: 42,
+            title: "Add a thing",
+          },
         ]);
-        const [cleared] = callsTo(restored, "issues.updateComment") as [{ body: string }];
+        const [cleared] = callsTo(restored, "issues.updateComment") as [
+          { body: string },
+        ];
         expect(cleared.body).toContain('"version":1');
         expect(cleared.body).toContain('"active":false');
 
@@ -1674,17 +2135,23 @@ describe("GitHub Actions hardening", () => {
           pr: { base: { ref: "dev" }, draft: false, title: "Add a thing" },
           comments: [botComment(active)],
         });
-        expect(methodsOf(wrong)).toEqual(readsWrongBase([
-          "issues.updateComment",
-          "pulls.update",
-          "issues.updateComment",
-          "graphql",
-          "issues.updateComment",
-          "issues.updateComment",
-        ]));
-        expect(lastEnforcerCommentBody(wrong)).toContain(`"version":${version}`);
+        expect(methodsOf(wrong)).toEqual(
+          readsWrongBase([
+            "issues.updateComment",
+            "pulls.update",
+            "issues.updateComment",
+            "graphql",
+            "issues.updateComment",
+            "issues.updateComment",
+          ]),
+        );
+        expect(lastEnforcerCommentBody(wrong)).toContain(
+          `"version":${version}`,
+        );
         expect(lastEnforcerCommentBody(wrong)).toContain('"active":true');
-        expect(wrong.warnings.some((w) => w.startsWith("setFailed:"))).toBe(true);
+        expect(wrong.warnings.some((w) => w.startsWith("setFailed:"))).toBe(
+          true,
+        );
       }
     });
 
@@ -1702,26 +2169,55 @@ describe("GitHub Actions hardening", () => {
       // contributor-reachable. It is reachable across a migration, which is
       // exactly when the prefix must still come off.
       const loose = await run({
-        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
-        comments: [botComment({ version: 1, active: "true", autoDraftedByBot: 1, titlePrefixedByBot: "yes" })],
+        pr: {
+          base: { ref: "main" },
+          draft: true,
+          title: "[WRONG BRANCH] Add a thing",
+        },
+        comments: [
+          botComment({
+            version: 1,
+            active: "true",
+            autoDraftedByBot: 1,
+            titlePrefixedByBot: "yes",
+          }),
+        ],
       });
-      expect(methodsOf(loose)).toEqual(readsAllowedBase([
-        "pulls.update",
-        "graphql",
-        "issues.updateComment",
-      ]));
+      expect(methodsOf(loose)).toEqual(
+        readsAllowedBase(["pulls.update", "graphql", "issues.updateComment"]),
+      );
       expect(callsTo(loose, "pulls.update")).toEqual([
-        { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "Add a thing" },
+        {
+          owner: "GroepOnline",
+          repo: "opencodex",
+          pull_number: 42,
+          title: "Add a thing",
+        },
       ]);
 
       // And the falsy side is symmetric: `null` and `0` skip their own
       // restoration without stopping the run or the clearing write.
       const falsy = await run({
-        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
-        comments: [botComment({ version: 1, active: true, autoDraftedByBot: null, titlePrefixedByBot: 0 })],
+        pr: {
+          base: { ref: "main" },
+          draft: true,
+          title: "[WRONG BRANCH] Add a thing",
+        },
+        comments: [
+          botComment({
+            version: 1,
+            active: true,
+            autoDraftedByBot: null,
+            titlePrefixedByBot: 0,
+          }),
+        ],
       });
-      expect(methodsOf(falsy)).toEqual(readsAllowedBase(["issues.updateComment"]));
-      const [cleared] = callsTo(falsy, "issues.updateComment") as [{ body: string }];
+      expect(methodsOf(falsy)).toEqual(
+        readsAllowedBase(["issues.updateComment"]),
+      );
+      const [cleared] = callsTo(falsy, "issues.updateComment") as [
+        { body: string },
+      ];
       expect(cleared.body).toContain('"active":false');
     });
 
@@ -1741,7 +2237,9 @@ describe("GitHub Actions hardening", () => {
       expect(title).toBeLessThan(draftClaim);
       expect(draftClaim).toBeLessThan(draft);
       expect(draft).toBeLessThan(finalUpdate);
-      expect(lastEnforcerCommentBody(result)).toContain('"autoDraftedByBot":true');
+      expect(lastEnforcerCommentBody(result)).toContain(
+        '"autoDraftedByBot":true',
+      );
     });
 
     test("a title that is exactly the prefix is still enforced", async () => {
@@ -1756,15 +2254,21 @@ describe("GitHub Actions hardening", () => {
 
       // Already prefixed, so no title write — but pending/draft/final still run.
       expect(callsTo(result, "pulls.update")).toEqual([]);
-      expect(methodsOf(result)).toEqual(readsWrongBase([
-        "issues.createComment",
-        "issues.updateComment",
-        "graphql",
-        "issues.updateComment",
-        "issues.updateComment",
-      ]));
-      expect(lastEnforcerCommentBody(result)).toContain('"titlePrefixedByBot":false');
-      expect(lastEnforcerCommentBody(result)).toContain('"autoDraftedByBot":true');
+      expect(methodsOf(result)).toEqual(
+        readsWrongBase([
+          "issues.createComment",
+          "issues.updateComment",
+          "graphql",
+          "issues.updateComment",
+          "issues.updateComment",
+        ]),
+      );
+      expect(lastEnforcerCommentBody(result)).toContain(
+        '"titlePrefixedByBot":false',
+      );
+      expect(lastEnforcerCommentBody(result)).toContain(
+        '"autoDraftedByBot":true',
+      );
     });
 
     test("an empty title is enforced rather than skipped", async () => {
@@ -1776,13 +2280,20 @@ describe("GitHub Actions hardening", () => {
       });
 
       expect(callsTo(result, "pulls.update")).toEqual([
-        { owner: "GroepOnline", repo: "opencodex", pull_number: 42, title: "[WRONG BRANCH] " },
+        {
+          owner: "GroepOnline",
+          repo: "opencodex",
+          pull_number: 42,
+          title: "[WRONG BRANCH] ",
+        },
       ]);
-      expect(methodsOf(result)).toEqual(readsWrongBase([
-        "issues.createComment",
-        "pulls.update",
-        "issues.updateComment",
-      ]));
+      expect(methodsOf(result)).toEqual(
+        readsWrongBase([
+          "issues.createComment",
+          "pulls.update",
+          "issues.updateComment",
+        ]),
+      );
     });
 
     test("an already-prefixed title is never prefixed twice", async () => {
@@ -1792,7 +2303,11 @@ describe("GitHub Actions hardening", () => {
       // prefix — which only ever matches after the bug already happened —
       // cannot be introduced as if it were the fix.
       const result = await run({
-        pr: { base: { ref: "dev" }, title: "[WRONG BRANCH] Add a thing", draft: true },
+        pr: {
+          base: { ref: "dev" },
+          title: "[WRONG BRANCH] Add a thing",
+          draft: true,
+        },
       });
 
       // No second prefix — and the run still does everything else it owes:
@@ -1800,11 +2315,12 @@ describe("GitHub Actions hardening", () => {
       // Asserting only the absent write would let an early return keyed on the
       // doubled prefix pass, since that skips the write too.
       expect(callsTo(result, "pulls.update")).toEqual([]);
-      expect(methodsOf(result)).toEqual(readsWrongBase([
-        "issues.createComment",
-        "issues.updateComment",
-      ]));
-      expect(lastEnforcerCommentBody(result)).toContain('"titlePrefixedByBot":false');
+      expect(methodsOf(result)).toEqual(
+        readsWrongBase(["issues.createComment", "issues.updateComment"]),
+      );
+      expect(lastEnforcerCommentBody(result)).toContain(
+        '"titlePrefixedByBot":false',
+      );
       expect(lastEnforcerCommentBody(result)).toContain('"active":true');
     });
 
@@ -1816,20 +2332,28 @@ describe("GitHub Actions hardening", () => {
       // ["pulls.get", "issues.listComments"] — no comment, no draft, complete
       // exemption.
       const result = await run({
-        pr: { base: { ref: "dev" }, title: "[WRONG BRANCH] [WRONG BRANCH] mine", draft: false },
+        pr: {
+          base: { ref: "dev" },
+          title: "[WRONG BRANCH] [WRONG BRANCH] mine",
+          draft: false,
+        },
       });
 
-      expect(methodsOf(result)).toEqual(readsWrongBase([
-        "issues.createComment",
-        "issues.updateComment",
-        "graphql",
-        "issues.updateComment",
-        "issues.updateComment",
-      ]));
+      expect(methodsOf(result)).toEqual(
+        readsWrongBase([
+          "issues.createComment",
+          "issues.updateComment",
+          "graphql",
+          "issues.updateComment",
+          "issues.updateComment",
+        ]),
+      );
       // Already prefixed by the `startsWith` test, so no third prefix is added.
       expect(callsTo(result, "pulls.update")).toEqual([]);
       expect(lastEnforcerCommentBody(result)).toContain('"active":true');
-      expect(lastEnforcerCommentBody(result)).toContain('"autoDraftedByBot":true');
+      expect(lastEnforcerCommentBody(result)).toContain(
+        '"autoDraftedByBot":true',
+      );
     });
 
     test("with two bot comments, the workflow reads and writes the first", async () => {
@@ -1841,27 +2365,37 @@ describe("GitHub Actions hardening", () => {
       const first = {
         id: 7,
         user: { login: BOT },
-        body: [MARKER, `<!-- wrong-branch-enforcer-state:${JSON.stringify({ version: 1, active: true, autoDraftedByBot: true, titlePrefixedByBot: true })} -->`].join("\n"),
+        body: [
+          MARKER,
+          `<!-- wrong-branch-enforcer-state:${JSON.stringify({ version: 1, active: true, autoDraftedByBot: true, titlePrefixedByBot: true })} -->`,
+        ].join("\n"),
       };
       const second = {
         id: 8,
         user: { login: BOT },
-        body: [MARKER, `<!-- wrong-branch-enforcer-state:${JSON.stringify({ version: 1, active: false, autoDraftedByBot: false, titlePrefixedByBot: false })} -->`].join("\n"),
+        body: [
+          MARKER,
+          `<!-- wrong-branch-enforcer-state:${JSON.stringify({ version: 1, active: false, autoDraftedByBot: false, titlePrefixedByBot: false })} -->`,
+        ].join("\n"),
       };
       const result = await run({
-        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+        pr: {
+          base: { ref: "main" },
+          draft: true,
+          title: "[WRONG BRANCH] Add a thing",
+        },
         comments: [first, second],
       });
 
       // The first comment's state is the one honoured: it says the bot
       // prefixed and drafted, so both are undone.
-      expect(methodsOf(result)).toEqual(readsAllowedBase([
-        "pulls.update",
-        "graphql",
-        "issues.updateComment",
-      ]));
+      expect(methodsOf(result)).toEqual(
+        readsAllowedBase(["pulls.update", "graphql", "issues.updateComment"]),
+      );
       // And the first comment is the one rewritten, not the second.
-      const [updated] = callsTo(result, "issues.updateComment") as [{ comment_id: number }];
+      const [updated] = callsTo(result, "issues.updateComment") as [
+        { comment_id: number },
+      ];
       expect(updated.comment_id).toBe(7);
     });
 
@@ -1873,7 +2407,11 @@ describe("GitHub Actions hardening", () => {
       // GraphQL call and `pulls.update`, never this one.
       for (const status of [404, 403, 500]) {
         await expect(
-          run({ pr: { base: { ref: "main" } }, failOn: ["pulls.get"], failStatus: status }),
+          run({
+            pr: { base: { ref: "main" } },
+            failOn: ["pulls.get"],
+            failStatus: status,
+          }),
         ).rejects.toThrow();
       }
     });
@@ -1964,7 +2502,9 @@ describe("GitHub Actions hardening", () => {
 
       // Everything the action injects is a function or an object on the runner.
       // Nothing here may be `undefined`.
-      expect(Object.values(probe).some(value => value === "undefined")).toBe(false);
+      expect(Object.values(probe).some((value) => value === "undefined")).toBe(
+        false,
+      );
       expect(probe["core.getInput"]).toBe("function");
       expect(probe["core.setOutput"]).toBe("function");
       expect(probe["core.summary.addRaw"]).toBe("function");
@@ -1989,8 +2529,12 @@ describe("GitHub Actions hardening", () => {
       // Read the major out of the workflow's own pin rather than hardcoding
       // it: re-pinning the action to a node26 build should fail here and say
       // so, not silently reopen the gap.
-      const workflow = await readText(".github/workflows/enforce-pr-target.yml");
-      expect(workflow).toContain("actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3");
+      const workflow = await readText(
+        ".github/workflows/enforce-pr-target.yml",
+      );
+      expect(workflow).toContain(
+        "actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3",
+      );
 
       const probe = await runProbe(`
         return {
@@ -2021,18 +2565,26 @@ describe("GitHub Actions hardening", () => {
           failOn: ["graphql"],
           failStatus: status,
         });
-        expect(methodsOf(result)).toEqual(readsWrongBase([
-          "issues.createComment",
-          "pulls.update",
-          "issues.updateComment",
-          "graphql",
-          "issues.updateComment",
-        ]));
+        expect(methodsOf(result)).toEqual(
+          readsWrongBase([
+            "issues.createComment",
+            "pulls.update",
+            "issues.updateComment",
+            "graphql",
+            "issues.updateComment",
+          ]),
+        );
         const commentBody = lastEnforcerCommentBody(result);
         expect(commentBody).toContain('"autoDraftedByBot":false');
         expect(commentBody).toContain("Automatic draft conversion failed");
-        expect(result.warnings.some((w) => w.includes("Could not convert pull request to draft"))).toBe(true);
-        expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(true);
+        expect(
+          result.warnings.some((w) =>
+            w.includes("Could not convert pull request to draft"),
+          ),
+        ).toBe(true);
+        expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(
+          true,
+        );
       }
 
       // Title update failures still propagate — without the prefix the gate
@@ -2057,13 +2609,19 @@ describe("GitHub Actions hardening", () => {
       const commentBody = lastEnforcerCommentBody(result);
       expect(commentBody).toContain('"autoDraftedByBot":false');
       expect(commentBody).toContain('"titlePrefixedByBot":true');
-      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(true);
+      expect(result.warnings.some((w) => w.startsWith("setFailed:"))).toBe(
+        true,
+      );
     });
 
     test("a failed ready-for-review conversion keeps ownership active for retry", async () => {
       const { script } = await readEnforcePrTarget();
       const result = await runEnforcePrTarget(script, {
-        pr: { base: { ref: "main" }, draft: true, title: "[WRONG BRANCH] Add a thing" },
+        pr: {
+          base: { ref: "main" },
+          draft: true,
+          title: "[WRONG BRANCH] Add a thing",
+        },
         comments: [
           {
             id: 7,
@@ -2084,8 +2642,14 @@ describe("GitHub Actions hardening", () => {
       const commentBody = lastEnforcerCommentBody(result);
       expect(commentBody).toContain('"active":true');
       expect(commentBody).toContain('"autoDraftedByBot":true');
-      expect(commentBody).toContain("Automatic ready-for-review conversion failed");
-      expect(result.warnings.some((w) => w.includes("Could not mark pull request ready for review"))).toBe(true);
+      expect(commentBody).toContain(
+        "Automatic ready-for-review conversion failed",
+      );
+      expect(
+        result.warnings.some((w) =>
+          w.includes("Could not mark pull request ready for review"),
+        ),
+      ).toBe(true);
     });
   });
 
@@ -2113,11 +2677,17 @@ describe("GitHub Actions hardening", () => {
       ["convertToDraft", "convertPullRequestToDraft"],
       ["markReadyForReview", "markPullRequestReadyForReview"],
     ] as const) {
-      const declarations = [...script.matchAll(new RegExp(`function\\s+${helper}\\s*\\(`, "g"))];
+      const declarations = [
+        ...script.matchAll(new RegExp(`function\\s+${helper}\\s*\\(`, "g")),
+      ];
       expect(declarations).toHaveLength(1);
       const body = script.slice(declarations[0]!.index!);
-      const nextDeclaration = body.slice(1).search(/\n\s*(?:async\s+)?function\s/);
-      expect(nextDeclaration === -1 ? body : body.slice(0, nextDeclaration + 1)).toContain(mutation);
+      const nextDeclaration = body
+        .slice(1)
+        .search(/\n\s*(?:async\s+)?function\s/);
+      expect(
+        nextDeclaration === -1 ? body : body.slice(0, nextDeclaration + 1),
+      ).toContain(mutation);
     }
     expect(script).toMatch(/const TITLE_PREFIX = "\[WRONG BRANCH\] ";/);
 
@@ -2137,7 +2707,10 @@ describe("GitHub Actions hardening", () => {
     const branch = script.slice(branchStart);
     const pendingWriteIndex = branch.indexOf("await upsertComment(");
     const draftCallIndex = branch.indexOf("await convertToDraft()");
-    const afterDraftWriteIndex = branch.indexOf("await upsertComment(", draftCallIndex);
+    const afterDraftWriteIndex = branch.indexOf(
+      "await upsertComment(",
+      draftCallIndex,
+    );
     expect(pendingWriteIndex).toBeGreaterThan(-1);
     expect(draftCallIndex).toBeGreaterThan(-1);
     expect(pendingWriteIndex).toBeLessThan(draftCallIndex);
@@ -2147,13 +2720,21 @@ describe("GitHub Actions hardening", () => {
   test("docs deployment is pinned, bounded, and scoped to Pages", async () => {
     const workflow = await readText(".github/workflows/deploy-docs.yml");
 
-    expect(workflow).toContain("permissions:\n  contents: read\n  pages: write\n  id-token: write");
+    expect(workflow).toContain(
+      "permissions:\n  contents: read\n  pages: write\n  id-token: write",
+    );
     expect(workflow).toContain("cancel-in-progress: false");
     expect(workflow).toContain("timeout-minutes: 15");
     expect(workflow).toContain("timeout-minutes: 10");
-    expect(workflow).toContain("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1");
-    expect(workflow).toContain("withastro/action@e84f40bd8d2caa9e768ec82ad30dd81f0b280853");
-    expect(workflow).toContain("actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128");
+    expect(workflow).toContain(
+      "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+    );
+    expect(workflow).toContain(
+      "withastro/action@e84f40bd8d2caa9e768ec82ad30dd81f0b280853",
+    );
+    expect(workflow).toContain(
+      "actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128",
+    );
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
 
     // The Astro action's own `package-manager` input is a mutable version
@@ -2179,7 +2760,9 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).not.toContain("docker/login-action@");
     expect(workflow).toContain("sudo docker login ghcr.io");
     expect(workflow).toContain("sudo docker pull");
-    expect(workflow).toContain("sudo docker image inspect --format='{{index .RepoDigests 0}}'");
+    expect(workflow).toContain(
+      "sudo docker image inspect --format='{{index .RepoDigests 0}}'",
+    );
     expect(workflow).toContain("/etc/chef/opencodex/service-api-token");
     expect(workflow).toContain('sudo sha256sum "$token_file"');
     expect(workflow).toContain("OPENCODEX_IMAGE=");
@@ -2188,27 +2771,37 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).not.toContain("bun install --frozen-lockfile");
     expect(workflow).not.toContain("git checkout --force");
     expect(workflow).not.toContain("git reset --hard");
-    expect(workflow).not.toContain("Refuse dirty live checkout or dropped commits");
+    expect(workflow).not.toContain(
+      "Refuse dirty live checkout or dropped commits",
+    );
     expect(workflow).not.toContain("oven-sh/setup-bun@");
     expect(workflow).not.toContain("actions/setup-node@");
   });
 
   test("actionlint config declares exactly the self-hosted labels the deploy workflow requires", async () => {
-    const config = Bun.YAML.parse(await readText(".github/actionlint.yaml")) as {
+    const config = Bun.YAML.parse(
+      await readText(".github/actionlint.yaml"),
+    ) as {
       "self-hosted-runner"?: { labels?: string[] };
     };
     // actionlint fails closed on unknown `runs-on` labels for self-hosted runners,
     // so every label deploy.yml's `runs-on: [self-hosted, ...]` uses must be
     // declared here or CI linting the workflow itself would go red.
-    expect(config["self-hosted-runner"]?.labels).toEqual(["deploy", "opencodex"]);
+    expect(config["self-hosted-runner"]?.labels).toEqual([
+      "deploy",
+      "opencodex",
+    ]);
 
-    const deploy = Bun.YAML.parse(await readText(".github/workflows/deploy.yml")) as {
+    const deploy = Bun.YAML.parse(
+      await readText(".github/workflows/deploy.yml"),
+    ) as {
       jobs?: Record<string, { "runs-on"?: unknown }>;
     };
     const runsOn = deploy.jobs?.deploy?.["runs-on"];
     expect(Array.isArray(runsOn)).toBe(true);
     for (const label of runsOn as string[]) {
-      if (label === "self-hosted" || label === "Linux" || label === "X64") continue;
+      if (label === "self-hosted" || label === "Linux" || label === "X64")
+        continue;
       expect(config["self-hosted-runner"]?.labels).toContain(label);
     }
   });
@@ -2219,20 +2812,30 @@ describe("GitHub Actions hardening", () => {
       jobs?: Record<
         string,
         {
-          steps?: Array<{ name?: string; uses?: string; if?: string; with?: Record<string, unknown> }>;
+          steps?: Array<{
+            name?: string;
+            uses?: string;
+            if?: string;
+            with?: Record<string, unknown>;
+          }>;
         }
       >;
     };
 
     const steps = workflow.jobs?.test?.steps ?? [];
-    const names = steps.map(step => step.name);
+    const names = steps.map((step) => step.name);
 
     // Bun's own toolchain cache must be enabled, and the GUI node_modules cache
     // step must exist and run before dependencies are installed (a cache
     // restored after `bun install` cannot save any work).
-    const setupBun = steps.find(step => step.uses?.startsWith("oven-sh/setup-bun@"));
-    expect(setupBun?.with?.cache).toBe(true);
-    expect(setupBun?.with?.["cache-bin"]).toBe(true);
+    const setupBun = steps.find((step) =>
+      step.uses?.startsWith("oven-sh/setup-bun@"),
+    );
+    // The pinned setup-bun action exposes no-cache, not cache/cache-bin.
+    // Unknown inputs only warn in Actions, so reject them here as well.
+    expect(setupBun?.with?.["no-cache"]).toBe(false);
+    expect(setupBun?.with).not.toHaveProperty("cache");
+    expect(setupBun?.with).not.toHaveProperty("cache-bin");
 
     const cacheIndex = names.indexOf("Cache GUI node_modules");
     const installGuiIndex = names.indexOf("Install GUI dependencies");
@@ -2247,22 +2850,34 @@ describe("GitHub Actions hardening", () => {
     // step it feeds; a narrower/broader condition would either install into an
     // uncached tree on some matrix legs or restore a cache nothing populated.
     expect(cacheStep.if).toBe(steps[installGuiIndex]!.if);
-    expect(cacheStep.uses).toBe("actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9"); // v4
+    expect(cacheStep.uses).toBe(
+      "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+    ); // v4
     expect(cacheStep.with?.path).toBe("gui/node_modules");
-    expect(cacheStep.with?.key).toBe("gui-node-modules-${{ runner.os }}-${{ hashFiles('gui/bun.lock') }}");
+    expect(cacheStep.with?.key).toBe(
+      "gui-node-modules-${{ runner.os }}-${{ hashFiles('gui/bun.lock') }}",
+    );
     // The restore-keys fallback must be a strict prefix of the primary key
     // (drop the lockfile hash) so a lockfile bump still gets a partial hit.
-    expect(String(cacheStep.with?.["restore-keys"] ?? "").trim()).toBe("gui-node-modules-${{ runner.os }}-");
+    expect(String(cacheStep.with?.["restore-keys"] ?? "").trim()).toBe(
+      "gui-node-modules-${{ runner.os }}-",
+    );
 
     const lintJob = workflow.jobs?.["lint-github-actions"]?.steps ?? [];
-    const yamllint = lintJob.find(step => step.name === "Lint YAML");
+    const yamllint = lintJob.find((step) => step.name === "Lint YAML");
     expect(yamllint).toBeDefined();
-    expect(yamllint?.uses).toBe("ibiqlik/action-yamllint@2576378a8e339169678f9939646ee3ee325e845c"); // v3.1.1
+    expect(yamllint?.uses).toBe(
+      "ibiqlik/action-yamllint@2576378a8e339169678f9939646ee3ee325e845c",
+    ); // v3.1.1
     expect(yamllint?.with?.config_file).toBe(".yamllint.yml");
     // actionlint must run first: a YAML syntax error should surface as an
     // actionlint parse failure with clearer context before yamllint style rules run.
-    const actionlintIndex = lintJob.findIndex(step => step.name === "Lint workflows");
-    const yamllintIndex = lintJob.findIndex(step => step.name === "Lint YAML");
+    const actionlintIndex = lintJob.findIndex(
+      (step) => step.name === "Lint workflows",
+    );
+    const yamllintIndex = lintJob.findIndex(
+      (step) => step.name === "Lint YAML",
+    );
     expect(actionlintIndex).toBeGreaterThan(-1);
     expect(actionlintIndex).toBeLessThan(yamllintIndex);
   });
@@ -2272,11 +2887,16 @@ describe("GitHub Actions hardening", () => {
     const workflow = Bun.YAML.parse(text) as {
       on?: {
         push?: { tags?: string[] };
-        workflow_dispatch?: { inputs?: Record<string, { required?: boolean; default?: string }> };
+        workflow_dispatch?: {
+          inputs?: Record<string, { required?: boolean; default?: string }>;
+        };
       };
       permissions?: Record<string, string>;
       concurrency?: { group?: string; "cancel-in-progress"?: boolean };
-      jobs?: Record<string, { "timeout-minutes"?: number; env?: Record<string, string> }>;
+      jobs?: Record<
+        string,
+        { "timeout-minutes"?: number; env?: Record<string, string> }
+      >;
     };
 
     expect(workflow.on?.push?.tags).toEqual(["v*.*.*"]);
@@ -2285,7 +2905,11 @@ describe("GitHub Actions hardening", () => {
 
     // Read-only token plus GHCR pull: the job reads container metadata and pulls
     // a digest-pinned image; it never pushes packages or mutates GitHub state.
-    expect(workflow.permissions).toEqual({ contents: "read", packages: "read", actions: "read" });
+    expect(workflow.permissions).toEqual({
+      contents: "read",
+      packages: "read",
+      actions: "read",
+    });
 
     // A second deploy must queue rather than race the first, and a mid-flight
     // cancel could leave the live checkout half-updated with no rollback run.
@@ -2294,9 +2918,13 @@ describe("GitHub Actions hardening", () => {
 
     expect(workflow.jobs?.deploy?.["timeout-minutes"]).toBe(30);
     expect(workflow.jobs?.deploy?.env?.DEPLOY_PATH).toBeUndefined();
-    expect(workflow.jobs?.deploy?.env?.COMPOSE_DIR).toBe("/opt/chef/deploy/opencodex");
+    expect(workflow.jobs?.deploy?.env?.COMPOSE_DIR).toBe(
+      "/opt/chef/deploy/opencodex",
+    );
 
-    expect(text).toContain("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1");
+    expect(text).toContain(
+      "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+    );
     expect(text).toContain("sudo docker login ghcr.io");
     expect(text).toContain("sudo docker logout ghcr.io");
     expect(text).not.toContain("docker/login-action@");
@@ -2306,10 +2934,18 @@ describe("GitHub Actions hardening", () => {
   test("az-01 deploy resolves the dispatch ref via env (not inline interpolation) and validates its shape", async () => {
     const text = await readText(".github/workflows/deploy.yml");
     const workflow = Bun.YAML.parse(text) as {
-      jobs?: { deploy?: { steps?: Array<{ name?: string; env?: Record<string, string>; run?: string }> } };
+      jobs?: {
+        deploy?: {
+          steps?: Array<{
+            name?: string;
+            env?: Record<string, string>;
+            run?: string;
+          }>;
+        };
+      };
     };
     const steps = workflow.jobs?.deploy?.steps ?? [];
-    const resolve = steps.find(step => step.name === "Resolve deploy tag");
+    const resolve = steps.find((step) => step.name === "Resolve deploy tag");
     expect(resolve).toBeDefined();
 
     // The raw dispatch input must be delivered as data via env, never spliced
@@ -2355,38 +2991,57 @@ describe("GitHub Actions hardening", () => {
       };
     };
     const steps = workflow.jobs?.deploy?.steps ?? [];
-    const verify = steps.find(step => step.id === "verify");
-    const deploy = steps.find(step => step.name === "Deploy digest-pinned container (in-place cutover)");
+    const verify = steps.find((step) => step.id === "verify");
+    const deploy = steps.find(
+      (step) =>
+        step.name === "Deploy digest-pinned container (in-place cutover)",
+    );
     expect(verify).toBeDefined();
     expect(deploy).toBeDefined();
 
-    const checkouts = steps.filter(step => step.uses?.startsWith("actions/checkout@"));
+    const checkouts = steps.filter((step) =>
+      step.uses?.startsWith("actions/checkout@"),
+    );
     expect(checkouts).toHaveLength(2);
     for (const checkout of checkouts) {
       expect(checkout.with?.["persist-credentials"]).toBe(false);
     }
 
-    expect(verify!.run ?? "").toContain('git merge-base --is-ancestor "refs/tags/$tag" "origin/main"');
-    expect(verify!.run ?? "").toContain("is not on origin/main");
-    const tagShaAssigns = [...(verify!.run ?? "").matchAll(/tag_sha=\$\(git rev-parse [^)]+\)/g)].map(
-      match => match[0],
+    expect(verify!.run ?? "").toContain(
+      'git merge-base --is-ancestor "refs/tags/$tag" "origin/main"',
     );
-    expect(tagShaAssigns).toEqual(['tag_sha=$(git rev-parse "refs/tags/$tag^{}")']);
+    expect(verify!.run ?? "").toContain("is not on origin/main");
+    const tagShaAssigns = [
+      ...(verify!.run ?? "").matchAll(/tag_sha=\$\(git rev-parse [^)]+\)/g),
+    ].map((match) => match[0]);
+    expect(tagShaAssigns).toEqual([
+      'tag_sha=$(git rev-parse "refs/tags/$tag^{}")',
+    ]);
 
-    const verifyIndex = steps.findIndex(step => step.id === "verify");
-    const peeledCheckout = steps.findIndex(step => step.name === "Checkout peeled tag commit");
+    const verifyIndex = steps.findIndex((step) => step.id === "verify");
+    const peeledCheckout = steps.findIndex(
+      (step) => step.name === "Checkout peeled tag commit",
+    );
     expect(verifyIndex).toBeGreaterThanOrEqual(0);
     expect(peeledCheckout).toBeGreaterThan(verifyIndex);
     expect(text).toContain("ref: ${{ steps.verify.outputs.tag_sha }}");
     expect(text).not.toContain("ref: ${{ steps.ref.outputs.tag }}");
 
     expect(deploy!.run ?? "").toContain("deploy/container/compose.example.yml");
-    expect(deploy!.run ?? "").toContain("deploy/container/opencodex-proxy.service");
-    expect(deploy!.run ?? "").toContain("systemctl stop opencodex-proxy.service");
-    expect(deploy!.run ?? "").toContain("systemctl start opencodex-proxy.service");
+    expect(deploy!.run ?? "").toContain(
+      "deploy/container/opencodex-proxy.service",
+    );
+    expect(deploy!.run ?? "").toContain(
+      "systemctl stop opencodex-proxy.service",
+    );
+    expect(deploy!.run ?? "").toContain(
+      "systemctl start opencodex-proxy.service",
+    );
     const unit = await readText("deploy/container/opencodex-proxy.service");
     expect(unit).toContain("docker compose up");
-    expect(unit).toContain("After=docker.service network-online.target tailscaled.service");
+    expect(unit).toContain(
+      "After=docker.service network-online.target tailscaled.service",
+    );
     expect(unit).toContain("Wants=network-online.target tailscaled.service");
     expect(deploy!.run ?? "").not.toContain("git checkout --force");
     expect(deploy!.run ?? "").not.toContain("git reset --hard");
@@ -2409,53 +3064,86 @@ describe("GitHub Actions hardening", () => {
       };
     };
     const steps = workflow.jobs?.deploy?.steps ?? [];
-    const health = steps.find(step => step.id === "health");
-    const rollback = steps.find(step => step.name === "Rollback on failure");
+    const health = steps.find((step) => step.id === "health");
+    const rollback = steps.find((step) => step.name === "Rollback on failure");
     expect(health).toBeDefined();
     expect(rollback).toBeDefined();
 
     expect(health!.run ?? "").toContain("deadline=$((SECONDS + 60))");
-    expect(health!.run ?? "").toContain('b.get("gitSha") == os.environ["TAG_SHA"]');
+    expect(health!.run ?? "").toContain(
+      'b.get("gitSha") == os.environ["TAG_SHA"]',
+    );
     expect(health!.run ?? "").toContain('b.get("service") == "opencodex"');
     expect(health!.run ?? "").not.toContain("MainPID");
     expect(health!.run ?? "").not.toContain('b.get("pid")');
     expect(health!.run ?? "").toContain("--max-time");
     expect(health!.run ?? "").toContain("gitSha-verified healthy within 60s");
-    expect(health!.run ?? "").toContain("<title>opencodex · proxy dashboard</title>");
-    const resolveHealthIndex = steps.findIndex(step => step.name === "Resolve health URLs");
-    const deployIndex = steps.findIndex(step => step.name === "Deploy digest-pinned container (in-place cutover)");
+    expect(health!.run ?? "").toContain(
+      "<title>opencodex · proxy dashboard</title>",
+    );
+    const resolveHealthIndex = steps.findIndex(
+      (step) => step.name === "Resolve health URLs",
+    );
+    const deployIndex = steps.findIndex(
+      (step) =>
+        step.name === "Deploy digest-pinned container (in-place cutover)",
+    );
     const resolveHealth = steps[resolveHealthIndex];
     expect(resolveHealthIndex).toBeGreaterThanOrEqual(0);
     expect(resolveHealthIndex).toBeLessThan(deployIndex);
-    expect(resolveHealth?.run ?? "").toContain("http://127.0.0.1:10100/healthz");
+    expect(resolveHealth?.run ?? "").toContain(
+      "http://127.0.0.1:10100/healthz",
+    );
     expect(resolveHealth?.run ?? "").toContain("tailscale ip -4");
-    expect(resolveHealth?.run ?? "").toContain("no discoverable Tailscale IPv4");
-    expect(resolveHealth?.run ?? "").toContain('urls="$urls http://${ts_ip}:10100/healthz"');
+    expect(resolveHealth?.run ?? "").toContain(
+      "no discoverable Tailscale IPv4",
+    );
+    expect(resolveHealth?.run ?? "").toContain(
+      'urls="$urls http://${ts_ip}:10100/healthz"',
+    );
     expect(resolveHealth?.run ?? "").toContain("OPENCODEX_BIND_IP=$ts_ip");
     expect(resolveHealth?.run ?? "").not.toContain("tailscale_ipv4=");
     expect(text).not.toContain("100.109.39.86");
     expect(text).not.toContain("OPENCODEX_BIND_IP=127.0.0.1");
 
-    expect(rollback!.if).toBe("(failure() || cancelled()) && steps.prev.outcome == 'success' && steps.deploy.outputs.cutover_started == 'true'");
+    expect(rollback!.if).toBe(
+      "(failure() || cancelled()) && steps.prev.outcome == 'success' && steps.deploy.outputs.cutover_started == 'true'",
+    );
     expect(rollback!.env?.PREV_IMAGE).toBe("${{ steps.prev.outputs.image }}");
-    expect(rollback!.env?.BUN_RUNTIME).toBe("${{ steps.prev.outputs.bun_runtime }}");
-    expect(rollback!.env?.UNIT_BACKUP).toBe("${{ steps.prev.outputs.unit_backup }}");
-    expect(rollback!.env?.PREV_HEALTH_URLS).toBe("${{ steps.prev.outputs.health_urls }}");
+    expect(rollback!.env?.BUN_RUNTIME).toBe(
+      "${{ steps.prev.outputs.bun_runtime }}",
+    );
+    expect(rollback!.env?.UNIT_BACKUP).toBe(
+      "${{ steps.prev.outputs.unit_backup }}",
+    );
+    expect(rollback!.env?.PREV_HEALTH_URLS).toBe(
+      "${{ steps.prev.outputs.health_urls }}",
+    );
     expect(rollback!.run ?? "").not.toContain("${{ steps.prev.outputs");
     expect(rollback!.run ?? "").toContain("OPENCODEX_IMAGE=");
     expect(rollback!.run ?? "").not.toContain("bun run build:gui");
     expect(rollback!.run ?? "").not.toContain("git checkout --force");
     expect(rollback!.run ?? "").not.toContain("git reset --hard");
-    expect(rollback!.run ?? "").toContain("sudo systemctl restart opencodex-proxy.service");
+    expect(rollback!.run ?? "").toContain(
+      "sudo systemctl restart opencodex-proxy.service",
+    );
     expect(rollback!.run ?? "").toContain('urls="$PREV_HEALTH_URLS"');
-    expect(rollback!.run ?? "").toContain("no pre-deploy healthy endpoint was captured for rollback verification");
-    expect(rollback!.run ?? "").not.toContain('${OCX_HEALTH_URLS:-http://127.0.0.1:10100/healthz}');
-    expect(rollback!.run ?? "").toContain("printf 'OPENCODEX_BIND_IP=%s\\n' \"$OPENCODEX_BIND_IP\"");
+    expect(rollback!.run ?? "").toContain(
+      "no pre-deploy healthy endpoint was captured for rollback verification",
+    );
+    expect(rollback!.run ?? "").not.toContain(
+      "${OCX_HEALTH_URLS:-http://127.0.0.1:10100/healthz}",
+    );
+    expect(rollback!.run ?? "").toContain(
+      "printf 'OPENCODEX_BIND_IP=%s\\n' \"$OPENCODEX_BIND_IP\"",
+    );
     expect(rollback!.run ?? "").toContain("deadline=$((SECONDS + 30))");
     expect(rollback!.run ?? "").not.toContain("MainPID");
     expect(rollback!.run ?? "").toContain('b.get("service") == "opencodex"');
     expect(rollback!.run ?? "").toContain("rolled back and healthy");
-    expect(rollback!.run ?? "").toContain("<title>opencodex · proxy dashboard</title>");
+    expect(rollback!.run ?? "").toContain(
+      "<title>opencodex · proxy dashboard</title>",
+    );
   });
 
   test("design-system contract only runs when design-system inputs or the GUI change, identically on push and PR", async () => {
@@ -2471,7 +3159,9 @@ describe("GitHub Actions hardening", () => {
       "gui/**",
     ];
     expect([...(workflow.on?.push?.paths ?? [])].sort()).toEqual(expectedPaths);
-    expect([...(workflow.on?.pull_request?.paths ?? [])].sort()).toEqual(expectedPaths);
+    expect([...(workflow.on?.pull_request?.paths ?? [])].sort()).toEqual(
+      expectedPaths,
+    );
     // Push and PR must match exactly, or a change could be checked on one
     // trigger and merge unchecked on the other.
     expect([...(workflow.on?.push?.paths ?? [])].sort()).toEqual(
@@ -2495,7 +3185,9 @@ describe("GitHub Actions hardening", () => {
     expect(text).not.toContain("StrictHostKeyChecking=no");
 
     const steps = workflow.jobs?.publish?.steps ?? [];
-    const createRelease = steps.find(step => step.name === "Create GitHub Release");
+    const createRelease = steps.find(
+      (step) => step.name === "Create GitHub Release",
+    );
     expect(createRelease).toBeDefined();
     const releaseScript = createRelease!.run ?? "";
 
@@ -2542,14 +3234,33 @@ describe("GitHub Actions hardening", () => {
     expect(config.rules?.["line-length"]).toBe("disable");
     expect(config.rules?.["document-start"]).toBe("disable");
     expect(config.rules?.["comments-indentation"]).toBe("disable");
-    expect((config.rules?.truthy as { "check-keys"?: boolean })?.["check-keys"]).toBe(false);
-    expect((config.rules?.comments as { "min-spaces-from-content"?: number })?.["min-spaces-from-content"]).toBe(1);
-    expect((config.rules?.indentation as { spaces?: number; "indent-sequences"?: boolean })).toEqual({
+    expect(
+      (config.rules?.truthy as { "check-keys"?: boolean })?.["check-keys"],
+    ).toBe(false);
+    expect(
+      (config.rules?.comments as { "min-spaces-from-content"?: number })?.[
+        "min-spaces-from-content"
+      ],
+    ).toBe(1);
+    expect(
+      config.rules?.indentation as {
+        spaces?: number;
+        "indent-sequences"?: boolean;
+      },
+    ).toEqual({
       spaces: 2,
       "indent-sequences": true,
     });
-    expect((config.rules?.braces as { "max-spaces-inside"?: number })?.["max-spaces-inside"]).toBe(1);
-    expect((config.rules?.brackets as { "max-spaces-inside"?: number })?.["max-spaces-inside"]).toBe(1);
+    expect(
+      (config.rules?.braces as { "max-spaces-inside"?: number })?.[
+        "max-spaces-inside"
+      ],
+    ).toBe(1);
+    expect(
+      (config.rules?.brackets as { "max-spaces-inside"?: number })?.[
+        "max-spaces-inside"
+      ],
+    ).toBe(1);
 
     // The generated/external design-system manifest is not expected to follow
     // this repo's YAML style, so it must be excluded rather than tightened
@@ -2561,15 +3272,21 @@ describe("GitHub Actions hardening", () => {
   });
 
   test("issue-quality workflow rejects workflow_dispatch pull request numbers before mutation", async () => {
-    const workflow = await readText(".github/workflows/enforce-issue-quality.yml");
+    const workflow = await readText(
+      ".github/workflows/enforce-issue-quality.yml",
+    );
 
     expect(workflow).toContain("issue_comment:");
     expect(workflow).toContain("Translate non-English issue comments");
     expect(workflow).toContain("shouldTranslateComment");
     expect(workflow).toContain("buildTranslatedCommentBody");
     expect(workflow).toContain("github.rest.issues.updateComment");
-    expect(workflow).toContain("group: issue-translation-${{ github.event.issue.number }}");
-    expect(workflow).not.toContain("issue-comment-translation-${{ github.event.comment.id }}");
+    expect(workflow).toContain(
+      "group: issue-translation-${{ github.event.issue.number }}",
+    );
+    expect(workflow).not.toContain(
+      "issue-comment-translation-${{ github.event.comment.id }}",
+    );
     expect(workflow).toContain("if: github.event_name == 'issue_comment'");
     expect(workflow).toMatch(
       /translate:\s*\n\s*name: Translate non-English issues\s*\n\s*if: github\.event_name == 'issues' \|\| github\.event_name == 'workflow_dispatch'/,
@@ -2578,14 +3295,20 @@ describe("GitHub Actions hardening", () => {
       /validate:\s*\n\s*if: github\.event_name == 'issues' \|\| github\.event_name == 'workflow_dispatch'/,
     );
 
-    const commentJob = workflow.split(/\n {2}translate-comment:\n/)[1]!.split(/\n {2}[a-zA-Z]/)[0]!;
+    const commentJob = workflow
+      .split(/\n {2}translate-comment:\n/)[1]!
+      .split(/\n {2}[a-zA-Z]/)[0]!;
     expect(commentJob).toContain("parse-issue-translation-response.cjs");
     expect(commentJob).toContain("Apply inline comment translation");
     expect(commentJob).toContain("isPreparedSourceStillCurrent");
     expect(commentJob).toContain("updateComment");
     expect(commentJob).toContain("requires_translation == 'true'");
-    expect(commentJob).toContain("group: issue-translation-${{ github.event.issue.number }}");
-    expect(commentJob).toContain("# Required to rewrite the triggering issue comment in place.");
+    expect(commentJob).toContain(
+      "group: issue-translation-${{ github.event.issue.number }}",
+    );
+    expect(commentJob).toContain(
+      "# Required to rewrite the triggering issue comment in place.",
+    );
     expect(commentJob).toContain("sourceKey:");
     // Same fail-closed parse → apply gate as the issue path.
     const commentParse = commentJob
@@ -2600,7 +3323,9 @@ describe("GitHub Actions hardening", () => {
       .split("- name: Persist comment translation control state")[0]!;
     const guardAt = commentApply.indexOf("isPreparedSourceStillCurrent({");
     const updateAt = commentApply.indexOf("updateComment");
-    const missingAt = commentApply.indexOf("missingRequiredTranslationFields({");
+    const missingAt = commentApply.indexOf(
+      "missingRequiredTranslationFields({",
+    );
     expect(guardAt).toBeGreaterThanOrEqual(0);
     expect(updateAt).toBeGreaterThanOrEqual(0);
     expect(missingAt).toBeGreaterThanOrEqual(0);
@@ -2612,7 +3337,9 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toMatch(
       /jobs:\s*\n\s*translate:[\s\S]*?permissions:\s*\n(?:\s*#.*\n)*\s*contents: read\s*\n(?:\s*#.*\n)*\s*issues: write\s*\n(?:\s*#.*\n)*\s*models: read/,
     );
-    const translateJob = workflow.split(/\n {2}translate:\n/)[1]!.split(/\n {2}[a-zA-Z]/)[0]!;
+    const translateJob = workflow
+      .split(/\n {2}translate:\n/)[1]!
+      .split(/\n {2}[a-zA-Z]/)[0]!;
     expect(translateJob).not.toMatch(/actions:\s*write/);
     expect(workflow).toMatch(
       /jobs:\s*\n\s*translate:[\s\S]*?validate:[\s\S]*?permissions:\s*\n\s*contents: read\s*\n\s*#.*\n\s*issues: write/,
@@ -2621,8 +3348,12 @@ describe("GitHub Actions hardening", () => {
     expect(beforeJobs).not.toMatch(/^\s*permissions:/m);
 
     // Non-cancelling per-issue concurrency at workflow and translate-job scope.
-    expect(workflow).toContain("group: issue-quality-${{ github.event.issue.number || inputs.issue_number }}");
-    expect(workflow).toContain("group: issue-translation-${{ github.event.issue.number || inputs.issue_number }}");
+    expect(workflow).toContain(
+      "group: issue-quality-${{ github.event.issue.number || inputs.issue_number }}",
+    );
+    expect(workflow).toContain(
+      "group: issue-translation-${{ github.event.issue.number || inputs.issue_number }}",
+    );
     const workflowConcurrency = workflow.split(/jobs:\s*\n/)[0]!;
     expect(workflowConcurrency).toMatch(
       /concurrency:\s*\n\s*group: issue-quality-[^\n]*\n\s*cancel-in-progress:\s*false/,
@@ -2637,7 +3368,9 @@ describe("GitHub Actions hardening", () => {
     const checkoutStep = workflow
       .split("- name: Checkout trusted workflow code")[1]!
       .split(/\n {6}- name:/)[0]!;
-    expect(checkoutStep).toContain("ref: ${{ github.event.repository.default_branch }}");
+    expect(checkoutStep).toContain(
+      "ref: ${{ github.event.repository.default_branch }}",
+    );
     expect(checkoutStep).toContain("persist-credentials: false");
     expect(checkoutStep).toContain("sparse-checkout: .github/scripts");
 
@@ -2647,14 +3380,18 @@ describe("GitHub Actions hardening", () => {
       .split(/\n {6}- name:/)[0]!;
 
     // Invalid issue numbers fail before any issues API call.
-    const invalidNumberIdx = script.indexOf("Invalid workflow_dispatch issue_number:");
+    const invalidNumberIdx = script.indexOf(
+      "Invalid workflow_dispatch issue_number:",
+    );
     const firstIssuesGetIdx = script.indexOf("github.rest.issues.get({");
     expect(invalidNumberIdx).toBeGreaterThan(-1);
     expect(firstIssuesGetIdx).toBeGreaterThan(-1);
     expect(invalidNumberIdx).toBeLessThan(firstIssuesGetIdx);
 
     // Non-default-branch dispatches fail before any issues API mutation.
-    const branchGuardIdx = script.indexOf("const nonDefaultBranchFailure = rejectsWorkflowDispatchNonDefaultBranch(");
+    const branchGuardIdx = script.indexOf(
+      "const nonDefaultBranchFailure = rejectsWorkflowDispatchNonDefaultBranch(",
+    );
     const firstMutationIdx = script.indexOf("github.rest.issues.update({");
     expect(branchGuardIdx).toBeGreaterThan(-1);
     expect(firstMutationIdx).toBeGreaterThan(-1);
@@ -2662,7 +3399,9 @@ describe("GitHub Actions hardening", () => {
     expect(branchGuardIdx).toBeLessThan(firstIssuesGetIdx);
 
     // Pull-request numbers are rejected after issues.get and before mutations.
-    const prGuardIdx = script.indexOf("const pullRequestFailure = rejectsWorkflowDispatchPullRequest(");
+    const prGuardIdx = script.indexOf(
+      "const pullRequestFailure = rejectsWorkflowDispatchPullRequest(",
+    );
     const listCommentsIdx = script.indexOf("github.rest.issues.listComments");
     const addLabelsIdx = script.indexOf("github.rest.issues.addLabels");
     expect(prGuardIdx).toBeGreaterThan(-1);
@@ -2679,12 +3418,16 @@ describe("GitHub Actions hardening", () => {
     const branchGuardIdxTranslate = translateScript.indexOf(
       "rejectsWorkflowDispatchNonDefaultBranch(",
     );
-    const issuesGetIdxTranslate = translateScript.indexOf("github.rest.issues.get({");
+    const issuesGetIdxTranslate = translateScript.indexOf(
+      "github.rest.issues.get({",
+    );
     expect(branchGuardIdxTranslate).toBeGreaterThan(-1);
     expect(issuesGetIdxTranslate).toBeGreaterThan(-1);
     expect(branchGuardIdxTranslate).toBeLessThan(issuesGetIdxTranslate);
     expect(translateScript).toContain("resolveControlState");
-    expect(translateScript).toContain("Never trust author-editable issue body markers");
+    expect(translateScript).toContain(
+      "Never trust author-editable issue body markers",
+    );
 
     const applyScript = workflow
       .split("- name: Apply inline translation")[1]!
@@ -2701,9 +3444,9 @@ describe("GitHub Actions hardening", () => {
     expect(applyScript).toContain("missingRequiredTranslationFields");
     expect(applyScript).toContain("omitted required field(s)");
     expect(applyScript).toMatch(/sourceComplete,\s*\n\s*\}/);
-    expect(applyScript.indexOf("missingRequiredTranslationFields({")).toBeLessThan(
-      applyScript.indexOf("github.rest.issues.update("),
-    );
+    expect(
+      applyScript.indexOf("missingRequiredTranslationFields({"),
+    ).toBeLessThan(applyScript.indexOf("github.rest.issues.update("));
 
     const parseStep = workflow
       .split("- name: Parse AI response")[1]!
@@ -2722,7 +3465,9 @@ describe("GitHub Actions hardening", () => {
     expect(persistStep).toContain("persistTranslationControlState");
     expect(persistStep).toContain("SOURCE_COMPLETE");
     expect(persistStep).toContain("detectedLanguageForControlPersist");
-    expect(persistStep).toContain('const sourceComplete = process.env.SOURCE_COMPLETE === "true"');
+    expect(persistStep).toContain(
+      'const sourceComplete = process.env.SOURCE_COMPLETE === "true"',
+    );
     expect(persistStep).toMatch(/sourceComplete,\s*\n\s*\}/);
     // Missing DETECTED_LANG on incomplete/skipped parse must not default to English.
     expect(persistStep).not.toContain('DETECTED_LANG || "English"');
@@ -2736,7 +3481,9 @@ describe("GitHub Actions hardening", () => {
     const commentPersist = workflow
       .split("- name: Persist comment translation control state")[1]!
       .split(/\n {2}[a-zA-Z]/)[0]!;
-    expect(commentPersist).toContain('const sourceComplete = process.env.SOURCE_COMPLETE === "true"');
+    expect(commentPersist).toContain(
+      'const sourceComplete = process.env.SOURCE_COMPLETE === "true"',
+    );
     expect(commentPersist).toContain("detectedLanguageForControlPersist");
     expect(commentPersist).toMatch(/sourceComplete,\s*\n\s*\}/);
     expect(commentPersist).not.toContain('DETECTED_LANG || "English"');
@@ -2748,7 +3495,9 @@ describe("GitHub Actions hardening", () => {
     expect(commentApplyStep).toContain("source remains retryable");
     expect(commentApplyStep).toContain("missingRequiredTranslationFields");
     expect(commentApplyStep).toContain("omitted required field(s)");
-    const commentMissingAt = commentApplyStep.indexOf("missingRequiredTranslationFields({");
+    const commentMissingAt = commentApplyStep.indexOf(
+      "missingRequiredTranslationFields({",
+    );
     const commentUpdateAt = commentApplyStep.indexOf("updateComment");
     expect(commentMissingAt).toBeGreaterThanOrEqual(0);
     expect(commentUpdateAt).toBeGreaterThanOrEqual(0);
@@ -2761,7 +3510,9 @@ describe("GitHub Actions hardening", () => {
     expect(helperSrc).toContain("detectedLanguageForControlPersist");
     expect(helperSrc).toContain("Automated translation bookkeeping");
     expect(helperSrc).toContain("canonical comment first");
-    expect(helperSrc).toContain("Authoritative control state comes only from verified bot-owned comments");
+    expect(helperSrc).toContain(
+      "Authoritative control state comes only from verified bot-owned comments",
+    );
     expect(helperSrc).toContain("sourceComplete");
     expect(helperSrc).not.toContain("writeFileControlState");
     expect(helperSrc).not.toContain(".ocx-translation-state");
@@ -2795,7 +3546,10 @@ describe("GitHub Actions hardening", () => {
       >;
     };
 
-    expect([...(workflow.on?.pull_request?.branches ?? [])].sort()).toEqual(["dev", "main"]);
+    expect([...(workflow.on?.pull_request?.branches ?? [])].sort()).toEqual([
+      "dev",
+      "main",
+    ]);
     expect([...(workflow.on?.push?.branches ?? [])]).toEqual(["dev"]);
     expect(workflow.on?.push?.tags).toEqual(["v*.*.*"]);
     expect(workflow.on).toHaveProperty("workflow_dispatch");
@@ -2830,31 +3584,49 @@ describe("GitHub Actions hardening", () => {
     expect(text).not.toMatch(
       /^\s*-\s+uses:\s+\S+@(?![0-9a-f]{40}(?=[ \t]*(?:#.*)?$))\S+/m,
     );
-    expect(text).toContain("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7");
-    expect(text).toContain("docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0");
-    expect(text).toContain("docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0");
+    expect(text).toContain(
+      "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
+    );
+    expect(text).toContain(
+      "docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0",
+    );
+    expect(text).toContain(
+      "docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0",
+    );
 
     const imageSteps = image?.steps ?? [];
     const publishSteps = publish?.steps ?? [];
-    const imageCheckout = imageSteps.find(step => step.name === "Checkout");
-    const publishCheckout = publishSteps.find(step => step.name === "Checkout");
+    const imageCheckout = imageSteps.find((step) => step.name === "Checkout");
+    const publishCheckout = publishSteps.find(
+      (step) => step.name === "Checkout",
+    );
     expect(imageCheckout?.with?.["persist-credentials"]).toBe(false);
     expect(publishCheckout?.with?.["persist-credentials"]).toBe(false);
     expect(publishCheckout?.with?.["fetch-depth"]).toBe(0);
-    const onMain = publishSteps.find(step => step.name === "Verify commit is on main");
-    const requireCi = publishSteps.find(step => step.name === "Require successful Cross-platform CI");
+    const onMain = publishSteps.find(
+      (step) => step.name === "Verify commit is on main",
+    );
+    const requireCi = publishSteps.find(
+      (step) => step.name === "Require successful Cross-platform CI",
+    );
     expect(onMain?.run ?? "").toContain("merge-base --is-ancestor");
     expect(onMain?.run ?? "").toContain("origin/main");
     expect(onMain?.run ?? "").not.toContain("${{");
     expect(requireCi?.run ?? "").toContain("gh run list --workflow ci.yml");
     expect(requireCi?.run ?? "").not.toContain("${{");
-    expect(imageSteps.find(step => step.name === "Log in to GHCR")).toBeUndefined();
-    const login = publishSteps.find(step => step.name === "Log in to GHCR");
-    const imageBuild = imageSteps.find(step => step.id === "build");
-    const publishBuild = publishSteps.find(step => step.id === "build");
-    const publishMeta = publishSteps.find(step => step.id === "meta");
-    const imageSummary = imageSteps.find(step => step.name === "Record digest");
-    const publishSummary = publishSteps.find(step => step.name === "Record digest");
+    expect(
+      imageSteps.find((step) => step.name === "Log in to GHCR"),
+    ).toBeUndefined();
+    const login = publishSteps.find((step) => step.name === "Log in to GHCR");
+    const imageBuild = imageSteps.find((step) => step.id === "build");
+    const publishBuild = publishSteps.find((step) => step.id === "build");
+    const publishMeta = publishSteps.find((step) => step.id === "meta");
+    const imageSummary = imageSteps.find(
+      (step) => step.name === "Record digest",
+    );
+    const publishSummary = publishSteps.find(
+      (step) => step.name === "Record digest",
+    );
     expect(login).toBeDefined();
     expect(imageBuild).toBeDefined();
     expect(publishBuild).toBeDefined();
@@ -2863,9 +3635,15 @@ describe("GitHub Actions hardening", () => {
     expect(publishSummary).toBeDefined();
 
     expect(login!.if).toBeUndefined();
-    expect(login!.uses).toBe("docker/login-action@dbcb813823bdd20940b903addbd779551569679f");
-    expect(imageBuild!.uses).toBe("docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a");
-    expect(publishBuild!.uses).toBe("docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a");
+    expect(login!.uses).toBe(
+      "docker/login-action@dbcb813823bdd20940b903addbd779551569679f",
+    );
+    expect(imageBuild!.uses).toBe(
+      "docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a",
+    );
+    expect(publishBuild!.uses).toBe(
+      "docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a",
+    );
     expect(imageBuild!.with?.push).toBe(false);
     expect(imageBuild!.with?.load).toBe(true);
     expect(publishBuild!.with?.push).toBe(true);
@@ -2874,25 +3652,37 @@ describe("GitHub Actions hardening", () => {
     expect(publishBuild!.with?.provenance).toBe(false);
     expect(imageBuild!.with?.sbom).toBe(false);
     expect(publishBuild!.with?.sbom).toBe(false);
-    expect(String(imageBuild!.with?.["build-args"] ?? "")).toContain("VCS_REF=${{ github.sha }}");
-    expect(String(publishBuild!.with?.["build-args"] ?? "")).toContain("VCS_REF=${{ github.sha }}");
-    expect(String(publishBuild!.with?.["build-args"] ?? "")).toContain("VERSION=${{ steps.meta.outputs.version }}");
+    expect(String(imageBuild!.with?.["build-args"] ?? "")).toContain(
+      "VCS_REF=${{ github.sha }}",
+    );
+    expect(String(publishBuild!.with?.["build-args"] ?? "")).toContain(
+      "VCS_REF=${{ github.sha }}",
+    );
+    expect(String(publishBuild!.with?.["build-args"] ?? "")).toContain(
+      "VERSION=${{ steps.meta.outputs.version }}",
+    );
 
-    expect(publishMeta!.run ?? "").toContain("json.load(open('package.json'))['version']");
+    expect(publishMeta!.run ?? "").toContain(
+      "json.load(open('package.json'))['version']",
+    );
     expect(publishMeta!.run ?? "").not.toContain("${{");
-    expect(publishMeta!.run ?? "").toContain("publish job ran outside the push gate");
+    expect(publishMeta!.run ?? "").toContain(
+      "publish job ran outside the push gate",
+    );
 
     const match = (publishMeta!.run ?? "").match(/=~ (\^\S+\$) \]\]/);
     expect(match).not.toBeNull();
     const tagShape = new RegExp(match![1]!);
     const publishIf = String(publish?.if ?? "");
     const shouldPublishJob = (event: string, ref: string) =>
-      (event === "push" && publishIf.includes("refs/tags/v") && ref.startsWith("refs/tags/v"))
-      || (event === "workflow_dispatch" && ref === "refs/heads/main");
+      (event === "push" &&
+        publishIf.includes("refs/tags/v") &&
+        ref.startsWith("refs/tags/v")) ||
+      (event === "workflow_dispatch" && ref === "refs/heads/main");
     const shouldPush = (event: string, ref: string) =>
-      shouldPublishJob(event, ref)
-      && ((event === "push" && tagShape.test(ref))
-        || (event === "workflow_dispatch" && ref === "refs/heads/main"));
+      shouldPublishJob(event, ref) &&
+      ((event === "push" && tagShape.test(ref)) ||
+        (event === "workflow_dispatch" && ref === "refs/heads/main"));
     expect(shouldPush("push", "refs/tags/v1.2.3")).toBe(true);
     expect(shouldPush("push", "refs/tags/v1.2.3-preview.4")).toBe(true);
     expect(shouldPush("workflow_dispatch", "refs/heads/main")).toBe(true);
@@ -2909,8 +3699,12 @@ describe("GitHub Actions hardening", () => {
   test("React Doctor workflow is SHA-pinned, engine-pinned, gating, and read-only", async () => {
     const workflow = await readText(".github/workflows/react-doctor.yml");
 
-    expect(workflow).toContain("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1");
-    expect(workflow).toContain("millionco/react-doctor@013f7373f91a3b9e68bd1dc7d4d354f4b041b117");
+    expect(workflow).toContain(
+      "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+    );
+    expect(workflow).toContain(
+      "millionco/react-doctor@013f7373f91a3b9e68bd1dc7d4d354f4b041b117",
+    );
     expect(workflow).not.toMatch(
       /^\s*-\s+uses:\s+\S+@(?![0-9a-f]{40}(?=[ \t]*(?:#.*)?$))\S+/m,
     );
@@ -2942,17 +3736,24 @@ describe("GitHub Actions hardening", () => {
     expect(guiPkg).not.toContain("react-doctor@latest");
     expect(rootPkg).not.toContain("react-doctor@latest");
     expect(doctorConfig).toContain('"blocking": "warning"');
-    expect(rootPkg).toContain('"doctor:gui:if-changed": "bun scripts/doctor-gui-if-changed.ts"');
+    expect(rootPkg).toContain(
+      '"doctor:gui:if-changed": "bun scripts/doctor-gui-if-changed.ts"',
+    );
     expect(rootPkg).toContain('"lint:gui": "cd gui && bun run lint"');
     // Gating steps include React Doctor after privacy scan on gui/ pushes.
-    expect(rootPkg).toContain("bun run typecheck && bun run lint:gui && bun run test");
-    expect(rootPkg).toContain("bun run privacy:scan && bun run doctor:gui:if-changed");
+    expect(rootPkg).toContain(
+      "bun run typecheck && bun run lint:gui && bun run test",
+    );
+    expect(rootPkg).toContain(
+      "bun run privacy:scan && bun run doctor:gui:if-changed",
+    );
   });
 });
 
 describe("doctor-gui-if-changed", () => {
   test("guiPathsChanged is a slash-guarded gui/ prefix predicate", async () => {
-    const { guiPathsChanged } = await import("../scripts/doctor-gui-if-changed");
+    const { guiPathsChanged } =
+      await import("../scripts/doctor-gui-if-changed");
 
     expect(guiPathsChanged(["gui/src/App.tsx"])).toBe(true);
     expect(guiPathsChanged(["gui"])).toBe(true);
@@ -2963,24 +3764,41 @@ describe("doctor-gui-if-changed", () => {
   });
 
   test("looksLikeDoctorInfraFailure detects registry/network outages", async () => {
-    const { looksLikeDoctorInfraFailure } = await import("../scripts/doctor-gui-if-changed");
-    expect(looksLikeDoctorInfraFailure("npm ERR! network getaddrinfo ENOTFOUND registry.npmjs.org")).toBe(true);
+    const { looksLikeDoctorInfraFailure } =
+      await import("../scripts/doctor-gui-if-changed");
+    expect(
+      looksLikeDoctorInfraFailure(
+        "npm ERR! network getaddrinfo ENOTFOUND registry.npmjs.org",
+      ),
+    ).toBe(true);
     expect(looksLikeDoctorInfraFailure("npm ERR! code ECONNRESET")).toBe(true);
     expect(looksLikeDoctorInfraFailure("npm ERR! network timeout")).toBe(true);
-    expect(looksLikeDoctorInfraFailure("All 2 issues\nBugs > 1 errors")).toBe(false);
+    expect(looksLikeDoctorInfraFailure("All 2 issues\nBugs > 1 errors")).toBe(
+      false,
+    );
     // Findings copy can mention "network" without being an infra outage.
-    expect(looksLikeDoctorInfraFailure("Network requests > 1 errors")).toBe(false);
+    expect(looksLikeDoctorInfraFailure("Network requests > 1 errors")).toBe(
+      false,
+    );
   });
 
   test("DRY_RUN prints the run/skip decision without spawning the doctor", () => {
     const run = Bun.spawnSync(["bun", doctorGuiIfChangedScript], {
-      env: { ...process.env, DOCTOR_DRY_RUN: "1", DOCTOR_FILES: "gui/src/App.tsx\nscripts/x.ts" },
+      env: {
+        ...process.env,
+        DOCTOR_DRY_RUN: "1",
+        DOCTOR_FILES: "gui/src/App.tsx\nscripts/x.ts",
+      },
     });
     expect(run.exitCode).toBe(0);
     expect(run.stdout.toString()).toContain("doctor:run");
 
     const skip = Bun.spawnSync(["bun", doctorGuiIfChangedScript], {
-      env: { ...process.env, DOCTOR_DRY_RUN: "1", DOCTOR_FILES: "scripts/x.ts\nREADME.md" },
+      env: {
+        ...process.env,
+        DOCTOR_DRY_RUN: "1",
+        DOCTOR_FILES: "scripts/x.ts\nREADME.md",
+      },
     });
     expect(skip.exitCode).toBe(0);
     expect(skip.stdout.toString()).toContain("doctor:skip");
@@ -3025,9 +3843,12 @@ describe("doctor-gui-if-changed", () => {
   });
 
   test("isDoctorBufferOverflow recognizes ENOBUFS / maxBuffer errors", async () => {
-    const { isDoctorBufferOverflow } = await import("../scripts/doctor-gui-if-changed");
+    const { isDoctorBufferOverflow } =
+      await import("../scripts/doctor-gui-if-changed");
     expect(isDoctorBufferOverflow("ENOBUFS")).toBe(true);
-    expect(isDoctorBufferOverflow("ERR_CHILD_PROCESS_STDIO_MAXBUFFER")).toBe(true);
+    expect(isDoctorBufferOverflow("ERR_CHILD_PROCESS_STDIO_MAXBUFFER")).toBe(
+      true,
+    );
     expect(isDoctorBufferOverflow("ENOENT")).toBe(false);
     expect(isDoctorBufferOverflow(undefined)).toBe(false);
   });

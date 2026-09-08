@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
   writeFileSync,
@@ -18,11 +19,41 @@ const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const sha256 = (data: string | Uint8Array) =>
   createHash("sha256").update(data).digest("hex");
 
+/**
+ * Determines whether a path is the trusted macOS `/var` alias for `/private/var`.
+ *
+ * @param path - The logical path to evaluate
+ * @param physicalTarget - The path resolved by the filesystem
+ * @param platform - The operating-system platform to evaluate
+ * @returns `true` if the values represent the macOS `/var` to `/private/var` alias, `false` otherwise
+ */
+export function isTrustedDarwinSystemPathAlias(
+  path: string,
+  physicalTarget: string,
+  platform = process.platform,
+) {
+  return (
+    platform === "darwin" &&
+    path === "/var" &&
+    physicalTarget === "/private/var"
+  );
+}
+
+/**
+ * Ensures that an existing component of a path is not a symbolic link, except for the trusted macOS `/var` alias.
+ *
+ * Missing path components are allowed.
+ *
+ * @param path - The path whose components to inspect
+ */
 function assertNoSymlinkPathComponents(path: string) {
   let current = resolve(path);
   while (true) {
     try {
-      if (lstatSync(current).isSymbolicLink()) {
+      if (
+        lstatSync(current).isSymbolicLink() &&
+        !isTrustedDarwinSystemPathAlias(current, realpathSync(current))
+      ) {
         throw new Error(
           `Destination path traverses a symlink; refusing publication: ${current}`,
         );
@@ -119,6 +150,14 @@ function normalizeGeneratedBundleSourceComments(
   return new TextEncoder().encode(normalized);
 }
 
+/**
+ * Creates an isolated build worktree at a source revision with frozen dependencies installed.
+ *
+ * @param sourceRoot - The Git repository containing the source revision
+ * @param sourceSha - The commit SHA to check out
+ * @returns The path to the isolated build worktree
+ * @throws If worktree creation or dependency installation fails
+ */
 function prepareIsolatedBuildRoot(
   sourceRoot: string,
   sourceSha: string,
@@ -127,14 +166,14 @@ function prepareIsolatedBuildRoot(
   try {
     git(
       sourceRoot,
-      "clone",
-      "--shared",
-      "--no-checkout",
+      "worktree",
+      "add",
+      "--detach",
+      "--force",
       "--quiet",
-      sourceRoot,
       buildRoot,
+      sourceSha,
     );
-    git(buildRoot, "checkout", "--detach", "--quiet", sourceSha);
     const install = Bun.spawnSync(
       [
         process.execPath,
@@ -152,9 +191,23 @@ function prepareIsolatedBuildRoot(
     }
     return buildRoot;
   } catch (error) {
+    Bun.spawnSync(["git", "worktree", "remove", "--force", buildRoot], {
+      cwd: sourceRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
     rmSync(buildRoot, { recursive: true, force: true });
     throw error;
   }
+}
+
+function removeIsolatedBuildRoot(sourceRoot: string, buildRoot: string) {
+  Bun.spawnSync(["git", "worktree", "remove", "--force", buildRoot], {
+    cwd: sourceRoot,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  rmSync(buildRoot, { recursive: true, force: true });
 }
 
 // The remote wrapper owns all mutation and lifecycle behavior. Direct bundle use
@@ -207,6 +260,13 @@ export const CODEX_CLIENT_SHIM = [
   '  [ -n "$path_component" ] || continue',
   '  path_part="${path_part}/${path_component}"',
   '  if [ -L "$path_part" ]; then',
+  "    # macOS exposes /var as the system-owned alias of /private/var. It is the",
+  "    # sole symlink component allowed here; every other link remains forbidden.",
+  '    if [ "$path_part" = "/var" ] && [ "$(uname -s)" = "Darwin" ] && [ "$(cd -P -- "$path_part" && pwd -P)" = "/private/var" ]; then',
+  "      # Canonicalize even a missing child before native-home containment.",
+  '      client_home="/private${client_home}"',
+  "      continue",
+  "    fi",
   '    echo "OCX client-only: refusing symlinked Codex home path $path_part" >&2',
   "    exit 78",
   "  fi",
@@ -280,6 +340,10 @@ export const CODEX_CLIENT_POWERSHELL_SHIM = [
   "  }",
   "  return [System.IO.Path]::GetFullPath($current)",
   "}",
+  "function Test-TrustedDarwinSystemPathAlias([string]$Path) {",
+  "  if (-not $IsMacOS -or $Path -ne '/var') { return $false }",
+  "  try { return [string]::Equals((Resolve-PhysicalPath $Path), '/private/var', [System.StringComparison]::Ordinal) } catch { return $false }",
+  "}",
   "$clientHomeRaw = if ($env:OCX_CLIENT_CODEX_HOME) { $env:OCX_CLIENT_CODEX_HOME } else { Join-Path $homeDir '.codex-ocx' }",
   "if (-not [System.IO.Path]::IsPathRooted($clientHomeRaw)) { [Console]::Error.WriteLine('OCX client-only: OCX_CLIENT_CODEX_HOME must be absolute'); exit 78 }",
   "$clientHomeCandidate = [System.IO.Path]::GetFullPath($clientHomeRaw)",
@@ -291,7 +355,10 @@ export const CODEX_CLIENT_POWERSHELL_SHIM = [
   "    $current = Join-Path $current $part",
   "    $item = Get-Item -Force -LiteralPath $current -ErrorAction SilentlyContinue",
   "    if ($null -ne $item) {",
-  "      if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { return $true }",
+  "      if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {",
+  "        if (Test-TrustedDarwinSystemPathAlias $current) { continue }",
+  "        return $true",
+  "      }",
   "    }",
   "  }",
   "  return $false",
@@ -320,6 +387,13 @@ export const CODEX_CLIENT_POWERSHELL_SHIM = [
   "",
 ].join("\r\n");
 
+/**
+ * Builds and publishes a client artifact from clean, committed runtime inputs.
+ *
+ * @param destination - Destination directory for the new artifact candidate
+ * @param root - Runtime source repository to build from
+ * @returns The generated artifact manifest
+ */
 export async function buildClientArtifact(destination: string, root = ROOT) {
   const builderDirty = git(
     ROOT,
@@ -371,7 +445,7 @@ export async function buildClientArtifact(destination: string, root = ROOT) {
   try {
     staging = mkdtempSync(join(publicationParent, ".ocx-client-build-"));
   } catch (error) {
-    rmSync(buildRoot, { recursive: true, force: true });
+    removeIsolatedBuildRoot(root, buildRoot);
     throw error;
   }
   try {
@@ -452,7 +526,7 @@ export async function buildClientArtifact(destination: string, root = ROOT) {
     return manifest;
   } finally {
     rmSync(staging, { recursive: true, force: true });
-    rmSync(buildRoot, { recursive: true, force: true });
+    removeIsolatedBuildRoot(root, buildRoot);
   }
 }
 

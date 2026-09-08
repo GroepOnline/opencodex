@@ -195,16 +195,16 @@ Operational dashboard features are also available without a browser. These comma
 identity-checked running proxy (including a fallback runtime port) and reuse the same management
 routes, validation, live configuration, and catalog refresh side effects as the GUI.
 
-| Resource        | Commands                                 |
-| --------------- | ---------------------------------------- |
-| Routing         | `ocx combo ...` or `ocx route combo ...` |
-| Agent policy    | `ocx agent injection                     | effort    | subagents | fallback    | sidecar ...` |
-| Observability   | `ocx observe logs                        | usage     | storage   | memory      | cache        | debug ...`  |
-| API admission   | `ocx access key                          | endpoints | models    | test ...`   |
-| Claude Code     | `ocx claude config status                | set ...`  |
-| Grok Build      | `ocx grok status                         | exclude   | include   | set         | clear        | apply ...`  |
-| Runtime control | `ocx system status                       | settings  | startup   | diagnostics | sync         | update ...` |
-| Offline config  | `ocx config show                         | get       | set       | unset       | validate     | export      | import ...` |
+| Resource        | Commands                                                                                                                                                       |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Routing         | `ocx combo ...` or `ocx route combo ...`                                                                                                                       |
+| Agent policy    | `ocx agent injection ...`, `ocx agent effort ...`, `ocx agent subagents ...`, `ocx agent fallback ...`, `ocx agent sidecar ...`                                |
+| Observability   | `ocx observe logs ...`, `ocx observe usage ...`, `ocx observe storage ...`, `ocx observe memory ...`, `ocx observe cache ...`, `ocx observe debug ...`         |
+| API admission   | `ocx access key ...`, `ocx access endpoints ...`, `ocx access models ...`, `ocx access test ...`                                                               |
+| Claude Code     | `ocx claude config status`, `ocx claude config set ...`                                                                                                        |
+| Grok Build      | `ocx grok status`, `ocx grok exclude ...`, `ocx grok include ...`, `ocx grok set ...`, `ocx grok clear ...`, `ocx grok apply ...`                              |
+| Runtime control | `ocx system status`, `ocx system settings ...`, `ocx system startup ...`, `ocx system diagnostics ...`, `ocx system sync ...`, `ocx system update ...`         |
+| Offline config  | `ocx config show`, `ocx config get ...`, `ocx config set ...`, `ocx config unset ...`, `ocx config validate`, `ocx config export ...`, `ocx config import ...` |
 
 List/status is the default where unambiguous. Use `--json` for structured snapshots and
 `ocx observe logs --follow --jsonl` for a streaming request-log feed. Destructive removal/import,

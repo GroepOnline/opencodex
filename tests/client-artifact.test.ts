@@ -1,10 +1,11 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   readFileSync,
   rmSync,
   statSync,
@@ -14,36 +15,92 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildClientArtifact } from "../scripts/build-client-artifact";
+import {
+  buildClientArtifact,
+  isTrustedDarwinSystemPathAlias,
+} from "../scripts/build-client-artifact";
 
 const scratch = mkdtempSync(join(tmpdir(), "ocx-client-artifact-test-"));
 const powershell = Bun.which("pwsh");
 const posixShell = process.platform !== "win32";
-afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+const fixtureWorktrees = new Set<string>();
+// Frozen installs and native process startup are materially slower on Windows.
+// Build one immutable launcher fixture; keep each test's homes and commands isolated.
+const buildTimeout = process.platform === "win32" ? 120_000 : 30_000;
+const launcherTimeout = process.platform === "win32" ? 45_000 : 15_000;
+const launcherArtifact = join(scratch, "launcher-candidate");
+let launcherManifest: Awaited<ReturnType<typeof buildClientArtifact>>;
+beforeAll(async () => {
+  launcherManifest = await buildClientArtifact(launcherArtifact);
+}, buildTimeout);
+afterAll(() => {
+  for (const destination of fixtureWorktrees)
+    removeDetachedWorktree(destination);
+  rmSync(scratch, { recursive: true, force: true });
+});
+
+function addDetachedWorktree(destination: string) {
+  const root = join(import.meta.dir, "..");
+  const result = Bun.spawnSync(
+    ["git", "worktree", "add", "--detach", "--quiet", destination, "HEAD"],
+    { cwd: root },
+  );
+  expect(result.success).toBe(true);
+  fixtureWorktrees.add(destination);
+}
+
+function removeDetachedWorktree(destination: string) {
+  const root = join(import.meta.dir, "..");
+  Bun.spawnSync(["git", "worktree", "remove", "--force", destination], {
+    cwd: root,
+  });
+  rmSync(destination, { recursive: true, force: true });
+  fixtureWorktrees.delete(destination);
+}
 
 describe("remote client artifact", () => {
-  test("CLI builds from an explicit clean source checkout", () => {
-    const output = join(scratch, "explicit-source-candidate");
-    const root = join(import.meta.dir, "..");
-    const script = join(root, "scripts/build-client-artifact.ts");
-    const result = Bun.spawnSync(
-      [process.execPath, script, "--output", output, "--source-root", root],
-      { cwd: scratch },
-    );
-    expect(result.exitCode).toBe(0);
-    const sourceSha = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: root })
-      .stdout.toString()
-      .trim();
-    expect(readFileSync(join(output, "source-sha"), "utf8")).toBe(
-      sourceSha + "\n",
-    );
-  }, 15_000);
+  test("accepts only the verified macOS /var system alias", () => {
+    expect(
+      isTrustedDarwinSystemPathAlias("/var", "/private/var", "darwin"),
+    ).toBe(true);
+    expect(
+      isTrustedDarwinSystemPathAlias("/var", "/untrusted/var", "darwin"),
+    ).toBe(false);
+    expect(
+      isTrustedDarwinSystemPathAlias("/tmp", "/private/tmp", "darwin"),
+    ).toBe(false);
+    expect(
+      isTrustedDarwinSystemPathAlias("/var", "/private/var", "linux"),
+    ).toBe(false);
+  });
+
+  test(
+    "CLI builds from an explicit clean source checkout",
+    () => {
+      const output = join(scratch, "explicit-source-candidate");
+      const root = join(import.meta.dir, "..");
+      const script = join(root, "scripts/build-client-artifact.ts");
+      const result = Bun.spawnSync(
+        [process.execPath, script, "--output", output, "--source-root", root],
+        { cwd: scratch },
+      );
+      expect(result.exitCode).toBe(0);
+      const sourceSha = Bun.spawnSync(["git", "rev-parse", "HEAD"], {
+        cwd: root,
+      })
+        .stdout.toString()
+        .trim();
+      expect(readFileSync(join(output, "source-sha"), "utf8")).toBe(
+        sourceSha + "\n",
+      );
+    },
+    buildTimeout,
+  );
 
   test("refuses an uncommitted artifact builder", () => {
     const root = join(import.meta.dir, "..");
     const dirtyRoot = join(scratch, "dirty-builder-checkout");
-    const clone = Bun.spawnSync(["git", "clone", "--shared", root, dirtyRoot]);
-    expect(clone.success).toBe(true);
+    addDetachedWorktree(dirtyRoot);
     const builder = join(dirtyRoot, "scripts/build-client-artifact.ts");
     writeFileSync(
       builder,
@@ -66,188 +123,238 @@ describe("remote client artifact", () => {
       "Artifact builder is dirty; commit the reviewed builder before building",
     );
     expect(existsSync(output)).toBe(false);
+    removeDetachedWorktree(dirtyRoot);
   });
 
-  test("reinstalls frozen dependencies before bundling", async () => {
-    const root = join(import.meta.dir, "..");
-    const sourceRoot = join(scratch, "dependency-drift-checkout");
-    const clone = Bun.spawnSync(["git", "clone", "--shared", root, sourceRoot]);
-    expect(clone.success).toBe(true);
-    const install = Bun.spawnSync(
-      [process.execPath, "install", "--frozen-lockfile", "--ignore-scripts"],
-      { cwd: sourceRoot },
-    );
-    expect(install.success).toBe(true);
-    const zodEntry = join(sourceRoot, "node_modules/zod/v4/index.js");
-    const originalDependency = readFileSync(zodEntry, "utf8");
-    // Bun may hardlink installed package bytes into its shared cache. Unlink the
-    // fixture entry before tampering so this test cannot poison later installs.
-    rmSync(zodEntry);
-    writeFileSync(
-      zodEntry,
-      originalDependency + '\nconsole.error("DEPENDENCY_DRIFT_SENTINEL");\n',
-    );
+  test(
+    "reinstalls frozen dependencies before bundling",
+    async () => {
+      const root = join(import.meta.dir, "..");
+      const sourceRoot = join(scratch, "dependency-drift-checkout");
+      addDetachedWorktree(sourceRoot);
+      const install = Bun.spawnSync(
+        [process.execPath, "install", "--frozen-lockfile", "--ignore-scripts"],
+        { cwd: sourceRoot },
+      );
+      expect(install.success).toBe(true);
+      const zodEntry = join(sourceRoot, "node_modules/zod/v4/index.js");
+      const originalDependency = readFileSync(zodEntry, "utf8");
+      // Bun may hardlink installed package bytes into its shared cache. Unlink the
+      // fixture entry before tampering so this test cannot poison later installs.
+      rmSync(zodEntry);
+      writeFileSync(
+        zodEntry,
+        originalDependency + '\nconsole.error("DEPENDENCY_DRIFT_SENTINEL");\n',
+      );
 
-    const output = join(scratch, "dependency-drift-candidate");
-    const manifest = await buildClientArtifact(output, sourceRoot);
-    expect(
-      readFileSync(join(output, "src/cli/index.js"), "utf8"),
-    ).not.toContain("DEPENDENCY_DRIFT_SENTINEL");
-    expect(readFileSync(zodEntry, "utf8")).toContain(
-      "DEPENDENCY_DRIFT_SENTINEL",
-    );
-    const locked = readFileSync(join(sourceRoot, "bun.lock"));
-    expect(manifest.lockSha256).toBe(
-      createHash("sha256").update(locked).digest("hex"),
-    );
-  }, 15_000);
+      const output = join(scratch, "dependency-drift-candidate");
+      const manifest = await buildClientArtifact(output, sourceRoot);
+      expect(
+        readFileSync(join(output, "src/cli/index.js"), "utf8"),
+      ).not.toContain("DEPENDENCY_DRIFT_SENTINEL");
+      expect(readFileSync(zodEntry, "utf8")).toContain(
+        "DEPENDENCY_DRIFT_SENTINEL",
+      );
+      const locked = readFileSync(join(sourceRoot, "bun.lock"));
+      expect(manifest.lockSha256).toBe(
+        createHash("sha256").update(locked).digest("hex"),
+      );
+      removeDetachedWorktree(sourceRoot);
+    },
+    buildTimeout,
+  );
 
-  test("builds a self-contained, SHA-bound candidate without activation", async () => {
-    const output = join(scratch, "candidate");
-    const manifest = await buildClientArtifact(output);
-    const entry = join(output, "src/cli/index.js");
-    const digest = createHash("sha256")
-      .update(readFileSync(entry))
-      .digest("hex");
-    const git = (...args: string[]) => {
-      const result = Bun.spawnSync(["git", ...args], {
-        cwd: join(import.meta.dir, ".."),
+  test("removes the detached worktree when dependency installation fails", async () => {
+    const sourceRoot = join(scratch, "broken-dependency-checkout");
+    mkdirSync(sourceRoot);
+    const runGit = (...args: string[]) =>
+      Bun.spawnSync(["git", ...args], {
+        cwd: sourceRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "ocx-test",
+          GIT_AUTHOR_EMAIL: "ocx-test@example.test",
+          GIT_COMMITTER_NAME: "ocx-test",
+          GIT_COMMITTER_EMAIL: "ocx-test@example.test",
+        },
       });
-      expect(result.success).toBe(true);
-      return result.stdout.toString().trim();
-    };
-    const sourceSha = git("rev-parse", "HEAD");
-    const packageText = git("show", `${sourceSha}:package.json`) + "\n";
-    const lock = readFileSync(join(import.meta.dir, "../bun.lock"));
-    const builder = readFileSync(
-      fileURLToPath(
-        new URL("../scripts/build-client-artifact.ts", import.meta.url),
-      ),
+    expect(runGit("init", "-b", "main").success).toBe(true);
+    writeFileSync(
+      join(sourceRoot, "package.json"),
+      '{"name":"broken-artifact-fixture","version":"1.0.0"}\n',
     );
-    expect(manifest.sourceSha).toBe(sourceSha);
-    expect(readFileSync(join(output, "source-sha"), "utf8")).toBe(
-      manifest.sourceSha + "\n",
+    writeFileSync(join(sourceRoot, "bun.lock"), "not a valid Bun lockfile\n");
+    expect(runGit("add", "package.json", "bun.lock").success).toBe(true);
+    expect(runGit("commit", "-m", "fixture").success).toBe(true);
+
+    const listedWorktrees = () =>
+      runGit("worktree", "list", "--porcelain")
+        .stdout.toString()
+        .split("\n")
+        .filter((line) => line.startsWith("worktree "))
+        .map((line) => line.slice("worktree ".length));
+    const before = listedWorktrees();
+    const destination = join(scratch, "broken-dependency-output");
+
+    await expect(buildClientArtifact(destination, sourceRoot)).rejects.toThrow(
+      "Locked dependency refresh failed",
     );
-    expect(readFileSync(join(output, "index.js.sha256"), "utf8")).toBe(
-      `${digest}  src/cli/index.js\n`,
-    );
-    expect(manifest.files["src/cli/index.js"]).toBe(digest);
-    expect(readFileSync(entry, "utf8")).not.toMatch(
-      /ocx-client-source-[A-Za-z0-9_-]+/,
-    );
-    expect(manifest.files["package.json"]).toBe(
-      createHash("sha256").update(packageText).digest("hex"),
-    );
-    expect(manifest.lockSha256).toBe(
-      createHash("sha256").update(lock).digest("hex"),
-    );
-    expect(manifest.builderSourceSha).toBe(sourceSha);
-    expect(manifest.builderSha256).toBe(
-      createHash("sha256").update(builder).digest("hex"),
-    );
-    expect(readFileSync(join(output, "package.json"), "utf8")).toBe(
-      packageText,
-    );
-    const metadata = JSON.parse(
-      readFileSync(join(output, "package.json"), "utf8"),
-    );
-    expect(existsSync(join(output, "node_modules"))).toBe(false);
-    expect(existsSync(join(scratch, "current"))).toBe(false);
-    const env = {
-      ...process.env,
-      OPENCODEX_HOME: join(scratch, "ocx-home"),
-      CODEX_HOME: join(scratch, "codex-home"),
-    };
-    mkdirSync(env.OPENCODEX_HOME);
-    mkdirSync(env.CODEX_HOME);
-    const version = Bun.spawnSync([process.execPath, entry, "--version"], {
-      env,
-      cwd: scratch,
-    });
-    expect(version.exitCode).toBe(0);
-    expect(version.stdout.toString()).toContain(
-      `opencodex ${metadata.version}`,
-    );
-    expect(readFileSync(entry, "utf8")).toContain("syncExternalOcxCatalog");
-    for (const command of [
-      ["start"],
-      ["ensure"],
-      ["service"],
-      ["init"],
-      ["__startup-health"],
-      ["sync"],
-      ["sync", "--restart-codex"],
-      ["sync-cache", "--restart-codex"],
-      ["v2", "mode", "v2"],
-      ["recover-history", "--legacy-openai"],
-      ["codex-shim", "install"],
-      ["status"],
-      ["health"],
-    ]) {
-      const denied = Bun.spawnSync([process.execPath, entry, ...command], {
+    expect(listedWorktrees()).toEqual(before);
+    expect(existsSync(destination)).toBe(false);
+  });
+
+  test(
+    "builds a self-contained, SHA-bound candidate without activation",
+    async () => {
+      const output = join(scratch, "candidate");
+      const manifest = await buildClientArtifact(output);
+      const entry = join(output, "src/cli/index.js");
+      const digest = createHash("sha256")
+        .update(readFileSync(entry))
+        .digest("hex");
+      const git = (...args: string[]) => {
+        const result = Bun.spawnSync(["git", ...args], {
+          cwd: join(import.meta.dir, ".."),
+        });
+        expect(result.success).toBe(true);
+        return result.stdout.toString().trim();
+      };
+      const sourceSha = git("rev-parse", "HEAD");
+      const packageText = git("show", `${sourceSha}:package.json`) + "\n";
+      const lock = readFileSync(join(import.meta.dir, "../bun.lock"));
+      const builder = readFileSync(
+        fileURLToPath(
+          new URL("../scripts/build-client-artifact.ts", import.meta.url),
+        ),
+      );
+      expect(manifest.sourceSha).toBe(sourceSha);
+      expect(readFileSync(join(output, "source-sha"), "utf8")).toBe(
+        manifest.sourceSha + "\n",
+      );
+      expect(readFileSync(join(output, "index.js.sha256"), "utf8")).toBe(
+        `${digest}  src/cli/index.js\n`,
+      );
+      expect(manifest.files["src/cli/index.js"]).toBe(digest);
+      expect(readFileSync(entry, "utf8")).not.toMatch(
+        /ocx-client-source-[A-Za-z0-9_-]+/,
+      );
+      expect(manifest.files["package.json"]).toBe(
+        createHash("sha256").update(packageText).digest("hex"),
+      );
+      expect(manifest.lockSha256).toBe(
+        createHash("sha256").update(lock).digest("hex"),
+      );
+      expect(manifest.builderSourceSha).toBe(sourceSha);
+      expect(manifest.builderSha256).toBe(
+        createHash("sha256").update(builder).digest("hex"),
+      );
+      expect(readFileSync(join(output, "package.json"), "utf8")).toBe(
+        packageText,
+      );
+      const metadata = JSON.parse(
+        readFileSync(join(output, "package.json"), "utf8"),
+      );
+      expect(existsSync(join(output, "node_modules"))).toBe(false);
+      expect(existsSync(join(scratch, "current"))).toBe(false);
+      const env = {
+        ...process.env,
+        OPENCODEX_HOME: join(scratch, "ocx-home"),
+        CODEX_HOME: join(scratch, "codex-home"),
+      };
+      mkdirSync(env.OPENCODEX_HOME);
+      mkdirSync(env.CODEX_HOME);
+      const version = Bun.spawnSync([process.execPath, entry, "--version"], {
         env,
         cwd: scratch,
       });
-      expect(denied.exitCode).toBe(64);
-      expect(denied.stderr.toString()).toContain(
-        "local lifecycle commands are disabled",
+      expect(version.exitCode).toBe(0);
+      expect(version.stdout.toString()).toContain(
+        `opencodex ${metadata.version}`,
       );
-    }
-    const staleShimHome = join(scratch, "stale-shim-home");
-    const staleShimBin = join(scratch, "stale-shim-bin");
-    const staleWrapper = join(staleShimBin, "codex");
-    const staleBackup = join(staleShimBin, "codex.opencodex-real");
-    const staleReplacement =
-      "replacement that direct artifact status must not promote\n";
-    mkdirSync(staleShimHome);
-    mkdirSync(staleShimBin);
-    writeFileSync(staleWrapper, staleReplacement);
-    writeFileSync(staleBackup, "known-good prior launcher\n");
-    writeFileSync(
-      join(staleShimHome, "codex-shim.json"),
-      `${JSON.stringify({
-        platform: process.platform,
-        wrapperPath: staleWrapper,
-        originalPath: staleWrapper,
-        backupPath: staleBackup,
-      })}\n`,
-    );
-    const staleState = readFileSync(join(staleShimHome, "codex-shim.json"));
-    const staleRun = Bun.spawnSync([process.execPath, entry, "status"], {
-      env: { ...env, OPENCODEX_HOME: staleShimHome, PATH: staleShimBin },
-      cwd: scratch,
-    });
-    expect(staleRun.exitCode).toBe(64);
-    expect(readFileSync(staleWrapper, "utf8")).toBe(staleReplacement);
-    expect(readFileSync(staleBackup, "utf8")).toBe(
-      "known-good prior launcher\n",
-    );
-    expect(readFileSync(join(staleShimHome, "codex-shim.json"))).toEqual(
-      staleState,
-    );
-    expect(existsSync(join(scratch, "ocx-home", "proxy.pid"))).toBe(false);
-    await expect(buildClientArtifact(output)).rejects.toThrow(
-      "Destination already exists",
-    );
-    expect(createHash("sha256").update(readFileSync(entry)).digest("hex")).toBe(
-      digest,
-    );
+      expect(readFileSync(entry, "utf8")).toContain("syncExternalOcxCatalog");
+      for (const command of [
+        ["start"],
+        ["ensure"],
+        ["service"],
+        ["init"],
+        ["__startup-health"],
+        ["sync"],
+        ["sync", "--restart-codex"],
+        ["sync-cache", "--restart-codex"],
+        ["v2", "mode", "v2"],
+        ["recover-history", "--legacy-openai"],
+        ["codex-shim", "install"],
+        ["status"],
+        ["health"],
+      ]) {
+        const denied = Bun.spawnSync([process.execPath, entry, ...command], {
+          env,
+          cwd: scratch,
+        });
+        expect(denied.exitCode).toBe(64);
+        expect(denied.stderr.toString()).toContain(
+          "local lifecycle commands are disabled",
+        );
+      }
+      const staleShimHome = join(scratch, "stale-shim-home");
+      const staleShimBin = join(scratch, "stale-shim-bin");
+      const staleWrapper = join(staleShimBin, "codex");
+      const staleBackup = join(staleShimBin, "codex.opencodex-real");
+      const staleReplacement =
+        "replacement that direct artifact status must not promote\n";
+      mkdirSync(staleShimHome);
+      mkdirSync(staleShimBin);
+      writeFileSync(staleWrapper, staleReplacement);
+      writeFileSync(staleBackup, "known-good prior launcher\n");
+      writeFileSync(
+        join(staleShimHome, "codex-shim.json"),
+        `${JSON.stringify({
+          platform: process.platform,
+          wrapperPath: staleWrapper,
+          originalPath: staleWrapper,
+          backupPath: staleBackup,
+        })}\n`,
+      );
+      const staleState = readFileSync(join(staleShimHome, "codex-shim.json"));
+      const staleRun = Bun.spawnSync([process.execPath, entry, "status"], {
+        env: { ...env, OPENCODEX_HOME: staleShimHome, PATH: staleShimBin },
+        cwd: scratch,
+      });
+      expect(staleRun.exitCode).toBe(64);
+      expect(readFileSync(staleWrapper, "utf8")).toBe(staleReplacement);
+      expect(readFileSync(staleBackup, "utf8")).toBe(
+        "known-good prior launcher\n",
+      );
+      expect(readFileSync(join(staleShimHome, "codex-shim.json"))).toEqual(
+        staleState,
+      );
+      expect(existsSync(join(scratch, "ocx-home", "proxy.pid"))).toBe(false);
+      await expect(buildClientArtifact(output)).rejects.toThrow(
+        "Destination already exists",
+      );
+      expect(
+        createHash("sha256").update(readFileSync(entry)).digest("hex"),
+      ).toBe(digest);
 
-    const duplicate = join(scratch, "duplicate");
-    await buildClientArtifact(duplicate);
-    expect(readFileSync(join(duplicate, "src/cli/index.js"))).toEqual(
-      readFileSync(entry),
-    );
-    expect(readFileSync(join(duplicate, "artifact-manifest.json"))).toEqual(
-      readFileSync(join(output, "artifact-manifest.json")),
-    );
-  }, 30_000);
+      const duplicate = join(scratch, "duplicate");
+      await buildClientArtifact(duplicate);
+      expect(readFileSync(join(duplicate, "src/cli/index.js"))).toEqual(
+        readFileSync(entry),
+      );
+      expect(readFileSync(join(duplicate, "artifact-manifest.json"))).toEqual(
+        readFileSync(join(output, "artifact-manifest.json")),
+      );
+    },
+    buildTimeout,
+  );
 
   test.skipIf(!posixShell)(
     "ships a client shim that cannot select the native Codex home",
     async () => {
-      const output = join(scratch, "shim-candidate");
-      const manifest = await buildClientArtifact(output);
+      const output = launcherArtifact;
+      const manifest = launcherManifest;
       const shim = join(output, "bin/codex.ocx-client");
       const powershellShim = join(output, "bin/codex.ocx-client.ps1");
       const home = join(scratch, "shim-home");
@@ -301,10 +408,14 @@ describe("remote client artifact", () => {
       expect(readFileSync(powershellShim, "utf8")).toContain(
         "$env:USERPROFILE",
       );
+      expect(readFileSync(shim, "utf8")).toContain('"$path_part" = "/var"');
+      expect(readFileSync(powershellShim, "utf8")).toContain(
+        "Test-TrustedDarwinSystemPathAlias",
+      );
       const defaultRun = Bun.spawnSync([shim, "--version"], { env });
       expect(defaultRun.exitCode).toBe(0);
       expect(readFileSync(capture, "utf8")).toBe(
-        join(home, ".codex-ocx") + "\n",
+        join(realpathSync.native(home), ".codex-ocx") + "\n",
       );
       expect(readFileSync(join(nativeHome, "config.toml"), "utf8")).toBe(
         "direct Azure config stays untouched\n",
@@ -335,11 +446,15 @@ describe("remote client artifact", () => {
       );
 
       const selected = join(home, ".codex-client-test");
+      const physicalSelected = join(
+        realpathSync.native(home),
+        ".codex-client-test",
+      );
       const selectedRun = Bun.spawnSync([shim, "--version"], {
         env: { ...env, OCX_CLIENT_CODEX_HOME: selected },
       });
       expect(selectedRun.exitCode).toBe(0);
-      expect(readFileSync(capture, "utf8")).toBe(selected + "\n");
+      expect(readFileSync(capture, "utf8")).toBe(physicalSelected + "\n");
 
       const nativeRun = Bun.spawnSync([shim, "--version"], {
         env: { ...env, OCX_CLIENT_CODEX_HOME: nativeHome },
@@ -348,7 +463,7 @@ describe("remote client artifact", () => {
       expect(nativeRun.stderr.toString()).toContain(
         "refusing native Codex home",
       );
-      expect(readFileSync(capture, "utf8")).toBe(selected + "\n");
+      expect(readFileSync(capture, "utf8")).toBe(physicalSelected + "\n");
       expect(readFileSync(join(nativeHome, "config.toml"), "utf8")).toBe(
         "direct Azure config stays untouched\n",
       );
@@ -363,18 +478,28 @@ describe("remote client artifact", () => {
       expect(nestedNativeRun.stderr.toString()).toContain(
         "refusing native Codex home",
       );
+      expect(existsSync(join(nativeHome, "ocx-client"))).toBe(false);
+      const missingNativeDescendantRun = Bun.spawnSync([shim, "--version"], {
+        env: {
+          ...env,
+          OCX_CLIENT_CODEX_HOME: join(nativeHome, "missing-parent", "client"),
+        },
+      });
+      expect(missingNativeDescendantRun.exitCode).toBe(78);
+      expect(missingNativeDescendantRun.stderr.toString()).toContain(
+        "refusing native Codex home",
+      );
       expect(readFileSync(join(nativeHome, "config.toml"), "utf8")).toBe(
         "direct Azure config stays untouched\n",
       );
     },
-    15_000,
+    launcherTimeout,
   );
 
   test.skipIf(!posixShell)(
     "refuses the physical target of a symlinked native Codex home",
     async () => {
-      const output = join(scratch, "symlinked-native-candidate");
-      await buildClientArtifact(output);
+      const output = launcherArtifact;
       const shim = join(output, "bin/codex.ocx-client");
       const home = join(scratch, "symlinked-native-home");
       const nativeHome = join(home, ".codex");
@@ -400,14 +525,13 @@ describe("remote client artifact", () => {
         "native config\n",
       );
     },
-    15_000,
+    launcherTimeout,
   );
 
   test.skipIf(!powershell)(
     "PowerShell preserves the governed proxy failure exit code",
     async () => {
-      const output = join(scratch, "powershell-proxy-failure-candidate");
-      await buildClientArtifact(output);
+      const output = launcherArtifact;
       const shim = join(output, "bin/codex.ocx-client.ps1");
       const home = join(scratch, "powershell-proxy-failure-home");
       const failingOcx = join(scratch, "failing-ocx.ps1");
@@ -426,14 +550,13 @@ describe("remote client artifact", () => {
         "central OCX proxy unavailable through the governed remote launcher",
       );
     },
-    15_000,
+    launcherTimeout,
   );
 
   test.skipIf(!powershell)(
     "PowerShell refuses the physical target of a symlinked native Codex home",
     async () => {
-      const output = join(scratch, "powershell-symlinked-native-candidate");
-      await buildClientArtifact(output);
+      const output = launcherArtifact;
       const shim = join(output, "bin/codex.ocx-client.ps1");
       const home = join(scratch, "powershell-symlinked-native-home");
       const nativeHome = join(home, ".codex");
@@ -460,13 +583,13 @@ describe("remote client artifact", () => {
         "native config\n",
       );
     },
+    launcherTimeout,
   );
 
   test.skipIf(!powershell)(
     "PowerShell refuses a client home nested under the native Codex home",
     async () => {
-      const output = join(scratch, "powershell-nested-native-candidate");
-      await buildClientArtifact(output);
+      const output = launcherArtifact;
       const shim = join(output, "bin/codex.ocx-client.ps1");
       const home = join(scratch, "powershell-nested-native-home");
       const nativeHome = join(home, ".codex");
@@ -490,7 +613,7 @@ describe("remote client artifact", () => {
         "native config\n",
       );
     },
-    15_000,
+    launcherTimeout,
   );
 
   test("refuses publication through a symlinked destination parent", async () => {
