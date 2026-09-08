@@ -38,6 +38,12 @@ home is rejected as well. An explicit
 `OCX_CLIENT_CODEX_BIN` can select the governed remote launcher and real Codex
 executable during installation.
 
+`OCX_CLIENT_TOKEN_FILE` selects the API token file (default
+`~/.opencodex/service-api-token`). Both shims read it only when
+`OPENCODEX_API_KEY` is unset. They also seed `OPENCODEX_API_AUTH_TOKEN` from
+that key when the auth-token variable is unset; explicit environment values
+are preserved.
+
 The PowerShell shim resolves every existing reparse-point component to its
 physical target before comparing homes, and fails closed if a target cannot be
 resolved. It separately rejects a client-home override that traverses a
