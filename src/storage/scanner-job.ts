@@ -12,15 +12,33 @@ import type { StorageReport } from "./scanner";
 const WORKER_TIMEOUT_MS = 2 * 60 * 1000;
 
 interface StorageScannerJobTestHooks {
-  /** Test-only delay in the worker before it starts scanning. */
+  /** Test-only synchronous delay in the worker before it starts scanning. */
   blockMs?: number;
+  /** Test-only finite worker timeout override. */
+  timeoutMs?: number;
+  /** Test-only handshake emitted immediately before a worker blocks. */
+  onWorkerStarted?: () => void;
 }
 
 let testHooks: StorageScannerJobTestHooks | null = null;
 const inflightScans = new Map<string, Promise<StorageReport>>();
+let abortActiveScan: (() => void) | null = null;
 
 export function setStorageScannerJobTestHooks(hooks: StorageScannerJobTestHooks | null): void {
   testHooks = hooks;
+}
+
+/** Terminate an in-flight passive scan during server shutdown. */
+export function abortStorageScannerJob(): void {
+  const abort = abortActiveScan;
+  abortActiveScan = null;
+  abort?.();
+}
+
+export function resetStorageScannerJobForTests(): void {
+  abortStorageScannerJob();
+  testHooks = null;
+  inflightScans.clear();
 }
 
 export function scanStorageForManagement(codexHome: string = resolveCodexHomeDir()): Promise<StorageReport> {
@@ -41,22 +59,34 @@ function runStorageScannerWorker(codexHome: string): Promise<StorageReport> {
     const requestId = crypto.randomUUID();
     const worker = new Worker(new URL("./scanner-worker.ts", import.meta.url).href);
     let settled = false;
+    const timeoutMs = typeof testHooks?.timeoutMs === "number"
+      && Number.isFinite(testHooks.timeoutMs)
+      && testHooks.timeoutMs > 0
+      ? Math.floor(testHooks.timeoutMs)
+      : WORKER_TIMEOUT_MS;
     const finish = (fn: () => void) => {
       if (settled) return;
       settled = true;
+      if (abortActiveScan === abort) abortActiveScan = null;
       clearTimeout(timeout);
       try { worker.terminate(); } catch { /* worker has already exited */ }
       fn();
     };
     const timeout = setTimeout(() => {
       finish(() => reject(new Error("storage_scan_worker_timeout")));
-    }, WORKER_TIMEOUT_MS);
+    }, timeoutMs);
+    const abort = () => finish(() => reject(new Error("storage_scan_worker_aborted")));
+    abortActiveScan = abort;
 
     worker.onmessage = (event: MessageEvent<unknown>) => {
       const data = event.data;
       if (!data || typeof data !== "object") return;
       const message = data as Record<string, unknown>;
       if (message.requestId !== requestId) return;
+      if (message.type === "started") {
+        testHooks?.onWorkerStarted?.();
+        return;
+      }
       if (message.type === "done" && message.report && typeof message.report === "object") {
         finish(() => resolve(message.report as StorageReport));
         return;
@@ -69,11 +99,15 @@ function runStorageScannerWorker(codexHome: string): Promise<StorageReport> {
     worker.onerror = (event: ErrorEvent) => {
       finish(() => reject(event.error instanceof Error ? event.error : new Error(event.message || "storage_scan_worker_failed")));
     };
-    worker.postMessage({
-      type: "scan",
-      requestId,
-      codexHome,
-      ...(typeof testHooks?.blockMs === "number" && testHooks.blockMs > 0 ? { blockMs: testHooks.blockMs } : {}),
-    });
+    try {
+      worker.postMessage({
+        type: "scan",
+        requestId,
+        codexHome,
+        ...(typeof testHooks?.blockMs === "number" && testHooks.blockMs > 0 ? { blockMs: testHooks.blockMs } : {}),
+      });
+    } catch (error) {
+      finish(() => reject(error instanceof Error ? error : new Error("storage_scan_worker_post_failed")));
+    }
   });
 }

@@ -4,7 +4,11 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, unlinkSync, utim
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { scanStorage, type StorageBucket, type StorageReport } from "../src/storage/scanner";
-import { scanStorageForManagement } from "../src/storage/scanner-job";
+import {
+  resetStorageScannerJobForTests,
+  scanStorageForManagement,
+  setStorageScannerJobTestHooks,
+} from "../src/storage/scanner-job";
 
 const OLD_MTIME = new Date("2026-01-02T03:04:05Z");
 const MID_MTIME = new Date("2026-03-04T05:06:07Z");
@@ -96,6 +100,7 @@ function snapshotTree(dir: string): Map<string, { size: number; mtimeMs: number 
 }
 
 afterEach(() => {
+  resetStorageScannerJobForTests();
   if (previousCodexHome === undefined) delete process.env.CODEX_HOME;
   else process.env.CODEX_HOME = previousCodexHome;
   previousCodexHome = undefined;
@@ -113,6 +118,15 @@ describe("scanStorage", () => {
     expect(scanStorageForManagement(fixtureHome)).toBe(first);
     const actual = await first;
     expect({ ...actual, generatedAt: 0 }).toEqual({ ...expected, generatedAt: 0 });
+  }, 15_000);
+
+  test("worker timeout cleans up so a later management scan can retry", async () => {
+    fixtureHome = buildFixtureHome();
+    setStorageScannerJobTestHooks({ blockMs: 200, timeoutMs: 25 });
+    await expect(scanStorageForManagement(fixtureHome)).rejects.toThrow("storage_scan_worker_timeout");
+    setStorageScannerJobTestHooks(null);
+    const retried = await scanStorageForManagement(fixtureHome);
+    expect(retried.total.fileCount).toBeGreaterThan(0);
   }, 15_000);
 
   test("aggregates bucket bytes, file counts, and mtimes from a fixture home", () => {

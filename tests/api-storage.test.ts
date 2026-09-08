@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { saveConfig } from "../src/config";
 import { startServer } from "../src/server";
-import { setStorageScannerJobTestHooks } from "../src/storage/scanner-job";
+import { resetStorageScannerJobForTests, setStorageScannerJobTestHooks } from "../src/storage/scanner-job";
 import type { OcxConfig } from "../src/types";
 import { installIsolatedCodexHome, type IsolatedCodexHome } from "./helpers/isolated-codex-home";
 
@@ -45,7 +45,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  setStorageScannerJobTestHooks(null);
+  resetStorageScannerJobForTests();
   if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
   else process.env.OPENCODEX_HOME = previousHome;
   isolatedCodexHome?.restore();
@@ -105,14 +105,16 @@ describe("GET /api/storage", () => {
   test("runs the complete scan in a worker so health remains responsive", async () => {
     writeSessionsFixture(isolatedCodexHome!.path);
     const blockMs = 800;
-    setStorageScannerJobTestHooks({ blockMs });
+    let markWorkerStarted: () => void;
+    const workerStarted = new Promise<void>(resolve => { markWorkerStarted = resolve; });
+    setStorageScannerJobTestHooks({ blockMs, onWorkerStarted: () => markWorkerStarted() });
     const server = startServer(0);
     try {
       const scanStarted = Date.now();
       const scan = fetch(new URL("/api/storage", server.url));
-      // The scanner Worker is deliberately held before its complete synchronous
-      // scan (walk, sort, and SQLite read), not in the server request thread.
-      await Bun.sleep(50);
+      // The scanner Worker is synchronously blocked before its complete scan
+      // (walk, sort, and SQLite read), not merely awaiting a timer.
+      await workerStarted;
       const healthStarted = Date.now();
       const health = await fetch(new URL("/healthz", server.url));
       expect(health.status).toBe(200);

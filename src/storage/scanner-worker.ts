@@ -11,7 +11,7 @@ interface ScanMessage {
   type: "scan";
   requestId: string;
   codexHome: string;
-  /** Test-only delay used to prove worker isolation at the HTTP boundary. */
+  /** Test-only synchronous delay used to prove worker isolation at the HTTP boundary. */
   blockMs?: number;
 }
 
@@ -23,12 +23,16 @@ function isScanMessage(value: unknown): value is ScanMessage {
 
 declare const self: Worker;
 
-self.onmessage = async (event: MessageEvent<unknown>) => {
+self.onmessage = (event: MessageEvent<unknown>) => {
   if (!isScanMessage(event.data)) return;
   const { requestId, codexHome, blockMs } = event.data;
   try {
     if (typeof blockMs === "number" && Number.isFinite(blockMs) && blockMs > 0) {
-      await Bun.sleep(Math.floor(blockMs));
+      // Atomics.wait blocks this Worker thread rather than merely delaying an
+      // async task, so the management regression proves the proxy loop is
+      // isolated from real synchronous scan work.
+      self.postMessage({ type: "started", requestId });
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)), 0, 0, Math.floor(blockMs));
     }
     self.postMessage({ type: "done", requestId, report: scanStorage(codexHome) });
   } catch (error) {

@@ -5,6 +5,7 @@ import {
   setStorageCleanupPolicyJobLiveApply,
 } from "../storage/policy-job";
 import { stopStorageCleanupScheduler } from "../storage/policy-scheduler";
+import { abortStorageScannerJob } from "../storage/scanner-job";
 
 // ---------------------------------------------------------------------------
 // Active turn tracking + graceful shutdown drain
@@ -90,6 +91,7 @@ export async function drainAndShutdown(
   // Tear down opt-in storage policy timers / worker / live-config sink so they cannot fire after stop.
   stopStorageCleanupScheduler();
   abortStorageCleanupPolicyJob();
+  abortStorageScannerJob();
   setStorageCleanupPolicyLiveSink(null);
   setStorageCleanupPolicyJobLiveApply(null);
   s?.stop(true);
