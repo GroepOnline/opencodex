@@ -1,6 +1,7 @@
-import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import {
   chmodSync,
+  copyFileSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -17,6 +18,8 @@ const repoRoot = dirname(
   fileURLToPath(new URL("../package.json", import.meta.url)),
 );
 const releaseScriptPath = join(repoRoot, "scripts", "release.ts");
+const fixtureCommandNames = ["bun", "gh", "git", "npm"] as const;
+let nativeFixtureDir: string | null = null;
 
 interface LoggedCall {
   args: string[];
@@ -38,6 +41,29 @@ function writeExecutable(path: string, contents: string): void {
   writeFileSync(path, contents, "utf8");
   chmodSync(path, 0o755);
 }
+
+beforeAll(() => {
+  if (process.platform !== "win32") return;
+  nativeFixtureDir = mkdtempSync(join(tmpdir(), "ocx-release-helper-native-"));
+  for (const name of fixtureCommandNames) {
+    const sourcePath = join(nativeFixtureDir, `${name}.js`);
+    const executablePath = join(nativeFixtureDir, `${name}.exe`);
+    writeFileSync(sourcePath, shimProgramSource(name), "utf8");
+    const compiled = spawnSync(
+      process.execPath,
+      ["build", sourcePath, "--compile", "--outfile", executablePath],
+      { encoding: "utf8" },
+    );
+    if (compiled.status !== 0) {
+      throw new Error(`failed to compile ${name} release fixture: ${compiled.stderr}`);
+    }
+  }
+}, 120_000);
+
+afterAll(() => {
+  if (nativeFixtureDir) rmSync(nativeFixtureDir, { recursive: true, force: true });
+  nativeFixtureDir = null;
+});
 
 function shimProgramSource(name: "bun" | "gh" | "git" | "npm"): string {
   if (name === "bun") {
@@ -182,22 +208,15 @@ function installCommandShim(
   const jsPath = join(binDir, `${name}.js`);
   const launcherPath = join(binDir, name);
 
-  writeFileSync(jsPath, shimProgramSource(name), "utf8");
   if (process.platform === "win32") {
     // Bun 1.4 rejects valid peeled Git refs ending in `^{}` before a .cmd
     // shim can receive them. A native fixture executable bypasses cmd.exe so
     // the release helper still exercises its exact peeled-ref validation.
-    const nativePath = `${launcherPath}.exe`;
-    const compiled = spawnSync(
-      process.execPath,
-      ["build", jsPath, "--compile", "--outfile", nativePath],
-      { encoding: "utf8" },
-    );
-    if (compiled.status !== 0) {
-      throw new Error(`failed to compile ${name} release fixture: ${compiled.stderr}`);
-    }
+    if (!nativeFixtureDir) throw new Error("native release fixtures were not initialized");
+    copyFileSync(join(nativeFixtureDir, `${name}.exe`), `${launcherPath}.exe`);
     return;
   }
+  writeFileSync(jsPath, shimProgramSource(name), "utf8");
   writeExecutable(
     launcherPath,
     `#!${process.execPath}\nimport "./${name}.js";\n`,
