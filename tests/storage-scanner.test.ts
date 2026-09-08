@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, unlinkSync, utim
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { scanStorage, type StorageBucket, type StorageReport } from "../src/storage/scanner";
+import { scanStorageForManagement } from "../src/storage/scanner-job";
 
 const OLD_MTIME = new Date("2026-01-02T03:04:05Z");
 const MID_MTIME = new Date("2026-03-04T05:06:07Z");
@@ -103,6 +104,17 @@ afterEach(() => {
 });
 
 describe("scanStorage", () => {
+  test("management worker preserves the synchronous scanner report", async () => {
+    fixtureHome = buildFixtureHome();
+    const expected = scanStorage(fixtureHome);
+    const first = scanStorageForManagement(fixtureHome);
+    // Management callers share one worker per home rather than creating a
+    // worker per dashboard poll while a large scan is already in flight.
+    expect(scanStorageForManagement(fixtureHome)).toBe(first);
+    const actual = await first;
+    expect({ ...actual, generatedAt: 0 }).toEqual({ ...expected, generatedAt: 0 });
+  }, 15_000);
+
   test("aggregates bucket bytes, file counts, and mtimes from a fixture home", () => {
     fixtureHome = buildFixtureHome();
     const report = scanStorage(fixtureHome);

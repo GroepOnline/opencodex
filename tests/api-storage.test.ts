@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { saveConfig } from "../src/config";
 import { startServer } from "../src/server";
+import { setStorageScannerJobTestHooks } from "../src/storage/scanner-job";
 import type { OcxConfig } from "../src/types";
 import { installIsolatedCodexHome, type IsolatedCodexHome } from "./helpers/isolated-codex-home";
 
@@ -44,6 +45,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setStorageScannerJobTestHooks(null);
   if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
   else process.env.OPENCODEX_HOME = previousHome;
   isolatedCodexHome?.restore();
@@ -99,4 +101,29 @@ describe("GET /api/storage", () => {
       await server.stop(true);
     }
   });
+
+  test("runs the complete scan in a worker so health remains responsive", async () => {
+    writeSessionsFixture(isolatedCodexHome!.path);
+    const blockMs = 800;
+    setStorageScannerJobTestHooks({ blockMs });
+    const server = startServer(0);
+    try {
+      const scanStarted = Date.now();
+      const scan = fetch(new URL("/api/storage", server.url));
+      // The scanner Worker is deliberately held before its complete synchronous
+      // scan (walk, sort, and SQLite read), not in the server request thread.
+      await Bun.sleep(50);
+      const healthStarted = Date.now();
+      const health = await fetch(new URL("/healthz", server.url));
+      expect(health.status).toBe(200);
+      expect(Date.now() - healthStarted).toBeLessThan(Math.floor(blockMs / 3));
+      const scanned = await scan;
+      expect(scanned.status).toBe(200);
+      // The test hook is held by the Worker; the HTTP route must remain pending
+      // while health continues to be served by the proxy event loop.
+      expect(Date.now() - scanStarted).toBeGreaterThanOrEqual(blockMs - 100);
+    } finally {
+      await server.stop(true);
+    }
+  }, { timeout: 15_000 });
 });
