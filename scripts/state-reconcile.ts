@@ -49,7 +49,8 @@ export const STATE_FILES = [
   "telemetry-id.txt",
 ] as const;
 
-const SECRET_KEY = /^(apiKey|key|access|refresh|accessToken|refreshToken|idToken|token|password|clientSecret|cookie)$/i;
+const SECRET_KEY =
+  /^(apiKey|key|access|refresh|accessToken|refreshToken|idToken|token|password|clientSecret|cookie)$/i;
 
 export type ReconcileMode = "dry-run" | "apply" | "promote" | "rollback";
 
@@ -164,7 +165,10 @@ export interface ReconcileReport {
 }
 
 export class ReconcileError extends Error {
-  constructor(message: string, readonly exitCode = 2) {
+  constructor(
+    message: string,
+    readonly exitCode = 2,
+  ) {
     super(message);
     this.name = "ReconcileError";
   }
@@ -176,20 +180,25 @@ function isEnvRef(value: string): boolean {
 
 export function secretShape(value: unknown): SecretShape {
   if (typeof value !== "string") return { present: false };
-  return { present: value.length > 0, length: value.length, envRef: isEnvRef(value) };
+  return {
+    present: value.length > 0,
+    length: value.length,
+    envRef: isEnvRef(value),
+  };
 }
 
 export function redactForLog(value: unknown, key = ""): unknown {
   if (SECRET_KEY.test(key) && typeof value === "string") {
-    return value ? `<redacted len=${value.length} envRef=${isEnvRef(value)}>` : value;
+    return value
+      ? `<redacted len=${value.length} envRef=${isEnvRef(value)}>`
+      : value;
   }
   if (Array.isArray(value)) return value.map((item) => redactForLog(item));
   if (value && typeof value === "object") {
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([child, childValue]) => [
-        child,
-        redactForLog(childValue, child),
-      ]),
+      Object.entries(value as Record<string, unknown>).map(
+        ([child, childValue]) => [child, redactForLog(childValue, child)],
+      ),
     );
   }
   return value;
@@ -205,20 +214,33 @@ export function fingerprintFile(dir: string, name: string): FileFingerprint {
     return { name, present: false, size: null, sha256: null };
   }
   const bytes = readFileSync(path);
-  return { name, present: true, size: bytes.byteLength, sha256: sha256Bytes(bytes) };
+  return {
+    name,
+    present: true,
+    size: bytes.byteLength,
+    sha256: sha256Bytes(bytes),
+  };
 }
 
-function readJson(path: string): { ok: true; value: unknown } | { ok: false; error: string } {
+function readJson(
+  path: string,
+): { ok: true; value: unknown } | { ok: false; error: string } {
   try {
-    return { ok: true, value: JSON.parse(readFileSync(path, "utf8").replace(/^\uFEFF/, "")) };
+    return {
+      ok: true,
+      value: JSON.parse(readFileSync(path, "utf8").replace(/^\uFEFF/, "")),
+    };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : null;
 }
 
@@ -230,19 +252,27 @@ function inventoryProviders(config: Record<string, unknown>): ProviderRecord[] {
     return {
       name,
       adapter: typeof provider.adapter === "string" ? provider.adapter : null,
-      authMode: typeof provider.authMode === "string" ? provider.authMode : null,
+      authMode:
+        typeof provider.authMode === "string" ? provider.authMode : null,
       disabled: provider.disabled === true,
-      hasApiKey: typeof provider.apiKey === "string" && provider.apiKey.length > 0,
+      hasApiKey:
+        typeof provider.apiKey === "string" && provider.apiKey.length > 0,
       apiKey: secretShape(provider.apiKey),
       apiKeyPoolIds: pool
-        .map((entry) => (asRecord(entry)?.id))
+        .map((entry) => asRecord(entry)?.id)
         .filter((id): id is string => typeof id === "string"),
-      defaultModel: typeof provider.defaultModel === "string" ? provider.defaultModel : null,
+      defaultModel:
+        typeof provider.defaultModel === "string"
+          ? provider.defaultModel
+          : null,
     };
   });
 }
 
-function inventoryAuth(dir: string): { providers: string[]; accounts: OAuthAccountRecord[] } {
+function inventoryAuth(dir: string): {
+  providers: string[];
+  accounts: OAuthAccountRecord[];
+} {
   const parsed = readJson(join(dir, "auth.json"));
   if (!parsed.ok) return { providers: [], accounts: [] };
   const store = asRecord(parsed.value);
@@ -259,20 +289,27 @@ function inventoryAuth(dir: string): { providers: string[]; accounts: OAuthAccou
           provider,
           id: typeof account.id === "string" ? account.id : null,
           needsReauth: account.needsReauth === true,
-          hasRefresh: typeof cred.refresh === "string" && cred.refresh.length > 0,
+          hasRefresh:
+            typeof cred.refresh === "string" && cred.refresh.length > 0,
           hasAccess: typeof cred.access === "string" && cred.access.length > 0,
-          refreshLen: typeof cred.refresh === "string" ? cred.refresh.length : 0,
+          refreshLen:
+            typeof cred.refresh === "string" ? cred.refresh.length : 0,
           accessLen: typeof cred.access === "string" ? cred.access.length : 0,
         });
       }
-    } else if (typeof value.refresh === "string" || typeof value.access === "string") {
+    } else if (
+      typeof value.refresh === "string" ||
+      typeof value.access === "string"
+    ) {
       accounts.push({
         provider,
         id: typeof value.accountId === "string" ? value.accountId : "legacy",
         needsReauth: false,
-        hasRefresh: typeof value.refresh === "string" && value.refresh.length > 0,
+        hasRefresh:
+          typeof value.refresh === "string" && value.refresh.length > 0,
         hasAccess: typeof value.access === "string" && value.access.length > 0,
-        refreshLen: typeof value.refresh === "string" ? value.refresh.length : 0,
+        refreshLen:
+          typeof value.refresh === "string" ? value.refresh.length : 0,
         accessLen: typeof value.access === "string" ? value.access.length : 0,
       });
     }
@@ -280,10 +317,16 @@ function inventoryAuth(dir: string): { providers: string[]; accounts: OAuthAccou
   return { providers: Object.keys(store).sort(), accounts };
 }
 
-function inventoryUsage(dir: string): { lines: number; requestIds: string[]; providers: string[] } {
+function inventoryUsage(dir: string): {
+  lines: number;
+  requestIds: string[];
+  providers: string[];
+} {
   const path = join(dir, "usage.jsonl");
   if (!existsSync(path)) return { lines: 0, requestIds: [], providers: [] };
-  const rows = readFileSync(path, "utf8").split(/\r?\n/).filter((line) => line.trim());
+  const rows = readFileSync(path, "utf8")
+    .split(/\r?\n/)
+    .filter((line) => line.trim());
   const requestIds: string[] = [];
   const providers = new Set<string>();
   for (const line of rows) {
@@ -300,7 +343,9 @@ function inventoryUsage(dir: string): { lines: number; requestIds: string[]; pro
 
 export function inventoryStore(dir: string, label: string): StoreInventory {
   const configPath = join(dir, "config.json");
-  const parsed = existsSync(configPath) ? readJson(configPath) : { ok: false as const, error: "missing" };
+  const parsed = existsSync(configPath)
+    ? readJson(configPath)
+    : { ok: false as const, error: "missing" };
   const config = parsed.ok ? asRecord(parsed.value) : null;
   const auth = inventoryAuth(dir);
   const usage = inventoryUsage(dir);
@@ -311,46 +356,61 @@ export function inventoryStore(dir: string, label: string): StoreInventory {
         return {
           id: typeof entry.id === "string" ? entry.id : null,
           name: typeof entry.name === "string" ? entry.name : null,
-          createdAt: typeof entry.createdAt === "string" ? entry.createdAt : null,
+          createdAt:
+            typeof entry.createdAt === "string" ? entry.createdAt : null,
           key: secretShape(entry.key),
         };
       })
     : [];
-  const combos = Object.entries(asRecord(config?.combos) ?? {}).map(([id, raw]) => {
-    const combo = asRecord(raw) ?? {};
-    const targets = Array.isArray(combo.targets) ? combo.targets : [];
-    return {
-      id,
-      targetProviders: targets
-        .map((target) => asRecord(target)?.provider)
-        .filter((name): name is string => typeof name === "string"),
-      targetModels: targets
-        .map((target) => asRecord(target)?.model)
-        .filter((name): name is string => typeof name === "string"),
-      strategy: typeof combo.strategy === "string" ? combo.strategy : null,
-    };
-  });
+  const combos = Object.entries(asRecord(config?.combos) ?? {}).map(
+    ([id, raw]) => {
+      const combo = asRecord(raw) ?? {};
+      const targets = Array.isArray(combo.targets) ? combo.targets : [];
+      return {
+        id,
+        targetProviders: targets
+          .map((target) => asRecord(target)?.provider)
+          .filter((name): name is string => typeof name === "string"),
+        targetModels: targets
+          .map((target) => asRecord(target)?.model)
+          .filter((name): name is string => typeof name === "string"),
+        strategy: typeof combo.strategy === "string" ? combo.strategy : null,
+      };
+    },
+  );
   return {
     label,
     path: dir,
     files: STATE_FILES.map((name) => fingerprintFile(dir, name)),
-    schemaVersion: typeof config?.schemaVersion === "number"
-      ? config.schemaVersion
-      : typeof config?.schema_version === "number" ? config.schema_version : null,
-    openaiProviderTierVersion: typeof config?.openaiProviderTierVersion === "number"
-      ? config.openaiProviderTierVersion
-      : null,
+    schemaVersion:
+      typeof config?.schemaVersion === "number"
+        ? config.schemaVersion
+        : typeof config?.schema_version === "number"
+          ? config.schema_version
+          : null,
+    openaiProviderTierVersion:
+      typeof config?.openaiProviderTierVersion === "number"
+        ? config.openaiProviderTierVersion
+        : null,
     providers,
     apiKeys,
     combos,
     disabledModels: Array.isArray(config?.disabledModels)
-      ? config.disabledModels.filter((id): id is string => typeof id === "string")
+      ? config.disabledModels.filter(
+          (id): id is string => typeof id === "string",
+        )
       : [],
     subagentModels: Array.isArray(config?.subagentModels)
-      ? config.subagentModels.filter((id): id is string => typeof id === "string")
+      ? config.subagentModels.filter(
+          (id): id is string => typeof id === "string",
+        )
       : [],
-    providerContextCaps: Object.keys(asRecord(config?.providerContextCaps) ?? {}).sort(),
-    providerCooldowns: Object.keys(asRecord(config?.providerCooldowns) ?? {}).sort(),
+    providerContextCaps: Object.keys(
+      asRecord(config?.providerContextCaps) ?? {},
+    ).sort(),
+    providerCooldowns: Object.keys(
+      asRecord(config?.providerCooldowns) ?? {},
+    ).sort(),
     oauthAccounts: auth.accounts,
     oauthProviders: auth.providers,
     usageLines: usage.lines,
@@ -360,7 +420,10 @@ export function inventoryStore(dir: string, label: string): StoreInventory {
   };
 }
 
-function setDiff(current: Iterable<string>, legacy: Iterable<string>): { missing: string[]; extra: string[] } {
+function setDiff(
+  current: Iterable<string>,
+  legacy: Iterable<string>,
+): { missing: string[]; extra: string[] } {
   const have = new Set(current);
   const want = new Set(legacy);
   return {
@@ -369,7 +432,10 @@ function setDiff(current: Iterable<string>, legacy: Iterable<string>): { missing
   };
 }
 
-export function diffDomains(current: StoreInventory, legacy: StoreInventory[]): DomainDiff[] {
+export function diffDomains(
+  current: StoreInventory,
+  legacy: StoreInventory[],
+): DomainDiff[] {
   const domain = (
     name: string,
     currentIds: string[],
@@ -378,46 +444,100 @@ export function diffDomains(current: StoreInventory, legacy: StoreInventory[]): 
   ): DomainDiff => ({
     domain: name,
     currentCount: currentIds.length,
-    legacyCounts: Object.fromEntries(legacy.map((store) => [store.label, legacyIds(store).length])),
-    missingFromCurrent: [...new Set(legacy.flatMap((store) => setDiff(currentIds, legacyIds(store)).missing))].sort(),
+    legacyCounts: Object.fromEntries(
+      legacy.map((store) => [store.label, legacyIds(store).length]),
+    ),
+    missingFromCurrent: [
+      ...new Set(
+        legacy.flatMap(
+          (store) => setDiff(currentIds, legacyIds(store)).missing,
+        ),
+      ),
+    ].sort(),
     conflicts: conflictIds,
   });
 
-  const providerConflicts = [...new Set(legacy.flatMap((store) => {
-    const conflicts: string[] = [];
-    for (const left of current.providers) {
-      const right = store.providers.find((row) => row.name === left.name);
-      if (!right) continue;
-      if (left.adapter !== right.adapter || left.authMode !== right.authMode || left.disabled !== right.disabled) {
-        conflicts.push(left.name);
-      }
-    }
-    return conflicts;
-  }))];
+  const providerConflicts = [
+    ...new Set(
+      legacy.flatMap((store) => {
+        const conflicts: string[] = [];
+        for (const left of current.providers) {
+          const right = store.providers.find((row) => row.name === left.name);
+          if (!right) continue;
+          if (
+            left.adapter !== right.adapter ||
+            left.authMode !== right.authMode ||
+            left.disabled !== right.disabled
+          ) {
+            conflicts.push(left.name);
+          }
+        }
+        return conflicts;
+      }),
+    ),
+  ];
 
   return [
-    domain("providers", current.providers.map((row) => row.name), (store) => store.providers.map((row) => row.name), providerConflicts),
-    domain("apiKeys", current.apiKeys.map((row) => row.id ?? ""), (store) => store.apiKeys.map((row) => row.id ?? "")),
+    domain(
+      "providers",
+      current.providers.map((row) => row.name),
+      (store) => store.providers.map((row) => row.name),
+      providerConflicts,
+    ),
+    domain(
+      "apiKeys",
+      current.apiKeys.map((row) => row.id ?? ""),
+      (store) => store.apiKeys.map((row) => row.id ?? ""),
+    ),
     domain(
       "apiKeyPool",
-      current.providers.flatMap((row) => row.apiKeyPoolIds.map((id) => `${row.name}:${id}`)),
-      (store) => store.providers.flatMap((row) => row.apiKeyPoolIds.map((id) => `${row.name}:${id}`)),
+      current.providers.flatMap((row) =>
+        row.apiKeyPoolIds.map((id) => `${row.name}:${id}`),
+      ),
+      (store) =>
+        store.providers.flatMap((row) =>
+          row.apiKeyPoolIds.map((id) => `${row.name}:${id}`),
+        ),
     ),
     domain(
       "oauthAccounts",
       current.oauthAccounts.map((row) => `${row.provider}:${row.id ?? ""}`),
-      (store) => store.oauthAccounts.map((row) => `${row.provider}:${row.id ?? ""}`),
+      (store) =>
+        store.oauthAccounts.map((row) => `${row.provider}:${row.id ?? ""}`),
     ),
-    domain("combos", current.combos.map((row) => row.id), (store) => store.combos.map((row) => row.id)),
-    domain("disabledModels", current.disabledModels, (store) => store.disabledModels),
-    domain("subagentModels", current.subagentModels, (store) => store.subagentModels),
-    domain("providerContextCaps", current.providerContextCaps, (store) => store.providerContextCaps),
-    domain("providerCooldowns", current.providerCooldowns, (store) => store.providerCooldowns),
+    domain(
+      "combos",
+      current.combos.map((row) => row.id),
+      (store) => store.combos.map((row) => row.id),
+    ),
+    domain(
+      "disabledModels",
+      current.disabledModels,
+      (store) => store.disabledModels,
+    ),
+    domain(
+      "subagentModels",
+      current.subagentModels,
+      (store) => store.subagentModels,
+    ),
+    domain(
+      "providerContextCaps",
+      current.providerContextCaps,
+      (store) => store.providerContextCaps,
+    ),
+    domain(
+      "providerCooldowns",
+      current.providerCooldowns,
+      (store) => store.providerCooldowns,
+    ),
     domain("usage", current.usageRequestIds, (store) => store.usageRequestIds),
   ];
 }
 
-export function createBackup(currentDir: string, backupDir: string): BackupManifest {
+export function createBackup(
+  currentDir: string,
+  backupDir: string,
+): BackupManifest {
   mkdirSync(backupDir, { recursive: true, mode: 0o700 });
   const files = STATE_FILES.map((name) => {
     const source = join(currentDir, name);
@@ -431,27 +551,54 @@ export function createBackup(currentDir: string, backupDir: string): BackupManif
     sourceDir: resolve(currentDir),
     files,
   };
-  writeFileSync(join(backupDir, BACKUP_MANIFEST_NAME), `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(
+    join(backupDir, BACKUP_MANIFEST_NAME),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    { mode: 0o600 },
+  );
   return manifest;
 }
 
-export function verifyBackup(currentDir: string, backupDir: string): { ok: boolean; detail: string; manifest: BackupManifest | null } {
+export function verifyBackup(
+  currentDir: string,
+  backupDir: string,
+): { ok: boolean; detail: string; manifest: BackupManifest | null } {
   const manifestPath = join(backupDir, BACKUP_MANIFEST_NAME);
-  if (!existsSync(manifestPath)) return { ok: false, detail: "backup manifest missing", manifest: null };
+  if (!existsSync(manifestPath))
+    return { ok: false, detail: "backup manifest missing", manifest: null };
   const parsed = readJson(manifestPath);
-  if (!parsed.ok) return { ok: false, detail: `backup manifest unreadable: ${parsed.error}`, manifest: null };
+  if (!parsed.ok)
+    return {
+      ok: false,
+      detail: `backup manifest unreadable: ${parsed.error}`,
+      manifest: null,
+    };
   const manifest = parsed.value as BackupManifest;
   if (manifest.version !== 1 || !Array.isArray(manifest.files)) {
-    return { ok: false, detail: "backup manifest schema mismatch", manifest: null };
+    return {
+      ok: false,
+      detail: "backup manifest schema mismatch",
+      manifest: null,
+    };
   }
   for (const expected of manifest.files) {
     const onDisk = fingerprintFile(backupDir, expected.name);
-    if (expected.present !== onDisk.present || expected.sha256 !== onDisk.sha256) {
-      return { ok: false, detail: `backup file drifted: ${expected.name}`, manifest };
+    if (
+      expected.present !== onDisk.present ||
+      expected.sha256 !== onDisk.sha256
+    ) {
+      return {
+        ok: false,
+        detail: `backup file drifted: ${expected.name}`,
+        manifest,
+      };
     }
   }
   const present = manifest.files.filter((file) => file.present);
-  if (present.length === 0 && fingerprintFile(currentDir, "config.json").present) {
+  if (
+    present.length === 0 &&
+    fingerprintFile(currentDir, "config.json").present
+  ) {
     return { ok: false, detail: "backup contains no state files", manifest };
   }
   return { ok: true, detail: `verified ${present.length} file(s)`, manifest };
@@ -471,9 +618,16 @@ export function normalizeAuthStore(raw: unknown): Record<string, unknown> {
       normalized[provider] = record;
       continue;
     }
-    if (typeof record.refresh === "string" && typeof record.access === "string") {
-      const id = typeof record.accountId === "string" ? record.accountId : "legacy";
-      normalized[provider] = { activeAccountId: id, accounts: [{ id, credential: record }] };
+    if (
+      typeof record.refresh === "string" &&
+      typeof record.access === "string"
+    ) {
+      const id =
+        typeof record.accountId === "string" ? record.accountId : "legacy";
+      normalized[provider] = {
+        activeAccountId: id,
+        accounts: [{ id, credential: record }],
+      };
     }
   }
   return normalized;
@@ -481,13 +635,23 @@ export function normalizeAuthStore(raw: unknown): Record<string, unknown> {
 
 export function normalizeConfig(raw: unknown): Record<string, unknown> {
   const config = asRecord(raw) ? cloneRecord(asRecord(raw)!) : {};
-  if (typeof config.schemaVersion !== "number") config.schemaVersion = STATE_RECONCILE_SCHEMA_VERSION;
+  if (typeof config.schemaVersion !== "number")
+    config.schemaVersion = STATE_RECONCILE_SCHEMA_VERSION;
   const providers = asRecord(config.providers) ?? {};
-  for (const provider of Object.values(providers)) {
+  for (const [name, provider] of Object.entries(providers)) {
     const record = asRecord(provider);
     if (!record) continue;
-    if (!Array.isArray(record.apiKeyPool) && typeof record.apiKey === "string" && record.apiKey.length > 0) {
-      const id = createHash("sha256").update(record.apiKey).digest("hex").slice(0, 8);
+    if (
+      !Array.isArray(record.apiKeyPool) &&
+      typeof record.apiKey === "string" &&
+      record.apiKey.length > 0
+    ) {
+      // ponytail: id is een label, geen secret-afgeleide — hash alleen de
+      // provider-naam zodat CodeQL taint op apiKey verdwijnt en ids stabiel blijven.
+      const id = createHash("sha256")
+        .update(`opencodex-pool-id:${name}`)
+        .digest("hex")
+        .slice(0, 8);
       record.apiKeyPool = [{ id, key: record.apiKey }];
     }
   }
@@ -495,7 +659,11 @@ export function normalizeConfig(raw: unknown): Record<string, unknown> {
   return config;
 }
 
-function mergePrefer<T>(current: T, incoming: T, prefer: "current" | "legacy"): T {
+function mergePrefer<T>(
+  current: T,
+  incoming: T,
+  prefer: "current" | "legacy",
+): T {
   return prefer === "legacy" ? incoming : current;
 }
 
@@ -509,7 +677,12 @@ export function mergeStores(
   const incomingProviders = asRecord(incoming.providers) ?? {};
   for (const [name, provider] of Object.entries(incomingProviders)) {
     if (!currentProviders[name]) currentProviders[name] = cloneRecord(provider);
-    else currentProviders[name] = mergePrefer(currentProviders[name], cloneRecord(provider), prefer);
+    else
+      currentProviders[name] = mergePrefer(
+        currentProviders[name],
+        cloneRecord(provider),
+        prefer,
+      );
   }
   merged.providers = currentProviders;
 
@@ -536,14 +709,23 @@ export function mergeStores(
   const currentCombos = asRecord(merged.combos) ?? {};
   for (const [id, combo] of Object.entries(asRecord(incoming.combos) ?? {})) {
     if (!currentCombos[id]) currentCombos[id] = cloneRecord(combo);
-    else currentCombos[id] = mergePrefer(currentCombos[id], cloneRecord(combo), prefer);
+    else
+      currentCombos[id] = mergePrefer(
+        currentCombos[id],
+        cloneRecord(combo),
+        prefer,
+      );
   }
   merged.combos = currentCombos;
 
-  const disabled = new Set([
-    ...(Array.isArray(merged.disabledModels) ? merged.disabledModels : []),
-    ...(Array.isArray(incoming.disabledModels) ? incoming.disabledModels : []),
-  ].filter((id): id is string => typeof id === "string"));
+  const disabled = new Set(
+    [
+      ...(Array.isArray(merged.disabledModels) ? merged.disabledModels : []),
+      ...(Array.isArray(incoming.disabledModels)
+        ? incoming.disabledModels
+        : []),
+    ].filter((id): id is string => typeof id === "string"),
+  );
   merged.disabledModels = [...disabled].sort();
   return merged;
 }
@@ -563,9 +745,17 @@ export function mergeAuth(
       merged[provider] = incomingSet;
       continue;
     }
-    const accounts = Array.isArray(currentSet.accounts) ? [...currentSet.accounts] : [];
-    const seen = new Set(accounts.map((row) => asRecord(row)?.id).filter((id): id is string => typeof id === "string"));
-    for (const row of Array.isArray(incomingSet.accounts) ? incomingSet.accounts : []) {
+    const accounts = Array.isArray(currentSet.accounts)
+      ? [...currentSet.accounts]
+      : [];
+    const seen = new Set(
+      accounts
+        .map((row) => asRecord(row)?.id)
+        .filter((id): id is string => typeof id === "string"),
+    );
+    for (const row of Array.isArray(incomingSet.accounts)
+      ? incomingSet.accounts
+      : []) {
       const id = asRecord(row)?.id;
       if (typeof id !== "string") continue;
       if (!seen.has(id)) {
@@ -585,7 +775,10 @@ export function mergeAuth(
 function mergeUsage(currentText: string, incomingText: string): string {
   const seen = new Set<string>();
   const lines: string[] = [];
-  for (const line of [...currentText.split(/\r?\n/), ...incomingText.split(/\r?\n/)]) {
+  for (const line of [
+    ...currentText.split(/\r?\n/),
+    ...incomingText.split(/\r?\n/),
+  ]) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     let key = trimmed;
@@ -602,16 +795,25 @@ function mergeUsage(currentText: string, incomingText: string): string {
   return lines.length ? `${lines.join("\n")}\n` : "";
 }
 
-export function referentialChecks(config: Record<string, unknown>, auth: Record<string, unknown>): ReconcileCheck[] {
+export function referentialChecks(
+  config: Record<string, unknown>,
+  auth: Record<string, unknown>,
+): ReconcileCheck[] {
   const checks: ReconcileCheck[] = [];
   const providerNames = new Set(Object.keys(asRecord(config.providers) ?? {}));
   const combos = asRecord(config.combos) ?? {};
   for (const [id, raw] of Object.entries(combos)) {
-    const targets = Array.isArray(asRecord(raw)?.targets) ? asRecord(raw)!.targets as unknown[] : [];
+    const targets = Array.isArray(asRecord(raw)?.targets)
+      ? (asRecord(raw)!.targets as unknown[])
+      : [];
     for (const target of targets) {
       const provider = asRecord(target)?.provider;
       if (typeof provider === "string" && !providerNames.has(provider)) {
-        checks.push({ id: `combo.${id}`, ok: false, detail: `target provider missing: ${provider}` });
+        checks.push({
+          id: `combo.${id}`,
+          ok: false,
+          detail: `target provider missing: ${provider}`,
+        });
       }
     }
   }
@@ -624,17 +826,28 @@ export function referentialChecks(config: Record<string, unknown>, auth: Record<
       checks.push({
         id: `oauth.${name}`,
         ok: count > 0,
-        detail: count > 0 ? `${count} account(s)` : "authMode=oauth but no auth.json accounts",
+        detail:
+          count > 0
+            ? `${count} account(s)`
+            : "authMode=oauth but no auth.json accounts",
       });
     }
   }
   if (checks.every((check) => check.ok) || checks.length === 0) {
-    checks.push({ id: "referential", ok: true, detail: "combo targets and oauth rows resolve" });
+    checks.push({
+      id: "referential",
+      ok: true,
+      detail: "combo targets and oauth rows resolve",
+    });
   }
   return checks;
 }
 
-export function smokeChecks(config: unknown, auth: unknown, usageText: string): ReconcileCheck[] {
+export function smokeChecks(
+  config: unknown,
+  auth: unknown,
+  usageText: string,
+): ReconcileCheck[] {
   const checks: ReconcileCheck[] = [];
   const validated = validateConfigCandidate(config);
   checks.push({
@@ -658,7 +871,11 @@ export function smokeChecks(config: unknown, auth: unknown, usageText: string): 
       usageOk = false;
     }
   }
-  checks.push({ id: "usage.jsonl", ok: usageOk, detail: `${usageRows} row(s)` });
+  checks.push({
+    id: "usage.jsonl",
+    ok: usageOk,
+    detail: `${usageRows} row(s)`,
+  });
   return checks;
 }
 
@@ -671,7 +888,8 @@ function writeStateFile(dir: string, name: string, contents: string): void {
 
 function readJsonValue(path: string): unknown {
   const parsed = readJson(path);
-  if (!parsed.ok) throw new ReconcileError(`${path} is not valid JSON: ${parsed.error}`);
+  if (!parsed.ok)
+    throw new ReconcileError(`${path} is not valid JSON: ${parsed.error}`);
   return parsed.value;
 }
 
@@ -687,45 +905,81 @@ export function materializeStaging(
   let auth = existsSync(join(currentDir, "auth.json"))
     ? normalizeAuthStore(readJsonValue(join(currentDir, "auth.json")))
     : {};
-  let usage = existsSync(join(currentDir, "usage.jsonl")) ? readFileSync(join(currentDir, "usage.jsonl"), "utf8") : "";
+  let usage = existsSync(join(currentDir, "usage.jsonl"))
+    ? readFileSync(join(currentDir, "usage.jsonl"), "utf8")
+    : "";
 
   for (const legacyDir of legacyDirs) {
     if (existsSync(join(legacyDir, "config.json"))) {
-      config = mergeStores(config, normalizeConfig(readJsonValue(join(legacyDir, "config.json"))), prefer);
+      config = mergeStores(
+        config,
+        normalizeConfig(readJsonValue(join(legacyDir, "config.json"))),
+        prefer,
+      );
     }
     if (existsSync(join(legacyDir, "auth.json"))) {
-      auth = mergeAuth(auth, readJsonValue(join(legacyDir, "auth.json")), prefer);
+      auth = mergeAuth(
+        auth,
+        readJsonValue(join(legacyDir, "auth.json")),
+        prefer,
+      );
     }
     if (existsSync(join(legacyDir, "usage.jsonl"))) {
-      usage = mergeUsage(usage, readFileSync(join(legacyDir, "usage.jsonl"), "utf8"));
+      usage = mergeUsage(
+        usage,
+        readFileSync(join(legacyDir, "usage.jsonl"), "utf8"),
+      );
     }
   }
 
   mkdirSync(stagingDir, { recursive: true, mode: 0o700 });
   const written: string[] = [];
-  writeStateFile(stagingDir, "config.json", `${JSON.stringify(config, null, 2)}\n`);
+  writeStateFile(
+    stagingDir,
+    "config.json",
+    `${JSON.stringify(config, null, 2)}\n`,
+  );
   written.push("config.json");
   writeStateFile(stagingDir, "auth.json", `${JSON.stringify(auth, null, 2)}\n`);
   written.push("auth.json");
   writeStateFile(stagingDir, "usage.jsonl", usage);
   written.push("usage.jsonl");
   for (const name of STATE_FILES) {
-    if (name === "config.json" || name === "auth.json" || name === "usage.jsonl") continue;
+    if (
+      name === "config.json" ||
+      name === "auth.json" ||
+      name === "usage.jsonl"
+    )
+      continue;
     const source = join(currentDir, name);
     if (existsSync(source)) {
       copyFileSync(source, join(stagingDir, name));
       written.push(name);
     }
   }
-  const digest = sha256Bytes(STATE_FILES.map((name) => fingerprintFile(stagingDir, name).sha256 ?? "").join("|"));
-  writeFileSync(join(stagingDir, STAGING_MANIFEST_NAME), `${JSON.stringify({ version: 1, digest, files: written }, null, 2)}\n`, { mode: 0o600 });
+  const digest = sha256Bytes(
+    STATE_FILES.map(
+      (name) => fingerprintFile(stagingDir, name).sha256 ?? "",
+    ).join("|"),
+  );
+  writeFileSync(
+    join(stagingDir, STAGING_MANIFEST_NAME),
+    `${JSON.stringify({ version: 1, digest, files: written }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
   return { digest, files: written };
 }
 
-export function promoteStaging(currentDir: string, stagingDir: string, backupDir: string): string[] {
+export function promoteStaging(
+  currentDir: string,
+  stagingDir: string,
+  backupDir: string,
+): string[] {
   const verified = verifyBackup(currentDir, backupDir);
-  if (!verified.ok) throw new ReconcileError(`refusing promote: ${verified.detail}`);
-  if (!existsSync(join(stagingDir, "config.json"))) throw new ReconcileError("refusing promote: staging has no config.json");
+  if (!verified.ok)
+    throw new ReconcileError(`refusing promote: ${verified.detail}`);
+  if (!existsSync(join(stagingDir, "config.json")))
+    throw new ReconcileError("refusing promote: staging has no config.json");
   const rollbackDir = join(backupDir, "pre-promote");
   mkdirSync(rollbackDir, { recursive: true, mode: 0o700 });
   const restored: string[] = [];
@@ -733,7 +987,11 @@ export function promoteStaging(currentDir: string, stagingDir: string, backupDir
     const live = join(currentDir, name);
     if (existsSync(live)) copyFileSync(live, join(rollbackDir, name));
   }
-  writeFileSync(join(backupDir, ROLLBACK_POINTER_NAME), `${JSON.stringify({ version: 1, dir: rollbackDir, at: new Date().toISOString() }, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(
+    join(backupDir, ROLLBACK_POINTER_NAME),
+    `${JSON.stringify({ version: 1, dir: rollbackDir, at: new Date().toISOString() }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
   for (const name of STATE_FILES) {
     const staged = join(stagingDir, name);
     if (!existsSync(staged)) continue;
@@ -745,14 +1003,17 @@ export function promoteStaging(currentDir: string, stagingDir: string, backupDir
 
 export function rollbackLive(currentDir: string, backupDir: string): string[] {
   const pointerPath = join(backupDir, ROLLBACK_POINTER_NAME);
-  const fallback = existsSync(join(backupDir, "pre-promote")) ? join(backupDir, "pre-promote") : backupDir;
+  const fallback = existsSync(join(backupDir, "pre-promote"))
+    ? join(backupDir, "pre-promote")
+    : backupDir;
   let source = fallback;
   if (existsSync(pointerPath)) {
     const parsed = readJson(pointerPath);
     const dir = parsed.ok ? asRecord(parsed.value)?.dir : null;
     if (typeof dir === "string" && existsSync(dir)) source = dir;
   }
-  if (!existsSync(source)) throw new ReconcileError("no rollback snapshot found");
+  if (!existsSync(source))
+    throw new ReconcileError("no rollback snapshot found");
   const restored: string[] = [];
   for (const name of STATE_FILES) {
     const from = join(source, name);
@@ -760,7 +1021,8 @@ export function rollbackLive(currentDir: string, backupDir: string): string[] {
     copyFileSync(from, join(currentDir, name));
     restored.push(name);
   }
-  if (restored.length === 0) throw new ReconcileError("rollback snapshot is empty");
+  if (restored.length === 0)
+    throw new ReconcileError("rollback snapshot is empty");
   return restored;
 }
 
@@ -769,12 +1031,19 @@ function projectedChecks(
   legacyDirs: string[],
   prefer: "current" | "legacy",
 ): { checks: ReconcileCheck[]; digest: string } {
-  const tmp = join(tmpdir(), `ocx-reconcile-preview-${process.pid}-${Date.now()}`);
+  const tmp = join(
+    tmpdir(),
+    `ocx-reconcile-preview-${process.pid}-${Date.now()}`,
+  );
   try {
     const { digest } = materializeStaging(currentDir, legacyDirs, tmp, prefer);
     const config = readJsonValue(join(tmp, "config.json"));
-    const auth = existsSync(join(tmp, "auth.json")) ? readJsonValue(join(tmp, "auth.json")) : {};
-    const usage = existsSync(join(tmp, "usage.jsonl")) ? readFileSync(join(tmp, "usage.jsonl"), "utf8") : "";
+    const auth = existsSync(join(tmp, "auth.json"))
+      ? readJsonValue(join(tmp, "auth.json"))
+      : {};
+    const usage = existsSync(join(tmp, "usage.jsonl"))
+      ? readFileSync(join(tmp, "usage.jsonl"), "utf8")
+      : "";
     return {
       digest,
       checks: [
@@ -789,30 +1058,48 @@ function projectedChecks(
 
 export function runReconcile(options: ReconcileOptions): ReconcileReport {
   const currentDir = resolve(options.currentDir);
-  if (!existsSync(currentDir)) throw new ReconcileError(`current store not found: ${currentDir}`);
+  if (!existsSync(currentDir))
+    throw new ReconcileError(`current store not found: ${currentDir}`);
   const legacyDirs = options.legacyDirs.map((dir) => resolve(dir));
   for (const dir of legacyDirs) {
-    if (!existsSync(dir)) throw new ReconcileError(`legacy store not found: ${dir}`);
+    if (!existsSync(dir))
+      throw new ReconcileError(`legacy store not found: ${dir}`);
   }
 
   const current = inventoryStore(currentDir, "current");
-  const legacy = legacyDirs.map((dir, index) => inventoryStore(dir, `legacy-${index}`));
+  const legacy = legacyDirs.map((dir, index) =>
+    inventoryStore(dir, `legacy-${index}`),
+  );
   const domains = diffDomains(current, legacy);
   const wrote: string[] = [];
   const backupDir = options.backupDir ? resolve(options.backupDir) : undefined;
-  const stagingDir = options.stagingDir ? resolve(options.stagingDir) : undefined;
+  const stagingDir = options.stagingDir
+    ? resolve(options.stagingDir)
+    : undefined;
 
   if (options.mode === "rollback") {
     if (!backupDir) throw new ReconcileError("rollback requires --backup-dir");
-    wrote.push(...rollbackLive(currentDir, backupDir).map((name) => `current:${name}`));
+    wrote.push(
+      ...rollbackLive(currentDir, backupDir).map((name) => `current:${name}`),
+    );
     return {
       mode: options.mode,
       wrote,
       current: inventoryStore(currentDir, "current"),
       legacy,
       domains: diffDomains(inventoryStore(currentDir, "current"), legacy),
-      checks: [{ id: "rollback", ok: true, detail: `restored ${wrote.length} file(s)` }],
-      backup: { required: true, verified: verifyBackup(currentDir, backupDir).ok, path: backupDir },
+      checks: [
+        {
+          id: "rollback",
+          ok: true,
+          detail: `restored ${wrote.length} file(s)`,
+        },
+      ],
+      backup: {
+        required: true,
+        verified: verifyBackup(currentDir, backupDir).ok,
+        path: backupDir,
+      },
       stagingDigest: null,
     };
   }
@@ -820,10 +1107,15 @@ export function runReconcile(options: ReconcileOptions): ReconcileReport {
   const backupNeeded = options.mode === "apply" || options.mode === "promote";
   let backupVerified = false;
   if (backupNeeded) {
-    if (!backupDir) throw new ReconcileError("apply/promote refuse to run without --backup-dir");
-    if (!existsSync(join(backupDir, BACKUP_MANIFEST_NAME))) createBackup(currentDir, backupDir);
+    if (!backupDir)
+      throw new ReconcileError(
+        "apply/promote refuse to run without --backup-dir",
+      );
+    if (!existsSync(join(backupDir, BACKUP_MANIFEST_NAME)))
+      createBackup(currentDir, backupDir);
     const verified = verifyBackup(currentDir, backupDir);
-    if (!verified.ok) throw new ReconcileError(`refusing to continue: ${verified.detail}`);
+    if (!verified.ok)
+      throw new ReconcileError(`refusing to continue: ${verified.detail}`);
     backupVerified = true;
   } else if (backupDir && existsSync(join(backupDir, BACKUP_MANIFEST_NAME))) {
     backupVerified = verifyBackup(currentDir, backupDir).ok;
@@ -836,22 +1128,38 @@ export function runReconcile(options: ReconcileOptions): ReconcileReport {
     stagingDigest = preview.digest;
     checks = preview.checks;
   } else {
-    if (!stagingDir) throw new ReconcileError("apply/promote require --staging");
-    const staged = materializeStaging(currentDir, legacyDirs, stagingDir, options.prefer);
+    if (!stagingDir)
+      throw new ReconcileError("apply/promote require --staging");
+    const staged = materializeStaging(
+      currentDir,
+      legacyDirs,
+      stagingDir,
+      options.prefer,
+    );
     stagingDigest = staged.digest;
     wrote.push(...staged.files.map((name) => `staging:${name}`));
     const config = readJsonValue(join(stagingDir, "config.json"));
-    const auth = existsSync(join(stagingDir, "auth.json")) ? readJsonValue(join(stagingDir, "auth.json")) : {};
-    const usage = existsSync(join(stagingDir, "usage.jsonl")) ? readFileSync(join(stagingDir, "usage.jsonl"), "utf8") : "";
+    const auth = existsSync(join(stagingDir, "auth.json"))
+      ? readJsonValue(join(stagingDir, "auth.json"))
+      : {};
+    const usage = existsSync(join(stagingDir, "usage.jsonl"))
+      ? readFileSync(join(stagingDir, "usage.jsonl"), "utf8")
+      : "";
     checks = [
       ...referentialChecks(asRecord(config) ?? {}, asRecord(auth) ?? {}),
       ...smokeChecks(config, auth, usage),
     ];
     if (options.mode === "promote") {
       if (checks.some((check) => !check.ok && check.id === "config.schema")) {
-        throw new ReconcileError("refusing promote: staging failed functional smoke");
+        throw new ReconcileError(
+          "refusing promote: staging failed functional smoke",
+        );
       }
-      wrote.push(...promoteStaging(currentDir, stagingDir, backupDir!).map((name) => `live:${name}`));
+      wrote.push(
+        ...promoteStaging(currentDir, stagingDir, backupDir!).map(
+          (name) => `live:${name}`,
+        ),
+      );
     }
   }
 
@@ -862,7 +1170,11 @@ export function runReconcile(options: ReconcileOptions): ReconcileReport {
     legacy,
     domains,
     checks,
-    backup: { required: backupNeeded, verified: backupVerified, path: backupDir ?? null },
+    backup: {
+      required: backupNeeded,
+      verified: backupVerified,
+      path: backupDir ?? null,
+    },
     stagingDigest,
   };
 }
@@ -874,10 +1186,18 @@ export function formatReport(report: ReconcileReport): string {
     `current providers=${report.current.providers.length} oauth=${report.current.oauthAccounts.length} usage=${report.current.usageLines} schemaVersion=${report.current.schemaVersion ?? "absent"}`,
   ];
   for (const domain of report.domains) {
-    const missing = domain.missingFromCurrent.length ? ` missing=[${domain.missingFromCurrent.join(",")}]` : "";
-    const conflicts = domain.conflicts.length ? ` conflicts=[${domain.conflicts.join(",")}]` : "";
-    const legacy = Object.entries(domain.legacyCounts).map(([label, count]) => `${label}:${count}`).join(" ");
-    lines.push(`${domain.domain}: current=${domain.currentCount} ${legacy}${missing}${conflicts}`);
+    const missing = domain.missingFromCurrent.length
+      ? ` missing=[${domain.missingFromCurrent.join(",")}]`
+      : "";
+    const conflicts = domain.conflicts.length
+      ? ` conflicts=[${domain.conflicts.join(",")}]`
+      : "";
+    const legacy = Object.entries(domain.legacyCounts)
+      .map(([label, count]) => `${label}:${count}`)
+      .join(" ");
+    lines.push(
+      `${domain.domain}: current=${domain.currentCount} ${legacy}${missing}${conflicts}`,
+    );
   }
   for (const check of report.checks) {
     lines.push(`${check.ok ? "ok" : "FAIL"} ${check.id}: ${check.detail}`);
@@ -897,7 +1217,8 @@ function takeOption(args: string[], flag: string): string | undefined {
   const at = args.indexOf(flag);
   if (at === -1) return undefined;
   const value = args[at + 1];
-  if (!value || value.startsWith("--")) throw new ReconcileError(`${flag} requires a value`);
+  if (!value || value.startsWith("--"))
+    throw new ReconcileError(`${flag} requires a value`);
   args.splice(at, 2);
   return value;
 }
@@ -916,20 +1237,34 @@ export function parseReconcileArgs(argv: string[]): ReconcileOptions {
   const promote = takeFlag(args, "--promote");
   const apply = takeFlag(args, "--apply");
   const rollback = takeFlag(args, "--rollback");
-  if ([promote, apply, rollback].filter(Boolean).length > 1 && !(promote && apply)) {
-    throw new ReconcileError("use one of dry-run (default), --apply, --apply --promote, or --rollback");
+  if (
+    [promote, apply, rollback].filter(Boolean).length > 1 &&
+    !(promote && apply)
+  ) {
+    throw new ReconcileError(
+      "use one of dry-run (default), --apply, --apply --promote, or --rollback",
+    );
   }
-  const currentDir = takeOption(args, "--current") ?? process.env.OPENCODEX_HOME;
-  if (!currentDir) throw new ReconcileError("--current or OPENCODEX_HOME is required");
+  const currentDir =
+    takeOption(args, "--current") ?? process.env.OPENCODEX_HOME;
+  if (!currentDir)
+    throw new ReconcileError("--current or OPENCODEX_HOME is required");
   const options: ReconcileOptions = {
     currentDir,
     legacyDirs: takeRepeat(args, "--legacy"),
     backupDir: takeOption(args, "--backup-dir"),
     stagingDir: takeOption(args, "--staging"),
-    mode: rollback ? "rollback" : promote ? "promote" : apply ? "apply" : "dry-run",
+    mode: rollback
+      ? "rollback"
+      : promote
+        ? "promote"
+        : apply
+          ? "apply"
+          : "dry-run",
     prefer: takeOption(args, "--prefer") === "legacy" ? "legacy" : "current",
   };
-  if (args.length) throw new ReconcileError(`unexpected argument(s): ${args.join(" ")}`);
+  if (args.length)
+    throw new ReconcileError(`unexpected argument(s): ${args.join(" ")}`);
   if (options.mode !== "rollback" && options.legacyDirs.length === 0) {
     throw new ReconcileError("--legacy is required (repeatable)");
   }
@@ -942,7 +1277,12 @@ if (import.meta.main) {
     process.stdout.write(formatReport(report));
     process.exit(report.checks.some((check) => !check.ok) ? 1 : 0);
   } catch (error) {
-    const message = error instanceof ReconcileError ? error.message : error instanceof Error ? error.message : String(error);
+    const message =
+      error instanceof ReconcileError
+        ? error.message
+        : error instanceof Error
+          ? error.message
+          : String(error);
     process.stderr.write(`${message}\n`);
     process.exit(error instanceof ReconcileError ? error.exitCode : 1);
   }
