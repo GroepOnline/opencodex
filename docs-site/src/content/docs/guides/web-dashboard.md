@@ -52,6 +52,10 @@ auto-generated `~/.opencodex/admin-api-token` file).
 | **Storage**              | Read-only CODEX_HOME disk breakdown (sessions, archives, DBs, attachments). Optional archived cleanup: preview the oldest N%, then quarantine to `CODEX_HOME/.trash` (default) or permanently delete behind an explicit checkbox. **Auto-cleanup policy** is opt-in and **default OFF** (`storageCleanupPolicy.enabled`); configure threshold/target/schedule/mode on the Storage page, or trigger **Run now**. Quarantined entries can be restored from the Storage page (JSONL + threads). Active sessions stay read-only. Cleanup and restore are refused while Codex holds the newest/active `state_*.sqlite` locked.                                                                                                                                                   |
 | **Stop**                 | Gracefully stop the proxy and installed background service, restore native Codex, and exit (`POST /api/stop`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
+Storage diagnostics run in a background worker, so scanning a large session
+archive does not block the proxy request thread. Concurrent refreshes share the
+active scan. Scanning remains read-only and does not enable cleanup.
+
 ### Linking to a section
 
 There is a single layout, so there is no layout switch to configure. The top-level **Verbruik**
@@ -70,11 +74,11 @@ may apply instead.
 
 ## Model visibility
 
-### Pending catalog workspace redesign
+### Catalog workspace
 
-The redesign branch replaces the provider side rail and model hover cards with a
-searchable catalog and persistent model inspector. This interface is pending
-release; an installed version may still have the earlier layout.
+Since 1.4.0, Models uses a searchable catalog and persistent model inspector in
+place of the provider side rail and model hover cards. Older installed versions
+may still have the earlier layout.
 
 - Search matches model IDs, display names and provider names. The provider filter
   narrows the same catalog. Search also finds models in collapsed groups.
@@ -93,7 +97,7 @@ release; an installed version may still have the earlier layout.
 - Global caps, shadow-call settings, v1/base/v2 controls and combo summaries remain
   under **Model settings & advanced controls**. Existing route bookmarks still work.
 - New users see expanded provider groups. Saved collapse preferences are retained.
-- The pending catalog uses shared library controls, including a provider dropdown,
+- The catalog uses shared library controls, including a provider dropdown,
   a search field with a clear action, and collapsible provider/global settings.
   Refresh and save controls show a spinner only while their real request is pending;
   reduced-motion mode keeps the loading text without rotation.
