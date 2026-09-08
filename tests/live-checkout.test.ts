@@ -189,11 +189,11 @@ describe("assert-live-checkout-safe.sh", () => {
     try {
       writeFileSync(
         join(binDir, "git"),
-        `#!${bash}\nexec ${quote(realGit!)} "$@"\n`,
+        `#!/bin/sh\nexec ${quote(realGit!)} "$@"\n`,
       );
       writeFileSync(
         join(binDir, "perl"),
-        `#!${bash}\nprintf '%s\\n' "$@" >> ${quote(log)}\nexec ${quote(perl!)} "$@"\n`,
+        `#!/bin/sh\nprintf '%s\\n' "$@" >> ${quote(log)}\nexec ${quote(perl!)} "$@"\n`,
       );
       chmodSync(join(binDir, "git"), 0o755);
       chmodSync(join(binDir, "perl"), 0o755);
