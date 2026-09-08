@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   readFileSync,
   rmSync,
   statSync,
@@ -343,10 +344,16 @@ describe("remote client artifact", () => {
       expect(readFileSync(powershellShim, "utf8")).toContain(
         "$env:USERPROFILE",
       );
+      expect(readFileSync(shim, "utf8")).toContain(
+        '"$path_part" = "/var"',
+      );
+      expect(readFileSync(powershellShim, "utf8")).toContain(
+        "Test-TrustedDarwinSystemPathAlias",
+      );
       const defaultRun = Bun.spawnSync([shim, "--version"], { env });
       expect(defaultRun.exitCode).toBe(0);
       expect(readFileSync(capture, "utf8")).toBe(
-        join(home, ".codex-ocx") + "\n",
+        join(realpathSync.native(home), ".codex-ocx") + "\n",
       );
       expect(readFileSync(join(nativeHome, "config.toml"), "utf8")).toBe(
         "direct Azure config stays untouched\n",
