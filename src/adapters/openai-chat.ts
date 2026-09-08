@@ -12,6 +12,7 @@ import { neutralizeIdentity } from "./identity";
 import { buildNonOpenAIToolCatalogNudgeForTools, shouldInjectNonOpenAIToolCatalogNudge } from "./tool-catalog-nudge";
 import { openRouterProviderPayload, resolveOpenRouterRouting } from "../providers/openrouter-routing";
 import { resolveProviderCompat } from "../providers/compat";
+import { encodeChatToolNames } from "./openai-chat-tool-names";
 
 // Providers may opt into stripping one trailing "[...]" group from the wire model id.
 // Z.AI needs this because its OpenAI path rejects glm-5.2[1m] with 400 code 1211;
@@ -245,7 +246,7 @@ function messagesToChatFormat(parsed: OcxParsedRequest, provider: OcxProviderCon
           // WS turns can arrive with only tool outputs; chat-completions providers reject a bare
           // role:"tool" message unless an assistant tool_call with the same id immediately precedes it.
           flushPendingToolCalls();
-          const name = safeToolName(msg.toolName);
+          const name = namespacedToolName(msg.toolNamespace, safeToolName(msg.toolName));
           out.push({
             role: "assistant",
             content: "",
@@ -275,9 +276,8 @@ function messagesToChatFormat(parsed: OcxParsedRequest, provider: OcxProviderCon
 }
 
 function safeToolName(name: string | undefined): string {
-  const raw = name && name.trim().length > 0 ? name : "tool_result";
-  const sanitized = raw.replace(/[^A-Za-z0-9_-]/g, "_");
-  return sanitized;
+  // Encoding happens with the full request name set, so it remains reversible.
+  return name && name.trim().length > 0 ? name : "tool_result";
 }
 
 const ZEN_SCHEMA_MAP_KEYS = new Set(["properties", "$defs", "definitions"]);
@@ -614,6 +614,8 @@ function applyCompatThinkingFormat(
 }
 
 export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAdapter {
+  // resolveAdapter creates one adapter per request, as for Google/Kiro codecs.
+  let restoreToolName = (name: string): string => name;
   return {
     name: "openai-chat",
 
@@ -628,6 +630,7 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
       const messages = messagesToChatFormat(parsed, provider);
       const tools = toolsToChatFormatForProvider(parsed, provider);
       const toolChoice = toolChoiceToChatFormat(parsed.options.toolChoice, parsed.context.tools);
+      restoreToolName = encodeChatToolNames(messages, tools, toolChoice);
 
       const body: Record<string, unknown> = {
         model: provider.modelSuffixBracketStrip ? stripBracketedModelSuffix(parsed.modelId) : parsed.modelId,
@@ -778,7 +781,7 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
       const flushToolCalls = function* (): Generator<AdapterEvent> {
         for (const call of pendingToolCalls) {
           if (!call.id) call.id = `call_${++toolCallSeq}`;
-          yield { type: "tool_call_start", id: call.id, name: call.name };
+          yield { type: "tool_call_start", id: call.id, name: restoreToolName(call.name) };
           if (call.args.length > 0) yield { type: "tool_call_delta", arguments: call.args };
           yield { type: "tool_call_end" };
         }
@@ -979,7 +982,7 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
       const toolCalls = msg.tool_calls as { id: string; function: { name: string; arguments: string } }[] | undefined;
       if (toolCalls) {
         for (const tc of toolCalls) {
-          events.push({ type: "tool_call_start", id: tc.id, name: tc.function.name });
+          events.push({ type: "tool_call_start", id: tc.id, name: restoreToolName(tc.function.name) });
           events.push({ type: "tool_call_delta", arguments: tc.function.arguments });
           events.push({ type: "tool_call_end" });
         }

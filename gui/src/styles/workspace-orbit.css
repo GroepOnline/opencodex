@@ -1,0 +1,428 @@
+/* OCX Orbit. Product-scoped redesign authorized 2026-09-06; see gui/DESIGN.md.
+   Existing component contracts inherit these tokens, not a second CSS framework. */
+:root,
+:root[data-style] {
+  --bg: light-dark(#ffffff, #161616);
+  --rail: light-dark(#f1f1f1, #202020);
+  --surface: light-dark(#ffffff, #202020);
+  --raised: light-dark(#e9e9e9, #303030);
+  --raised-hover: light-dark(#dedede, #3b3b3b);
+  --text: light-dark(#161616, #f4f4f4);
+  --muted: light-dark(#656565, #bcbcbc);
+  --faint: light-dark(#686868, #aeaeae);
+  --border: light-dark(#b9b9b9, #5a5a5a);
+  --border-soft: light-dark(#e6e6e6, #383838);
+  --hover: light-dark(#ededed, #2a2a2a);
+  --accent: light-dark(#262626, #f1f1f1);
+  --accent-hover: light-dark(#444444, #d4d4d4);
+  --accent-ink: light-dark(#ffffff, #161616);
+  --accent-blue: light-dark(#262626, #f1f1f1);
+  --accent-blue-ink: light-dark(#444444, #d4d4d4);
+  --accent-soft: light-dark(#eeeeee, #303030);
+  --accent-ring: light-dark(#262626, #f1f1f1);
+  --font-ui: "Manrope Variable", system-ui, sans-serif;
+  --font: var(--font-ui);
+  --text-control: 14px;
+  --text-caption: 12px;
+  --text-label: 13px;
+  --text-title: 24px;
+  --text-display: 32px;
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius: 10px;
+  --radius-lg: 12px;
+  --control-sm: 32px;
+  --control-md: 38px;
+  --control-lg: 44px;
+  --workspace-rail: 0px;
+  --workspace-header: 64px;
+  --workspace-measure: 1800px;
+  --scrollbar-thumb: var(--border);
+  --scrollbar-thumb-hover: var(--muted);
+  --scrollbar-track: var(--bg);
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  scrollbar-width: auto;
+}
+
+:root ::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+:root ::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+:root ::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: var(--radius-xs);
+}
+:root ::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+:root ::-webkit-scrollbar-thumb:active {
+  background: var(--text);
+}
+@media (forced-colors: active) {
+  :root {
+    scrollbar-color: auto;
+  }
+  :root ::-webkit-scrollbar-track {
+    background: Canvas;
+  }
+  :root ::-webkit-scrollbar-thumb {
+    background: ButtonText;
+  }
+}
+
+.ocx-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr;
+  grid-template-areas: "header" "banner" "content";
+  min-height: 100dvh;
+}
+
+.ocx-workspace .topbar {
+  grid-area: header;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 28px;
+  min-height: var(--workspace-header);
+  height: auto;
+  padding: 0 var(--space-6);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-soft);
+}
+.ocx-workspace .brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.ocx-workspace .brand .name {
+  font-weight: 700;
+  font-size: var(--text-subtitle);
+  letter-spacing: -0.025em;
+}
+.ocx-workspace .brand .ver {
+  padding: 0;
+  border: 0;
+  color: var(--muted);
+  font-size: 11px;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ocx-workspace .offline-banner {
+  grid-area: banner;
+  margin: 0;
+}
+.ocx-workspace .workspace-navigation {
+  grid-column: 2;
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  overflow: visible;
+}
+.workspace-navigation .workspace-destination {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-touch);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  white-space: normal;
+  color: var(--muted);
+  font-size: 13px;
+  transition:
+    color var(--motion-fast),
+    transform var(--motion-fast);
+}
+.workspace-navigation .workspace-destination > svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.workspace-navigation .workspace-destination.active {
+  color: var(--text);
+  font-weight: 650;
+}
+.workspace-navigation .workspace-destination.active::after {
+  content: none;
+}
+.workspace-selection {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--raised);
+}
+.workspace-destination:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 3px;
+}
+.ocx-workspace .main {
+  grid-area: content;
+  min-width: 0;
+}
+.ocx-workspace .main-inner {
+  max-width: var(--workspace-measure);
+  padding: 24px clamp(20px, 2.5vw, 48px) 40px;
+}
+.ocx-workspace .main-inner.main-inner--combos {
+  min-height: calc(100dvh - var(--workspace-header));
+  height: auto;
+  padding: var(--space-4);
+  overflow: visible;
+}
+.ocx-workspace .sub-tabs {
+  width: fit-content;
+  max-width: 100%;
+  gap: var(--space-1);
+  padding: 0;
+  margin-bottom: 28px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow-x: auto;
+}
+.ocx-workspace .sub-tab {
+  min-height: var(--control-md);
+  padding: 6px 14px;
+  border-radius: 0;
+  font-size: 13px;
+  border-bottom: 2px solid transparent;
+}
+.ocx-workspace .sub-tab.active {
+  background: transparent;
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+.ocx-workspace .sub-tab.active::after {
+  content: none;
+}
+.ocx-workspace .page-head {
+  margin-bottom: var(--space-4);
+}
+.ocx-workspace .page-head h2 {
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+.ocx-workspace .card {
+  border-radius: var(--radius);
+  box-shadow: none;
+}
+.ocx-workspace .btn {
+  min-height: var(--control-md);
+  border-radius: var(--radius-sm);
+}
+.ocx-workspace .gbtn {
+  min-width: var(--control-md);
+  min-height: var(--control-md);
+  border-radius: var(--radius-sm);
+}
+.ocx-workspace .stamp {
+  padding: 4px 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  text-transform: none;
+  font-size: 12px;
+}
+
+@media (max-width: 1280px) {
+  .ocx-workspace .topbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0 16px;
+    padding-top: 8px;
+  }
+  .ocx-workspace .topbar-right {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .ocx-workspace .workspace-navigation {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+@media (max-width: 760px) {
+  .ocx-workspace {
+    display: flex;
+    flex-direction: column;
+  }
+  .ocx-workspace .topbar {
+    height: auto;
+    padding: 8px 12px;
+  }
+  .ocx-workspace .workspace-navigation {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding: var(--space-2);
+    gap: var(--space-1);
+    border-right: 0;
+    border: 0;
+    overflow: visible;
+  }
+  .workspace-navigation .workspace-destination {
+    min-width: 0;
+    padding: var(--space-2);
+    font-size: var(--text-caption);
+    white-space: normal;
+    line-height: var(--leading-tight);
+  }
+  .ocx-workspace .main-inner {
+    padding: var(--space-4);
+  }
+  .ocx-workspace .sub-tabs {
+    margin-bottom: 20px;
+  }
+  .ocx-workspace .brand .ver {
+    display: none;
+  }
+}
+
+.dashboard-workspace .pws-dashboard-stats {
+  padding: 0 0 var(--space-4);
+  margin-bottom: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.dashboard-workspace .pws-dashboard-stat {
+  flex-direction: row;
+  gap: var(--space-2);
+}
+.dashboard-workspace .pws-dashboard-stat-count {
+  font-size: var(--text-label);
+}
+.dashboard-workspace .pws-dashboard-stat-label {
+  font-size: var(--text-label);
+  text-transform: none;
+  letter-spacing: normal;
+}
+.metric-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-6) var(--space-8);
+  margin: 0 0 var(--space-8);
+  padding: var(--space-6) 0;
+  border-block: 1px solid var(--border-soft);
+}
+.metric-reading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.metric-reading dt {
+  color: var(--muted);
+  font-size: var(--text-label);
+}
+.metric-reading dd {
+  margin: 0;
+  font-size: var(--text-title);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: var(--leading-tight);
+}
+.dashboard-workspace .pws-dashboard-columns {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+  gap: var(--space-8);
+}
+.dashboard-workspace .pws-dashboard-section-title {
+  font-size: var(--text-subtitle);
+  font-weight: 650;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text);
+  margin-bottom: var(--space-4);
+}
+.dashboard-workspace .pws-dashboard-empty {
+  margin: 0;
+  font-size: var(--text-control);
+}
+.dashboard-workspace .pws-dashboard-section {
+  min-height: 0;
+}
+.dashboard-workspace .pws-dashboard-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: var(--space-3) 0;
+  cursor: default;
+}
+.dashboard-workspace .pws-dashboard-row:hover {
+  background: transparent;
+}
+.dashboard-workspace .pws-dashboard-row-name {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.dashboard-workspace .dash-bar-track {
+  grid-column: 1 / -1;
+}
+.dashboard-workspace .dash-bar-fill {
+  transition: none;
+}
+.dashboard-workspace .traffic-entry-head {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "model model status" "principal principal principal" "time tokens duration";
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3) 0;
+  font-size: var(--text-caption);
+}
+.dashboard-workspace .traffic-col--model {
+  grid-area: model;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.dashboard-workspace .traffic-col--principal {
+  grid-area: principal;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.dashboard-workspace .traffic-col--status {
+  grid-area: status;
+}
+.dashboard-workspace .traffic-col--time {
+  grid-area: time;
+}
+.dashboard-workspace .traffic-col--tokens {
+  grid-area: tokens;
+}
+.dashboard-workspace .traffic-col--duration {
+  grid-area: duration;
+}
+@media (max-width: 1024px) {
+  .metric-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dashboard-workspace .pws-dashboard-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 760px) {
+  .metric-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding-block: var(--space-4);
+  }
+  .metric-reading {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  .metric-reading dd {
+    font-size: var(--text-subtitle);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-destination {
+    transition: none;
+  }
+}

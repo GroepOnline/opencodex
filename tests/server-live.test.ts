@@ -6,13 +6,22 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { saveCodexAccountCredential } from "../src/codex/account-store";
-import { clearAccountNeedsReauth, clearAccountQuota } from "../src/codex/auth-api";
-import { clearCodexUpstreamHealth, clearThreadAccountMap } from "../src/codex/routing";
+import {
+  clearAccountNeedsReauth,
+  clearAccountQuota,
+} from "../src/codex/auth-api";
+import {
+  clearCodexUpstreamHealth,
+  clearThreadAccountMap,
+} from "../src/codex/routing";
 import { saveConfig } from "../src/config";
 import { startServer } from "../src/server";
 import type { OcxConfig } from "../src/types";
 import { fakeChatGptJwt } from "./helpers/fake-chatgpt-jwt";
-import { installIsolatedCodexHome, type IsolatedCodexHome } from "./helpers/isolated-codex-home";
+import {
+  installIsolatedCodexHome,
+  type IsolatedCodexHome,
+} from "./helpers/isolated-codex-home";
 
 const previousApiToken = process.env.OPENCODEX_API_AUTH_TOKEN;
 const previousOpencodexHome = process.env.OPENCODEX_HOME;
@@ -36,7 +45,8 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  if (previousApiToken === undefined) delete process.env.OPENCODEX_API_AUTH_TOKEN;
+  if (previousApiToken === undefined)
+    delete process.env.OPENCODEX_API_AUTH_TOKEN;
   else process.env.OPENCODEX_API_AUTH_TOKEN = previousApiToken;
   if (previousOpencodexHome === undefined) delete process.env.OPENCODEX_HOME;
   else process.env.OPENCODEX_HOME = previousOpencodexHome;
@@ -56,11 +66,22 @@ interface CapturedRequest {
   bodyText: string;
 }
 
-function fakeLiveUpstream(captured: CapturedRequest[], status = 201, location = "/v1/live/rtc_test") {
+function fakeLiveUpstream(
+  captured: CapturedRequest[],
+  status = 201,
+  location = "/v1/live/rtc_test",
+) {
   const upstream = Bun.serve({
     port: 0,
     async fetch(req) {
       const reqUrl = new URL(req.url);
+      // Port-discovery probes are not voice calls. Keep duplicate protocol POSTs counted.
+      if (
+        req.method !== "POST" ||
+        !["/realtime/calls", "/v1/realtime/calls"].includes(reqUrl.pathname)
+      ) {
+        return new Response("Not found", { status: 404 });
+      }
       captured.push({
         path: reqUrl.pathname,
         url: `${reqUrl.pathname}${reqUrl.search}`,
@@ -77,11 +98,19 @@ function fakeLiveUpstream(captured: CapturedRequest[], status = 201, location = 
     },
   });
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-    const requestUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const requestUrl =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
     const url = new URL(requestUrl);
     const prefix = "/backend-api/codex";
     if (url.hostname === "chatgpt.com" && url.pathname.startsWith(prefix)) {
-      const target = new URL(`${url.pathname.slice(prefix.length)}${url.search}`, upstream.url);
+      const target = new URL(
+        `${url.pathname.slice(prefix.length)}${url.search}`,
+        upstream.url,
+      );
       return originalFetch(target, init);
     }
     if (url.hostname === "api.openai.com") {
@@ -144,7 +173,10 @@ test("POST /v1/live rewrites ChatGPT multipart into backend realtime/calls JSON"
 
   const server = startServer(0);
   try {
-    const { body, contentType } = multipartLiveBody("v=0-offer", { model: "gpt-live", instructions: "hi" });
+    const { body, contentType } = multipartLiveBody("v=0-offer", {
+      model: "gpt-live",
+      instructions: "hi",
+    });
     const response = await fetch(new URL("/v1/live", server.url), {
       method: "POST",
       headers: {
@@ -162,9 +194,13 @@ test("POST /v1/live rewrites ChatGPT multipart into backend realtime/calls JSON"
     expect(captured[0].path).toBe("/realtime/calls");
     expect(captured[0].url).toContain("intent=quicksilver");
     expect(captured[0].url).toContain("architecture=avas");
-    expect(captured[0].headers.get("authorization")).toBe(`Bearer ${DIRECT_CHATGPT_TOKEN}`);
+    expect(captured[0].headers.get("authorization")).toBe(
+      `Bearer ${DIRECT_CHATGPT_TOKEN}`,
+    );
     expect(captured[0].headers.get("chatgpt-account-id")).toBe("acct-123");
-    expect(captured[0].headers.get("content-type")).toContain("application/json");
+    expect(captured[0].headers.get("content-type")).toContain(
+      "application/json",
+    );
     expect(JSON.parse(captured[0].bodyText)).toEqual({
       sdp: "v=0-offer",
       session: { model: "gpt-live", instructions: "hi" },
@@ -177,7 +213,11 @@ test("POST /v1/live rewrites ChatGPT multipart into backend realtime/calls JSON"
 
 test("POST /v1/live relays to an OpenAI API-key provider at /v1/realtime/calls", async () => {
   const captured: CapturedRequest[] = [];
-  const upstream = fakeLiveUpstream(captured, 201, "/v1/realtime/calls/rtc_api");
+  const upstream = fakeLiveUpstream(
+    captured,
+    201,
+    "/v1/realtime/calls/rtc_api",
+  );
   saveConfig({
     port: 0,
     defaultProvider: "openai-apikey",
@@ -206,8 +246,12 @@ test("POST /v1/live relays to an OpenAI API-key provider at /v1/realtime/calls",
     expect(captured[0].path).toBe("/v1/realtime/calls");
     expect(captured[0].url).toContain("intent=quicksilver");
     expect(captured[0].url).toContain("architecture=avas");
-    expect(captured[0].headers.get("authorization")).toBe("Bearer sk-test-live");
-    expect(captured[0].headers.get("content-type")).toContain("multipart/form-data");
+    expect(captured[0].headers.get("authorization")).toBe(
+      "Bearer sk-test-live",
+    );
+    expect(captured[0].headers.get("content-type")).toContain(
+      "multipart/form-data",
+    );
     expect(captured[0].bodyText).toContain('name="sdp"');
   } finally {
     await server.stop(true);
@@ -222,7 +266,10 @@ test("call-create forwards Frameless protocol headers and keeps auth pool-owned"
 
   const server = startServer(0);
   try {
-    const { body, contentType } = multipartLiveBody("v=0-offer", { model: "gpt-live", instructions: "hi" });
+    const { body, contentType } = multipartLiveBody("v=0-offer", {
+      model: "gpt-live",
+      instructions: "hi",
+    });
     const response = await fetch(new URL("/v1/live", server.url), {
       method: "POST",
       headers: {
@@ -267,7 +314,10 @@ test("call-create without protocol headers does not invent them upstream", async
 
   const server = startServer(0);
   try {
-    const { body, contentType } = multipartLiveBody("v=0-offer", { model: "gpt-live", instructions: "hi" });
+    const { body, contentType } = multipartLiveBody("v=0-offer", {
+      model: "gpt-live",
+      instructions: "hi",
+    });
     const response = await fetch(new URL("/v1/live", server.url), {
       method: "POST",
       headers: {
@@ -294,7 +344,11 @@ test("call-create without protocol headers does not invent them upstream", async
 
 test("POST /v1/realtime/calls is accepted and relays like /v1/live", async () => {
   const captured: CapturedRequest[] = [];
-  const upstream = fakeLiveUpstream(captured, 201, "/v1/realtime/calls/rtc_codex");
+  const upstream = fakeLiveUpstream(
+    captured,
+    201,
+    "/v1/realtime/calls/rtc_codex",
+  );
   saveConfig(forwardConfig());
 
   const server = startServer(0);
@@ -310,7 +364,9 @@ test("POST /v1/realtime/calls is accepted and relays like /v1/live", async () =>
       body,
     });
     expect(response.status).toBe(201);
-    expect(response.headers.get("location")).toBe("/v1/realtime/calls/rtc_codex");
+    expect(response.headers.get("location")).toBe(
+      "/v1/realtime/calls/rtc_codex",
+    );
     expect(captured).toHaveLength(1);
     expect(captured[0].path).toBe("/realtime/calls");
     expect(JSON.parse(captured[0].bodyText)).toEqual({
@@ -330,6 +386,10 @@ test("ChatGPT multipart rewrite allows SDP-only offers without session", async (
 
   const server = startServer(0);
   try {
+    const probe = await fetch(new URL("/", upstream.url));
+    expect(probe.status).toBe(404);
+    await probe.text();
+    expect(captured).toHaveLength(0);
     const { body, contentType } = multipartLiveBody("v=0-sdp-only", null);
     const response = await fetch(new URL("/v1/live", server.url), {
       method: "POST",
@@ -358,7 +418,8 @@ test("OPTIONS preflight allows ChatGPT-Account-Id for voice clients", async () =
       headers: {
         Origin: "http://127.0.0.1:" + new URL(server.url).port,
         "Access-Control-Request-Method": "POST",
-        "Access-Control-Request-Headers": "authorization,content-type,chatgpt-account-id",
+        "Access-Control-Request-Headers":
+          "authorization,content-type,chatgpt-account-id",
       },
     });
     expect(response.status).toBe(204);
@@ -380,7 +441,11 @@ test("POST /v1/live without an OpenAI upstream returns 400", async () => {
     port: 0,
     defaultProvider: "cursor",
     providers: {
-      cursor: { adapter: "cursor", baseUrl: "https://api2.cursor.sh", apiKey: "cursor-token" },
+      cursor: {
+        adapter: "cursor",
+        baseUrl: "https://api2.cursor.sh",
+        apiKey: "cursor-token",
+      },
     },
   } as OcxConfig);
 
@@ -392,7 +457,7 @@ test("POST /v1/live without an OpenAI upstream returns 400", async () => {
       body: JSON.stringify({ sdp: "v=0" }),
     });
     expect(response.status).toBe(400);
-    const payload = await response.json() as { error?: { message?: string } };
+    const payload = (await response.json()) as { error?: { message?: string } };
     expect(payload.error?.message).toContain("OpenAI upstream");
   } finally {
     await server.stop(true);
@@ -411,7 +476,7 @@ test("GET /v1/live still hits the unknown-endpoint JSON 404 guard", async () => 
       },
     });
     expect(response.status).toBe(404);
-    const payload = await response.json() as { error?: { message?: string } };
+    const payload = (await response.json()) as { error?: { message?: string } };
     expect(payload.error?.message).toContain("Unknown endpoint");
   } finally {
     await server.stop(true);
@@ -433,12 +498,20 @@ test("a routed pool account's token overrides the caller bearer on the live rela
     },
     codexAccounts: [
       { id: "main", email: "main@example.test", isMain: true },
-      { id: "pool-a", email: "pool@example.test", isMain: false, chatgptAccountId: "acct-pool-a" },
+      {
+        id: "pool-a",
+        email: "pool@example.test",
+        isMain: false,
+        chatgptAccountId: "acct-pool-a",
+      },
     ],
     activeCodexAccountId: "pool-a",
   } as OcxConfig);
   saveCodexAccountCredential("pool-a", {
-    accessToken: fakeChatGptJwt({ chatgpt_account_id: "acct-pool-a", email: "pool@example.test" }),
+    accessToken: fakeChatGptJwt({
+      chatgpt_account_id: "acct-pool-a",
+      email: "pool@example.test",
+    }),
     refreshToken: "pool-refresh-token",
     expiresAt: Date.now() + 3_600_000,
     chatgptAccountId: "acct-pool-a",
@@ -460,7 +533,9 @@ test("a routed pool account's token overrides the caller bearer on the live rela
     expect(captured).toHaveLength(1);
     expect(captured[0].headers.get("chatgpt-account-id")).toBe("acct-pool-a");
     expect(captured[0].headers.get("authorization")).toContain("Bearer ");
-    expect(captured[0].headers.get("authorization")).not.toBe(`Bearer ${DIRECT_CHATGPT_TOKEN}`);
+    expect(captured[0].headers.get("authorization")).not.toBe(
+      `Bearer ${DIRECT_CHATGPT_TOKEN}`,
+    );
   } finally {
     await server.stop(true);
     await upstream.stop(true);
@@ -468,15 +543,24 @@ test("a routed pool account's token overrides the caller bearer on the live rela
 });
 
 test("sideband terminal logging follows the actual upgrade outcome", () => {
-  const source = readFileSync(join(import.meta.dir, "../src/server/index.ts"), "utf8");
+  const source = readFileSync(
+    join(import.meta.dir, "../src/server/index.ts"),
+    "utf8",
+  );
   const start = source.indexOf("// Voice / Realtime sideband WebSocket:");
   const end = source.indexOf("// Data-plane guard:", start);
   expect(start).toBeGreaterThanOrEqual(0);
   expect(end).toBeGreaterThan(start);
   const block = source.slice(start, end);
   const upgrade = block.indexOf("if (server.upgrade(req, {");
-  const accepted = block.indexOf("addFinalRequestLog(requestId, start, logCtx, 101);", upgrade);
-  const rejected = block.indexOf("addFinalRequestLog(requestId, start, logCtx, 426);", upgrade);
+  const accepted = block.indexOf(
+    "addFinalRequestLog(requestId, start, logCtx, 101);",
+    upgrade,
+  );
+  const rejected = block.indexOf(
+    "addFinalRequestLog(requestId, start, logCtx, 426);",
+    upgrade,
+  );
   expect(upgrade).toBeGreaterThanOrEqual(0);
   expect(accepted).toBeGreaterThan(upgrade);
   expect(rejected).toBeGreaterThan(accepted);
@@ -492,14 +576,17 @@ test("sideband GET /v1/live/{callId} upgrades and relays bidirectionally to Chat
       if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
         seenPaths.push(url.pathname);
         seenUpgradeHeaders.push(req.headers);
-        if (server.upgrade(req, { data: {} })) return undefined as unknown as Response;
+        if (server.upgrade(req, { data: {} }))
+          return undefined as unknown as Response;
         return new Response("upgrade failed", { status: 500 });
       }
       return new Response("not found", { status: 404 });
     },
     websocket: {
       message(ws, message) {
-        ws.send(`echo:${typeof message === "string" ? message : message.toString()}`);
+        ws.send(
+          `echo:${typeof message === "string" ? message : message.toString()}`,
+        );
       },
     },
   });
@@ -510,10 +597,14 @@ test("sideband GET /v1/live/{callId} upgrades and relays bidirectionally to Chat
   const RealWebSocket = globalThis.WebSocket;
   const upstreamPort = upstream.port;
   globalThis.WebSocket = class extends RealWebSocket {
-    constructor(url: string | URL, protocols?: string | string[] | Record<string, unknown>) {
+    constructor(
+      url: string | URL,
+      protocols?: string | string[] | Record<string, unknown>,
+    ) {
       const parsed = new URL(String(url));
       const target =
-        parsed.hostname === "api.openai.com" && parsed.pathname.startsWith("/v1/live/")
+        parsed.hostname === "api.openai.com" &&
+        parsed.pathname.startsWith("/v1/live/")
           ? `ws://127.0.0.1:${upstreamPort}${parsed.pathname}${parsed.search}`
           : String(url);
       super(target, protocols as string[]);
@@ -534,7 +625,10 @@ test("sideband GET /v1/live/{callId} upgrades and relays bidirectionally to Chat
     } as unknown as string[]);
 
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("sideband timeout")), 5_000);
+      const timer = setTimeout(
+        () => reject(new Error("sideband timeout")),
+        5_000,
+      );
       client.addEventListener("open", () => {
         client.send("ping-sideband");
       });
@@ -543,9 +637,13 @@ test("sideband GET /v1/live/{callId} upgrades and relays bidirectionally to Chat
           expect(String(event.data)).toBe("echo:ping-sideband");
           expect(seenPaths).toContain("/v1/live/rtc_sideband");
           expect(seenUpgradeHeaders).toHaveLength(1);
-          expect(seenUpgradeHeaders[0].get("openai-alpha")).toBe("quicksilver=v2");
+          expect(seenUpgradeHeaders[0].get("openai-alpha")).toBe(
+            "quicksilver=v2",
+          );
           expect(seenUpgradeHeaders[0].get("x-session-id")).toBe("rts_side");
-          expect(seenUpgradeHeaders[0].get("authorization")).toBe(`Bearer ${DIRECT_CHATGPT_TOKEN}`);
+          expect(seenUpgradeHeaders[0].get("authorization")).toBe(
+            `Bearer ${DIRECT_CHATGPT_TOKEN}`,
+          );
           clearTimeout(timer);
           resolve();
         } catch (err) {
@@ -571,14 +669,17 @@ test("sideband upgrades hold a live concurrency reservation and release it on cl
     port: 0,
     fetch(req, server) {
       if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
-        if (server.upgrade(req, { data: {} })) return undefined as unknown as Response;
+        if (server.upgrade(req, { data: {} }))
+          return undefined as unknown as Response;
         return new Response("upgrade failed", { status: 500 });
       }
       return new Response("not found", { status: 404 });
     },
     websocket: {
       message(ws, message) {
-        ws.send(`echo:${typeof message === "string" ? message : message.toString()}`);
+        ws.send(
+          `echo:${typeof message === "string" ? message : message.toString()}`,
+        );
       },
     },
   });
@@ -597,10 +698,14 @@ test("sideband upgrades hold a live concurrency reservation and release it on cl
   const RealWebSocket = globalThis.WebSocket;
   const upstreamPort = upstream.port;
   globalThis.WebSocket = class extends RealWebSocket {
-    constructor(url: string | URL, protocols?: string | string[] | Record<string, unknown>) {
+    constructor(
+      url: string | URL,
+      protocols?: string | string[] | Record<string, unknown>,
+    ) {
       const parsed = new URL(String(url));
       const target =
-        parsed.hostname === "api.openai.com" && parsed.pathname.startsWith("/v1/live/")
+        parsed.hostname === "api.openai.com" &&
+        parsed.pathname.startsWith("/v1/live/")
           ? `ws://127.0.0.1:${upstreamPort}${parsed.pathname}${parsed.search}`
           : String(url);
       super(target, protocols as string[]);
@@ -608,8 +713,10 @@ test("sideband upgrades hold a live concurrency reservation and release it on cl
   } as typeof WebSocket;
 
   const server = startServer(0);
-  const sidebandHandshake = (callId: string): Promise<{ opened: boolean; close: () => void }> =>
-    new Promise(resolve => {
+  const sidebandHandshake = (
+    callId: string,
+  ): Promise<{ opened: boolean; close: () => void }> =>
+    new Promise((resolve) => {
       const wsUrl = new URL(`/v1/live/${callId}`, server.url);
       wsUrl.protocol = "ws:";
       const socket = new RealWebSocket(wsUrl.toString(), {
@@ -626,7 +733,11 @@ test("sideband upgrades hold a live concurrency reservation and release it on cl
         resolve({
           opened,
           close: () => {
-            try { socket.close(); } catch { /* already closed */ }
+            try {
+              socket.close();
+            } catch {
+              /* already closed */
+            }
           },
         });
       };
@@ -649,7 +760,7 @@ test("sideband upgrades hold a live concurrency reservation and release it on cl
     first.close();
     let reopened = false;
     for (let attempt = 0; attempt < 20 && !reopened; attempt++) {
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
       const retry = await sidebandHandshake("rtc_slot_c");
       reopened = retry.opened;
       if (retry.opened) retry.close();
@@ -663,8 +774,12 @@ test("sideband upgrades hold a live concurrency reservation and release it on cl
 });
 
 test("buildLiveSidebandUpstreamWsUrl maps Frameless and Realtime join shapes", async () => {
-  const { buildLiveSidebandUpstreamWsUrl, forwardLiveUrl, keyedLiveUrl, parseLiveSidebandTarget } =
-    await import("../src/server/live");
+  const {
+    buildLiveSidebandUpstreamWsUrl,
+    forwardLiveUrl,
+    keyedLiveUrl,
+    parseLiveSidebandTarget,
+  } = await import("../src/server/live");
 
   expect(forwardLiveUrl("https://chatgpt.com/backend-api/codex", true)).toBe(
     "https://chatgpt.com/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas",
@@ -673,32 +788,51 @@ test("buildLiveSidebandUpstreamWsUrl maps Frameless and Realtime join shapes", a
     "https://api.openai.com/v1/realtime/calls?intent=quicksilver&architecture=avas",
   );
 
-  expect(parseLiveSidebandTarget("/v1/live/rtc_1", new URLSearchParams())).toEqual({
+  expect(
+    parseLiveSidebandTarget("/v1/live/rtc_1", new URLSearchParams()),
+  ).toEqual({
     style: "frameless-path",
     callId: "rtc_1",
   });
-  expect(parseLiveSidebandTarget("/v1/realtime", new URLSearchParams("call_id=rtc_2"))).toEqual({
+  expect(
+    parseLiveSidebandTarget(
+      "/v1/realtime",
+      new URLSearchParams("call_id=rtc_2"),
+    ),
+  ).toEqual({
     style: "realtime-query",
     callId: "rtc_2",
   });
 
   expect(
-    buildLiveSidebandUpstreamWsUrl("https://chatgpt.com/backend-api/codex", true, {
-      style: "frameless-path",
-      callId: "rtc_1",
-    }),
+    buildLiveSidebandUpstreamWsUrl(
+      "https://chatgpt.com/backend-api/codex",
+      true,
+      {
+        style: "frameless-path",
+        callId: "rtc_1",
+      },
+    ),
   ).toBe("wss://api.openai.com/v1/live/rtc_1");
   expect(
-    buildLiveSidebandUpstreamWsUrl("https://chatgpt.com/backend-api/codex", true, {
-      style: "realtime-calls-path",
-      callId: "rtc_1",
-    }),
+    buildLiveSidebandUpstreamWsUrl(
+      "https://chatgpt.com/backend-api/codex",
+      true,
+      {
+        style: "realtime-calls-path",
+        callId: "rtc_1",
+      },
+    ),
   ).toBe("wss://api.openai.com/v1/realtime/calls/rtc_1");
   expect(
-    buildLiveSidebandUpstreamWsUrl("https://chatgpt.com/backend-api/codex", true, {
-      style: "realtime-query",
-      callId: "rtc_2",
-    }),
+    buildLiveSidebandUpstreamWsUrl(
+      "https://chatgpt.com/backend-api/codex",
+      true,
+      {
+        style: "realtime-query",
+        callId: "rtc_2",
+      },
+    ),
   ).toBe("wss://api.openai.com/v1/realtime?intent=quicksilver&call_id=rtc_2");
   expect(
     buildLiveSidebandUpstreamWsUrl("https://api.openai.com/v1", false, {
@@ -730,7 +864,8 @@ test("sideband relay preserves multibyte UTF-8 frames byte-identically in both d
     port: 0,
     fetch(req, server) {
       if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
-        if (server.upgrade(req, { data: {} })) return undefined as unknown as Response;
+        if (server.upgrade(req, { data: {} }))
+          return undefined as unknown as Response;
         return new Response("upgrade failed", { status: 500 });
       }
       return new Response("not found", { status: 404 });
@@ -756,10 +891,14 @@ test("sideband relay preserves multibyte UTF-8 frames byte-identically in both d
   const RealWebSocket = globalThis.WebSocket;
   const upstreamPort = upstream.port;
   globalThis.WebSocket = class extends RealWebSocket {
-    constructor(url: string | URL, protocols?: string | string[] | Record<string, unknown>) {
+    constructor(
+      url: string | URL,
+      protocols?: string | string[] | Record<string, unknown>,
+    ) {
       const parsed = new URL(String(url));
       const target =
-        parsed.hostname === "api.openai.com" && parsed.pathname.startsWith("/v1/live/")
+        parsed.hostname === "api.openai.com" &&
+        parsed.pathname.startsWith("/v1/live/")
           ? `ws://127.0.0.1:${upstreamPort}${parsed.pathname}${parsed.search}`
           : String(url);
       super(target, protocols as string[]);
@@ -780,12 +919,15 @@ test("sideband relay preserves multibyte UTF-8 frames byte-identically in both d
 
     const inbound: Array<{ kind: string; data: unknown }> = [];
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("sideband timeout")), 10_000);
+      const timer = setTimeout(
+        () => reject(new Error("sideband timeout")),
+        10_000,
+      );
       client.addEventListener("open", () => {
         client.send(KOREAN_EVENT);
         client.send(new TextEncoder().encode(KOREAN_LINE));
       });
-      client.addEventListener("message", event => {
+      client.addEventListener("message", (event) => {
         inbound.push({ kind: typeof event.data, data: event.data });
         if (inbound.length >= 3) {
           clearTimeout(timer);
@@ -804,7 +946,11 @@ test("sideband relay preserves multibyte UTF-8 frames byte-identically in both d
     if (inbound[1]!.kind === "string") {
       expect(inbound[1]!.data).toBe(KOREAN_LINE);
     } else {
-      expect(new TextDecoder().decode(new Uint8Array(inbound[1]!.data as ArrayBuffer))).toBe(KOREAN_LINE);
+      expect(
+        new TextDecoder().decode(
+          new Uint8Array(inbound[1]!.data as ArrayBuffer),
+        ),
+      ).toBe(KOREAN_LINE);
     }
     expect(inbound[2]!.kind).toBe("string");
     expect(inbound[2]!.data).toBe(largeKorean);
@@ -812,7 +958,7 @@ test("sideband relay preserves multibyte UTF-8 frames byte-identically in both d
 
     const deadline = Date.now() + 5_000;
     while (receivedByUpstream.length < 2 && Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 25));
+      await new Promise((r) => setTimeout(r, 25));
     }
     expect(receivedByUpstream).toHaveLength(2);
     expect(new TextDecoder().decode(receivedByUpstream[0]!)).toBe(KOREAN_EVENT);
@@ -838,7 +984,8 @@ test("sideband frame log records direction, kind, and U+FFFD context without ful
     port: 0,
     fetch(req, server) {
       if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
-        if (server.upgrade(req, { data: {} })) return undefined as unknown as Response;
+        if (server.upgrade(req, { data: {} }))
+          return undefined as unknown as Response;
         return new Response("upgrade failed", { status: 500 });
       }
       return new Response("not found", { status: 404 });
@@ -858,10 +1005,14 @@ test("sideband frame log records direction, kind, and U+FFFD context without ful
   const RealWebSocket = globalThis.WebSocket;
   const upstreamPort = upstream.port;
   globalThis.WebSocket = class extends RealWebSocket {
-    constructor(url: string | URL, protocols?: string | string[] | Record<string, unknown>) {
+    constructor(
+      url: string | URL,
+      protocols?: string | string[] | Record<string, unknown>,
+    ) {
       const parsed = new URL(String(url));
       const target =
-        parsed.hostname === "api.openai.com" && parsed.pathname.startsWith("/v1/live/")
+        parsed.hostname === "api.openai.com" &&
+        parsed.pathname.startsWith("/v1/live/")
           ? `ws://127.0.0.1:${upstreamPort}${parsed.pathname}${parsed.search}`
           : String(url);
       super(target, protocols as string[]);
@@ -880,7 +1031,10 @@ test("sideband frame log records direction, kind, and U+FFFD context without ful
     } as unknown as string[]);
 
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("frame-log timeout")), 10_000);
+      const timer = setTimeout(
+        () => reject(new Error("frame-log timeout")),
+        10_000,
+      );
       let acks = 0;
       client.addEventListener("open", () => {
         client.send("clean-frame");
@@ -900,11 +1054,14 @@ test("sideband frame log records direction, kind, and U+FFFD context without ful
 
     const deadline = Date.now() + 2_000;
     while (!existsSync(frameLogPath) && Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 25));
+      await new Promise((r) => setTimeout(r, 25));
     }
-    const lines = readFileSync(frameLogPath, "utf8").trim().split("\n").map(l => JSON.parse(l));
-    const u2cFffd = lines.find(l => l.dir === "u2c" && l.fffd === true);
-    const c2uClean = lines.find(l => l.dir === "c2u" && l.kind === "text");
+    const lines = readFileSync(frameLogPath, "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    const u2cFffd = lines.find((l) => l.dir === "u2c" && l.fffd === true);
+    const c2uClean = lines.find((l) => l.dir === "c2u" && l.kind === "text");
     expect(u2cFffd).toBeDefined();
     expect(u2cFffd.kind).toBe("text");
     expect(u2cFffd.bytes).toBeGreaterThan(0);

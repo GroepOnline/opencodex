@@ -1,6 +1,7 @@
 // English — source of truth. Its keys define the TKey type; nl overrides a subset (compile-checked).
 // Strings with {cmd} render a <code> chip via <Trans>; {var} are plain interpolations.
 export const en = {
+  "app.pageTitle": "{page} | opencodex",
   // sidebar / nav / common
   "nav.codexAuth": "Codex Auth",
   "nav.verkeer": "Traffic",
@@ -181,6 +182,7 @@ export const en = {
   "dash.providers": "Providers",
   "dash.tokens30d": "Tokens (30d)",
   "dash.coverage": "{pct} coverage",
+  "dash.coverageLabel": "Cost coverage",
   // memory observability card (read-only /api/system/memory)
   "dash.mem.title": "Memory observability",
   "dash.mem.hint":
@@ -463,6 +465,34 @@ export const en = {
     "Passthrough models use the Pool or Direct account option selected on Providers. Toggling one off hides it from the Codex picker (the catalog entry is kept, so re-enabling restores it exactly).",
   "models.active": "{active}/{total} visible",
   "models.workspace.providers": "Providers",
+  "models.workspace.description":
+    "Find a model, check its configuration and choose what appears in your client.",
+  "models.workspace.manageProviders": "Manage providers",
+  "models.workspace.providerSettings": "Provider settings",
+  "models.workspace.search": "Search models or providers…",
+  "models.workspace.inspect": "Inspect {model}",
+  "models.workspace.unknown": "Not reported",
+  "models.workspace.catalog": "Model catalog",
+  "models.workspace.model": "Model",
+  "models.workspace.visibility": "In model picker",
+  "models.workspace.visibilityColumn": "Visible",
+  "models.workspace.modelId": "Model ID",
+  "models.workspace.copyId": "Copy ID",
+  "models.workspace.copyUnavailable": "Clipboard unavailable",
+  "models.workspace.catalogEvidence": "Catalog data, not a live verification",
+  "models.workspace.changeVisibility": "Show selected model in picker",
+  "models.workspace.shown": "Included by your model settings",
+  "models.workspace.hidden": "Excluded by your model settings",
+  "models.workspace.noMatches": "No matching models",
+  "models.workspace.clearSearch": "Clear search",
+  "models.workspace.advanced": "Model settings & advanced controls",
+  "models.workspace.back": "Back to models",
+  "models.workspace.contextLimit": "Configured context limit",
+  "models.workspace.catalogNotHealth":
+    "Catalog information, not a live connection test. Model visibility does not verify account access or the model actually served.",
+  "models.workspace.chooseModel": "Select a model",
+  "models.workspace.chooseModelHint":
+    "Compare its context and capabilities, then adjust visibility or edit a custom model.",
   "models.workspace.allProviders": "All providers",
   "models.workspace.mainAria": "Model details",
   "models.combosEmpty": "No combos configured yet",

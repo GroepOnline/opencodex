@@ -1,0 +1,15 @@
+{
+  "profile": "product-admin",
+  "sourceRoots": ["src"],
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": ["Select/Listbox", "Scrollbar"],
+  "ownership": { "Select/Listbox": "authored" },
+  "requiredCommands": ["unit", "lint", "i18n", "build"],
+  "commands": {
+    "unit": "bun run test",
+    "lint": "bun run lint",
+    "i18n": "bun run lint:i18n",
+    "build": "bun run build"
+  },
+  "evidence": { "failurePaths": "tests/dashboard-data-states.test.tsx" }
+}

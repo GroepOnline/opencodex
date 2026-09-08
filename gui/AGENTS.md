@@ -45,7 +45,7 @@ Run all of the following for every functional `gui/` change:
 
 ```bash
 cd gui
-bun test tests
+bun run test
 bun run lint
 bun run build
 ```
@@ -58,3 +58,8 @@ bun run lint:i18n
 ```
 
 Run the repository-level checks required by any non-GUI files changed in the same work.
+
+Use the package test script, including its existing `--isolate` option. DOM and
+server-rendering tests need separate module caches: Base UI chooses its layout
+effect implementation at import time. Do not remove isolation or mock that
+behavior to make shared-cache test runs pass.
