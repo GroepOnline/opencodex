@@ -125,8 +125,15 @@ describe("assert-live-checkout-safe.sh", () => {
 
   test("is tracked as an executable script", () => {
     const repoRoot = join(import.meta.dir, "..");
-    const stage = git(repoRoot, ["ls-files", "--stage", "--", "scripts/assert-live-checkout-safe.sh"]);
-    expect(stage).toMatch(/^100755 [0-9a-f]{40} 0\tscripts\/assert-live-checkout-safe\.sh$/);
+    const stage = git(repoRoot, [
+      "ls-files",
+      "--stage",
+      "--",
+      "scripts/assert-live-checkout-safe.sh",
+    ]);
+    expect(stage).toMatch(
+      /^100755 [0-9a-f]{40} 0\tscripts\/assert-live-checkout-safe\.sh$/,
+    );
   });
 
   test("refuses dirty porcelain and a HEAD that is not an ancestor of the target", () => {
@@ -211,6 +218,44 @@ describe("assert-live-checkout-safe.sh", () => {
       expect(result.exitCode, result.stderr.toString()).toBe(0);
       expect(readFileSync(log, "utf8")).toContain(
         "alarm shift; exec @ARGV or exit 127\n10\ngit\n",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(binDir, { recursive: true, force: true });
+    }
+  });
+
+  test("uses gtimeout before Perl when GNU timeout is absent", () => {
+    const bash = Bun.which("bash");
+    const realGit = Bun.which("git");
+    expect(bash).not.toBeNull();
+    expect(realGit).not.toBeNull();
+    const dir = initRepo();
+    const binDir = mkdtempSync(join(tmpdir(), "ocx-gtimeout-fallback-"));
+    const log = join(binDir, "calls");
+    const quote = (path: string) =>
+      `'${path.replaceAll("\\", "/").replaceAll("'", "'\\''")}'`;
+    try {
+      writeFileSync(
+        join(binDir, "git"),
+        `#!/bin/sh\nexec ${quote(realGit!)} "$@"\n`,
+      );
+      writeFileSync(
+        join(binDir, "gtimeout"),
+        `#!/bin/sh\nprintf '%s\\n' "$@" >> ${quote(log)}\n[ "$1" = "10s" ] || exit 97\nshift\nexec "$@"\n`,
+      );
+      writeFileSync(join(binDir, "perl"), "#!/bin/sh\nexit 99\n");
+      chmodSync(join(binDir, "git"), 0o755);
+      chmodSync(join(binDir, "gtimeout"), 0o755);
+      chmodSync(join(binDir, "perl"), 0o755);
+      const result = Bun.spawnSync([bash!, script, dir], {
+        env: { ...process.env, PATH: binDir },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(result.exitCode, result.stderr.toString()).toBe(0);
+      expect(readFileSync(log, "utf8")).toContain(
+        "10s\ngit\nrev-parse\n--is-inside-work-tree\n",
       );
     } finally {
       rmSync(dir, { recursive: true, force: true });

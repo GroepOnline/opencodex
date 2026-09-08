@@ -1,4 +1,11 @@
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import {
   chmodSync,
   copyFileSync,
@@ -55,13 +62,16 @@ beforeAll(() => {
       { encoding: "utf8" },
     );
     if (compiled.status !== 0) {
-      throw new Error(`failed to compile ${name} release fixture: ${compiled.stderr}`);
+      throw new Error(
+        `failed to compile ${name} release fixture: ${compiled.stderr}`,
+      );
     }
   }
 }, 120_000);
 
 afterAll(() => {
-  if (nativeFixtureDir) rmSync(nativeFixtureDir, { recursive: true, force: true });
+  if (nativeFixtureDir)
+    rmSync(nativeFixtureDir, { recursive: true, force: true });
   nativeFixtureDir = null;
 });
 
@@ -212,7 +222,8 @@ function installCommandShim(
     // Bun 1.4 rejects valid peeled Git refs ending in `^{}` before a .cmd
     // shim can receive them. A native fixture executable bypasses cmd.exe so
     // the release helper still exercises its exact peeled-ref validation.
-    if (!nativeFixtureDir) throw new Error("native release fixtures were not initialized");
+    if (!nativeFixtureDir)
+      throw new Error("native release fixtures were not initialized");
     copyFileSync(join(nativeFixtureDir, `${name}.exe`), `${launcherPath}.exe`);
     return;
   }
@@ -354,6 +365,30 @@ describe("release helper", () => {
     );
     expect(fullCiIndex).toBeGreaterThan(versionIndex);
     expect(dispatchIndex).toBeGreaterThan(fullCiIndex);
+  });
+
+  test("requests CI event metadata after dispatching the full-platform run", () => {
+    const { calls, result } = runRelease("9.9.9");
+    expect(result.status).toBe(0);
+
+    const dispatchIndex = findCallIndex(
+      calls,
+      "gh",
+      (call) => call.args.join(" ") === "workflow run ci.yml --ref main",
+    );
+    const listIndex = findCallIndex(
+      calls,
+      "gh",
+      (call) =>
+        call.args[0] === "run" &&
+        call.args[1] === "list" &&
+        call.args.includes("ci.yml"),
+    );
+    expect(dispatchIndex).toBeGreaterThanOrEqual(0);
+    expect(listIndex).toBeGreaterThan(dispatchIndex);
+    const jsonFields =
+      calls[listIndex]!.args[calls[listIndex]!.args.indexOf("--json") + 1];
+    expect(jsonFields?.split(",")).toContain("event");
   });
 
   test("failed privacy scan aborts before version bump, commit, and push", () => {
