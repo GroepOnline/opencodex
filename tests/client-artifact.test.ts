@@ -382,11 +382,15 @@ describe("remote client artifact", () => {
       );
 
       const selected = join(home, ".codex-client-test");
+      const physicalSelected = join(
+        realpathSync.native(home),
+        ".codex-client-test",
+      );
       const selectedRun = Bun.spawnSync([shim, "--version"], {
         env: { ...env, OCX_CLIENT_CODEX_HOME: selected },
       });
       expect(selectedRun.exitCode).toBe(0);
-      expect(readFileSync(capture, "utf8")).toBe(selected + "\n");
+      expect(readFileSync(capture, "utf8")).toBe(physicalSelected + "\n");
 
       const nativeRun = Bun.spawnSync([shim, "--version"], {
         env: { ...env, OCX_CLIENT_CODEX_HOME: nativeHome },
@@ -395,7 +399,7 @@ describe("remote client artifact", () => {
       expect(nativeRun.stderr.toString()).toContain(
         "refusing native Codex home",
       );
-      expect(readFileSync(capture, "utf8")).toBe(selected + "\n");
+      expect(readFileSync(capture, "utf8")).toBe(physicalSelected + "\n");
       expect(readFileSync(join(nativeHome, "config.toml"), "utf8")).toBe(
         "direct Azure config stays untouched\n",
       );
@@ -408,6 +412,17 @@ describe("remote client artifact", () => {
       });
       expect(nestedNativeRun.exitCode).toBe(78);
       expect(nestedNativeRun.stderr.toString()).toContain(
+        "refusing native Codex home",
+      );
+      expect(existsSync(join(nativeHome, "ocx-client"))).toBe(false);
+      const missingNativeDescendantRun = Bun.spawnSync([shim, "--version"], {
+        env: {
+          ...env,
+          OCX_CLIENT_CODEX_HOME: join(nativeHome, "missing-parent", "client"),
+        },
+      });
+      expect(missingNativeDescendantRun.exitCode).toBe(78);
+      expect(missingNativeDescendantRun.stderr.toString()).toContain(
         "refusing native Codex home",
       );
       expect(readFileSync(join(nativeHome, "config.toml"), "utf8")).toBe(

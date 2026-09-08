@@ -33,7 +33,9 @@ export function isTrustedDarwinSystemPathAlias(
   platform = process.platform,
 ) {
   return (
-    platform === "darwin" && path === "/var" && physicalTarget === "/private/var"
+    platform === "darwin" &&
+    path === "/var" &&
+    physicalTarget === "/private/var"
   );
 }
 
@@ -258,9 +260,13 @@ export const CODEX_CLIENT_SHIM = [
   '  [ -n "$path_component" ] || continue',
   '  path_part="${path_part}/${path_component}"',
   '  if [ -L "$path_part" ]; then',
-  '    # macOS exposes /var as the system-owned alias of /private/var. It is the',
-  '    # sole symlink component allowed here; every other link remains forbidden.',
-  '    if [ "$path_part" = "/var" ] && [ "$(uname -s)" = "Darwin" ] && [ "$(cd -P -- "$path_part" && pwd -P)" = "/private/var" ]; then continue; fi',
+  "    # macOS exposes /var as the system-owned alias of /private/var. It is the",
+  "    # sole symlink component allowed here; every other link remains forbidden.",
+  '    if [ "$path_part" = "/var" ] && [ "$(uname -s)" = "Darwin" ] && [ "$(cd -P -- "$path_part" && pwd -P)" = "/private/var" ]; then',
+  "      # Canonicalize even a missing child before native-home containment.",
+  '      client_home="/private${client_home}"',
+  "      continue",
+  "    fi",
   '    echo "OCX client-only: refusing symlinked Codex home path $path_part" >&2',
   "    exit 78",
   "  fi",
