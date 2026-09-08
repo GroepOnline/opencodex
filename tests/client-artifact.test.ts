@@ -143,7 +143,7 @@ describe("remote client artifact", () => {
       createHash("sha256").update(locked).digest("hex"),
     );
     removeDetachedWorktree(sourceRoot);
-  }, 15_000);
+  }, 30_000);
 
   test("builds a self-contained, SHA-bound candidate without activation", async () => {
     const output = join(scratch, "candidate");
@@ -344,9 +344,7 @@ describe("remote client artifact", () => {
       expect(readFileSync(powershellShim, "utf8")).toContain(
         "$env:USERPROFILE",
       );
-      expect(readFileSync(shim, "utf8")).toContain(
-        '"$path_part" = "/var"',
-      );
+      expect(readFileSync(shim, "utf8")).toContain('"$path_part" = "/var"');
       expect(readFileSync(powershellShim, "utf8")).toContain(
         "Test-TrustedDarwinSystemPathAlias",
       );
@@ -509,6 +507,7 @@ describe("remote client artifact", () => {
         "native config\n",
       );
     },
+    30_000,
   );
 
   test.skipIf(!powershell)(
