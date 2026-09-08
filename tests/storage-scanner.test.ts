@@ -1,10 +1,24 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { scanStorage, type StorageBucket, type StorageReport } from "../src/storage/scanner";
 import {
+  scanStorage,
+  type StorageBucket,
+  type StorageReport,
+} from "../src/storage/scanner";
+import {
+  abortStorageScannerJob,
   resetStorageScannerJobForTests,
   scanStorageForManagement,
   setStorageScannerJobTestHooks,
@@ -23,19 +37,44 @@ let previousCodexHome: string | undefined;
  * date-partitioned sessions/, flat archived_sessions/, versioned state / logs
  * sqlite files with WAL siblings, plus non-session dirs for the "other" bucket.
  */
-function buildFixtureHome(home: string = mkdtempSync(join(tmpdir(), "ocx-storage-fixture-"))): string {
-
+function buildFixtureHome(
+  home: string = mkdtempSync(join(tmpdir(), "ocx-storage-fixture-")),
+): string {
   mkdirSync(join(home, "sessions", "2026", "05", "27"), { recursive: true });
   mkdirSync(join(home, "sessions", "2026", "06", "01"), { recursive: true });
-  writeFileSync(join(home, "sessions", "2026", "05", "27", "rollout-a.jsonl"), "a".repeat(100));
-  writeFileSync(join(home, "sessions", "2026", "05", "27", "rollout-b.jsonl"), "b".repeat(2000));
-  writeFileSync(join(home, "sessions", "2026", "06", "01", "rollout-c.jsonl"), "c".repeat(300));
-  utimesSync(join(home, "sessions", "2026", "05", "27", "rollout-a.jsonl"), OLD_MTIME, OLD_MTIME);
-  utimesSync(join(home, "sessions", "2026", "05", "27", "rollout-b.jsonl"), MID_MTIME, MID_MTIME);
-  utimesSync(join(home, "sessions", "2026", "06", "01", "rollout-c.jsonl"), NEW_MTIME, NEW_MTIME);
+  writeFileSync(
+    join(home, "sessions", "2026", "05", "27", "rollout-a.jsonl"),
+    "a".repeat(100),
+  );
+  writeFileSync(
+    join(home, "sessions", "2026", "05", "27", "rollout-b.jsonl"),
+    "b".repeat(2000),
+  );
+  writeFileSync(
+    join(home, "sessions", "2026", "06", "01", "rollout-c.jsonl"),
+    "c".repeat(300),
+  );
+  utimesSync(
+    join(home, "sessions", "2026", "05", "27", "rollout-a.jsonl"),
+    OLD_MTIME,
+    OLD_MTIME,
+  );
+  utimesSync(
+    join(home, "sessions", "2026", "05", "27", "rollout-b.jsonl"),
+    MID_MTIME,
+    MID_MTIME,
+  );
+  utimesSync(
+    join(home, "sessions", "2026", "06", "01", "rollout-c.jsonl"),
+    NEW_MTIME,
+    NEW_MTIME,
+  );
 
   mkdirSync(join(home, "archived_sessions"));
-  writeFileSync(join(home, "archived_sessions", "rollout-old.jsonl"), "d".repeat(50));
+  writeFileSync(
+    join(home, "archived_sessions", "rollout-old.jsonl"),
+    "d".repeat(50),
+  );
 
   // Real state_5.sqlite/logs_2.sqlite are WAL-mode (devlog 20_codex-storage-structure.md: "every
   // root sqlite has -wal + -shm siblings live while Codex runs"). Checkpoint+truncate here so the
@@ -43,14 +82,20 @@ function buildFixtureHome(home: string = mkdtempSync(join(tmpdir(), "ocx-storage
   // exact starting condition that must NOT gain new -wal/-shm files from a "read-only" scan.
   const state = new Database(join(home, "state_5.sqlite"));
   state.exec("PRAGMA journal_mode=WAL");
-  state.exec("CREATE TABLE threads (id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL, archived INTEGER)");
-  state.exec("INSERT INTO threads VALUES ('t1','sessions/a.jsonl',0),('t2','sessions/b.jsonl',1),('t3','sessions/c.jsonl',0)");
- state.exec("PRAGMA wal_checkpoint(TRUNCATE)");
- state.close();
+  state.exec(
+    "CREATE TABLE threads (id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL, archived INTEGER)",
+  );
+  state.exec(
+    "INSERT INTO threads VALUES ('t1','sessions/a.jsonl',0),('t2','sessions/b.jsonl',1),('t3','sessions/c.jsonl',0)",
+  );
+  state.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  state.close();
   // Checkpoint leaves empty -wal and a -shm behind on some Bun/SQLite combos;
   // remove them so the fixture matches the "clean quit" state the test asserts.
   for (const suf of ["-wal", "-shm"]) {
-    try { unlinkSync(join(home, `state_5.sqlite${suf}`)); } catch {}
+    try {
+      unlinkSync(join(home, `state_5.sqlite${suf}`));
+    } catch {}
   }
   // Older versioned DB + stale WAL sibling: must count toward bucket size, but row
   // counts must come from the newest suffix (state_5), never this one.
@@ -59,12 +104,18 @@ function buildFixtureHome(home: string = mkdtempSync(join(tmpdir(), "ocx-storage
 
   const logs = new Database(join(home, "logs_2.sqlite"));
   logs.exec("PRAGMA journal_mode=WAL");
-  logs.exec("CREATE TABLE logs (ts INTEGER, level TEXT, estimated_bytes INTEGER)");
-  logs.exec("INSERT INTO logs VALUES (1,'info',10),(2,'info',20),(3,'warn',30),(4,'error',40),(5,'info',50)");
- logs.exec("PRAGMA wal_checkpoint(TRUNCATE)");
- logs.close();
+  logs.exec(
+    "CREATE TABLE logs (ts INTEGER, level TEXT, estimated_bytes INTEGER)",
+  );
+  logs.exec(
+    "INSERT INTO logs VALUES (1,'info',10),(2,'info',20),(3,'warn',30),(4,'error',40),(5,'info',50)",
+  );
+  logs.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  logs.close();
   for (const suf of ["-wal", "-shm"]) {
-    try { unlinkSync(join(home, `logs_2.sqlite${suf}`)); } catch {}
+    try {
+      unlinkSync(join(home, `logs_2.sqlite${suf}`));
+    } catch {}
   }
 
   mkdirSync(join(home, "attachments"));
@@ -79,13 +130,18 @@ function buildFixtureHome(home: string = mkdtempSync(join(tmpdir(), "ocx-storage
   return home;
 }
 
-function bucket(report: StorageReport, key: StorageBucket["key"]): StorageBucket {
-  const found = report.buckets.find(b => b.key === key);
+function bucket(
+  report: StorageReport,
+  key: StorageBucket["key"],
+): StorageBucket {
+  const found = report.buckets.find((b) => b.key === key);
   if (!found) throw new Error(`bucket ${key} missing from report`);
   return found;
 }
 
-function snapshotTree(dir: string): Map<string, { size: number; mtimeMs: number }> {
+function snapshotTree(
+  dir: string,
+): Map<string, { size: number; mtimeMs: number }> {
   const out = new Map<string, { size: number; mtimeMs: number }>();
   const walk = (current: string) => {
     for (const entry of readdirSync(current, { withFileTypes: true })) {
@@ -111,19 +167,45 @@ afterEach(() => {
 describe("scanStorage", () => {
   test("management worker preserves the synchronous scanner report", async () => {
     fixtureHome = buildFixtureHome();
+    const before = snapshotTree(fixtureHome);
     const expected = scanStorage(fixtureHome);
     const first = scanStorageForManagement(fixtureHome);
     // Management callers share one worker per home rather than creating a
     // worker per dashboard poll while a large scan is already in flight.
     expect(scanStorageForManagement(fixtureHome)).toBe(first);
     const actual = await first;
-    expect({ ...actual, generatedAt: 0 }).toEqual({ ...expected, generatedAt: 0 });
+    expect({ ...actual, generatedAt: 0 }).toEqual({
+      ...expected,
+      generatedAt: 0,
+    });
+    expect(snapshotTree(fixtureHome)).toEqual(before);
+  }, 15_000);
+
+  test("shutdown aborts every in-flight home and permits later scans", async () => {
+    fixtureHome = buildFixtureHome();
+    setStorageScannerJobTestHooks({ blockMs: 500 });
+    const first = scanStorageForManagement(fixtureHome);
+    const second = scanStorageForManagement(join(fixtureHome, "sessions"));
+    const results = Promise.allSettled([first, second]);
+    abortStorageScannerJob();
+    for (const result of await results) {
+      expect(result.status).toBe("rejected");
+      if (result.status === "rejected") {
+        expect(result.reason.message).toBe("storage_scan_worker_aborted");
+      }
+    }
+    setStorageScannerJobTestHooks(null);
+    expect(
+      (await scanStorageForManagement(fixtureHome)).total.fileCount,
+    ).toBeGreaterThan(0);
   }, 15_000);
 
   test("worker timeout cleans up so a later management scan can retry", async () => {
     fixtureHome = buildFixtureHome();
     setStorageScannerJobTestHooks({ blockMs: 200, timeoutMs: 25 });
-    await expect(scanStorageForManagement(fixtureHome)).rejects.toThrow("storage_scan_worker_timeout");
+    await expect(scanStorageForManagement(fixtureHome)).rejects.toThrow(
+      "storage_scan_worker_timeout",
+    );
     setStorageScannerJobTestHooks(null);
     const retried = await scanStorageForManagement(fixtureHome);
     expect(retried.total.fileCount).toBeGreaterThan(0);
@@ -155,12 +237,15 @@ describe("scanStorage", () => {
     expect(manifests.fileCount).toBe(1);
 
     const stateDb = bucket(report, "state_db");
-    const stateBytes = statSync(join(fixtureHome, "state_5.sqlite")).size + 64 + 32;
+    const stateBytes =
+      statSync(join(fixtureHome, "state_5.sqlite")).size + 64 + 32;
     expect(stateDb.bytes).toBe(stateBytes);
     expect(stateDb.fileCount).toBe(3);
 
     const logsDb = bucket(report, "logs_db");
-    expect(logsDb.bytes).toBe(statSync(join(fixtureHome, "logs_2.sqlite")).size);
+    expect(logsDb.bytes).toBe(
+      statSync(join(fixtureHome, "logs_2.sqlite")).size,
+    );
     expect(logsDb.fileCount).toBe(1);
 
     const other = bucket(report, "other");
@@ -168,8 +253,14 @@ describe("scanStorage", () => {
     expect(other.bytes).toBe(900 + configBytes);
     expect(other.fileCount).toBe(2);
 
-    const expectedTotalBytes = report.buckets.reduce((sum, b) => sum + b.bytes, 0);
-    const expectedTotalFiles = report.buckets.reduce((sum, b) => sum + b.fileCount, 0);
+    const expectedTotalBytes = report.buckets.reduce(
+      (sum, b) => sum + b.bytes,
+      0,
+    );
+    const expectedTotalFiles = report.buckets.reduce(
+      (sum, b) => sum + b.fileCount,
+      0,
+    );
     expect(report.total.bytes).toBe(expectedTotalBytes);
     expect(report.total.fileCount).toBe(expectedTotalFiles);
   }, 15_000);
@@ -179,8 +270,14 @@ describe("scanStorage", () => {
     const report = scanStorage(fixtureHome);
 
     const sessions = bucket(report, "sessions");
-    expect(sessions.largest?.[0]).toEqual({ path: "sessions/2026/05/27/rollout-b.jsonl", bytes: 2000 });
-    expect(sessions.largest?.[1]).toEqual({ path: "sessions/2026/06/01/rollout-c.jsonl", bytes: 300 });
+    expect(sessions.largest?.[0]).toEqual({
+      path: "sessions/2026/05/27/rollout-b.jsonl",
+      bytes: 2000,
+    });
+    expect(sessions.largest?.[1]).toEqual({
+      path: "sessions/2026/06/01/rollout-c.jsonl",
+      bytes: 300,
+    });
     expect(sessions.largest?.length).toBeLessThanOrEqual(5);
   }, 15_000);
 
@@ -193,10 +290,10 @@ describe("scanStorage", () => {
   }, 15_000);
 
   test("counts DB rows correctly when CODEX_HOME contains URI-reserved characters", () => {
-   // A literal '#'/'?'/'%' in the path is legal on POSIX filesystems and starts a
-   // fragment/query/escape if the immutable file: URI is built by naive string
-   // concatenation — it must not silently degrade every row count to null.
-   const parent = mkdtempSync(join(tmpdir(), "ocx-storage-uri-"));
+    // A literal '#'/'?'/'%' in the path is legal on POSIX filesystems and starts a
+    // fragment/query/escape if the immutable file: URI is built by naive string
+    // concatenation — it must not silently degrade every row count to null.
+    const parent = mkdtempSync(join(tmpdir(), "ocx-storage-uri-"));
     // '?' is illegal on NTFS; use only chars valid across all CI platforms.
     const weirdHome = join(parent, "weird#name+with%percent");
     mkdirSync(weirdHome);
@@ -211,7 +308,10 @@ describe("scanStorage", () => {
     fixtureHome = buildFixtureHome();
     // A newer-versioned garbage file shadows state_5: rows must degrade to null,
     // never throw — mirrors the locked/corrupt DB skip in the plan (33, item 5).
-    writeFileSync(join(fixtureHome, "state_9.sqlite"), "this is not a database");
+    writeFileSync(
+      join(fixtureHome, "state_9.sqlite"),
+      "this is not a database",
+    );
 
     const report = scanStorage(fixtureHome);
     expect(bucket(report, "state_db").rows).toBeNull();
@@ -285,12 +385,19 @@ describe("scanStorage", () => {
     fixtureHome = buildFixtureHome();
     const withoutTrash = scanStorage(fixtureHome);
     mkdirSync(join(fixtureHome, ".trash", "123"), { recursive: true });
-    writeFileSync(join(fixtureHome, ".trash", "123", "rollout-quarantined.jsonl"), "q".repeat(5000));
+    writeFileSync(
+      join(fixtureHome, ".trash", "123", "rollout-quarantined.jsonl"),
+      "q".repeat(5000),
+    );
     const withTrash = scanStorage(fixtureHome);
     expect(withTrash.total.bytes).toBe(withoutTrash.total.bytes);
     expect(withTrash.total.fileCount).toBe(withoutTrash.total.fileCount);
-    expect(bucket(withTrash, "other").bytes).toBe(bucket(withoutTrash, "other").bytes);
-    const otherPaths = (bucket(withTrash, "other").largest ?? []).map(e => e.path);
-    expect(otherPaths.some(p => p.includes(".trash"))).toBe(false);
+    expect(bucket(withTrash, "other").bytes).toBe(
+      bucket(withoutTrash, "other").bytes,
+    );
+    const otherPaths = (bucket(withTrash, "other").largest ?? []).map(
+      (e) => e.path,
+    );
+    expect(otherPaths.some((p) => p.includes(".trash"))).toBe(false);
   }, 15_000);
 });
