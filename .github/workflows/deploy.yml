@@ -370,12 +370,29 @@ jobs:
             printf 'OPENCODEX_BIND_IP=%s\n' "$OPENCODEX_BIND_IP"
           } | sudo tee "$COMPOSE_ENV" > /dev/null
 
-          # The container reads the API token via a compose file-secret bind
-          # mount, which preserves the host file's mode. The host file is
-          # 0640 root:chef, but the container runs as bun (uid 1000); the
-          # entrypoint exits 78 when the token is unreadable (observed
-          # crash-loop). Grant world-read now; root keeps write for rotation.
-          sudo chmod 0644 "$token_file"
+          # A compose file-secret bind preserves host ownership and mode. Give
+          # exactly the candidate runtime group read access rather than making
+          # the data-plane credential world-readable. Verify the bind as that
+          # unprivileged uid:gid without starting the image's entrypoint.
+          # Preserve metadata for the legacy host-runtime rollback path too.
+          {
+            echo "previous_token_owner=$(sudo stat -c '%u:%g' "$token_file")"
+            echo "previous_token_mode=$(sudo stat -c '%a' "$token_file")"
+          } >> "$GITHUB_OUTPUT"
+          sudo chown "root:${container_gid}" "$token_file"
+          sudo chmod 0640 "$token_file"
+          if [ "$(sudo stat -c '%u:%g:%a' "$token_file")" != "0:${container_gid}:640" ]; then
+            echo "::error::runtime API token ownership or mode could not be constrained"
+            exit 1
+          fi
+          if ! sudo docker run --rm --network none --read-only \
+            --user "${container_uid}:${container_gid}" \
+            --entrypoint /bin/sh \
+            -v "$token_file:/run/secrets/opencodex_api_token:ro" \
+            "$PINNED_IMAGE" -c 'test -r /run/secrets/opencodex_api_token'; then
+            echo "::error::candidate runtime cannot read the constrained API token"
+            exit 1
+          fi
           sudo systemctl daemon-reload
           sudo systemctl enable opencodex-proxy.service
           sudo systemctl start opencodex-proxy.service
@@ -435,6 +452,8 @@ jobs:
           BUN_RUNTIME: ${{ steps.prev.outputs.bun_runtime }}
           UNIT_BACKUP: ${{ steps.prev.outputs.unit_backup }}
           PREV_HEALTH_URLS: ${{ steps.prev.outputs.health_urls }}
+          PREV_TOKEN_OWNER: ${{ steps.deploy.outputs.previous_token_owner }}
+          PREV_TOKEN_MODE: ${{ steps.deploy.outputs.previous_token_mode }}
           CF_ACCESS_TEAM_DOMAIN: ${{ secrets.OCX_CF_ACCESS_TEAM_DOMAIN }}
           CF_ACCESS_AUD: ${{ secrets.OCX_CF_ACCESS_AUD }}
           CF_ACCESS_ALLOWED_HOSTS: ${{ secrets.OCX_CF_ACCESS_ALLOWED_HOSTS }}
@@ -490,6 +509,15 @@ jobs:
           fi
 
           if [ "$bun_runtime" = "true" ]; then
+            if [ -n "$PREV_TOKEN_OWNER" ] || [ -n "$PREV_TOKEN_MODE" ]; then
+              if [[ ! "$PREV_TOKEN_OWNER" =~ ^[0-9]+:[0-9]+$ ]] || [[ ! "$PREV_TOKEN_MODE" =~ ^[0-7]{3,4}$ ]]; then
+                echo "::error::invalid captured API-token permissions for host-runtime rollback"
+                exit 1
+              fi
+              token_file="${OPENCODEX_API_TOKEN_FILE:-/etc/chef/opencodex/service-api-token}"
+              sudo chown "$PREV_TOKEN_OWNER" "$token_file"
+              sudo chmod "$PREV_TOKEN_MODE" "$token_file"
+            fi
             sudo cp "$unit_backup" /etc/systemd/system/opencodex-proxy.service
             sudo systemctl daemon-reload
             sudo systemctl enable opencodex-proxy.service
@@ -506,6 +534,24 @@ jobs:
             fi
             sudo chown -R "$prev_uid:$prev_gid" "$STATE_DIR"
             token_file="${OPENCODEX_API_TOKEN_FILE:-/etc/chef/opencodex/service-api-token}"
+            if [ ! -f "$token_file" ]; then
+              echo "::error::runtime API token file missing during rollback"
+              exit 1
+            fi
+            sudo chown "root:${prev_gid}" "$token_file"
+            sudo chmod 0640 "$token_file"
+            if [ "$(sudo stat -c '%u:%g:%a' "$token_file")" != "0:${prev_gid}:640" ]; then
+              echo "::error::rollback API token ownership or mode could not be constrained"
+              exit 1
+            fi
+            if ! sudo docker run --rm --network none --read-only \
+              --user "${prev_uid}:${prev_gid}" \
+              --entrypoint /bin/sh \
+              -v "$token_file:/run/secrets/opencodex_api_token:ro" \
+              "$prev_image" -c 'test -r /run/secrets/opencodex_api_token'; then
+              echo "::error::previous runtime cannot read the constrained API token during rollback"
+              exit 1
+            fi
             {
               printf 'OPENCODEX_IMAGE=%s\n' "$prev_image"
               printf 'CF_ACCESS_TEAM_DOMAIN=%s\n' "${CF_ACCESS_TEAM_DOMAIN:-}"

@@ -34,36 +34,46 @@ function count(text: string, fragment: string): number {
 }
 
 describe("GitHub Actions hardening", () => {
-  test("CI verifies the Bun runtime actually shipped in the package", async () => {
+  test("CI and release verify with the Bun runtime actually shipped in the package", async () => {
     const pkg = JSON.parse(await readText("package.json"));
-    const ci = Bun.YAML.parse(await readText(".github/workflows/ci.yml")) as {
-      jobs: Record<
-        string,
-        { steps?: { uses?: string; with?: Record<string, unknown> }[] }
-      >;
-    };
-    const setups = Object.values(ci.jobs)
-      .flatMap((job) => job.steps ?? [])
-      .filter((step) => step.uses?.startsWith("oven-sh/setup-bun@"));
+    const workflows = await Promise.all([
+      readText(".github/workflows/ci.yml"),
+      readText(".github/workflows/release.yml"),
+    ]);
+    const setups = workflows.flatMap((text) => {
+      const workflow = Bun.YAML.parse(text) as {
+        jobs: Record<
+          string,
+          { steps?: { uses?: string; with?: Record<string, unknown> }[] }
+        >;
+      };
+      return Object.values(workflow.jobs)
+        .flatMap((job) => job.steps ?? [])
+        .filter((step) => step.uses?.startsWith("oven-sh/setup-bun@"));
+    });
     expect(setups.length).toBeGreaterThan(0);
     for (const step of setups)
       expect(step.with?.["bun-version"]).toBe(pkg.dependencies.bun);
   });
 
-  test("releases require all platforms before publication, not only after the tag", async () => {
+  test("release and GHCR publication require all platforms before release artifacts", async () => {
     const ci = await readText(".github/workflows/ci.yml");
     const release = await readText(".github/workflows/release.yml");
+    const container = await readText(".github/workflows/container.yml");
     expect(
       count(
         ci,
         "github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')",
       ),
     ).toBe(2);
-    expect(release).toContain("--event workflow_dispatch");
+    for (const workflow of [release, container]) {
+      expect(workflow).toContain("--event workflow_dispatch");
+      expect(workflow).toContain('select(.conclusion == "success")');
+      expect(workflow).toContain('$run.conclusion == "success"');
+      expect(workflow).toContain('if [ "$matrix_ok" != "true" ]; then');
+    }
     expect(release).toContain('--commit "$GITHUB_SHA"');
-    expect(release).toContain('select(.conclusion == "success")');
-    expect(release).toContain('$run.conclusion == "success"');
-    expect(release).toContain('if [ "$matrix_ok" != "true" ]; then');
+    expect(container).toContain('--commit "$SHA"');
     for (const job of [
       "ubuntu-latest",
       "macos-latest",
@@ -78,6 +88,7 @@ describe("GitHub Actions hardening", () => {
       "Lint GitHub Actions",
     ]) {
       expect(release).toContain(JSON.stringify(job));
+      expect(container).toContain(JSON.stringify(job));
     }
   });
 
