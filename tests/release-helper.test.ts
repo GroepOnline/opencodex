@@ -181,17 +181,26 @@ function installCommandShim(
 ): void {
   const jsPath = join(binDir, `${name}.js`);
   const launcherPath = join(binDir, name);
-  const cmdPath = join(binDir, `${name}.cmd`);
 
   writeFileSync(jsPath, shimProgramSource(name), "utf8");
+  if (process.platform === "win32") {
+    // Bun 1.4 rejects valid peeled Git refs ending in `^{}` before a .cmd
+    // shim can receive them. A native fixture executable bypasses cmd.exe so
+    // the release helper still exercises its exact peeled-ref validation.
+    const nativePath = `${launcherPath}.exe`;
+    const compiled = spawnSync(
+      process.execPath,
+      ["build", jsPath, "--compile", "--outfile", nativePath],
+      { encoding: "utf8" },
+    );
+    if (compiled.status !== 0) {
+      throw new Error(`failed to compile ${name} release fixture: ${compiled.stderr}`);
+    }
+    return;
+  }
   writeExecutable(
     launcherPath,
     `#!${process.execPath}\nimport "./${name}.js";\n`,
-  );
-  writeFileSync(
-    cmdPath,
-    `@echo off\r\n"${process.execPath}" "%~dp0\\${name}.js" %*\r\n`,
-    "utf8",
   );
 }
 
@@ -304,11 +313,20 @@ describe("release helper", () => {
         call.args.includes("tag=latest") &&
         call.args.includes("dry-run=true"),
     );
+    const tagLookupIndex = findCallIndex(
+      calls,
+      "git",
+      (call) =>
+        call.args[0] === "ls-remote" &&
+        call.args.includes("refs/tags/v9.9.9") &&
+        call.args.includes("refs/tags/v9.9.9^{}"),
+    );
 
     expect(typecheckIndex).toBeGreaterThanOrEqual(0);
     expect(testIndex).toBeGreaterThan(typecheckIndex);
     expect(privacyIndex).toBeGreaterThan(testIndex);
     expect(versionIndex).toBeGreaterThan(privacyIndex);
+    expect(tagLookupIndex).toBeGreaterThanOrEqual(0);
     expect(dispatchIndex).toBeGreaterThan(versionIndex);
     const fullCiIndex = findCallIndex(
       calls,
