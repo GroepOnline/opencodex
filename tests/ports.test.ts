@@ -1,11 +1,24 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createServer, type Server } from "node:net";
-import { findAvailablePort, isAddrInUse, isPortAvailable, PortUnavailableError, shouldPersistSelectedPort, waitForPortAvailable } from "../src/server/ports";
+import {
+  createConnection,
+  createServer,
+  Server as NetServer,
+  type Server,
+  type Socket,
+} from "node:net";
+import {
+  findAvailablePort,
+  isAddrInUse,
+  isPortAvailable,
+  PortUnavailableError,
+  shouldPersistSelectedPort,
+  waitForPortAvailable,
+} from "../src/server/ports";
 
 const servers: Server[] = [];
 
 function close(server: Server): Promise<void> {
-  return new Promise(resolve => server.close(() => resolve()));
+  return new Promise((resolve) => server.close(() => resolve()));
 }
 
 function listen(port = 0): Promise<{ server: Server; port: number }> {
@@ -25,11 +38,62 @@ function listen(port = 0): Promise<{ server: Server; port: number }> {
   });
 }
 
+/**
+ * Make the probe listener accept a real socket immediately before its first close.
+ * Without the probe connection handler in ports.ts, the original close callback waits
+ * for this client forever; this keeps the timing regression deterministic.
+ */
+async function expectProbeToClosePastAcceptedSocket(
+  runProbe: () => Promise<unknown>,
+): Promise<void> {
+  const originalClose = NetServer.prototype.close as unknown as (
+    this: Server,
+    callback?: () => void,
+  ) => Server;
+  let injected = false;
+  let client: Socket | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  NetServer.prototype.close = function (
+    this: Server,
+    callback?: () => void,
+  ): Server {
+    if (injected) return originalClose.call(this, callback);
+    injected = true;
+    const address = this.address();
+    if (!address || typeof address === "string")
+      throw new Error("probe server was not listening");
+    client = createConnection(address.port, "127.0.0.1");
+    client.on("error", () => {});
+    client.once("connect", () => originalClose.call(this, callback));
+    return this;
+  } as unknown as typeof NetServer.prototype.close;
+  try {
+    const completed = await Promise.race([
+      runProbe().then(() => true),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), 1_000);
+      }),
+    ]);
+    expect(injected).toBe(true);
+    expect(completed).toBe(true);
+  } finally {
+    clearTimeout(timer);
+    NetServer.prototype.close =
+      originalClose as unknown as typeof NetServer.prototype.close;
+    client?.destroy();
+  }
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map(close));
 });
 
 describe("port selection", () => {
+  test("probe listeners close despite a connection accepted immediately before close", async () => {
+    await expectProbeToClosePastAcceptedSocket(() => isPortAvailable(0));
+    await expectProbeToClosePastAcceptedSocket(() => findAvailablePort(0));
+  });
+
   test("resolves port 0 to a concrete ephemeral port", async () => {
     const selected = await findAvailablePort(0);
 
@@ -66,7 +130,10 @@ describe("port selection", () => {
     const { server, port } = await listen();
     expect(await isPortAvailable(port)).toBe(false);
 
-    const waiting = waitForPortAvailable(port, "127.0.0.1", { timeoutMs: 2000, intervalMs: 25 });
+    const waiting = waitForPortAvailable(port, "127.0.0.1", {
+      timeoutMs: 2000,
+      intervalMs: 25,
+    });
     await close(server);
     const idx = servers.indexOf(server);
     if (idx >= 0) servers.splice(idx, 1);
@@ -77,7 +144,12 @@ describe("port selection", () => {
 
   test("waitForPortAvailable returns false when the port stays busy past the timeout", async () => {
     const { port } = await listen();
-    await expect(waitForPortAvailable(port, "127.0.0.1", { timeoutMs: 80, intervalMs: 20 })).resolves.toBe(false);
+    await expect(
+      waitForPortAvailable(port, "127.0.0.1", {
+        timeoutMs: 80,
+        intervalMs: 20,
+      }),
+    ).resolves.toBe(false);
     expect(await isPortAvailable(port)).toBe(false);
   });
 
@@ -85,7 +157,10 @@ describe("port selection", () => {
     const { server, port } = await listen();
     expect(await isPortAvailable(port)).toBe(false);
 
-    const pending = findAvailablePort(port, "127.0.0.1", { preferRetryMs: 500, preferRetryIntervalMs: 25 });
+    const pending = findAvailablePort(port, "127.0.0.1", {
+      preferRetryMs: 500,
+      preferRetryIntervalMs: 25,
+    });
     // Free the preferred port during the retry window.
     setTimeout(() => {
       void close(server).then(() => {
@@ -110,10 +185,24 @@ describe("port selection", () => {
   });
 
   test("isAddrInUse recognizes bind conflicts by code or message and rejects everything else", () => {
-    expect(isAddrInUse(Object.assign(new Error("listen failed"), { code: "EADDRINUSE" }))).toBe(true);
-    expect(isAddrInUse(new Error("listen EADDRINUSE: address already in use ::1:8123"))).toBe(true);
-    expect(isAddrInUse(new Error("Failed to start server. Is port 8123 in use?"))).toBe(true);
-    expect(isAddrInUse(Object.assign(new Error("no ipv6"), { code: "EAFNOSUPPORT" }))).toBe(false);
+    expect(
+      isAddrInUse(
+        Object.assign(new Error("listen failed"), { code: "EADDRINUSE" }),
+      ),
+    ).toBe(true);
+    expect(
+      isAddrInUse(
+        new Error("listen EADDRINUSE: address already in use ::1:8123"),
+      ),
+    ).toBe(true);
+    expect(
+      isAddrInUse(new Error("Failed to start server. Is port 8123 in use?")),
+    ).toBe(true);
+    expect(
+      isAddrInUse(
+        Object.assign(new Error("no ipv6"), { code: "EAFNOSUPPORT" }),
+      ),
+    ).toBe(false);
     expect(isAddrInUse(new Error("permission denied"))).toBe(false);
     expect(isAddrInUse(null)).toBe(false);
     expect(isAddrInUse("EADDRINUSE")).toBe(false);

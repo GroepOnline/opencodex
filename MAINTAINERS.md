@@ -5,11 +5,11 @@ review and merge policy.
 
 ## Current maintainers
 
-| GitHub account | Project role | Responsibilities |
-| --- | --- | --- |
-| [@GroepOnline](https://github.com/GroepOnline) | Project owner | Project direction, releases, repository administration, and final governance decisions |
-| [@Ingwannu](https://github.com/Ingwannu) | Maintainer | Issue and pull-request triage, `main` integration, security review, and repository maintenance |
-| [@Wibias](https://github.com/Wibias) | Maintainer | Issue and pull-request triage, `main` integration, and provider/CI maintenance |
+| GitHub account                                 | Project role  | Responsibilities                                                                               |
+| ---------------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------- |
+| [@GroepOnline](https://github.com/GroepOnline) | Project owner | Project direction, releases, repository administration, and final governance decisions         |
+| [@Ingwannu](https://github.com/Ingwannu)       | Maintainer    | Issue and pull-request triage, `main` integration, security review, and repository maintenance |
+| [@Wibias](https://github.com/Wibias)           | Maintainer    | Issue and pull-request triage, `main` integration, and provider/CI maintenance                 |
 
 The table describes project responsibilities. Actual repository permissions remain controlled
 through GitHub repository settings.
@@ -25,14 +25,21 @@ see [The retired `dev2-go` line](#the-retired-dev2-go-line).
   exception; a feature or fork head targeting `dev` is `wrong_base`.
 - The **`enforce-target`** CI check rejects empty, thin, or malformed
   descriptions; authors with repository push permission skip the leftover
-  ancestry heuristic only. As with the approval requirement
-  above, this is enforced by convention until branch protection is configured
-  (see the note under the change log).
-- A pull request requires approval from at least one maintainer and successful required CI checks
-  before merge.
-- Authors do not approve their own pull requests.
+  ancestry heuristic only. Required technical checks must succeed on the exact
+  head being merged, whether enforced by branch protection or by the operator.
+- External review and GitHub approval are advisory, never a prerequisite for
+  authorized execution, merge, release, or deployment. Missing, delayed, stale,
+  or unavailable external review must not stop the work.
+- The executing maintainer or agent must inspect the exact diff, repair valid
+  in-scope findings, and verify the resulting head before merging. A review
+  status is not a substitute for evaluating its concrete findings.
+- Do not manufacture approval, switch identities to self-approve, or describe
+  self-review as independent review. Record the verification actually performed.
 - Authentication, credential handling, GitHub Actions, release automation, dependency installation,
-  and other security-boundary changes require explicit security review.
+  and other security-boundary changes require explicit, recorded security analysis.
+  The executing agent may perform that analysis; an external reviewer is optional.
+  Unfixed security defects and failed or unknown required technical checks still
+  block release. Repository permissions and protected-branch rules are not bypassed.
 - A new or promoted provider preset is a credential-destination change. Before merge it needs the
   primary-source evidence listed under [Adding a provider to the
   catalog](https://opencodex.me/contributing/#evidence-required-for-a-canonical-preset): documented
@@ -42,11 +49,19 @@ see [The retired `dev2-go` line](#the-retired-dev2-go-line).
   with the service is disclosed, not disqualifying, and it does not lower the evidence bar. When the
   evidence is incomplete, prefer an inert `src/providers/free-directory.ts` reference row over a
   canonical registry entry.
-- Security-sensitive and release-related changes should be reviewed by both maintainers when
-  practical.
+- Additional maintainer review is welcome when available, without waiting for it.
 - Direct pushes are reserved for maintainer-owned integration work, urgent repairs, or incident
   recovery. The same CI and documentation requirements still apply.
 - Promotion from `dev` to `main` and npm releases is maintainer-controlled.
+
+### Review means repair within the authorized task
+
+During implementation, PR completion, release, or deployment work, noticing,
+finding, or reviewing a valid in-scope defect means reproducing it, fixing it,
+adding appropriate regression coverage, and continuing through verification.
+A findings list or handoff does not finish executable work. Explicitly read-only
+reviews, audits, and diagnosis requests remain read-only unless fixes are also
+authorized; unrelated work and actions needing new authority stay out of scope.
 
 ## The retired `dev2-go` line
 
@@ -101,11 +116,10 @@ Adding or removing a maintainer requires:
   and release automation keep the two owners already listed for those paths, so
   this addition does not widen the review surface for them.
 
-  CODEOWNERS requests reviews rather than enforcing them — no branch protection
-  rule is configured on this repository, so code-owner approval is a convention
-  here, not a gate. The same is true of the approval requirement in the review
-  and merge policy above. Widening the security boundary, or enforcing either
-  of these through branch protection, is a separate decision.
+  This entry describes the policy at that time. The current review policy above
+  makes external approval advisory while retaining technical and security checks.
+  CODEOWNERS routes review requests; it does not itself enforce branch protection.
+  Always inspect current repository settings rather than infer them from this log.
 
 ## Security reports
 

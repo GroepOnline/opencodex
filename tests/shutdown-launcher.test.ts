@@ -1,6 +1,12 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,7 +25,8 @@ import { join } from "node:path";
  */
 
 const BIN_OCX = join(import.meta.dir, "..", "bin", "ocx.mjs");
-const nodeAvailable = !spawnSync("node", ["--version"], { stdio: "ignore" }).error;
+const nodeAvailable = !spawnSync("node", ["--version"], { stdio: "ignore" })
+  .error;
 const runnable = process.platform !== "win32" && nodeAvailable;
 
 const spawned: ChildProcess[] = [];
@@ -27,10 +34,20 @@ const tmpHomes: string[] = [];
 
 afterAll(() => {
   for (const c of spawned) {
-    try { c.kill("SIGKILL"); } catch { /* already gone */ }
+    // The test signals only the launcher below. Failure cleanup must also reap a
+    // Bun child that never reached readiness, rather than orphaning it.
+    try {
+      if (c.pid) process.kill(-c.pid, "SIGKILL");
+    } catch {
+      /* already gone */
+    }
   }
   for (const dir of tmpHomes) {
-    try { rmSync(dir, { recursive: true, force: true }); } catch { /* best-effort */ }
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      /* best-effort */
+    }
   }
 });
 
@@ -57,7 +74,10 @@ async function healthy(port: number): Promise<boolean> {
   }
 }
 
-async function waitUntil(fn: () => Promise<boolean>, deadlineMs: number): Promise<boolean> {
+async function waitUntil(
+  fn: () => Promise<boolean>,
+  deadlineMs: number,
+): Promise<boolean> {
   const end = Date.now() + deadlineMs;
   while (Date.now() < end) {
     if (await fn()) return true;
@@ -68,53 +88,65 @@ async function waitUntil(fn: () => Promise<boolean>, deadlineMs: number): Promis
 
 describe.skipIf(!runnable)("ocx launcher graceful shutdown", () => {
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
-    test(
-      `${signal} to the launcher tears down the Bun proxy and restores Codex config (no orphan)`,
-      async () => {
-        const home = mkdtempSync(join(tmpdir(), "ocx-shutdown-"));
-        tmpHomes.push(home);
-        const port = await freePort();
+    test(`${signal} to the launcher tears down the Bun proxy and restores Codex config (no orphan)`, async () => {
+      const home = mkdtempSync(join(tmpdir(), "ocx-shutdown-"));
+      tmpHomes.push(home);
+      const port = await freePort();
 
-        // Seed a native Codex config so the proxy actually injects on start (injectCodexConfig
-        // no-ops when no config.toml exists) — this lets us prove the config is RESTORED.
-        const codexConfig = join(home, "config.toml");
-        writeFileSync(codexConfig, 'model = "gpt-5.1"\n');
+      // Seed a native Codex config so the proxy actually injects on start (injectCodexConfig
+      // no-ops when no config.toml exists) — this lets us prove the config is RESTORED.
+      const codexConfig = join(home, "config.toml");
+      writeFileSync(codexConfig, 'model = "gpt-5.1"\n');
 
-        const child = spawn("node", [BIN_OCX, "start", "--port", String(port)], {
-          stdio: "ignore",
-          env: { ...process.env, OPENCODEX_HOME: home, CODEX_HOME: home },
-        });
-        spawned.push(child);
+      const child = spawn("node", [BIN_OCX, "start", "--port", String(port)], {
+        detached: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, OPENCODEX_HOME: home, CODEX_HOME: home },
+      });
+      spawned.push(child);
+      let startupOutput = "";
+      const capture = (chunk: Buffer) => {
+        startupOutput = (startupOutput + chunk.toString()).slice(-8_192);
+      };
+      child.stdout?.on("data", capture);
+      child.stderr?.on("data", capture);
 
-        let exited = false;
-        child.on("exit", () => { exited = true; });
+      let exited = false;
+      child.on("exit", () => {
+        exited = true;
+      });
 
-        // 1. Proxy comes up + injected the Codex config (Design B root override on loopback).
-        const up = await waitUntil(() => healthy(port), 20_000);
-        expect(up).toBe(true);
-        expect(existsSync(join(home, "ocx.pid"))).toBe(true);
-        const injected = readFileSync(codexConfig, "utf8");
-        expect(injected).toContain("# Auto-injected by opencodex");
-        expect(injected).toContain(`openai_base_url = "http://127.0.0.1:${port}/v1"`);
-        expect(injected).not.toContain("model_providers.opencodex");
+      // 1. Proxy comes up + injected the Codex config (Design B root override on loopback).
+      const up = await waitUntil(() => healthy(port), 20_000);
+      expect(up, `launcher did not become healthy: ${startupOutput}`).toBe(
+        true,
+      );
+      expect(existsSync(join(home, "ocx.pid"))).toBe(true);
+      const injected = readFileSync(codexConfig, "utf8");
+      expect(injected).toContain("# Auto-injected by opencodex");
+      expect(injected).toContain(
+        `openai_base_url = "http://127.0.0.1:${port}/v1"`,
+      );
+      expect(injected).not.toContain("model_providers.opencodex");
 
-        // 2. Signal ONLY the launcher PID (the exact orphan trigger).
-        child.kill(signal);
+      // 2. Signal ONLY the launcher PID (the exact orphan trigger).
+      child.kill(signal);
 
-        // 3. Launcher exits...
-        const launcherGone = await waitUntil(async () => exited, 15_000);
-        expect(launcherGone).toBe(true);
+      // 3. Launcher exits...
+      const launcherGone = await waitUntil(async () => exited, 15_000);
+      expect(launcherGone).toBe(true);
 
-        // 4. ...and the Bun proxy is gone (port freed) — the regression guard.
-        const portFreed = await waitUntil(async () => !(await healthy(port)), 10_000);
-        expect(portFreed).toBe(true);
+      // 4. ...and the Bun proxy is gone (port freed) — the regression guard.
+      const portFreed = await waitUntil(
+        async () => !(await healthy(port)),
+        10_000,
+      );
+      expect(portFreed).toBe(true);
 
-        // 5. Graceful cleanup ran: pid + runtime-port removed, Codex config restored.
-        expect(existsSync(join(home, "ocx.pid"))).toBe(false);
-        expect(existsSync(join(home, "runtime-port.json"))).toBe(false);
-        expect(readFileSync(codexConfig, "utf8")).not.toContain("opencodex");
-      },
-      45_000,
-    );
+      // 5. Graceful cleanup ran: pid + runtime-port removed, Codex config restored.
+      expect(existsSync(join(home, "ocx.pid"))).toBe(false);
+      expect(existsSync(join(home, "runtime-port.json"))).toBe(false);
+      expect(readFileSync(codexConfig, "utf8")).not.toContain("opencodex");
+    }, 45_000);
   }
 });
