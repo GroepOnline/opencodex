@@ -52,7 +52,7 @@ fail a check:
 - `devlog/` stays listed in `.gitignore` for the working tree; the submodule
   gitlink is tracked, its contents are not.
 
-Two rules keep it that way. Never commit anything under `devlog/` to *this*
+Two rules keep it that way. Never commit anything under `devlog/` to _this_
 repository — commit inside the submodule, then update the pointer here as a
 separate commit. And never nest a git repository inside the submodule: a
 `160000` gitlink in a tree that CI does not initialize breaks
@@ -132,13 +132,18 @@ The **`enforce-target`** CI check accepts **`main`** as the only integration
 base. A same-repository maintainer promotion from **`dev`** onto **`main`**
 remains an explicit leftover exception. It rejects empty, thin, or malformed
 descriptions; authors with repository push permission skip the leftover
-ancestry heuristic only. As with approval requirements in
-[`MAINTAINERS.md`](./MAINTAINERS.md), this is enforced by convention until
-branch protection is configured.
+ancestry heuristic only. Required technical checks apply even when branch
+protection is not configured. External approval is advisory, never a blocker.
 
 [`MAINTAINERS.md`](./MAINTAINERS.md) is authoritative for review and merge
-policy (approvals, CI requirements, security review, promotion). This file
+policy (review, CI requirements, security analysis, promotion). This file
 summarizes; it never overrides it.
+
+During authorized implementation and PR/release completion, a valid in-scope
+finding means repair plus verification, not a report-only stopping point.
+Continue the inspect → fix → test → land loop while safe authorized work remains.
+Explicit read-only requests remain read-only. Never fabricate independent review
+or bypass actual repository permissions; do not wait for an external reviewer.
 
 ## Review guidelines
 
@@ -155,13 +160,13 @@ reviewers (Codex, CodeRabbit).
 - **Security boundary (highest priority):** changes touching authentication,
   credential/token handling, OAuth flows, GitHub Actions workflows, release
   automation (`scripts/release.ts`, `.github/workflows/release.yml`), or
-  dependency installation require explicit security review per
+  dependency installation require explicit security analysis per
   `MAINTAINERS.md`. Treat token logging/serialization, secret exposure,
   workflow permission escalation, and mutable third-party action refs as
   release blockers.
 - **Runtime constraints:** the proxy is Bun-native. Flag Node-only APIs,
   assumptions about a compile step, or code paths that break `bun run
-  typecheck` / `bun run test`.
+typecheck` / `bun run test`.
 - **Tests:** behavior changes in `src/` need a focused regression test near
   the existing tests for that subsystem. Shared routing, adapter, config, or
   server changes need the full suite green.
