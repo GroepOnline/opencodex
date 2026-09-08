@@ -551,6 +551,12 @@ export interface OcxConfig {
   keyPoolCooldowns?: Record<string, Record<string, KeyPoolCapCooldown>>;
   /** OpenAI provider-contract migration marker (v2 = single `openai` provider with account mode). */
   openaiProviderTierVersion?: 1 | 2;
+  /**
+   * Datastore schema generation. Absent on disk means 1 (every live Azure file today).
+   * `loadConfig` applies that default in memory and does not rewrite the file.
+   * `saveConfig` stamps {@link CONFIG_SCHEMA_VERSION} on the first ordinary write.
+   */
+  schemaVersion?: number;
   /** Claude Code inbound + launcher settings. */
   claudeCode?: OcxClaudeCodeConfig;
   /**
@@ -1288,6 +1294,9 @@ export type ReasoningSummaryDelivery = typeof REASONING_SUMMARY_DELIVERY_VALUES[
 export type CodexAccountMode = "direct" | "pool";
 
 export const OPENAI_PROVIDER_TIER_VERSION = 2 as const;
+
+/** On-disk config schema generation. Absent means 1. Bump when a rewrite needs a gate. */
+export const CONFIG_SCHEMA_VERSION = 1;
 
 /**
  * Wires that a per-model `modelAdapters` override may select.
