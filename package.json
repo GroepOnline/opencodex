@@ -44,6 +44,7 @@
     "generate:jawcode-metadata": "bun scripts/generate-jawcode-metadata.ts",
     "build:gui": "cd gui && bun install && bun run build && cd .. && bun run prepare:package",
     "prepare:package": "bun scripts/prepare-package.ts",
+    "build:client": "bun scripts/build-client-artifact.ts",
     "prepack": "bun run prepare:package",
     "prepare": "husky || true",
     "prepublishOnly": "bun run typecheck && bun run build:gui",
