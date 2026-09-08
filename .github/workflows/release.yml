@@ -157,22 +157,36 @@ jobs:
               ;;
           esac
 
-          ci_url="$(
+          ci_id="$(
             gh run list \
               --workflow ci.yml \
               --commit "$GITHUB_SHA" \
+              --event workflow_dispatch \
               --status success \
               --limit 10 \
-              --json conclusion,headSha,url,workflowName \
-              --jq '.[0].url // ""'
+              --json databaseId \
+              --jq '.[0].databaseId // ""'
           )"
 
-          if [ -z "$ci_url" ]; then
-            echo "::error::No successful Cross-platform CI run found for ${GITHUB_SHA}. Wait for CI to pass before releasing."
+          if [ -z "$ci_id" ]; then
+            echo "::error::No successful full-platform pre-release CI run found for ${GITHUB_SHA}. Dispatch ci.yml on main and wait for success before releasing."
             gh run list --workflow ci.yml --commit "$GITHUB_SHA" --limit 10 || true
             exit 1
           fi
 
+          # A Linux-only push run is not cross-platform release evidence. Require
+          # every runtime, quality and installation leg on the exact release SHA.
+          if [ "$(gh run view "$ci_id" --json headSha --jq '.headSha')" != "$GITHUB_SHA" ]; then
+            echo "::error::CI run ${ci_id} does not match the release SHA"
+            exit 1
+          fi
+          matrix_ok="$(gh run view "$ci_id" --json headSha,conclusion,jobs --jq \
+            '. as $run | [.jobs[] | select(.conclusion == "success") | .name] as $passed | ($run.conclusion == "success" and (["ubuntu-latest", "macos-latest", "macos-quality", "windows-latest", "windows-latest shard 2/2", "windows-quality", "npm-global ubuntu-latest", "npm-global macos-latest", "npm-global windows-latest", "Security audit", "Lint GitHub Actions"] | all(.[]; . as $name | $passed | index($name) != null)))')"
+          if [ "$matrix_ok" != "true" ]; then
+            echo "::error::CI run ${ci_id} lacks successful required platform jobs"
+            exit 1
+          fi
+          ci_url="$(gh run view "$ci_id" --json url --jq '.url')"
           echo "Cross-platform CI passed for ${GITHUB_SHA}: ${ci_url}"
 
           # Notes / service baseline:

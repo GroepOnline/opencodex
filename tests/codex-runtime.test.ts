@@ -9,7 +9,10 @@ import { describe, expect, test } from "bun:test";
  * loadBundledCodexCatalog() returns null. "/usr/bin:/bin" keeps the utilities reachable
  * and contains no `codex`, which is the only property this test depends on.
  */
-const NO_CODEX_PATH = "/usr/bin:/bin";
+const NO_CODEX_PATH =
+  process.platform === "win32"
+    ? join(process.env.SystemRoot ?? "C:\\Windows", "System32")
+    : "/usr/bin:/bin";
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -561,7 +564,10 @@ describe("resolveCodexRuntime", () => {
           path,
           [
             "@echo off",
-            `if "%~1"=="--version" ( echo codex-cli ${version} & exit /b 0 )`,
+            `if "%~1"=="--version" (`,
+            `  echo codex-cli ${version}`,
+            "  exit /b 0",
+            ")",
             `type "%~dp0catalog.json"`,
             "",
           ].join("\r\n"),
@@ -597,7 +603,7 @@ describe("resolveCodexRuntime", () => {
     const runtimeEnv: NodeJS.ProcessEnv = {
       ...process.env,
       OPENCODEX_HOME: home,
-      PATH: "",
+      PATH: NO_CODEX_PATH,
       CODEX_CLI_PATH: firstBin,
     };
     const deps = {

@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  writeFileSync,
+  chmodSync,
+  readFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { collectStartupHealth } from "../src/codex/autostart-health";
@@ -100,26 +107,37 @@ describe("diagnoseLiveCheckout", () => {
 
   test("collectStartupHealth includes liveCheckout without diffs", () => {
     const health = collectStartupHealth({ codexAutoStart: true });
-    expect(health.liveCheckout).toEqual(expect.objectContaining({
-      detached: expect.any(Boolean),
-      dirty: expect.any(Boolean),
-    }));
+    expect(health.liveCheckout).toEqual(
+      expect.objectContaining({
+        detached: expect.any(Boolean),
+        dirty: expect.any(Boolean),
+      }),
+    );
     expect(JSON.stringify(health.liveCheckout)).not.toContain("diff --git");
   });
 });
 
 describe("assert-live-checkout-safe.sh", () => {
-  const script = join(import.meta.dir, "../scripts/assert-live-checkout-safe.sh");
+  const script = join(
+    import.meta.dir,
+    "../scripts/assert-live-checkout-safe.sh",
+  );
 
   test("refuses dirty porcelain and a HEAD that is not an ancestor of the target", () => {
     if (!Bun.which("bash")) return;
     const dir = initRepo();
     try {
-      const clean = Bun.spawnSync(["bash", script, dir], { stdout: "pipe", stderr: "pipe" });
+      const clean = Bun.spawnSync(["bash", script, dir], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
       expect(clean.exitCode).toBe(0);
 
       writeFileSync(join(dir, "dirty.txt"), "no\n");
-      const dirty = Bun.spawnSync(["bash", script, dir], { stdout: "pipe", stderr: "pipe" });
+      const dirty = Bun.spawnSync(["bash", script, dir], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
       expect(dirty.exitCode).toBe(1);
       expect(dirty.stderr.toString()).toContain("refusing dirty working tree");
       expect(dirty.stderr.toString()).not.toContain("dirty.txt");
@@ -128,20 +146,69 @@ describe("assert-live-checkout-safe.sh", () => {
       git(dir, ["commit", "--allow-empty", "-m", "second"]);
       const second = git(dir, ["rev-parse", "HEAD"]);
 
-      const ancestor = Bun.spawnSync(["bash", script, dir, second], { stdout: "pipe", stderr: "pipe" });
+      const ancestor = Bun.spawnSync(["bash", script, dir, second], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
       expect(ancestor.exitCode).toBe(0);
 
       git(dir, ["checkout", "-q", first]);
-      const wouldDrop = Bun.spawnSync(["bash", script, dir, first], { stdout: "pipe", stderr: "pipe" });
+      const wouldDrop = Bun.spawnSync(["bash", script, dir, first], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
       // HEAD is first; target first is ancestor of itself — allowed.
       expect(wouldDrop.exitCode).toBe(0);
 
       git(dir, ["checkout", "-q", second]);
-      const notAncestor = Bun.spawnSync(["bash", script, dir, first], { stdout: "pipe", stderr: "pipe" });
+      const notAncestor = Bun.spawnSync(["bash", script, dir, first], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
       expect(notAncestor.exitCode).toBe(1);
-      expect(notAncestor.stderr.toString()).toContain("would drop live-only commits");
+      expect(notAncestor.stderr.toString()).toContain(
+        "would drop live-only commits",
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("uses a bounded Perl runner when GNU timeout is absent", () => {
+    const bash = Bun.which("bash");
+    const perl = Bun.which("perl");
+    const realGit = Bun.which("git");
+    expect(bash).not.toBeNull();
+    expect(perl).not.toBeNull();
+    expect(realGit).not.toBeNull();
+    const dir = initRepo();
+    const binDir = mkdtempSync(join(tmpdir(), "ocx-timeout-fallback-"));
+    const log = join(binDir, "calls");
+    const quote = (path: string) =>
+      `'${path.replaceAll("\\", "/").replaceAll("'", "'\\''")}'`;
+    try {
+      writeFileSync(
+        join(binDir, "git"),
+        `#!${bash}\nexec ${quote(realGit!)} "$@"\n`,
+      );
+      writeFileSync(
+        join(binDir, "perl"),
+        `#!${bash}\nprintf '%s\\n' "$@" >> ${quote(log)}\nexec ${quote(perl!)} "$@"\n`,
+      );
+      chmodSync(join(binDir, "git"), 0o755);
+      chmodSync(join(binDir, "perl"), 0o755);
+      const result = Bun.spawnSync([bash!, script, dir], {
+        env: { ...process.env, PATH: binDir },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(result.exitCode, result.stderr.toString()).toBe(0);
+      expect(readFileSync(log, "utf8")).toContain(
+        "alarm shift; exec @ARGV or exit 127\n10\ngit\n",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(binDir, { recursive: true, force: true });
     }
   });
 
@@ -152,12 +219,15 @@ describe("assert-live-checkout-safe.sh", () => {
       const realGit = Bun.which("git");
       if (!realGit) return;
       const binDir = mkdtempSync(join(tmpdir(), "ocx-live-checkout-bin-"));
-      writeFileSync(join(binDir, "git"), `#!/usr/bin/env bash
+      writeFileSync(
+        join(binDir, "git"),
+        `#!/usr/bin/env bash
 if [[ "$1" == "status" && "$2" == "--porcelain" ]]; then
   exit 1
 fi
 exec "${realGit}" "$@"
-`);
+`,
+      );
       chmodSync(join(binDir, "git"), 0o755);
       const probe = Bun.spawnSync(["bash", script, dir], {
         stdout: "pipe",

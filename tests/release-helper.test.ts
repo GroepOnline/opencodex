@@ -1,5 +1,11 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -7,7 +13,9 @@ import { fileURLToPath } from "node:url";
 
 setDefaultTimeout(30_000);
 
-const repoRoot = dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
+const repoRoot = dirname(
+  fileURLToPath(new URL("../package.json", import.meta.url)),
+);
 const releaseScriptPath = join(repoRoot, "scripts", "release.ts");
 
 interface LoggedCall {
@@ -16,6 +24,7 @@ interface LoggedCall {
 }
 
 interface ReleaseScenario {
+  fullCiFails?: boolean;
   branch?: string;
   headSha?: string;
   linearIssue?: string;
@@ -135,7 +144,10 @@ if (args[0] === "release" && args[1] === "view") {
 
 if (args[0] === "run" && args[1] === "list") {
   if (args.includes("ci.yml")) {
-    stdout(JSON.stringify([{ conclusion: "success", databaseId: 7, headSha, status: "completed", url: "https://example.test/ci" }]));
+    stdout(JSON.stringify([
+      { conclusion: "success", event: "push", databaseId: 6, headSha, status: "completed", url: "https://example.test/linux-only" },
+      { conclusion: process.env.FAKE_FULL_CI_FAILS === "1" ? "failure" : "success", event: "workflow_dispatch", databaseId: 7, headSha, status: "completed", url: "https://example.test/ci" },
+    ]));
     process.exit(0);
   }
 
@@ -163,24 +175,41 @@ process.exit(1);
 `;
 }
 
-function installCommandShim(binDir: string, name: "bun" | "gh" | "git" | "npm"): void {
+function installCommandShim(
+  binDir: string,
+  name: "bun" | "gh" | "git" | "npm",
+): void {
   const jsPath = join(binDir, `${name}.js`);
   const launcherPath = join(binDir, name);
   const cmdPath = join(binDir, `${name}.cmd`);
 
   writeFileSync(jsPath, shimProgramSource(name), "utf8");
-  writeExecutable(launcherPath, `#!${process.execPath}\nimport "./${name}.js";\n`);
-  writeFileSync(cmdPath, `@echo off\r\n"${process.execPath}" "%~dp0\\${name}.js" %*\r\n`, "utf8");
+  writeExecutable(
+    launcherPath,
+    `#!${process.execPath}\nimport "./${name}.js";\n`,
+  );
+  writeFileSync(
+    cmdPath,
+    `@echo off\r\n"${process.execPath}" "%~dp0\\${name}.js" %*\r\n`,
+    "utf8",
+  );
 }
 
 function readLoggedCalls(logPath: string): LoggedCall[] {
   const raw = readFileSync(logPath, "utf8").trim();
   if (!raw) return [];
-  return raw.split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line) as LoggedCall);
+  return raw
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as LoggedCall);
 }
 
-function findCallIndex(calls: LoggedCall[], name: string, matcher: (call: LoggedCall) => boolean): number {
-  return calls.findIndex(call => call.name === name && matcher(call));
+function findCallIndex(
+  calls: LoggedCall[],
+  name: string,
+  matcher: (call: LoggedCall) => boolean,
+): number {
+  return calls.findIndex((call) => call.name === name && matcher(call));
 }
 
 function runRelease(version: string, scenario: ReleaseScenario = {}) {
@@ -192,25 +221,32 @@ function runRelease(version: string, scenario: ReleaseScenario = {}) {
     installCommandShim(shimDir, name);
   }
 
-  const result = spawnSync(process.execPath, [
-    releaseScriptPath,
-    version,
-    ...(scenario.linearIssue ? ["--linear", scenario.linearIssue] : []),
-  ], {
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      PATH: `${shimDir}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}`,
-      FAKE_RELEASE_LOG: logPath,
-      FAKE_GIT_BRANCH: scenario.branch ?? "main",
-      FAKE_GIT_HEAD_SHA: scenario.headSha ?? "abc123def456",
-      ...(scenario.remoteHeadSha ? { FAKE_GIT_REMOTE_HEAD_SHA: scenario.remoteHeadSha } : {}),
-      FAKE_BUN_TSC_EXIT_CODE: String(scenario.typecheckExitCode ?? 0),
-      FAKE_BUN_TEST_EXIT_CODE: String(scenario.testExitCode ?? 0),
-      FAKE_BUN_PRIVACY_EXIT_CODE: String(scenario.privacyExitCode ?? 0),
+  const result = spawnSync(
+    process.execPath,
+    [
+      releaseScriptPath,
+      version,
+      ...(scenario.linearIssue ? ["--linear", scenario.linearIssue] : []),
+    ],
+    {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        PATH: `${shimDir}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}`,
+        FAKE_RELEASE_LOG: logPath,
+        FAKE_FULL_CI_FAILS: scenario.fullCiFails ? "1" : "0",
+        FAKE_GIT_BRANCH: scenario.branch ?? "main",
+        FAKE_GIT_HEAD_SHA: scenario.headSha ?? "abc123def456",
+        ...(scenario.remoteHeadSha
+          ? { FAKE_GIT_REMOTE_HEAD_SHA: scenario.remoteHeadSha }
+          : {}),
+        FAKE_BUN_TSC_EXIT_CODE: String(scenario.typecheckExitCode ?? 0),
+        FAKE_BUN_TEST_EXIT_CODE: String(scenario.testExitCode ?? 0),
+        FAKE_BUN_PRIVACY_EXIT_CODE: String(scenario.privacyExitCode ?? 0),
+      },
+      encoding: "utf8",
     },
-    encoding: "utf8",
-  });
+  );
 
   const calls = readLoggedCalls(logPath);
   rmSync(shimDir, { recursive: true, force: true });
@@ -218,21 +254,55 @@ function runRelease(version: string, scenario: ReleaseScenario = {}) {
 }
 
 describe("release helper", () => {
+  test("Linux-only success cannot hide a failed full-platform preflight", () => {
+    const { calls, result } = runRelease("9.9.9", { fullCiFails: true });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr + result.stdout).toContain("Cross-platform CI failed");
+    expect(
+      findCallIndex(
+        calls,
+        "gh",
+        (call) =>
+          call.args[0] === "workflow" &&
+          call.args[1] === "run" &&
+          call.args.includes("release.yml"),
+      ),
+    ).toBe(-1);
+  });
   test("preflight runs typecheck, test suite, and privacy scan before version bump on main dry-runs", () => {
     const { calls, result } = runRelease("9.9.9");
 
     expect(result.status).toBe(0);
 
-    const typecheckIndex = findCallIndex(calls, "bun", call => call.args.join(" ") === "x tsc --noEmit");
-    const testIndex = findCallIndex(calls, "bun", call => call.args.join(" ") === "test --isolate tests");
-    const privacyIndex = findCallIndex(calls, "bun", call => call.args.join(" ") === "run privacy:scan");
-    const versionIndex = findCallIndex(calls, "npm", call => call.args.join(" ") === "version 9.9.9 --no-git-tag-version");
-    const dispatchIndex = findCallIndex(calls, "gh", call =>
-      call.args[0] === "workflow"
-      && call.args[1] === "run"
-      && call.args.includes("release.yml")
-      && call.args.includes("tag=latest")
-      && call.args.includes("dry-run=true"),
+    const typecheckIndex = findCallIndex(
+      calls,
+      "bun",
+      (call) => call.args.join(" ") === "x tsc --noEmit",
+    );
+    const testIndex = findCallIndex(
+      calls,
+      "bun",
+      (call) => call.args.join(" ") === "test --isolate tests",
+    );
+    const privacyIndex = findCallIndex(
+      calls,
+      "bun",
+      (call) => call.args.join(" ") === "run privacy:scan",
+    );
+    const versionIndex = findCallIndex(
+      calls,
+      "npm",
+      (call) => call.args.join(" ") === "version 9.9.9 --no-git-tag-version",
+    );
+    const dispatchIndex = findCallIndex(
+      calls,
+      "gh",
+      (call) =>
+        call.args[0] === "workflow" &&
+        call.args[1] === "run" &&
+        call.args.includes("release.yml") &&
+        call.args.includes("tag=latest") &&
+        call.args.includes("dry-run=true"),
     );
 
     expect(typecheckIndex).toBeGreaterThanOrEqual(0);
@@ -240,40 +310,74 @@ describe("release helper", () => {
     expect(privacyIndex).toBeGreaterThan(testIndex);
     expect(versionIndex).toBeGreaterThan(privacyIndex);
     expect(dispatchIndex).toBeGreaterThan(versionIndex);
+    const fullCiIndex = findCallIndex(
+      calls,
+      "gh",
+      (call) => call.args.join(" ") === "workflow run ci.yml --ref main",
+    );
+    expect(fullCiIndex).toBeGreaterThan(versionIndex);
+    expect(dispatchIndex).toBeGreaterThan(fullCiIndex);
   });
 
   test("failed privacy scan aborts before version bump, commit, and push", () => {
     const { calls, result } = runRelease("9.9.9", { privacyExitCode: 1 });
 
     expect(result.status).not.toBe(0);
-    expect(findCallIndex(calls, "bun", call => call.args.join(" ") === "run privacy:scan")).toBeGreaterThanOrEqual(0);
-    expect(findCallIndex(calls, "npm", call => call.args[0] === "version")).toBe(-1);
-    expect(findCallIndex(calls, "git", call => call.args[0] === "commit")).toBe(-1);
-    expect(findCallIndex(calls, "git", call => call.args[0] === "push")).toBe(-1);
+    expect(
+      findCallIndex(
+        calls,
+        "bun",
+        (call) => call.args.join(" ") === "run privacy:scan",
+      ),
+    ).toBeGreaterThanOrEqual(0);
+    expect(
+      findCallIndex(calls, "npm", (call) => call.args[0] === "version"),
+    ).toBe(-1);
+    expect(
+      findCallIndex(calls, "git", (call) => call.args[0] === "commit"),
+    ).toBe(-1);
+    expect(findCallIndex(calls, "git", (call) => call.args[0] === "push")).toBe(
+      -1,
+    );
   });
 
   test("a prerelease on main defaults to preview tag and dry-run dispatch", () => {
     const { calls, result } = runRelease("9.9.9-preview.1");
 
     expect(result.status).toBe(0);
-    expect(findCallIndex(calls, "gh", call =>
-      call.args[0] === "workflow"
-      && call.args[1] === "run"
-      && call.args.includes("release.yml")
-      && call.args.includes("tag=preview")
-      && call.args.includes("dry-run=true"),
-    )).toBeGreaterThanOrEqual(0);
+    expect(
+      findCallIndex(
+        calls,
+        "gh",
+        (call) =>
+          call.args[0] === "workflow" &&
+          call.args[1] === "run" &&
+          call.args.includes("release.yml") &&
+          call.args.includes("tag=preview") &&
+          call.args.includes("dry-run=true"),
+      ),
+    ).toBeGreaterThanOrEqual(0);
   });
 
   // release.yml only accepts refs/heads/main, so the helper must refuse anything else
   // instead of dispatching a run the workflow will reject.
   test("releasing from a branch other than main aborts before the bump", () => {
-    const { calls, result } = runRelease("9.9.9-preview.1", { branch: "preview" });
+    const { calls, result } = runRelease("9.9.9-preview.1", {
+      branch: "preview",
+    });
 
     expect(result.status).not.toBe(0);
     expect(result.stderr + result.stdout).toContain("must be on main");
-    expect(findCallIndex(calls, "npm", call => call.args[0] === "version")).toBe(-1);
-    expect(findCallIndex(calls, "gh", call => call.args[0] === "workflow" && call.args[1] === "run")).toBe(-1);
+    expect(
+      findCallIndex(calls, "npm", (call) => call.args[0] === "version"),
+    ).toBe(-1);
+    expect(
+      findCallIndex(
+        calls,
+        "gh",
+        (call) => call.args[0] === "workflow" && call.args[1] === "run",
+      ),
+    ).toBe(-1);
   });
 
   // The update client only parses X.Y.Z-preview.N, so any other prerelease shape would
@@ -283,28 +387,43 @@ describe("release helper", () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr + result.stdout).toContain("must be X.Y.Z-preview.N");
-    expect(findCallIndex(calls, "npm", call => call.args[0] === "version")).toBe(-1);
+    expect(
+      findCallIndex(calls, "npm", (call) => call.args[0] === "version"),
+    ).toBe(-1);
   });
 
   test("dispatch pins the audited release SHA via expected-sha", () => {
-    const { calls, result } = runRelease("9.9.9", { headSha: "deadbeefcafe1234" });
+    const { calls, result } = runRelease("9.9.9", {
+      headSha: "deadbeefcafe1234",
+    });
 
     expect(result.status).toBe(0);
-    expect(findCallIndex(calls, "gh", call =>
-      call.args[0] === "workflow"
-      && call.args[1] === "run"
-      && call.args.includes("release.yml")
-      && call.args.includes("expected-sha=deadbeefcafe1234"),
-    )).toBeGreaterThanOrEqual(0);
+    expect(
+      findCallIndex(
+        calls,
+        "gh",
+        (call) =>
+          call.args[0] === "workflow" &&
+          call.args[1] === "run" &&
+          call.args.includes("release.yml") &&
+          call.args.includes("expected-sha=deadbeefcafe1234"),
+      ),
+    ).toBeGreaterThanOrEqual(0);
   });
 
   test("includes a validated Linear issue in the release commit", () => {
     const { calls, result } = runRelease("9.9.9", { linearIssue: "GRO-994" });
 
     expect(result.status).toBe(0);
-    expect(findCallIndex(calls, "git", call =>
-      call.args[0] === "commit" && call.args.join(" ").includes("release: v9.9.9 (GRO-994)"),
-    )).toBeGreaterThanOrEqual(0);
+    expect(
+      findCallIndex(
+        calls,
+        "git",
+        (call) =>
+          call.args[0] === "commit" &&
+          call.args.join(" ").includes("release: v9.9.9 (GRO-994)"),
+      ),
+    ).toBeGreaterThanOrEqual(0);
   });
 
   test("rejects malformed Linear issue identifiers before the bump", () => {
@@ -312,17 +431,30 @@ describe("release helper", () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr + result.stdout).toContain("Linear issue must use");
-    expect(findCallIndex(calls, "npm", call => call.args[0] === "version")).toBe(-1);
+    expect(
+      findCallIndex(calls, "npm", (call) => call.args[0] === "version"),
+    ).toBe(-1);
   });
 
-  test("aborts before dispatch when the remote branch moved during the CI wait", () => {
+  test("aborts before release dispatch when the remote branch moved during the CI wait", () => {
     const { calls, result } = runRelease("9.9.9", {
       headSha: "abc123def456",
       remoteHeadSha: "9999999999999999999999999999999999999999",
     });
 
     expect(result.status).not.toBe(0);
-    expect(result.stderr + result.stdout).toContain("moved while waiting for CI");
-    expect(findCallIndex(calls, "gh", call => call.args[0] === "workflow" && call.args[1] === "run")).toBe(-1);
+    expect(result.stderr + result.stdout).toContain(
+      "moved while waiting for CI",
+    );
+    expect(
+      findCallIndex(
+        calls,
+        "gh",
+        (call) =>
+          call.args[0] === "workflow" &&
+          call.args[1] === "run" &&
+          call.args.includes("release.yml"),
+      ),
+    ).toBe(-1);
   });
 });

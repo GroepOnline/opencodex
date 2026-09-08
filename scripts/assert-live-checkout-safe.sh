@@ -13,15 +13,18 @@ target=${2-}
 
 # GNU coreutils exposes `timeout`, while macOS commonly exposes it as
 # `gtimeout` when coreutils is installed (and otherwise has no equivalent).
-# Keep the safety bound where available without making every macOS checkout
-# look invalid just because the helper itself is absent.
+# Perl is part of macOS and preserves an alarm across exec. Never drop the
+# deadline just because GNU coreutils is absent.
 run_git() {
   if command -v timeout >/dev/null 2>&1; then
     timeout 10s git "$@"
   elif command -v gtimeout >/dev/null 2>&1; then
     gtimeout 10s git "$@"
+  elif command -v perl >/dev/null 2>&1; then
+    perl -e 'alarm shift; exec @ARGV or exit 127' 10 git "$@"
   else
-    git "$@"
+    echo "assert-live-checkout-safe: no bounded process runner available" >&2
+    return 127
   fi
 }
 

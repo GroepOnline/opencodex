@@ -22,7 +22,12 @@ import {
 const scratch = mkdtempSync(join(tmpdir(), "ocx-client-artifact-test-"));
 const powershell = Bun.which("pwsh");
 const posixShell = process.platform !== "win32";
-afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+const fixtureWorktrees = new Set<string>();
+afterAll(() => {
+  for (const destination of fixtureWorktrees)
+    removeDetachedWorktree(destination);
+  rmSync(scratch, { recursive: true, force: true });
+});
 
 function addDetachedWorktree(destination: string) {
   const root = join(import.meta.dir, "..");
@@ -31,6 +36,7 @@ function addDetachedWorktree(destination: string) {
     { cwd: root },
   );
   expect(result.success).toBe(true);
+  fixtureWorktrees.add(destination);
 }
 
 function removeDetachedWorktree(destination: string) {
@@ -39,6 +45,7 @@ function removeDetachedWorktree(destination: string) {
     cwd: root,
   });
   rmSync(destination, { recursive: true, force: true });
+  fixtureWorktrees.delete(destination);
 }
 
 describe("remote client artifact", () => {

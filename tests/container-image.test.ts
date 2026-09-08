@@ -213,15 +213,26 @@ describe("container image", () => {
   }, 15_000);
 
   test("entrypoint exports token from file and execs the command", () => {
+    const shell = Bun.which("sh");
+    expect(shell).not.toBeNull();
     const dir = mkdtempSync(join(tmpdir(), "ocx-container-"));
     try {
       const tokenFile = join(dir, "token");
       writeFileSync(tokenFile, "test-file-token\n", { mode: 0o600 });
       const result = Bun.spawnSync(
-        ["/bin/sh", entrypoint, "printenv", "OPENCODEX_API_AUTH_TOKEN"],
+        [
+          shell!,
+          entrypoint.replaceAll("\\", "/"),
+          shell!,
+          "-c",
+          'printf "%s" "$OPENCODEX_API_AUTH_TOKEN"',
+        ],
         {
           cwd: repoRoot,
-          env: { ...process.env, OPENCODEX_API_AUTH_TOKEN_FILE: tokenFile },
+          env: {
+            ...process.env,
+            OPENCODEX_API_AUTH_TOKEN_FILE: tokenFile.replaceAll("\\", "/"),
+          },
           stdout: "pipe",
           stderr: "pipe",
         },

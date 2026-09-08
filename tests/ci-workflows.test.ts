@@ -34,6 +34,37 @@ function count(text: string, fragment: string): number {
 }
 
 describe("GitHub Actions hardening", () => {
+  test("releases require all platforms before publication, not only after the tag", async () => {
+    const ci = await readText(".github/workflows/ci.yml");
+    const release = await readText(".github/workflows/release.yml");
+    expect(
+      count(
+        ci,
+        "github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')",
+      ),
+    ).toBe(2);
+    expect(release).toContain("--event workflow_dispatch");
+    expect(release).toContain('--commit "$GITHUB_SHA"');
+    expect(release).toContain('select(.conclusion == "success")');
+    expect(release).toContain('$run.conclusion == "success"');
+    expect(release).toContain('if [ "$matrix_ok" != "true" ]; then');
+    for (const job of [
+      "ubuntu-latest",
+      "macos-latest",
+      "macos-quality",
+      "windows-latest",
+      "windows-latest shard 2/2",
+      "windows-quality",
+      "npm-global ubuntu-latest",
+      "npm-global macos-latest",
+      "npm-global windows-latest",
+      "Security audit",
+      "Lint GitHub Actions",
+    ]) {
+      expect(release).toContain(JSON.stringify(job));
+    }
+  });
+
   test("cross-platform CI keeps bounded jobs and immutable action references", async () => {
     const workflow = await readText(".github/workflows/ci.yml");
 
