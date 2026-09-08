@@ -19,6 +19,14 @@ const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const sha256 = (data: string | Uint8Array) =>
   createHash("sha256").update(data).digest("hex");
 
+/**
+ * Determines whether a path is the trusted macOS `/var` alias for `/private/var`.
+ *
+ * @param path - The logical path to evaluate
+ * @param physicalTarget - The path resolved by the filesystem
+ * @param platform - The operating-system platform to evaluate
+ * @returns `true` if the values represent the macOS `/var` to `/private/var` alias, `false` otherwise
+ */
 export function isTrustedDarwinSystemPathAlias(
   path: string,
   physicalTarget: string,
@@ -29,6 +37,13 @@ export function isTrustedDarwinSystemPathAlias(
   );
 }
 
+/**
+ * Ensures that an existing component of a path is not a symbolic link, except for the trusted macOS `/var` alias.
+ *
+ * Missing path components are allowed.
+ *
+ * @param path - The path whose components to inspect
+ */
 function assertNoSymlinkPathComponents(path: string) {
   let current = resolve(path);
   while (true) {
@@ -133,6 +148,14 @@ function normalizeGeneratedBundleSourceComments(
   return new TextEncoder().encode(normalized);
 }
 
+/**
+ * Creates an isolated build worktree at a source revision with frozen dependencies installed.
+ *
+ * @param sourceRoot - The Git repository containing the source revision
+ * @param sourceSha - The commit SHA to check out
+ * @returns The path to the isolated build worktree
+ * @throws If worktree creation or dependency installation fails
+ */
 function prepareIsolatedBuildRoot(
   sourceRoot: string,
   sourceSha: string,
@@ -358,6 +381,13 @@ export const CODEX_CLIENT_POWERSHELL_SHIM = [
   "",
 ].join("\r\n");
 
+/**
+ * Builds and publishes a client artifact from clean, committed runtime inputs.
+ *
+ * @param destination - Destination directory for the new artifact candidate
+ * @param root - Runtime source repository to build from
+ * @returns The generated artifact manifest
+ */
 export async function buildClientArtifact(destination: string, root = ROOT) {
   const builderDirty = git(
     ROOT,

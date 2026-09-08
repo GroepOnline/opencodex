@@ -56,6 +56,13 @@ async function runQuiet(command: string[]): Promise<CommandResult> {
   return { exitCode, stdout: stdout.trim(), stderr: stderr.trim() };
 }
 
+/**
+ * Reads and returns the package name from `package.json`.
+ *
+ * Exits the process if the file cannot be read, parsed, or does not contain a valid name.
+ *
+ * @returns The package name
+ */
 async function readPackageName(): Promise<string> {
   try {
     const pkg = JSON.parse(await Bun.file("package.json").text()) as {
@@ -74,6 +81,11 @@ async function readPackageName(): Promise<string> {
   }
 }
 
+/**
+ * Reads and validates the package version from `package.json`.
+ *
+ * @returns The package version string
+ */
 async function readPackageVersion(): Promise<string> {
   try {
     const pkg = JSON.parse(await Bun.file("package.json").text()) as {
@@ -97,8 +109,13 @@ async function readPackageVersion(): Promise<string> {
   }
 }
 
-/** Bump a version. A prerelease (X.Y.Z-preview.N) bumps its preview number; a
- *  stable version bumps the requested segment and drops any prerelease suffix. */
+/**
+ * Calculates the next package version.
+ *
+ * @param current - The current stable or preview version
+ * @param bump - The version segment to increment for stable versions
+ * @returns The incremented preview version or the requested stable version
+ */
 function bumpVersion(
   current: string,
   bump: "patch" | "minor" | "major",
@@ -119,6 +136,13 @@ function bumpVersion(
   }
 }
 
+/**
+ * Checks whether a package version exists in the npm registry.
+ *
+ * @param packageName - The npm package name
+ * @param version - The package version to check
+ * @returns `true` if the version exists, `false` if it is not found
+ */
 async function npmVersionExists(
   packageName: string,
   version: string,
@@ -140,6 +164,12 @@ async function npmVersionExists(
   process.exit(1);
 }
 
+/**
+ * Retrieves the commit SHA associated with a remote Git tag.
+ *
+ * @param tagName - The name of the tag to query
+ * @returns The tag's commit SHA, or `null` if the tag does not exist remotely
+ */
 async function remoteTagSha(tagName: string): Promise<string | null> {
   const result = await runQuiet([
     "git",
@@ -161,6 +191,12 @@ async function remoteTagSha(tagName: string): Promise<string | null> {
   return selected ? (selected.split(/\s+/)[0] ?? null) : null;
 }
 
+/**
+ * Checks whether a GitHub Release exists for a tag.
+ *
+ * @param tagName - The Git tag associated with the release
+ * @returns `true` if the release exists, `false` if it was not found
+ */
 async function githubReleaseExists(tagName: string): Promise<boolean> {
   const result = await runQuiet([
     "gh",
@@ -181,6 +217,12 @@ async function githubReleaseExists(tagName: string): Promise<boolean> {
   process.exit(1);
 }
 
+/**
+ * Ensures that a release version is unused across npm, the remote repository, and GitHub Releases.
+ *
+ * @param packageName - The npm package name to check
+ * @param version - The release version to verify
+ */
 async function assertUnusedReleaseVersion(
   packageName: string,
   version: string,
@@ -211,6 +253,11 @@ async function assertUnusedReleaseVersion(
   }
 }
 
+/**
+ * Watches the most recent Release workflow run.
+ *
+ * Exits with an error if no Release workflow runs are found.
+ */
 async function watchLatest(): Promise<void> {
   const id = (
     await $`gh run list --workflow release.yml --limit 1 --json databaseId -q '.[0].databaseId'`.text()
@@ -222,11 +269,24 @@ async function watchLatest(): Promise<void> {
   await watchRun(id);
 }
 
+/**
+ * Watches a Release workflow run until it completes.
+ *
+ * @param id - The workflow run identifier
+ */
 async function watchRun(id: string | number): Promise<void> {
   console.log(`→ watching Release run ${id}`);
   await $`gh run watch ${String(id)} --exit-status --interval 10`;
 }
 
+/**
+ * Waits for the Release workflow run associated with a commit to become available.
+ *
+ * @param sha - The commit SHA associated with the workflow run
+ * @param branch - The branch containing the commit
+ * @param createdAfterIso - The earliest allowed workflow creation timestamp in ISO format
+ * @returns The matching GitHub Actions workflow run
+ */
 async function waitForReleaseWorkflowRun(
   sha: string,
   branch: string,
@@ -260,6 +320,13 @@ async function waitForReleaseWorkflowRun(
   process.exit(1);
 }
 
+/**
+ * Lists workflow runs for a commit, including only manually dispatched runs for the CI workflow.
+ *
+ * @param sha - The commit SHA to match.
+ * @param workflow - The workflow whose runs to list.
+ * @returns Workflow runs matching the commit and workflow criteria.
+ */
 async function listCiRuns(
   sha: string,
   workflow: string = CI_WORKFLOW,
@@ -274,6 +341,14 @@ async function listCiRuns(
   );
 }
 
+/**
+ * Waits for a CI workflow run to complete successfully.
+ *
+ * @param sha - The commit SHA to monitor
+ * @param workflow - The workflow to monitor
+ * @param label - The label used in status messages
+ * @returns The successful workflow run
+ */
 async function waitForSuccessfulCi(
   sha: string,
   workflow: string = CI_WORKFLOW,
@@ -332,7 +407,12 @@ async function _remoteMainSha(): Promise<string> {
   return sha;
 }
 
-/** Live (network) head of a remote branch — never the local remote-tracking ref. */
+/**
+ * Resolves the current commit at the remote branch.
+ *
+ * @param branch - The branch name on `origin`
+ * @returns The commit SHA at the remote branch
+ */
 async function remoteBranchHead(branch: string): Promise<string> {
   const out = (
     await $`git ls-remote origin refs/heads/${branch}`.text()
