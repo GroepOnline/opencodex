@@ -34,6 +34,22 @@ function count(text: string, fragment: string): number {
 }
 
 describe("GitHub Actions hardening", () => {
+  test("CI verifies the Bun runtime actually shipped in the package", async () => {
+    const pkg = JSON.parse(await readText("package.json"));
+    const ci = Bun.YAML.parse(await readText(".github/workflows/ci.yml")) as {
+      jobs: Record<
+        string,
+        { steps?: { uses?: string; with?: Record<string, unknown> }[] }
+      >;
+    };
+    const setups = Object.values(ci.jobs)
+      .flatMap((job) => job.steps ?? [])
+      .filter((step) => step.uses?.startsWith("oven-sh/setup-bun@"));
+    expect(setups.length).toBeGreaterThan(0);
+    for (const step of setups)
+      expect(step.with?.["bun-version"]).toBe(pkg.dependencies.bun);
+  });
+
   test("releases require all platforms before publication, not only after the tag", async () => {
     const ci = await readText(".github/workflows/ci.yml");
     const release = await readText(".github/workflows/release.yml");
