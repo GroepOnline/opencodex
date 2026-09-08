@@ -11,6 +11,20 @@ fi
 checkout=$1
 target=${2-}
 
+# GNU coreutils exposes `timeout`, while macOS commonly exposes it as
+# `gtimeout` when coreutils is installed (and otherwise has no equivalent).
+# Keep the safety bound where available without making every macOS checkout
+# look invalid just because the helper itself is absent.
+run_git() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 10s git "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout 10s git "$@"
+  else
+    git "$@"
+  fi
+}
+
 if [[ ! -d $checkout ]]; then
   echo "assert-live-checkout-safe: not a directory: $(basename -- "$checkout")" >&2
   exit 2
@@ -18,14 +32,14 @@ fi
 
 cd "$checkout"
 
-if ! timeout 10s git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+if ! run_git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "assert-live-checkout-safe: not a git checkout: $(basename -- "$checkout")" >&2
   exit 2
 fi
 
 # Porcelain only as a boolean. Do not print the listing (paths can be sensitive).
 porcelain=$(
-  timeout 10s git status --porcelain 2>/dev/null
+  run_git status --porcelain 2>/dev/null
 ) || {
   echo "assert-live-checkout-safe: git status probe failed" >&2
   exit 2
@@ -36,7 +50,7 @@ if [[ -n $porcelain ]]; then
 fi
 
 if [[ -n $target ]]; then
-  if ! timeout 10s git merge-base --is-ancestor HEAD "$target"; then
+  if ! run_git merge-base --is-ancestor HEAD "$target"; then
     echo "assert-live-checkout-safe: HEAD is not an ancestor of $target (would drop live-only commits)" >&2
     exit 1
   fi
