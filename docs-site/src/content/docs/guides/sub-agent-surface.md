@@ -11,11 +11,11 @@ On the v2 surface (`multi_agent_v2`), a spawned sub-agent inherits the parent mo
 
 ## Modes
 
-| Mode | Surface | Behavior |
-| --- | --- | --- |
-| **v1** | `multi_agent_v1` | Classic namespaced agent tools with `send_input` / `close_agent` / `resume_agent`. A `spawn_agent` model override can start a sub-agent on a different model. |
-| **base** (default) | Upstream pins | Restores upstream model pins: gpt-5.6-sol and gpt-5.6-terra use v2, gpt-5.6-luna uses v1, and unpinned models follow the Codex `multi_agent_v2` feature flag. Spawn behavior follows the surface that resolves for that model. |
-| **v2** | `multi_agent_v2` | Flat `spawn_agent` tools with concurrent sessions and `send_message` / `followup_task` / `wait_agent` / `interrupt_agent`. Children inherit the parent model on full-history forks; `fork_turns: "none"` (or a partial fork) accepts `model` / `reasoning_effort` overrides. If a native→routed child receives only backend-encrypted task content, external routes return `unreadable_encrypted_agent_task`; mixed combos prefer a decrypt-capable native target ([#92](https://github.com/GroepOnline/opencodex/issues/92)). |
+| Mode               | Surface          | Behavior                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **v1**             | `multi_agent_v1` | Classic namespaced agent tools with `send_input` / `close_agent` / `resume_agent`. A `spawn_agent` model override can start a sub-agent on a different model.                                                                                                                                                                                                                                                                                                                                                                  |
+| **base** (default) | Upstream pins    | Restores upstream model pins: gpt-5.6-sol and gpt-5.6-terra use v2, gpt-5.6-luna uses v1, and unpinned models follow the Codex `multi_agent_v2` feature flag. Spawn behavior follows the surface that resolves for that model.                                                                                                                                                                                                                                                                                                 |
+| **v2**             | `multi_agent_v2` | Flat `spawn_agent` tools with concurrent sessions and `send_message` / `followup_task` / `wait_agent` / `interrupt_agent`. Children inherit the parent model on full-history forks; `fork_turns: "none"` (or a partial fork) accepts `model` / `reasoning_effort` overrides. If a native→routed child receives only backend-encrypted task content, external routes return `unreadable_encrypted_agent_task`; mixed combos prefer a decrypt-capable native target ([#92](https://github.com/GroepOnline/opencodex/issues/92)). |
 
 ### Encrypted v2 task delivery
 
@@ -118,12 +118,12 @@ The optional sub-agent effort setting is stored as `injectionEffort` and is mean
 
 `ultra` ranks above `max` in the Codex catalog and adds automatic-delegation semantics, but it never reaches a provider as a literal wire value. Codex converts `ultra` to `max` at the client boundary. opencodex then keeps the provider request valid:
 
-| Model | `max` on wire | `ultra` selection on wire |
-| --- | --- | --- |
-| gpt-5.5, gpt-5.4, gpt-5.4-mini | xhigh | xhigh (via max, then `nativeEffortClamp`) |
-| gpt-5.6-sol, gpt-5.6-terra | max | max |
-| gpt-5.6-luna | max | Not advertised by its exact upstream ladder |
-| Routed models | Mapped or clamped by the adapter | Converted to max, then mapped or clamped by the adapter |
+| Model                          | `max` on wire                    | `ultra` selection on wire                               |
+| ------------------------------ | -------------------------------- | ------------------------------------------------------- |
+| gpt-5.5, gpt-5.4, gpt-5.4-mini | xhigh                            | xhigh (via max, then `nativeEffortClamp`)               |
+| gpt-5.6-sol, gpt-5.6-terra     | max                              | max                                                     |
+| gpt-5.6-luna                   | max                              | Not advertised by its exact upstream ladder             |
+| Routed models                  | Mapped or clamped by the adapter | Converted to max, then mapped or clamped by the adapter |
 
 Catalog availability is independent of the v1/v2 mode. Reasoning-capable generated entries advertise `max` so direct sub-agent effort overrides validate; current generated routed entries also advertise `ultra`. Exact upstream model ladders are preserved, which is why gpt-5.6-luna stops at `max`.
 
@@ -132,3 +132,7 @@ Catalog availability is independent of the v1/v2 mode. Reasoning-capable generat
 The global context cap value defaults to 350k and limits the advertised `context_window` only for routed providers whose cap is enabled. Native OpenAI models keep their real context windows.
 
 Change the value or the all-provider setting in the Models page, or toggle the cap next to an individual provider group header.
+
+In the pending catalog redesign, global controls are under **Model settings &
+advanced controls**, and each group's cap toggle is under **Provider settings**.
+Only their placement changes; the cap and multi-agent behavior above is unchanged.

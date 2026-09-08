@@ -57,7 +57,10 @@ export interface ShadowCallData {
   model: string;
 }
 
-export const CAP_OPTIONS = Array.from({ length: 18 }, (_, i) => 100_000 + i * 50_000); // 100k … 950k
+export const CAP_OPTIONS = Array.from(
+  { length: 18 },
+  (_, i) => 100_000 + i * 50_000,
+); // 100k … 950k
 export const CAP_OPTION_SET = new Set(CAP_OPTIONS);
 export const CUSTOM_OPTION = "custom";
 export const THREAD_OPTIONS = [4, 8, 16, 32, 64, 128, 256, 500, 1000];
@@ -97,22 +100,29 @@ export function activeModelOptions(
   return options;
 }
 
-/** `null` = no preference yet → caller should default to all groups collapsed. */
-export function readCollapsedProviders(storage: StorageLike = localStorage): Set<string> | null {
+/** `null` means no saved preference; the catalog opens groups for new users. */
+export function readCollapsedProviders(
+  storage: StorageLike = localStorage,
+): Set<string> | null {
   try {
     // v2 only — older keys defaulted to "all open".
     const saved = storage.getItem(COLLAPSED_KEY_V2);
     if (saved === null) return null;
     const parsed = JSON.parse(saved) as unknown;
     return Array.isArray(parsed)
-      ? new Set(parsed.filter((value): value is string => typeof value === "string"))
+      ? new Set(
+          parsed.filter((value): value is string => typeof value === "string"),
+        )
       : null;
   } catch {
     return null;
   }
 }
 
-export function writeCollapsedProviders(collapsed: Set<string>, storage: StorageLike = localStorage): void {
+export function writeCollapsedProviders(
+  collapsed: Set<string>,
+  storage: StorageLike = localStorage,
+): void {
   try {
     storage.setItem(COLLAPSED_KEY_V2, JSON.stringify([...collapsed]));
   } catch {
@@ -122,14 +132,19 @@ export function writeCollapsedProviders(collapsed: Set<string>, storage: Storage
 
 export function readCombosOpen(storage: StorageLike = localStorage): boolean {
   try {
-    const saved = storage.getItem(COMBOS_OPEN_KEY_V1) ?? storage.getItem(COMBOS_OPEN_KEY_LEGACY);
+    const saved =
+      storage.getItem(COMBOS_OPEN_KEY_V1) ??
+      storage.getItem(COMBOS_OPEN_KEY_LEGACY);
     return saved === "1";
   } catch {
     return false;
   }
 }
 
-export function writeCombosOpen(open: boolean, storage: StorageLike = localStorage): void {
+export function writeCombosOpen(
+  open: boolean,
+  storage: StorageLike = localStorage,
+): void {
   try {
     storage.setItem(COMBOS_OPEN_KEY_V1, open ? "1" : "0");
   } catch {

@@ -35,8 +35,12 @@ describe("install scripts", () => {
     expect(pkg.scripts?.dev).toBe("bun run src/cli/index.ts start");
     expect(pkg.scripts?.["dev:proxy"]).toBe("bun run src/cli/index.ts start");
     expect(pkg.scripts?.["dev:gui"]).toBe("cd gui && bun run dev");
-    expect(pkg.scripts?.["dev:preview"]).toBe("bun scripts/freebuff-preview.ts");
-    expect(pkg.scripts?.["prepare:package"]).toBe("bun scripts/prepare-package.ts");
+    expect(pkg.scripts?.["dev:preview"]).toBe(
+      "bun scripts/freebuff-preview.ts",
+    );
+    expect(pkg.scripts?.["prepare:package"]).toBe(
+      "bun scripts/prepare-package.ts",
+    );
     expect(pkg.scripts?.prepack).toBe("bun run prepare:package");
     expect(pkg.files).toContain("assets/banner.png");
     expect(pkg.files).toContain("assets/architecture.png");
@@ -52,19 +56,23 @@ describe("install scripts", () => {
     expect(preview).toContain("OPENCODEX_PROXY_TARGET");
     expect(preview).toContain('HOST: "0.0.0.0"');
     expect(preview).toContain("process.env.PORT");
-    expect(vite).toContain("host: '0.0.0.0'");
+    expect(vite).toMatch(/host:\s*(["'])0\.0\.0\.0\1/);
     expect(vite).toContain("proxyConfig(proxyTarget)");
     expect(vite).toContain("guiSessionPlugin(proxyTarget)");
   });
 
   test("Node can import the package main without executing the CLI", () => {
-    const result = spawnSync("node", [
-      "-e",
-      "import('./bin/package-main.mjs').then(m => { if (m.cliCommand !== 'ocx') process.exit(2); })",
-    ], {
-      cwd: repoRoot,
-      encoding: "utf8",
-    });
+    const result = spawnSync(
+      "node",
+      [
+        "-e",
+        "import('./bin/package-main.mjs').then(m => { if (m.cliCommand !== 'ocx') process.exit(2); })",
+      ],
+      {
+        cwd: repoRoot,
+        encoding: "utf8",
+      },
+    );
 
     expect(result.status).toBe(0);
   });
@@ -111,7 +119,9 @@ describe("install scripts", () => {
 
     expect(launcher).toContain('process.argv[2] === "update"');
     expect(launcher).toContain('["install", "-g", `${PKG}@${tag}`]');
-    expect(launcher).toContain('return String(currentVersion).includes("-preview.") ? "preview" : "latest"');
+    expect(launcher).toContain(
+      'return String(currentVersion).includes("-preview.") ? "preview" : "latest"',
+    );
     expect(launcher).toContain("!isBunGlobalInstall()");
     expect(launcher).toContain("repairCodexShimIfNeeded()");
     expect(launcher).toContain("runNpmSelfUpdate()");

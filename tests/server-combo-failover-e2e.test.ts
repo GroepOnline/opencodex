@@ -1,5 +1,16 @@
-import { afterEach, beforeEach, describe, expect, mock, setDefaultTimeout, test } from "bun:test";
-import { managementFetch as fetch, ManagementRequest as Request } from "./helpers/management-auth";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
+import {
+  managementFetch as fetch,
+  ManagementRequest as Request,
+} from "./helpers/management-auth";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,15 +20,25 @@ import {
   isComboTargetInCooldown,
 } from "../src/combos";
 import { readConfigDiagnostics, saveConfig } from "../src/config";
-import { clearResponseStateForTests, rememberResponseState } from "../src/responses/state";
+import {
+  clearResponseStateForTests,
+  rememberResponseState,
+} from "../src/responses/state";
 import type { ProviderAdapter } from "../src/adapters/base";
 import { handleManagementAPI } from "../src/server/management-api";
 import { saveCredential } from "../src/oauth/store";
 import { XAI_OAUTH_DISCOVERY_URL } from "../src/oauth/xai";
 import { XAI_GROK_CLI_BASE_URL } from "../src/providers/xai-transport";
 import type { AdapterEvent, OcxConfig, OcxProviderConfig } from "../src/types";
-import { installIsolatedCodexHome, type IsolatedCodexHome } from "./helpers/isolated-codex-home";
-import { clearRequestLogsForTests, hydrateRequestLogsFromDisk, type RequestLogContext } from "../src/server/request-log";
+import {
+  installIsolatedCodexHome,
+  type IsolatedCodexHome,
+} from "./helpers/isolated-codex-home";
+import {
+  clearRequestLogsForTests,
+  hydrateRequestLogsFromDisk,
+  type RequestLogContext,
+} from "../src/server/request-log";
 import { responseWithDeferredRequestLog } from "../src/server/relay";
 import { readUsageEntries } from "../src/usage/log";
 import { saveCodexAccountCredential } from "../src/codex/account-store";
@@ -40,25 +61,39 @@ const actualFetchWithTransientRetry = actualRetry.fetchWithTransientRetry;
 const { createCursorAdapter } = await import("../src/adapters/cursor");
 import type { CursorTransportFactory } from "../src/adapters/cursor/transport";
 let customRunTurn: NonNullable<ProviderAdapter["runTurn"]> | undefined;
-let customFetchResponse: NonNullable<ProviderAdapter["fetchResponse"]> | undefined;
+let customFetchResponse:
+  NonNullable<ProviderAdapter["fetchResponse"]> | undefined;
 let customTransientResponse: (() => Promise<Response>) | undefined;
 let customUsageEstimate: ((model: string) => number | undefined) | undefined;
 let customCursorTransportFactory: CursorTransportFactory | undefined;
 
 mock.module("../src/server/adapter-resolve", () => ({
   ...actualResolver,
-  resolveAdapter(provider: OcxProviderConfig, cacheRetention?: "none" | "short" | "long") {
+  resolveAdapter(
+    provider: OcxProviderConfig,
+    cacheRetention?: "none" | "short" | "long",
+  ) {
     if (provider.adapter === "cursor" && customCursorTransportFactory) {
       // Real cursor adapter (adapter.name === "cursor") over a fake transport, so server-level
       // tests can drive the genuine continuation/persistence policy without a live socket.
-      return createCursorAdapter(provider, { createTransport: customCursorTransportFactory });
+      return createCursorAdapter(provider, {
+        createTransport: customCursorTransportFactory,
+      });
     }
     if (provider.adapter === "test-run-turn") {
       const adapter: ProviderAdapter = {
         name: "test-run-turn",
-        buildRequest: () => ({ url: provider.baseUrl, method: "POST", headers: {}, body: "" }),
+        buildRequest: () => ({
+          url: provider.baseUrl,
+          method: "POST",
+          headers: {},
+          body: "",
+        }),
         async *parseStream(): AsyncGenerator<AdapterEvent> {
-          yield { type: "error", message: "test runTurn adapter does not use parseStream" };
+          yield {
+            type: "error",
+            message: "test runTurn adapter does not use parseStream",
+          };
         },
         async runTurn(parsed, incoming, emit) {
           if (!customRunTurn) throw new Error("custom runTurn not installed");
@@ -68,7 +103,10 @@ mock.module("../src/server/adapter-resolve", () => ({
       return adapter;
     }
     if (provider.adapter === "test-response") {
-      const base = actualResolveAdapter({ ...provider, adapter: "openai-chat" }, cacheRetention);
+      const base = actualResolveAdapter(
+        { ...provider, adapter: "openai-chat" },
+        cacheRetention,
+      );
       return {
         ...base,
         name: "test-response",
@@ -80,7 +118,8 @@ mock.module("../src/server/adapter-resolve", () => ({
             : { ...request, usageLog: { inputTokens: estimate } };
         },
         async fetchResponse(request, context) {
-          if (!customFetchResponse) throw new Error("custom fetchResponse not installed");
+          if (!customFetchResponse)
+            throw new Error("custom fetchResponse not installed");
           return customFetchResponse(request, context);
         },
       };
@@ -139,7 +178,8 @@ afterEach(async () => {
   for (const server of servers.splice(0)) await server.stop(true);
   if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
   else process.env.OPENCODEX_HOME = previousHome;
-  if (previousCursorToken === undefined) delete process.env.OPENCODEX_CURSOR_TEST_TOKEN;
+  if (previousCursorToken === undefined)
+    delete process.env.OPENCODEX_CURSOR_TEST_TOKEN;
   else process.env.OPENCODEX_CURSOR_TEST_TOKEN = previousCursorToken;
   isolatedCodexHome?.restore();
   isolatedCodexHome = null;
@@ -165,7 +205,13 @@ function chatSuccess(text: string, model = "model"): Response {
     id: `chatcmpl-${model}`,
     object: "chat.completion",
     model,
-    choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
+    choices: [
+      {
+        index: 0,
+        message: { role: "assistant", content: text },
+        finish_reason: "stop",
+      },
+    ],
     usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
   });
 }
@@ -176,22 +222,29 @@ function chatStream(text: string): Response {
     `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 } })}\n\n`,
     "data: [DONE]\n\n",
   ].join("");
-  return new Response(frames, { headers: { "content-type": "text/event-stream" } });
+  return new Response(frames, {
+    headers: { "content-type": "text/event-stream" },
+  });
 }
 
-function responsesSuccess(text: string, model = "responses-model"): Record<string, unknown> {
+function responsesSuccess(
+  text: string,
+  model = "responses-model",
+): Record<string, unknown> {
   return {
     id: `resp-${model}`,
     object: "response",
     status: "completed",
     model,
-    output: [{
-      id: "msg_backup",
-      type: "message",
-      role: "assistant",
-      status: "completed",
-      content: [{ type: "output_text", text, annotations: [] }],
-    }],
+    output: [
+      {
+        id: "msg_backup",
+        type: "message",
+        role: "assistant",
+        status: "completed",
+        content: [{ type: "output_text", text, annotations: [] }],
+      },
+    ],
     usage: { input_tokens: 2, output_tokens: 1, total_tokens: 3 },
   };
 }
@@ -214,7 +267,10 @@ function provider(
 
 function comboConfig(
   providers: OcxConfig["providers"],
-  targets = Object.keys(providers).map((name, index) => ({ provider: name, model: `m${index + 1}` })),
+  targets = Object.keys(providers).map((name, index) => ({
+    provider: name,
+    model: `m${index + 1}`,
+  })),
   extra: Partial<NonNullable<OcxConfig["combos"]>[string]> = {},
 ): OcxConfig {
   return {
@@ -231,11 +287,21 @@ async function post(
   options: HandleOptions = {},
   headers: Record<string, string> = {},
 ): Promise<Response> {
-  return handleResponses(new Request("http://localhost/v1/responses", {
-    method: "POST",
-    headers: { "content-type": "application/json", ...headers },
-    body: JSON.stringify({ model: "combo/free", input: "hello", stream: false, ...raw }),
-  }), config, { model: "", provider: "" }, options);
+  return handleResponses(
+    new Request("http://localhost/v1/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify({
+        model: "combo/free",
+        input: "hello",
+        stream: false,
+        ...raw,
+      }),
+    }),
+    config,
+    { model: "", provider: "" },
+    options,
+  );
 }
 
 let loggedRequestSequence = 0;
@@ -248,11 +314,21 @@ async function postLogged(
 ): Promise<Response> {
   const logCtx: RequestLogContext = { model: "", provider: "" };
   const start = Date.now();
-  const response = await handleResponses(new Request("http://localhost/v1/responses", {
-    method: "POST",
-    headers: { "content-type": "application/json", ...headers },
-    body: JSON.stringify({ model: "combo/free", input: "hello", stream: false, ...raw }),
-  }), config, logCtx, options);
+  const response = await handleResponses(
+    new Request("http://localhost/v1/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify({
+        model: "combo/free",
+        input: "hello",
+        stream: false,
+        ...raw,
+      }),
+    }),
+    config,
+    logCtx,
+    options,
+  );
   loggedRequestSequence += 1;
   return responseWithDeferredRequestLog(
     response,
@@ -271,11 +347,16 @@ async function postModelLogged(
 ): Promise<Response> {
   const logCtx: RequestLogContext = { model: "", provider: "" };
   const start = Date.now();
-  const response = await handleResponses(new Request("http://localhost/v1/responses", {
-    method: "POST",
-    headers: { "content-type": "application/json", ...headers },
-    body: JSON.stringify({ model, input: "hello", stream: false, ...raw }),
-  }), config, logCtx, options);
+  const response = await handleResponses(
+    new Request("http://localhost/v1/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify({ model, input: "hello", stream: false, ...raw }),
+    }),
+    config,
+    logCtx,
+    options,
+  );
   loggedRequestSequence += 1;
   return responseWithDeferredRequestLog(
     response,
@@ -287,7 +368,7 @@ async function postModelLogged(
 
 async function latestAttemptReceipts(config: OcxConfig) {
   const response = await management(config, "GET", "/api/logs?tail=1");
-  const logs = await response!.json() as Array<Record<string, unknown>>;
+  const logs = (await response!.json()) as Array<Record<string, unknown>>;
   const usage = readUsageEntries();
   return { log: logs[0]!, usage: usage.at(-1)! };
 }
@@ -303,7 +384,7 @@ async function expectCancelledAttemptReceipt(
       model: "combo/free",
       attempts: [{ ...expected, status: 499 }],
     });
-    expect((receipt.attempts as unknown[])).toHaveLength(1);
+    expect(receipt.attempts as unknown[]).toHaveLength(1);
   }
 }
 
@@ -314,7 +395,7 @@ interface SseFrame {
 
 async function collectSse(response: Response): Promise<SseFrame[]> {
   const text = await response.text();
-  return text.split("\n\n").flatMap(block => {
+  return text.split("\n\n").flatMap((block) => {
     if (!block.trim()) return [];
     let event: string | undefined;
     let data = "";
@@ -324,7 +405,12 @@ async function collectSse(response: Response): Promise<SseFrame[]> {
     }
     if (!data || data === "[DONE]") return [];
     try {
-      return [{ ...(event ? { event } : {}), data: JSON.parse(data) as Record<string, unknown> }];
+      return [
+        {
+          ...(event ? { event } : {}),
+          data: JSON.parse(data) as Record<string, unknown>,
+        },
+      ];
     } catch {
       return [];
     }
@@ -339,7 +425,8 @@ async function management(
 ): Promise<Response | null> {
   const request = new Request(`http://localhost${path}`, {
     method,
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    headers:
+      body === undefined ? undefined : { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   return handleManagementAPI(request, new URL(request.url), config, {
@@ -349,7 +436,9 @@ async function management(
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void;
-  const promise = new Promise<void>(done => { resolve = done; });
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
   return { promise, resolve };
 }
 
@@ -359,7 +448,10 @@ async function within<T>(promise: Promise<T>, ms = 2_000): Promise<T> {
     return await Promise.race([
       promise,
       new Promise<T>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
+        timer = setTimeout(
+          () => reject(new Error(`timed out after ${ms}ms`)),
+          ms,
+        );
       }),
     ]);
   } finally {
@@ -370,14 +462,19 @@ async function within<T>(promise: Promise<T>, ms = 2_000): Promise<T> {
 describe("server combo failover 030 activation matrix", () => {
   test("ordinary openai-chat 503 hops to backup for non-stream and stream", async () => {
     const hits: string[] = [];
-    const a = serve(async request => {
-      hits.push(`a:${(await request.json() as { stream?: boolean }).stream}`);
-      return Response.json({ error: { message: "overloaded" } }, { status: 503 });
+    const a = serve(async (request) => {
+      hits.push(`a:${((await request.json()) as { stream?: boolean }).stream}`);
+      return Response.json(
+        { error: { message: "overloaded" } },
+        { status: 503 },
+      );
     });
-    const b = serve(async request => {
-      const body = await request.json() as { stream?: boolean };
+    const b = serve(async (request) => {
+      const body = (await request.json()) as { stream?: boolean };
       hits.push(`b:${body.stream}`);
-      return body.stream ? chatStream("stream backup") : chatSuccess("json backup", "m2");
+      return body.stream
+        ? chatStream("stream backup")
+        : chatSuccess("json backup", "m2");
     });
     const config = comboConfig({
       a: provider("openai-chat", baseUrl(a), "key-a"),
@@ -391,15 +488,22 @@ describe("server combo failover 030 activation matrix", () => {
     clearComboSelectionState();
     const streaming = await post(config, { stream: true });
     expect(streaming.status).toBe(200);
-    expect(JSON.stringify(await collectSse(streaming))).toContain("stream backup");
+    expect(JSON.stringify(await collectSse(streaming))).toContain(
+      "stream backup",
+    );
     expect(hits).toEqual(["a:false", "b:false", "a:true", "b:true"]);
   });
 
   test("persists one logical A503 to B200 request with ordered physical usage", async () => {
-    const a = serve(() => Response.json({
-      error: { message: "overloaded" },
-      usage: { input_tokens: 7, output_tokens: 1, total_tokens: 8 },
-    }, { status: 503 }));
+    const a = serve(() =>
+      Response.json(
+        {
+          error: { message: "overloaded" },
+          usage: { input_tokens: 7, output_tokens: 1, total_tokens: 8 },
+        },
+        { status: 503 },
+      ),
+    );
     const b = serve(() => chatSuccess("logged backup", "m2"));
     const config = comboConfig({
       a: provider("openai-chat", baseUrl(a), "key-a"),
@@ -417,8 +521,20 @@ describe("server combo failover 030 activation matrix", () => {
         requestedModel: "combo/free",
         resolvedModel: "m2",
         attempts: [
-          { ordinal: 1, provider: "a", model: "m1", status: 503, usage: { inputTokens: 7, outputTokens: 1 } },
-          { ordinal: 2, provider: "b", model: "m2", status: 200, usage: { inputTokens: 2, outputTokens: 1 } },
+          {
+            ordinal: 1,
+            provider: "a",
+            model: "m1",
+            status: 503,
+            usage: { inputTokens: 7, outputTokens: 1 },
+          },
+          {
+            ordinal: 2,
+            provider: "b",
+            model: "m2",
+            status: 200,
+            usage: { inputTokens: 2, outputTokens: 1 },
+          },
         ],
       });
     }
@@ -426,13 +542,16 @@ describe("server combo failover 030 activation matrix", () => {
 
   test("preserves distinct failed and winning reasoning wires through restart hydration", async () => {
     const bodies: Array<{ provider: string; effort?: unknown }> = [];
-    const a = serve(async request => {
-      const body = await request.json() as Record<string, unknown>;
+    const a = serve(async (request) => {
+      const body = (await request.json()) as Record<string, unknown>;
       bodies.push({ provider: "a", effort: body.reasoning_effort });
-      return Response.json({ error: { message: "overloaded" } }, { status: 503 });
+      return Response.json(
+        { error: { message: "overloaded" } },
+        { status: 503 },
+      );
     });
-    const b = serve(async request => {
-      const body = await request.json() as Record<string, unknown>;
+    const b = serve(async (request) => {
+      const body = (await request.json()) as Record<string, unknown>;
       bodies.push({ provider: "b", effort: body.reasoning_effort });
       return chatSuccess("mapped backup", "m2");
     });
@@ -493,15 +612,28 @@ describe("server combo failover 030 activation matrix", () => {
 
     clearRequestLogsForTests();
     expect(hydrateRequestLogsFromDisk()).toBe(1);
-    const hydratedResponse = await management(config, "GET", "/api/logs?tail=1");
-    const hydrated = await hydratedResponse!.json() as Array<Record<string, unknown>>;
+    const hydratedResponse = await management(
+      config,
+      "GET",
+      "/api/logs?tail=1",
+    );
+    const hydrated = (await hydratedResponse!.json()) as Array<
+      Record<string, unknown>
+    >;
     expect(hydrated).toHaveLength(1);
     expectMappedReceipt(hydrated[0]!);
   });
 
   test("all-target exhaustion promotes the final attempt reasoning wire to the logical row", async () => {
-    const a = serve(() => Response.json({ error: { message: "first overloaded" } }, { status: 503 }));
-    const b = serve(() => Response.json({ error: { message: "last overloaded" } }, { status: 503 }));
+    const a = serve(() =>
+      Response.json(
+        { error: { message: "first overloaded" } },
+        { status: 503 },
+      ),
+    );
+    const b = serve(() =>
+      Response.json({ error: { message: "last overloaded" } }, { status: 503 }),
+    );
     const config = comboConfig({
       a: provider("openai-chat", baseUrl(a), "key-a", {
         reasoningEfforts: ["low", "high"],
@@ -527,8 +659,18 @@ describe("server combo failover 030 activation matrix", () => {
         reasoningWireField: "reasoning_effort",
         reasoningWireValue: "high",
         attempts: [
-          { provider: "a", status: 503, effectiveEffort: "low", reasoningWireValue: "low" },
-          { provider: "b", status: 503, effectiveEffort: "high", reasoningWireValue: "high" },
+          {
+            provider: "a",
+            status: 503,
+            effectiveEffort: "low",
+            reasoningWireValue: "low",
+          },
+          {
+            provider: "b",
+            status: 503,
+            effectiveEffort: "high",
+            reasoningWireValue: "high",
+          },
         ],
       });
     }
@@ -536,20 +678,27 @@ describe("server combo failover 030 activation matrix", () => {
 
   test("bare alias runs full failover and preserves structural combo log identity", async () => {
     const targetBodies: Array<{ provider: string; model?: unknown }> = [];
-    const a = serve(async request => {
-      const body = await request.json() as { model?: unknown };
+    const a = serve(async (request) => {
+      const body = (await request.json()) as { model?: unknown };
       targetBodies.push({ provider: "a", model: body.model });
-      return Response.json({ error: { message: "overloaded" } }, { status: 503 });
+      return Response.json(
+        { error: { message: "overloaded" } },
+        { status: 503 },
+      );
     });
-    const b = serve(async request => {
-      const body = await request.json() as { model?: unknown };
+    const b = serve(async (request) => {
+      const body = (await request.json()) as { model?: unknown };
       targetBodies.push({ provider: "b", model: body.model });
       return chatSuccess("alias backup", "m2");
     });
-    const config = comboConfig({
-      a: provider("openai-chat", baseUrl(a), "key-a"),
-      b: provider("openai-chat", baseUrl(b), "key-b"),
-    }, undefined, { alias: "deepseek-v4-flash" });
+    const config = comboConfig(
+      {
+        a: provider("openai-chat", baseUrl(a), "key-a"),
+        b: provider("openai-chat", baseUrl(b), "key-b"),
+      },
+      undefined,
+      { alias: "deepseek-v4-flash" },
+    );
     const response = await postLogged(config, { model: "deepseek-v4-flash" });
     expect(response.status).toBe(200);
     expect(await response.text()).toContain("alias backup");
@@ -578,76 +727,108 @@ describe("server combo failover 030 activation matrix", () => {
       targets: [{ provider: "deepseek", model: "deepseek-chat" }],
       alias: selector,
     };
-    const config = comboConfig({
-      deepseek: provider("openai-chat", "http://127.0.0.1:1/v1", "key-deepseek", {
-        liveModels: false,
-        models: ["deepseek-chat"],
-        modelContextWindows: { "deepseek-chat": 128_000 },
-      }),
-    }, combo.targets, { alias: combo.alias });
+    const config = comboConfig(
+      {
+        deepseek: provider(
+          "openai-chat",
+          "http://127.0.0.1:1/v1",
+          "key-deepseek",
+          {
+            liveModels: false,
+            models: ["deepseek-chat"],
+            modelContextWindows: { "deepseek-chat": 128_000 },
+          },
+        ),
+      },
+      combo.targets,
+      { alias: combo.alias },
+    );
     saveConfig(config);
     const server = startServer(0);
     try {
       const publicRows = async () => {
         const response = await fetch(new URL("/v1/models", server.url));
         expect(response.status).toBe(200);
-        const payload = await response.json() as {
+        const payload = (await response.json()) as {
           data: Array<{ id: string; owned_by: string }>;
         };
         return payload.data;
       };
-      const updateAlias = async (alias: string) => fetch(new URL("/api/combos", server.url), {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: "free", combo: { ...combo, alias } }),
-      });
+      const updateAlias = async (alias: string) =>
+        fetch(new URL("/api/combos", server.url), {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: "free", combo: { ...combo, alias } }),
+        });
 
-      expect((await publicRows()).filter(model => model.id === selector)).toEqual([
+      expect(
+        (await publicRows()).filter((model) => model.id === selector),
+      ).toEqual([
         { id: selector, object: "model", created: 0, owned_by: "combo" },
       ]);
 
       const renamed = await updateAlias("fast-chat");
       expect(renamed.status).toBe(200);
       const renamedRows = await publicRows();
-      expect(renamedRows.filter(model => model.id === selector)).toEqual([
+      expect(renamedRows.filter((model) => model.id === selector)).toEqual([
         { id: selector, object: "model", created: 0, owned_by: "deepseek" },
       ]);
-      expect(renamedRows.filter(model => model.id === "fast-chat")).toEqual([
+      expect(renamedRows.filter((model) => model.id === "fast-chat")).toEqual([
         { id: "fast-chat", object: "model", created: 0, owned_by: "combo" },
       ]);
 
       const restored = await updateAlias(selector);
       expect(restored.status).toBe(200);
-      const deleted = await fetch(new URL("/api/combos?id=free", server.url), { method: "DELETE" });
+      const deleted = await fetch(new URL("/api/combos?id=free", server.url), {
+        method: "DELETE",
+      });
       expect(deleted.status).toBe(200);
       const deletedRows = await publicRows();
-      expect(deletedRows.filter(model => model.id === selector)).toEqual([
+      expect(deletedRows.filter((model) => model.id === selector)).toEqual([
         { id: selector, object: "model", created: 0, owned_by: "deepseek" },
       ]);
-      expect(deletedRows.some(model => model.owned_by === "combo")).toBe(false);
+      expect(deletedRows.some((model) => model.owned_by === "combo")).toBe(
+        false,
+      );
     } finally {
       await server.stop(true);
     }
   }, 60_000);
 
   test("ordinary /v1/models preserves raw nested selectors while an exact combo alias wins", async () => {
-    const config = comboConfig({
-      a: provider("openai-chat", "http://127.0.0.1:1/v1", "key-a", {
-        liveModels: false,
-        models: ["vendor/model", "vendor-model"],
-        modelContextWindows: { "vendor/model": 128_000, "vendor-model": 128_000 },
-      }),
-    }, [{ provider: "a", model: "vendor/model" }], { alias: "a/vendor-model" });
+    const config = comboConfig(
+      {
+        a: provider("openai-chat", "http://127.0.0.1:1/v1", "key-a", {
+          liveModels: false,
+          models: ["vendor/model", "vendor-model"],
+          modelContextWindows: {
+            "vendor/model": 128_000,
+            "vendor-model": 128_000,
+          },
+        }),
+      },
+      [{ provider: "a", model: "vendor/model" }],
+      { alias: "a/vendor-model" },
+    );
     saveConfig(config);
     const server = startServer(0);
     try {
       const response = await fetch(new URL("/v1/models", server.url));
       expect(response.status).toBe(200);
-      const payload = await response.json() as {
+      const payload = (await response.json()) as {
         data: Array<{ id: string; owned_by: string }>;
       };
-      expect(payload.data.filter(model => model.id.startsWith("a/vendor")).sort((a, b) => a.id.localeCompare(b.id))).toEqual([
-        { id: "a/vendor-model", object: "model", created: 0, owned_by: "combo" },
+      expect(
+        payload.data
+          .filter((model) => model.id.startsWith("a/vendor"))
+          .sort((a, b) => a.id.localeCompare(b.id)),
+      ).toEqual([
+        {
+          id: "a/vendor-model",
+          object: "model",
+          created: 0,
+          owned_by: "combo",
+        },
         { id: "a/vendor/model", object: "model", created: 0, owned_by: "a" },
       ]);
     } finally {
@@ -660,8 +841,11 @@ describe("server combo failover 030 activation matrix", () => {
     // the successful B attempt's own TTFT (attempt-relative) — WP4 separation.
     const A_DELAY_MS = 120;
     const a = serve(async () => {
-      await new Promise(resolve => setTimeout(resolve, A_DELAY_MS));
-      return Response.json({ error: { message: "overloaded" } }, { status: 503 });
+      await new Promise((resolve) => setTimeout(resolve, A_DELAY_MS));
+      return Response.json(
+        { error: { message: "overloaded" } },
+        { status: 503 },
+      );
     });
     const b = serve(() => chatStream("ttft backup"));
     const config = comboConfig({
@@ -689,7 +873,9 @@ describe("server combo failover 030 activation matrix", () => {
   });
 
   test("non-streaming failover leaves firstOutputMs unset", async () => {
-    const a = serve(() => Response.json({ error: { message: "overloaded" } }, { status: 503 }));
+    const a = serve(() =>
+      Response.json({ error: { message: "overloaded" } }, { status: 503 }),
+    );
     const b = serve(() => chatSuccess("json backup", "m2"));
     const config = comboConfig({
       a: provider("openai-chat", baseUrl(a), "key-a"),
@@ -702,26 +888,32 @@ describe("server combo failover 030 activation matrix", () => {
     for (const receipt of [log, usage]) {
       expect(receipt).not.toHaveProperty("firstOutputMs");
       const attempts = receipt.attempts as Array<Record<string, unknown>>;
-      for (const attempt of attempts) expect(attempt).not.toHaveProperty("firstOutputMs");
+      for (const attempt of attempts)
+        expect(attempt).not.toHaveProperty("firstOutputMs");
     }
   });
 
   test("seals a Codex pool child to its safe account label and final wire adapter", async () => {
     const rawAccountId = "raw-pool-account-id";
-    const config = comboConfig({
-      openai: {
-        adapter: "openai-responses",
-        baseUrl: "https://chatgpt.com/backend-api/codex",
-        authMode: "forward",
-        codexAccountMode: "pool",
+    const config = comboConfig(
+      {
+        openai: {
+          adapter: "openai-responses",
+          baseUrl: "https://chatgpt.com/backend-api/codex",
+          authMode: "forward",
+          codexAccountMode: "pool",
+        },
       },
-    }, [{ provider: "openai", model: "gpt-5.4" }]);
-    config.codexAccounts = [{
-      id: rawAccountId,
-      email: "pool@example.test",
-      isMain: false,
-      logLabel: "pabc123",
-    }];
+      [{ provider: "openai", model: "gpt-5.4" }],
+    );
+    config.codexAccounts = [
+      {
+        id: rawAccountId,
+        email: "pool@example.test",
+        isMain: false,
+        logLabel: "pabc123",
+      },
+    ];
     config.activeCodexAccountId = rawAccountId;
     config.autoSwitchThreshold = 0;
     saveCodexAccountCredential(rawAccountId, {
@@ -730,23 +922,30 @@ describe("server combo failover 030 activation matrix", () => {
       expiresAt: Date.now() + 300_000,
       chatgptAccountId: "acct-pool-safe",
     });
-    customTransientResponse = async () => Response.json(responsesSuccess("pool success", "gpt-5.4"));
+    customTransientResponse = async () =>
+      Response.json(responsesSuccess("pool success", "gpt-5.4"));
 
     const response = await postLogged(config);
     expect(response.status).toBe(200);
     await response.text();
 
-    const expectedProvider = formatCodexProviderForLog("openai", rawAccountId, config);
+    const expectedProvider = formatCodexProviderForLog(
+      "openai",
+      rawAccountId,
+      config,
+    );
     const { log, usage } = await latestAttemptReceipts(config);
     for (const receipt of [log, usage]) {
       expect(receipt).toMatchObject({
         provider: "combo",
         model: "combo/free",
-        attempts: [{
-          provider: expectedProvider,
-          adapter: "openai-responses",
-          status: 200,
-        }],
+        attempts: [
+          {
+            provider: expectedProvider,
+            adapter: "openai-responses",
+            status: 200,
+          },
+        ],
       });
       expect(JSON.stringify(receipt)).not.toContain(rawAccountId);
       expect(JSON.stringify(receipt)).not.toContain("acct-pool-safe");
@@ -755,23 +954,28 @@ describe("server combo failover 030 activation matrix", () => {
 
   test("lets a same-provider combo try its next model after a reset-derived 429", async () => {
     const rawAccountId = "combo-reset-account";
-    const config = comboConfig({
-      openai: {
-        adapter: "openai-responses",
-        baseUrl: "https://chatgpt.com/backend-api/codex",
-        authMode: "forward",
-        codexAccountMode: "pool",
+    const config = comboConfig(
+      {
+        openai: {
+          adapter: "openai-responses",
+          baseUrl: "https://chatgpt.com/backend-api/codex",
+          authMode: "forward",
+          codexAccountMode: "pool",
+        },
       },
-    }, [
-      { provider: "openai", model: "gpt-5.3-codex-spark" },
-      { provider: "openai", model: "gpt-5.4" },
-    ]);
-    config.codexAccounts = [{
-      id: rawAccountId,
-      email: "combo-reset@example.test",
-      isMain: false,
-      logLabel: "preset01",
-    }];
+      [
+        { provider: "openai", model: "gpt-5.3-codex-spark" },
+        { provider: "openai", model: "gpt-5.4" },
+      ],
+    );
+    config.codexAccounts = [
+      {
+        id: rawAccountId,
+        email: "combo-reset@example.test",
+        isMain: false,
+        logLabel: "preset01",
+      },
+    ];
     config.activeCodexAccountId = rawAccountId;
     config.autoSwitchThreshold = 0;
     saveCodexAccountCredential(rawAccountId, {
@@ -785,13 +989,24 @@ describe("server combo failover 030 activation matrix", () => {
       calls += 1;
       return calls === 1
         ? Response.json(
-          { error: { message: "spark quota window exhausted", type: "rate_limit_error" } },
-          {
-            status: 429,
-            headers: { "x-codex-primary-reset-at": String(Math.floor(Date.now() / 1000) + 3600) },
-          },
-        )
-        : Response.json(responsesSuccess("model fallback succeeded", "gpt-5.4"));
+            {
+              error: {
+                message: "spark quota window exhausted",
+                type: "rate_limit_error",
+              },
+            },
+            {
+              status: 429,
+              headers: {
+                "x-codex-primary-reset-at": String(
+                  Math.floor(Date.now() / 1000) + 3600,
+                ),
+              },
+            },
+          )
+        : Response.json(
+            responsesSuccess("model fallback succeeded", "gpt-5.4"),
+          );
     };
 
     const response = await postLogged(config);
@@ -803,23 +1018,28 @@ describe("server combo failover 030 activation matrix", () => {
 
   test("keeps explicit Retry-After account-wide during same-provider combo failover", async () => {
     const rawAccountId = "combo-retry-after-account";
-    const config = comboConfig({
-      openai: {
-        adapter: "openai-responses",
-        baseUrl: "https://chatgpt.com/backend-api/codex",
-        authMode: "forward",
-        codexAccountMode: "pool",
+    const config = comboConfig(
+      {
+        openai: {
+          adapter: "openai-responses",
+          baseUrl: "https://chatgpt.com/backend-api/codex",
+          authMode: "forward",
+          codexAccountMode: "pool",
+        },
       },
-    }, [
-      { provider: "openai", model: "gpt-5.3-codex-spark" },
-      { provider: "openai", model: "gpt-5.4" },
-    ]);
-    config.codexAccounts = [{
-      id: rawAccountId,
-      email: "combo-retry-after@example.test",
-      isMain: false,
-      logLabel: "pretry01",
-    }];
+      [
+        { provider: "openai", model: "gpt-5.3-codex-spark" },
+        { provider: "openai", model: "gpt-5.4" },
+      ],
+    );
+    config.codexAccounts = [
+      {
+        id: rawAccountId,
+        email: "combo-retry-after@example.test",
+        isMain: false,
+        logLabel: "pretry01",
+      },
+    ];
     config.activeCodexAccountId = rawAccountId;
     config.autoSwitchThreshold = 0;
     saveCodexAccountCredential(rawAccountId, {
@@ -833,44 +1053,55 @@ describe("server combo failover 030 activation matrix", () => {
       calls += 1;
       return calls === 1
         ? Response.json(
-          { error: { message: "retry later", type: "rate_limit_error" } },
-          {
-            status: 429,
-            headers: {
-              "retry-after": "120",
-              "x-codex-primary-reset-at": String(Math.floor(Date.now() / 1000) + 3600),
+            { error: { message: "retry later", type: "rate_limit_error" } },
+            {
+              status: 429,
+              headers: {
+                "retry-after": "120",
+                "x-codex-primary-reset-at": String(
+                  Math.floor(Date.now() / 1000) + 3600,
+                ),
+              },
             },
-          },
-        )
-        : Response.json(responsesSuccess("must not reach second upstream", "gpt-5.4"));
+          )
+        : Response.json(
+            responsesSuccess("must not reach second upstream", "gpt-5.4"),
+          );
     };
 
     const response = await postLogged(config);
     expect(response.status).toBe(429);
     await response.text();
     expect(calls).toBe(1);
-    expect(getCodexUpstreamHealth(rawAccountId)?.cooldownSource).toBe("retry-after");
+    expect(getCodexUpstreamHealth(rawAccountId)?.cooldownSource).toBe(
+      "retry-after",
+    );
   });
 
   test("Spark reset cooldown fails over to the shared native quota on the same account (#590)", async () => {
     const rawAccountId = "spark-scope-account";
-    const config = comboConfig({
-      openai: {
-        adapter: "openai-responses",
-        baseUrl: "https://chatgpt.com/backend-api/codex",
-        authMode: "forward",
-        codexAccountMode: "pool",
+    const config = comboConfig(
+      {
+        openai: {
+          adapter: "openai-responses",
+          baseUrl: "https://chatgpt.com/backend-api/codex",
+          authMode: "forward",
+          codexAccountMode: "pool",
+        },
       },
-    }, [
-      { provider: "openai", model: "gpt-5.3-codex-spark" },
-      { provider: "openai", model: "gpt-5.6-terra" },
-    ]);
-    config.codexAccounts = [{
-      id: rawAccountId,
-      email: "pool@example.test",
-      isMain: false,
-      logLabel: "pspark1",
-    }];
+      [
+        { provider: "openai", model: "gpt-5.3-codex-spark" },
+        { provider: "openai", model: "gpt-5.6-terra" },
+      ],
+    );
+    config.codexAccounts = [
+      {
+        id: rawAccountId,
+        email: "pool@example.test",
+        isMain: false,
+        logLabel: "pspark1",
+      },
+    ];
     config.activeCodexAccountId = rawAccountId;
     config.autoSwitchThreshold = 0;
     saveCodexAccountCredential(rawAccountId, {
@@ -885,10 +1116,13 @@ describe("server combo failover 030 activation matrix", () => {
     customTransientResponse = async () => {
       upstreamCalls += 1;
       if (upstreamCalls === 1) {
-        return Response.json({ error: { message: "Spark quota exhausted" } }, {
-          status: 429,
-          headers: { "x-codex-primary-reset-at": String(resetAt) },
-        });
+        return Response.json(
+          { error: { message: "Spark quota exhausted" } },
+          {
+            status: 429,
+            headers: { "x-codex-primary-reset-at": String(resetAt) },
+          },
+        );
       }
       return Response.json(responsesSuccess("Terra fallback", "gpt-5.6-terra"));
     };
@@ -900,9 +1134,10 @@ describe("server combo failover 030 activation matrix", () => {
   });
 
   test("keeps a failed estimate on A without overwriting B reported usage", async () => {
-    customUsageEstimate = model => model === "m1" ? 41 : undefined;
-    customFetchResponse = async request => {
-      const model = (JSON.parse(String(request.body)) as { model?: string }).model;
+    customUsageEstimate = (model) => (model === "m1" ? 41 : undefined);
+    customFetchResponse = async (request) => {
+      const model = (JSON.parse(String(request.body)) as { model?: string })
+        .model;
       return model === "m1"
         ? Response.json({ error: { message: "down" } }, { status: 503 })
         : chatSuccess("estimate backup", "m2");
@@ -915,32 +1150,54 @@ describe("server combo failover 030 activation matrix", () => {
     await response.text();
     const { usage } = await latestAttemptReceipts(config);
     expect(usage.attempts).toMatchObject([
-      { provider: "a", usageStatus: "estimated", inputTokenEstimate: 41, usage: { inputTokens: 41, outputTokens: 0, estimated: true } },
-      { provider: "b", usageStatus: "reported", usage: { inputTokens: 2, outputTokens: 1 } },
+      {
+        provider: "a",
+        usageStatus: "estimated",
+        inputTokenEstimate: 41,
+        usage: { inputTokens: 41, outputTokens: 0, estimated: true },
+      },
+      {
+        provider: "b",
+        usageStatus: "reported",
+        usage: { inputTokens: 2, outputTokens: 1 },
+      },
     ]);
   });
 
   test("captures ordinary failed usage from its original bounded body exactly once", async () => {
     let ordinaryReads = 0;
-    customFetchResponse = async () => new Response(new ReadableStream<Uint8Array>({
-      pull(controller) {
-        ordinaryReads += 1;
-        controller.enqueue(new TextEncoder().encode(JSON.stringify({
-          error: { message: "ordinary failed" },
-          usage: { input_tokens: 11, output_tokens: 2, total_tokens: 13 },
-        })));
-        controller.close();
-      },
-    }), { status: 503, headers: { "content-type": "application/json" } });
+    customFetchResponse = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            ordinaryReads += 1;
+            controller.enqueue(
+              new TextEncoder().encode(
+                JSON.stringify({
+                  error: { message: "ordinary failed" },
+                  usage: {
+                    input_tokens: 11,
+                    output_tokens: 2,
+                    total_tokens: 13,
+                  },
+                }),
+              ),
+            );
+            controller.close();
+          },
+        }),
+        { status: 503, headers: { "content-type": "application/json" } },
+      );
     const ordinaryConfig = comboConfig({
       a: provider("test-response", "https://test.invalid/v1", "key-a"),
     });
     const ordinary = await postLogged(ordinaryConfig);
-    const ordinaryBody = await ordinary.json() as Record<string, unknown>;
+    const ordinaryBody = (await ordinary.json()) as Record<string, unknown>;
     expect(ordinaryBody).not.toHaveProperty("usage");
     expect(ordinaryReads).toBe(1);
-    expect((await latestAttemptReceipts(ordinaryConfig)).usage.attempts?.[0]?.usage)
-      .toEqual({ inputTokens: 11, outputTokens: 2, totalTokens: 13 });
+    expect(
+      (await latestAttemptReceipts(ordinaryConfig)).usage.attempts?.[0]?.usage,
+    ).toEqual({ inputTokens: 11, outputTokens: 2, totalTokens: 13 });
   });
 
   test("captures passthrough failed usage from its original bounded body exactly once", async () => {
@@ -950,14 +1207,21 @@ describe("server combo failover 030 activation matrix", () => {
       passthroughResponses += 1;
       const body = new ReadableStream<Uint8Array>({
         start(controller) {
-        controller.enqueue(new TextEncoder().encode(JSON.stringify({
-          error: { message: "passthrough failed" },
-          usage: { input_tokens: 17, output_tokens: 3, total_tokens: 20 },
-        })));
-        controller.close();
+          controller.enqueue(
+            new TextEncoder().encode(
+              JSON.stringify({
+                error: { message: "passthrough failed" },
+                usage: { input_tokens: 17, output_tokens: 3, total_tokens: 20 },
+              }),
+            ),
+          );
+          controller.close();
         },
       });
-      const response = new Response(body, { status: 503, headers: { "content-type": "application/json" } });
+      const response = new Response(body, {
+        status: 503,
+        headers: { "content-type": "application/json" },
+      });
       Object.defineProperty(response, "body", {
         configurable: true,
         get() {
@@ -972,12 +1236,17 @@ describe("server combo failover 030 activation matrix", () => {
     });
     const passthrough = await postLogged(passthroughConfig);
     expect(passthrough.status).toBe(503);
-    const passthroughBody = await passthrough.json() as Record<string, unknown>;
+    const passthroughBody = (await passthrough.json()) as Record<
+      string,
+      unknown
+    >;
     expect(passthroughBody).not.toHaveProperty("usage");
     expect(passthroughResponses).toBe(1);
     expect(passthroughReads).toBe(1);
-    expect((await latestAttemptReceipts(passthroughConfig)).usage.attempts?.[0]?.usage)
-      .toEqual({ inputTokens: 17, outputTokens: 3, totalTokens: 20 });
+    expect(
+      (await latestAttemptReceipts(passthroughConfig)).usage.attempts?.[0]
+        ?.usage,
+    ).toEqual({ inputTokens: 17, outputTokens: 3, totalTokens: 20 });
   });
 
   test("provider-local retry keeps one attempt, two sends, recovery kind, and latest estimate", async () => {
@@ -995,7 +1264,9 @@ describe("server combo failover 030 activation matrix", () => {
       { id: "k2", key: "key-beta-444555666777", addedAt: 2 },
     ];
     const config = comboConfig({
-      a: provider("test-response", "https://test.invalid/v1", pool[0]!.key, { apiKeyPool: pool }),
+      a: provider("test-response", "https://test.invalid/v1", pool[0]!.key, {
+        apiKeyPool: pool,
+      }),
     });
     const response = await postLogged(config);
     expect(response.status).toBe(200);
@@ -1031,7 +1302,10 @@ describe("server combo failover 030 activation matrix", () => {
     const hits: string[] = [];
     const a = serve(() => {
       hits.push("azure");
-      return Response.json({ error: { message: "permission denied" } }, { status: 403 });
+      return Response.json(
+        { error: { message: "permission denied" } },
+        { status: 403 },
+      );
     });
     const b = serve(() => {
       hits.push("chat");
@@ -1047,11 +1321,13 @@ describe("server combo failover 030 activation matrix", () => {
   });
 
   test("cross-adapter chat 503 to Responses 200 returns the exact backup response", async () => {
-    const a = serve(() => Response.json({ error: { message: "down" } }, { status: 503 }));
+    const a = serve(() =>
+      Response.json({ error: { message: "down" } }, { status: 503 }),
+    );
     const exact = responsesSuccess("raw backup", "m2");
     let bBody: Record<string, unknown> | undefined;
-    const b = serve(async request => {
-      bBody = await request.json() as Record<string, unknown>;
+    const b = serve(async (request) => {
+      bBody = (await request.json()) as Record<string, unknown>;
       return Response.json(exact);
     });
     const config = comboConfig({
@@ -1071,12 +1347,18 @@ describe("server combo failover 030 activation matrix", () => {
       return chatStream("cursor backup");
     });
     const config = comboConfig({
-      a: { adapter: "cursor", baseUrl: "https://api2.cursor.sh", models: ["m1"] },
+      a: {
+        adapter: "cursor",
+        baseUrl: "https://api2.cursor.sh",
+        models: ["m1"],
+      },
       b: provider("openai-chat", baseUrl(b), "key-b"),
     });
     const response = await post(config, { stream: true });
     expect(response.status).toBe(200);
-    expect(JSON.stringify(await collectSse(response))).toContain("cursor backup");
+    expect(JSON.stringify(await collectSse(response))).toContain(
+      "cursor backup",
+    );
     expect(bHits).toBe(1);
   });
 
@@ -1108,7 +1390,9 @@ describe("server combo failover 030 activation matrix", () => {
           { ordinal: 2, provider: "b", requestedEffort: "high" },
         ],
       });
-      for (const attempt of receipt.attempts as Array<Record<string, unknown>>) {
+      for (const attempt of receipt.attempts as Array<
+        Record<string, unknown>
+      >) {
         expect(attempt).not.toHaveProperty("effectiveEffort");
         expect(attempt).not.toHaveProperty("reasoningWireField");
         expect(attempt).not.toHaveProperty("reasoningWireValue");
@@ -1118,47 +1402,74 @@ describe("server combo failover 030 activation matrix", () => {
 
   test("hosted web-search eager model failure hops through the loop path", async () => {
     const modelHits: Array<{ model?: string; hasWebTool: boolean }> = [];
-    const routed = serve(async request => {
-      const body = await request.json() as { model?: string; tools?: Array<{ type?: string }> };
+    const routed = serve(async (request) => {
+      const body = (await request.json()) as {
+        model?: string;
+        tools?: Array<{ type?: string }>;
+      };
       modelHits.push({
         model: body.model,
-        hasWebTool: body.tools?.some(tool => tool.type === "function") ?? false,
+        hasWebTool:
+          body.tools?.some((tool) => tool.type === "function") ?? false,
       });
       if (body.model === "m1") {
-        return Response.json({ error: { message: "loop unavailable" } }, { status: 503 });
+        return Response.json(
+          { error: { message: "loop unavailable" } },
+          { status: 503 },
+        );
       }
       return chatStream("web loop backup");
     });
-    const config = comboConfig({
-      a: provider("openai-chat", baseUrl(routed), "key-a"),
-      b: provider("openai-chat", baseUrl(routed), "key-b"),
-      openai: {
-        adapter: "openai-responses",
-        baseUrl: "https://chatgpt.com/backend-api/codex",
-        authMode: "forward",
-        codexAccountMode: "direct",
+    const config = comboConfig(
+      {
+        a: provider("openai-chat", baseUrl(routed), "key-a"),
+        b: provider("openai-chat", baseUrl(routed), "key-b"),
+        openai: {
+          adapter: "openai-responses",
+          baseUrl: "https://chatgpt.com/backend-api/codex",
+          authMode: "forward",
+          codexAccountMode: "direct",
+        },
       },
-    }, [
-      { provider: "a", model: "m1" },
-      { provider: "b", model: "m2" },
-    ]);
+      [
+        { provider: "a", model: "m1" },
+        { provider: "b", model: "m2" },
+      ],
+    );
     config.webSearchSidecar = { enabled: true, backend: "openai" };
-    const response = await post(config, {
-      stream: true,
-      tools: [{ type: "web_search" }],
-    }, {}, {
-      authorization: `Bearer ${fakeChatGptJwt({ chatgpt_account_id: "acct-combo-search" })}`,
-      "chatgpt-account-id": "acct-combo-search",
-    });
+    const response = await post(
+      config,
+      {
+        stream: true,
+        tools: [{ type: "web_search" }],
+      },
+      {},
+      {
+        authorization: `Bearer ${fakeChatGptJwt({ chatgpt_account_id: "acct-combo-search" })}`,
+        "chatgpt-account-id": "acct-combo-search",
+      },
+    );
     expect(response.status).toBe(200);
-    expect(JSON.stringify(await collectSse(response))).toContain("web loop backup");
-    expect(modelHits.map(hit => hit.model)).toEqual(["m1", "m2"]);
-    expect(modelHits.every(hit => hit.hasWebTool)).toBe(true);
+    expect(JSON.stringify(await collectSse(response))).toContain(
+      "web loop backup",
+    );
+    expect(modelHits.map((hit) => hit.model)).toEqual(["m1", "m2"]);
+    expect(modelHits.every((hit) => hit.hasWebTool)).toBe(true);
   });
 
   test("context 400 stops while exhausted retryable targets return the sanitized last status", async () => {
     let stopBackupHits = 0;
-    const context = serve(() => Response.json({ error: { code: "context_length_exceeded", message: "too many tokens" } }, { status: 400 }));
+    const context = serve(() =>
+      Response.json(
+        {
+          error: {
+            code: "context_length_exceeded",
+            message: "too many tokens",
+          },
+        },
+        { status: 400 },
+      ),
+    );
     const unused = serve(() => {
       stopBackupHits += 1;
       return chatSuccess("must not run");
@@ -1178,12 +1489,17 @@ describe("server combo failover 030 activation matrix", () => {
     });
     const last = serve(() => {
       order.push("b");
-      return Response.json({ error: { message: "missing model" } }, { status: 404 });
+      return Response.json(
+        { error: { message: "missing model" } },
+        { status: 404 },
+      );
     });
-    const exhausted = await post(comboConfig({
-      a: provider("openai-chat", baseUrl(first), "key-a"),
-      b: provider("openai-chat", baseUrl(last), "key-b"),
-    }));
+    const exhausted = await post(
+      comboConfig({
+        a: provider("openai-chat", baseUrl(first), "key-a"),
+        b: provider("openai-chat", baseUrl(last), "key-b"),
+      }),
+    );
     expect(exhausted.status).toBe(404);
     expect(order).toEqual(["a", "b"]);
     expect(await exhausted.text()).not.toContain("sk-a-should-redact");
@@ -1198,10 +1514,13 @@ describe("server combo failover 030 activation matrix", () => {
     const a = serve(() => {
       aHits += 1;
       if (aHits === 1) {
-        return Response.json({ error: { message: "rate limited" } }, {
-          status: 429,
-          headers: { "retry-after": "120" },
-        });
+        return Response.json(
+          { error: { message: "rate limited" } },
+          {
+            status: 429,
+            headers: { "retry-after": "120" },
+          },
+        );
       }
       return chatSuccess("a recovered", "m1");
     });
@@ -1224,32 +1543,48 @@ describe("server combo failover 030 activation matrix", () => {
   });
 
   test("fresh child reparsing recomputes vision and effort per target", async () => {
-    const bodies: Array<{ provider: string; body: Record<string, unknown> }> = [];
-    const a = serve(async request => {
-      bodies.push({ provider: "a", body: await request.json() as Record<string, unknown> });
+    const bodies: Array<{ provider: string; body: Record<string, unknown> }> =
+      [];
+    const a = serve(async (request) => {
+      bodies.push({
+        provider: "a",
+        body: (await request.json()) as Record<string, unknown>,
+      });
       return Response.json({ error: { message: "retry" } }, { status: 503 });
     });
-    const b = serve(async request => {
-      bodies.push({ provider: "b", body: await request.json() as Record<string, unknown> });
+    const b = serve(async (request) => {
+      bodies.push({
+        provider: "b",
+        body: (await request.json()) as Record<string, unknown>,
+      });
       return chatSuccess("vision backup", "m2");
     });
-    const config = comboConfig({
-      a: provider("openai-chat", baseUrl(a), "key-a", {
-        noVisionModels: ["m1"],
-        reasoningEfforts: ["low"],
-      }),
-      b: provider("openai-chat", baseUrl(b), "key-b", {
-        reasoningEfforts: ["low", "high"],
-      }),
-    }, undefined, { defaultEffort: "high" });
+    const config = comboConfig(
+      {
+        a: provider("openai-chat", baseUrl(a), "key-a", {
+          noVisionModels: ["m1"],
+          reasoningEfforts: ["low"],
+        }),
+        b: provider("openai-chat", baseUrl(b), "key-b", {
+          reasoningEfforts: ["low", "high"],
+        }),
+      },
+      undefined,
+      { defaultEffort: "high" },
+    );
     const response = await post(config, {
-      input: [{
-        role: "user",
-        content: [
-          { type: "input_text", text: "inspect" },
-          { type: "input_image", image_url: "data:image/png;base64,aGVsbG8=" },
-        ],
-      }],
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: "inspect" },
+            {
+              type: "input_image",
+              image_url: "data:image/png;base64,aGVsbG8=",
+            },
+          ],
+        },
+      ],
     });
     expect(response.status).toBe(200);
     expect(JSON.stringify(bodies[0]!.body)).not.toContain("data:image/png");
@@ -1262,27 +1597,38 @@ describe("server combo failover 030 activation matrix", () => {
     bodies.length = 0;
     const owned = await post(config, { reasoning: { effort: "low" } });
     expect(owned.status).toBe(200);
-    expect(bodies.map(row => row.body.reasoning_effort)).toEqual(["low", "low"]);
+    expect(bodies.map((row) => row.body.reasoning_effort)).toEqual([
+      "low",
+      "low",
+    ]);
   });
 
   test("backup noReasoningModels removes the fresh combo default", async () => {
-    const a = serve(() => Response.json({ error: { message: "retry" } }, { status: 503 }));
+    const a = serve(() =>
+      Response.json({ error: { message: "retry" } }, { status: 503 }),
+    );
     let backupBody: Record<string, unknown> | undefined;
-    const b = serve(async request => {
-      backupBody = await request.json() as Record<string, unknown>;
+    const b = serve(async (request) => {
+      backupBody = (await request.json()) as Record<string, unknown>;
       return chatSuccess("no reasoning", "m2");
     });
-    const config = comboConfig({
-      a: provider("openai-chat", baseUrl(a), "key-a"),
-      b: provider("openai-chat", baseUrl(b), "key-b", { noReasoningModels: ["m2"] }),
-    }, undefined, { defaultEffort: "high" });
+    const config = comboConfig(
+      {
+        a: provider("openai-chat", baseUrl(a), "key-a"),
+        b: provider("openai-chat", baseUrl(b), "key-b", {
+          noReasoningModels: ["m2"],
+        }),
+      },
+      undefined,
+      { defaultEffort: "high" },
+    );
     expect((await post(config)).status).toBe(200);
     expect(backupBody).not.toHaveProperty("reasoning_effort");
   });
 
   test("bare third-party defaultModel keeps max off the native clamp path", async () => {
     const seen: Array<Record<string, unknown>> = [];
-    customFetchResponse = async request => {
+    customFetchResponse = async (request) => {
       const body = JSON.parse(String(request.body)) as Record<string, unknown>;
       seen.push(body);
       return chatSuccess("ok", String(body.model ?? "glm-5.2-fast-preview"));
@@ -1293,12 +1639,16 @@ describe("server combo failover 030 activation matrix", () => {
       providers: {
         bailian: provider("test-response", "https://test.invalid/v1", "key-b", {
           defaultModel: "glm-5.2-fast-preview",
-          modelReasoningEfforts: { "glm-5.2-fast-preview": ["low", "medium", "high", "xhigh", "max"] },
+          modelReasoningEfforts: {
+            "glm-5.2-fast-preview": ["low", "medium", "high", "xhigh", "max"],
+          },
         }),
       },
     };
 
-    const bare = await postModelLogged(config, "glm-5.2-fast-preview", { reasoning: { effort: "max" } });
+    const bare = await postModelLogged(config, "glm-5.2-fast-preview", {
+      reasoning: { effort: "max" },
+    });
     expect(bare.status).toBe(200);
     await bare.text();
     expect(seen[0]!.reasoning_effort).toBe("max");
@@ -1317,7 +1667,11 @@ describe("server combo failover 030 activation matrix", () => {
     });
 
     seen.length = 0;
-    const prefixed = await postModelLogged(config, "bailian/glm-5.2-fast-preview", { reasoning: { effort: "max" } });
+    const prefixed = await postModelLogged(
+      config,
+      "bailian/glm-5.2-fast-preview",
+      { reasoning: { effort: "max" } },
+    );
     expect(prefixed.status).toBe(200);
     await prefixed.text();
     expect(seen[0]!.reasoning_effort).toBe("max");
@@ -1350,11 +1704,18 @@ describe("server combo failover 030 activation matrix", () => {
     globalThis.fetch = (async (input, init) => {
       const url = input instanceof Request ? input.url : String(input);
       if (url === XAI_OAUTH_DISCOVERY_URL) {
-        return Response.json({ authorization_endpoint: "https://auth.x.ai/oauth/authorize", token_endpoint: TOKEN_ENDPOINT });
+        return Response.json({
+          authorization_endpoint: "https://auth.x.ai/oauth/authorize",
+          token_endpoint: TOKEN_ENDPOINT,
+        });
       }
       if (url === TOKEN_ENDPOINT) {
         refreshHits += 1;
-        return Response.json({ access_token: "xai-fresh", refresh_token: "xai-refresh-2", expires_in: 3600 });
+        return Response.json({
+          access_token: "xai-fresh",
+          refresh_token: "xai-refresh-2",
+          expires_in: 3600,
+        });
       }
       if (url === XAI_CHAT_ENDPOINT) {
         const bearer = new Headers(init?.headers).get("authorization") ?? "";
@@ -1369,10 +1730,20 @@ describe("server combo failover 030 activation matrix", () => {
       backupHits += 1;
       return chatSuccess("unused");
     });
-    const config = comboConfig({
-      xai: { adapter: "openai-chat", baseUrl: "https://api.x.ai/v1", authMode: "oauth" },
-      b: provider("openai-chat", baseUrl(backup), "key-b"),
-    }, [{ provider: "xai", model: "grok" }, { provider: "b", model: "m2" }]);
+    const config = comboConfig(
+      {
+        xai: {
+          adapter: "openai-chat",
+          baseUrl: "https://api.x.ai/v1",
+          authMode: "oauth",
+        },
+        b: provider("openai-chat", baseUrl(backup), "key-b"),
+      },
+      [
+        { provider: "xai", model: "grok" },
+        { provider: "b", model: "m2" },
+      ],
+    );
     expect((await post(config)).status).toBe(200);
     expect(refreshHits).toBe(1);
     expect(auth).toEqual(["Bearer xai-old", "Bearer xai-fresh"]);
@@ -1399,28 +1770,48 @@ describe("server combo failover 030 activation matrix", () => {
         captured.add(JSON.stringify([...headers.entries()]));
         if (typeof init?.body === "string") captured.add(init.body);
         if (url === XAI_OAUTH_DISCOVERY_URL) {
-          return Response.json({ authorization_endpoint: "https://auth.x.ai/oauth/authorize", token_endpoint: TOKEN_ENDPOINT });
+          return Response.json({
+            authorization_endpoint: "https://auth.x.ai/oauth/authorize",
+            token_endpoint: TOKEN_ENDPOINT,
+          });
         }
         if (url === TOKEN_ENDPOINT) {
           refreshHits += 1;
-          return Response.json({ access_token: "xai-refreshed-secret", refresh_token: "refresh", expires_in: 3600 });
+          return Response.json({
+            access_token: "xai-refreshed-secret",
+            refresh_token: "refresh",
+            expires_in: 3600,
+          });
         }
         if (url === XAI_CHAT_ENDPOINT) {
-          return Response.json({ error: { message: "xai unavailable" } }, { status: 503 });
+          return Response.json(
+            { error: { message: "xai unavailable" } },
+            { status: 503 },
+          );
         }
         if (url.includes("/b/v1/chat/completions")) {
           backupAuth.push(headers.get("authorization") ?? "");
-          return Response.json({ error: { message: "backup key rejected" } }, { status: 401 });
+          return Response.json(
+            { error: { message: "backup key rejected" } },
+            { status: 401 },
+          );
         }
-        if (url.includes("/c/v1/chat/completions")) return chatSuccess("third target", "m3");
+        if (url.includes("/c/v1/chat/completions"))
+          return chatSuccess("third target", "m3");
         return originalFetch(input, init);
       }) as typeof fetch;
-      const local = serve(request => originalFetch(request));
+      const local = serve((request) => originalFetch(request));
       const root = local.url.toString().replace(/\/$/, "");
       const providers: OcxConfig["providers"] = {
-        xai: { adapter: "openai-chat", baseUrl: "https://api.x.ai/v1", authMode: "oauth" },
+        xai: {
+          adapter: "openai-chat",
+          baseUrl: "https://api.x.ai/v1",
+          authMode: "oauth",
+        },
         b: provider("openai-chat", `${root}/b/v1`, "key-b"),
-        ...(includeC ? { c: provider("openai-chat", `${root}/c/v1`, "key-c") } : {}),
+        ...(includeC
+          ? { c: provider("openai-chat", `${root}/c/v1`, "key-c") }
+          : {}),
       };
       const targets = [
         { provider: "xai", model: "grok" },
@@ -1432,7 +1823,9 @@ describe("server combo failover 030 activation matrix", () => {
       expect(refreshHits).toBe(0);
       expect(backupAuth).toEqual(["Bearer key-b"]);
       expect([...captured].join("\n")).not.toContain("xai-refreshed-secret");
-      expect([...captured].filter(value => value.includes("/b/")).join("\n")).not.toContain("xai-live");
+      expect(
+        [...captured].filter((value) => value.includes("/b/")).join("\n"),
+      ).not.toContain("xai-live");
       globalThis.fetch = originalFetch;
       await local.stop(true);
       servers.splice(servers.indexOf(local), 1);
@@ -1460,19 +1853,37 @@ describe("server combo failover 030 activation matrix", () => {
     const frames = await collectSse(response);
     expect(aHits).toBe(1);
     expect(bHits).toBe(0);
-    expect(frames.filter(frame => frame.event === "response.output_text.delta"))
-      .toEqual([expect.objectContaining({ data: expect.objectContaining({ delta: "once" }) })]);
-    expect(frames.filter(frame => frame.event === "response.failed")).toHaveLength(1);
-    expect(frames.some(frame => frame.event === "response.completed")).toBe(false);
+    expect(
+      frames.filter((frame) => frame.event === "response.output_text.delta"),
+    ).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({ delta: "once" }),
+      }),
+    ]);
+    expect(
+      frames.filter((frame) => frame.event === "response.failed"),
+    ).toHaveLength(1);
+    expect(frames.some((frame) => frame.event === "response.completed")).toBe(
+      false,
+    );
   });
 
   test("PATCH-disable-all returns combo_unavailable without any fallback hit", async () => {
     let aHits = 0;
     let bHits = 0;
     let cHits = 0;
-    const a = serve(() => { aHits += 1; return chatSuccess("a"); });
-    const b = serve(() => { bHits += 1; return chatSuccess("b"); });
-    const c = serve(() => { cHits += 1; return chatSuccess("default"); });
+    const a = serve(() => {
+      aHits += 1;
+      return chatSuccess("a");
+    });
+    const b = serve(() => {
+      bHits += 1;
+      return chatSuccess("b");
+    });
+    const c = serve(() => {
+      cHits += 1;
+      return chatSuccess("default");
+    });
     const config: OcxConfig = {
       port: 0,
       defaultProvider: "c",
@@ -1483,12 +1894,33 @@ describe("server combo failover 030 activation matrix", () => {
       },
     };
     saveConfig(config);
-    expect((await management(config, "PUT", "/api/combos", {
-      id: "free",
-      combo: { targets: [{ provider: "a", model: "m1" }, { provider: "b", model: "m2" }] },
-    }))?.status).toBe(200);
-    expect((await management(config, "PATCH", "/api/providers?name=a", { disabled: true }))?.status).toBe(200);
-    expect((await management(config, "PATCH", "/api/providers?name=b", { disabled: true }))?.status).toBe(200);
+    expect(
+      (
+        await management(config, "PUT", "/api/combos", {
+          id: "free",
+          combo: {
+            targets: [
+              { provider: "a", model: "m1" },
+              { provider: "b", model: "m2" },
+            ],
+          },
+        })
+      )?.status,
+    ).toBe(200);
+    expect(
+      (
+        await management(config, "PATCH", "/api/providers?name=a", {
+          disabled: true,
+        })
+      )?.status,
+    ).toBe(200);
+    expect(
+      (
+        await management(config, "PATCH", "/api/providers?name=b", {
+          disabled: true,
+        })
+      )?.status,
+    ).toBe(200);
     const reloaded = readConfigDiagnostics().config;
     const response = await post(reloaded);
     expect(response.status).toBe(503);
@@ -1503,23 +1935,34 @@ describe("server combo failover 030 activation matrix", () => {
     let memberHits = 0;
     let defaultHits = 0;
     let physicalModel = "";
-    const physical = serve(async request => {
+    const physical = serve(async (request) => {
       physicalHits += 1;
-      physicalModel = (await request.json() as { model?: string }).model ?? "";
+      physicalModel =
+        ((await request.json()) as { model?: string }).model ?? "";
       return chatSuccess("physical combo", "model");
     });
     const physicalConfig: OcxConfig = {
       port: 0,
       defaultProvider: "combo",
-      providers: { combo: provider("openai-chat", baseUrl(physical), "key-combo") },
+      providers: {
+        combo: provider("openai-chat", baseUrl(physical), "key-combo"),
+      },
     };
-    const physicalResponse = await post(physicalConfig, { model: "combo/model" });
+    const physicalResponse = await post(physicalConfig, {
+      model: "combo/model",
+    });
     expect(physicalResponse.status).toBe(200);
     expect(physicalHits).toBe(1);
     expect(physicalModel).toBe("model");
 
-    const member = serve(() => { memberHits += 1; return chatSuccess("member"); });
-    const fallback = serve(() => { defaultHits += 1; return chatSuccess("default"); });
+    const member = serve(() => {
+      memberHits += 1;
+      return chatSuccess("member");
+    });
+    const fallback = serve(() => {
+      defaultHits += 1;
+      return chatSuccess("default");
+    });
     const unknownConfig: OcxConfig = {
       port: 0,
       defaultProvider: "fallback",
@@ -1535,19 +1978,26 @@ describe("server combo failover 030 activation matrix", () => {
   });
 
   test("failed passthrough child callbacks stay buffered and only B finalizes", async () => {
-    const terminalFrame = (status: "failed" | "completed") => [
-      `event: response.${status}`,
-      `data: ${JSON.stringify({ type: `response.${status}`, response: { id: `resp_${status}`, status, output: [] } })}`,
-      "",
-      "",
-    ].join("\n");
-    const a = serve(() => new Response(terminalFrame("failed"), {
-      status: 503,
-      headers: { "content-type": "text/event-stream" },
-    }));
-    const b = serve(() => new Response(terminalFrame("completed"), {
-      headers: { "content-type": "text/event-stream" },
-    }));
+    const terminalFrame = (status: "failed" | "completed") =>
+      [
+        `event: response.${status}`,
+        `data: ${JSON.stringify({ type: `response.${status}`, response: { id: `resp_${status}`, status, output: [] } })}`,
+        "",
+        "",
+      ].join("\n");
+    const a = serve(
+      () =>
+        new Response(terminalFrame("failed"), {
+          status: 503,
+          headers: { "content-type": "text/event-stream" },
+        }),
+    );
+    const b = serve(
+      () =>
+        new Response(terminalFrame("completed"), {
+          headers: { "content-type": "text/event-stream" },
+        }),
+    );
     const config = comboConfig({
       a: provider("openai-responses", baseUrl(a), "key-a"),
       b: provider("openai-responses", baseUrl(b), "key-b"),
@@ -1555,13 +2005,19 @@ describe("server combo failover 030 activation matrix", () => {
     const finalized = deferred();
     const statuses: string[] = [];
     let cancels = 0;
-    const response = await post(config, { stream: true }, {
-      onNativePassthroughTerminal: status => {
-        statuses.push(status);
-        finalized.resolve();
+    const response = await post(
+      config,
+      { stream: true },
+      {
+        onNativePassthroughTerminal: (status) => {
+          statuses.push(status);
+          finalized.resolve();
+        },
+        onNativePassthroughCancel: () => {
+          cancels += 1;
+        },
       },
-      onNativePassthroughCancel: () => { cancels += 1; },
-    });
+    );
     expect(response.status).toBe(200);
     await response.text();
     await within(finalized.promise);
@@ -1576,12 +2032,16 @@ describe("server combo failover 030 activation matrix", () => {
     const abort = new AbortController();
     abort.abort(new DOMException("client closed", "AbortError"));
 
-    const response = await postLogged(config, { stream: true }, { abortSignal: abort.signal });
+    const response = await postLogged(
+      config,
+      { stream: true },
+      { abortSignal: abort.signal },
+    );
     expect(response.status).toBe(499);
     await response.text();
 
     const logsResponse = await management(config, "GET", "/api/logs?tail=1");
-    const logs = await logsResponse!.json() as Array<Record<string, unknown>>;
+    const logs = (await logsResponse!.json()) as Array<Record<string, unknown>>;
     expect(logs).toHaveLength(1);
     expect(logs[0]).toMatchObject({
       provider: "combo",
@@ -1598,7 +2058,10 @@ describe("server combo failover 030 activation matrix", () => {
       aStarted.resolve();
       return new Promise<Response>(() => {});
     });
-    const b = serve(() => { bHits += 1; return chatSuccess("must not run"); });
+    const b = serve(() => {
+      bHits += 1;
+      return chatSuccess("must not run");
+    });
     const config = comboConfig({
       a: provider("openai-chat", baseUrl(a), "key-a"),
       b: provider("openai-chat", baseUrl(b), "key-b"),
@@ -1606,18 +2069,30 @@ describe("server combo failover 030 activation matrix", () => {
     const abort = new AbortController();
     const warnings: unknown[][] = [];
     const originalWarn = console.warn;
-    console.warn = (...args: unknown[]) => { warnings.push(args); };
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args);
+    };
     try {
       const pending = postLogged(config, {}, { abortSignal: abort.signal });
       await aStarted.promise;
       abort.abort(new DOMException("client closed", "AbortError"));
       const response = await pending;
       expect(response.status).toBe(499);
-      expect(await response.json()).toMatchObject({ error: { code: "client_cancelled" } });
-      await expectCancelledAttemptReceipt(config, { provider: "a", model: "m1", adapter: "openai-chat" });
+      expect(await response.json()).toMatchObject({
+        error: { code: "client_cancelled" },
+      });
+      await expectCancelledAttemptReceipt(config, {
+        provider: "a",
+        model: "m1",
+        adapter: "openai-chat",
+      });
       expect(bHits).toBe(0);
-      expect(warnings.some(row => String(row[0]).includes("[combo]"))).toBe(false);
-      expect(isComboTargetInCooldown("free", { provider: "a", model: "m1" })).toBe(false);
+      expect(warnings.some((row) => String(row[0]).includes("[combo]"))).toBe(
+        false,
+      );
+      expect(
+        isComboTargetInCooldown("free", { provider: "a", model: "m1" }),
+      ).toBe(false);
     } finally {
       console.warn = originalWarn;
     }
@@ -1628,24 +2103,28 @@ describe("server combo failover 030 activation matrix", () => {
     const bodyCancelled = deferred();
     let cancelled = 0;
     let bHits = 0;
-    customFetchResponse = async request => {
+    customFetchResponse = async (request) => {
       const body = JSON.parse(String(request.body)) as { model?: string };
       if (body.model === "m2") {
         bHits += 1;
         return chatSuccess("must not run");
       }
       let pulls = 0;
-      return new Response(new ReadableStream<Uint8Array>({
-        pull(controller) {
-          pulls += 1;
-          if (pulls === 1) controller.enqueue(new TextEncoder().encode("partial"));
-          else bodyRead.resolve();
-        },
-        cancel() {
-          cancelled += 1;
-          bodyCancelled.resolve();
-        },
-      }), { status: 429, headers: { "content-type": "application/json" } });
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            pulls += 1;
+            if (pulls === 1)
+              controller.enqueue(new TextEncoder().encode("partial"));
+            else bodyRead.resolve();
+          },
+          cancel() {
+            cancelled += 1;
+            bodyCancelled.resolve();
+          },
+        }),
+        { status: 429, headers: { "content-type": "application/json" } },
+      );
     };
     const config = comboConfig({
       a: provider("test-response", "https://test.invalid/v1", "key-a"),
@@ -1658,11 +2137,17 @@ describe("server combo failover 030 activation matrix", () => {
     const response = await pending;
     expect(response.status).toBe(499);
     await response.text();
-    await expectCancelledAttemptReceipt(config, { provider: "a", model: "m1", adapter: "test-response" });
+    await expectCancelledAttemptReceipt(config, {
+      provider: "a",
+      model: "m1",
+      adapter: "test-response",
+    });
     expect(bHits).toBe(0);
     await within(bodyCancelled.promise);
     expect(cancelled).toBe(1);
-    expect(isComboTargetInCooldown("free", { provider: "a", model: "m1" })).toBe(false);
+    expect(
+      isComboTargetInCooldown("free", { provider: "a", model: "m1" }),
+    ).toBe(false);
   });
 
   test("200 resolved after abort returns 499 with zero success accounting or callback publication", async () => {
@@ -1670,33 +2155,51 @@ describe("server combo failover 030 activation matrix", () => {
     let waitForAbort = true;
     const models: string[] = [];
     customFetchResponse = async (request, context) => {
-      const model = (JSON.parse(String(request.body)) as { model?: string }).model ?? "";
+      const model =
+        (JSON.parse(String(request.body)) as { model?: string }).model ?? "";
       models.push(model);
       if (waitForAbort) {
         started.resolve();
-        await new Promise<void>(resolve => {
+        await new Promise<void>((resolve) => {
           if (context?.abortSignal?.aborted) resolve();
-          else context?.abortSignal?.addEventListener("abort", () => resolve(), { once: true });
+          else
+            context?.abortSignal?.addEventListener("abort", () => resolve(), {
+              once: true,
+            });
         });
       }
       return chatSuccess(`ok ${model}`, model);
     };
-    const config = comboConfig({
-      a: provider("test-response", "https://test.invalid/v1", "key-a"),
-      b: provider("test-response", "https://test.invalid/v1", "key-b"),
-    }, undefined, { strategy: "round-robin", stickyLimit: 2 });
+    const config = comboConfig(
+      {
+        a: provider("test-response", "https://test.invalid/v1", "key-a"),
+        b: provider("test-response", "https://test.invalid/v1", "key-b"),
+      },
+      undefined,
+      { strategy: "round-robin", stickyLimit: 2 },
+    );
     const abort = new AbortController();
     let authPublications = 0;
-    const pending = postLogged(config, {}, {
-      abortSignal: abort.signal,
-      onCodexAuthContextResolved: () => { authPublications += 1; },
-    });
+    const pending = postLogged(
+      config,
+      {},
+      {
+        abortSignal: abort.signal,
+        onCodexAuthContextResolved: () => {
+          authPublications += 1;
+        },
+      },
+    );
     await started.promise;
     abort.abort();
     const cancelledResponse = await pending;
     expect(cancelledResponse.status).toBe(499);
     await cancelledResponse.text();
-    await expectCancelledAttemptReceipt(config, { provider: "a", model: "m1", adapter: "test-response" });
+    await expectCancelledAttemptReceipt(config, {
+      provider: "a",
+      model: "m1",
+      adapter: "test-response",
+    });
     expect(authPublications).toBe(0);
 
     waitForAbort = false;
@@ -1706,13 +2209,17 @@ describe("server combo failover 030 activation matrix", () => {
 
   test("direct child status 499 is retained exactly once without backup", async () => {
     let bHits = 0;
-    customFetchResponse = async request => {
-      const model = (JSON.parse(String(request.body)) as { model?: string }).model;
+    customFetchResponse = async (request) => {
+      const model = (JSON.parse(String(request.body)) as { model?: string })
+        .model;
       if (model === "m2") {
         bHits += 1;
         return chatSuccess("must not run", "m2");
       }
-      return Response.json({ error: { code: "client_cancelled" } }, { status: 499 });
+      return Response.json(
+        { error: { code: "client_cancelled" } },
+        { status: 499 },
+      );
     };
     const config = comboConfig({
       a: provider("test-response", "https://test.invalid/v1", "key-a"),
@@ -1722,23 +2229,33 @@ describe("server combo failover 030 activation matrix", () => {
     expect(response.status).toBe(499);
     await response.text();
     expect(bHits).toBe(0);
-    await expectCancelledAttemptReceipt(config, { provider: "a", model: "m1", adapter: "test-response" });
+    await expectCancelledAttemptReceipt(config, {
+      provider: "a",
+      model: "m1",
+      adapter: "test-response",
+    });
   });
 
   test("oversized ordinary failure is canceled once, leaks no prefix, and advances", async () => {
     const hostile = `hostile-prefix-${"x".repeat(70_000)}`;
     let reads = 0;
     let cancels = 0;
-    customFetchResponse = async request => {
-      const model = (JSON.parse(String(request.body)) as { model?: string }).model;
+    customFetchResponse = async (request) => {
+      const model = (JSON.parse(String(request.body)) as { model?: string })
+        .model;
       if (model === "m2") return chatSuccess("safe backup", "m2");
-      return new Response(new ReadableStream<Uint8Array>({
-        start(controller) {
-          reads += 1;
-          controller.enqueue(new TextEncoder().encode(hostile));
-        },
-        cancel() { cancels += 1; },
-      }), { status: 429, headers: { "content-type": "application/json" } });
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            reads += 1;
+            controller.enqueue(new TextEncoder().encode(hostile));
+          },
+          cancel() {
+            cancels += 1;
+          },
+        }),
+        { status: 429, headers: { "content-type": "application/json" } },
+      );
     };
     const config = comboConfig({
       a: provider("test-response", "https://test.invalid/v1", "key-a"),
@@ -1752,7 +2269,11 @@ describe("server combo failover 030 activation matrix", () => {
     expect(reads).toBe(1);
     expect(cancels).toBe(1);
     const attempt = (await latestAttemptReceipts(config)).usage.attempts?.[0];
-    expect(attempt).toMatchObject({ provider: "a", status: 429, usageStatus: "unreported" });
+    expect(attempt).toMatchObject({
+      provider: "a",
+      status: 429,
+      usageStatus: "unreported",
+    });
     expect(attempt).not.toHaveProperty("usage");
   });
 
@@ -1761,17 +2282,30 @@ describe("server combo failover 030 activation matrix", () => {
     let cancels = 0;
     let bHits = 0;
     const cancelled = deferred();
-    customTransientResponse = async () => new Response(new ReadableStream<Uint8Array>({
-        start(controller) {
-          reads += 1;
-          controller.enqueue(new TextEncoder().encode("hostile-stalled-prefix"));
-        },
-        cancel() {
-          cancels += 1;
-          cancelled.resolve();
-        },
-      }), { status: 429, headers: { "content-type": "application/json" } });
-    const b = serve(() => {
+    customTransientResponse = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            reads += 1;
+            controller.enqueue(
+              new TextEncoder().encode("hostile-stalled-prefix"),
+            );
+          },
+          cancel() {
+            cancels += 1;
+            cancelled.resolve();
+          },
+        }),
+        { status: 429, headers: { "content-type": "application/json" } },
+      );
+    const b = serve((req) => {
+      // Port-discovery probes must not look like a second failover attempt.
+      if (
+        req.method !== "POST" ||
+        new URL(req.url).pathname !== "/v1/chat/completions"
+      ) {
+        return new Response("Not found", { status: 404 });
+      }
       bHits += 1;
       return chatSuccess("bounded backup", "m2");
     });
@@ -1779,6 +2313,10 @@ describe("server combo failover 030 activation matrix", () => {
       a: provider("openai-responses", "https://stalled.test/v1", "key-a"),
       b: provider("openai-chat", baseUrl(b), "key-b"),
     });
+    const probe = await fetch(new URL("/", b.url));
+    expect(probe.status).toBe(404);
+    await probe.text();
+    expect(bHits).toBe(0);
     const started = performance.now();
     const response = await postLogged(config);
     const elapsed = performance.now() - started;
@@ -1790,7 +2328,11 @@ describe("server combo failover 030 activation matrix", () => {
     expect([reads, cancels, bHits]).toEqual([1, 1, 1]);
     expect(elapsed).toBeGreaterThanOrEqual(4_500);
     const attempt = (await latestAttemptReceipts(config)).usage.attempts?.[0];
-    expect(attempt).toMatchObject({ provider: "a", status: 429, usageStatus: "unreported" });
+    expect(attempt).toMatchObject({
+      provider: "a",
+      status: 429,
+      usageStatus: "unreported",
+    });
     expect(attempt).not.toHaveProperty("usage");
   }, 10_000);
 });
@@ -1804,7 +2346,10 @@ describe("per-provider fallback for plain models", () => {
     return {
       port: 0,
       defaultProvider: names[0]!,
-      providers: { ...providers, [names[0]!]: { ...providers[names[0]!]!, fallback } },
+      providers: {
+        ...providers,
+        [names[0]!]: { ...providers[names[0]!]!, fallback },
+      },
     };
   }
 
@@ -1812,16 +2357,22 @@ describe("per-provider fallback for plain models", () => {
     const hits: string[] = [];
     const a = serve(() => {
       hits.push("a");
-      return Response.json({ error: { message: "upstream died" } }, { status: 502 });
+      return Response.json(
+        { error: { message: "upstream died" } },
+        { status: 502 },
+      );
     });
     const b = serve(() => {
       hits.push("b");
       return chatSuccess("fallback backup", "m2");
     });
-    const config = fallbackConfig({
-      a: provider("openai-chat", baseUrl(a), "key-a"),
-      b: provider("openai-chat", baseUrl(b), "key-b"),
-    }, [{ provider: "b", model: "m2" }]);
+    const config = fallbackConfig(
+      {
+        a: provider("openai-chat", baseUrl(a), "key-a"),
+        b: provider("openai-chat", baseUrl(b), "key-b"),
+      },
+      [{ provider: "b", model: "m2" }],
+    );
 
     const response = await postModelLogged(config, "a/m1");
     expect(response.status).toBe(200);
@@ -1830,40 +2381,60 @@ describe("per-provider fallback for plain models", () => {
   });
 
   test("the log row keeps the winning target instead of collapsing into a combo row", async () => {
-    const a = serve(() => Response.json({ error: { message: "upstream died" } }, { status: 502 }));
+    const a = serve(() =>
+      Response.json({ error: { message: "upstream died" } }, { status: 502 }),
+    );
     const b = serve(() => chatSuccess("fallback backup", "m2"));
-    const config = fallbackConfig({
-      a: provider("openai-chat", baseUrl(a), "key-a"),
-      b: provider("openai-chat", baseUrl(b), "key-b"),
-    }, [{ provider: "b", model: "m2" }]);
+    const config = fallbackConfig(
+      {
+        a: provider("openai-chat", baseUrl(a), "key-a"),
+        b: provider("openai-chat", baseUrl(b), "key-b"),
+      },
+      [{ provider: "b", model: "m2" }],
+    );
 
     expect((await postModelLogged(config, "a/m1")).status).toBe(200);
     const { log } = await latestAttemptReceipts(config);
-    expect(log).toMatchObject({ requestedModel: "a/m1", provider: "b", model: "m2" });
-    expect(log.attempts).toMatchObject([{ provider: "a", status: 502 }, { provider: "b", status: 200 }]);
+    expect(log).toMatchObject({
+      requestedModel: "a/m1",
+      provider: "b",
+      model: "m2",
+    });
+    expect(log.attempts).toMatchObject([
+      { provider: "a", status: 502 },
+      { provider: "b", status: 200 },
+    ]);
   });
 
   test("a non-retryable 400 stops on the primary without touching the fallback", async () => {
     const hits: string[] = [];
     const a = serve(() => {
       hits.push("a");
-      return Response.json({ error: { message: "bad request", type: "invalid_request_error" } }, { status: 400 });
+      return Response.json(
+        { error: { message: "bad request", type: "invalid_request_error" } },
+        { status: 400 },
+      );
     });
     const b = serve(() => {
       hits.push("b");
       return chatSuccess("must not be reached", "m2");
     });
-    const config = fallbackConfig({
-      a: provider("openai-chat", baseUrl(a), "key-a"),
-      b: provider("openai-chat", baseUrl(b), "key-b"),
-    }, [{ provider: "b", model: "m2" }]);
+    const config = fallbackConfig(
+      {
+        a: provider("openai-chat", baseUrl(a), "key-a"),
+        b: provider("openai-chat", baseUrl(b), "key-b"),
+      },
+      [{ provider: "b", model: "m2" }],
+    );
 
     expect((await postModelLogged(config, "a/m1")).status).toBe(400);
     expect(hits).toEqual(["a"]);
   });
 
   test("without a configured fallback the failure still reaches the caller", async () => {
-    const a = serve(() => Response.json({ error: { message: "upstream died" } }, { status: 502 }));
+    const a = serve(() =>
+      Response.json({ error: { message: "upstream died" } }, { status: 502 }),
+    );
     const config: OcxConfig = {
       port: 0,
       defaultProvider: "a",
@@ -1873,12 +2444,19 @@ describe("per-provider fallback for plain models", () => {
   });
 
   test("an exhausted chain returns the last failure rather than a combo_unavailable", async () => {
-    const a = serve(() => Response.json({ error: { message: "a died" } }, { status: 502 }));
-    const b = serve(() => Response.json({ error: { message: "b overloaded" } }, { status: 503 }));
-    const config = fallbackConfig({
-      a: provider("openai-chat", baseUrl(a), "key-a"),
-      b: provider("openai-chat", baseUrl(b), "key-b"),
-    }, [{ provider: "b", model: "m2" }]);
+    const a = serve(() =>
+      Response.json({ error: { message: "a died" } }, { status: 502 }),
+    );
+    const b = serve(() =>
+      Response.json({ error: { message: "b overloaded" } }, { status: 503 }),
+    );
+    const config = fallbackConfig(
+      {
+        a: provider("openai-chat", baseUrl(a), "key-a"),
+        b: provider("openai-chat", baseUrl(b), "key-b"),
+      },
+      [{ provider: "b", model: "m2" }],
+    );
 
     const response = await postModelLogged(config, "a/m1");
     expect(response.status).toBe(503);
@@ -1889,15 +2467,18 @@ describe("per-provider fallback for plain models", () => {
     // is not idempotent: replaying an already-expanded body would prepend the restored history
     // a second time in each child request.
     const bodies: Array<Record<string, unknown>> = [];
-    const a = serve(async request => {
-      bodies.push(await request.json() as Record<string, unknown>);
+    const a = serve(async (request) => {
+      bodies.push((await request.json()) as Record<string, unknown>);
       return chatSuccess("primary ok", "m1");
     });
     const b = serve(() => chatSuccess("must not be reached", "m2"));
-    const config = fallbackConfig({
-      a: provider("openai-chat", baseUrl(a), "key-a"),
-      b: provider("openai-chat", baseUrl(b), "key-b"),
-    }, [{ provider: "b", model: "m2" }]);
+    const config = fallbackConfig(
+      {
+        a: provider("openai-chat", baseUrl(a), "key-a"),
+        b: provider("openai-chat", baseUrl(b), "key-b"),
+      },
+      [{ provider: "b", model: "m2" }],
+    );
 
     clearResponseStateForTests();
     rememberResponseState(
@@ -1911,8 +2492,11 @@ describe("per-provider fallback for plain models", () => {
     });
     expect(response.status).toBe(200);
 
-    const messages = bodies[0]?.messages as Array<Record<string, unknown>> | undefined;
-    const restored = (messages ?? []).filter(message => JSON.stringify(message).includes("restored turn"));
+    const messages = bodies[0]?.messages as
+      Array<Record<string, unknown>> | undefined;
+    const restored = (messages ?? []).filter((message) =>
+      JSON.stringify(message).includes("restored turn"),
+    );
     expect(restored).toHaveLength(1);
     clearResponseStateForTests();
   });
@@ -1928,7 +2512,9 @@ describe("per-provider fallback for plain models", () => {
       return chatSuccess("combo backup", "m2");
     });
     const providers = {
-      a: provider("openai-chat", baseUrl(a), "key-a", { fallback: [{ provider: "b", model: "m2" }] }),
+      a: provider("openai-chat", baseUrl(a), "key-a", {
+        fallback: [{ provider: "b", model: "m2" }],
+      }),
       b: provider("openai-chat", baseUrl(b), "key-b"),
     };
     const config = comboConfig(providers);
@@ -1937,29 +2523,46 @@ describe("per-provider fallback for plain models", () => {
     expect(response.status).toBe(200);
     expect(hits).toEqual(["a", "b"]);
     const { log } = await latestAttemptReceipts(config);
-    expect(log).toMatchObject({ provider: "combo", model: "combo/free", resolvedModel: "m2" });
+    expect(log).toMatchObject({
+      provider: "combo",
+      model: "combo/free",
+      resolvedModel: "m2",
+    });
   });
 });
 
 describe("cursor conversation continuity across store:false chains", () => {
-  function fakeCursorTransportFactory(seenConversationIds: string[]): CursorTransportFactory {
+  function fakeCursorTransportFactory(
+    seenConversationIds: string[],
+  ): CursorTransportFactory {
     return () => ({
       async *run(request) {
         seenConversationIds.push(request.conversationId);
         yield { type: "text", text: "cursor ok" };
-        yield { type: "done", usage: { inputTokens: 10, outputTokens: 2, estimated: true } };
+        yield {
+          type: "done",
+          usage: { inputTokens: 10, outputTokens: 2, estimated: true },
+        };
       },
       writeClient() {},
       close() {},
     });
   }
 
-  async function postCursor(config: OcxConfig, raw: Record<string, unknown>): Promise<Response> {
-    return handleResponses(new Request("http://localhost/v1/responses", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ stream: false, store: false, ...raw }),
-    }), config, { model: "", provider: "" }, {});
+  async function postCursor(
+    config: OcxConfig,
+    raw: Record<string, unknown>,
+  ): Promise<Response> {
+    return handleResponses(
+      new Request("http://localhost/v1/responses", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ stream: false, store: false, ...raw }),
+      }),
+      config,
+      { model: "", provider: "" },
+      {},
+    );
   }
 
   function cursorConfig(): OcxConfig {
@@ -1969,7 +2572,11 @@ describe("cursor conversation continuity across store:false chains", () => {
       // provider name keeps key auth so the fake transport is reachable without a login.
       defaultProvider: "cursortest",
       providers: {
-        cursortest: provider("cursor", "https://api2.cursor.sh", "fake-cursor-token"),
+        cursortest: provider(
+          "cursor",
+          "https://api2.cursor.sh",
+          "fake-cursor-token",
+        ),
       },
     };
   }
@@ -1979,9 +2586,12 @@ describe("cursor conversation continuity across store:false chains", () => {
     customCursorTransportFactory = fakeCursorTransportFactory(seen);
     const config = cursorConfig();
 
-    const first = await postCursor(config, { model: "cursortest/composer-2", input: "hello" });
+    const first = await postCursor(config, {
+      model: "cursortest/composer-2",
+      input: "hello",
+    });
     expect(first.status).toBe(200);
-    const firstJson = await first.json() as { id: string };
+    const firstJson = (await first.json()) as { id: string };
     expect(seen).toHaveLength(1);
 
     const second = await postCursor(config, {
@@ -2002,50 +2612,76 @@ describe("cursor conversation continuity across store:false chains", () => {
     customCursorTransportFactory = fakeCursorTransportFactory(seen);
     const config = cursorConfig();
 
-    const first = await postCursor(config, { model: "cursortest/grok-4.5", input: "use tools" });
+    const first = await postCursor(config, {
+      model: "cursortest/grok-4.5",
+      input: "use tools",
+    });
     expect(first.status).toBe(200);
-    const firstJson = await first.json() as { id: string };
+    const firstJson = (await first.json()) as { id: string };
     expect(seen).toHaveLength(1);
 
     const second = await postCursor(config, {
       model: "cursortest/grok-4.5",
       previous_response_id: firstJson.id,
-      input: [{ type: "function_call_output", call_id: "call_x", output: "tool says hi" }],
+      input: [
+        {
+          type: "function_call_output",
+          call_id: "call_x",
+          output: "tool says hi",
+        },
+      ],
     });
     expect(second.status).toBe(200);
     expect(seen).toHaveLength(2);
     expect(seen[1]).toBe(seen[0]);
 
-    const secondJson = await second.json() as { id: string };
-    const { previousResponseProviderState } = await import("../src/responses/state");
-    expect(previousResponseProviderState(secondJson.id)?.cursor?.conversationId).toBe(seen[1]);
+    const secondJson = (await second.json()) as { id: string };
+    const { previousResponseProviderState } =
+      await import("../src/responses/state");
+    expect(
+      previousResponseProviderState(secondJson.id)?.cursor?.conversationId,
+    ).toBe(seen[1]);
   });
 
   test("external store:false full-history turns reuse the client thread identity", async () => {
     const seen: string[] = [];
     customCursorTransportFactory = fakeCursorTransportFactory(seen);
     const config = cursorConfig();
-    const postThreadTurn = (input: unknown) => handleResponses(new Request("http://localhost/v1/responses", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-codex-parent-thread-id": "desktop-thread-external",
-      },
-      body: JSON.stringify({
-        model: "cursortest/grok-4.5",
-        input,
-        stream: false,
-        store: false,
-        prompt_cache_key: "shared-cache-key",
-      }),
-    }), config, { model: "", provider: "" }, {});
+    const postThreadTurn = (input: unknown) =>
+      handleResponses(
+        new Request("http://localhost/v1/responses", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-codex-parent-thread-id": "desktop-thread-external",
+          },
+          body: JSON.stringify({
+            model: "cursortest/grok-4.5",
+            input,
+            stream: false,
+            store: false,
+            prompt_cache_key: "shared-cache-key",
+          }),
+        }),
+        config,
+        { model: "", provider: "" },
+        {},
+      );
 
     expect((await postThreadTurn("start")).status).toBe(200);
-    expect((await postThreadTurn([
-      { role: "user", content: "start" },
-      { role: "assistant", content: "working" },
-      { type: "function_call_output", call_id: "call_x", output: "tool result" },
-    ])).status).toBe(200);
+    expect(
+      (
+        await postThreadTurn([
+          { role: "user", content: "start" },
+          { role: "assistant", content: "working" },
+          {
+            type: "function_call_output",
+            call_id: "call_x",
+            output: "tool result",
+          },
+        ])
+      ).status,
+    ).toBe(200);
 
     expect(seen).toHaveLength(2);
     expect(seen[1]).toBe(seen[0]);
@@ -2055,27 +2691,37 @@ describe("cursor conversation continuity across store:false chains", () => {
     const seen: string[] = [];
     customCursorTransportFactory = fakeCursorTransportFactory(seen);
     const config = cursorConfig();
-    const postThreadTurn = (input: unknown) => handleResponses(new Request("http://localhost/v1/responses", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-codex-parent-thread-id": "desktop-thread-native",
-      },
-      body: JSON.stringify({
-        model: "cursortest/composer-2.5",
-        input,
-        stream: false,
-        store: false,
-        prompt_cache_key: "shared-cache-key",
-      }),
-    }), config, { model: "", provider: "" }, {});
+    const postThreadTurn = (input: unknown) =>
+      handleResponses(
+        new Request("http://localhost/v1/responses", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-codex-parent-thread-id": "desktop-thread-native",
+          },
+          body: JSON.stringify({
+            model: "cursortest/composer-2.5",
+            input,
+            stream: false,
+            store: false,
+            prompt_cache_key: "shared-cache-key",
+          }),
+        }),
+        config,
+        { model: "", provider: "" },
+        {},
+      );
 
     expect((await postThreadTurn("hello")).status).toBe(200);
-    expect((await postThreadTurn([
-      { role: "user", content: "hello" },
-      { role: "assistant", content: "cursor ok" },
-      { role: "user", content: "continue" },
-    ])).status).toBe(200);
+    expect(
+      (
+        await postThreadTurn([
+          { role: "user", content: "hello" },
+          { role: "assistant", content: "cursor ok" },
+          { role: "user", content: "continue" },
+        ])
+      ).status,
+    ).toBe(200);
 
     expect(seen).toHaveLength(2);
     expect(seen[1]).toBe(seen[0]);

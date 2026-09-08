@@ -112,7 +112,11 @@ describe("rate-limit reset credits", () => {
       const quota = parseUsageQuota({
         plan_type: "team",
         rate_limit: {
-          primary_window: { used_percent: 60, reset_at: 1787000000, limit_window_seconds: 604800 },
+          primary_window: {
+            used_percent: 60,
+            reset_at: 1787000000,
+            limit_window_seconds: 604800,
+          },
         },
       });
       expect(quota).toEqual({ weeklyPercent: 60, weeklyResetAt: 1787000000 });
@@ -122,13 +126,21 @@ describe("rate-limit reset credits", () => {
       const quota = parseUsageQuota({
         plan_type: "team",
         rate_limit: {
-          primary_window: { used_percent: 6, reset_at: 1787336442, limit_window_seconds: 2628000 },
+          primary_window: {
+            used_percent: 6,
+            reset_at: 1787336442,
+            limit_window_seconds: 2628000,
+          },
           secondary_window: null,
           tertiary_window: null,
         },
         rate_limit_reset_credits: { available_count: 0 },
       });
-      expect(quota).toEqual({ monthlyPercent: 6, monthlyResetAt: 1787336442, resetCredits: 0 });
+      expect(quota).toEqual({
+        monthlyPercent: 6,
+        monthlyResetAt: 1787336442,
+        resetCredits: 0,
+      });
       expect(quota!.weeklyPercent).toBeUndefined();
     });
 
@@ -136,7 +148,11 @@ describe("rate-limit reset credits", () => {
       const quota = parseUsageQuota({
         plan_type: "team",
         rate_limit: {
-          primary_window: { used_percent: 39, reset_at: 1787401330, limit_window_seconds: 2628000 },
+          primary_window: {
+            used_percent: 39,
+            reset_at: 1787401330,
+            limit_window_seconds: 2628000,
+          },
           secondary_window: { used_percent: 20, reset_at: 1787000000 },
         },
       });
@@ -152,7 +168,11 @@ describe("rate-limit reset credits", () => {
       const quota = parseUsageQuota({
         plan_type: "team",
         rate_limit: {
-          primary_window: { used_percent: 39, reset_at: 1787401330, limit_window_seconds: 2628000 },
+          primary_window: {
+            used_percent: 39,
+            reset_at: 1787401330,
+            limit_window_seconds: 2628000,
+          },
           tertiary_window: { used_percent: 50, reset_at: 1788000000 },
         },
       });
@@ -163,7 +183,10 @@ describe("rate-limit reset credits", () => {
       const quota = parseUsageQuota({
         plan_type: "team",
         rate_limit: {
-          primary_window: { reset_at: 1787401330, limit_window_seconds: 2628000 },
+          primary_window: {
+            reset_at: 1787401330,
+            limit_window_seconds: 2628000,
+          },
           tertiary_window: { used_percent: 50, reset_at: 1788000000 },
         },
       });
@@ -175,7 +198,11 @@ describe("rate-limit reset credits", () => {
       const quota = parseUsageQuota({
         plan_type: "go",
         rate_limit: {
-          primary_window: { used_percent: 30, reset_at: 1787401330, limit_window_seconds: 2628000 },
+          primary_window: {
+            used_percent: 30,
+            reset_at: 1787401330,
+            limit_window_seconds: 2628000,
+          },
           tertiary_window: { used_percent: 50, reset_at: 1788000000 },
         },
       });
@@ -211,7 +238,8 @@ describe("rate-limit reset credits", () => {
 
   describe("CodexAuth reset credit UI", () => {
     it("normalizes Go and Free quota displays to 30d only", async () => {
-      const { normalizeQuotaForPlan } = await import("../gui/src/codex-quota-utils");
+      const { normalizeQuotaForPlan } =
+        await import("../gui/src/codex-quota-utils");
       const quota = {
         weeklyPercent: 98,
         monthlyPercent: 12,
@@ -245,7 +273,9 @@ describe("rate-limit reset credits", () => {
       expect(source).not.toContain("isWorkspaceAccount");
       expect(source).not.toContain("Not available for workspace accounts");
       expect(helpers).toContain("if (credits === undefined) return null;");
-      expect(helpers).toContain("className={`badge ${hasCredits ? \"badge-amber\" : \"badge-muted\"} badge-clickable`}");
+      expect(helpers).toContain(
+        'className={`badge ${hasCredits ? "badge-amber" : "badge-muted"} badge-clickable`}',
+      );
     });
 
     it("keeps clickable ticket badges from overriding visual badge colors", async () => {
@@ -258,16 +288,33 @@ describe("rate-limit reset credits", () => {
     });
 
     it("renders reset tickets beside next-session badges instead of replacing them", async () => {
-      const source = await Bun.file("gui/src/components/codex-account-pool-cards.tsx").text();
-      expect(source).toContain("className=\"card-badges\"");
-      expect(source).toContain("<CodexTicketBadge t={t} account={a} onClick={() => onOpenReset(a)} />");
+      const source = await Bun.file(
+        "gui/src/components/codex-account-pool-cards.tsx",
+      ).text();
+      expect(source).toContain('className="card-badges"');
+      expect(source).toContain(
+        "<CodexTicketBadge t={t} account={a} onClick={() => onOpenReset(a)} />",
+      );
       // Next-session still renders BESIDE the ticket; health projection also suppresses
       // it for projected reauth/cooldown (not only the legacy needsReauth flag).
       expect(source).toContain("{isNext(a) && !showReauth && !inCooldown && (");
-      expect(source).toContain("{t(accountModeState === \"direct\" ? \"codexAuth.poolPrepared\" : \"codexAuth.nextSession\")}");
+      expect(source).toContain(
+        '{t(accountModeState === "direct" ? "codexAuth.poolPrepared" : "codexAuth.nextSession")}',
+      );
       const styles = await Bun.file("gui/src/styles.css").text();
-      expect(styles).toContain(".card-badges { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }");
-      expect(styles).toContain(".card-badges .badge { flex-shrink: 0; }");
+      // Assert the layout contract, not the formatter's whitespace or declaration order.
+      const layout = styles.match(/^\.card-badges\s*\{([^}]*)\}/m)?.[1];
+      expect(layout).toBeDefined();
+      expect(layout).toMatch(/\bdisplay\s*:\s*inline-flex\s*;/);
+      expect(layout).toMatch(/\balign-items\s*:\s*center\s*;/);
+      expect(layout).toMatch(/\bgap\s*:\s*8px\s*;/);
+      expect(layout).toMatch(/\bflex-wrap\s*:\s*wrap\s*;/);
+      expect(layout).toMatch(/\bmin-width\s*:\s*0\s*;/);
+      const badge = styles.match(
+        /^\.card-badges\s+\.badge\s*\{([^}]*)\}/m,
+      )?.[1];
+      expect(badge).toBeDefined();
+      expect(badge).toMatch(/\bflex-shrink\s*:\s*0\s*;/);
     });
   });
 
@@ -306,11 +353,18 @@ describe("rate-limit reset credits", () => {
       const quota = parseUsageQuota({
         plan_type: "team",
         rate_limit: {
-          primary_window: { used_percent: 100, reset_at: 1787401330, limit_window_seconds: 2628000 },
+          primary_window: {
+            used_percent: 100,
+            reset_at: 1787401330,
+            limit_window_seconds: 2628000,
+          },
           secondary_window: null,
         },
       });
-      expect(quota).toEqual({ monthlyPercent: 100, monthlyResetAt: 1787401330 });
+      expect(quota).toEqual({
+        monthlyPercent: 100,
+        monthlyResetAt: 1787401330,
+      });
       setAccountQuotaFromParsed("monthly-A", quota!);
       expect(getAccountQuota("monthly-A")).toEqual({
         monthlyPercent: 100,
@@ -388,7 +442,9 @@ describe("rate-limit reset credits", () => {
     it("preserves usage on credits-only WHAM refreshes", () => {
       clearAccountQuota();
       updateAccountQuota("credits-only", 10, 111, 20, 222, 1);
-      const quota = parseUsageQuota({ rate_limit_reset_credits: { available_count: 2 } });
+      const quota = parseUsageQuota({
+        rate_limit_reset_credits: { available_count: 2 },
+      });
       setAccountQuotaFromParsed("credits-only", quota!);
       expect(getAccountQuota("credits-only")).toEqual({
         weeklyPercent: 10,

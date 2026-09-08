@@ -10,7 +10,11 @@ import { resolveAppHashChange } from "../src/app-routing";
 test("the view tabs expose one provider-independent account destination", async () => {
   const src = await Bun.file(new URL("../src/App.tsx", import.meta.url)).text();
 
-  expect(src).toContain('{ view: "leveranciers", tkey: "nav.providers" }');
+  expect(
+    src.match(
+      /\{\s*view:\s*"leveranciers",\s*tkey:\s*"nav.providers",\s*icon:\s*IconServer,?\s*\}/g,
+    ),
+  ).toHaveLength(1);
   expect(src).not.toContain('"codex-auth"');
   expect(src).not.toContain('route.sub === "codex-auth"');
 });

@@ -7,6 +7,14 @@ import { TrafficRowCells } from "../traffic-row";
 import { requestsTodayCount, type TrafficLogEntry } from "../traffic-shared";
 import { IconCheck, IconAlert } from "../icons";
 import { Notice } from "../ui";
+import MetricList from "../components/MetricList";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyDescription,
+  EmptyContent,
+} from "../components/primitives/empty";
+import { Button } from "../components/primitives/button";
 
 interface Healthz {
   status: string;
@@ -96,6 +104,7 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
   const [logs, setLogs] = useState<BonEntry[]>([]);
   const [usageFailed, setUsageFailed] = useState(false);
   const [logsFailed, setLogsFailed] = useState(false);
+  const [logsLoaded, setLogsLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -123,6 +132,7 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
                 : [],
             );
             setLogsFailed(false);
+            setLogsLoaded(true);
           }
         } else if (!cancelled) {
           setLogsFailed(true);
@@ -175,12 +185,10 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
   const proxyOnline = health.data ? true : health.error ? false : null;
 
   return (
-    <>
+    <div className="dashboard-workspace">
       <div className="page-head">
         <h2>{t("nav.dashboard")}</h2>
       </div>
-      {usageFailed && <Notice tone="err">{t("usage.loadError")}</Notice>}
-      {logsFailed && <Notice tone="err">{t("vk.loadFailed")}</Notice>}
 
       {/* Health strip */}
       <div
@@ -266,44 +274,33 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
       </div>
 
       {/* Usage stats */}
-      <div className="stat-strip" role="group" aria-label={t("vk.statsAria")}>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">
-            {formatTokens(tokens30d, locale)}
-          </span>
-          <span className="stat-strip-label">{t("vk.tokens30d")}</span>
-        </div>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">
-            {requestsVandaag.toLocaleString(locale)}
-          </span>
-          <span className="stat-strip-label">{t("vk.requestsToday")}</span>
-        </div>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">
-            {requests30d.toLocaleString(locale)}
-          </span>
-          <span className="stat-strip-label">{t("vk.requests30d")}</span>
-        </div>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">{costUsd}</span>
-          <span className="stat-strip-label">{t("vk.costUsd")}</span>
-        </div>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">{coveragePct}</span>
-          <span className="stat-strip-label">
-            {t("dash.coverage", { pct: coveragePct })}
-          </span>
-        </div>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">{pct429}</span>
-          <span className="stat-strip-label">{t("dash.http429")}</span>
-        </div>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">{pct502}</span>
-          <span className="stat-strip-label">{t("dash.http50x")}</span>
-        </div>
-      </div>
+      <MetricList
+        label={t("vk.statsAria")}
+        metrics={[
+          {
+            label: t("vk.tokens30d"),
+            value: summary ? formatTokens(tokens30d, locale) : "—",
+          },
+          {
+            label: t("vk.requestsToday"),
+            value:
+              summary || logsLoaded
+                ? requestsVandaag.toLocaleString(locale)
+                : "—",
+          },
+          {
+            label: t("vk.requests30d"),
+            value: summary ? requests30d.toLocaleString(locale) : "—",
+          },
+          { label: t("vk.costUsd"), value: costUsd },
+          {
+            label: t("dash.coverageLabel"),
+            value: coveragePct,
+          },
+          { label: t("dash.http429"), value: pct429 },
+          { label: t("dash.http50x"), value: pct502 },
+        ]}
+      />
 
       <div className="pws-dashboard-columns">
         {/* Top providers */}
@@ -312,6 +309,7 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
           aria-label={t("dash.providers")}
         >
           <h3 className="pws-dashboard-section-title">{t("dash.providers")}</h3>
+          {usageFailed && <Notice tone="err">{t("usage.loadError")}</Notice>}
           {usageProviders.length > 0 ? (
             <div className="pws-dashboard-rows">
               {usageProviders.map((p) => {
@@ -343,19 +341,37 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
                 );
               })}
             </div>
-          ) : (
-            <p className="muted pws-dashboard-empty">
-              {t("pws.dashboard.noUsage")}
-            </p>
-          )}
+          ) : !usageFailed ? (
+            <Empty>
+              <EmptyHeader>
+                <EmptyDescription>
+                  {t(summary ? "pws.dashboard.noUsage" : "common.loading")}
+                </EmptyDescription>
+              </EmptyHeader>
+              {summary && (
+                <EmptyContent>
+                  <Button
+                    variant="outline"
+                    nativeButton={false}
+                    render={
+                      <a href="#leveranciers" aria-label={t("nav.providers")} />
+                    }
+                  >
+                    {t("nav.providers")}
+                  </Button>
+                </EmptyContent>
+              )}
+            </Empty>
+          ) : null}
         </section>
 
         {/* Recent traffic */}
         <section
           className="pws-dashboard-section pws-dashboard-section--rate-limits"
-          aria-label={t("nav.usage")}
+          aria-label={t("nav.verkeer")}
         >
-          <h3 className="pws-dashboard-section-title">{t("nav.usage")}</h3>
+          <h3 className="pws-dashboard-section-title">{t("nav.verkeer")}</h3>
+          {logsFailed && <Notice tone="err">{t("vk.loadFailed")}</Notice>}
           {recentBons.length > 0 ? (
             <div className="pws-dashboard-rows" style={{ gap: 0 }}>
               {recentBons.map((entry) => {
@@ -369,10 +385,7 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
                     className="traffic-entry"
                     style={{ borderBottom: "1px solid var(--border-soft)" }}
                   >
-                    <div
-                      className="traffic-entry-head traffic-entry-head--grid"
-                      style={{ padding: "6px 8px", fontSize: "0.8125rem" }}
-                    >
+                    <div className="traffic-entry-head traffic-entry-head--grid">
                       <span className="traffic-col traffic-col--time traffic-time">
                         {tijd(entry.timestamp, locale)}
                       </span>
@@ -386,11 +399,28 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
                 );
               })}
             </div>
-          ) : (
-            <p className="muted pws-dashboard-empty">{t("vk.empty")}</p>
-          )}
+          ) : !logsFailed ? (
+            <Empty>
+              <EmptyHeader>
+                <EmptyDescription>
+                  {t(logsLoaded ? "vk.empty" : "common.loading")}
+                </EmptyDescription>
+              </EmptyHeader>
+              {logsLoaded && (
+                <EmptyContent>
+                  <Button
+                    variant="outline"
+                    nativeButton={false}
+                    render={<a href="#verkeer" aria-label={t("nav.verkeer")} />}
+                  >
+                    {t("nav.verkeer")}
+                  </Button>
+                </EmptyContent>
+              )}
+            </Empty>
+          ) : null}
         </section>
       </div>
-    </>
+    </div>
   );
 }
