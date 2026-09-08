@@ -212,6 +212,44 @@ describe("assert-live-checkout-safe.sh", () => {
     }
   });
 
+  test("uses gtimeout before Perl when GNU timeout is absent", () => {
+    const bash = Bun.which("bash");
+    const realGit = Bun.which("git");
+    const realTimeout = Bun.which("timeout");
+    expect(bash).not.toBeNull();
+    expect(realGit).not.toBeNull();
+    expect(realTimeout).not.toBeNull();
+    const dir = initRepo();
+    const binDir = mkdtempSync(join(tmpdir(), "ocx-gtimeout-fallback-"));
+    const log = join(binDir, "calls");
+    const quote = (path: string) =>
+      `'${path.replaceAll("\\", "/").replaceAll("'", "'\\''")}'`;
+    try {
+      writeFileSync(
+        join(binDir, "git"),
+        `#!/bin/sh\nexec ${quote(realGit!)} "$@"\n`,
+      );
+      writeFileSync(
+        join(binDir, "gtimeout"),
+        `#!/bin/sh\nprintf '%s\\n' "$@" >> ${quote(log)}\nexec ${quote(realTimeout!)} "$@"\n`,
+      );
+      chmodSync(join(binDir, "git"), 0o755);
+      chmodSync(join(binDir, "gtimeout"), 0o755);
+      const result = Bun.spawnSync([bash!, script, dir], {
+        env: { ...process.env, PATH: binDir },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(result.exitCode, result.stderr.toString()).toBe(0);
+      expect(readFileSync(log, "utf8")).toContain(
+        "10s\ngit\nrev-parse\n--is-inside-work-tree\n",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(binDir, { recursive: true, force: true });
+    }
+  });
+
   test("exits 2 when git status probe fails without printing porcelain", () => {
     if (!Bun.which("bash")) return;
     const dir = initRepo();

@@ -319,6 +319,30 @@ describe("release helper", () => {
     expect(dispatchIndex).toBeGreaterThan(fullCiIndex);
   });
 
+  test("requests CI event metadata after dispatching the full-platform run", () => {
+    const { calls, result } = runRelease("9.9.9");
+    expect(result.status).toBe(0);
+
+    const dispatchIndex = findCallIndex(
+      calls,
+      "gh",
+      (call) => call.args.join(" ") === "workflow run ci.yml --ref main",
+    );
+    const listIndex = findCallIndex(
+      calls,
+      "gh",
+      (call) =>
+        call.args[0] === "run" &&
+        call.args[1] === "list" &&
+        call.args.includes("ci.yml"),
+    );
+    expect(dispatchIndex).toBeGreaterThanOrEqual(0);
+    expect(listIndex).toBeGreaterThan(dispatchIndex);
+    const jsonFields =
+      calls[listIndex]!.args[calls[listIndex]!.args.indexOf("--json") + 1];
+    expect(jsonFields?.split(",")).toContain("event");
+  });
+
   test("failed privacy scan aborts before version bump, commit, and push", () => {
     const { calls, result } = runRelease("9.9.9", { privacyExitCode: 1 });
 

@@ -145,6 +145,47 @@ describe("remote client artifact", () => {
     removeDetachedWorktree(sourceRoot);
   }, 30_000);
 
+  test("removes the detached worktree when dependency installation fails", async () => {
+    const sourceRoot = join(scratch, "broken-dependency-checkout");
+    mkdirSync(sourceRoot);
+    const runGit = (...args: string[]) =>
+      Bun.spawnSync(["git", ...args], {
+        cwd: sourceRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "ocx-test",
+          GIT_AUTHOR_EMAIL: "ocx-test@example.test",
+          GIT_COMMITTER_NAME: "ocx-test",
+          GIT_COMMITTER_EMAIL: "ocx-test@example.test",
+        },
+      });
+    expect(runGit("init", "-b", "main").success).toBe(true);
+    writeFileSync(
+      join(sourceRoot, "package.json"),
+      '{"name":"broken-artifact-fixture","version":"1.0.0"}\n',
+    );
+    writeFileSync(join(sourceRoot, "bun.lock"), "not a valid Bun lockfile\n");
+    expect(runGit("add", "package.json", "bun.lock").success).toBe(true);
+    expect(runGit("commit", "-m", "fixture").success).toBe(true);
+
+    const listedWorktrees = () =>
+      runGit("worktree", "list", "--porcelain")
+        .stdout.toString()
+        .split("\n")
+        .filter((line) => line.startsWith("worktree "))
+        .map((line) => line.slice("worktree ".length));
+    const before = listedWorktrees();
+    const destination = join(scratch, "broken-dependency-output");
+
+    await expect(buildClientArtifact(destination, sourceRoot)).rejects.toThrow(
+      "Locked dependency refresh failed",
+    );
+    expect(listedWorktrees()).toEqual(before);
+    expect(existsSync(destination)).toBe(false);
+  });
+
   test("builds a self-contained, SHA-bound candidate without activation", async () => {
     const output = join(scratch, "candidate");
     const manifest = await buildClientArtifact(output);
