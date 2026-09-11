@@ -27,9 +27,10 @@ export function ModalDialog({
 
 export function ModalCard({
   className = "modal-card",
+  ref,
   ...props
-}: ComponentPropsWithoutRef<"div">) {
-  return <div className={className} {...props} />;
+}: ComponentPropsWithoutRef<"div"> & { ref?: Ref<HTMLDivElement> }) {
+  return <div ref={ref} className={className} {...props} />;
 }
 
 export function ModalHead({
