@@ -1,0 +1,35 @@
+spec: azure-foundry-routed-compat
+run_id: 20260903T061403Z-3fcc0b3da
+started_at: "2026-09-03T08:14:03+02:00"
+
+baseline:
+  timestamp: "2026-09-03T08:14:03+02:00"
+  gates:
+    forbidden_root_schema_keys: 1
+    root_schema_object: 0
+    kimi_reasoning_wire_fields: 1
+    reasoning_control_preserved: 1
+    focused_test_failures: 3
+  diagnostics:
+    compat_smoke_pass_rate: 0.25
+    transformed_tool_count: 0
+    focused_test_count: 4
+    azure_france_route_resolved: 0
+
+experiments: []
+
+best:
+  iteration: 0
+  metrics:
+    compat_smoke_pass_rate: 0.25
+    forbidden_root_schema_keys: 1
+    root_schema_object: 0
+    kimi_reasoning_wire_fields: 1
+    reasoning_control_preserved: 1
+    focused_test_failures: 3
+    transformed_tool_count: 0
+    focused_test_count: 4
+    azure_france_route_resolved: 0
+  total_judge_cost_usd: 0
+
+hypothesis_backlog: []

@@ -1,0 +1,77 @@
+name: azure-foundry-routed-compat
+description: >
+  Make Codex model switching through OpenCodex capability-safe for Azure
+  Foundry MaaS models, covering DeepSeek tool-schema compatibility and
+  Kimi K2.6 reasoning suppression without regressing reasoning-capable models.
+
+metric:
+  primary:
+    type: hard
+    name: compat_smoke_pass_rate
+    direction: maximize
+    target: 1.0
+  degenerate_gates:
+    - name: forbidden_root_schema_keys
+      check: "== 0"
+    - name: root_schema_object
+      check: "== 1"
+    - name: kimi_reasoning_wire_fields
+      check: "== 0"
+    - name: reasoning_control_preserved
+      check: "== 1"
+    - name: focused_test_failures
+      check: "== 0"
+  diagnostics:
+    - name: transformed_tool_count
+    - name: focused_test_count
+    - name: azure_france_route_resolved
+
+measurement:
+  command: bun tests/helpers/azure-foundry-routed-compat-measure.ts
+  timeout_seconds: 120
+  output_format: json
+  working_directory: "."
+  stability:
+    mode: stable
+    noise_threshold: 0
+
+scope:
+  mutable:
+    - src/adapters/openai-chat.ts
+    - src/providers/
+    - tests/azure-foundry-routed-compat.test.ts
+  immutable:
+    - scripts/test.ts
+    - tests/helpers/azure-foundry-routed-compat-measure.ts
+    - .github/
+    - package.json
+    - bun.lock
+
+execution:
+  mode: serial
+  backend: worktree
+  max_concurrent: 1
+
+parallel:
+  shared_files: []
+  exclusive_resources: []
+dependencies:
+  approved: []
+
+constraints:
+  - Do not globally disable reasoning.
+  - Preserve reasoning for models that support it.
+  - Preserve nested schema semantics, properties, required fields and definitions.
+  - Normalize only provider-incompatible root schema constructs.
+  - Do not modify native OpenAI passthrough behavior.
+  - Do not modify live Azure deployments or capacity.
+  - Do not expose or rotate credentials.
+  - Do not touch UDO.
+
+stopping:
+  max_iterations: 4
+  max_hours: 1
+  plateau_iterations: 2
+  target_reached: true
+
+max_runner_up_merges_per_batch: 1
