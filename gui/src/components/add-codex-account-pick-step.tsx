@@ -1,5 +1,6 @@
 import { IconGlobe } from "../icons";
 import { useT } from "../i18n/shared";
+import { ModalDesc } from "./primitives/modal";
 
 export function AddCodexAccountPickStep({
   id,
@@ -19,19 +20,26 @@ export function AddCodexAccountPickStep({
   return (
     <>
       <h3 style={{ marginBottom: 4 }}>{t("codexAuth.addTitle")}</h3>
-      <p className="modal-desc">{t("codexAuth.addPickDesc")}</p>
+      <ModalDesc>{t("codexAuth.addPickDesc")}</ModalDesc>
 
-      <label className="field-label" htmlFor="codex-account-id-input">{t("codexAuth.addIdLabel")}</label>
+      <label className="field-label" htmlFor="codex-account-id-input">
+        {t("codexAuth.addIdLabel")}
+      </label>
       <input
         id="codex-account-id-input"
         className="input"
         placeholder={t("codexAuth.addIdPlaceholder")}
         value={id}
-        onChange={e => onIdChange(e.target.value)}
+        onChange={(e) => onIdChange(e.target.value)}
         style={{ marginBottom: 12 }}
       />
 
-      <button type="button" className="list-row" onClick={onStartOAuth} style={{ marginBottom: 8 }}>
+      <button
+        type="button"
+        className="list-row"
+        onClick={onStartOAuth}
+        style={{ marginBottom: 8 }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <IconGlobe width={18} />
           <div>
@@ -41,9 +49,18 @@ export function AddCodexAccountPickStep({
         </div>
       </button>
 
-      {error && <div className="notice notice-err" style={{ marginTop: 8 }}>{error}</div>}
+      {error && (
+        <div className="notice notice-err" style={{ marginTop: 8 }}>
+          {error}
+        </div>
+      )}
 
-      <button type="button" className="btn btn-ghost" onClick={onClose} style={{ width: "100%" }}>
+      <button
+        type="button"
+        className="btn btn-ghost"
+        onClick={onClose}
+        style={{ width: "100%" }}
+      >
         {t("codexAuth.cancel")}
       </button>
     </>

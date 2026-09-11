@@ -2,6 +2,7 @@ import { useT } from "../i18n/shared";
 import { LoginUrlBlock } from "./login-url-block";
 import type { StatusTone } from "./add-codex-account-reducer";
 import { DotMatrix } from "../DotMatrix";
+import { ModalDesc } from "./primitives/modal";
 
 export function AddCodexAccountWaitingStep({
   reauthAccountId,
@@ -34,10 +35,21 @@ export function AddCodexAccountWaitingStep({
 
   return (
     <>
-      <h3 style={{ marginBottom: 4 }}>{reauthAccountId ? t("codexAuth.reauthenticate") : t("codexAuth.oauthLogin")}</h3>
-      <p className="modal-desc">{t("codexAuth.oauthWaiting")}</p>
+      <h3 style={{ marginBottom: 4 }}>
+        {reauthAccountId
+          ? t("codexAuth.reauthenticate")
+          : t("codexAuth.oauthLogin")}
+      </h3>
+      <ModalDesc>{t("codexAuth.oauthWaiting")}</ModalDesc>
       <LoginUrlBlock url={authUrl} />
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          marginTop: 12,
+        }}
+      >
         <div className="muted text-label">{t("prov.pasteRedirectHint")}</div>
         <div style={{ display: "flex", gap: 8 }}>
           <input
@@ -45,8 +57,8 @@ export function AddCodexAccountWaitingStep({
             autoComplete="off"
             spellCheck={false}
             value={manualCode}
-            onChange={e => onManualCodeChange(e.target.value)}
-            onKeyDown={e => {
+            onChange={(e) => onManualCodeChange(e.target.value)}
+            onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
                 onSubmitManualCode();
@@ -61,10 +73,17 @@ export function AddCodexAccountWaitingStep({
           <button
             className="btn btn-ghost"
             type="button"
-            disabled={manualCodeBusy || manualCodeWaiting || !manualCode.trim() || !flowId}
+            disabled={
+              manualCodeBusy ||
+              manualCodeWaiting ||
+              !manualCode.trim() ||
+              !flowId
+            }
             onClick={onSubmitManualCode}
           >
-            {manualCodeBusy ? t("codexAuth.oauthSubmittingCode") : t("prov.pasteSubmit")}
+            {manualCodeBusy
+              ? t("codexAuth.oauthSubmittingCode")
+              : t("prov.pasteSubmit")}
           </button>
         </div>
       </div>
@@ -78,11 +97,25 @@ export function AddCodexAccountWaitingStep({
           {statusNotice}
         </div>
       )}
-      {error && <div className="notice notice-err" style={{ marginTop: 12 }}>{error}</div>}
+      {error && (
+        <div className="notice notice-err" style={{ marginTop: 12 }}>
+          {error}
+        </div>
+      )}
       <div style={{ textAlign: "center", padding: "24px 0" }}>
-        <DotMatrix size={24} dotSize={5} speed={1.1} color="var(--accent-blue)" />
+        <DotMatrix
+          size={24}
+          dotSize={5}
+          speed={1.1}
+          color="var(--accent-blue)"
+        />
       </div>
-      <button type="button" className="btn btn-ghost" onClick={onClose} style={{ width: "100%" }}>
+      <button
+        type="button"
+        className="btn btn-ghost"
+        onClick={onClose}
+        style={{ width: "100%" }}
+      >
         {t("codexAuth.cancel")}
       </button>
     </>
