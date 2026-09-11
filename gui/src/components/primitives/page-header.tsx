@@ -23,3 +23,14 @@ export function PageHeader({
     </div>
   );
 }
+
+/** Subtitle that sits under page chrome, not inside `.page-head`. */
+export function PageSubtitle({
+  children,
+  className = "page-sub",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return <p className={className}>{children}</p>;
+}
