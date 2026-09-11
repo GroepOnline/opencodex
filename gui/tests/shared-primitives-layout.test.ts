@@ -45,4 +45,18 @@ describe("shared GUI primitives scaffold", () => {
     expect(source).toContain("claude-dirty");
     expect(source).toContain("claude-save-actions");
   });
+
+  test("Modal keeps overlay slots later dialogs share", () => {
+    const source = read("modal.tsx");
+    expect(source).toContain('className = "modal-overlay"');
+    expect(source).toContain('className = "modal-card"');
+    expect(source).toContain('className = "modal-head"');
+    expect(source).toContain('className = "modal-desc"');
+    expect(source).toContain('className = "modal-actions"');
+    expect(source).toContain('className = "modal-backdrop-dismiss"');
+    expect(source).toContain("export function ModalDesc");
+    expect(source).toContain("export function ModalActions");
+    expect(source).toContain("export function ModalBackdrop");
+    expect(source).toContain("titleId?: string");
+  });
 });
