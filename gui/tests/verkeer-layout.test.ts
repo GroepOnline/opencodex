@@ -12,6 +12,8 @@ test("Verkeer composes from page, strip, panel, and timestamp primitives", async
   ).text();
 
   expect(page).toContain("<PageHeader");
+  expect(page).toContain("<PageSubtitle");
+  expect(page).not.toContain('className="page-sub"');
   expect(page).toContain("<TrafficStatsStrip");
   expect(page).toContain("<ProviderShareTable");
   expect(page).toContain("<ModelShareTable");

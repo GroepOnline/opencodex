@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { formatTokens } from "../format-tokens";
 import { useI18n, type Locale, type TFn } from "../i18n/shared";
 import { KeyPoolHealthPanel, ResponseCachePanel } from "../ops-panels";
-import { PageHeader } from "../components/primitives/page-header";
+import { PageHeader, PageSubtitle } from "../components/primitives/page-header";
 import { Panel, PanelHeader } from "../components/primitives/panel";
 import {
   SegmentedControl,
@@ -434,7 +434,7 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
   return (
     <>
       <PageHeader title={t("shell.navTraffic")} />
-      <p className="page-sub">{t("vk.subtitle")}</p>
+      <PageSubtitle>{t("vk.subtitle")}</PageSubtitle>
 
       <TrafficStatsStrip
         tokens30d={tokens30d}
