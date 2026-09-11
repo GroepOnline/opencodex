@@ -1,17 +1,25 @@
-import type { KeyboardEventHandler, ReactNode } from "react";
+import type {
+  ComponentPropsWithoutRef,
+  CSSProperties,
+  KeyboardEventHandler,
+  ReactNode,
+  Ref,
+} from "react";
 
-/** Underline tab strip. Preserves existing `.page-tabs` / `.page-tab` class contracts. */
+/** Tab strip. Call sites keep their existing class contracts. */
 export function PageTabs({
   label,
   className = "page-tabs",
+  style,
   children,
 }: {
   label: string;
   className?: string;
+  style?: CSSProperties;
   children: ReactNode;
 }) {
   return (
-    <div className={className} role="tablist" aria-label={label}>
+    <div className={className} role="tablist" aria-label={label} style={style}>
       {children}
     </div>
   );
@@ -21,15 +29,19 @@ export function PageTab({
   id,
   controls,
   selected,
+  className,
   onClick,
   onKeyDown,
+  ref,
   children,
 }: {
   id: string;
   controls: string;
   selected: boolean;
+  className?: string;
   onClick: () => void;
   onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
+  ref?: Ref<HTMLButtonElement>;
   children: ReactNode;
 }) {
   return (
@@ -37,10 +49,11 @@ export function PageTab({
       type="button"
       role="tab"
       id={id}
+      ref={ref}
       aria-selected={selected}
       aria-controls={controls}
       tabIndex={selected ? 0 : -1}
-      className={`page-tab${selected ? " page-tab--active" : ""}`}
+      className={className ?? `page-tab${selected ? " page-tab--active" : ""}`}
       onClick={onClick}
       onKeyDown={onKeyDown}
     >
@@ -53,15 +66,28 @@ export function PageTabPanel({
   id,
   labelledBy,
   hidden,
+  className,
   children,
+  ...props
 }: {
   id: string;
   labelledBy: string;
-  hidden: boolean;
+  hidden?: boolean;
+  className?: string;
   children: ReactNode;
-}) {
+} & Omit<
+  ComponentPropsWithoutRef<"div">,
+  "id" | "className" | "children" | "hidden"
+>) {
   return (
-    <div role="tabpanel" id={id} aria-labelledby={labelledBy} hidden={hidden}>
+    <div
+      {...props}
+      role="tabpanel"
+      id={id}
+      aria-labelledby={labelledBy}
+      hidden={hidden}
+      className={className}
+    >
       {children}
     </div>
   );

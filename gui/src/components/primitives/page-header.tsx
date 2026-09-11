@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 export function PageHeader({
   title,
   titleId,
+  titleClassName,
   description,
   descriptionClassName,
   actions,
@@ -11,6 +12,7 @@ export function PageHeader({
 }: {
   title: ReactNode;
   titleId?: string;
+  titleClassName?: string;
   description?: ReactNode;
   descriptionClassName?: string;
   actions?: ReactNode;
@@ -20,7 +22,9 @@ export function PageHeader({
   return (
     <div className={className ? `page-head ${className}` : "page-head"}>
       <div>
-        <h2 id={titleId}>{title}</h2>
+        <h2 id={titleId} className={titleClassName}>
+          {title}
+        </h2>
         {description ? (
           <p className={descriptionClassName}>{description}</p>
         ) : null}
