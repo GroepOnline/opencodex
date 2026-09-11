@@ -2,6 +2,7 @@ import { TrafficRowCells } from "../../traffic-row";
 import type { TrafficLogEntry } from "../../traffic-shared";
 import { Notice } from "../../ui";
 import { Button } from "../primitives/button";
+import { DataList, DataRow } from "../primitives/data-list";
 import {
   Empty,
   EmptyContent,
@@ -9,6 +10,7 @@ import {
   EmptyHeader,
 } from "../primitives/empty";
 import { SectionHeader } from "../primitives/section-header";
+import { Timestamp } from "../primitives/timestamp";
 
 function requestTokens(entry: TrafficLogEntry): number | undefined {
   if (entry.usage)
@@ -17,14 +19,6 @@ function requestTokens(entry: TrafficLogEntry): number | undefined {
       entry.usage.inputTokens + entry.usage.outputTokens
     );
   return entry.totalTokens;
-}
-
-function formatTime(timestamp: number, locale: string): string {
-  return new Date(timestamp).toLocaleTimeString(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
 }
 
 export function RequestActivityList({
@@ -53,11 +47,11 @@ export function RequestActivityList({
       <SectionHeader title={labels.title} />
       {failed ? <Notice tone="err">{labels.loadError}</Notice> : null}
       {entries.length > 0 ? (
-        <div className="pws-dashboard-rows" style={{ gap: 0 }}>
+        <DataList className="pws-dashboard-rows" style={{ gap: 0 }}>
           {entries.map((entry) => (
             <RequestActivityRow key={requestKey(entry)} entry={entry} locale={locale} />
           ))}
-        </div>
+        </DataList>
       ) : !failed ? (
         <Empty>
           <EmptyHeader>
@@ -88,22 +82,22 @@ export function RequestActivityRow({
   locale: string;
 }) {
   return (
-    <div
+    <DataRow
       className="traffic-entry"
       style={{ borderBottom: "1px solid var(--border-soft)" }}
     >
       <div className="traffic-entry-head traffic-entry-head--grid">
-        <span className="traffic-col traffic-col--time traffic-time">
-          {formatTime(entry.timestamp, locale)}
-        </span>
+        <Timestamp
+          value={entry.timestamp}
+          locale={locale}
+          className="traffic-col traffic-col--time traffic-time"
+        />
         <TrafficRowCells entry={entry} locale={locale} tokens={requestTokens(entry)} />
       </div>
-    </div>
+    </DataRow>
   );
 }
 
 function requestKey(entry: TrafficLogEntry): string {
-  return (
-    entry.requestId ?? `${entry.timestamp}-${entry.provider}-${entry.model}`
-  );
+  return entry.requestId ?? `${entry.timestamp}-${entry.provider}-${entry.model}`;
 }
