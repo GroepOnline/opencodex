@@ -1,11 +1,13 @@
 import { Notice } from "../../ui";
 import { Button } from "../primitives/button";
+import { DataList, DataRow } from "../primitives/data-list";
 import {
   Empty,
   EmptyContent,
   EmptyDescription,
   EmptyHeader,
 } from "../primitives/empty";
+import { ProgressTrack } from "../primitives/progress-track";
 import { SectionHeader } from "../primitives/section-header";
 
 export interface ProviderUsageItem {
@@ -43,7 +45,7 @@ export function ProviderUsageList({
       <SectionHeader title={labels.title} />
       {failed ? <Notice tone="err">{labels.loadError}</Notice> : null}
       {providers.length > 0 ? (
-        <div className="pws-dashboard-rows">
+        <DataList className="pws-dashboard-rows">
           {providers.map((provider) => {
             const sharePct = Number.isFinite(provider.shareRatio)
               ? Math.min(100, Math.max(0, provider.shareRatio * 100))
@@ -61,7 +63,7 @@ export function ProviderUsageList({
               />
             );
           })}
-        </div>
+        </DataList>
       ) : !failed ? (
         <Empty>
           <EmptyHeader>
@@ -94,12 +96,10 @@ export function ProviderUsageRow({
   sharePct: number;
 }) {
   return (
-    <div className="pws-dashboard-row">
+    <DataRow className="pws-dashboard-row">
       <span className="pws-dashboard-row-name">{provider}</span>
       <span className="pws-dashboard-row-count muted">{requestLabel}</span>
-      <span className="dash-bar-track" aria-hidden="true">
-        <span className="dash-bar-fill" style={{ width: `${sharePct}%` }} />
-      </span>
-    </div>
+      <ProgressTrack value={sharePct} />
+    </DataRow>
   );
 }
