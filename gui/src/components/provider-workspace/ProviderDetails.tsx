@@ -6,6 +6,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useT } from "../../i18n/shared";
 import type { WorkspaceItem } from "../../provider-workspace/catalog";
 import { formatProviderDisplayName } from "../../provider-icons";
+import { PageTab, PageTabPanel, PageTabs } from "../primitives/page-tabs";
 import { isFreeProvider } from "../../provider-workspace/catalog";
 import { isLocalProvider } from "../../provider-workspace/kind";
 import { providerAuthSurface } from "../../provider-workspace/auth";
@@ -21,7 +22,16 @@ import ProviderSettings from "./ProviderSettings";
 import { UnsavedLeaveDialog } from "./ProviderDialogs";
 import type { ProviderQuotaReportView } from "../../provider-workspace/report";
 import { refreshProviderModels } from "../../provider-workspace/refresh-models";
-import type { AccountLoadState, ProviderModelUsageRow, ProviderUsageTotals, OAuthAccountRow, ApiKeyRow, LoginHint, ProviderAuthHandlers, ProviderUpdatePatch } from "./types";
+import type {
+  AccountLoadState,
+  ProviderModelUsageRow,
+  ProviderUsageTotals,
+  OAuthAccountRow,
+  ApiKeyRow,
+  LoginHint,
+  ProviderAuthHandlers,
+  ProviderUpdatePatch,
+} from "./types";
 
 type Tab = "overview" | "models" | "usage" | "accounts" | "settings";
 
@@ -77,7 +87,12 @@ export default function ProviderDetails({
   oauthEmail?: string;
   onDeselect: () => void;
   apiBase: string;
-  oauth?: { loggedIn: boolean; email?: string; error?: string; needsReauth?: boolean };
+  oauth?: {
+    loggedIn: boolean;
+    email?: string;
+    error?: string;
+    needsReauth?: boolean;
+  };
   accounts?: OAuthAccountRow[];
   accountLoadState?: AccountLoadState;
   switchingAccountId?: string | null;
@@ -88,7 +103,10 @@ export default function ProviderDetails({
   onCodexActiveNeedsReauthChange?: (needs: boolean) => void;
   /** Shared Codex account state owned by Providers (WP3). */
   codexController?: CodexAccountPoolController;
-  onUpdateProvider?: (name: string, patch: ProviderUpdatePatch) => Promise<{ ok: boolean; error?: string }>;
+  onUpdateProvider?: (
+    name: string,
+    patch: ProviderUpdatePatch,
+  ) => Promise<{ ok: boolean; error?: string }>;
   isDefault?: boolean;
   onRemoveProvider?: (name: string) => void;
   onSetDisabled?: (name: string, disabled: boolean) => void;
@@ -98,35 +116,61 @@ export default function ProviderDetails({
   const t = useT();
   const [tab, setTab] = useState<Tab>("overview");
   const [settingsDirty, setSettingsDirty] = useState(false);
-  const [pendingLeave, setPendingLeave] = useState<Tab | "deselect" | "fetch-models" | null>(null);
+  const [pendingLeave, setPendingLeave] = useState<
+    Tab | "deselect" | "fetch-models" | null
+  >(null);
   const [leaveSaving, setLeaveSaving] = useState(false);
   const [fetchingProvider, setFetchingProvider] = useState<string | null>(null);
-  const [fetchModelsNotice, setFetchModelsNotice] = useState<{ provider: string; ok: boolean; text: string } | null>(null);
+  const [fetchModelsNotice, setFetchModelsNotice] = useState<{
+    provider: string;
+    ok: boolean;
+    text: string;
+  } | null>(null);
   const fetchingModels = fetchingProvider === item.name;
-  const fetchModelsStatus = fetchModelsNotice?.provider === item.name ? fetchModelsNotice : null;
+  const fetchModelsStatus =
+    fetchModelsNotice?.provider === item.name ? fetchModelsNotice : null;
   const settingsSaveRef = useRef<(() => Promise<boolean>) | null>(null);
-  const registerSettingsSave = useCallback((save: (() => Promise<boolean>) | null) => {
-    settingsSaveRef.current = save;
-  }, []);
+  const registerSettingsSave = useCallback(
+    (save: (() => Promise<boolean>) | null) => {
+      settingsSaveRef.current = save;
+    },
+    [],
+  );
   const isDisabled = item.disabled === true;
   const free = useMemo(() => isFreeProvider(item), [item]);
   const local = useMemo(() => isLocalProvider(item), [item]);
   const authSurface = useMemo(() => providerAuthSurface(item), [item]);
-  const tabs = useMemo<{ id: Tab; label: string }[]>(() => [
-    { id: "overview", label: t("pws.tab.overview") },
-    { id: "models", label: t("pws.tab.models") },
-    { id: "usage", label: t("pws.tab.usage") },
-    ...(authSurface ? [{ id: "accounts" as const, label: authSurface === "api-keys" ? t("pws.apiKeys") : t("pws.tab.accounts") }] : []),
-    { id: "settings", label: t("pws.tab.settings") },
-  ], [authSurface, t]);
+  const tabs = useMemo<{ id: Tab; label: string }[]>(
+    () => [
+      { id: "overview", label: t("pws.tab.overview") },
+      { id: "models", label: t("pws.tab.models") },
+      { id: "usage", label: t("pws.tab.usage") },
+      ...(authSurface
+        ? [
+            {
+              id: "accounts" as const,
+              label:
+                authSurface === "api-keys"
+                  ? t("pws.apiKeys")
+                  : t("pws.tab.accounts"),
+            },
+          ]
+        : []),
+      { id: "settings", label: t("pws.tab.settings") },
+    ],
+    [authSurface, t],
+  );
 
-  const switchTab = useCallback((next: Tab) => {
-    if (settingsDirty && tab === "settings" && next !== "settings") {
-      setPendingLeave(next);
-      return;
-    }
-    setTab(next);
-  }, [tab, settingsDirty]);
+  const switchTab = useCallback(
+    (next: Tab) => {
+      if (settingsDirty && tab === "settings" && next !== "settings") {
+        setPendingLeave(next);
+        return;
+      }
+      setTab(next);
+    },
+    [tab, settingsDirty],
+  );
 
   const fetchThisProviderModels = useCallback(async () => {
     const provider = item.name;
@@ -137,11 +181,23 @@ export default function ProviderDetails({
     try {
       const result = await refreshProviderModels(apiBase, provider);
       if (!result.ok) {
-        setFetchModelsNotice({ provider, ok: false, text: t("pws.fetchModelsFailed", { error: result.error }) });
+        setFetchModelsNotice({
+          provider,
+          ok: false,
+          text: t("pws.fetchModelsFailed", { error: result.error }),
+        });
       } else if (result.source === "static") {
-        setFetchModelsNotice({ provider, ok: true, text: t("pws.fetchModelsStatic", { count: result.count }) });
+        setFetchModelsNotice({
+          provider,
+          ok: true,
+          text: t("pws.fetchModelsStatic", { count: result.count }),
+        });
       } else if (result.source === "passthrough") {
-        setFetchModelsNotice({ provider, ok: true, text: t("pws.fetchModelsPassthrough") });
+        setFetchModelsNotice({
+          provider,
+          ok: true,
+          text: t("pws.fetchModelsPassthrough"),
+        });
       } else {
         setFetchModelsNotice({
           provider,
@@ -151,9 +207,13 @@ export default function ProviderDetails({
       }
       onRetryModels?.();
     } catch {
-      setFetchModelsNotice({ provider, ok: false, text: t("models.networkError") });
+      setFetchModelsNotice({
+        provider,
+        ok: false,
+        text: t("models.networkError"),
+      });
     } finally {
-      setFetchingProvider(current => current === provider ? null : current);
+      setFetchingProvider((current) => (current === provider ? null : current));
     }
   }, [apiBase, fetchingProvider, item.disabled, item.name, onRetryModels, t]);
 
@@ -165,19 +225,25 @@ export default function ProviderDetails({
     onDeselect();
   }, [settingsDirty, tab, onDeselect]);
 
-  const onTabKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
-    let next: number;
-    if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
-    else if (event.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
-    else if (event.key === "Home") next = 0;
-    else if (event.key === "End") next = tabs.length - 1;
-    else return;
-    event.preventDefault();
-    switchTab(tabs[next]!.id);
-    event.currentTarget.parentElement
-      ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]
-      ?.focus();
-  }, [switchTab, tabs]);
+  const onTabKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+      let next: number;
+      if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+      else if (event.key === "ArrowLeft")
+        next = (index - 1 + tabs.length) % tabs.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = tabs.length - 1;
+      else return;
+      event.preventDefault();
+      switchTab(tabs[next]!.id);
+      const tabButtons =
+        event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+          '[role="tab"]',
+        );
+      tabButtons?.[next]?.focus();
+    },
+    [switchTab, tabs],
+  );
 
   const activeTabId = `pws-tab-${tab}`;
   const activePanelId = `pws-panel-${tab}`;
@@ -185,18 +251,35 @@ export default function ProviderDetails({
   return (
     <div className="pws-detail">
       <div className="pws-detail-head">
-        <button type="button" className="pws-detail-back-link" onClick={requestDeselect}>
+        <button
+          type="button"
+          className="pws-detail-back-link"
+          onClick={requestDeselect}
+        >
           <IconChevron className="pws-detail-back-chevron" aria-hidden="true" />
           {t("pws.allProviders")}
         </button>
       </div>
       <div className="pws-detail-head-main">
-        <ProviderIcon name={item.name} adapter={item.adapter} baseUrl={item.baseUrl} cls="pws-detail-icon" />
+        <ProviderIcon
+          name={item.name}
+          adapter={item.adapter}
+          baseUrl={item.baseUrl}
+          cls="pws-detail-icon"
+        />
         <div className="pws-detail-title-wrap">
           <h2 className="pws-detail-title">
             {formatProviderDisplayName(item.name)}
-            {local && <span className="pwi-rail-badge pwi-rail-badge--local">{t("modal.badge.local")}</span>}
-            {!local && free && <span className="pwi-rail-badge pwi-rail-badge--free">{t("modal.badge.free")}</span>}
+            {local && (
+              <span className="pwi-rail-badge pwi-rail-badge--local">
+                {t("modal.badge.local")}
+              </span>
+            )}
+            {!local && free && (
+              <span className="pwi-rail-badge pwi-rail-badge--free">
+                {t("modal.badge.free")}
+              </span>
+            )}
           </h2>
         </div>
         <div className="pws-detail-actions">
@@ -229,7 +312,9 @@ export default function ProviderDetails({
           )}
           {onSetDisabled && (
             <div className="pws-detail-toggle">
-              <span className="pws-detail-toggle-label">{t("pws.enabledLabel")}</span>
+              <span className="pws-detail-toggle-label">
+                {t("pws.enabledLabel")}
+              </span>
               <Switch
                 on={!isDisabled}
                 onClick={() => onSetDisabled(item.name, !isDisabled)}
@@ -244,54 +329,60 @@ export default function ProviderDetails({
         <p
           className="muted text-label"
           role="status"
-          style={{ margin: "0 0 8px", color: fetchModelsStatus.ok ? undefined : "var(--amber)" }}
+          style={{
+            margin: "0 0 8px",
+            color: fetchModelsStatus.ok ? undefined : "var(--amber)",
+          }}
         >
           {fetchModelsStatus.text}
         </p>
       )}
-      <div className="pws-detail-tabs" role="tablist">
+      <PageTabs
+        label={formatProviderDisplayName(item.name)}
+        className="pws-detail-tabs"
+      >
         {tabs.map((candidate, index) => (
-          <button
+          <PageTab
             key={candidate.id}
-            type="button"
-            role="tab"
             id={`pws-tab-${candidate.id}`}
-            aria-controls={`pws-panel-${candidate.id}`}
-            aria-selected={tab === candidate.id}
-            tabIndex={tab === candidate.id ? 0 : -1}
+            controls={`pws-panel-${candidate.id}`}
+            selected={tab === candidate.id}
             className={`pws-detail-tab${tab === candidate.id ? " pws-detail-tab--active" : ""}`}
             onClick={() => switchTab(candidate.id)}
-            onKeyDown={event => onTabKeyDown(event, index)}
+            onKeyDown={(event) => onTabKeyDown(event, index)}
           >
             {candidate.label}
-          </button>
+          </PageTab>
         ))}
-      </div>
-      <div
+      </PageTabs>
+      <PageTabPanel
         className="pws-detail-panel"
-        role="tabpanel"
         id={activePanelId}
-        aria-labelledby={activeTabId}
+        labelledBy={activeTabId}
         tabIndex={0}
       >
         {tab === "overview" && (
           <ProviderOverview
-            accountPanel={authSurface ? (
-              <ProviderAuthPanel
-                item={item}
-                apiBase={apiBase}
-                oauth={oauth}
-                accounts={accounts}
-                keys={keys}
-                accountLoadState={accountLoadState}
-                switchingAccountId={switchingAccountId}
-                busy={busyProvider === item.name}
-                loginHint={loginHint}
-                authHandlers={authHandlers}
-                onCodexActiveNeedsReauthChange={onCodexActiveNeedsReauthChange}
-                codexController={codexController}
-              />
-            ) : undefined}
+            accountPanel={
+              authSurface ? (
+                <ProviderAuthPanel
+                  item={item}
+                  apiBase={apiBase}
+                  oauth={oauth}
+                  accounts={accounts}
+                  keys={keys}
+                  accountLoadState={accountLoadState}
+                  switchingAccountId={switchingAccountId}
+                  busy={busyProvider === item.name}
+                  loginHint={loginHint}
+                  authHandlers={authHandlers}
+                  onCodexActiveNeedsReauthChange={
+                    onCodexActiveNeedsReauthChange
+                  }
+                  codexController={codexController}
+                />
+              ) : undefined
+            }
             item={item}
             usageTotals={usageTotals}
             quotaReport={quotaReport}
@@ -301,14 +392,19 @@ export default function ProviderDetails({
             onViewUsage={() => switchTab("usage")}
             onUpdateProvider={onUpdateProvider}
             reauthBusy={busyProvider === item.name}
-            onCancelLogin={authHandlers?.onCancelLogin ? () => void authHandlers.onCancelLogin?.(item.name) : undefined}
+            onCancelLogin={
+              authHandlers?.onCancelLogin
+                ? () => void authHandlers.onCancelLogin?.(item.name)
+                : undefined
+            }
             onReauthenticate={
               item.activeNeedsReauth
                 ? () => {
                     if (item.authMode === "oauth") {
                       const rows = accounts ?? [];
-                      const active = rows.find(a => a.active && a.needsReauth)
-                        ?? rows.find(a => a.needsReauth);
+                      const active =
+                        rows.find((a) => a.active && a.needsReauth) ??
+                        rows.find((a) => a.needsReauth);
                       void authHandlers?.onReauth(item.name, active?.id);
                       return;
                     }
@@ -331,11 +427,14 @@ export default function ProviderDetails({
             modelsLoading={modelsLoading}
             modelsLoadFailed={modelsLoadFailed}
             needsReauth={
-              (accounts ?? []).some(account => account.active && account.needsReauth)
-              || oauth?.needsReauth === true
+              (accounts ?? []).some(
+                (account) => account.active && account.needsReauth,
+              ) || oauth?.needsReauth === true
             }
             onRetryModels={onRetryModels}
-            onOpenAccounts={authSurface ? () => switchTab("accounts") : undefined}
+            onOpenAccounts={
+              authSurface ? () => switchTab("accounts") : undefined
+            }
           />
         )}
         {tab === "usage" && (
@@ -377,11 +476,13 @@ export default function ProviderDetails({
             onRegisterSave={registerSettingsSave}
           />
         )}
-      </div>
+      </PageTabPanel>
       {pendingLeave && (
         <UnsavedLeaveDialog
           saving={leaveSaving}
-          onCancel={() => { if (!leaveSaving) setPendingLeave(null); }}
+          onCancel={() => {
+            if (!leaveSaving) setPendingLeave(null);
+          }}
           onDiscard={() => {
             if (leaveSaving) return;
             const next = pendingLeave;
@@ -389,25 +490,25 @@ export default function ProviderDetails({
             setSettingsDirty(false);
             if (next === "deselect") onDeselect();
             else if (next === "fetch-models") {
-                setTab("models");
-                void fetchThisProviderModels();
-              } else setTab(next);
+              setTab("models");
+              void fetchThisProviderModels();
+            } else setTab(next);
           }}
           onSave={() => {
             void (async () => {
               if (leaveSaving) return;
               setLeaveSaving(true);
               try {
-                const ok = await settingsSaveRef.current?.() ?? false;
+                const ok = (await settingsSaveRef.current?.()) ?? false;
                 if (!ok) return;
                 const next = pendingLeave;
                 setPendingLeave(null);
                 setSettingsDirty(false);
                 if (next === "deselect") onDeselect();
                 else if (next === "fetch-models") {
-                    setTab("models");
-                    void fetchThisProviderModels();
-                  } else if (next) setTab(next);
+                  setTab("models");
+                  void fetchThisProviderModels();
+                } else if (next) setTab(next);
               } finally {
                 setLeaveSaving(false);
               }
