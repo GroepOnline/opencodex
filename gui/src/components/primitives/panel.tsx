@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ComponentPropsWithoutRef, CSSProperties, ReactNode } from "react";
 
 /** Landmark section for operational reports. Bare section tags stay inside this primitive. */
 export function Panel({
@@ -6,14 +6,23 @@ export function Panel({
   className = "panel",
   style,
   children,
+  ...props
 }: {
   titleId: string;
   className?: string;
   style?: CSSProperties;
   children: ReactNode;
-}) {
+} & Omit<
+  ComponentPropsWithoutRef<"section">,
+  "className" | "style" | "children"
+>) {
   return (
-    <section className={className} aria-labelledby={titleId} style={style}>
+    <section
+      className={className}
+      style={style}
+      {...props}
+      aria-labelledby={titleId}
+    >
       {children}
     </section>
   );
