@@ -38,7 +38,7 @@ export function ModalHead({
   actions,
   className = "modal-head",
 }: {
-  titleId: string;
+  titleId?: string;
   title: ReactNode;
   actions?: ReactNode;
   className?: string;
@@ -48,5 +48,30 @@ export function ModalHead({
       <h3 id={titleId}>{title}</h3>
       {actions}
     </div>
+  );
+}
+
+export function ModalDesc({
+  className = "modal-desc",
+  ...props
+}: ComponentPropsWithoutRef<"p">) {
+  return <p className={className} {...props} />;
+}
+
+export function ModalActions({
+  className = "modal-actions",
+  ...props
+}: ComponentPropsWithoutRef<"div">) {
+  return <div className={className} {...props} />;
+}
+
+export function ModalBackdrop({
+  className = "modal-backdrop-dismiss",
+  type = "button",
+  tabIndex = -1,
+  ...props
+}: ComponentPropsWithoutRef<"button">) {
+  return (
+    <button type={type} className={className} tabIndex={tabIndex} {...props} />
   );
 }
