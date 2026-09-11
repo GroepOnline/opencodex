@@ -4,7 +4,7 @@ import { formatTokens } from "../format-tokens";
 import { formatEstimatedUsdValue as formatUsdEstimate } from "../intl-formatters";
 import { EmptyState, Notice } from "../ui";
 import { modelLabel } from "../model-display";
-import { PageHeader } from "../components/primitives/page-header";
+import { PageHeader, PageSubtitle } from "../components/primitives/page-header";
 import { Panel, PanelHeader } from "../components/primitives/panel";
 import {
   SegmentedControl,
@@ -974,7 +974,7 @@ export default function Usage({ apiBase }: { apiBase: string }) {
           />
         }
       />
-      <p className="page-sub">{t("usage.subtitle")}</p>
+      <PageSubtitle>{t("usage.subtitle")}</PageSubtitle>
 
       {error && !data ? (
         <Notice tone="err">
