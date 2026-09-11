@@ -3,7 +3,7 @@ import type { EffectiveSubagentRoster, SpawnAgentSurface } from "../../codex/cat
 import { isInjectionDebugEnabled } from "../../lib/debug-settings";
 import { injectionDebugLog } from "../../lib/injection-debug-log";
 import { slugsEquivalent } from "../../providers/slug-codec";
-import { namespacedToolName } from "../../types";
+import { namespacedToolName, normalizeToolName } from "../../types";
 import type { OcxConfig, OcxParsedRequest } from "../../types";
 
 
@@ -16,7 +16,7 @@ export function buildToolBridgeMaps(parsed: OcxParsedRequest): {
   const freeformToolNames = new Set<string>();
   const toolSearchToolNames = new Set<string>();
   for (const t of parsed.context.tools ?? []) {
-    if (t.namespace) toolNsMap.set(namespacedToolName(t.namespace, t.name), { namespace: t.namespace, name: t.name });
+    if (t.namespace) toolNsMap.set(normalizeToolName(namespacedToolName(t.namespace, t.name)), { namespace: t.namespace, name: t.name });
     if (t.freeform) freeformToolNames.add(t.name);
     if (t.toolSearch) toolSearchToolNames.add(t.name);
   }

@@ -175,6 +175,12 @@ export function namespacedToolName(namespace: string | undefined, name: string):
   return namespace ? `${namespace}__${name}` : name;
 }
 
+export function normalizeToolName(wireName: string): string {
+  if (wireName.length <= 64) return wireName;
+  const hash = Bun.hash(wireName).toString(16).padStart(8, "0").slice(0, 8);
+  return `${wireName.slice(0, 55)}_${hash}`;
+}
+
 export function toolChoiceAliases(tool: Pick<OcxTool, "namespace" | "name">): string[] {
   const wireName = namespacedToolName(tool.namespace, tool.name);
   return tool.namespace ? [wireName, `${tool.namespace}.${tool.name}`] : [wireName];

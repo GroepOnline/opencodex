@@ -1,7 +1,7 @@
 import type { AdapterRateLimitInfo, AdapterRequest, ProviderAdapter } from "./base";
 import { parseOpenAIRateLimit } from "../availability/rate-limit-parse";
 import type { AdapterEvent, OcxAssistantMessage, OcxContentPart, OcxMessage, OcxParsedRequest, OcxProviderConfig, OcxTextContent, OcxThinkingContent, OcxToolCall, OcxUsage } from "../types";
-import { isAllowedToolChoice, modelInList, namespacedToolName, resolveToolChoiceWireName, toolAllowedByChoice } from "../types";
+import { isAllowedToolChoice, modelInList, namespacedToolName, normalizeToolName, resolveToolChoiceWireName, toolAllowedByChoice } from "../types";
 import { mapReasoningEffort, modelRecordValue } from "../reasoning-effort";
 import { debugProviderDiagnostic } from "../lib/debug";
 import { isDebugEnabled } from "../lib/debug-settings";
@@ -212,7 +212,7 @@ function messagesToChatFormat(parsed: OcxParsedRequest, provider: OcxProviderCon
           chatMsg.tool_calls = wireToolCalls.map(({ tc, id }) => ({
             id,
             type: "function",
-            function: { name: namespacedToolName(tc.namespace, tc.name), arguments: JSON.stringify(tc.arguments) },
+            function: { name: normalizeToolName(namespacedToolName(tc.namespace, tc.name)), arguments: JSON.stringify(tc.arguments) },
           }));
           // "" instead of null: strict validators (xAI: "Each message must have at least one
           // content element", langchain#34140) reject content-less assistant history entries.
@@ -222,7 +222,7 @@ function messagesToChatFormat(parsed: OcxParsedRequest, provider: OcxProviderCon
           chatMsg.content = "";
         }
         out.push(chatMsg);
-        pendingToolCalls = wireToolCalls.map(({ tc, id }) => ({ id, name: namespacedToolName(tc.namespace, tc.name) }));
+        pendingToolCalls = wireToolCalls.map(({ tc, id }) => ({ id, name: normalizeToolName(namespacedToolName(tc.namespace, tc.name)) }));
         break;
       }
       case "toolResult": {
@@ -482,7 +482,7 @@ function toolsToChatFormat(parsed: OcxParsedRequest, provider: OcxProviderConfig
     return [{
     type: "function",
     function: {
-      name: namespacedToolName(t.namespace, t.name),
+      name: normalizeToolName(namespacedToolName(t.namespace, t.name)),
       description: t.description,
       parameters,
       ...(strict !== undefined ? { strict } : {}),
@@ -513,7 +513,7 @@ function toolChoiceToChatFormat(tc: OcxParsedRequest["options"]["toolChoice"], t
   if (!tc) return undefined;
   if (isAllowedToolChoice(tc)) return tc.mode === "required" ? "required" : "auto";
   if (tc === "auto" || tc === "none" || tc === "required") return tc;
-  if ("name" in tc) return { type: "function", function: { name: resolveToolChoiceWireName(tools, tc.name) } };
+  if ("name" in tc) return { type: "function", function: { name: normalizeToolName(resolveToolChoiceWireName(tools, tc.name)) } };
   return undefined;
 }
 
