@@ -79,7 +79,7 @@ test("Providers owns exactly one controller and shares it with both surfaces", a
   expect(panel).toContain("controller={codexController}");
 
   // ...and the same panel element is what Overview renders.
-  expect(details).toContain("accountPanel={authSurface ?");
+  expect(details).toMatch(/accountPanel=\{\s*authSurface\s*\?/);
 });
 
 test("a nested pool cannot start a second poll loop", async () => {

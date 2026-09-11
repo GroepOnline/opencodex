@@ -160,6 +160,11 @@ export default function ProviderCatalog({
         placeholder={t("modal.search")}
       />
 
+      {/* Keep inactive controls targets without mounting account actions twice. */}
+      {(["accounts", "free", "paid"] as const).filter(candidate => candidate !== tier).map(candidate => (
+        <PageTabPanel key={candidate} id={`provider-catalog-panel-${candidate}`}
+          labelledBy={`provider-catalog-tab-${candidate}`} hidden>{null}</PageTabPanel>
+      ))}
       <PageTabPanel
         id={`provider-catalog-panel-${tier}`}
         labelledBy={`provider-catalog-tab-${tier}`}

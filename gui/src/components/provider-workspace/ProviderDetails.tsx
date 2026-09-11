@@ -355,6 +355,11 @@ export default function ProviderDetails({
           </PageTab>
         ))}
       </PageTabs>
+      {/* Inactive panels remain addressable without starting hidden account polls. */}
+      {tabs.filter(candidate => candidate.id !== tab).map(candidate => (
+        <PageTabPanel key={candidate.id} id={`pws-panel-${candidate.id}`}
+          labelledBy={`pws-tab-${candidate.id}`} hidden>{null}</PageTabPanel>
+      ))}
       <PageTabPanel
         className="pws-detail-panel"
         id={activePanelId}

@@ -505,8 +505,8 @@ export default function ClaudeDesktop({
 
   const exportProfile = () => {
     if (!profile) return;
-    // eslint-disable-next-line local-i18n/no-hardcoded-ui-strings -- file content newline, not UI text
     const url = URL.createObjectURL(
+      // eslint-disable-next-line local-i18n/no-hardcoded-ui-strings -- file content newline, not UI text
       new Blob([`${JSON.stringify(profile, null, 2)}\n`], {
         type: "application/json",
       }),

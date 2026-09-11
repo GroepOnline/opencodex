@@ -4,13 +4,14 @@ import type { ComponentPropsWithoutRef, ReactNode, Ref } from "react";
 export function Modal({
   className = "modal-overlay",
   role = "dialog",
+  "aria-modal": ariaModal = true,
   ...props
 }: ComponentPropsWithoutRef<"div">) {
   return (
     <div
       className={className}
       role={role}
-      aria-modal={props["aria-modal"] ?? true}
+      aria-modal={ariaModal}
       {...props}
     />
   );

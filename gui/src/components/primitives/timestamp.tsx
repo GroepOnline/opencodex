@@ -15,9 +15,12 @@ export function Timestamp({
   options?: Intl.DateTimeFormatOptions;
 }) {
   const date = value instanceof Date ? value : new Date(value);
+  // Log data can contain invalid dates. Preserve the non-throwing localized
+  // fallback rather than letting ISO serialization crash the entire page.
+  const dateTime = Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
 
   return (
-    <time dateTime={date.toISOString()} {...props}>
+    <time dateTime={dateTime} {...props}>
       {date.toLocaleTimeString(locale, options)}
     </time>
   );

@@ -24,13 +24,19 @@ function ModellenTabPanel({
   children: ReactNode;
 }) {
   return (
-    <div
-      id={`modellen-panel-${tab}`}
-      role="tabpanel"
-      aria-labelledby={`modellen-tab-${tab}`}
-    >
-      {children}
-    </div>
+    <>
+      {TABS.map(({ id }) => (
+        <div
+          key={id}
+          id={`modellen-panel-${id}`}
+          role="tabpanel"
+          aria-labelledby={`modellen-tab-${id}`}
+          hidden={tab !== id}
+        >
+          {tab === id ? children : null}
+        </div>
+      ))}
+    </>
   );
 }
 

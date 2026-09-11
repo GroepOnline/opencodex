@@ -228,6 +228,11 @@ export function DetailPanel({
         </PageTab>
       </PageTabs>
 
+      {/* Every tab has a control target; only the active editor is mounted. */}
+      {(["config", "about"] as const).filter(candidate => candidate !== tab).map(candidate => (
+        <PageTabPanel key={candidate} id={`cws-panel-${candidate}`}
+          labelledBy={`cws-tab-${candidate}`} hidden>{null}</PageTabPanel>
+      ))}
       <PageTabPanel
         id={`cws-panel-${tab}`}
         labelledBy={`cws-tab-${tab}`}
