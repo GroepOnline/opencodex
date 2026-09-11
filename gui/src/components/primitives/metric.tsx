@@ -1,8 +1,16 @@
 import type { ReactNode } from "react";
 
-export function Metric({ label, value }: { label: ReactNode; value: ReactNode }) {
+export function Metric({
+  label,
+  value,
+  className = "metric-reading",
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="metric-reading">
+    <div className={className}>
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
@@ -12,12 +20,14 @@ export function Metric({ label, value }: { label: ReactNode; value: ReactNode })
 export function MetricGroup({
   label,
   children,
+  className = "metric-list",
 }: {
   label: string;
   children: ReactNode;
+  className?: string;
 }) {
   return (
-    <dl className="metric-list" aria-label={label}>
+    <dl className={className} aria-label={label}>
       {children}
     </dl>
   );
