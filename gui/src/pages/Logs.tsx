@@ -23,6 +23,7 @@ import { EmptyState, Notice } from "../ui";
 import { PageHeader } from "../components/primitives/page-header";
 import {
   ModalCard,
+  ModalDesc,
   ModalDialog,
   ModalHead,
 } from "../components/primitives/modal";
@@ -1108,7 +1109,7 @@ function LogDetailDialog({
             </button>
           }
         />
-        {detailInfo && <p className="modal-desc">{detailInfo.description}</p>}
+        {detailInfo && <ModalDesc>{detailInfo.description}</ModalDesc>}
 
         <LogDetailSection
           titleId="log-detail-basic"
