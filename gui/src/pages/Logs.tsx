@@ -20,7 +20,7 @@ import {
   writeSessionListCache,
 } from "../session-list-cache";
 import { EmptyState, Notice } from "../ui";
-import { PageHeader } from "../components/primitives/page-header";
+import { PageHeader, PageSubtitle } from "../components/primitives/page-header";
 import {
   ModalCard,
   ModalDesc,
@@ -760,7 +760,7 @@ export default function Logs({ apiBase }: { apiBase: string }) {
         labelledBy="logs-tab-logs"
         hidden={tab !== "logs"}
       >
-        <p className="page-sub">{t("logs.subtitle")}</p>
+        <PageSubtitle>{t("logs.subtitle")}</PageSubtitle>
 
         <LogsToolbar
           surfaceFilter={surfaceFilter}
