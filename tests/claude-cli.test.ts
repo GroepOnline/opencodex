@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { claudeNotFoundHint } from "../src/cli/claude";
 import { commandInvocation } from "../src/lib/win-exec";
-import { attachClaudeAdmissionHeader, buildClaudeEnv, claudeAdmissionToken } from "../src/cli/claude";
+import {
+  attachClaudeAdmissionHeader,
+  buildClaudeEnv,
+  claudeAdmissionHeaderToken,
+  claudeAdmissionToken,
+  isManagedClaudeProxyBaseUrl,
+} from "../src/cli/claude";
 import type { OcxConfig } from "../src/types";
 
 function cfg(extra?: Partial<OcxConfig>): OcxConfig {
@@ -20,7 +26,9 @@ function cfg(extra?: Partial<OcxConfig>): OcxConfig {
  */
 const AUTH_PRESENT = {
   authDetect: {
-    readClaudeJson: () => ({ oauthAccount: { emailAddress: "dev@example.com" } }),
+    readClaudeJson: () => ({
+      oauthAccount: { emailAddress: "dev@example.com" },
+    }),
     credentialsFileExists: () => true,
     keychainProbe: () => "present" as const,
   },
@@ -28,9 +36,18 @@ const AUTH_PRESENT = {
 
 describe("ocx claude env assembly", () => {
   test("injects base URL, discovery flag and model slots — NO auth token by default (subscription mode)", () => {
-    const env = buildClaudeEnv(cfg({
-      claudeCode: { model: "claude-ocx-gemini--gemini-3-pro", smallFastModel: "gemini/gemini-3-flash" },
-    }), 10123, {}, {}, AUTH_PRESENT);
+    const env = buildClaudeEnv(
+      cfg({
+        claudeCode: {
+          model: "claude-ocx-gemini--gemini-3-pro",
+          smallFastModel: "gemini/gemini-3-flash",
+        },
+      }),
+      10123,
+      {},
+      {},
+      AUTH_PRESENT,
+    );
     expect(env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:10123");
     // Setting ANTHROPIC_AUTH_TOKEN disables claude.ai connectors and kills subscription
     // OAuth — the launcher must leave it unset on an open loopback proxy.
@@ -46,45 +63,118 @@ describe("ocx claude env assembly", () => {
   });
 
   test("configured API key becomes the auth token (admission required)", () => {
-    const env = buildClaudeEnv(cfg({
-      apiKeys: [{ id: "1", name: "main", key: "sk-ocx-123", createdAt: "2026-01-01" }],
-    }), 10100, {});
+    const env = buildClaudeEnv(
+      cfg({
+        apiKeys: [
+          { id: "1", name: "main", key: "sk-ocx-123", createdAt: "2026-01-01" },
+        ],
+      }),
+      10100,
+      {},
+    );
     expect(env.ANTHROPIC_AUTH_TOKEN).toBe("sk-ocx-123");
   });
 
   test("service admission header preserves Claude subscription OAuth", () => {
-    const env = buildClaudeEnv(cfg({ claudeCode: {} }), 10100, {}, {}, AUTH_PRESENT);
-    attachClaudeAdmissionHeader(env, "service-token");
+    const env = buildClaudeEnv(
+      cfg({ claudeCode: {} }),
+      10100,
+      {},
+      {},
+      AUTH_PRESENT,
+    );
+    attachClaudeAdmissionHeader(env, "service-token", true);
     expect(env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
-    expect(env.ANTHROPIC_CUSTOM_HEADERS).toBe("x-opencodex-api-key: service-token");
+    expect(env.ANTHROPIC_CUSTOM_HEADERS).toBe(
+      "x-opencodex-api-key: service-token",
+    );
     expect(env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBeUndefined();
   });
 
   test("service admission header preserves existing custom headers and user override", () => {
     const env = { ANTHROPIC_CUSTOM_HEADERS: "x-trace-id: abc" };
-    attachClaudeAdmissionHeader(env, "service-token");
-    expect(env.ANTHROPIC_CUSTOM_HEADERS).toBe("x-trace-id: abc\nx-opencodex-api-key: service-token");
+    attachClaudeAdmissionHeader(env, "service-token", true);
+    expect(env.ANTHROPIC_CUSTOM_HEADERS).toBe(
+      "x-trace-id: abc\nx-opencodex-api-key: service-token",
+    );
 
-    const user = { ANTHROPIC_CUSTOM_HEADERS: "X-OpenCodex-API-Key: user-token\nx-trace-id: abc" };
-    attachClaudeAdmissionHeader(user, "service-token");
-    expect(user.ANTHROPIC_CUSTOM_HEADERS).toBe("X-OpenCodex-API-Key: user-token\nx-trace-id: abc");
+    const user = {
+      ANTHROPIC_CUSTOM_HEADERS:
+        "X-OpenCodex-API-Key: user-token\nx-trace-id: abc",
+    };
+    attachClaudeAdmissionHeader(user, "service-token", true);
+    expect(user.ANTHROPIC_CUSTOM_HEADERS).toBe(
+      "X-OpenCodex-API-Key: user-token\nx-trace-id: abc",
+    );
+  });
+
+  test("service admission token is scoped to the discovered loopback endpoint", () => {
+    expect(isManagedClaudeProxyBaseUrl("http://127.0.0.1:10100", 10100)).toBe(
+      true,
+    );
+    expect(isManagedClaudeProxyBaseUrl("http://localhost:10100", 10100)).toBe(
+      true,
+    );
+    expect(isManagedClaudeProxyBaseUrl("http://localhost:10101", 10100)).toBe(
+      false,
+    );
+    expect(isManagedClaudeProxyBaseUrl("http://my-own-gateway:9", 10100)).toBe(
+      false,
+    );
+    expect(isManagedClaudeProxyBaseUrl("https://ocx.example.test", 10100)).toBe(
+      false,
+    );
+
+    const custom = {
+      ANTHROPIC_BASE_URL: "http://my-own-gateway:9",
+      ANTHROPIC_CUSTOM_HEADERS: "x-trace-id: abc",
+    };
+    attachClaudeAdmissionHeader(custom, "service-token", false);
+    expect(custom.ANTHROPIC_CUSTOM_HEADERS).toBe("x-trace-id: abc");
+
+    const explicit = {
+      ANTHROPIC_BASE_URL: "https://trusted-by-user.example.test",
+      ANTHROPIC_CUSTOM_HEADERS:
+        "X-OpenCodex-API-Key: user-token\nx-trace-id: abc",
+    };
+    attachClaudeAdmissionHeader(explicit, "service-token", false);
+    expect(claudeAdmissionHeaderToken(explicit)).toBe("user-token");
+    expect(explicit.ANTHROPIC_CUSTOM_HEADERS).toBe(
+      "X-OpenCodex-API-Key: user-token\nx-trace-id: abc",
+    );
   });
 
   // Host-managed routing guard (devlog 260720_claude_authmode_persist/020):
   // defends the spawn env against leftover cc-switch/CCR settings.json env hijack.
   test("subscription mode leaves the host-managed auth assertion unset", () => {
-    const env = buildClaudeEnv(cfg({ claudeCode: {} }), 10100, {}, {}, AUTH_PRESENT);
+    const env = buildClaudeEnv(
+      cfg({ claudeCode: {} }),
+      10100,
+      {},
+      {},
+      AUTH_PRESENT,
+    );
     expect(env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBeUndefined();
   });
 
   test("proxy-owned authentication sets CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST=1", () => {
-    const proxy = buildClaudeEnv(cfg({ claudeCode: { authMode: "proxy" } }), 10100, {});
+    const proxy = buildClaudeEnv(
+      cfg({ claudeCode: { authMode: "proxy" } }),
+      10100,
+      {},
+    );
     expect(proxy.ANTHROPIC_AUTH_TOKEN).toBe("opencodex-proxy");
     expect(proxy.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBe("1");
 
-    const admission = buildClaudeEnv(cfg({
-      apiKeys: [{ id: "1", name: "main", key: "sk-ocx-123", createdAt: "2026-01-01" }],
-    }), 10100, {});
+    const admission = buildClaudeEnv(
+      cfg({
+        apiKeys: [
+          { id: "1", name: "main", key: "sk-ocx-123", createdAt: "2026-01-01" },
+        ],
+      }),
+      10100,
+      {},
+    );
     expect(admission.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBe("1");
   });
 
@@ -92,31 +182,91 @@ describe("ocx claude env assembly", () => {
   // satisfies Claude Code's "a token is set" check but no gateway admits it, so it must
   // never be preferred over a real credential.
   test("admission token skips owned markers so a real credential stays reachable", () => {
-    const withKey = cfg({ apiKeys: [{ id: "1", name: "main", key: "sk-ocx-123", createdAt: "2026-01-01" }] });
-    expect(claudeAdmissionToken({ ANTHROPIC_AUTH_TOKEN: "opencodex-proxy" }, withKey, {})).toBe("sk-ocx-123");
+    const withKey = cfg({
+      apiKeys: [
+        { id: "1", name: "main", key: "sk-ocx-123", createdAt: "2026-01-01" },
+      ],
+    });
+    expect(
+      claudeAdmissionToken(
+        { ANTHROPIC_AUTH_TOKEN: "opencodex-proxy" },
+        withKey,
+        {},
+      ),
+    ).toBe("sk-ocx-123");
 
     // The regression: a marker used to mask the data-plane service token entirely.
-    expect(claudeAdmissionToken(
-      { ANTHROPIC_AUTH_TOKEN: "opencodex-proxy" },
-      cfg({ claudeCode: { authMode: "proxy" } }),
-      { OPENCODEX_API_AUTH_TOKEN: "service-token" },
-    )).toBe("service-token");
+    expect(
+      claudeAdmissionToken(
+        { ANTHROPIC_AUTH_TOKEN: "opencodex-proxy" },
+        cfg({ claudeCode: { authMode: "proxy" } }),
+        { OPENCODEX_API_AUTH_TOKEN: "service-token" },
+      ),
+    ).toBe("service-token");
 
-    expect(claudeAdmissionToken({ ANTHROPIC_AUTH_TOKEN: "opencodex-loopback" }, cfg(), {
-      OPENCODEX_API_AUTH_TOKEN: "service-token",
-    })).toBe("service-token");
+    expect(
+      claudeAdmissionToken(
+        { ANTHROPIC_AUTH_TOKEN: "opencodex-loopback" },
+        cfg(),
+        {
+          OPENCODEX_API_AUTH_TOKEN: "service-token",
+        },
+      ),
+    ).toBe("service-token");
   });
 
   test("admission token prefers a real injected token over config and service env", () => {
-    expect(claudeAdmissionToken({ ANTHROPIC_AUTH_TOKEN: "  sk-user-real  " }, cfg({
-      apiKeys: [{ id: "1", name: "main", key: "sk-ocx-123", createdAt: "2026-01-01" }],
-    }), { OPENCODEX_API_AUTH_TOKEN: "service-token" })).toBe("sk-user-real");
+    expect(
+      claudeAdmissionToken(
+        { ANTHROPIC_AUTH_TOKEN: "  sk-user-real  " },
+        cfg({
+          apiKeys: [
+            {
+              id: "1",
+              name: "main",
+              key: "sk-ocx-123",
+              createdAt: "2026-01-01",
+            },
+          ],
+        }),
+        { OPENCODEX_API_AUTH_TOKEN: "service-token" },
+      ),
+    ).toBe("sk-user-real");
+  });
+
+  test("explicit admission header wins over conflicting fallback credentials", () => {
+    const env = {
+      ANTHROPIC_CUSTOM_HEADERS: "x-opencodex-api-key: user-header-token",
+      ANTHROPIC_AUTH_TOKEN: "sk-user-real",
+    };
+    expect(
+      claudeAdmissionToken(
+        env,
+        cfg({
+          apiKeys: [
+            {
+              id: "1",
+              name: "main",
+              key: "sk-ocx-123",
+              createdAt: "2026-01-01",
+            },
+          ],
+        }),
+        { OPENCODEX_API_AUTH_TOKEN: "service-token" },
+      ),
+    ).toBe("user-header-token");
   });
 
   test("a user pre-export of the host-managed flag wins (opt-out preserved)", () => {
-    const env = buildClaudeEnv(cfg({ claudeCode: {} }), 10100, {
-      CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: "0",
-    }, {}, AUTH_PRESENT);
+    const env = buildClaudeEnv(
+      cfg({ claudeCode: {} }),
+      10100,
+      {
+        CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: "0",
+      },
+      {},
+      AUTH_PRESENT,
+    );
     // isEnvTruthy("0") is false inside Claude Code, so "0" disables the strip.
     expect(env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBe("0");
   });
@@ -125,11 +275,23 @@ describe("ocx claude env assembly", () => {
     // With no configured model, the flag rides along but no model slots appear —
     // the intentional contract: settings.env slots are stripped by Claude Code,
     // so users migrate to config model or the top-level settings "model" field.
-    const env = buildClaudeEnv(cfg({ claudeCode: {} }), 10100, {}, {}, AUTH_PRESENT);
+    const env = buildClaudeEnv(
+      cfg({ claudeCode: {} }),
+      10100,
+      {},
+      {},
+      AUTH_PRESENT,
+    );
     expect(env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBeUndefined();
     expect(env.ANTHROPIC_MODEL).toBeUndefined();
     // And with a configured model both coexist.
-    const withModel = buildClaudeEnv(cfg({ claudeCode: { model: "mock/test-model" } }), 10100, {}, {}, AUTH_PRESENT);
+    const withModel = buildClaudeEnv(
+      cfg({ claudeCode: { model: "mock/test-model" } }),
+      10100,
+      {},
+      {},
+      AUTH_PRESENT,
+    );
     expect(withModel.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST).toBeUndefined();
     expect(withModel.ANTHROPIC_MODEL).toBe("mock/test-model");
   });
@@ -144,9 +306,13 @@ describe("ocx claude env assembly", () => {
   });
 
   test("opt-in levers: alwaysEnableEffort=1, maxContextTokens injects the official pair", () => {
-    const env = buildClaudeEnv(cfg({
-      claudeCode: { alwaysEnableEffort: true, maxContextTokens: 1_000_000 },
-    }), 10100, {});
+    const env = buildClaudeEnv(
+      cfg({
+        claudeCode: { alwaysEnableEffort: true, maxContextTokens: 1_000_000 },
+      }),
+      10100,
+      {},
+    );
     expect(env.CLAUDE_CODE_ALWAYS_ENABLE_EFFORT).toBe("1");
     expect(env.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBe("1000000");
     // MAX_CONTEXT_TOKENS alone is ignored for recognized claude-shaped ids; the
@@ -157,13 +323,17 @@ describe("ocx claude env assembly", () => {
   });
 
   test("user-exported lever values win over config levers", () => {
-    const env = buildClaudeEnv(cfg({
-      claudeCode: { alwaysEnableEffort: true, maxContextTokens: 1_000_000 },
-    }), 10100, {
-      CLAUDE_CODE_MAX_CONTEXT_TOKENS: "500000",
-      DISABLE_COMPACT: "0",
-      CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: "0",
-    });
+    const env = buildClaudeEnv(
+      cfg({
+        claudeCode: { alwaysEnableEffort: true, maxContextTokens: 1_000_000 },
+      }),
+      10100,
+      {
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS: "500000",
+        DISABLE_COMPACT: "0",
+        CLAUDE_CODE_ALWAYS_ENABLE_EFFORT: "0",
+      },
+    );
     expect(env.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBe("500000");
     expect(env.DISABLE_COMPACT).toBe("0");
     expect(env.CLAUDE_CODE_ALWAYS_ENABLE_EFFORT).toBe("0");
@@ -171,7 +341,11 @@ describe("ocx claude env assembly", () => {
 
   test("invalid maxContextTokens values inject nothing", () => {
     for (const bad of [0, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
-      const env = buildClaudeEnv(cfg({ claudeCode: { maxContextTokens: bad } }), 10100, {});
+      const env = buildClaudeEnv(
+        cfg({ claudeCode: { maxContextTokens: bad } }),
+        10100,
+        {},
+      );
       expect(env.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBeUndefined();
       expect(env.DISABLE_COMPACT).toBeUndefined();
     }
@@ -179,13 +353,22 @@ describe("ocx claude env assembly", () => {
 
   test("tier slots inject ANTHROPIC_DEFAULT_*_MODEL with [1m] auto-marking (devlog 260712 B2)", () => {
     const windows = { "cursor/gpt-5.6-luna": 1_000_000, "mock/small": 128_000 };
-    const env = buildClaudeEnv(cfg({
-      claudeCode: {
-        model: "cursor/gpt-5.6-luna",
-        smallFastModel: "mock/small",
-        tierModels: { opus: "cursor/gpt-5.6-luna", sonnet: "mock/small", fable: "cursor/gpt-5.6-luna[1m]" },
-      },
-    }), 10100, {}, windows);
+    const env = buildClaudeEnv(
+      cfg({
+        claudeCode: {
+          model: "cursor/gpt-5.6-luna",
+          smallFastModel: "mock/small",
+          tierModels: {
+            opus: "cursor/gpt-5.6-luna",
+            sonnet: "mock/small",
+            fable: "cursor/gpt-5.6-luna[1m]",
+          },
+        },
+      }),
+      10100,
+      {},
+      windows,
+    );
     expect(env.ANTHROPIC_MODEL).toBe("cursor/gpt-5.6-luna[1m]");
     expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("cursor/gpt-5.6-luna[1m]");
     expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("mock/small");
@@ -197,22 +380,36 @@ describe("ocx claude env assembly", () => {
   });
 
   test("user-exported tier slots win over config tier slots", () => {
-    const env = buildClaudeEnv(cfg({
-      claudeCode: { tierModels: { opus: "cursor/gpt-5.6-luna" } },
-    }), 10100, { ANTHROPIC_DEFAULT_OPUS_MODEL: "my-own" }, { "cursor/gpt-5.6-luna": 1_000_000 });
+    const env = buildClaudeEnv(
+      cfg({
+        claudeCode: { tierModels: { opus: "cursor/gpt-5.6-luna" } },
+      }),
+      10100,
+      { ANTHROPIC_DEFAULT_OPUS_MODEL: "my-own" },
+      { "cursor/gpt-5.6-luna": 1_000_000 },
+    );
     expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("my-own");
   });
 
   test("no context map -> no [1m] marking (conservative fallback)", () => {
-    const env = buildClaudeEnv(cfg({ claudeCode: { model: "cursor/gpt-5.6-luna" } }), 10100, {});
+    const env = buildClaudeEnv(
+      cfg({ claudeCode: { model: "cursor/gpt-5.6-luna" } }),
+      10100,
+      {},
+    );
     expect(env.ANTHROPIC_MODEL).toBe("cursor/gpt-5.6-luna");
   });
 
   test("auto-context: 372k slot gets [1m] + compact window rides along (devlog 020)", () => {
     const windows = { "mock/big": 372_000, "mock/small": 128_000 };
-    const env = buildClaudeEnv(cfg({
-      claudeCode: { model: "mock/big", smallFastModel: "mock/small" },
-    }), 10100, {}, windows);
+    const env = buildClaudeEnv(
+      cfg({
+        claudeCode: { model: "mock/big", smallFastModel: "mock/small" },
+      }),
+      10100,
+      {},
+      windows,
+    );
     expect(env.ANTHROPIC_MODEL).toBe("mock/big[1m]");
     expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("mock/small"); // below floor, unmarked
     expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("350000");
@@ -220,9 +417,14 @@ describe("ocx claude env assembly", () => {
 
   test("auto-context: custom window moves both the env and the marking threshold", () => {
     const windows = { "mock/big": 372_000 };
-    const env = buildClaudeEnv(cfg({
-      claudeCode: { model: "mock/big", autoCompactWindow: 380_000 },
-    }), 10100, {}, windows);
+    const env = buildClaudeEnv(
+      cfg({
+        claudeCode: { model: "mock/big", autoCompactWindow: 380_000 },
+      }),
+      10100,
+      {},
+      windows,
+    );
     // 372k real < 380k threshold -> marking would strand the safety net: no [1m].
     expect(env.ANTHROPIC_MODEL).toBe("mock/big");
     expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("380000");
@@ -231,29 +433,49 @@ describe("ocx claude env assembly", () => {
   test("auto-context: user-exported env value drives the predicate (audit 021 #2)", () => {
     const windows = { "mock/big": 372_000 };
     // User exported 500k: 372k model must NOT be marked (threshold beyond real window).
-    const env = buildClaudeEnv(cfg({
-      claudeCode: { model: "mock/big" },
-    }), 10100, { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "500000" }, windows);
+    const env = buildClaudeEnv(
+      cfg({
+        claudeCode: { model: "mock/big" },
+      }),
+      10100,
+      { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "500000" },
+      windows,
+    );
     expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("500000"); // user wins
     expect(env.ANTHROPIC_MODEL).toBe("mock/big");
     // Invalid user value: CLI would ignore it -> auto marking fully disabled.
-    const env2 = buildClaudeEnv(cfg({
-      claudeCode: { model: "mock/big" },
-    }), 10100, { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "banana" }, windows);
+    const env2 = buildClaudeEnv(
+      cfg({
+        claudeCode: { model: "mock/big" },
+      }),
+      10100,
+      { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "banana" },
+      windows,
+    );
     expect(env2.ANTHROPIC_MODEL).toBe("mock/big");
     expect(env2.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("banana"); // untouched (user wins)
     // >=1M models still get marked even with an invalid override (non-auto path).
-    const env3 = buildClaudeEnv(cfg({
-      claudeCode: { model: "mock/huge" },
-    }), 10100, { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "banana" }, { "mock/huge": 1_000_000 });
+    const env3 = buildClaudeEnv(
+      cfg({
+        claudeCode: { model: "mock/huge" },
+      }),
+      10100,
+      { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "banana" },
+      { "mock/huge": 1_000_000 },
+    );
     expect(env3.ANTHROPIC_MODEL).toBe("mock/huge[1m]");
   });
 
   test("auto-context off: no env injection, no sub-1M marking", () => {
     const windows = { "mock/big": 372_000 };
-    const env = buildClaudeEnv(cfg({
-      claudeCode: { model: "mock/big", autoContext: false },
-    }), 10100, {}, windows);
+    const env = buildClaudeEnv(
+      cfg({
+        claudeCode: { model: "mock/big", autoContext: false },
+      }),
+      10100,
+      {},
+      windows,
+    );
     expect(env.ANTHROPIC_MODEL).toBe("mock/big");
     expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined();
   });
@@ -270,16 +492,24 @@ describe("ocx claude env assembly", () => {
     expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBeUndefined();
     expect(env.ANTHROPIC_SMALL_FAST_MODEL).toBeUndefined();
   });
-
 });
 
 describe("ocx claude Windows launch (devlog 260715_cross_platform_audit/020)", () => {
   test("win32 .cmd shim launches through cmd.exe with preserved arg boundaries", () => {
     const deps = {
-      env: { PATH: "C:\\Users\\u\\AppData\\Roaming\\npm", ComSpec: "C:\\WINDOWS\\system32\\cmd.exe" },
-      exists: (p: string) => p === "C:\\Users\\u\\AppData\\Roaming\\npm\\claude.cmd",
+      env: {
+        PATH: "C:\\Users\\u\\AppData\\Roaming\\npm",
+        ComSpec: "C:\\WINDOWS\\system32\\cmd.exe",
+      },
+      exists: (p: string) =>
+        p === "C:\\Users\\u\\AppData\\Roaming\\npm\\claude.cmd",
     };
-    const inv = commandInvocation("claude", ["chat", "hello world", 'say "hi"', "50%"], "win32", deps);
+    const inv = commandInvocation(
+      "claude",
+      ["chat", "hello world", 'say "hi"', "50%"],
+      "win32",
+      deps,
+    );
     expect(inv.file).toBe("C:\\WINDOWS\\system32\\cmd.exe");
     expect(inv.args.slice(0, 3)).toEqual(["/d", "/s", "/c"]);
     expect(inv.args[3]).toBe(
@@ -289,12 +519,17 @@ describe("ocx claude Windows launch (devlog 260715_cross_platform_audit/020)", (
   });
 
   test("POSIX launch is byte-identical to the pre-launcher behavior", () => {
-    expect(commandInvocation("claude", ["chat"], "darwin"))
-      .toEqual({ file: "claude", args: ["chat"], options: {} });
+    expect(commandInvocation("claude", ["chat"], "darwin")).toEqual({
+      file: "claude",
+      args: ["chat"],
+      options: {},
+    });
   });
 
   test("exit-9009 hint fires only for win32 non-signal not-found exits", () => {
-    expect(claudeNotFoundHint(9009, null, "win32")).toContain("npm install -g @anthropic-ai/claude-code");
+    expect(claudeNotFoundHint(9009, null, "win32")).toContain(
+      "npm install -g @anthropic-ai/claude-code",
+    );
     expect(claudeNotFoundHint(9009, "SIGTERM", "win32")).toBeNull();
     expect(claudeNotFoundHint(9009, null, "darwin")).toBeNull();
     expect(claudeNotFoundHint(1, null, "win32")).toBeNull();
