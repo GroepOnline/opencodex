@@ -1,5 +1,6 @@
 import { IconAlert, IconCheck } from "../../icons";
 import { formatUptime } from "../../formatUptime";
+import type { Locale } from "../../i18n/shared";
 
 export interface RuntimeHealth {
   status: string;
@@ -19,7 +20,7 @@ export function RuntimeSummary({
 }: {
   health: RuntimeHealth | null;
   online: boolean | null;
-  locale: string;
+  locale: Locale;
   labels: {
     aria: string;
     loading: string;
