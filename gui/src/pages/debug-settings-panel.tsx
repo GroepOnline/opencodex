@@ -1,4 +1,5 @@
 import { useI18n } from "../i18n/shared";
+import { PageSubtitle } from "../components/primitives/page-header";
 import { IconRefresh } from "../icons";
 import { Switch } from "../ui";
 import type { DebugSettings, LogStream } from "./debug-shared";
@@ -15,7 +16,10 @@ export function DebugSettingsPanel({
   debug: DebugSettings;
   debugBusy: boolean;
   stream: LogStream;
-  onSetFlag: (flag: "debug" | "usage" | "injection" | "claude", enabled: boolean) => void;
+  onSetFlag: (
+    flag: "debug" | "usage" | "injection" | "claude",
+    enabled: boolean,
+  ) => void;
   onReset: () => void;
   onStreamChange: (stream: LogStream) => void;
 }) {
@@ -23,12 +27,28 @@ export function DebugSettingsPanel({
 
   return (
     <div className="card" style={{ marginBottom: 16, padding: "12px 14px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
         <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
-          {(["debug", "usage", "injection", "claude"] as const).map(flag => {
+          {(["debug", "usage", "injection", "claude"] as const).map((flag) => {
             const checked = isDebugFlagEnabled(debug, flag);
             return (
-              <div key={flag} style={{ display: "inline-flex", alignItems: "center", gap: 10, minWidth: 220 }}>
+              <div
+                key={flag}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 10,
+                  minWidth: 220,
+                }}
+              >
                 <Switch
                   on={checked}
                   disabled={debugBusy}
@@ -40,7 +60,12 @@ export function DebugSettingsPanel({
             );
           })}
         </div>
-        <button type="button" className="btn btn-ghost btn-sm" disabled={debugBusy} onClick={onReset}>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          disabled={debugBusy}
+          onClick={onReset}
+        >
           {t("debug.reset")}
         </button>
       </div>
@@ -99,7 +124,12 @@ export function DebugPageHeader({
 
   return (
     <>
-      <div className={embedded ? "row" : "page-head"} style={embedded ? { justifyContent: "flex-end", marginBottom: 4 } : undefined}>
+      <div
+        className={embedded ? "row" : "page-head"}
+        style={
+          embedded ? { justifyContent: "flex-end", marginBottom: 4 } : undefined
+        }
+      >
         {!embedded && <h2>{t("debug.title")}</h2>}
         <div style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
           <button
@@ -110,13 +140,25 @@ export function DebugPageHeader({
           >
             <IconRefresh /> {t("debug.refresh")}
           </button>
-          <label className="muted text-control" style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <input type="checkbox" checked={follow} onChange={e => onFollowChange(e.target.checked)} />
+          <label
+            className="muted text-control"
+            style={{
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={follow}
+              onChange={(e) => onFollowChange(e.target.checked)}
+            />
             {t("debug.follow")}
           </label>
         </div>
       </div>
-      <p className="page-sub">{t("debug.subtitle")}</p>
+      <PageSubtitle>{t("debug.subtitle")}</PageSubtitle>
     </>
   );
 }
