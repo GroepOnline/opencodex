@@ -31,6 +31,27 @@ describe("aiGenerationProperties", () => {
     expect(props).not.toHaveProperty("$ai_output_choices");
   });
 
+  test("uses requested service tier before configured tier for canonical cost", () => {
+    const common = {
+      requestId: "req-tier",
+      provider: "openai",
+      model: "gpt-5.6-sol",
+      status: 200,
+      durationMs: 100,
+      usageStatus: "reported" as const,
+      usage: { inputTokens: 1_000_000, outputTokens: 100_000 },
+      requestedServiceTier: "default",
+    };
+    const requestedOnly = aiGenerationProperties(common, "trace-tier-base");
+    const conflicting = aiGenerationProperties(
+      { ...common, configuredServiceTier: "priority" },
+      "trace-tier-conflict",
+    );
+
+    expect(requestedOnly.$ai_total_cost_usd).toBeDefined();
+    expect(conflicting.$ai_total_cost_usd).toBe(requestedOnly.$ai_total_cost_usd);
+  });
+
   test("reports normalized error code without accepting raw error content", () => {
     const props = aiGenerationProperties({
       requestId: "req-2",
