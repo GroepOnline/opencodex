@@ -148,7 +148,7 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
       <PageHeader title={t("nav.dashboard")} />
 
       <RuntimeSummary
-        health={health.data}
+        health={health.data ?? null}
         online={proxyOnline}
         locale={locale}
         labels={{
