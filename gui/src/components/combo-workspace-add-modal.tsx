@@ -10,8 +10,18 @@ import { IconX } from "../icons";
 import { useT } from "../i18n/shared";
 import { Notice } from "../ui";
 import type { ModelOption, ProviderOption } from "./combo-workspace-types";
-import { EffortSelect, StrategySeg, TargetEditor } from "./combo-workspace-controls";
+import {
+  EffortSelect,
+  StrategySeg,
+  TargetEditor,
+} from "./combo-workspace-controls";
 import { clampedNumberInput } from "./combo-workspace-utils";
+import {
+  ModalActions,
+  ModalBackdrop,
+  ModalCard,
+  ModalDialog,
+} from "./primitives/modal";
 
 export function AddComboModal({
   existingIds,
@@ -56,10 +66,13 @@ export function AddComboModal({
     if (!busy) onClose();
   }, [busy, onClose]);
 
-  const handleCancel = useCallback((e: React.SyntheticEvent) => {
-    e.preventDefault();
-    requestClose();
-  }, [requestClose]);
+  const handleCancel = useCallback(
+    (e: React.SyntheticEvent) => {
+      e.preventDefault();
+      requestClose();
+    },
+    [requestClose],
+  );
 
   const submit = async () => {
     const code = validateComboDraft(draft, {
@@ -77,7 +90,12 @@ export function AddComboModal({
     const id = draft.id.trim();
     const alias = draft.alias?.trim() || null;
     try {
-      const res = await onSubmit({ ...draft, id, alias, model: comboPublicModelId(id, alias) });
+      const res = await onSubmit({
+        ...draft,
+        id,
+        alias,
+        model: comboPublicModelId(id, alias),
+      });
       if (!res.ok) {
         setError(res.error || t("cws.saveFailed"));
         return;
@@ -88,21 +106,36 @@ export function AddComboModal({
   };
 
   return (
-    <dialog
+    <ModalDialog
       ref={dialogRef}
-      className="modal-overlay"
       aria-labelledby="cwi-add-title"
       onCancel={handleCancel}
     >
-      <button type="button" className="modal-backdrop-dismiss" aria-label={t("common.close")} tabIndex={-1} onClick={requestClose} />
-      <div className="modal-card" style={{ width: "min(560px, 94vw)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
-          <h3 id="cwi-add-title" style={{ margin: 0 }}>{t("cws.addTitle")}</h3>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={requestClose} disabled={busy} aria-label={t("common.close")}>
+      <ModalBackdrop aria-label={t("common.close")} onClick={requestClose} />
+      <ModalCard
+        style={{ width: "min(560px, 94vw)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className="row"
+          style={{ justifyContent: "space-between", marginBottom: 8 }}
+        >
+          <h3 id="cwi-add-title" style={{ margin: 0 }}>
+            {t("cws.addTitle")}
+          </h3>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={requestClose}
+            disabled={busy}
+            aria-label={t("common.close")}
+          >
             <IconX width={15} height={15} />
           </button>
         </div>
-        <p className="muted" style={{ marginTop: 0 }}>{t("cws.addSubtitle")}</p>
+        <p className="muted" style={{ marginTop: 0 }}>
+          {t("cws.addSubtitle")}
+        </p>
         {error && <Notice tone="err">{error}</Notice>}
         <div className="cwi-modal-form">
           <div className="cwi-field">
@@ -112,13 +145,18 @@ export function AddComboModal({
               className="input mono"
               value={draft.id}
               disabled={busy}
-              onChange={(e) => setDraft((d) => ({
-                ...d,
-                id: e.target.value,
-                model: comboPublicModelId(e.target.value, d.alias),
-              }))}
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  id: e.target.value,
+                  model: comboPublicModelId(e.target.value, d.alias),
+                }))
+              }
             />
-            <p className="muted" style={{ fontSize: "var(--text-label)", margin: "4px 0 0" }}>
+            <p
+              className="muted"
+              style={{ fontSize: "var(--text-label)", margin: "4px 0 0" }}
+            >
               {t("cws.field.idInternalHint")}
             </p>
           </div>
@@ -130,18 +168,28 @@ export function AddComboModal({
               value={draft.alias ?? ""}
               placeholder={t("cws.field.aliasPlaceholder")}
               disabled={busy}
-              onChange={(e) => setDraft((d) => ({
-                ...d,
-                alias: e.target.value.trim() ? e.target.value : null,
-                model: comboPublicModelId(d.id, e.target.value),
-              }))}
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  alias: e.target.value.trim() ? e.target.value : null,
+                  model: comboPublicModelId(d.id, e.target.value),
+                }))
+              }
             />
-            <p className="muted" style={{ fontSize: "var(--text-label)", margin: "4px 0 0" }}>
+            <p
+              className="muted"
+              style={{ fontSize: "var(--text-label)", margin: "4px 0 0" }}
+            >
               {t("cws.field.aliasHint")}
             </p>
-            <p className="muted" style={{ fontSize: "var(--text-label)", margin: "4px 0 0" }}>
+            <p
+              className="muted"
+              style={{ fontSize: "var(--text-label)", margin: "4px 0 0" }}
+            >
               {t("cws.field.idHint", {
-                model: draft.id.trim() ? comboPublicModelId(draft.id, draft.alias) : "…",
+                model: draft.id.trim()
+                  ? comboPublicModelId(draft.id, draft.alias)
+                  : "…",
               })}
             </p>
           </div>
@@ -152,26 +200,40 @@ export function AddComboModal({
               disabled={busy}
               onChange={(strategy) => setDraft((d) => ({ ...d, strategy }))}
             />
-            <p className="muted" style={{ fontSize: "var(--text-label)", margin: "6px 0 0" }}>
-              {draft.strategy === "failover" ? t("cws.strategy.failoverHint") : t("cws.strategy.roundRobinHint")}
+            <p
+              className="muted"
+              style={{ fontSize: "var(--text-label)", margin: "6px 0 0" }}
+            >
+              {draft.strategy === "failover"
+                ? t("cws.strategy.failoverHint")
+                : t("cws.strategy.roundRobinHint")}
             </p>
           </div>
           <div className="cwi-field">
-            <label htmlFor="cwi-new-effort">{t("cws.field.defaultEffort")}</label>
+            <label htmlFor="cwi-new-effort">
+              {t("cws.field.defaultEffort")}
+            </label>
             <EffortSelect
               id="cwi-new-effort"
               value={draft.defaultEffort}
               disabled={busy}
               allowedEfforts={allowedEfforts}
-              onChange={(defaultEffort) => setDraft((d) => ({ ...d, defaultEffort }))}
+              onChange={(defaultEffort) =>
+                setDraft((d) => ({ ...d, defaultEffort }))
+              }
             />
-            <p className="muted" style={{ fontSize: "var(--text-label)", margin: "4px 0 0" }}>
+            <p
+              className="muted"
+              style={{ fontSize: "var(--text-label)", margin: "4px 0 0" }}
+            >
               {t("cws.field.defaultEffortHint")}
             </p>
           </div>
           {draft.strategy === "round-robin" && (
             <div className="cwi-field">
-              <label htmlFor="cwi-new-sticky">{t("cws.field.stickyLimit")}</label>
+              <label htmlFor="cwi-new-sticky">
+                {t("cws.field.stickyLimit")}
+              </label>
               <input
                 id="cwi-new-sticky"
                 className="input mono"
@@ -181,20 +243,32 @@ export function AddComboModal({
                 value={draft.stickyLimit}
                 disabled={busy}
                 onChange={(e) => {
-                  const stickyLimit = clampedNumberInput(e.target.value, 1, 100);
+                  const stickyLimit = clampedNumberInput(
+                    e.target.value,
+                    1,
+                    100,
+                  );
                   if (stickyLimit === undefined) return;
                   setDraft((d) => ({ ...d, stickyLimit }));
                 }}
               />
-              <p className="muted" style={{ fontSize: "var(--text-label)", margin: "4px 0 0" }}>
+              <p
+                className="muted"
+                style={{ fontSize: "var(--text-label)", margin: "4px 0 0" }}
+              >
                 {t("cws.field.stickyLimitHint")}
               </p>
             </div>
           )}
           <div className="cwi-field">
             <span className="field-label">{t("cws.targets")}</span>
-            <p className="muted" style={{ fontSize: "var(--text-label)", margin: "0 0 8px" }}>
-              {draft.strategy === "failover" ? t("cws.targets.failoverHint") : t("cws.targets.roundRobinHint")}
+            <p
+              className="muted"
+              style={{ fontSize: "var(--text-label)", margin: "0 0 8px" }}
+            >
+              {draft.strategy === "failover"
+                ? t("cws.targets.failoverHint")
+                : t("cws.targets.roundRobinHint")}
             </p>
             <TargetEditor
               targets={draft.targets}
@@ -205,13 +279,27 @@ export function AddComboModal({
             />
           </div>
         </div>
-        <div className="cwi-modal-actions">
-          <button type="button" className="btn btn-ghost" onClick={requestClose} disabled={busy}>{t("common.cancel")}</button>
-          <button type="button" className="btn btn-primary" onClick={() => { void submit(); }} disabled={busy}>
+        <ModalActions className="cwi-modal-actions">
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={requestClose}
+            disabled={busy}
+          >
+            {t("common.cancel")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              void submit();
+            }}
+            disabled={busy}
+          >
             {busy ? t("common.saving") : t("cws.create")}
           </button>
-        </div>
-      </div>
-    </dialog>
+        </ModalActions>
+      </ModalCard>
+    </ModalDialog>
   );
 }
