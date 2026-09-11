@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { saveConfig } from "../src/config";
+import { saveConfig, CONFIG_SCHEMA_VERSION } from "../src/config";
 import { MANAGEMENT_CONTRACT_VERSION } from "../src/server/contract-version";
 import {
   resetBuildInfoCacheForTests,
@@ -50,9 +50,11 @@ afterEach(() => {
   resetBuildInfoCacheForTests();
   if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
   else process.env.OPENCODEX_HOME = previousHome;
-  if (previousDataToken === undefined) delete process.env.OPENCODEX_API_AUTH_TOKEN;
+  if (previousDataToken === undefined)
+    delete process.env.OPENCODEX_API_AUTH_TOKEN;
   else process.env.OPENCODEX_API_AUTH_TOKEN = previousDataToken;
-  if (previousAdminToken === undefined) delete process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
+  if (previousAdminToken === undefined)
+    delete process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
   else process.env.OPENCODEX_ADMIN_AUTH_TOKEN = previousAdminToken;
   if (testHome) rmSync(testHome, { recursive: true, force: true });
   testHome = "";
@@ -65,14 +67,15 @@ describe("GET /api/provenance", () => {
     try {
       const res = await fetch(new URL("/api/provenance", server.url));
       expect(res.status).toBe(200);
-      const body = await res.json() as Record<string, unknown>;
+      const body = (await res.json()) as Record<string, unknown>;
       expect(body.contract_version).toBe(MANAGEMENT_CONTRACT_VERSION);
       expect(body.version).toBeTruthy();
       expect(body.git_sha).toBe("abc123def456");
       expect(body.built_at).toBe("2026-08-23T10:00:00.000Z");
       expect(body.release).toBe("v1.2.2");
       expect(body.gui_version).toBe("1.2.2");
-      expect(body.schema_version).toBeNull();
+      // saveConfig stamps schemaVersion; public provenance must echo that stamp.
+      expect(body.schema_version).toBe(String(CONFIG_SCHEMA_VERSION));
       expect(body.management).toBeUndefined();
       expect(body.runtime).toMatchObject({
         service: "opencodex",
@@ -91,7 +94,9 @@ describe("GET /api/provenance", () => {
         headers: { "x-opencodex-api-key": "admin-secret" },
       });
       expect(res.status).toBe(200);
-      const body = await res.json() as { management?: Record<string, unknown> };
+      const body = (await res.json()) as {
+        management?: Record<string, unknown>;
+      };
       expect(body.management).toMatchObject({
         contract_version: MANAGEMENT_CONTRACT_VERSION,
         default_provider: "demo",
@@ -116,7 +121,7 @@ describe("GET /api/health", () => {
         headers: { "x-opencodex-api-key": "admin-secret" },
       });
       expect(res.status).toBe(200);
-      const body = await res.json() as {
+      const body = (await res.json()) as {
         status: string;
         checked_at: string;
         contract_version: string;
@@ -134,7 +139,10 @@ describe("GET /api/health", () => {
       expect(body.components.proxy.status).toBe("ok");
       expect(body.components.management_api.status).toBe("ok");
       expect(body.components.persistence.status).toBe("ok");
-      expect(body.components.providers[0]).toMatchObject({ name: "demo", status: "ok" });
+      expect(body.components.providers[0]).toMatchObject({
+        name: "demo",
+        status: "ok",
+      });
       expect(body.components.deploy_runner.status).toBe("unknown");
       expect(Array.isArray(body.causality)).toBe(true);
     } finally {
@@ -152,8 +160,8 @@ describe("capability matrix — EXISTS", () => {
         headers: { "x-opencodex-api-key": "admin-secret" },
       });
       expect(res.status).toBe(200);
-      const rows = await res.json() as Array<{ name: string }>;
-      expect(rows.some(row => row.name === "demo")).toBe(true);
+      const rows = (await res.json()) as Array<{ name: string }>;
+      expect(rows.some((row) => row.name === "demo")).toBe(true);
     } finally {
       await server.stop(true);
     }
@@ -200,14 +208,17 @@ describe("capability matrix — EXISTS", () => {
     });
     const server = startServer(0);
     try {
-      const res = await fetch(new URL("/api/providers?name=spare", server.url), {
-        method: "PATCH",
-        headers: {
-          "x-opencodex-api-key": "admin-secret",
-          "content-type": "application/json",
+      const res = await fetch(
+        new URL("/api/providers?name=spare", server.url),
+        {
+          method: "PATCH",
+          headers: {
+            "x-opencodex-api-key": "admin-secret",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ disabled: true }),
         },
-        body: JSON.stringify({ disabled: true }),
-      });
+      );
       expect(res.status).toBe(200);
     } finally {
       await server.stop(true);
@@ -229,10 +240,13 @@ describe("capability matrix — EXISTS", () => {
     });
     const server = startServer(0);
     try {
-      const res = await fetch(new URL("/api/providers?name=spare", server.url), {
-        method: "DELETE",
-        headers: { "x-opencodex-api-key": "admin-secret" },
-      });
+      const res = await fetch(
+        new URL("/api/providers?name=spare", server.url),
+        {
+          method: "DELETE",
+          headers: { "x-opencodex-api-key": "admin-secret" },
+        },
+      );
       expect(res.status).toBe(200);
     } finally {
       await server.stop(true);
@@ -243,12 +257,15 @@ describe("capability matrix — EXISTS", () => {
     saveConfig(remoteConfig());
     const server = startServer(0);
     try {
-      const res = await fetch(new URL("/api/providers/test?name=demo", server.url), {
-        method: "POST",
-        headers: { "x-opencodex-api-key": "admin-secret" },
-      });
+      const res = await fetch(
+        new URL("/api/providers/test?name=demo", server.url),
+        {
+          method: "POST",
+          headers: { "x-opencodex-api-key": "admin-secret" },
+        },
+      );
       expect(res.status).toBe(200);
-      const body = await res.json() as { ok: boolean };
+      const body = (await res.json()) as { ok: boolean };
       expect(typeof body.ok).toBe("boolean");
     } finally {
       await server.stop(true);
@@ -259,9 +276,12 @@ describe("capability matrix — EXISTS", () => {
     saveConfig(remoteConfig());
     const server = startServer(0);
     try {
-      const res = await fetch(new URL("/api/provider-quotas?provider=demo", server.url), {
-        headers: { "x-opencodex-api-key": "admin-secret" },
-      });
+      const res = await fetch(
+        new URL("/api/provider-quotas?provider=demo", server.url),
+        {
+          headers: { "x-opencodex-api-key": "admin-secret" },
+        },
+      );
       expect(res.status).toBe(200);
     } finally {
       await server.stop(true);
@@ -272,9 +292,12 @@ describe("capability matrix — EXISTS", () => {
     saveConfig(remoteConfig());
     const server = startServer(0);
     try {
-      const res = await fetch(new URL("/api/oauth/accounts?provider=xai", server.url), {
-        headers: { "x-opencodex-api-key": "admin-secret" },
-      });
+      const res = await fetch(
+        new URL("/api/oauth/accounts?provider=xai", server.url),
+        {
+          headers: { "x-opencodex-api-key": "admin-secret" },
+        },
+      );
       expect(res.status).toBe(200);
     } finally {
       await server.stop(true);
