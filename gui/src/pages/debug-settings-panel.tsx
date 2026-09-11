@@ -1,5 +1,5 @@
 import { useI18n } from "../i18n/shared";
-import { PageSubtitle } from "../components/primitives/page-header";
+import { PageHeader, PageSubtitle } from "../components/primitives/page-header";
 import { IconRefresh } from "../icons";
 import { Switch } from "../ui";
 import type { DebugSettings, LogStream } from "./debug-shared";
@@ -122,42 +122,52 @@ export function DebugPageHeader({
 }) {
   const { t } = useI18n();
 
+  const actions = (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        disabled={refreshing || !streamEnabled}
+        onClick={onRefresh}
+      >
+        <IconRefresh /> {t("debug.refresh")}
+      </button>
+      <label
+        className="muted text-control"
+        style={{
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={follow}
+          onChange={(e) => onFollowChange(e.target.checked)}
+        />
+        {t("debug.follow")}
+      </label>
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <>
+        <div
+          className="row"
+          style={{ justifyContent: "flex-end", marginBottom: 4 }}
+        >
+          {actions}
+        </div>
+        <PageSubtitle>{t("debug.subtitle")}</PageSubtitle>
+      </>
+    );
+  }
+
   return (
     <>
-      <div
-        className={embedded ? "row" : "page-head"}
-        style={
-          embedded ? { justifyContent: "flex-end", marginBottom: 4 } : undefined
-        }
-      >
-        {!embedded && <h2>{t("debug.title")}</h2>}
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            disabled={refreshing || !streamEnabled}
-            onClick={onRefresh}
-          >
-            <IconRefresh /> {t("debug.refresh")}
-          </button>
-          <label
-            className="muted text-control"
-            style={{
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={follow}
-              onChange={(e) => onFollowChange(e.target.checked)}
-            />
-            {t("debug.follow")}
-          </label>
-        </div>
-      </div>
+      <PageHeader title={t("debug.title")} actions={actions} />
       <PageSubtitle>{t("debug.subtitle")}</PageSubtitle>
     </>
   );
