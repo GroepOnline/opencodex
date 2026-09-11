@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type Ref } from "react";
 import { useKeyedClientResource } from "./client-resource";
 import ErrorBoundary from "./components/ErrorBoundary";
 import SettingsSheet from "./components/SettingsSheet";
@@ -12,6 +12,13 @@ import { domAnimation, LazyMotion, MotionConfig } from "motion/react";
 import WorkspaceNavigation, {
   type WorkspaceDestination,
 } from "./components/WorkspaceNavigation";
+import {
+  Modal,
+  ModalActions,
+  ModalCard,
+  ModalDesc,
+  ModalHead,
+} from "./components/primitives/modal";
 import {
   IconActivity,
   IconBoxes,
@@ -349,6 +356,64 @@ function DashboardShell({
 
 /** Danger zone (Systeem home): destructive actions live here — named, separated,
     and behind an explicit confirmation. Never in navigation. */
+function StopProxyDialog({
+  stopping,
+  cancelRef,
+  title,
+  body,
+  cancelLabel,
+  stopLabel,
+  stoppingLabel,
+  onCancel,
+  onConfirm,
+}: {
+  stopping: boolean;
+  cancelRef: Ref<HTMLButtonElement>;
+  title: string;
+  body: string;
+  cancelLabel: string;
+  stopLabel: string;
+  stoppingLabel: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal
+      role="alertdialog"
+      aria-labelledby="stop-proxy-title"
+      aria-describedby="stop-proxy-desc"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !stopping) onCancel();
+      }}
+    >
+      <ModalCard className="modal-card modal-card--narrow">
+        <ModalHead titleId="stop-proxy-title" title={title} />
+        <ModalDesc id="stop-proxy-desc">{body}</ModalDesc>
+        <ModalActions>
+          <button
+            ref={cancelRef}
+            type="button"
+            className="btn"
+            onClick={onCancel}
+            disabled={stopping}
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger"
+            onClick={onConfirm}
+            disabled={stopping}
+          >
+            <IconPower size={13} aria-hidden />{" "}
+            {stopping ? stoppingLabel : stopLabel}
+          </button>
+        </ModalActions>
+      </ModalCard>
+    </Modal>
+  );
+}
+
 function DangerZone() {
   const t = useT();
   const [confirming, setConfirming] = useState(false);
@@ -401,45 +466,17 @@ function DangerZone() {
       </div>
 
       {confirming && (
-        <div
-          className="modal-overlay"
-          role="alertdialog"
-          aria-modal="true"
-          aria-labelledby="stop-proxy-title"
-          aria-describedby="stop-proxy-desc"
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !stopping) setConfirming(false);
-          }}
-        >
-          <div className="modal-card modal-card--narrow">
-            <div className="modal-head">
-              <h3 id="stop-proxy-title">{t("danger.stopTitle")}</h3>
-            </div>
-            <p id="stop-proxy-desc" className="modal-desc">
-              {t("danger.stopBody")}
-            </p>
-            <div className="modal-actions">
-              <button
-                ref={cancelRef}
-                type="button"
-                className="btn"
-                onClick={() => setConfirming(false)}
-                disabled={stopping}
-              >
-                {t("common.cancel")}
-              </button>
-              <button
-                type="button"
-                className="btn btn-danger"
-                onClick={() => void handleStop()}
-                disabled={stopping}
-              >
-                <IconPower size={13} aria-hidden />{" "}
-                {stopping ? t("dash.stopping") : t("danger.stopAction")}
-              </button>
-            </div>
-          </div>
-        </div>
+        <StopProxyDialog
+          stopping={stopping}
+          cancelRef={cancelRef}
+          title={t("danger.stopTitle")}
+          body={t("danger.stopBody")}
+          cancelLabel={t("common.cancel")}
+          stopLabel={t("danger.stopAction")}
+          stoppingLabel={t("dash.stopping")}
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => void handleStop()}
+        />
       )}
     </section>
   );

@@ -4,6 +4,13 @@ import { formatTokens } from "../format-tokens";
 import { formatEstimatedUsdValue as formatUsdEstimate } from "../intl-formatters";
 import { EmptyState, Notice } from "../ui";
 import { modelLabel } from "../model-display";
+import { PageHeader, PageSubtitle } from "../components/primitives/page-header";
+import { Panel, PanelHeader } from "../components/primitives/panel";
+import {
+  SegmentedControl,
+  SegmentedOption,
+} from "../components/primitives/segmented-control";
+import { Stat, StatGroup } from "../components/primitives/stat";
 
 type Range = "all" | "30d" | "7d";
 type UsageSurface = "all" | "codex" | "claude" | "grok";
@@ -106,7 +113,7 @@ function modelColor(model: string, provider: string): string {
 // Last 7 calendar days (oldest → newest), zero-filled, for the 7d bar chart. The API's `days` only
 // carries dates with activity, so missing days are backfilled to 0 to keep a stable 7-bar axis.
 function lastSevenDays(days: UsageDay[]): UsageDay[] {
-  const byDate = new Map(days.map(d => [d.date, d]));
+  const byDate = new Map(days.map((d) => [d.date, d]));
   const out: UsageDay[] = [];
   const cursor = new Date();
   cursor.setHours(0, 0, 0, 0);
@@ -128,9 +135,10 @@ function lastSevenDays(days: UsageDay[]): UsageDay[] {
 }
 
 function quantileBuckets(values: number[]): number[] {
-  const positive = values.filter(v => v > 0).sort((a, b) => a - b);
+  const positive = values.filter((v) => v > 0).sort((a, b) => a - b);
   if (positive.length === 0) return [0, 0, 0, 0];
-  const q = (p: number) => positive[Math.min(positive.length - 1, Math.floor(p * positive.length))];
+  const q = (p: number) =>
+    positive[Math.min(positive.length - 1, Math.floor(p * positive.length))];
   return [q(0.25), q(0.5), q(0.75), q(0.95)];
 }
 
@@ -150,9 +158,13 @@ interface HeatmapCell {
   dayOfWeek: number;
 }
 
-function buildHeatmap(days: UsageDay[]): { weeks: HeatmapCell[][]; months: { label: string; col: number }[]; buckets: number[] } {
-  const buckets = quantileBuckets(days.map(d => d.totalTokens));
-  const dayMap = new Map(days.map(d => [d.date, d]));
+function buildHeatmap(days: UsageDay[]): {
+  weeks: HeatmapCell[][];
+  months: { label: string; col: number }[];
+  buckets: number[];
+} {
+  const buckets = quantileBuckets(days.map((d) => d.totalTokens));
+  const dayMap = new Map(days.map((d) => [d.date, d]));
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -163,7 +175,20 @@ function buildHeatmap(days: UsageDay[]): { weeks: HeatmapCell[][]; months: { lab
 
   const weeks: HeatmapCell[][] = [];
   const months: { label: string; col: number }[] = [];
-  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const monthNames = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
   let lastMonthCol = -4;
   let prevMonthIdx = -1;
   let week: HeatmapCell[] = [];
@@ -172,7 +197,11 @@ function buildHeatmap(days: UsageDay[]): { weeks: HeatmapCell[][]; months: { lab
   while (cursor <= today) {
     const iso = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`;
     const m = cursor.getMonth();
-    if (cursor.getDay() === 0 && m !== prevMonthIdx && weeks.length - lastMonthCol >= 4) {
+    if (
+      cursor.getDay() === 0 &&
+      m !== prevMonthIdx &&
+      weeks.length - lastMonthCol >= 4
+    ) {
       months.push({ label: monthNames[m], col: weeks.length });
       lastMonthCol = weeks.length;
       prevMonthIdx = m;
@@ -193,7 +222,13 @@ function buildHeatmap(days: UsageDay[]): { weeks: HeatmapCell[][]; months: { lab
   }
   if (week.length > 0) {
     while (week.length < 7) {
-      week.push({ date: "", requests: 0, totalTokens: 0, level: 0, dayOfWeek: week.length });
+      week.push({
+        date: "",
+        requests: 0,
+        totalTokens: 0,
+        level: 0,
+        dayOfWeek: week.length,
+      });
     }
     weeks.push(week);
   }
@@ -215,51 +250,83 @@ function UsageFilters({
 }) {
   return (
     <div className="usage-filters">
-      <div className="usage-segmented" role="group" aria-label={t("logs.filter.surface.label")}>
-        {(["all", "codex", "claude", "grok"] as UsageSurface[]).map(choice => {
-          const label = t(`logs.filter.surface.${choice}`);
-          return (
-            <button
-              key={choice}
-              type="button"
-              className={`usage-segmented-btn usage-source-btn${surface === choice ? " active" : ""}`}
-              aria-label={label}
-              aria-pressed={surface === choice}
-              onClick={() => onSurface(choice)}
-            >
-              {choice === "codex" && (
-                <img className="usage-source-mark" src="/provider-icons/openai.svg" alt="" aria-hidden="true" />
-              )}
-              {choice === "claude" && (
-                <img className="usage-source-mark" src="/provider-icons/claude.svg" alt="" aria-hidden="true" />
-              )}
-              {choice === "grok" && (
-                <img className="usage-source-mark" src="/provider-icons/grok.svg" alt="" aria-hidden="true" />
-              )}
-              <span className={choice === "all" ? "usage-source-label" : "usage-source-label usage-source-label-collapsible"}>
-                {label}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-      <div className="usage-segmented" role="group" aria-label={t("usage.title")}>
-        {(["all", "30d", "7d"] as Range[]).map(choice => {
+      <SegmentedControl label={t("logs.filter.surface.label")}>
+        {(["all", "codex", "claude", "grok"] as UsageSurface[]).map(
+          (choice) => {
+            const label = t(`logs.filter.surface.${choice}`);
+            return (
+              <SegmentedOption
+                key={choice}
+                pressed={surface === choice}
+                label={label}
+                className={`usage-segmented-btn usage-source-btn${surface === choice ? " active" : ""}`}
+                onClick={() => onSurface(choice)}
+              >
+                {choice === "codex" && (
+                  <img
+                    className="usage-source-mark"
+                    src="/provider-icons/openai.svg"
+                    alt=""
+                    aria-hidden="true"
+                  />
+                )}
+                {choice === "claude" && (
+                  <img
+                    className="usage-source-mark"
+                    src="/provider-icons/claude.svg"
+                    alt=""
+                    aria-hidden="true"
+                  />
+                )}
+                {choice === "grok" && (
+                  <img
+                    className="usage-source-mark"
+                    src="/provider-icons/grok.svg"
+                    alt=""
+                    aria-hidden="true"
+                  />
+                )}
+                <span
+                  className={
+                    choice === "all"
+                      ? "usage-source-label"
+                      : "usage-source-label usage-source-label-collapsible"
+                  }
+                >
+                  {label}
+                </span>
+              </SegmentedOption>
+            );
+          },
+        )}
+      </SegmentedControl>
+      <SegmentedControl label={t("usage.title")}>
+        {(["all", "30d", "7d"] as Range[]).map((choice) => {
           const label = t(`usage.range.${choice}`);
           return (
-            <button
+            <SegmentedOption
               key={choice}
-              type="button"
+              pressed={range === choice}
+              label={label}
               className={`usage-segmented-btn${range === choice ? " active" : ""}`}
-              aria-label={label}
-              aria-pressed={range === choice}
               onClick={() => onRange(choice)}
             >
               {label}
-            </button>
+            </SegmentedOption>
           );
         })}
-      </div>
+      </SegmentedControl>
+    </div>
+  );
+}
+
+function ShareMeter({ ratio }: { ratio: number }) {
+  return (
+    <div className="usage-bar">
+      <div
+        className="usage-bar-fill"
+        style={{ width: `${Math.round(ratio * 100)}%` }}
+      />
     </div>
   );
 }
@@ -276,40 +343,66 @@ function UsageSummaryCards({
   t: TFn;
 }) {
   const titleId = "usage-proxy-title";
+  const sectionLabel = t("usage.section.proxyUsage");
   return (
-    <section className="panel" style={{ marginTop: 0 }} aria-labelledby={titleId}>
-      <h3 id={titleId} className="panel-title">{t("usage.section.proxyUsage")}</h3>
-    <div className="usage-cards usage-cards-3x2" role="group" aria-label={t("usage.section.proxyUsage")}>
-      <div className="stat"><div className="muted">{t("usage.card.requests")}</div><div className="stat-value">{summary.requests}</div></div>
-      <div className="stat"><div className="muted">{t("usage.card.measured")}</div><div className="stat-value">{summary.measuredRequests}</div></div>
-      <div className="stat"><div className="muted">{t("usage.card.totalTokens")}</div><div className="stat-value">{formatTokens(summary.totalTokens, locale)}</div></div>
-      <div className="stat" title={t("usage.card.cachedTokensHint")}>
-        <div className="muted">{t("usage.card.cachedTokens")}</div>
-        <div className="stat-value">{formatTokens(summary.cacheReadInputTokens ?? summary.cachedInputTokens, locale)}</div>
-        {(summary.cacheCreationInputTokens ?? 0) > 0 && (
-          <div className="muted text-caption">
-            {t("usage.card.cacheWriteTokens")}: {formatTokens(summary.cacheCreationInputTokens ?? 0, locale)}
-          </div>
-        )}
-      </div>
-      <div className="stat"><div className="muted">{t("usage.card.coverage")}</div><div className="stat-value">{formatPct(summary.coverageRatio)}</div></div>
-      <div className="stat"><div className="muted">{t("usage.card.activeDays")}</div><div className="stat-value">{activeDays}</div></div>
-    </div>
+    <Panel titleId={titleId} style={{ marginTop: 0 }}>
+      <PanelHeader titleId={titleId} title={sectionLabel} />
+      <StatGroup label={sectionLabel} className="usage-cards usage-cards-3x2">
+        <Stat label={t("usage.card.requests")} value={summary.requests} />
+        <Stat
+          label={t("usage.card.measured")}
+          value={summary.measuredRequests}
+        />
+        <Stat
+          label={t("usage.card.totalTokens")}
+          value={formatTokens(summary.totalTokens, locale)}
+        />
+        <Stat
+          title={t("usage.card.cachedTokensHint")}
+          label={t("usage.card.cachedTokens")}
+          value={formatTokens(
+            summary.cacheReadInputTokens ?? summary.cachedInputTokens,
+            locale,
+          )}
+          hint={
+            (summary.cacheCreationInputTokens ?? 0) > 0 ? (
+              <div className="muted text-caption">
+                {t("usage.card.cacheWriteTokens")}:{" "}
+                {formatTokens(summary.cacheCreationInputTokens ?? 0, locale)}
+              </div>
+            ) : null
+          }
+        />
+        <Stat
+          label={t("usage.card.coverage")}
+          value={formatPct(summary.coverageRatio)}
+        />
+        <Stat label={t("usage.card.activeDays")} value={activeDays} />
+      </StatGroup>
       {summary.estimatedCostUsd !== undefined && (
         <div className="usage-cost-row" role="note">
           <span className="muted">{t("usage.cost.total")}</span>
           <span className="stat-value mono usage-cost-value">
             {formatUsdEstimate(summary.estimatedCostUsd, locale)}
           </span>
-          <span className="muted text-caption">{t("usage.cost.disclaimer")}</span>
-          {((summary.unpricedRequests ?? 0) + (summary.unmeteredRequests ?? 0)) > 0 && (
+          <span className="muted text-caption">
+            {t("usage.cost.disclaimer")}
+          </span>
+          {(summary.unpricedRequests ?? 0) + (summary.unmeteredRequests ?? 0) >
+            0 && (
             <span className="muted text-caption">
-              {t("usage.cost.unpricedNote").replace("{count}", String((summary.unpricedRequests ?? 0) + (summary.unmeteredRequests ?? 0)))}
+              {t("usage.cost.unpricedNote").replace(
+                "{count}",
+                String(
+                  (summary.unpricedRequests ?? 0) +
+                    (summary.unmeteredRequests ?? 0),
+                ),
+              )}
             </span>
           )}
         </div>
       )}
-    </section>
+    </Panel>
   );
 }
 
@@ -321,43 +414,64 @@ function UsageQualityPanel({
   t: TFn;
 }) {
   const titleId = "usage-quality-title";
+  const sectionLabel = t("usage.section.quality");
   return (
-    <section className="panel" style={{ marginTop: 16 }} aria-labelledby={titleId}>
-      <h3 id={titleId} className="panel-title">{t("usage.section.quality")}</h3>
-      <div className="usage-cards usage-cards-3x2" role="group" aria-label={t("usage.section.quality")}>
-        <div className="stat">
-          <div className="muted">{t("usage.quality.p95Latency")}</div>
-          <div className="stat-value mono">{summary.p95LatencyMs !== undefined ? `${summary.p95LatencyMs}ms` : "\u2014"}</div>
-        </div>
-        <div className="stat">
-          <div className="muted">{t("usage.quality.p95Ttft")}</div>
-          <div className="stat-value mono">{summary.p95TtftMs !== undefined ? `${summary.p95TtftMs}ms` : "\u2014"}</div>
-        </div>
-        <div className="stat">
-          <div className="muted">{t("usage.quality.cacheReadRatio")}</div>
-          <div className="stat-value">{formatPct(summary.cacheReadRatio ?? 0)}</div>
-        </div>
-        <div className="stat">
-          <div className="muted">{t("usage.quality.ratio429")}</div>
-          <div className="stat-value">{formatPct(summary.ratio429 ?? 0)}</div>
-        </div>
-        <div className="stat">
-          <div className="muted">{t("usage.quality.ratio502")}</div>
-          <div className="stat-value">{formatPct(summary.ratio502 ?? 0)}</div>
-        </div>
-      </div>
-      <p className="muted text-control" style={{ marginTop: 12 }}>{t("usage.quality.note")}</p>
-    </section>
+    <Panel titleId={titleId} style={{ marginTop: 16 }}>
+      <PanelHeader titleId={titleId} title={sectionLabel} />
+      <StatGroup label={sectionLabel} className="usage-cards usage-cards-3x2">
+        <Stat
+          label={t("usage.quality.p95Latency")}
+          value={
+            summary.p95LatencyMs !== undefined
+              ? `${summary.p95LatencyMs}ms`
+              : "\u2014"
+          }
+          valueClassName="stat-value mono"
+        />
+        <Stat
+          label={t("usage.quality.p95Ttft")}
+          value={
+            summary.p95TtftMs !== undefined
+              ? `${summary.p95TtftMs}ms`
+              : "\u2014"
+          }
+          valueClassName="stat-value mono"
+        />
+        <Stat
+          label={t("usage.quality.cacheReadRatio")}
+          value={formatPct(summary.cacheReadRatio ?? 0)}
+        />
+        <Stat
+          label={t("usage.quality.ratio429")}
+          value={formatPct(summary.ratio429 ?? 0)}
+        />
+        <Stat
+          label={t("usage.quality.ratio502")}
+          value={formatPct(summary.ratio502 ?? 0)}
+        />
+      </StatGroup>
+      <p className="muted text-control" style={{ marginTop: 12 }}>
+        {t("usage.quality.note")}
+      </p>
+    </Panel>
   );
 }
 
-function WeekDayBars({ weekBars, locale, t }: { weekBars: UsageDay[]; locale: Locale; t: TFn }) {
+function WeekDayBars({
+  weekBars,
+  locale,
+  t,
+}: {
+  weekBars: UsageDay[];
+  locale: Locale;
+  t: TFn;
+}) {
   const [hoverDay, setHoverDay] = useState<string | null>(null);
-  const max = Math.max(1, ...weekBars.map(day => day.totalTokens));
+  const max = Math.max(1, ...weekBars.map((day) => day.totalTokens));
 
   return (
     <div className="daybars" role="img" aria-label={t("usage.section.heatmap")}>
-      {weekBars.map(day => {
+      {weekBars.map((day) => {
         const percentage = Math.round((day.totalTokens / max) * 100);
         const label = day.date.slice(5);
         return (
@@ -365,35 +479,60 @@ function WeekDayBars({ weekBars, locale, t }: { weekBars: UsageDay[]; locale: Lo
             key={day.date}
             className="daybar"
             onMouseEnter={() => setHoverDay(day.date)}
-            onMouseLeave={() => setHoverDay(current => (current === day.date ? null : current))}
+            onMouseLeave={() =>
+              setHoverDay((current) => (current === day.date ? null : current))
+            }
           >
             <div className="daybar-track">
-              <div className="daybar-stack" style={{ height: `${percentage}%` }}>
-                {day.models.map(model => (
+              <div
+                className="daybar-stack"
+                style={{ height: `${percentage}%` }}
+              >
+                {day.models.map((model) => (
                   <div
                     key={`${model.provider}/${model.model}`}
                     className="daybar-seg"
-                    style={{ flexGrow: model.totalTokens, background: modelColor(model.model, model.provider) }}
+                    style={{
+                      flexGrow: model.totalTokens,
+                      background: modelColor(model.model, model.provider),
+                    }}
                   />
                 ))}
                 {day.models.length === 0 && day.totalTokens > 0 && (
-                  <div className="daybar-seg" style={{ flexGrow: 1, background: "var(--green)" }} />
+                  <div
+                    className="daybar-seg"
+                    style={{ flexGrow: 1, background: "var(--green)" }}
+                  />
                 )}
               </div>
             </div>
             {hoverDay === day.date && day.totalTokens > 0 && (
               <div className="daybar-tip" role="tooltip">
                 <div className="daybar-tip-date">{day.date}</div>
-                {day.models.slice(0, 8).map(model => (
-                  <div key={`${model.provider}/${model.model}`} className="daybar-tip-row">
-                    <span className="daybar-tip-swatch" style={{ background: modelColor(model.model, model.provider) }} />
-                    <span className="daybar-tip-name">{modelLabel(model.model)}</span>
-                    <span className="daybar-tip-val">{formatTokens(model.totalTokens, locale)}</span>
+                {day.models.slice(0, 8).map((model) => (
+                  <div
+                    key={`${model.provider}/${model.model}`}
+                    className="daybar-tip-row"
+                  >
+                    <span
+                      className="daybar-tip-swatch"
+                      style={{
+                        background: modelColor(model.model, model.provider),
+                      }}
+                    />
+                    <span className="daybar-tip-name">
+                      {modelLabel(model.model)}
+                    </span>
+                    <span className="daybar-tip-val">
+                      {formatTokens(model.totalTokens, locale)}
+                    </span>
                   </div>
                 ))}
               </div>
             )}
-            <span className="daybar-count">{formatTokens(day.totalTokens, locale)}</span>
+            <span className="daybar-count">
+              {formatTokens(day.totalTokens, locale)}
+            </span>
             <span className="daybar-label muted">{label}</span>
           </div>
         );
@@ -416,12 +555,19 @@ function UsageHeatmapPanel({
   t: TFn;
 }) {
   const heatmapRef = useRef<HTMLDivElement | null>(null);
-  const [hoverCell, setHoverCell] = useState<{ weekIndex: number; dayIndex: number; x: number; y: number } | null>(null);
+  const [hoverCell, setHoverCell] = useState<{
+    weekIndex: number;
+    dayIndex: number;
+    x: number;
+    y: number;
+  } | null>(null);
 
   useEffect(() => {
     const element = heatmapRef.current;
     if (!element) return;
-    const pinRight = () => { element.scrollLeft = element.scrollWidth; };
+    const pinRight = () => {
+      element.scrollLeft = element.scrollWidth;
+    };
     pinRight();
     const observer = new ResizeObserver(pinRight);
     observer.observe(element);
@@ -429,62 +575,125 @@ function UsageHeatmapPanel({
   }, [heatmap, range]);
 
   return (
-    <section className="panel" style={{ marginTop: 16 }} aria-labelledby="usage-heatmap-title">
-      <h3 id="usage-heatmap-title" className="panel-title">{t("usage.section.heatmap")}</h3>
+    <Panel titleId="usage-heatmap-title" style={{ marginTop: 16 }}>
+      <PanelHeader
+        titleId="usage-heatmap-title"
+        title={t("usage.section.heatmap")}
+      />
       {range === "7d" ? (
         <WeekDayBars weekBars={weekBars} locale={locale} t={t} />
       ) : (
-        <div className="heatmap" ref={heatmapRef} role="img" aria-labelledby="usage-heatmap-title">
-          <div className="heatmap-months" style={{ gridTemplateColumns: `28px repeat(${heatmap.weeks.length}, calc(var(--hm-cell) + var(--hm-gap)))` }}>
+        <div
+          className="heatmap"
+          ref={heatmapRef}
+          role="img"
+          aria-labelledby="usage-heatmap-title"
+        >
+          <div
+            className="heatmap-months"
+            style={{
+              gridTemplateColumns: `28px repeat(${heatmap.weeks.length}, calc(var(--hm-cell) + var(--hm-gap)))`,
+            }}
+          >
             <span className="heatmap-day-spacer" />
-            {heatmap.months.map(month => (
-              <span key={`${month.label}-${month.col}`} className="heatmap-month" style={{ gridColumn: month.col + 2 }}>{month.label}</span>
+            {heatmap.months.map((month) => (
+              <span
+                key={`${month.label}-${month.col}`}
+                className="heatmap-month"
+                style={{ gridColumn: month.col + 2 }}
+              >
+                {month.label}
+              </span>
             ))}
           </div>
           <div className="heatmap-body">
             <div className="heatmap-days">
-              <span /><span>{t("usage.dayMon")}</span><span /><span>{t("usage.dayWed")}</span><span /><span>{t("usage.dayFri")}</span><span />
+              <span />
+              <span>{t("usage.dayMon")}</span>
+              <span />
+              <span>{t("usage.dayWed")}</span>
+              <span />
+              <span>{t("usage.dayFri")}</span>
+              <span />
             </div>
-            <div className="heatmap-grid" style={{ gridTemplateColumns: `repeat(${heatmap.weeks.length}, var(--hm-cell))` }}>
+            <div
+              className="heatmap-grid"
+              style={{
+                gridTemplateColumns: `repeat(${heatmap.weeks.length}, var(--hm-cell))`,
+              }}
+            >
               {heatmap.weeks.map((week, weekIndex) => (
-                <div key={week[0]?.date || `week-${weekIndex}`} className="heatmap-week">
+                <div
+                  key={week[0]?.date || `week-${weekIndex}`}
+                  className="heatmap-week"
+                >
                   {week.map((cell, dayIndex) => (
                     <div
                       key={cell.date || `pad-${weekIndex}-${dayIndex}`}
                       className={`heatmap-cell heatmap-cell-${cell.level}`}
-                      onMouseEnter={event => {
+                      onMouseEnter={(event) => {
                         if (!cell.date) return;
-                        const rect = event.currentTarget.getBoundingClientRect();
-                        setHoverCell({ weekIndex, dayIndex, x: rect.left + rect.width / 2, y: rect.top });
+                        const rect =
+                          event.currentTarget.getBoundingClientRect();
+                        setHoverCell({
+                          weekIndex,
+                          dayIndex,
+                          x: rect.left + rect.width / 2,
+                          y: rect.top,
+                        });
                       }}
-                      onMouseLeave={() => setHoverCell(current => (
-                        current?.weekIndex === weekIndex && current.dayIndex === dayIndex ? null : current
-                      ))}
+                      onMouseLeave={() =>
+                        setHoverCell((current) =>
+                          current?.weekIndex === weekIndex &&
+                          current.dayIndex === dayIndex
+                            ? null
+                            : current,
+                        )
+                      }
                     />
                   ))}
                 </div>
               ))}
             </div>
           </div>
-          {hoverCell && (() => {
-            const cell = heatmap.weeks[hoverCell.weekIndex]?.[hoverCell.dayIndex];
-            if (!cell?.date) return null;
-            return (
-              <div className="heatmap-tip" role="tooltip" style={{ left: hoverCell.x, top: hoverCell.y }}>
-                <div className="heatmap-tip-date">{cell.date}</div>
-                <div className="heatmap-tip-val">{t("usage.heatmap.tooltipTokens", { tokens: formatTokens(cell.totalTokens, locale) })}</div>
-                <div className="heatmap-tip-req muted">{t("usage.heatmap.tooltipRequests", { requests: cell.requests })}</div>
-              </div>
-            );
-          })()}
+          {hoverCell &&
+            (() => {
+              const cell =
+                heatmap.weeks[hoverCell.weekIndex]?.[hoverCell.dayIndex];
+              if (!cell?.date) return null;
+              return (
+                <div
+                  className="heatmap-tip"
+                  role="tooltip"
+                  style={{ left: hoverCell.x, top: hoverCell.y }}
+                >
+                  <div className="heatmap-tip-date">{cell.date}</div>
+                  <div className="heatmap-tip-val">
+                    {t("usage.heatmap.tooltipTokens", {
+                      tokens: formatTokens(cell.totalTokens, locale),
+                    })}
+                  </div>
+                  <div className="heatmap-tip-req muted">
+                    {t("usage.heatmap.tooltipRequests", {
+                      requests: cell.requests,
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
           <div className="heatmap-legend muted">
             <span>{t("usage.heatmap.less")}</span>
-            {[0, 1, 2, 3, 4].map(level => <span key={level} className={`heatmap-cell heatmap-cell-${level}`} />)}
+            {[0, 1, 2, 3, 4].map((level) => (
+              <span
+                key={level}
+                className={`heatmap-cell heatmap-cell-${level}`}
+              />
+            ))}
             <span>{t("usage.heatmap.more")}</span>
           </div>
         </div>
       )}
-    </section>
+    </Panel>
   );
 }
 
@@ -510,7 +719,7 @@ function UsageModelsTable({
       aria-label={searchLabel}
       placeholder={searchLabel}
       value={modelQuery}
-      onChange={event => onModelQuery(event.target.value)}
+      onChange={(event) => onModelQuery(event.target.value)}
     />
   );
   const table = (
@@ -527,14 +736,18 @@ function UsageModelsTable({
           </tr>
         </thead>
         <tbody>
-          {models.map(model => (
+          {models.map((model) => (
             <tr key={`${model.provider}/${model.model}`}>
               <td className="mono">{modelLabel(model.model)}</td>
               <td className="muted">{model.provider}</td>
               <td className="num">{model.requests}</td>
               <td className="num">{model.measuredRequests}</td>
-              <td className="num mono">{formatTokens(model.totalTokens, locale)}</td>
-              <td><div className="usage-bar"><div className="usage-bar-fill" style={{ width: `${Math.round(model.shareRatio * 100)}%` }} /></div></td>
+              <td className="num mono">
+                {formatTokens(model.totalTokens, locale)}
+              </td>
+              <td>
+                <ShareMeter ratio={model.shareRatio} />
+              </td>
             </tr>
           ))}
         </tbody>
@@ -543,13 +756,14 @@ function UsageModelsTable({
   );
 
   return (
-    <section className="panel" style={{ marginTop: 16 }} aria-labelledby={titleId}>
-      <div className="panel-head">
-        <h3 id={titleId} className="panel-title">{sectionLabel}</h3>
-        {searchInput}
-      </div>
+    <Panel titleId={titleId} style={{ marginTop: 16 }}>
+      <PanelHeader
+        titleId={titleId}
+        title={sectionLabel}
+        actions={searchInput}
+      />
       {table}
-    </section>
+    </Panel>
   );
 }
 
@@ -577,13 +791,17 @@ function UsageProvidersTable({
           </tr>
         </thead>
         <tbody>
-          {providers.map(provider => (
+          {providers.map((provider) => (
             <tr key={provider.provider}>
               <td className="mono">{provider.provider}</td>
               <td className="num">{provider.requests}</td>
               <td className="num">{provider.measuredRequests}</td>
-              <td className="num mono">{formatTokens(provider.totalTokens, locale)}</td>
-              <td><div className="usage-bar"><div className="usage-bar-fill" style={{ width: `${Math.round(provider.shareRatio * 100)}%` }} /></div></td>
+              <td className="num mono">
+                {formatTokens(provider.totalTokens, locale)}
+              </td>
+              <td>
+                <ShareMeter ratio={provider.shareRatio} />
+              </td>
             </tr>
           ))}
         </tbody>
@@ -592,10 +810,10 @@ function UsageProvidersTable({
   );
 
   return (
-    <section className="panel" style={{ marginTop: 16 }} aria-labelledby={titleId}>
-      <h3 id={titleId} className="panel-title">{sectionLabel}</h3>
+    <Panel titleId={titleId} style={{ marginTop: 16 }}>
+      <PanelHeader titleId={titleId} title={sectionLabel} />
       {table}
-    </section>
+    </Panel>
   );
 }
 
@@ -608,24 +826,35 @@ function UsageCoveragePanel({
 }) {
   const sectionLabel = t("usage.section.coverage");
   const titleId = "usage-coverage-title";
-  const body = (
-    <>
-      <div className="usage-cards usage-cards-3x2">
-        <div className="stat"><div className="muted">{t("usage.coverage.measured")}</div><div className="stat-value">{summary.measuredRequests}</div></div>
-        <div className="stat"><div className="muted">{t("usage.coverage.reported")}</div><div className="stat-value">{summary.reportedRequests}</div></div>
-        <div className="stat"><div className="muted">{t("usage.coverage.estimated")}</div><div className="stat-value">{summary.estimatedRequests}</div></div>
-        <div className="stat"><div className="muted">{t("logs.tokens.unreported")}</div><div className="stat-value">{summary.unreportedRequests}</div></div>
-        <div className="stat"><div className="muted">{t("logs.tokens.unsupported")}</div><div className="stat-value">{summary.unsupportedRequests}</div></div>
-      </div>
-      <p className="muted text-control" style={{ marginTop: 12 }}>{t("usage.coverage.note")}</p>
-    </>
-  );
-
   return (
-    <section className="panel" style={{ marginTop: 16 }} aria-labelledby={titleId}>
-      <h3 id={titleId} className="panel-title">{sectionLabel}</h3>
-      {body}
-    </section>
+    <Panel titleId={titleId} style={{ marginTop: 16 }}>
+      <PanelHeader titleId={titleId} title={sectionLabel} />
+      <StatGroup className="usage-cards usage-cards-3x2">
+        <Stat
+          label={t("usage.coverage.measured")}
+          value={summary.measuredRequests}
+        />
+        <Stat
+          label={t("usage.coverage.reported")}
+          value={summary.reportedRequests}
+        />
+        <Stat
+          label={t("usage.coverage.estimated")}
+          value={summary.estimatedRequests}
+        />
+        <Stat
+          label={t("logs.tokens.unreported")}
+          value={summary.unreportedRequests}
+        />
+        <Stat
+          label={t("logs.tokens.unsupported")}
+          value={summary.unsupportedRequests}
+        />
+      </StatGroup>
+      <p className="muted text-control" style={{ marginTop: 12 }}>
+        {t("usage.coverage.note")}
+      </p>
+    </Panel>
   );
 }
 
@@ -641,38 +870,52 @@ export default function Usage({ apiBase }: { apiBase: string }) {
   const dataRef = useRef<UsageResponse | null>(null);
   const lastGoodKeyRef = useRef<string | null>(null);
 
-  const fetchUsage = useCallback(async (nextRange: Range, nextSurface: UsageSurface, signal: AbortSignal) => {
-    const generation = ++loadGenerationRef.current;
-    const requestKey = usagePayloadKey(nextRange, nextSurface);
-    setLoading(true);
-    try {
-      const res = await fetch(`${apiBase}/api/usage?range=${nextRange}&surface=${nextSurface}`, { signal });
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`.trim());
-      const json = await res.json() as UsageResponse;
-      if (signal.aborted || generation !== loadGenerationRef.current) return;
-      lastGoodKeyRef.current = requestKey;
-      dataRef.current = json;
-      setData(json);
-      setError(null);
-    } catch (cause) {
-      // A stale request (range/apiBase changed, or unmount) must not overwrite newer state.
-      if (signal.aborted || generation !== loadGenerationRef.current) return;
-      // Last-good applies only when the same range+surface is already on screen.
-      if (lastGoodKeyRef.current === requestKey && dataRef.current) return;
-      dataRef.current = null;
-      setData(null);
-      const detail = cause instanceof Error ? cause.message : "";
-      setError(detail ? `${t("usage.loadError")} ${detail}` : t("usage.loadError"));
-    } finally {
-      // Only the current request may clear loading — a superseded abort must not
-      // settle the UI while a newer fetch is still in flight.
-      if (generation === loadGenerationRef.current) setLoading(false);
-    }
-  }, [apiBase, t]);
+  const fetchUsage = useCallback(
+    async (
+      nextRange: Range,
+      nextSurface: UsageSurface,
+      signal: AbortSignal,
+    ) => {
+      const generation = ++loadGenerationRef.current;
+      const requestKey = usagePayloadKey(nextRange, nextSurface);
+      setLoading(true);
+      try {
+        const res = await fetch(
+          `${apiBase}/api/usage?range=${nextRange}&surface=${nextSurface}`,
+          { signal },
+        );
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`.trim());
+        const json = (await res.json()) as UsageResponse;
+        if (signal.aborted || generation !== loadGenerationRef.current) return;
+        lastGoodKeyRef.current = requestKey;
+        dataRef.current = json;
+        setData(json);
+        setError(null);
+      } catch (cause) {
+        // A stale request (range/apiBase changed, or unmount) must not overwrite newer state.
+        if (signal.aborted || generation !== loadGenerationRef.current) return;
+        // Last-good applies only when the same range+surface is already on screen.
+        if (lastGoodKeyRef.current === requestKey && dataRef.current) return;
+        dataRef.current = null;
+        setData(null);
+        const detail = cause instanceof Error ? cause.message : "";
+        setError(
+          detail ? `${t("usage.loadError")} ${detail}` : t("usage.loadError"),
+        );
+      } finally {
+        // Only the current request may clear loading — a superseded abort must not
+        // settle the UI while a newer fetch is still in flight.
+        if (generation === loadGenerationRef.current) setLoading(false);
+      }
+    },
+    [apiBase, t],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
-    const run = () => { void fetchUsage(range, surface, controller.signal); };
+    const run = () => {
+      void fetchUsage(range, surface, controller.signal);
+    };
     const timeout = window.setTimeout(run, 0);
     const interval = window.setInterval(() => {
       if (document.visibilityState === "hidden") return;
@@ -690,31 +933,48 @@ export default function Usage({ apiBase }: { apiBase: string }) {
 
   const heatmap = useMemo(() => buildHeatmap(data?.days ?? []), [data?.days]);
   const weekBars = useMemo(() => lastSevenDays(data?.days ?? []), [data?.days]);
-  const activeDays = useMemo(() => (data?.days ?? []).filter(d => d.requests > 0).length, [data?.days]);
+  const activeDays = useMemo(
+    () => (data?.days ?? []).filter((d) => d.requests > 0).length,
+    [data?.days],
+  );
   const filteredModels = useMemo(() => {
     const q = modelQuery.trim().toLowerCase();
     const models = data?.models ?? [];
     const sorted = models.toSorted((a, b) => b.totalTokens - a.totalTokens);
     if (!q) return sorted.slice(0, 100);
-    return sorted.filter(m =>
-      m.model.toLowerCase().includes(q) ||
-      m.provider.toLowerCase().includes(q) ||
-      (m.resolvedModel ?? "").toLowerCase().includes(q),
-    ).slice(0, 100);
+    return sorted
+      .filter(
+        (m) =>
+          m.model.toLowerCase().includes(q) ||
+          m.provider.toLowerCase().includes(q) ||
+          (m.resolvedModel ?? "").toLowerCase().includes(q),
+      )
+      .slice(0, 100);
   }, [data?.models, modelQuery]);
 
-  const sortedProviders = useMemo(() =>
-    (data?.providers ?? []).toSorted((a, b) => b.totalTokens - a.totalTokens),
+  const sortedProviders = useMemo(
+    () =>
+      (data?.providers ?? []).toSorted((a, b) => b.totalTokens - a.totalTokens),
     [data?.providers],
   );
 
   return (
     <>
-      <div className="page-head usage-head">
-        <h2 id="usage-page-title">{t("usage.title")}</h2>
-        <UsageFilters surface={surface} range={range} onSurface={setSurface} onRange={setRange} t={t} />
-      </div>
-      <p className="page-sub">{t("usage.subtitle")}</p>
+      <PageHeader
+        titleId="usage-page-title"
+        className="usage-head"
+        title={t("usage.title")}
+        actions={
+          <UsageFilters
+            surface={surface}
+            range={range}
+            onSurface={setSurface}
+            onRange={setRange}
+            t={t}
+          />
+        }
+      />
+      <PageSubtitle>{t("usage.subtitle")}</PageSubtitle>
 
       {error && !data ? (
         <Notice tone="err">
@@ -722,7 +982,9 @@ export default function Usage({ apiBase }: { apiBase: string }) {
           <button
             type="button"
             className="btn btn-ghost btn-sm"
-            onClick={() => void fetchUsage(range, surface, new AbortController().signal)}
+            onClick={() =>
+              void fetchUsage(range, surface, new AbortController().signal)
+            }
             disabled={loading}
           >
             {t("common.retry")}
@@ -734,11 +996,32 @@ export default function Usage({ apiBase }: { apiBase: string }) {
         <EmptyState title={t("usage.empty")} />
       ) : data ? (
         <>
-          <UsageSummaryCards summary={data.summary} activeDays={activeDays} locale={locale} t={t} />
+          <UsageSummaryCards
+            summary={data.summary}
+            activeDays={activeDays}
+            locale={locale}
+            t={t}
+          />
           <UsageQualityPanel summary={data.summary} t={t} />
-          <UsageHeatmapPanel range={range} heatmap={heatmap} weekBars={weekBars} locale={locale} t={t} />
-          <UsageModelsTable models={filteredModels} modelQuery={modelQuery} onModelQuery={setModelQuery} locale={locale} t={t} />
-          <UsageProvidersTable providers={sortedProviders} locale={locale} t={t} />
+          <UsageHeatmapPanel
+            range={range}
+            heatmap={heatmap}
+            weekBars={weekBars}
+            locale={locale}
+            t={t}
+          />
+          <UsageModelsTable
+            models={filteredModels}
+            modelQuery={modelQuery}
+            onModelQuery={setModelQuery}
+            locale={locale}
+            t={t}
+          />
+          <UsageProvidersTable
+            providers={sortedProviders}
+            locale={locale}
+            t={t}
+          />
           <UsageCoveragePanel summary={data.summary} t={t} />
         </>
       ) : null}

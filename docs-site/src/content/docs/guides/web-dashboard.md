@@ -72,6 +72,14 @@ Cost values in **Logs** and **Usage** are API list-price equivalents calculated 
 They are not billing receipts or evidence of an actual charge; subscription usage or provider credits
 may apply instead.
 
+### Keyboard navigation
+
+In the provider catalog and combo editor, press **Tab** to focus the selected tab,
+then **Left/Right Arrow** to select an adjacent tab (wrapping at either end).
+**Home/End** select the first/last tab. Selection moves focus and opens that panel;
+**Tab** continues to the next control. Provider settings retain their existing
+unsaved-change confirmation when switching tabs.
+
 ## Model visibility
 
 ### Catalog workspace

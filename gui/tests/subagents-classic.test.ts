@@ -18,7 +18,7 @@ test("Subagents mounts the denser workspace as the only layout", async () => {
   expect(page).not.toContain("pws.classicToggle");
 
   // Exactly one render path remains after the loading guard.
-  expect(page).toContain("if (loading) return");
+  expect(page).toMatch(/if \(loading\)\s+return/);
   expect(page.match(/^ {2}return \(/gm)?.length).toBe(1);
 });
 

@@ -14,7 +14,7 @@ test("ClaudeCode renders the denser workspace rail layout", async () => {
 
   expect(app).toContain("<Claude apiBase={API_BASE} />");
   expect(claude).toContain("<ClaudeCode key={apiBase} apiBase={apiBase} />");
-  expect(claude).toContain("<ClaudeDesktop key={apiBase} apiBase={apiBase} active={tab === \"desktop\"} />");
+  expect(claude).toMatch(/<ClaudeDesktop\s+key=\{apiBase\}\s+apiBase=\{apiBase\}\s+active=\{tab === "desktop"\}\s*\/>/);
 });
 
 test("ClaudeCode workspace sections remain available in source order", async () => {
