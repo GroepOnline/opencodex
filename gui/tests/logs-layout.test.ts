@@ -9,6 +9,8 @@ test("Logs composes from page, tabs, toolbar, and modal primitives", async () =>
   ).text();
 
   expect(page).toContain("<PageHeader");
+  expect(page).toContain("<PageSubtitle");
+  expect(page).not.toContain('className="page-sub"');
   expect(page).toContain("<LogsAutoRefreshToggle");
   expect(page).toContain("<PageTabs");
   expect(page).toContain("<PageTab");
@@ -20,11 +22,13 @@ test("Logs composes from page, tabs, toolbar, and modal primitives", async () =>
   expect(page).toContain("<ModalDialog");
   expect(page).toContain("<ModalCard");
   expect(page).toContain("<ModalHead");
+  expect(page).toContain("<ModalDesc");
   expect(page).toContain("<LogDetailSection");
   expect(page).toContain('className="tbl logs-table"');
   expect(page).toContain('className="segmented logs-segmented"');
   expect(page).not.toContain('className="page-tabs"');
   expect(page).not.toContain("<dialog");
+  expect(page).not.toContain('className="modal-desc"');
 
   expect(tabs).toContain('className = "page-tabs"');
   expect(tabs).toContain("page-tab--active");
