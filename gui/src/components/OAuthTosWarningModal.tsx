@@ -16,6 +16,7 @@ import {
   ModalCard,
   ModalDesc,
   ModalDialog,
+  ModalHead,
 } from "./primitives/modal";
 
 export default function OAuthTosWarningModal({
@@ -80,10 +81,11 @@ export default function OAuthTosWarningModal({
       onCancel={handleCancel}
     >
       <ModalBackdrop aria-label={t("common.close")} onClick={onCancel} />
-      <ModalCard onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
-        <h3 id={titleId}>
-          {t(oauthTosRiskTitleKey(level), { provider: providerLabel })}
-        </h3>
+      <ModalCard className="modal-card oauth-tos-card">
+        <ModalHead
+          titleId={titleId}
+          title={t(oauthTosRiskTitleKey(level), { provider: providerLabel })}
+        />
         <div
           id={bodyId}
           className="notice-warn"

@@ -1,8 +1,8 @@
 import { useT } from "../i18n/shared";
 import { LoginUrlBlock } from "./login-url-block";
 import type { StatusTone } from "./add-codex-account-reducer";
-import { DotMatrix } from "../DotMatrix";
-import { ModalDesc } from "./primitives/modal";
+import { ModalActions, ModalDesc, ModalHead } from "./primitives/modal";
+import { Spinner } from "./primitives/spinner";
 
 export function AddCodexAccountWaitingStep({
   reauthAccountId,
@@ -35,11 +35,13 @@ export function AddCodexAccountWaitingStep({
 
   return (
     <>
-      <h3 style={{ marginBottom: 4 }}>
-        {reauthAccountId
-          ? t("codexAuth.reauthenticate")
-          : t("codexAuth.oauthLogin")}
-      </h3>
+      <ModalHead
+        title={
+          reauthAccountId
+            ? t("codexAuth.reauthenticate")
+            : t("codexAuth.oauthLogin")
+        }
+      />
       <ModalDesc>{t("codexAuth.oauthWaiting")}</ModalDesc>
       <LoginUrlBlock url={authUrl} />
       <div
@@ -102,22 +104,18 @@ export function AddCodexAccountWaitingStep({
           {error}
         </div>
       )}
-      <div style={{ textAlign: "center", padding: "24px 0" }}>
-        <DotMatrix
-          size={24}
-          dotSize={5}
-          speed={1.1}
-          color="var(--accent-blue)"
-        />
+      <div className="add-codex-waiting-spinner">
+        <Spinner />
       </div>
-      <button
-        type="button"
-        className="btn btn-ghost"
-        onClick={onClose}
-        style={{ width: "100%" }}
-      >
-        {t("codexAuth.cancel")}
-      </button>
+      <ModalActions>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={onClose}
+        >
+          {t("codexAuth.cancel")}
+        </button>
+      </ModalActions>
     </>
   );
 }

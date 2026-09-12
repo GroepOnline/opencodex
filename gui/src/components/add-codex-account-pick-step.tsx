@@ -1,6 +1,6 @@
 import { IconGlobe } from "../icons";
 import { useT } from "../i18n/shared";
-import { ModalDesc } from "./primitives/modal";
+import { ModalActions, ModalDesc, ModalHead } from "./primitives/modal";
 
 export function AddCodexAccountPickStep({
   id,
@@ -19,7 +19,7 @@ export function AddCodexAccountPickStep({
 
   return (
     <>
-      <h3 style={{ marginBottom: 4 }}>{t("codexAuth.addTitle")}</h3>
+      <ModalHead title={t("codexAuth.addTitle")} />
       <ModalDesc>{t("codexAuth.addPickDesc")}</ModalDesc>
 
       <label className="field-label" htmlFor="codex-account-id-input">
@@ -50,19 +50,20 @@ export function AddCodexAccountPickStep({
       </button>
 
       {error && (
-        <div className="notice notice-err" style={{ marginTop: 8 }}>
+        <div className="notice notice-err">
           {error}
         </div>
       )}
 
-      <button
-        type="button"
-        className="btn btn-ghost"
-        onClick={onClose}
-        style={{ width: "100%" }}
-      >
-        {t("codexAuth.cancel")}
-      </button>
+      <ModalActions>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={onClose}
+        >
+          {t("codexAuth.cancel")}
+        </button>
+      </ModalActions>
     </>
   );
 }

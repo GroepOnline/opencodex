@@ -24,6 +24,7 @@ import {
 } from "./claude-code-sections";
 import { serializeSidecarOverride } from "./claude-code-sidecar";
 import { PageHeader, PageSubtitle } from "../components/primitives/page-header";
+import { Spinner } from "../components/primitives/spinner";
 import {
   formatCompactWindow,
   newClientId,
@@ -195,8 +196,10 @@ export default function ClaudeCode({ apiBase }: { apiBase: string }) {
 
   if (loading)
     return (
-      <div className="muted" style={{ padding: 8 }}>
-        {t("claude.loading")}
+      <div className="claudecode-workspace-shell ocx-page-root">
+        <p className="muted">
+          <Spinner /> {t("claude.loading")}
+        </p>
       </div>
     );
   if (!state)
@@ -251,7 +254,7 @@ export default function ClaudeCode({ apiBase }: { apiBase: string }) {
     selectedSection === "modelMap";
 
   return (
-    <div className="claudecode-workspace-shell">
+    <div className="claudecode-workspace-shell ocx-page-root">
       <PageHeader
         title={t("claude.pageTitle")}
         actionsClassName="claudecode-workspace-save"
@@ -276,7 +279,7 @@ export default function ClaudeCode({ apiBase }: { apiBase: string }) {
           className="claudecode-workspace-rail"
           aria-label={t("claude.pageTitle")}
         >
-          <div className="claudecode-workspace-rail-list">
+          <div className="claudecode-workspace-rail-list ocx-reveal-list">
             {sections.map((s) => (
               <button
                 key={s.id}

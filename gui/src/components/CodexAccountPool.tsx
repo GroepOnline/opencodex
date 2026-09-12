@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useT } from "../i18n/shared";
 import { IconPlus } from "../icons";
-import { EmptyState } from "../ui";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "./primitives/empty";
 import AddCodexAccountModal from "./AddCodexAccountModal";
 import { useCodexAccountPool, type CodexAccountPoolController } from "../hooks/useCodexAccountPool";
 import type { ReactNode } from "react";
@@ -302,7 +307,16 @@ export default function CodexAccountPool({ apiBase, accountModeState = null, ban
             <CodexAccountPoolReauthBanner onReauth={() => openReauth(activePoolAccount.id)} />
           )}
 
-          {pool.length === 0 && <EmptyState title={t("codexAuth.noPool")} />}
+          {pool.length === 0 && (
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <IconPlus aria-hidden="true" />
+                </EmptyMedia>
+                <EmptyTitle>{t("codexAuth.noPool")}</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
+          )}
 
           <CodexAccountPoolCards
             pool={pool}

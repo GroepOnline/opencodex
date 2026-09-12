@@ -11,7 +11,7 @@ import {
 type ClaudeTab = "code" | "desktop";
 
 function ClaudePage({ children }: { children: ReactNode }) {
-  return <section className="claude-page">{children}</section>;
+  return <section className="claude-page ocx-page-root">{children}</section>;
 }
 
 export default function Claude({ apiBase }: { apiBase: string }) {

@@ -319,7 +319,7 @@ export default function AddProviderModal({
                 aria-label={t("common.close")}
                 onClick={onClose}
               >
-                <IconX />
+                <IconX size={15} aria-hidden="true" />
               </button>
             }
           />

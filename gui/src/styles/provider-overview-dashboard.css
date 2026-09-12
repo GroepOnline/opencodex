@@ -97,7 +97,7 @@
 
 .pws-dashboard-section-title {
   font-size: var(--text-micro);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-semibold);
   text-transform: uppercase;
   letter-spacing: var(--tracking-caps);
   color: var(--muted);
@@ -117,20 +117,24 @@
 }
 
 .pws-dashboard-group {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: none;
+  background: transparent;
+  overflow: visible;
 }
 
 .pws-dashboard-group .pws-dashboard-row {
-  border-radius: 0;
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--border-soft);
+  border-radius: var(--card-radius);
+  padding: 12px;
+  border: 1px solid var(--card-border);
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
 }
 
 .pws-dashboard-group .pws-dashboard-row:last-child {
-  border-bottom: none;
+  border-bottom: 1px solid var(--card-border);
 }
 
 .pws-dashboard-status {
@@ -171,7 +175,7 @@
 .pws-dashboard-rows {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 12px;
 }
 
 .pws-dashboard-row {
@@ -179,16 +183,21 @@
   grid-template-columns: var(--icon-lg) minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-1-5);
-  border-radius: var(--radius-xs);
-  border: none;
-  background: none;
+  padding: 12px;
+  border-radius: var(--card-radius);
+  border: 1px solid var(--card-border);
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
   width: 100%;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background var(--motion-fast) var(--ease-out);
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-normal) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
 }
 
 .pws-dashboard-row-select {
@@ -215,6 +224,8 @@
 
 .pws-dashboard-row:hover {
   background: var(--raised);
+  border-color: var(--border);
+  box-shadow: var(--card-shadow-raised);
 }
 
 .pws-dashboard-row:active {
@@ -373,6 +384,6 @@
   display: block;
   height: 100%;
   border-radius: var(--radius-2xs);
-  background: var(--accent-blue);
+  background: var(--text);
   transition: width var(--motion-slow) var(--ease-out);
 }

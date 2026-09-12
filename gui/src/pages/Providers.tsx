@@ -10,7 +10,6 @@ import ProviderWorkspaceShell, {
   type AddProviderIntent,
 } from "../components/provider-workspace/ProviderWorkspaceShell";
 import ProviderDetails from "../components/provider-workspace/ProviderDetails";
-import { DotMatrix } from "../DotMatrix";
 import type { WorkspaceProvider } from "../provider-workspace/catalog";
 import {
   ensureOpenAiProvider,
@@ -22,6 +21,7 @@ import { Notice } from "../ui";
 import { IconPlus } from "../icons";
 import { useT } from "../i18n/shared";
 import { PageHeader } from "../components/primitives/page-header";
+import { Spinner } from "../components/primitives/spinner";
 import { formatProviderDisplayName } from "../provider-icons";
 import { useProviderAccountPools } from "../hooks/useProviderAccountPools";
 import { useCodexAccountPool } from "../hooks/useCodexAccountPool";
@@ -46,6 +46,7 @@ function ProvidersPageHeader({ actions }: { actions?: ReactNode }) {
   return (
     <PageHeader
       title={t("nav.providers")}
+      description={t("prov.subtitle")}
       actions={actions}
       actionsClassName="row"
     />
@@ -315,7 +316,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
 
   if (!config) {
     return (
-      <>
+      <div className="providers-page ocx-page-root">
         <ProvidersPageHeader />
         {status ? (
           <Notice tone="err">{status}</Notice>
@@ -330,19 +331,12 @@ export default function Providers({ apiBase }: { apiBase: string }) {
             />
             <div className="providers-workspace-main">
               <p className="muted">
-                <DotMatrix
-                  size={14}
-                  dotSize={3}
-                  speed={1.1}
-                  color="var(--accent)"
-                  aria-hidden="true"
-                />{" "}
-                {t("prov.loadingConfig")}
+                <Spinner /> {t("prov.loadingConfig")}
               </p>
             </div>
           </div>
         )}
-      </>
+      </div>
     );
   }
 
@@ -400,7 +394,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
   };
 
   return (
-    <>
+    <div className="providers-page ocx-page-root">
       <ProvidersPageHeader
         actions={
           <button
@@ -580,6 +574,6 @@ export default function Providers({ apiBase }: { apiBase: string }) {
           void loginOAuth(pending.provider, pending.addAccount);
         }}
       />
-    </>
+    </div>
   );
 }

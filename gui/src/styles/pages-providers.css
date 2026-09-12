@@ -1,2 +1,247 @@
-/* Page-level finishing for this slice of the dashboard. Loaded after ocx-system.css.
+/* Page-level finishing for the providers slice. Loaded after ocx-system.css.
    Owns only page-specific composition; shared grammar lives in ocx-system.css. */
+
+/* ---------------------------------------------------------------------------
+   Search: icon must not sit on the placeholder (rail-owned, not global .input)
+   --------------------------------------------------------------------------- */
+.pws-search-wrap > .input.pws-search-input {
+  padding-left: 40px;
+}
+
+.pws-search-row {
+  align-items: center;
+}
+
+/* ---------------------------------------------------------------------------
+   Status dots + error cards
+   --------------------------------------------------------------------------- */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--muted);
+}
+
+.status-dot[data-tone="success"] {
+  background: var(--green);
+}
+
+.status-dot[data-tone="warning"] {
+  background: var(--amber);
+}
+
+.status-dot[data-tone="error"] {
+  background: var(--red);
+}
+
+.status-dot[data-tone="neutral"] {
+  background: var(--muted);
+}
+
+.status[data-tone="error"] {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  width: fit-content;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--red-soft);
+  color: var(--red);
+  font-size: var(--text-caption);
+  font-weight: 600;
+}
+
+.pws-rail .providers-workspace-rail-status,
+.pws-rail .providers-workspace-rail-status--active,
+.pws-rail .providers-workspace-rail-status--warning,
+.pws-rail .providers-workspace-rail-status--inactive {
+  background: transparent;
+  width: auto;
+  height: auto;
+}
+
+.pws-stat-warn {
+  color: var(--amber);
+}
+
+.pws-quota-error-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--red) 32%, var(--card-border));
+  border-radius: var(--card-radius);
+  background: color-mix(in srgb, var(--red-soft) 55%, var(--surface));
+  box-shadow: var(--card-shadow);
+}
+
+.pws-quota-error-card .pws-dashboard-row-select {
+  width: 100%;
+}
+
+.pws-quota-retry-at {
+  font-family: var(--font-code);
+  font-size: var(--text-caption);
+  color: var(--muted);
+}
+
+.pws-dashboard-quota-row.quota-card-error::before {
+  content: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Dashboard empty + section rhythm
+   --------------------------------------------------------------------------- */
+.pws-dashboard-empty-state,
+.pws-rail-empty-state {
+  padding: 28px 16px;
+}
+
+.pws-dashboard-section {
+  gap: 12px;
+}
+
+.pws-empty-root[data-slot="empty"] {
+  padding: 48px 16px;
+}
+
+.pws-empty-root [data-slot="empty-title"] h2 {
+  margin: 0;
+  font: inherit;
+  color: inherit;
+}
+
+.pws-empty-tiles {
+  width: 100%;
+}
+
+.pws-empty-tile [data-slot="empty-description"] {
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Claude: Code/Desktop PageTabs strip above the nested Code/Desktop header
+   --------------------------------------------------------------------------- */
+.claude-page > .claude-tabs {
+  margin-bottom: var(--space-3);
+}
+
+.claude-page .claude-tabs .page-tab-indicator {
+  display: none;
+}
+
+.claude-settings-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.claude-settings-panel .setting-row {
+  min-height: 56px;
+  align-items: center;
+  border-top: none;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.claude-settings-panel .setting-row:last-child {
+  border-bottom: none;
+}
+
+.claude-settings-panel .setting-controls {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.claude-desktop-page,
+.grok-page,
+.providers-page,
+.claudecode-workspace-shell {
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Collapsible group chevron
+   --------------------------------------------------------------------------- */
+.ocx-group-head .ocx-chevron {
+  transition: transform var(--motion-normal) var(--ease-out);
+}
+
+.ocx-group-head.open .ocx-chevron {
+  transform: rotate(90deg);
+}
+
+/* ---------------------------------------------------------------------------
+   Dialogs / overlays
+   --------------------------------------------------------------------------- */
+.oauth-tos-card {
+  max-width: 460px;
+}
+
+.add-codex-waiting-spinner {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0;
+}
+
+.dialog-backdrop {
+  animation: ocx-fade var(--motion-fast) var(--ease-out) both;
+}
+
+.add-provider-form-pane .modal-actions,
+.modal-card .modal-actions {
+  justify-content: flex-end;
+}
+
+.modal-card .modal-head .btn.btn-ghost.btn-icon {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  gap: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.modal-card .modal-head .btn.btn-ghost.btn-icon svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.modal-card .text-control[role="alert"] {
+  color: var(--red);
+}
+
+/* ---------------------------------------------------------------------------
+   Detail tabs: travelling indicator only (no second underline)
+   --------------------------------------------------------------------------- */
+.pws-detail-tab .page-tab-indicator {
+  bottom: -2px;
+}
+
+@media (max-width: 760px) {
+  .claude-page > .claude-tabs {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .providers-workspace-rail-row:active,
+  .pws-dashboard-row:active,
+  .claudecode-workspace-rail-row:active {
+    transform: none;
+  }
+
+  .ocx-group-head .ocx-chevron,
+  .dialog,
+  .dialog-backdrop {
+    transition: none;
+    animation: none;
+  }
+}

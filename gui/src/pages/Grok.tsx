@@ -6,16 +6,24 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { EmptyState, Notice, Switch } from "../ui";
-import { IconChevron } from "../icons";
+import { Notice, Switch } from "../ui";
+import { IconBoxes, IconChevron } from "../icons";
 import { useT, type TKey } from "../i18n/shared";
 import { readJsonOrThrow } from "../fetch-json";
 import {
   readSessionListCache,
   writeSessionListCache,
 } from "../session-list-cache";
-import { PageSubtitle } from "../components/primitives/page-header";
+import { PageHeader, PageSubtitle } from "../components/primitives/page-header";
 import { ProfileBar } from "../components/primitives/profile-bar";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../components/primitives/empty";
+import { Spinner } from "../components/primitives/spinner";
 import {
   CollapsibleGroup,
   CollapsibleGroupCount,
@@ -67,22 +75,20 @@ function formatContext(value: number | undefined, t: TFn): string {
 }
 
 function GrokPage({ children }: { children: ReactNode }) {
-  return <section className="grok-page">{children}</section>;
+  return <section className="grok-page ocx-page-root">{children}</section>;
 }
 
-/** Grok has no `.page-head`; wrapping in PageHeader would add flex layout. */
 function GrokPageHeader({
   title,
   description,
+  actions,
 }: {
   title: ReactNode;
   description: ReactNode;
+  actions?: ReactNode;
 }) {
   return (
-    <>
-      <h2 className="page-title">{title}</h2>
-      <PageSubtitle>{description}</PageSubtitle>
-    </>
+    <PageHeader title={title} description={description} actions={actions} />
   );
 }
 
@@ -377,7 +383,13 @@ export default function Grok({ apiBase }: { apiBase: string }) {
   if (loading) {
     return (
       <GrokPage>
-        <PageSubtitle>{t("grok.loading")}</PageSubtitle>
+        <GrokPageHeader
+          title={t("grok.title")}
+          description={t("grok.subtitle")}
+        />
+        <p className="muted">
+          <Spinner /> {t("grok.loading")}
+        </p>
       </GrokPage>
     );
   }
@@ -397,6 +409,22 @@ export default function Grok({ apiBase }: { apiBase: string }) {
       <GrokPageHeader
         title={t("grok.title")}
         description={t("grok.subtitle")}
+        actions={
+          status && status.candidates.length > 0 ? (
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!dirty || pending !== null}
+              onClick={() => void save(true)}
+            >
+              {pending === "apply"
+                ? t("grok.applying")
+                : pending === "save"
+                  ? t("grok.saving")
+                  : t("grok.saveApply")}
+            </button>
+          ) : undefined
+        }
       />
 
       <div className="sr-only" aria-live="polite" aria-atomic="true">
@@ -435,11 +463,19 @@ export default function Grok({ apiBase }: { apiBase: string }) {
       {!status?.present ? (
         // Absent is a normal state, not a failure: Grok simply is not wired up yet. Name the
         // action that wires it rather than leaving an empty panel.
-        <EmptyState title={t("grok.notConfiguredTitle")}>
-          {t("grok.notConfiguredHint")}
-          <br />
-          <code>{status?.configPath}</code>
-        </EmptyState>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <IconBoxes aria-hidden="true" />
+            </EmptyMedia>
+            <EmptyTitle>{t("grok.notConfiguredTitle")}</EmptyTitle>
+            <EmptyDescription>
+              {t("grok.notConfiguredHint")}
+              <br />
+              <code>{status?.configPath}</code>
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <>
           <GrokEndpoint
@@ -453,6 +489,7 @@ export default function Grok({ apiBase }: { apiBase: string }) {
       )}
 
       {status && status.candidates.length > 0 && (
+        <div className="ocx-reveal-list">
         <CollapsibleGroupStack>
           <GrokCollapseToolbar
             disabled={pending !== null}
@@ -488,9 +525,6 @@ export default function Grok({ apiBase }: { apiBase: string }) {
                       width={15}
                       height={15}
                       aria-hidden="true"
-                      style={{
-                        transform: isCollapsed ? "none" : "rotate(90deg)",
-                      }}
                     />
                     <CollapsibleGroupName>{t(group.tkey)}</CollapsibleGroupName>
                     <CollapsibleGroupCount>
@@ -521,6 +555,7 @@ export default function Grok({ apiBase }: { apiBase: string }) {
             );
           })}
         </CollapsibleGroupStack>
+        </div>
       )}
     </GrokPage>
   );

@@ -15,8 +15,8 @@ import {
   rowStartsOpen,
 } from "./claude-desktop-lane";
 import { makeCollapseStore, toggleInSet } from "./collapse-store";
-import { IconChevron } from "../icons";
-import { EmptyState, Notice } from "../ui";
+import { IconBoxes, IconChevron } from "../icons";
+import { Notice } from "../ui";
 import { useT, type TFn, type TKey } from "../i18n/shared";
 import { readJsonIfOk, readJsonOrThrow } from "../fetch-json";
 import { createBoundedFetch } from "../bounded-fetch";
@@ -26,6 +26,13 @@ import {
 } from "../session-list-cache";
 import { PageHeader } from "../components/primitives/page-header";
 import { ProfileBar } from "../components/primitives/profile-bar";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../components/primitives/empty";
 import {
   CollapsibleGroup,
   CollapsibleGroupCount,
@@ -558,27 +565,31 @@ export default function ClaudeDesktop({
 
   if (loading)
     return (
-      <div className="claude-desktop-loading" role="status">
-        {t("claudeDesktop.loading")}
+      <div className="claude-desktop-page ocx-page-root">
+        <div className="claude-desktop-loading" role="status">
+          {t("claudeDesktop.loading")}
+        </div>
       </div>
     );
   if (loadError || !data || !profile) {
     return (
-      <div className="claude-desktop-error">
-        <Notice tone="err">{loadError || t("claudeDesktop.loadFail")}</Notice>
-        <button
-          type="button"
-          className="btn btn-ghost"
-          onClick={() => void load()}
-        >
-          {t("claudeDesktop.retry")}
-        </button>
+      <div className="claude-desktop-page ocx-page-root">
+        <div className="claude-desktop-error">
+          <Notice tone="err">{loadError || t("claudeDesktop.loadFail")}</Notice>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => void load()}
+          >
+            {t("claudeDesktop.retry")}
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <>
+    <div className="claude-desktop-page ocx-page-root">
       <PageHeader
         className="claude-desktop-head"
         title={t("claudeDesktop.title")}
@@ -675,11 +686,18 @@ export default function ClaudeDesktop({
       </ProfileBar>
 
       {data.models.length === 0 && (
-        <EmptyState title={t("claudeDesktop.emptyTitle")}>
-          {t("claudeDesktop.emptyHint")}
-        </EmptyState>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <IconBoxes aria-hidden="true" />
+            </EmptyMedia>
+            <EmptyTitle>{t("claudeDesktop.emptyTitle")}</EmptyTitle>
+            <EmptyDescription>{t("claudeDesktop.emptyHint")}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
 
+      <div className="ocx-reveal-list">
       <CollapsibleGroupStack label={t("claudeDesktop.assignmentsLabel")}>
         {FAMILIES.map((family) => {
           // Render-only narrowing: the lane header, effectiveDefaults and every assignment keep
@@ -715,9 +733,6 @@ export default function ClaudeDesktop({
                     width={15}
                     height={15}
                     aria-hidden="true"
-                    style={{
-                      transform: isCollapsed ? "none" : "rotate(90deg)",
-                    }}
                   />
                   <CollapsibleGroupName>
                     {t(FAMILY_KEYS[family])}
@@ -999,6 +1014,7 @@ export default function ClaudeDesktop({
           );
         })}
       </CollapsibleGroupStack>
-    </>
+      </div>
+    </div>
   );
 }
