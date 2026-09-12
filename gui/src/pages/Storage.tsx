@@ -1794,11 +1794,10 @@ export default function Storage({ apiBase }: { apiBase: string }) {
           </span>
           <span>
             {t("storage.snapshot.lastScan")}:{" "}
-            <Timestamp
-              value={data.generatedAt}
-              locale={locale}
-              options={{ dateStyle: "medium", timeStyle: "short" }}
-            />
+            {new Date(data.generatedAt).toLocaleDateString(locale, {
+              dateStyle: "medium",
+            })}{" "}
+            <Timestamp value={data.generatedAt} locale={locale} />
           </span>
         </p>
       )}
