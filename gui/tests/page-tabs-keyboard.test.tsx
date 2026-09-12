@@ -91,6 +91,12 @@ test("default navigation leaves browser shortcuts and Tab alone", async () => {
   expectSelected("one");
 });
 
+test("tabpanel has default tabIndex=0 for keyboard accessibility", async () => {
+  await mount();
+  const panel = container.querySelector<HTMLDivElement>('[role="tabpanel"]');
+  expect(panel?.tabIndex).toBe(0);
+});
+
 test("page-owned keyboard guards are not bypassed or invoked twice", async () => {
   let calls = 0;
   await mount(event => { calls += 1; event.preventDefault(); });

@@ -38,8 +38,8 @@ describe("composed primitive render contracts", () => {
     expect(html).toContain('role="tablist" aria-label="Workspace"');
     expect(html).toContain('aria-selected="true" aria-controls="first-panel" tabindex="0"');
     expect(html).toContain('aria-selected="false" aria-controls="second-panel" tabindex="-1"');
-    expect(html).toContain('role="tabpanel" id="first-panel" aria-labelledby="first"');
-    expect(html).toContain('role="tabpanel" id="second-panel" aria-labelledby="second" hidden=""');
+    expect(html).toContain('tabindex="0" role="tabpanel" id="first-panel" aria-labelledby="first"');
+    expect(html).toContain('tabindex="0" role="tabpanel" id="second-panel" aria-labelledby="second" hidden=""');
   });
 
   test("div modal defaults survive undefined props and preserve explicit opt-out", () => {

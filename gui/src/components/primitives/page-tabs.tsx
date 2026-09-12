@@ -3,6 +3,7 @@ import {
   createContext,
   useContext,
   useId,
+  useMemo,
   useState,
   type ComponentPropsWithoutRef,
   type CSSProperties,
@@ -33,16 +34,19 @@ export function PageTabs({
   const groupId = useId();
   const reduceMotion = useReducedMotion();
   const [keyboardNavigation, setKeyboardNavigation] = useState(false);
+  const contextValue = useMemo(
+    () => ({
+      layoutId: "page-tab-selection",
+      instant: Boolean(reduceMotion) || keyboardNavigation,
+      markKeyboard: setKeyboardNavigation,
+    }),
+    [reduceMotion, keyboardNavigation],
+  );
+
   return (
     <div className={className} role="tablist" aria-label={label} style={style}>
       <LayoutGroup id={groupId}>
-        <PageTabsContext.Provider
-          value={{
-            layoutId: "page-tab-selection",
-            instant: Boolean(reduceMotion) || keyboardNavigation,
-            markKeyboard: setKeyboardNavigation,
-          }}
-        >
+        <PageTabsContext.Provider value={contextValue}>
           {children}
         </PageTabsContext.Provider>
       </LayoutGroup>
@@ -138,6 +142,7 @@ export function PageTabPanel({
   labelledBy,
   hidden,
   className,
+  tabIndex = 0,
   children,
   ...props
 }: {
@@ -145,13 +150,15 @@ export function PageTabPanel({
   labelledBy: string;
   hidden?: boolean;
   className?: string;
+  tabIndex?: number;
   children: ReactNode;
 } & Omit<
   ComponentPropsWithoutRef<"div">,
-  "id" | "className" | "children" | "hidden"
+  "id" | "className" | "children" | "hidden" | "tabIndex"
 >) {
   return (
     <div
+      tabIndex={tabIndex}
       {...props}
       role="tabpanel"
       id={id}

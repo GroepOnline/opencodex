@@ -217,7 +217,7 @@ function tokensTitle(log: LogEntry, t: TFn): string | undefined {
       ),
     );
   }
-  return parts.join(" \xC2\xB7 ");
+  return parts.join(" · ");
 }
 
 function displayTokenTotal(log: LogEntry): number | undefined {
@@ -403,7 +403,7 @@ function modelTitle(log: LogEntry): string {
       ? `supportsTier=${log.modelSupportsServiceTier}`
       : undefined,
   ].filter(Boolean);
-  return details.join(" \xC2\xB7 ");
+  return details.join(" · ");
 }
 
 function summarizeFilteredLogs(entries: LogEntry[]): {

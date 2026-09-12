@@ -1,6 +1,16 @@
 import { expect, test } from "bun:test";
 
+test("Logs uses clean unicode middle dot separator instead of mojibake bytes", async () => {
+  const logs = await Bun.file(
+    new URL("../src/pages/Logs.tsx", import.meta.url),
+  ).text();
+  expect(logs).not.toContain("\\xC2\\xB7");
+  expect(logs).toContain('parts.join(" · ")');
+  expect(logs).toContain('details.join(" · ")');
+});
+
 test("Logs composes from page, tabs, toolbar, and modal primitives", async () => {
+
   const page = await Bun.file(
     new URL("../src/pages/Logs.tsx", import.meta.url),
   ).text();

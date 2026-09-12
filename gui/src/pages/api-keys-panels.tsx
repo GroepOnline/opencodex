@@ -281,9 +281,9 @@ export function ApiKeysManagePanel({
           {keysLoading ? (
             <div className="api-active-keys-skeleton" role="status" aria-label={t("common.loading")} />
           ) : keys.length > 0 ? (
-            <div className="api-key-cards ocx-reveal-list">
+            <ul className="api-key-cards ocx-reveal-list">
               {keys.map(k => (
-                <div key={k.id} className="api-key-card" role="listitem">
+                <li key={k.id} className="api-key-card">
                   <div className="api-key-card__main">
                     <span className="api-key-card__name">{k.name}</span>
                     <code className="api-key-card__prefix">{k.prefix}</code>
@@ -305,9 +305,9 @@ export function ApiKeysManagePanel({
                       <button type="button" className="btn btn-danger btn-sm" aria-label={t("api.deleteAria")} onClick={() => onConfirmDelete(k.id)}><IconX /></button>
                     )}
                   </span>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           ) : keysLoadFailed ? (
             <p className="muted">{t("api.keysLoadFailed")}</p>
           ) : (
