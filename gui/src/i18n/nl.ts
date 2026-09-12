@@ -185,6 +185,9 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "cws.saved": "Combo bewaard.",
   "cws.add": "Combo toevoegen",
   "cws.addTitle": "Combo toevoegen",
+  "cws.detailTitle": "Combo",
+  "cws.emptyRailTitle": "Nog geen combo's",
+  "cws.emptyRailHint": "Maak een combo om verzoeken over providers te routeren.",
   "cws.create": "Maak combo",
   "cws.overviewTitle": "Combos",
   "cws.overviewBlurb":

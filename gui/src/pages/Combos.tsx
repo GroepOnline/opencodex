@@ -51,7 +51,7 @@ function seedCombos(cacheKey: string): CachedCombosPage | null {
 }
 
 function CombosWorkspaceShell({ children }: { children: ReactNode }) {
-  return <div className="combos-workspace-shell">{children}</div>;
+  return <div className="combos-workspace-shell ocx-page-root">{children}</div>;
 }
 
 function CombosWorkspaceBanner({ status, ok }: { status: string; ok: boolean }) {

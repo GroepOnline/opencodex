@@ -2,6 +2,14 @@ import type { ReactNode } from "react";
 import type { ComboItem } from "../combo-workspace-data";
 import { IconChevron, IconPlus, IconSearch, IconShuffle } from "../icons";
 import { useT, type TKey } from "../i18n/shared";
+import MatrixMark from "./MatrixMark";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "./primitives/empty";
 
 export function ComboWorkspaceRoot({ children }: { children: ReactNode }) {
   return <div className="combos-workspace-root">{children}</div>;
@@ -133,8 +141,18 @@ export function ComboWorkspaceRail({
     <aside className="combos-workspace-rail" aria-label={t("cws.railAria")}>
       <ComboWorkspaceRailHeader count={combosCount} onAdd={onAdd} />
       <ComboWorkspaceRailSearch query={query} onQuery={onQuery} />
-      <div className="combos-workspace-rail-list">
-        {emptyFiltered ? (
+      <div className="combos-workspace-rail-list ocx-reveal-list">
+        {combosCount === 0 ? (
+          <Empty className="combos-rail-empty">
+            <EmptyHeader>
+              <EmptyMedia>
+                <MatrixMark />
+              </EmptyMedia>
+              <EmptyTitle>{t("cws.emptyRailTitle")}</EmptyTitle>
+              <EmptyDescription>{t("cws.emptyRailHint")}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : emptyFiltered ? (
           <p className="muted" style={{ padding: "16px" }}>{t("cws.noSearchResults")}</p>
         ) : (
           groups.map(({ key, labelKey, items }) =>

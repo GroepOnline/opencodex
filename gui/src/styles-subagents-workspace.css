@@ -21,7 +21,8 @@
   gap: var(--space-4);
   width: 100%;
   max-width: 100%;
-  min-height: 0;
+  min-height: max(480px, calc(100dvh - var(--workspace-header) - 220px));
+  align-items: stretch;
 }
 
 /* ── Rail ─────────────────────────────────────────────── */
@@ -30,9 +31,24 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  border-right: 1px solid var(--border);
-  padding-right: var(--space-3);
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
+  padding: var(--space-3);
   min-width: 0;
+  min-height: 0;
+}
+
+.subagents-workspace-rail-search {
+  position: relative;
+}
+
+.subagents-workspace-rail-search .input {
+  width: 100%;
+  min-height: var(--control-md);
+  height: var(--control-md);
+  padding-left: 36px;
 }
 
 .subagents-workspace-rail-header {
@@ -99,22 +115,22 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  /* Avoid width:100% — it can paint under the scrollbar track in overflow containers. */
   max-width: 100%;
   min-width: 0;
-  min-height: 42px;
+  min-height: 44px;
+  height: 44px;
   padding: var(--space-1) var(--space-1-5);
   border-radius: var(--radius-sm);
-  transition: background var(--motion-fast);
+  transition: background var(--motion-fast) var(--ease-out);
 }
 
 .subagents-workspace-rail-row:hover {
-  background: var(--surface);
+  background: var(--hover);
 }
 
 .subagents-workspace-rail-row--selected {
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px var(--border);
+  background: var(--raised);
+  box-shadow: inset 0 0 0 1px var(--border-soft);
 }
 
 .subagents-workspace-rail-row-main {
@@ -297,8 +313,8 @@
 }
 
 .swi-featured-empty {
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border-soft);
+  border-radius: var(--card-radius);
   padding: 24px 16px;
   text-align: center;
   color: var(--muted);

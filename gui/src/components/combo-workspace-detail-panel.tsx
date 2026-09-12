@@ -147,8 +147,10 @@ export function DetailPanel({
   const headerModel = isCreate
     ? draft.id.trim()
       ? comboPublicModelId(draft.id, draft.alias)
-      : t("cws.addTitle")
+      : null
     : baseline.model;
+
+  const headerTitle = isCreate ? t("cws.addTitle") : t("cws.detailTitle");
 
   return (
     <div className="combos-workspace-detail">
@@ -167,7 +169,12 @@ export function DetailPanel({
             {t("cws.allCombos")}
           </button>
         )}
-        <h2 className="combos-workspace-detail-title">{headerModel}</h2>
+        <div className="combos-workspace-detail-title-wrap">
+          <h2 className="combos-workspace-detail-title">{headerTitle}</h2>
+          {headerModel ? (
+            <code className="combo-detail-id">{headerModel}</code>
+          ) : null}
+        </div>
         {!isCreate && (
           <button
             type="button"

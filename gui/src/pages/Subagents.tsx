@@ -3,6 +3,7 @@ import { readJsonOrThrow } from "../fetch-json";
 import { Notice } from "../ui";
 import { useT } from "../i18n/shared";
 import { PageHeader } from "../components/primitives/page-header";
+import { Spinner } from "../components/primitives/spinner";
 import SubagentsWorkspace, {
   FEATURED_MAX,
 } from "../components/subagents-workspace/SubagentsWorkspace";
@@ -125,13 +126,14 @@ export default function Subagents({ apiBase }: { apiBase: string }) {
 
   if (loading)
     return (
-      <div className="muted" style={{ padding: 8 }}>
+      <div className="ocx-page-root" role="status" style={{ display: "flex", alignItems: "center", gap: 10, padding: 8 }}>
+        <Spinner />
         {t("sub.loading")}
       </div>
     );
 
   return (
-    <>
+    <div className="ocx-page-root">
       <PageHeader title={t("nav.subagents")} />
       {status && <Notice tone={ok ? "ok" : "err"}>{status}</Notice>}
       <SubagentsWorkspace
@@ -144,6 +146,6 @@ export default function Subagents({ apiBase }: { apiBase: string }) {
           void save();
         }}
       />
-    </>
+    </div>
   );
 }

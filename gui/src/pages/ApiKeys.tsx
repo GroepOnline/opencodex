@@ -358,7 +358,7 @@ export default function ApiKeys({ apiBase }: { apiBase: string }) {
   const subtitleParts = t("api.subtitle").split(/\{authHeader\}|\{altHeader\}/);
 
   return (
-    <section className="api-page">
+    <section className="api-page ocx-page-root">
       <PageHeader title={t("api.title")} />
       <PageSubtitle>
         {subtitleParts[0]}

@@ -1753,6 +1753,9 @@ export const en = {
   "cws.renamed": "Renamed {from} to {to}.",
   "cws.add": "Add combo",
   "cws.addTitle": "Add combo",
+  "cws.detailTitle": "Combo",
+  "cws.emptyRailTitle": "No combos yet",
+  "cws.emptyRailHint": "Create a combo to route requests across providers.",
   "cws.addSubtitle":
     "Create a virtual model across providers and choose the exact model name clients will request.",
   "cws.create": "Create combo",

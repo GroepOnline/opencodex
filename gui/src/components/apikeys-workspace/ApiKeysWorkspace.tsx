@@ -123,7 +123,7 @@ export default function ApiKeysWorkspace({
               {keysLoading ? t("api.activeKeysLoading") : t("api.activeKeys", { count: keys.length })}
             </span>
           </div>
-          <div className="apikeys-workspace-rail-list">
+          <div className="apikeys-workspace-rail-list ocx-reveal-list">
             <button
               type="button"
               className={`apikeys-workspace-rail-row${selectedId === null ? " apikeys-workspace-rail-row--selected" : ""}`}

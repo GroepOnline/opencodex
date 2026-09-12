@@ -7,7 +7,6 @@ import {
   type ReactNode,
 } from "react";
 import { useI18n, type TFn, type Locale } from "../i18n/shared";
-import { EmptyState } from "../ui";
 import { IconRefresh } from "../icons";
 import { formatBytes } from "../format-bytes";
 import { NumberStepper } from "../components/NumberStepper";
@@ -27,6 +26,15 @@ import {
 } from "../components/primitives/page-tabs";
 import { Panel, PanelHeader } from "../components/primitives/panel";
 import { Modal, ModalCard } from "../components/primitives/modal";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../components/primitives/empty";
+import { Timestamp } from "../components/primitives/timestamp";
+import MatrixMark from "../components/MatrixMark";
 
 interface CleanupPreview {
   percent: number;
@@ -1750,7 +1758,7 @@ export default function Storage({ apiBase }: { apiBase: string }) {
     showBody && (data!.total.fileCount > 0 || !trashSettled || trashHasEntries);
 
   return (
-    <>
+    <div className="ocx-page-root">
       <PageHeader
         titleId="storage-page-title"
         title={t("storage.title")}
@@ -1778,7 +1786,7 @@ export default function Storage({ apiBase }: { apiBase: string }) {
       <PageSubtitle>{t("storage.subtitle")}</PageSubtitle>
       {data && data.error === undefined && (
         <p className="storage-page-meta">
-          <code className="mono storage-page-meta__home" title={data.codexHome}>
+          <code className="storage-page-meta__home" title={data.codexHome}>
             {data.codexHome}
           </code>
           <span className="storage-page-meta__sep" aria-hidden="true">
@@ -1786,17 +1794,43 @@ export default function Storage({ apiBase }: { apiBase: string }) {
           </span>
           <span>
             {t("storage.snapshot.lastScan")}:{" "}
-            {new Date(data.generatedAt).toLocaleString(locale)}
+            <Timestamp
+              value={data.generatedAt}
+              locale={locale}
+              options={{ dateStyle: "medium", timeStyle: "short" }}
+            />
           </span>
         </p>
       )}
 
       {loading && !data ? (
-        <EmptyState title={t("storage.loading")} />
+        <Empty className="storage-empty-panel">
+          <EmptyHeader>
+            <EmptyMedia>
+              <MatrixMark />
+            </EmptyMedia>
+            <EmptyTitle>{t("storage.loading")}</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : failed ? (
-        <EmptyState title={t("storage.error")} />
+        <Empty className="storage-empty-panel">
+          <EmptyHeader>
+            <EmptyMedia>
+              <MatrixMark />
+            </EmptyMedia>
+            <EmptyTitle>{t("storage.error")}</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : empty ? (
-        <EmptyState title={t("storage.empty")} />
+        <Empty className="storage-empty-panel">
+          <EmptyHeader>
+            <EmptyMedia>
+              <MatrixMark />
+            </EmptyMedia>
+            <EmptyTitle>{t("storage.empty")}</EmptyTitle>
+            <EmptyDescription>{t("storage.subtitle")}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
         data &&
         data.total.fileCount > 0 && (
@@ -1816,6 +1850,6 @@ export default function Storage({ apiBase }: { apiBase: string }) {
           onTrashEntriesChange={onTrashEntriesChange}
         />
       )}
-    </>
+    </div>
   );
 }

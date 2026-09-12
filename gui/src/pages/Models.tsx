@@ -1030,7 +1030,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
   };
 
   return (
-    <div className="models-workspace-shell">
+    <div className="models-workspace-shell ocx-page-root">
       <PageHeader
         title={t("nav.models")}
         description={t("models.workspace.description")}
@@ -1140,7 +1140,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
             <span>{t("models.tipContext")}</span>
             <span>{t("models.workspace.visibilityColumn")}</span>
           </div>
-          <div className="models-provider-list">
+          <div className="models-provider-list ocx-reveal-list">
             {visibleGroups.map(renderGroup)}
           </div>
           {query && !hasMatches && (

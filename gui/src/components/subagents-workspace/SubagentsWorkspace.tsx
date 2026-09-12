@@ -13,6 +13,7 @@ import {
   IconChevron,
   IconInfo,
   IconPlus,
+  IconSearch,
   IconX,
 } from "../../icons";
 import { useT } from "../../i18n/shared";
@@ -66,7 +67,8 @@ export default function SubagentsWorkspace({
             <span className="subagents-workspace-rail-title">{t("nav.subagents")}</span>
             <span className="subagents-workspace-rail-count">{chosen.length}/{FEATURED_MAX}</span>
           </div>
-          <div className="subagents-workspace-rail-search">
+          <div className="subagents-workspace-rail-search configure-workspace-search">
+            <IconSearch className="configure-workspace-search-icon" aria-hidden="true" />
             <input
               className="input"
               value={query}
@@ -75,7 +77,7 @@ export default function SubagentsWorkspace({
               aria-label={t("sub.search")}
             />
           </div>
-          <div className="subagents-workspace-rail-list">
+          <div className="subagents-workspace-rail-list ocx-reveal-list">
             {featuredFiltered.length === 0 && availableFiltered.length === 0 && (
               <span className="subagents-workspace-rail-empty">{t("sub.noModels")}</span>
             )}

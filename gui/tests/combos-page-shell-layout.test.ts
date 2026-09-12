@@ -13,7 +13,7 @@ test("Combos page shell composes from named workspace chrome", async () => {
   expect(page).toContain("<CombosWorkspaceBanner");
   expect(page).toContain("<CombosWorkspaceLoadingStatus");
   expect(page).toContain("<CombosWorkspaceBody");
-  expect(page).toContain('className="combos-workspace-shell"');
+  expect(page).toContain('className="combos-workspace-shell ocx-page-root"');
   expect(page).toContain('className="combos-workspace-shell-banner"');
   expect(page).toContain('className="combos-workspace-shell-body"');
   expect(page).toContain('role="status"');

@@ -5,6 +5,7 @@ test("Modellen composes from page header and segmented tab primitives", async ()
     new URL("../src/pages/Modellen.tsx", import.meta.url),
   ).text();
 
+  expect(page).toContain('className="ocx-page-root"');
   expect(page).toContain("<PageHeader");
   expect(page).toContain("<PageSubtitle");
   expect(page).toContain("<PageTabs");

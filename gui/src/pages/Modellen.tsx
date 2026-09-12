@@ -62,7 +62,7 @@ export default function Modellen({
     setTab(TAB_IDS.has(target as Tab) ? (target as Tab) : "modellen");
   }
   return (
-    <>
+    <div className="ocx-page-root">
       <PageHeader title={t("nav.models")} />
       <PageSubtitle>{t("mod.subtitle")}</PageSubtitle>
       <PageTabs
@@ -88,6 +88,6 @@ export default function Modellen({
         {tab === "combos" && <Combos apiBase={apiBase} />}
         {tab === "subagents" && <Subagents apiBase={apiBase} />}
       </ModellenTabPanel>
-    </>
+    </div>
   );
 }

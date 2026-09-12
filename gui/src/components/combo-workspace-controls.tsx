@@ -3,6 +3,7 @@ import type { ComboEffort, ComboStrategy, ComboTarget } from "../combo-workspace
 import { COMBO_EFFORTS, newComboTarget } from "../combo-workspace-data";
 import { IconArrowDown, IconArrowUp, IconGrip, IconPlus, IconTrash } from "../icons";
 import { useT } from "../i18n/shared";
+import { SegmentedControl, SegmentedOption } from "./primitives/segmented-control";
 import type { ModelOption, ProviderOption } from "./combo-workspace-types";
 import { clampedNumberInput, enabledProviders, modelsForProvider } from "./combo-workspace-utils";
 
@@ -17,24 +18,24 @@ export function StrategySeg({
 }) {
   const t = useT();
   return (
-    <div className="cwi-strategy-seg" role="radiogroup" aria-label={t("cws.strategy")}>
+    <SegmentedControl label={t("cws.strategy")} className="cwi-strategy-seg">
       {([
         ["failover", "cws.strategy.failover"],
         ["round-robin", "cws.strategy.roundRobin"],
       ] as const).map(([id, key]) => (
-        <button
+        <SegmentedOption
           key={id}
-          type="button"
-          role="radio"
-          aria-checked={value === id}
-          className={`btn btn-sm${value === id ? " btn-primary" : " btn-ghost"}`}
-          disabled={disabled}
-          onClick={() => onChange(id)}
+          pressed={value === id}
+          label={t(key)}
+          className={`usage-segmented-btn${value === id ? " active" : ""}`}
+          onClick={() => {
+            if (!disabled) onChange(id);
+          }}
         >
           {t(key)}
-        </button>
+        </SegmentedOption>
       ))}
-    </div>
+    </SegmentedControl>
   );
 }
 
