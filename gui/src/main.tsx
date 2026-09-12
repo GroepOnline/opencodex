@@ -15,6 +15,9 @@ import "./styles/workspace-orbit.css";
 import "./styles/model-catalog.css";
 import "./styles/primitives.css";
 import "./styles/ocx-system.css";
+import "./styles/pages-observe.css";
+import "./styles/pages-providers.css";
+import "./styles/pages-configure.css";
 
 initPostHog();
 
