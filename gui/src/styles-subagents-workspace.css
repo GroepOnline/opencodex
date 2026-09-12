@@ -214,10 +214,13 @@
   font-variant-numeric: tabular-nums;
 }
 
-.subagents-workspace-rail-empty {
-  font-size: 12px;
-  padding: 8px 4px;
-  color: var(--muted);
+.ocx-workspace .subagents-workspace-rail-empty {
+  padding: 24px 12px;
+  margin: 4px 0;
+}
+
+.ocx-workspace .subagents-workspace-rail-empty [data-slot="empty-title"] {
+  font-size: var(--text-control);
 }
 
 /* ── Main ─────────────────────────────────────────────── */
@@ -312,13 +315,8 @@
   flex-shrink: 0;
 }
 
-.swi-featured-empty {
-  border: 1px dashed var(--border-soft);
-  border-radius: var(--card-radius);
-  padding: 24px 16px;
-  text-align: center;
-  color: var(--muted);
-  font-size: 13px;
+.ocx-workspace .swi-featured-empty {
+  padding: 32px 16px;
   margin-bottom: 18px;
 }
 
