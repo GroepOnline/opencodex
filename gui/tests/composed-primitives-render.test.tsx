@@ -94,6 +94,20 @@ describe("composed primitive render contracts", () => {
     expect(html).toContain("12:34:56");
   });
 
+  test("timestamp renders date and time together when date fields are requested", () => {
+    const value = Date.UTC(2026, 0, 2, 12, 34, 56);
+    const html = renderToStaticMarkup(
+      <Timestamp
+        value={value}
+        locale="en"
+        options={{ timeZone: "UTC", hour12: false, dateStyle: "medium", timeStyle: "short" }}
+      />,
+    );
+    expect(html).toContain('dateTime="2026-01-02T12:34:56.000Z"');
+    expect(html).toContain("Jan 2, 2026");
+    expect(html).toContain("12:34");
+  });
+
   test.each([Number.NaN, Number.POSITIVE_INFINITY, 8.64e15 + 1, new Date(Number.NaN)])(
     "invalid timestamp %s cannot crash the dashboard or traffic page",
     value => {
