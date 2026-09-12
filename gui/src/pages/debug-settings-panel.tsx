@@ -26,29 +26,13 @@ export function DebugSettingsPanel({
   const { t } = useI18n();
 
   return (
-    <div className="card" style={{ marginBottom: 16, padding: "12px 14px" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+    <div className="card debug-settings-card">
+      <div className="debug-settings-row">
+        <div className="debug-flag-list">
           {(["debug", "usage", "injection", "claude"] as const).map((flag) => {
             const checked = isDebugFlagEnabled(debug, flag);
             return (
-              <div
-                key={flag}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 10,
-                  minWidth: 220,
-                }}
-              >
+              <div key={flag} className="debug-flag">
                 <Switch
                   on={checked}
                   disabled={debugBusy}
@@ -71,7 +55,7 @@ export function DebugSettingsPanel({
       </div>
 
       {(debug.enabled || debug.usage || debug.injection) && (
-        <div style={{ display: "inline-flex", gap: 6, marginTop: 12 }}>
+        <div className="debug-stream-row">
           {debug.enabled && (
             <button
               type="button"
@@ -123,7 +107,7 @@ export function DebugPageHeader({
   const { t } = useI18n();
 
   const actions = (
-    <div style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
+    <div className="debug-header-actions">
       <button
         type="button"
         className="btn btn-ghost btn-sm"
@@ -132,15 +116,7 @@ export function DebugPageHeader({
       >
         <IconRefresh /> {t("debug.refresh")}
       </button>
-      <label
-        className="muted text-control"
-        style={{
-          cursor: "pointer",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
+      <label className="muted text-control debug-follow">
         <input
           type="checkbox"
           checked={follow}
@@ -154,10 +130,7 @@ export function DebugPageHeader({
   if (embedded) {
     return (
       <>
-        <div
-          className="row"
-          style={{ justifyContent: "flex-end", marginBottom: 4 }}
-        >
+        <div className="row debug-header-actions debug-header-actions--embedded">
           {actions}
         </div>
         <PageSubtitle>{t("debug.subtitle")}</PageSubtitle>
@@ -166,9 +139,10 @@ export function DebugPageHeader({
   }
 
   return (
-    <>
-      <PageHeader title={t("debug.title")} actions={actions} />
-      <PageSubtitle>{t("debug.subtitle")}</PageSubtitle>
-    </>
+    <PageHeader
+      title={t("debug.title")}
+      description={t("debug.subtitle")}
+      actions={actions}
+    />
   );
 }

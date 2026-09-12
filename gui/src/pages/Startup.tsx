@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconRefresh } from "../icons";
+import { IconAlert, IconRefresh } from "../icons";
 import { type TFn, useI18n } from "../i18n/shared";
 import {
   readSessionListCache,
@@ -7,7 +7,13 @@ import {
 } from "../session-list-cache";
 import MemoryObservabilityCard from "../components/MemoryObservabilityCard";
 import { PageHeader } from "../components/primitives/page-header";
-import { EmptyState } from "../ui";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../components/primitives/empty";
+import { Spinner } from "../components/primitives/spinner";
 import {
   StartupDetailsSection,
   StartupHeroSection,
@@ -325,8 +331,12 @@ export default function Startup({ apiBase }: { apiBase: string }) {
     }
   };
 
+  const runtimeNoticeDistinct =
+    Boolean(codexRuntimeWarning) &&
+    !(failed && codexRuntimeWarning === t("startup.staleData"));
+
   return (
-    <>
+    <div className="startup-page ocx-page-root">
       <PageHeader
         titleId="startup-page-title"
         title={t("startup.title")}
@@ -351,27 +361,33 @@ export default function Startup({ apiBase }: { apiBase: string }) {
       />
 
       {loading && !data ? (
-        <EmptyState title={t("startup.loading")} />
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Spinner />
+            </EmptyMedia>
+            <EmptyTitle>{t("startup.loading")}</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : failed && !data ? (
-        <EmptyState title={t("startup.error")} />
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <IconAlert aria-hidden />
+            </EmptyMedia>
+            <EmptyTitle>{t("startup.error")}</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : data ? (
         <>
-          {failed && (
+          {(runtimeNoticePending || runtimeNoticeDistinct) && (
             <div
-              className="notice notice-warn startup-page-notice"
-              role="alert"
-            >
-              {t("startup.staleData")}
-            </div>
-          )}
-          {(runtimeNoticePending || codexRuntimeWarning) && (
-            <div
-              className={`startup-runtime-notice-slot${runtimeNoticePending && !codexRuntimeWarning ? " startup-runtime-notice-slot--pending" : ""}`}
+              className={`startup-runtime-notice-slot${runtimeNoticePending && !runtimeNoticeDistinct ? " startup-runtime-notice-slot--pending" : ""}`}
               aria-hidden={
-                runtimeNoticePending && !codexRuntimeWarning ? true : undefined
+                runtimeNoticePending && !runtimeNoticeDistinct ? true : undefined
               }
             >
-              {codexRuntimeWarning && (
+              {runtimeNoticeDistinct && (
                 <div
                   className="notice notice-warn startup-page-notice startup-runtime-notice"
                   role="status"
@@ -429,6 +445,6 @@ export default function Startup({ apiBase }: { apiBase: string }) {
           <MemoryObservabilityCard apiBase={apiBase} />
         </>
       ) : null}
-    </>
+    </div>
   );
 }

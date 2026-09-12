@@ -1,9 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Activity } from "lucide-react";
 import { formatTokens } from "../format-tokens";
 import { useI18n, type Locale, type TFn } from "../i18n/shared";
+import { IconChevron } from "../icons";
 import { KeyPoolHealthPanel, ResponseCachePanel } from "../ops-panels";
-import { PageHeader, PageSubtitle } from "../components/primitives/page-header";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../components/primitives/empty";
+import { PageHeader } from "../components/primitives/page-header";
 import { Panel, PanelHeader } from "../components/primitives/panel";
+import {
+  CollapsibleGroup,
+  CollapsibleGroupHead,
+  CollapsibleGroupName,
+  CollapsibleGroupToggle,
+} from "../components/primitives/collapsible-group";
 import {
   SegmentedControl,
   SegmentedOption,
@@ -253,7 +268,7 @@ function TrafficProviderFilters({
   t: TFn;
 }) {
   return (
-    <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+    <div className="verkeer-filters">
       <SegmentedControl label={t("vk.filterAria")}>
         <SegmentedOption
           pressed={providerFilter === null}
@@ -279,8 +294,7 @@ function TrafficProviderFilters({
       </SegmentedControl>
       <button
         type="button"
-        className="btn btn-ghost btn-sm"
-        style={{ marginLeft: "auto" }}
+        className="btn btn-ghost btn-sm verkeer-filters__pause"
         onClick={onTogglePaused}
         aria-pressed={paused}
       >
@@ -432,9 +446,11 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
   }, [summary30d]);
 
   return (
-    <>
-      <PageHeader title={t("shell.navTraffic")} />
-      <PageSubtitle>{t("vk.subtitle")}</PageSubtitle>
+    <div className="verkeer-page ocx-page-root">
+      <PageHeader
+        title={t("shell.navTraffic")}
+        description={t("vk.subtitle")}
+      />
 
       <TrafficStatsStrip
         tokens30d={tokens30d}
@@ -482,9 +498,17 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
 
       <TrafficColumnHead />
 
-      <div className="rail" aria-live="polite" onFocus={() => setPaused(true)}>
+      <div className="rail ocx-reveal-list" aria-live="polite" onFocus={() => setPaused(true)}>
         {zichtbaar.length === 0 ? (
-          <p className="muted mono">{t("vk.empty")}</p>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Activity aria-hidden />
+              </EmptyMedia>
+              <EmptyTitle>{t("vk.emptyTitle")}</EmptyTitle>
+              <EmptyDescription>{t("vk.emptyDesc")}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
           zichtbaar.map((entry) => {
             const id =
@@ -496,15 +520,7 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
               <div key={id} className="traffic-entry">
                 <button
                   type="button"
-                  className="traffic-entry-head traffic-entry-head--grid"
-                  style={{
-                    width: "100%",
-                    background: "transparent",
-                    border: "none",
-                    color: "inherit",
-                    cursor: "pointer",
-                    textAlign: "left",
-                  }}
+                  className="traffic-entry-head traffic-entry-head--grid traffic-entry-head--button"
                   onClick={() =>
                     setOpenBon((current) => (current === id ? null : id))
                   }
@@ -553,17 +569,24 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
         )}
       </div>
 
-      <div style={{ marginTop: 48 }}>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          onClick={() => setOpsOpen((open) => !open)}
-          aria-expanded={opsOpen}
-        >
-          {opsOpen ? t("vk.hideOps") : t("vk.showOps")}
-        </button>
+      <CollapsibleGroup
+        collapsed={!opsOpen}
+        labelledBy="vk-ops-title"
+        className="verkeer-disclosure"
+      >
+        <CollapsibleGroupHead collapsed={!opsOpen}>
+          <CollapsibleGroupToggle
+            titleId="vk-ops-title"
+            controls="vk-ops-body"
+            expanded={opsOpen}
+            onClick={() => setOpsOpen((open) => !open)}
+          >
+            <IconChevron className="ocx-chevron" width={15} height={15} aria-hidden="true" />
+            <CollapsibleGroupName>{t("vk.showOps")}</CollapsibleGroupName>
+          </CollapsibleGroupToggle>
+        </CollapsibleGroupHead>
         {opsOpen ? (
-          <div style={{ marginTop: 16, display: "grid", gap: 32 }}>
+          <div id="vk-ops-body" className="ocx-group-body">
             <Panel titleId="ops-cache-title">
               <PanelHeader
                 titleId="ops-cache-title"
@@ -577,23 +600,32 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
             </Panel>
           </div>
         ) : null}
-      </div>
+      </CollapsibleGroup>
 
-      <div style={{ marginTop: 48 }}>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          onClick={() => setAnalyseOpen((open) => !open)}
-          aria-expanded={analyseOpen}
-        >
-          {analyseOpen ? t("vk.hideAnalysis") : t("vk.showAnalysis")}
-        </button>
+      <CollapsibleGroup
+        collapsed={!analyseOpen}
+        labelledBy="vk-analyse-title"
+        className="verkeer-disclosure"
+      >
+        <CollapsibleGroupHead collapsed={!analyseOpen}>
+          <CollapsibleGroupToggle
+            titleId="vk-analyse-title"
+            controls="vk-analyse-body"
+            expanded={analyseOpen}
+            onClick={() => setAnalyseOpen((open) => !open)}
+          >
+            <IconChevron className="ocx-chevron" width={15} height={15} aria-hidden="true" />
+            <CollapsibleGroupName>{t("vk.showAnalysis")}</CollapsibleGroupName>
+          </CollapsibleGroupToggle>
+        </CollapsibleGroupHead>
         {analyseOpen ? (
-          <div style={{ marginTop: 16 }}>
-            <Usage apiBase={apiBase} />
+          <div id="vk-analyse-body" className="ocx-group-body">
+            <Panel titleId="vk-analyse-panel">
+              <Usage apiBase={apiBase} />
+            </Panel>
           </div>
         ) : null}
-      </div>
-    </>
+      </CollapsibleGroup>
+    </div>
   );
 }

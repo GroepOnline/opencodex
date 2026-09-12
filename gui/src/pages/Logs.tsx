@@ -1,3 +1,4 @@
+import { ScrollText } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -19,8 +20,16 @@ import {
   readSessionListCache,
   writeSessionListCache,
 } from "../session-list-cache";
-import { EmptyState, Notice } from "../ui";
+import { Notice } from "../ui";
 import { PageHeader, PageSubtitle } from "../components/primitives/page-header";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../components/primitives/empty";
+import { Spinner } from "../components/primitives/spinner";
 import {
   ModalCard,
   ModalDesc,
@@ -711,7 +720,7 @@ export default function Logs({ apiBase }: { apiBase: string }) {
       : 0;
 
   return (
-    <>
+    <div className="logs-page ocx-page-root">
       <PageHeader
         title={t("nav.logs")}
         actions={
@@ -812,9 +821,24 @@ export default function Logs({ apiBase }: { apiBase: string }) {
             </button>
           </Notice>
         ) : loading && logs.length === 0 ? (
-          <EmptyState title={t("common.loading")} />
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Spinner />
+              </EmptyMedia>
+              <EmptyTitle>{t("common.loading")}</EmptyTitle>
+            </EmptyHeader>
+          </Empty>
         ) : filteredLogs.length === 0 ? (
-          <EmptyState title={t("logs.noRequests")} />
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <ScrollText aria-hidden />
+              </EmptyMedia>
+              <EmptyTitle>{t("logs.emptyTitle")}</EmptyTitle>
+              <EmptyDescription>{t("logs.emptyDesc")}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
           <>
             <div ref={scrollContainerRef} className="tbl-wrap logs-table-wrap">
@@ -1024,7 +1048,7 @@ export default function Logs({ apiBase }: { apiBase: string }) {
           />
         )}
       </PageTabPanel>
-    </>
+    </div>
   );
 }
 

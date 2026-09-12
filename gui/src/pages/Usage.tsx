@@ -1,15 +1,25 @@
+import { BarChart3 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n, type TFn, type Locale } from "../i18n/shared";
 import { formatTokens } from "../format-tokens";
 import { formatEstimatedUsdValue as formatUsdEstimate } from "../intl-formatters";
-import { EmptyState, Notice } from "../ui";
+import { Notice } from "../ui";
 import { modelLabel } from "../model-display";
-import { PageHeader, PageSubtitle } from "../components/primitives/page-header";
+import { PageHeader } from "../components/primitives/page-header";
 import { Panel, PanelHeader } from "../components/primitives/panel";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../components/primitives/empty";
+import { ProgressTrack } from "../components/primitives/progress-track";
 import {
   SegmentedControl,
   SegmentedOption,
 } from "../components/primitives/segmented-control";
+import { Spinner } from "../components/primitives/spinner";
 import { Stat, StatGroup } from "../components/primitives/stat";
 
 type Range = "all" | "30d" | "7d";
@@ -322,12 +332,11 @@ function UsageFilters({
 
 function ShareMeter({ ratio }: { ratio: number }) {
   return (
-    <div className="usage-bar">
-      <div
-        className="usage-bar-fill"
-        style={{ width: `${Math.round(ratio * 100)}%` }}
-      />
-    </div>
+    <ProgressTrack
+      value={Math.round(ratio * 100)}
+      className="usage-bar"
+      fillClassName="usage-bar-fill"
+    />
   );
 }
 
@@ -959,11 +968,12 @@ export default function Usage({ apiBase }: { apiBase: string }) {
   );
 
   return (
-    <>
+    <div className="usage-page ocx-page-root">
       <PageHeader
         titleId="usage-page-title"
         className="usage-head"
         title={t("usage.title")}
+        description={t("usage.subtitle")}
         actions={
           <UsageFilters
             surface={surface}
@@ -974,7 +984,6 @@ export default function Usage({ apiBase }: { apiBase: string }) {
           />
         }
       />
-      <PageSubtitle>{t("usage.subtitle")}</PageSubtitle>
 
       {error && !data ? (
         <Notice tone="err">
@@ -991,9 +1000,24 @@ export default function Usage({ apiBase }: { apiBase: string }) {
           </button>
         </Notice>
       ) : loading && !data ? (
-        <EmptyState title={t("usage.loading")} />
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Spinner />
+            </EmptyMedia>
+            <EmptyTitle>{t("usage.loading")}</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : data?.summary.requests === 0 ? (
-        <EmptyState title={t("usage.empty")} />
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <BarChart3 aria-hidden />
+            </EmptyMedia>
+            <EmptyTitle>{t("usage.emptyTitle")}</EmptyTitle>
+            <EmptyDescription>{t("usage.empty")}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : data ? (
         <>
           <UsageSummaryCards
@@ -1025,6 +1049,6 @@ export default function Usage({ apiBase }: { apiBase: string }) {
           <UsageCoveragePanel summary={data.summary} t={t} />
         </>
       ) : null}
-    </>
+    </div>
   );
 }

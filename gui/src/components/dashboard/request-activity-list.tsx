@@ -1,15 +1,18 @@
+import { Activity } from "lucide-react";
 import { TrafficRowCells } from "../../traffic-row";
 import type { TrafficLogEntry } from "../../traffic-shared";
 import { Notice } from "../../ui";
-import { Button } from "../primitives/button";
-import { DataList, DataRow } from "../primitives/data-list";
 import {
   Empty,
   EmptyContent,
   EmptyDescription,
   EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
 } from "../primitives/empty";
-import { SectionHeader } from "../primitives/section-header";
+import { Panel, PanelHeader } from "../primitives/panel";
+import { Spinner } from "../primitives/spinner";
+import { DataList, DataRow } from "../primitives/data-list";
 import { Timestamp } from "../primitives/timestamp";
 
 function requestTokens(entry: TrafficLogEntry): number | undefined {
@@ -36,18 +39,29 @@ export function RequestActivityList({
     title: string;
     loadError: string;
     loading: string;
+    emptyTitle: string;
     empty: string;
+    viewAll: string;
   };
 }) {
+  const titleId = "dash-traffic-title";
   return (
-    <section
-      className="pws-dashboard-section pws-dashboard-section--rate-limits"
-      aria-label={labels.title}
+    <Panel
+      titleId={titleId}
+      className="panel pws-dashboard-section pws-dashboard-section--rate-limits"
     >
-      <SectionHeader title={labels.title} />
+      <PanelHeader
+        titleId={titleId}
+        title={labels.title}
+        actions={
+          <a className="btn btn-ghost btn-sm" href="#verkeer">
+            {labels.viewAll}
+          </a>
+        }
+      />
       {failed ? <Notice tone="err">{labels.loadError}</Notice> : null}
       {entries.length > 0 ? (
-        <DataList className="pws-dashboard-rows" style={{ gap: 0 }}>
+        <DataList className="pws-dashboard-rows ocx-reveal-list">
           {entries.map((entry) => (
             <RequestActivityRow key={requestKey(entry)} entry={entry} locale={locale} />
           ))}
@@ -55,22 +69,22 @@ export function RequestActivityList({
       ) : !failed ? (
         <Empty>
           <EmptyHeader>
-            <EmptyDescription>{loaded ? labels.empty : labels.loading}</EmptyDescription>
+            <EmptyMedia variant="icon">
+              {loaded ? <Activity aria-hidden /> : <Spinner />}
+            </EmptyMedia>
+            <EmptyTitle>{loaded ? labels.emptyTitle : labels.loading}</EmptyTitle>
+            {loaded ? <EmptyDescription>{labels.empty}</EmptyDescription> : null}
           </EmptyHeader>
           {loaded ? (
             <EmptyContent>
-              <Button
-                variant="outline"
-                nativeButton={false}
-                render={<a href="#verkeer" aria-label={labels.title} />}
-              >
+              <a className="btn btn-ghost btn-sm" href="#verkeer" aria-label={labels.title}>
                 {labels.title}
-              </Button>
+              </a>
             </EmptyContent>
           ) : null}
         </Empty>
       ) : null}
-    </section>
+    </Panel>
   );
 }
 
@@ -82,10 +96,7 @@ export function RequestActivityRow({
   locale: string;
 }) {
   return (
-    <DataRow
-      className="traffic-entry"
-      style={{ borderBottom: "1px solid var(--border-soft)" }}
-    >
+    <DataRow className="traffic-entry">
       <div className="traffic-entry-head traffic-entry-head--grid">
         <Timestamp
           value={entry.timestamp}

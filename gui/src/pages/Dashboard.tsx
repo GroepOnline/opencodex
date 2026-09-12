@@ -144,8 +144,21 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
       : "—";
 
   return (
-    <div className="dashboard-workspace">
-      <PageHeader title={t("nav.dashboard")} />
+    <div className="dashboard-workspace ocx-page-root">
+      <PageHeader
+        title={t("nav.dashboard")}
+        description={t("dash.subtitle")}
+        actions={
+          <>
+            <a className="btn btn-ghost btn-sm" href="#verkeer">
+              {t("nav.verkeer")}
+            </a>
+            <a className="btn btn-ghost btn-sm" href="#leveranciers">
+              {t("nav.providers")}
+            </a>
+          </>
+        }
+      />
 
       <RuntimeSummary
         health={health.data ?? null}
@@ -154,6 +167,7 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
         labels={{
           aria: t("dash.healthAria"),
           loading: t("common.loading"),
+          status: t("dash.status"),
           online: t("proxy.online"),
           offline: t("proxy.offline"),
           version: t("dash.version"),
@@ -207,7 +221,9 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
             title: t("dash.providers"),
             loadError: t("usage.loadError"),
             loading: t("common.loading"),
+            emptyTitle: t("dash.providersEmptyTitle"),
             empty: t("pws.dashboard.noUsage"),
+            viewAll: t("dash.viewAll"),
             providersNav: t("nav.providers"),
             requestOne: t("pws.dashboard.requestOne"),
             requests: (count) => t("pws.dashboard.requests", { count }),
@@ -223,7 +239,9 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
             title: t("nav.verkeer"),
             loadError: t("vk.loadFailed"),
             loading: t("common.loading"),
-            empty: t("vk.empty"),
+            emptyTitle: t("dash.trafficEmptyTitle"),
+            empty: t("dash.trafficEmptyDesc"),
+            viewAll: t("dash.viewAll"),
           }}
         />
       </div>

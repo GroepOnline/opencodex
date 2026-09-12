@@ -135,18 +135,19 @@
 /* ---------------------------------------------------------------------------
    Traffic / Verkeer
    --------------------------------------------------------------------------- */
-.verkeer-page .stat-strip {
+.ocx-workspace .verkeer-page .stat-strip {
   gap: 12px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
 }
 
-@media (max-width: 1200px) {
-  .verkeer-page .stat-strip {
+@media (max-width: 1280px) {
+  .ocx-workspace .verkeer-page .stat-strip {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 760px) {
-  .verkeer-page .stat-strip {
+  .ocx-workspace .verkeer-page .stat-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -274,6 +275,12 @@
   gap: 12px;
 }
 
+.debug-page .debug-header-actions--embedded {
+  width: 100%;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
 .debug-page .debug-follow {
   cursor: pointer;
   display: inline-flex;
@@ -317,6 +324,27 @@
 
 .startup-page .startup-recovery .ocx-group-body {
   padding: 0 14px 14px;
+}
+
+.startup-page .mem-card {
+  margin-bottom: 24px;
+}
+.startup-page .mem-card .panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.startup-page .mem-card-subhead {
+  margin: 14px 0 6px;
+}
+.startup-page .mem-card-watchdog {
+  margin-top: 16px;
+}
+.startup-page .mem-card-details-body > .muted.text-control {
+  margin: 8px 0 10px;
+}
+.startup-page .mem-card-error {
+  color: var(--red);
 }
 
 .startup-page .mem-card-details summary {
@@ -366,6 +394,22 @@
 
 .setting-row + .setting-row {
   border-top: 1px solid var(--border-soft);
+}
+
+.setting-row > :last-child {
+  flex-shrink: 0;
+}
+
+.settings-sheet-body .sheet-section {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  align-items: center;
+  min-height: 44px;
+  column-gap: 16px;
+}
+
+.settings-sheet-body .sheet-section .sheet-label {
+  margin: 0;
 }
 
 /* ---------------------------------------------------------------------------

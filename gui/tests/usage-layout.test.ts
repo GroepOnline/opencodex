@@ -76,11 +76,13 @@ test("retired usage workspace i18n keys stay removed from every locale", async (
   }
 });
 
-test("Usage subtitle composes from PageSubtitle", async () => {
+test("Usage subtitle composes from PageHeader description", async () => {
   const src = await Bun.file(
     new URL("../src/pages/Usage.tsx", import.meta.url),
   ).text();
   expect(src).toContain("<PageHeader");
-  expect(src).toContain("<PageSubtitle");
-  expect(src).not.toContain('className="page-sub"');
+  expect(src).toContain('description={t("usage.subtitle")}');
+  expect(src).toContain("<Empty");
+  expect(src).toContain("<EmptyTitle");
+  expect(src).not.toContain("<PageSubtitle");
 });

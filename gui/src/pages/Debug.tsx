@@ -7,6 +7,13 @@ import { DebugClaudeInboundPanel } from "./debug-claude-inbound-panel";
 import { DebugLogViewer } from "./debug-log-viewer";
 import { DebugPageHeader, DebugSettingsPanel } from "./debug-settings-panel";
 import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../components/primitives/empty";
+import { Spinner } from "../components/primitives/spinner";
+import {
   DEBUG_STREAMS,
   type DebugSettings,
   type LogStream,
@@ -194,7 +201,7 @@ export default function Debug({ apiBase, embedded, active = true }: { apiBase: s
   };
 
   return (
-    <>
+    <div className="debug-page ocx-page-root">
       <DebugPageHeader
         embedded={embedded}
         refreshing={refreshing}
@@ -205,7 +212,14 @@ export default function Debug({ apiBase, embedded, active = true }: { apiBase: s
       />
 
       {!debug ? (
-        <div className="empty">{t("debug.loading")}</div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Spinner />
+            </EmptyMedia>
+            <EmptyTitle>{t("debug.loading")}</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <DebugSettingsPanel
           debug={debug}
@@ -227,6 +241,6 @@ export default function Debug({ apiBase, embedded, active = true }: { apiBase: s
         scrollContainerRef={scrollContainerRef}
         lineVirtualizer={lineVirtualizer}
       />
-    </>
+    </div>
   );
 }

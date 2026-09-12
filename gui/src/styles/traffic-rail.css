@@ -5,16 +5,49 @@
   grid-template-columns: 7.5ch minmax(10rem, 1.6fr) minmax(5rem, 0.8fr) auto auto auto;
   gap: 8px 12px;
   align-items: baseline;
-  padding: 10px 4px;
-  font-family: var(--font-code);
+  padding: 10px 8px;
+  font-family: var(--font-ui);
   font-size: var(--text-caption);
   color: var(--text);
+  border-radius: var(--radius-xs);
 }
-.traffic-time { color: var(--muted); white-space: nowrap; }
-.traffic-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.traffic-meta { color: var(--muted); white-space: nowrap; }
+.traffic-entry-head:hover {
+  background: var(--hover);
+}
+.traffic-entry-head:active {
+  background: var(--raised);
+  transform: scale(0.995);
+}
+.traffic-entry-head--button {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.traffic-time {
+  color: var(--muted);
+  white-space: nowrap;
+  font-family: var(--font-code);
+}
+.traffic-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-code);
+}
+.traffic-meta {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.traffic-col--tokens,
+.traffic-col--duration {
+  font-family: var(--font-code);
+  font-variant-numeric: tabular-nums;
+}
 .traffic-detail {
-  padding: 0 4px 12px;
+  padding: 0 8px 12px;
   color: var(--muted);
   font-family: var(--font-code);
   font-size: var(--text-caption);
@@ -37,6 +70,19 @@
   color: var(--muted);
   border-bottom: 1px solid var(--border-soft);
 }
+.traffic-entry--head .traffic-entry-head {
+  font-family: var(--font-ui);
+  font-size: var(--text-micro);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.traffic-entry--head .traffic-entry-head:hover,
+.traffic-entry--head .traffic-entry-head:active {
+  background: transparent;
+  transform: none;
+}
 .traffic-entry--head + .traffic-entry { margin-top: 0; }
 
 @media (max-width: 720px) {
@@ -46,4 +92,11 @@
   }
   .traffic-title { grid-column: 2 / -1; }
   .traffic-meta { grid-column: span 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .traffic-entry-head:hover,
+  .traffic-entry-head:active {
+    transform: none;
+  }
 }

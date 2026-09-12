@@ -1,14 +1,17 @@
+import { Server } from "lucide-react";
 import { Notice } from "../../ui";
-import { Button } from "../primitives/button";
-import { DataList, DataRow } from "../primitives/data-list";
 import {
   Empty,
   EmptyContent,
   EmptyDescription,
   EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
 } from "../primitives/empty";
 import { ProgressTrack } from "../primitives/progress-track";
-import { SectionHeader } from "../primitives/section-header";
+import { Panel, PanelHeader } from "../primitives/panel";
+import { Spinner } from "../primitives/spinner";
+import { DataList, DataRow } from "../primitives/data-list";
 
 export interface ProviderUsageItem {
   provider: string;
@@ -31,21 +34,32 @@ export function ProviderUsageList({
     title: string;
     loadError: string;
     loading: string;
+    emptyTitle?: string;
     empty: string;
+    viewAll?: string;
     providersNav: string;
     requestOne: string;
     requests: (count: string) => string;
   };
 }) {
+  const titleId = "dash-providers-title";
   return (
-    <section
-      className="pws-dashboard-section pws-dashboard-section--recent"
-      aria-label={labels.title}
+    <Panel
+      titleId={titleId}
+      className="panel pws-dashboard-section pws-dashboard-section--recent"
     >
-      <SectionHeader title={labels.title} />
+      <PanelHeader
+        titleId={titleId}
+        title={labels.title}
+        actions={
+          <a className="btn btn-ghost btn-sm" href="#leveranciers">
+            {labels.viewAll ?? labels.providersNav}
+          </a>
+        }
+      />
       {failed ? <Notice tone="err">{labels.loadError}</Notice> : null}
       {providers.length > 0 ? (
-        <DataList className="pws-dashboard-rows">
+        <DataList className="pws-dashboard-rows ocx-reveal-list">
           {providers.map((provider) => {
             const sharePct = Number.isFinite(provider.shareRatio)
               ? Math.min(100, Math.max(0, provider.shareRatio * 100))
@@ -67,22 +81,26 @@ export function ProviderUsageList({
       ) : !failed ? (
         <Empty>
           <EmptyHeader>
-            <EmptyDescription>{loaded ? labels.empty : labels.loading}</EmptyDescription>
+            <EmptyMedia variant="icon">
+              {loaded ? <Server aria-hidden /> : <Spinner />}
+            </EmptyMedia>
+            <EmptyTitle>{loaded ? (labels.emptyTitle ?? labels.empty) : labels.loading}</EmptyTitle>
+            {loaded ? <EmptyDescription>{labels.empty}</EmptyDescription> : null}
           </EmptyHeader>
           {loaded ? (
             <EmptyContent>
-              <Button
-                variant="outline"
-                nativeButton={false}
-                render={<a href="#leveranciers" aria-label={labels.providersNav} />}
+              <a
+                className="btn btn-ghost btn-sm"
+                href="#leveranciers"
+                aria-label={labels.providersNav}
               >
                 {labels.providersNav}
-              </Button>
+              </a>
             </EmptyContent>
           ) : null}
         </Empty>
       ) : null}
-    </section>
+    </Panel>
   );
 }
 

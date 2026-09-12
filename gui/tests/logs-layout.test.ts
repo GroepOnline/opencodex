@@ -24,6 +24,7 @@ test("Logs composes from page, tabs, toolbar, and modal primitives", async () =>
   expect(page).toContain("<ModalHead");
   expect(page).toContain("<ModalDesc");
   expect(page).toContain("<LogDetailSection");
+  expect(page).toContain("<Empty");
   expect(page).toContain('className="tbl logs-table"');
   expect(page).toContain('className="segmented logs-segmented"');
   expect(page).not.toContain('className="page-tabs"');

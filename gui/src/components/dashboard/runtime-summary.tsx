@@ -1,6 +1,8 @@
-import { IconAlert, IconCheck } from "../../icons";
 import { formatUptime } from "../../formatUptime";
 import type { Locale } from "../../i18n/shared";
+import { Spinner } from "../primitives/spinner";
+import { StatusDot } from "../primitives/status";
+import { StatStrip, StatStripItem } from "../primitives/stat-strip";
 
 export interface RuntimeHealth {
   status: string;
@@ -24,6 +26,7 @@ export function RuntimeSummary({
   labels: {
     aria: string;
     loading: string;
+    status: string;
     online: string;
     offline: string;
     version: string;
@@ -33,70 +36,46 @@ export function RuntimeSummary({
     cooldownHint: (count: number) => string;
   };
 }) {
+  const statusTone =
+    online === true ? "success" : online === false ? "error" : "neutral";
+  const statusValue =
+    online === null ? labels.loading : online ? labels.online : labels.offline;
+
   return (
-    <div
-      className="pws-dashboard-stats pws-dashboard-stats--fit"
-      role="group"
-      aria-label={labels.aria}
-    >
-      <div className="pws-dashboard-stat">
-        {online === null ? (
-          <span
-            className="pws-dashboard-stat-count spin"
-            aria-label={labels.loading}
-          />
-        ) : (
-          <span className="pws-dashboard-stat-count">
-            {online ? (
-              <IconCheck size={18} aria-hidden />
-            ) : (
-              <IconAlert size={18} aria-hidden />
-            )}
-          </span>
-        )}
-        <span className="pws-dashboard-stat-label caps">
-          {online === null ? labels.loading : online ? labels.online : labels.offline}
+    <StatStrip label={labels.aria} className="stat-strip dash-runtime-strip">
+      <div className="stat-strip-item dash-runtime-status">
+        <span className="stat-strip-waarde">
+          {online === null ? (
+            <Spinner aria-label={labels.loading} />
+          ) : (
+            <StatusDot tone={statusTone} />
+          )}
+          {statusValue}
         </span>
+        <span className="stat-strip-label">{labels.status}</span>
       </div>
 
       {health ? (
         <>
-          <div className="pws-dashboard-stat">
-            <span className="pws-dashboard-stat-count num">{health.version}</span>
-            <span className="pws-dashboard-stat-label caps">{labels.version}</span>
-          </div>
-          <div className="pws-dashboard-stat">
-            <span className="pws-dashboard-stat-count num">
-              {formatUptime(health.uptime, locale)}
-            </span>
-            <span className="pws-dashboard-stat-label caps">{labels.uptime}</span>
-          </div>
-          <div className="pws-dashboard-stat">
-            <span className="pws-dashboard-stat-count num">{health.pid}</span>
-            <span className="pws-dashboard-stat-label caps">{labels.pid}</span>
-          </div>
+          <StatStripItem label={labels.version} value={health.version} />
+          <StatStripItem
+            label={labels.uptime}
+            value={formatUptime(health.uptime, locale)}
+          />
+          <StatStripItem label={labels.pid} value={health.pid} />
           {(health.providerCooldowns ?? 0) > 0 ? (
             <div
-              className="pws-dashboard-stat"
+              className="stat-strip-item"
               title={labels.cooldownHint(health.providerCooldowns ?? 0)}
             >
-              <span
-                className="pws-dashboard-stat-count num"
-                style={{
-                  color: "var(--amber)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}
-              >
-                <IconAlert size={13} aria-hidden />
+              <span className="stat-strip-waarde dash-runtime-cooldown">
                 {health.providerCooldowns}
               </span>
-              <span className="pws-dashboard-stat-label caps">{labels.cooldown}</span>
+              <span className="stat-strip-label">{labels.cooldown}</span>
             </div>
           ) : null}
         </>
       ) : null}
-    </div>
+    </StatStrip>
   );
 }

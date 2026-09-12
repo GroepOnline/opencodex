@@ -1,8 +1,15 @@
 import type { ReactNode } from "react";
+import { useState } from "react";
 import { useI18n, type TKey } from "../i18n/shared";
 import { startupRiskDetailKey } from "../startup-health-ui";
-import { IconAlert, IconCheck, IconPower, IconTerminal } from "../icons";
+import { IconAlert, IconCheck, IconChevron, IconPower } from "../icons";
 import { Panel, PanelHeader } from "../components/primitives/panel";
+import {
+  CollapsibleGroup,
+  CollapsibleGroupHead,
+  CollapsibleGroupName,
+  CollapsibleGroupToggle,
+} from "../components/primitives/collapsible-group";
 import { StatGroup } from "../components/primitives/stat";
 import type {
   StartupHealthData,
@@ -35,7 +42,7 @@ function StartupStateItem({
   value: ReactNode;
 }) {
   return (
-    <section className="stat">
+    <section className="stat stat--text">
       <div className="label">{label}</div>
       <div className="value">{value}</div>
     </section>
@@ -415,73 +422,90 @@ export function StartupRecoverySection({
   onCopy: (command: string) => void;
 }) {
   const { t } = useI18n();
+  const [open, setOpen] = useState(true);
   const recoveryTitleId = "startup-recovery-title";
 
   return (
-    <Panel className="panel startup-actions" titleId={recoveryTitleId}>
-      <PanelHeader
-        titleId={recoveryTitleId}
-        title={t("startup.recovery")}
-        actions={<IconTerminal />}
-      />
-      <p className="muted">{t("startup.recoveryHint")}</p>
-      <div className="startup-command-list">
-        {data.serviceSupported && (
-          <div className="startup-command-row">
-            <div>
-              <strong>{t("startup.command.service")}</strong>
-              <code>{data.commands.installService}</code>
+    <CollapsibleGroup
+      collapsed={!open}
+      labelledBy={recoveryTitleId}
+      className="startup-recovery"
+    >
+      <CollapsibleGroupHead collapsed={!open}>
+        <CollapsibleGroupToggle
+          titleId={recoveryTitleId}
+          controls="startup-recovery-body"
+          expanded={open}
+          onClick={() => setOpen((current) => !current)}
+        >
+          <IconChevron className="ocx-chevron" width={15} height={15} aria-hidden="true" />
+          <CollapsibleGroupName>{t("startup.recovery")}</CollapsibleGroupName>
+        </CollapsibleGroupToggle>
+      </CollapsibleGroupHead>
+      {open ? (
+        <div id="startup-recovery-body" className="ocx-group-body">
+          <Panel className="panel startup-actions" titleId="startup-recovery-panel">
+            <p className="muted">{t("startup.recoveryHint")}</p>
+            <div className="startup-command-list">
+              {data.serviceSupported && (
+                <div className="startup-command-row">
+                  <div>
+                    <strong>{t("startup.command.service")}</strong>
+                    <code>{data.commands.installService}</code>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => onCopy(data.commands.installService)}
+                  >
+                    {copied === data.commands.installService
+                      ? t("startup.copied")
+                      : t("startup.copy")}
+                  </button>
+                </div>
+              )}
+              <div className="startup-command-row">
+                <div>
+                  <strong>{t("startup.command.shim")}</strong>
+                  <code>{data.commands.installShim}</code>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => onCopy(data.commands.installShim)}
+                >
+                  {copied === data.commands.installShim
+                    ? t("startup.copied")
+                    : t("startup.copy")}
+                </button>
+              </div>
+              <div className="startup-command-row">
+                <div>
+                  <strong>{t("startup.command.native")}</strong>
+                  <code>{data.commands.restoreNative}</code>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => onCopy(data.commands.restoreNative)}
+                >
+                  {copied === data.commands.restoreNative
+                    ? t("startup.copied")
+                    : t("startup.copy")}
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={() => onCopy(data.commands.installService)}
-            >
-              {copied === data.commands.installService
-                ? t("startup.copied")
-                : t("startup.copy")}
-            </button>
-          </div>
-        )}
-        <div className="startup-command-row">
-          <div>
-            <strong>{t("startup.command.shim")}</strong>
-            <code>{data.commands.installShim}</code>
-          </div>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={() => onCopy(data.commands.installShim)}
-          >
-            {copied === data.commands.installShim
-              ? t("startup.copied")
-              : t("startup.copy")}
-          </button>
+            {data.status === "at-risk" && (
+              <div className="notice notice-warn startup-action-notice" role="alert">
+                <IconPower />{" "}
+                {t("startup.recommended", {
+                  cmd: data.recommendedCommand ?? data.commands.installService,
+                })}
+              </div>
+            )}
+          </Panel>
         </div>
-        <div className="startup-command-row">
-          <div>
-            <strong>{t("startup.command.native")}</strong>
-            <code>{data.commands.restoreNative}</code>
-          </div>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={() => onCopy(data.commands.restoreNative)}
-          >
-            {copied === data.commands.restoreNative
-              ? t("startup.copied")
-              : t("startup.copy")}
-          </button>
-        </div>
-      </div>
-      {data.status === "at-risk" && (
-        <div className="notice notice-warn startup-action-notice" role="alert">
-          <IconPower />{" "}
-          {t("startup.recommended", {
-            cmd: data.recommendedCommand ?? data.commands.installService,
-          })}
-        </div>
-      )}
-    </Panel>
+      ) : null}
+    </CollapsibleGroup>
   );
 }
