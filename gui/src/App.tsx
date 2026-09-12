@@ -3,7 +3,7 @@ import { useKeyedClientResource } from "./client-resource";
 import ErrorBoundary from "./components/ErrorBoundary";
 import SettingsSheet from "./components/SettingsSheet";
 import { IconAlert, IconCheck, IconPower, IconSettings } from "./icons";
-import { useT, type TKey } from "./i18n/shared";
+import { useT } from "./i18n/shared";
 import { installApiAuthFetch } from "./api";
 import { canonicalHashFor, type View } from "./app-routing";
 import { useAppRouteState } from "./use-app-route-state";
@@ -12,6 +12,9 @@ import { domAnimation, LazyMotion, MotionConfig } from "motion/react";
 import WorkspaceNavigation, {
   type WorkspaceDestination,
 } from "./components/WorkspaceNavigation";
+import WorkspaceSubTabs, {
+  type WorkspaceSubTab,
+} from "./components/WorkspaceSubTabs";
 import {
   Modal,
   ModalActions,
@@ -60,7 +63,7 @@ const VIEW_TABS: WorkspaceDestination[] = [
 ];
 
 /** Sub-tabs per view; `null` is the view's home target. */
-const SUB_TABS: Record<View, { sub: string | null; tkey: TKey }[]> = {
+const SUB_TABS: Record<View, WorkspaceSubTab[]> = {
   landing: [{ sub: null, tkey: "nav.dashboard" }],
   dashboard: [{ sub: null, tkey: "nav.dashboard" }],
   leveranciers: [
@@ -268,21 +271,14 @@ function DashboardShell({
               className={`main-inner${route.view === "modellen" && route.sub === "combos" ? " main-inner--combos" : ""}`}
             >
               {SUB_TABS[route.view].length > 1 && (
-                <nav className="sub-tabs" aria-label={t(activeTkey)}>
-                  {SUB_TABS[route.view].map(({ sub, tkey }) => (
-                    <button
-                      key={sub ?? "home"}
-                      type="button"
-                      className={`sub-tab${route.sub === sub ? " active" : ""}`}
-                      onClick={() => navigateTo({ view: route.view, sub })}
-                      aria-current={route.sub === sub ? "page" : undefined}
-                    >
-                      {t(tkey)}
-                    </button>
-                  ))}
-                </nav>
+                <WorkspaceSubTabs
+                  tabs={SUB_TABS[route.view]}
+                  active={route.sub}
+                  label={t(activeTkey)}
+                  onNavigate={(sub) => navigateTo({ view: route.view, sub })}
+                />
               )}
-              <div key={canonicalHashFor(route)}>
+              <div key={canonicalHashFor(route)} className="ocx-page">
                 <ErrorBoundary
                   pageName={t(activeTkey)}
                   title={t("errorBoundary.title")}

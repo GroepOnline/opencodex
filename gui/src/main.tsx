@@ -14,6 +14,7 @@ import "@fontsource-variable/manrope";
 import "./styles/workspace-orbit.css";
 import "./styles/model-catalog.css";
 import "./styles/primitives.css";
+import "./styles/ocx-system.css";
 
 initPostHog();
 

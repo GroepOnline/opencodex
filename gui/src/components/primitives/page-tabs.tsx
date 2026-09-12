@@ -1,10 +1,22 @@
-import type {
-  ComponentPropsWithoutRef,
-  CSSProperties,
-  KeyboardEventHandler,
-  ReactNode,
-  Ref,
+import { LayoutGroup, m, useReducedMotion } from "motion/react";
+import {
+  createContext,
+  useContext,
+  useId,
+  useState,
+  type ComponentPropsWithoutRef,
+  type CSSProperties,
+  type KeyboardEventHandler,
+  type ReactNode,
+  type Ref,
 } from "react";
+
+/** Shared between a tablist and its tabs so the selection indicator can travel. */
+const PageTabsContext = createContext<{
+  layoutId: string;
+  instant: boolean;
+  markKeyboard: (instant: boolean) => void;
+} | null>(null);
 
 /** Tab strip. Call sites keep their existing class contracts. */
 export function PageTabs({
@@ -18,9 +30,22 @@ export function PageTabs({
   style?: CSSProperties;
   children: ReactNode;
 }) {
+  const groupId = useId();
+  const reduceMotion = useReducedMotion();
+  const [keyboardNavigation, setKeyboardNavigation] = useState(false);
   return (
     <div className={className} role="tablist" aria-label={label} style={style}>
-      {children}
+      <LayoutGroup id={groupId}>
+        <PageTabsContext.Provider
+          value={{
+            layoutId: "page-tab-selection",
+            instant: Boolean(reduceMotion) || keyboardNavigation,
+            markKeyboard: setKeyboardNavigation,
+          }}
+        >
+          {children}
+        </PageTabsContext.Provider>
+      </LayoutGroup>
     </div>
   );
 }
@@ -44,6 +69,28 @@ const navigateTabs: KeyboardEventHandler<HTMLButtonElement> = (event) => {
   tabs[index]?.click();
 };
 
+/** Travelling underline. Rendered only inside the selected tab of a PageTabs strip. */
+export function PageTabIndicator({
+  className = "page-tab-indicator",
+}: {
+  className?: string;
+}) {
+  const ctx = useContext(PageTabsContext);
+  if (!ctx) return null;
+  return (
+    <m.span
+      className={className}
+      layoutId={ctx.layoutId}
+      transition={
+        ctx.instant
+          ? { duration: 0 }
+          : { type: "spring", visualDuration: 0.22, bounce: 0.1 }
+      }
+      aria-hidden
+    />
+  );
+}
+
 export function PageTab({
   id,
   controls,
@@ -63,6 +110,7 @@ export function PageTab({
   ref?: Ref<HTMLButtonElement>;
   children: ReactNode;
 }) {
+  const ctx = useContext(PageTabsContext);
   return (
     <button
       type="button"
@@ -73,9 +121,13 @@ export function PageTab({
       aria-controls={controls}
       tabIndex={selected ? 0 : -1}
       className={className ?? `page-tab${selected ? " page-tab--active" : ""}`}
-      onClick={onClick}
+      onClick={(event) => {
+        ctx?.markKeyboard(event.detail === 0);
+        onClick();
+      }}
       onKeyDown={onKeyDown ?? navigateTabs}
     >
+      {selected ? <PageTabIndicator /> : null}
       {children}
     </button>
   );
