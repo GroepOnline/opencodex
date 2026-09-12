@@ -54,7 +54,7 @@ export default function WorkspaceSubTabs({
                   aria-hidden
                 />
               )}
-              <span>{t(tkey)}</span>
+              <span className="sub-tab-label">{t(tkey)}</span>
             </button>
           );
         })}

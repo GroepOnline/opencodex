@@ -119,6 +119,9 @@
    --------------------------------------------------------------------------- */
 .ocx-workspace .sub-tabs {
   position: relative;
+  /* One stacking context for the rail: the travelling pill sits at z 0 and
+     every label at z 1, so the pill never covers a neighbouring label. */
+  isolation: isolate;
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -133,7 +136,6 @@
 }
 .ocx-workspace .sub-tab {
   position: relative;
-  isolation: isolate;
   min-height: 32px;
   padding: 5px 14px;
   border: 0;
@@ -166,11 +168,15 @@
 .sub-tab-indicator {
   position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: 0;
   border-radius: inherit;
   background: var(--surface);
   border: 1px solid var(--border-soft);
   box-shadow: var(--card-shadow);
+}
+.ocx-workspace .sub-tab-label {
+  position: relative;
+  z-index: 1;
 }
 
 /* ---------------------------------------------------------------------------
