@@ -139,10 +139,35 @@ bewijs van bereikbaarheid, beschikbaar account of daadwerkelijk geserveerd model
 Toon alleen relaties/statussen waarvoor de bestaande API bewijs levert.
 Selectiefeedback is direct; een detailovergang mag kort en onderbreekbaar zijn,
 zonder de lijst te laten verspringen. Toetsenbordnavigatie en reduced-motion slaan
-verplaatsing over. Geen automatische page-reveal of pressed-translate in nieuwe controls.
+verplaatsing over. Pagina's voegen zelf geen page-reveal of pressed-translate toe:
+route-entree wordt één keer gechoreografeerd door de systeemlaag (zie hieronder).
 Sheet opent maximaal 200ms via transform/opacity; toetsenbordopening zonder
 verplaatsing, reduced-motion alleen korte opacity-feedback. Focus, contrast en
 labels blijven zichtbaar in licht én donker. Onbekende waarden zijn geen nullen.
+
+### Systeemlaag en motion-choreografie (2026-09-12)
+
+`src/styles/ocx-system.css` is de afwerklaag die als laatste laadt en de
+werkplekken tot één geheel maakt. Hij bezit de gedeelde tokens voor maat
+(`--workspace-measure`, `--page-gutter`, `--section-gap`), kaartgrammatica
+(`--card-radius`, `--card-border`, `--card-shadow`, `--card-shadow-raised`),
+focus (`--focus-ring`) en motion (`--ease-out`, `--ease-spring`,
+`--motion-instant/fast/normal/slow`, `--motion-stagger`). Pagina-specifieke
+verfijning staat in `styles/pages-observe.css`, `pages-providers.css` en
+`pages-configure.css`; die laden na de systeemlaag en mogen geen tokens
+herdefiniëren.
+
+Motion is transform/opacity en kent drie eigenaren. Segmentnavigatie
+(`WorkspaceSubTabs`) en paginatabs (`PageTabs`) delen één bewegende indicator per
+rail via `layoutId`; pointerselectie veert kort (`visualDuration` 0.22s),
+toetsenbord en reduced-motion springen direct. Route-entree gebruikt de
+`.ocx-page`-wrapper: directe kinderen rijzen en faden in met een gestapelde
+vertraging van `--motion-stagger` per element, afgetopt op 360ms. Controls
+(knoppen, toggles, selects, modals) hebben één hover-lift/press en één
+menu-in/modal-spring, alle korter dan `--motion-normal`. Geen count-up-getallen,
+geen per-frame React-state, geen ambient animatie. Onder
+`prefers-reduced-motion` toont elke regel de statische eindtoestand zonder
+vertraging.
 
 ### Token-eigendom en adapters
 
@@ -154,6 +179,8 @@ Runtime CSS is canoniek, niet een gegenereerde tweede tokenbron:
 | `src/styles/workspace-orbit.css` | Actuele kleur-, type-, geometrie- en scrollbarrollen; bestandsnaam is geen merk   |
 | `src/styles/app-base.css`        | Cascadevolgorde; legacy CSS in eigen laag                                         |
 | `src/styles/primitives.css`      | Tailwind-semantieken verwijzen naar runtime-rollen; geen preflight of eigen palet |
+| `src/styles/ocx-system.css`      | Afwerklaag: maat-, kaart-, focus- en motion-tokens; route-choreografie           |
+| `src/styles/pages-*.css`         | Pagina-specifieke verfijning per werkplekgroep; hergebruikt systeemtokens         |
 | `components.json`                | Officiële shadcn-registry, Base UI-style en gedeelde componentpaden               |
 
 Tailwind `text-xs/sm/base` verwijzen naar `--text-caption/control/body` met hun

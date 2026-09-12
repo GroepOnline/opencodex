@@ -1,0 +1,231 @@
+/* Configure slice — Models, Combos, Subagents, Storage, API keys.
+   Loaded after ocx-system.css; page-specific composition only. */
+
+/* ── Segmented PageTabs: pill indicator, no double active chrome ─────────── */
+.ocx-workspace .usage-segmented [role="tab"] .page-tab-indicator {
+  inset: 0;
+  bottom: 0;
+  height: auto;
+  border-radius: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--card-shadow);
+  z-index: -1;
+}
+
+.ocx-workspace .usage-segmented .usage-segmented-btn.active {
+  background: transparent;
+  box-shadow: none;
+  font-weight: 600;
+}
+
+/* ── Modellen tab panels: full-height workspace tabs ─────────────────────── */
+.ocx-page-root .combos-workspace-shell,
+.ocx-page-root .subagents-workspace-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-inner:has(.ocx-page-root .subagents-workspace-shell) {
+  max-width: 1200px;
+}
+
+.ocx-page-root .subagents-workspace-root,
+.ocx-page-root .combos-workspace-root {
+  flex: 1 1 auto;
+  min-height: max(480px, calc(100dvh - var(--workspace-header) - 220px));
+}
+
+/* ── Shared workspace rail search (38px controls) ────────────────────────── */
+.configure-workspace-search {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.configure-workspace-search .input {
+  width: 100%;
+  padding-left: 36px;
+}
+
+.configure-workspace-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 15px;
+  height: 15px;
+  color: var(--faint);
+  pointer-events: none;
+}
+
+/* ── API key cards (overview list when shown) ────────────────────────────── */
+.api-key-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.api-key-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
+  transition:
+    box-shadow var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .api-key-card:hover {
+    box-shadow: var(--card-shadow-raised);
+    transform: translateY(-1px);
+  }
+}
+
+.api-key-card__main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.api-key-card__name {
+  font-size: var(--text-control);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.api-key-card__prefix {
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.api-key-card__meta {
+  grid-column: 1;
+  font-size: var(--text-caption);
+  color: var(--muted);
+}
+
+.api-key-card__actions {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: center;
+}
+
+/* ── API endpoints as DataList ───────────────────────────────────────────── */
+/* One endpoint per row so the full URL stays readable in the middle pane. */
+.ocx-workspace .api-endpoints-dl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.ocx-workspace .api-endpoints-dl .data-row {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 32px;
+}
+
+.ocx-workspace .api-endpoints-dl .data-row-label {
+  font-size: var(--text-caption);
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+@media (max-width: 1100px) {
+  .ocx-workspace .api-endpoints-dl .data-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}
+
+/* Scrollbars appear only when content overflows; the gutter stays reserved. */
+.ocx-workspace .awi-overview-left,
+.ocx-workspace .api-models-scroll {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+/* ── Storage meta row ────────────────────────────────────────────────────── */
+.ocx-page-root .codex-auto-switch-input-wrap .ocx-stepper {
+  min-height: var(--control-md);
+}
+
+.ocx-page-root .codex-auto-switch-input-wrap .input {
+  min-height: var(--control-md);
+  height: var(--control-md);
+}
+
+/* ── Combo detail id chip ────────────────────────────────────────────────── */
+.combo-detail-id {
+  font-family: var(--font-code);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.combos-workspace-detail-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.storage-empty-panel {
+  margin-bottom: var(--section-gap);
+}
+
+/* Rail empty states: Tailwind's w-full/flex-1 on Empty must not add to the
+   rail margin, otherwise the rail grows a horizontal scrollbar. */
+.ocx-workspace .combos-rail-empty,
+.ocx-workspace .subagents-workspace-rail-empty {
+  width: auto;
+  flex: 0 0 auto;
+  margin: 12px;
+  padding: 28px 12px;
+}
+
+.ocx-workspace .combos-rail-empty [data-slot="empty-title"],
+.ocx-workspace .subagents-workspace-rail-empty [data-slot="empty-title"] {
+  font-size: var(--text-control);
+}
+
+.ocx-workspace .swi-featured-empty {
+  padding: 32px 16px;
+  margin-bottom: 18px;
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .api-key-card,
+  .apikeys-workspace-rail-row {
+    transition: none;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .api-key-card:hover,
+    .apikeys-workspace-rail-row:hover {
+      transform: none;
+    }
+  }
+}

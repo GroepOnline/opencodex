@@ -183,6 +183,11 @@ export const en = {
   "dash.tokens30d": "Tokens (30d)",
   "dash.coverage": "{pct} coverage",
   "dash.coverageLabel": "Cost coverage",
+  "dash.viewAll": "View all",
+  "dash.providersEmptyTitle": "No provider usage yet",
+  "dash.trafficEmptyTitle": "No recent traffic",
+  "dash.trafficEmptyDesc":
+    "Requests through the proxy will show up here as they complete.",
   // memory observability card (read-only /api/system/memory)
   "dash.mem.title": "Memory observability",
   "dash.mem.hint":
@@ -635,6 +640,8 @@ export const en = {
     "Recent requests routed through the local opencodex proxy, newest first.",
   "logs.autoRefresh": "Auto-refresh",
   "logs.noRequests": "No requests yet.",
+  "logs.emptyTitle": "No requests yet.",
+  "logs.emptyDesc": "Traffic through the proxy will appear in this table.",
   "logs.loadError": "Could not load request logs.",
   "logs.filter.surface.label": "Surface",
   "logs.filter.surface.all": "All",
@@ -774,6 +781,7 @@ export const en = {
   "usage.loading": "Loading usage data…",
   "usage.empty":
     "No usage recorded yet. Send a request through the proxy to see activity here.",
+  "usage.emptyTitle": "No usage recorded yet",
   "usage.loadError": "Could not load usage data.",
   "usage.range.all": "All",
   "usage.range.30d": "30d",
@@ -1753,6 +1761,9 @@ export const en = {
   "cws.renamed": "Renamed {from} to {to}.",
   "cws.add": "Add combo",
   "cws.addTitle": "Add combo",
+  "cws.detailTitle": "Combo",
+  "cws.emptyRailTitle": "No combos yet",
+  "cws.emptyRailHint": "Create a combo to route requests across providers.",
   "cws.addSubtitle":
     "Create a virtual model across providers and choose the exact model name clients will request.",
   "cws.create": "Create combo",
@@ -2042,6 +2053,8 @@ export const en = {
   "vk.follow": "Follow live",
   "vk.loadFailed": "Could not load traffic. Last known rows stay visible.",
   "vk.empty": "No traffic yet today.",
+  "vk.emptyTitle": "No traffic yet",
+  "vk.emptyDesc": "Requests through the proxy will appear in this list.",
   "vk.showAnalysis": "Full analysis",
   "vk.hideAnalysis": "Hide analysis",
   "vk.stampDone": "Done",

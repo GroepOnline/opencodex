@@ -1,8 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import Usage from "./Usage";
-import { KeyPoolHealthPanel, ResponseCachePanel } from "../ops-panels";
-import { useI18n } from "../i18n/shared";
+import { Activity } from "lucide-react";
 import { formatTokens } from "../format-tokens";
+import { useI18n, type Locale, type TFn } from "../i18n/shared";
+import { IconChevron } from "../icons";
+import { KeyPoolHealthPanel, ResponseCachePanel } from "../ops-panels";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../components/primitives/empty";
+import { PageHeader } from "../components/primitives/page-header";
+import { Panel, PanelHeader } from "../components/primitives/panel";
+import {
+  CollapsibleGroup,
+  CollapsibleGroupHead,
+  CollapsibleGroupName,
+  CollapsibleGroupToggle,
+} from "../components/primitives/collapsible-group";
+import {
+  SegmentedControl,
+  SegmentedOption,
+} from "../components/primitives/segmented-control";
+import { StatStrip, StatStripItem } from "../components/primitives/stat-strip";
+import { Timestamp } from "../components/primitives/timestamp";
 import { TrafficColumnHead, TrafficRowCells } from "../traffic-row";
 import {
   requestsTodayCount,
@@ -10,6 +32,7 @@ import {
   trafficProviderModelLabel,
   type TrafficLogEntry,
 } from "../traffic-shared";
+import Usage from "./Usage";
 
 interface UsageSummary {
   summary: {
@@ -51,19 +74,234 @@ const TAIL_INTERVAL_MS = 12_000;
  * @returns The total token count, or `undefined` when unavailable
  */
 function bonTokens(entry: TrafficLogEntry): number | undefined {
-  if (entry.usage) return entry.usage.totalTokens ?? entry.usage.inputTokens + entry.usage.outputTokens;
+  if (entry.usage)
+    return (
+      entry.usage.totalTokens ??
+      entry.usage.inputTokens + entry.usage.outputTokens
+    );
   return entry.totalTokens;
 }
 
-/**
- * Formats a timestamp as a localized time with hours, minutes, and seconds.
- *
- * @param ts - The timestamp in milliseconds
- * @param locale - The locale used for formatting
- * @returns The localized time string
- */
-function tijd(ts: number, locale: string): string {
-  return new Date(ts).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+type UsageProviderRow = NonNullable<UsageSummary["providers"]>[number];
+type UsageModelRow = NonNullable<UsageSummary["models"]>[number];
+
+function dashUsd(value: number | undefined): string {
+  return typeof value === "number" ? `$${value.toFixed(2)}` : "—";
+}
+
+function dashPct(value: number | undefined): string {
+  return typeof value === "number" ? `${Math.round(value * 100)}%` : "—";
+}
+
+function TrafficStatsStrip({
+  tokens30d,
+  requestsVandaag,
+  requests30d,
+  cacheReadRatio,
+  proxyCacheRatio,
+  estimatedCostUsd,
+  p95LatencyMs,
+  ratio429,
+  locale,
+  t,
+}: {
+  tokens30d: number;
+  requestsVandaag: number;
+  requests30d: number;
+  cacheReadRatio: number | undefined;
+  proxyCacheRatio: number | null;
+  estimatedCostUsd: number | undefined;
+  p95LatencyMs: number | undefined;
+  ratio429: number | undefined;
+  locale: Locale;
+  t: TFn;
+}) {
+  return (
+    <StatStrip label={t("vk.statsAria")}>
+      <StatStripItem
+        label={t("vk.tokens30d")}
+        value={formatTokens(tokens30d, locale)}
+      />
+      <StatStripItem
+        label={t("vk.requestsToday")}
+        value={requestsVandaag.toLocaleString(locale)}
+      />
+      <StatStripItem
+        label={t("vk.requests30d")}
+        value={requests30d.toLocaleString(locale)}
+      />
+      <StatStripItem label={t("vk.cacheHit")} value={dashPct(cacheReadRatio)} />
+      <StatStripItem
+        label={t("vk.proxyCacheHit")}
+        value={
+          proxyCacheRatio !== null
+            ? `${Math.round(proxyCacheRatio * 100)}%`
+            : "—"
+        }
+      />
+      <StatStripItem
+        label={t("vk.costUsd")}
+        value={dashUsd(estimatedCostUsd)}
+      />
+      <StatStripItem
+        label={t("vk.p95")}
+        value={
+          typeof p95LatencyMs === "number" && p95LatencyMs > 0
+            ? `${(p95LatencyMs / 1000).toFixed(1)}${t("vk.p95Unit")}`
+            : "—"
+        }
+      />
+      <StatStripItem label={t("vk.ratio429")} value={dashPct(ratio429)} />
+    </StatStrip>
+  );
+}
+
+function ProviderShareTable({
+  providers,
+  locale,
+  t,
+}: {
+  providers: UsageProviderRow[];
+  locale: Locale;
+  t: TFn;
+}) {
+  const titleId = "vk-provider-table-title";
+  return (
+    <Panel titleId={titleId} style={{ marginTop: 16 }}>
+      <PanelHeader titleId={titleId} title={t("vk.providerTableHead")} />
+      <div className="tbl-wrap">
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>{t("vk.providerColProvider")}</th>
+              <th className="num">{t("vk.providerColRequests")}</th>
+              <th className="num">{t("vk.providerColTokens")}</th>
+              <th className="num">{t("vk.providerColCost")}</th>
+              <th className="num">{t("vk.providerColCache")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {providers
+              .slice()
+              .sort((a, b) => b.requests - a.requests)
+              .map((provider) => (
+                <tr key={provider.provider}>
+                  <td className="mono">{provider.provider}</td>
+                  <td className="num">
+                    {provider.requests.toLocaleString(locale)}
+                  </td>
+                  <td className="num">
+                    {formatTokens(provider.totalTokens, locale)}
+                  </td>
+                  <td className="num">{dashUsd(provider.estimatedCostUsd)}</td>
+                  <td className="num">{dashPct(provider.cacheReadRatio)}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+    </Panel>
+  );
+}
+
+function ModelShareTable({
+  models,
+  locale,
+  t,
+}: {
+  models: UsageModelRow[];
+  locale: Locale;
+  t: TFn;
+}) {
+  const titleId = "vk-model-table-title";
+  return (
+    <Panel titleId={titleId} style={{ marginTop: 16 }}>
+      <PanelHeader titleId={titleId} title={t("vk.modelTableHead")} />
+      <div className="tbl-wrap">
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>{t("vk.modelColModel")}</th>
+              <th className="num">{t("vk.modelColRequests")}</th>
+              <th className="num">{t("vk.modelColTokens")}</th>
+              <th className="num">{t("vk.modelColShare")}</th>
+              <th className="num">{t("vk.modelColCost")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {models.map((model) => (
+              <tr key={`${model.provider}/${model.model}`}>
+                <td className="mono">
+                  {model.model}
+                  {model.provider ? (
+                    <span className="muted"> · {model.provider}</span>
+                  ) : null}
+                </td>
+                <td className="num">{model.requests.toLocaleString(locale)}</td>
+                <td className="num">
+                  {formatTokens(model.totalTokens, locale)}
+                </td>
+                <td className="num">{dashPct(model.shareRatio)}</td>
+                <td className="num">{dashUsd(model.estimatedCostUsd)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Panel>
+  );
+}
+
+function TrafficProviderFilters({
+  providers,
+  providerFilter,
+  paused,
+  onFilter,
+  onTogglePaused,
+  t,
+}: {
+  providers: string[];
+  providerFilter: string | null;
+  paused: boolean;
+  onFilter: (provider: string | null) => void;
+  onTogglePaused: () => void;
+  t: TFn;
+}) {
+  return (
+    <div className="verkeer-filters">
+      <SegmentedControl label={t("vk.filterAria")}>
+        <SegmentedOption
+          pressed={providerFilter === null}
+          label={t("vk.all")}
+          className={`usage-segmented-btn${providerFilter === null ? " active" : ""}`}
+          onClick={() => onFilter(null)}
+        >
+          {t("vk.all")}
+        </SegmentedOption>
+        {providers.map((provider) => (
+          <SegmentedOption
+            key={provider}
+            pressed={providerFilter === provider}
+            label={provider}
+            className={`usage-segmented-btn${providerFilter === provider ? " active" : ""}`}
+            onClick={() =>
+              onFilter(providerFilter === provider ? null : provider)
+            }
+          >
+            {provider}
+          </SegmentedOption>
+        ))}
+      </SegmentedControl>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm verkeer-filters__pause"
+        onClick={onTogglePaused}
+        aria-pressed={paused}
+      >
+        {paused ? t("vk.follow") : t("vk.pause")}
+      </button>
+    </div>
+  );
 }
 
 /**
@@ -86,7 +324,9 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
   // This is DISTINCT from summary.cacheReadRatio, which is Anthropic prompt-cache token reuse.
   const [proxyCacheRatio, setProxyCacheRatio] = useState<number | null>(null);
   const pausedRef = useRef(paused);
-  useEffect(() => { pausedRef.current = paused; }, [paused]);
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,13 +334,18 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
       try {
         const res = await fetch(`${apiBase}/api/usage?range=30d`);
         if (!res.ok) return;
-        const data = await res.json() as UsageSummary;
+        const data = (await res.json()) as UsageSummary;
         if (!cancelled) setSummary30d(data);
-      } catch { /* keep last-good */ }
+      } catch {
+        /* keep last-good */
+      }
     };
     void load();
     const iv = setInterval(() => void load(), 60_000);
-    return () => { cancelled = true; clearInterval(iv); };
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
   }, [apiBase]);
 
   useEffect(() => {
@@ -109,7 +354,10 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
       try {
         const res = await fetch(`${apiBase}/api/response-cache`);
         if (!res.ok) throw new Error(String(res.status));
-        const data = await res.json() as { enabled?: boolean; stats?: { hits: number; misses: number } };
+        const data = (await res.json()) as {
+          enabled?: boolean;
+          stats?: { hits: number; misses: number };
+        };
         if (cancelled) return;
         const hits = data.stats?.hits ?? 0;
         const misses = data.stats?.misses ?? 0;
@@ -123,7 +371,10 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
     };
     void loadCache();
     const iv = setInterval(() => void loadCache(), 15_000);
-    return () => { cancelled = true; clearInterval(iv); };
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
   }, [apiBase]);
 
   useEffect(() => {
@@ -133,9 +384,13 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
       try {
         const res = await fetch(`${apiBase}/api/logs`);
         if (!res.ok) throw new Error(String(res.status));
-        const data = await res.json() as TrafficLogEntry[];
+        const data = (await res.json()) as TrafficLogEntry[];
         if (!cancelled) {
-          setLogs(Array.isArray(data) ? data.toSorted((a, b) => b.timestamp - a.timestamp) : []);
+          setLogs(
+            Array.isArray(data)
+              ? data.toSorted((a, b) => b.timestamp - a.timestamp)
+              : [],
+          );
           setLogsFailed(false);
         }
       } catch {
@@ -144,7 +399,10 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
     };
     void tail();
     const iv = setInterval(() => void tail(), TAIL_INTERVAL_MS);
-    return () => { cancelled = true; clearInterval(iv); };
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
   }, [apiBase]);
 
   const providers = useMemo(() => {
@@ -160,13 +418,15 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
 
   const zichtbaar = useMemo(() => {
     const rows = providerFilter
-      ? logs.filter(entry => {
-        const principal = trafficPrincipalLabel(entry, t);
-        const providerModel = trafficProviderModelLabel(entry) ?? "";
-        return principal === providerFilter
-          || entry.provider === providerFilter
-          || providerModel.startsWith(`${providerFilter}/`);
-      })
+      ? logs.filter((entry) => {
+          const principal = trafficPrincipalLabel(entry, t);
+          const providerModel = trafficProviderModelLabel(entry) ?? "";
+          return (
+            principal === providerFilter ||
+            entry.provider === providerFilter ||
+            providerModel.startsWith(`${providerFilter}/`)
+          );
+        })
       : logs;
     return rows.slice(0, 60);
   }, [logs, providerFilter, t]);
@@ -186,253 +446,186 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
   }, [summary30d]);
 
   return (
-    <>
-      <div className="page-head">
-        <h2>{t("shell.navTraffic")}</h2>
-      </div>
-      <p className="page-sub">{t("vk.subtitle")}</p>
+    <div className="verkeer-page ocx-page-root">
+      <PageHeader
+        title={t("shell.navTraffic")}
+        description={t("vk.subtitle")}
+      />
 
-      <div className="stat-strip" role="group" aria-label={t("vk.statsAria")}>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">{formatTokens(tokens30d, locale)}</span>
-          <span className="stat-strip-label">{t("vk.tokens30d")}</span>
-        </div>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">{requestsVandaag.toLocaleString(locale)}</span>
-          <span className="stat-strip-label">{t("vk.requestsToday")}</span>
-        </div>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">{requests30d.toLocaleString(locale)}</span>
-          <span className="stat-strip-label">{t("vk.requests30d")}</span>
-        </div>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">
-            {typeof summary30d?.summary.cacheReadRatio === "number"
-              ? `${Math.round(summary30d.summary.cacheReadRatio * 100)}%`
-              : "—"}
-          </span>
-          <span className="stat-strip-label">{t("vk.cacheHit")}</span>
-        </div>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">
-            {proxyCacheRatio !== null ? `${Math.round(proxyCacheRatio * 100)}%` : "—"}
-          </span>
-          <span className="stat-strip-label">{t("vk.proxyCacheHit")}</span>
-        </div>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">
-            {typeof summary30d?.summary.estimatedCostUsd === "number"
-              ? `$${summary30d.summary.estimatedCostUsd.toFixed(2)}`
-              : "—"}
-          </span>
-          <span className="stat-strip-label">{t("vk.costUsd")}</span>
-        </div>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">
-            {typeof summary30d?.summary.p95LatencyMs === "number" && summary30d.summary.p95LatencyMs > 0
-              ? `${(summary30d.summary.p95LatencyMs / 1000).toFixed(1)}${t("vk.p95Unit")}`
-              : "—"}
-          </span>
-          <span className="stat-strip-label">{t("vk.p95")}</span>
-        </div>
-        <div className="stat-strip-item">
-          <span className="stat-strip-waarde">
-            {typeof summary30d?.summary.ratio429 === "number"
-              ? `${Math.round(summary30d.summary.ratio429 * 100)}%`
-              : "—"}
-          </span>
-          <span className="stat-strip-label">{t("vk.ratio429")}</span>
-        </div>
-      </div>
+      <TrafficStatsStrip
+        tokens30d={tokens30d}
+        requestsVandaag={requestsVandaag}
+        requests30d={requests30d}
+        cacheReadRatio={summary30d?.summary.cacheReadRatio}
+        proxyCacheRatio={proxyCacheRatio}
+        estimatedCostUsd={summary30d?.summary.estimatedCostUsd}
+        p95LatencyMs={summary30d?.summary.p95LatencyMs}
+        ratio429={summary30d?.summary.ratio429}
+        locale={locale}
+        t={t}
+      />
 
-      {summary30d?.providers && summary30d.providers.length > 0 && (
-        <div style={{ marginTop: 16 }}>
-          <h3 className="depas-viewsub" style={{ marginBottom: 8 }}>{t("vk.providerTableHead")}</h3>
-          <table className="depas-tabel" style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left" }}>{t("vk.providerColProvider")}</th>
-                <th style={{ textAlign: "right" }}>{t("vk.providerColRequests")}</th>
-                <th style={{ textAlign: "right" }}>{t("vk.providerColTokens")}</th>
-                <th style={{ textAlign: "right" }}>{t("vk.providerColCost")}</th>
-                <th style={{ textAlign: "right" }}>{t("vk.providerColCache")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summary30d.providers
-                .slice()
-                .sort((a, b) => b.requests - a.requests)
-                .map(p => (
-                  <tr key={p.provider}>
-                    <td style={{ fontFamily: "var(--font-code)" }}>{p.provider}</td>
-                    <td style={{ textAlign: "right" }}>{p.requests.toLocaleString(locale)}</td>
-                    <td style={{ textAlign: "right" }}>{formatTokens(p.totalTokens, locale)}</td>
-                    <td style={{ textAlign: "right" }}>
-                      {typeof p.estimatedCostUsd === "number" ? `$${p.estimatedCostUsd.toFixed(2)}` : "—"}
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      {typeof p.cacheReadRatio === "number" ? `${Math.round(p.cacheReadRatio * 100)}%` : "—"}
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {summary30d?.providers && summary30d.providers.length > 0 ? (
+        <ProviderShareTable
+          providers={summary30d.providers}
+          locale={locale}
+          t={t}
+        />
+      ) : null}
 
-      {topModellen.length > 0 && (
-        <div style={{ marginTop: 16 }}>
-          <h3 className="depas-viewsub" style={{ marginBottom: 8 }}>{t("vk.modelTableHead")}</h3>
-          <table className="depas-tabel" style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left" }}>{t("vk.modelColModel")}</th>
-                <th style={{ textAlign: "right" }}>{t("vk.modelColRequests")}</th>
-                <th style={{ textAlign: "right" }}>{t("vk.modelColTokens")}</th>
-                <th style={{ textAlign: "right" }}>{t("vk.modelColShare")}</th>
-                <th style={{ textAlign: "right" }}>{t("vk.modelColCost")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {topModellen.map(m => (
-                <tr key={`${m.provider}/${m.model}`}>
-                  <td style={{ fontFamily: "var(--font-code)" }}>
-                    {m.model}
-                    {m.provider && (
-                      <span style={{ color: "var(--gietijzer-60)" }}> · {m.provider}</span>
-                    )}
-                  </td>
-                  <td style={{ textAlign: "right" }}>{m.requests.toLocaleString(locale)}</td>
-                  <td style={{ textAlign: "right" }}>{formatTokens(m.totalTokens, locale)}</td>
-                  <td style={{ textAlign: "right" }}>
-                    {typeof m.shareRatio === "number"
-                      ? `${Math.round(m.shareRatio * 100)}%`
-                      : "—"}
-                  </td>
-                  <td style={{ textAlign: "right" }}>
-                    {typeof m.estimatedCostUsd === "number" ? `$${m.estimatedCostUsd.toFixed(2)}` : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {topModellen.length > 0 ? (
+        <ModelShareTable models={topModellen} locale={locale} t={t} />
+      ) : null}
 
-      <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-        <div className="usage-segmented" role="group" aria-label={t("vk.filterAria")}>
-          <button
-            type="button"
-            className={`usage-segmented-btn${providerFilter === null ? " active" : ""}`}
-            onClick={() => setProviderFilter(null)}
-          >
-            {t("vk.all")}
-          </button>
-          {providers.map(p => (
-            <button
-              key={p}
-              type="button"
-              className={`usage-segmented-btn${providerFilter === p ? " active" : ""}`}
-              onClick={() => setProviderFilter(current => current === p ? null : p)}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          style={{ marginLeft: "auto" }}
-          onClick={() => setPaused(p => !p)}
-          aria-pressed={paused}
+      <TrafficProviderFilters
+        providers={providers}
+        providerFilter={providerFilter}
+        paused={paused}
+        onFilter={setProviderFilter}
+        onTogglePaused={() => setPaused((current) => !current)}
+        t={t}
+      />
+
+      {logsFailed ? (
+        <p
+          className="text-caption"
+          style={{ color: "var(--red)" }}
+          role="status"
         >
-          {paused ? t("vk.follow") : t("vk.pause")}
-        </button>
-      </div>
-
-      {logsFailed && (
-        <p className="text-caption" style={{ color: "var(--red)" }} role="status">
           {t("vk.loadFailed")}
         </p>
-      )}
+      ) : null}
 
       <TrafficColumnHead />
 
-      <div className="rail" aria-live="polite" onFocus={() => setPaused(true)}>
+      <div className="rail ocx-reveal-list" aria-live="polite" onFocus={() => setPaused(true)}>
         {zichtbaar.length === 0 ? (
-          <p className="muted" style={{ fontFamily: "var(--font-code)", fontSize: "0.875rem" }}>
-            {t("vk.empty")}
-          </p>
-        ) : zichtbaar.map(entry => {
-          const id = entry.requestId ?? `${entry.timestamp}-${entry.provider}-${entry.model}`;
-          const tokens = bonTokens(entry);
-          const isOpen = openBon === id;
-          return (
-            <div key={id} className="traffic-entry">
-              <button
-                type="button"
-                className="traffic-entry-head traffic-entry-head--grid"
-                style={{ width: "100%", background: "transparent", border: "none", color: "inherit", cursor: "pointer", textAlign: "left" }}
-                onClick={() => setOpenBon(current => current === id ? null : id)}
-                aria-expanded={isOpen}
-              >
-                <span className="traffic-col traffic-col--time traffic-time">{tijd(entry.timestamp, locale)}</span>
-                <TrafficRowCells entry={entry} locale={locale} tokens={tokens} />
-              </button>
-              {isOpen && (
-                <div className="traffic-detail">
-                  <div>{t("vk.detailStatus", { status: entry.status })}</div>
-                  {entry.errorCode && <div>{t("vk.detailError", { code: entry.errorCode })}</div>}
-                  {entry.upstreamError && <div>{t("vk.detailUpstream", { error: entry.upstreamError })}</div>}
-                  {entry.usage && (
-                    <div>{t("vk.detailInOut", { in: entry.usage.inputTokens, out: entry.usage.outputTokens })}</div>
-                  )}
-                  {entry.requestId && <div>{t("vk.detailId", { id: entry.requestId })}</div>}
-                </div>
-              )}
-            </div>
-          );
-        })}
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Activity aria-hidden />
+              </EmptyMedia>
+              <EmptyTitle>{t("vk.emptyTitle")}</EmptyTitle>
+              <EmptyDescription>{t("vk.emptyDesc")}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          zichtbaar.map((entry) => {
+            const id =
+              entry.requestId ??
+              `${entry.timestamp}-${entry.provider}-${entry.model}`;
+            const tokens = bonTokens(entry);
+            const isOpen = openBon === id;
+            return (
+              <div key={id} className="traffic-entry">
+                <button
+                  type="button"
+                  className="traffic-entry-head traffic-entry-head--grid traffic-entry-head--button"
+                  onClick={() =>
+                    setOpenBon((current) => (current === id ? null : id))
+                  }
+                  aria-expanded={isOpen}
+                >
+                  <Timestamp
+                    value={entry.timestamp}
+                    locale={locale}
+                    className="traffic-col traffic-col--time traffic-time"
+                  />
+                  <TrafficRowCells
+                    entry={entry}
+                    locale={locale}
+                    tokens={tokens}
+                  />
+                </button>
+                {isOpen ? (
+                  <div className="traffic-detail">
+                    <div>{t("vk.detailStatus", { status: entry.status })}</div>
+                    {entry.errorCode ? (
+                      <div>
+                        {t("vk.detailError", { code: entry.errorCode })}
+                      </div>
+                    ) : null}
+                    {entry.upstreamError ? (
+                      <div>
+                        {t("vk.detailUpstream", { error: entry.upstreamError })}
+                      </div>
+                    ) : null}
+                    {entry.usage ? (
+                      <div>
+                        {t("vk.detailInOut", {
+                          in: entry.usage.inputTokens,
+                          out: entry.usage.outputTokens,
+                        })}
+                      </div>
+                    ) : null}
+                    {entry.requestId ? (
+                      <div>{t("vk.detailId", { id: entry.requestId })}</div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })
+        )}
       </div>
 
-      <div style={{ marginTop: 48 }}>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          onClick={() => setOpsOpen(open => !open)}
-          aria-expanded={opsOpen}
-        >
-          {opsOpen ? t("vk.hideOps") : t("vk.showOps")}
-        </button>
-        {opsOpen && (
-          <div style={{ marginTop: 16, display: "grid", gap: 32 }}>
-            <section aria-label={t("ops.cacheAria")}>
-              <h3 className="depas-viewsub" style={{ marginBottom: 8 }}>{t("ops.cacheHead")}</h3>
+      <CollapsibleGroup
+        collapsed={!opsOpen}
+        labelledBy="vk-ops-title"
+        className="verkeer-disclosure"
+      >
+        <CollapsibleGroupHead collapsed={!opsOpen}>
+          <CollapsibleGroupToggle
+            titleId="vk-ops-title"
+            controls="vk-ops-body"
+            expanded={opsOpen}
+            onClick={() => setOpsOpen((open) => !open)}
+          >
+            <IconChevron className="ocx-chevron" width={15} height={15} aria-hidden="true" />
+            <CollapsibleGroupName>{t("vk.showOps")}</CollapsibleGroupName>
+          </CollapsibleGroupToggle>
+        </CollapsibleGroupHead>
+        {opsOpen ? (
+          <div id="vk-ops-body" className="ocx-group-body">
+            <Panel titleId="ops-cache-title">
+              <PanelHeader
+                titleId="ops-cache-title"
+                title={t("ops.cacheHead")}
+              />
               <ResponseCachePanel apiBase={apiBase} />
-            </section>
-            <section aria-label={t("ops.poolHead")}>
-              <h3 className="depas-viewsub" style={{ marginBottom: 8 }}>{t("ops.poolHead")}</h3>
+            </Panel>
+            <Panel titleId="ops-pool-title">
+              <PanelHeader titleId="ops-pool-title" title={t("ops.poolHead")} />
               <KeyPoolHealthPanel apiBase={apiBase} />
-            </section>
+            </Panel>
           </div>
-        )}
-      </div>
+        ) : null}
+      </CollapsibleGroup>
 
-      <div style={{ marginTop: 48 }}>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          onClick={() => setAnalyseOpen(open => !open)}
-          aria-expanded={analyseOpen}
-        >
-          {analyseOpen ? t("vk.hideAnalysis") : t("vk.showAnalysis")}
-        </button>
-        {analyseOpen && (
-          <div style={{ marginTop: 16 }}>
-            <Usage apiBase={apiBase} />
+      <CollapsibleGroup
+        collapsed={!analyseOpen}
+        labelledBy="vk-analyse-title"
+        className="verkeer-disclosure"
+      >
+        <CollapsibleGroupHead collapsed={!analyseOpen}>
+          <CollapsibleGroupToggle
+            titleId="vk-analyse-title"
+            controls="vk-analyse-body"
+            expanded={analyseOpen}
+            onClick={() => setAnalyseOpen((open) => !open)}
+          >
+            <IconChevron className="ocx-chevron" width={15} height={15} aria-hidden="true" />
+            <CollapsibleGroupName>{t("vk.showAnalysis")}</CollapsibleGroupName>
+          </CollapsibleGroupToggle>
+        </CollapsibleGroupHead>
+        {analyseOpen ? (
+          <div id="vk-analyse-body" className="ocx-group-body">
+            <Panel titleId="vk-analyse-panel">
+              <Usage apiBase={apiBase} />
+            </Panel>
           </div>
-        )}
-      </div>
-    </>
+        ) : null}
+      </CollapsibleGroup>
+    </div>
   );
 }

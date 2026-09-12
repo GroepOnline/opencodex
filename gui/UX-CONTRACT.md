@@ -73,7 +73,12 @@ The shared source attribution is packaged in `public/third-party-notices.txt`.
   navigation and Settings controls keep 44px targets; no page-wide overflow.
 - Mobile readings become compact label/value rows rather than empty KPI cards.
 - Pointer selection has a scoped, interruptible shared-layout spring; keyboard
-  navigation and reduced motion are instant. No page entrance animation.
+  navigation and reduced motion are instant. Segmented sub-navigation and page
+  tabs share one moving indicator per rail (`WorkspaceSubTabs`, `PageTabs`).
+- Route entry is choreographed once by the system layer (`ocx-system.css`): the
+  direct children of a page rise and fade in with a capped stagger, transform and
+  opacity only, at most 360ms total. Pages do not add their own entrance motion.
+  Reduced motion renders the static end state with no delay.
 - Settings movement is at most 200ms, transform/opacity only. Keyboard opening is
   instant; reduced motion suppresses displacement. No ambient animation added.
 - Models uses global search plus provider filtering, preserving empty-provider and

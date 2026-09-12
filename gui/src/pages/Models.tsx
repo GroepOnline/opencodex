@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../components/primitives/button";
+import { PageHeader } from "../components/primitives/page-header";
 import { Spinner } from "../components/primitives/spinner";
 import { Alert, AlertDescription } from "../components/primitives/alert";
 import {
@@ -1029,28 +1030,27 @@ export default function Models({ apiBase }: { apiBase: string }) {
   };
 
   return (
-    <div className="models-workspace-shell">
-      <div className="page-head">
-        <div>
-          <h2>{t("nav.models")}</h2>
-          <p className="models-catalog-description">
-            {t("models.workspace.description")}
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          nativeButton={false}
-          render={
-            <a
-              href="#leveranciers"
-              aria-label={t("models.workspace.manageProviders")}
-            />
-          }
-          aria-label={t("models.workspace.manageProviders")}
-        >
-          {t("models.workspace.manageProviders")}
-        </Button>
-      </div>
+    <div className="models-workspace-shell ocx-page-root">
+      <PageHeader
+        title={t("nav.models")}
+        description={t("models.workspace.description")}
+        descriptionClassName="models-catalog-description"
+        actions={
+          <Button
+            variant="outline"
+            nativeButton={false}
+            render={
+              <a
+                href="#leveranciers"
+                aria-label={t("models.workspace.manageProviders")}
+              />
+            }
+            aria-label={t("models.workspace.manageProviders")}
+          >
+            {t("models.workspace.manageProviders")}
+          </Button>
+        }
+      />
       <ModelsStatus status={status} ok={ok} />
       <div className="models-catalog-toolbar">
         <InputGroup className="models-search-field">
@@ -1140,7 +1140,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
             <span>{t("models.tipContext")}</span>
             <span>{t("models.workspace.visibilityColumn")}</span>
           </div>
-          <div className="models-provider-list">
+          <div className="models-provider-list ocx-reveal-list">
             {visibleGroups.map(renderGroup)}
           </div>
           {query && !hasMatches && (

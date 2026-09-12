@@ -1,17 +1,27 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type Ref } from "react";
 import { useKeyedClientResource } from "./client-resource";
 import ErrorBoundary from "./components/ErrorBoundary";
 import SettingsSheet from "./components/SettingsSheet";
 import { IconAlert, IconCheck, IconPower, IconSettings } from "./icons";
-import { useT, type TKey } from "./i18n/shared";
+import { useT } from "./i18n/shared";
 import { installApiAuthFetch } from "./api";
 import { canonicalHashFor, type View } from "./app-routing";
 import { useAppRouteState } from "./use-app-route-state";
 import { requestProxyStop } from "./stop-proxy";
-import { domAnimation, LazyMotion, MotionConfig } from "motion/react";
+import { domMax, LazyMotion, MotionConfig } from "motion/react";
 import WorkspaceNavigation, {
   type WorkspaceDestination,
 } from "./components/WorkspaceNavigation";
+import WorkspaceSubTabs, {
+  type WorkspaceSubTab,
+} from "./components/WorkspaceSubTabs";
+import {
+  Modal,
+  ModalActions,
+  ModalCard,
+  ModalDesc,
+  ModalHead,
+} from "./components/primitives/modal";
 import {
   IconActivity,
   IconBoxes,
@@ -53,7 +63,7 @@ const VIEW_TABS: WorkspaceDestination[] = [
 ];
 
 /** Sub-tabs per view; `null` is the view's home target. */
-const SUB_TABS: Record<View, { sub: string | null; tkey: TKey }[]> = {
+const SUB_TABS: Record<View, WorkspaceSubTab[]> = {
   landing: [{ sub: null, tkey: "nav.dashboard" }],
   dashboard: [{ sub: null, tkey: "nav.dashboard" }],
   leveranciers: [
@@ -203,7 +213,7 @@ function DashboardShell({
 
   return (
     <MotionConfig reducedMotion="user">
-      <LazyMotion features={domAnimation} strict>
+      <LazyMotion features={domMax} strict>
         <div className="app ocx-workspace">
           <header className="topbar">
             {brand}
@@ -261,21 +271,14 @@ function DashboardShell({
               className={`main-inner${route.view === "modellen" && route.sub === "combos" ? " main-inner--combos" : ""}`}
             >
               {SUB_TABS[route.view].length > 1 && (
-                <nav className="sub-tabs" aria-label={t(activeTkey)}>
-                  {SUB_TABS[route.view].map(({ sub, tkey }) => (
-                    <button
-                      key={sub ?? "home"}
-                      type="button"
-                      className={`sub-tab${route.sub === sub ? " active" : ""}`}
-                      onClick={() => navigateTo({ view: route.view, sub })}
-                      aria-current={route.sub === sub ? "page" : undefined}
-                    >
-                      {t(tkey)}
-                    </button>
-                  ))}
-                </nav>
+                <WorkspaceSubTabs
+                  tabs={SUB_TABS[route.view]}
+                  active={route.sub}
+                  label={t(activeTkey)}
+                  onNavigate={(sub) => navigateTo({ view: route.view, sub })}
+                />
               )}
-              <div key={canonicalHashFor(route)}>
+              <div key={canonicalHashFor(route)} className="ocx-page">
                 <ErrorBoundary
                   pageName={t(activeTkey)}
                   title={t("errorBoundary.title")}
@@ -349,6 +352,64 @@ function DashboardShell({
 
 /** Danger zone (Systeem home): destructive actions live here — named, separated,
     and behind an explicit confirmation. Never in navigation. */
+function StopProxyDialog({
+  stopping,
+  cancelRef,
+  title,
+  body,
+  cancelLabel,
+  stopLabel,
+  stoppingLabel,
+  onCancel,
+  onConfirm,
+}: {
+  stopping: boolean;
+  cancelRef: Ref<HTMLButtonElement>;
+  title: string;
+  body: string;
+  cancelLabel: string;
+  stopLabel: string;
+  stoppingLabel: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal
+      role="alertdialog"
+      aria-labelledby="stop-proxy-title"
+      aria-describedby="stop-proxy-desc"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !stopping) onCancel();
+      }}
+    >
+      <ModalCard className="modal-card modal-card--narrow">
+        <ModalHead titleId="stop-proxy-title" title={title} />
+        <ModalDesc id="stop-proxy-desc">{body}</ModalDesc>
+        <ModalActions>
+          <button
+            ref={cancelRef}
+            type="button"
+            className="btn"
+            onClick={onCancel}
+            disabled={stopping}
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger"
+            onClick={onConfirm}
+            disabled={stopping}
+          >
+            <IconPower size={13} aria-hidden />{" "}
+            {stopping ? stoppingLabel : stopLabel}
+          </button>
+        </ModalActions>
+      </ModalCard>
+    </Modal>
+  );
+}
+
 function DangerZone() {
   const t = useT();
   const [confirming, setConfirming] = useState(false);
@@ -401,45 +462,17 @@ function DangerZone() {
       </div>
 
       {confirming && (
-        <div
-          className="modal-overlay"
-          role="alertdialog"
-          aria-modal="true"
-          aria-labelledby="stop-proxy-title"
-          aria-describedby="stop-proxy-desc"
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !stopping) setConfirming(false);
-          }}
-        >
-          <div className="modal-card modal-card--narrow">
-            <div className="modal-head">
-              <h3 id="stop-proxy-title">{t("danger.stopTitle")}</h3>
-            </div>
-            <p id="stop-proxy-desc" className="modal-desc">
-              {t("danger.stopBody")}
-            </p>
-            <div className="modal-actions">
-              <button
-                ref={cancelRef}
-                type="button"
-                className="btn"
-                onClick={() => setConfirming(false)}
-                disabled={stopping}
-              >
-                {t("common.cancel")}
-              </button>
-              <button
-                type="button"
-                className="btn btn-danger"
-                onClick={() => void handleStop()}
-                disabled={stopping}
-              >
-                <IconPower size={13} aria-hidden />{" "}
-                {stopping ? t("dash.stopping") : t("danger.stopAction")}
-              </button>
-            </div>
-          </div>
-        </div>
+        <StopProxyDialog
+          stopping={stopping}
+          cancelRef={cancelRef}
+          title={t("danger.stopTitle")}
+          body={t("danger.stopBody")}
+          cancelLabel={t("common.cancel")}
+          stopLabel={t("danger.stopAction")}
+          stoppingLabel={t("dash.stopping")}
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => void handleStop()}
+        />
       )}
     </section>
   );

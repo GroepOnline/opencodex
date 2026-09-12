@@ -1,9 +1,18 @@
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import ClaudeCode from "./ClaudeCode";
 import ClaudeDesktop from "./ClaudeDesktop";
 import { useT } from "../i18n/shared";
+import {
+  PageTab,
+  PageTabPanel,
+  PageTabs,
+} from "../components/primitives/page-tabs";
 
 type ClaudeTab = "code" | "desktop";
+
+function ClaudePage({ children }: { children: ReactNode }) {
+  return <section className="claude-page ocx-page-root">{children}</section>;
+}
 
 export default function Claude({ apiBase }: { apiBase: string }) {
   const [tab, setTab] = useState<ClaudeTab>("code");
@@ -13,7 +22,9 @@ export default function Claude({ apiBase }: { apiBase: string }) {
 
   const selectTab = (next: ClaudeTab) => {
     setTab(next);
-    window.requestAnimationFrame(() => (next === "code" ? codeTabRef : desktopTabRef).current?.focus());
+    window.requestAnimationFrame(() =>
+      (next === "code" ? codeTabRef : desktopTabRef).current?.focus(),
+    );
   };
 
   const handleTabKey = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -30,55 +41,51 @@ export default function Claude({ apiBase }: { apiBase: string }) {
   };
 
   return (
-    <section className="claude-page">
-      <div className="claude-tabs" role="tablist" aria-label={t("claude.tabsLabel")}>
-        <button
-          type="button"
-          role="tab"
-          ref={codeTabRef}
-          aria-selected={tab === "code"}
-          aria-controls="claude-code-panel"
+    <ClaudePage>
+      <PageTabs label={t("claude.tabsLabel")} className="claude-tabs">
+        <PageTab
           id="claude-code-tab"
+          controls="claude-code-panel"
+          selected={tab === "code"}
           className={tab === "code" ? "active" : ""}
-          tabIndex={tab === "code" ? 0 : -1}
+          ref={codeTabRef}
           onKeyDown={handleTabKey}
           onClick={() => selectTab("code")}
         >
           {t("claude.tabCode")}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          ref={desktopTabRef}
-          aria-selected={tab === "desktop"}
-          aria-controls="claude-desktop-panel"
+        </PageTab>
+        <PageTab
           id="claude-desktop-tab"
+          controls="claude-desktop-panel"
+          selected={tab === "desktop"}
           className={tab === "desktop" ? "active" : ""}
-          tabIndex={tab === "desktop" ? 0 : -1}
+          ref={desktopTabRef}
           onKeyDown={handleTabKey}
           onClick={() => selectTab("desktop")}
         >
           {t("claude.tabDesktop")}
-        </button>
-      </div>
+        </PageTab>
+      </PageTabs>
 
       {/* Both stay mounted so draft/UI state survives tab switches; Desktop pauses polls while hidden. */}
-      <div
+      <PageTabPanel
         id="claude-code-panel"
-        role="tabpanel"
-        aria-labelledby="claude-code-tab"
+        labelledBy="claude-code-tab"
         hidden={tab !== "code"}
       >
         <ClaudeCode key={apiBase} apiBase={apiBase} />
-      </div>
-      <div
+      </PageTabPanel>
+      <PageTabPanel
         id="claude-desktop-panel"
-        role="tabpanel"
-        aria-labelledby="claude-desktop-tab"
+        labelledBy="claude-desktop-tab"
         hidden={tab !== "desktop"}
       >
-        <ClaudeDesktop key={apiBase} apiBase={apiBase} active={tab === "desktop"} />
-      </div>
-    </section>
+        <ClaudeDesktop
+          key={apiBase}
+          apiBase={apiBase}
+          active={tab === "desktop"}
+        />
+      </PageTabPanel>
+    </ClaudePage>
   );
 }

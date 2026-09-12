@@ -1,7 +1,15 @@
+import { Bug } from "lucide-react";
 import type { Virtualizer } from "@tanstack/react-virtual";
 import { useI18n } from "../i18n/shared";
 import type { DebugLogEntry, LogStream } from "./debug-shared";
 import { formatLogTime } from "./debug-shared";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../components/primitives/empty";
 
 export function DebugLogViewer({
   debug,
@@ -24,29 +32,39 @@ export function DebugLogViewer({
 
   if (!streamEnabled) {
     return (
-      <div className="empty">
-        <div className="font-semibold" style={{ marginBottom: 6 }}>{t("debug.emptyTitle")}</div>
-        <div className="muted text-control" style={{ maxWidth: 560, marginInline: "auto" }}>{t("debug.empty")}</div>
-      </div>
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <Bug aria-hidden />
+          </EmptyMedia>
+          <EmptyTitle>{t("debug.emptyTitle")}</EmptyTitle>
+          <EmptyDescription>{t("debug.empty")}</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     );
   }
 
   if (entries.length === 0) {
     return (
-      <div className="empty">
-        <div className="font-semibold" style={{ marginBottom: 6 }}>{t("debug.noLinesTitle")}</div>
-        <div className="muted text-control" style={{ maxWidth: 560, marginInline: "auto" }}>{t(`debug.noLines.${stream}`)}</div>
-      </div>
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <Bug aria-hidden />
+          </EmptyMedia>
+          <EmptyTitle>{t("debug.noLinesTitle")}</EmptyTitle>
+          <EmptyDescription>{t(`debug.noLines.${stream}`)}</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     );
   }
 
   return (
     <div
       ref={scrollContainerRef}
-      className="log-detail-json"
-      style={{ maxHeight: "calc(100vh - 280px)", overflow: "auto" }}
+      className="log-detail-json debug-log-viewer"
     >
       <div
+        className="debug-log-virtual"
         style={{
           position: "relative",
           height: lineVirtualizer.getTotalSize(),

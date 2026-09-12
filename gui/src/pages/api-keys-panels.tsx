@@ -8,11 +8,12 @@ import {
   type ExternalModelRow,
 } from "../api-access-models";
 import {
-  formatCreatedDate,
   type ApiEndpointInfo,
   type ApiKeyEntry,
   type ModelTestState,
 } from "./api-keys-utils";
+import { DataList, DataRow } from "../components/primitives/data-list";
+import { Timestamp } from "../components/primitives/timestamp";
 
 function EndpointUrl({ url }: { url: string }) {
   return (
@@ -159,33 +160,26 @@ export function ApiKeysEndpointsPanel({
   claudeCodeEnabled: boolean;
 }) {
   const { t } = useI18n();
+  const rows: { label: string; url: string }[] = [
+    { label: t("api.baseUrl"), url: endpoints.baseUrl },
+    { label: t("api.responsesEndpoint"), url: endpoints.responses },
+    { label: t("api.chatCompletionsEndpoint"), url: endpoints.chatCompletions },
+    ...(claudeCodeEnabled
+      ? [{ label: t("api.messagesEndpoint"), url: endpoints.messages }]
+      : []),
+    { label: t("api.modelsEndpoint"), url: endpoints.models },
+  ];
   return (
     <div className="panel api-panel">
       <h3 className="panel-title">{t("api.endpointsTitle")}</h3>
-      <div className="api-endpoints">
-        <div>
-          <span className="muted small">{t("api.baseUrl")}</span>
-          <EndpointUrl url={endpoints.baseUrl} />
-        </div>
-        <div>
-          <span className="muted small">{t("api.responsesEndpoint")}</span>
-          <EndpointUrl url={endpoints.responses} />
-        </div>
-        <div>
-          <span className="muted small">{t("api.chatCompletionsEndpoint")}</span>
-          <EndpointUrl url={endpoints.chatCompletions} />
-        </div>
-        {claudeCodeEnabled && (
-          <div>
-            <span className="muted small">{t("api.messagesEndpoint")}</span>
-            <EndpointUrl url={endpoints.messages} />
-          </div>
-        )}
-        <div>
-          <span className="muted small">{t("api.modelsEndpoint")}</span>
-          <EndpointUrl url={endpoints.models} />
-        </div>
-      </div>
+      <DataList className="api-endpoints api-endpoints-dl">
+        {rows.map(({ label, url }) => (
+          <DataRow key={label} className="data-row">
+            <span className="data-row-label">{label}</span>
+            <EndpointUrl url={url} />
+          </DataRow>
+        ))}
+      </DataList>
       <p className="muted small">{t("api.endpointNote")}</p>
       <details className="awi-inline-fold">
         <summary>{t("api.authTitle")}</summary>
@@ -287,32 +281,33 @@ export function ApiKeysManagePanel({
           {keysLoading ? (
             <div className="api-active-keys-skeleton" role="status" aria-label={t("common.loading")} />
           ) : keys.length > 0 ? (
-            <div className="tbl-wrap">
-              <table className="tbl">
-                <thead>
-                  <tr><th>{t("api.colName")}</th><th>{t("api.colKey")}</th><th>{t("api.colCreated")}</th><th></th></tr>
-                </thead>
-                <tbody>
-                  {keys.map(k => (
-                    <tr key={k.id}>
-                      <td>{k.name}</td>
-                      <td><code>{k.prefix}</code></td>
-                      <td>{formatCreatedDate(k.createdAt, localeTag)}</td>
-                      <td>
-                        {confirmDelete === k.id ? (
-                          <span className="api-actions">
-                            <button type="button" className="btn btn-sm btn-danger" onClick={() => onDelete(k.id)}>{t("api.confirm")}</button>
-                            <button type="button" className="btn btn-sm btn-ghost" onClick={onCancelDelete}>{t("common.cancel")}</button>
-                          </span>
-                        ) : (
-                          <button type="button" className="btn btn-sm btn-ghost" aria-label={t("api.deleteAria")} onClick={() => onConfirmDelete(k.id)}><IconX /></button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ul className="api-key-cards ocx-reveal-list">
+              {keys.map(k => (
+                <li key={k.id} className="api-key-card">
+                  <div className="api-key-card__main">
+                    <span className="api-key-card__name">{k.name}</span>
+                    <code className="api-key-card__prefix">{k.prefix}</code>
+                  </div>
+                  <span className="api-key-card__meta">
+                    <Timestamp
+                      value={new Date(k.createdAt)}
+                      locale={localeTag ?? "en-US"}
+                      options={{ dateStyle: "medium", timeStyle: "short" }}
+                    />
+                  </span>
+                  <span className="api-key-card__actions">
+                    {confirmDelete === k.id ? (
+                      <span className="api-actions">
+                        <button type="button" className="btn btn-sm btn-danger" onClick={() => onDelete(k.id)}>{t("api.confirm")}</button>
+                        <button type="button" className="btn btn-sm btn-ghost" onClick={onCancelDelete}>{t("common.cancel")}</button>
+                      </span>
+                    ) : (
+                      <button type="button" className="btn btn-danger btn-sm" aria-label={t("api.deleteAria")} onClick={() => onConfirmDelete(k.id)}><IconX /></button>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
           ) : keysLoadFailed ? (
             <p className="muted">{t("api.keysLoadFailed")}</p>
           ) : (

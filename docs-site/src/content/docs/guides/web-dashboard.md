@@ -72,6 +72,23 @@ Cost values in **Logs** and **Usage** are API list-price equivalents calculated 
 They are not billing receipts or evidence of an actual charge; subscription usage or provider credits
 may apply instead.
 
+### Keyboard navigation
+
+In the provider catalog and combo editor, press **Tab** to focus the selected tab,
+then **Left/Right Arrow** to select an adjacent tab (wrapping at either end).
+**Home/End** select the first/last tab. Selection moves focus and opens that panel;
+**Tab** continues to the next control. Provider settings retain their existing
+unsaved-change confirmation when switching tabs.
+
+### Sub-navigation and motion
+
+Each workspace shows its sections as a segmented rail under the main navigation;
+the active segment is marked with a sliding pill and `aria-current="page"`. Pointer
+selection animates the pill briefly, keyboard selection moves it instantly, and
+page content fades in once per route change. When your system has
+**Reduce motion** enabled, the dashboard renders every state immediately with no
+movement or delay.
+
 ## Model visibility
 
 ### Catalog workspace

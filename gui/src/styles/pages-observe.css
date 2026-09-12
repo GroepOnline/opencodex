@@ -1,0 +1,431 @@
+/* Page-level finishing for the observe slice (dashboard, usage, traffic, logs,
+   debug, startup, settings). Loaded after ocx-system.css. */
+
+/* ---------------------------------------------------------------------------
+   Text readings must not inherit the 26px numeric grammar
+   --------------------------------------------------------------------------- */
+.ocx-workspace .stat.stat--text .value,
+.ocx-workspace .stat.stat--text .stat-value,
+.ocx-workspace .startup-state-grid .stat.stat--text .value {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  font-variant-numeric: normal;
+}
+
+/* Status dot used by the dashboard runtime strip (primitive has no system CSS). */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+.status-dot[data-tone="success"] {
+  background: var(--green);
+}
+.status-dot[data-tone="warning"] {
+  background: var(--amber);
+}
+.status-dot[data-tone="error"] {
+  background: var(--red);
+}
+.status-dot[data-tone="neutral"] {
+  background: var(--muted);
+}
+
+/* ---------------------------------------------------------------------------
+   Dashboard
+   --------------------------------------------------------------------------- */
+.dashboard-workspace.ocx-page-root {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.dashboard-workspace .page-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: flex-start;
+}
+
+.dashboard-workspace .metric-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px 32px;
+}
+
+.dashboard-workspace .dash-runtime-status .stat-strip-waarde {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.dashboard-workspace .dash-runtime-cooldown {
+  color: var(--amber);
+}
+
+.dashboard-workspace .pws-dashboard-row:hover {
+  background: var(--hover);
+}
+
+.dashboard-workspace .pws-dashboard-row:active {
+  transform: scale(0.995);
+}
+
+.dashboard-workspace .panel-head .btn {
+  flex-shrink: 0;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-workspace .metric-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-workspace .metric-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Usage
+   --------------------------------------------------------------------------- */
+.usage-page .page-head {
+  align-items: flex-start;
+}
+
+.usage-page .page-head-actions {
+  padding-top: 2px;
+  align-items: flex-start;
+}
+
+.usage-page .usage-filters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.usage-page .usage-bar {
+  display: block;
+}
+
+@media (max-width: 760px) {
+  .usage-page .page-head-actions {
+    width: 100%;
+  }
+  .usage-page .usage-filters {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Traffic / Verkeer
+   --------------------------------------------------------------------------- */
+.ocx-workspace .verkeer-page .stat-strip {
+  gap: 12px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+@media (max-width: 1280px) {
+  .ocx-workspace .verkeer-page .stat-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .ocx-workspace .verkeer-page .stat-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.verkeer-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-family: var(--font-ui);
+}
+
+.verkeer-filters .usage-segmented {
+  font-family: var(--font-ui);
+}
+
+.verkeer-filters__pause {
+  margin-left: auto;
+}
+
+.verkeer-page .tbl thead th,
+.usage-page .tbl thead th,
+.logs-page .tbl thead th {
+  font-family: var(--font-ui);
+  font-size: var(--text-micro);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.verkeer-page .tbl tbody tr:active td,
+.usage-page .tbl tbody tr:active td,
+.logs-page .tbl tbody tr:active td {
+  background: var(--raised);
+}
+
+.verkeer-disclosure {
+  margin-top: var(--section-gap);
+}
+
+.verkeer-disclosure .ocx-group-body {
+  padding: 0 14px 14px;
+}
+
+.verkeer-disclosure .ocx-group:not(.collapsed) .ocx-group-body {
+  animation: ocx-rise var(--motion-normal) var(--ease-out) both;
+}
+
+.verkeer-disclosure .ocx-group .ocx-chevron {
+  transition: transform var(--motion-normal) var(--ease-spring);
+  transform: rotate(0deg);
+}
+
+.verkeer-disclosure .ocx-group:not(.collapsed) .ocx-chevron {
+  transform: rotate(90deg);
+}
+
+.verkeer-disclosure .ocx-group-body .panel {
+  margin-top: 12px;
+}
+
+.verkeer-disclosure .ocx-group-body .panel + .panel {
+  margin-top: 16px;
+}
+
+/* ---------------------------------------------------------------------------
+   Logs
+   --------------------------------------------------------------------------- */
+.logs-page .logs-toolbar {
+  font-family: var(--font-ui);
+}
+
+.logs-page .tbl tbody tr {
+  transition: background var(--motion-fast) var(--ease-out);
+}
+
+.logs-page .tbl tbody tr:hover td {
+  background: var(--hover);
+}
+
+.logs-page .tbl tbody tr:active td {
+  background: var(--raised);
+}
+
+/* ---------------------------------------------------------------------------
+   Debug
+   --------------------------------------------------------------------------- */
+.debug-page .debug-settings-card {
+  margin-bottom: 16px;
+  padding: 16px 18px;
+}
+
+.debug-page .debug-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.debug-page .debug-flag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.debug-page .debug-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 220px;
+}
+
+.debug-page .debug-stream-row {
+  display: inline-flex;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.debug-page .debug-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.debug-page .debug-header-actions--embedded {
+  width: 100%;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
+.debug-page .debug-follow {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.debug-log-viewer {
+  max-height: calc(100vh - 280px);
+  overflow: auto;
+}
+
+/* ---------------------------------------------------------------------------
+   Startup / System
+   --------------------------------------------------------------------------- */
+.startup-page .startup-state-grid {
+  margin-bottom: var(--section-gap);
+}
+
+.startup-page .startup-detail-row {
+  min-height: 44px;
+}
+
+.startup-page .startup-detail-actions {
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.startup-page .startup-recovery .ocx-chevron {
+  transition: transform var(--motion-normal) var(--ease-spring);
+  transform: rotate(0deg);
+}
+
+.startup-page .startup-recovery:not(.collapsed) .ocx-chevron {
+  transform: rotate(90deg);
+}
+
+.startup-page .startup-recovery:not(.collapsed) .ocx-group-body {
+  animation: ocx-rise var(--motion-normal) var(--ease-out) both;
+}
+
+.startup-page .startup-recovery .ocx-group-body {
+  padding: 0 14px 14px;
+}
+
+.startup-page .mem-card {
+  margin-bottom: 24px;
+}
+.startup-page .mem-card .panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.startup-page .mem-card-subhead {
+  margin: 14px 0 6px;
+}
+.startup-page .mem-card-watchdog {
+  margin-top: 16px;
+}
+.startup-page .mem-card-details-body > .muted.text-control {
+  margin: 8px 0 10px;
+}
+.startup-page .mem-card-error {
+  color: var(--red);
+}
+
+.startup-page .mem-card-details summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.startup-page .mem-card-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.startup-page .mem-card-details .ocx-chevron {
+  transition: transform var(--motion-normal) var(--ease-spring);
+  transform: rotate(0deg);
+}
+
+.startup-page .mem-card-details[open] .ocx-chevron {
+  transform: rotate(90deg);
+}
+
+.startup-page .mem-card-details[open] .mem-card-details-body {
+  animation: ocx-rise var(--motion-normal) var(--ease-out) both;
+}
+
+.startup-page .mem-card-restart {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ---------------------------------------------------------------------------
+   Settings sheet rows
+   --------------------------------------------------------------------------- */
+.setting-row {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.setting-row + .setting-row {
+  border-top: 1px solid var(--border-soft);
+}
+
+.setting-row > :last-child {
+  flex-shrink: 0;
+}
+
+.settings-sheet-body .sheet-section {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  align-items: center;
+  min-height: 44px;
+  column-gap: 16px;
+}
+
+.settings-sheet-body .sheet-section .sheet-label {
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Reduced motion
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-workspace .pws-dashboard-row:active,
+  .verkeer-disclosure .ocx-group:not(.collapsed) .ocx-group-body,
+  .verkeer-disclosure .ocx-group .ocx-chevron,
+  .startup-page .startup-recovery .ocx-chevron,
+  .startup-page .startup-recovery:not(.collapsed) .ocx-group-body,
+  .startup-page .mem-card-details .ocx-chevron,
+  .startup-page .mem-card-details[open] .mem-card-details-body,
+  .logs-page .tbl tbody tr {
+    animation: none;
+    transition: none;
+    transform: none;
+  }
+}

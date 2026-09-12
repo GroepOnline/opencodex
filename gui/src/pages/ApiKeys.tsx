@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Notice } from "../ui";
 import { useI18n, LOCALES } from "../i18n/shared";
+import { PageHeader, PageSubtitle } from "../components/primitives/page-header";
 import { readJsonIfOk, readJsonOrThrow } from "../fetch-json";
 import {
   classifyExternalModel,
@@ -8,7 +9,10 @@ import {
   externalModelId,
   type ExternalModelRow,
 } from "../api-access-models";
-import { readSessionListCache, writeSessionListCache } from "../session-list-cache";
+import {
+  readSessionListCache,
+  writeSessionListCache,
+} from "../session-list-cache";
 import ApiKeysWorkspace from "../components/apikeys-workspace/ApiKeysWorkspace";
 import {
   DEFAULT_ENDPOINTS,
@@ -44,38 +48,45 @@ type CachedKeysShape = {
  * GUI holds a management session, not a data-plane key; the caller then falls back
  * to the management catalog below.
  */
-async function fetchPublicModelRows(apiBase: string): Promise<ExternalModelRow[] | null> {
+async function fetchPublicModelRows(
+  apiBase: string,
+): Promise<ExternalModelRow[] | null> {
   try {
     const res = await fetch(`${apiBase}/v1/models`);
     if (!res.ok) return null;
-    const data = await res.json() as unknown;
+    const data = (await res.json()) as unknown;
     const rawRows = Array.isArray(data)
       ? data
-      : (typeof data === "object" && data !== null && Array.isArray((data as { data?: unknown }).data)
+      : typeof data === "object" &&
+          data !== null &&
+          Array.isArray((data as { data?: unknown }).data)
         ? (data as { data: unknown[] }).data
-        : null);
+        : null;
     if (!rawRows) return null;
     return rawRows
-      .filter((row): row is { id: string; owned_by?: string } => (
-        typeof row === "object"
-        && row !== null
-        && typeof (row as { id?: unknown }).id === "string"
-      ))
-      .map(row => classifyExternalModel(row));
+      .filter(
+        (row): row is { id: string; owned_by?: string } =>
+          typeof row === "object" &&
+          row !== null &&
+          typeof (row as { id?: unknown }).id === "string",
+      )
+      .map((row) => classifyExternalModel(row));
   } catch {
     return null;
   }
 }
 
 /** Management catalog fallback: session-authenticated, filtered to callable rows. */
-async function fetchAdminModelRows(apiBase: string): Promise<ExternalModelRow[] | null> {
+async function fetchAdminModelRows(
+  apiBase: string,
+): Promise<ExternalModelRow[] | null> {
   try {
     const res = await fetch(`${apiBase}/api/models`);
     if (!res.ok) return null;
-    const data = await res.json() as unknown;
+    const data = (await res.json()) as unknown;
     if (!Array.isArray(data)) return null;
     return data
-      .map(row => externalModelFromAdminRow(row))
+      .map((row) => externalModelFromAdminRow(row))
       .filter((row): row is ExternalModelRow => row !== null);
   } catch {
     return null;
@@ -97,26 +108,32 @@ function seedEndpointsFromApiBase(apiBase: string): ApiEndpointInfo {
 
 export default function ApiKeys({ apiBase }: { apiBase: string }) {
   const { t, locale } = useI18n();
-  const localeTag = LOCALES.find(l => l.code === locale)?.htmlLang;
+  const localeTag = LOCALES.find((l) => l.code === locale)?.htmlLang;
   const keysCacheKey = `ocx.apikeys.list.v1:${apiBase}`;
   const modelsCacheKey = `ocx.apikeys.models.v1:${apiBase}`;
   const cachedKeys = readSessionListCache<CachedKeysShape>(keysCacheKey);
   const cachedModels = readSessionListCache<ExternalModelRow[]>(modelsCacheKey);
   const hasModelsCacheRef = useRef(Boolean(cachedModels));
   const [keys, setKeys] = useState<ApiKeyEntry[]>(() => cachedKeys?.keys ?? []);
-  const [endpoints, setEndpoints] = useState<ApiEndpointInfo>(() =>
-    cachedKeys?.endpoints ?? seedEndpointsFromApiBase(apiBase),
+  const [endpoints, setEndpoints] = useState<ApiEndpointInfo>(
+    () => cachedKeys?.endpoints ?? seedEndpointsFromApiBase(apiBase),
   );
-  const [claudeCodeEnabled, setClaudeCodeEnabled] = useState(() => cachedKeys?.claudeCodeEnabled ?? true);
+  const [claudeCodeEnabled, setClaudeCodeEnabled] = useState(
+    () => cachedKeys?.claudeCodeEnabled ?? true,
+  );
   const [keysLoading, setKeysLoading] = useState(() => !cachedKeys);
   const [keysLoadFailed, setKeysLoadFailed] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [models, setModels] = useState<ExternalModelRow[]>(() => cachedModels ?? []);
+  const [models, setModels] = useState<ExternalModelRow[]>(
+    () => cachedModels ?? [],
+  );
   const [modelsLoading, setModelsLoading] = useState(() => !cachedModels);
   const [modelsLoadFailed, setModelsLoadFailed] = useState(false);
   const [modelQuery, setModelQuery] = useState("");
   const [copiedModelId, setCopiedModelId] = useState<string | null>(null);
-  const [modelTests, setModelTests] = useState<Record<string, { state: ModelTestState; detail?: string }>>({});
+  const [modelTests, setModelTests] = useState<
+    Record<string, { state: ModelTestState; detail?: string }>
+  >({});
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
@@ -136,8 +153,12 @@ export default function ApiKeys({ apiBase }: { apiBase: string }) {
       const nextKeys = data.keys ?? [];
       const nextEndpoints = {
         baseUrl: data.baseUrl ?? derived.baseUrl,
-        responses: data.responsesEndpoint ?? data.endpoint ?? DEFAULT_ENDPOINTS.responses,
-        chatCompletions: data.chatCompletionsEndpoint ?? derived.chatCompletions,
+        responses:
+          data.responsesEndpoint ??
+          data.endpoint ??
+          DEFAULT_ENDPOINTS.responses,
+        chatCompletions:
+          data.chatCompletionsEndpoint ?? derived.chatCompletions,
         messages: data.messagesEndpoint ?? derived.messages,
         models: data.modelsEndpoint ?? derived.models,
       };
@@ -163,13 +184,17 @@ export default function ApiKeys({ apiBase }: { apiBase: string }) {
     if (!hasModelsCacheRef.current) setModelsLoading(true);
     setModelsLoadFailed(false);
     try {
-      const rawRows = (await fetchPublicModelRows(apiBase)) ?? (await fetchAdminModelRows(apiBase));
+      const rawRows =
+        (await fetchPublicModelRows(apiBase)) ??
+        (await fetchAdminModelRows(apiBase));
       if (!rawRows) {
         if (!hasModelsCacheRef.current) setModels([]);
         setModelsLoadFailed(true);
         return;
       }
-      const rows = rawRows.toSorted((a, b) => externalModelId(a).localeCompare(externalModelId(b)));
+      const rows = rawRows.toSorted((a, b) =>
+        externalModelId(a).localeCompare(externalModelId(b)),
+      );
       setModels(rows);
       hasModelsCacheRef.current = true;
       writeSessionListCache(modelsCacheKey, rows);
@@ -193,11 +218,13 @@ export default function ApiKeys({ apiBase }: { apiBase: string }) {
   const filteredModels = useMemo(() => {
     const query = modelQuery.trim().toLowerCase();
     if (!query) return models;
-    return models.filter(model => {
+    return models.filter((model) => {
       const id = externalModelId(model).toLowerCase();
-      return id.includes(query)
-        || model.displayName.toLowerCase().includes(query)
-        || model.provider.toLowerCase().includes(query);
+      return (
+        id.includes(query) ||
+        model.displayName.toLowerCase().includes(query) ||
+        model.provider.toLowerCase().includes(query)
+      );
     });
   }, [modelQuery, models]);
 
@@ -213,7 +240,10 @@ export default function ApiKeys({ apiBase }: { apiBase: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: effectiveName || "default" }),
       });
-      const data = await readJsonOrThrow<CreateKeyResponse>(res, t("api.createFailed"));
+      const data = await readJsonOrThrow<CreateKeyResponse>(
+        res,
+        t("api.createFailed"),
+      );
       if (typeof data?.key !== "string" || data.key.length === 0) {
         setActionError(t("api.createFailed"));
         return false;
@@ -261,7 +291,11 @@ export default function ApiKeys({ apiBase }: { apiBase: string }) {
     try {
       await navigator.clipboard.writeText(modelId);
       setCopiedModelId(modelId);
-      window.setTimeout(() => setCopiedModelId(current => (current === modelId ? null : current)), 2000);
+      window.setTimeout(
+        () =>
+          setCopiedModelId((current) => (current === modelId ? null : current)),
+        2000,
+      );
     } catch {
       /* clipboard unavailable */
     }
@@ -282,7 +316,10 @@ export default function ApiKeys({ apiBase }: { apiBase: string }) {
 
   const testModel = async (model: ExternalModelRow) => {
     const modelId = externalModelId(model);
-    setModelTests(current => ({ ...current, [modelId]: { state: "testing" } }));
+    setModelTests((current) => ({
+      ...current,
+      [modelId]: { state: "testing" },
+    }));
     try {
       const res = await fetch(endpoints.chatCompletions, {
         method: "POST",
@@ -296,17 +333,23 @@ export default function ApiKeys({ apiBase }: { apiBase: string }) {
       });
       if (!res.ok) {
         const detail = await res.text();
-        setModelTests(current => ({
+        setModelTests((current) => ({
           ...current,
-          [modelId]: { state: "error", detail: detail.slice(0, 160) || String(res.status) },
+          [modelId]: {
+            state: "error",
+            detail: detail.slice(0, 160) || String(res.status),
+          },
         }));
         return;
       }
-      setModelTests(current => ({ ...current, [modelId]: { state: "ok" } }));
+      setModelTests((current) => ({ ...current, [modelId]: { state: "ok" } }));
     } catch (error) {
-      setModelTests(current => ({
+      setModelTests((current) => ({
         ...current,
-        [modelId]: { state: "error", detail: error instanceof Error ? error.message : t("api.testFailed") },
+        [modelId]: {
+          state: "error",
+          detail: error instanceof Error ? error.message : t("api.testFailed"),
+        },
       }));
     }
   };
@@ -315,17 +358,15 @@ export default function ApiKeys({ apiBase }: { apiBase: string }) {
   const subtitleParts = t("api.subtitle").split(/\{authHeader\}|\{altHeader\}/);
 
   return (
-    <section className="api-page">
-      <div className="page-head">
-        <h2>{t("api.title")}</h2>
-      </div>
-      <p className="page-sub">
+    <section className="api-page ocx-page-root">
+      <PageHeader title={t("api.title")} />
+      <PageSubtitle>
         {subtitleParts[0]}
         <code>Authorization: Bearer ocx_...</code>
         {subtitleParts[1]}
         <code>x-opencodex-api-key</code>
         {subtitleParts[2]}
-      </p>
+      </PageSubtitle>
 
       {(keysLoadFailed || actionError) && (
         <Notice tone="err">{actionError ?? t("api.keysLoadFailed")}</Notice>
@@ -349,13 +390,21 @@ export default function ApiKeys({ apiBase }: { apiBase: string }) {
         copiedModelId={copiedModelId}
         modelTests={modelTests}
         onNewNameChange={setNewName}
-        onCreate={() => { void handleCreate(); }}
+        onCreate={() => {
+          void handleCreate();
+        }}
         onDismissNewKey={() => setNewKey(null)}
         onCopyKey={copyKey}
-        onDelete={(id) => { void handleDelete(id); }}
+        onDelete={(id) => {
+          void handleDelete(id);
+        }}
         onModelQueryChange={setModelQuery}
-        onCopyModelId={(modelId) => { void copyModelId(modelId); }}
-        onTestModel={(model) => { void testModel(model); }}
+        onCopyModelId={(modelId) => {
+          void copyModelId(modelId);
+        }}
+        onTestModel={(model) => {
+          void testModel(model);
+        }}
         sourceLabel={sourceLabel}
         protocolLabel={protocolLabel}
       />

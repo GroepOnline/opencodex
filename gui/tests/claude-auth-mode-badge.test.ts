@@ -43,7 +43,7 @@ test("the auth-mode select offers auto first", async () => {
 // The GUI must not re-introduce the coercion that killed auto on load.
 test("the page maps an unknown authMode to auto, never to subscription", async () => {
   const page = await read("../src/pages/ClaudeCode.tsx");
-  expect(page).toContain('r.authMode === "proxy" || r.authMode === "subscription" ? r.authMode : "auto"');
+  expect(page).toMatch(/r\.authMode === "proxy" \|\| r\.authMode === "subscription"\s*\? r\.authMode\s*: "auto"/);
 });
 
 test("the reason line renders every origin plus the admission note", async () => {

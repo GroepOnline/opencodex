@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import ComboWorkspace from "../components/ComboWorkspace";
 import {
   type ComboItem,
@@ -48,6 +48,37 @@ function responseSucceeded(data: unknown): boolean {
 
 function seedCombos(cacheKey: string): CachedCombosPage | null {
   return readSessionListCache<CachedCombosPage>(cacheKey);
+}
+
+function CombosWorkspaceShell({ children }: { children: ReactNode }) {
+  return <div className="combos-workspace-shell ocx-page-root">{children}</div>;
+}
+
+function CombosWorkspaceBanner({ status, ok }: { status: string; ok: boolean }) {
+  if (!status) return null;
+  return (
+    <div className="combos-workspace-shell-banner">
+      <Notice tone={ok ? "ok" : "err"}>{status}</Notice>
+    </div>
+  );
+}
+
+function CombosWorkspaceLoadingStatus({
+  status,
+  loadingLabel,
+}: {
+  status: string;
+  loadingLabel: string;
+}) {
+  return (
+    <div className="muted" style={{ padding: "24px 20px" }} role="status">
+      {status ? null : loadingLabel}
+    </div>
+  );
+}
+
+function CombosWorkspaceBody({ children }: { children: ReactNode }) {
+  return <div className="combos-workspace-shell-body">{children}</div>;
 }
 
 export default function Combos({ apiBase }: { apiBase: string }) {
@@ -240,27 +271,17 @@ export default function Combos({ apiBase }: { apiBase: string }) {
   // sets it when the cache is empty, so reading the ref during render was redundant.
   if (loading) {
     return (
-      <div className="combos-workspace-shell">
-        {status && (
-          <div className="combos-workspace-shell-banner">
-            <Notice tone={statusOk ? "ok" : "err"}>{status}</Notice>
-          </div>
-        )}
-        <div className="muted" style={{ padding: "24px 20px" }} role="status">
-          {status ? null : t("cws.loading")}
-        </div>
-      </div>
+      <CombosWorkspaceShell>
+        <CombosWorkspaceBanner status={status} ok={statusOk} />
+        <CombosWorkspaceLoadingStatus status={status} loadingLabel={t("cws.loading")} />
+      </CombosWorkspaceShell>
     );
   }
 
   return (
-    <div className="combos-workspace-shell">
-      {status && (
-        <div className="combos-workspace-shell-banner">
-          <Notice tone={statusOk ? "ok" : "err"}>{status}</Notice>
-        </div>
-      )}
-      <div className="combos-workspace-shell-body">
+    <CombosWorkspaceShell>
+      <CombosWorkspaceBanner status={status} ok={statusOk} />
+      <CombosWorkspaceBody>
         <ComboWorkspace
           combos={combos}
           providers={providers}
@@ -275,7 +296,7 @@ export default function Combos({ apiBase }: { apiBase: string }) {
           onCloseAdd={() => setAdding(false)}
           onCreated={() => { void fetchAll(); }}
         />
-      </div>
-    </div>
+      </CombosWorkspaceBody>
+    </CombosWorkspaceShell>
   );
 }

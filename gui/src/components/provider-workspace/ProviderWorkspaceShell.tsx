@@ -29,6 +29,14 @@ import { RailRow } from "./ProviderRail";
 import type { PricingFilter, ProviderModelUsageRow, ProviderUsageTotals, StatusFilter, TypeFilter } from "./types";
 import ProviderOverviewDashboard from "./ProviderOverviewDashboard";
 import ProviderJsonEditor, { type JsonEditorState } from "./ProviderJsonEditor";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../primitives/empty";
 
 export type AddProviderIntent = { tier?: "accounts" | "free" | "paid"; custom?: boolean };
 
@@ -439,7 +447,7 @@ export default function ProviderWorkspaceShell({
           </div>
         </div>
         <div
-          className="pws-rail-list"
+          className="pws-rail-list ocx-reveal-list"
           role="listbox"
           aria-label={t("pws.providersAria")}
           onKeyDown={e => {
@@ -459,15 +467,22 @@ export default function ProviderWorkspaceShell({
           }}
         >
           {Object.values(filteredSections).every(items => items.length === 0) && (
-            <span className="muted pws-rail-empty" role="status">
-              {search ? t("pws.noSearchResults") : filterActive ? t("pws.noMatchFilters") : t("pws.noProvidersConfigured")}
-            </span>
+            <Empty className="pws-rail-empty-state" role="status">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <IconSearch aria-hidden="true" />
+                </EmptyMedia>
+                <EmptyTitle>
+                  {search ? t("pws.noSearchResults") : filterActive ? t("pws.noMatchFilters") : t("pws.noProvidersConfigured")}
+                </EmptyTitle>
+              </EmptyHeader>
+            </Empty>
           )}
           {railGroups.map(({ id, label, count, ariaLabel, items }) => {
             if (items.length === 0) return null;
             return (
               <div key={id} className="pws-rail-group" role="group" aria-label={ariaLabel}>
-                <div className="pws-rail-group-head" aria-hidden="true">
+                <div className="pws-rail-group-head caps" aria-hidden="true">
                   <span className="pws-rail-group-label">{label}</span>
                   <span className="pws-rail-group-count">{count}</span>
                 </div>
@@ -572,28 +587,34 @@ export default function ProviderWorkspaceShell({
 function WorkspaceEmptyState({ onAddProvider }: { onAddProvider: (intent?: AddProviderIntent) => void }) {
   const t = useT();
   return (
-    <div className="pws-empty-root">
-      <div className="pws-empty-hero">
-        <div aria-hidden="true"><IconBoxes style={{ width: 64, height: 64 }} /></div>
-        <h2>{t("pws.connectFirst")}</h2>
+    <Empty className="pws-empty-root">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <IconBoxes aria-hidden="true" />
+        </EmptyMedia>
+        <EmptyTitle>
+          <h2>{t("pws.connectFirst")}</h2>
+        </EmptyTitle>
+      </EmptyHeader>
+      <EmptyContent>
         <div className="pws-empty-tiles">
           <button type="button" className="pws-empty-tile" onClick={() => onAddProvider({ tier: "free" })}>
             <span aria-hidden="true"><IconGlobe width={18} height={18} /></span>
             <span className="pws-empty-tile-label">{t("pws.empty.browseFree")}</span>
-            <span className="pws-empty-tile-desc muted">{t("pws.empty.browseFreeDesc")}</span>
+            <EmptyDescription>{t("pws.empty.browseFreeDesc")}</EmptyDescription>
           </button>
           <button type="button" className="pws-empty-tile" onClick={() => onAddProvider({ tier: "accounts" })}>
             <span aria-hidden="true"><IconLock width={18} height={18} /></span>
             <span className="pws-empty-tile-label">{t("pws.empty.connectAccount")}</span>
-            <span className="pws-empty-tile-desc muted">{t("pws.empty.connectAccountDesc")}</span>
+            <EmptyDescription>{t("pws.empty.connectAccountDesc")}</EmptyDescription>
           </button>
           <button type="button" className="pws-empty-tile" onClick={() => onAddProvider({ custom: true })}>
             <span aria-hidden="true"><IconKey width={18} height={18} /></span>
             <span className="pws-empty-tile-label">{t("pws.empty.addEndpoint")}</span>
-            <span className="pws-empty-tile-desc muted">{t("pws.empty.addEndpointDesc")}</span>
+            <EmptyDescription>{t("pws.empty.addEndpointDesc")}</EmptyDescription>
           </button>
         </div>
-      </div>
-    </div>
+      </EmptyContent>
+    </Empty>
   );
 }

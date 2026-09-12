@@ -13,11 +13,18 @@ import {
   IconChevron,
   IconInfo,
   IconPlus,
+  IconSearch,
   IconX,
 } from "../../icons";
 import { useT } from "../../i18n/shared";
 import { Trans } from "../../i18n/provider";
 import { modelLabel } from "../../model-display";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../primitives/empty";
 
 export interface SubagentsWorkspaceProps {
   available: string[];
@@ -66,7 +73,8 @@ export default function SubagentsWorkspace({
             <span className="subagents-workspace-rail-title">{t("nav.subagents")}</span>
             <span className="subagents-workspace-rail-count">{chosen.length}/{FEATURED_MAX}</span>
           </div>
-          <div className="subagents-workspace-rail-search">
+          <div className="subagents-workspace-rail-search configure-workspace-search">
+            <IconSearch className="configure-workspace-search-icon" aria-hidden="true" />
             <input
               className="input"
               value={query}
@@ -75,9 +83,16 @@ export default function SubagentsWorkspace({
               aria-label={t("sub.search")}
             />
           </div>
-          <div className="subagents-workspace-rail-list">
+          <div className="subagents-workspace-rail-list ocx-reveal-list">
             {featuredFiltered.length === 0 && availableFiltered.length === 0 && (
-              <span className="subagents-workspace-rail-empty">{t("sub.noModels")}</span>
+              <Empty className="subagents-workspace-rail-empty">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <IconBot aria-hidden="true" />
+                  </EmptyMedia>
+                  <EmptyTitle>{t("sub.noModels")}</EmptyTitle>
+                </EmptyHeader>
+              </Empty>
             )}
             {featuredFiltered.length > 0 && (
               <div className="subagents-workspace-rail-group">
@@ -202,7 +217,14 @@ export default function SubagentsWorkspace({
               </p>
 
               {chosen.length === 0 ? (
-                <div className="swi-featured-empty">{t("sub.noneSelected")}</div>
+                <Empty className="swi-featured-empty">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <IconPlus aria-hidden="true" />
+                    </EmptyMedia>
+                    <EmptyTitle>{t("sub.noneSelected")}</EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
               ) : (
                 <div className="swi-featured-list">
                   {chosen.map((m, i) => (
