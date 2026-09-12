@@ -8,6 +8,7 @@ import {
   type ExternalModelRow,
 } from "../api-access-models";
 import {
+  formatCreatedDate,
   type ApiEndpointInfo,
   type ApiKeyEntry,
   type ModelTestState,
@@ -289,10 +290,10 @@ export function ApiKeysManagePanel({
                     <code className="api-key-card__prefix">{k.prefix}</code>
                   </div>
                   <span className="api-key-card__meta">
+                    {formatCreatedDate(k.createdAt, localeTag)}{" "}
                     <Timestamp
                       value={new Date(k.createdAt)}
                       locale={localeTag ?? "en-US"}
-                      options={{ dateStyle: "medium", timeStyle: "short" }}
                     />
                   </span>
                   <span className="api-key-card__actions">

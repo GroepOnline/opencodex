@@ -1795,7 +1795,9 @@ export default function Storage({ apiBase }: { apiBase: string }) {
           <span>
             {t("storage.snapshot.lastScan")}:{" "}
             {new Date(data.generatedAt).toLocaleDateString(locale, {
-              dateStyle: "medium",
+              year: "numeric",
+              month: "short",
+              day: "numeric",
             })}{" "}
             <Timestamp value={data.generatedAt} locale={locale} />
           </span>
