@@ -89,11 +89,11 @@ afterAll(() => {
 });
 
 async function render(children: ReactNode) {
-  const { LazyMotion, domAnimation, MotionConfig } = motion;
+  const { LazyMotion, domMax, MotionConfig } = motion;
   await act(async () => {
     root.render(
       <LanguageProvider>
-        <LazyMotion features={domAnimation} strict>
+        <LazyMotion features={domMax} strict>
           <MotionConfig reducedMotion="user">{children}</MotionConfig>
         </LazyMotion>
       </LanguageProvider>,
@@ -155,5 +155,12 @@ describe("WorkspaceSubTabs", () => {
     const indicator = host.querySelector(".sub-tab-indicator");
     expect(indicator?.getAttribute("aria-hidden")).toBe("true");
     expect(indicator?.textContent).toBe("");
+  });
+
+  test("the app shell loads layout-capable motion features so layoutId pills travel", async () => {
+    const app = await Bun.file(new URL("../src/App.tsx", import.meta.url)).text();
+    // domAnimation silently drops layout/layoutId; the shared-layout pill needs domMax.
+    expect(app).toContain("features={domMax}");
+    expect(app).not.toContain("domAnimation");
   });
 });

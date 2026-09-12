@@ -8,7 +8,7 @@ import { installApiAuthFetch } from "./api";
 import { canonicalHashFor, type View } from "./app-routing";
 import { useAppRouteState } from "./use-app-route-state";
 import { requestProxyStop } from "./stop-proxy";
-import { domAnimation, LazyMotion, MotionConfig } from "motion/react";
+import { domMax, LazyMotion, MotionConfig } from "motion/react";
 import WorkspaceNavigation, {
   type WorkspaceDestination,
 } from "./components/WorkspaceNavigation";
@@ -213,7 +213,7 @@ function DashboardShell({
 
   return (
     <MotionConfig reducedMotion="user">
-      <LazyMotion features={domAnimation} strict>
+      <LazyMotion features={domMax} strict>
         <div className="app ocx-workspace">
           <header className="topbar">
             {brand}
