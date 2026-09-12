@@ -80,6 +80,15 @@ then **Left/Right Arrow** to select an adjacent tab (wrapping at either end).
 **Tab** continues to the next control. Provider settings retain their existing
 unsaved-change confirmation when switching tabs.
 
+### Sub-navigation and motion
+
+Each workspace shows its sections as a segmented rail under the main navigation;
+the active segment is marked with a sliding pill and `aria-current="page"`. Pointer
+selection animates the pill briefly, keyboard selection moves it instantly, and
+page content fades in once per route change. When your system has
+**Reduce motion** enabled, the dashboard renders every state immediately with no
+movement or delay.
+
 ## Model visibility
 
 ### Catalog workspace
