@@ -28,7 +28,6 @@ import { Panel, PanelHeader } from "../components/primitives/panel";
 import { Modal, ModalCard } from "../components/primitives/modal";
 import {
   Empty,
-  EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
@@ -1828,7 +1827,6 @@ export default function Storage({ apiBase }: { apiBase: string }) {
               <MatrixMark />
             </EmptyMedia>
             <EmptyTitle>{t("storage.empty")}</EmptyTitle>
-            <EmptyDescription>{t("storage.subtitle")}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       ) : (

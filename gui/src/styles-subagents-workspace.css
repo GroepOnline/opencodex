@@ -214,14 +214,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.ocx-workspace .subagents-workspace-rail-empty {
-  padding: 24px 12px;
-  margin: 4px 0;
-}
-
-.ocx-workspace .subagents-workspace-rail-empty [data-slot="empty-title"] {
-  font-size: var(--text-control);
-}
 
 /* ── Main ─────────────────────────────────────────────── */
 
@@ -315,10 +307,6 @@
   flex-shrink: 0;
 }
 
-.ocx-workspace .swi-featured-empty {
-  padding: 32px 16px;
-  margin-bottom: 18px;
-}
 
 .swi-save-row {
   display: flex;

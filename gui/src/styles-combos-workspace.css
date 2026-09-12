@@ -395,12 +395,6 @@
   gap: 2px;
 }
 
-.combos-rail-empty {
-  margin: 12px;
-  border: 1px dashed var(--border-soft);
-  border-radius: var(--card-radius);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .combos-workspace-rail-row {
     transition: none;

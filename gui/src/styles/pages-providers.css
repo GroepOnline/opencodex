@@ -126,12 +126,41 @@
 /* ---------------------------------------------------------------------------
    Claude: Code/Desktop PageTabs strip above the nested Code/Desktop header
    --------------------------------------------------------------------------- */
-.claude-page > .claude-tabs {
-  margin-bottom: var(--space-3);
+/* Code/Desktop sits under the segmented sub-navigation, so it takes the
+   underline page-tab grammar instead of a second pill rail. */
+.ocx-workspace .claude-page > .claude-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 20px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border-soft);
+  border-radius: 0;
+  background: transparent;
 }
 
-.claude-page .claude-tabs .page-tab-indicator {
-  display: none;
+.ocx-workspace .claude-page .claude-tabs button {
+  min-width: 0;
+  min-height: 0;
+  padding: 9px 12px;
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: var(--text-control);
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.ocx-workspace .claude-page .claude-tabs button:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+
+.ocx-workspace .claude-page .claude-tabs button.active {
+  color: var(--text);
+  font-weight: 600;
+  background: transparent;
+  box-shadow: none;
 }
 
 .claude-settings-panel {
