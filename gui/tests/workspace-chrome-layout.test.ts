@@ -44,7 +44,7 @@ test("workspace chrome composes from PageHeader and PageSubtitle", async () => {
   expect(debug).toContain("export function DebugPageHeader");
   expect(debug).toContain("<PageHeader");
   expect(debug).toContain("<PageSubtitle");
-  expect(debug).toContain('className="row"');
+  expect(debug).toMatch(/className="row[ "]/);
   expect(debug).not.toContain('embedded ? "row" : "page-head"');
   expect(debug).not.toContain('className="page-head"');
 });
