@@ -14,8 +14,13 @@ function isDisabledDynamicAgentModel(config: OcxConfig, model: string): boolean 
     return disabled.some(stored => stored === model || slugEquals(stored, "openai", model));
   }
   const slash = model.indexOf("/");
-  return disabled.some(stored =>
-    stored === model || slugEquals(stored, model.slice(0, slash), model.slice(slash + 1)));
+  return disabled.some(stored => {
+    if (stored === model) return true;
+    const storedSlash = stored.indexOf("/");
+    return storedSlash > 0
+      && stored.slice(0, storedSlash) === model.slice(0, slash)
+      && slugEquals(stored, model.slice(0, slash), model.slice(slash + 1));
+  });
 }
 
 function dynamicAgentTargets(config: OcxConfig): OcxComboTarget[] {
@@ -29,9 +34,10 @@ function dynamicAgentTargets(config: OcxConfig): OcxComboTarget[] {
     if (targets.length >= 5) break;
     if (typeof entry !== "string") continue;
     const model = entry.trim();
-    if (!model || isDisabledDynamicAgentModel(config, model) || resolveComboId(config, model)) continue;
+    if (!model || resolveComboId(config, model)) continue;
     const slash = model.indexOf("/");
     if (slash < 0) {
+      if (isDisabledDynamicAgentModel(config, model)) continue;
       const nativeProvider = config.providers.openai;
       if (
         !SUPPORTED_NATIVE_OPENAI_SLUGS.has(model)
@@ -56,6 +62,10 @@ function dynamicAgentTargets(config: OcxConfig): OcxComboTarget[] {
       !knownModels.includes(model)
       && !knownModels.includes(requestedModel)
       && !knownModels.includes(decodedModel)
+    ) continue;
+    if (
+      isDisabledDynamicAgentModel(config, model)
+      || isDisabledDynamicAgentModel(config, `${providerName}/${decodedModel}`)
     ) continue;
     try {
       const route = routeModel(config, model);

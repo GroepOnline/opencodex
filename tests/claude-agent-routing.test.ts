@@ -98,6 +98,21 @@ describe("Claude dynamic agent route", () => {
     });
   });
 
+  test("drops a picker-encoded roster model disabled by its canonical id", () => {
+    const config = cfg({
+      providers: {
+        ...cfg().providers,
+        nvidia: provider(["moonshotai/kimi-k2.6"]),
+      },
+      disabledModels: ["nvidia/moonshotai/kimi-k2.6"],
+      subagentModels: ["nvidia/moonshotai-kimi-k2.6", "b/beta"],
+    });
+    const dynamic = buildClaudeDynamicAgentRoute(config);
+    expect(dynamic).not.toBeNull();
+    expect(getCombo(dynamic!.config, dynamic!.model.slice("combo/".length))?.targets)
+      .toEqual([{ provider: "b", model: "beta", weight: 1 }]);
+  });
+
   test("collects up to five usable unique targets after filtering the roster", () => {
     const dynamic = buildClaudeDynamicAgentRoute(cfg({
       providers: {
