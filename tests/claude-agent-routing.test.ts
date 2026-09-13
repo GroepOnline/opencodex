@@ -83,7 +83,8 @@ describe("Claude dynamic agent route", () => {
 
   test("drops disabled, stale, nested-combo, and duplicate routes without discovering extras", () => {
     const config = cfg({
-      subagentModels: ["off/offline", "missing/model", "a/alpha", "a/alpha", "combo/elsewhere"],
+      disabledModels: ["a/alpha"],
+      subagentModels: ["off/offline", "missing/model", "a/alpha", "a/alpha", "b/beta", "combo/elsewhere"],
       combos: {
         elsewhere: { targets: [{ provider: "b", model: "beta" }] },
       },
@@ -91,7 +92,7 @@ describe("Claude dynamic agent route", () => {
     const dynamic = buildClaudeDynamicAgentRoute(config);
     expect(dynamic).not.toBeNull();
     const combo = getCombo(dynamic!.config, dynamic!.model.slice("combo/".length));
-    expect(combo?.targets).toEqual([{ provider: "a", model: "alpha", weight: 1 }]);
+    expect(combo?.targets).toEqual([{ provider: "b", model: "beta", weight: 1 }]);
     expect(config.combos).toEqual({
       elsewhere: { targets: [{ provider: "b", model: "beta" }] },
     });

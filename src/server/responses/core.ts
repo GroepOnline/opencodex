@@ -559,6 +559,8 @@ export interface HandleResponsesOptions {
   persistConfig?: OcxConfig;
   /** Internal: reserve stickyLimit=1 round-robin targets before concurrent I/O completes. */
   rotateComboOnPick?: boolean;
+  /** Internal: decorate the request only after a combo target is selected. */
+  onComboTargetSelected?: (route: RouteResult, headers: Headers) => void;
 }
 
 
@@ -1027,6 +1029,7 @@ export async function handleComboResponses(
       supportedLadderFor({ provider: targetRoute.provider, modelId: targetRoute.modelId }),
     );
     const childHeaders = buildComboChildHeaders(req.headers);
+    options.onComboTargetSelected?.(targetRoute, childHeaders);
     const childRequest = new Request(req.url, {
       method: req.method,
       headers: childHeaders,

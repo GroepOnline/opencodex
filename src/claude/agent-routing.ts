@@ -2,12 +2,22 @@ import { DEFAULT_SUBAGENT_MODELS, hasOwnProvider } from "../config";
 import { comboModelId, resolveComboId } from "../combos";
 import { SUPPORTED_NATIVE_OPENAI_SLUGS } from "../codex/catalog/metadata";
 import { knownModelIdsForProvider, routeModel } from "../router";
-import { decodeRoutedModelId } from "../providers/slug-codec";
+import { decodeRoutedModelId, slugEquals } from "../providers/slug-codec";
 import type { OcxComboTarget, OcxConfig } from "../types";
 
 export const CLAUDE_DYNAMIC_AGENT_ROUTE = "dynamic";
 // Reserved request-local id. This value is never persisted or exposed by management APIs.
 const DYNAMIC_COMBO_ID = "claude-agent-dynamic-v1";
+
+function isDisabledDynamicAgentModel(config: OcxConfig, model: string): boolean {
+  const disabled = config.disabledModels ?? [];
+  if (!model.includes("/")) {
+    return disabled.some(stored => stored === model || slugEquals(stored, "openai", model));
+  }
+  const slash = model.indexOf("/");
+  return disabled.some(stored =>
+    stored === model || slugEquals(stored, model.slice(0, slash), model.slice(slash + 1)));
+}
 
 function dynamicAgentTargets(config: OcxConfig): OcxComboTarget[] {
   const roster = config.subagentModels === undefined
@@ -20,7 +30,7 @@ function dynamicAgentTargets(config: OcxConfig): OcxComboTarget[] {
     if (targets.length >= 5) break;
     if (typeof entry !== "string") continue;
     const model = entry.trim();
-    if (!model || resolveComboId(config, model)) continue;
+    if (!model || isDisabledDynamicAgentModel(config, model) || resolveComboId(config, model)) continue;
     const slash = model.indexOf("/");
     if (slash < 0) {
       const nativeProvider = config.providers.openai;

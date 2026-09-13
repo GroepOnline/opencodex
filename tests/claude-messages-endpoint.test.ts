@@ -1331,12 +1331,18 @@ test("concurrent dynamic generated agents reserve different round-robin backends
   }
 });
 
-test("dynamic routing strips ChatGPT-only unsupported sampling after target selection", async () => {
-  const captured: Array<Record<string, unknown>> = [];
+test("dynamic routing applies target-specific native request policy after selection", async () => {
+  const captured: Array<{
+    body: Record<string, unknown>;
+    headers: Record<string, string>;
+  }> = [];
   const upstream = Bun.serve({
     port: 0,
     async fetch(req) {
-      captured.push(await req.json() as Record<string, unknown>);
+      captured.push({
+        body: await req.json() as Record<string, unknown>,
+        headers: Object.fromEntries(req.headers),
+      });
       const frames = [
         `event: response.created\ndata: ${JSON.stringify({ response: { id: "resp_dynamic", status: "in_progress" } })}\n\n`,
         `event: response.output_text.delta\ndata: ${JSON.stringify({ delta: "ok" })}\n\n`,
@@ -1390,15 +1396,22 @@ test("dynamic routing strips ChatGPT-only unsupported sampling after target sele
       stop_sequences: ["stop"],
       stream: true,
       system: "<!-- ocx-route: dynamic -->",
+      metadata: {
+        user_id: "user_abc123_account__session_11111111-2222-3333-4444-555555555555",
+      },
       messages: [{ role: "user", content: "hi" }],
     });
     expect(response.status).toBe(200);
     await response.text();
     expect(captured).toHaveLength(1);
-    expect(captured[0]!.max_output_tokens).toBeUndefined();
-    expect(captured[0]!.temperature).toBeUndefined();
-    expect(captured[0]!.top_p).toBeUndefined();
-    expect(captured[0]!.stop).toBeUndefined();
+    expect(captured[0]!.body.max_output_tokens).toBeUndefined();
+    expect(captured[0]!.body.temperature).toBeUndefined();
+    expect(captured[0]!.body.top_p).toBeUndefined();
+    expect(captured[0]!.body.stop).toBeUndefined();
+    expect(captured[0]!.body.prompt_cache_key).toMatch(/^[0-9a-f]{32}$/);
+    expect(captured[0]!.headers.session_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
   } finally {
     server.stop(true);
     upstream.stop(true);

@@ -29,6 +29,7 @@ import { clearableDeadline, idleDeadline } from "../lib/abort";
 import { estimateTokens } from "../lib/token-estimate";
 import { routeModel } from "../router";
 import { resolveWireProtocolOverride } from "./adapter-resolve";
+import { isCanonicalOpenAiForwardProvider } from "../providers/openai-tiers";
 import type { OcxConfig } from "../types";
 import { readJsonRequestBody } from "./request-decompress";
 import { addFinalRequestLog, httpStatusForTerminalStatus, recordFirstOutput, type RequestLogContext, type RequestLogEntry } from "./request-log";
@@ -109,6 +110,14 @@ export function shouldReplayNativePassthroughOverload(config: OcxConfig): boolea
 function uuidFromHex(hex32: string): string {
   const h = (hex32 + "0".repeat(32)).slice(0, 32);
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+
+function estimateClaudeInputTokens(body: Rec, requestedModel: string): number {
+  const parts: string[] = [];
+  if (body.system !== undefined) parts.push(typeof body.system === "string" ? body.system : JSON.stringify(body.system));
+  if (body.messages !== undefined) parts.push(JSON.stringify(body.messages));
+  if (body.tools !== undefined) parts.push(JSON.stringify(body.tools));
+  return Math.max(1, estimateTokens(parts.join("\n"), requestedModel));
 }
 
 function anthropicUsageToOcx(usage: Rec | undefined): { inputTokens: number; outputTokens: number; cachedInputTokens?: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number } | undefined {
@@ -652,12 +661,7 @@ export async function handleClaudeMessages(
       // accurate-usage adapters — the request-log merge is max(reported, estimate) and
       // would overwrite real usage (audit 133 R1#7).
       if (route.provider.adapter === "cursor" || route.provider.adapter === "kiro") {
-        const raw = anthropicBody as Rec;
-        const parts: string[] = [];
-        if (raw.system !== undefined) parts.push(typeof raw.system === "string" ? raw.system : JSON.stringify(raw.system));
-        if (raw.messages !== undefined) parts.push(JSON.stringify(raw.messages));
-        if (raw.tools !== undefined) parts.push(JSON.stringify(raw.tools));
-        logCtx.usageLogInputTokens = Math.max(1, estimateTokens(parts.join("\n"), requestedModel));
+        logCtx.usageLogInputTokens = estimateClaudeInputTokens(anthropicBody as Rec, requestedModel);
       }
       // Effort safety valve (devlog 136 B6, audit 139 R2#2): opus-shaped aliases make
       // every routed model look like a reasoning model to Claude clients, so a forced
@@ -730,6 +734,22 @@ export async function handleClaudeMessages(
     persistConfig: config,
     promptCacheKeyIsSharedCohort: cacheKeySource === "system",
     rotateComboOnPick: routeOverride === CLAUDE_DYNAMIC_AGENT_ROUTE,
+    ...(routeOverride === CLAUDE_DYNAMIC_AGENT_ROUTE ? {
+      onComboTargetSelected: (route, childHeaders) => {
+        if (route.provider.adapter === "cursor" || route.provider.adapter === "kiro") {
+          logCtx.usageLogInputTokens = estimateClaudeInputTokens(anthropicBody as Rec, requestedModel);
+        }
+        if (
+          isCanonicalOpenAiForwardProvider(route.provider)
+          && cacheKeySource === "metadata"
+          && !childHeaders.has("session_id")
+          && typeof internalBody.prompt_cache_key === "string"
+        ) {
+          childHeaders.set("session_id", uuidFromHex(internalBody.prompt_cache_key));
+        }
+      },
+    } : {}),
+
     ...(logIds ? { onFirstOutput: () => recordFirstOutput(logCtx, logIds.start) } : {}),
     onNativePassthroughTerminal: status => finalizeNativeLog(httpStatusForTerminalStatus(status), { terminalStatus: status, closeReason: "terminal" }),
     onNativePassthroughCancel: () => finalizeNativeLog(499, { closeReason: "client_cancel" }),
