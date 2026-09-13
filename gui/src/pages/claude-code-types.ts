@@ -48,6 +48,7 @@ export interface ClaudeCodeState {
   autoContext: boolean;
   autoCompactWindow: number | null;
   injectAgents: boolean;
+  agentRouting: "pinned" | "dynamic";
   smallFastModel: string;
   tierModels?: { haiku?: string };
   effectiveModelEnv: Record<string, string>;

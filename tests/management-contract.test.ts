@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { saveConfig } from "../src/config";
+import { CONFIG_SCHEMA_VERSION, saveConfig } from "../src/config";
 import { MANAGEMENT_CONTRACT_VERSION } from "../src/server/contract-version";
 import {
   resetBuildInfoCacheForTests,
@@ -72,7 +72,9 @@ describe("GET /api/provenance", () => {
       expect(body.built_at).toBe("2026-08-23T10:00:00.000Z");
       expect(body.release).toBe("v1.2.2");
       expect(body.gui_version).toBe("1.2.2");
-      expect(body.schema_version).toBeNull();
+      // saveConfig stamps the first persisted schema generation; provenance reports
+      // the effective datastore contract rather than whether the fixture supplied it.
+      expect(body.schema_version).toBe(String(CONFIG_SCHEMA_VERSION));
       expect(body.management).toBeUndefined();
       expect(body.runtime).toMatchObject({
         service: "opencodex",

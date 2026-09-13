@@ -99,9 +99,17 @@ cause delegation. The TOML edit owns only marker-tagged values, preserves existi
 user-owned `[agents]` defaults rather than overwriting them, and rejects ambiguous table shapes
 without changing the file.
 
-Claude Code `ocx-*` agent definitions consume the same effective `claudeCode.blockedSkills` policy
-as inbound bundle elision. When the list is non-empty (default: `claude-api`), generated definitions
-whose marker-stripped model resolves to a routed id receive a preventive instruction not to invoke
+Claude Code `ocx-*` agent definitions use `claudeCode.agentRouting` to choose their shape. The
+backward-compatible default, `pinned`, emits one definition per featured route plus `ocx-self`.
+`dynamic` emits one `ocx-auto` definition with placeholder frontmatter `model: "haiku"` and the
+`ocx-route: dynamic` directive. At request time the proxy builds a non-persistent virtual combo from
+at most the first five usable `subagentModels`, rotates with `round-robin` and `stickyLimit: 1`, and
+uses the combo engine's bounded failover. The configured roster remains an explicit allowlist:
+unknown, disabled, duplicate, stale, and nested-combo entries do not enter the virtual route.
+
+Generated definitions consume the same effective `claudeCode.blockedSkills` policy as inbound bundle
+elision. When the list is non-empty (default: `claude-api`), definitions whose marker-stripped model
+resolves to a routed id, plus the dynamic definition, receive a preventive instruction not to invoke
 those skills. Direct `provider/model` selectors are routed even when their inbound resolution is
 identity. The only unguarded `ocx-self` case is an identity-resolved `claude|anthropic` model while
 native passthrough is enabled; `modelMap` claims and `nativePassthrough:false` restore the guard. The

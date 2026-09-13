@@ -61,6 +61,7 @@ export default function ClaudeCode({ apiBase }: { apiBase: string }) {
         autoContext: r.autoContext !== false,
         autoCompactWindow: r.autoCompactWindow ?? null,
         injectAgents: r.injectAgents !== false,
+        agentRouting: r.agentRouting === "dynamic" ? "dynamic" : "pinned",
         effectiveModelEnv: r.effectiveModelEnv ?? {},
       };
       const nextRows = Object.entries(r.modelMap ?? {}).map(([from, to]) => ({ id: newClientId(), from, to: String(to) }));
@@ -122,6 +123,7 @@ export default function ClaudeCode({ apiBase }: { apiBase: string }) {
           autoContext: state.autoContext,
           autoCompactWindow: state.autoCompactWindow,
           injectAgents: state.injectAgents,
+          agentRouting: state.agentRouting,
           smallFastModel: state.smallFastModel,
           modelMap,
           webSearchSidecar: serializeSidecarOverride(state.webSearchSidecar),

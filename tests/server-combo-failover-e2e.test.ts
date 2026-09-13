@@ -29,6 +29,7 @@ import { handleManagementAPI } from "../src/server/management-api";
 import { saveCredential } from "../src/oauth/store";
 import { XAI_OAUTH_DISCOVERY_URL } from "../src/oauth/xai";
 import { XAI_GROK_CLI_BASE_URL } from "../src/providers/xai-transport";
+import { clearProviderFamilyCooldownsForTests } from "../src/providers/provider-cooldown";
 import type { AdapterEvent, OcxConfig, OcxProviderConfig } from "../src/types";
 import {
   installIsolatedCodexHome,
@@ -163,6 +164,7 @@ beforeEach(() => {
   process.env.OPENCODEX_HOME = testDir;
   clearComboSelectionState();
   clearComboTargetCooldowns();
+  clearProviderFamilyCooldownsForTests();
   clearCodexUpstreamHealth();
   customRunTurn = undefined;
   customFetchResponse = undefined;
@@ -186,6 +188,7 @@ afterEach(async () => {
   if (testDir) rmSync(testDir, { recursive: true, force: true });
   clearComboSelectionState();
   clearComboTargetCooldowns();
+  clearProviderFamilyCooldownsForTests();
   clearCodexUpstreamHealth();
   clearRequestLogsForTests();
 });
@@ -1540,6 +1543,59 @@ describe("server combo failover 030 activation matrix", () => {
     expect((await post(config)).status).toBe(200);
     expect(aHits).toBe(2);
     expect(bHits).toBe(2);
+  });
+
+  test("serializes one Azure recovery probe and leaves non-Azure fallback available", async () => {
+    const t0 = Date.parse("2026-07-18T00:00:00.000Z");
+    let now = t0;
+    Date.now = () => now;
+    let azureHits = 0;
+    let recoveryStarted!: () => void;
+    const started = new Promise<void>(resolve => { recoveryStarted = resolve; });
+    let releaseRecovery!: () => void;
+    const recoveryGate = new Promise<void>(resolve => { releaseRecovery = resolve; });
+    const azure = serve(async () => {
+      azureHits += 1;
+      if (azureHits === 1) {
+        return Response.json(
+          { error: { message: "rate limited" } },
+          { status: 429, headers: { "retry-after": "60" } },
+        );
+      }
+      recoveryStarted();
+      await recoveryGate;
+      return chatSuccess("azure recovered", "m1");
+    });
+    let backupHits = 0;
+    const backup = serve(() => {
+      backupHits += 1;
+      return chatSuccess("non-Azure backup", "m2");
+    });
+    const config = comboConfig({
+      "azure-a": provider("openai-chat", baseUrl(azure), "key-a"),
+      backup: provider("openai-chat", baseUrl(backup), "key-b"),
+    }, [
+      { provider: "azure-a", model: "m1" },
+      { provider: "backup", model: "m2" },
+    ]);
+
+    expect((await post(config)).status).toBe(200);
+    expect(azureHits).toBe(1);
+    expect(backupHits).toBe(1);
+
+    clearComboSelectionState();
+    clearComboTargetCooldowns();
+    now = t0 + 60_000;
+    const recovery = post(config);
+    await started;
+    const concurrent = await post(config);
+    expect(concurrent.status).toBe(200);
+    expect(JSON.stringify(await concurrent.json())).toContain("non-Azure backup");
+    expect(azureHits).toBe(2);
+    expect(backupHits).toBe(2);
+
+    releaseRecovery();
+    expect((await recovery).status).toBe(200);
   });
 
   test("fresh child reparsing recomputes vision and effort per target", async () => {

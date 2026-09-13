@@ -206,7 +206,12 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "claude.pageTitle": "Claude Code",
   "claude.enabledLabel": "Claude-verbinding",
   "claude.enabledHint": "Uit = Claude Code kan deze proxy niet gebruiken.",
-  "claude.authMode": "Auth-modus",
+  "claude.authMode": "Authenticatiemodus",
+  "claude.agentRouting": "Routering van gegenereerde agents",
+  "claude.agentRoutingDesc":
+    "Dynamisch maakt één backendneutrale agent; OpenCodex kiest per opdracht uit de goedgekeurde subagentlijst met begrensde fallback. Vast maakt één agent per route.",
+  "claude.agentRoutingDynamic": "Dynamisch via OpenCodex",
+  "claude.agentRoutingPinned": "Vast per route",
   "claude.quickstart": "Aan de slag",
   "claude.aliases": "Beschikbare modellen",
   "claude.tabCode": "Code",

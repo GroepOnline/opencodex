@@ -26,9 +26,11 @@ export interface ClaudeAgentDef {
   file: string;
   name: string;
   model: string;
+  route: string;
   description: string;
   effort?: NonNullable<OcxConfig["claudeCode"]>["subagentEffort"];
   blockedSkills: readonly string[];
+  dynamic?: boolean;
 }
 
 const OWNED_PREFIX = "ocx-";
@@ -86,6 +88,21 @@ export function buildClaudeAgentDefs(config: OcxConfig, windows: Record<string, 
   const usedNames = new Set<string>();
   const coveredModels = new Set<string>();
 
+  if (config.claudeCode?.agentRouting === "dynamic") {
+    return [{
+      file: `${OWNED_PREFIX}auto.md`,
+      name: `${OWNED_PREFIX}auto`,
+      // The frontmatter value is only a harmless Claude Code placeholder. The
+      // system-prompt directive below is the authority at the OCX boundary.
+      model: "haiku",
+      route: "dynamic",
+      description: `Delegate work through opencodex dynamic routing. OCX selects an available backend from the configured featured roster for each dispatch and applies bounded failover. ${NO_MODEL_ARG}`,
+      effort: config.claudeCode?.subagentEffort,
+      blockedSkills,
+      dynamic: true,
+    }];
+  }
+
   const push = (name: string, alias: string, description: string) => {
     // Effective model value: [1m] marking follows the same predicate as env slots.
     const model = withOneMillionMarker(alias, windows, auto) ?? alias;
@@ -99,6 +116,7 @@ export function buildClaudeAgentDefs(config: OcxConfig, windows: Record<string, 
       file: `${OWNED_PREFIX}${unique}.md`,
       name: `${OWNED_PREFIX}${unique}`,
       model,
+      route: model,
       description,
       effort: config.claudeCode?.subagentEffort,
       blockedSkills: blockedSkillsFor(model),
@@ -125,6 +143,7 @@ export function buildClaudeAgentDefs(config: OcxConfig, windows: Record<string, 
       file: `${OWNED_PREFIX}self.md`,
       name: `${OWNED_PREFIX}self`,
       model: marked,
+      route: marked,
       description: `Self-clone: delegate to your default main model (${marked}), synced from the /model picker at launch. ${NO_MODEL_ARG}`,
       effort: config.claudeCode?.subagentEffort,
       blockedSkills: blockedSkillsFor(marked),
@@ -160,13 +179,19 @@ function renderAgentDef(def: ClaudeAgentDef): string {
     // ids in agent frontmatter (falls back to sonnet — live-proven), but the agent
     // BODY rides the subagent's system prompt verbatim. The proxy detects this
     // directive and overrides the request model before routing/passthrough.
-    `<!-- ocx-route: ${def.model} -->`,
+    `<!-- ocx-route: ${def.route} -->`,
     ...(def.effort ? [`<!-- ocx-effort: ${def.effort} -->`] : []),
     "",
-    `You are a delegated worker running on \`${def.model}\` through the local opencodex proxy.`,
-    `IDENTITY: your ACTUAL underlying model is \`${def.model}\` — the opencodex proxy routes this`,
-    "session there regardless of what model name the Claude Code harness displays or claims.",
-    "If asked which model you are, answer with the id above; do not guess a Claude model name.",
+    ...(def.dynamic ? [
+      "You are a delegated worker routed dynamically through the local opencodex proxy.",
+      "OCX selects the actual backend from the operator-approved featured roster for this dispatch.",
+      "Do not infer your backend model from Claude Code's placeholder model label.",
+    ] : [
+      `You are a delegated worker running on \`${def.model}\` through the local opencodex proxy.`,
+      `IDENTITY: your ACTUAL underlying model is \`${def.model}\` — the opencodex proxy routes this`,
+      "session there regardless of what model name the Claude Code harness displays or claims.",
+      "If asked which model you are, answer with the id above; do not guess a Claude model name.",
+    ]),
     ...blockedSkillGuard,
     "",
     "Complete the dispatched task directly and report results concisely. This file is",

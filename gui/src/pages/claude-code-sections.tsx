@@ -153,6 +153,32 @@ export function ClaudeCodeSettingsCard({
         <SettingToggle label={t("claude.injectAgents")} checked={state.injectAgents} onChange={injectAgents => onStateChange({ ...state, injectAgents })} />
       </div>
 
+      {state.injectAgents && (
+        <div className="setting-row">
+          <div className="setting-label">
+            <span className="title">{t("claude.agentRouting")}</span>
+            <span className="desc">{t("claude.agentRoutingDesc")}</span>
+          </div>
+          <div className="setting-controls">
+            <Select
+              value={state.agentRouting}
+              options={[
+                { value: "dynamic", label: t("claude.agentRoutingDynamic") },
+                { value: "pinned", label: t("claude.agentRoutingPinned") },
+              ]}
+              onChange={agentRouting => onStateChange({
+                ...state,
+                agentRouting: agentRouting as ClaudeCodeState["agentRouting"],
+              })}
+              label={t("claude.agentRouting")}
+              style={{ minWidth: 220 }}
+              align="right"
+              portal
+            />
+          </div>
+        </div>
+      )}
+
       {(["webSearchSidecar", "visionSidecar"] as const).map(key => {
         const override = state[key];
         const titleKey = key === "webSearchSidecar" ? "claude.webSearchSidecar" : "claude.visionSidecar";
