@@ -5,7 +5,6 @@ import { knownModelIdsForProvider, routeModel } from "../router";
 import { decodeRoutedModelId, slugEquals } from "../providers/slug-codec";
 import type { OcxComboTarget, OcxConfig } from "../types";
 
-export const CLAUDE_DYNAMIC_AGENT_ROUTE = "dynamic";
 // Reserved request-local id. This value is never persisted or exposed by management APIs.
 const DYNAMIC_COMBO_ID = "claude-agent-dynamic-v1";
 

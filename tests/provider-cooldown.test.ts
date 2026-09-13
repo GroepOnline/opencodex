@@ -45,6 +45,8 @@ describe("provider-family cooldown", () => {
   test("classifies Azure by name, adapter, or canonical hostname", () => {
     const cfg = config();
     expect(providerCooldownFamily("azure-a", cfg.providers["azure-a"])).toBe("azure:first.services.ai.azure.com");
+    expect(providerCooldownFamily("azure-alias", cfg.providers.other)).toBe("azure:example.test");
+    expect(providerCooldownFamily("foundry", cfg.providers["azure-a"])).toBe("azure:first.services.ai.azure.com");
     expect(providerCooldownFamily("direct", cfg.providers.direct)).toBe("azure:example.test");
     expect(providerCooldownFamily("other", cfg.providers.other)).toBeNull();
   });

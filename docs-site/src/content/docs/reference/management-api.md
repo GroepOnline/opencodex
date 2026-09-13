@@ -133,3 +133,18 @@ User-defined combos are never reordered — only automatic fallback chains.
 
 `PUT /api/router` with body `{ "mode": "auto" }` or `{ "mode": "off" }` toggles
 the router live and persists the choice to the config file.
+
+## Claude Code agent routing
+
+`GET /api/claude-code` returns the effective Claude Code configuration. Its
+`agentRouting` value defaults to `"pinned"` when no override is stored.
+
+`PUT /api/claude-code` accepts `{ "agentRouting": "pinned" }` or
+`{ "agentRouting": "dynamic" }`. `dynamic` persists the override; `pinned`
+removes it so the default applies again. Other values return HTTP 400. A
+successful update returns `{ "ok": true, "enabled": boolean, "warnings": string[] }`;
+use GET to read the resulting effective `agentRouting` value.
+
+In dynamic mode, the configured `subagentModels` roster is an explicit
+allowlist. Unknown, disabled, duplicate, stale, and nested-combo entries do not
+enter the request-local dynamic route.

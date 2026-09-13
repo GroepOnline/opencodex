@@ -275,11 +275,13 @@ describe("native compact unsupported fallback", () => {
     });
   }
 
-  test("preserves a model-level 404 without synthetic fallback", async () => {
+  test.each(["model not found", "route not found for model gpt-x", "model gpt-x not implemented"])(
+    "preserves a model-level 404 without synthetic fallback: %s",
+    async message => {
     let calls = 0;
     globalThis.fetch = (async () => {
       calls += 1;
-      return Response.json({ error: { message: "model not found" } }, { status: 404 });
+      return Response.json({ error: { message } }, { status: 404 });
     }) as typeof fetch;
 
     const config = {
@@ -301,8 +303,10 @@ describe("native compact unsupported fallback", () => {
     );
 
     expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({ error: { message } });
     expect(calls).toBe(1);
-  });
+    },
+  );
 
   test("rejects an empty synthetic result after native compact is unsupported", async () => {
     globalThis.fetch = (async (input: string | URL | Request) => {

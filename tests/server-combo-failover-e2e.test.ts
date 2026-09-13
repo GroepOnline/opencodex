@@ -1595,7 +1595,10 @@ describe("server combo failover 030 activation matrix", () => {
     expect(backupHits).toBe(2);
 
     releaseRecovery();
-    expect((await recovery).status).toBe(200);
+    const recoveryResponse = await recovery;
+    expect(recoveryResponse.status).toBe(200);
+    expect(JSON.stringify(await recoveryResponse.json())).toContain("azure recovered");
+    expect(backupHits).toBe(2);
   });
 
   test("fresh child reparsing recomputes vision and effort per target", async () => {

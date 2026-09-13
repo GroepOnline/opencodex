@@ -102,7 +102,7 @@ without changing the file.
 Claude Code `ocx-*` agent definitions use `claudeCode.agentRouting` to choose their shape. The
 backward-compatible default, `pinned`, emits one definition per featured route plus `ocx-self`.
 `dynamic` emits one `ocx-auto` definition with placeholder frontmatter `model: "haiku"` and the
-`ocx-route: dynamic` directive. At request time the proxy builds a non-persistent virtual combo from
+`ocx-route-mode: dynamic` directive. At request time the proxy builds a non-persistent virtual combo from
 at most the first five usable `subagentModels`, rotates with `round-robin` and `stickyLimit: 1`, and
 uses the combo engine's bounded failover. The configured roster remains an explicit allowlist:
 unknown, disabled, duplicate, stale, and nested-combo entries do not enter the virtual route.
@@ -111,8 +111,9 @@ Generated definitions consume the same effective `claudeCode.blockedSkills` poli
 elision. When the list is non-empty (default: `claude-api`), definitions whose marker-stripped model
 resolves to a routed id, plus the dynamic definition, receive a preventive instruction not to invoke
 those skills. Direct `provider/model` selectors are routed even when their inbound resolution is
-identity. The only unguarded `ocx-self` case is an identity-resolved `claude|anthropic` model while
-native passthrough is enabled; `modelMap` claims and `nativePassthrough:false` restore the guard. The
+identity. Any pinned roster definition, including `ocx-self`, stays unguarded only for an
+identity-resolved `claude-*` or `anthropic-*` model while native passthrough is enabled; `modelMap`
+claims and `nativePassthrough:false` restore the guard. The
 guard avoids creating oversized skill messages before the proxy can intervene; inbound elision remains
 the fallback if a client still sends a blocked bundle. An explicit empty list disables both routed-model
 behaviors.

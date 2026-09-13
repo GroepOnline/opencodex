@@ -55,7 +55,6 @@ import { fetchWithResetRetry, fetchWithTransientRetry, applyUpstreamRecoveryInit
 import { ForwardAdmissionCredentialError, validateForwardAdmissionCredential } from "../auth-cors";
 import { listOpenAiForwardSidecarCandidates, resolveFirstUsableOpenAiSidecar, type ResolvedOpenAiForwardSidecar } from "../../providers/openai-sidecar";
 import {
-  isCanonicalOpenAiForwardProvider,
   supportsNativeRemoteCompactionV2,
   supportsNativeResponsesCompactEndpoint,
 } from "../../providers/openai-tiers";
@@ -168,11 +167,7 @@ async function nativeCompactEndpointUnsupported(response: Response): Promise<boo
   if (response.status !== 404) return false;
   const text = (await response.clone().text().catch(() => "")).toLowerCase();
   return text.includes("/responses/compact")
-    || text.includes("compact endpoint")
-    || text.includes("endpoint unsupported")
-    || text.includes("unsupported endpoint")
-    || text.includes("route not found")
-    || text.includes("not implemented");
+    || text.includes("compact endpoint");
 }
 
 async function runSyntheticCompact(

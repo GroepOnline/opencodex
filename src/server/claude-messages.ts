@@ -9,9 +9,9 @@
 import { FORWARD_HEADERS } from "../adapters/openai-responses";
 import { enforceAnthropicImageLimits } from "../adapters/anthropic-image-guard";
 import { normalizeAnthropicImages } from "../adapters/anthropic-image-normalize";
-import { AnthropicRequestError, anthropicToResponsesTranslation, extractOcxEffortDirective, extractOcxRouteDirective, resolveInboundModel, type ClaudeCacheKeySource } from "../claude/inbound";
+import { AnthropicRequestError, anthropicToResponsesTranslation, extractOcxEffortDirective, extractOcxRouteDirective, extractOcxRouteModeDirective, resolveInboundModel, type ClaudeCacheKeySource } from "../claude/inbound";
 import { resolveDesktop3pAlias } from "../claude/desktop-3p";
-import { buildClaudeDynamicAgentRoute, CLAUDE_DYNAMIC_AGENT_ROUTE } from "../claude/agent-routing";
+import { buildClaudeDynamicAgentRoute } from "../claude/agent-routing";
 import { recordDesktopRequest } from "../claude/desktop-health";
 import { stripOneMillionMarker } from "../claude/context-windows";
 import { captureClaudeInbound } from "../claude/inbound-debug";
@@ -551,6 +551,7 @@ export async function handleClaudeMessages(
   let cacheKeySource: ClaudeCacheKeySource = null;
   let effortOverride: ReturnType<typeof extractOcxEffortDirective> = null;
   let routeOverride: ReturnType<typeof extractOcxRouteDirective> = null;
+  let dynamicRoute = false;
   try {
     anthropicBody = await readAnthropicBody(req);
     if (isRec(anthropicBody) && typeof anthropicBody.stream === "boolean") {
@@ -568,8 +569,9 @@ export async function handleClaudeMessages(
     // these subagent turns under a fallback claude model id.
     if (isRec(anthropicBody)) {
       routeOverride = extractOcxRouteDirective(anthropicBody);
-      if (routeOverride && typeof anthropicBody.model === "string") {
-        if (routeOverride === CLAUDE_DYNAMIC_AGENT_ROUTE) {
+      dynamicRoute = extractOcxRouteModeDirective(anthropicBody) === "dynamic";
+      if (typeof anthropicBody.model === "string") {
+        if (dynamicRoute) {
           if (config.claudeCode?.agentRouting !== "dynamic") {
             throw new AnthropicRequestError("Dynamic OCX agent routing is not enabled");
           }
@@ -579,7 +581,7 @@ export async function handleClaudeMessages(
           }
           requestConfig = dynamic.config;
           anthropicBody.model = dynamic.model;
-        } else {
+        } else if (routeOverride) {
           anthropicBody.model = stripOneMillionMarker(routeOverride);
         }
         effortOverride = extractOcxEffortDirective(anthropicBody);
@@ -642,7 +644,7 @@ export async function handleClaudeMessages(
   // Dynamic dispatch must leave the virtual combo untouched until the executor
   // atomically reserves a target. A preflight routeModel() call would mutate the
   // process-wide round-robin state before any request actually starts.
-  if (routeOverride !== CLAUDE_DYNAMIC_AGENT_ROUTE) {
+  if (!dynamicRoute) {
     try {
       const route = routeModel(requestConfig, internalBody.model as string);
       // Settle the wire once so the sampling decision below reads the effective
@@ -733,8 +735,8 @@ export async function handleClaudeMessages(
     abortSignal: req.signal,
     persistConfig: config,
     promptCacheKeyIsSharedCohort: cacheKeySource === "system",
-    rotateComboOnPick: routeOverride === CLAUDE_DYNAMIC_AGENT_ROUTE,
-    ...(routeOverride === CLAUDE_DYNAMIC_AGENT_ROUTE ? {
+    rotateComboOnPick: dynamicRoute,
+    ...(dynamicRoute ? {
       onComboTargetSelected: (route, childHeaders) => {
         if (route.provider.adapter === "cursor" || route.provider.adapter === "kiro") {
           logCtx.usageLogInputTokens = estimateClaudeInputTokens(anthropicBody as Rec, requestedModel);
@@ -885,25 +887,25 @@ export async function handleClaudeCountTokens(req: Request, config: OcxConfig): 
     model = stripped;
     raw.model = model;
   }
-  // ocx-route override (devlog 072): validate the same dynamic lane as messages.
-  // Counting remains local, but a generated agent must not appear usable here when
-  // its actual dispatch would be rejected for a disabled or empty dynamic roster.
+  // A dynamic control marker validates the same lane as messages. Counting remains
+  // local, but a generated agent must not appear usable here when its actual dispatch
+  // would be rejected for a disabled or empty dynamic roster. A plain ocx-route is
+  // always a literal model id, including the id "dynamic".
   const countRoute = extractOcxRouteDirective(raw);
-  if (countRoute) {
-    if (countRoute === CLAUDE_DYNAMIC_AGENT_ROUTE) {
-      if (config.claudeCode?.agentRouting !== "dynamic") {
-        return anthropicErrorResponse(400, "Dynamic OCX agent routing is not enabled");
-      }
-      const dynamic = buildClaudeDynamicAgentRoute(config);
-      if (!dynamic) {
-        return anthropicErrorResponse(400, "Dynamic OCX agent routing has no usable featured models");
-      }
-      model = dynamic.model;
-    } else {
-      model = stripOneMillionMarker(countRoute);
+  const dynamicRoute = extractOcxRouteModeDirective(raw) === "dynamic";
+  if (dynamicRoute) {
+    if (config.claudeCode?.agentRouting !== "dynamic") {
+      return anthropicErrorResponse(400, "Dynamic OCX agent routing is not enabled");
     }
-    raw.model = model;
+    const dynamic = buildClaudeDynamicAgentRoute(config);
+    if (!dynamic) {
+      return anthropicErrorResponse(400, "Dynamic OCX agent routing has no usable featured models");
+    }
+    model = dynamic.model;
+  } else if (countRoute) {
+    model = stripOneMillionMarker(countRoute);
   }
+  raw.model = model;
   captureClaudeInbound("count_tokens", raw, resolveInboundModel(model, config.claudeCode), req.headers.get("anthropic-beta") ?? undefined);
   if (wantsNativePassthrough(req, config, model)) {
     const passthrough = await anthropicNativePassthrough(req, config, { model, provider: "anthropic-native", surface: "claude" }, undefined, raw, "/v1/messages/count_tokens");

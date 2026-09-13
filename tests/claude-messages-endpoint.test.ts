@@ -1160,7 +1160,7 @@ test("dynamic messages keep their virtual combo out of persistence during key fa
         model: "claude-haiku-4-5",
         max_tokens: 32,
         stream: true,
-        system: "<!-- ocx-route: dynamic -->",
+        system: "<!-- ocx-route-mode: dynamic -->",
         messages: [{ role: "user", content: "hi" }],
       }),
     });
@@ -1179,6 +1179,47 @@ test("dynamic messages keep their virtual combo out of persistence during key fa
   }
 });
 
+test("a pinned literal dynamic route remains a model id for messages and count_tokens", async () => {
+  const upstream = mockChatUpstreamCapturing();
+  const config = mockConfig(`${upstream.server.url.toString().replace(/\/$/, "")}/v1`, {
+    agentRouting: "pinned",
+  });
+  config.providers.mock.models = ["dynamic"];
+  saveConfig(config);
+  const server = startServer(0);
+  try {
+    const messages = await fetch(new URL("/v1/messages", server.url), {
+      method: "POST",
+      headers: { "content-type": "application/json", "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5",
+        max_tokens: 32,
+        stream: true,
+        system: "<!-- ocx-route: dynamic -->",
+        messages: [{ role: "user", content: "hi" }],
+      }),
+    });
+    expect(messages.status).toBe(200);
+    await messages.text();
+    expect(upstream.captured[0]?.model).toBe("dynamic");
+
+    const count = await handleClaudeCountTokens(new Request("http://localhost/v1/messages/count_tokens", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5",
+        system: "<!-- ocx-route: dynamic -->",
+        messages: [{ role: "user", content: "count me" }],
+      }),
+    }), config);
+    expect(count.status).toBe(200);
+    expect(await count.json()).toMatchObject({ input_tokens: expect.any(Number) });
+  } finally {
+    server.stop(true);
+    upstream.server.stop(true);
+  }
+});
+
 test("count_tokens validates dynamic agent routing like messages", async () => {
   const countWith = (config: OcxConfig) => handleClaudeCountTokens(new Request(
     "http://localhost/v1/messages/count_tokens",
@@ -1187,7 +1228,7 @@ test("count_tokens validates dynamic agent routing like messages", async () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         model: "claude-haiku-4-5",
-        system: "<!-- ocx-route: dynamic -->",
+        system: "<!-- ocx-route-mode: dynamic -->",
         messages: [{ role: "user", content: "count me" }],
       }),
     },
@@ -1314,7 +1355,7 @@ test("concurrent dynamic generated agents reserve different round-robin backends
       model: "claude-haiku-4-5",
       max_tokens: 64,
       stream: true,
-      system: "<!-- ocx-route: dynamic -->",
+      system: "<!-- ocx-route-mode: dynamic -->",
       messages: [{ role: "user", content: "hi" }],
     };
     const requests = [
@@ -1395,7 +1436,7 @@ test("dynamic routing applies target-specific native request policy after select
       top_p: 0.8,
       stop_sequences: ["stop"],
       stream: true,
-      system: "<!-- ocx-route: dynamic -->",
+      system: "<!-- ocx-route-mode: dynamic -->",
       metadata: {
         user_id: "user_abc123_account__session_11111111-2222-3333-4444-555555555555",
       },
@@ -1434,7 +1475,7 @@ test("dynamic routing strips effort only after selecting a definitive no-effort 
       max_tokens: 64,
       stream: true,
       system: [
-        { type: "text", text: "<!-- ocx-route: dynamic -->" },
+        { type: "text", text: "<!-- ocx-route-mode: dynamic -->" },
         { type: "text", text: "<!-- ocx-effort: xhigh -->" },
       ],
       thinking: { type: "enabled", budget_tokens: 63 },
@@ -1465,7 +1506,7 @@ test("dynamic generated agent applies its effort directive to the selected backe
       max_tokens: 32000,
       stream: true,
       system: [
-        { type: "text", text: "<!-- ocx-route: dynamic -->" },
+        { type: "text", text: "<!-- ocx-route-mode: dynamic -->" },
         { type: "text", text: "<!-- ocx-effort: xhigh -->" },
       ],
       thinking: { type: "enabled", budget_tokens: 31999 },

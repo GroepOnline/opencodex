@@ -54,16 +54,31 @@ describe("buildClaudeAgentDefs (devlog 070 + audit 071)", () => {
       file: "ocx-auto.md",
       name: "ocx-auto",
       model: "haiku",
-      route: "dynamic",
+      routeMode: "dynamic",
       dynamic: true,
     });
     syncClaudeAgentDefs(defs, dir);
     const body = readFileSync(join(dir, "agents", "ocx-auto.md"), "utf8");
-    expect(body).toContain("<!-- ocx-route: dynamic -->");
+    expect(body).toContain("<!-- ocx-route-mode: dynamic -->");
+    expect(body).not.toContain("<!-- ocx-route: dynamic -->");
     expect(body).toContain("routed dynamically through the local opencodex proxy");
     expect(body).not.toContain("mock/primary");
     expect(body).not.toContain("mock/backup");
     expect(body).not.toContain("IDENTITY: your ACTUAL underlying model");
+    expect(body).not.toContain("ACTUAL underlying model is pinned");
+    expect(body).not.toContain("remove the model from the roster to drop it");
+  });
+
+  test("pinned model id dynamic stays a literal route", () => {
+    const dir = tempDir();
+    const defs = buildClaudeAgentDefs(cfg({
+      subagentModels: [],
+      claudeCode: { agentRouting: "pinned", model: "dynamic" },
+    }), {}, dir);
+    syncClaudeAgentDefs(defs, dir);
+    const body = readFileSync(join(dir, "agents", "ocx-self.md"), "utf8");
+    expect(body).toContain("<!-- ocx-route: dynamic -->");
+    expect(body).not.toContain("ocx-route-mode");
   });
 
   test("placeholder guidance recommends haiku, never sonnet (issue #252)", () => {

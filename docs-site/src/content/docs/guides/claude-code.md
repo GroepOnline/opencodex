@@ -269,7 +269,7 @@ up to 5 models) into `~/.claude/agents/ocx-*.md`. **Agent routing** controls the
   `ocx-self` pins your `/model` picker default (falling back to `claudeCode.model`) and is omitted
   when neither exists. It does not use model inheritance.
 - **Dynamic through OpenCodex** generates exactly one `ocx-auto` agent. Its
-  `<!-- ocx-route: dynamic -->` directive makes the proxy build a request-local route from the
+  `<!-- ocx-route-mode: dynamic -->` directive makes the proxy build a request-local route from the
   first five usable `subagentModels`. OpenCodex rotates dispatches with one-request stickiness and
   bounded failover; it rejects unknown, disabled, duplicate, stale, and nested-combo entries instead
   of discovering a route outside your allowlist.

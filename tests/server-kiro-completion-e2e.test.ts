@@ -192,7 +192,7 @@ describe("Kiro completion through public server endpoints", () => {
           model: "claude-haiku-4-5",
           max_tokens: 256,
           stream: true,
-          system: "<!-- ocx-route: dynamic -->",
+          system: "<!-- ocx-route-mode: dynamic -->",
           messages: [{ role: "user", content: "Inspect the Claude task" }],
         }),
       });
