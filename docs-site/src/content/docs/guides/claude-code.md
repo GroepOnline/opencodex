@@ -263,21 +263,29 @@ When both `tierModels.haiku` and `smallFastModel` are absent, OpenCodex leaves b
 ## Roster agents (injectAgents)
 
 `ocx claude` (and the system-env daemon) syncs your featured subagent roster (Subagents tab,
-up to 5 models) plus `ocx-self` into `~/.claude/agents/ocx-*.md`.
+up to 5 models) into `~/.claude/agents/ocx-*.md`. **Agent routing** controls the generated shape:
 
-- **`ocx-self`** pins your `/model` picker default (falling back to `claudeCode.model`); omitted
-  when neither exists. It does NOT use model inheritance.
-- Each agent body contains an `<!-- ocx-route: <model> -->` directive — the proxy uses this to
-  pin the real route. The Agent tool's `model` argument is therefore inert; pass `"haiku"` as a
-  placeholder.
-- Frontmatter carries the alias; routing is directive-driven.
+- **Pinned per route** (default) generates one agent per featured model plus `ocx-self`.
+  `ocx-self` pins your `/model` picker default (falling back to `claudeCode.model`) and is omitted
+  when neither exists. It does not use model inheritance.
+- **Dynamic through OpenCodex** generates exactly one `ocx-auto` agent. Its
+  `<!-- ocx-route: dynamic -->` directive makes the proxy build a request-local route from the
+  first five usable `subagentModels`. OpenCodex rotates dispatches with one-request stickiness and
+  bounded failover; it rejects unknown, disabled, duplicate, stale, and nested-combo entries instead
+  of discovering a route outside your allowlist.
+- Dynamic frontmatter deliberately says `model: "haiku"`. That value only satisfies Claude Code's
+  custom-agent schema; inference still runs through the OpenCodex route selected by the directive.
+- In pinned mode each agent body contains `<!-- ocx-route: <model> -->`, so the Agent tool's `model`
+  argument is likewise inert; pass `"haiku"` as a placeholder.
 - Only marker-verified `ocx-*.md` files containing `generated-by: opencodex` are ever
-  overwritten or pruned; your own agents are never touched.
+  overwritten or pruned; switching modes prunes obsolete owned files, while your own agents are
+  never touched.
 - Files are atomically synced per file (write + rename).
 - `enabled: false` or `injectAgents: false` prunes all verified-owned definitions.
 - GUI PUT and roster changes resync immediately; launcher/system-env sync at launch.
 
-Dispatch: `subagent_type: "ocx-gpt-5-6-sol"`. 1M-capable targets carry `[1m]` automatically.
+Pinned dispatch: `subagent_type: "ocx-gpt-5-6-sol"`. Dynamic dispatch:
+`subagent_type: "ocx-auto"`. 1M-capable pinned targets carry `[1m]` automatically.
 
 ## Bundled-skill elision (blockedSkills)
 

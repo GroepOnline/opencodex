@@ -37,20 +37,48 @@ export function isCanonicalOpenAiForwardProvider(provider: OcxProviderConfig): b
 
 const OPENAI_API_BASE_URL = "https://api.openai.com/v1";
 
+export interface ResponsesCompactionCapabilities {
+  /** Codex remote compaction v2: `/responses` accepts `compaction_trigger`. */
+  nativeRemoteV2: boolean;
+  /** OpenAI compact v1: the dedicated `/responses/compact` endpoint exists. */
+  nativeCompactV1: boolean;
+  /** OCX can run a provider-neutral summarizer and emit an `ocx1:` envelope. */
+  synthetic: boolean;
+}
+
 /**
- * Whether this provider can serve `POST /responses/compact`. The canonical ChatGPT
- * backend can, and so can the official OpenAI API — but an arbitrary gateway that
- * merely speaks the Responses wire cannot, and calling it there fails compaction
- * with an unhelpful error instead of falling back to a routed summary (#422).
+ * Compaction capability is a backend contract, not a consequence of speaking the
+ * Responses wire. Keep the three paths explicit so routing never forwards Codex's
+ * private trigger to an arbitrary compatible gateway (#422).
  */
+export function responsesCompactionCapabilities(
+  providerName: string,
+  provider: OcxProviderConfig,
+): ResponsesCompactionCapabilities {
+  const nativeRemoteV2 = isCanonicalOpenAiForwardProvider(provider);
+  const officialOpenAiApi = providerName === OPENAI_API_PROVIDER_ID
+    && provider.adapter === "openai-responses"
+    && normalizedBaseUrl(provider.baseUrl) === OPENAI_API_BASE_URL;
+  return {
+    nativeRemoteV2,
+    nativeCompactV1: nativeRemoteV2 || officialOpenAiApi,
+    synthetic: true,
+  };
+}
+
+/** Backward-compatible predicate for the dedicated compact endpoint. */
 export function supportsNativeResponsesCompactEndpoint(
   providerName: string,
   provider: OcxProviderConfig,
 ): boolean {
-  if (isCanonicalOpenAiForwardProvider(provider)) return true;
-  return providerName === OPENAI_API_PROVIDER_ID
-    && provider.adapter === "openai-responses"
-    && normalizedBaseUrl(provider.baseUrl) === OPENAI_API_BASE_URL;
+  return responsesCompactionCapabilities(providerName, provider).nativeCompactV1;
+}
+
+export function supportsNativeRemoteCompactionV2(
+  providerName: string,
+  provider: OcxProviderConfig,
+): boolean {
+  return responsesCompactionCapabilities(providerName, provider).nativeRemoteV2;
 }
 
 export interface OpenAiTierMigrationProjection {

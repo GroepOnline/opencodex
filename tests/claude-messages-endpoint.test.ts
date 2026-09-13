@@ -5,11 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { saveConfig } from "../src/config";
 import { createAnthropicAdapter } from "../src/adapters/anthropic";
+import { clearComboSelectionState } from "../src/combos";
 import { clearableDeadline } from "../src/lib/abort";
 import type { RequestLogContext } from "../src/server/request-log";
 import { startServer } from "../src/server";
 import {
   fetchWithHeaderDeadline,
+  handleClaudeCountTokens,
   readBoundedPassthroughBody,
   resolvePassthroughBodyGuard,
   tapAnthropicSseForLog,
@@ -51,6 +53,7 @@ let isolatedCodexHome: IsolatedCodexHome | null = null;
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
+  clearComboSelectionState();
   previousHome = process.env.OPENCODEX_HOME;
   isolatedCodexHome = installIsolatedCodexHome("ocx-claude-endpoint-");
   testDir = mkdtempSync(join(tmpdir(), "ocx-claude-endpoint-"));
@@ -1099,6 +1102,121 @@ test("count_tokens returns a positive estimate in the exact contract shape", asy
   }
 });
 
+test("dynamic messages keep their virtual combo out of persistence during key failover", async () => {
+  const seenAuth: Array<string | null> = [];
+  const upstream = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      const url = new URL(req.url);
+      if (!url.pathname.endsWith("/chat/completions")) {
+        return Response.json(
+          { error: { message: `unexpected path ${url.pathname}` } },
+          { status: 404 },
+        );
+      }
+      seenAuth.push(req.headers.get("authorization"));
+      if (seenAuth.length === 1) {
+        return Response.json(
+          { error: { message: "rate limited" } },
+          { status: 429, headers: { "retry-after": "30" } },
+        );
+      }
+      const frames = [
+        `data: ${JSON.stringify({ choices: [{ index: 0, delta: { role: "assistant", content: "ok" } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1 } })}\n\n`,
+        "data: [DONE]\n\n",
+      ];
+      return new Response(frames.join(""), {
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    },
+  });
+  const config = mockConfig(`${upstream.url.toString().replace(/\/$/, "")}/v1`, {
+    agentRouting: "dynamic",
+  });
+  config.providers.mock.models = ["test-model"];
+  config.providers.mock.apiKey = "fixture-key-a";
+  config.providers.mock.apiKeyPool = [
+    { id: "a", key: "fixture-key-a", addedAt: 1 },
+    { id: "b", key: "fixture-key-b", addedAt: 2 },
+  ];
+  config.providers.openai = {
+    adapter: "openai-responses",
+    baseUrl: "https://chatgpt.com/backend-api/codex",
+    authMode: "forward",
+  };
+  config.subagentModels = ["mock/test-model"];
+  saveConfig(config);
+  const server = startServer(0);
+  try {
+    const response = await fetch(new URL("/v1/messages", server.url), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": "placeholder",
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5",
+        max_tokens: 32,
+        stream: true,
+        system: "<!-- ocx-route: dynamic -->",
+        messages: [{ role: "user", content: "hi" }],
+      }),
+    });
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(seenAuth).toEqual(["Bearer fixture-key-a", "Bearer fixture-key-b"]);
+
+    const persisted = JSON.parse(await Bun.file(join(testDir, "config.json")).text()) as OcxConfig;
+    expect(persisted.providers.mock.apiKey).toBe("fixture-key-b");
+    expect(Object.keys(persisted.combos ?? {})).not.toContainEqual(
+      expect.stringContaining("claude-agent-dynamic"),
+    );
+  } finally {
+    server.stop(true);
+    upstream.stop(true);
+  }
+});
+
+test("count_tokens validates dynamic agent routing like messages", async () => {
+  const countWith = (config: OcxConfig) => handleClaudeCountTokens(new Request(
+    "http://localhost/v1/messages/count_tokens",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5",
+        system: "<!-- ocx-route: dynamic -->",
+        messages: [{ role: "user", content: "count me" }],
+      }),
+    },
+  ), config);
+  const enabled = mockConfig("http://127.0.0.1:1/v1", { agentRouting: "dynamic" });
+  enabled.providers.openai = {
+    adapter: "openai-responses",
+    baseUrl: "https://chatgpt.com/backend-api/codex",
+    authMode: "forward",
+  };
+  enabled.subagentModels = ["gpt-5.6-sol"];
+
+  const ok = await countWith(enabled);
+  expect(ok.status).toBe(200);
+  expect(await ok.json()).toMatchObject({ input_tokens: expect.any(Number) });
+
+  const emptyConfig = structuredClone(enabled);
+  emptyConfig.subagentModels = [];
+  const empty = await countWith(emptyConfig);
+  expect(empty.status).toBe(400);
+  expect((await empty.json() as AnthropicErrorFixture).error.message)
+    .toContain("no usable featured models");
+
+  const disabled = await countWith(mockConfig("http://127.0.0.1/v1", { agentRouting: "pinned" }));
+  expect(disabled.status).toBe(400);
+  expect((await disabled.json() as AnthropicErrorFixture).error.message)
+    .toContain("not enabled");
+});
+
 test("claudeCode.enabled=false -> 403 permission_error on both routes", async () => {
   saveConfig(mockConfig("http://127.0.0.1:1/v1", { enabled: false }));
   const server = startServer(0);
@@ -1159,6 +1277,194 @@ test("effort safety valve: routes with a definitive no-effort ladder get reasoni
     await response.text();
     expect(captured.length).toBe(1);
     expect(captured[0]!.reasoning_effort).toBeUndefined();
+  } finally {
+    server.stop(true);
+    upstream.stop(true);
+  }
+});
+
+test("concurrent dynamic generated agents reserve different round-robin backends", async () => {
+  const captured: string[] = [];
+  const release = Promise.withResolvers<void>();
+  let arrivals = 0;
+  const upstream = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      const body = await req.json() as { model?: string };
+      captured.push(body.model ?? "");
+      arrivals += 1;
+      if (arrivals === 2) release.resolve();
+      await release.promise;
+      return new Response([
+        `data: ${JSON.stringify({ choices: [{ index: 0, delta: { role: "assistant", content: "ok" } }] })}\n\n`,
+        `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1 } })}\n\n`,
+        "data: [DONE]\n\n",
+      ].join(""), { headers: { "Content-Type": "text/event-stream" } });
+    },
+  });
+  const config = mockConfig(`${upstream.url.toString().replace(/\/$/, "")}/v1`, {
+    agentRouting: "dynamic",
+  });
+  config.providers.mock.models = ["first", "second"];
+  config.subagentModels = ["mock/first", "mock/second"];
+  saveConfig(config);
+  const server = startServer(0);
+  try {
+    const body = {
+      model: "claude-haiku-4-5",
+      max_tokens: 64,
+      stream: true,
+      system: "<!-- ocx-route: dynamic -->",
+      messages: [{ role: "user", content: "hi" }],
+    };
+    const requests = [
+      postMessages(server.url.toString(), body),
+      postMessages(server.url.toString(), body),
+    ];
+    const responses = await Promise.all(requests);
+    expect(responses.map(response => response.status)).toEqual([200, 200]);
+    await Promise.all(responses.map(response => response.text()));
+    expect(captured.sort()).toEqual(["first", "second"]);
+  } finally {
+    server.stop(true);
+    upstream.stop(true);
+  }
+});
+
+test("dynamic routing strips ChatGPT-only unsupported sampling after target selection", async () => {
+  const captured: Array<Record<string, unknown>> = [];
+  const upstream = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      captured.push(await req.json() as Record<string, unknown>);
+      const frames = [
+        `event: response.created\ndata: ${JSON.stringify({ response: { id: "resp_dynamic", status: "in_progress" } })}\n\n`,
+        `event: response.output_text.delta\ndata: ${JSON.stringify({ delta: "ok" })}\n\n`,
+        `event: response.completed\ndata: ${JSON.stringify({ response: { id: "resp_dynamic", status: "completed", output: [], usage: { input_tokens: 1, output_tokens: 1 } } })}\n\n`,
+      ];
+      return new Response(frames.join(""), { headers: { "Content-Type": "text/event-stream" } });
+    },
+  });
+  const config = mockConfig("http://127.0.0.1:1/v1", { agentRouting: "dynamic" });
+  config.providers.openai = {
+    adapter: "openai-responses",
+    baseUrl: "https://chatgpt.com/backend-api/codex",
+    authMode: "forward",
+    codexAccountMode: "pool",
+  };
+  config.subagentModels = ["gpt-5.6-sol"];
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const requestUrl =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+    const url = new URL(requestUrl);
+    const prefix = "/backend-api/codex";
+    if (url.hostname === "chatgpt.com" && url.pathname.startsWith(prefix)) {
+      return originalFetch(
+        new URL(`${url.pathname.slice(prefix.length)}${url.search}`, upstream.url),
+        init,
+      );
+    }
+    return originalFetch(input, init);
+  }) as typeof fetch;
+  writeFileSync(
+    join(isolatedCodexHome!.path, "auth.json"),
+    JSON.stringify({
+      tokens: {
+        access_token: "dynamic-chatgpt-access",
+        account_id: "dynamic-chatgpt-account",
+      },
+    }),
+  );
+  saveConfig(config);
+  const server = startServer(0);
+  try {
+    const response = await postMessages(server.url.toString(), {
+      model: "claude-haiku-4-5",
+      max_tokens: 64,
+      temperature: 0.4,
+      top_p: 0.8,
+      stop_sequences: ["stop"],
+      stream: true,
+      system: "<!-- ocx-route: dynamic -->",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.max_output_tokens).toBeUndefined();
+    expect(captured[0]!.temperature).toBeUndefined();
+    expect(captured[0]!.top_p).toBeUndefined();
+    expect(captured[0]!.stop).toBeUndefined();
+  } finally {
+    server.stop(true);
+    upstream.stop(true);
+  }
+});
+
+test("dynamic routing strips effort only after selecting a definitive no-effort target", async () => {
+  const { server: upstream, captured } = mockChatUpstreamCapturing();
+  const config = mockConfig(`${upstream.url.toString().replace(/\/$/, "")}/v1`, {
+    agentRouting: "dynamic",
+  });
+  config.providers.mock.models = ["test-model"];
+  config.providers.mock.noReasoningModels = ["test-model"];
+  config.subagentModels = ["mock/test-model"];
+  saveConfig(config);
+  const server = startServer(0);
+  try {
+    const response = await postMessages(server.url.toString(), {
+      model: "claude-haiku-4-5",
+      max_tokens: 64,
+      stream: true,
+      system: [
+        { type: "text", text: "<!-- ocx-route: dynamic -->" },
+        { type: "text", text: "<!-- ocx-effort: xhigh -->" },
+      ],
+      thinking: { type: "enabled", budget_tokens: 63 },
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.reasoning_effort).toBeUndefined();
+  } finally {
+    server.stop(true);
+    upstream.stop(true);
+  }
+});
+
+test("dynamic generated agent applies its effort directive to the selected backend", async () => {
+  const { server: upstream, captured } = mockChatUpstreamCapturing();
+  const config = mockConfig(`${upstream.url.toString().replace(/\/$/, "")}/v1`, {
+    agentRouting: "dynamic",
+  });
+  config.providers.mock.models = ["test-model"];
+  config.subagentModels = ["mock/test-model"];
+  saveConfig(config);
+  const server = startServer(0);
+  try {
+    const response = await postMessages(server.url.toString(), {
+      model: "claude-haiku-4-5",
+      max_tokens: 32000,
+      stream: true,
+      system: [
+        { type: "text", text: "<!-- ocx-route: dynamic -->" },
+        { type: "text", text: "<!-- ocx-effort: xhigh -->" },
+      ],
+      thinking: { type: "enabled", budget_tokens: 31999 },
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(captured).toHaveLength(1);
+    expect(captured[0]).toMatchObject({
+      model: "test-model",
+      reasoning_effort: "xhigh",
+    });
   } finally {
     server.stop(true);
     upstream.stop(true);

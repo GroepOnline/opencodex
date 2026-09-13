@@ -450,6 +450,13 @@ export interface OcxClaudeCodeConfig {
    */
   injectAgents?: boolean;
   /**
+   * Generated-agent routing policy. "pinned" keeps one definition per featured
+   * model plus ocx-self. "dynamic" emits a single ocx-auto definition whose
+   * backend is selected from the current featured roster per dispatch. Default:
+   * "pinned" for backward compatibility.
+   */
+  agentRouting?: "pinned" | "dynamic";
+  /**
    * Optional Claude Code effort pinned in every generated ocx-* subagent
    * definition. Unset inherits the parent session effort.
    */

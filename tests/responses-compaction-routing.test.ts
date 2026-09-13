@@ -19,7 +19,11 @@ import {
   releaseCodexAuthContextProbeLease,
   resolveCodexAuthContext,
 } from "../src/codex/auth-context";
-import { supportsNativeResponsesCompactEndpoint } from "../src/providers/openai-tiers";
+import {
+  responsesCompactionCapabilities,
+  supportsNativeResponsesCompactEndpoint,
+  supportsNativeRemoteCompactionV2,
+} from "../src/providers/openai-tiers";
 import type { OcxConfig, OcxProviderConfig } from "../src/types";
 
 const originalFetch = globalThis.fetch;
@@ -145,6 +149,30 @@ describe("supportsNativeResponsesCompactEndpoint (#422)", () => {
       baseUrl: "https://gateway.example/v1",
     })).toBe(false);
   });
+
+  test("keeps remote v2, dedicated v1, and synthetic support distinct", () => {
+    expect(responsesCompactionCapabilities("openai", canonicalForward)).toEqual({
+      nativeRemoteV2: true,
+      nativeCompactV1: true,
+      synthetic: true,
+    });
+    expect(responsesCompactionCapabilities("openai-apikey", officialApi)).toEqual({
+      nativeRemoteV2: false,
+      nativeCompactV1: true,
+      synthetic: true,
+    });
+    const gateway = {
+      adapter: "openai-responses",
+      baseUrl: "https://gateway.example/v1",
+      authMode: "key",
+    } as OcxProviderConfig;
+    expect(responsesCompactionCapabilities("gw", gateway)).toEqual({
+      nativeRemoteV2: false,
+      nativeCompactV1: false,
+      synthetic: true,
+    });
+    expect(supportsNativeRemoteCompactionV2("openai-apikey", officialApi)).toBe(false);
+  });
 });
 
 describe("native OpenAI API compact auth", () => {
@@ -192,6 +220,157 @@ describe("native OpenAI API compact auth", () => {
     expect(headers.get("session_id")).toBeNull();
     expect(headers.get("x-codex-parent-thread-id")).toBeNull();
   });
+});
+
+describe("native compact unsupported fallback", () => {
+  for (const unsupportedStatus of [404, 405]) {
+    test(`falls back to synthetic compaction after native ${unsupportedStatus}`, async () => {
+      const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+      globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+        const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+        calls.push({ url, body });
+        if (url.endsWith("/responses/compact")) {
+          return Response.json({ error: { message: "compact endpoint unsupported" } }, {
+            status: unsupportedStatus,
+          });
+        }
+        return jsonResponse(completedPayload("safe synthetic handoff"));
+      }) as typeof fetch;
+
+      const config = {
+        defaultProvider: "openai-apikey",
+        providers: {
+          "openai-apikey": {
+            adapter: "openai-responses",
+            baseUrl: "https://api.openai.com/v1",
+            authMode: "key",
+            apiKey: "sk-provider-key",
+            models: ["gpt-5.6-sol"],
+          },
+        },
+      } as unknown as OcxConfig;
+      const res = await handleResponsesCompact(
+        compactionRequest(baseCompactionBody({ model: "openai-apikey/gpt-5.6-sol" })),
+        config,
+        { model: "", provider: "" },
+      );
+
+      expect(res.status).toBe(200);
+      expect(calls).toHaveLength(2);
+      expect(calls[0]!.url).toBe("https://api.openai.com/v1/responses/compact");
+      expect(calls[1]!.url).toBe("https://api.openai.com/v1/responses");
+      const fallbackInput = calls[1]!.body.input as Array<Record<string, unknown>>;
+      expect(fallbackInput.some(item => item.type === "compaction_trigger")).toBe(false);
+      expect(JSON.stringify(fallbackInput)).toContain("earlier turn");
+      expect(JSON.stringify(fallbackInput)).toContain("CONTEXT CHECKPOINT COMPACTION");
+      const json = await res.json() as { output?: Array<{ type?: string; role?: string; content?: unknown }> };
+      expect(json.output).toHaveLength(2);
+      expect(JSON.stringify(json.output?.[0])).toContain("earlier turn");
+      expect(JSON.stringify(json.output?.[1])).toContain("safe synthetic handoff");
+    });
+  }
+
+  test("preserves a model-level 404 without synthetic fallback", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return Response.json({ error: { message: "model not found" } }, { status: 404 });
+    }) as typeof fetch;
+
+    const config = {
+      defaultProvider: "openai-apikey",
+      providers: {
+        "openai-apikey": {
+          adapter: "openai-responses",
+          baseUrl: "https://api.openai.com/v1",
+          authMode: "key",
+          apiKey: "sk-provider-key",
+          models: ["gpt-5.6-sol"],
+        },
+      },
+    } as unknown as OcxConfig;
+    const res = await handleResponsesCompact(
+      compactionRequest(baseCompactionBody({ model: "openai-apikey/gpt-5.6-sol" })),
+      config,
+      { model: "", provider: "" },
+    );
+
+    expect(res.status).toBe(404);
+    expect(calls).toBe(1);
+  });
+
+  test("rejects an empty synthetic result after native compact is unsupported", async () => {
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+      if (url.endsWith("/responses/compact")) {
+        return Response.json({ error: { message: "compact endpoint unsupported" } }, { status: 404 });
+      }
+      return jsonResponse(completedPayload("   "));
+    }) as typeof fetch;
+
+    const config = {
+      defaultProvider: "openai-apikey",
+      providers: {
+        "openai-apikey": {
+          adapter: "openai-responses",
+          baseUrl: "https://api.openai.com/v1",
+          authMode: "key",
+          apiKey: "sk-provider-key",
+          models: ["gpt-5.6-sol"],
+        },
+      },
+    } as unknown as OcxConfig;
+    const res = await handleResponsesCompact(
+      compactionRequest(baseCompactionBody({ model: "openai-apikey/gpt-5.6-sol" })),
+      config,
+      { model: "", provider: "" },
+    );
+
+    expect(res.status).toBe(502);
+    const json = await res.json() as { output?: unknown[]; error?: unknown };
+    expect(json.output).toBeUndefined();
+    expect(json.error).toBeDefined();
+  });
+
+  for (const status of [401, 403, 429, 500]) {
+    test(`does not hide native compact status ${status} with synthetic fallback`, async () => {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls += 1;
+        return Response.json({ error: { message: "native compact failed" } }, { status });
+      }) as typeof fetch;
+
+      const config = {
+        defaultProvider: "openai-apikey",
+        providers: {
+          "openai-apikey": {
+            adapter: "openai-responses",
+            baseUrl: "https://api.openai.com/v1",
+            authMode: "key",
+            apiKey: "sk-provider-key",
+            models: ["gpt-5.6-sol"],
+          },
+        },
+      } as unknown as OcxConfig;
+      const res = await handleResponsesCompact(
+        compactionRequest(baseCompactionBody({ model: "openai-apikey/gpt-5.6-sol" })),
+        config,
+        { model: "", provider: "" },
+      );
+
+      expect(res.status).toBe(status);
+      expect(calls).toBe(status === 500 ? 3 : 1);
+    });
+  }
 });
 
 describe("native Codex pool compaction", () => {

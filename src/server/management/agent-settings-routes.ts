@@ -1070,6 +1070,7 @@ export async function handleAgentSettingsRoutes(
       autoCompactWindow: config.claudeCode?.autoCompactWindow ?? null,
       blockedSkills: config.claudeCode?.blockedSkills ?? null,
       injectAgents: config.claudeCode?.injectAgents !== false,
+      agentRouting: config.claudeCode?.agentRouting ?? "pinned",
       ...(webSearchOverride && Object.keys(webSearchOverride).length > 0
         ? {
             webSearchSidecar: {
@@ -1132,6 +1133,7 @@ export async function handleAgentSettingsRoutes(
       autoCompactWindow?: unknown;
       blockedSkills?: unknown;
       injectAgents?: unknown;
+      agentRouting?: unknown;
       webSearchSidecar?: unknown;
       visionSidecar?: unknown;
     };
@@ -1253,6 +1255,16 @@ export async function handleAgentSettingsRoutes(
         return jsonResponse({ error: "injectAgents must be a boolean" }, 400);
       if (body.injectAgents) delete next.injectAgents;
       else next.injectAgents = false;
+    }
+    if (body.agentRouting !== undefined) {
+      if (body.agentRouting !== "pinned" && body.agentRouting !== "dynamic") {
+        return jsonResponse(
+          { error: 'agentRouting must be "pinned" or "dynamic"' },
+          400,
+        );
+      }
+      if (body.agentRouting === "pinned") delete next.agentRouting;
+      else next.agentRouting = "dynamic";
     }
     if (body.autoCompactWindow !== undefined) {
       // null resets to the 350k default; otherwise the binary-accepted range
