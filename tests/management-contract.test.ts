@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { saveConfig } from "../src/config";
+import { CONFIG_SCHEMA_VERSION, saveConfig } from "../src/config";
 import { MANAGEMENT_CONTRACT_VERSION } from "../src/server/contract-version";
 import {
   resetBuildInfoCacheForTests,
@@ -72,6 +72,7 @@ describe("GET /api/provenance", () => {
       expect(body.built_at).toBe("2026-08-23T10:00:00.000Z");
       expect(body.release).toBe("v1.2.2");
       expect(body.gui_version).toBe("1.2.2");
+      // Public deploy-gate provenance keeps datastore schema state redacted.
       expect(body.schema_version).toBeNull();
       expect(body.management).toBeUndefined();
       expect(body.runtime).toMatchObject({
@@ -91,7 +92,8 @@ describe("GET /api/provenance", () => {
         headers: { "x-opencodex-api-key": "admin-secret" },
       });
       expect(res.status).toBe(200);
-      const body = await res.json() as { management?: Record<string, unknown> };
+      const body = await res.json() as { schema_version?: unknown; management?: Record<string, unknown> };
+      expect(body.schema_version).toBe(String(CONFIG_SCHEMA_VERSION));
       expect(body.management).toMatchObject({
         contract_version: MANAGEMENT_CONTRACT_VERSION,
         default_provider: "demo",

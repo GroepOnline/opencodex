@@ -1704,6 +1704,11 @@ export const en = {
   "claude.injectAgents": "Auto-register subagents",
   "claude.injectAgentsDesc":
     "Registers the models picked on the Subagents tab (plus the current default model) as dispatchable Claude Code agents (ocx-*). Applies from the next session.",
+  "claude.agentRouting": "Generated-agent routing",
+  "claude.agentRoutingDesc":
+    "Dynamic creates one backend-neutral agent and lets OpenCodex choose from the approved subagent roster with bounded failover. Pinned creates one agent per route.",
+  "claude.agentRoutingDynamic": "Dynamic through OpenCodex",
+  "claude.agentRoutingPinned": "Pinned per route",
   "claude.webSearchSidecar": "Web search sidecar override",
   "claude.webSearchSidecarHint":
     "Override the main web search sidecar for Claude Code requests.",

@@ -72,6 +72,8 @@ export function pickComboTarget(
   options: {
     exclude?: Iterable<string>;
     eligible?: (target: Required<OcxComboTarget>) => boolean;
+    /** Reserve a stickyLimit=1 round-robin slot at dispatch time for concurrent callers. */
+    rotateOnPick?: boolean;
   } = {},
 ): ComboPick | null {
   const combo = getCombo(config, comboId);
@@ -102,6 +104,10 @@ export function pickComboTarget(
         state.activeKey = targetKey(combo.targets[targetIndex]!);
         state.successes = 0;
       }
+    }
+    if (targetIndex >= 0 && options.rotateOnPick && combo.stickyLimit === 1) {
+      delete state.activeKey;
+      state.successes = 0;
     }
   } else {
     targetIndex = combo.targets.findIndex(eligible);
@@ -147,12 +153,14 @@ export function advanceComboAfterFailure(
     retryAfter?: string | null;
     now?: number;
     eligible?: (target: Required<OcxComboTarget>) => boolean;
+    rotateOnPick?: boolean;
   } = {},
 ): ComboPick | null {
   noteComboFailure(pick.comboId, pick.target);
   coolComboTarget(pick.comboId, pick.target, options);
   return pickComboTarget(config, pick.comboId, {
     exclude: pick.attempted,
+    rotateOnPick: options.rotateOnPick,
     eligible: target => !isComboTargetInCooldown(pick.comboId, target, options.now)
       && (options.eligible?.(target) ?? true),
   });

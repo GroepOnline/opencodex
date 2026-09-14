@@ -9,8 +9,9 @@
 import { FORWARD_HEADERS } from "../adapters/openai-responses";
 import { enforceAnthropicImageLimits } from "../adapters/anthropic-image-guard";
 import { normalizeAnthropicImages } from "../adapters/anthropic-image-normalize";
-import { AnthropicRequestError, anthropicToResponsesTranslation, extractOcxEffortDirective, extractOcxRouteDirective, resolveInboundModel, type ClaudeCacheKeySource } from "../claude/inbound";
+import { AnthropicRequestError, anthropicToResponsesTranslation, extractOcxEffortDirective, extractOcxRouteDirective, extractOcxRouteModeDirective, resolveInboundModel, type ClaudeCacheKeySource } from "../claude/inbound";
 import { resolveDesktop3pAlias } from "../claude/desktop-3p";
+import { buildClaudeDynamicAgentRoute } from "../claude/agent-routing";
 import { recordDesktopRequest } from "../claude/desktop-health";
 import { stripOneMillionMarker } from "../claude/context-windows";
 import { captureClaudeInbound } from "../claude/inbound-debug";
@@ -28,6 +29,7 @@ import { clearableDeadline, idleDeadline } from "../lib/abort";
 import { estimateTokens } from "../lib/token-estimate";
 import { routeModel } from "../router";
 import { resolveWireProtocolOverride } from "./adapter-resolve";
+import { isCanonicalOpenAiForwardProvider } from "../providers/openai-tiers";
 import type { OcxConfig } from "../types";
 import { readJsonRequestBody } from "./request-decompress";
 import { addFinalRequestLog, httpStatusForTerminalStatus, recordFirstOutput, type RequestLogContext, type RequestLogEntry } from "./request-log";
@@ -61,6 +63,17 @@ function claudeInboundDisabled(config: OcxConfig): Response | null {
     return anthropicErrorResponse(403, "Claude inbound is disabled (GUI: Claude ON toggle / config.claudeCode.enabled)", "permission_error");
   }
   return null;
+}
+
+function requireClaudeDynamicAgentRoute(config: OcxConfig): { config: OcxConfig; model: string } {
+  if (config.claudeCode?.agentRouting !== "dynamic") {
+    throw new AnthropicRequestError("Dynamic OCX agent routing is not enabled");
+  }
+  const dynamic = buildClaudeDynamicAgentRoute(config);
+  if (!dynamic) {
+    throw new AnthropicRequestError("Dynamic OCX agent routing has no usable featured models");
+  }
+  return dynamic;
 }
 
 async function readAnthropicBody(req: Request): Promise<unknown> {
@@ -108,6 +121,14 @@ export function shouldReplayNativePassthroughOverload(config: OcxConfig): boolea
 function uuidFromHex(hex32: string): string {
   const h = (hex32 + "0".repeat(32)).slice(0, 32);
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+
+function estimateClaudeInputTokens(body: Rec, requestedModel: string): number {
+  const parts: string[] = [];
+  if (body.system !== undefined) parts.push(typeof body.system === "string" ? body.system : JSON.stringify(body.system));
+  if (body.messages !== undefined) parts.push(JSON.stringify(body.messages));
+  if (body.tools !== undefined) parts.push(JSON.stringify(body.tools));
+  return Math.max(1, estimateTokens(parts.join("\n"), requestedModel));
 }
 
 function anthropicUsageToOcx(usage: Rec | undefined): { inputTokens: number; outputTokens: number; cachedInputTokens?: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number } | undefined {
@@ -537,8 +558,11 @@ export async function handleClaudeMessages(
 
   let anthropicBody: unknown;
   let internalBody: Rec;
+  let requestConfig = config;
   let cacheKeySource: ClaudeCacheKeySource = null;
   let effortOverride: ReturnType<typeof extractOcxEffortDirective> = null;
+  let routeOverride: ReturnType<typeof extractOcxRouteDirective> = null;
+  let dynamicRoute = false;
   try {
     anthropicBody = await readAnthropicBody(req);
     if (isRec(anthropicBody) && typeof anthropicBody.stream === "boolean") {
@@ -555,9 +579,16 @@ export async function handleClaudeMessages(
     // frontmatter. Must run BEFORE the native-passthrough branch — the CLI sends
     // these subagent turns under a fallback claude model id.
     if (isRec(anthropicBody)) {
-      const routeOverride = extractOcxRouteDirective(anthropicBody);
-      if (routeOverride && typeof anthropicBody.model === "string") {
-        anthropicBody.model = stripOneMillionMarker(routeOverride);
+      routeOverride = extractOcxRouteDirective(anthropicBody);
+      dynamicRoute = extractOcxRouteModeDirective(anthropicBody) === "dynamic";
+      if (typeof anthropicBody.model === "string") {
+        if (dynamicRoute) {
+          const dynamic = requireClaudeDynamicAgentRoute(config);
+          requestConfig = dynamic.config;
+          anthropicBody.model = dynamic.model;
+        } else if (routeOverride) {
+          anthropicBody.model = stripOneMillionMarker(routeOverride);
+        }
         effortOverride = extractOcxEffortDirective(anthropicBody);
       }
     }
@@ -615,42 +646,42 @@ export async function handleClaudeMessages(
   // bodies: it 400s on sampling params ("Unsupported parameter: max_output_tokens",
   // verified live 2026-07-11). Strip them for that route; routed providers keep them.
   let nativeRoute = false;
-  try {
-    const route = routeModel(config, internalBody.model as string);
-    // Settle the wire once so the sampling decision below reads the effective
-    // adapter rather than the provider-wide default (#404).
-    route.provider = resolveWireProtocolOverride(route.providerName, route.modelId, route.provider);
-    if (route.provider.adapter === "openai-responses") {
-      nativeRoute = true;
-      delete internalBody.max_output_tokens;
-      delete internalBody.temperature;
-      delete internalBody.top_p;
-      delete internalBody.stop;
-      delete internalBody.user;
-    }
-    // Estimated-usage adapters (cursor/kiro) report no per-turn input tokens; stash a
-    // request-side estimate so the log's in:0 rows get a floor. NEVER set this for
-    // accurate-usage adapters — the request-log merge is max(reported, estimate) and
-    // would overwrite real usage (audit 133 R1#7).
-    if (route.provider.adapter === "cursor" || route.provider.adapter === "kiro") {
-      const raw = anthropicBody as Rec;
-      const parts: string[] = [];
-      if (raw.system !== undefined) parts.push(typeof raw.system === "string" ? raw.system : JSON.stringify(raw.system));
-      if (raw.messages !== undefined) parts.push(JSON.stringify(raw.messages));
-      if (raw.tools !== undefined) parts.push(JSON.stringify(raw.tools));
-      logCtx.usageLogInputTokens = Math.max(1, estimateTokens(parts.join("\n"), requestedModel));
-    }
-    // Effort safety valve (devlog 136 B6, audit 139 R2#2): opus-shaped aliases make
-    // every routed model look like a reasoning model to Claude clients, so a forced
-    // effort (CLAUDE_CODE_ALWAYS_ENABLE_EFFORT) would leak reasoning params to routes
-    // that affirmatively expose NO effort control. Strip only on a definitive [] from
-    // supportedLadderFor; unknown (undefined) passes through untouched.
-    if (internalBody.reasoning !== undefined) {
-      const { supportedLadderFor } = await import("./effort-policy");
-      const ladder = supportedLadderFor({ provider: route.provider, modelId: route.modelId });
-      if (ladder !== undefined && ladder.length === 0) delete internalBody.reasoning;
-    }
-  } catch { /* unknown model: let handleResponses shape the 404 */ }
+  // Dynamic dispatch must leave the virtual combo untouched until the executor
+  // atomically reserves a target. A preflight routeModel() call would mutate the
+  // process-wide round-robin state before any request actually starts.
+  if (!dynamicRoute) {
+    try {
+      const route = routeModel(requestConfig, internalBody.model as string);
+      // Settle the wire once so the sampling decision below reads the effective
+      // adapter rather than the provider-wide default (#404).
+      route.provider = resolveWireProtocolOverride(route.providerName, route.modelId, route.provider);
+      if (route.provider.adapter === "openai-responses") {
+        nativeRoute = true;
+        delete internalBody.max_output_tokens;
+        delete internalBody.temperature;
+        delete internalBody.top_p;
+        delete internalBody.stop;
+        delete internalBody.user;
+      }
+      // Estimated-usage adapters (cursor/kiro) report no per-turn input tokens; stash a
+      // request-side estimate so the log's in:0 rows get a floor. NEVER set this for
+      // accurate-usage adapters — the request-log merge is max(reported, estimate) and
+      // would overwrite real usage (audit 133 R1#7).
+      if (route.provider.adapter === "cursor" || route.provider.adapter === "kiro") {
+        logCtx.usageLogInputTokens = estimateClaudeInputTokens(anthropicBody as Rec, requestedModel);
+      }
+      // Effort safety valve (devlog 136 B6, audit 139 R2#2): opus-shaped aliases make
+      // every routed model look like a reasoning model to Claude clients, so a forced
+      // effort (CLAUDE_CODE_ALWAYS_ENABLE_EFFORT) would leak reasoning params to routes
+      // that affirmatively expose NO effort control. Strip only on a definitive [] from
+      // supportedLadderFor; unknown (undefined) passes through untouched.
+      if (internalBody.reasoning !== undefined) {
+        const { supportedLadderFor } = await import("./effort-policy");
+        const ladder = supportedLadderFor({ provider: route.provider, modelId: route.modelId });
+        if (ladder !== undefined && ladder.length === 0) delete internalBody.reasoning;
+      }
+    } catch { /* unknown model: let handleResponses shape the 404 */ }
+  }
 
   const headers = new Headers({ "content-type": "application/json" });
   for (const name of FORWARD_HEADERS) {
@@ -705,9 +736,27 @@ export async function handleClaudeMessages(
     nativeLogged = true;
     addFinalRequestLog(logIds.requestId, logIds.start, logCtx, status, meta);
   };
-  const upstream = await handleResponses(internalReq, buildClaudeReplayConfig(config), logCtx, {
+  const upstream = await handleResponses(internalReq, buildClaudeReplayConfig(requestConfig), logCtx, {
     abortSignal: req.signal,
+    persistConfig: config,
     promptCacheKeyIsSharedCohort: cacheKeySource === "system",
+    rotateComboOnPick: dynamicRoute,
+    ...(dynamicRoute ? {
+      onComboTargetSelected: (route, childHeaders) => {
+        if (route.provider.adapter === "cursor" || route.provider.adapter === "kiro") {
+          logCtx.usageLogInputTokens = estimateClaudeInputTokens(anthropicBody as Rec, requestedModel);
+        }
+        if (
+          isCanonicalOpenAiForwardProvider(route.provider)
+          && cacheKeySource === "metadata"
+          && !childHeaders.has("session_id")
+          && typeof internalBody.prompt_cache_key === "string"
+        ) {
+          childHeaders.set("session_id", uuidFromHex(internalBody.prompt_cache_key));
+        }
+      },
+    } : {}),
+
     ...(logIds ? { onFirstOutput: () => recordFirstOutput(logCtx, logIds.start) } : {}),
     onNativePassthroughTerminal: status => finalizeNativeLog(httpStatusForTerminalStatus(status), { terminalStatus: status, closeReason: "terminal" }),
     onNativePassthroughCancel: () => finalizeNativeLog(499, { closeReason: "client_cancel" }),
@@ -843,12 +892,23 @@ export async function handleClaudeCountTokens(req: Request, config: OcxConfig): 
     model = stripped;
     raw.model = model;
   }
-  // ocx-route override (devlog 072): keep count_tokens consistent with messages.
+  // A dynamic control marker validates the same lane as messages. Counting remains
+  // local, but a generated agent must not appear usable here when its actual dispatch
+  // would be rejected for a disabled or empty dynamic roster. A plain ocx-route is
+  // always a literal model id, including the id "dynamic".
   const countRoute = extractOcxRouteDirective(raw);
-  if (countRoute) {
+  const dynamicRoute = extractOcxRouteModeDirective(raw) === "dynamic";
+  if (dynamicRoute) {
+    try {
+      model = requireClaudeDynamicAgentRoute(config).model;
+    } catch (err) {
+      if (err instanceof AnthropicRequestError) return anthropicErrorResponse(400, err.message);
+      throw err;
+    }
+  } else if (countRoute) {
     model = stripOneMillionMarker(countRoute);
-    raw.model = model;
   }
+  raw.model = model;
   captureClaudeInbound("count_tokens", raw, resolveInboundModel(model, config.claudeCode), req.headers.get("anthropic-beta") ?? undefined);
   if (wantsNativePassthrough(req, config, model)) {
     const passthrough = await anthropicNativePassthrough(req, config, { model, provider: "anthropic-native", surface: "claude" }, undefined, raw, "/v1/messages/count_tokens");

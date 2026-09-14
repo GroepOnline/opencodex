@@ -6,7 +6,7 @@ import { catalogModelSupportsReasoningSummaries } from "../codex/catalog";
 import { COMPACT_PROMPT, decodeCompactionSummary, SUMMARY_PREFIX } from "../responses/compaction";
 import { collectResponsesToolGroups } from "../responses/tool-groups";
 import { decodeServerSentEvents } from "../lib/sse-decoder";
-import { isCanonicalOpenAiForwardProvider } from "../providers/openai-tiers";
+import { supportsNativeRemoteCompactionV2 } from "../providers/openai-tiers";
 import { OCX_REASONING_PREFIX } from "../responses/reasoning-envelope";
 import { modelRecordValue } from "../reasoning-effort";
 
@@ -950,7 +950,7 @@ export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): 
       // Same predicate as the routedCompaction gate in handleResponses(): an
       // authMode check would let a noncanonical custom forward provider skip this
       // rewrite while the server still routes it as a summarizer turn (#422).
-      if (parsed._compactionRequest === true && !isCanonicalOpenAiForwardProvider(provider)) {
+      if (parsed._compactionRequest === true && !supportsNativeRemoteCompactionV2("", provider)) {
         outBody = buildRoutedCompactionBody(outBody);
       }
       const sanitizedBody = stripSparkCompatibility(stripUnsupportedReasoningParams(stripItemIdsWhenUnstored(stripInvalidItemIds(stripUnsupportedHostedTools(sanitizeReasoningInputContent(scrubOcxCompactionItems(outBody)))))));
