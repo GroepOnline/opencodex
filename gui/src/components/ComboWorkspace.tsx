@@ -6,12 +6,15 @@ import {
   filterCombos,
   groupCombos,
 } from "../combo-workspace-data";
-import { IconChevron, IconPlus, IconSearch, IconShuffle } from "../icons";
-import { useT } from "../i18n/shared";
 import { AddComboModal } from "./combo-workspace-add-modal";
 import { DetailPanel } from "./combo-workspace-detail-panel";
 import { RemoveComboDialog, UnsavedLeaveDialog } from "./combo-workspace-dialogs";
 import { OverviewPanel } from "./combo-workspace-overview-panel";
+import {
+  ComboWorkspaceMain,
+  ComboWorkspaceRail,
+  ComboWorkspaceRoot,
+} from "./combo-workspace-rail";
 import type { ComboWorkspaceProps } from "./combo-workspace-types";
 
 export type { ModelOption, ProviderOption, ComboWorkspaceProps } from "./combo-workspace-types";
@@ -30,7 +33,6 @@ export default function ComboWorkspace({
   onCloseAdd,
   onCreated,
 }: ComboWorkspaceProps) {
-  const t = useT();
   const providerMap = useMemo(
     () => Object.fromEntries(providers.map((provider) => [provider.name, { disabled: provider.disabled }])),
     [providers],
@@ -97,74 +99,22 @@ export default function ComboWorkspace({
   };
 
   return (
-    <div className="combos-workspace-root">
-      <aside className="combos-workspace-rail" aria-label={t("cws.railAria")}>
-        <div className="combos-workspace-rail-header">
-          <div>
-            <div className="combos-workspace-rail-title">{t("nav.combos")}</div>
-            <div className="combos-workspace-rail-count">{combos.length}</div>
-          </div>
-          <button type="button" className="btn btn-primary btn-sm" onClick={handleAdd} aria-label={t("cws.add")}>
-            <IconPlus width={15} height={15} /> {t("cws.add")}
-          </button>
-        </div>
-        <div className="cwi-search-row">
-          <div className="cwi-search-wrap">
-            <IconSearch className="cwi-search-icon" aria-hidden="true" />
-            <input
-              className="input cwi-search-input"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t("cws.searchPlaceholder")}
-              aria-label={t("cws.searchPlaceholder")}
-            />
-          </div>
-        </div>
-        <div className="combos-workspace-rail-list">
-          {filtered.length === 0 && combos.length > 0 ? (
-            <p className="muted" style={{ padding: "16px" }}>{t("cws.noSearchResults")}</p>
-          ) : (
-            <>
-              {([
-                ["failover", sections.failover, "cws.group.failover"],
-                ["round-robin", sections.roundRobin, "cws.group.roundRobin"],
-              ] as const).map(([key, items, labelKey]) => (
-                items.length > 0 ? (
-                  <div key={key} className="combos-workspace-rail-group">
-                    <div className="combos-workspace-rail-group-head">
-                      <span className="pwi-dot" aria-hidden="true" />
-                      {t(labelKey)}
-                      <span className="combos-workspace-rail-count">{items.length}</span>
-                    </div>
-                    {items.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={`combos-workspace-rail-row${activeId === item.id ? " combos-workspace-rail-row--selected" : ""}`}
-                        onClick={() => trySelect(item.id)}
-                        aria-current={activeId === item.id ? "true" : undefined}
-                      >
-                        <span className="combos-workspace-rail-icon" aria-hidden="true">
-                          <IconShuffle width={15} height={15} />
-                        </span>
-                        <span className="combos-workspace-rail-name">{item.model}</span>
-                        <span className="combos-workspace-rail-meta">
-                          {item.targets.length === 1
-                            ? t("cws.targetCountOne")
-                            : t("cws.targetCount", { count: item.targets.length })}
-                        </span>
-                        <IconChevron className="combos-workspace-rail-chevron" aria-hidden="true" />
-                      </button>
-                    ))}
-                  </div>
-                ) : null
-              ))}
-            </>
-          )}
-        </div>
-      </aside>
+    <ComboWorkspaceRoot>
+      <ComboWorkspaceRail
+        combosCount={combos.length}
+        query={query}
+        onQuery={setQuery}
+        groups={[
+          { key: "failover", labelKey: "cws.group.failover", items: sections.failover },
+          { key: "round-robin", labelKey: "cws.group.roundRobin", items: sections.roundRobin },
+        ]}
+        emptyFiltered={filtered.length === 0 && combos.length > 0}
+        activeId={activeId}
+        onAdd={handleAdd}
+        onSelect={trySelect}
+      />
 
-      <div className="combos-workspace-main">
+      <ComboWorkspaceMain>
         {baseline ? (
           <DetailPanel
             key={baseline.id}
@@ -218,7 +168,7 @@ export default function ComboWorkspace({
             onAdd={onAdd}
           />
         )}
-      </div>
+      </ComboWorkspaceMain>
 
       {adding && !creatingFirstCombo && (
         <AddComboModal
@@ -264,6 +214,6 @@ export default function ComboWorkspace({
       {showUnsaved && (
         <UnsavedLeaveDialog onKeep={cancelPending} onDiscard={confirmDiscard} />
       )}
-    </div>
+    </ComboWorkspaceRoot>
   );
 }

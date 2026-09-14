@@ -4,6 +4,7 @@ import type { CatalogPreset } from "./provider-catalog/provider-presets";
 import type { ProviderPayloadForm } from "../provider-payload";
 import { AddProviderField } from "./add-provider-modal-field";
 import { baseUrlForChoice } from "../base-url-choice";
+import { ModalActions } from "./primitives/modal";
 
 export function AddProviderFormPane({
   preset,
@@ -160,13 +161,12 @@ export function AddProviderFormPane({
       {!isReservedForward && <AddProviderField label={t("modal.defaultModel")}>
         <input className="input" value={form.defaultModel} onChange={e => onFormChange({ ...form, defaultModel: e.target.value })} placeholder={t("modal.defaultModelPlaceholder")} />
       </AddProviderField>}
-      {error && <div className="text-control" role="alert" style={{ color: "var(--red)" }}>{error}</div>}
-      <div style={{ display: "flex", gap: 8, marginTop: 4, alignItems: "center" }}>
+      {error && <div className="text-control" role="alert">{error}</div>}
+      <ModalActions>
         <button type="button" className="btn btn-primary" onClick={onSubmit} disabled={saving}>{saving ? t("modal.adding") : t("modal.add")}</button>
         {preset.auth === "oauth" && <button type="button" className="link-btn" onClick={onUseOauthLogin}>{t("modal.useOauthLogin")}</button>}
-        <div style={{ flex: 1 }} />
         <button type="button" className="btn btn-ghost" onClick={onBack}>{t("modal.back")}</button>
-      </div>
+      </ModalActions>
     </div>
   );
 }

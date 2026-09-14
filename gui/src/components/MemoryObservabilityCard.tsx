@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { formatUptime } from "../formatUptime";
-import { IconActivity } from "../icons";
+import { IconActivity, IconChevron } from "../icons";
 import { useI18n, type Locale } from "../i18n/shared";
 import { createBoundedFetch, type BoundedFetch } from "../bounded-fetch";
+import { Panel, PanelHeader } from "./primitives/panel";
 
 /**
  * Memory observability card. Polls GET /api/system/memory (#314 WP3) every 5s
@@ -308,14 +309,20 @@ export default function MemoryObservabilityCard({ apiBase }: { apiBase: string }
   };
 
   if (unavailable && !data && restartPhase === "idle") {
+    const titleId = "dash-mem-title";
     return (
-      <div className="panel" style={{ marginBottom: 24 }}>
-        <div className="font-semibold" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <IconActivity width={15} height={15} aria-hidden="true" />
-          {t("dash.mem.title")}
-        </div>
-        <div className="muted text-control" style={{ marginTop: 8 }}>{t("dash.mem.unavailable")}</div>
-      </div>
+      <Panel titleId={titleId} className="panel mem-card">
+        <PanelHeader
+          titleId={titleId}
+          title={
+            <>
+              <IconActivity width={15} height={15} aria-hidden="true" />
+              {t("dash.mem.title")}
+            </>
+          }
+        />
+        <div className="muted text-control">{t("dash.mem.unavailable")}</div>
+      </Panel>
     );
   }
 
@@ -327,12 +334,18 @@ export default function MemoryObservabilityCard({ apiBase }: { apiBase: string }
   const activeTurns = data?.activeTurnCount;
   const busy = restartPhase === "draining" || restartPhase === "reconnecting";
 
+  const titleId = "dash-mem-title";
   return (
-    <div className="panel" style={{ marginBottom: 24 }}>
-      <div className="font-semibold" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-        <IconActivity width={15} height={15} aria-hidden="true" />
-        {t("dash.mem.title")}
-      </div>
+    <Panel titleId={titleId} className="panel mem-card">
+      <PanelHeader
+        titleId={titleId}
+        title={
+          <>
+            <IconActivity width={15} height={15} aria-hidden="true" />
+            {t("dash.mem.title")}
+          </>
+        }
+      />
 
       <div className="stat-row">
         <Stat label={t("dash.mem.rss")} value={data ? formatBytes(data.rss, locale) : "—"} />
@@ -344,33 +357,35 @@ export default function MemoryObservabilityCard({ apiBase }: { apiBase: string }
         />
       </div>
 
-      {/* Secondary diagnostics collapsed by default: only the headline stats stay visible. */}
-      <details style={{ marginTop: 10 }}>
-        <summary className="muted text-label" style={{ cursor: "pointer", padding: "2px 2px" }}>{t("dash.mem.details")}</summary>
-        <div className="muted text-control" style={{ margin: "8px 0 0" }}>{t("dash.mem.hint")}</div>
+      <details className="mem-card-details">
+        <summary className="muted text-label">
+          <IconChevron className="ocx-chevron" width={15} height={15} aria-hidden="true" />
+          {t("dash.mem.details")}
+        </summary>
+        <div className="mem-card-details-body">
+        <div className="muted text-control">{t("dash.mem.hint")}</div>
 
-        <div className="muted text-label" style={{ margin: "14px 0 6px" }}>{t("dash.mem.runtime")}</div>
+        <div className="muted text-label mem-card-subhead">{t("dash.mem.runtime")}</div>
         <div className="stat-row">
           <Stat label={t("dash.mem.observed")} value={observedBytes === null ? "—" : `${formatBytes(observedBytes, locale)} (${observedBy})`} />
           <Stat label={t("dash.mem.external")} value={data?.external === undefined ? "—" : formatBytes(data.external, locale)} />
           <Stat label={t("dash.mem.arrayBuffers")} value={data?.arrayBuffers === undefined ? "—" : formatBytes(data.arrayBuffers, locale)} />
         </div>
 
-        <div className="muted text-label" style={{ margin: "14px 0 6px" }}>{t("dash.mem.store")}</div>
-        <div className="muted text-control" style={{ marginBottom: 10 }}>{t("dash.mem.storeHint")}</div>
+        <div className="muted text-label mem-card-subhead">{t("dash.mem.store")}</div>
+        <div className="muted text-control">{t("dash.mem.storeHint")}</div>
         <div className="stat-row">
           <Stat label={t("dash.mem.storeEntries")} value={responseState ? plainNumberFormat(locale).format(responseState.count) : "—"} />
           <Stat label={t("dash.mem.storeTotal")} value={responseState ? formatBytes(responseState.totalBytes, locale) : "—"} />
           <Stat label={t("dash.mem.storeLargest")} value={responseState ? formatBytes(responseState.largestBytes, locale) : "—"} />
           <Stat
             label={t("dash.mem.storeOldest")}
-            // count distinguishes an empty store ("—") from a legit same-tick zero age ("0s").
             value={responseState ? (responseState.count === 0 ? "—" : formatAge(responseState.oldestAgeMs, locale)) : "—"}
           />
         </div>
 
         {data?.watchdog && (
-          <div className="stat-row" style={{ marginTop: 16 }}>
+          <div className="stat-row mem-card-watchdog">
             <Stat label={t("dash.mem.threshold")} value={formatBytes(data.watchdog.warnThresholdBytes, locale)} />
             <Stat
               label={t("dash.mem.lastWarn")}
@@ -378,10 +393,11 @@ export default function MemoryObservabilityCard({ apiBase }: { apiBase: string }
             />
           </div>
         )}
+        </div>
       </details>
 
       {supportsRestart && (
-        <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }} aria-live="polite">
+        <div className="mem-card-restart" aria-live="polite">
           <Stat
             label={t("dash.mem.inFlight")}
             value={typeof activeTurns === "number" ? plainNumberFormat(locale).format(activeTurns) : "—"}
@@ -403,13 +419,13 @@ export default function MemoryObservabilityCard({ apiBase }: { apiBase: string }
             <span className="muted text-control">{t("dash.mem.reconnecting")}</span>
           )}
           {restartPhase === "error" && restartError && (
-            <span className="text-control" style={{ color: "var(--red)" }}>{restartError}</span>
+            <span className="text-control mem-card-error">{restartError}</span>
           )}
           {noSupervisor && restartPhase === "idle" && (
             <span className="muted text-control">{t("dash.mem.restartNoSupervisor")}</span>
           )}
         </div>
       )}
-    </div>
+    </Panel>
   );
 }

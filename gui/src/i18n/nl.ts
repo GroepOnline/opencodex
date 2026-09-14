@@ -21,6 +21,7 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "nav.dashboard": "Overzicht",
   "nav.systeem": "Systeem",
   "nav.views": "Views",
+  "nav.sections": "Secties",
   "sub.overview": "Overzicht",
   "sub.logs": "Logs",
   "sub.debug": "Debug",
@@ -152,6 +153,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "logs.subtitle": "Recente requests door de OpenCodex-proxy, nieuwste eerst.",
   "logs.autoRefresh": "Auto-ververs",
   "logs.noRequests": "Nog geen requests.",
+  "logs.emptyTitle": "Nog geen requests.",
+  "logs.emptyDesc": "Verkeer door de proxy verschijnt in deze tabel.",
   "logs.loadError": "Kon request-logs niet laden.",
   "logs.col.time": "Tijd",
   "logs.col.request": "Request",
@@ -168,6 +171,7 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
     "Lokale proxy-telling tegenover limieten bij de leverancier. Ontbrekende usage wordt nooit als nul getoond.",
   "usage.loading": "Verbruik laden…",
   "usage.empty": "Nog geen verbruik. Stuur een request door de proxy.",
+  "usage.emptyTitle": "Nog geen verbruik",
   "usage.loadError": "Kon verbruik niet laden.",
   "usage.range.all": "Alles",
   "usage.card.requests": "Requests",
@@ -185,6 +189,10 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "cws.saved": "Combo bewaard.",
   "cws.add": "Combo toevoegen",
   "cws.addTitle": "Combo toevoegen",
+  "cws.detailTitle": "Combo",
+  "cws.emptyRailTitle": "Nog geen combo's",
+  "cws.emptyRailHint":
+    "Maak een combo om verzoeken over providers te routeren.",
   "cws.create": "Maak combo",
   "cws.overviewTitle": "Combos",
   "cws.overviewBlurb":
@@ -349,6 +357,7 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "startup.copied": "Gekopieerd",
   "startup.loading": "Opstartbescherming checken…",
   "startup.error": "Kon opstartbescherming niet lezen.",
+  "startup.installationFailed": "installatie mislukt",
   "claudeDesktop.syncLaptop": "Sync naar deze laptop",
   "claudeDesktop.syncLaptopAnnounce":
     "Laptop-sync start. Sta het toe als de browser vraagt.",
@@ -365,6 +374,7 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "common.ok": "OK",
   "common.remove": "Verwijder",
   "common.loading": "Laden…",
+  "common.unavailable": "—",
 
   // theme / language
   "theme.label": "Weergave",
@@ -396,6 +406,11 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "dash.tokens30d": "Tokens (30d)",
   "dash.coverage": "{pct} dekking",
   "dash.coverageLabel": "Kostendekking",
+  "dash.viewAll": "Alles bekijken",
+  "dash.providersEmptyTitle": "Nog geen leveranciersverbruik",
+  "dash.trafficEmptyTitle": "Nog geen recent verkeer",
+  "dash.trafficEmptyDesc":
+    "Requests door de proxy verschijnen hier zodra ze binnenkomen.",
   "dash.activeProviders": "Leveranciers",
   "dash.noProviders": "Nog geen leveranciers. Draai {cmd}.",
   "dash.col.name": "Naam",
@@ -561,6 +576,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "vk.loadFailed":
     "Verkeer laden lukt niet. Laatste bekende rijen blijven staan.",
   "vk.empty": "Nog geen verkeer vandaag.",
+  "vk.emptyTitle": "Nog geen verkeer",
+  "vk.emptyDesc": "Requests door de proxy verschijnen in deze lijst.",
   "vk.showAnalysis": "Volledige analyse",
   "vk.hideAnalysis": "Verberg analyse",
   "vk.stampDone": "Klaar",

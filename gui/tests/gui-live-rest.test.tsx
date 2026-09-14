@@ -2,6 +2,8 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import { act } from "react";
 import type { Root } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ProviderUsageList } from "../src/components/dashboard/provider-usage-list";
 import { LanguageProvider } from "../src/i18n/provider";
 import Dashboard from "../src/pages/Dashboard";
 import { seedDicts } from "./helpers/locales";
@@ -39,9 +41,34 @@ test("dead page-level use-provider-quotas hook stays deleted", async () => {
 });
 
 test("Dashboard uses absolute provider share and localized HTTP labels", async () => {
+  const markup = renderToStaticMarkup(
+    <ProviderUsageList
+      providers={[
+        { provider: "first", requests: 10, shareRatio: 0.25 },
+        { provider: "second", requests: 1, shareRatio: 0.1 },
+        { provider: "overflow", requests: 2, shareRatio: 2 },
+        { provider: "negative", requests: 2, shareRatio: -1 },
+        { provider: "unknown", requests: 2, shareRatio: Number.NaN },
+      ]}
+      locale="en"
+      failed={false}
+      loaded
+      labels={{
+        title: "Providers", loadError: "Failed", loading: "Loading",
+        empty: "Empty", providersNav: "Providers", requestOne: "1 request",
+        requests: count => `${count} requests`,
+      }}
+    />,
+  );
+  const container = document.createElement("div");
+  container.innerHTML = markup;
+  expect(Array.from(container.querySelectorAll<HTMLElement>(".dash-bar-fill"), bar => bar.style.width))
+    .toEqual(["25%", "10%", "100%", "0%", "0%"]);
+  expect(container.querySelectorAll('[role="listitem"]')).toHaveLength(5);
+  expect(container.textContent).toContain("10 requests");
+  expect(container.textContent).toContain("1 request");
+
   const src = await Bun.file(new URL("../src/pages/Dashboard.tsx", import.meta.url)).text();
-  expect(src).toContain("Math.min(100, Math.max(0, p.shareRatio * 100))");
-  expect(src).not.toContain("usageProviders[0].requests");
   expect(src).toContain('t("dash.http429")');
   expect(src).toContain('t("dash.http50x")');
 });

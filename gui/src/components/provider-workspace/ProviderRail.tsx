@@ -6,6 +6,7 @@
 /* eslint-disable react-refresh/only-export-components -- label helpers co-locate with the rail row */
 import { useT, type TFn } from "../../i18n/shared";
 import { IconServer, IconStar } from "../../icons";
+import { StatusDot } from "../primitives/status";
 import {
   binProviderStatus,
   isFreeProvider,
@@ -40,6 +41,15 @@ export function railStatusCls(item: WorkspaceItem): string {
   if (s === "disabled") return "providers-workspace-rail-status providers-workspace-rail-status--inactive";
   if (s === "ready") return "providers-workspace-rail-status providers-workspace-rail-status--active";
   return "providers-workspace-rail-status providers-workspace-rail-status--warning";
+}
+
+export function railStatusTone(
+  item: WorkspaceItem,
+): "neutral" | "success" | "warning" | "error" {
+  const s = binProviderStatus(item);
+  if (s === "disabled") return "neutral";
+  if (s === "ready") return "success";
+  return "warning";
 }
 
 export function ProviderIcon({ name, adapter, baseUrl, cls }: {
@@ -131,7 +141,13 @@ export function RailRow({ item, selected, tabbable, modelCount, isDefault, cappe
             <IconStar width={18} height={18} aria-hidden="true" />
           </span>
         )}
-        <span className={capped ? "providers-workspace-rail-status providers-workspace-rail-status--warning" : railStatusCls(item)} title={status} aria-hidden="true" />
+        <span
+          className={capped ? "providers-workspace-rail-status providers-workspace-rail-status--warning" : railStatusCls(item)}
+          title={status}
+          aria-hidden="true"
+        >
+          <StatusDot tone={capped ? "warning" : railStatusTone(item)} />
+        </span>
       </span>
     </button>
   );

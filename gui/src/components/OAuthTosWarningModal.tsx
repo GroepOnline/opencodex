@@ -10,6 +10,14 @@ import {
   oauthTosRiskBodyKey,
   oauthTosRiskTitleKey,
 } from "../oauth-tos-risk";
+import {
+  ModalActions,
+  ModalBackdrop,
+  ModalCard,
+  ModalDesc,
+  ModalDialog,
+  ModalHead,
+} from "./primitives/modal";
 
 export default function OAuthTosWarningModal({
   providerId,
@@ -38,21 +46,25 @@ export default function OAuthTosWarningModal({
   }, []);
 
   // Native <dialog> fires "cancel" on Escape — forward it to our handler.
-  const handleCancel = useCallback((e: React.SyntheticEvent) => {
-    e.preventDefault();
-    onCancel();
-  }, [onCancel]);
+  const handleCancel = useCallback(
+    (e: React.SyntheticEvent) => {
+      e.preventDefault();
+      onCancel();
+    },
+    [onCancel],
+  );
 
   // Unmarked provider: render nothing (callers must gate with oauthTosRisk).
   if (!level) return null;
 
   const normalizedProviderId = providerId.trim().toLowerCase();
-  const bodyKey = normalizedProviderId === "anthropic"
-    ? "oauthTos.anthropicBody"
-    : oauthTosRiskBodyKey(level);
-  const showApiKeySaferPath =
+  const bodyKey =
     normalizedProviderId === "anthropic"
-    || normalizedProviderId === "google-antigravity";
+      ? "oauthTos.anthropicBody"
+      : oauthTosRiskBodyKey(level);
+  const showApiKeySaferPath =
+    normalizedProviderId === "anthropic" ||
+    normalizedProviderId === "google-antigravity";
 
   const handleContinue = () => {
     if (!acknowledged || submittedRef.current) return;
@@ -62,46 +74,62 @@ export default function OAuthTosWarningModal({
   };
 
   return (
-    <dialog
+    <ModalDialog
       ref={dialogRef}
       aria-labelledby={titleId}
-       aria-describedby={bodyId}
-      className="modal-overlay"
+      aria-describedby={bodyId}
       onCancel={handleCancel}
     >
-      <button type="button" className="modal-backdrop-dismiss" aria-label={t("common.close")} tabIndex={-1} onClick={onCancel} />
-      <div
-        className="modal-card"
-        onClick={e => e.stopPropagation()}
-        style={{ maxWidth: 460 }}
-      >
-        <h3 id={titleId}>{t(oauthTosRiskTitleKey(level), { provider: providerLabel })}</h3>
+      <ModalBackdrop aria-label={t("common.close")} onClick={onCancel} />
+      <ModalCard className="modal-card oauth-tos-card">
+        <ModalHead
+          titleId={titleId}
+          title={t(oauthTosRiskTitleKey(level), { provider: providerLabel })}
+        />
         <div
           id={bodyId}
           className="notice-warn"
-          style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "flex-start" }}
+          style={{
+            marginTop: 12,
+            display: "flex",
+            gap: 8,
+            alignItems: "flex-start",
+          }}
         >
-          <IconAlert width={15} height={15} style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
-          <p className="modal-desc" style={{ margin: 0 }}>
+          <IconAlert
+            width={15}
+            height={15}
+            style={{ flexShrink: 0, marginTop: 2 }}
+            aria-hidden="true"
+          />
+          <ModalDesc style={{ margin: 0 }}>
             {t(bodyKey, { provider: providerLabel })}
-          </p>
+          </ModalDesc>
         </div>
         {showApiKeySaferPath && (
           <p className="muted text-label" style={{ marginTop: 12 }}>
             {t("oauthTos.saferPath")}
           </p>
         )}
-        <label className="oauth-tos-ack" style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 14 }}>
+        <label
+          className="oauth-tos-ack"
+          style={{
+            display: "flex",
+            gap: 8,
+            alignItems: "flex-start",
+            marginTop: 14,
+          }}
+        >
           <input
             type="checkbox"
             checked={acknowledged}
-            onChange={e => setAcknowledged(e.target.checked)}
+            onChange={(e) => setAcknowledged(e.target.checked)}
             style={{ marginTop: 3 }}
             aria-required="true"
           />
           <span className="text-label">{t("oauthTos.acknowledge")}</span>
         </label>
-        <div className="modal-actions">
+        <ModalActions>
           <button type="button" className="btn btn-ghost" onClick={onCancel}>
             {t("common.cancel")}
           </button>
@@ -113,8 +141,8 @@ export default function OAuthTosWarningModal({
           >
             {t("oauthTos.continue")}
           </button>
-        </div>
-      </div>
-    </dialog>
+        </ModalActions>
+      </ModalCard>
+    </ModalDialog>
   );
 }

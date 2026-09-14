@@ -7,9 +7,13 @@ import {
 import { AddCodexAccountPickStep } from "./add-codex-account-pick-step";
 import { AddCodexAccountWaitingStep } from "./add-codex-account-waiting-step";
 import { useAddCodexAccountOAuth } from "./use-add-codex-account-oauth";
+import { ModalCard, ModalDialog } from "./primitives/modal";
 
 export default function AddCodexAccountModal({
-  apiBase, onClose, onAdded, reauthAccountId,
+  apiBase,
+  onClose,
+  onAdded,
+  reauthAccountId,
 }: {
   apiBase: string;
   onClose: () => void;
@@ -17,12 +21,29 @@ export default function AddCodexAccountModal({
   reauthAccountId?: string;
 }) {
   const t = useT();
-  const [ui, dispatch] = useReducer(addCodexAccountUiReducer, reauthAccountId, initialAddCodexAccountUiState);
+  const [ui, dispatch] = useReducer(
+    addCodexAccountUiReducer,
+    reauthAccountId,
+    initialAddCodexAccountUiState,
+  );
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
 
-  const oauth = useAddCodexAccountOAuth({ apiBase, reauthAccountId, ui, dispatch, t });
-  const { manualCodeBusy, manualCodeWaiting, bindCallbacks, closeModal, startOAuth, submitManualCode } = oauth;
+  const oauth = useAddCodexAccountOAuth({
+    apiBase,
+    reauthAccountId,
+    ui,
+    dispatch,
+    t,
+  });
+  const {
+    manualCodeBusy,
+    manualCodeWaiting,
+    bindCallbacks,
+    closeModal,
+    startOAuth,
+    submitManualCode,
+  } = oauth;
 
   useEffect(() => {
     bindCallbacks(onAdded, onClose);
@@ -41,27 +62,33 @@ export default function AddCodexAccountModal({
     };
   }, []);
 
-  const handleCancel = useCallback((e: React.SyntheticEvent) => {
-    e.preventDefault();
-    closeModal();
-  }, [closeModal]);
+  const handleCancel = useCallback(
+    (e: React.SyntheticEvent) => {
+      e.preventDefault();
+      closeModal();
+    },
+    [closeModal],
+  );
 
-  const dialogLabel = reauthAccountId ? t("codexAuth.reauthenticate") : t("codexAuth.addTitle");
+  const dialogLabel = reauthAccountId
+    ? t("codexAuth.reauthenticate")
+    : t("codexAuth.addTitle");
 
   return (
-    <dialog
+    <ModalDialog
       ref={dialogRef}
       aria-label={dialogLabel}
-      className="modal-overlay"
       onCancel={handleCancel}
     >
-      <div className="modal-card" style={{ maxWidth: 440 }}>
+      <ModalCard style={{ maxWidth: 440 }}>
         {ui.step === "pick" && (
           <AddCodexAccountPickStep
             id={ui.id}
             error={ui.error}
-            onIdChange={value => dispatch({ type: "set-id", id: value })}
-            onStartOAuth={() => { void startOAuth(ui.id); }}
+            onIdChange={(value) => dispatch({ type: "set-id", id: value })}
+            onStartOAuth={() => {
+              void startOAuth(ui.id);
+            }}
             onClose={closeModal}
           />
         )}
@@ -76,12 +103,16 @@ export default function AddCodexAccountModal({
             statusTone={ui.statusTone}
             flowId={ui.flowId}
             error={ui.error}
-            onManualCodeChange={value => dispatch({ type: "set-manual-code", manualCode: value })}
-            onSubmitManualCode={() => { void submitManualCode(); }}
+            onManualCodeChange={(value) =>
+              dispatch({ type: "set-manual-code", manualCode: value })
+            }
+            onSubmitManualCode={() => {
+              void submitManualCode();
+            }}
             onClose={closeModal}
           />
         )}
-      </div>
-    </dialog>
+      </ModalCard>
+    </ModalDialog>
   );
 }

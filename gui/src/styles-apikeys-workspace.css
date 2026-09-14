@@ -79,7 +79,7 @@
 .apikeys-workspace-rail-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 8px;
   overflow-y: auto;
   max-height: min(420px, 50vh);
 }
@@ -89,27 +89,33 @@
   flex-direction: column;
   gap: var(--space-0-5);
   width: 100%;
-  min-height: 46px;
+  min-height: 56px;
   appearance: none;
-  background: none;
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: var(--space-1-5) var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  padding: 10px 12px;
   cursor: pointer;
   text-align: left;
   color: inherit;
   font: inherit;
   overflow: hidden;
-  transition: background var(--motion-fast), box-shadow var(--motion-fast);
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
 }
 
 .apikeys-workspace-rail-row:hover {
-  background: var(--surface);
+  box-shadow: var(--card-shadow-raised);
+  transform: translateY(-1px);
 }
 
 .apikeys-workspace-rail-row--selected {
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px var(--border);
+  background: var(--raised);
+  box-shadow: var(--card-shadow-raised);
+  border-color: var(--border);
 }
 
 .apikeys-workspace-rail-row:focus-visible {
@@ -135,7 +141,7 @@
   font-size: var(--text-caption);
   line-height: var(--leading-ui);
   color: var(--muted);
-  font-family: var(--mono);
+  font-family: var(--font-code);
 }
 
 .apikeys-workspace-rail-empty {
