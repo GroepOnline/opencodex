@@ -4,7 +4,11 @@ import Combos from "./Combos";
 import Subagents from "./Subagents";
 import { useT, type TKey } from "../i18n/shared";
 import { PageHeader, PageSubtitle } from "../components/primitives/page-header";
-import { PageTab, PageTabs } from "../components/primitives/page-tabs";
+import {
+  PageTab,
+  PageTabPanel,
+  PageTabs,
+} from "../components/primitives/page-tabs";
 
 type Tab = "modellen" | "combos" | "subagents";
 
@@ -26,15 +30,14 @@ function ModellenTabPanel({
   return (
     <>
       {TABS.map(({ id }) => (
-        <div
+        <PageTabPanel
           key={id}
           id={`modellen-panel-${id}`}
-          role="tabpanel"
-          aria-labelledby={`modellen-tab-${id}`}
+          labelledBy={`modellen-tab-${id}`}
           hidden={tab !== id}
         >
           {tab === id ? children : null}
-        </div>
+        </PageTabPanel>
       ))}
     </>
   );

@@ -829,7 +829,7 @@ function UsageCoveragePanel({
   return (
     <Panel titleId={titleId} style={{ marginTop: 16 }}>
       <PanelHeader titleId={titleId} title={sectionLabel} />
-      <StatGroup className="usage-cards usage-cards-3x2">
+      <StatGroup label={sectionLabel} className="usage-cards usage-cards-3x2">
         <Stat
           label={t("usage.coverage.measured")}
           value={summary.measuredRequests}

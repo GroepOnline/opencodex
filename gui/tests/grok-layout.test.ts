@@ -5,12 +5,12 @@ test("Grok composes from named page, profile-bar, and group primitives", async (
     new URL("../src/pages/Grok.tsx", import.meta.url),
   ).text();
 
-  expect(page).toContain("<GrokPage");
-  expect(page).toContain("<GrokPageHeader");
+  expect(page).toMatch(/<GrokPage(?:\s|>)/);
+  expect(page).toMatch(/<GrokPageHeader(?:\s|>)/);
   expect(page).toContain("<PageSubtitle");
-  expect(page).toContain("<ProfileBar");
-  expect(page).toContain("<CollapsibleGroupStack");
-  expect(page).toContain("<CollapsibleGroup");
+  expect(page).toMatch(/<ProfileBar(?:\s|>)/);
+  expect(page).toMatch(/<CollapsibleGroupStack(?:\s|>)/);
+  expect(page).toMatch(/<CollapsibleGroup(?:\s|>)/);
   expect(page).toContain("<CollapsibleGroupHead");
   expect(page).toContain("<CollapsibleGroupToggle");
   expect(page).toContain("<GrokModelRow");

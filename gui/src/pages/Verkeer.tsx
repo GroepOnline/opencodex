@@ -1,4 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  formatOptionalRatioPercent,
+  formatOptionalUsd,
+  UNAVAILABLE_VALUE,
+} from "../intl-formatters";
 import { formatTokens } from "../format-tokens";
 import { useI18n, type Locale, type TFn } from "../i18n/shared";
 import { KeyPoolHealthPanel, ResponseCachePanel } from "../ops-panels";
@@ -70,12 +75,12 @@ function bonTokens(entry: TrafficLogEntry): number | undefined {
 type UsageProviderRow = NonNullable<UsageSummary["providers"]>[number];
 type UsageModelRow = NonNullable<UsageSummary["models"]>[number];
 
-function dashUsd(value: number | undefined): string {
-  return typeof value === "number" ? `$${value.toFixed(2)}` : "—";
+function dashUsd(value: number | undefined, locale: Locale): string {
+  return formatOptionalUsd(value, locale);
 }
 
-function dashPct(value: number | undefined): string {
-  return typeof value === "number" ? `${Math.round(value * 100)}%` : "—";
+function dashPct(value: number | undefined, locale: Locale): string {
+  return formatOptionalRatioPercent(value, locale);
 }
 
 function TrafficStatsStrip({
@@ -115,28 +120,34 @@ function TrafficStatsStrip({
         label={t("vk.requests30d")}
         value={requests30d.toLocaleString(locale)}
       />
-      <StatStripItem label={t("vk.cacheHit")} value={dashPct(cacheReadRatio)} />
+      <StatStripItem
+        label={t("vk.cacheHit")}
+        value={dashPct(cacheReadRatio, locale)}
+      />
       <StatStripItem
         label={t("vk.proxyCacheHit")}
         value={
           proxyCacheRatio !== null
-            ? `${Math.round(proxyCacheRatio * 100)}%`
-            : "—"
+            ? formatOptionalRatioPercent(proxyCacheRatio, locale)
+            : UNAVAILABLE_VALUE
         }
       />
       <StatStripItem
         label={t("vk.costUsd")}
-        value={dashUsd(estimatedCostUsd)}
+        value={dashUsd(estimatedCostUsd, locale)}
       />
       <StatStripItem
         label={t("vk.p95")}
         value={
           typeof p95LatencyMs === "number" && p95LatencyMs > 0
             ? `${(p95LatencyMs / 1000).toFixed(1)}${t("vk.p95Unit")}`
-            : "—"
+            : UNAVAILABLE_VALUE
         }
       />
-      <StatStripItem label={t("vk.ratio429")} value={dashPct(ratio429)} />
+      <StatStripItem
+        label={t("vk.ratio429")}
+        value={dashPct(ratio429, locale)}
+      />
     </StatStrip>
   );
 }
@@ -178,8 +189,12 @@ function ProviderShareTable({
                   <td className="num">
                     {formatTokens(provider.totalTokens, locale)}
                   </td>
-                  <td className="num">{dashUsd(provider.estimatedCostUsd)}</td>
-                  <td className="num">{dashPct(provider.cacheReadRatio)}</td>
+                  <td className="num">
+                    {dashUsd(provider.estimatedCostUsd, locale)}
+                  </td>
+                  <td className="num">
+                    {dashPct(provider.cacheReadRatio, locale)}
+                  </td>
                 </tr>
               ))}
           </tbody>
@@ -226,8 +241,10 @@ function ModelShareTable({
                 <td className="num">
                   {formatTokens(model.totalTokens, locale)}
                 </td>
-                <td className="num">{dashPct(model.shareRatio)}</td>
-                <td className="num">{dashUsd(model.estimatedCostUsd)}</td>
+                <td className="num">{dashPct(model.shareRatio, locale)}</td>
+                <td className="num">
+                  {dashUsd(model.estimatedCostUsd, locale)}
+                </td>
               </tr>
             ))}
           </tbody>
