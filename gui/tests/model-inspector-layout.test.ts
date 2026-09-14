@@ -8,7 +8,7 @@ test("ModelInspector composes from inspector and metric primitives", async () =>
     new URL("../src/components/primitives/inspector.tsx", import.meta.url),
   ).text();
 
-  expect(page).toContain("<Inspector");
+  expect(page).toMatch(/<Inspector(?:\s|>)/);
   expect(page).toContain("<InspectorHeading");
   expect(page).toContain("<InspectorActions");
   expect(page).toContain("<MetricGroup");

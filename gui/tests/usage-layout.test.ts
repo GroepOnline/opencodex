@@ -50,11 +50,37 @@ test("Usage stacked layout mounts every report panel in order", async () => {
   expect(src).toContain("<PanelHeader");
   expect(src).toContain('t("usage.section.proxyUsage")');
   expect(src).toContain('t("usage.section.quality")');
-  const panel = await Bun.file(
-    new URL("../src/components/primitives/panel.tsx", import.meta.url),
-  ).text();
-  expect(panel).toContain('className = "panel"');
-  expect(panel).toContain("aria-labelledby={titleId}");
+
+  const titleIds: string[] = [];
+  const panelBlocks = [
+    ...src.matchAll(
+      /function Usage\w+[\s\S]*?(?=function Usage|\nexport default)/g,
+    ),
+  ];
+  expect(panelBlocks.length).toBeGreaterThanOrEqual(6);
+  for (const [block] of panelBlocks) {
+    if (!block.includes("<Panel")) continue;
+    const declared = block.match(/const titleId = "([^"]+)"/);
+    const panelLiteral = block.match(/<Panel\s+titleId="([^"]+)"/);
+    const headerLiteral = block.match(/<PanelHeader[\s\S]*?titleId="([^"]+)"/);
+    const id = panelLiteral?.[1] ?? declared?.[1];
+    expect(id).toBeDefined();
+    expect(titleIds).not.toContain(id);
+    titleIds.push(id!);
+    if (panelLiteral) expect(headerLiteral?.[1]).toBe(id);
+    else {
+      expect(block).toContain("<Panel titleId={titleId}");
+      expect(block).toMatch(/<PanelHeader[\s\S]*titleId=\{titleId\}/);
+    }
+  }
+  expect(titleIds).toEqual([
+    "usage-proxy-title",
+    "usage-quality-title",
+    "usage-heatmap-title",
+    "usage-models-title",
+    "usage-providers-title",
+    "usage-coverage-title",
+  ]);
 });
 
 test("Usage loading and empty states guard the stacked body", async () => {

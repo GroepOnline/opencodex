@@ -13,7 +13,7 @@ test("Logs composes from page, tabs, toolbar, and modal primitives", async () =>
   expect(page).not.toContain('className="page-sub"');
   expect(page).toContain("<LogsAutoRefreshToggle");
   expect(page).toContain("<PageTabs");
-  expect(page).toContain("<PageTab");
+  expect(page).toMatch(/<PageTab(?:\s|>)/);
   expect(page).toContain("<PageTabPanel");
   expect(page).toContain("<LogsToolbar");
   expect(page).toContain("<LogsSurfaceFilter");
