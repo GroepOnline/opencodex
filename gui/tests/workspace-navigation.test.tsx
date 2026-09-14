@@ -102,11 +102,11 @@ afterAll(() => {
 });
 
 async function render(children: ReactNode) {
-  const { LazyMotion, domAnimation, MotionConfig } = motion;
+  const { LazyMotion, domMax, MotionConfig } = motion;
   await act(async () => {
     root.render(
       <LanguageProvider>
-        <LazyMotion features={domAnimation} strict>
+        <LazyMotion features={domMax} strict>
           <MotionConfig reducedMotion="user">{children}</MotionConfig>
         </LazyMotion>
       </LanguageProvider>,

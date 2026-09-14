@@ -25,6 +25,12 @@ import {
   EmptyTitle,
   EmptyDescription,
 } from "../components/primitives/empty";
+import {
+  Inspector,
+  InspectorActions,
+  InspectorHeading,
+} from "../components/primitives/inspector";
+import { Metric, MetricGroup } from "../components/primitives/metric";
 import { Separator } from "../components/primitives/separator";
 import {
   useCopyFeedback,
@@ -108,41 +114,37 @@ function ModelDiscoveryWarnings({
 
 function ModelFacts({ model }: { model: ModelRow }) {
   const t = useT();
+  const unknown = t("models.workspace.unknown");
   return (
-    <dl className="model-inspector-facts">
-      <div>
-        <dt>{t("models.tipContext")}</dt>
-        <dd>
-          {model.contextWindow
-            ? fmtK(model.contextWindow)
-            : t("models.workspace.unknown")}
-        </dd>
-      </div>
-      {model.contextCapped && (
-        <div>
-          <dt>{t("models.workspace.contextLimit")}</dt>
-          <dd>
-            {model.contextCap
-              ? fmtK(model.contextCap)
-              : t("models.workspace.unknown")}
-          </dd>
-        </div>
-      )}
-      <div>
-        <dt>{t("models.tipModalities")}</dt>
-        <dd>
-          {model.inputModalities?.length
+    <MetricGroup
+      label={t("models.workspace.mainAria")}
+      className="model-inspector-facts"
+    >
+      <Metric
+        label={t("models.tipContext")}
+        value={model.contextWindow ? fmtK(model.contextWindow) : unknown}
+      />
+      {model.contextCapped ? (
+        <Metric
+          label={t("models.workspace.contextLimit")}
+          value={model.contextCap ? fmtK(model.contextCap) : unknown}
+        />
+      ) : null}
+      <Metric
+        label={t("models.tipModalities")}
+        value={
+          model.inputModalities?.length
             ? model.inputModalities.join(", ")
-            : t("models.workspace.unknown")}
-        </dd>
-      </div>
-      {model.native && (
-        <div>
-          <dt>{t("models.tipProvider")}</dt>
-          <dd>{t("models.nativeGroupLabel")}</dd>
-        </div>
-      )}
-    </dl>
+            : unknown
+        }
+      />
+      {model.native ? (
+        <Metric
+          label={t("models.tipProvider")}
+          value={t("models.nativeGroupLabel")}
+        />
+      ) : null}
+    </MetricGroup>
   );
 }
 
@@ -157,13 +159,13 @@ export default function ModelInspector({
   onDelete,
 }: {
   model: ModelRow | null;
-  group?: ProviderModelGroup<ModelRow>;
   visible: boolean;
   busy: boolean;
   onClose: () => void;
   onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  group?: ProviderModelGroup<ModelRow>;
 }) {
   const t = useT();
   const idCopy = useCopyFeedback<string>();
@@ -174,10 +176,11 @@ export default function ModelInspector({
   }, [model?.namespaced]);
 
   return (
-    <aside
+    <Inspector
       id="model-inspector"
-      className={`model-inspector${model ? " is-populated" : ""}`}
-      aria-label={t("models.workspace.mainAria")}
+      className="model-inspector"
+      populated={Boolean(model)}
+      label={t("models.workspace.mainAria")}
     >
       {model ? (
         <>
@@ -195,18 +198,23 @@ export default function ModelInspector({
             />
             {t("models.workspace.back")}
           </Button>
-          <div className="model-inspector-heading">
-            <span className="model-inspector-provider">
-              <IconServer size={15} aria-hidden />
-              {model.provider}
-            </span>
-            <h3 ref={headingRef} tabIndex={-1}>
-              {model.displayName || modelLabel(model.id)}
-            </h3>
-            {model.custom && (
-              <Badge variant="secondary">{t("models.customBadge")}</Badge>
-            )}
-          </div>
+          <InspectorHeading
+            className="model-inspector-heading"
+            kickerClassName="model-inspector-provider"
+            headingRef={headingRef}
+            kicker={
+              <>
+                <IconServer size={15} aria-hidden />
+                {model.provider}
+              </>
+            }
+            title={model.displayName || modelLabel(model.id)}
+            badge={
+              model.custom ? (
+                <Badge variant="secondary">{t("models.customBadge")}</Badge>
+              ) : null
+            }
+          />
           <ModelIdentifier
             model={model}
             copyOutcome={copyOutcome}
@@ -248,8 +256,8 @@ export default function ModelInspector({
               </AccordionContent>
             </AccordionItem>
           </Accordion>
-          {model.custom && model.customId && (
-            <div className="model-inspector-actions">
+          {model.custom && model.customId ? (
+            <InspectorActions className="model-inspector-actions">
               <Button
                 type="button"
                 variant="outline"
@@ -266,8 +274,8 @@ export default function ModelInspector({
               >
                 {t("models.customDelete")}
               </Button>
-            </div>
-          )}
+            </InspectorActions>
+          ) : null}
         </>
       ) : (
         <Empty className="model-inspector-empty">
@@ -282,6 +290,6 @@ export default function ModelInspector({
           </EmptyHeader>
         </Empty>
       )}
-    </aside>
+    </Inspector>
   );
 }

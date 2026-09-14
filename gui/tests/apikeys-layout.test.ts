@@ -106,3 +106,10 @@ test("apikeys workspace i18n keys resolve in every shipped locale", () => {
     }
   }
 });
+
+test("ApiKeys overview card list uses accessible semantic list elements without role=listitem", async () => {
+  const panels = await Bun.file(new URL("../src/pages/api-keys-panels.tsx", import.meta.url)).text();
+  expect(panels).toContain('<ul className="api-key-cards ocx-reveal-list">');
+  expect(panels).toContain('<li key={k.id} className="api-key-card">');
+  expect(panels).not.toContain('role="listitem"');
+});

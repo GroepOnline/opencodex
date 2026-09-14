@@ -14,6 +14,7 @@ import {
   oauthHealthShowsDoctor,
   oauthHealthShowsReauth,
 } from "../oauth-health-display";
+import { PageHeader } from "./primitives/page-header";
 
 export function CodexAccountPoolMainCard({
   t,
@@ -158,38 +159,50 @@ export function CodexAccountPoolPageHead({
   onRefresh: () => void;
   onPauseExhausted: () => void;
 }) {
-  return (
-    <div
-      className={embedded ? "row" : "page-head codex-auth-page-head"}
-      style={embedded ? { justifyContent: "flex-end", marginBottom: 8 } : undefined}
-    >
-      {!embedded && <h2 className="page-title">{t("nav.codexAuth")}</h2>}
-      <div className={embedded ? "row" : "codex-auth-page-head__actions"}>
-        <span
-          className={`codex-auth-page-head__feedback${actionFeedbackTone === "ok" ? " is-ok" : ""}${actionFeedbackTone === "err" ? " is-err" : ""}`}
-          role="status"
-          aria-live="polite"
-        >
-          {actionFeedback ?? ""}
-        </span>
-        <button
-          type="button"
-          className="btn btn-sm btn-ghost codex-auth-action-btn"
-          onClick={onPauseExhausted}
-          disabled={refreshingQuota || pausingExhausted || !!pauseBusy}
-        >
-          <IconPause width={15} /> {pausingExhausted ? t("codexAuth.pausingExhausted") : t("codexAuth.pauseExhausted")}
-        </button>
-        <button
-          type="button"
-          className="btn btn-sm btn-ghost codex-auth-action-btn"
-          onClick={onRefresh}
-          disabled={refreshingQuota || pausingExhausted || !!pauseBusy}
-        >
-          <IconRefresh width={15} /> {refreshingQuota ? t("codexAuth.refreshingQuota") : t("codexAuth.refreshQuota")}
-        </button>
+  const actions = (
+    <>
+      <span
+        className={`codex-auth-page-head__feedback${actionFeedbackTone === "ok" ? " is-ok" : ""}${actionFeedbackTone === "err" ? " is-err" : ""}`}
+        role="status"
+        aria-live="polite"
+      >
+        {actionFeedback ?? ""}
+      </span>
+      <button
+        type="button"
+        className="btn btn-sm btn-ghost codex-auth-action-btn"
+        onClick={onPauseExhausted}
+        disabled={refreshingQuota || pausingExhausted || !!pauseBusy}
+      >
+        <IconPause width={15} /> {pausingExhausted ? t("codexAuth.pausingExhausted") : t("codexAuth.pauseExhausted")}
+      </button>
+      <button
+        type="button"
+        className="btn btn-sm btn-ghost codex-auth-action-btn"
+        onClick={onRefresh}
+        disabled={refreshingQuota || pausingExhausted || !!pauseBusy}
+      >
+        <IconRefresh width={15} /> {refreshingQuota ? t("codexAuth.refreshingQuota") : t("codexAuth.refreshQuota")}
+      </button>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="row" style={{ justifyContent: "flex-end", marginBottom: 8 }}>
+        <div className="row">{actions}</div>
       </div>
-    </div>
+    );
+  }
+
+  return (
+    <PageHeader
+      className="codex-auth-page-head"
+      title={t("nav.codexAuth")}
+      titleClassName="page-title"
+      actionsClassName="codex-auth-page-head__actions"
+      actions={actions}
+    />
   );
 }
 

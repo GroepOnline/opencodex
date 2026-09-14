@@ -82,9 +82,9 @@ async function providersPageSeam(): Promise<string> {
 describe("workspace account integration seam", () => {
   test("passes account state and handlers into provider details", async () => {
     const source = await providersPageSeam();
-    expect(source).toContain("accountLoadState={accountLoadStates[item.name]");
-    expect(source).toContain("switchingAccountId={switchingAccount?.provider === item.name");
-    expect(source).toContain("onRetryAccounts: async provider => { await fetchAccountSets([provider]); }");
+    expect(source).toMatch(/accountLoadState=\{\s*accountLoadStates\[item\.name\]/);
+    expect(source).toMatch(/switchingAccountId=\{\s*switchingAccount\?\.provider === item\.name/);
+    expect(source).toMatch(/onRetryAccounts: async \(provider\) => \{\s*await fetchAccountSets\(\[provider\]\);\s*\}/);
     expect(source).toContain("key={item.name}");
     expect(source).toContain("switchingAccountRef.current");
     expect(source).toContain("const refreshed = await fetchAccountSets([provider])");
@@ -94,8 +94,14 @@ describe("workspace account integration seam", () => {
   test("owns an accessible dynamic account panel instead of nesting auth in Settings", async () => {
     const source = await Bun.file("gui/src/components/provider-workspace/ProviderDetails.tsx").text();
     expect(source).toContain('id: "accounts" as const');
-    expect(source).toContain('role="tabpanel"');
-    expect(source).toContain('aria-controls={`pws-panel-${candidate.id}`}');
+    expect(source).toContain('<PageTabPanel');
+    expect(source).toContain('id={activePanelId}');
+    expect(source).toContain('labelledBy={activeTabId}');
+    expect(source).toContain('controls={`pws-panel-${candidate.id}`}');
+    const primitive = await Bun.file("gui/src/components/primitives/page-tabs.tsx").text();
+    expect(primitive).toContain('role="tabpanel"');
+    expect(primitive).toContain('aria-labelledby={labelledBy}');
+    expect(primitive).toContain('aria-controls={controls}');
     expect(source).toContain('tab === "accounts"');
     expect(source.lastIndexOf('tab === "accounts"')).toBeLessThan(source.lastIndexOf('tab === "settings" &&'));
   });

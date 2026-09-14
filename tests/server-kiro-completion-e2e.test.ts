@@ -8,6 +8,7 @@ import { encodeMessage } from "../src/lib/eventstream-decoder";
 import { startServer } from "../src/server";
 import type { OcxConfig } from "../src/types";
 import { installIsolatedCodexHome, type IsolatedCodexHome } from "./helpers/isolated-codex-home";
+import { managementFetch } from "./helpers/management-auth";
 
 const enc = new TextEncoder();
 const originalFetch = globalThis.fetch;
@@ -167,6 +168,41 @@ describe("Kiro completion through public server endpoints", () => {
       expect(kiroToolNames(upstream.requests[1])).toEqual(["bash", KIRO_COMPLETION_TOOL_NAME]);
       expect(upstream.requests[1].conversationState.history.at(-1).assistantResponseMessage.content)
         .toBe("Checking the workspace.");
+    } finally {
+      proxy.stop(true);
+      upstream.server.stop(true);
+    }
+  });
+
+  test("dynamic Claude routing retains the Kiro input usage estimate", async () => {
+    const upstream = scriptedKiroUpstream([
+      [textFrame("I am checking the Claude task.")],
+      completionFrames("The Claude task is complete."),
+    ]);
+    const config = kiroConfig(upstream.server.url.toString());
+    config.claudeCode = { agentRouting: "dynamic" };
+    config.subagentModels = ["kiro-test/gpt-5.6-sol"];
+    saveConfig(config);
+    const proxy = startServer(0);
+    try {
+      const response = await originalFetch(new URL("/v1/messages", proxy.url), {
+        method: "POST",
+        headers: { "content-type": "application/json", "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5",
+          max_tokens: 256,
+          stream: true,
+          system: "<!-- ocx-route-mode: dynamic -->",
+          messages: [{ role: "user", content: "Inspect the Claude task" }],
+        }),
+      });
+      expect(response.status).toBe(200);
+      await response.text();
+      const logs = await managementFetch(new URL("/api/logs?tail=1", proxy.url)).then(res => res.json()) as Array<{
+        usage?: { inputTokens?: number };
+      }>;
+      expect(logs).toHaveLength(1);
+      expect(logs[0]?.usage?.inputTokens).toBeGreaterThan(0);
     } finally {
       proxy.stop(true);
       upstream.server.stop(true);

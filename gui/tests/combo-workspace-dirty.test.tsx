@@ -143,7 +143,8 @@ test("Strict Mode: edit, revert, and unsaved navigation keep dirty state coheren
   });
   await flushTimers();
   expect(container.querySelector("#cwi-unsaved-title")).toBeNull();
-  expect(container.querySelector(".combos-workspace-detail-title")?.textContent).toBe("combo/beta");
+  expect(container.querySelector(".combos-workspace-detail-title")?.textContent).toBe("Combo");
+  expect(container.querySelector(".combo-detail-id")?.textContent).toBe("combo/beta");
 
   await act(async () => {
     railButton(container, "combo/alpha").click();
@@ -163,7 +164,8 @@ test("Strict Mode: edit, revert, and unsaved navigation keep dirty state coheren
     railButton(container, "combo/beta").click();
   });
   expect(container.querySelector("#cwi-unsaved-title")).toBeNull();
-  expect(container.querySelector(".combos-workspace-detail-title")?.textContent).toBe("combo/beta");
+  expect(container.querySelector(".combos-workspace-detail-title")?.textContent).toBe("Combo");
+  expect(container.querySelector(".combo-detail-id")?.textContent).toBe("combo/beta");
 
   await act(async () => {
     root.unmount();

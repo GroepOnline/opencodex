@@ -42,6 +42,45 @@ describe("buildClaudeAgentDefs (devlog 070 + audit 071)", () => {
     for (const d of defs) expect(d.description).toContain("`model` argument is ignored");
   });
 
+  test("dynamic routing emits one backend-neutral agent over the featured roster", () => {
+    const dir = tempDir();
+    writeFileSync(join(dir, "settings.json"), JSON.stringify({ model: "claude-ocx-native--gpt-5.6-sol" }));
+    const defs = buildClaudeAgentDefs(cfg({
+      subagentModels: ["mock/primary", "mock/backup"],
+      claudeCode: { agentRouting: "dynamic" },
+    }), {}, dir);
+    expect(defs).toHaveLength(1);
+    expect(defs[0]).toMatchObject({
+      file: "ocx-auto.md",
+      name: "ocx-auto",
+      model: "haiku",
+      routeMode: "dynamic",
+      dynamic: true,
+    });
+    syncClaudeAgentDefs(defs, dir);
+    const body = readFileSync(join(dir, "agents", "ocx-auto.md"), "utf8");
+    expect(body).toContain("<!-- ocx-route-mode: dynamic -->");
+    expect(body).not.toContain("<!-- ocx-route: dynamic -->");
+    expect(body).toContain("routed dynamically through the local opencodex proxy");
+    expect(body).not.toContain("mock/primary");
+    expect(body).not.toContain("mock/backup");
+    expect(body).not.toContain("IDENTITY: your ACTUAL underlying model");
+    expect(body).not.toContain("ACTUAL underlying model is pinned");
+    expect(body).not.toContain("remove the model from the roster to drop it");
+  });
+
+  test("pinned model id dynamic stays a literal route", () => {
+    const dir = tempDir();
+    const defs = buildClaudeAgentDefs(cfg({
+      subagentModels: [],
+      claudeCode: { agentRouting: "pinned", model: "dynamic" },
+    }), {}, dir);
+    syncClaudeAgentDefs(defs, dir);
+    const body = readFileSync(join(dir, "agents", "ocx-self.md"), "utf8");
+    expect(body).toContain("<!-- ocx-route: dynamic -->");
+    expect(body).not.toContain("ocx-route-mode");
+  });
+
   test("placeholder guidance recommends haiku, never sonnet (issue #252)", () => {
     const dir = tempDir();
     writeFileSync(join(dir, "settings.json"), JSON.stringify({ model: "claude-ocx-native--gpt-5.6-sol" }));
@@ -224,6 +263,25 @@ describe("syncClaudeAgentDefs ownership contract (audit 071 #2/#3)", () => {
       throw e;
     }
   })();
+
+  test("switching to dynamic routing prunes owned pinned agents", () => {
+    const dir = tempDir();
+    writeFileSync(join(dir, "settings.json"), JSON.stringify({ model: "claude-ocx-native--gpt-5.6-sol" }));
+    const pinned = cfg({ subagentModels: ["gpt-5.6-sol"] });
+    expect(syncClaudeAgentDefs(buildClaudeAgentDefs(pinned, {}, dir), dir)).toEqual([
+      "ocx-gpt-5-6-sol.md",
+      "ocx-self.md",
+    ]);
+
+    const dynamic = cfg({
+      subagentModels: ["gpt-5.6-sol"],
+      claudeCode: { agentRouting: "dynamic" },
+    });
+    expect(syncClaudeAgentDefs(buildClaudeAgentDefs(dynamic, {}, dir), dir)).toEqual([
+      "ocx-auto.md",
+    ]);
+    expect(readdirSync(join(dir, "agents"))).toEqual(["ocx-auto.md"]);
+  });
 
   test.skipIf(!canSymlink)("symlinks are never followed or pruned", () => {
     const dir = tempDir();

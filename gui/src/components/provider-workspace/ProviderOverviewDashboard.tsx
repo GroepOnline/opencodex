@@ -20,11 +20,34 @@ import { formatProviderDisplayName } from "../../provider-icons";
 import QuotaBars from "../QuotaBars";
 import type { QuotaCardState } from "./use-provider-quotas";
 import type { AvailabilityProviderView, ProviderCapCooldown } from "../../pages/providers-shared";
+import { StatStrip, StatStripItem } from "../primitives/stat-strip";
+import { Status } from "../primitives/status";
+import { SectionHeader } from "../primitives/section-header";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../primitives/empty";
+import { IconBoxes } from "../../icons";
 
 /** HH:MM (mono) for the VERS · HH:MM / VEROUDERD · HH:MM stamps. */
 function clockTime(epoch: number): string {
   const d = new Date(epoch);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function DashboardEmpty({ title }: { title: string }) {
+  return (
+    <Empty className="pws-dashboard-empty-state">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <IconBoxes aria-hidden="true" />
+        </EmptyMedia>
+        <EmptyTitle>{title}</EmptyTitle>
+      </EmptyHeader>
+    </Empty>
+  );
 }
 
 function StatusMark({ tone }: { tone: "ready" | "warn" | "cool" | "off" }) {
@@ -209,32 +232,24 @@ export default function ProviderOverviewDashboard({
         )}
       </div>
 
-      <div className="pws-dashboard-stats" role="group" aria-label={t("pws.statsAria")}>
-        <div className="pws-dashboard-stat">
-          <span className="pws-dashboard-stat-count num">{readyCount}</span>
-          <span className="pws-dashboard-stat-label caps">{t("pws.status.ready")}</span>
-        </div>
-        <div className="pws-dashboard-stat">
-          <span className="pws-dashboard-stat-count num pws-dashboard-stat-count--warn">{needsAttentionCount}</span>
-          <span className="pws-dashboard-stat-label caps">{readyReauthCount > 0 ? t("pws.status.needsAttention") : t("pws.status.needsSetup")}</span>
-        </div>
-        <div className="pws-dashboard-stat">
-          <span className="pws-dashboard-stat-count num">{sections.disabled.length}</span>
-          <span className="pws-dashboard-stat-label caps">{t("prov.disabledBadge")}</span>
-        </div>
-        <div className="pws-dashboard-stat">
-          <span className="pws-dashboard-stat-count num">{poolCount}</span>
-          <span className="pws-dashboard-stat-label caps">{t("pws.availability.pools")}</span>
-        </div>
-      </div>
+      <StatStrip label={t("pws.statsAria")} className="stat-strip pws-dashboard-stat-strip">
+        <StatStripItem label={t("pws.status.ready")} value={readyCount} />
+        <StatStripItem
+          label={readyReauthCount > 0 ? t("pws.status.needsAttention") : t("pws.status.needsSetup")}
+          value={
+            <span className={needsAttentionCount > 0 ? "pws-stat-warn" : undefined}>
+              {needsAttentionCount}
+            </span>
+          }
+        />
+        <StatStripItem label={t("prov.disabledBadge")} value={sections.disabled.length} />
+        <StatStripItem label={t("pws.availability.pools")} value={poolCount} />
+      </StatStrip>
 
       {cappedProviders.length > 0 && (
         <section className="pws-dashboard-section pws-dashboard-caps" aria-label={t("pws.capCooldown.section")}>
-          <h3 className="pws-dashboard-section-title">
-            <IconAlert size={15} aria-hidden="true" />
-            {t("pws.capCooldown.section")}
-          </h3>
-          <div className="pws-dashboard-group">
+          <SectionHeader title={t("pws.capCooldown.section")} />
+          <div className="pws-dashboard-group ocx-reveal-list">
             {cappedProviders.map(({ name, entry }) => {
               const reset = formatResetFuture(entry.until, t, locale);
               return (
@@ -266,11 +281,8 @@ export default function ProviderOverviewDashboard({
 
       {attentionCount > 0 && (
         <section className="pws-dashboard-section pws-dashboard-attention" aria-label={t("pws.attentionTitle")}>
-          <h3 className="pws-dashboard-section-title">
-            <IconAlert size={15} aria-hidden="true" />
-            {t("pws.attentionTitle")}
-          </h3>
-          <div className="pws-dashboard-group">
+          <SectionHeader title={t("pws.attentionTitle")} />
+          <div className="pws-dashboard-group ocx-reveal-list">
             {attention.map(item => (
               <button
                 key={`${item.name}:${item.reason}`}
@@ -291,9 +303,9 @@ export default function ProviderOverviewDashboard({
       )}
 
       <section className="pws-dashboard-section" aria-label={t("pws.dashboard.configuredProviders")}>
-        <h3 className="pws-dashboard-section-title">{t("pws.dashboard.configuredProviders")}</h3>
+        <SectionHeader title={t("pws.dashboard.configuredProviders")} />
         {allItems.length > 0 ? (
-          <div className="pws-dashboard-group">
+          <div className="pws-dashboard-group ocx-reveal-list">
             {allItems.map(item => {
               const line = rowAvailability(item);
               const status = rowStatus(item);
@@ -321,7 +333,7 @@ export default function ProviderOverviewDashboard({
             })}
           </div>
         ) : (
-          <p className="muted pws-dashboard-empty">{t("pws.dashboard.noConfiguredProviders")}</p>
+          <DashboardEmpty title={t("pws.dashboard.noConfiguredProviders")} />
         )}
       </section>
 
@@ -331,9 +343,9 @@ export default function ProviderOverviewDashboard({
           aria-label={t("pws.dashboard.rateLimits")}
           aria-busy={quotasLoading || undefined}
         >
-          <h3 className="pws-dashboard-section-title">{t("pws.dashboard.rateLimits")}</h3>
+          <SectionHeader title={t("pws.dashboard.rateLimits")} />
           {quotaProviders.length > 0 ? (
-            <div className="pws-dashboard-rows">
+            <div className="pws-dashboard-rows ocx-reveal-list">
               {quotaProviders.map(({ item, report, card }) => {
                 const stamp =
                   card.status === "error" ? (
@@ -343,8 +355,41 @@ export default function ProviderOverviewDashboard({
                   ) : (
                     <span className="quota-stamp quota-stamp--vers">{t("pws.quota.vers")} · {report?.updatedAt ? clockTime(report.updatedAt) : ""}</span>
                   );
-                return (
-                  <div key={item.name} className={`pws-dashboard-quota-row${card.status === "error" ? " quota-card-error" : ""}`}>
+                return card.status === "error" ? (
+                  <div key={item.name} className="pws-quota-error-card">
+                    <div
+                      className="pws-dashboard-row-select"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => onSelectProvider(item.name)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onSelectProvider(item.name);
+                        }
+                      }}
+                    >
+                      <ProviderIcon name={item.name} adapter={item.adapter} baseUrl={item.baseUrl} cls="pws-dashboard-row-icon" />
+                      <div className="pws-dashboard-row-info">
+                        <span className="pws-dashboard-row-name">{formatProviderDisplayName(item.name)}</span>
+                        <Status tone="error">{t("pws.quota.fout")}</Status>
+                      </div>
+                    </div>
+                    {card.nextRetryAt ? (
+                      <span className="mono pws-quota-retry-at">
+                        {t("pws.quota.retryAt", { time: clockTime(card.nextRetryAt) })}
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => onRefreshQuota(item.name)}
+                    >
+                      {t("pws.quota.retry")}
+                    </button>
+                  </div>
+                ) : (
+                  <div key={item.name} className="pws-dashboard-quota-row">
                     <div className="pws-dashboard-row-select"
                       role="button" tabIndex={0}
                       onClick={() => onSelectProvider(item.name)}
@@ -354,23 +399,11 @@ export default function ProviderOverviewDashboard({
                         <span className="pws-dashboard-row-name">{formatProviderDisplayName(item.name)}</span>
                         <span className="pws-dashboard-row-meta muted">{stamp}</span>
                       </div>
-                      {card.status !== "error" ? (
-                        <IconChevron className="pws-dashboard-row-chevron" aria-hidden="true" />
-                      ) : null}
+                      <IconChevron className="pws-dashboard-row-chevron" aria-hidden="true" />
                       <div className="pws-dashboard-row-bars">
-                        {card.status === "error" ? (
-                          <span className="quota-stamp quota-stamp--fout">{card.nextRetryAt ? t("pws.quota.retryAt", { time: clockTime(card.nextRetryAt) }) : ""}</span>
-                        ) : (
-                          <QuotaBars quota={report ? accountQuotaFromReport(report) : null} threshold={80} t={t} layout="stacked" pending={card.status === "loading" || !report?.quota} />
-                        )}
+                        <QuotaBars quota={report ? accountQuotaFromReport(report) : null} threshold={80} t={t} layout="stacked" pending={card.status === "loading" || !report?.quota} />
                       </div>
                     </div>
-                    {card.status === "error" ? (
-                      <button type="button" className="link-btn quota-retry"
-                        onClick={() => onRefreshQuota(item.name)}>
-                        {t("pws.quota.retry")}
-                      </button>
-                    ) : null}
                   </div>
                 );
               })}
@@ -391,7 +424,7 @@ export default function ProviderOverviewDashboard({
               ))}
             </div>
           ) : (
-            <p className="muted pws-dashboard-empty">{t("pws.dashboard.noRateLimits")}</p>
+            <DashboardEmpty title={t("pws.dashboard.noRateLimits")} />
           )}
         </section>
 
@@ -400,9 +433,9 @@ export default function ProviderOverviewDashboard({
           aria-label={t("pws.dashboard.recentlyUsed")}
           aria-busy={usageLoading || undefined}
         >
-          <h3 className="pws-dashboard-section-title">{t("pws.dashboard.recentlyUsed")}</h3>
+          <SectionHeader title={t("pws.dashboard.recentlyUsed")} />
           {mostUsed.length > 0 ? (
-            <div className="pws-dashboard-rows">
+            <div className="pws-dashboard-rows ocx-reveal-list">
               {mostUsed.map(provider => (
                 <button
                   key={provider.name}
@@ -432,7 +465,7 @@ export default function ProviderOverviewDashboard({
               ))}
             </div>
           ) : (
-            <p className="muted pws-dashboard-empty">{t("pws.dashboard.noUsage")}</p>
+            <DashboardEmpty title={t("pws.dashboard.noUsage")} />
           )}
         </section>
       </div>
