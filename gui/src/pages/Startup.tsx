@@ -304,7 +304,9 @@ export default function Startup({ apiBase }: { apiBase: string }) {
           error?: unknown;
         } | null;
         throw new Error(
-          typeof body?.error === "string" ? body.error : "installation failed",
+          typeof body?.error === "string"
+            ? body.error
+            : t("startup.installationFailed"),
         );
       }
       setInstallResult({

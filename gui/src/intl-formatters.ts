@@ -35,7 +35,10 @@ const CREDIT_DATE_TIME_OPTIONS: Intl.DateTimeFormatOptions = {
 
 const dateFormatters = new Map<string, Intl.DateTimeFormat>();
 
-function cachedDateFormatter(locale: string | undefined, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+function cachedDateFormatter(
+  locale: string | undefined,
+  options: Intl.DateTimeFormatOptions,
+): Intl.DateTimeFormat {
   const key = cacheKey(locale, options);
   let fmt = dateFormatters.get(key);
   if (!fmt) {
@@ -58,7 +61,10 @@ export function formatCreditDateTime(iso: string, locale?: string): string {
 }
 
 /** Format a USD cost estimate for display. Returns "—" when unavailable. */
-export function formatEstimatedUsdValue(value: number, locale?: string): string {
+export function formatEstimatedUsdValue(
+  value: number,
+  locale?: string,
+): string {
   if (!Number.isFinite(value) || value < 0) return "\u2014";
   const formatted = cachedNumberFormat(locale, {
     style: "currency",
@@ -67,4 +73,22 @@ export function formatEstimatedUsdValue(value: number, locale?: string): string 
     maximumFractionDigits: 4,
   }).format(value);
   return `~${formatted}`;
+}
+
+/** Locale-aware USD amount (two fraction digits, matching dashboard cost). */
+export function formatUsd(value: number, locale?: string): string {
+  return cachedNumberFormat(locale, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+/** Locale-aware ratio formatted as a whole-number percentage. */
+export function formatPercent(value: number, locale?: string): string {
+  return cachedNumberFormat(locale, {
+    style: "percent",
+    maximumFractionDigits: 0,
+  }).format(value);
 }

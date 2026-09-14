@@ -17,7 +17,7 @@ import {
 import { makeCollapseStore, toggleInSet } from "./collapse-store";
 import { IconChevron } from "../icons";
 import { EmptyState, Notice } from "../ui";
-import { useT, type TFn, type TKey } from "../i18n/shared";
+import { useI18n, type TFn, type TKey } from "../i18n/shared";
 import { readJsonIfOk, readJsonOrThrow } from "../fetch-json";
 import { createBoundedFetch } from "../bounded-fetch";
 import {
@@ -26,6 +26,7 @@ import {
 } from "../session-list-cache";
 import { PageHeader } from "../components/primitives/page-header";
 import { ProfileBar } from "../components/primitives/profile-bar";
+import { Timestamp } from "../components/primitives/timestamp";
 import {
   CollapsibleGroup,
   CollapsibleGroupCount,
@@ -202,6 +203,7 @@ function ClaudeDesktopStatusBar({
   notAppliedLabel,
   staleLabel,
   notActiveLabel,
+  locale,
 }: {
   status: DesktopStatus;
   lastRequestLabel: string;
@@ -210,6 +212,7 @@ function ClaudeDesktopStatusBar({
   notAppliedLabel: string;
   staleLabel: string;
   notActiveLabel: string;
+  locale: string;
 }) {
   const tone =
     status.activeProfile === false
@@ -236,7 +239,10 @@ function ClaudeDesktopStatusBar({
       {status.health.lastRequestAt && (
         <span className="claude-status-health">
           {lastRequestLabel}:{" "}
-          {new Date(status.health.lastRequestAt).toLocaleTimeString()}
+          <Timestamp
+            value={new Date(status.health.lastRequestAt)}
+            locale={locale}
+          />
         </span>
       )}
       {status.health.requestCount > 0 && (
@@ -257,7 +263,7 @@ export default function ClaudeDesktop({
   apiBase: string;
   active?: boolean;
 }) {
-  const t = useT();
+  const { t, locale } = useI18n();
   const cacheKey = `ocx.claude-desktop.v1:${apiBase}`;
   const [data, setData] = useState<DesktopResponse | null>(
     () => seedDesktop(cacheKey).data,
@@ -615,6 +621,7 @@ export default function ClaudeDesktop({
       {status && (
         <ClaudeDesktopStatusBar
           status={status}
+          locale={locale}
           lastRequestLabel={t("claudeDesktop.health.lastRequest")}
           statsLabel={t("claudeDesktop.health.stats", {
             count: status.health.requestCount,
