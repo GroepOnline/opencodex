@@ -74,6 +74,7 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "startup.install": "Installeer",
   "startup.repair": "Repareer",
   "startup.installing": "Installeren…",
+  "startup.installationFailed": "Installatie mislukt",
   "startup.repairing": "Repareren…",
   "modal.add": "Leverancier toevoegen",
   "modal.search": "Zoek leveranciers…",

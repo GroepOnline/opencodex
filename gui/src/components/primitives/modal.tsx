@@ -5,10 +5,12 @@ export function Modal({
   className = "modal-overlay",
   role = "dialog",
   "aria-modal": ariaModal = true,
+  ref,
   ...props
-}: ComponentPropsWithoutRef<"div">) {
+}: ComponentPropsWithoutRef<"div"> & { ref?: Ref<HTMLDivElement> }) {
   return (
     <div
+      ref={ref}
       className={className}
       role={role}
       aria-modal={ariaModal}

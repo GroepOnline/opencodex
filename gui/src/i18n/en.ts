@@ -123,6 +123,7 @@ export const en = {
   "startup.serviceRepaired": "Background service repaired successfully.",
   "startup.shimInstalled": "Codex launcher shim installed successfully.",
   "startup.shimRepaired": "Codex launcher shim repaired successfully.",
+  "startup.installationFailed": "Installation failed",
   "startup.installFailed": "Installation failed:",
   "startup.tray.title": "Windows system tray",
   "startup.tray.hint":

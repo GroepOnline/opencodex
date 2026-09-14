@@ -41,7 +41,7 @@ test("workspace dialogs compose from modal primitives", async () => {
     new URL("../src/components/primitives/modal.tsx", import.meta.url),
   ).text();
 
-  expect(addProvider).toContain("<Modal");
+  expect(addProvider).toMatch(/<Modal(?:\s|>)/);
   expect(addProvider).toContain("<ModalCard");
   expect(addProvider).toContain("<ModalHead");
   expect(addProvider).not.toContain('className="modal-overlay"');

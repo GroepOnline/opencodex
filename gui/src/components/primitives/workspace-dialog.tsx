@@ -1,4 +1,70 @@
-import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  type ComponentPropsWithoutRef,
+  type ReactNode,
+  type RefObject,
+} from "react";
+import { Modal } from "./modal";
+
+const FOCUSABLE =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function focusableElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+    (el) => el.tabIndex !== -1,
+  );
+}
+
+function useWorkspaceDialogFocus(
+  containerRef: RefObject<HTMLDivElement | null>,
+  onDismiss?: () => void,
+) {
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+
+    const focusInitial = () => {
+      const elements = focusableElements(container);
+      (elements[0] ?? container).focus();
+    };
+    const frame = requestAnimationFrame(focusInitial);
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onDismiss?.();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const elements = focusableElements(container);
+      if (elements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (event.shiftKey) {
+        if (document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    container.addEventListener("keydown", onKeyDown);
+    return () => {
+      cancelAnimationFrame(frame);
+      container.removeEventListener("keydown", onKeyDown);
+      previouslyFocused?.focus?.();
+    };
+  }, [containerRef, onDismiss]);
+}
 
 /** Provider-workspace overlay. Preserves `.dialog-backdrop` — not `modal-overlay`. */
 export function WorkspaceDialogBackdrop({
@@ -13,12 +79,18 @@ export function WorkspaceDialog({
   className = "dialog",
   role = "alertdialog",
   onClick,
+  onDismiss,
   ...props
-}: ComponentPropsWithoutRef<"div">) {
+}: ComponentPropsWithoutRef<"div"> & { onDismiss?: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useWorkspaceDialogFocus(ref, onDismiss);
+
   return (
-    <div
+    <Modal
+      ref={ref}
       className={className}
       role={role}
+      tabIndex={-1}
       {...props}
       onClick={(event) => {
         event.stopPropagation();

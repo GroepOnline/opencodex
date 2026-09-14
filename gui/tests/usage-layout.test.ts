@@ -50,11 +50,24 @@ test("Usage stacked layout mounts every report panel in order", async () => {
   expect(src).toContain("<PanelHeader");
   expect(src).toContain('t("usage.section.proxyUsage")');
   expect(src).toContain('t("usage.section.quality")');
-  const panel = await Bun.file(
-    new URL("../src/components/primitives/panel.tsx", import.meta.url),
-  ).text();
-  expect(panel).toContain('className = "panel"');
-  expect(panel).toContain("aria-labelledby={titleId}");
+  const panelTitleIds = [
+    "usage-proxy-title",
+    "usage-quality-title",
+    "usage-heatmap-title",
+    "usage-models-title",
+    "usage-providers-title",
+    "usage-coverage-title",
+  ];
+  for (const titleId of panelTitleIds) {
+    expect(src).toContain(`"${titleId}"`);
+    expect(src).toMatch(
+      new RegExp(`<Panel[^>]*titleId=\\{(?:titleId|"${titleId}")\\}`),
+    );
+    expect(src).toMatch(
+      new RegExp(`<PanelHeader[^>]*titleId=\\{(?:titleId|"${titleId}")\\}`),
+    );
+  }
+  expect(new Set(panelTitleIds).size).toBe(panelTitleIds.length);
 });
 
 test("Usage loading and empty states guard the stacked body", async () => {
