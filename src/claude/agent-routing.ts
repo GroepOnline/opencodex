@@ -8,75 +8,110 @@ import type { OcxComboTarget, OcxConfig } from "../types";
 // Reserved request-local id. This value is never persisted or exposed by management APIs.
 const DYNAMIC_COMBO_ID = "claude-agent-dynamic-v1";
 
-function isDisabledDynamicAgentModel(config: OcxConfig, model: string): boolean {
+function isDisabledDynamicAgentModel(
+  config: OcxConfig,
+  model: string,
+): boolean {
   const disabled = config.disabledModels ?? [];
   if (!model.includes("/")) {
-    return disabled.some(stored => stored === model || slugEquals(stored, "openai", model));
+    return disabled.some(
+      (stored) => stored === model || slugEquals(stored, "openai", model),
+    );
   }
   const slash = model.indexOf("/");
-  return disabled.some(stored => {
+  return disabled.some((stored) => {
     if (stored === model) return true;
     const storedSlash = stored.indexOf("/");
-    return storedSlash > 0
-      && stored.slice(0, storedSlash) === model.slice(0, slash)
-      && slugEquals(stored, model.slice(0, slash), model.slice(slash + 1));
+    return (
+      storedSlash > 0 &&
+      stored.slice(0, storedSlash) === model.slice(0, slash) &&
+      slugEquals(stored, model.slice(0, slash), model.slice(slash + 1))
+    );
   });
 }
 
-function dynamicAgentTargets(config: OcxConfig): OcxComboTarget[] {
-  const roster = config.subagentModels === undefined
+function dynamicAgentRoster(config: OcxConfig): readonly string[] {
+  return config.subagentModels === undefined
     ? DEFAULT_SUBAGENT_MODELS
     : config.subagentModels;
+}
+
+function rejectDynamicRosterEntry(config: OcxConfig, model: string): boolean {
+  return !model || resolveComboId(config, model) != null;
+}
+
+function tryAddBareOpenAiTarget(
+  config: OcxConfig,
+  model: string,
+  targets: OcxComboTarget[],
+  seen: Set<string>,
+): void {
+  if (isDisabledDynamicAgentModel(config, model)) return;
+  const nativeProvider = config.providers.openai;
+  if (
+    !SUPPORTED_NATIVE_OPENAI_SLUGS.has(model) ||
+    !nativeProvider ||
+    nativeProvider.disabled === true
+  )
+    return;
+  const key = `openai/${model}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+  targets.push({ provider: "openai", model });
+}
+
+function tryAddRoutedProviderTarget(
+  config: OcxConfig,
+  model: string,
+  targets: OcxComboTarget[],
+  seen: Set<string>,
+): void {
+  const slash = model.indexOf("/");
+  if (slash <= 0) return;
+  const providerName = model.slice(0, slash);
+  const requestedModel = model.slice(slash + 1);
+  if (!hasOwnProvider(config.providers, providerName)) return;
+  const provider = config.providers[providerName];
+  if (provider.disabled === true) return;
+  const knownModels = knownModelIdsForProvider(providerName, provider);
+  const decodedModel = decodeRoutedModelId(requestedModel, knownModels);
+  if (
+    !knownModels.includes(model) &&
+    !knownModels.includes(requestedModel) &&
+    !knownModels.includes(decodedModel)
+  )
+    return;
+  if (
+    isDisabledDynamicAgentModel(config, model) ||
+    isDisabledDynamicAgentModel(config, `${providerName}/${decodedModel}`)
+  )
+    return;
+  try {
+    const route = routeModel(config, model);
+    if (route.combo) return;
+    const key = `${route.providerName}/${route.modelId}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    targets.push({ provider: route.providerName, model: route.modelId });
+  } catch {
+    // A stale roster entry must not take the entire dynamic lane down.
+  }
+}
+
+function dynamicAgentTargets(config: OcxConfig): OcxComboTarget[] {
   const targets: OcxComboTarget[] = [];
   const seen = new Set<string>();
 
-  for (const entry of roster) {
+  for (const entry of dynamicAgentRoster(config)) {
     if (targets.length >= 5) break;
     if (typeof entry !== "string") continue;
     const model = entry.trim();
-    if (!model || resolveComboId(config, model)) continue;
-    const slash = model.indexOf("/");
-    if (slash < 0) {
-      if (isDisabledDynamicAgentModel(config, model)) continue;
-      const nativeProvider = config.providers.openai;
-      if (
-        !SUPPORTED_NATIVE_OPENAI_SLUGS.has(model)
-        || !nativeProvider
-        || nativeProvider.disabled === true
-      ) continue;
-      const key = `openai/${model}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      targets.push({ provider: "openai", model });
+    if (rejectDynamicRosterEntry(config, model)) continue;
+    if (model.indexOf("/") < 0) {
+      tryAddBareOpenAiTarget(config, model, targets, seen);
       continue;
     }
-    if (slash === 0) continue;
-    const providerName = model.slice(0, slash);
-    const requestedModel = model.slice(slash + 1);
-    if (!hasOwnProvider(config.providers, providerName)) continue;
-    const provider = config.providers[providerName];
-    if (provider.disabled === true) continue;
-    const knownModels = knownModelIdsForProvider(providerName, provider);
-    const decodedModel = decodeRoutedModelId(requestedModel, knownModels);
-    if (
-      !knownModels.includes(model)
-      && !knownModels.includes(requestedModel)
-      && !knownModels.includes(decodedModel)
-    ) continue;
-    if (
-      isDisabledDynamicAgentModel(config, model)
-      || isDisabledDynamicAgentModel(config, `${providerName}/${decodedModel}`)
-    ) continue;
-    try {
-      const route = routeModel(config, model);
-      if (route.combo) continue;
-      const key = `${route.providerName}/${route.modelId}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      targets.push({ provider: route.providerName, model: route.modelId });
-    } catch {
-      // A stale roster entry must not take the entire dynamic lane down.
-    }
+    tryAddRoutedProviderTarget(config, model, targets, seen);
   }
   return targets;
 }
