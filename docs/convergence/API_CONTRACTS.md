@@ -22,11 +22,12 @@ backend field is a stop-the-line condition.
 | Deploy L3 / unauthenticated | none | `{ contract_version, version, git_sha, built_at, release, schema_version, gui_version, runtime }` |
 | Management / GUI footer | management token | public body + `management { hostname, default_provider, provider_count, management_auth_available }` |
 
-`schema_version` is `null` when the store has no `schema_version` / `schemaVersion`
-(Lane C introduces the field). `git_sha` / `built_at` / `release` come from
-`src/build-info.json`, written by `scripts/generate-build-info.ts` during
-`prepare-package`. Local `bun start` and npm consumers without git get `null`s —
-that is valid, not a crash.
+For unauthenticated callers, `schema_version` is always `null`; the field remains in the
+stable public shape without exposing datastore schema state. Authenticated management
+callers receive the configured `schema_version` / `schemaVersion` when present, otherwise
+`null`. `git_sha` / `built_at` / `release` come from `src/build-info.json`, written by
+`scripts/generate-build-info.ts` during `prepare-package`. Local `bun start` and npm
+consumers without git get `null`s — that is valid, not a crash.
 
 No secrets, no provider keys, no account ids.
 
@@ -99,7 +100,8 @@ on `origin/main`. Soft gaps:
 - Lane B: health cannot yet say RATE_LIMITED / COOLDOWN / AUTH_FAILED. Those
   states are process-local (V13). This contract reports configured/disabled/
   missing-credentials only.
-- Lane C: `schema_version` is read if present, otherwise `null`. Safe default.
+- Lane C: unauthenticated provenance keeps `schema_version: null`; authenticated
+  provenance reads the configured schema version when present, otherwise `null`.
 - Lane D: Overview/Health consume `/api/health` + `/api/usage` + `/api/logs`.
   Usage has no account field and is 83% synthetic on live (V12) — the empty /
   insufficient-data state is required.
