@@ -2,10 +2,16 @@ import { expect, test } from "bun:test";
 
 test("provider workspace dialogs compose from workspace-dialog primitives", async () => {
   const dialogs = await Bun.file(
-    new URL("../src/components/provider-workspace/ProviderDialogs.tsx", import.meta.url),
+    new URL(
+      "../src/components/provider-workspace/ProviderDialogs.tsx",
+      import.meta.url,
+    ),
   ).text();
   const primitive = await Bun.file(
-    new URL("../src/components/primitives/workspace-dialog.tsx", import.meta.url),
+    new URL(
+      "../src/components/primitives/workspace-dialog.tsx",
+      import.meta.url,
+    ),
   ).text();
 
   expect(dialogs).toContain("<WorkspaceDialogBackdrop");
@@ -20,6 +26,8 @@ test("provider workspace dialogs compose from workspace-dialog primitives", asyn
   expect(primitive).toContain('className = "dialog-backdrop"');
   expect(primitive).toContain('className = "dialog"');
   expect(primitive).toContain('role = "alertdialog"');
+  expect(primitive).toContain('aria-modal": ariaModal = true');
+  expect(primitive).toContain("useModalFocus");
   expect(primitive).toContain('className = "dialog-actions"');
   expect(primitive).toContain("stopPropagation");
 });
