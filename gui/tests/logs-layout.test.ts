@@ -10,7 +10,6 @@ test("Logs uses clean unicode middle dot separator instead of mojibake bytes", a
 });
 
 test("Logs composes from page, tabs, toolbar, and modal primitives", async () => {
-
   const page = await Bun.file(
     new URL("../src/pages/Logs.tsx", import.meta.url),
   ).text();
@@ -23,7 +22,7 @@ test("Logs composes from page, tabs, toolbar, and modal primitives", async () =>
   expect(page).not.toContain('className="page-sub"');
   expect(page).toContain("<LogsAutoRefreshToggle");
   expect(page).toContain("<PageTabs");
-  expect(page).toContain("<PageTab");
+  expect(page).toMatch(/<PageTab(?:\s|>)/);
   expect(page).toContain("<PageTabPanel");
   expect(page).toContain("<LogsToolbar");
   expect(page).toContain("<LogsSurfaceFilter");

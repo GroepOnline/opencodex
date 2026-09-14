@@ -9,10 +9,12 @@ test("Modellen composes from page header and segmented tab primitives", async ()
   expect(page).toContain("<PageHeader");
   expect(page).toContain("<PageSubtitle");
   expect(page).toContain("<PageTabs");
-  expect(page).toContain("<PageTab");
+  expect(page).toMatch(/<PageTab(?:\s|>)/);
+  expect(page).toContain("<PageTabPanel");
   expect(page).toContain("<ModellenTabPanel");
   expect(page).toContain('className="usage-segmented"');
   expect(page).toContain("usage-segmented-btn");
   expect(page).not.toContain('role="tablist"');
+  expect(page).not.toContain('role="tabpanel"');
   expect(page).not.toContain('className="page-head"');
 });

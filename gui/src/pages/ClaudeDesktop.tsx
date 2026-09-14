@@ -17,7 +17,7 @@ import {
 import { makeCollapseStore, toggleInSet } from "./collapse-store";
 import { IconBoxes, IconChevron } from "../icons";
 import { Notice } from "../ui";
-import { useT, type TFn, type TKey } from "../i18n/shared";
+import { useI18n, type TFn, type TKey } from "../i18n/shared";
 import { readJsonIfOk, readJsonOrThrow } from "../fetch-json";
 import { createBoundedFetch } from "../bounded-fetch";
 import {
@@ -26,6 +26,7 @@ import {
 } from "../session-list-cache";
 import { PageHeader } from "../components/primitives/page-header";
 import { ProfileBar } from "../components/primitives/profile-bar";
+import { Timestamp } from "../components/primitives/timestamp";
 import {
   Empty,
   EmptyDescription,
@@ -209,6 +210,7 @@ function ClaudeDesktopStatusBar({
   notAppliedLabel,
   staleLabel,
   notActiveLabel,
+  locale,
 }: {
   status: DesktopStatus;
   lastRequestLabel: string;
@@ -217,6 +219,7 @@ function ClaudeDesktopStatusBar({
   notAppliedLabel: string;
   staleLabel: string;
   notActiveLabel: string;
+  locale: string;
 }) {
   const tone =
     status.activeProfile === false
@@ -243,7 +246,10 @@ function ClaudeDesktopStatusBar({
       {status.health.lastRequestAt && (
         <span className="claude-status-health">
           {lastRequestLabel}:{" "}
-          {new Date(status.health.lastRequestAt).toLocaleTimeString()}
+          <Timestamp
+            value={new Date(status.health.lastRequestAt)}
+            locale={locale}
+          />
         </span>
       )}
       {status.health.requestCount > 0 && (
@@ -264,7 +270,7 @@ export default function ClaudeDesktop({
   apiBase: string;
   active?: boolean;
 }) {
-  const t = useT();
+  const { t, locale } = useI18n();
   const cacheKey = `ocx.claude-desktop.v1:${apiBase}`;
   const [data, setData] = useState<DesktopResponse | null>(
     () => seedDesktop(cacheKey).data,
@@ -626,6 +632,7 @@ export default function ClaudeDesktop({
       {status && (
         <ClaudeDesktopStatusBar
           status={status}
+          locale={locale}
           lastRequestLabel={t("claudeDesktop.health.lastRequest")}
           statsLabel={t("claudeDesktop.health.stats", {
             count: status.health.requestCount,
@@ -698,322 +705,333 @@ export default function ClaudeDesktop({
       )}
 
       <div className="ocx-reveal-list">
-      <CollapsibleGroupStack label={t("claudeDesktop.assignmentsLabel")}>
-        {FAMILIES.map((family) => {
-          // Render-only narrowing: the lane header, effectiveDefaults and every assignment keep
-          // reading the full list, so filtering can never change what Claude Desktop resolves.
-          const all = modelsByFamily[family];
-          const lane = laneView(
-            all,
-            laneSearch[family] ?? "",
-            laneLimit[family] ?? LANE_PAGE,
-          );
-          const isCollapsed = collapsedFamilies.has(family);
-          const familyDefault = effectiveDefaults[family];
-          return (
-            <CollapsibleGroup
-              key={family}
-              collapsed={isCollapsed}
-              labelledBy={`claude-lane-${family}`}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => dropOnLane(event, family)}
-            >
-              <CollapsibleGroupHead collapsed={isCollapsed}>
-                {/* The button goes INSIDE the heading: a heading is not phrasing content, so
+        <CollapsibleGroupStack label={t("claudeDesktop.assignmentsLabel")}>
+          {FAMILIES.map((family) => {
+            // Render-only narrowing: the lane header, effectiveDefaults and every assignment keep
+            // reading the full list, so filtering can never change what Claude Desktop resolves.
+            const all = modelsByFamily[family];
+            const lane = laneView(
+              all,
+              laneSearch[family] ?? "",
+              laneLimit[family] ?? LANE_PAGE,
+            );
+            const isCollapsed = collapsedFamilies.has(family);
+            const familyDefault = effectiveDefaults[family];
+            return (
+              <CollapsibleGroup
+                key={family}
+                collapsed={isCollapsed}
+                labelledBy={`claude-lane-${family}`}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => dropOnLane(event, family)}
+              >
+                <CollapsibleGroupHead collapsed={isCollapsed}>
+                  {/* The button goes INSIDE the heading: a heading is not phrasing content, so
                   nesting it the other way round is invalid. This keeps the family in the
                   a11y tree and gives the toggle its name. */}
-                <CollapsibleGroupToggle
-                  titleId={`claude-lane-${family}`}
-                  controls={`claude-lane-body-${family}`}
-                  expanded={!isCollapsed}
-                  onClick={() => toggleFamily(family)}
-                >
-                  <IconChevron
-                    className="ocx-chevron"
-                    width={15}
-                    height={15}
-                    aria-hidden="true"
-                  />
-                  <CollapsibleGroupName>
-                    {t(FAMILY_KEYS[family])}
-                  </CollapsibleGroupName>
-                  <CollapsibleGroupCount>
-                    {t(
-                      all.length === 1
-                        ? "claudeDesktop.modelCountOne"
-                        : "claudeDesktop.modelCountMany",
-                      { count: all.length },
-                    )}
-                  </CollapsibleGroupCount>
-                  {/* Collapsed legibility: the resolved default is what a user opens a
+                  <CollapsibleGroupToggle
+                    titleId={`claude-lane-${family}`}
+                    controls={`claude-lane-body-${family}`}
+                    expanded={!isCollapsed}
+                    onClick={() => toggleFamily(family)}
+                  >
+                    <IconChevron
+                      className="ocx-chevron"
+                      width={15}
+                      height={15}
+                      aria-hidden="true"
+                    />
+                    <CollapsibleGroupName>
+                      {t(FAMILY_KEYS[family])}
+                    </CollapsibleGroupName>
+                    <CollapsibleGroupCount>
+                      {t(
+                        all.length === 1
+                          ? "claudeDesktop.modelCountOne"
+                          : "claudeDesktop.modelCountMany",
+                        { count: all.length },
+                      )}
+                    </CollapsibleGroupCount>
+                    {/* Collapsed legibility: the resolved default is what a user opens a
                     family to check, so it stays readable while folded. */}
-                  {familyDefault && (
-                    <code className="claude-lane-default" title={familyDefault}>
-                      {familyDefault}
-                    </code>
-                  )}
-                </CollapsibleGroupToggle>
-                {/* Warnings stay outside the fold — never hide state the user must act on. */}
-                {all.length > 0 && profile.defaults[family] === null && (
-                  <span className="claude-default-needed">
-                    {t("claudeDesktop.chooseDefault")}
-                  </span>
-                )}
-                {familyDefault &&
-                  familyDefault !== profile.defaults[family] && (
-                    <span
-                      className="claude-default-needed"
-                      title={familyDefault}
-                    >
-                      {t("claudeDesktop.temporaryDefault")}
+                    {familyDefault && (
+                      <code
+                        className="claude-lane-default"
+                        title={familyDefault}
+                      >
+                        {familyDefault}
+                      </code>
+                    )}
+                  </CollapsibleGroupToggle>
+                  {/* Warnings stay outside the fold — never hide state the user must act on. */}
+                  {all.length > 0 && profile.defaults[family] === null && (
+                    <span className="claude-default-needed">
+                      {t("claudeDesktop.chooseDefault")}
                     </span>
                   )}
-              </CollapsibleGroupHead>
-
-              {!isCollapsed && (
-                <ClaudeLaneBody id={`claude-lane-body-${family}`}>
-                  {lane.showSearch && (
-                    <input
-                      className="input claude-lane-search"
-                      type="search"
-                      placeholder={t("models.search")}
-                      aria-label={t("models.search")}
-                      value={laneSearch[family] ?? ""}
-                      onChange={(event) => {
-                        const next = event.target.value;
-                        setLaneSearch((current) => ({
-                          ...current,
-                          [family]: next,
-                        }));
-                        // A new query starts from the first page; otherwise a previously expanded lane
-                        // would hide the very matches the user just searched for.
-                        setLaneLimit((current) => ({
-                          ...current,
-                          [family]: LANE_PAGE,
-                        }));
-                      }}
-                    />
-                  )}
-
-                  <div className="claude-lane-models">
-                    {all.length === 0 ? (
-                      <div className="claude-lane-empty">
-                        {t("claudeDesktop.laneEmpty")}
-                      </div>
-                    ) : lane.noMatch ? (
-                      <div className="claude-lane-empty">
-                        {t("claudeDesktop.laneNoMatch")}
-                      </div>
-                    ) : (
-                      lane.shown.map((model) => {
-                        const assignment = profile.assignments[model.route];
-                        const context = formatContextWindow(
-                          model.contextWindow,
-                          t,
-                        );
-                        const destination = destinations[model.route] ?? "opus";
-                        const rowOpen =
-                          openRows[model.route] ??
-                          rowStartsOpen(model.route, effectiveDefaults[family]);
-                        return (
-                          <article
-                            key={model.route}
-                            className={`claude-model-card${rowOpen ? " open" : ""}`}
-                            draggable={model.available}
-                            onDragStart={(event) => {
-                              event.dataTransfer.effectAllowed = "move";
-                              event.dataTransfer.setData(
-                                "text/plain",
-                                model.route,
-                              );
-                            }}
-                          >
-                            {/* Summary: identification and triage only. Availability, context and
-                        effort stay OUT of the fold because they are what you scan to pick a
-                        default — only the edit affordances are hidden. */}
-                            <button
-                              type="button"
-                              className="claude-model-summary"
-                              aria-expanded={rowOpen}
-                              aria-controls={`claude-model-body-${model.route}`}
-                              onClick={() =>
-                                setOpenRows((current) => ({
-                                  ...current,
-                                  [model.route]: !rowOpen,
-                                }))
-                              }
-                            >
-                              <IconChevron
-                                className="ocx-chevron"
-                                width={13}
-                                height={13}
-                                aria-hidden="true"
-                                style={{
-                                  transform: rowOpen ? "rotate(90deg)" : "none",
-                                }}
-                              />
-                              <span className="claude-model-names">
-                                <strong title={model.label}>
-                                  {model.label}
-                                </strong>
-                                <code title={model.route}>{model.route}</code>
-                              </span>
-                              {context && (
-                                <span className="claude-model-context">
-                                  {context}
-                                </span>
-                              )}
-                              {/* Distinguish "we do not know the window" from "we know it is
-                          small": a blank reads as broken. */}
-                              {!context && (
-                                <span className="claude-model-context claude-model-context-unknown">
-                                  {t("claudeDesktop.contextUnknown")}
-                                </span>
-                              )}
-                              {/* Read-only view of the 1M capability the written config already
-                          carries — distinct from the context number, because a 984k
-                          model is below the threshold. */}
-                              {model.supports1m === true && (
-                                <span className="claude-1m-chip">
-                                  {t("claudeDesktop.supports1m")}
-                                </span>
-                              )}
-                              {model.effortSupported === false && (
-                                <span className="claude-effort-badge off">
-                                  {t("claudeDesktop.effort.displayOnly")}
-                                </span>
-                              )}
-                              {model.effortSupported === true && (
-                                <span className="claude-effort-badge on">
-                                  {t("claudeDesktop.effort.supported")}
-                                </span>
-                              )}
-                              {profile.defaults[family] === model.route && (
-                                <span className="claude-row-default">
-                                  {t("claudeDesktop.defaultBadge")}
-                                </span>
-                              )}
-                              <span
-                                className={`badge ${model.available ? "badge-green" : "badge-muted"}`}
-                              >
-                                {model.available
-                                  ? t("claudeDesktop.available")
-                                  : t("claudeDesktop.unavailable")}
-                              </span>
-                            </button>
-
-                            {rowOpen && (
-                              <div
-                                className="claude-model-body"
-                                id={`claude-model-body-${model.route}`}
-                              >
-                                {effectiveDefaults[family] === model.route &&
-                                  profile.defaults[family] !== model.route && (
-                                    <span className="claude-effective-default">
-                                      {t("claudeDesktop.temporaryDefault")}
-                                    </span>
-                                  )}
-
-                                <div className="claude-field">
-                                  <span>{t("claudeDesktop.alias")}</span>
-                                  <code
-                                    className="claude-alias"
-                                    title={assignment.alias}
-                                  >
-                                    {assignment.alias}
-                                  </code>
-                                </div>
-
-                                <label className="claude-default-radio">
-                                  <input
-                                    type="radio"
-                                    name={`default-${family}`}
-                                    checked={
-                                      profile.defaults[family] === model.route
-                                    }
-                                    disabled={!model.available}
-                                    onChange={() =>
-                                      setProfile(
-                                        (current) =>
-                                          current && {
-                                            ...current,
-                                            defaults: {
-                                              ...current.defaults,
-                                              [family]: model.route,
-                                            },
-                                          },
-                                      )
-                                    }
-                                  />
-                                  {t("claudeDesktop.useAsDefault", {
-                                    family: t(FAMILY_KEYS[family]),
-                                  })}
-                                </label>
-
-                                <div className="claude-move-row">
-                                  <label htmlFor={`move-${model.route}`}>
-                                    {t("claudeDesktop.moveTo")}
-                                  </label>
-                                  <select
-                                    id={`move-${model.route}`}
-                                    className="input"
-                                    value={destination}
-                                    disabled={!model.available}
-                                    onChange={(event) =>
-                                      setDestinations((current) => ({
-                                        ...current,
-                                        [model.route]: event.target
-                                          .value as Family,
-                                      }))
-                                    }
-                                  >
-                                    {FAMILIES.map((option) => (
-                                      <option key={option} value={option}>
-                                        {t(FAMILY_KEYS[option])}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <button
-                                    type="button"
-                                    className="btn btn-ghost btn-sm"
-                                    disabled={
-                                      !model.available || destination === family
-                                    }
-                                    onClick={() =>
-                                      moveModel(model.route, destination)
-                                    }
-                                  >
-                                    {t("claudeDesktop.move")}
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </article>
-                        );
-                      })
+                  {familyDefault &&
+                    familyDefault !== profile.defaults[family] && (
+                      <span
+                        className="claude-default-needed"
+                        title={familyDefault}
+                      >
+                        {t("claudeDesktop.temporaryDefault")}
+                      </span>
                     )}
-                    {lane.hidden > 0 && (
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm claude-lane-more"
-                        onClick={() =>
+                </CollapsibleGroupHead>
+
+                {!isCollapsed && (
+                  <ClaudeLaneBody id={`claude-lane-body-${family}`}>
+                    {lane.showSearch && (
+                      <input
+                        className="input claude-lane-search"
+                        type="search"
+                        placeholder={t("models.search")}
+                        aria-label={t("models.search")}
+                        value={laneSearch[family] ?? ""}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          setLaneSearch((current) => ({
+                            ...current,
+                            [family]: next,
+                          }));
+                          // A new query starts from the first page; otherwise a previously expanded lane
+                          // would hide the very matches the user just searched for.
                           setLaneLimit((current) => ({
                             ...current,
-                            [family]:
-                              (current[family] ?? LANE_PAGE) + LANE_PAGE,
-                          }))
-                        }
-                      >
-                        {t("models.showMore", { n: lane.hidden })}
-                      </button>
+                            [family]: LANE_PAGE,
+                          }));
+                        }}
+                      />
                     )}
-                  </div>
-                </ClaudeLaneBody>
-              )}
-            </CollapsibleGroup>
-          );
-        })}
-      </CollapsibleGroupStack>
+
+                    <div className="claude-lane-models">
+                      {all.length === 0 ? (
+                        <div className="claude-lane-empty">
+                          {t("claudeDesktop.laneEmpty")}
+                        </div>
+                      ) : lane.noMatch ? (
+                        <div className="claude-lane-empty">
+                          {t("claudeDesktop.laneNoMatch")}
+                        </div>
+                      ) : (
+                        lane.shown.map((model) => {
+                          const assignment = profile.assignments[model.route];
+                          const context = formatContextWindow(
+                            model.contextWindow,
+                            t,
+                          );
+                          const destination =
+                            destinations[model.route] ?? "opus";
+                          const rowOpen =
+                            openRows[model.route] ??
+                            rowStartsOpen(
+                              model.route,
+                              effectiveDefaults[family],
+                            );
+                          return (
+                            <article
+                              key={model.route}
+                              className={`claude-model-card${rowOpen ? " open" : ""}`}
+                              draggable={model.available}
+                              onDragStart={(event) => {
+                                event.dataTransfer.effectAllowed = "move";
+                                event.dataTransfer.setData(
+                                  "text/plain",
+                                  model.route,
+                                );
+                              }}
+                            >
+                              {/* Summary: identification and triage only. Availability, context and
+                        effort stay OUT of the fold because they are what you scan to pick a
+                        default — only the edit affordances are hidden. */}
+                              <button
+                                type="button"
+                                className="claude-model-summary"
+                                aria-expanded={rowOpen}
+                                aria-controls={`claude-model-body-${model.route}`}
+                                onClick={() =>
+                                  setOpenRows((current) => ({
+                                    ...current,
+                                    [model.route]: !rowOpen,
+                                  }))
+                                }
+                              >
+                                <IconChevron
+                                  className="ocx-chevron"
+                                  width={13}
+                                  height={13}
+                                  aria-hidden="true"
+                                  style={{
+                                    transform: rowOpen
+                                      ? "rotate(90deg)"
+                                      : "none",
+                                  }}
+                                />
+                                <span className="claude-model-names">
+                                  <strong title={model.label}>
+                                    {model.label}
+                                  </strong>
+                                  <code title={model.route}>{model.route}</code>
+                                </span>
+                                {context && (
+                                  <span className="claude-model-context">
+                                    {context}
+                                  </span>
+                                )}
+                                {/* Distinguish "we do not know the window" from "we know it is
+                          small": a blank reads as broken. */}
+                                {!context && (
+                                  <span className="claude-model-context claude-model-context-unknown">
+                                    {t("claudeDesktop.contextUnknown")}
+                                  </span>
+                                )}
+                                {/* Read-only view of the 1M capability the written config already
+                          carries — distinct from the context number, because a 984k
+                          model is below the threshold. */}
+                                {model.supports1m === true && (
+                                  <span className="claude-1m-chip">
+                                    {t("claudeDesktop.supports1m")}
+                                  </span>
+                                )}
+                                {model.effortSupported === false && (
+                                  <span className="claude-effort-badge off">
+                                    {t("claudeDesktop.effort.displayOnly")}
+                                  </span>
+                                )}
+                                {model.effortSupported === true && (
+                                  <span className="claude-effort-badge on">
+                                    {t("claudeDesktop.effort.supported")}
+                                  </span>
+                                )}
+                                {profile.defaults[family] === model.route && (
+                                  <span className="claude-row-default">
+                                    {t("claudeDesktop.defaultBadge")}
+                                  </span>
+                                )}
+                                <span
+                                  className={`badge ${model.available ? "badge-green" : "badge-muted"}`}
+                                >
+                                  {model.available
+                                    ? t("claudeDesktop.available")
+                                    : t("claudeDesktop.unavailable")}
+                                </span>
+                              </button>
+
+                              {rowOpen && (
+                                <div
+                                  className="claude-model-body"
+                                  id={`claude-model-body-${model.route}`}
+                                >
+                                  {effectiveDefaults[family] === model.route &&
+                                    profile.defaults[family] !==
+                                      model.route && (
+                                      <span className="claude-effective-default">
+                                        {t("claudeDesktop.temporaryDefault")}
+                                      </span>
+                                    )}
+
+                                  <div className="claude-field">
+                                    <span>{t("claudeDesktop.alias")}</span>
+                                    <code
+                                      className="claude-alias"
+                                      title={assignment.alias}
+                                    >
+                                      {assignment.alias}
+                                    </code>
+                                  </div>
+
+                                  <label className="claude-default-radio">
+                                    <input
+                                      type="radio"
+                                      name={`default-${family}`}
+                                      checked={
+                                        profile.defaults[family] === model.route
+                                      }
+                                      disabled={!model.available}
+                                      onChange={() =>
+                                        setProfile(
+                                          (current) =>
+                                            current && {
+                                              ...current,
+                                              defaults: {
+                                                ...current.defaults,
+                                                [family]: model.route,
+                                              },
+                                            },
+                                        )
+                                      }
+                                    />
+                                    {t("claudeDesktop.useAsDefault", {
+                                      family: t(FAMILY_KEYS[family]),
+                                    })}
+                                  </label>
+
+                                  <div className="claude-move-row">
+                                    <label htmlFor={`move-${model.route}`}>
+                                      {t("claudeDesktop.moveTo")}
+                                    </label>
+                                    <select
+                                      id={`move-${model.route}`}
+                                      className="input"
+                                      value={destination}
+                                      disabled={!model.available}
+                                      onChange={(event) =>
+                                        setDestinations((current) => ({
+                                          ...current,
+                                          [model.route]: event.target
+                                            .value as Family,
+                                        }))
+                                      }
+                                    >
+                                      {FAMILIES.map((option) => (
+                                        <option key={option} value={option}>
+                                          {t(FAMILY_KEYS[option])}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <button
+                                      type="button"
+                                      className="btn btn-ghost btn-sm"
+                                      disabled={
+                                        !model.available ||
+                                        destination === family
+                                      }
+                                      onClick={() =>
+                                        moveModel(model.route, destination)
+                                      }
+                                    >
+                                      {t("claudeDesktop.move")}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </article>
+                          );
+                        })
+                      )}
+                      {lane.hidden > 0 && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm claude-lane-more"
+                          onClick={() =>
+                            setLaneLimit((current) => ({
+                              ...current,
+                              [family]:
+                                (current[family] ?? LANE_PAGE) + LANE_PAGE,
+                            }))
+                          }
+                        >
+                          {t("models.showMore", { n: lane.hidden })}
+                        </button>
+                      )}
+                    </div>
+                  </ClaudeLaneBody>
+                )}
+              </CollapsibleGroup>
+            );
+          })}
+        </CollapsibleGroupStack>
       </div>
     </div>
   );

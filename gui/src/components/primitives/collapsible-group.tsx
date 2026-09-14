@@ -11,7 +11,7 @@ export function CollapsibleGroupStack({
   children: ReactNode;
 }) {
   return (
-    <div className={className} aria-label={label}>
+    <div className={className} role="group" aria-label={label}>
       {children}
     </div>
   );

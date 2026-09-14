@@ -190,7 +190,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "cws.addTitle": "Combo toevoegen",
   "cws.detailTitle": "Combo",
   "cws.emptyRailTitle": "Nog geen combo's",
-  "cws.emptyRailHint": "Maak een combo om verzoeken over providers te routeren.",
+  "cws.emptyRailHint":
+    "Maak een combo om verzoeken over providers te routeren.",
   "cws.create": "Maak combo",
   "cws.overviewTitle": "Combos",
   "cws.overviewBlurb":
@@ -350,6 +351,7 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "startup.copied": "Gekopieerd",
   "startup.loading": "Opstartbescherming checken…",
   "startup.error": "Kon opstartbescherming niet lezen.",
+  "startup.installationFailed": "installatie mislukt",
   "claudeDesktop.syncLaptop": "Sync naar deze laptop",
   "claudeDesktop.syncLaptopAnnounce":
     "Laptop-sync start. Sta het toe als de browser vraagt.",
@@ -366,6 +368,7 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "common.ok": "OK",
   "common.remove": "Verwijder",
   "common.loading": "Laden…",
+  "common.unavailable": "—",
 
   // theme / language
   "theme.label": "Weergave",

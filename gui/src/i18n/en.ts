@@ -46,6 +46,7 @@ export const en = {
   "common.remove": "Remove",
   "common.loading": "Loading…",
   "common.retry": "Retry",
+  "common.unavailable": "—",
   "app.logoAria": "opencodex logo",
   "app.claudeOn": "Claude ON",
   "app.claudeOff": "Claude OFF",
@@ -123,6 +124,7 @@ export const en = {
   "startup.shimInstalled": "Codex launcher shim installed successfully.",
   "startup.shimRepaired": "Codex launcher shim repaired successfully.",
   "startup.installFailed": "Installation failed:",
+  "startup.installationFailed": "installation failed",
   "startup.tray.title": "Windows system tray",
   "startup.tray.hint":
     "Install a login tray icon for one-click proxy start, stop, restart, dashboard, and status controls.",

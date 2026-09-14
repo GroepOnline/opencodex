@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "lucide-react";
 import { formatTokens } from "../format-tokens";
+import { formatPercent, formatUsd } from "../intl-formatters";
 import { useI18n, type Locale, type TFn } from "../i18n/shared";
 import { IconChevron } from "../icons";
 import { KeyPoolHealthPanel, ResponseCachePanel } from "../ops-panels";
@@ -85,12 +86,24 @@ function bonTokens(entry: TrafficLogEntry): number | undefined {
 type UsageProviderRow = NonNullable<UsageSummary["providers"]>[number];
 type UsageModelRow = NonNullable<UsageSummary["models"]>[number];
 
-function dashUsd(value: number | undefined): string {
-  return typeof value === "number" ? `$${value.toFixed(2)}` : "—";
+function dashUsd(
+  value: number | undefined,
+  locale: Locale,
+  unavailable: string,
+): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? formatUsd(value, locale)
+    : unavailable;
 }
 
-function dashPct(value: number | undefined): string {
-  return typeof value === "number" ? `${Math.round(value * 100)}%` : "—";
+function dashPct(
+  value: number | undefined,
+  locale: Locale,
+  unavailable: string,
+): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? formatPercent(value, locale)
+    : unavailable;
 }
 
 function TrafficStatsStrip({
@@ -116,6 +129,7 @@ function TrafficStatsStrip({
   locale: Locale;
   t: TFn;
 }) {
+  const unavailable = t("common.unavailable");
   return (
     <StatStrip label={t("vk.statsAria")}>
       <StatStripItem
@@ -130,28 +144,33 @@ function TrafficStatsStrip({
         label={t("vk.requests30d")}
         value={requests30d.toLocaleString(locale)}
       />
-      <StatStripItem label={t("vk.cacheHit")} value={dashPct(cacheReadRatio)} />
+      <StatStripItem
+        label={t("vk.cacheHit")}
+        value={dashPct(cacheReadRatio, locale, unavailable)}
+      />
       <StatStripItem
         label={t("vk.proxyCacheHit")}
-        value={
-          proxyCacheRatio !== null
-            ? `${Math.round(proxyCacheRatio * 100)}%`
-            : "—"
-        }
+        value={dashPct(proxyCacheRatio ?? undefined, locale, unavailable)}
       />
       <StatStripItem
         label={t("vk.costUsd")}
-        value={dashUsd(estimatedCostUsd)}
+        value={dashUsd(estimatedCostUsd, locale, unavailable)}
       />
       <StatStripItem
         label={t("vk.p95")}
         value={
           typeof p95LatencyMs === "number" && p95LatencyMs > 0
-            ? `${(p95LatencyMs / 1000).toFixed(1)}${t("vk.p95Unit")}`
-            : "—"
+            ? `${(p95LatencyMs / 1000).toLocaleString(locale, {
+                minimumFractionDigits: 1,
+                maximumFractionDigits: 1,
+              })}${t("vk.p95Unit")}`
+            : unavailable
         }
       />
-      <StatStripItem label={t("vk.ratio429")} value={dashPct(ratio429)} />
+      <StatStripItem
+        label={t("vk.ratio429")}
+        value={dashPct(ratio429, locale, unavailable)}
+      />
     </StatStrip>
   );
 }
@@ -193,8 +212,20 @@ function ProviderShareTable({
                   <td className="num">
                     {formatTokens(provider.totalTokens, locale)}
                   </td>
-                  <td className="num">{dashUsd(provider.estimatedCostUsd)}</td>
-                  <td className="num">{dashPct(provider.cacheReadRatio)}</td>
+                  <td className="num">
+                    {dashUsd(
+                      provider.estimatedCostUsd,
+                      locale,
+                      t("common.unavailable"),
+                    )}
+                  </td>
+                  <td className="num">
+                    {dashPct(
+                      provider.cacheReadRatio,
+                      locale,
+                      t("common.unavailable"),
+                    )}
+                  </td>
                 </tr>
               ))}
           </tbody>
@@ -241,8 +272,16 @@ function ModelShareTable({
                 <td className="num">
                   {formatTokens(model.totalTokens, locale)}
                 </td>
-                <td className="num">{dashPct(model.shareRatio)}</td>
-                <td className="num">{dashUsd(model.estimatedCostUsd)}</td>
+                <td className="num">
+                  {dashPct(model.shareRatio, locale, t("common.unavailable"))}
+                </td>
+                <td className="num">
+                  {dashUsd(
+                    model.estimatedCostUsd,
+                    locale,
+                    t("common.unavailable"),
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -498,7 +537,11 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
 
       <TrafficColumnHead />
 
-      <div className="rail ocx-reveal-list" aria-live="polite" onFocus={() => setPaused(true)}>
+      <div
+        className="rail ocx-reveal-list"
+        aria-live="polite"
+        onFocus={() => setPaused(true)}
+      >
         {zichtbaar.length === 0 ? (
           <Empty>
             <EmptyHeader>
@@ -581,7 +624,12 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
             expanded={opsOpen}
             onClick={() => setOpsOpen((open) => !open)}
           >
-            <IconChevron className="ocx-chevron" width={15} height={15} aria-hidden="true" />
+            <IconChevron
+              className="ocx-chevron"
+              width={15}
+              height={15}
+              aria-hidden="true"
+            />
             <CollapsibleGroupName>{t("vk.showOps")}</CollapsibleGroupName>
           </CollapsibleGroupToggle>
         </CollapsibleGroupHead>
@@ -614,7 +662,12 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
             expanded={analyseOpen}
             onClick={() => setAnalyseOpen((open) => !open)}
           >
-            <IconChevron className="ocx-chevron" width={15} height={15} aria-hidden="true" />
+            <IconChevron
+              className="ocx-chevron"
+              width={15}
+              height={15}
+              aria-hidden="true"
+            />
             <CollapsibleGroupName>{t("vk.showAnalysis")}</CollapsibleGroupName>
           </CollapsibleGroupToggle>
         </CollapsibleGroupHead>

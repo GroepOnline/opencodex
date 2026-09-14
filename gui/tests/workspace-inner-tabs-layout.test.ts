@@ -21,7 +21,7 @@ test("workspace inner tabs compose from PageTabs primitives", async () => {
   ).text();
 
   expect(catalog).toContain("<PageTabs");
-  expect(catalog).toContain("<PageTab");
+  expect(catalog).toMatch(/<PageTab(?:\s|>)/);
   expect(catalog).toContain("<PageTabPanel");
   expect(catalog).toContain('className="provider-catalog-tabs"');
   expect(catalog).toContain("provider-catalog-tab");
@@ -29,7 +29,7 @@ test("workspace inner tabs compose from PageTabs primitives", async () => {
   expect(catalog).not.toContain('role="tablist"');
 
   expect(details).toContain("<PageTabs");
-  expect(details).toContain("<PageTab");
+  expect(details).toMatch(/<PageTab(?:\s|>)/);
   expect(details).toContain("<PageTabPanel");
   expect(details).toContain('className="pws-detail-tabs"');
   expect(details).toContain("pws-detail-tab--active");
@@ -40,7 +40,7 @@ test("workspace inner tabs compose from PageTabs primitives", async () => {
   expect(details).not.toContain('role="tablist"');
 
   expect(combos).toContain("<PageTabs");
-  expect(combos).toContain("<PageTab");
+  expect(combos).toMatch(/<PageTab(?:\s|>)/);
   expect(combos).toContain("<PageTabPanel");
   expect(combos).toContain('className="combos-workspace-tabs"');
   expect(combos).toContain("combos-workspace-tab--active");
