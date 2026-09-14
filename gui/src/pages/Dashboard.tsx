@@ -129,7 +129,7 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
   );
 
   const recentRequests = useMemo(() => logs.slice(0, 8), [logs]);
-  const proxyOnline = health.data ? true : health.error ? false : null;
+  const proxyOnline = health.error ? false : health.data ? true : null;
   const requests30d = summary?.summary.requests ?? 0;
   const tokens30d = summary?.summary.totalTokens ?? 0;
 
@@ -175,7 +175,9 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
           {
             label: t("vk.requestsToday"),
             value:
-              summary || logsLoaded ? requestsToday.toLocaleString(locale) : "—",
+              summary || logsLoaded
+                ? requestsToday.toLocaleString(locale)
+                : "—",
           },
           {
             label: t("vk.requests30d"),
