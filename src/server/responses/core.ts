@@ -24,6 +24,7 @@ import {
   parseRetryAfterMs,
   pickComboTarget,
   targetKey,
+  type ComboPick,
 } from "../../combos";
 import {
   classifyAttempt,
@@ -900,7 +901,35 @@ async function applyFinalRouteRequestNormalization(args: {
   );
 }
 
-
+function acquireComboTargetWithFamilyAdmission(args: {
+  config: OcxConfig;
+  comboId: string;
+  candidate: ComboPick | null;
+  now: number;
+  rotateOnPick?: boolean;
+  payloadEligible: (target: ComboPick["target"]) => boolean;
+}): { pick: ComboPick; recoveryLease?: ProviderFamilyRecoveryLease } | null {
+  const { config, comboId, now, rotateOnPick, payloadEligible } = args;
+  let selected = args.candidate;
+  while (selected) {
+    const admission = acquireProviderFamilyAdmission(
+      config,
+      selected.target.provider,
+      now,
+    );
+    if (admission.allowed) {
+      return { pick: selected, recoveryLease: admission.recoveryLease };
+    }
+    selected = pickComboTarget(config, comboId, {
+      exclude: selected.attempted,
+      rotateOnPick,
+      eligible: target => payloadEligible(target)
+        && !isComboTargetInCooldown(comboId, target, now)
+        && !isProviderFamilyCooling(config, target.provider, now),
+    });
+  }
+  return null;
+}
 
 export async function handleComboResponses(
   req: Request,
@@ -957,34 +986,6 @@ export async function handleComboResponses(
     return unreadableEncryptedAgentTaskResponse();
   }
 
-  const acquireSelectedTarget = (
-    candidate: ReturnType<typeof pickComboTarget>,
-    now: number,
-  ): {
-    pick: NonNullable<ReturnType<typeof pickComboTarget>>;
-    recoveryLease?: ProviderFamilyRecoveryLease;
-  } | null => {
-    let selected = candidate;
-    while (selected) {
-      const admission = acquireProviderFamilyAdmission(
-        config,
-        selected.target.provider,
-        now,
-      );
-      if (admission.allowed) {
-        return { pick: selected, recoveryLease: admission.recoveryLease };
-      }
-      selected = pickComboTarget(config, comboId, {
-        exclude: selected.attempted,
-        rotateOnPick: options.rotateComboOnPick,
-        eligible: target => payloadEligible(target)
-          && !isComboTargetInCooldown(comboId, target, now)
-          && !isProviderFamilyCooling(config, target.provider, now),
-      });
-    }
-    return null;
-  };
-
   const initialNow = Date.now();
   const initialCandidate = pickComboTarget(config, comboId, {
     rotateOnPick: options.rotateComboOnPick,
@@ -992,7 +993,14 @@ export async function handleComboResponses(
       && !isComboTargetInCooldown(comboId, target, initialNow)
       && !isProviderFamilyCooling(config, target.provider, initialNow),
   });
-  const initial = acquireSelectedTarget(initialCandidate, initialNow);
+  const initial = acquireComboTargetWithFamilyAdmission({
+    config,
+    comboId,
+    candidate: initialCandidate,
+    now: initialNow,
+    rotateOnPick: options.rotateComboOnPick,
+    payloadEligible,
+  });
   if (!initial) {
     return comboUnavailableResponse(`No available targets for combo: ${comboIdLabel(comboId)}`);
   }
@@ -1198,7 +1206,14 @@ export async function handleComboResponses(
         eligible: target => payloadEligible(target)
           && !isProviderFamilyCooling(config, target.provider, failureNow),
       });
-      const next = acquireSelectedTarget(nextCandidate, failureNow);
+      const next = acquireComboTargetWithFamilyAdmission({
+        config,
+        comboId,
+        candidate: nextCandidate,
+        now: failureNow,
+        rotateOnPick: options.rotateComboOnPick,
+        payloadEligible,
+      });
       if (!next) {
         adoptFailedChildLog(childLog);
         bindingAdopted = true;
