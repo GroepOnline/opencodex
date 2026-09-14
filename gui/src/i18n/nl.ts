@@ -21,6 +21,7 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "nav.dashboard": "Overzicht",
   "nav.systeem": "Systeem",
   "nav.views": "Views",
+  "nav.sections": "Secties",
   "sub.overview": "Overzicht",
   "sub.logs": "Logs",
   "sub.debug": "Debug",

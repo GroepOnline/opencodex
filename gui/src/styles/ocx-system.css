@@ -173,6 +173,7 @@
   background: var(--surface);
   border: 1px solid var(--border-soft);
   box-shadow: var(--card-shadow);
+  pointer-events: none;
 }
 .ocx-workspace .sub-tab-label {
   position: relative;
@@ -462,12 +463,14 @@
 }
 .ocx-workspace .btn-primary {
   box-shadow:
-    inset 0 1px 0 light-dark(rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.35)),
+    inset 0 1px 0
+      light-dark(rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.35)),
     var(--card-shadow);
 }
 .ocx-workspace .btn-primary:hover:not(:disabled) {
   box-shadow:
-    inset 0 1px 0 light-dark(rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.35)),
+    inset 0 1px 0
+      light-dark(rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.35)),
     var(--card-shadow-raised);
 }
 .ocx-workspace .btn-ghost {
@@ -501,7 +504,8 @@
     box-shadow var(--motion-fast) var(--ease-out),
     transform var(--motion-fast) var(--ease-out);
 }
-.ocx-workspace [data-slot="button"]:not(.workspace-destination):active:not(:disabled) {
+.ocx-workspace
+  [data-slot="button"]:not(.workspace-destination):active:not(:disabled) {
   transform: scale(0.98);
 }
 
@@ -823,13 +827,26 @@
     animation: none;
   }
   .ocx-workspace .btn:hover:not(:disabled),
+  .ocx-workspace .btn:active:not(:disabled),
+  .ocx-workspace .btn-icon:active,
   .ocx-workspace .stat:hover,
-  .ocx-workspace .stat-strip-item:hover {
+  .ocx-workspace .stat-strip-item:hover,
+  .ocx-workspace .gbtn:hover svg,
+  .ocx-workspace .sub-tab:active,
+  .ocx-workspace
+    [data-slot="button"]:not(.workspace-destination):active:not(:disabled),
+  .workspace-navigation .workspace-destination:active {
     transform: none;
   }
-  .ocx-workspace .gbtn:hover svg {
-    transform: none;
-  }
+  .ocx-workspace .gbtn,
+  .ocx-workspace .gbtn svg,
+  .ocx-workspace .btn,
+  .ocx-workspace .btn-icon,
+  .ocx-workspace .stat,
+  .ocx-workspace .stat-strip-item,
+  .ocx-workspace .sub-tab,
+  .ocx-workspace [data-slot="button"],
+  .workspace-navigation .workspace-destination,
   .ocx-workspace .toggle-knob {
     transition: none;
   }

@@ -274,7 +274,7 @@ function DashboardShell({
                 <WorkspaceSubTabs
                   tabs={SUB_TABS[route.view]}
                   active={route.sub}
-                  label={t(activeTkey)}
+                  label={t("nav.sections")}
                   onNavigate={(sub) => navigateTo({ view: route.view, sub })}
                 />
               )}
