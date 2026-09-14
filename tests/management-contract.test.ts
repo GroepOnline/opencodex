@@ -72,9 +72,8 @@ describe("GET /api/provenance", () => {
       expect(body.built_at).toBe("2026-08-23T10:00:00.000Z");
       expect(body.release).toBe("v1.2.2");
       expect(body.gui_version).toBe("1.2.2");
-      // saveConfig stamps the first persisted schema generation; provenance reports
-      // the effective datastore contract rather than whether the fixture supplied it.
-      expect(body.schema_version).toBe(String(CONFIG_SCHEMA_VERSION));
+      // Public deploy-gate provenance keeps datastore schema state redacted.
+      expect(body.schema_version).toBeNull();
       expect(body.management).toBeUndefined();
       expect(body.runtime).toMatchObject({
         service: "opencodex",
@@ -93,7 +92,8 @@ describe("GET /api/provenance", () => {
         headers: { "x-opencodex-api-key": "admin-secret" },
       });
       expect(res.status).toBe(200);
-      const body = await res.json() as { management?: Record<string, unknown> };
+      const body = await res.json() as { schema_version?: unknown; management?: Record<string, unknown> };
+      expect(body.schema_version).toBe(String(CONFIG_SCHEMA_VERSION));
       expect(body.management).toMatchObject({
         contract_version: MANAGEMENT_CONTRACT_VERSION,
         default_provider: "demo",
