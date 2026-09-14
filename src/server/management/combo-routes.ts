@@ -1,125 +1,13 @@
-import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import type { CatalogModel } from "../../codex/catalog";
-import {
-  catalogModelSlug,
-  invalidateCodexModelsCache,
-  nativeModelRows,
-  uniqueCatalogModelsForPublicList,
-} from "../../codex/catalog";
-import {
-  DEFAULT_SUBAGENT_MODELS,
-  codexAutoStartEnabled,
-  hasOwnProvider,
-  isValidProviderName,
-  multiAgentGuidanceEnabled,
-  providerBaseUrlConfigError,
-  providerHeadersConfigError,
-  saveConfigPreservingClaudeCode,
-} from "../../config";
-import {
-  clearLoginState,
-  getLoginStatus,
-  isPublicOAuthProvider,
-  listOAuthProviders,
-  startLoginFlow,
-  submitManualLoginCode,
-  upsertOAuthProvider,
-} from "../../oauth";
-import { removeCredential } from "../../oauth/store";
-import { providerDestinationResolvedError } from "../../lib/destination-policy";
-import {
-  enrichProviderFromCatalog,
-  listKeyLoginProviders,
-} from "../../oauth/key-providers";
-import { deriveProviderPresets } from "../../providers/derive";
-import { providerCodexAccountMode } from "../../providers/registry";
-import { routedSlug, slugEquals } from "../../providers/slug-codec";
-import {
-  clearProviderQuotaCache,
-  fetchProviderQuotaReports,
-} from "../../providers/quota";
-import { isCanonicalOpenAiForwardProvider } from "../../providers/openai-tiers";
 import {
   CODEX_ACCOUNT_NAMESPACE_COMBO_ALIAS_COLLISION_ERROR,
   codexAccountNamespaceForModel,
 } from "../../codex/account-namespace-match";
-import { clearThreadAccountMap } from "../../codex/routing";
-import { primeCodexPoolQuotas } from "../../codex/auth-api";
-import {
-  DEFAULT_PROVIDER_CONTEXT_CAP,
-  globalContextCapValue,
-  providerContextCap,
-  providerContextCaps,
-  setAllProviderContextCaps,
-  setGlobalContextCapValue,
-  setProviderContextCap,
-} from "../../providers/context-cap";
-import { resolveCodexHomeDir } from "../../codex/home";
-import { readUsageEntries } from "../../usage/log";
-import { getUsageDebugLogEntries } from "../../usage/debug";
-import {
-  parseRange,
-  parseUsageSurface,
-  summarizeUsage,
-} from "../../usage/summary";
-import { stripCodexRuntimeProviderFields } from "../../codex/auth-context";
-import { getProviderRegistryEntry } from "../../providers/registry";
-import { getDebugLogEntries } from "../../lib/debug-log-buffer";
-import { getInjectionDebugLogEntries } from "../../lib/injection-debug-log";
-import {
-  clearDebugSettings,
-  clearDebugSetting,
-  getDebugSettings,
-  setDebugSettings,
-  type DebugFlag,
-} from "../../lib/debug-settings";
-import type {
-  OcxClaudeCodeConfig,
-  OcxConfig,
-  OcxCustomModel,
-  OcxProviderConfig,
-} from "../../types";
-import { drainAndShutdown } from "../lifecycle";
-import {
-  filterRequestLogs,
-  getRequestLogEntries,
-  type RequestLogEntry,
-} from "../request-log";
-import {
-  estimateComboCost,
-  estimateRequestCost,
-  normalizeCostTokens,
-  tokensPerSecond,
-} from "../../usage/cost";
-import type { PersistedUsageAttempt } from "../../usage/log";
-import {
-  isAllowedRequestOrigin,
-  jsonResponse,
-  providerManagementConfigError,
-  publicProviderBaseUrl,
-  safeConfigDTO,
-} from "../auth-cors";
-import { applySystemEnvToggle } from "../system-env";
-
-import {
-  isPlainRecord,
-  parseDebugLogQuery,
-  tokPerSecondResult,
-  unavailableCostReason,
-  costResult,
-  requestLogDto,
-  stripRegistryOnlyStaticHeaders,
-  fetchAllModels,
-} from "./shared";
-import type {
-  MetricUnavailableReason,
-  TokPerSecondResult,
-  CostEstimateReason,
-  CostResult,
-  MetricSource,
-} from "./shared";
+import { saveConfigPreservingClaudeCode } from "../../config";
+import { jsonResponse } from "../auth-cors";
+import { isPlainRecord } from "./shared";
 import type { ManagementContext } from "./context";
+
+const DYNAMIC_CLAUDE_AGENT_COMBO_ID = "claude-agent-dynamic-v1";
 
 export async function handleComboRoutes(
   ctx: ManagementContext,
@@ -128,7 +16,6 @@ export async function handleComboRoutes(
     req,
     url,
     config,
-    deps,
     refreshCodexCatalogBestEffort,
     syncClaudeAgentDefsBestEffort,
   } = ctx;
@@ -136,12 +23,9 @@ export async function handleComboRoutes(
   if (url.pathname === "/api/combos" && req.method === "GET") {
     const { comboPublicModelId, getCombo, listComboIds } =
       await import("../../combos");
-    // Filter out the dynamic Claude agent combo ID from API responses
-    // This combo is request-local and never persisted, so it shouldn't appear in management API
-    const combos = listComboIds(config).filter((id) => {
-      if (id === "claude-agent-dynamic-v1") return false;
-      return true;
-    });
+    const combos = listComboIds(config).filter(
+      (id) => id !== DYNAMIC_CLAUDE_AGENT_COMBO_ID,
+    );
     return jsonResponse({
       combos: combos.map((id) => {
         const combo = getCombo(config, id)!;
@@ -186,28 +70,23 @@ export async function handleComboRoutes(
         return jsonResponse({ error: "renameFrom must differ from id" }, 400);
       }
     }
-    // Prevent renaming to/from the dynamic Claude agent combo (checked first
-    // so rename attempts get the specific message, not the generic one).
+
     if (
-      renameFrom === "claude-agent-dynamic-v1" ||
-      (renameFrom !== undefined && id === "claude-agent-dynamic-v1")
+      renameFrom === DYNAMIC_CLAUDE_AGENT_COMBO_ID ||
+      (renameFrom !== undefined && id === DYNAMIC_CLAUDE_AGENT_COMBO_ID)
     ) {
       return jsonResponse(
         {
-          error:
-            'cannot rename to/from the dynamic Claude agent combo "claude-agent-dynamic-v1"',
+          error: `cannot rename to/from the dynamic Claude agent combo "${DYNAMIC_CLAUDE_AGENT_COMBO_ID}"`,
         },
         403,
       );
     }
 
-    // Prevent management API from creating or modifying the dynamic Claude agent combo
-    // This combo is request-local and never persisted, so it shouldn't be exposed through management API
-    if (id === "claude-agent-dynamic-v1") {
+    if (id === DYNAMIC_CLAUDE_AGENT_COMBO_ID) {
       return jsonResponse(
         {
-          error:
-            'combo "claude-agent-dynamic-v1" is a reserved request-local combo that cannot be modified through the management API. This combo is created dynamically for Claude agent routing and should only be exposed as an implementation detail, not through the public management interface.',
+          error: `combo "${DYNAMIC_CLAUDE_AGENT_COMBO_ID}" is a reserved request-local combo that cannot be modified through the management API. This combo is created dynamically for Claude agent routing and should only be exposed as an implementation detail, not through the public management interface.`,
         },
         403,
       );
@@ -224,6 +103,7 @@ export async function handleComboRoutes(
         return jsonResponse({ error: `combo "${id}" already exists` }, 400);
       }
     }
+
     const {
       clearComboSelectionState,
       clearComboTargetCooldowns,
@@ -238,6 +118,7 @@ export async function handleComboRoutes(
       excludeComboId: renameFrom ?? id,
     });
     if (error) return jsonResponse({ error }, 400);
+
     const normalized = normalizeComboConfig(
       body.combo as import("../../types").OcxComboConfig,
     );
@@ -251,6 +132,7 @@ export async function handleComboRoutes(
       ? comboPublicModelId(sourceId, previous)
       : null;
     const newPublicModel = comboPublicModelId(id, normalized);
+
     if (
       codexAccountNamespaceForModel(
         config.codexAccountNamespaces,
@@ -262,16 +144,19 @@ export async function handleComboRoutes(
         409,
       );
     }
+
     const nextCombos = { ...(config.combos ?? {}) };
     if (renameFrom) delete nextCombos[renameFrom];
     nextCombos[id] = stored;
     config.combos = nextCombos;
+
     let shouldSyncClaudeAgentDefs = false;
     const migratedModels = new Set<string>();
     if (oldPublicModel && oldPublicModel !== newPublicModel) {
       migratedModels.add(oldPublicModel);
     }
     if (renameFrom) migratedModels.add(comboModelId(renameFrom));
+
     if (migratedModels.size > 0) {
       const migrateReference = (model: string): string =>
         migratedModels.has(model) ? newPublicModel : model;
@@ -283,6 +168,7 @@ export async function handleComboRoutes(
       const migrateReferences = (models: string[]): string[] => [
         ...new Set(models.map(migrateReference)),
       ];
+
       if (config.disabledModels) {
         config.disabledModels = migrateReferences(config.disabledModels);
       }
@@ -306,8 +192,9 @@ export async function handleComboRoutes(
       if (config.claudeCode) {
         const claudeCode = { ...config.claudeCode };
         for (const field of ["model", "smallFastModel"] as const) {
-          if (claudeCode[field])
+          if (claudeCode[field]) {
             claudeCode[field] = migrateAgentReference(claudeCode[field]);
+          }
         }
         if (claudeCode.tierModels) {
           claudeCode.tierModels = Object.fromEntries(
@@ -328,6 +215,7 @@ export async function handleComboRoutes(
         config.claudeCode = claudeCode;
       }
     }
+
     saveConfigPreservingClaudeCode(config);
     clearComboSelectionState(id);
     clearComboTargetCooldowns(id);
@@ -337,6 +225,7 @@ export async function handleComboRoutes(
     }
     await refreshCodexCatalogBestEffort();
     if (shouldSyncClaudeAgentDefs) await syncClaudeAgentDefsBestEffort();
+
     return jsonResponse({
       success: true,
       id,
@@ -349,13 +238,10 @@ export async function handleComboRoutes(
     const id = url.searchParams.get("id")?.trim();
     if (!id) return jsonResponse({ error: "id query param is required" }, 400);
 
-    // Prevent management API from deleting the dynamic Claude agent combo
-    // This combo is request-local and never persisted, so it shouldn't be exposed through management API
-    if (id === "claude-agent-dynamic-v1") {
+    if (id === DYNAMIC_CLAUDE_AGENT_COMBO_ID) {
       return jsonResponse(
         {
-          error:
-            'combo "claude-agent-dynamic-v1" is a reserved request-local combo that cannot be deleted through the management API. This combo is created dynamically for Claude agent routing and should only be exposed as an implementation detail, not through the public management interface.',
+          error: `combo "${DYNAMIC_CLAUDE_AGENT_COMBO_ID}" is a reserved request-local combo that cannot be deleted through the management API. This combo is created dynamically for Claude agent routing and should only be exposed as an implementation detail, not through the public management interface.`,
         },
         403,
       );
@@ -374,5 +260,6 @@ export async function handleComboRoutes(
     await refreshCodexCatalogBestEffort();
     return jsonResponse({ success: true, id });
   }
+
   return null;
 }
