@@ -170,6 +170,55 @@ async function nativeCompactEndpointUnsupported(response: Response): Promise<boo
     || text.includes("compact endpoint");
 }
 
+function syntheticCompactTurnError(
+  json: { output?: unknown[]; status?: unknown; error?: unknown },
+): Response | null {
+  // The internal turn answers 200 even when it failed or was truncated, so the body
+  // has to be inspected. Reporting a failure beats installing "(no summary
+  // available)" as replacement history and silently losing the conversation (#422).
+  if (json.error) {
+    const message = typeof json.error === "string"
+      ? json.error
+      : (json.error as { message?: unknown })?.message;
+    return formatErrorResponse(502, "upstream_error", typeof message === "string" ? message : "compaction turn failed");
+  }
+  if (json.status !== "completed") {
+    return formatErrorResponse(
+      502,
+      "upstream_error",
+      `compaction turn did not complete (status: ${String(json.status ?? "unknown")})`,
+    );
+  }
+  return null;
+}
+
+function syntheticCompactOutput(
+  json: { output?: unknown[]; status?: unknown; error?: unknown },
+  inputItems: unknown[],
+): Response {
+  const turnError = syntheticCompactTurnError(json);
+  if (turnError) return turnError;
+  const compactionItems = (json.output ?? []).filter(
+    (item): item is { type: string; encrypted_content?: string } =>
+      !!item && typeof item === "object" && (item as { type?: string }).type === "compaction",
+  );
+  if (compactionItems.length !== 1) {
+    return formatErrorResponse(
+      502,
+      "invalid_response_error",
+      `compaction turn produced ${compactionItems.length} compaction items, expected exactly 1`,
+    );
+  }
+  const encrypted = compactionItems[0]!.encrypted_content;
+  const decoded = typeof encrypted === "string" ? decodeCompactionSummary(encrypted) : null;
+  // An empty `ocx1:` envelope decodes to "" rather than null, so length is what matters.
+  if (decoded === null || decoded.trim().length === 0) {
+    return formatErrorResponse(502, "invalid_response_error", "compaction turn produced an empty summary");
+  }
+  const output = buildCompactV1Output(extractCompactUserMessages(inputItems), decoded);
+  return new Response(JSON.stringify({ output }), { headers: { "Content-Type": "application/json" } });
+}
+
 async function runSyntheticCompact(
   raw: { model?: unknown; input?: unknown },
   req: Request,
@@ -200,41 +249,7 @@ async function runSyntheticCompact(
   } catch {
     return formatErrorResponse(502, "server_error", "compaction turn returned a non-JSON response");
   }
-  // The internal turn answers 200 even when it failed or was truncated, so the body
-  // has to be inspected. Reporting a failure beats installing "(no summary
-  // available)" as replacement history and silently losing the conversation (#422).
-  if (json.error) {
-    const message = typeof json.error === "string"
-      ? json.error
-      : (json.error as { message?: unknown })?.message;
-    return formatErrorResponse(502, "upstream_error", typeof message === "string" ? message : "compaction turn failed");
-  }
-  if (json.status !== "completed") {
-    return formatErrorResponse(
-      502,
-      "upstream_error",
-      `compaction turn did not complete (status: ${String(json.status ?? "unknown")})`,
-    );
-  }
-  const compactionItems = (json.output ?? []).filter(
-    (item): item is { type: string; encrypted_content?: string } =>
-      !!item && typeof item === "object" && (item as { type?: string }).type === "compaction",
-  );
-  if (compactionItems.length !== 1) {
-    return formatErrorResponse(
-      502,
-      "invalid_response_error",
-      `compaction turn produced ${compactionItems.length} compaction items, expected exactly 1`,
-    );
-  }
-  const encrypted = compactionItems[0]!.encrypted_content;
-  const decoded = typeof encrypted === "string" ? decodeCompactionSummary(encrypted) : null;
-  // An empty `ocx1:` envelope decodes to "" rather than null, so length is what matters.
-  if (decoded === null || decoded.trim().length === 0) {
-    return formatErrorResponse(502, "invalid_response_error", "compaction turn produced an empty summary");
-  }
-  const output = buildCompactV1Output(extractCompactUserMessages(inputItems), decoded);
-  return new Response(JSON.stringify({ output }), { headers: { "Content-Type": "application/json" } });
+  return syntheticCompactOutput(json, inputItems);
 }
 
 export async function handleResponsesCompact(

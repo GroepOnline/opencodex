@@ -23,6 +23,67 @@ function isDisabledDynamicAgentModel(config: OcxConfig, model: string): boolean 
   });
 }
 
+function rememberTarget(
+  seen: Set<string>,
+  key: string,
+  target: OcxComboTarget,
+): OcxComboTarget | null {
+  if (seen.has(key)) return null;
+  seen.add(key);
+  return target;
+}
+
+function nativeDynamicAgentTarget(
+  config: OcxConfig,
+  model: string,
+  seen: Set<string>,
+): OcxComboTarget | null {
+  if (isDisabledDynamicAgentModel(config, model)) return null;
+  const nativeProvider = config.providers.openai;
+  if (
+    !SUPPORTED_NATIVE_OPENAI_SLUGS.has(model)
+    || !nativeProvider
+    || nativeProvider.disabled === true
+  ) return null;
+  return rememberTarget(seen, `openai/${model}`, { provider: "openai", model });
+}
+
+function routedDynamicAgentTarget(
+  config: OcxConfig,
+  model: string,
+  slash: number,
+  seen: Set<string>,
+): OcxComboTarget | null {
+  if (slash === 0) return null;
+  const providerName = model.slice(0, slash);
+  const requestedModel = model.slice(slash + 1);
+  if (!hasOwnProvider(config.providers, providerName)) return null;
+  const provider = config.providers[providerName];
+  if (provider.disabled === true) return null;
+  const knownModels = knownModelIdsForProvider(providerName, provider);
+  const decodedModel = decodeRoutedModelId(requestedModel, knownModels);
+  if (
+    !knownModels.includes(model)
+    && !knownModels.includes(requestedModel)
+    && !knownModels.includes(decodedModel)
+  ) return null;
+  if (
+    isDisabledDynamicAgentModel(config, model)
+    || isDisabledDynamicAgentModel(config, `${providerName}/${decodedModel}`)
+  ) return null;
+  try {
+    const route = routeModel(config, model);
+    if (route.combo) return null;
+    return rememberTarget(seen, `${route.providerName}/${route.modelId}`, {
+      provider: route.providerName,
+      model: route.modelId,
+    });
+  } catch {
+    // A stale roster entry must not take the entire dynamic lane down.
+    return null;
+  }
+}
+
 function dynamicAgentTargets(config: OcxConfig): OcxComboTarget[] {
   const roster = config.subagentModels === undefined
     ? DEFAULT_SUBAGENT_MODELS
@@ -36,47 +97,10 @@ function dynamicAgentTargets(config: OcxConfig): OcxComboTarget[] {
     const model = entry.trim();
     if (!model || resolveComboId(config, model)) continue;
     const slash = model.indexOf("/");
-    if (slash < 0) {
-      if (isDisabledDynamicAgentModel(config, model)) continue;
-      const nativeProvider = config.providers.openai;
-      if (
-        !SUPPORTED_NATIVE_OPENAI_SLUGS.has(model)
-        || !nativeProvider
-        || nativeProvider.disabled === true
-      ) continue;
-      const key = `openai/${model}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      targets.push({ provider: "openai", model });
-      continue;
-    }
-    if (slash === 0) continue;
-    const providerName = model.slice(0, slash);
-    const requestedModel = model.slice(slash + 1);
-    if (!hasOwnProvider(config.providers, providerName)) continue;
-    const provider = config.providers[providerName];
-    if (provider.disabled === true) continue;
-    const knownModels = knownModelIdsForProvider(providerName, provider);
-    const decodedModel = decodeRoutedModelId(requestedModel, knownModels);
-    if (
-      !knownModels.includes(model)
-      && !knownModels.includes(requestedModel)
-      && !knownModels.includes(decodedModel)
-    ) continue;
-    if (
-      isDisabledDynamicAgentModel(config, model)
-      || isDisabledDynamicAgentModel(config, `${providerName}/${decodedModel}`)
-    ) continue;
-    try {
-      const route = routeModel(config, model);
-      if (route.combo) continue;
-      const key = `${route.providerName}/${route.modelId}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      targets.push({ provider: route.providerName, model: route.modelId });
-    } catch {
-      // A stale roster entry must not take the entire dynamic lane down.
-    }
+    const target = slash < 0
+      ? nativeDynamicAgentTarget(config, model, seen)
+      : routedDynamicAgentTarget(config, model, slash, seen);
+    if (target) targets.push(target);
   }
   return targets;
 }

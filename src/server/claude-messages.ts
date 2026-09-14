@@ -65,6 +65,17 @@ function claudeInboundDisabled(config: OcxConfig): Response | null {
   return null;
 }
 
+function requireClaudeDynamicAgentRoute(config: OcxConfig): { config: OcxConfig; model: string } {
+  if (config.claudeCode?.agentRouting !== "dynamic") {
+    throw new AnthropicRequestError("Dynamic OCX agent routing is not enabled");
+  }
+  const dynamic = buildClaudeDynamicAgentRoute(config);
+  if (!dynamic) {
+    throw new AnthropicRequestError("Dynamic OCX agent routing has no usable featured models");
+  }
+  return dynamic;
+}
+
 async function readAnthropicBody(req: Request): Promise<unknown> {
   try {
     return await readJsonRequestBody(req);
@@ -572,13 +583,7 @@ export async function handleClaudeMessages(
       dynamicRoute = extractOcxRouteModeDirective(anthropicBody) === "dynamic";
       if (typeof anthropicBody.model === "string") {
         if (dynamicRoute) {
-          if (config.claudeCode?.agentRouting !== "dynamic") {
-            throw new AnthropicRequestError("Dynamic OCX agent routing is not enabled");
-          }
-          const dynamic = buildClaudeDynamicAgentRoute(config);
-          if (!dynamic) {
-            throw new AnthropicRequestError("Dynamic OCX agent routing has no usable featured models");
-          }
+          const dynamic = requireClaudeDynamicAgentRoute(config);
           requestConfig = dynamic.config;
           anthropicBody.model = dynamic.model;
         } else if (routeOverride) {
@@ -894,14 +899,12 @@ export async function handleClaudeCountTokens(req: Request, config: OcxConfig): 
   const countRoute = extractOcxRouteDirective(raw);
   const dynamicRoute = extractOcxRouteModeDirective(raw) === "dynamic";
   if (dynamicRoute) {
-    if (config.claudeCode?.agentRouting !== "dynamic") {
-      return anthropicErrorResponse(400, "Dynamic OCX agent routing is not enabled");
+    try {
+      model = requireClaudeDynamicAgentRoute(config).model;
+    } catch (err) {
+      if (err instanceof AnthropicRequestError) return anthropicErrorResponse(400, err.message);
+      throw err;
     }
-    const dynamic = buildClaudeDynamicAgentRoute(config);
-    if (!dynamic) {
-      return anthropicErrorResponse(400, "Dynamic OCX agent routing has no usable featured models");
-    }
-    model = dynamic.model;
   } else if (countRoute) {
     model = stripOneMillionMarker(countRoute);
   }
