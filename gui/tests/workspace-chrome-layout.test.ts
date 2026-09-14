@@ -47,4 +47,11 @@ test("workspace chrome composes from PageHeader and PageSubtitle", async () => {
   expect(debug).toMatch(/className="row[ "]/);
   expect(debug).not.toContain('embedded ? "row" : "page-head"');
   expect(debug).not.toContain('className="page-head"');
+
+  const debugPage = await Bun.file(
+    new URL("../src/pages/Debug.tsx", import.meta.url),
+  ).text();
+  expect(debugPage).toContain(
+    'embedded ? "debug-page" : "debug-page ocx-page-root"',
+  );
 });
