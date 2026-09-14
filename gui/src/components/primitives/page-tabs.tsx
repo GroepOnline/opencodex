@@ -37,7 +37,9 @@ export function PageTabs({
   const contextValue = useMemo(
     () => ({
       layoutId: "page-tab-selection",
-      instant: Boolean(reduceMotion) || keyboardNavigation,
+      // null is the first-paint unknown from useReducedMotion — treat it as
+      // instant so reduced-motion users never get a spring on the opening frame.
+      instant: reduceMotion !== false || keyboardNavigation,
       markKeyboard: setKeyboardNavigation,
     }),
     [reduceMotion, keyboardNavigation],
@@ -56,18 +58,26 @@ export function PageTabs({
 
 /** Default roving focus for tab strips without a page-owned navigation guard. */
 const navigateTabs: KeyboardEventHandler<HTMLButtonElement> = (event) => {
-  if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+  if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey)
+    return;
   if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
 
   const tablist = event.currentTarget.closest('[role="tablist"]');
   if (!tablist) return;
-  const tabs = Array.from(tablist.querySelectorAll<HTMLButtonElement>('button[role="tab"]:not(:disabled)'))
-    .filter(tab => tab.closest('[role="tablist"]') === tablist && !tab.hidden);
+  const tabs = Array.from(
+    tablist.querySelectorAll<HTMLButtonElement>(
+      'button[role="tab"]:not(:disabled)',
+    ),
+  ).filter((tab) => tab.closest('[role="tablist"]') === tablist && !tab.hidden);
   const current = tabs.indexOf(event.currentTarget);
   if (current < 0 || tabs.length === 0) return;
-  const index = event.key === "Home" ? 0
-    : event.key === "End" ? tabs.length - 1
-      : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+  const index =
+    event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? tabs.length - 1
+        : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) %
+          tabs.length;
   event.preventDefault();
   tabs[index]?.focus();
   tabs[index]?.click();
@@ -129,7 +139,17 @@ export function PageTab({
         ctx?.markKeyboard(event.detail === 0);
         onClick();
       }}
-      onKeyDown={onKeyDown ?? navigateTabs}
+      onKeyDown={(event) => {
+        if (
+          !event.altKey &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          ["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)
+        ) {
+          ctx?.markKeyboard(true);
+        }
+        (onKeyDown ?? navigateTabs)(event);
+      }}
     >
       {selected ? <PageTabIndicator /> : null}
       {children}

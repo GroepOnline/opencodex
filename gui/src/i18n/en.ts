@@ -7,6 +7,7 @@ export const en = {
   "nav.verkeer": "Traffic",
   "nav.systeem": "System",
   "nav.views": "Views",
+  "nav.sections": "Sections",
   "sub.overview": "Overview",
   "sub.logs": "Logs",
   "sub.debug": "Debug",

@@ -21,6 +21,7 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "nav.dashboard": "Overzicht",
   "nav.systeem": "Systeem",
   "nav.views": "Views",
+  "nav.sections": "Secties",
   "sub.overview": "Overzicht",
   "sub.logs": "Logs",
   "sub.debug": "Debug",
@@ -190,7 +191,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "cws.addTitle": "Combo toevoegen",
   "cws.detailTitle": "Combo",
   "cws.emptyRailTitle": "Nog geen combo's",
-  "cws.emptyRailHint": "Maak een combo om verzoeken over providers te routeren.",
+  "cws.emptyRailHint":
+    "Maak een combo om verzoeken over providers te routeren.",
   "cws.create": "Maak combo",
   "cws.overviewTitle": "Combos",
   "cws.overviewBlurb":

@@ -64,7 +64,8 @@ beforeAll(async () => {
   );
   await seedDicts();
   motion = await import("motion/react");
-  WorkspaceSubTabs = (await import("../src/components/WorkspaceSubTabs")).default;
+  WorkspaceSubTabs = (await import("../src/components/WorkspaceSubTabs"))
+    .default;
 });
 
 beforeEach(async () => {
@@ -105,7 +106,11 @@ function buttons() {
   return [...host.querySelectorAll<HTMLButtonElement>("nav button")];
 }
 
-function StatefulSubTabs({ onNavigate }: { onNavigate: (sub: string | null) => void }) {
+function StatefulSubTabs({
+  onNavigate,
+}: {
+  onNavigate: (sub: string | null) => void;
+}) {
   const [active, setActive] = useState<string | null>(null);
   return (
     <WorkspaceSubTabs
@@ -125,7 +130,11 @@ describe("WorkspaceSubTabs", () => {
     await render(<StatefulSubTabs onNavigate={() => {}} />);
     const nav = host.querySelector("nav.sub-tabs");
     expect(nav?.getAttribute("aria-label")).toBe("Providers");
-    expect(buttons().map((b) => b.textContent)).toEqual(["Overview", "Claude", "Grok"]);
+    expect(buttons().map((b) => b.textContent)).toEqual([
+      "Overview",
+      "Claude",
+      "Grok",
+    ]);
     expect(host.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
     expect(host.querySelectorAll(".sub-tab-indicator")).toHaveLength(1);
     expect(buttons()[0]?.querySelector(".sub-tab-indicator")).not.toBeNull();
@@ -157,10 +166,34 @@ describe("WorkspaceSubTabs", () => {
     expect(indicator?.textContent).toBe("");
   });
 
+  test("sub-destinations stay a navigation landmark, not a tablist", async () => {
+    await render(<StatefulSubTabs onNavigate={() => {}} />);
+    const nav = host.querySelector("nav.sub-tabs");
+    expect(nav?.getAttribute("role")).toBeNull();
+    expect(host.querySelector('[role="tablist"]')).toBeNull();
+    expect(
+      buttons().every((button) => button.getAttribute("role") !== "tab"),
+    ).toBe(true);
+    expect(buttons().every((button) => button.tabIndex >= 0)).toBe(true);
+  });
+
   test("the app shell loads layout-capable motion features so layoutId pills travel", async () => {
-    const app = await Bun.file(new URL("../src/App.tsx", import.meta.url)).text();
+    const app = await Bun.file(
+      new URL("../src/App.tsx", import.meta.url),
+    ).text();
     // domAnimation silently drops layout/layoutId; the shared-layout pill needs domMax.
     expect(app).toContain("features={domMax}");
     expect(app).not.toContain("domAnimation");
+    expect(app).toContain('label={t("nav.sections")}');
+  });
+
+  test("the travelling pill cannot steal clicks from a neighbouring destination", async () => {
+    const css = await Bun.file(
+      new URL("../src/styles/ocx-system.css", import.meta.url),
+    ).text();
+    const indicator = css.match(/\.sub-tab-indicator\s*\{[^}]+\}/);
+    expect(indicator?.[0]).toContain("pointer-events: none");
+    expect(css).toContain(".ocx-workspace .sub-tab:active");
+    expect(css).toContain("@media (prefers-reduced-motion: reduce)");
   });
 });

@@ -47,7 +47,7 @@ export default function WorkspaceSubTabs({
                   className="sub-tab-indicator"
                   layoutId="sub-tab-selection"
                   transition={
-                    reduceMotion || keyboardNavigation
+                    reduceMotion !== false || keyboardNavigation
                       ? { duration: 0 }
                       : { type: "spring", visualDuration: 0.22, bounce: 0.12 }
                   }
