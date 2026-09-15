@@ -59,7 +59,7 @@ A dry run builds + packs the tarball but does **not** publish. Re-run with `--pu
 The Release workflow (manual dispatch, `concurrency: release`):
 
 - Verifies `GITHUB_SHA` equals `expected-sha` (when supplied).
-- Publishes to npm via **Trusted Publishing (OIDC)** — no `NPM_TOKEN` secret.
+- Publishes to npm via **Trusted Publishing (OIDC)** once the npm Trusted Publisher is configured. Only the one-time `first-publish` flow and the retry after an OIDC publish failure use the `NPM_TOKEN` secret.
 - Creates the `v<version>` Git tag and GitHub Release from the exact release commit, with a
   changelog body derived from `scripts/release-notes.ts` (PR/commit history since the prior
   release, including carried preview deltas).
