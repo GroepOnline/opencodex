@@ -28,6 +28,11 @@ on:
         description: "Immutable release commit this dispatch must publish (fail if the branch moved)"
         required: false
         type: string
+      deploy:
+        description: "After the GHCR image is dispatched, also dispatch deploy.yml for this tag (live cutover on chef-control-az-01). Leave false unless the cutover is coordinated."
+        required: false
+        type: boolean
+        default: false
       # TEMPORARY (GRO-1004): first publish of a brand-new npm scope cannot use
       # Trusted Publishing (OIDC) until the publisher is configured on npmjs,
       # which requires the package to exist first. Set true ONLY for the first
@@ -587,3 +592,61 @@ jobs:
           git diff --staged --quiet && { echo "No formula changes"; exit 0; }
           git commit -m "opencodex ${RELEASE_VERSION}"
           git push origin HEAD
+
+  # The release tag above is pushed with GITHUB_TOKEN. GitHub never starts `push`
+  # runs for refs created by that token, so container.yml (GHCR image) and
+  # deploy.yml (live rollout) would otherwise wait for a human dispatch. This job
+  # closes that gap with explicit workflow_dispatch calls on the exact tag.
+  # Job-scoped actions:write; the publish job keeps actions:read.
+  rollout:
+    needs: publish
+    if: github.event.inputs.dry-run != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write # gh workflow run container.yml / deploy.yml
+    steps:
+      - name: Dispatch GHCR image publish on the release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_SHA: ${{ github.sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          release_tag="v${RELEASE_VERSION}"
+          # The tag must exist and point at the commit this run published.
+          tag_sha="$(gh api "repos/${REPOSITORY}/git/ref/tags/${release_tag}" --jq '.object.sha')"
+          if [ "$tag_sha" != "$RELEASE_SHA" ]; then
+            echo "::error::${release_tag} points at ${tag_sha}, not the published commit ${RELEASE_SHA}; refusing to build an image for a different identity"
+            exit 1
+          fi
+          gh workflow run container.yml --ref "refs/tags/${release_tag}"
+          echo "dispatched container.yml on refs/tags/${release_tag} (${RELEASE_SHA})"
+          {
+            echo "### Rollout chain"
+            echo ""
+            echo "- release: \`${release_tag}\` at \`${RELEASE_SHA}\`"
+            echo "- GHCR image: container.yml dispatched on \`refs/tags/${release_tag}\` (tags: sha, ${release_tag}, ${RELEASE_VERSION})"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dispatch live deploy (opt-in)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          DEPLOY: ${{ inputs.deploy }}
+        run: |
+          set -euo pipefail
+          release_tag="v${RELEASE_VERSION}"
+          if [ "$DEPLOY" != "true" ]; then
+            echo "::notice::deploy=false — live rollout not dispatched. Run deploy.yml with ref=${release_tag} when the cutover is coordinated."
+            echo "- live deploy: not dispatched (deploy=false); \`gh workflow run deploy.yml -f ref=${release_tag}\` when coordinated" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # deploy.yml verifies the tag sits on origin/main, waits for the
+          # container.yml publish job on the peeled tag SHA and health-gates
+          # version + gitSha on the host before declaring the cutover done.
+          gh workflow run deploy.yml --ref main -f "ref=${release_tag}"
+          echo "dispatched deploy.yml for ${release_tag}"
+          echo "- live deploy: deploy.yml dispatched with ref=${release_tag}" >> "$GITHUB_STEP_SUMMARY"

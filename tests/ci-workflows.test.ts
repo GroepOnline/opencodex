@@ -360,6 +360,80 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
   });
 
+  test("release workflow chains GHCR image and opt-in deploy on the exact tag without a human dispatch", async () => {
+    // Tags pushed with GITHUB_TOKEN never start `push` runs, so container.yml
+    // and deploy.yml must be dispatched explicitly, on the tag, after publish.
+    const text = await readText(".github/workflows/release.yml");
+    const workflow = Bun.YAML.parse(text) as {
+      on?: {
+        workflow_dispatch?: {
+          inputs?: Record<string, { type?: string; default?: unknown }>;
+        };
+      };
+      permissions?: Record<string, string>;
+      jobs?: Record<
+        string,
+        {
+          needs?: string | string[];
+          if?: string;
+          permissions?: Record<string, string>;
+          "timeout-minutes"?: number;
+          steps?: Array<{
+            name?: string;
+            env?: Record<string, string>;
+            run?: string;
+          }>;
+        }
+      >;
+    };
+
+    const deployInput = workflow.on?.workflow_dispatch?.inputs?.deploy;
+    expect(deployInput?.type).toBe("boolean");
+    expect(deployInput?.default).toBe(false);
+
+    expect(Object.keys(workflow.jobs ?? {})).toEqual(["publish", "rollout"]);
+    const publish = workflow.jobs?.publish;
+    const rollout = workflow.jobs?.rollout;
+    // Top-level and publish stay actions:read; only the rollout job may dispatch.
+    expect(workflow.permissions?.actions).toBe("read");
+    expect(publish?.permissions).toBeUndefined();
+    expect(rollout?.needs).toBe("publish");
+    expect(rollout?.if).toBe("github.event.inputs.dry-run != 'true'");
+    expect(rollout?.permissions).toEqual({
+      contents: "read",
+      actions: "write",
+    });
+    expect(rollout?.["timeout-minutes"]).toBe(10);
+
+    const steps = rollout?.steps ?? [];
+    expect(steps.map((step) => step.name)).toEqual([
+      "Dispatch GHCR image publish on the release tag",
+      "Dispatch live deploy (opt-in)",
+    ]);
+    const image = steps[0]!;
+    const deploy = steps[1]!;
+    // Tag identity is re-read from the API and compared to the published SHA
+    // before any image is built for it.
+    expect(image.run).toContain("git/ref/tags/${release_tag}");
+    expect(image.run).toContain('[ "$tag_sha" != "$RELEASE_SHA" ]');
+    expect(image.run).toContain(
+      'gh workflow run container.yml --ref "refs/tags/${release_tag}"',
+    );
+    expect(image.run).not.toContain("--ref main");
+    // Deploy is opt-in and reaches deploy.yml through its validated `ref` input.
+    expect(deploy.env?.DEPLOY).toBe("${{ inputs.deploy }}");
+    expect(deploy.run).toContain('if [ "$DEPLOY" != "true" ]');
+    expect(deploy.run).toContain(
+      'gh workflow run deploy.yml --ref main -f "ref=${release_tag}"',
+    );
+    for (const step of steps) {
+      expect(step.run ?? "").not.toContain("${{");
+      expect(step.env?.GH_TOKEN).toBe("${{ github.token }}");
+    }
+    // Dry runs never dispatch anything.
+    expect(rollout?.if).not.toContain("always()");
+  });
+
   test("release workflow gates the exact SHA, channel, and service surface without injection", async () => {
     const workflow = await readText(".github/workflows/release.yml");
 
@@ -3596,6 +3670,18 @@ describe("GitHub Actions hardening", () => {
     expect(String(publish?.if ?? "")).toContain("refs/tags/v");
     expect(String(publish?.if ?? "")).toContain("workflow_dispatch");
     expect(String(publish?.if ?? "")).toContain("refs/heads/main");
+    // release.yml dispatches this workflow on the tag ref (GITHUB_TOKEN tag
+    // pushes never fire `push`). Publish must accept it; the non-push image
+    // job must not duplicate the build for that same dispatch.
+    expect(String(publish?.if ?? "")).toContain(
+      "github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))",
+    );
+    expect(String(image?.if ?? "")).toContain(
+      "!startsWith(github.ref, 'refs/tags/v')",
+    );
+    expect(text).toContain(
+      "cancel-in-progress: ${{ !((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))) }}",
+    );
 
     expect(text).not.toContain("self-hosted");
     expect(text).not.toContain("chef-control");
@@ -3654,6 +3740,14 @@ describe("GitHub Actions hardening", () => {
     expect(publishMeta).toBeDefined();
     expect(imageSummary).toBeDefined();
     expect(publishSummary).toBeDefined();
+    // Tag-ref dispatch is validated like a tag push: semver shape, and the
+    // version tags are derived from the tag, never from a moving branch.
+    expect(publishMeta!.run).toContain(
+      '[[ "$EVENT_NAME" == "workflow_dispatch" && "$REF" == refs/tags/* ]]',
+    );
+    expect(publishMeta!.run).toContain(
+      "git tag ${REF_NAME} does not match package.json version",
+    );
 
     expect(login!.if).toBeUndefined();
     expect(login!.uses).toBe(
