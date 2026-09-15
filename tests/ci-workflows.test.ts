@@ -58,16 +58,9 @@ describe("GitHub Actions hardening", () => {
     expect(dockerfile).toContain(`ARG BUN_VERSION=${pkg.dependencies.bun}\n`);
   });
 
-  test("release and GHCR publication require all platforms before release artifacts", async () => {
-    const ci = await readText(".github/workflows/ci.yml");
+  test("release and GHCR publication require the Linux fleet CI jobs before release artifacts", async () => {
     const release = await readText(".github/workflows/release.yml");
     const container = await readText(".github/workflows/container.yml");
-    expect(
-      count(
-        ci,
-        "github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')",
-      ),
-    ).toBe(2);
     for (const workflow of [release, container]) {
       expect(workflow).toContain("--event workflow_dispatch");
       expect(workflow).toContain('select(.conclusion == "success")');
@@ -86,19 +79,23 @@ describe("GitHub Actions hardening", () => {
     }
     for (const job of [
       "ubuntu-latest",
-      "macos-latest",
-      "macos-quality",
-      "windows-latest",
-      "windows-latest shard 2/2",
-      "windows-quality",
       "npm-global ubuntu-latest",
-      "npm-global macos-latest",
-      "npm-global windows-latest",
       "Security audit",
       "Lint GitHub Actions",
     ]) {
       expect(release).toContain(JSON.stringify(job));
       expect(container).toContain(JSON.stringify(job));
+    }
+    for (const quarantined of [
+      "macos-latest",
+      "macos-quality",
+      "windows-latest shard 2/2",
+      "windows-quality",
+      "npm-global macos-latest",
+      "npm-global windows-latest",
+    ]) {
+      expect(release).not.toContain(JSON.stringify(quarantined));
+      expect(container).not.toContain(JSON.stringify(quarantined));
     }
   });
 
@@ -946,7 +943,7 @@ describe("GitHub Actions hardening", () => {
     // `defaults:`, and no `<<:` merge key to reintroduce any of them sideways.
     const [, job] = jobs[0]!;
     expect(Object.keys(job).sort()).toEqual(["runs-on", "steps"]);
-    expect(job["runs-on"]).toBe("ubuntu-latest");
+    expect(job["runs-on"]).toEqual(["self-hosted", "Linux", "X64", "heavy"]);
 
     // Checkout trusted scripts, then run the gate. Anything more is an extra
     // privileged action nobody reviewed.
@@ -2884,7 +2881,9 @@ describe("GitHub Actions hardening", () => {
     // declared here or CI linting the workflow itself would go red.
     expect(config["self-hosted-runner"]?.labels).toEqual([
       "deploy",
+      "heavy",
       "opencodex",
+      "pr-isolated",
     ]);
 
     const deploy = Bun.YAML.parse(
@@ -2899,6 +2898,19 @@ describe("GitHub Actions hardening", () => {
         continue;
       expect(config["self-hosted-runner"]?.labels).toContain(label);
     }
+  });
+
+  test("no workflow in .github/workflows uses a GitHub-hosted runner", async () => {
+    const hostedRunsOn =
+      /runs-on:\s*(ubuntu-latest|macos-\S+|windows-\S+|\$\{\{\s*matrix\.os\s*\}\})/;
+    const leftover: string[] = [];
+    for await (const name of new Bun.Glob("*.yml").scan({
+      cwd: fileURLToPath(new URL(".github/workflows/", root)),
+    })) {
+      const text = await readText(`.github/workflows/${name}`);
+      if (hostedRunsOn.test(text)) leftover.push(name);
+    }
+    expect(leftover.sort()).toEqual([]);
   });
 
   test("cross-platform CI caches bun and GUI node_modules and lints YAML with the shared config", async () => {
@@ -3613,7 +3625,7 @@ describe("GitHub Actions hardening", () => {
     expect(helperSrc).not.toContain(".ocx-translation-state");
   });
 
-  test("container image workflow builds on ubuntu-latest and pushes only gated GHCR digests", async () => {
+  test("container image workflow builds on fleet runners and pushes only gated GHCR digests", async () => {
     const text = await readText(".github/workflows/container.yml");
     const workflow = Bun.YAML.parse(text) as {
       on?: {
@@ -3628,7 +3640,7 @@ describe("GitHub Actions hardening", () => {
         string,
         {
           if?: string;
-          "runs-on"?: string;
+          "runs-on"?: string | string[];
           "timeout-minutes"?: number;
           permissions?: Record<string, string>;
           steps?: Array<{
@@ -3651,7 +3663,8 @@ describe("GitHub Actions hardening", () => {
     expect(workflow.on?.push?.tags).toEqual(["v*.*.*"]);
     expect(workflow.on).toHaveProperty("workflow_dispatch");
     expect(workflow.on?.workflow_dispatch?.inputs?.expected_sha).toEqual({
-      description: "Optional immutable release SHA; required by release.yml tag dispatches",
+      description:
+        "Optional immutable release SHA; required by release.yml tag dispatches",
       required: false,
       type: "string",
     });
@@ -3661,8 +3674,10 @@ describe("GitHub Actions hardening", () => {
     expect(jobs).toEqual(["image", "publish"]);
     const image = workflow.jobs?.image;
     const publish = workflow.jobs?.publish;
-    expect(image?.["runs-on"]).toBe("ubuntu-latest");
-    expect(publish?.["runs-on"]).toBe("ubuntu-latest");
+    const fleetPrOrHeavy =
+      '${{ github.event_name == \'pull_request\' && fromJSON(\'["self-hosted","Linux","X64","pr-isolated"]\') || fromJSON(\'["self-hosted","Linux","X64","heavy"]\') }}';
+    expect(image?.["runs-on"]).toBe(fleetPrOrHeavy);
+    expect(publish?.["runs-on"]).toBe(fleetPrOrHeavy);
     expect(image?.["timeout-minutes"]).toBe(20);
     expect(publish?.["timeout-minutes"]).toBe(20);
     expect(image?.permissions).toEqual({ contents: "read", packages: "none" });
@@ -3690,7 +3705,7 @@ describe("GitHub Actions hardening", () => {
       "cancel-in-progress: ${{ !((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))) }}",
     );
 
-    expect(text).not.toContain("self-hosted");
+    expect(text).toContain("self-hosted");
     expect(text).not.toContain("chef-control");
     expect(text).not.toContain("/home/joep");
     expect(text).not.toContain("deploy.yml");
@@ -3805,7 +3820,8 @@ describe("GitHub Actions hardening", () => {
         (ref === "refs/heads/main" || ref.startsWith("refs/tags/v")));
     const shouldPush = (event: string, ref: string) =>
       shouldPublishJob(event, ref) &&
-      (((event === "push" || event === "workflow_dispatch") && tagShape.test(ref)) ||
+      (((event === "push" || event === "workflow_dispatch") &&
+        tagShape.test(ref)) ||
         (event === "workflow_dispatch" && ref === "refs/heads/main"));
     expect(shouldPush("push", "refs/tags/v1.2.3")).toBe(true);
     expect(shouldPush("push", "refs/tags/v1.2.3-preview.4")).toBe(true);
