@@ -98,9 +98,9 @@ non-trivial change. CI runs these on Linux, Windows, and macOS.
 
 `.cursor/environment.json` is the Cloud Agent environment source of truth for
 this repository. The default base image does not include Bun. `install`
-bootstraps Bun 1.4.0 into `$HOME/.bun/bin` when `bun` is missing, then runs
-frozen-lockfile installs for the repo root and `gui/`. Do not assume Bun is
-already on `PATH`.
+bootstraps Bun 1.4.0 into `$HOME/.bun/bin` when it is missing, links `bun` and
+`bunx` into `/usr/local/bin` so non-login agent shells can find them, then runs
+frozen-lockfile installs for the repo root and `gui/`.
 
 ## Live checkouts
 
