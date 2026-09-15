@@ -26,8 +26,11 @@ All notable changes to the GroepOnline `opencodex` fork. Format follows
 
 ### Changed
 
-- Version 1.5.0 is the first release since 1.4.2 (2026-09-08); the live proxy on
-  chef-control-az-01 stays on 1.4.2 until the coordinated deploy of this tag.
+- Successful releases automatically dispatch GHCR image publication on the exact
+  release tag and expected source SHA. Live rollout remains opt-in and verifies
+  runtime version and source identity (#251).
+- Runtime cutover is coordinated separately from package publication; publishing
+  this release does not restart an active proxy.
 
 ## [1.4.2] — 2026-09-08
 
