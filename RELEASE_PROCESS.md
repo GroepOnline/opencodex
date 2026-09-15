@@ -76,7 +76,12 @@ token, so nothing downstream would fire on its own:
   `true`. Default `false`: the live cutover on `chef-control-az-01` stays a coordinated
   step (`gh workflow run deploy.yml -f ref=v<version>`). Deploy waits for the image, pins
   its digest, and only passes when `/healthz` reports `version` **and** `gitSha` equal to
-  the tag; the GUI shows that same `/healthz.version` top-left.
+  the tag; the GUI shows that same `/healthz.version` top-left. After a
+  successful health gate, `scripts/status-version-receipt.py` writes an Atlas
+  CF#665 producer receipt when an admitted binding file is present. Display
+  fields are scraped from the compiled GUI `ocx-build-version` meta tag, never
+  copied from `/healthz`. `status/version-policy` is not required until the
+  publisher has a real passed and blocked canary.
 
 ## Post-release
 
