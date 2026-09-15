@@ -417,7 +417,7 @@ describe("GitHub Actions hardening", () => {
     expect(image.run).toContain("git/ref/tags/${release_tag}");
     expect(image.run).toContain('[ "$tag_sha" != "$RELEASE_SHA" ]');
     expect(image.run).toContain(
-      'gh workflow run container.yml --ref "refs/tags/${release_tag}"',
+      'gh workflow run container.yml --ref "${release_tag}"',
     );
     expect(image.run).not.toContain("--ref main");
     // Deploy is opt-in and reaches deploy.yml through its validated `ref` input.

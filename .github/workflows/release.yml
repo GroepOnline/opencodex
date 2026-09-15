@@ -622,7 +622,7 @@ jobs:
             echo "::error::${release_tag} points at ${tag_sha}, not the published commit ${RELEASE_SHA}; refusing to build an image for a different identity"
             exit 1
           fi
-          gh workflow run container.yml --ref "refs/tags/${release_tag}"
+          gh workflow run container.yml --ref "${release_tag}"
           echo "dispatched container.yml on refs/tags/${release_tag} (${RELEASE_SHA})"
           {
             echo "### Rollout chain"
