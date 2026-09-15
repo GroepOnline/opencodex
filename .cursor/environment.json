@@ -1,0 +1,4 @@
+{
+  "name": "opencodex",
+  "install": "export PATH=\"$HOME/.bun/bin:$PATH\"\nif ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash -s \"bun-v1.4.0\"; fi\nexport PATH=\"$HOME/.bun/bin:$PATH\"\nbun install --frozen-lockfile\nbun install --frozen-lockfile --cwd gui"
+}
