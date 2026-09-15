@@ -162,17 +162,6 @@ async function chooseListenPort(requestedPort?: number): Promise<number> {
 }
 
 async function handleStart(options: { block?: boolean } = {}) {
-  initServerSentry();
-  try {
-    return await handleStartProxy(options);
-  } catch (error) {
-    captureServerFailure(error);
-    await closeServerSentry();
-    throw error;
-  }
-}
-
-async function handleStartProxy(options: { block?: boolean } = {}) {
   // Native (WinSW) service mode has no batch wrapper to read the service token file
   // into the environment, so the app loads it here before the server binds. The server
   // auth path reads OPENCODEX_API_AUTH_TOKEN from the environment.
@@ -730,6 +719,17 @@ function handleRecoverHistory() {
   console.log(`Recovered ${r.rows} legacy thread(s) to openai (${r.files} rollout file(s) updated).`);
 }
 
+async function runStartWithObservability() {
+  initServerSentry();
+  try {
+    await handleStart();
+  } catch (error) {
+    captureServerFailure(error);
+    await closeServerSentry();
+    throw error;
+  }
+}
+
 switch (command) {
   case "init":
   case "setup": {
@@ -738,7 +738,7 @@ switch (command) {
     break;
   }
   case "start":
-    await handleStart();
+    await runStartWithObservability();
     break;
   case "stop": {
     // Downtime warning lives HERE, not in handleStop: `restart`/tray-restart callers

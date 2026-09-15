@@ -15,10 +15,10 @@ const event = {
     type: "TypeError", value: secret,
     mechanism: { data: { secret } },
     stacktrace: { frames: [
-      { filename: `/home/private/${secret}.ts`, abs_path: `/home/private/${secret}.ts`, function: secret, module: secret, vars: { secret }, pre_context: [secret], lineno: 12, colno: 7 },
-      { filename: `C:\\Users\\private\\${secret}.tsx`, lineno: 8 },
+      { filename: `/private-root/${secret}.ts`, abs_path: `/private-root/${secret}.ts`, function: secret, module: secret, vars: { secret }, pre_context: [secret], lineno: 12, colno: 7 },
+      { filename: `C:\\private-root\\${secret}.tsx`, lineno: 8 },
       { filename: `https://private.example/assets/${secret}.js?key=${secret}#${secret}`, lineno: 42 },
-      { filename: `file:///Users/private/${secret}.ts` },
+      { filename: `file:///private-root/${secret}.ts` },
     ] },
   }] },
 };
@@ -43,7 +43,7 @@ describe("optional GUI Sentry", () => {
       { filename: "app:///gui", lineno: undefined, colno: undefined },
     ]);
     const serialized = JSON.stringify(safe);
-    for (const privateValue of [secret, "private", "Authorization", "request", "breadcrumbs", "contexts", "extra", "/home/", "Users", "https://", "file://", "?"]) {
+    for (const privateValue of [secret, "private", "Authorization", "request", "breadcrumbs", "contexts", "extra", "/private-root/", "https://", "file://", "?"]) {
       expect(serialized).not.toContain(privateValue);
     }
   });
