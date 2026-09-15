@@ -417,7 +417,7 @@ describe("GitHub Actions hardening", () => {
     expect(image.run).toContain("git/ref/tags/${release_tag}");
     expect(image.run).toContain('[ "$tag_sha" != "$RELEASE_SHA" ]');
     expect(image.run).toContain(
-      'gh workflow run container.yml --ref "${release_tag}"',
+      'gh workflow run container.yml --ref "${release_tag}" -f "expected_sha=${RELEASE_SHA}"',
     );
     expect(image.run).not.toContain("--ref main");
     // Deploy is opt-in and reaches deploy.yml through its validated `ref` input.
@@ -3619,7 +3619,9 @@ describe("GitHub Actions hardening", () => {
       on?: {
         pull_request?: { branches?: string[] };
         push?: { branches?: string[]; tags?: string[] };
-        workflow_dispatch?: unknown;
+        workflow_dispatch?: {
+          inputs?: Record<string, { type?: string; required?: boolean }>;
+        };
       };
       permissions?: Record<string, string>;
       jobs?: Record<
@@ -3648,6 +3650,11 @@ describe("GitHub Actions hardening", () => {
     expect([...(workflow.on?.push?.branches ?? [])]).toEqual(["dev"]);
     expect(workflow.on?.push?.tags).toEqual(["v*.*.*"]);
     expect(workflow.on).toHaveProperty("workflow_dispatch");
+    expect(workflow.on?.workflow_dispatch?.inputs?.expected_sha).toEqual({
+      description: "Optional immutable release SHA; required by release.yml tag dispatches",
+      required: false,
+      type: "string",
+    });
     expect(workflow.permissions).toEqual({ contents: "read" });
 
     const jobs = Object.keys(workflow.jobs ?? {});
@@ -3718,6 +3725,7 @@ describe("GitHub Actions hardening", () => {
     );
     expect(onMain?.run ?? "").toContain("merge-base --is-ancestor");
     expect(onMain?.run ?? "").toContain("origin/main");
+    expect(onMain?.run ?? "").toContain('SHA" != "$EXPECTED_SHA');
     expect(onMain?.run ?? "").not.toContain("${{");
     expect(requireCi?.run ?? "").toContain("gh run list --workflow ci.yml");
     expect(requireCi?.run ?? "").not.toContain("${{");
@@ -3793,14 +3801,16 @@ describe("GitHub Actions hardening", () => {
       (event === "push" &&
         publishIf.includes("refs/tags/v") &&
         ref.startsWith("refs/tags/v")) ||
-      (event === "workflow_dispatch" && ref === "refs/heads/main");
+      (event === "workflow_dispatch" &&
+        (ref === "refs/heads/main" || ref.startsWith("refs/tags/v")));
     const shouldPush = (event: string, ref: string) =>
       shouldPublishJob(event, ref) &&
-      ((event === "push" && tagShape.test(ref)) ||
+      (((event === "push" || event === "workflow_dispatch") && tagShape.test(ref)) ||
         (event === "workflow_dispatch" && ref === "refs/heads/main"));
     expect(shouldPush("push", "refs/tags/v1.2.3")).toBe(true);
     expect(shouldPush("push", "refs/tags/v1.2.3-preview.4")).toBe(true);
     expect(shouldPush("workflow_dispatch", "refs/heads/main")).toBe(true);
+    expect(shouldPush("workflow_dispatch", "refs/tags/v1.2.3")).toBe(true);
     expect(shouldPush("push", "refs/heads/dev")).toBe(false);
     expect(shouldPush("pull_request", "refs/pull/1/merge")).toBe(false);
     expect(shouldPush("workflow_dispatch", "refs/heads/dev")).toBe(false);

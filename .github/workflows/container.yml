@@ -16,6 +16,11 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: "Optional immutable release SHA; required by release.yml tag dispatches"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -111,8 +116,15 @@ jobs:
       - name: Verify commit is on main
         env:
           SHA: ${{ github.sha }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
           set -euo pipefail
+          if [ -n "$EXPECTED_SHA" ]; then
+            if [[ ! "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || [ "$SHA" != "$EXPECTED_SHA" ]; then
+              echo "::error::Dispatched ref resolved to ${SHA}, not expected release commit ${EXPECTED_SHA}"
+              exit 1
+            fi
+          fi
           git fetch origin main
           if ! git merge-base --is-ancestor "$SHA" origin/main; then
             echo "::error::Commit ${SHA} is not on origin/main — GHCR version tags must sit on main"
