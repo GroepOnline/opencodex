@@ -64,6 +64,18 @@ The Release workflow (manual dispatch, `concurrency: release`):
 
 `prepublishOnly` runs typecheck + `build:gui` (bundled `gui/dist`) before the pack.
 
+After a real publish the `rollout` job continues the chain on the exact tag. The tag is
+pushed with `GITHUB_TOKEN`, and GitHub never starts `push` runs for refs created by that
+token, so nothing downstream would fire on its own:
+
+- `container.yml` is dispatched on `refs/tags/v<version>` and publishes the GHCR image
+  tagged with the release SHA, `v<version>` and `<version>` (immutable artifact identity).
+- `deploy.yml` is dispatched with `ref=v<version>` **only** when the `deploy` input is
+  `true`. Default `false`: the live cutover on `chef-control-az-01` stays a coordinated
+  step (`gh workflow run deploy.yml -f ref=v<version>`). Deploy waits for the image, pins
+  its digest, and only passes when `/healthz` reports `version` **and** `gitSha` equal to
+  the tag; the GUI shows that same `/healthz.version` top-left.
+
 ## Post-release
 
 - Verify: `npm view @groeponline/opencodex@<version> version`
@@ -74,11 +86,11 @@ The Release workflow (manual dispatch, `concurrency: release`):
 
 ## Troubleshooting
 
-| Symptom | Cause / fix |
-| --- | --- |
-| `must be on main` | The helper only releases from `main`. |
-| `working tree not clean` | Commit or stash uncommitted changes first. |
-| `Release tag mismatch` | Stable must use `latest`, prerelease `preview`; the helper validates the shape. |
-| `version is already partially or fully used` | Pick the next unused patch version. |
-| `origin/main moved while waiting` | The remote head changed during CI wait; re-run from the new head. |
-| `error: branch moved` (workflow) | The dispatched branch no longer matches `expected-sha`; re-dispatch from the audited commit. |
+| Symptom                                      | Cause / fix                                                                                  |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `must be on main`                            | The helper only releases from `main`.                                                        |
+| `working tree not clean`                     | Commit or stash uncommitted changes first.                                                   |
+| `Release tag mismatch`                       | Stable must use `latest`, prerelease `preview`; the helper validates the shape.              |
+| `version is already partially or fully used` | Pick the next unused patch version.                                                          |
+| `origin/main moved while waiting`            | The remote head changed during CI wait; re-run from the new head.                            |
+| `error: branch moved` (workflow)             | The dispatched branch no longer matches `expected-sha`; re-dispatch from the audited commit. |
