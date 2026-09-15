@@ -410,6 +410,7 @@ jobs:
           # the running build) must equal the release tag, not only the gitSha.
           TAG_VERSION="${TAG_NAME#v}"
           export TAG_VERSION
+          last_health_body=""
           read -r -a health_urls <<< "$OCX_HEALTH_URLS"
           if [ "${#health_urls[@]}" -lt 2 ]; then
             echo "::error::OCX_HEALTH_URLS must include loopback and Tailscale"
@@ -429,6 +430,7 @@ jobs:
                 all_ok=0
                 break
               fi
+              last_health_body="$body"
               root_url="${url%/healthz}/"
               dashboard="$(curl -fsS --max-time "$max_time" "$root_url" || true)"
               if ! printf '%s' "$dashboard" | grep -Fq '<title>opencodex · proxy dashboard</title>'; then
@@ -449,6 +451,42 @@ jobs:
                 echo "- image: \`${PINNED_IMAGE}\`"
                 echo "- runtime /healthz: version \`${TAG_VERSION}\`, gitSha \`${TAG_SHA}\` on ${OCX_HEALTH_URLS}"
               } >> "$GITHUB_STEP_SUMMARY"
+              # Producer receipt for Atlas' publisher. Display identity is
+              # scraped from the compiled GUI HTML, not copied from /healthz.
+              # Binding IDs come from the admitted host file; no invented scope.
+              binding="${STATUS_VERSION_BINDING_FILE:-/opt/chef/state/opencodex/status-version-binding.json}"
+              if [ ! -f "$binding" ]; then
+                echo "- producer receipt: UNKNOWN (no admitted binding file)" >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
+              dashboard_url="${health_urls[0]%/healthz}/"
+              dashboard_html="${GITHUB_WORKSPACE}/ocx-dashboard.html"
+              curl -fsS --max-time 5 "$dashboard_url" > "$dashboard_html"
+              now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              fresh="$(date -u -d '+300 seconds' +%Y-%m-%dT%H:%M:%SZ)"
+              receipt="${GITHUB_WORKSPACE}/status-version-receipt.json"
+              runtime_version="$(HEALTH_BODY="${last_health_body:-}" python3 -c 'import json,os; print(json.loads(os.environ["HEALTH_BODY"])["version"])')"
+              runtime_sha="$(HEALTH_BODY="${last_health_body:-}" python3 -c 'import json,os; print(json.loads(os.environ["HEALTH_BODY"])["gitSha"])')"
+              python3 scripts/status-version-receipt.py assemble \
+                --binding "$binding" \
+                --now "$now" \
+                --fresh-until "$fresh" \
+                --artifact-version "$TAG_VERSION" \
+                --artifact-source-sha "$TAG_SHA" \
+                --artifact-digest "$PINNED_IMAGE" \
+                --runtime-version "$runtime_version" \
+                --runtime-source-sha "$runtime_sha" \
+                --runtime-digest "$PINNED_IMAGE" \
+                --display-html "$dashboard_html" \
+                --verification-ref "$dashboard_url" \
+                --operation-id "${GITHUB_RUN_ID}" \
+                --operation-owner "fable-opencodex-deploy" \
+                --operation-status "succeeded" \
+                --desired-sha "$TAG_SHA" \
+                --authority "deploy.yml" \
+                --evidence-ref "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+                --out "$receipt"
+              echo "- producer receipt: \`${receipt}\` (display from ${dashboard_url} HTML meta, not /healthz)" >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
             (( SECONDS < deadline )) && sleep 1
