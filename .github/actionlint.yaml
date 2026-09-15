@@ -1,4 +1,6 @@
 self-hosted-runner:
   labels:
     - deploy
+    - heavy
     - opencodex
+    - pr-isolated
