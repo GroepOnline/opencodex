@@ -27,7 +27,8 @@
     "posthog-js": "^1.422.5",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "three": "^0.185.1"
+    "three": "^0.185.1",
+    "@sentry/react": "10.74.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

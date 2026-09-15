@@ -1,4 +1,5 @@
 import { markActivity } from "../lib/sidecar-tracker";
+import { initServerSentry } from "../telemetry/sentry-server";
 import {
   buildWarmupCompletionFrames,
   buildWsErrorFrame,
@@ -295,6 +296,7 @@ function attachLiveSidebandUpstream(ws: ServerWebSocket<WsData>): void {
 // export function relaySseWithHeartbeat
 
 export function startServer(port?: number) {
+  initServerSentry();
   const config = runAlibabaRegionStartupMigration(runOpenAiTierStartupMigration(loadConfig()));
   // Canonicalize an explicit "localhost" bind to IPv4 so it matches the injected base_url (which
   // resolves localhost→127.0.0.1): on Windows `localhost` resolves ::1-first, but the injected URL

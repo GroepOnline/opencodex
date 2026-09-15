@@ -23,6 +23,7 @@ import { collectStatus, proxyRestartHintLines, proxyStatusIsUp } from "./status"
 import { dispatchInternalCliCommand, type InternalCliCommand } from "./internal-dispatch";
 import { runTrayProxyRestart, runTrayProxyStart } from "./tray-proxy";
 import { installCrashGuards } from "../lib/crash-guard";
+import { captureServerFailure, closeServerSentry, initServerSentry } from "../telemetry/sentry-server";
 import { hasHelpFlag, printSubcommandUsage, printUsage, printVersion } from "./help";
 import { findAvailablePort, isAddrInUse, PortUnavailableError, shouldPersistSelectedPort, waitForPortAvailable } from "../server/ports";
 import { findLiveProxy, probeHostname, type LiveProxy } from "../server/proxy-liveness";
@@ -161,6 +162,17 @@ async function chooseListenPort(requestedPort?: number): Promise<number> {
 }
 
 async function handleStart(options: { block?: boolean } = {}) {
+  initServerSentry();
+  try {
+    return await handleStartProxy(options);
+  } catch (error) {
+    captureServerFailure(error);
+    await closeServerSentry();
+    throw error;
+  }
+}
+
+async function handleStartProxy(options: { block?: boolean } = {}) {
   // Native (WinSW) service mode has no batch wrapper to read the service token file
   // into the environment, so the app loads it here before the server binds. The server
   // auth path reads OPENCODEX_API_AUTH_TOKEN from the environment.
@@ -290,6 +302,7 @@ async function handleStart(options: { block?: boolean } = {}) {
       try {
         await drainAndShutdown(server, config.shutdownTimeoutMs ?? 5000);
       } finally {
+        await closeServerSentry();
         const restored = syncCleanup(); // idempotent (cleaned-guard); also re-run by process.on("exit")
         process.exit(restored ? 0 : 1);
       }
