@@ -42,6 +42,8 @@ A dry run builds + packs the tarball but does **not** publish. Re-run with `--pu
    - `tag`: `latest` for stable, `preview` for prerelease
    - `dry-run`: `true` first, then `false` for the real publish
    - `expected-sha`: the release commit SHA (fail-fast if the branch moved)
+   - `deploy`: keep `false` while active sessions depend on the existing runtime;
+     set `true` only for a coordinated live cutover
 
 ## Version selection
 
@@ -57,10 +59,21 @@ A dry run builds + packs the tarball but does **not** publish. Re-run with `--pu
 The Release workflow (manual dispatch, `concurrency: release`):
 
 - Verifies `GITHUB_SHA` equals `expected-sha` (when supplied).
-- Publishes to npm via **Trusted Publishing (OIDC)** — no `NPM_TOKEN` secret.
+- Publishes to npm via **Trusted Publishing (OIDC)** once the npm Trusted Publisher is configured. Only the one-time `first-publish` flow and the retry after an OIDC publish failure use the `NPM_TOKEN` secret.
 - Creates the `v<version>` Git tag and GitHub Release from the exact release commit, with a
   changelog body derived from `scripts/release-notes.ts` (PR/commit history since the prior
   release, including carried preview deltas).
+
+A successful non-dry release explicitly dispatches `container.yml` on the short
+release tag (`--ref vX.Y.Z`) with the expected source SHA. Tags created by
+`GITHUB_TOKEN` do not trigger push workflows. The receiving workflow checks the
+resolved SHA, main ancestry, exact CI, and tag/package version before GHCR push.
+Dispatch success is not image publication: verify the resulting run and digest.
+
+With `deploy=true`, the release also dispatches the existing `deploy.yml` on main
+with `ref=vX.Y.Z`. It waits for the image and verifies the runtime version and SHA.
+With the default `false`, no live rollout is dispatched. Never move a release tag
+to recover a failed downstream job; use its existing immutable release identity.
 
 `prepublishOnly` runs typecheck + `build:gui` (bundled `gui/dist`) before the pack.
 
