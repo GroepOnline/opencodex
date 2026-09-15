@@ -66,8 +66,25 @@ function guiSessionPlugin(target: string | undefined) {
 // vendor-react: long-term-cacheable framework chunk. Page chunks come from React.lazy()
 // in App.tsx; everything else is left to Rolldown's automatic splitting.
 // https://vite.dev/config/
+function buildIdentityPlugin() {
+  return {
+    name: "opencodex-build-identity",
+    transformIndexHtml(html: string) {
+      const tag = `<meta name="ocx-build-version" content="${escapeHtmlAttribute(version)}">`;
+      return html.includes('name="ocx-build-version"')
+        ? html
+        : html.replace("</head>", `    ${tag}\n  </head>`);
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), guiSessionPlugin(proxyTarget)],
+  plugins: [
+    react(),
+    tailwindcss(),
+    buildIdentityPlugin(),
+    guiSessionPlugin(proxyTarget),
+  ],
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   define: { __APP_VERSION__: JSON.stringify(version) },
   build: {
