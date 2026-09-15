@@ -68,8 +68,10 @@ After a real publish the `rollout` job continues the chain on the exact tag. The
 pushed with `GITHUB_TOKEN`, and GitHub never starts `push` runs for refs created by that
 token, so nothing downstream would fire on its own:
 
-- `container.yml` is dispatched on `refs/tags/v<version>` and publishes the GHCR image
-  tagged with the release SHA, `v<version>` and `<version>` (immutable artifact identity).
+- `container.yml` is dispatched with `gh workflow run container.yml --ref v<version>`
+  (short tag name). GitHub then sets `github.ref` to `refs/tags/v<version>` in that
+  run and publishes the GHCR image tagged with the release SHA, `v<version>` and
+  `<version>` (immutable artifact identity).
 - `deploy.yml` is dispatched with `ref=v<version>` **only** when the `deploy` input is
   `true`. Default `false`: the live cutover on `chef-control-az-01` stays a coordinated
   step (`gh workflow run deploy.yml -f ref=v<version>`). Deploy waits for the image, pins

@@ -419,6 +419,14 @@ describe("GitHub Actions hardening", () => {
     expect(image.run).toContain(
       'gh workflow run container.yml --ref "${release_tag}" -f "expected_sha=${RELEASE_SHA}"',
     );
+    // gh --ref is the short tag name. The dispatch context itself sets
+    // github.ref to refs/tags/<tag>; do not pass that full ref to --ref.
+    expect(image.run).not.toContain(
+      'gh workflow run container.yml --ref "refs/tags/${release_tag}"',
+    );
+    expect(image.run).not.toMatch(
+      /gh workflow run container\.yml --ref "refs\//,
+    );
     expect(image.run).not.toContain("--ref main");
     // Deploy is opt-in and reaches deploy.yml through its validated `ref` input.
     expect(deploy.env?.DEPLOY).toBe("${{ inputs.deploy }}");
@@ -3651,7 +3659,8 @@ describe("GitHub Actions hardening", () => {
     expect(workflow.on?.push?.tags).toEqual(["v*.*.*"]);
     expect(workflow.on).toHaveProperty("workflow_dispatch");
     expect(workflow.on?.workflow_dispatch?.inputs?.expected_sha).toEqual({
-      description: "Optional immutable release SHA; required by release.yml tag dispatches",
+      description:
+        "Optional immutable release SHA; required by release.yml tag dispatches",
       required: false,
       type: "string",
     });
@@ -3677,8 +3686,9 @@ describe("GitHub Actions hardening", () => {
     expect(String(publish?.if ?? "")).toContain("refs/tags/v");
     expect(String(publish?.if ?? "")).toContain("workflow_dispatch");
     expect(String(publish?.if ?? "")).toContain("refs/heads/main");
-    // release.yml dispatches this workflow on the tag ref (GITHUB_TOKEN tag
-    // pushes never fire `push`). Publish must accept it; the non-push image
+    // release.yml dispatches with `gh --ref vX.Y.Z` (short tag name). GitHub
+    // then sets github.ref to refs/tags/vX.Y.Z (GITHUB_TOKEN tag pushes never
+    // fire `push`). Publish must accept that github.ref; the non-push image
     // job must not duplicate the build for that same dispatch.
     expect(String(publish?.if ?? "")).toContain(
       "github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))",
@@ -3805,7 +3815,8 @@ describe("GitHub Actions hardening", () => {
         (ref === "refs/heads/main" || ref.startsWith("refs/tags/v")));
     const shouldPush = (event: string, ref: string) =>
       shouldPublishJob(event, ref) &&
-      (((event === "push" || event === "workflow_dispatch") && tagShape.test(ref)) ||
+      (((event === "push" || event === "workflow_dispatch") &&
+        tagShape.test(ref)) ||
         (event === "workflow_dispatch" && ref === "refs/heads/main"));
     expect(shouldPush("push", "refs/tags/v1.2.3")).toBe(true);
     expect(shouldPush("push", "refs/tags/v1.2.3-preview.4")).toBe(true);

@@ -2,10 +2,12 @@ name: Container image
 
 # Builds the OpenCodex image on GitHub-hosted ubuntu-latest (has Docker).
 # Push to GHCR is a separate job: tag v*.*.* push, workflow_dispatch on main, or
-# workflow_dispatch on a v*.*.* tag ref. The tag-ref dispatch exists because
+# workflow_dispatch on a v*.*.* tag. The tag dispatch exists because
 # release.yml creates the tag with GITHUB_TOKEN, and tag pushes made with that
-# token never start a `push` run; release.yml therefore dispatches this workflow
-# on the exact tag so the GHCR image carries the release identity (SHA + version).
+# token never start a `push` run; release.yml therefore runs
+# `gh workflow run container.yml --ref vX.Y.Z` (short tag name). GitHub then
+# sets github.ref to refs/tags/vX.Y.Z so the GHCR image carries the release
+# identity (SHA + version).
 # Pull requests, push to dev, and off-main branch dispatch build-and-load. They do not push.
 # packages permissions stay static literals. actionlint rejects expressions there.
 on:

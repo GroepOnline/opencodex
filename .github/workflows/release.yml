@@ -622,13 +622,16 @@ jobs:
             echo "::error::${release_tag} points at ${tag_sha}, not the published commit ${RELEASE_SHA}; refusing to build an image for a different identity"
             exit 1
           fi
+          # gh workflow run --ref wants the short tag name (vX.Y.Z). Passing
+          # refs/tags/vX.Y.Z is a different ref string; GitHub then sets
+          # github.ref to refs/tags/vX.Y.Z in the dispatched run.
           gh workflow run container.yml --ref "${release_tag}" -f "expected_sha=${RELEASE_SHA}"
-          echo "dispatched container.yml on refs/tags/${release_tag} (${RELEASE_SHA})"
+          echo "dispatched container.yml --ref ${release_tag} (${RELEASE_SHA}; github.ref=refs/tags/${release_tag})"
           {
             echo "### Rollout chain"
             echo ""
             echo "- release: \`${release_tag}\` at \`${RELEASE_SHA}\`"
-            echo "- GHCR image: container.yml dispatched on \`refs/tags/${release_tag}\` (tags: sha, ${release_tag}, ${RELEASE_VERSION})"
+            echo "- GHCR image: container.yml dispatched with \`--ref ${release_tag}\` (github.ref=refs/tags/${release_tag}; tags: sha, ${release_tag}, ${RELEASE_VERSION})"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Dispatch live deploy (opt-in)
