@@ -23,6 +23,7 @@ import { collectStatus, proxyRestartHintLines, proxyStatusIsUp } from "./status"
 import { dispatchInternalCliCommand, type InternalCliCommand } from "./internal-dispatch";
 import { runTrayProxyRestart, runTrayProxyStart } from "./tray-proxy";
 import { installCrashGuards } from "../lib/crash-guard";
+import { captureServerFailure, closeServerSentry, initServerSentry } from "../telemetry/sentry-server";
 import { hasHelpFlag, printSubcommandUsage, printUsage, printVersion } from "./help";
 import { findAvailablePort, isAddrInUse, PortUnavailableError, shouldPersistSelectedPort, waitForPortAvailable } from "../server/ports";
 import { findLiveProxy, probeHostname, type LiveProxy } from "../server/proxy-liveness";
@@ -290,6 +291,7 @@ async function handleStart(options: { block?: boolean } = {}) {
       try {
         await drainAndShutdown(server, config.shutdownTimeoutMs ?? 5000);
       } finally {
+        await closeServerSentry();
         const restored = syncCleanup(); // idempotent (cleaned-guard); also re-run by process.on("exit")
         process.exit(restored ? 0 : 1);
       }
@@ -717,6 +719,17 @@ function handleRecoverHistory() {
   console.log(`Recovered ${r.rows} legacy thread(s) to openai (${r.files} rollout file(s) updated).`);
 }
 
+async function runStartWithObservability() {
+  initServerSentry();
+  try {
+    await handleStart();
+  } catch (error) {
+    captureServerFailure(error);
+    await closeServerSentry();
+    throw error;
+  }
+}
+
 switch (command) {
   case "init":
   case "setup": {
@@ -725,7 +738,7 @@ switch (command) {
     break;
   }
   case "start":
-    await handleStart();
+    await runStartWithObservability();
     break;
   case "stop": {
     // Downtime warning lives HERE, not in handleStop: `restart`/tray-restart callers

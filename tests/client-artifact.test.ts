@@ -237,9 +237,12 @@ describe("remote client artifact", () => {
         `${digest}  src/cli/index.js\n`,
       );
       expect(manifest.files["src/cli/index.js"]).toBe(digest);
-      expect(readFileSync(entry, "utf8")).not.toMatch(
+      const bundledSource = readFileSync(entry, "utf8");
+      expect(bundledSource).not.toMatch(
         /ocx-client-source-[A-Za-z0-9_-]+/,
       );
+      expect(bundledSource).not.toContain("@sentry/node-core");
+      expect(bundledSource).not.toContain("extractGenAiSpans");
       expect(manifest.files["package.json"]).toBe(
         createHash("sha256").update(packageText).digest("hex"),
       );
