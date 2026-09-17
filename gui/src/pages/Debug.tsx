@@ -1,11 +1,30 @@
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { setClientResourceData, useKeyedClientResource } from "../client-resource";
+import {
+  setClientResourceData,
+  useKeyedClientResource,
+} from "../client-resource";
 import { useI18n } from "../i18n/shared";
-import { readSessionListCache, writeSessionListCache } from "../session-list-cache";
+import {
+  readSessionListCache,
+  writeSessionListCache,
+} from "../session-list-cache";
 import { DebugClaudeInboundPanel } from "./debug-claude-inbound-panel";
 import { DebugLogViewer } from "./debug-log-viewer";
 import { DebugPageHeader, DebugSettingsPanel } from "./debug-settings-panel";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../components/primitives/empty";
+import { Spinner } from "../components/primitives/spinner";
 import {
   DEBUG_STREAMS,
   type DebugSettings,
@@ -17,13 +36,23 @@ function debugSettingsKey(apiBase: string): string {
   return `debug-settings:${apiBase}`;
 }
 
-export default function Debug({ apiBase, embedded, active = true }: { apiBase: string; embedded?: boolean; active?: boolean }) {
+export default function Debug({
+  apiBase,
+  embedded,
+  active = true,
+}: {
+  apiBase: string;
+  embedded?: boolean;
+  active?: boolean;
+}) {
   const { t } = useI18n();
   const settingsCacheKey = `ocx.debug.settings.v1:${apiBase}`;
   const cachedSettings = readSessionListCache<DebugSettings>(settingsCacheKey);
   const [debugBusy, setDebugBusy] = useState(false);
   const [stream, setStream] = useState<LogStream>("provider");
-  const [entries, setEntries] = useState<import("./debug-shared").DebugLogEntry[]>([]);
+  const [entries, setEntries] = useState<
+    import("./debug-shared").DebugLogEntry[]
+  >([]);
   const [follow, setFollow] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const afterRef = useRef(0);
@@ -41,7 +70,7 @@ export default function Debug({ apiBase, embedded, active = true }: { apiBase: s
     async (signal) => {
       const res = await fetch(`${apiBase}/api/debug`, { signal });
       if (!res.ok) return null;
-      const next = await res.json() as DebugSettings;
+      const next = (await res.json()) as DebugSettings;
       writeSessionListCache(settingsCacheKey, next);
       return next;
     },
@@ -53,9 +82,13 @@ export default function Debug({ apiBase, embedded, active = true }: { apiBase: s
     `debug-claude-inbound:${apiBase}`,
     [apiBase, debug?.claude],
     async (signal) => {
-      const res = await fetch(`${apiBase}/api/claude/inbound-debug`, { signal });
+      const res = await fetch(`${apiBase}/api/claude/inbound-debug`, {
+        signal,
+      });
       if (!res.ok) return [] as import("./debug-shared").ClaudeInboundEntry[];
-      const data = await res.json() as { entries?: import("./debug-shared").ClaudeInboundEntry[] };
+      const data = (await res.json()) as {
+        entries?: import("./debug-shared").ClaudeInboundEntry[];
+      };
       return Array.isArray(data.entries) ? data.entries : [];
     },
     { pollMs: 2000, enabled: active && !!debug?.claude },
@@ -68,7 +101,7 @@ export default function Debug({ apiBase, embedded, active = true }: { apiBase: s
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: () => 20,
     overscan: 30,
-    getItemKey: index => entries[index]!.seq,
+    getItemKey: (index) => entries[index]!.seq,
   });
 
   const streamIsOn = useCallback(
@@ -92,32 +125,44 @@ export default function Debug({ apiBase, embedded, active = true }: { apiBase: s
         ? `${apiBase}/api/debug/usage-logs`
         : `${apiBase}/api/debug/injection-logs`;
 
-  const fetchLogs = useCallback(async (initial: boolean, signal?: AbortSignal) => {
-    const generation = ++logGenerationRef.current;
-    if (!streamEnabled) {
-      if (generation === logGenerationRef.current) {
-        setEntries([]);
-        afterRef.current = 0;
+  const fetchLogs = useCallback(
+    async (initial: boolean, signal?: AbortSignal) => {
+      const generation = ++logGenerationRef.current;
+      if (!streamEnabled) {
+        if (generation === logGenerationRef.current) {
+          setEntries([]);
+          afterRef.current = 0;
+        }
+        return;
       }
-      return;
-    }
-    setRefreshing(true);
-    try {
-      const params = new URLSearchParams({ limit: "500" });
-      if (!initial && afterRef.current > 0) params.set("after", String(afterRef.current));
-      const res = await fetch(`${logsPath}?${params}`, { signal });
-      if (!res.ok || signal?.aborted || generation !== logGenerationRef.current) return;
-      const next = await res.json() as import("./debug-shared").DebugLogEntry[];
-      if (signal?.aborted || generation !== logGenerationRef.current) return;
-      if (next.length === 0) return;
-      setEntries(prev => (initial ? next : [...prev, ...next]).slice(-2000));
-      afterRef.current = next[next.length - 1]!.seq;
-    } catch {
-      /* ignore abort / network */
-    } finally {
-      if (generation === logGenerationRef.current) setRefreshing(false);
-    }
-  }, [logsPath, streamEnabled]);
+      setRefreshing(true);
+      try {
+        const params = new URLSearchParams({ limit: "500" });
+        if (!initial && afterRef.current > 0)
+          params.set("after", String(afterRef.current));
+        const res = await fetch(`${logsPath}?${params}`, { signal });
+        if (
+          !res.ok ||
+          signal?.aborted ||
+          generation !== logGenerationRef.current
+        )
+          return;
+        const next =
+          (await res.json()) as import("./debug-shared").DebugLogEntry[];
+        if (signal?.aborted || generation !== logGenerationRef.current) return;
+        if (next.length === 0) return;
+        setEntries((prev) =>
+          (initial ? next : [...prev, ...next]).slice(-2000),
+        );
+        afterRef.current = next[next.length - 1]!.seq;
+      } catch {
+        /* ignore abort / network */
+      } finally {
+        if (generation === logGenerationRef.current) setRefreshing(false);
+      }
+    },
+    [logsPath, streamEnabled],
+  );
 
   useEffect(() => {
     if (!active) return;
@@ -169,15 +214,20 @@ export default function Debug({ apiBase, embedded, active = true }: { apiBase: s
           body: JSON.stringify(body),
         });
         if (!res.ok) return;
-        const next = await res.json() as DebugSettings;
+        const next = (await res.json()) as DebugSettings;
         if (generation !== mutationGenerationRef.current) return;
         writeSessionListCache(settingsCacheKey, next);
         setClientResourceData(debugSettingsKey(apiBase), next);
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     };
     const previous = mutationQueueRef.current ?? Promise.resolve();
     const queued = previous.then(run, run);
-    mutationQueueRef.current = queued.then(() => undefined, () => undefined);
+    mutationQueueRef.current = queued.then(
+      () => undefined,
+      () => undefined,
+    );
     try {
       await queued;
     } finally {
@@ -185,7 +235,10 @@ export default function Debug({ apiBase, embedded, active = true }: { apiBase: s
     }
   };
 
-  const setDebugFlag = async (flag: "debug" | "usage" | "injection" | "claude", enabled: boolean) => {
+  const setDebugFlag = async (
+    flag: "debug" | "usage" | "injection" | "claude",
+    enabled: boolean,
+  ) => {
     await runDebugMutation({ [flag]: enabled });
   };
 
@@ -194,7 +247,7 @@ export default function Debug({ apiBase, embedded, active = true }: { apiBase: s
   };
 
   return (
-    <>
+    <div className={embedded ? "debug-page" : "debug-page ocx-page-root"}>
       <DebugPageHeader
         embedded={embedded}
         refreshing={refreshing}
@@ -205,14 +258,25 @@ export default function Debug({ apiBase, embedded, active = true }: { apiBase: s
       />
 
       {!debug ? (
-        <div className="empty">{t("debug.loading")}</div>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Spinner />
+            </EmptyMedia>
+            <EmptyTitle>{t("debug.loading")}</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <DebugSettingsPanel
           debug={debug}
           debugBusy={debugBusy}
           stream={stream}
-          onSetFlag={(flag, enabled) => { void setDebugFlag(flag, enabled); }}
-          onReset={() => { void resetDebug(); }}
+          onSetFlag={(flag, enabled) => {
+            void setDebugFlag(flag, enabled);
+          }}
+          onReset={() => {
+            void resetDebug();
+          }}
           onStreamChange={setStream}
         />
       )}
@@ -227,6 +291,6 @@ export default function Debug({ apiBase, embedded, active = true }: { apiBase: s
         scrollContainerRef={scrollContainerRef}
         lineVirtualizer={lineVirtualizer}
       />
-    </>
+    </div>
   );
 }

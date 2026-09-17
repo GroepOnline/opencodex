@@ -373,6 +373,15 @@ describe("deterministic combo selection", () => {
     ]);
   });
 
+  test("can reserve stickyLimit=1 round-robin slots before concurrent success", () => {
+    const config = rrConfig(1, [1, 1, 1]);
+    expect([
+      pickComboTarget(config, "free", { rotateOnPick: true })?.target.provider,
+      pickComboTarget(config, "free", { rotateOnPick: true })?.target.provider,
+      pickComboTarget(config, "free", { rotateOnPick: true })?.target.provider,
+    ]).toEqual(["a", "b", "c"]);
+  });
+
   test("smooth weights and sticky successes have a deterministic sequence", () => {
     const config = rrConfig(2, [2, 1]);
     expect(successfulPicks(config, 12)).toEqual([

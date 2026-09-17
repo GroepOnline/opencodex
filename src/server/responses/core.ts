@@ -24,6 +24,7 @@ import {
   parseRetryAfterMs,
   pickComboTarget,
   targetKey,
+  type ComboPick,
 } from "../../combos";
 import {
   classifyAttempt,
@@ -46,6 +47,13 @@ import {
 } from "../../availability";
 import { isInjectionDebugEnabled } from "../../lib/debug-settings";
 import { rateLimitForFailure } from "../../availability/rate-limit-parse";
+import {
+  acquireProviderFamilyAdmission,
+  coolProviderFamilyAfter429,
+  isProviderFamilyCooling,
+  settleProviderFamilyRecovery,
+  type ProviderFamilyRecoveryLease,
+} from "../../providers/provider-cooldown";
 import { injectionDebugLog } from "../../lib/injection-debug-log";
 import { resolveClientRetryAfter } from "../../lib/retry-after";
 import { modelInList, namespacedToolName } from "../../types";
@@ -109,7 +117,10 @@ import {
 import { ForwardAdmissionCredentialError, validateForwardAdmissionCredential } from "../auth-cors";
 import { selectCandidateFailResponse } from "./select-http";
 import { listOpenAiForwardSidecarCandidates, resolveFirstUsableOpenAiSidecar, type ResolvedOpenAiForwardSidecar } from "../../providers/openai-sidecar";
-import { isCanonicalOpenAiForwardProvider } from "../../providers/openai-tiers";
+import {
+  isCanonicalOpenAiForwardProvider,
+  supportsNativeRemoteCompactionV2,
+} from "../../providers/openai-tiers";
 import { slugsEquivalent } from "../../providers/slug-codec";
 import { applyOpenAiVirtualModel, resolveOpenAiCompactModel } from "../../providers/openai-virtual-models";
 import { isUsageDebugEnabled } from "../../usage/debug";
@@ -547,6 +558,10 @@ export interface HandleResponsesOptions {
    * this root so claudeCode hand-edit protection and combo maps stay on the live instance.
    */
   persistConfig?: OcxConfig;
+  /** Internal: reserve stickyLimit=1 round-robin targets before concurrent I/O completes. */
+  rotateComboOnPick?: boolean;
+  /** Internal: decorate the request only after a combo target is selected. */
+  onComboTargetSelected?: (route: RouteResult, headers: Headers) => void;
 }
 
 
@@ -782,6 +797,24 @@ async function applyFinalRouteRequestNormalization(args: {
   // Settle the wire once so logging, fast-mode, auth, and sidecars read the adapter
   // this request will actually use (#404).
   route.provider = resolveWireProtocolOverride(route.providerName, route.modelId, route.provider);
+  // Claude Messages is translated into a public Responses body before routing. The
+  // canonical ChatGPT backend has a stricter private allowlist, so remove the same
+  // sampling fields the direct Claude preflight strips — but only after the combo
+  // has selected its final backend.
+  if (logCtx.surface === "claude" && isCanonicalOpenAiForwardProvider(route.provider)) {
+    const raw = parsed._rawBody as Record<string, unknown> | undefined;
+    if (raw) {
+      delete raw.max_output_tokens;
+      delete raw.temperature;
+      delete raw.top_p;
+      delete raw.stop;
+      delete raw.user;
+    }
+    delete parsed.options.maxOutputTokens;
+    delete parsed.options.temperature;
+    delete parsed.options.topP;
+    delete parsed.options.stopSequences;
+  }
   logCtx.model = route.modelId;
   logCtx.provider = route.providerName;
   // `logCtx.provider` is later rewritten to a display label with a Codex account suffix; keep
@@ -841,6 +874,15 @@ async function applyFinalRouteRequestNormalization(args: {
   }
 
   {
+    const ladder = supportedLadderFor(route);
+    if (ladder !== undefined && ladder.length === 0 && parsed.options.reasoning !== undefined) {
+      delete parsed.options.reasoning;
+      const raw = parsed._rawBody as Record<string, unknown> | undefined;
+      if (raw) delete raw.reasoning;
+    }
+  }
+
+  {
     const { nativeEffortClamp, shouldApplyNativeEffortClamp } = await import("../../codex/catalog");
     const clamped = shouldApplyNativeEffortClamp(route.providerName, route.provider, finalSelectedModelId)
       ? nativeEffortClamp(route.modelId, parsed.options.reasoning)
@@ -859,7 +901,35 @@ async function applyFinalRouteRequestNormalization(args: {
   );
 }
 
-
+function acquireComboTargetWithFamilyAdmission(args: {
+  config: OcxConfig;
+  comboId: string;
+  candidate: ComboPick | null;
+  now: number;
+  rotateOnPick?: boolean;
+  payloadEligible: (target: ComboPick["target"]) => boolean;
+}): { pick: ComboPick; recoveryLease?: ProviderFamilyRecoveryLease } | null {
+  const { config, comboId, now, rotateOnPick, payloadEligible } = args;
+  let selected = args.candidate;
+  while (selected) {
+    const admission = acquireProviderFamilyAdmission(
+      config,
+      selected.target.provider,
+      now,
+    );
+    if (admission.allowed) {
+      return { pick: selected, recoveryLease: admission.recoveryLease };
+    }
+    selected = pickComboTarget(config, comboId, {
+      exclude: selected.attempted,
+      rotateOnPick,
+      eligible: target => payloadEligible(target)
+        && !isComboTargetInCooldown(comboId, target, now)
+        && !isProviderFamilyCooling(config, target.provider, now),
+    });
+  }
+  return null;
+}
 
 export async function handleComboResponses(
   req: Request,
@@ -917,18 +987,36 @@ export async function handleComboResponses(
   }
 
   const initialNow = Date.now();
-  let pick = pickComboTarget(config, comboId, {
+  const initialCandidate = pickComboTarget(config, comboId, {
+    rotateOnPick: options.rotateComboOnPick,
     eligible: target => payloadEligible(target)
-      && !isComboTargetInCooldown(comboId, target, initialNow),
+      && !isComboTargetInCooldown(comboId, target, initialNow)
+      && !isProviderFamilyCooling(config, target.provider, initialNow),
   });
-  if (!pick) {
+  const initial = acquireComboTargetWithFamilyAdmission({
+    config,
+    comboId,
+    candidate: initialCandidate,
+    now: initialNow,
+    rotateOnPick: options.rotateComboOnPick,
+    payloadEligible,
+  });
+  if (!initial) {
     return comboUnavailableResponse(`No available targets for combo: ${comboIdLabel(comboId)}`);
   }
 
+  let pick: ReturnType<typeof pickComboTarget> = initial.pick;
+  let recoveryLease = initial.recoveryLease;
   let lastFailure: Response | null = null;
   while (pick) {
-    if (options.abortSignal?.aborted) return clientCancelledResponse();
+    let attemptRecoveryLease = recoveryLease;
+    recoveryLease = undefined;
+    if (options.abortSignal?.aborted) {
+      settleProviderFamilyRecovery(attemptRecoveryLease, false);
+      return clientCancelledResponse();
+    }
     if (options.attemptBudget?.remaining === 0) {
+      settleProviderFamilyRecovery(attemptRecoveryLease, false);
       return lastFailure ?? formatErrorResponse(
         502,
         "upstream_error",
@@ -949,6 +1037,7 @@ export async function handleComboResponses(
       supportedLadderFor({ provider: targetRoute.provider, modelId: targetRoute.modelId }),
     );
     const childHeaders = buildComboChildHeaders(req.headers);
+    options.onComboTargetSelected?.(targetRoute, childHeaders);
     const childRequest = new Request(req.url, {
       method: req.method,
       headers: childHeaders,
@@ -986,7 +1075,8 @@ export async function handleComboResponses(
         && combo.targets.slice(pick.targetIndex + 1).some(target =>
           target.provider === currentTargetProvider
           && payloadEligible(target)
-          && !isComboTargetInCooldown(comboId, target),
+          && !isComboTargetInCooldown(comboId, target)
+          && !isProviderFamilyCooling(config, target.provider),
         );
       response = await handleResponses(childRequest, config, childLog, {
         ...options,
@@ -1025,6 +1115,8 @@ export async function handleComboResponses(
       }
 
       if (response.ok) {
+        settleProviderFamilyRecovery(attemptRecoveryLease, true);
+        attemptRecoveryLease = undefined;
         sealRequestAttemptIdentity(
           attempt,
           childLog.provider,
@@ -1086,6 +1178,8 @@ export async function handleComboResponses(
         message: failure.classificationText,
         code: failure.upstreamCode,
       }) === "surface") {
+        settleProviderFamilyRecovery(attemptRecoveryLease, false);
+        attemptRecoveryLease = undefined;
         adoptFailedChildLog(childLog);
         bindingAdopted = true;
         return lastFailure;
@@ -1093,17 +1187,44 @@ export async function handleComboResponses(
       console.warn(
         `[combo] ${comboIdLabel(comboId)}: ${targetKey(pick.target)} failed with ${response.status} after ${Date.now() - started}ms`,
       );
-      const nextPick = advanceComboAfterFailure(config, pick, {
+      const failureNow = Date.now();
+      if (response.status === 429) {
+        coolProviderFamilyAfter429(
+          config,
+          pick.target.provider,
+          failure.retryAfter,
+          failureNow,
+        );
+      } else {
+        settleProviderFamilyRecovery(attemptRecoveryLease, false);
+      }
+      attemptRecoveryLease = undefined;
+      const nextCandidate = advanceComboAfterFailure(config, pick, {
         retryAfter: failure.retryAfter,
-        now: Date.now(),
-        eligible: payloadEligible,
+        now: failureNow,
+        rotateOnPick: options.rotateComboOnPick,
+        eligible: target => payloadEligible(target)
+          && !isProviderFamilyCooling(config, target.provider, failureNow),
       });
-      if (!nextPick) {
+      const next = acquireComboTargetWithFamilyAdmission({
+        config,
+        comboId,
+        candidate: nextCandidate,
+        now: failureNow,
+        rotateOnPick: options.rotateComboOnPick,
+        payloadEligible,
+      });
+      if (!next) {
         adoptFailedChildLog(childLog);
         bindingAdopted = true;
+        pick = null;
+      } else {
+        pick = next.pick;
+        recoveryLease = next.recoveryLease;
       }
-      pick = nextPick;
     } catch (error) {
+      settleProviderFamilyRecovery(attemptRecoveryLease, false);
+      attemptRecoveryLease = undefined;
       callbackGate.discard();
       if (options.abortSignal?.aborted) {
         retainCancelledAttempt();
@@ -1111,6 +1232,7 @@ export async function handleComboResponses(
       }
       throw error;
     } finally {
+      settleProviderFamilyRecovery(attemptRecoveryLease, false);
       if (!bindingAdopted) releaseRequestProviderAccount(childLog);
     }
   }
@@ -1522,7 +1644,7 @@ export async function handleResponses(
   // contract. An API-key gateway would receive the trigger, answer with an ordinary
   // message, and leave Codex fataling on a missing compaction item (#422).
   const routedCompaction = parsed._compactionRequest === true
-    && !isCanonicalOpenAiForwardProvider(route.provider);
+    && !supportsNativeRemoteCompactionV2(route.providerName, route.provider);
   if (routedCompaction) {
     delete parsed.context.tools;
     delete parsed._webSearch;

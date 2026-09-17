@@ -44,7 +44,10 @@ let cachedBuildInfo: BuildInfoFile | null | undefined;
 function loadBuildInfo(): BuildInfoFile {
   if (cachedBuildInfo !== undefined) return cachedBuildInfo ?? {};
   try {
-    const raw = readFileSync(new URL("../build-info.json", import.meta.url), "utf8");
+    const raw = readFileSync(
+      new URL("../build-info.json", import.meta.url),
+      "utf8",
+    );
     cachedBuildInfo = JSON.parse(raw) as BuildInfoFile;
   } catch {
     cachedBuildInfo = null;
@@ -56,10 +59,13 @@ export function resetBuildInfoCacheForTests(): void {
   cachedBuildInfo = undefined;
 }
 
-export function readSchemaVersion(config: Record<string, unknown>): string | null {
+export function readSchemaVersion(
+  config: Record<string, unknown>,
+): string | null {
   const direct = config.schema_version ?? config.schemaVersion;
   if (typeof direct === "string" && direct.trim()) return direct.trim();
-  if (typeof direct === "number" && Number.isFinite(direct)) return String(direct);
+  if (typeof direct === "number" && Number.isFinite(direct))
+    return String(direct);
   return null;
 }
 
@@ -71,13 +77,20 @@ export function buildPublicProvenance(
   return {
     contract_version: MANAGEMENT_CONTRACT_VERSION,
     version: VERSION,
-    git_sha: typeof build.git_sha === "string" && build.git_sha ? build.git_sha : null,
-    built_at: typeof build.built_at === "string" && build.built_at ? build.built_at : null,
-    release: typeof build.release === "string" && build.release ? build.release : null,
-    schema_version: readSchemaVersion(config),
-    gui_version: typeof build.gui_version === "string" && build.gui_version
-      ? build.gui_version
-      : VERSION,
+    git_sha:
+      typeof build.git_sha === "string" && build.git_sha ? build.git_sha : null,
+    built_at:
+      typeof build.built_at === "string" && build.built_at
+        ? build.built_at
+        : null,
+    release:
+      typeof build.release === "string" && build.release ? build.release : null,
+    // Deploy-gate-safe: unauthenticated callers never see the schema version.
+    schema_version: null,
+    gui_version:
+      typeof build.gui_version === "string" && build.gui_version
+        ? build.gui_version
+        : VERSION,
     runtime: {
       service: "opencodex",
       pid: process.pid,
@@ -96,15 +109,20 @@ export function buildAuthenticatedProvenance(
 ): AuthenticatedProvenance {
   const base = buildPublicProvenance(config, listenPort);
   const providers = config.providers;
-  const providerCount = providers && typeof providers === "object" && !Array.isArray(providers)
-    ? Object.keys(providers).length
-    : 0;
+  const providerCount =
+    providers && typeof providers === "object" && !Array.isArray(providers)
+      ? Object.keys(providers).length
+      : 0;
   return {
     ...base,
+    schema_version: readSchemaVersion(config),
     management: {
       contract_version: MANAGEMENT_CONTRACT_VERSION,
       hostname: typeof config.hostname === "string" ? config.hostname : null,
-      default_provider: typeof config.defaultProvider === "string" ? config.defaultProvider : null,
+      default_provider:
+        typeof config.defaultProvider === "string"
+          ? config.defaultProvider
+          : null,
       provider_count: providerCount,
       management_auth_available: managementAuthAvailable,
     },

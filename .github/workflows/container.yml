@@ -1,8 +1,12 @@
 name: Container image
 
 # Builds the OpenCodex image on GitHub-hosted ubuntu-latest (has Docker).
-# Push to GHCR is a separate job: tag v*.*.* or workflow_dispatch on main.
-# Pull requests, push to dev, and off-main dispatch build-and-load. They do not push.
+# Push to GHCR is a separate job: tag v*.*.* push, workflow_dispatch on main, or
+# workflow_dispatch on a v*.*.* tag ref. The tag-ref dispatch exists because
+# release.yml creates the tag with GITHUB_TOKEN, and tag pushes made with that
+# token never start a `push` run; release.yml therefore dispatches this workflow
+# on the exact tag so the GHCR image carries the release identity (SHA + version).
+# Pull requests, push to dev, and off-main branch dispatch build-and-load. They do not push.
 # packages permissions stay static literals. actionlint rejects expressions there.
 on:
   pull_request:
@@ -12,17 +16,22 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: "Optional immutable release SHA; required by release.yml tag dispatches"
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
   group: container-image-${{ github.ref }}
-  cancel-in-progress: ${{ !((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')) }}
+  cancel-in-progress: ${{ !((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))) }}
 
 jobs:
   image:
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev') || (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main')
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev') || (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -90,7 +99,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   publish:
-    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -107,8 +116,15 @@ jobs:
       - name: Verify commit is on main
         env:
           SHA: ${{ github.sha }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
           set -euo pipefail
+          if [ -n "$EXPECTED_SHA" ]; then
+            if [[ ! "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || [ "$SHA" != "$EXPECTED_SHA" ]; then
+              echo "::error::Dispatched ref resolved to ${SHA}, not expected release commit ${EXPECTED_SHA}"
+              exit 1
+            fi
+          fi
           git fetch origin main
           if ! git merge-base --is-ancestor "$SHA" origin/main; then
             echo "::error::Commit ${SHA} is not on origin/main — GHCR version tags must sit on main"
@@ -160,7 +176,7 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          if [[ "$EVENT_NAME" == "push" ]]; then
+          if [[ "$EVENT_NAME" == "push" ]] || [[ "$EVENT_NAME" == "workflow_dispatch" && "$REF" == refs/tags/* ]]; then
             if [[ ! "$REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-preview\.[0-9]+)?$ ]]; then
               echo "ref ${REF} is not a semver or preview tag" >&2
               exit 1

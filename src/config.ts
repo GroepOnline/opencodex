@@ -786,7 +786,16 @@ const configSchema = z.object({
   if (claudeCode !== undefined && (!claudeCode || typeof claudeCode !== "object" || Array.isArray(claudeCode))) {
     ctx.addIssue({ code: "custom", path: ["claudeCode"], message: "claudeCode must be an object" });
   } else if (claudeCode) {
-    const claude = claudeCode as { desktopProfile?: unknown };
+    const claude = claudeCode as { desktopProfile?: unknown; agentRouting?: unknown };
+    if (claude.agentRouting !== undefined
+      && claude.agentRouting !== "pinned"
+      && claude.agentRouting !== "dynamic") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["claudeCode", "agentRouting"],
+        message: 'agentRouting must be "pinned" or "dynamic"',
+      });
+    }
     if (claude.desktopProfile !== undefined) {
       try {
         parseDesktopProfile(claude.desktopProfile);

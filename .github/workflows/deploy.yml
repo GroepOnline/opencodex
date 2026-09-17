@@ -402,8 +402,14 @@ jobs:
         id: health
         env:
           TAG_SHA: ${{ steps.verify.outputs.tag_sha }}
+          TAG_NAME: ${{ steps.ref.outputs.tag }}
+          PINNED_IMAGE: ${{ steps.image.outputs.ref }}
         run: |
           set -euo pipefail
+          # The visible product version (GUI top-left reads /healthz.version from
+          # the running build) must equal the release tag, not only the gitSha.
+          TAG_VERSION="${TAG_NAME#v}"
+          export TAG_VERSION
           read -r -a health_urls <<< "$OCX_HEALTH_URLS"
           if [ "${#health_urls[@]}" -lt 2 ]; then
             echo "::error::OCX_HEALTH_URLS must include loopback and Tailscale"
@@ -419,7 +425,7 @@ jobs:
             all_ok=1
             for url in "${health_urls[@]}"; do
               body="$(curl -fsS --max-time "$max_time" "$url" || true)"
-              if ! HEALTH_BODY="$body" TAG_SHA="$TAG_SHA" python3 -c 'import json, os; b=json.loads(os.environ["HEALTH_BODY"]); raise SystemExit(0 if b.get("status") == "ok" and b.get("service") == "opencodex" and b.get("gitSha") == os.environ["TAG_SHA"] else 1)' 2>/dev/null; then
+              if ! HEALTH_BODY="$body" TAG_SHA="$TAG_SHA" python3 -c 'import json, os; b=json.loads(os.environ["HEALTH_BODY"]); raise SystemExit(0 if b.get("status") == "ok" and b.get("service") == "opencodex" and b.get("gitSha") == os.environ["TAG_SHA"] and b.get("version") == os.environ["TAG_VERSION"] else 1)' 2>/dev/null; then
                 all_ok=0
                 break
               fi
@@ -431,13 +437,26 @@ jobs:
               fi
             done
             if [ "$all_ok" = 1 ]; then
-              echo "healthy after ${attempt} tries via ${OCX_HEALTH_URLS} (gitSha=${TAG_SHA})"
+              echo "healthy after ${attempt} tries via ${OCX_HEALTH_URLS} (version=${TAG_VERSION} gitSha=${TAG_SHA})"
               echo "status=ok" >> "$GITHUB_OUTPUT"
+              # Deployment evidence: release identity, immutable artifact and the
+              # runtime identity the host actually reports, in one place.
+              {
+                echo "### OpenCodex deployment"
+                echo ""
+                echo "- release tag: \`${TAG_NAME}\`"
+                echo "- source sha: \`${TAG_SHA}\`"
+                echo "- image: \`${PINNED_IMAGE}\`"
+                echo "- runtime /healthz: version \`${TAG_VERSION}\`, gitSha \`${TAG_SHA}\` on ${OCX_HEALTH_URLS}"
+              } >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
             (( SECONDS < deadline )) && sleep 1
           done
-          echo "::error::opencodex did not become gitSha-verified healthy within 60s with GUI after cutover"
+          echo "::error::opencodex did not become version+gitSha-verified healthy within 60s with GUI after cutover (expected version=${TAG_VERSION} gitSha=${TAG_SHA})"
+          for url in "${health_urls[@]}"; do
+            echo "last /healthz from ${url}: $(curl -fsS --max-time 2 "$url" || echo unreachable)"
+          done
           sudo docker inspect opencodex-opencodex-1 --format 'Status={{.State.Status}} Exit={{.State.ExitCode}} Error={{.State.Error}}' 2>/dev/null || true
           sudo ss -ltnp | awk '$4 ~ /:10100$/ { print }' || true
           exit 1

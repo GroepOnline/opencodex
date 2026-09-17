@@ -12,7 +12,7 @@ describe("Codex auth modal status feedback", () => {
     expect(reducer).toContain('manualCodeState: "idle"');
     expect(oauth).toContain('statusNotice: t("codexAuth.oauthCodeSubmitted")');
     expect(oauth).toContain('statusNotice: t("codexAuth.oauthStatusRetrying")');
-    expect(waiting).toContain("disabled={manualCodeBusy || manualCodeWaiting || !manualCode.trim() || !flowId}");
+    expect(waiting).toMatch(/disabled=\{\s*manualCodeBusy\s*\|\|\s*manualCodeWaiting\s*\|\|\s*!manualCode\.trim\(\)\s*\|\|\s*!flowId\s*\}/);
     expect(waiting).toContain('aria-live="polite"');
   });
 

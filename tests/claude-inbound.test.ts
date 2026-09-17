@@ -369,7 +369,7 @@ describe("bundled-skill elision for routed models (devlog 260712 060)", () => {
 });
 
 describe("ocx-route directive (devlog 072)", () => {
-  const { extractOcxRouteDirective } = require("../src/claude/inbound") as typeof import("../src/claude/inbound");
+  const { extractOcxRouteDirective, extractOcxRouteModeDirective } = require("../src/claude/inbound") as typeof import("../src/claude/inbound");
 
   test("extracts from string and block-array system; first directive wins", () => {
     expect(extractOcxRouteDirective({ system: "intro\n<!-- ocx-route: claude-ocx-native--gpt-5.6-sol[1m] -->\nrest" }))
@@ -380,6 +380,15 @@ describe("ocx-route directive (devlog 072)", () => {
         { type: "text", text: "<!-- ocx-route: gemini/gemini-3-pro --> and <!-- ocx-route: other -->" },
       ],
     })).toBe("gemini/gemini-3-pro");
+  });
+
+  test("keeps a literal dynamic route distinct from the dynamic control mode", () => {
+    expect(extractOcxRouteDirective({ system: "<!-- ocx-route: dynamic -->" })).toBe("dynamic");
+    expect(extractOcxRouteModeDirective({ system: "<!-- ocx-route-mode: dynamic -->" })).toBe("dynamic");
+    expect(extractOcxRouteModeDirective({
+      system: [{ type: "text", text: "<!-- ocx-route-mode: dynamic -->" }],
+    })).toBe("dynamic");
+    expect(extractOcxRouteModeDirective({ system: "<!-- ocx-route-mode: pinned -->" })).toBeNull();
   });
 
   test("extracts only supported generated-agent effort values", () => {

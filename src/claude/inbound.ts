@@ -179,6 +179,7 @@ export function effectiveBlockedSkillNames(
  * FIRST directive wins; the scan is bounded to the system field.
  */
 const OCX_ROUTE_RE = /<!--\s*ocx-route:\s*([^\s]+)\s*-->/;
+const OCX_ROUTE_MODE_RE = /<!--\s*ocx-route-mode:\s*(dynamic)\s*-->/;
 const OCX_EFFORT_RE = /<!--\s*ocx-effort:\s*(low|medium|high|xhigh|max)\s*-->/;
 
 function systemText(body: unknown): string | null {
@@ -201,6 +202,14 @@ export function extractOcxRouteDirective(body: unknown): string | null {
   if (!text) return null;
   const match = OCX_ROUTE_RE.exec(text);
   return match ? match[1]! : null;
+}
+
+/** Dynamic routing is a control mode, separate from a literal `ocx-route` model id. */
+export function extractOcxRouteModeDirective(body: unknown): "dynamic" | null {
+  const text = systemText(body);
+  if (!text) return null;
+  const match = OCX_ROUTE_MODE_RE.exec(text);
+  return match ? "dynamic" : null;
 }
 
 /**

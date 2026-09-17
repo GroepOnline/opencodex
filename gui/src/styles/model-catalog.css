@@ -43,20 +43,25 @@
   flex: 1;
   max-width: 680px;
   min-width: 0;
-  min-height: 44px;
+  min-height: var(--control-md);
+  height: var(--control-md);
 }
-.models-catalog-toolbar .models-provider-filter {
+.models-catalog-toolbar .models-provider-filter,
+.models-catalog-toolbar [data-slot="select-trigger"].models-provider-filter {
   width: 200px;
   flex: 0 1 200px;
   min-width: 0;
-  min-height: 44px;
+  min-height: var(--control-md);
+  height: var(--control-md);
 }
 .models-catalog-count {
   margin-left: auto;
+  align-self: center;
   font-size: var(--text-caption);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  line-height: var(--control-md);
 }
 .models-catalog-columns {
   display: grid;
@@ -80,9 +85,11 @@
   overflow: visible;
 }
 .models-provider-card .models-provider-head {
-  padding: 16px 10px 6px;
+  min-height: 48px;
+  padding: 0 10px;
   border: 0;
   background: transparent;
+  align-items: center;
 }
 .models-provider-toggle {
   min-height: 28px;
@@ -103,6 +110,10 @@
 }
 .models-provider-hint {
   padding: 8px 12px;
+  max-width: 68ch;
+  color: var(--muted);
+  font-size: var(--text-caption);
+  line-height: 1.55;
 }
 .models-provider-options {
   width: auto;
@@ -127,6 +138,7 @@
   gap: 16px;
   padding: 0 12px 0 0;
   border-radius: 6px;
+  min-height: 56px;
 }
 .models-catalog-row + .models-catalog-row {
   margin-top: 2px;
@@ -151,8 +163,10 @@
 }
 .models-workspace-shell .switch {
   position: relative;
+  flex-shrink: 0;
   width: 44px;
   height: 44px;
+  margin-left: auto;
   padding: 0;
   border: 0;
   background: transparent;
@@ -188,8 +202,9 @@
   gap: 12px;
   flex: 1;
   min-width: 0;
-  min-height: 58px;
-  padding: 9px 12px;
+  min-height: 56px;
+  height: 56px;
+  padding: 0 12px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -242,7 +257,8 @@
 }
 .model-inspector {
   position: sticky;
-  top: 24px;
+  top: calc(var(--workspace-header) + 24px);
+  align-self: start;
   min-width: 0;
   border-radius: 0;
   border-left: 1px solid var(--border-soft);

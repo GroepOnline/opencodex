@@ -12,6 +12,14 @@ edits to the `claudeCode` subtree are preserved across those saves; other keys (
 opencodex backs it up to `config.json.invalid-<timestamp>`, prints a console warning, and starts with
 defaults. Missing files also fall back to a default (a single `openai` forward provider).
 
+## Optional Sentry environment variables
+
+Server: `OCX_SENTRY_DSN` (fallback `SENTRY_DSN`),
+`OCX_SENTRY_ENVIRONMENT` (fallback `SENTRY_ENVIRONMENT`),
+`OCX_SENTRY_RELEASE` (fallback `SENTRY_RELEASE`).
+
+GUI: `VITE_SENTRY_DSN`, `VITE_SENTRY_ENVIRONMENT`, `VITE_SENTRY_RELEASE`.
+
 ## Reserved OpenAI providers
 
 `openai` and `openai-apikey` are fixed reserved ids. `openai.codexAccountMode` is `"pool"` by
@@ -269,6 +277,7 @@ body-occupancy guard):
 | `claudeCode.bodyMaxBytes?` | `number` | `67108864` | Native passthrough cumulative body byte cap (streamed SSE and buffered non-stream). Exactly `0` disables. |
 | `claudeCode.authMode?` | `"proxy" \| "subscription"` | unset (auto) | How `ANTHROPIC_AUTH_TOKEN` is handled at launch. Unset means auto: opencodex detects Claude auth on every launch and picks subscription when it finds any, proxy when it finds none, and subscription with a warning when it cannot tell. An explicit value is never overridden by detection. See [Claude Code](/guides/claude-code/#auth-mode). |
 | `claudeCode.authModeMigratedAt?` | `string` | unset | Internal one-time marker. Written once when an upgrade pins a pre-`auto` config to `subscription`, so a deliberate subscriber is not silently moved onto the proxy. Do not set by hand. |
+| `claudeCode.agentRouting?` | `"pinned" \| "dynamic"` | `"pinned"` | Routing policy for generated Claude Code subagents. `pinned` keeps one definition per featured route plus `ocx-self`. `dynamic` emits one `ocx-auto` definition and lets OpenCodex choose per dispatch from at most the first five usable `subagentModels`, using round-robin selection, one-request stickiness, and bounded combo failover. The generated frontmatter uses `model: "haiku"` only as a Claude Code placeholder; its `ocx-route-mode: dynamic` directive selects the real backend inside the proxy. The roster is an explicit allowlist: unknown, disabled, duplicate, stale, and nested-combo entries are excluded, and OpenCodex never discovers an unapproved paid fallback. |
 | `claudeCode.subagentEffort?` | `"low" \| "medium" \| "high" \| "xhigh" \| "max"` | unset (inherit) | Effort written to every generated `~/.claude/agents/ocx-*.md` definition. Unset lets each subagent inherit the parent Claude Code session effort. This controls Claude Code custom-agent frontmatter; it is separate from Codex `injectionEffort` guidance and proxy-side effort caps. Regenerate the definitions by starting through `ocx claude` after changing it. |
 
 ### Managed record shapes

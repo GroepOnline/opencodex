@@ -1,19 +1,52 @@
+import type { ReactNode } from "react";
+import { useState } from "react";
 import { useI18n, type TKey } from "../i18n/shared";
 import { startupRiskDetailKey } from "../startup-health-ui";
-import { IconAlert, IconCheck, IconPower, IconTerminal } from "../icons";
+import { IconAlert, IconCheck, IconChevron, IconPower } from "../icons";
+import { Panel, PanelHeader } from "../components/primitives/panel";
+import {
+  CollapsibleGroup,
+  CollapsibleGroupHead,
+  CollapsibleGroupName,
+  CollapsibleGroupToggle,
+} from "../components/primitives/collapsible-group";
+import { StatGroup } from "../components/primitives/stat";
 import type {
   StartupHealthData,
   StartupInstallAction,
   TrayStatusData,
 } from "./startup-shared";
-import {
-  PROTECTION_KEYS,
-  STATUS_KEYS,
-  SUMMARY_KEYS,
-} from "./startup-shared";
+import { PROTECTION_KEYS, STATUS_KEYS, SUMMARY_KEYS } from "./startup-shared";
 
-function StartupStateBadge({ ok, yes, no }: { ok: boolean; yes: string; no: string }) {
-  return <span className={`badge ${ok ? "badge-green" : "badge-amber"}`}>{ok ? yes : no}</span>;
+function StartupStateBadge({
+  ok,
+  yes,
+  no,
+}: {
+  ok: boolean;
+  yes: string;
+  no: string;
+}) {
+  return (
+    <span className={`badge ${ok ? "badge-green" : "badge-amber"}`}>
+      {ok ? yes : no}
+    </span>
+  );
+}
+
+function StartupStateItem({
+  label,
+  value,
+}: {
+  label: ReactNode;
+  value: ReactNode;
+}) {
+  return (
+    <section className="stat stat--text">
+      <div className="label">{label}</div>
+      <div className="value">{value}</div>
+    </section>
+  );
 }
 
 export function StartupHeroSection({
@@ -31,45 +64,64 @@ export function StartupHeroSection({
       : data.status === "at-risk"
         ? "startup-hero--risk"
         : "startup-hero--native";
-  const StatusIcon = failed || data.status === "at-risk" ? IconAlert : IconCheck;
+  const StatusIcon =
+    failed || data.status === "at-risk" ? IconAlert : IconCheck;
 
-  const routingKey: TKey = data.routingKind === "opencodex-local" ? "startup.routing.proxy"
-    : data.routingKind === "custom-local" ? "startup.routing.customLocal"
-      : data.routingKind === "custom-remote" ? "startup.routing.customRemote"
-        : data.routingKind === "unknown" ? "startup.routing.unknown"
-          : "startup.routing.native";
+  const routingKey: TKey =
+    data.routingKind === "opencodex-local"
+      ? "startup.routing.proxy"
+      : data.routingKind === "custom-local"
+        ? "startup.routing.customLocal"
+        : data.routingKind === "custom-remote"
+          ? "startup.routing.customRemote"
+          : data.routingKind === "unknown"
+            ? "startup.routing.unknown"
+            : "startup.routing.native";
+
+  const heroTitleId = "startup-hero-title";
 
   return (
     <>
-      <section className={`panel startup-hero ${statusClass}`} aria-live="polite">
-        <div className="startup-hero-icon"><StatusIcon /></div>
+      <Panel
+        className={`panel startup-hero ${statusClass}`}
+        titleId={heroTitleId}
+        aria-live="polite"
+      >
+        <div className="startup-hero-icon">
+          <StatusIcon />
+        </div>
         <div className="startup-hero-copy">
-          <span className={`badge ${failed || data.status === "at-risk" ? "badge-amber" : "badge-green"}`}>
+          <span
+            className={`badge ${failed || data.status === "at-risk" ? "badge-amber" : "badge-green"}`}
+          >
             {t(failed ? "startup.status.atRisk" : STATUS_KEYS[data.status])}
           </span>
-          <h3>{t(failed ? "startup.error" : SUMMARY_KEYS[data.status])}</h3>
-          <p>{failed
-            ? t("startup.staleData")
-            : data.status === "at-risk"
-              ? t(startupRiskDetailKey(data))
-              : t("startup.safeDetail")}</p>
+          <h3 id={heroTitleId}>
+            {t(failed ? "startup.error" : SUMMARY_KEYS[data.status])}
+          </h3>
+          <p>
+            {failed
+              ? t("startup.staleData")
+              : data.status === "at-risk"
+                ? t(startupRiskDetailKey(data))
+                : t("startup.safeDetail")}
+          </p>
         </div>
-      </section>
+      </Panel>
 
-      <div className="startup-state-grid">
-        <section className="stat">
-          <div className="label">{t("startup.routing")}</div>
-          <div className="value">{t(routingKey)}</div>
-        </section>
-        <section className="stat">
-          <div className="label">{t("startup.restartProtection")}</div>
-          <div className="value">{t(PROTECTION_KEYS[data.protection])}</div>
-        </section>
-        <section className="stat">
-          <div className="label">{t("startup.preference")}</div>
-          <div className="value">{t(data.autostartEnabled ? "startup.enabled" : "startup.disabled")}</div>
-        </section>
-      </div>
+      <StatGroup className="startup-state-grid" label={t("startup.title")}>
+        <StartupStateItem label={t("startup.routing")} value={t(routingKey)} />
+        <StartupStateItem
+          label={t("startup.restartProtection")}
+          value={t(PROTECTION_KEYS[data.protection])}
+        />
+        <StartupStateItem
+          label={t("startup.preference")}
+          value={t(
+            data.autostartEnabled ? "startup.enabled" : "startup.disabled",
+          )}
+        />
+      </StatGroup>
     </>
   );
 }
@@ -86,73 +138,163 @@ export function StartupDetailsSection({
   failed: boolean;
   loading?: boolean;
   installBusy: StartupInstallAction | null;
-  installResult: { kind: "success" | "error"; action: StartupInstallAction; repair?: boolean; detail?: string } | null;
-  onInstall: (action: StartupInstallAction, opts?: { repair?: boolean }) => void;
+  installResult: {
+    kind: "success" | "error";
+    action: StartupInstallAction;
+    repair?: boolean;
+    detail?: string;
+  } | null;
+  onInstall: (
+    action: StartupInstallAction,
+    opts?: { repair?: boolean },
+  ) => void;
 }) {
   const { t } = useI18n();
   // Repair only rewrites stale assets — conflict/disabled need uninstall/reinstall, not repair.
-  const serviceNeedsRepair = data.serviceSupported && data.serviceInstalled && data.serviceStale && !data.serviceConflict;
+  const serviceNeedsRepair =
+    data.serviceSupported &&
+    data.serviceInstalled &&
+    data.serviceStale &&
+    !data.serviceConflict;
   const shimNeedsRepair = data.shimInstalled && !data.shimHealthy;
   const actionsDisabled = installBusy !== null || failed || loading;
+  const detailsTitleId = "startup-details-title";
 
   return (
-    <section className="panel startup-details">
-      <div className="panel-head">
-        <h3 className="panel-title">{t("startup.details")}</h3>
-        <span className="muted mono">{data.platform}</span>
-      </div>
+    <Panel className="panel startup-details" titleId={detailsTitleId}>
+      <PanelHeader
+        titleId={detailsTitleId}
+        title={t("startup.details")}
+        actions={<span className="muted mono">{data.platform}</span>}
+      />
       <div className="startup-detail-row">
-        <div><strong>{t("startup.service")}</strong><span>{t("startup.serviceHint")}</span></div>
+        <div>
+          <strong>{t("startup.service")}</strong>
+          <span>{t("startup.serviceHint")}</span>
+        </div>
         <div className="startup-detail-actions">
           <StartupStateBadge
             ok={data.serviceViable}
             yes={t("startup.viable")}
-            no={t(data.serviceConflict ? "startup.conflict" : data.serviceStale ? "startup.stale" : data.serviceInstalled ? "startup.unhealthy" : data.serviceSupported ? "startup.notInstalled" : "startup.unsupported")}
+            no={t(
+              data.serviceConflict
+                ? "startup.conflict"
+                : data.serviceStale
+                  ? "startup.stale"
+                  : data.serviceInstalled
+                    ? "startup.unhealthy"
+                    : data.serviceSupported
+                      ? "startup.notInstalled"
+                      : "startup.unsupported",
+            )}
           />
           {data.serviceSupported && !data.serviceInstalled && (
-            <button type="button" className="btn btn-primary btn-sm" aria-label={`${t("startup.service")} - ${t("startup.install")}`} disabled={actionsDisabled} onClick={() => onInstall("install-service")}>
-              {t(installBusy === "install-service" ? "startup.installing" : "startup.install")}
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              aria-label={`${t("startup.service")} - ${t("startup.install")}`}
+              disabled={actionsDisabled}
+              onClick={() => onInstall("install-service")}
+            >
+              {t(
+                installBusy === "install-service"
+                  ? "startup.installing"
+                  : "startup.install",
+              )}
             </button>
           )}
           {serviceNeedsRepair && (
-            <button type="button" className="btn btn-primary btn-sm" aria-label={`${t("startup.service")} - ${t("startup.repair")}`} disabled={actionsDisabled} onClick={() => onInstall("install-service", { repair: true })}>
-              {t(installBusy === "install-service" ? "startup.repairing" : "startup.repair")}
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              aria-label={`${t("startup.service")} - ${t("startup.repair")}`}
+              disabled={actionsDisabled}
+              onClick={() => onInstall("install-service", { repair: true })}
+            >
+              {t(
+                installBusy === "install-service"
+                  ? "startup.repairing"
+                  : "startup.repair",
+              )}
             </button>
           )}
         </div>
       </div>
       <div className="startup-detail-row">
-        <div><strong>{t("startup.shim")}</strong><span>{t("startup.shimHint")}</span></div>
+        <div>
+          <strong>{t("startup.shim")}</strong>
+          <span>{t("startup.shimHint")}</span>
+        </div>
         <div className="startup-detail-actions">
           <StartupStateBadge
             ok={data.shimHealthy && data.autostartEnabled}
-            yes={t(data.shimCoverage === "cli-only" ? "startup.cliOnly" : "startup.healthy")}
-            no={t(data.shimInstalled
-              ? data.shimHealthy && !data.autostartEnabled ? "startup.installedDisabled" : "startup.stale"
-              : "startup.notInstalled")}
+            yes={t(
+              data.shimCoverage === "cli-only"
+                ? "startup.cliOnly"
+                : "startup.healthy",
+            )}
+            no={t(
+              data.shimInstalled
+                ? data.shimHealthy && !data.autostartEnabled
+                  ? "startup.installedDisabled"
+                  : "startup.stale"
+                : "startup.notInstalled",
+            )}
           />
           {!data.shimInstalled && (
-            <button type="button" className="btn btn-primary btn-sm" aria-label={`${t("startup.shim")} - ${t("startup.install")}`} disabled={actionsDisabled} onClick={() => onInstall("install-shim")}>
-              {t(installBusy === "install-shim" ? "startup.installing" : "startup.install")}
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              aria-label={`${t("startup.shim")} - ${t("startup.install")}`}
+              disabled={actionsDisabled}
+              onClick={() => onInstall("install-shim")}
+            >
+              {t(
+                installBusy === "install-shim"
+                  ? "startup.installing"
+                  : "startup.install",
+              )}
             </button>
           )}
           {shimNeedsRepair && (
-            <button type="button" className="btn btn-primary btn-sm" aria-label={`${t("startup.shim")} - ${t("startup.repair")}`} disabled={actionsDisabled} onClick={() => onInstall("install-shim", { repair: true })}>
-              {t(installBusy === "install-shim" ? "startup.repairing" : "startup.repair")}
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              aria-label={`${t("startup.shim")} - ${t("startup.repair")}`}
+              disabled={actionsDisabled}
+              onClick={() => onInstall("install-shim", { repair: true })}
+            >
+              {t(
+                installBusy === "install-shim"
+                  ? "startup.repairing"
+                  : "startup.repair",
+              )}
             </button>
           )}
         </div>
       </div>
       {installResult && (
-        <div className={`notice ${installResult.kind === "success" ? "notice-ok" : "notice-warn"} startup-action-notice`} role="status" aria-live="polite">
+        <div
+          className={`notice ${installResult.kind === "success" ? "notice-ok" : "notice-warn"} startup-action-notice`}
+          role="status"
+          aria-live="polite"
+        >
           {installResult.kind === "success"
             ? installResult.action === "install-service"
-              ? t(installResult.repair ? "startup.serviceRepaired" : "startup.serviceInstalled")
-              : t(installResult.repair ? "startup.shimRepaired" : "startup.shimInstalled")
+              ? t(
+                  installResult.repair
+                    ? "startup.serviceRepaired"
+                    : "startup.serviceInstalled",
+                )
+              : t(
+                  installResult.repair
+                    ? "startup.shimRepaired"
+                    : "startup.shimInstalled",
+                )
             : `${t("startup.installFailed")} ${installResult.detail ?? ""}`}
         </div>
       )}
-    </section>
+    </Panel>
   );
 }
 
@@ -170,47 +312,103 @@ export function StartupTraySection({
   onTrayAction: (action: "install" | "start" | "stop" | "uninstall") => void;
 }) {
   const { t } = useI18n();
+  const trayTitleId = "startup-tray-title";
 
   return (
-    <section className="panel startup-actions">
-      <div className="panel-head">
-        <h3 className="panel-title">{t("startup.tray.title")}</h3>
-        <IconPower />
-      </div>
+    <Panel className="panel startup-actions" titleId={trayTitleId}>
+      <PanelHeader
+        titleId={trayTitleId}
+        title={t("startup.tray.title")}
+        actions={<IconPower />}
+      />
       <p className="muted">{t("startup.tray.hint")}</p>
       <div className="startup-detail-row">
         <div>
           <strong>{t("startup.tray.login")}</strong>
           <span>{t("startup.tray.notProtection")}</span>
         </div>
-        {trayLoading || trayError || !tray
-          ? <span className="badge badge-amber">{t(trayLoading ? "startup.tray.loading" : "startup.tray.unavailable")}</span>
-          : <StartupStateBadge
+        {trayLoading || trayError || !tray ? (
+          <span className="badge badge-amber">
+            {t(
+              trayLoading ? "startup.tray.loading" : "startup.tray.unavailable",
+            )}
+          </span>
+        ) : (
+          <StartupStateBadge
             ok={tray.running && !tray.stale}
             yes={t("startup.tray.running")}
-            no={t(tray.stale ? "startup.tray.stale" : tray.installed ? "startup.tray.stopped" : "startup.tray.notInstalled")}
-          />}
+            no={t(
+              tray.stale
+                ? "startup.tray.stale"
+                : tray.installed
+                  ? "startup.tray.stopped"
+                  : "startup.tray.notInstalled",
+            )}
+          />
+        )}
       </div>
       <div className="startup-tray-buttons">
-        {!trayLoading && !trayError && tray && !tray.installed && !tray.stale && (
-          <button type="button" className="btn btn-primary" disabled={trayBusy} onClick={() => onTrayAction("install")}>{t("startup.tray.install")}</button>
-        )}
-        {!trayLoading && !trayError && tray?.installed && !tray.stale && !tray.running && (
-          <button type="button" className="btn btn-primary" disabled={trayBusy} onClick={() => onTrayAction("start")}>{t("startup.tray.start")}</button>
-        )}
+        {!trayLoading &&
+          !trayError &&
+          tray &&
+          !tray.installed &&
+          !tray.stale && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={trayBusy}
+              onClick={() => onTrayAction("install")}
+            >
+              {t("startup.tray.install")}
+            </button>
+          )}
+        {!trayLoading &&
+          !trayError &&
+          tray?.installed &&
+          !tray.stale &&
+          !tray.running && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={trayBusy}
+              onClick={() => onTrayAction("start")}
+            >
+              {t("startup.tray.start")}
+            </button>
+          )}
         {!trayLoading && !trayError && tray?.running && !tray.stale && (
-          <button type="button" className="btn btn-ghost" disabled={trayBusy} onClick={() => onTrayAction("stop")}>{t("startup.tray.stop")}</button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={trayBusy}
+            onClick={() => onTrayAction("stop")}
+          >
+            {t("startup.tray.stop")}
+          </button>
         )}
-        {!trayLoading && !trayError && tray && (tray.installed || tray.stale) && (
-          <button type="button" className="btn btn-danger" disabled={trayBusy} onClick={() => {
-            if (window.confirm(t("startup.tray.uninstall"))) onTrayAction("uninstall");
-          }}>{t("startup.tray.uninstall")}</button>
-        )}
+        {!trayLoading &&
+          !trayError &&
+          tray &&
+          (tray.installed || tray.stale) && (
+            <button
+              type="button"
+              className="btn btn-danger"
+              disabled={trayBusy}
+              onClick={() => {
+                if (window.confirm(t("startup.tray.uninstall")))
+                  onTrayAction("uninstall");
+              }}
+            >
+              {t("startup.tray.uninstall")}
+            </button>
+          )}
       </div>
       {(trayError || tray?.stale) && (
-        <div className="notice notice-warn startup-tray-error" role="alert">{t("startup.tray.error")}</div>
+        <div className="notice notice-warn startup-tray-error" role="alert">
+          {t("startup.tray.error")}
+        </div>
       )}
-    </section>
+    </Panel>
   );
 }
 
@@ -224,50 +422,90 @@ export function StartupRecoverySection({
   onCopy: (command: string) => void;
 }) {
   const { t } = useI18n();
+  const [open, setOpen] = useState(true);
+  const recoveryTitleId = "startup-recovery-title";
 
   return (
-    <section className="panel startup-actions">
-      <div className="panel-head">
-        <h3 className="panel-title">{t("startup.recovery")}</h3>
-        <IconTerminal />
-      </div>
-      <p className="muted">{t("startup.recoveryHint")}</p>
-      <div className="startup-command-list">
-        {data.serviceSupported && (
-          <div className="startup-command-row">
-            <div>
-              <strong>{t("startup.command.service")}</strong>
-              <code>{data.commands.installService}</code>
+    <CollapsibleGroup
+      collapsed={!open}
+      labelledBy={recoveryTitleId}
+      className="startup-recovery"
+    >
+      <CollapsibleGroupHead collapsed={!open}>
+        <CollapsibleGroupToggle
+          titleId={recoveryTitleId}
+          controls="startup-recovery-body"
+          expanded={open}
+          onClick={() => setOpen((current) => !current)}
+        >
+          <IconChevron className="ocx-chevron" width={15} height={15} aria-hidden="true" />
+          <CollapsibleGroupName>{t("startup.recovery")}</CollapsibleGroupName>
+        </CollapsibleGroupToggle>
+      </CollapsibleGroupHead>
+      {open ? (
+        <div id="startup-recovery-body" className="ocx-group-body">
+          <Panel className="panel startup-actions" titleId="startup-recovery-panel">
+            <p className="muted">{t("startup.recoveryHint")}</p>
+            <div className="startup-command-list">
+              {data.serviceSupported && (
+                <div className="startup-command-row">
+                  <div>
+                    <strong>{t("startup.command.service")}</strong>
+                    <code>{data.commands.installService}</code>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => onCopy(data.commands.installService)}
+                  >
+                    {copied === data.commands.installService
+                      ? t("startup.copied")
+                      : t("startup.copy")}
+                  </button>
+                </div>
+              )}
+              <div className="startup-command-row">
+                <div>
+                  <strong>{t("startup.command.shim")}</strong>
+                  <code>{data.commands.installShim}</code>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => onCopy(data.commands.installShim)}
+                >
+                  {copied === data.commands.installShim
+                    ? t("startup.copied")
+                    : t("startup.copy")}
+                </button>
+              </div>
+              <div className="startup-command-row">
+                <div>
+                  <strong>{t("startup.command.native")}</strong>
+                  <code>{data.commands.restoreNative}</code>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => onCopy(data.commands.restoreNative)}
+                >
+                  {copied === data.commands.restoreNative
+                    ? t("startup.copied")
+                    : t("startup.copy")}
+                </button>
+              </div>
             </div>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onCopy(data.commands.installService)}>
-              {copied === data.commands.installService ? t("startup.copied") : t("startup.copy")}
-            </button>
-          </div>
-        )}
-        <div className="startup-command-row">
-          <div>
-            <strong>{t("startup.command.shim")}</strong>
-            <code>{data.commands.installShim}</code>
-          </div>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onCopy(data.commands.installShim)}>
-            {copied === data.commands.installShim ? t("startup.copied") : t("startup.copy")}
-          </button>
+            {data.status === "at-risk" && (
+              <div className="notice notice-warn startup-action-notice" role="alert">
+                <IconPower />{" "}
+                {t("startup.recommended", {
+                  cmd: data.recommendedCommand ?? data.commands.installService,
+                })}
+              </div>
+            )}
+          </Panel>
         </div>
-        <div className="startup-command-row">
-          <div>
-            <strong>{t("startup.command.native")}</strong>
-            <code>{data.commands.restoreNative}</code>
-          </div>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onCopy(data.commands.restoreNative)}>
-            {copied === data.commands.restoreNative ? t("startup.copied") : t("startup.copy")}
-          </button>
-        </div>
-      </div>
-      {data.status === "at-risk" && (
-        <div className="notice notice-warn startup-action-notice" role="alert">
-          <IconPower /> {t("startup.recommended", { cmd: data.recommendedCommand ?? data.commands.installService })}
-        </div>
-      )}
-    </section>
+      ) : null}
+    </CollapsibleGroup>
   );
 }

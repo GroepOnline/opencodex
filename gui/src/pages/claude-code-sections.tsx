@@ -12,6 +12,7 @@ import { AutoConnectSetting, SettingToggle } from "./claude-code-settings";
 import type { ClaudeCodeState, MapRow } from "./claude-code-types";
 import { newClientId } from "./claude-code-types";
 import type { TFn, TKey } from "../i18n/shared";
+import { Panel } from "../components/primitives/panel";
 
 /**
  * Which detector proved the Claude login. Falls back to a generic label so an
@@ -38,7 +39,10 @@ export function ClaudeCodeSettingsCard({
   const t = useT();
 
   return (
-    <div className="card" style={{ overflow: "hidden" }}>
+    <Panel titleId="claude-code-settings-heading" className="panel claude-settings-panel">
+      <h3 id="claude-code-settings-heading" className="sr-only">
+        {t("claude.workspace.settings")}
+      </h3>
       <div className="setting-row">
         <div className="setting-label">
           <span className="title">{t("claude.enabledLabel")}</span>
@@ -153,6 +157,32 @@ export function ClaudeCodeSettingsCard({
         <SettingToggle label={t("claude.injectAgents")} checked={state.injectAgents} onChange={injectAgents => onStateChange({ ...state, injectAgents })} />
       </div>
 
+      {state.injectAgents && (
+        <div className="setting-row">
+          <div className="setting-label">
+            <span className="title">{t("claude.agentRouting")}</span>
+            <span className="desc">{t("claude.agentRoutingDesc")}</span>
+          </div>
+          <div className="setting-controls">
+            <Select
+              value={state.agentRouting}
+              options={[
+                { value: "dynamic", label: t("claude.agentRoutingDynamic") },
+                { value: "pinned", label: t("claude.agentRoutingPinned") },
+              ]}
+              onChange={agentRouting => onStateChange({
+                ...state,
+                agentRouting: agentRouting as ClaudeCodeState["agentRouting"],
+              })}
+              label={t("claude.agentRouting")}
+              style={{ minWidth: 220 }}
+              align="right"
+              portal
+            />
+          </div>
+        </div>
+      )}
+
       {(["webSearchSidecar", "visionSidecar"] as const).map(key => {
         const override = state[key];
         const titleKey = key === "webSearchSidecar" ? "claude.webSearchSidecar" : "claude.visionSidecar";
@@ -211,7 +241,7 @@ export function ClaudeCodeSettingsCard({
           </div>
         );
       })}
-    </div>
+    </Panel>
   );
 }
 

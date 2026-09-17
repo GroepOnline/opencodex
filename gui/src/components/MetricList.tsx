@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
+import { Metric, MetricGroup } from "./primitives/metric";
 
-interface Metric {
+interface MetricItem {
   label: string;
   value: ReactNode;
 }
@@ -11,16 +12,13 @@ export default function MetricList({
   metrics,
 }: {
   label: string;
-  metrics: readonly Metric[];
+  metrics: readonly MetricItem[];
 }) {
   return (
-    <dl className="metric-list" aria-label={label}>
+    <MetricGroup label={label}>
       {metrics.map((metric) => (
-        <div className="metric-reading" key={metric.label}>
-          <dt>{metric.label}</dt>
-          <dd>{metric.value}</dd>
-        </div>
+        <Metric key={metric.label} label={metric.label} value={metric.value} />
       ))}
-    </dl>
+    </MetricGroup>
   );
 }
