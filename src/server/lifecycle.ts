@@ -1,4 +1,5 @@
 import { flushResponseState } from "../responses/state";
+import { closeServerSentry } from "../telemetry/sentry-server";
 import { setStorageCleanupPolicyLiveSink } from "../storage/policy";
 import {
   abortStorageCleanupPolicyJob,
@@ -96,4 +97,5 @@ export async function drainAndShutdown(
   setStorageCleanupPolicyJobLiveApply(null);
   s?.stop(true);
   draining = false;
+  await closeServerSentry();
 }

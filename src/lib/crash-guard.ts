@@ -4,6 +4,7 @@ import { getConfigDir } from "../config";
 import { recordOwnedConfigPath } from "./config-ownership";
 import { redactSecretString, redactUrlForLog } from "./redact";
 import { sidecarBreadcrumb, activityBreadcrumb } from "./sidecar-tracker";
+import { captureServerFailure } from "../telemetry/sentry-server";
 
 /**
  * Process-level safety net for the long-running proxy daemon.
@@ -191,6 +192,7 @@ function record(kind: string, err: unknown, promise?: unknown): void {
     try { appendFileSync(crashLogPath(), summary); } catch { /* logging must never throw */ }
     return; // no stderr banner — this is expected noise, not a crash
   }
+  captureServerFailure(err);
   const line = formatCrashEntry(kind, err, promise);
   // Always surface to stderr so foreground `ocx start` users still see it,
   // then persist for later diagnosis.

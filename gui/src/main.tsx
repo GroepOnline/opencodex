@@ -8,6 +8,7 @@ import "@fontsource/instrument-serif/400-italic.css";
 import App from "./App";
 import { LanguageProvider } from "./i18n/provider";
 import { initPostHog } from "./posthog";
+import { captureReactError, initSentry } from "./sentry-sdk";
 import "./styles/app-base.css";
 import "./landing/landing.css";
 import "@fontsource-variable/manrope";
@@ -19,6 +20,7 @@ import "./styles/pages-observe.css";
 import "./styles/pages-providers.css";
 import "./styles/pages-configure.css";
 
+initSentry();
 initPostHog();
 
 // ChefGroep design language ships two complete skins (design-system §14).
@@ -35,7 +37,12 @@ try {
   /* ignore */
 }
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+ReactDOM.createRoot(document.getElementById("root")!, {
+  onUncaughtError: (error) => {
+    captureReactError(error);
+    console.error(error);
+  },
+}).render(
   <React.StrictMode>
     <LanguageProvider>
       <App />

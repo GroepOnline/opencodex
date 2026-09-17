@@ -455,6 +455,11 @@ export async function buildClientArtifact(destination: string, root = ROOT) {
       target: "bun",
       format: "esm",
       packages: "bundle",
+      // The remote-client artifact only supports help/version and never starts
+      // the server. Keep the optional runtime Sentry SDK out of this immutable
+      // bundle so dependency-internal __filename values cannot embed the random
+      // isolated build path. Normal OpenCodex installs still provide @sentry/bun.
+      external: ["@sentry/bun"],
       splitting: false,
       sourcemap: "none",
       banner: CLIENT_GUARD,

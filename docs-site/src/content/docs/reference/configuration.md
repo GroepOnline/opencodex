@@ -12,6 +12,14 @@ edits to the `claudeCode` subtree are preserved across those saves; other keys (
 opencodex backs it up to `config.json.invalid-<timestamp>`, prints a console warning, and starts with
 defaults. Missing files also fall back to a default (a single `openai` forward provider).
 
+## Optional Sentry environment variables
+
+Server: `OCX_SENTRY_DSN` (fallback `SENTRY_DSN`),
+`OCX_SENTRY_ENVIRONMENT` (fallback `SENTRY_ENVIRONMENT`),
+`OCX_SENTRY_RELEASE` (fallback `SENTRY_RELEASE`).
+
+GUI: `VITE_SENTRY_DSN`, `VITE_SENTRY_ENVIRONMENT`, `VITE_SENTRY_RELEASE`.
+
 ## Reserved OpenAI providers
 
 `openai` and `openai-apikey` are fixed reserved ids. `openai.codexAccountMode` is `"pool"` by
