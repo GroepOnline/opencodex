@@ -31,6 +31,11 @@ Access login also authorizes the dashboard without an admin-token prompt (config
 bound to a non-loopback hostname require the admin token (`OPENCODEX_ADMIN_AUTH_TOKEN`, or the
 auto-generated `~/.opencodex/admin-api-token` file).
 
+Authentik OIDC for the dashboard is still a ChefGroep Auth greenfield placeholder
+(`deploy/oidc/authentik-ocx-client.placeholder.json`, local +
+`https://ocx.chefgroep.online` redirects). The proxy does not verify Authentik
+tokens yet; do not treat `OIDC_*` env vars as a working sign-in path.
+
 ## What you can do
 
 | Area                     | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
