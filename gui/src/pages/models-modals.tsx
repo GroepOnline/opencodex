@@ -2,6 +2,13 @@ import type { Dispatch, SetStateAction } from "react";
 import { Notice, Select } from "../ui";
 import { Button } from "../components/primitives/button";
 import { Spinner } from "../components/primitives/spinner";
+import {
+  Modal,
+  ModalActions,
+  ModalCard,
+  ModalDesc,
+  ModalHead,
+} from "../components/primitives/modal";
 import { useT } from "../i18n/shared";
 import { CUSTOM_OPTION } from "./models-shared";
 
@@ -52,36 +59,35 @@ export function ModelsModals({
   return (
     <>
       {v2HelpOpen && (
-        <div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
+        <Modal
           aria-label={t("models.v2Label")}
           onClick={() => setV2HelpOpen(false)}
           onKeyDown={(e) => {
             if (e.key === "Escape") setV2HelpOpen(false);
           }}
         >
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-head">
-              <h3>{t("models.v2Label")}</h3>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className=""
-                onClick={() => setV2HelpOpen(false)}
-                aria-label={t("common.close")}
-              >
-                &times;
-              </Button>
-            </div>
-            <div
+          <ModalCard onClick={(e) => e.stopPropagation()}>
+            <ModalHead
+              title={t("models.v2Label")}
+              actions={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className=""
+                  onClick={() => setV2HelpOpen(false)}
+                  aria-label={t("common.close")}
+                >
+                  &times;
+                </Button>
+              }
+            />
+            <ModalDesc
               className="modal-desc leading-relaxed"
               style={{ whiteSpace: "pre-line" }}
             >
               {t("models.v2Help")}
-            </div>
+            </ModalDesc>
             <div className="models-help-link">
               <a
                 className="text-control"
@@ -93,7 +99,7 @@ export function ModelsModals({
                 {t("models.v2DocsLink")}
               </a>
             </div>
-            <div className="modal-actions">
+            <ModalActions>
               <Button
                 type="button"
                 variant="default"
@@ -102,16 +108,13 @@ export function ModelsModals({
               >
                 {t("common.ok")}
               </Button>
-            </div>
-          </div>
-        </div>
+            </ModalActions>
+          </ModalCard>
+        </Modal>
       )}
 
       {customModalOpen && (
-        <div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
+        <Modal
           aria-label={t("models.customAdd")}
           onClick={() => {
             if (!customSaving) setCustomModalOpen(false);
@@ -120,29 +123,31 @@ export function ModelsModals({
             if (e.key === "Escape" && !customSaving) setCustomModalOpen(false);
           }}
         >
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-head">
-              <h3>
-                {customModalMode === "add"
+          <ModalCard onClick={(e) => e.stopPropagation()}>
+            <ModalHead
+              title={
+                customModalMode === "add"
                   ? t("models.customAddTitle", {
                       provider: customModalProvider,
                     })
                   : t("models.customEditTitle", {
                       provider: customModalProvider,
-                    })}
-              </h3>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className=""
-                onClick={() => setCustomModalOpen(false)}
-                disabled={customSaving}
-                aria-label={t("common.close")}
-              >
-                &times;
-              </Button>
-            </div>
+                    })
+              }
+              actions={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className=""
+                  onClick={() => setCustomModalOpen(false)}
+                  disabled={customSaving}
+                  aria-label={t("common.close")}
+                >
+                  &times;
+                </Button>
+              }
+            />
 
             {customError && <Notice tone="err">{customError}</Notice>}
 
@@ -242,7 +247,7 @@ export function ModelsModals({
               </div>
             </div>
 
-            <div className="modal-actions">
+            <ModalActions>
               <Button
                 type="button"
                 variant="ghost"
@@ -268,9 +273,9 @@ export function ModelsModals({
                     ? t("models.customAddBtn")
                     : t("models.customEditBtn")}
               </Button>
-            </div>
-          </div>
-        </div>
+            </ModalActions>
+          </ModalCard>
+        </Modal>
       )}
     </>
   );

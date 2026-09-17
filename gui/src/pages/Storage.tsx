@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react";
 import { useI18n, type TFn, type Locale } from "../i18n/shared";
-import { EmptyState } from "../ui";
 import { IconRefresh } from "../icons";
 import { formatBytes } from "../format-bytes";
 import { NumberStepper } from "../components/NumberStepper";
@@ -8,15 +14,37 @@ import { clampNumberDraft } from "../clamp-draft";
 import StorageWorkspace, {
   type StorageReport,
 } from "../components/storage-workspace/StorageWorkspace";
-import { readSessionListCache, writeSessionListCache } from "../session-list-cache";
-
+import {
+  readSessionListCache,
+  writeSessionListCache,
+} from "../session-list-cache";
+import { PageHeader, PageSubtitle } from "../components/primitives/page-header";
+import {
+  PageTab,
+  PageTabPanel,
+  PageTabs,
+} from "../components/primitives/page-tabs";
+import { Panel, PanelHeader } from "../components/primitives/panel";
+import { Modal, ModalCard } from "../components/primitives/modal";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "../components/primitives/empty";
+import { Timestamp } from "../components/primitives/timestamp";
+import MatrixMark from "../components/MatrixMark";
 
 interface CleanupPreview {
   percent: number;
   count: number;
   bytes: number;
   digest: string;
-  candidates: Array<{ relPath: string; bytes: number; physicalRelPaths?: string[] }>;
+  candidates: Array<{
+    relPath: string;
+    bytes: number;
+    physicalRelPaths?: string[];
+  }>;
 }
 
 interface CleanupResult {
@@ -85,16 +113,40 @@ const localizedCatch = (e: unknown, fallback: string): string => {
   if (!(e instanceof Error)) return fallback;
   const msg = e.message;
   if (
-    msg === "Failed to fetch"
-    || msg.includes("NetworkError")
-    || msg.includes("network error")
-    || msg.includes("JSON")
-    || msg.includes("Unexpected end of")
+    msg === "Failed to fetch" ||
+    msg.includes("NetworkError") ||
+    msg.includes("network error") ||
+    msg.includes("JSON") ||
+    msg.includes("Unexpected end of")
   ) {
     return fallback;
   }
   return msg || fallback;
 };
+
+function StorageConfirmDialog({
+  labelledBy,
+  onDismiss,
+  children,
+}: {
+  labelledBy: string;
+  onDismiss: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Modal aria-labelledby={labelledBy} onClick={onDismiss}>
+      <ModalCard onClick={(e) => e.stopPropagation()}>{children}</ModalCard>
+    </Modal>
+  );
+}
+
+function StorageConfirmActions({ children }: { children: ReactNode }) {
+  return (
+    <div className="dialog-actions" style={{ marginTop: 16 }}>
+      {children}
+    </div>
+  );
+}
 
 function ArchivedCleanupPanel({
   apiBase,
@@ -142,27 +194,43 @@ function ArchivedCleanupPanel({
     };
   }, [confirmOpen, closeConfirm]);
 
-  const mapCleanupError = (code: string | undefined, fallback?: string, trashDir?: string) => {
+  const mapCleanupError = (
+    code: string | undefined,
+    fallback?: string,
+    trashDir?: string,
+  ) => {
     switch (code) {
-      case "codex_busy": return t("storage.cleanup.err.codex_busy");
-      case "stale_preview": return t("storage.cleanup.err.stale_preview");
-      case "restore_pending_overlap": return t("storage.cleanup.err.restore_pending_overlap");
-      case "referenced_history": return t("storage.cleanup.err.referenced_history");
-      case "invalid_digest": return t("storage.cleanup.err.invalid_digest");
-      case "invalid_mode": return t("storage.cleanup.err.invalid_mode");
+      case "codex_busy":
+        return t("storage.cleanup.err.codex_busy");
+      case "stale_preview":
+        return t("storage.cleanup.err.stale_preview");
+      case "restore_pending_overlap":
+        return t("storage.cleanup.err.restore_pending_overlap");
+      case "referenced_history":
+        return t("storage.cleanup.err.referenced_history");
+      case "invalid_digest":
+        return t("storage.cleanup.err.invalid_digest");
+      case "invalid_mode":
+        return t("storage.cleanup.err.invalid_mode");
       case "fs_failed":
         return trashDir
           ? t("storage.cleanup.err.fs_failed_trash", { trashDir })
           : t("storage.cleanup.err.fs_failed");
-      case "db_reconcile_failed": return t("storage.cleanup.err.db_reconcile_failed");
-      case "cleanup_failed": return t("storage.cleanup.err.cleanup_failed");
-      default: return fallback ?? t("storage.cleanup.cleanupFailed");
+      case "db_reconcile_failed":
+        return t("storage.cleanup.err.db_reconcile_failed");
+      case "cleanup_failed":
+        return t("storage.cleanup.err.cleanup_failed");
+      default:
+        return fallback ?? t("storage.cleanup.cleanupFailed");
     }
   };
 
   const formatPreset = (value: number) =>
     t("storage.cleanup.preset", {
-      percent: new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 }).format(value / 100),
+      percent: new Intl.NumberFormat(locale, {
+        style: "percent",
+        maximumFractionDigits: 0,
+      }).format(value / 100),
     });
 
   const runPreview = async () => {
@@ -176,10 +244,12 @@ function ArchivedCleanupPanel({
         body: JSON.stringify({ percent }),
       });
       if (!res.ok) {
-        const json = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(mapCleanupError(json.error, t("storage.cleanup.previewFailed")));
+        const json = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(
+          mapCleanupError(json.error, t("storage.cleanup.previewFailed")),
+        );
       }
-      const json = await res.json() as CleanupPreview;
+      const json = (await res.json()) as CleanupPreview;
       setPreview(json);
       setConfirmOpen(true);
     } catch (e) {
@@ -204,25 +274,35 @@ function ArchivedCleanupPanel({
         }),
       });
       if (!res.ok) {
-        const json = await res.json().catch(() => ({})) as CleanupResult;
+        const json = (await res.json().catch(() => ({}))) as CleanupResult;
         if (json.error === "stale_preview") {
           // Digest can never succeed again — send the user back to Preview.
           closeConfirm(true);
         }
-        throw new Error(mapCleanupError(json.error, json.message, json.trashDir));
+        throw new Error(
+          mapCleanupError(json.error, json.message, json.trashDir),
+        );
       }
-      const json = await res.json() as CleanupResult;
+      const json = (await res.json()) as CleanupResult;
       if (!json.ok) {
         if (json.error === "stale_preview") {
           closeConfirm(true);
         }
-        throw new Error(mapCleanupError(json.error, json.message, json.trashDir));
+        throw new Error(
+          mapCleanupError(json.error, json.message, json.trashDir),
+        );
       }
       closeConfirm(true);
       setStatus(
         permanent
-          ? t("storage.cleanup.donePermanent", { count: String(json.count), size: formatBytes(json.bytes, locale) })
-          : t("storage.cleanup.doneQuarantine", { count: String(json.count), size: formatBytes(json.bytes, locale) }),
+          ? t("storage.cleanup.donePermanent", {
+              count: String(json.count),
+              size: formatBytes(json.bytes, locale),
+            })
+          : t("storage.cleanup.doneQuarantine", {
+              count: String(json.count),
+              size: formatBytes(json.bytes, locale),
+            }),
       );
       onDone();
     } catch (e) {
@@ -235,11 +315,16 @@ function ArchivedCleanupPanel({
 
   return (
     <section className="storage-cleanup-pane">
-      <p className="muted storage-manual-panel__help">{t("storage.cleanup.help")}</p>
+      <p className="muted storage-manual-panel__help">
+        {t("storage.cleanup.help")}
+      </p>
 
       <div className="storage-manual-panel__controls">
         <label className="storage-manual-panel__slider">
-          <span className="muted mono" style={{ minWidth: "3.5rem", fontVariantNumeric: "tabular-nums" }}>
+          <span
+            className="muted mono"
+            style={{ minWidth: "3.5rem", fontVariantNumeric: "tabular-nums" }}
+          >
             {t("storage.cleanup.percent", { percent: String(percent) })}
           </span>
           <input
@@ -247,14 +332,14 @@ function ArchivedCleanupPanel({
             min={1}
             max={100}
             value={percent}
-            onChange={e => setPercent(Number(e.target.value))}
+            onChange={(e) => setPercent(Number(e.target.value))}
             disabled={busy}
             style={{ flex: 1, minWidth: 0 }}
             aria-label={t("storage.cleanup.slider")}
           />
         </label>
         <div className="storage-manual-panel__presets">
-          {PRESETS.map(p => (
+          {PRESETS.map((p) => (
             <button
               key={p}
               type="button"
@@ -266,75 +351,111 @@ function ArchivedCleanupPanel({
             </button>
           ))}
         </div>
-        <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void runPreview()}>
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={busy}
+          onClick={() => void runPreview()}
+        >
           {t("storage.cleanup.preview")}
         </button>
       </div>
 
       {status && <p className="muted storage-manual-panel__status">{status}</p>}
-      {error && !confirmOpen && <p className="storage-manual-panel__status" style={{ color: "var(--red)" }}>{error}</p>}
+      {error && !confirmOpen && (
+        <p
+          className="storage-manual-panel__status"
+          style={{ color: "var(--red)" }}
+        >
+          {error}
+        </p>
+      )}
 
       {confirmOpen && preview && (
-        <div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="storage-cleanup-confirm-title"
-          onClick={() => !busy && closeConfirm()}
+        <StorageConfirmDialog
+          labelledBy="storage-cleanup-confirm-title"
+          onDismiss={() => !busy && closeConfirm()}
         >
-          <div className="modal-card" onClick={e => e.stopPropagation()}>
-            <h3 id="storage-cleanup-confirm-title">{t("storage.cleanup.confirmTitle")}</h3>
-            <p>
-              {t("storage.cleanup.confirmBody", {
-                count: String(preview.count),
-                size: formatBytes(preview.bytes, locale),
-                percent: String(preview.percent),
-              })}
-            </p>
-            {preview.candidates.length > 0 && (
-              <ul className="mono muted" style={{ maxHeight: 160, overflow: "auto", fontSize: "var(--text-caption)" }}>
-                {preview.candidates.slice(0, 8).map(c => (
-                  <li key={c.relPath}>{c.relPath}</li>
-                ))}
-                {preview.count > 8 && (
-                  <li>{t("storage.cleanup.moreFiles", { n: String(Math.max(0, preview.count - 8)) })}</li>
-                )}
-              </ul>
-            )}
-            <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12 }}>
-              <input
-                type="checkbox"
-                checked={permanent}
-                disabled={busy}
-                onChange={e => setPermanent(e.target.checked)}
-              />
-              <span>{t("storage.cleanup.permanent")}</span>
-            </label>
-            <p className="muted" style={{ marginTop: 8, fontSize: "var(--text-caption)" }}>
-              {permanent ? t("storage.cleanup.permanentWarn") : t("storage.cleanup.quarantineNote")}
-            </p>
-            {error && <p style={{ marginTop: 12, color: "var(--red)" }}>{error}</p>}
-            <div className="dialog-actions" style={{ marginTop: 16 }}>
-              <button
-                ref={cancelRef}
-                type="button"
-                className="btn btn-ghost"
-                disabled={busy}
-                onClick={() => closeConfirm()}
-              >
-                {t("storage.cleanup.cancel")}
-              </button>
-              <button
-                type="button"
-                className={permanent ? "btn btn-danger" : "btn"}
-                disabled={busy || preview.count === 0}
-                onClick={() => void runCleanup()}
-              >
-                {permanent ? t("storage.cleanup.confirmPermanent") : t("storage.cleanup.confirmQuarantine")}
-              </button>
-            </div>
-          </div>
-        </div>
+          <h3 id="storage-cleanup-confirm-title">
+            {t("storage.cleanup.confirmTitle")}
+          </h3>
+          <p>
+            {t("storage.cleanup.confirmBody", {
+              count: String(preview.count),
+              size: formatBytes(preview.bytes, locale),
+              percent: String(preview.percent),
+            })}
+          </p>
+          {preview.candidates.length > 0 && (
+            <ul
+              className="mono muted"
+              style={{
+                maxHeight: 160,
+                overflow: "auto",
+                fontSize: "var(--text-caption)",
+              }}
+            >
+              {preview.candidates.slice(0, 8).map((c) => (
+                <li key={c.relPath}>{c.relPath}</li>
+              ))}
+              {preview.count > 8 && (
+                <li>
+                  {t("storage.cleanup.moreFiles", {
+                    n: String(Math.max(0, preview.count - 8)),
+                  })}
+                </li>
+              )}
+            </ul>
+          )}
+          <label
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              marginTop: 12,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={permanent}
+              disabled={busy}
+              onChange={(e) => setPermanent(e.target.checked)}
+            />
+            <span>{t("storage.cleanup.permanent")}</span>
+          </label>
+          <p
+            className="muted"
+            style={{ marginTop: 8, fontSize: "var(--text-caption)" }}
+          >
+            {permanent
+              ? t("storage.cleanup.permanentWarn")
+              : t("storage.cleanup.quarantineNote")}
+          </p>
+          {error && (
+            <p style={{ marginTop: 12, color: "var(--red)" }}>{error}</p>
+          )}
+          <StorageConfirmActions>
+            <button
+              ref={cancelRef}
+              type="button"
+              className="btn btn-ghost"
+              disabled={busy}
+              onClick={() => closeConfirm()}
+            >
+              {t("storage.cleanup.cancel")}
+            </button>
+            <button
+              type="button"
+              className={permanent ? "btn btn-danger" : "btn"}
+              disabled={busy || preview.count === 0}
+              onClick={() => void runCleanup()}
+            >
+              {permanent
+                ? t("storage.cleanup.confirmPermanent")
+                : t("storage.cleanup.confirmQuarantine")}
+            </button>
+          </StorageConfirmActions>
+        </StorageConfirmDialog>
       )}
     </section>
   );
@@ -386,31 +507,35 @@ function QuarantineTrashPanel({
     };
   }, [confirmEntry, closeConfirm]);
 
-  const loadTrash = useCallback(async (signal?: AbortSignal) => {
-    const generation = ++loadGenerationRef.current;
-    setLoading(true);
-    try {
-      const res = await fetch(`${apiBase}/api/storage/trash`, { signal });
-      if (!res.ok) {
+  const loadTrash = useCallback(
+    async (signal?: AbortSignal) => {
+      const generation = ++loadGenerationRef.current;
+      setLoading(true);
+      try {
+        const res = await fetch(`${apiBase}/api/storage/trash`, { signal });
+        if (!res.ok) {
+          if (signal?.aborted || generation !== loadGenerationRef.current)
+            return;
+          throw new Error(t("storage.trash.listFailed"));
+        }
+        const json = (await res.json()) as TrashList;
         if (signal?.aborted || generation !== loadGenerationRef.current) return;
-        throw new Error(t("storage.trash.listFailed"));
+        const next = Array.isArray(json.entries) ? json.entries : [];
+        setEntries(next);
+        onEntriesChange?.(next);
+        setError(null);
+      } catch (e) {
+        if (signal?.aborted || generation !== loadGenerationRef.current) return;
+        if (e instanceof DOMException && e.name === "AbortError") return;
+        setEntries([]);
+        onEntriesChange?.([]);
+        setError(localizedCatch(e, t("storage.trash.listFailed")));
+      } finally {
+        if (generation === loadGenerationRef.current) setLoading(false);
       }
-      const json = await res.json() as TrashList;
-      if (signal?.aborted || generation !== loadGenerationRef.current) return;
-      const next = Array.isArray(json.entries) ? json.entries : [];
-      setEntries(next);
-      onEntriesChange?.(next);
-      setError(null);
-    } catch (e) {
-      if (signal?.aborted || generation !== loadGenerationRef.current) return;
-      if (e instanceof DOMException && e.name === "AbortError") return;
-      setEntries([]);
-      onEntriesChange?.([]);
-      setError(localizedCatch(e, t("storage.trash.listFailed")));
-    } finally {
-      if (generation === loadGenerationRef.current) setLoading(false);
-    }
-  }, [apiBase, t, onEntriesChange]);
+    },
+    [apiBase, t, onEntriesChange],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -426,19 +551,30 @@ function QuarantineTrashPanel({
 
   const mapRestoreError = (code: string | undefined, fallback?: string) => {
     switch (code) {
-      case "codex_busy": return t("storage.trash.err.codex_busy");
-      case "invalid_trash": return t("storage.trash.err.invalid_trash");
-      case "missing_trash": return t("storage.trash.err.missing_trash");
-      case "dest_exists": return t("storage.trash.err.dest_exists");
-      case "fs_failed": return t("storage.trash.err.fs_failed");
-      case "db_reconcile_failed": return t("storage.trash.err.db_reconcile_failed");
-      case "storage_mutation_busy": return t("storage.trash.err.storage_mutation_busy");
-      case "restore_failed": return t("storage.trash.err.restore_failed");
-      case "restore_worker_timeout": return t("storage.trash.err.restore_worker_timeout");
-      case "restore_worker_aborted": return t("storage.trash.err.restore_worker_aborted");
+      case "codex_busy":
+        return t("storage.trash.err.codex_busy");
+      case "invalid_trash":
+        return t("storage.trash.err.invalid_trash");
+      case "missing_trash":
+        return t("storage.trash.err.missing_trash");
+      case "dest_exists":
+        return t("storage.trash.err.dest_exists");
+      case "fs_failed":
+        return t("storage.trash.err.fs_failed");
+      case "db_reconcile_failed":
+        return t("storage.trash.err.db_reconcile_failed");
+      case "storage_mutation_busy":
+        return t("storage.trash.err.storage_mutation_busy");
+      case "restore_failed":
+        return t("storage.trash.err.restore_failed");
+      case "restore_worker_timeout":
+        return t("storage.trash.err.restore_worker_timeout");
+      case "restore_worker_aborted":
+        return t("storage.trash.err.restore_worker_aborted");
       case "restore_worker_failed":
         return fallback ?? t("storage.trash.err.restore_worker_failed");
-      default: return fallback ?? t("storage.trash.restoreFailed");
+      default:
+        return fallback ?? t("storage.trash.restoreFailed");
     }
   };
 
@@ -453,18 +589,20 @@ function QuarantineTrashPanel({
         body: JSON.stringify({ id: confirmEntry.id }),
       });
       if (!res.ok) {
-        const json = await res.json().catch(() => ({})) as RestoreResult;
+        const json = (await res.json().catch(() => ({}))) as RestoreResult;
         throw new Error(mapRestoreError(json.error, json.message));
       }
-      const json = await res.json() as RestoreResult;
+      const json = (await res.json()) as RestoreResult;
       if (!json.ok) {
         throw new Error(mapRestoreError(json.error, json.message));
       }
       closeConfirm();
-      setStatus(t("storage.trash.done", {
-        count: String(json.count),
-        size: formatBytes(json.bytes, locale),
-      }));
+      setStatus(
+        t("storage.trash.done", {
+          count: String(json.count),
+          size: formatBytes(json.bytes, locale),
+        }),
+      );
       onDone();
     } catch (e) {
       setError(localizedCatch(e, t("storage.trash.restoreFailed")));
@@ -487,15 +625,28 @@ function QuarantineTrashPanel({
 
   return (
     <section className="storage-cleanup-pane storage-quarantine-pane">
-      <p className="muted storage-manual-panel__help">{t("storage.trash.help")}</p>
+      <p className="muted storage-manual-panel__help">
+        {t("storage.trash.help")}
+      </p>
 
       {status && <p className="muted storage-manual-panel__status">{status}</p>}
-      {error && !confirmEntry && <p className="storage-manual-panel__status" style={{ color: "var(--red)" }}>{error}</p>}
+      {error && !confirmEntry && (
+        <p
+          className="storage-manual-panel__status"
+          style={{ color: "var(--red)" }}
+        >
+          {error}
+        </p>
+      )}
 
       {loading ? (
-        <p className="muted storage-manual-panel__status">{t("storage.trash.loading")}</p>
+        <p className="muted storage-manual-panel__status">
+          {t("storage.trash.loading")}
+        </p>
       ) : entries.length === 0 ? (
-        <p className="muted storage-manual-panel__status">{t("storage.trash.empty")}</p>
+        <p className="muted storage-manual-panel__status">
+          {t("storage.trash.empty")}
+        </p>
       ) : (
         <div className="tbl-wrap storage-manual-panel__table">
           <table className="tbl">
@@ -510,13 +661,20 @@ function QuarantineTrashPanel({
               </tr>
             </thead>
             <tbody>
-              {entries.map(entry => (
+              {entries.map((entry) => (
                 <tr key={entry.id}>
                   <td className="muted">{formatWhen(entry)}</td>
                   <td className="num">{entry.fileCount}</td>
-                  <td className="num mono">{formatBytes(entry.bytes, locale)}</td>
+                  <td className="num mono">
+                    {formatBytes(entry.bytes, locale)}
+                  </td>
                   <td className="muted">{modeLabel(entry.mode)}</td>
-                  <td className="mono" style={{ fontSize: "var(--text-caption)" }}>{entry.id}</td>
+                  <td
+                    className="mono"
+                    style={{ fontSize: "var(--text-caption)" }}
+                  >
+                    {entry.id}
+                  </td>
                   <td>
                     <button
                       type="button"
@@ -538,44 +696,43 @@ function QuarantineTrashPanel({
       )}
 
       {confirmEntry && (
-        <div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="storage-trash-confirm-title"
-          onClick={() => !busy && closeConfirm()}
+        <StorageConfirmDialog
+          labelledBy="storage-trash-confirm-title"
+          onDismiss={() => !busy && closeConfirm()}
         >
-          <div className="modal-card" onClick={e => e.stopPropagation()}>
-            <h3 id="storage-trash-confirm-title">{t("storage.trash.confirmTitle")}</h3>
-            <p>
-              {t("storage.trash.confirmBody", {
-                count: String(confirmEntry.fileCount),
-                size: formatBytes(confirmEntry.bytes, locale),
-                id: confirmEntry.id,
-              })}
-            </p>
-            {error && <p style={{ marginTop: 12, color: "var(--red)" }}>{error}</p>}
-            <div className="dialog-actions" style={{ marginTop: 16 }}>
-              <button
-                ref={cancelRef}
-                type="button"
-                className="btn btn-ghost"
-                disabled={busy}
-                onClick={() => closeConfirm()}
-              >
-                {t("storage.trash.cancel")}
-              </button>
-              <button
-                type="button"
-                className="btn"
-                disabled={busy}
-                onClick={() => void runRestore()}
-              >
-                {t("storage.trash.confirmRestore")}
-              </button>
-            </div>
-          </div>
-        </div>
+          <h3 id="storage-trash-confirm-title">
+            {t("storage.trash.confirmTitle")}
+          </h3>
+          <p>
+            {t("storage.trash.confirmBody", {
+              count: String(confirmEntry.fileCount),
+              size: formatBytes(confirmEntry.bytes, locale),
+              id: confirmEntry.id,
+            })}
+          </p>
+          {error && (
+            <p style={{ marginTop: 12, color: "var(--red)" }}>{error}</p>
+          )}
+          <StorageConfirmActions>
+            <button
+              ref={cancelRef}
+              type="button"
+              className="btn btn-ghost"
+              disabled={busy}
+              onClick={() => closeConfirm()}
+            >
+              {t("storage.trash.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={busy}
+              onClick={() => void runRestore()}
+            >
+              {t("storage.trash.confirmRestore")}
+            </button>
+          </StorageConfirmActions>
+        </StorageConfirmDialog>
       )}
     </section>
   );
@@ -595,28 +752,39 @@ type CachedCleanupPolicy = {
   reduceGb: string;
 };
 
-function draftsFromPolicyResponse(json: CleanupPolicy): Omit<CachedCleanupPolicy, "policy"> & { policy: CleanupPolicy } {
-  const thresholdGb = String(Math.max(0, Math.round((json.trigger.archivedBytesOver / GB) * 100) / 100));
+function draftsFromPolicyResponse(
+  json: CleanupPolicy,
+): Omit<CachedCleanupPolicy, "policy"> & { policy: CleanupPolicy } {
+  const thresholdGb = String(
+    Math.max(0, Math.round((json.trigger.archivedBytesOver / GB) * 100) / 100),
+  );
   if (json.target.reduceToBytes !== undefined) {
     return {
       policy: policyFieldsFromResponse(json),
       thresholdGb,
       targetMode: "reduce",
       percent: "25",
-      reduceGb: String(Math.max(0, Math.round((json.target.reduceToBytes / GB) * 100) / 100)),
+      reduceGb: String(
+        Math.max(0, Math.round((json.target.reduceToBytes / GB) * 100) / 100),
+      ),
     };
   }
   return {
     policy: policyFieldsFromResponse(json),
     thresholdGb,
     targetMode: "percent",
-    percent: String(Math.min(100, Math.max(1, Math.floor(json.target.removeOldestPercent ?? 25)))),
+    percent: String(
+      Math.min(
+        100,
+        Math.max(1, Math.floor(json.target.removeOldestPercent ?? 25)),
+      ),
+    ),
     reduceGb: "4",
   };
 }
 
 async function sleep(ms: number): Promise<void> {
-  await new Promise(resolve => window.setTimeout(resolve, ms));
+  await new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function AutoCleanupPolicyPanel({
@@ -633,19 +801,25 @@ function AutoCleanupPolicyPanel({
   const cacheKey = `ocx.storage.cleanup-policy.v1:${apiBase}`;
   const cached = readSessionListCache<CachedCleanupPolicy>(cacheKey);
   const hasCacheRef = useRef(Boolean(cached));
-  const [policy, setPolicy] = useState<CleanupPolicy | null>(() => cached?.policy ?? null);
+  const [policy, setPolicy] = useState<CleanupPolicy | null>(
+    () => cached?.policy ?? null,
+  );
   const [loading, setLoading] = useState(() => !cached);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [targetMode, setTargetMode] = useState<"percent" | "reduce">(() => cached?.targetMode ?? "percent");
+  const [targetMode, setTargetMode] = useState<"percent" | "reduce">(
+    () => cached?.targetMode ?? "percent",
+  );
   /** Draft string so blank/invalid percent targets are rejected instead of coerced. */
   const [percent, setPercent] = useState(() => cached?.percent ?? "25");
   /** Draft string so blank/invalid reduce targets are rejected instead of coerced to 0. */
   const [reduceGb, setReduceGb] = useState(() => cached?.reduceGb ?? "4");
   /** Draft string so a cleared threshold is rejected instead of coerced to 0. */
-  const [thresholdGb, setThresholdGb] = useState(() => cached?.thresholdGb ?? "5");
+  const [thresholdGb, setThresholdGb] = useState(
+    () => cached?.thresholdGb ?? "5",
+  );
   /** Cancels in-flight Run-now polling when the panel unmounts. */
   const runAbortRef = useRef<AbortController | null>(null);
   /** User has local draft edits; background GET must not clobber them. */
@@ -654,17 +828,20 @@ function AutoCleanupPolicyPanel({
   const editingRef = useRef(false);
   const loadGenerationRef = useRef(0);
 
-  const applyPolicy = useCallback((json: CleanupPolicy) => {
-    const next = draftsFromPolicyResponse(json);
-    setPolicy(next.policy);
-    setThresholdGb(next.thresholdGb);
-    setTargetMode(next.targetMode);
-    setPercent(next.percent);
-    setReduceGb(next.reduceGb);
-    hasCacheRef.current = true;
-    writeSessionListCache(cacheKey, next);
-    dirtyRef.current = false;
-  }, [cacheKey]);
+  const applyPolicy = useCallback(
+    (json: CleanupPolicy) => {
+      const next = draftsFromPolicyResponse(json);
+      setPolicy(next.policy);
+      setThresholdGb(next.thresholdGb);
+      setTargetMode(next.targetMode);
+      setPercent(next.percent);
+      setReduceGb(next.reduceGb);
+      hasCacheRef.current = true;
+      writeSessionListCache(cacheKey, next);
+      dirtyRef.current = false;
+    },
+    [cacheKey],
+  );
 
   const markDirty = useCallback(() => {
     dirtyRef.current = true;
@@ -674,29 +851,35 @@ function AutoCleanupPolicyPanel({
     editingRef.current = editing;
   }, []);
 
-  const loadPolicy = useCallback(async (signal?: AbortSignal) => {
-    const generation = ++loadGenerationRef.current;
-    // Soft refresh: keep last-good policy painted while revalidating.
-    if (!hasCacheRef.current) setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`${apiBase}/api/storage/cleanup-policy`, { signal });
-      if (!res.ok) throw new Error("load_failed");
-      const json = await res.json() as CleanupPolicy;
-      if (signal?.aborted || generation !== loadGenerationRef.current) return;
-      // Do not overwrite in-progress drafts with a stale/background GET.
-      if (dirtyRef.current || editingRef.current) return;
-      applyPolicy(json);
-    } catch {
-      if (signal?.aborted || generation !== loadGenerationRef.current) return;
-      if (!hasCacheRef.current) {
-        setPolicy(null);
-        setError(t("storage.policy.loadFailed"));
+  const loadPolicy = useCallback(
+    async (signal?: AbortSignal) => {
+      const generation = ++loadGenerationRef.current;
+      // Soft refresh: keep last-good policy painted while revalidating.
+      if (!hasCacheRef.current) setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`${apiBase}/api/storage/cleanup-policy`, {
+          signal,
+        });
+        if (!res.ok) throw new Error("load_failed");
+        const json = (await res.json()) as CleanupPolicy;
+        if (signal?.aborted || generation !== loadGenerationRef.current) return;
+        // Do not overwrite in-progress drafts with a stale/background GET.
+        if (dirtyRef.current || editingRef.current) return;
+        applyPolicy(json);
+      } catch {
+        if (signal?.aborted || generation !== loadGenerationRef.current) return;
+        if (!hasCacheRef.current) {
+          setPolicy(null);
+          setError(t("storage.policy.loadFailed"));
+        }
+      } finally {
+        if (!signal?.aborted && generation === loadGenerationRef.current)
+          setLoading(false);
       }
-    } finally {
-      if (!signal?.aborted && generation === loadGenerationRef.current) setLoading(false);
-    }
-  }, [apiBase, applyPolicy, t]);
+    },
+    [apiBase, applyPolicy, t],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -734,7 +917,9 @@ function AutoCleanupPolicyPanel({
     } else {
       const pct = Number(percent);
       if (!Number.isFinite(pct) || pct < 1 || pct > 100) return null;
-      target = { removeOldestPercent: Math.min(100, Math.max(1, Math.floor(pct))) };
+      target = {
+        removeOldestPercent: Math.min(100, Math.max(1, Math.floor(pct))),
+      };
     }
 
     return {
@@ -766,7 +951,11 @@ function AutoCleanupPolicyPanel({
         setError(t("storage.policy.saveFailed"));
         return;
       }
-      const json = await res.json() as { ok?: boolean; policy?: CleanupPolicy; error?: string };
+      const json = (await res.json()) as {
+        ok?: boolean;
+        policy?: CleanupPolicy;
+        error?: string;
+      };
       if (!json.policy) {
         setError(t("storage.policy.saveFailed"));
         return;
@@ -809,7 +998,10 @@ function AutoCleanupPolicyPanel({
         setError(t("storage.policy.saveFailed"));
         return;
       }
-      const saved = await saveRes.json() as { policy?: CleanupPolicy; error?: string };
+      const saved = (await saveRes.json()) as {
+        policy?: CleanupPolicy;
+        error?: string;
+      };
       if (signal.aborted) return;
       if (!saved.policy) {
         setError(t("storage.policy.saveFailed"));
@@ -823,7 +1015,7 @@ function AutoCleanupPolicyPanel({
       });
       if (signal.aborted) return;
       if (res.status === 409) {
-        const conflict = await res.json().catch(() => ({})) as {
+        const conflict = (await res.json().catch(() => ({}))) as {
           error?: string;
           policy?: CleanupPolicy;
         };
@@ -833,7 +1025,7 @@ function AutoCleanupPolicyPanel({
         return;
       }
       if (!res.ok) {
-        const failed = await res.json().catch(() => ({})) as {
+        const failed = (await res.json().catch(() => ({}))) as {
           error?: string;
           policy?: CleanupPolicy;
         };
@@ -846,7 +1038,7 @@ function AutoCleanupPolicyPanel({
         setError(t("storage.policy.runFailed"));
         return;
       }
-      const startJson = await res.json() as {
+      const startJson = (await res.json()) as {
         ok?: boolean;
         started?: boolean;
         error?: string;
@@ -873,10 +1065,12 @@ function AutoCleanupPolicyPanel({
         if (signal.aborted) return;
         await sleep(250);
         if (signal.aborted) return;
-        const pollRes = await fetch(`${apiBase}/api/storage/cleanup-policy`, { signal });
+        const pollRes = await fetch(`${apiBase}/api/storage/cleanup-policy`, {
+          signal,
+        });
         if (signal.aborted) return;
         if (!pollRes.ok) continue;
-        const body = await pollRes.json() as CleanupPolicy;
+        const body = (await pollRes.json()) as CleanupPolicy;
         if (signal.aborted) return;
         finalPolicy = policyFieldsFromResponse(body);
         applyPolicy(body);
@@ -906,7 +1100,10 @@ function AutoCleanupPolicyPanel({
         setStatus(t("storage.policy.skippedUnder"));
       } else if (outcome.skipped === "nothing_selected") {
         setStatus(t("storage.policy.skippedEmpty"));
-      } else if (outcome.deferred === "codex_busy" || outcome.error === "codex_busy") {
+      } else if (
+        outcome.deferred === "codex_busy" ||
+        outcome.error === "codex_busy"
+      ) {
         setError(t("storage.cleanup.err.codex_busy"));
       } else if (!outcome.ok) {
         setError(t("storage.policy.runFailed"));
@@ -914,18 +1111,22 @@ function AutoCleanupPolicyPanel({
         setStatus(
           outcome.mode === "permanent"
             ? t("storage.policy.donePermanent", {
-              count: String(outcome.removed ?? 0),
-              size: formatBytes(outcome.freedBytes ?? 0, locale),
-            })
+                count: String(outcome.removed ?? 0),
+                size: formatBytes(outcome.freedBytes ?? 0, locale),
+              })
             : t("storage.policy.doneQuarantine", {
-              count: String(outcome.removed ?? 0),
-              size: formatBytes(outcome.freedBytes ?? 0, locale),
-            }),
+                count: String(outcome.removed ?? 0),
+                size: formatBytes(outcome.freedBytes ?? 0, locale),
+              }),
         );
         onDone();
       }
     } catch (err) {
-      if (signal.aborted || (err instanceof DOMException && err.name === "AbortError")) return;
+      if (
+        signal.aborted ||
+        (err instanceof DOMException && err.name === "AbortError")
+      )
+        return;
       setError(t("storage.policy.runFailed"));
     } finally {
       if (runAbortRef.current === controller) runAbortRef.current = null;
@@ -934,12 +1135,16 @@ function AutoCleanupPolicyPanel({
   };
 
   const formatWhen = (ms: number | undefined) =>
-    ms === undefined ? t("storage.policy.never") : new Date(ms).toLocaleString(locale);
+    ms === undefined
+      ? t("storage.policy.never")
+      : new Date(ms).toLocaleString(locale);
 
   if (loading && !policy) {
     return (
       <section className="storage-cleanup-pane">
-        <p className="muted storage-policy-help">{t("storage.policy.loading")}</p>
+        <p className="muted storage-policy-help">
+          {t("storage.policy.loading")}
+        </p>
       </section>
     );
   }
@@ -947,7 +1152,11 @@ function AutoCleanupPolicyPanel({
   if (!policy) {
     return (
       <section className="storage-cleanup-pane">
-        {error && <p className="err" role="alert">{error}</p>}
+        {error && (
+          <p className="err" role="alert">
+            {error}
+          </p>
+        )}
       </section>
     );
   }
@@ -979,11 +1188,18 @@ function AutoCleanupPolicyPanel({
             {t("storage.policy.trigger")}
           </label>
           <div className="storage-policy-trigger-row">
-            <span className="storage-policy-trigger-hint">{t("storage.policy.threshold")}</span>
+            <span className="storage-policy-trigger-hint">
+              {t("storage.policy.threshold")}
+            </span>
             <span
               className="codex-auto-switch-input-wrap"
               onBlur={(event) => {
-                if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+                if (
+                  event.currentTarget.contains(
+                    event.relatedTarget as Node | null,
+                  )
+                )
+                  return;
                 setEditing(false);
                 void savePolicy();
               }}
@@ -999,30 +1215,37 @@ function AutoCleanupPolicyPanel({
                 disabled={saving || running}
                 aria-label={t("storage.policy.threshold")}
                 onFocus={() => setEditing(true)}
-                onChange={e => {
+                onChange={(e) => {
                   markDirty();
                   setThresholdGb(e.target.value);
                 }}
                 onKeyDown={(event) => {
-                  if (event.nativeEvent.isComposing || saving || running) return;
+                  if (event.nativeEvent.isComposing || saving || running)
+                    return;
                   if (event.key === "Enter") {
                     event.preventDefault();
                     void savePolicy();
                   }
                 }}
               />
-              <span className="codex-auto-switch-unit" aria-hidden="true">GiB</span>
+              <span className="codex-auto-switch-unit" aria-hidden="true">
+                GiB
+              </span>
               <NumberStepper
                 disabled={saving || running}
                 incrementLabel={t("storage.policy.thresholdInc")}
                 decrementLabel={t("storage.policy.thresholdDec")}
                 onIncrement={() => {
                   markDirty();
-                  setThresholdGb(clampNumberDraft(thresholdGb, 0.1, 0, 10_000, 0.1));
+                  setThresholdGb(
+                    clampNumberDraft(thresholdGb, 0.1, 0, 10_000, 0.1),
+                  );
                 }}
                 onDecrement={() => {
                   markDirty();
-                  setThresholdGb(clampNumberDraft(thresholdGb, -0.1, 0, 10_000, 0.1));
+                  setThresholdGb(
+                    clampNumberDraft(thresholdGb, -0.1, 0, 10_000, 0.1),
+                  );
                 }}
               />
             </span>
@@ -1042,12 +1265,19 @@ function AutoCleanupPolicyPanel({
                 setTargetMode("percent");
               }}
             />
-            <span className="storage-policy-target-label">{t("storage.policy.targetPercent")}</span>
+            <span className="storage-policy-target-label">
+              {t("storage.policy.targetPercent")}
+            </span>
             {targetMode === "percent" && (
               <span
                 className="codex-auto-switch-input-wrap"
                 onBlur={(event) => {
-                  if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+                  if (
+                    event.currentTarget.contains(
+                      event.relatedTarget as Node | null,
+                    )
+                  )
+                    return;
                   setEditing(false);
                   void savePolicy();
                 }}
@@ -1064,19 +1294,22 @@ function AutoCleanupPolicyPanel({
                   disabled={saving || running}
                   aria-label={t("storage.policy.targetPercent")}
                   onFocus={() => setEditing(true)}
-                  onChange={e => {
+                  onChange={(e) => {
                     markDirty();
                     setPercent(e.target.value);
                   }}
                   onKeyDown={(event) => {
-                    if (event.nativeEvent.isComposing || saving || running) return;
+                    if (event.nativeEvent.isComposing || saving || running)
+                      return;
                     if (event.key === "Enter") {
                       event.preventDefault();
                       void savePolicy();
                     }
                   }}
                 />
-                <span className="codex-auto-switch-unit" aria-hidden="true">%</span>
+                <span className="codex-auto-switch-unit" aria-hidden="true">
+                  %
+                </span>
                 <NumberStepper
                   disabled={saving || running}
                   incrementLabel={t("storage.policy.percentInc")}
@@ -1104,12 +1337,19 @@ function AutoCleanupPolicyPanel({
                 setTargetMode("reduce");
               }}
             />
-            <span className="storage-policy-target-label">{t("storage.policy.targetReduce")}</span>
+            <span className="storage-policy-target-label">
+              {t("storage.policy.targetReduce")}
+            </span>
             {targetMode === "reduce" && (
               <span
                 className="codex-auto-switch-input-wrap"
                 onBlur={(event) => {
-                  if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+                  if (
+                    event.currentTarget.contains(
+                      event.relatedTarget as Node | null,
+                    )
+                  )
+                    return;
                   setEditing(false);
                   void savePolicy();
                 }}
@@ -1125,30 +1365,37 @@ function AutoCleanupPolicyPanel({
                   disabled={saving || running}
                   aria-label={t("storage.policy.targetReduce")}
                   onFocus={() => setEditing(true)}
-                  onChange={e => {
+                  onChange={(e) => {
                     markDirty();
                     setReduceGb(e.target.value);
                   }}
                   onKeyDown={(event) => {
-                    if (event.nativeEvent.isComposing || saving || running) return;
+                    if (event.nativeEvent.isComposing || saving || running)
+                      return;
                     if (event.key === "Enter") {
                       event.preventDefault();
                       void savePolicy();
                     }
                   }}
                 />
-                <span className="codex-auto-switch-unit" aria-hidden="true">GiB</span>
+                <span className="codex-auto-switch-unit" aria-hidden="true">
+                  GiB
+                </span>
                 <NumberStepper
                   disabled={saving || running}
                   incrementLabel={t("storage.policy.reduceInc")}
                   decrementLabel={t("storage.policy.reduceDec")}
                   onIncrement={() => {
                     markDirty();
-                    setReduceGb(clampNumberDraft(reduceGb, 0.1, 0, 10_000, 0.1));
+                    setReduceGb(
+                      clampNumberDraft(reduceGb, 0.1, 0, 10_000, 0.1),
+                    );
                   }}
                   onDecrement={() => {
                     markDirty();
-                    setReduceGb(clampNumberDraft(reduceGb, -0.1, 0, 10_000, 0.1));
+                    setReduceGb(
+                      clampNumberDraft(reduceGb, -0.1, 0, 10_000, 0.1),
+                    );
                   }}
                 />
               </span>
@@ -1164,15 +1411,23 @@ function AutoCleanupPolicyPanel({
               className="input"
               value={policy.schedule}
               disabled={saving || running}
-              onChange={e => {
+              onChange={(e) => {
                 const schedule = e.target.value as CleanupPolicy["schedule"];
                 void savePolicy({ schedule });
               }}
             >
-              <option value="manual">{t("storage.policy.schedule.manual")}</option>
-              <option value="startup">{t("storage.policy.schedule.startup")}</option>
-              <option value="daily">{t("storage.policy.schedule.daily")}</option>
-              <option value="weekly">{t("storage.policy.schedule.weekly")}</option>
+              <option value="manual">
+                {t("storage.policy.schedule.manual")}
+              </option>
+              <option value="startup">
+                {t("storage.policy.schedule.startup")}
+              </option>
+              <option value="daily">
+                {t("storage.policy.schedule.daily")}
+              </option>
+              <option value="weekly">
+                {t("storage.policy.schedule.weekly")}
+              </option>
             </select>
           </label>
 
@@ -1183,18 +1438,24 @@ function AutoCleanupPolicyPanel({
               className="input"
               value={policy.mode}
               disabled={saving || running}
-              onChange={e => {
+              onChange={(e) => {
                 const mode = e.target.value as CleanupPolicy["mode"];
                 void savePolicy({ mode });
               }}
             >
-              <option value="quarantine">{t("storage.policy.mode.quarantine")}</option>
-              <option value="permanent">{t("storage.policy.mode.permanent")}</option>
+              <option value="quarantine">
+                {t("storage.policy.mode.quarantine")}
+              </option>
+              <option value="permanent">
+                {t("storage.policy.mode.permanent")}
+              </option>
             </select>
           </label>
         </div>
         {policy.mode === "permanent" && (
-          <p className="err storage-policy-warn" role="status">{t("storage.policy.permanentWarn")}</p>
+          <p className="err storage-policy-warn" role="status">
+            {t("storage.policy.permanentWarn")}
+          </p>
         )}
       </div>
 
@@ -1205,23 +1466,35 @@ function AutoCleanupPolicyPanel({
             {formatWhen(policy.lastRun?.at)}
             {policy.lastRun
               ? ` · ${t("storage.policy.lastRunDetail", {
-                count: String(policy.lastRun.removed),
-                size: formatBytes(policy.lastRun.freedBytes, locale),
-              })}`
+                  count: String(policy.lastRun.removed),
+                  size: formatBytes(policy.lastRun.freedBytes, locale),
+                })}`
               : ""}
           </span>
         </div>
         <div className="storage-policy-meta-item">
           <span className="muted">{t("storage.policy.nextRun")}</span>
-          <span className="storage-policy-meta-value">{formatWhen(policy.nextRun)}</span>
+          <span className="storage-policy-meta-value">
+            {formatWhen(policy.nextRun)}
+          </span>
         </div>
       </div>
 
       <div className="storage-policy-actions">
-        <button type="button" className="btn btn-ghost btn-sm" disabled={saving || running} onClick={() => void savePolicy()}>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          disabled={saving || running}
+          onClick={() => void savePolicy()}
+        >
           {t("storage.policy.save")}
         </button>
-        <button type="button" className="btn btn-sm" disabled={saving || running} onClick={() => void runNow()}>
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={saving || running}
+          onClick={() => void runNow()}
+        >
           {running ? t("storage.policy.running") : t("storage.policy.runNow")}
         </button>
         <span
@@ -1260,14 +1533,28 @@ function StorageCleanupCard({
   const [tab, setTab] = useState<StorageCleanupTab>("policy");
   const policyTabRef = useRef<HTMLButtonElement>(null);
   const quarantineTabRef = useRef<HTMLButtonElement>(null);
-  const tabs: Array<{ id: StorageCleanupTab; label: string; ref: typeof policyTabRef }> = [
-    { id: "policy", label: t("storage.cleanupCard.tab.policy"), ref: policyTabRef },
-    { id: "quarantine", label: t("storage.cleanupCard.tab.quarantine"), ref: quarantineTabRef },
+  const tabs: Array<{
+    id: StorageCleanupTab;
+    label: string;
+    ref: typeof policyTabRef;
+  }> = [
+    {
+      id: "policy",
+      label: t("storage.cleanupCard.tab.policy"),
+      ref: policyTabRef,
+    },
+    {
+      id: "quarantine",
+      label: t("storage.cleanupCard.tab.quarantine"),
+      ref: quarantineTabRef,
+    },
   ];
 
   const selectTab = (next: StorageCleanupTab) => {
     setTab(next);
-    window.requestAnimationFrame(() => (next === "policy" ? policyTabRef : quarantineTabRef).current?.focus());
+    window.requestAnimationFrame(() =>
+      (next === "policy" ? policyTabRef : quarantineTabRef).current?.focus(),
+    );
   };
 
   const handleTabKey = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
@@ -1284,51 +1571,77 @@ function StorageCleanupCard({
   };
 
   return (
-    <section className="panel storage-cleanup-card" aria-labelledby="storage-cleanup-card-title">
-      <div className="usage-segmented storage-cleanup-card__tabs" role="tablist" aria-label={t("storage.cleanupCard.tabs")}>
+    <Panel
+      titleId="storage-cleanup-card-title"
+      className="panel storage-cleanup-card"
+    >
+      <PageTabs
+        label={t("storage.cleanupCard.tabs")}
+        className="usage-segmented storage-cleanup-card__tabs"
+      >
         {tabs.map(({ id, label, ref }) => (
-          <button
+          <PageTab
             key={id}
-            type="button"
-            role="tab"
-            ref={ref}
             id={`storage-cleanup-tab-${id}`}
-            aria-selected={tab === id}
-            aria-controls={`storage-cleanup-panel-${id}`}
-            tabIndex={tab === id ? 0 : -1}
+            controls={`storage-cleanup-panel-${id}`}
+            selected={tab === id}
             className={`usage-segmented-btn${tab === id ? " active" : ""}`}
+            ref={ref}
             onKeyDown={handleTabKey}
             onClick={() => selectTab(id)}
           >
             {label}
-          </button>
+          </PageTab>
         ))}
-      </div>
-      <h3 id="storage-cleanup-card-title" className="panel-title">{t("storage.cleanupCard.title")}</h3>
+      </PageTabs>
+      <PanelHeader
+        titleId="storage-cleanup-card-title"
+        title={t("storage.cleanupCard.title")}
+      />
 
       <div className="storage-cleanup-card__stack">
-        <div
+        <PageTabPanel
           id="storage-cleanup-panel-policy"
-          role="tabpanel"
-          aria-labelledby="storage-cleanup-tab-policy"
+          labelledBy="storage-cleanup-tab-policy"
           className="storage-cleanup-card__body storage-cleanup-policy-split"
           data-active={tab === "policy" ? "true" : "false"}
           aria-hidden={tab !== "policy"}
           {...(tab !== "policy" ? { inert: true } : {})}
         >
-          <AutoCleanupPolicyPanel apiBase={apiBase} locale={locale} t={t} onDone={onDone} />
-          <aside className="storage-cleanup-manual" aria-labelledby="storage-cleanup-manual-title">
-            <h4 id="storage-cleanup-manual-title" className="storage-cleanup-manual__title">{t("storage.cleanup.title")}</h4>
-            {archivedCount > 0
-              ? <ArchivedCleanupPanel apiBase={apiBase} locale={locale} t={t} onDone={onDone} />
-              : <p className="muted storage-manual-panel__status">{t("storage.cleanup.noArchives")}</p>}
+          <AutoCleanupPolicyPanel
+            apiBase={apiBase}
+            locale={locale}
+            t={t}
+            onDone={onDone}
+          />
+          <aside
+            className="storage-cleanup-manual"
+            aria-labelledby="storage-cleanup-manual-title"
+          >
+            <h4
+              id="storage-cleanup-manual-title"
+              className="storage-cleanup-manual__title"
+            >
+              {t("storage.cleanup.title")}
+            </h4>
+            {archivedCount > 0 ? (
+              <ArchivedCleanupPanel
+                apiBase={apiBase}
+                locale={locale}
+                t={t}
+                onDone={onDone}
+              />
+            ) : (
+              <p className="muted storage-manual-panel__status">
+                {t("storage.cleanup.noArchives")}
+              </p>
+            )}
           </aside>
-        </div>
+        </PageTabPanel>
 
-        <div
+        <PageTabPanel
           id="storage-cleanup-panel-quarantine"
-          role="tabpanel"
-          aria-labelledby="storage-cleanup-tab-quarantine"
+          labelledBy="storage-cleanup-tab-quarantine"
           className="storage-cleanup-card__body"
           data-active={tab === "quarantine" ? "true" : "false"}
           aria-hidden={tab !== "quarantine"}
@@ -1344,11 +1657,13 @@ function StorageCleanupCard({
               onEntriesChange={onTrashEntriesChange}
             />
           ) : (
-            <p className="muted storage-manual-panel__status">{t("storage.trash.empty")}</p>
+            <p className="muted storage-manual-panel__status">
+              {t("storage.trash.empty")}
+            </p>
           )}
-        </div>
+        </PageTabPanel>
       </div>
-    </section>
+    </Panel>
   );
 }
 
@@ -1361,31 +1676,38 @@ export default function Storage({ apiBase }: { apiBase: string }) {
   const [scanStatus, setScanStatus] = useState<string | null>(null);
   const [trashReloadToken, setTrashReloadToken] = useState(0);
   // Stamp trash awareness with apiBase so a base change invalidates without an effect.
-  const [trashInfo, setTrashInfo] = useState({ apiBase, settled: false, hasEntries: false });
+  const [trashInfo, setTrashInfo] = useState({
+    apiBase,
+    settled: false,
+    hasEntries: false,
+  });
   const loadGenerationRef = useRef(0);
   const hasReportRef = useRef(Boolean(cachedReport));
 
-  const fetchStorage = useCallback(async (signal?: AbortSignal) => {
-    const generation = ++loadGenerationRef.current;
-    // Keep Refresh disabled for soft revalidation too (cached report already painted).
-    setLoading(true);
-    try {
-      const res = await fetch(`${apiBase}/api/storage`, { signal });
-      if (!res.ok) throw new Error("fetch failed");
-      const json = await res.json() as StorageReport;
-      if (signal?.aborted || generation !== loadGenerationRef.current) return;
-      setData(json);
-      hasReportRef.current = true;
-      writeSessionListCache(storageCacheKey, json);
-      return json;
-    } catch {
-      if (signal?.aborted || generation !== loadGenerationRef.current) return;
-      if (!hasReportRef.current) setData(null);
-      return null;
-    } finally {
-      if (generation === loadGenerationRef.current) setLoading(false);
-    }
-  }, [apiBase, storageCacheKey]);
+  const fetchStorage = useCallback(
+    async (signal?: AbortSignal) => {
+      const generation = ++loadGenerationRef.current;
+      // Keep Refresh disabled for soft revalidation too (cached report already painted).
+      setLoading(true);
+      try {
+        const res = await fetch(`${apiBase}/api/storage`, { signal });
+        if (!res.ok) throw new Error("fetch failed");
+        const json = (await res.json()) as StorageReport;
+        if (signal?.aborted || generation !== loadGenerationRef.current) return;
+        setData(json);
+        hasReportRef.current = true;
+        writeSessionListCache(storageCacheKey, json);
+        return json;
+      } catch {
+        if (signal?.aborted || generation !== loadGenerationRef.current) return;
+        if (!hasReportRef.current) setData(null);
+        return null;
+      } finally {
+        if (generation === loadGenerationRef.current) setLoading(false);
+      }
+    },
+    [apiBase, storageCacheKey],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1402,7 +1724,7 @@ export default function Storage({ apiBase }: { apiBase: string }) {
   const refreshAll = useCallback(async () => {
     setScanStatus(null);
     const report = await fetchStorage();
-    setTrashReloadToken(n => n + 1);
+    setTrashReloadToken((n) => n + 1);
     setScanStatus(
       report && report.error === undefined
         ? t("storage.rescanned")
@@ -1410,53 +1732,106 @@ export default function Storage({ apiBase }: { apiBase: string }) {
     );
   }, [fetchStorage, t]);
 
-  const onTrashEntriesChange = useCallback((entries: TrashEntry[]) => {
-    setTrashInfo({ apiBase, settled: true, hasEntries: entries.length > 0 });
-  }, [apiBase]);
+  const onTrashEntriesChange = useCallback(
+    (entries: TrashEntry[]) => {
+      setTrashInfo({ apiBase, settled: true, hasEntries: entries.length > 0 });
+    },
+    [apiBase],
+  );
 
   const trashSettled = trashInfo.apiBase === apiBase && trashInfo.settled;
   const trashHasEntries = trashInfo.apiBase === apiBase && trashInfo.hasEntries;
   const failed = !loading && (!data || data.error !== undefined);
-  const empty = !loading && !failed && data!.total.fileCount === 0 && trashSettled && !trashHasEntries;
-  const archivedCount = data?.buckets.find(b => b.key === "archived_sessions")?.fileCount ?? 0;
+  const empty =
+    !loading &&
+    !failed &&
+    data!.total.fileCount === 0 &&
+    trashSettled &&
+    !trashHasEntries;
+  const archivedCount =
+    data?.buckets.find((b) => b.key === "archived_sessions")?.fileCount ?? 0;
   const showBody = Boolean(data) && !failed;
   // While storage is empty, keep the trash panel mounted until it reports so we
   // do not flash the empty state over a non-empty quarantine.
-  const showTrashWhileSettling = showBody && (data!.total.fileCount > 0 || !trashSettled || trashHasEntries);
+  const showTrashWhileSettling =
+    showBody && (data!.total.fileCount > 0 || !trashSettled || trashHasEntries);
 
   return (
-    <>
-      <div className="page-head">
-        <h2 id="storage-page-title">{t("storage.title")}</h2>
-        <div className="storage-page-head-actions">
-          <span className="storage-page-head-feedback" role="status" aria-live="polite">
-            {scanStatus ?? ""}
-          </span>
-          <button type="button" className="btn btn-ghost btn-sm" disabled={loading} onClick={() => void refreshAll()}>
-            <IconRefresh /> {t("storage.refresh")}
-          </button>
-        </div>
-      </div>
-      <p className="page-sub">{t("storage.subtitle")}</p>
+    <div className="ocx-page-root">
+      <PageHeader
+        titleId="storage-page-title"
+        title={t("storage.title")}
+        actionsClassName="storage-page-head-actions"
+        actions={
+          <>
+            <span
+              className="storage-page-head-feedback"
+              role="status"
+              aria-live="polite"
+            >
+              {scanStatus ?? ""}
+            </span>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={loading}
+              onClick={() => void refreshAll()}
+            >
+              <IconRefresh /> {t("storage.refresh")}
+            </button>
+          </>
+        }
+      />
+      <PageSubtitle>{t("storage.subtitle")}</PageSubtitle>
       {data && data.error === undefined && (
         <p className="storage-page-meta">
-          <code className="mono storage-page-meta__home" title={data.codexHome}>{data.codexHome}</code>
-          <span className="storage-page-meta__sep" aria-hidden="true">·</span>
+          <code className="storage-page-meta__home" title={data.codexHome}>
+            {data.codexHome}
+          </code>
+          <span className="storage-page-meta__sep" aria-hidden="true">
+            ·
+          </span>
           <span>
             {t("storage.snapshot.lastScan")}:{" "}
-            {new Date(data.generatedAt).toLocaleString(locale)}
+            <Timestamp
+              value={data.generatedAt}
+              locale={locale}
+              options={{ dateStyle: "medium", timeStyle: "short" }}
+            />
           </span>
         </p>
       )}
 
       {loading && !data ? (
-        <EmptyState title={t("storage.loading")} />
+        <Empty className="storage-empty-panel">
+          <EmptyHeader>
+            <EmptyMedia>
+              <MatrixMark />
+            </EmptyMedia>
+            <EmptyTitle>{t("storage.loading")}</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : failed ? (
-        <EmptyState title={t("storage.error")} />
+        <Empty className="storage-empty-panel">
+          <EmptyHeader>
+            <EmptyMedia>
+              <MatrixMark />
+            </EmptyMedia>
+            <EmptyTitle>{t("storage.error")}</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : empty ? (
-        <EmptyState title={t("storage.empty")} />
+        <Empty className="storage-empty-panel">
+          <EmptyHeader>
+            <EmptyMedia>
+              <MatrixMark />
+            </EmptyMedia>
+            <EmptyTitle>{t("storage.empty")}</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       ) : (
-        data && data.total.fileCount > 0 && (
+        data &&
+        data.total.fileCount > 0 && (
           <StorageWorkspace report={data} locale={locale} />
         )
       )}
@@ -1473,6 +1848,6 @@ export default function Storage({ apiBase }: { apiBase: string }) {
           onTrashEntriesChange={onTrashEntriesChange}
         />
       )}
-    </>
+    </div>
   );
 }

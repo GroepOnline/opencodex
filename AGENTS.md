@@ -94,6 +94,14 @@ bun run build:gui      # Vite GUI build
 Run `bun run typecheck` and `bun run test` before proposing or approving any
 non-trivial change. CI runs these on Linux, Windows, and macOS.
 
+## Cursor Cloud
+
+`.cursor/environment.json` is the Cloud Agent environment source of truth for
+this repository. The default base image does not include Bun. `install`
+bootstraps Bun 1.4.0 into `$HOME/.bun/bin` when it is missing, links `bun` and
+`bunx` into `/usr/local/bin` so non-login agent shells can find them, then runs
+frozen-lockfile installs for the repo root and `gui/`.
+
 ## Live checkouts
 
 A deployed working tree (for example the fleet proxy checkout) is never a

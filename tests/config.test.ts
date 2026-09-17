@@ -162,6 +162,26 @@ describe("opencodex config defaults", () => {
     });
   });
 
+  test("config candidates validate Claude Code generated-agent routing", () => {
+    const base = getDefaultConfig();
+    for (const agentRouting of ["pinned", "dynamic"]) {
+      expect(validateConfigCandidate({
+        ...base,
+        claudeCode: { ...base.claudeCode, agentRouting },
+      })).toMatchObject({
+        ok: true,
+        config: { claudeCode: { agentRouting } },
+      });
+    }
+    expect(validateConfigCandidate({
+      ...base,
+      claudeCode: { ...base.claudeCode, agentRouting: "random" },
+    })).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("claudeCode.agentRouting"),
+    });
+  });
+
   test("an invalid persisted Claude Code subagent effort is ignored without wiping config or logging its value", () => {
     const invalidEffort = "credential-like-value";
     const warnSpy = spyOn(console, "warn").mockImplementation(() => {});

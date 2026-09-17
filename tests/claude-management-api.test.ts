@@ -435,6 +435,34 @@ test("PUT/GET round-trips the context/effort levers (devlog 136 B6)", async () =
   }
 });
 
+test("PUT/GET round-trips generated-agent routing", async () => {
+  const server = startServer(0);
+  try {
+    let get = await fetch(new URL("/api/claude-code", server.url)).then(r => r.json()) as Record<string, unknown>;
+    expect(get.agentRouting).toBe("pinned");
+
+    const put = await fetch(new URL("/api/claude-code", server.url), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentRouting: "dynamic" }),
+    });
+    expect(put.status).toBe(200);
+    expect(loadConfig().claudeCode?.agentRouting).toBe("dynamic");
+    get = await fetch(new URL("/api/claude-code", server.url)).then(r => r.json()) as Record<string, unknown>;
+    expect(get.agentRouting).toBe("dynamic");
+
+    const reset = await fetch(new URL("/api/claude-code", server.url), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentRouting: "pinned" }),
+    });
+    expect(reset.status).toBe(200);
+    expect(loadConfig().claudeCode?.agentRouting).toBeUndefined();
+  } finally {
+    server.stop(true);
+  }
+});
+
 test("PUT/GET round-trips auto-context (devlog 260712 020)", async () => {
   const server = startServer(0);
   try {
@@ -526,6 +554,7 @@ test("PUT validation rejects bad shapes", async () => {
       [{ alwaysEnableEffort: "on" }, "alwaysEnableEffort must be a boolean"],
       [{ autoContext: "on" }, "autoContext must be a boolean"],
       [{ injectAgents: "on" }, "injectAgents must be a boolean"],
+      [{ agentRouting: "random" }, 'agentRouting must be "pinned" or "dynamic"'],
       [{ blockedSkills: "claude-api" }, "blockedSkills must be an array of non-empty strings, or null"],
       [{ blockedSkills: [""] }, "blockedSkills must be an array of non-empty strings, or null"],
       [{ blockedSkills: [1] }, "blockedSkills must be an array of non-empty strings, or null"],

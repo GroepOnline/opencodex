@@ -32,8 +32,10 @@ let testWindow: Window;
 let root: Root | undefined;
 let host: HTMLDivElement;
 let poll: (() => void) | undefined;
+let healthPoll: (() => void) | undefined;
 let usageReply: () => Promise<Response>;
 let logsReply: () => Promise<Response>;
+let healthReply: () => Promise<Response>;
 let Dashboard: typeof import("../src/pages/Dashboard").default;
 let sequence = 0;
 const labels = ["tokens (30d)", "requests (30d)", "requests today"];
@@ -43,6 +45,17 @@ function usage(requests = 0, totalTokens = 0, today = 0) {
     summary: { requests, totalTokens, p95LatencyMs: 0, p95TtftMs: 0 },
     days: today ? [{ date: localCalendarDayKey(), requests: today }] : [],
     providers: [],
+  };
+}
+
+function healthOk() {
+  return {
+    status: "ok",
+    service: "opencodex",
+    version: "test",
+    uptime: 1,
+    pid: 1,
+    port: 1,
   };
 }
 
@@ -82,21 +95,15 @@ beforeEach(async () => {
   testWindow.localStorage.setItem("ocx-lang", "en");
   root = undefined;
   poll = undefined;
+  healthPoll = undefined;
   host = document.createElement("div");
   document.body.append(host);
   usageReply = async () => Response.json(usage());
   logsReply = async () => Response.json([]);
+  healthReply = async () => Response.json(healthOk());
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = String(input);
-    if (url.endsWith("/healthz"))
-      return Response.json({
-        status: "ok",
-        service: "opencodex",
-        version: "test",
-        uptime: 1,
-        pid: 1,
-        port: 1,
-      });
+    if (url.endsWith("/healthz")) return healthReply();
     if (url.endsWith("/api/usage?range=30d")) return usageReply();
     if (url.endsWith("/api/logs")) return logsReply();
     throw new Error(`Unexpected dashboard request: ${url}`);
@@ -106,6 +113,7 @@ beforeEach(async () => {
     // Exercise the real polling callback without waiting thirty seconds or
     // replacing timers globally with an accelerated fake clock.
     if (delay === 30_000) poll = callback;
+    if (delay === 15_000) healthPoll = callback;
     return originalSetInterval(callback, delay);
   }) as typeof setInterval;
   // Dashboard now renders real Base UI buttons. Its dependency graph must load
@@ -228,5 +236,20 @@ describe("Dashboard observed data states", () => {
     expect(values()).toEqual(["0", "0", "0"]);
     expect(host.textContent).not.toContain("Could not load usage data.");
     expect(host.textContent).not.toContain("Could not load traffic.");
+  });
+
+  test("a failed health poll reports the proxy offline instead of keeping last-known online", async () => {
+    await mount();
+    expect(healthPoll).toBeDefined();
+    expect(host.textContent).toContain("Online");
+    expect(host.textContent).not.toContain("Offline");
+    healthReply = async () => {
+      throw new TypeError("Failed to fetch");
+    };
+    await act(async () => {
+      healthPoll!();
+    });
+    expect(host.textContent).toContain("Offline");
+    expect(host.textContent).not.toContain("Online");
   });
 });

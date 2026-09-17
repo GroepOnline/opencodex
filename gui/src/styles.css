@@ -379,6 +379,12 @@ p {
   gap: 16px;
   margin-bottom: 6px;
 }
+.page-head-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .page-head h2 {
   font-size: var(--text-title);
   font-weight: var(--weight-medium);

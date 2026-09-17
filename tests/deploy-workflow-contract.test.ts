@@ -271,6 +271,36 @@ describe("digest deploy workflow contract", () => {
     );
   });
 
+  test("health gate binds the visible runtime version and gitSha to the release tag and records deployment evidence", async () => {
+    const workflow = await deployWorkflow();
+    const health = (await deploySteps()).find((step) => step.id === "health");
+    expect(health).toBeDefined();
+    expect(health!.env).toMatchObject({
+      TAG_SHA: "${{ steps.verify.outputs.tag_sha }}",
+      TAG_NAME: "${{ steps.ref.outputs.tag }}",
+      PINNED_IMAGE: "${{ steps.image.outputs.ref }}",
+    });
+    const run = health!.run ?? "";
+    expect(run).toContain('TAG_VERSION="${TAG_NAME#v}"');
+    // /healthz.version is what the GUI shows top-left; it must equal the tag.
+    expect(run).toContain(
+      'b.get("gitSha") == os.environ["TAG_SHA"] and b.get("version") == os.environ["TAG_VERSION"]',
+    );
+    expect(run).toContain("### OpenCodex deployment");
+    expect(run).toContain("- release tag: \\`${TAG_NAME}\\`");
+    expect(run).toContain("- source sha: \\`${TAG_SHA}\\`");
+    expect(run).toContain("- image: \\`${PINNED_IMAGE}\\`");
+    expect(run).toContain('>> "$GITHUB_STEP_SUMMARY"');
+    expect(run).toContain("version+gitSha-verified healthy within 60s");
+    expect(run).not.toContain("${{");
+    // Rollback still verifies the previous runtime, not the new tag's version.
+    const rollback = workflow.slice(
+      workflow.indexOf("- name: Rollback on failure"),
+      workflow.indexOf("- name: Log out of GHCR"),
+    );
+    expect(rollback).not.toContain("TAG_VERSION");
+  });
+
   test("previous digest fallback inspects the running image, not the container", async () => {
     const workflow = await deployWorkflow();
     expect(workflow).toContain("docker inspect --format='{{.Image}}'");

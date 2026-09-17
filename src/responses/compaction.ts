@@ -17,16 +17,16 @@
 
 export const OCX_COMPACTION_PREFIX = "ocx1:";
 
-/** Mirrors codex-rs core/templates/compact/prompt.md (the local-compaction instruction). */
-export const COMPACT_PROMPT = `You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task.
+/** Provider-neutral continuation prompt, based on codex-rs local compaction semantics. */
+export const COMPACT_PROMPT = `Create a factual CONTEXT CHECKPOINT COMPACTION for a model that will resume this task without the earlier conversation.
 
-Include:
-- Current progress and key decisions made
-- Important context, constraints, or user preferences
-- What remains to be done (clear next steps)
-- Any critical data, examples, or references needed to continue
+Preserve:
+- the user's current goal, constraints, preferences, and explicit approvals or prohibitions;
+- completed work and key decisions, including why rejected alternatives were not chosen;
+- exact technical state needed to continue: files, symbols, commands, errors, test results, identifiers, and relevant data;
+- What remains to be done: unresolved issues, uncertainty, external blockers, and the next concrete steps.
 
-Be concise, structured, and focused on helping the next LLM seamlessly continue the work.`;
+Distinguish observed facts from inference. Do not claim unfinished work is complete, invent missing details, expose secrets, or include hidden reasoning. Keep the summary self-contained, structured, concise, and detailed enough to continue safely without repeating completed work.`;
 
 /** Mirrors codex-rs core/templates/compact/summary_prefix.md (framing for a replayed summary). */
 export const SUMMARY_PREFIX = "Another language model started to solve this problem and produced a summary of its thinking process. You also have access to the state of the tools that were used by that language model. Use this to build on the work that has already been done and avoid duplicating work. Here is the summary produced by the other language model, use the information in this summary to assist with your own analysis:";
