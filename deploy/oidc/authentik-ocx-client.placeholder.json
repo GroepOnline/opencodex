@@ -1,0 +1,32 @@
+{
+  "status": "greenfield",
+  "authority": "GroepOnline/chefgroep-auth",
+  "catalog_owner": "ChefFactory (do not register this client from opencodex)",
+  "application": {
+    "slug": "ocx",
+    "name": "OpenCodex",
+    "client_type": "confidential",
+    "client_id": "<issued-by-chefgroep-auth>",
+    "client_secret": null,
+    "issuer": "https://auth.chefgroep.online/application/o/ocx/",
+    "token_endpoint_auth_method": "client_secret_basic",
+    "grant_types": ["authorization_code", "refresh_token"],
+    "scopes": ["openid", "profile", "email"],
+    "redirect_uris": [
+      "http://127.0.0.1:10100/oauth/callback",
+      "http://localhost:10100/oauth/callback",
+      "https://ocx.chefgroep.online/oauth/callback"
+    ],
+    "post_logout_redirect_uris": [
+      "http://127.0.0.1:10100/",
+      "http://localhost:10100/",
+      "https://ocx.chefgroep.online/"
+    ]
+  },
+  "notes": [
+    "Authentik product gate is still greenfield. This file is the consumer contract only.",
+    "Client secrets are issued by ChefGroep Auth and stored in OIDC_CLIENT_SECRET_FILE, never git.",
+    "The proxy does not verify Authentik tokens yet. Live public-host gate remains Cloudflare Access.",
+    "Do not apply Cloudflare DNS or mutate ChefFactory catalogs from this repository."
+  ]
+}

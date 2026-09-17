@@ -1,6 +1,11 @@
 [Unit]
 Description=OpenCodex proxy (Docker Compose)
 Documentation=https://github.com/GroepOnline/opencodex
+# Live place lock (docs only — this unit does not embed a version or digest):
+#   version 1.4.2 / source SHA 529bb6a9c0ab2650f883e88c9373002ed1eb14f7
+#   image pin is OPENCODEX_IMAGE in EnvironmentFile (immutable digest)
+#   health: GET :10100/healthz on loopback and the host Tailscale IPv4
+# Do not retarget the pin from a docs or local/dev change.
 After=docker.service network-online.target tailscaled.service
 Requires=docker.service
 Wants=network-online.target tailscaled.service
