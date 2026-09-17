@@ -32,6 +32,10 @@ Source development requires the `bun` CLI on your `PATH`. The published npm pack
 Bun runtime for end users, but contributor commands such as `bun install`, `bun run test`, and
 `bun run prepush` run from your local Bun installation.
 
+The production proxy path (Compose + systemd + `:10100/healthz`) has a complete local/dev
+mirror: repo-root `compose.yml`, `.devcontainer/`, `.env.example`, and
+`bash scripts/healthz-smoke.sh`. See [`deploy/container/README.md`](./deploy/container/README.md).
+
 ## Git hooks
 
 `bun install` runs Husky via the `prepare` script and installs committed hooks from

@@ -75,4 +75,5 @@ Pods/
 # Local env
 .env.local
 .env.*.local
+deploy/container/.secrets/
 package-lock.json
