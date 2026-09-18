@@ -6,7 +6,7 @@
     "slug": "ocx",
     "name": "OpenCodex",
     "client_type": "confidential",
-    "client_id": "<issued-by-chefgroep-auth>",
+    "client_id": "chefgroep-ocx-oidc",
     "client_secret": null,
     "issuer": "https://auth.chefgroep.online/application/o/ocx/",
     "token_endpoint_auth_method": "client_secret_basic",
@@ -24,9 +24,10 @@
     ]
   },
   "notes": [
-    "Authentik product gate is still greenfield. This file is the consumer contract only.",
-    "Client secrets are issued by ChefGroep Auth and stored in OIDC_CLIENT_SECRET_FILE, never git.",
-    "The proxy does not verify Authentik tokens yet. Live public-host gate remains Cloudflare Access.",
-    "Do not apply Cloudflare DNS or mutate ChefFactory catalogs from this repository."
+    "Public issuer APPLY DONE 2026-09-18: discovery/JWKS 200, authorize 302 at https://auth.chefgroep.online/application/o/ocx/. This is not DNS HOLD.",
+    "Live greenfield client_id is chefgroep-ocx-oidc (Infra smoke + Cloudflare Access IdP). client_secret stays null / file-only.",
+    "This file is the consumer contract only. Do not register this client in ChefFactory catalogs from this repository.",
+    "The proxy does not verify Authentik tokens yet. Cloudflare Access remains the live public-host dashboard gate until product token verify lands.",
+    "Do not apply Cloudflare DNS from this repository."
   ]
 }

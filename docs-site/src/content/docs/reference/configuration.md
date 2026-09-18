@@ -347,9 +347,13 @@ pass `OPENCODEX_API_AUTH_TOKEN` directly.
 Local/dev uses the same image contract via repo-root `compose.yml` (loopback `:10100` only; no
 Tailscale bind). Copy `.env.example` and run `bash scripts/healthz-smoke.sh` against
 `http://127.0.0.1:10100/healthz`. Optional `OIDC_*` variables and
-`deploy/oidc/authentik-ocx-client.placeholder.json` are Authentik client placeholders — the
-runtime does not verify those tokens yet. Never commit a client secret; use
-`OIDC_CLIENT_SECRET_FILE`. See `deploy/container/README.md`.
+`deploy/oidc/authentik-ocx-client.placeholder.json` are Authentik client placeholders
+(`client_id` `chefgroep-ocx-oidc`). The public issuer at
+`https://auth.chefgroep.online/application/o/ocx/` is APPLY DONE 2026-09-18
+(discovery/JWKS 200, authorize 302) and is not DNS HOLD. The runtime does not
+verify those tokens yet; Cloudflare Access remains the live public-host
+dashboard gate until product token verify lands. Never commit a client secret;
+use `OIDC_CLIENT_SECRET_FILE`. See `deploy/container/README.md`.
 
 Under `read_only: true` the only writable paths are the `/var/lib/opencodex` volume (`OPENCODEX_HOME`)
 and the `/tmp` tmpfs. A clean image ships no Codex install, so Codex-config injection is skipped and

@@ -529,7 +529,9 @@ mirrors that path:
 | Health smoke  | `bash scripts/healthz-smoke.sh` → `http://127.0.0.1:10100/healthz` |
 
 Operator notes, the live `1.4.2` / `529bb6a9` place lock, and Authentik OIDC
-placeholders are in [`deploy/container/README.md`](./deploy/container/README.md).
+placeholders (`chefgroep-ocx-oidc`; issuer APPLY DONE 2026-09-18) are in
+[`deploy/container/README.md`](./deploy/container/README.md). Cloudflare Access
+remains the live public-host gate until product token verify lands.
 
 `bun run dev:preview` starts the proxy and dashboard together: the dashboard binds to
 `PORT`/`0.0.0.0`, while the proxy stays on an internal loopback port and the Vite dev proxy forwards

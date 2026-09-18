@@ -12,7 +12,10 @@ All notable changes to the GroepOnline `opencodex` fork. Format follows
 - Local/dev Compose, Dev Container, `.env.example`, and `scripts/healthz-smoke.sh`
   for the production `:10100/healthz` proxy path.
 - Authentik OIDC client placeholders (local + `ocx.chefgroep.online` redirects).
-  No client secrets in git; the runtime does not verify Authentik tokens yet.
+  Live greenfield `client_id` is `chefgroep-ocx-oidc`. Public issuer
+  `auth.chefgroep.online` is APPLY DONE 2026-09-18 (discovery/JWKS 200,
+  authorize 302). No client secrets in git. The runtime does not verify
+  Authentik tokens yet; Cloudflare Access remains the live public-host gate.
 
 ## [1.4.2] — 2026-09-08
 

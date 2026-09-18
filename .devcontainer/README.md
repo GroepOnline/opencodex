@@ -12,7 +12,8 @@ identity-checked `GET /healthz`.
   the first-party image and publishes `127.0.0.1:10100`.
 
 Open the folder in a Dev Container, or run the compose path from a host that
-has Docker. Operator notes, the live pin, and Authentik placeholders live in
+has Docker. Operator notes, the live pin, and Authentik placeholders
+(`chefgroep-ocx-oidc`; issuer APPLY DONE 2026-09-18) live in
 [`deploy/container/README.md`](../deploy/container/README.md).
 
 ## After create

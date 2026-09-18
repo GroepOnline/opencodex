@@ -109,9 +109,12 @@ describe("local/dev complete path", () => {
 
   test(".env.example and OIDC placeholder carry redirects and no secrets", async () => {
     const envExample = await readRepo(".env.example");
-    expect(envExample).toContain("OIDC_ISSUER=");
-    expect(envExample).toContain("OIDC_CLIENT_ID=");
+    expect(envExample).toContain(
+      "OIDC_ISSUER=https://auth.chefgroep.online/application/o/ocx/",
+    );
+    expect(envExample).toContain("OIDC_CLIENT_ID=chefgroep-ocx-oidc");
     expect(envExample).toContain("OIDC_CLIENT_SECRET_FILE=");
+    expect(envExample).toContain("APPLY DONE 2026-09-18");
     expect(envExample).toContain(
       "OIDC_REDIRECT_URI=http://127.0.0.1:10100/oauth/callback",
     );
@@ -125,16 +128,26 @@ describe("local/dev complete path", () => {
       await readRepo("deploy/oidc/authentik-ocx-client.placeholder.json"),
     ) as {
       status: string;
+      notes: string[];
       application: {
         client_secret: unknown;
         client_id: string;
+        issuer: string;
         redirect_uris: string[];
         post_logout_redirect_uris: string[];
       };
     };
     expect(oidc.status).toBe("greenfield");
     expect(oidc.application.client_secret).toBeNull();
-    expect(oidc.application.client_id).toBe("<issued-by-chefgroep-auth>");
+    expect(oidc.application.client_id).toBe("chefgroep-ocx-oidc");
+    expect(oidc.application.issuer).toBe(
+      "https://auth.chefgroep.online/application/o/ocx/",
+    );
+    expect(oidc.notes.join("\n")).toContain("APPLY DONE 2026-09-18");
+    expect(oidc.notes.join("\n")).toContain("not DNS HOLD");
+    expect(oidc.notes.join("\n")).toContain(
+      "Cloudflare Access remains the live public-host dashboard gate",
+    );
     expect(oidc.application.redirect_uris).toEqual([
       "http://127.0.0.1:10100/oauth/callback",
       "http://localhost:10100/oauth/callback",
@@ -142,6 +155,16 @@ describe("local/dev complete path", () => {
     ]);
     expect(oidc.application.post_logout_redirect_uris).toContain(
       "https://ocx.chefgroep.online/",
+    );
+
+    const operatorNotes = await readRepo("deploy/container/README.md");
+    expect(operatorNotes).toContain("APPLY DONE 2026-09-18");
+    expect(operatorNotes).toContain("chefgroep-ocx-oidc");
+    expect(operatorNotes).toContain("Cloudflare Access remains the live");
+    expect(operatorNotes).toMatch(/\*\*not\*\* DNS HOLD/);
+    expect(operatorNotes).toContain("Do not deploy this PR to bc-scan-2");
+    expect(operatorNotes).not.toMatch(
+      /Authentik product gate is greenfield: no live issuer/,
     );
   });
 
