@@ -1,6 +1,21 @@
+# Local/dev compose for the same proxy/app path as prod (:10100 /healthz).
+# Production (digest + Tailscale bind) stays in deploy/container/compose.example.yml
+# and is started by deploy/container/opencodex-proxy.service — do not point this
+# file at the live place lock.
+#
+#   cp .env.example .env
+#   mkdir -p deploy/container/.secrets .tmp/opencodex-state
+#   umask 077 && python3 -c 'import secrets; print(secrets.token_hex(16))' > deploy/container/.secrets/api-token
+#   docker compose up -d --build
+#   bash scripts/healthz-smoke.sh
 services:
   opencodex:
-    image: ${OPENCODEX_IMAGE:?pin an immutable image digest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VCS_REF: ${OPENCODEX_GIT_SHA:-dev}
+        VERSION: ${OPENCODEX_VERSION:-1.4.2}
     restart: unless-stopped
     read_only: true
     environment:
@@ -9,22 +24,22 @@ services:
       OPENCODEX_HEALTH_HOST: 127.0.0.1
       OPENCODEX_HEALTH_PORT: "10100"
       OPENCODEX_API_AUTH_TOKEN_FILE: /run/secrets/opencodex_api_token
+      OPENCODEX_GIT_SHA: ${OPENCODEX_GIT_SHA:-dev}
       CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
       CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
       CF_ACCESS_ALLOWED_HOSTS: ${CF_ACCESS_ALLOWED_HOSTS:-}
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET_FILE: ${OIDC_CLIENT_SECRET_FILE:-}
-      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-http://127.0.0.1:10100/oauth/callback}
     secrets:
       - opencodex_api_token
     volumes:
-      - ${OPENCODEX_STATE_DIR:-/opt/chef/state/opencodex}:/var/lib/opencodex
+      - ${OPENCODEX_STATE_DIR:-./.tmp/opencodex-state}:/var/lib/opencodex
     tmpfs:
       - /tmp:rw,nosuid,nodev,noexec,size=256m,uid=1000,gid=1000
     ports:
       - "127.0.0.1:10100:10100"
-      - "${OPENCODEX_BIND_IP:?set the host Tailscale IPv4}:10100:10100"
     cap_drop:
       - ALL
     security_opt:
