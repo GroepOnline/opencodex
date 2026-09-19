@@ -744,7 +744,7 @@ export function startServer(port?: number) {
         // Model discovery never forwards Authorization upstream, so the broader admission
         // set (Authorization / x-api-key / x-opencodex-api-key) is safe here and required by
         // remote OpenAI-style bearer clients and Claude gateway discovery (anthropic-version).
-        const apiAuthError = requireApiAuth(req, config, "data-plane");
+        const apiAuthError = requireApiAuth(req, config);
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
@@ -1000,7 +1000,7 @@ export function startServer(port?: number) {
         const imagesGate = admission.gate("images", req, requestServer);
         if (imagesGate.preAuthDeny)
           return withCors(imagesGate.preAuthDeny, req, config);
-        const apiAuthError = requireApiAuth(req, config, "data-plane");
+        const apiAuthError = requireApiAuth(req, config);
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
@@ -1041,7 +1041,7 @@ export function startServer(port?: number) {
         req.method === "GET" &&
         url.pathname.startsWith("/v1/opencodex/artifacts/")
       ) {
-        const apiAuthError = requireApiAuth(req, config, "data-plane");
+        const apiAuthError = requireApiAuth(req, config);
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
@@ -1100,7 +1100,7 @@ export function startServer(port?: number) {
         const searchGate = admission.gate("search", req, requestServer);
         if (searchGate.preAuthDeny)
           return withCors(searchGate.preAuthDeny, req, config);
-        const apiAuthError = requireApiAuth(req, config, "data-plane");
+        const apiAuthError = requireApiAuth(req, config);
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
@@ -1397,7 +1397,7 @@ export function startServer(port?: number) {
         const liveGate = admission.gate("live", req, requestServer);
         if (liveGate.preAuthDeny)
           return withCors(liveGate.preAuthDeny, req, config);
-        const apiAuthError = requireApiAuth(req, config, "data-plane");
+        const apiAuthError = requireApiAuth(req, config);
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
@@ -1448,7 +1448,7 @@ export function startServer(port?: number) {
         const sidebandGate = admission.gate("live", req, requestServer);
         if (sidebandGate.preAuthDeny)
           return withCors(sidebandGate.preAuthDeny, req, config);
-        const apiAuthError = requireApiAuth(req, config, "data-plane");
+        const apiAuthError = requireApiAuth(req, config);
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(

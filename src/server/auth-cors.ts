@@ -429,7 +429,6 @@ function extractDataPlaneAdmissionToken(req: Request): string | undefined {
 export function requireApiAuth(
   req: Request,
   config: OcxConfig,
-  _kind: "data-plane",
 ): Response | null {
   if (hasValidApiAuth(req, config)) return null;
   return formatErrorResponse(

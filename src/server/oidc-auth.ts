@@ -308,6 +308,76 @@ function identityFromPayload(payload: {
   return { email: emailRaw.toLowerCase(), sub };
 }
 
+type OidcJwtHeader = { alg?: string; kid?: string };
+type OidcJwtPayload = {
+  aud?: unknown;
+  iss?: string;
+  exp?: number;
+  nonce?: string;
+  email?: unknown;
+  preferred_username?: unknown;
+  sub?: unknown;
+};
+
+function parseOidcJwt(token: string): {
+  headerB64: string;
+  payloadB64: string;
+  signatureB64: string;
+  header: OidcJwtHeader;
+  payload: OidcJwtPayload;
+} | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [headerB64, payloadB64, signatureB64] = parts;
+  try {
+    return {
+      headerB64,
+      payloadB64,
+      signatureB64,
+      header: decodeJwtPart(headerB64) as OidcJwtHeader,
+      payload: decodeJwtPart(payloadB64) as OidcJwtPayload,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function oidcClaimsMatch(
+  payload: OidcJwtPayload,
+  issuer: string,
+  clientId: string,
+  expectedNonce?: string,
+): boolean {
+  if (typeof payload.exp !== "number" || payload.exp * 1000 <= Date.now()) {
+    return false;
+  }
+  if (!issuerEquals(payload.iss, issuer)) return false;
+  if (!audMatches(payload.aud, clientId)) return false;
+  if (expectedNonce && payload.nonce !== expectedNonce) return false;
+  return true;
+}
+
+async function verifyRs256Signature(
+  headerB64: string,
+  payloadB64: string,
+  signatureB64: string,
+  kid: string,
+): Promise<boolean> {
+  const keys = await loadJwks();
+  const jwk = keys.find((key) => key.kid === kid);
+  if (!jwk) return false;
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
+  const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
+  const signature = Buffer.from(signatureB64, "base64url");
+  return crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature, data);
+}
+
 export async function verifyOidcIdToken(
   token: string,
   expectedNonce?: string,
@@ -316,54 +386,22 @@ export async function verifyOidcIdToken(
   const clientId = oidcClientId();
   if (!issuer || !clientId) return null;
 
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const [headerB64, payloadB64, signatureB64] = parts;
-
-  let header: { alg?: string; kid?: string };
-  let payload: {
-    aud?: unknown;
-    iss?: string;
-    exp?: number;
-    nonce?: string;
-    email?: unknown;
-    preferred_username?: unknown;
-    sub?: unknown;
-  };
-  try {
-    header = decodeJwtPart(headerB64) as typeof header;
-    payload = decodeJwtPart(payloadB64) as typeof payload;
-  } catch {
+  const parsed = parseOidcJwt(token);
+  if (!parsed || parsed.header.alg !== "RS256" || !parsed.header.kid) {
     return null;
   }
-  if (header.alg !== "RS256" || !header.kid) return null;
-  if (typeof payload.exp !== "number" || payload.exp * 1000 <= Date.now()) {
+  if (!oidcClaimsMatch(parsed.payload, issuer, clientId, expectedNonce)) {
     return null;
   }
-  if (!issuerEquals(payload.iss, issuer)) return null;
-  if (!audMatches(payload.aud, clientId)) return null;
-  if (expectedNonce && payload.nonce !== expectedNonce) return null;
-  const identity = identityFromPayload(payload);
+  const identity = identityFromPayload(parsed.payload);
   if (!identity) return null;
 
   try {
-    const keys = await loadJwks();
-    const jwk = keys.find((key) => key.kid === header.kid);
-    if (!jwk) return null;
-    const key = await crypto.subtle.importKey(
-      "jwk",
-      jwk,
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-      false,
-      ["verify"],
-    );
-    const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
-    const signature = Buffer.from(signatureB64, "base64url");
-    const ok = await crypto.subtle.verify(
-      "RSASSA-PKCS1-v1_5",
-      key,
-      signature,
-      data,
+    const ok = await verifyRs256Signature(
+      parsed.headerB64,
+      parsed.payloadB64,
+      parsed.signatureB64,
+      parsed.header.kid,
     );
     return ok ? identity : null;
   } catch (error) {
