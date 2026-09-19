@@ -71,8 +71,9 @@ if [ -n "${OPENCODEX_OIDC_CANARY_URL:-}" ]; then
     echo "oidc-authorize-canary: $LOGIN unreachable" >&2
     exit 1
   }
+  OIDC_CANARY_LOGIN_HEADERS="$(cat "$HEADERS")"
   export OIDC_CANARY_LOGIN_STATUS="$STATUS"
-  export OIDC_CANARY_LOGIN_HEADERS="$(cat "$HEADERS")"
+  export OIDC_CANARY_LOGIN_HEADERS
   export OIDC_CANARY_LOGIN_URL="$LOGIN"
   python3 - <<'PY'
 import os, sys

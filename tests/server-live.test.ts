@@ -552,7 +552,7 @@ test("sideband terminal logging follows the actual upgrade outcome", () => {
   expect(start).toBeGreaterThanOrEqual(0);
   expect(end).toBeGreaterThan(start);
   const block = source.slice(start, end);
-  const upgrade = block.indexOf("if (server.upgrade(req, {");
+  const upgrade = block.indexOf("server.upgrade(req, {");
   const accepted = block.indexOf(
     "addFinalRequestLog(requestId, start, logCtx, 101);",
     upgrade,

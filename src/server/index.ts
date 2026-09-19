@@ -65,11 +65,7 @@ import {
   unregisterCodexWebSocket,
   updateCodexWebSocketAuthContext,
 } from "../codex/websocket-registry";
-import {
-  resolveGuiFilePath,
-  rootFallbackPayload,
-  serveGuiFile,
-} from "./gui-static";
+import { rootFallbackPayload, serveGuiFile } from "./gui-static";
 export { resolveGuiFilePath, rootFallbackPayload } from "./gui-static";
 export { resolveAdapter } from "./adapter-resolve";
 import { formatErrorResponse, type ResponsesTerminalStatus } from "../bridge";
