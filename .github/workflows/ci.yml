@@ -63,8 +63,8 @@ jobs:
       matrix:
         include:
           ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v'))
-          && fromJSON('[{"name":"ubuntu-latest","os":"ubuntu-latest","run_tests":true,"run_quality":true,"run_typecheck":true,"shard_index":0,"shard_count":1},{"name":"macos-latest","os":"macos-latest","run_tests":true,"run_quality":false,"run_typecheck":true,"shard_index":0,"shard_count":1},{"name":"macos-quality","os":"macos-latest","run_tests":false,"run_quality":true,"run_typecheck":false,"shard_index":0,"shard_count":1},{"name":"windows-latest","os":"windows-latest","run_tests":true,"run_quality":false,"run_typecheck":true,"shard_index":0,"shard_count":2},{"name":"windows-latest shard 2/2","os":"windows-latest","run_tests":true,"run_quality":false,"run_typecheck":false,"shard_index":1,"shard_count":2},{"name":"windows-quality","os":"windows-latest","run_tests":false,"run_quality":true,"run_typecheck":false,"shard_index":0,"shard_count":1}]')
-          || fromJSON('[{"name":"ubuntu-latest","os":"ubuntu-latest","run_tests":true,"run_quality":true,"run_typecheck":true,"shard_index":0,"shard_count":1}]') }}
+          && fromJSON('[{"name":"ubuntu-latest","os":["self-hosted","Linux","X64","opencodex"],"run_tests":true,"run_quality":true,"run_typecheck":true,"shard_index":0,"shard_count":1},{"name":"macos-latest","os":"macos-latest","run_tests":true,"run_quality":false,"run_typecheck":true,"shard_index":0,"shard_count":1},{"name":"macos-quality","os":"macos-latest","run_tests":false,"run_quality":true,"run_typecheck":false,"shard_index":0,"shard_count":1},{"name":"windows-latest","os":"windows-latest","run_tests":true,"run_quality":false,"run_typecheck":true,"shard_index":0,"shard_count":2},{"name":"windows-latest shard 2/2","os":"windows-latest","run_tests":true,"run_quality":false,"run_typecheck":false,"shard_index":1,"shard_count":2},{"name":"windows-quality","os":"windows-latest","run_tests":false,"run_quality":true,"run_typecheck":false,"shard_index":0,"shard_count":1}]')
+          || fromJSON('[{"name":"ubuntu-latest","os":["self-hosted","Linux","X64","opencodex"],"run_tests":true,"run_quality":true,"run_typecheck":true,"shard_index":0,"shard_count":1}]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -167,14 +167,14 @@ jobs:
         run: bun run src/cli/index.ts help
 
   npm-global-smoke:
-    name: npm-global ${{ matrix.os }}
+    name: npm-global ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 8
     # Match the runtime matrix: manual pre-release checks and tags cover every OS.
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) && fromJSON('["ubuntu-latest", "windows-latest", "macos-latest"]') || fromJSON('["ubuntu-latest"]') }}
+        include: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) && fromJSON('[{"platform":"opencodex","os":["self-hosted","Linux","X64","opencodex"]},{"platform":"windows-latest","os":"windows-latest"},{"platform":"macos-latest","os":"macos-latest"}]') || fromJSON('[{"platform":"opencodex","os":["self-hosted","Linux","X64","opencodex"]}]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -208,7 +208,7 @@ jobs:
 
   security:
     name: Security audit
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, opencodex]
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -282,7 +282,7 @@ jobs:
 
   lint-github-actions:
     name: Lint GitHub Actions
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, opencodex]
     timeout-minutes: 3
     steps:
       - name: Checkout
