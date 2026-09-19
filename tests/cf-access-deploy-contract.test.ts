@@ -18,6 +18,7 @@ describe("Cloudflare Access container deploy contract", () => {
     expect(compose).toContain(
       "OIDC_CLIENT_SECRET_FILE: ${OIDC_CLIENT_SECRET_FILE:-}",
     );
+    expect(compose).toContain("OIDC_ALLOWED_HOSTS: ${OIDC_ALLOWED_HOSTS:-}");
   });
 
   test("digest deploy and rollback write the trusted OCX Access identity from secrets", async () => {

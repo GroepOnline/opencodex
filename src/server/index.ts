@@ -25,14 +25,24 @@ import { invalidateCodexModelsCache } from "../codex/catalog";
 import { startMemoryWatchdog } from "./memory-watchdog";
 import { setStorageCleanupPolicyLiveSink } from "../storage/policy";
 import { setStorageCleanupPolicyJobLiveApply } from "../storage/policy-job";
-import { scheduleStorageCleanupStartupRun, startStorageCleanupScheduler } from "../storage/policy-scheduler";
+import {
+  scheduleStorageCleanupStartupRun,
+  startStorageCleanupScheduler,
+} from "../storage/policy-scheduler";
 import { runOpenAiTierStartupMigration } from "../providers/openai-tier-startup";
 import { runAlibabaRegionStartupMigration } from "../providers/alibaba-region-startup";
-import { installResponseCache, probeResponseCache, type CacheHit } from "../cache/response-cache-middleware";
+import {
+  installResponseCache,
+  probeResponseCache,
+  type CacheHit,
+} from "../cache/response-cache-middleware";
 import { installAutoRouterLatencyHistory } from "../availability/chain";
 import { p50DurationForModel } from "../usage/latency-history";
 import { isCanonicalOpenAiForwardProvider } from "../providers/openai-tiers";
-import { providerCodexAccountMode, setCodexAccountPoolsEnabled } from "../providers/registry";
+import {
+  providerCodexAccountMode,
+  setCodexAccountPoolsEnabled,
+} from "../providers/registry";
 import type { StorageCleanupPolicy } from "../types";
 import {
   activeProviderCooldowns,
@@ -50,8 +60,16 @@ export {
   resolveCodexAccountForThread,
 } from "../codex/routing";
 import { formatCodexProviderForLog } from "../codex/routing";
-import { registerCodexWebSocket, unregisterCodexWebSocket, updateCodexWebSocketAuthContext } from "../codex/websocket-registry";
-import { resolveGuiFilePath, rootFallbackPayload, serveGuiFile } from "./gui-static";
+import {
+  registerCodexWebSocket,
+  unregisterCodexWebSocket,
+  updateCodexWebSocketAuthContext,
+} from "../codex/websocket-registry";
+import {
+  resolveGuiFilePath,
+  rootFallbackPayload,
+  serveGuiFile,
+} from "./gui-static";
 export { resolveGuiFilePath, rootFallbackPayload } from "./gui-static";
 export { resolveAdapter } from "./adapter-resolve";
 import { formatErrorResponse, type ResponsesTerminalStatus } from "../bridge";
@@ -143,20 +161,45 @@ export {
   jsonResponse,
   safeConfigDTO,
 } from "./auth-cors";
-import { disableResponsesRequestTimeout, handleResponses, handleResponsesCompact } from "./responses";
+import {
+  disableResponsesRequestTimeout,
+  handleResponses,
+  handleResponsesCompact,
+} from "./responses";
 export { disableResponsesRequestTimeout, linkAbortSignal } from "./responses";
-import { handleClaudeCountTokens, handleClaudeMessages } from "./claude-messages";
+import {
+  handleClaudeCountTokens,
+  handleClaudeMessages,
+} from "./claude-messages";
 import { handleChatCompletions } from "./chat-completions";
 import { anthropicErrorResponse } from "../claude/outbound";
-import { buildDesktop3pRegistry, readAppliedDesktop3pLibrary } from "../claude/desktop-3p";
+import {
+  buildDesktop3pRegistry,
+  readAppliedDesktop3pLibrary,
+} from "../claude/desktop-3p";
 import { runClaudeAuthModeMigration } from "../claude/auth-mode-migration";
 import { handleImages } from "./images";
-import { handleLive, logLiveSidebandFrame, parseLiveSidebandTarget, resolveLiveSidebandUpgrade } from "./live";
+import {
+  handleLive,
+  logLiveSidebandFrame,
+  parseLiveSidebandTarget,
+  resolveLiveSidebandUpgrade,
+} from "./live";
 import { handleSearch } from "./search";
 import { fetchAllModels, handleManagementAPI, VERSION } from "./management-api";
 import { GIT_SHA } from "./git-sha";
 import { buildProvenanceResponse } from "./management/provenance-routes";
-import { initializeManagementAuthState, issueGuiSession, requireManagementAuth } from "./management-auth";
+import {
+  initializeManagementAuthState,
+  issueGuiSession,
+  requireManagementAuth,
+} from "./management-auth";
+import {
+  handleOidcAuthorize,
+  handleOidcCallback,
+  handleOidcLogout,
+  oidcConfigured,
+} from "./oidc-auth";
 import { runtimeMetrics } from "../observability/metrics";
 import { ensureUsageLogMetricsObserver } from "../observability/usage-log-metrics";
 import { createServerAdmissionControl } from "./rate-limit";
@@ -189,7 +232,11 @@ function logCacheHitRequest(hit: CacheHit): void {
   );
 }
 
-function closeLiveSideband(ws: ServerWebSocket<WsData>, code = 1000, reason = ""): void {
+function closeLiveSideband(
+  ws: ServerWebSocket<WsData>,
+  code = 1000,
+  reason = "",
+): void {
   try {
     ws.data.liveUpstream?.close(code, reason);
   } catch {
@@ -198,7 +245,10 @@ function closeLiveSideband(ws: ServerWebSocket<WsData>, code = 1000, reason = ""
   ws.data.liveUpstream = undefined;
   ws.data.livePending = undefined;
   try {
-    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+    if (
+      ws.readyState === WebSocket.OPEN ||
+      ws.readyState === WebSocket.CONNECTING
+    ) {
       ws.close(code, reason);
     }
   } catch {
@@ -215,7 +265,9 @@ function attachLiveSidebandUpstream(ws: ServerWebSocket<WsData>): void {
   let upstream: WebSocket;
   try {
     // Bun accepts per-handshake headers; the DOM lib types only list protocol arrays.
-    upstream = new WebSocket(url, { headers: ws.data.liveUpstreamHeaders ?? {} } as unknown as string[]);
+    upstream = new WebSocket(url, {
+      headers: ws.data.liveUpstreamHeaders ?? {},
+    } as unknown as string[]);
   } catch {
     closeLiveSideband(ws, 1011, "upstream connect failed");
     return;
@@ -248,7 +300,12 @@ function attachLiveSidebandUpstream(ws: ServerWebSocket<WsData>): void {
       if (typeof event.data === "string") ws.send(event.data);
       else if (event.data instanceof ArrayBuffer) ws.send(event.data);
       else if (ArrayBuffer.isView(event.data)) {
-        ws.send(event.data.buffer.slice(event.data.byteOffset, event.data.byteOffset + event.data.byteLength));
+        ws.send(
+          event.data.buffer.slice(
+            event.data.byteOffset,
+            event.data.byteOffset + event.data.byteLength,
+          ),
+        );
       } else ws.send(event.data as Buffer);
     } catch {
       closeLiveSideband(ws, 1011, "client send failed");
@@ -297,13 +354,18 @@ function attachLiveSidebandUpstream(ws: ServerWebSocket<WsData>): void {
 
 export function startServer(port?: number) {
   initServerSentry();
-  const config = runAlibabaRegionStartupMigration(runOpenAiTierStartupMigration(loadConfig()));
+  const config = runAlibabaRegionStartupMigration(
+    runOpenAiTierStartupMigration(loadConfig()),
+  );
   // Canonicalize an explicit "localhost" bind to IPv4 so it matches the injected base_url (which
   // resolves localhost→127.0.0.1): on Windows `localhost` resolves ::1-first, but the injected URL
   // is 127.0.0.1, so binding literal "localhost" would reintroduce the F4 refusal. Wildcards
   // (0.0.0.0/::) and specific hosts are left untouched so intentional exposure is preserved.
   const configuredHost = effectiveBindHostname(config);
-  const bindHost = !configuredHost || /^localhost$/i.test(configuredHost) ? "127.0.0.1" : configuredHost;
+  const bindHost =
+    !configuredHost || /^localhost$/i.test(configuredHost)
+      ? "127.0.0.1"
+      : configuredHost;
   // Bind the Codex-account-pool master switch so every resolver sees one source of truth.
   // When false, opencodex runs standalone (no ChatGPT account pool / quota windows / history remap).
   setCodexAccountPoolsEnabled(codexAccountPoolsEnabled(config));
@@ -312,7 +374,8 @@ export function startServer(port?: number) {
   // Fase E: wire the auto-router's latency input to the usage log (p50 per provider/model).
   // Cheap: the reader caches aggregates for a minute and only reads the recent tail of usage.jsonl.
   installAutoRouterLatencyHistory({
-    p50DurationMs: (provider, model, sinceMs) => p50DurationForModel(provider, model, sinceMs),
+    p50DurationMs: (provider, model, sinceMs) =>
+      p50DurationForModel(provider, model, sinceMs),
   });
   // Availability mutates THIS live object when it records a cap-cooldown.
   hydrateKeyPoolCooldowns(config);
@@ -334,7 +397,9 @@ export function startServer(port?: number) {
   // scrape. Default-off explicitly clears any stale collector from a prior startServer(0)
   // instance so a disabled server never renders another instance's counters. Snapshots are
   // projected on demand — no per-route refresh, no file I/O.
-  runtimeMetrics.setRateLimitCollector(admission.enabled ? () => admission.snapshot() : null);
+  runtimeMetrics.setRateLimitCollector(
+    admission.enabled ? () => admission.snapshot() : null,
+  );
   // Refresh OAuth provider presets (models/noReasoningModels) from the registry so a proxy update
   // adding/dropping models reaches existing configs on start — not just fresh installs.
   reconcileOAuthProviders(config);
@@ -357,11 +422,17 @@ export function startServer(port?: number) {
     if (Date.now() >= SIDECAR_MIGRATION_CUTOFF) {
       let migrated = false;
       if (config.webSearchSidecar?.model === "gpt-5.4-mini") {
-        config.webSearchSidecar = { ...config.webSearchSidecar, model: "gpt-5.6-luna" };
+        config.webSearchSidecar = {
+          ...config.webSearchSidecar,
+          model: "gpt-5.6-luna",
+        };
         migrated = true;
       }
       if (config.visionSidecar?.model === "gpt-5.4-mini") {
-        config.visionSidecar = { ...config.visionSidecar, model: "gpt-5.6-luna" };
+        config.visionSidecar = {
+          ...config.visionSidecar,
+          model: "gpt-5.6-luna",
+        };
         migrated = true;
       }
       if (migrated) saveConfig(config);
@@ -402,7 +473,11 @@ export function startServer(port?: number) {
   // Codex treats empty / non-JSON 503 bodies as "Unknown error" (#452). Keep Retry-After and
   // the server_is_overloaded code so clients can back off, but always return a JSON envelope.
   function drainingResponse(req: Request): Response {
-    const response = formatErrorResponse(503, "server_error", "Service shutting down");
+    const response = formatErrorResponse(
+      503,
+      "server_error",
+      "Service shutting down",
+    );
     const headers = new Headers(response.headers);
     for (const [name, value] of Object.entries(corsHeaders(req, config))) {
       headers.set(name, value);
@@ -420,7 +495,8 @@ export function startServer(port?: number) {
       markActivity(`${req.method} ${url.pathname}`);
 
       if (req.method === "OPTIONS") {
-        const managementPreflight = url.pathname.startsWith("/api/") || url.pathname === "/metrics";
+        const managementPreflight =
+          url.pathname.startsWith("/api/") || url.pathname === "/metrics";
         const allowed = managementPreflight
           ? isAllowedManagementOrigin(req, config)
           : isAllowedRequestOrigin(req, config);
@@ -429,25 +505,43 @@ export function startServer(port?: number) {
         }
         return new Response(null, {
           status: 204,
-          headers: managementPreflight ? managementCorsHeaders(req, config) : corsHeaders(req, config),
+          headers: managementPreflight
+            ? managementCorsHeaders(req, config)
+            : corsHeaders(req, config),
         });
       }
 
       // Responses WebSocket (phase 120.2). Codex upgrades the same /v1/responses path; auth is
       // handshake-time only, so capture inbound headers and thread them into the pipeline.
-      if (url.pathname === "/v1/responses" && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+      if (
+        url.pathname === "/v1/responses" &&
+        req.headers.get("upgrade")?.toLowerCase() === "websocket"
+      ) {
         if (isDraining()) {
           return drainingResponse(req);
         }
         // WebSocket request rate is charged at handshake time via commit(), which runs only
         // after auth and Origin pass; long-lived stream concurrency is the separate reservation
         // below. Invalid credentials always answer 401 and never touch the limiter.
-        const wsGate = admission.gate("responses-websocket", req, requestServer);
-        if (wsGate.preAuthDeny) return withCors(wsGate.preAuthDeny, req, config);
+        const wsGate = admission.gate(
+          "responses-websocket",
+          req,
+          requestServer,
+        );
+        if (wsGate.preAuthDeny)
+          return withCors(wsGate.preAuthDeny, req, config);
         const apiAuthError = requireResponsesApiAuth(req, config);
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
-          return withCors(formatErrorResponse(403, "origin_rejected", "WebSocket upgrade blocked: non-local Origin"), req, config);
+          return withCors(
+            formatErrorResponse(
+              403,
+              "origin_rejected",
+              "WebSocket upgrade blocked: non-local Origin",
+            ),
+            req,
+            config,
+          );
         }
         // WS transport gate: Codex's built-in `openai` provider hardcodes supports_websockets=true,
         // so under Design B it always tries the WS transport first. When the feature is off, reject
@@ -455,28 +549,74 @@ export function startServer(port?: number) {
         // session-scoped HTTP fallback (client.rs WebsocketStreamOutcome::FallbackToHttp) instead of
         // surfacing broken-pipe errors from sockets a "disabled" feature would otherwise accept.
         if (!websocketsEnabled(config)) {
-          return withCors(formatErrorResponse(426, "upgrade_required", "Responses WebSocket transport is disabled; use HTTP"), req, config);
+          return withCors(
+            formatErrorResponse(
+              426,
+              "upgrade_required",
+              "Responses WebSocket transport is disabled; use HTTP",
+            ),
+            req,
+            config,
+          );
         }
         const wsRateDeny = wsGate.commit();
         if (wsRateDeny) return withCors(wsRateDeny, req, config);
         // Reserve the concurrency slot BEFORE the handshake completes; roll it back when
         // Bun refuses the upgrade so a failed handshake can never strand a reservation.
         const wsReservation = wsGate.reserveConcurrency();
-        if (wsReservation instanceof Response) return withCors(wsReservation, req, config);
-        if (server.upgrade(req, {
-          data: {
-            headers: selectForwardHeaders(req.headers),
-            rateLimitRelease: wsReservation.release,
-          },
-        })) return undefined as unknown as Response;
+        if (wsReservation instanceof Response)
+          return withCors(wsReservation, req, config);
+        if (
+          server.upgrade(req, {
+            data: {
+              headers: selectForwardHeaders(req.headers),
+              rateLimitRelease: wsReservation.release,
+            },
+          })
+        )
+          return undefined as unknown as Response;
         wsReservation.release();
-        return withCors(formatErrorResponse(426, "upgrade_required", "WebSocket upgrade failed"), req, config);
+        return withCors(
+          formatErrorResponse(
+            426,
+            "upgrade_required",
+            "WebSocket upgrade failed",
+          ),
+          req,
+          config,
+        );
       }
 
       if (url.pathname === "/healthz" && req.method === "GET") {
         // service/pid/port let CLI liveness reject foreign 200s and verify pid identity.
         const cooldowns = activeProviderCooldowns(config);
-        return jsonResponse({ status: "ok", service: "opencodex", version: VERSION, gitSha: GIT_SHA, uptime: process.uptime(), pid: process.pid, port: listenPort, providerCooldowns: Object.keys(cooldowns).length }, 200, req, config);
+        return jsonResponse(
+          {
+            status: "ok",
+            service: "opencodex",
+            version: VERSION,
+            gitSha: GIT_SHA,
+            uptime: process.uptime(),
+            pid: process.pid,
+            port: listenPort,
+            providerCooldowns: Object.keys(cooldowns).length,
+          },
+          200,
+          req,
+          config,
+        );
+      }
+
+      // Product Authentik OIDC (authorization-code + PKCE). Unauthenticated on
+      // purpose: this is the sign-in entry. /healthz stays above this block.
+      if (url.pathname === "/oauth/login" && req.method === "GET") {
+        return handleOidcAuthorize(req);
+      }
+      if (url.pathname === "/oauth/callback" && req.method === "GET") {
+        return handleOidcCallback(req);
+      }
+      if (url.pathname === "/oauth/logout" && req.method === "GET") {
+        return handleOidcLogout(req);
       }
 
       // Canonical Prometheus scrape endpoint. Management plane only: it rides the same
@@ -489,83 +629,161 @@ export function startServer(port?: number) {
         // management auth and Origin checks pass. Unauthenticated probes always get 401 and
         // never consume (or mint) limiter state.
         const metricsGate = admission.gate("management", req, requestServer);
-        if (metricsGate.preAuthDeny) return withManagementCors(metricsGate.preAuthDeny, req, config);
-        const apiAuthError = await requireManagementAuth(req, managementAuth, config);
+        if (metricsGate.preAuthDeny)
+          return withManagementCors(metricsGate.preAuthDeny, req, config);
+        const apiAuthError = await requireManagementAuth(
+          req,
+          managementAuth,
+          config,
+        );
         if (apiAuthError) return withManagementCors(apiAuthError, req, config);
         if (!isAllowedManagementOrigin(req, config)) {
-          return withManagementCors(formatErrorResponse(403, "origin_rejected", "cross-origin management request blocked"), req, config);
+          return withManagementCors(
+            formatErrorResponse(
+              403,
+              "origin_rejected",
+              "cross-origin management request blocked",
+            ),
+            req,
+            config,
+          );
         }
         const metricsRateDeny = metricsGate.commit();
-        if (metricsRateDeny) return withManagementCors(metricsRateDeny, req, config);
+        if (metricsRateDeny)
+          return withManagementCors(metricsRateDeny, req, config);
         // Scrapes serve the in-memory registry only: usage rows were already recorded
         // at their append boundary, so this path performs zero usage-log filesystem I/O.
-        return withManagementCors(new Response(runtimeMetrics.prometheus(), {
-          status: 200,
-          headers: {
-            "Content-Type": "text/plain; version=0.0.4; charset=utf-8",
-            "Cache-Control": "no-store",
-          },
-        }), req, config);
+        return withManagementCors(
+          new Response(runtimeMetrics.prometheus(), {
+            status: 200,
+            headers: {
+              "Content-Type": "text/plain; version=0.0.4; charset=utf-8",
+              "Cache-Control": "no-store",
+            },
+          }),
+          req,
+          config,
+        );
       }
 
       if (url.pathname.startsWith("/api/")) {
-        const desktop3pLibraryGet = url.pathname === "/api/claude-desktop/3p-library" && req.method === "GET";
-        const provenanceGet = url.pathname === "/api/provenance" && req.method === "GET";
+        const desktop3pLibraryGet =
+          url.pathname === "/api/claude-desktop/3p-library" &&
+          req.method === "GET";
+        const provenanceGet =
+          url.pathname === "/api/provenance" && req.method === "GET";
         const wrapManagement = (response: Response) => {
           const wrapped = withManagementCors(response, req, config);
           return desktop3pLibraryGet ? withNoStore(wrapped) : wrapped;
         };
         if (provenanceGet) {
-          const provenanceAuthError = await requireManagementAuth(req, managementAuth, config);
-          const authenticated = provenanceAuthError === null;
-          return wrapManagement(buildProvenanceResponse(
-            config,
-            listenPort,
-            authenticated,
-            managementAuth.available,
+          const provenanceAuthError = await requireManagementAuth(
             req,
-          ));
+            managementAuth,
+            config,
+          );
+          const authenticated = provenanceAuthError === null;
+          return wrapManagement(
+            buildProvenanceResponse(
+              config,
+              listenPort,
+              authenticated,
+              managementAuth.available,
+              req,
+            ),
+          );
         }
         const mgmtGate = admission.gate("management", req, requestServer);
         if (mgmtGate.preAuthDeny) return wrapManagement(mgmtGate.preAuthDeny);
-        const apiAuthError = await requireManagementAuth(req, managementAuth, config);
+        const apiAuthError = await requireManagementAuth(
+          req,
+          managementAuth,
+          config,
+        );
         if (apiAuthError) return wrapManagement(apiAuthError);
         // Origin precedence: handleManagementAPI enforces the same guard, but only after this
         // block would have charged the limiter. Reject cross-origin here (same payload shape as
         // management-api.ts) so a 403 can never consume the caller's admission budget.
         if (!isAllowedManagementOrigin(req, config)) {
-          return wrapManagement(jsonResponse({ error: "cross-origin request blocked" }, 403, req, config));
+          return wrapManagement(
+            jsonResponse(
+              { error: "cross-origin request blocked" },
+              403,
+              req,
+              config,
+            ),
+          );
         }
         const mgmtRateDeny = mgmtGate.commit();
         if (mgmtRateDeny) return wrapManagement(mgmtRateDeny);
-        const mgmtResponse = await handleManagementAPI(req, url, config, {}, {
-          listenPort,
-          managementAuthAvailable: managementAuth.available,
-          provenanceAuthenticated: true,
-        });
+        const mgmtResponse = await handleManagementAPI(
+          req,
+          url,
+          config,
+          {},
+          {
+            listenPort,
+            managementAuthAvailable: managementAuth.available,
+            provenanceAuthenticated: true,
+          },
+        );
         if (mgmtResponse) return wrapManagement(mgmtResponse);
-        return wrapManagement(formatErrorResponse(404, "not_found", `Unknown endpoint: ${req.method} ${url.pathname}`));
+        return wrapManagement(
+          formatErrorResponse(
+            404,
+            "not_found",
+            `Unknown endpoint: ${req.method} ${url.pathname}`,
+          ),
+        );
       }
 
       if (url.pathname === "/v1/models" && req.method === "GET") {
-        const modelsGate = admission.gate("model-discovery", req, requestServer);
-        if (modelsGate.preAuthDeny) return withCors(modelsGate.preAuthDeny, req, config);
+        const modelsGate = admission.gate(
+          "model-discovery",
+          req,
+          requestServer,
+        );
+        if (modelsGate.preAuthDeny)
+          return withCors(modelsGate.preAuthDeny, req, config);
         // Model discovery never forwards Authorization upstream, so the broader admission
         // set (Authorization / x-api-key / x-opencodex-api-key) is safe here and required by
         // remote OpenAI-style bearer clients and Claude gateway discovery (anthropic-version).
         const apiAuthError = requireApiAuth(req, config, "data-plane");
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
-          return withCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"), req, config);
+          return withCors(
+            formatErrorResponse(
+              403,
+              "origin_rejected",
+              "cross-origin data-plane request blocked",
+            ),
+            req,
+            config,
+          );
         }
         const modelsRateDeny = modelsGate.commit();
         if (modelsRateDeny) return withCors(modelsRateDeny, req, config);
         const goModels = await fetchAllModels(config);
-        const { applyNativeVisibility, buildCatalogEntries, disabledNativeSlugs, exactComboCatalogSlugs, loadCatalogTemplate, nativeOpenAiSlugs, orderForSubagents, filterCatalogVisibleModels, filterClientCatalogModels, uniqueCatalogModelsForRawPublicList, visibleNativeSlugs } = await import("../codex/catalog");
+        const {
+          applyNativeVisibility,
+          buildCatalogEntries,
+          disabledNativeSlugs,
+          exactComboCatalogSlugs,
+          loadCatalogTemplate,
+          nativeOpenAiSlugs,
+          orderForSubagents,
+          filterCatalogVisibleModels,
+          filterClientCatalogModels,
+          uniqueCatalogModelsForRawPublicList,
+          visibleNativeSlugs,
+        } = await import("../codex/catalog");
         const nativeSlugs = nativeOpenAiSlugs();
         // Client `/v1/models` + new-session pickers optionally hide provider-level death; admin
         // `/api/models` keeps the full last-good catalog (see catalog-visibility.ts).
-        const goEnabled = filterClientCatalogModels(filterCatalogVisibleModels(goModels, config), config);
+        const goEnabled = filterClientCatalogModels(
+          filterCatalogVisibleModels(goModels, config),
+          config,
+        );
         const goOrdered = orderForSubagents(goEnabled, config.subagentModels);
         // Claude Code / Claude Desktop gateway model discovery (GET /v1/models with
         // Anthropic-style headers; 003 G1-G8 + devlog 131). Entries use the official
@@ -575,30 +793,47 @@ export function startServer(port?: number) {
         // aliases; legacy claude-ocx-* ids keep decoding via resolveAlias. Detection:
         // anthropic-version header (Claude Code sends it) or explicit ?flavor=anthropic.
         // Codex catalog (client_version) and the OpenAI list shape below stay byte-identical.
-        const wantsAnthropicList = req.headers.get("anthropic-version") !== null
-          || url.searchParams.get("flavor") === "anthropic";
+        const wantsAnthropicList =
+          req.headers.get("anthropic-version") !== null ||
+          url.searchParams.get("flavor") === "anthropic";
         if (wantsAnthropicList && !url.searchParams.has("client_version")) {
-          if (config.claudeCode?.enabled === false) return jsonResponse({ data: [] }, 200, req, config);
+          if (config.claudeCode?.enabled === false)
+            return jsonResponse({ data: [] }, 200, req, config);
           // Build Desktop 3P registry so inbound alias resolution works for subsequent requests.
           buildDesktop3pRegistry(
             [...visibleNativeSlugs(config)],
-            goOrdered.map(m => ({ provider: m.provider, id: m.id, contextWindow: m.contextWindow })),
+            goOrdered.map((m) => ({
+              provider: m.provider,
+              id: m.id,
+              contextWindow: m.contextWindow,
+            })),
             config.claudeCode?.desktopProfile,
           );
-          const { buildAnthropicModelInfos } = await import("../claude/model-info");
-          const { resolveAutoContext } = await import("../claude/context-windows");
+          const { buildAnthropicModelInfos } =
+            await import("../claude/model-info");
+          const { resolveAutoContext } =
+            await import("../claude/context-windows");
           const { activeDesktop3pAlias } = await import("../claude/desktop-3p");
           // Per-surface id family (devlog 050): explicit ?ids= wins; otherwise the
           // Claude Code CLI discovery UA (`claude-code/<version>`, binary n_()) gets
           // readable claude-ocx ids and every other client (Desktop 3P) keeps the
           // hashed family its config was written with. Unknown UA -> hashed (safe).
           const idsParam = url.searchParams.get("ids");
-          const idStyle = idsParam === "cli"
-            ? "readable" as const
-            : idsParam === "desktop"
-              ? "desktop3p" as const
-              : (/^claude-code\//i.test(req.headers.get("user-agent") ?? "") ? "readable" as const : "desktop3p" as const);
-          const data = buildAnthropicModelInfos([...visibleNativeSlugs(config)], goOrdered, resolveAutoContext(config.claudeCode), idStyle, activeDesktop3pAlias);
+          const idStyle =
+            idsParam === "cli"
+              ? ("readable" as const)
+              : idsParam === "desktop"
+                ? ("desktop3p" as const)
+                : /^claude-code\//i.test(req.headers.get("user-agent") ?? "")
+                  ? ("readable" as const)
+                  : ("desktop3p" as const);
+          const data = buildAnthropicModelInfos(
+            [...visibleNativeSlugs(config)],
+            goOrdered,
+            resolveAutoContext(config.claudeCode),
+            idStyle,
+            activeDesktop3pAlias,
+          );
           return jsonResponse({ data }, 200, req, config);
         }
         if (url.searchParams.has("client_version")) {
@@ -607,41 +842,96 @@ export function startServer(port?: number) {
           // Pass the subagent picks so featured models lead by priority (matches the on-disk file).
           // Disabled natives stay in the catalog shape with visibility "hide" (mirrors the
           // on-disk sync; codex-rs keeps them out of the picker itself).
-          const maMode = config.multiAgentMode === "v1" || config.multiAgentMode === "v2" ? config.multiAgentMode : "default";
-          const entries = buildCatalogEntries(loadCatalogTemplate(), nativeSlugs, goOrdered, config.subagentModels, websocketsEnabled(config), maMode as "v1" | "default" | "v2", exactComboCatalogSlugs(config));
-          return jsonResponse({ models: applyNativeVisibility(entries, disabledNativeSlugs(config)) }, 200, req, config);
+          const maMode =
+            config.multiAgentMode === "v1" || config.multiAgentMode === "v2"
+              ? config.multiAgentMode
+              : "default";
+          const entries = buildCatalogEntries(
+            loadCatalogTemplate(),
+            nativeSlugs,
+            goOrdered,
+            config.subagentModels,
+            websocketsEnabled(config),
+            maMode as "v1" | "default" | "v2",
+            exactComboCatalogSlugs(config),
+          );
+          return jsonResponse(
+            {
+              models: applyNativeVisibility(
+                entries,
+                disabledNativeSlugs(config),
+              ),
+            },
+            200,
+            req,
+            config,
+          );
         }
         // OpenAI list shape: native gpt bare + routed models namespaced "<provider>/<id>"
         // (pure availability list — disabled natives are omitted entirely).
         const data = [
-          ...visibleNativeSlugs(config).map(id => ({ id, object: "model", created: 0, owned_by: "openai" })),
-          ...uniqueCatalogModelsForRawPublicList(goOrdered).map(m => ({ id: m.alias ?? `${m.provider}/${m.id}`, object: "model", created: 0, owned_by: m.owned_by ?? m.provider })),
+          ...visibleNativeSlugs(config).map((id) => ({
+            id,
+            object: "model",
+            created: 0,
+            owned_by: "openai",
+          })),
+          ...uniqueCatalogModelsForRawPublicList(goOrdered).map((m) => ({
+            id: m.alias ?? `${m.provider}/${m.id}`,
+            object: "model",
+            created: 0,
+            owned_by: m.owned_by ?? m.provider,
+          })),
         ];
         return jsonResponse({ object: "list", data }, 200, req, config);
       }
 
       // Laptop Claude Desktop sync: same 3P library as /api/claude-desktop/3p-library,
       // Security Review: required — this response may contain gateway credentials.
-      if (url.pathname === "/v1/claude-desktop-3p-library" && req.method === "GET") {
-        const noStoreCors = (response: Response) => withNoStore(withCors(response, req, config));
-        const modelsGate = admission.gate("model-discovery", req, requestServer);
+      if (
+        url.pathname === "/v1/claude-desktop-3p-library" &&
+        req.method === "GET"
+      ) {
+        const noStoreCors = (response: Response) =>
+          withNoStore(withCors(response, req, config));
+        const modelsGate = admission.gate(
+          "model-discovery",
+          req,
+          requestServer,
+        );
         if (modelsGate.preAuthDeny) return noStoreCors(modelsGate.preAuthDeny);
         const apiAuthError = requireDataPlaneAdmissionAuth(req, config);
         if (apiAuthError) return noStoreCors(apiAuthError);
         if (!isAllowedRequestOrigin(req, config)) {
-          return noStoreCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"));
+          return noStoreCors(
+            formatErrorResponse(
+              403,
+              "origin_rejected",
+              "cross-origin data-plane request blocked",
+            ),
+          );
         }
         const rateDeny = modelsGate.commit();
         if (rateDeny) return noStoreCors(rateDeny);
         try {
           const library = readAppliedDesktop3pLibrary();
           if (!library.ok) {
-            return noStoreCors(jsonResponse({ error: library.error }, library.status, req, config));
+            return noStoreCors(
+              jsonResponse(
+                { error: library.error },
+                library.status,
+                req,
+                config,
+              ),
+            );
           }
           return noStoreCors(jsonResponse(library, 200, req, config));
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          return noStoreCors(jsonResponse({ error: message }, 400, req, config));
+          const message =
+            error instanceof Error ? error.message : String(error);
+          return noStoreCors(
+            jsonResponse({ error: message }, 400, req, config),
+          );
         }
       }
 
@@ -652,88 +942,158 @@ export function startServer(port?: number) {
         if (isDraining()) {
           return drainingResponse(req);
         }
-        const compactGate = admission.gate("responses-http", req, requestServer);
-        if (compactGate.preAuthDeny) return withCors(compactGate.preAuthDeny, req, config);
+        const compactGate = admission.gate(
+          "responses-http",
+          req,
+          requestServer,
+        );
+        if (compactGate.preAuthDeny)
+          return withCors(compactGate.preAuthDeny, req, config);
         const apiAuthError = requireResponsesApiAuth(req, config);
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
-          return withCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"), req, config);
+          return withCors(
+            formatErrorResponse(
+              403,
+              "origin_rejected",
+              "cross-origin data-plane request blocked",
+            ),
+            req,
+            config,
+          );
         }
         const compactRateDeny = compactGate.commit();
         if (compactRateDeny) return withCors(compactRateDeny, req, config);
         const start = Date.now();
         const requestId = nextRequestLogId(start);
-        const logCtx: RequestLogContext = { model: "unknown", provider: "unknown" };
+        const logCtx: RequestLogContext = {
+          model: "unknown",
+          provider: "unknown",
+        };
         let response: Response;
         try {
           response = await handleResponsesCompact(req, config, logCtx);
         } catch {
-          response = formatErrorResponse(500, "server_error", "Unexpected compact request failure");
+          response = formatErrorResponse(
+            500,
+            "server_error",
+            "Unexpected compact request failure",
+          );
         }
         addFinalRequestLog(
           requestId,
           start,
           logCtx,
           response.status,
-          response.status === 499 ? { closeReason: "client_cancel" } : undefined,
+          response.status === 499
+            ? { closeReason: "client_cancel" }
+            : undefined,
         );
         return withCors(response, req, config);
       }
 
       if (
-        req.method === "POST"
-        && (url.pathname === "/v1/images/generations" || url.pathname === "/v1/images/edits")
+        req.method === "POST" &&
+        (url.pathname === "/v1/images/generations" ||
+          url.pathname === "/v1/images/edits")
       ) {
         disableResponsesRequestTimeout(req, requestServer);
         if (isDraining()) {
           return drainingResponse(req);
         }
         const imagesGate = admission.gate("images", req, requestServer);
-        if (imagesGate.preAuthDeny) return withCors(imagesGate.preAuthDeny, req, config);
+        if (imagesGate.preAuthDeny)
+          return withCors(imagesGate.preAuthDeny, req, config);
         const apiAuthError = requireApiAuth(req, config, "data-plane");
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
-          return withCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"), req, config);
+          return withCors(
+            formatErrorResponse(
+              403,
+              "origin_rejected",
+              "cross-origin data-plane request blocked",
+            ),
+            req,
+            config,
+          );
         }
         const imagesRateDeny = imagesGate.commit();
         if (imagesRateDeny) return withCors(imagesRateDeny, req, config);
         const start = Date.now();
         const requestId = nextRequestLogId(start);
-        const logCtx: RequestLogContext = { model: "image_gen", provider: "unknown" };
-        const endpoint = url.pathname.endsWith("/edits") ? "edits" as const : "generations" as const;
+        const logCtx: RequestLogContext = {
+          model: "image_gen",
+          provider: "unknown",
+        };
+        const endpoint = url.pathname.endsWith("/edits")
+          ? ("edits" as const)
+          : ("generations" as const);
         const response = await handleImages(req, config, endpoint, logCtx);
-        addFinalRequestLog(requestId, start, logCtx, response.status, response.status === 499 ? { closeReason: "client_cancel" } : undefined);
+        addFinalRequestLog(
+          requestId,
+          start,
+          logCtx,
+          response.status,
+          response.status === 499
+            ? { closeReason: "client_cancel" }
+            : undefined,
+        );
         return withCors(response, req, config);
       }
 
-      if (req.method === "GET" && url.pathname.startsWith("/v1/opencodex/artifacts/")) {
+      if (
+        req.method === "GET" &&
+        url.pathname.startsWith("/v1/opencodex/artifacts/")
+      ) {
         const apiAuthError = requireApiAuth(req, config, "data-plane");
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
-          return withCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"), req, config);
+          return withCors(
+            formatErrorResponse(
+              403,
+              "origin_rejected",
+              "cross-origin data-plane request blocked",
+            ),
+            req,
+            config,
+          );
         }
-        const id = decodeURIComponent(url.pathname.slice("/v1/opencodex/artifacts/".length));
+        const id = decodeURIComponent(
+          url.pathname.slice("/v1/opencodex/artifacts/".length),
+        );
         const { resolveArtifactPath } = await import("../images/artifacts");
         const artifactPath = resolveArtifactPath(id);
         if (!artifactPath) {
-          return withCors(formatErrorResponse(404, "not_found", "artifact not found"), req, config);
+          return withCors(
+            formatErrorResponse(404, "not_found", "artifact not found"),
+            req,
+            config,
+          );
         }
         const file = Bun.file(artifactPath);
         const ext = artifactPath.split(".").pop()?.toLowerCase();
         const contentType =
-          ext === "png" ? "image/png"
-            : ext === "jpg" || ext === "jpeg" ? "image/jpeg"
-              : ext === "webp" ? "image/webp"
-                : ext === "gif" ? "image/gif"
+          ext === "png"
+            ? "image/png"
+            : ext === "jpg" || ext === "jpeg"
+              ? "image/jpeg"
+              : ext === "webp"
+                ? "image/webp"
+                : ext === "gif"
+                  ? "image/gif"
                   : "application/octet-stream";
-        return withCors(new Response(file, {
-          status: 200,
-          headers: {
-            "content-type": contentType,
-            "cache-control": "private, max-age=3600",
-            "x-content-type-options": "nosniff",
-          },
-        }), req, config);
+        return withCors(
+          new Response(file, {
+            status: 200,
+            headers: {
+              "content-type": contentType,
+              "cache-control": "private, max-age=3600",
+              "x-content-type-options": "nosniff",
+            },
+          }),
+          req,
+          config,
+        );
       }
 
       if (url.pathname === "/v1/alpha/search" && req.method === "POST") {
@@ -742,24 +1102,38 @@ export function startServer(port?: number) {
           return drainingResponse(req);
         }
         const searchGate = admission.gate("search", req, requestServer);
-        if (searchGate.preAuthDeny) return withCors(searchGate.preAuthDeny, req, config);
+        if (searchGate.preAuthDeny)
+          return withCors(searchGate.preAuthDeny, req, config);
         const apiAuthError = requireApiAuth(req, config, "data-plane");
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
-          return withCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"), req, config);
+          return withCors(
+            formatErrorResponse(
+              403,
+              "origin_rejected",
+              "cross-origin data-plane request blocked",
+            ),
+            req,
+            config,
+          );
         }
         const searchRateDeny = searchGate.commit();
         if (searchRateDeny) return withCors(searchRateDeny, req, config);
         const start = Date.now();
         const requestId = nextRequestLogId(start);
-        const logCtx: RequestLogContext = { model: "web_search", provider: "unknown" };
+        const logCtx: RequestLogContext = {
+          model: "web_search",
+          provider: "unknown",
+        };
         const response = await handleSearch(req, config, logCtx);
         addFinalRequestLog(
           requestId,
           start,
           logCtx,
           response.status,
-          response.status === 499 ? { closeReason: "client_cancel" } : undefined,
+          response.status === 499
+            ? { closeReason: "client_cancel" }
+            : undefined,
         );
         return withCors(response, req, config);
       }
@@ -769,18 +1143,35 @@ export function startServer(port?: number) {
         if (isDraining()) {
           return drainingResponse(req);
         }
-        const responsesGate = admission.gate("responses-http", req, requestServer);
-        if (responsesGate.preAuthDeny) return withCors(responsesGate.preAuthDeny, req, config);
+        const responsesGate = admission.gate(
+          "responses-http",
+          req,
+          requestServer,
+        );
+        if (responsesGate.preAuthDeny)
+          return withCors(responsesGate.preAuthDeny, req, config);
         const apiAuthError = requireResponsesApiAuth(req, config);
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
-          return withCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"), req, config);
+          return withCors(
+            formatErrorResponse(
+              403,
+              "origin_rejected",
+              "cross-origin data-plane request blocked",
+            ),
+            req,
+            config,
+          );
         }
         const responsesRateDeny = responsesGate.commit();
         if (responsesRateDeny) return withCors(responsesRateDeny, req, config);
         // Fase D: probe the response cache. A hit returns immediately; a miss yields a
         // rebuilt Request (so the handler can read the body again) + a store callback.
-        const responsesCacheProbe = await probeResponseCache(req, config, "responses");
+        const responsesCacheProbe = await probeResponseCache(
+          req,
+          config,
+          "responses",
+        );
         if (responsesCacheProbe && "hit" in responsesCacheProbe) {
           logCacheHitRequest(responsesCacheProbe);
           return withCors(responsesCacheProbe.hit, req, config);
@@ -792,45 +1183,87 @@ export function startServer(port?: number) {
         let logged = false;
         const finalizeNativePassthroughLog = (
           status: number,
-          meta: { terminalStatus?: ResponsesTerminalStatus; closeReason: "terminal" | "client_cancel" },
+          meta: {
+            terminalStatus?: ResponsesTerminalStatus;
+            closeReason: "terminal" | "client_cancel";
+          },
         ) => {
           if (logged) return;
           logged = true;
           addFinalRequestLog(requestId, start, logCtx, status, meta);
         };
-        const response = await handleResponses(responsesWorkReq, config, logCtx, {
-          abortSignal: req.signal,
-          onFirstOutput: () => recordFirstOutput(logCtx, start),
-          onNativePassthroughTerminal: status => {
-            finalizeNativePassthroughLog(httpStatusForTerminalStatus(status), {
-              terminalStatus: status,
-              closeReason: "terminal",
-            });
+        const response = await handleResponses(
+          responsesWorkReq,
+          config,
+          logCtx,
+          {
+            abortSignal: req.signal,
+            onFirstOutput: () => recordFirstOutput(logCtx, start),
+            onNativePassthroughTerminal: (status) => {
+              finalizeNativePassthroughLog(
+                httpStatusForTerminalStatus(status),
+                {
+                  terminalStatus: status,
+                  closeReason: "terminal",
+                },
+              );
+            },
+            onNativePassthroughCancel: () => {
+              finalizeNativePassthroughLog(499, {
+                closeReason: "client_cancel",
+              });
+            },
           },
-          onNativePassthroughCancel: () => {
-            finalizeNativePassthroughLog(499, { closeReason: "client_cancel" });
-          },
-        });
+        );
         responsesCacheProbe?.store(response);
-        return withCors(responseWithDeferredRequestLog(response, requestId, start, logCtx), req, config);
+        return withCors(
+          responseWithDeferredRequestLog(response, requestId, start, logCtx),
+          req,
+          config,
+        );
       }
 
       // Anthropic Messages inbound (Claude Code). count_tokens FIRST (longer path).
       // Claude Code posts `/v1/messages?beta=true` — pathname match ignores the query (003 G9).
-      if (url.pathname === "/v1/messages/count_tokens" && req.method === "POST") {
+      if (
+        url.pathname === "/v1/messages/count_tokens" &&
+        req.method === "POST"
+      ) {
         if (isDraining()) {
           return drainingResponse(req);
         }
-        const countTokensGate = admission.gate("claude-messages", req, requestServer);
-        if (countTokensGate.preAuthDeny) return withCors(countTokensGate.preAuthDeny, req, config);
+        const countTokensGate = admission.gate(
+          "claude-messages",
+          req,
+          requestServer,
+        );
+        if (countTokensGate.preAuthDeny)
+          return withCors(countTokensGate.preAuthDeny, req, config);
         if (!hasValidApiAuth(req, config)) {
-          return withCors(anthropicErrorResponse(401, "opencodex API key required", "authentication_error"), req, config);
+          return withCors(
+            anthropicErrorResponse(
+              401,
+              "opencodex API key required",
+              "authentication_error",
+            ),
+            req,
+            config,
+          );
         }
         if (!isAllowedRequestOrigin(req, config)) {
-          return withCors(anthropicErrorResponse(403, "cross-origin data-plane request blocked", "permission_error"), req, config);
+          return withCors(
+            anthropicErrorResponse(
+              403,
+              "cross-origin data-plane request blocked",
+              "permission_error",
+            ),
+            req,
+            config,
+          );
         }
         const countTokensRateDeny = countTokensGate.commit();
-        if (countTokensRateDeny) return withCors(countTokensRateDeny, req, config);
+        if (countTokensRateDeny)
+          return withCors(countTokensRateDeny, req, config);
         const response = await handleClaudeCountTokens(req, config);
         return withCors(response, req, config);
       }
@@ -840,19 +1273,44 @@ export function startServer(port?: number) {
         if (isDraining()) {
           return drainingResponse(req);
         }
-        const messagesGate = admission.gate("claude-messages", req, requestServer);
-        if (messagesGate.preAuthDeny) return withCors(messagesGate.preAuthDeny, req, config);
+        const messagesGate = admission.gate(
+          "claude-messages",
+          req,
+          requestServer,
+        );
+        if (messagesGate.preAuthDeny)
+          return withCors(messagesGate.preAuthDeny, req, config);
         if (!hasValidApiAuth(req, config)) {
-          return withCors(anthropicErrorResponse(401, "opencodex API key required", "authentication_error"), req, config);
+          return withCors(
+            anthropicErrorResponse(
+              401,
+              "opencodex API key required",
+              "authentication_error",
+            ),
+            req,
+            config,
+          );
         }
         if (!isAllowedRequestOrigin(req, config)) {
-          return withCors(anthropicErrorResponse(403, "cross-origin data-plane request blocked", "permission_error"), req, config);
+          return withCors(
+            anthropicErrorResponse(
+              403,
+              "cross-origin data-plane request blocked",
+              "permission_error",
+            ),
+            req,
+            config,
+          );
         }
         const messagesRateDeny = messagesGate.commit();
         if (messagesRateDeny) return withCors(messagesRateDeny, req, config);
         // Fase D: probe the response cache. A hit returns immediately; a miss yields a
         // rebuilt Request (so the handler can read the body again) + a store callback.
-        const messagesCacheProbe = await probeResponseCache(req, config, "messages");
+        const messagesCacheProbe = await probeResponseCache(
+          req,
+          config,
+          "messages",
+        );
         if (messagesCacheProbe && "hit" in messagesCacheProbe) {
           logCacheHitRequest(messagesCacheProbe);
           return withCors(messagesCacheProbe.hit, req, config);
@@ -860,15 +1318,22 @@ export function startServer(port?: number) {
         const messagesWorkReq = messagesCacheProbe?.request ?? req;
         const start = Date.now();
         const requestId = nextRequestLogId(start);
-        const logCtx: RequestLogContext = { model: "unknown", provider: "unknown" };
+        const logCtx: RequestLogContext = {
+          model: "unknown",
+          provider: "unknown",
+        };
         // Logging is finalized inside handleClaudeMessages (Responses-vocab tap on the
         // pre-translation stream + native passthrough callbacks) — do not re-wrap the
         // translated Anthropic stream here.
-        const response = await handleClaudeMessages(messagesWorkReq, config, logCtx, { requestId, start });
+        const response = await handleClaudeMessages(
+          messagesWorkReq,
+          config,
+          logCtx,
+          { requestId, start },
+        );
         messagesCacheProbe?.store(response);
         return withCors(response, req, config);
       }
-
 
       // OpenAI Chat Completions inbound (GitHub Copilot App / OpenAI-compatible clients).
       if (url.pathname === "/v1/chat/completions" && req.method === "POST") {
@@ -877,17 +1342,30 @@ export function startServer(port?: number) {
           return drainingResponse(req);
         }
         const chatGate = admission.gate("chat-completions", req, requestServer);
-        if (chatGate.preAuthDeny) return withCors(chatGate.preAuthDeny, req, config);
+        if (chatGate.preAuthDeny)
+          return withCors(chatGate.preAuthDeny, req, config);
         const apiAuthError = requireResponsesApiAuth(req, config);
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
-          return withCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"), req, config);
+          return withCors(
+            formatErrorResponse(
+              403,
+              "origin_rejected",
+              "cross-origin data-plane request blocked",
+            ),
+            req,
+            config,
+          );
         }
         const chatRateDeny = chatGate.commit();
         if (chatRateDeny) return withCors(chatRateDeny, req, config);
         // Fase D: probe the response cache. A hit returns immediately; a miss yields a
         // rebuilt Request (so the handler can read the body again) + a store callback.
-        const chatCacheProbe = await probeResponseCache(req, config, "chat-completions");
+        const chatCacheProbe = await probeResponseCache(
+          req,
+          config,
+          "chat-completions",
+        );
         if (chatCacheProbe && "hit" in chatCacheProbe) {
           logCacheHitRequest(chatCacheProbe);
           return withCors(chatCacheProbe.hit, req, config);
@@ -895,8 +1373,16 @@ export function startServer(port?: number) {
         const chatWorkReq = chatCacheProbe?.request ?? req;
         const start = Date.now();
         const requestId = nextRequestLogId(start);
-        const logCtx: RequestLogContext = { model: "unknown", provider: "unknown" };
-        const response = await handleChatCompletions(chatWorkReq, config, logCtx, { requestId, start });
+        const logCtx: RequestLogContext = {
+          model: "unknown",
+          provider: "unknown",
+        };
+        const response = await handleChatCompletions(
+          chatWorkReq,
+          config,
+          logCtx,
+          { requestId, start },
+        );
         chatCacheProbe?.store(response);
         return withCors(response, req, config);
       }
@@ -905,41 +1391,56 @@ export function startServer(port?: number) {
       // Clients hit either /v1/live (Frameless App) or /v1/realtime/calls (codex RealtimeCallClient /
       // public Realtime API). Sideband WS joins are handled just below.
       if (
-        req.method === "POST"
-        && (url.pathname === "/v1/live" || url.pathname === "/v1/realtime/calls")
+        req.method === "POST" &&
+        (url.pathname === "/v1/live" || url.pathname === "/v1/realtime/calls")
       ) {
         disableResponsesRequestTimeout(req, requestServer);
         if (isDraining()) {
           return drainingResponse(req);
         }
         const liveGate = admission.gate("live", req, requestServer);
-        if (liveGate.preAuthDeny) return withCors(liveGate.preAuthDeny, req, config);
+        if (liveGate.preAuthDeny)
+          return withCors(liveGate.preAuthDeny, req, config);
         const apiAuthError = requireApiAuth(req, config, "data-plane");
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
-          return withCors(formatErrorResponse(403, "origin_rejected", "cross-origin data-plane request blocked"), req, config);
+          return withCors(
+            formatErrorResponse(
+              403,
+              "origin_rejected",
+              "cross-origin data-plane request blocked",
+            ),
+            req,
+            config,
+          );
         }
         const liveRateDeny = liveGate.commit();
         if (liveRateDeny) return withCors(liveRateDeny, req, config);
         const start = Date.now();
         const requestId = nextRequestLogId(start);
-        const logCtx: RequestLogContext = { model: "gpt-live", provider: "unknown" };
+        const logCtx: RequestLogContext = {
+          model: "gpt-live",
+          provider: "unknown",
+        };
         const response = await handleLive(req, config, logCtx);
         addFinalRequestLog(
           requestId,
           start,
           logCtx,
           response.status,
-          response.status === 499 ? { closeReason: "client_cancel" } : undefined,
+          response.status === 499
+            ? { closeReason: "client_cancel" }
+            : undefined,
         );
         return withCors(response, req, config);
       }
 
       // Voice / Realtime sideband WebSocket: Frameless joins /v1/live/{callId}; Realtime v1 joins
       // /v1/realtime?call_id= (or /v1/realtime/calls/{callId}). Transparent bidirectional relay.
-      const liveSidebandTarget = req.headers.get("upgrade")?.toLowerCase() === "websocket"
-        ? parseLiveSidebandTarget(url.pathname, url.searchParams)
-        : null;
+      const liveSidebandTarget =
+        req.headers.get("upgrade")?.toLowerCase() === "websocket"
+          ? parseLiveSidebandTarget(url.pathname, url.searchParams)
+          : null;
       if (liveSidebandTarget) {
         if (isDraining()) {
           return drainingResponse(req);
@@ -949,18 +1450,35 @@ export function startServer(port?: number) {
         // as the Responses WebSocket): reserved before the handshake completes, rolled back on
         // upgrade failure, released by close() for every disconnect path.
         const sidebandGate = admission.gate("live", req, requestServer);
-        if (sidebandGate.preAuthDeny) return withCors(sidebandGate.preAuthDeny, req, config);
+        if (sidebandGate.preAuthDeny)
+          return withCors(sidebandGate.preAuthDeny, req, config);
         const apiAuthError = requireApiAuth(req, config, "data-plane");
         if (apiAuthError) return withCors(apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
-          return withCors(formatErrorResponse(403, "origin_rejected", "WebSocket upgrade blocked: non-local Origin"), req, config);
+          return withCors(
+            formatErrorResponse(
+              403,
+              "origin_rejected",
+              "WebSocket upgrade blocked: non-local Origin",
+            ),
+            req,
+            config,
+          );
         }
         const sidebandRateDeny = sidebandGate.commit();
         if (sidebandRateDeny) return withCors(sidebandRateDeny, req, config);
         const start = Date.now();
         const requestId = nextRequestLogId(start);
-        const logCtx: RequestLogContext = { model: "gpt-live", provider: "unknown" };
-        const resolved = await resolveLiveSidebandUpgrade(req, config, logCtx, liveSidebandTarget);
+        const logCtx: RequestLogContext = {
+          model: "gpt-live",
+          provider: "unknown",
+        };
+        const resolved = await resolveLiveSidebandUpgrade(
+          req,
+          config,
+          logCtx,
+          liveSidebandTarget,
+        );
         if (resolved instanceof Response) {
           addFinalRequestLog(requestId, start, logCtx, resolved.status);
           return withCors(resolved, req, config);
@@ -973,22 +1491,32 @@ export function startServer(port?: number) {
           addFinalRequestLog(requestId, start, logCtx, 429);
           return withCors(sidebandReservation, req, config);
         }
-        if (server.upgrade(req, {
-          data: {
-            kind: "live-sideband",
-            liveUpstreamUrl: resolved.upstreamWsUrl,
-            liveUpstreamHeaders: resolved.headers,
-            livePending: [],
-            liveOpened: false,
-            rateLimitRelease: sidebandReservation.release,
-          } satisfies WsData,
-        })) {
+        if (
+          server.upgrade(req, {
+            data: {
+              kind: "live-sideband",
+              liveUpstreamUrl: resolved.upstreamWsUrl,
+              liveUpstreamHeaders: resolved.headers,
+              livePending: [],
+              liveOpened: false,
+              rateLimitRelease: sidebandReservation.release,
+            } satisfies WsData,
+          })
+        ) {
           addFinalRequestLog(requestId, start, logCtx, 101);
           return undefined as unknown as Response;
         }
         sidebandReservation.release();
         addFinalRequestLog(requestId, start, logCtx, 426);
-        return withCors(formatErrorResponse(426, "upgrade_required", "WebSocket upgrade failed"), req, config);
+        return withCors(
+          formatErrorResponse(
+            426,
+            "upgrade_required",
+            "WebSocket upgrade failed",
+          ),
+          req,
+          config,
+        );
       }
 
       // Data-plane guard: unknown /v1/* paths must fail with JSON 404, never fall through to the
@@ -996,25 +1524,53 @@ export function startServer(port?: number) {
       // endpoint clients — memories/*, realtime/* — would surface confusing
       // serde decode errors instead of a clean not-found).
       if (url.pathname.startsWith("/v1/")) {
-        return withCors(formatErrorResponse(404, "not_found", `Unknown endpoint: ${req.method} ${url.pathname}`), req, config);
+        return withCors(
+          formatErrorResponse(
+            404,
+            "not_found",
+            `Unknown endpoint: ${req.method} ${url.pathname}`,
+          ),
+          req,
+          config,
+        );
       }
 
       if (url.pathname === "/__opencodex_gui_session" && req.method === "GET") {
         const session = await issueGuiSession(req, config, managementAuth);
-        if (!session) return jsonResponse({ error: "GUI session unavailable" }, 403, req, config);
+        if (!session)
+          return jsonResponse(
+            { error: "GUI session unavailable" },
+            403,
+            req,
+            config,
+          );
         return jsonResponse(session, 200, req, config);
       }
 
-      const guiSessionCandidate = req.method === "GET" && (url.pathname === "/" || !url.pathname.includes("."))
-        ? await issueGuiSession(req, config, managementAuth)
-        : null;
-      const guiFile = serveGuiFile(url.pathname, undefined, guiSessionCandidate ?? undefined);
+      const guiSessionCandidate =
+        req.method === "GET" &&
+        (url.pathname === "/" || !url.pathname.includes("."))
+          ? await issueGuiSession(req, config, managementAuth)
+          : null;
+      const guiFile = serveGuiFile(
+        url.pathname,
+        undefined,
+        guiSessionCandidate ?? undefined,
+      );
       if (guiFile) return guiFile;
       if (url.pathname === "/" && req.method === "GET") {
         return jsonResponse(rootFallbackPayload());
       }
 
-      return withCors(formatErrorResponse(404, "not_found", `Unknown endpoint: ${req.method} ${url.pathname}`), req, config);
+      return withCors(
+        formatErrorResponse(
+          404,
+          "not_found",
+          `Unknown endpoint: ${req.method} ${url.pathname}`,
+        ),
+        req,
+        config,
+      );
     },
     websocket: {
       idleTimeout: WEBSOCKET_IDLE_TIMEOUT_SECONDS,
@@ -1033,7 +1589,11 @@ export function startServer(port?: number) {
         if (ws.data.kind === "live-sideband") {
           logLiveSidebandFrame("c2u", raw);
           const upstream = ws.data.liveUpstream;
-          if (!upstream || upstream.readyState === WebSocket.CONNECTING || !ws.data.liveOpened) {
+          if (
+            !upstream ||
+            upstream.readyState === WebSocket.CONNECTING ||
+            !ws.data.liveOpened
+          ) {
             const pending = ws.data.livePending ?? (ws.data.livePending = []);
             if (pending.length >= LIVE_SIDEBAND_PENDING_MAX) {
               closeLiveSideband(ws, 1009, "too many pending frames");
@@ -1053,18 +1613,24 @@ export function startServer(port?: number) {
           }
           return;
         }
-        const rawBytes = typeof raw === "string" ? Buffer.byteLength(raw) : raw.byteLength;
+        const rawBytes =
+          typeof raw === "string" ? Buffer.byteLength(raw) : raw.byteLength;
         if (rawBytes > MAX_WS_FRAME_BYTES) {
-          sendJsonFrame(ws, buildWsErrorFrame(413, {
-            type: "invalid_request_error",
-            message: "WebSocket response.create frame is too large",
-          }));
+          sendJsonFrame(
+            ws,
+            buildWsErrorFrame(413, {
+              type: "invalid_request_error",
+              message: "WebSocket response.create frame is too large",
+            }),
+          );
           ws.close(1009, "message too large");
           return;
         }
         let frame: Record<string, unknown>;
         try {
-          frame = JSON.parse(typeof raw === "string" ? raw : raw.toString()) as Record<string, unknown>;
+          frame = JSON.parse(
+            typeof raw === "string" ? raw : raw.toString(),
+          ) as Record<string, unknown>;
         } catch {
           return; // text-only contract; ignore unparseable frames
         }
@@ -1101,7 +1667,10 @@ export function startServer(port?: number) {
         void (async () => {
           const start = Date.now();
           const requestId = nextRequestLogId(start);
-          const logCtx: RequestLogContext = { model: "unknown", provider: "unknown" };
+          const logCtx: RequestLogContext = {
+            model: "unknown",
+            provider: "unknown",
+          };
           let logged = false;
           const finalizeLog = (
             status: number,
@@ -1120,20 +1689,27 @@ export function startServer(port?: number) {
             body: JSON.stringify({ ...payload, stream: true }),
           });
           try {
-            let terminalRecorder: ((status: ResponsesTerminalStatus, httpStatusOverride?: number) => void) | undefined;
+            let terminalRecorder:
+              | ((
+                  status: ResponsesTerminalStatus,
+                  httpStatusOverride?: number,
+                ) => void)
+              | undefined;
             const response = await handleResponses(req, config, logCtx, {
               forceEmptyResponseId: true,
               abortSignal: turnAbort.signal,
               onFirstOutput: () => recordFirstOutput(logCtx, start),
-              onCodexAuthContextResolved: context => updateCodexWebSocketAuthContext(ws, context),
+              onCodexAuthContextResolved: (context) =>
+                updateCodexWebSocketAuthContext(ws, context),
               recordTerminalOutcomes: false,
-              setTerminalOutcomeRecorder: recorder => {
+              setTerminalOutcomeRecorder: (recorder) => {
                 terminalRecorder = recorder;
               },
             });
             await sendResponseToWebSocket(ws, response, isCurrent, {
-              onSsePayload: payload => inspectResponseLogSsePayload(logCtx, payload),
-              onTerminal: status => {
+              onSsePayload: (payload) =>
+                inspectResponseLogSsePayload(logCtx, payload),
+              onTerminal: (status) => {
                 terminalRecorder?.(status, logCtx.terminalHttpStatus);
                 finalizeLog(httpStatusForRequestLogTerminal(status, logCtx), {
                   terminalStatus: status,
@@ -1141,7 +1717,8 @@ export function startServer(port?: number) {
                 });
               },
             });
-            if (!logged) finalizeLog(turnAbort.signal.aborted ? 499 : response.status);
+            if (!logged)
+              finalizeLog(turnAbort.signal.aborted ? 499 : response.status);
           } catch (err) {
             if (!isCurrent()) return;
             try {
@@ -1149,17 +1726,23 @@ export function startServer(port?: number) {
                 finalizeLog(429);
                 // Codex Desktop rides this WS transport, so it must carry the same
                 // actionable text as HTTP; a frame has no headers, hence message-only.
-                sendJsonFrame(ws, buildWsErrorFrame(429, {
-                  type: "rate_limit_error",
-                  message: cooldownErrorMessage(err),
-                }));
+                sendJsonFrame(
+                  ws,
+                  buildWsErrorFrame(429, {
+                    type: "rate_limit_error",
+                    message: cooldownErrorMessage(err),
+                  }),
+                );
                 return;
               }
               finalizeLog(502);
-              sendJsonFrame(ws, buildWsErrorFrame(502, {
-                type: "proxy_error",
-                message: err instanceof Error ? err.message : String(err),
-              }));
+              sendJsonFrame(
+                ws,
+                buildWsErrorFrame(502, {
+                  type: "proxy_error",
+                  message: err instanceof Error ? err.message : String(err),
+                }),
+              );
             } catch {
               /* socket already gone or send dropped */
             }
@@ -1195,6 +1778,9 @@ export function startServer(port?: number) {
   console.log(`   GET  /healthz      → health check`);
   console.log(`   GET  /api/*        → management API`);
   console.log(`   GET  /             → GUI dashboard`);
+  if (oidcConfigured()) {
+    console.log(`   GET  /oauth/login  → Authentik OIDC authorize`);
+  }
 
   // Prime pool-account quota in the background so the rotation engine has real
   // usage scores from the first routing decision, even when the dashboard is
@@ -1202,13 +1788,15 @@ export function startServer(port?: number) {
   // listener, and a blocked network silently no-ops (see Phase 30 diagnostics).
   const openAiProvider = config.providers.openai;
   if (
-    openAiProvider
-    && openAiProvider.disabled !== true
-    && isCanonicalOpenAiForwardProvider(openAiProvider)
-    && providerCodexAccountMode("openai", openAiProvider) === "pool"
+    openAiProvider &&
+    openAiProvider.disabled !== true &&
+    isCanonicalOpenAiForwardProvider(openAiProvider) &&
+    providerCodexAccountMode("openai", openAiProvider) === "pool"
   ) {
     import("../codex/auth-api")
-      .then(({ primeCodexPoolQuotas }) => primeCodexPoolQuotas(config, "startup"))
+      .then(({ primeCodexPoolQuotas }) =>
+        primeCodexPoolQuotas(config, "startup"),
+      )
       .catch(() => {});
   }
 

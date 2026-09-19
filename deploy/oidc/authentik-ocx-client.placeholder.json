@@ -1,5 +1,5 @@
 {
-  "status": "greenfield",
+  "status": "consumer-wired",
   "authority": "GroepOnline/chefgroep-auth",
   "catalog_owner": "ChefFactory (do not register this client from opencodex)",
   "application": {
@@ -23,11 +23,20 @@
       "https://ocx.chefgroep.online/"
     ]
   },
+  "consumer": {
+    "discovery": "https://auth.chefgroep.online/application/o/ocx/.well-known/openid-configuration",
+    "jwks": "https://auth.chefgroep.online/application/o/ocx/jwks/",
+    "authorize": "GET /oauth/login",
+    "callback": "GET /oauth/callback",
+    "logout": "GET /oauth/logout",
+    "id_token_verify": "RS256 JWKS",
+    "secret_delivery": "OIDC_CLIENT_SECRET_FILE"
+  },
   "notes": [
     "Public issuer APPLY DONE 2026-09-18: discovery/JWKS 200, authorize 302 at https://auth.chefgroep.online/application/o/ocx/. This is not DNS HOLD.",
-    "Live greenfield client_id is chefgroep-ocx-oidc (Infra smoke + Cloudflare Access IdP). client_secret stays null / file-only.",
+    "Live client_id is chefgroep-ocx-oidc (Infra smoke + Cloudflare Access IdP). client_secret stays null / file-only.",
     "This file is the consumer contract only. Do not register this client in ChefFactory catalogs from this repository.",
-    "The proxy does not verify Authentik tokens yet. Cloudflare Access remains the live public-host dashboard gate until product token verify lands.",
+    "The proxy verifies Authentik ID tokens (JWKS) and runs authorization-code + PKCE when OIDC_CLIENT_SECRET_FILE is set. Cloudflare Access remains the live public-host dashboard gate until operators execute deploy/oidc/CUTOVER-CHECKLIST.md.",
     "Do not apply Cloudflare DNS from this repository."
   ]
 }

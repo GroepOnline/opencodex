@@ -13,22 +13,34 @@ import {
 } from "../config";
 import { providerDestinationConfigError } from "../lib/destination-policy";
 import { stringifyHttpJson } from "../lib/http-json";
-import { getProviderRegistryEntry, providerCodexAccountMode, providerMatchesRegistryTransport } from "../providers/registry";
+import {
+  getProviderRegistryEntry,
+  providerCodexAccountMode,
+  providerMatchesRegistryTransport,
+} from "../providers/registry";
 import { providerConfigSeed } from "../providers/derive";
 import { configuredKeyCount } from "../providers/api-keys";
 import { activeProviderCooldowns } from "../providers/cap-cooldown";
 import type { OcxConfig, OcxProviderConfig } from "../types";
 import { openRouterRoutingConfigError } from "../providers/openrouter-routing";
-import { isCfAccessTrustedHost } from "./cf-access-auth";
+import { isDashboardTrustedHost } from "./dashboard-trust";
 
 let _corsOrigin = "http://localhost:10100";
-export function setCorsOrigin(port: number): void { _corsOrigin = `http://localhost:${port}`; }
+export function setCorsOrigin(port: number): void {
+  _corsOrigin = `http://localhost:${port}`;
+}
 /** The proxy's own listening port. No admission check uses it: both loopback predicates key on hostname alone. */
 export function configuredPort(): string {
-  try { return new URL(_corsOrigin).port; } catch { return "10100"; }
+  try {
+    return new URL(_corsOrigin).port;
+  } catch {
+    return "10100";
+  }
 }
 
-export function parseHttpHost(value: string | null): { hostname: string; port: string } | null {
+export function parseHttpHost(
+  value: string | null,
+): { hostname: string; port: string } | null {
   if (!value) return null;
   try {
     const parsed = new URL(`http://${value}`);
@@ -58,7 +70,8 @@ export function isLoopbackRequestHost(value: string | null): boolean {
 export function isLoopbackOriginValue(value: string): boolean {
   try {
     const parsed = new URL(value);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
+      return false;
     return isLoopbackHostname(parsed.hostname);
   } catch {
     return false;
@@ -73,10 +86,13 @@ export function isSameOriginAsRequest(req: Request, origin: string): boolean {
   }
 }
 
-export function isAllowedRequestOrigin(req: Request, config: OcxConfig): boolean {
+export function isAllowedRequestOrigin(
+  req: Request,
+  config: OcxConfig,
+): boolean {
   function isExtraAllowedOrigin(origin: string, cfg: OcxConfig): boolean {
     if (!cfg.corsAllowOrigins?.length) return false;
-    return cfg.corsAllowOrigins.some(allowed => {
+    return cfg.corsAllowOrigins.some((allowed) => {
       try {
         return new URL(allowed).origin === new URL(origin).origin;
       } catch {
@@ -87,21 +103,33 @@ export function isAllowedRequestOrigin(req: Request, config: OcxConfig): boolean
   const origin = req.headers.get("Origin");
   if (!isApiAuthRequired(config)) {
     if (!isLoopbackRequestHost(req.headers.get("Host"))) return false;
-    return !origin || isLoopbackOriginValue(origin) || isExtraAllowedOrigin(origin, config);
+    return (
+      !origin ||
+      isLoopbackOriginValue(origin) ||
+      isExtraAllowedOrigin(origin, config)
+    );
   }
-  return !origin || isLoopbackOriginValue(origin) || isSameOriginAsRequest(req, origin) || isExtraAllowedOrigin(origin, config);
+  return (
+    !origin ||
+    isLoopbackOriginValue(origin) ||
+    isSameOriginAsRequest(req, origin) ||
+    isExtraAllowedOrigin(origin, config)
+  );
 }
 
-export function managementRequestOrigin(req: Request, config: OcxConfig): string | null {
+export function managementRequestOrigin(
+  req: Request,
+  config: OcxConfig,
+): string | null {
   const host = req.headers.get("Host");
   const parsedHost = parseHttpHost(host);
   if (!host || !parsedHost) return null;
   // Loopback bind may still receive public Host via Cloudflare Tunnel. Allow
   // Access-trusted hostnames so https://ocx… Origin checks succeed.
   if (
-    !isApiAuthRequired(config)
-    && !isLoopbackHostname(parsedHost.hostname)
-    && !isCfAccessTrustedHost(parsedHost.hostname)
+    !isApiAuthRequired(config) &&
+    !isLoopbackHostname(parsedHost.hostname) &&
+    !isDashboardTrustedHost(parsedHost.hostname)
   ) {
     return null;
   }
@@ -109,11 +137,15 @@ export function managementRequestOrigin(req: Request, config: OcxConfig): string
     // Cloudflare Tunnel terminates TLS; Bun often sees http:// on the origin. Prefer
     // X-Forwarded-Proto, then https for Access-trusted public hosts so browser
     // Origin (https://ocx.…) matches session/origin checks.
-    const forwarded = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+    const forwarded = req.headers
+      .get("x-forwarded-proto")
+      ?.split(",")[0]
+      ?.trim()
+      .toLowerCase();
     let protocol = new URL(req.url).protocol;
     if (forwarded === "https" || forwarded === "http") {
       protocol = `${forwarded}:`;
-    } else if (isCfAccessTrustedHost(parsedHost.hostname)) {
+    } else if (isDashboardTrustedHost(parsedHost.hostname)) {
       protocol = "https:";
     }
     if (protocol !== "http:" && protocol !== "https:") return null;
@@ -123,7 +155,10 @@ export function managementRequestOrigin(req: Request, config: OcxConfig): string
   }
 }
 
-export function isAllowedManagementOrigin(req: Request, config: OcxConfig): boolean {
+export function isAllowedManagementOrigin(
+  req: Request,
+  config: OcxConfig,
+): boolean {
   const requestOrigin = managementRequestOrigin(req, config);
   if (!requestOrigin) return false;
   const origin = req.headers.get("Origin");
@@ -137,7 +172,10 @@ export function browserSecurityHeaders(): Record<string, string> {
   };
 }
 
-export function corsHeaders(req?: Request, config?: OcxConfig): Record<string, string> {
+export function corsHeaders(
+  req?: Request,
+  config?: OcxConfig,
+): Record<string, string> {
   const origin = req?.headers.get("Origin");
   // When the requester's Origin is not an allowed origin, fall back to the
   // server's own public origin (CfAccess-trusted host behind Cloudflare Tunnel)
@@ -150,25 +188,35 @@ export function corsHeaders(req?: Request, config?: OcxConfig): Record<string, s
   // otherwise accepts an arbitrary attacker-controlled Host (and x-forwarded-proto),
   // which must not be reflected as Access-Control-Allow-Origin.
   const selfHost = req ? parseHttpHost(req.headers.get("Host")) : null;
-  const selfHostTrusted = !!selfHost
-    && (isLoopbackHostname(selfHost.hostname) || isCfAccessTrustedHost(selfHost.hostname));
-  const selfOrigin = req && config && selfHostTrusted ? managementRequestOrigin(req, config) : null;
-  const allowOrigin = origin && req && config && isAllowedRequestOrigin(req, config)
-    ? origin
-    : (selfOrigin ?? _corsOrigin);
+  const selfHostTrusted =
+    !!selfHost &&
+    (isLoopbackHostname(selfHost.hostname) ||
+      isDashboardTrustedHost(selfHost.hostname));
+  const selfOrigin =
+    req && config && selfHostTrusted
+      ? managementRequestOrigin(req, config)
+      : null;
+  const allowOrigin =
+    origin && req && config && isAllowedRequestOrigin(req, config)
+      ? origin
+      : (selfOrigin ?? _corsOrigin);
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     // ChatGPT-Account-Id is required for browser/Electron ChatGPT & Codex App voice preflights
     // (direct forward auth matches the bearer to this account id). The OpenAI-Alpha .. X-OAI-Attestation
     // block covers GPT-Live voice protocol headers relayed by the /v1/live call-create path.
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-OpenCodex-API-Key, X-Api-Key, Anthropic-Version, Anthropic-Beta, ChatGPT-Account-Id, OpenAI-Alpha, X-Session-Id, Session-Id, Thread-Id, Originator, X-OAI-Attestation",
-    "Vary": "Origin",
+    "Access-Control-Allow-Headers":
+      "Content-Type, Authorization, X-OpenCodex-API-Key, X-Api-Key, Anthropic-Version, Anthropic-Beta, ChatGPT-Account-Id, OpenAI-Alpha, X-Session-Id, Session-Id, Thread-Id, Originator, X-OAI-Attestation",
+    Vary: "Origin",
     ...browserSecurityHeaders(),
   };
 }
 
-export function managementCorsHeaders(req?: Request, config?: OcxConfig): Record<string, string> {
+export function managementCorsHeaders(
+  req?: Request,
+  config?: OcxConfig,
+): Record<string, string> {
   const headers = corsHeaders();
   const origin = req?.headers.get("Origin");
   if (origin && req && config && isAllowedManagementOrigin(req, config)) {
@@ -177,7 +225,11 @@ export function managementCorsHeaders(req?: Request, config?: OcxConfig): Record
   return headers;
 }
 
-export function withCors(response: Response, req: Request, config: OcxConfig): Response {
+export function withCors(
+  response: Response,
+  req: Request,
+  config: OcxConfig,
+): Response {
   const headers = new Headers(response.headers);
   for (const [name, value] of Object.entries(corsHeaders(req, config))) {
     headers.set(name, value);
@@ -189,9 +241,15 @@ export function withCors(response: Response, req: Request, config: OcxConfig): R
   });
 }
 
-export function withManagementCors(response: Response, req: Request, config: OcxConfig): Response {
+export function withManagementCors(
+  response: Response,
+  req: Request,
+  config: OcxConfig,
+): Response {
   const headers = new Headers(response.headers);
-  for (const [name, value] of Object.entries(managementCorsHeaders(req, config))) {
+  for (const [name, value] of Object.entries(
+    managementCorsHeaders(req, config),
+  )) {
     headers.set(name, value);
   }
   return new Response(response.body, {
@@ -201,10 +259,18 @@ export function withManagementCors(response: Response, req: Request, config: Ocx
   });
 }
 
-export function jsonResponse(data: unknown, status = 200, req?: Request, config?: OcxConfig): Response {
+export function jsonResponse(
+  data: unknown,
+  status = 200,
+  req?: Request,
+  config?: OcxConfig,
+): Response {
   return new Response(stringifyHttpJson(data), {
     status,
-    headers: { "Content-Type": "application/json", ...corsHeaders(req, config) },
+    headers: {
+      "Content-Type": "application/json",
+      ...corsHeaders(req, config),
+    },
   });
 }
 
@@ -232,8 +298,17 @@ export function configuredAdminAuthToken(): string | undefined {
 export function isLoopbackHostname(hostname: string | undefined): boolean {
   // A fully-qualified "localhost." is the same host as "localhost": curl and some clients
   // send the trailing dot verbatim, and refusing it 403s a legitimate loopback caller.
-  const normalized = (hostname ?? "127.0.0.1").trim().toLowerCase().replace(/\.$/, "");
-  return normalized === "" || normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]";
+  const normalized = (hostname ?? "127.0.0.1")
+    .trim()
+    .toLowerCase()
+    .replace(/\.$/, "");
+  return (
+    normalized === "" ||
+    normalized === "localhost" ||
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "[::1]"
+  );
 }
 
 export function effectiveBindHostname(config: OcxConfig): string | undefined {
@@ -248,8 +323,9 @@ export function isApiAuthRequired(config: OcxConfig): boolean {
 }
 
 export function assertServerAuthConfig(config: OcxConfig): void {
-  const hasConfiguredDataCredential = !!configuredApiAuthToken(config)
-    || (config.apiKeys ?? []).some(entry => !!entry.key.trim());
+  const hasConfiguredDataCredential =
+    !!configuredApiAuthToken(config) ||
+    (config.apiKeys ?? []).some((entry) => !!entry.key.trim());
   if (isApiAuthRequired(config) && !hasConfiguredDataCredential) {
     throw new Error(
       "A data-plane credential (OPENCODEX_API_AUTH_TOKEN or config.apiKeys) is required when binding opencodex to a non-loopback hostname",
@@ -262,11 +338,17 @@ function secretEquals(actual: string, expected: string | undefined): boolean {
   const enc = new TextEncoder();
   const actualBytes = enc.encode(actual);
   const expectedBytes = enc.encode(expected);
-  return expectedBytes.length === actualBytes.length && timingSafeEqual(actualBytes, expectedBytes);
+  return (
+    expectedBytes.length === actualBytes.length &&
+    timingSafeEqual(actualBytes, expectedBytes)
+  );
 }
 
 /** Whether `token` is a data-plane admission secret. */
-export function isDataPlaneAdmissionSecret(token: string, config: OcxConfig): boolean {
+export function isDataPlaneAdmissionSecret(
+  token: string,
+  config: OcxConfig,
+): boolean {
   const actual = token.trim();
   if (!actual) return false;
   if (secretEquals(actual, configuredApiAuthToken(config))) return true;
@@ -283,11 +365,21 @@ export function isManagementAdmissionSecret(token: string): boolean {
 }
 
 /** Whether `token` is one of the proxy's own admission secrets and must never reach an upstream. */
-export function isProxyAdmissionSecret(token: string, config: OcxConfig): boolean {
+export function isProxyAdmissionSecret(
+  token: string,
+  config: OcxConfig,
+): boolean {
   const actual = token.trim();
   if (!actual) return false;
-  if (/^ocx_(?:data|admin|session)_/.test(actual) || /^ocx_[0-9a-f]{40}$/.test(actual)) return true;
-  return isDataPlaneAdmissionSecret(actual, config) || isManagementAdmissionSecret(actual);
+  if (
+    /^ocx_(?:data|admin|session)_/.test(actual) ||
+    /^ocx_[0-9a-f]{40}$/.test(actual)
+  )
+    return true;
+  return (
+    isDataPlaneAdmissionSecret(actual, config) ||
+    isManagementAdmissionSecret(actual)
+  );
 }
 
 export class ForwardAdmissionCredentialError extends Error {
@@ -297,37 +389,68 @@ export class ForwardAdmissionCredentialError extends Error {
   }
 }
 
-export function validateForwardAdmissionCredential(headers: Headers, config: OcxConfig): void {
-  const bearer = headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
-  if (bearer && isProxyAdmissionSecret(bearer, config)) throw new ForwardAdmissionCredentialError();
+export function validateForwardAdmissionCredential(
+  headers: Headers,
+  config: OcxConfig,
+): void {
+  const bearer = headers
+    .get("authorization")
+    ?.replace(/^Bearer\s+/i, "")
+    .trim();
+  if (bearer && isProxyAdmissionSecret(bearer, config))
+    throw new ForwardAdmissionCredentialError();
 }
 
 export function hasValidApiAuth(req: Request, config: OcxConfig): boolean {
   if (!isApiAuthRequired(config)) return true;
-  const actual = req.headers.get("x-opencodex-api-key")?.trim()
-    || req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim()
+  const actual =
+    req.headers.get("x-opencodex-api-key")?.trim() ||
+    req.headers
+      .get("authorization")
+      ?.replace(/^Bearer\s+/i, "")
+      .trim() ||
     // Anthropic-SDK clients (Claude Code with ANTHROPIC_API_KEY) authenticate via x-api-key.
-    || req.headers.get("x-api-key")?.trim();
+    req.headers.get("x-api-key")?.trim();
   if (!actual) return false;
   return isDataPlaneAdmissionSecret(actual, config);
 }
 
 function extractDataPlaneAdmissionToken(req: Request): string | undefined {
-  return req.headers.get("x-opencodex-api-key")?.trim()
-    || req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim()
-    || req.headers.get("x-api-key")?.trim();
+  return (
+    req.headers.get("x-opencodex-api-key")?.trim() ||
+    req.headers
+      .get("authorization")
+      ?.replace(/^Bearer\s+/i, "")
+      .trim() ||
+    req.headers.get("x-api-key")?.trim()
+  );
 }
 
-export function requireApiAuth(req: Request, config: OcxConfig, _kind: "data-plane"): Response | null {
+export function requireApiAuth(
+  req: Request,
+  config: OcxConfig,
+  _kind: "data-plane",
+): Response | null {
   if (hasValidApiAuth(req, config)) return null;
-  return formatErrorResponse(401, "authentication_error", "opencodex API key required");
+  return formatErrorResponse(
+    401,
+    "authentication_error",
+    "opencodex API key required",
+  );
 }
 
 /** Require data-plane admission even on loopback (routes that export gateway secrets). */
-export function requireDataPlaneAdmissionAuth(req: Request, config: OcxConfig): Response | null {
+export function requireDataPlaneAdmissionAuth(
+  req: Request,
+  config: OcxConfig,
+): Response | null {
   const actual = extractDataPlaneAdmissionToken(req);
   if (actual && isDataPlaneAdmissionSecret(actual, config)) return null;
-  return formatErrorResponse(401, "authentication_error", "opencodex API key required");
+  return formatErrorResponse(
+    401,
+    "authentication_error",
+    "opencodex API key required",
+  );
 }
 
 /**
@@ -339,41 +462,80 @@ export function requireDataPlaneAdmissionAuth(req: Request, config: OcxConfig): 
  * reject proxy admission credentials, so this cannot turn an OCX bearer into an
  * upstream provider credential.
  */
-export function requireResponsesApiAuth(req: Request, config: OcxConfig): Response | null {
+export function requireResponsesApiAuth(
+  req: Request,
+  config: OcxConfig,
+): Response | null {
   if (!isApiAuthRequired(config)) return null;
   const dedicated = req.headers.get("x-opencodex-api-key")?.trim();
   if (dedicated && isDataPlaneAdmissionSecret(dedicated, config)) return null;
-  const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
+  const bearer = req.headers
+    .get("authorization")
+    ?.replace(/^Bearer\s+/i, "")
+    .trim();
   if (bearer && isDataPlaneAdmissionSecret(bearer, config)) return null;
-  return formatErrorResponse(401, "authentication_error", "opencodex API key required");
+  return formatErrorResponse(
+    401,
+    "authentication_error",
+    "opencodex API key required",
+  );
 }
 
 const FORBIDDEN_PROVIDER_RUNTIME_FIELDS = [
-  "virtualModels", "codexAuthContext", "selectedForwardHeaders",
-  "sidecarOutcomeRecorder", "_codexAccountOverride", "_codexAccountRequired",
+  "virtualModels",
+  "codexAuthContext",
+  "selectedForwardHeaders",
+  "sidecarOutcomeRecorder",
+  "_codexAccountOverride",
+  "_codexAccountRequired",
 ] as const;
 
-function sameCanonicalProviderSeed(actual: Record<string, unknown>, expected: OcxProviderConfig): boolean {
+function sameCanonicalProviderSeed(
+  actual: Record<string, unknown>,
+  expected: OcxProviderConfig,
+): boolean {
   const actualKeys = Object.keys(actual).sort();
   const expectedKeys = Object.keys(expected).sort();
-  if (actualKeys.length !== expectedKeys.length || actualKeys.some((key, i) => key !== expectedKeys[i])) return false;
-  return actualKeys.every(key => JSON.stringify(actual[key]) === JSON.stringify((expected as unknown as Record<string, unknown>)[key]));
+  if (
+    actualKeys.length !== expectedKeys.length ||
+    actualKeys.some((key, i) => key !== expectedKeys[i])
+  )
+    return false;
+  return actualKeys.every(
+    (key) =>
+      JSON.stringify(actual[key]) ===
+      JSON.stringify((expected as unknown as Record<string, unknown>)[key]),
+  );
 }
 
-export function providerManagementConfigError(name: unknown, provider: unknown): string | null {
-  if (typeof name !== "string" || !provider || typeof provider !== "object" || Array.isArray(provider)) {
+export function providerManagementConfigError(
+  name: unknown,
+  provider: unknown,
+): string | null {
+  if (
+    typeof name !== "string" ||
+    !provider ||
+    typeof provider !== "object" ||
+    Array.isArray(provider)
+  ) {
     return "provider must be a plain object";
   }
   const raw = provider as Record<string, unknown>;
   for (const field of FORBIDDEN_PROVIDER_RUNTIME_FIELDS) {
-    if (Object.hasOwn(raw, field)) return `provider ${name} must not include runtime field "${field}"`;
+    if (Object.hasOwn(raw, field))
+      return `provider ${name} must not include runtime field "${field}"`;
   }
-  if (name === "chatgpt") return "provider chatgpt is reserved for internal credential compatibility";
-  if (name === "openai-multi") return "provider openai-multi is reserved for legacy config migration";
+  if (name === "chatgpt")
+    return "provider chatgpt is reserved for internal credential compatibility";
+  if (name === "openai-multi")
+    return "provider openai-multi is reserved for legacy config migration";
   if (name === "openai") {
     const entry = getProviderRegistryEntry(name);
     const seed = entry ? providerConfigSeed(entry) : undefined;
-    if (!Object.hasOwn(raw, "codexAccountMode") || (raw.codexAccountMode !== "pool" && raw.codexAccountMode !== "direct")) {
+    if (
+      !Object.hasOwn(raw, "codexAccountMode") ||
+      (raw.codexAccountMode !== "pool" && raw.codexAccountMode !== "direct")
+    ) {
       return "provider openai codexAccountMode must be pool or direct";
     }
     if (seed) seed.codexAccountMode = raw.codexAccountMode;
@@ -393,20 +555,40 @@ export function providerManagementConfigError(name: unknown, provider: unknown):
   if (headersError) return `provider ${name} ${headersError}`;
   const apiKeyTransportError = apiKeyTransportConfigError(typed);
   if (apiKeyTransportError) return `provider ${name} ${apiKeyTransportError}`;
-  const maxInputError = positiveIntegerRecordConfigError(raw.modelMaxInputTokens, "modelMaxInputTokens");
-  if (maxInputError) return `provider ${name} ${maxInputError}`;
-  const reasoningSummariesError = booleanRecordConfigError(raw.modelSupportsReasoningSummaries, "modelSupportsReasoningSummaries");
-  if (reasoningSummariesError) return `provider ${name} ${reasoningSummariesError}`;
-  const reasoningSummaryDeliveryError = reasoningSummaryDeliveryRecordConfigError(
-    raw.modelReasoningSummaryDelivery,
-    raw.modelSupportsReasoningSummaries,
+  const maxInputError = positiveIntegerRecordConfigError(
+    raw.modelMaxInputTokens,
+    "modelMaxInputTokens",
   );
-  if (reasoningSummaryDeliveryError) return `provider ${name} ${reasoningSummaryDeliveryError}`;
-  const modelAdaptersError = modelAdapterRecordConfigError(raw.modelAdapters, "modelAdapters", name, typed);
+  if (maxInputError) return `provider ${name} ${maxInputError}`;
+  const reasoningSummariesError = booleanRecordConfigError(
+    raw.modelSupportsReasoningSummaries,
+    "modelSupportsReasoningSummaries",
+  );
+  if (reasoningSummariesError)
+    return `provider ${name} ${reasoningSummariesError}`;
+  const reasoningSummaryDeliveryError =
+    reasoningSummaryDeliveryRecordConfigError(
+      raw.modelReasoningSummaryDelivery,
+      raw.modelSupportsReasoningSummaries,
+    );
+  if (reasoningSummaryDeliveryError)
+    return `provider ${name} ${reasoningSummaryDeliveryError}`;
+  const modelAdaptersError = modelAdapterRecordConfigError(
+    raw.modelAdapters,
+    "modelAdapters",
+    name,
+    typed,
+  );
   if (modelAdaptersError) return `provider ${name} ${modelAdaptersError}`;
-  const defaultMaxOutputError = positiveIntegerConfigError(raw.defaultMaxOutputTokens, "defaultMaxOutputTokens");
+  const defaultMaxOutputError = positiveIntegerConfigError(
+    raw.defaultMaxOutputTokens,
+    "defaultMaxOutputTokens",
+  );
   if (defaultMaxOutputError) return `provider ${name} ${defaultMaxOutputError}`;
-  const maxOutputError = positiveIntegerRecordConfigError(raw.modelMaxOutputTokens, "modelMaxOutputTokens");
+  const maxOutputError = positiveIntegerRecordConfigError(
+    raw.modelMaxOutputTokens,
+    "modelMaxOutputTokens",
+  );
   if (maxOutputError) return `provider ${name} ${maxOutputError}`;
   const openRouterError = openRouterRoutingConfigError(typed);
   if (openRouterError) return `provider ${name} ${openRouterError}`;
@@ -422,9 +604,10 @@ export function providerManagementConfigError(name: unknown, provider: unknown):
   if (typed.authMode === "forward") {
     const normalizedName = name.trim().toLowerCase();
     const base = typed.baseUrl.replace(/\/+$/, "");
-    const isBuiltInChatGptForward = normalizedName === "openai"
-      && typed.adapter === "openai-responses"
-      && base === "https://chatgpt.com/backend-api/codex";
+    const isBuiltInChatGptForward =
+      normalizedName === "openai" &&
+      typed.adapter === "openai-responses" &&
+      base === "https://chatgpt.com/backend-api/codex";
     if (isBuiltInChatGptForward) return null;
     return `provider ${name} uses reserved authMode "forward"; configure ChatGPT passthrough via the built-in provider`;
   }
@@ -434,7 +617,8 @@ export function providerManagementConfigError(name: unknown, provider: unknown):
 export function publicProviderBaseUrl(baseUrl: string): string {
   try {
     const parsed = new URL(baseUrl.trim());
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "(invalid URL)";
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
+      return "(invalid URL)";
     parsed.username = "";
     parsed.password = "";
     parsed.search = "";
@@ -461,7 +645,8 @@ export function safeConfigDTO(config: OcxConfig): unknown {
       adapter: provider.adapter,
       baseUrl: publicProviderBaseUrl(provider.baseUrl),
       hasApiKey: !!provider.apiKey || !!provider.credentialRef,
-      hasHeaders: !!provider.headers && Object.keys(provider.headers).length > 0,
+      hasHeaders:
+        !!provider.headers && Object.keys(provider.headers).length > 0,
     };
     const poolCount = configuredKeyCount(provider);
     if (poolCount > 0) dto.keyPoolCount = poolCount;
@@ -499,7 +684,8 @@ export function safeConfigDTO(config: OcxConfig): unknown {
     const registryNote = providerMatchesRegistryTransport(name, provider)
       ? getProviderRegistryEntry(name)?.note
       : undefined;
-    if (typeof registryNote === "string" && registryNote.trim()) dto.note = registryNote;
+    if (typeof registryNote === "string" && registryNote.trim())
+      dto.note = registryNote;
     const codexAccountMode = providerCodexAccountMode(name, provider);
     if (codexAccountMode) dto.codexAccountMode = codexAccountMode;
     providers[name] = dto;
@@ -512,6 +698,8 @@ export function safeConfigDTO(config: OcxConfig): unknown {
     codexAutoStart: codexAutoStartEnabled(config),
     websockets: config.websockets,
     providers,
-    ...(Object.keys(activeCooldowns).length > 0 ? { providerCooldowns: activeCooldowns } : {}),
+    ...(Object.keys(activeCooldowns).length > 0
+      ? { providerCooldowns: activeCooldowns }
+      : {}),
   };
 }
