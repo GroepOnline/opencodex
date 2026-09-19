@@ -59,6 +59,8 @@ describe("install scripts", () => {
     expect(vite).toMatch(/host:\s*(["'])0\.0\.0\.0\1/);
     expect(vite).toContain("proxyConfig(proxyTarget)");
     expect(vite).toContain("guiSessionPlugin(proxyTarget)");
+    expect(vite).toContain("buildIdentityPlugin()");
+    expect(vite).toContain('name="ocx-build-version"');
   });
 
   test("Node can import the package main without executing the CLI", () => {

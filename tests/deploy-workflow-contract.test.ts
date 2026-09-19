@@ -293,6 +293,15 @@ describe("digest deploy workflow contract", () => {
     expect(run).toContain('>> "$GITHUB_STEP_SUMMARY"');
     expect(run).toContain("version+gitSha-verified healthy within 60s");
     expect(run).not.toContain("${{");
+    expect(run).toContain("scripts/status-version-receipt.py assemble");
+    expect(run).toContain("last_health_body=");
+    expect(run).toContain('--runtime-version "$runtime_version"');
+    expect(run).toContain("--display-html");
+    expect(run).toContain(
+      "display from ${dashboard_url} HTML meta, not /healthz",
+    );
+    expect(run).toContain("STATUS_VERSION_BINDING_FILE");
+    expect(run).not.toContain("--display-version");
     // Rollback still verifies the previous runtime, not the new tag's version.
     const rollback = workflow.slice(
       workflow.indexOf("- name: Rollback on failure"),
