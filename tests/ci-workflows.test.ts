@@ -174,8 +174,9 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toContain("bun run scripts/test.ts");
     expect(workflow).toContain("bun run scripts/ci-test-shard.ts");
     expect(workflow).not.toContain("bun test --isolate tests");
+    expect(workflow).toContain("ACTIONLINT_VERSION=1.7.8");
     expect(workflow).toContain(
-      "raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7",
+      "./actionlint -config-file .github/actionlint.yaml",
     );
     expect(workflow).toContain("bun audit --audit-level=high");
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
