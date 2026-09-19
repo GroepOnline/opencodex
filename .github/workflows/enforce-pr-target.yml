@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   enforce-target:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, opencodex]
 
     steps:
       - name: Checkout trusted PR-quality scripts
