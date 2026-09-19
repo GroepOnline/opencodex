@@ -7,7 +7,8 @@ import { join } from "node:path";
 // SSH detection (E), and the F4 explicit-localhost bind symmetry (D). These files run top-level or
 // platform-gated logic, so guard the invariants at the source level (repo convention — see
 // ocx-launcher-source.test.ts / service.test.ts).
-const read = (rel: string) => readFileSync(join(import.meta.dir, "..", rel), "utf8");
+const read = (rel: string) =>
+  readFileSync(join(import.meta.dir, "..", rel), "utf8");
 
 describe("update-job restart avoids the shell-less .cmd EINVAL (Windows, bun/source)", () => {
   const src = read("src/update/job.ts");
@@ -19,8 +20,12 @@ describe("update-job restart avoids the shell-less .cmd EINVAL (Windows, bun/sou
     // restartCommand's non-npm branch resolves to process.execPath + the package launcher.
     // Proxy mode may pin --port via startArgs; service mode stays install-only.
     // Service mode now uses svcArgs (which accepts a serviceArgs parameter to preserve the backend).
-    expect(src).toMatch(/const bin = process\.execPath;\s*\n\s*const args = svcArgs;/);
-    expect(src).toContain('? [launcher, "start", "--port", String(Math.trunc(port))]');
+    expect(src).toMatch(
+      /const bin = process\.execPath;\s*\n\s*const args = svcArgs;/,
+    );
+    expect(src).toContain(
+      '? [launcher, "start", "--port", String(Math.trunc(port))]',
+    );
     expect(src).toContain(': [launcher, "start"]');
   });
   test("service update restart bakes OCX_BAKE_PORT so wrappers hard-pin the captured port", () => {
@@ -28,8 +33,12 @@ describe("update-job restart avoids the shell-less .cmd EINVAL (Windows, bun/sou
     // Service reinstall still runs (with bake) even when reclaim warns; direct start refuses to hop.
     expect(src).toContain("refusing to hop");
     expect(src).toContain("runtimeTrusted");
-    expect(read("src/cli/index.ts")).toContain("allowEphemeralFallback: !hardPin");
-    expect(read("src/cli/index.ts")).toContain("preferRetryMs: hardPin ? 0 : 750");
+    expect(read("src/cli/index.ts")).toContain(
+      "allowEphemeralFallback: !hardPin",
+    );
+    expect(read("src/cli/index.ts")).toContain(
+      "preferRetryMs: hardPin ? 0 : 750",
+    );
     expect(read("src/cli/index.ts")).toContain("Not opening the GUI");
     expect(read("src/server/ports.ts")).toContain("allowEphemeralFallback");
   });
@@ -41,18 +50,27 @@ describe("systemd detection tolerates a no-DBUS SSH session (F9)", () => {
     expect(src).toContain("function userRuntimeDir()");
     expect(src).toContain("function ensureUserBusEnv()");
     // The version probe passing + a runtime dir existing is enough — not a hard fail on the --user probe.
-    expect(src).toMatch(/catch \{ \/\* no user bus in this session \*\/ \}\s*\n\s*return userRuntimeDir\(\) !== null;/);
+    expect(src).toMatch(
+      /catch \{ \/\* no user bus in this session \*\/ \}\s*\n\s*return userRuntimeDir\(\) !== null;/,
+    );
   });
   test("install ensures the user-bus env before touching systemctl --user", () => {
-    expect(src).toMatch(/function installSystemd\(\): void \{\s*\n\s*ensureUserBusEnv\(\);/);
+    expect(src).toMatch(
+      /function installSystemd\(\): void \{\s*\n\s*ensureUserBusEnv\(\);/,
+    );
   });
 });
 
 describe("server bind canonicalizes explicit localhost but preserves wildcards (F4 symmetry)", () => {
   const src = read("src/server/index.ts");
   test("literal localhost binds to 127.0.0.1; 0.0.0.0/:: exposure is untouched", () => {
-    expect(src).toContain("const configuredHost = effectiveBindHostname(config);");
-    expect(src).toContain('!configuredHost || /^localhost$/i.test(configuredHost) ? "127.0.0.1"');
+    expect(src).toContain(
+      "const configuredHost = effectiveBindHostname(config);",
+    );
+    expect(src).toContain(
+      "!configuredHost || /^localhost$/i.test(configuredHost)",
+    );
+    expect(src).toContain('? "127.0.0.1"');
     expect(src).toContain("hostname: bindHost,");
     // Must not blanket-rewrite the bind host (that would break intentional 0.0.0.0 exposure).
     expect(src).not.toContain('hostname: "127.0.0.1",');
@@ -62,8 +80,12 @@ describe("server bind canonicalizes explicit localhost but preserves wildcards (
     // to effectiveBindHostname so listen/auth/rate-limit share one hostname without persisting it.
     const authSrc = read("src/server/auth-cors.ts");
     expect(authSrc).toContain("process.env.OPENCODEX_BIND_HOST?.trim()");
-    expect(src).toContain("const configuredHost = effectiveBindHostname(config);");
-    expect(src).not.toContain("if (configuredHost) config.hostname = bindHost;");
+    expect(src).toContain(
+      "const configuredHost = effectiveBindHostname(config);",
+    );
+    expect(src).not.toContain(
+      "if (configuredHost) config.hostname = bindHost;",
+    );
     expect(read("src/config.ts")).not.toContain("OPENCODEX_BIND_HOST");
   });
 });

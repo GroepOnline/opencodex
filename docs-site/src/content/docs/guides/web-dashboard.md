@@ -31,14 +31,16 @@ Access login also authorizes the dashboard without an admin-token prompt (config
 bound to a non-loopback hostname require the admin token (`OPENCODEX_ADMIN_AUTH_TOKEN`, or the
 auto-generated `~/.opencodex/admin-api-token` file).
 
-Authentik OIDC for the dashboard is still a ChefGroep Auth greenfield product
-gate (`deploy/oidc/authentik-ocx-client.placeholder.json`, live `client_id`
+Authentik OIDC is the product consumer for the same dashboard
+(`deploy/oidc/authentik-ocx-client.placeholder.json`, live `client_id`
 `chefgroep-ocx-oidc`, local + `https://ocx.chefgroep.online` redirects). The
 public issuer `https://auth.chefgroep.online/application/o/ocx/` is APPLY DONE
 2026-09-18 (discovery/JWKS 200, authorize 302) and is not DNS HOLD. The proxy
-does not verify Authentik tokens yet; **Cloudflare Access remains the live
-public-host dashboard gate** until product token verify lands. Do not treat
-`OIDC_*` env vars as a working sign-in path.
+verifies Authentik ID tokens and can start `GET /oauth/login` when
+`OIDC_CLIENT_SECRET_FILE` is set. **Cloudflare Access remains the live
+public-host dashboard gate** until operators execute
+`deploy/oidc/CUTOVER-CHECKLIST.md`. See
+[Cloudflare Access vs Authentik OIDC](/guides/access-vs-authentik/).
 
 ## What you can do
 

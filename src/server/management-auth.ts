@@ -29,6 +29,11 @@ import {
   isCfAccessTrustedHost,
   verifyCfAccessRequest,
 } from "./cf-access-auth";
+import {
+  isOidcTrustedHost,
+  oidcConfigured,
+  verifyOidcRequest,
+} from "./oidc-auth";
 
 const GUI_SESSION_TTL_MS = 5 * 60_000;
 const GUI_SESSION_LIMIT = 128;
@@ -212,8 +217,9 @@ export async function issueGuiSession(
   // Loopback GUI session (laptop tunnel / local bind) — unchanged trust model.
   const loopbackSession =
     !isApiAuthRequired(config) && isLoopbackHostname(host.hostname);
-  // Public trusted host (e.g. behind Cloudflare Access): mint only when a valid
-  // Cloudflare Access JWT is present.
+  // Public trusted host (Cloudflare Access JWT and/or Authentik OIDC): mint
+  // only when a valid human identity is present. CF Access remains the live
+  // public-host gate until operators execute the cutover checklist.
   let accessSession = false;
   if (
     !loopbackSession &&
@@ -221,6 +227,14 @@ export async function issueGuiSession(
     isCfAccessTrustedHost(host.hostname)
   ) {
     accessSession = !!(await verifyCfAccessRequest(req));
+  }
+  if (
+    !loopbackSession &&
+    !accessSession &&
+    oidcConfigured() &&
+    isOidcTrustedHost(host.hostname)
+  ) {
+    accessSession = !!(await verifyOidcRequest(req));
   }
   if (!loopbackSession && !accessSession) return null;
 
@@ -316,19 +330,31 @@ export async function requireManagementAuth(
       }
     }
   }
-  // Human GUI behind Cloudflare Access: valid Access JWT replaces admin prompt.
-  // Tailscale/direct hits without JWT still require admin token or session.
-  if (config && cfAccessConfigured()) {
-    const host = parseHttpHost(req.headers.get("Host"));
-    const safeMethod = req.method === "GET" || req.method === "HEAD";
-    const origin = req.headers.get("Origin");
+  // Human GUI behind Cloudflare Access or Authentik OIDC: a valid identity
+  // replaces the admin prompt. Tailscale/direct hits without either still
+  // require an admin token or GUI session.
+  const host = config ? parseHttpHost(req.headers.get("Host")) : null;
+  const safeMethod = req.method === "GET" || req.method === "HEAD";
+  const origin = req.headers.get("Origin");
+  if (
+    config &&
+    host &&
+    isAllowedManagementOrigin(req, config) &&
+    (safeMethod || !!origin)
+  ) {
     if (
-      host &&
+      cfAccessConfigured() &&
       isCfAccessTrustedHost(host.hostname) &&
-      isAllowedManagementOrigin(req, config) &&
-      (safeMethod || !!origin)
+      (await verifyCfAccessRequest(req))
     ) {
-      if (await verifyCfAccessRequest(req)) return null;
+      return null;
+    }
+    if (
+      oidcConfigured() &&
+      isOidcTrustedHost(host.hostname) &&
+      (await verifyOidcRequest(req))
+    ) {
+      return null;
     }
   }
   return Response.json(

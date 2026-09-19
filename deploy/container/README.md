@@ -11,6 +11,8 @@ proxy/app path (`:10100/healthz`) without touching the live place lock.
 | [`../../.env.example`](../../.env.example)                                                       | Env template. No secrets.                                                                                                                        |
 | [`../../.devcontainer/`](../../.devcontainer/)                                                   | Coding container (Bun 1.4.0).                                                                                                                    |
 | [`../oidc/authentik-ocx-client.placeholder.json`](../oidc/authentik-ocx-client.placeholder.json) | Authentik OIDC client contract (`chefgroep-ocx-oidc`; issuer APPLY DONE 2026-09-18).                                                             |
+| [`../oidc/CUTOVER-CHECKLIST.md`](../oidc/CUTOVER-CHECKLIST.md)                                   | Authorize canary and CoS / Cloudflare Access cutover checklist.                                                                                  |
+| [`../../scripts/oidc-authorize-canary.sh`](../../scripts/oidc-authorize-canary.sh)               | Secret-free discovery/JWKS (and optional `/oauth/login`) canary.                                                                                 |
 | [`../../scripts/healthz-smoke.sh`](../../scripts/healthz-smoke.sh)                               | Local/dev `/healthz` identity smoke matching `:10100/healthz`.                                                                                   |
 
 ## Live place lock
@@ -54,28 +56,36 @@ requires `status=ok`, `service=opencodex`, numeric `pid`/`port`, and a non-empty
 `gitSha`. Set `OPENCODEX_SMOKE_EXPECT_SHA` / `OPENCODEX_SMOKE_EXPECT_VERSION` to
 bind those fields the way the production health gate binds the release tag.
 
-## Authentik OIDC placeholders
+## Authentik OIDC consumer
 
 Public ChefGroep Auth issuer is **APPLY DONE 2026-09-18** at
 `https://auth.chefgroep.online/application/o/ocx/` (discovery/JWKS 200,
-authorize 302). The issuer is **not** DNS HOLD. Live greenfield `client_id` is
+authorize 302). The issuer is **not** DNS HOLD. Live `client_id` is
 `chefgroep-ocx-oidc` (Infra smoke + Cloudflare Access IdP). `client_secret`
 stays `null` / file-only (`OIDC_CLIENT_SECRET_FILE`).
 
-The placeholder file lists redirect URIs for local loopback and
+The consumer contract lists redirect URIs for local loopback and
 `https://ocx.chefgroep.online`. Compose forwards `OIDC_*` when set. The proxy
-does **not** verify Authentik tokens yet; **Cloudflare Access remains the live
-public-host dashboard gate** until product token verify lands.
+verifies Authentik ID tokens (JWKS) and runs `GET /oauth/login` →
+`/oauth/callback` (authorization-code + PKCE) when the secret file is present.
+**Cloudflare Access remains the live public-host dashboard gate** until
+operators execute [`../oidc/CUTOVER-CHECKLIST.md`](../oidc/CUTOVER-CHECKLIST.md).
 
 - Do not put a client secret in git. Use `OIDC_CLIENT_SECRET_FILE`.
 - Do not register this client in ChefFactory catalogs (Factory owns catalog).
 - Do not apply Cloudflare DNS from this repository.
 
+```bash
+bash scripts/oidc-authorize-canary.sh
+# optional, against a running local proxy with OIDC_* set:
+OPENCODEX_OIDC_CANARY_URL=http://127.0.0.1:10100 bash scripts/oidc-authorize-canary.sh
+```
+
 ## Honest blockers
 
-1. Authentik issuer public apply is done (2026-09-18). Product token verify has
-   not landed, so Cloudflare Access remains the live public-host gate. Client
-   secret is not in git.
+1. Authentik issuer public apply is done (2026-09-18). The consumer is wired,
+   but Cloudflare Access remains the live public-host gate until the cutover
+   checklist is executed. Client secret is not in git.
 2. This change documents the `1.4.2` / `529bb6a9` pin and does not move it.
    Do not deploy this PR to bc-scan-2.
 3. `deploy.yml` still targets the az-01 deploy runner; do not treat a merge

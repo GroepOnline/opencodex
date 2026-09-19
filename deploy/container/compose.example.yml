@@ -15,6 +15,7 @@ services:
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET_FILE: ${OIDC_CLIENT_SECRET_FILE:-}
+      OIDC_ALLOWED_HOSTS: ${OIDC_ALLOWED_HOSTS:-}
       OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-}
     secrets:
       - opencodex_api_token

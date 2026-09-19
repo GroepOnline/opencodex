@@ -12,10 +12,14 @@ All notable changes to the GroepOnline `opencodex` fork. Format follows
 - Local/dev Compose, Dev Container, `.env.example`, and `scripts/healthz-smoke.sh`
   for the production `:10100/healthz` proxy path.
 - Authentik OIDC client placeholders (local + `ocx.chefgroep.online` redirects).
-  Live greenfield `client_id` is `chefgroep-ocx-oidc`. Public issuer
+  Live `client_id` is `chefgroep-ocx-oidc`. Public issuer
   `auth.chefgroep.online` is APPLY DONE 2026-09-18 (discovery/JWKS 200,
-  authorize 302). No client secrets in git. The runtime does not verify
-  Authentik tokens yet; Cloudflare Access remains the live public-host gate.
+  authorize 302). No client secrets in git.
+- Authentik OIDC product consumer: JWKS ID-token verify plus
+  authorization-code + PKCE (`GET /oauth/login`, `/oauth/callback`,
+  `/oauth/logout`) when `OIDC_CLIENT_SECRET_FILE` is set. Cloudflare Access
+  remains the live public-host gate until
+  `deploy/oidc/CUTOVER-CHECKLIST.md` is executed.
 
 ## [1.4.2] — 2026-09-08
 
