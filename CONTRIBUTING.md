@@ -34,7 +34,10 @@ Bun runtime for end users, but contributor commands such as `bun install`, `bun 
 
 The production proxy path (Compose + systemd + `:10100/healthz`) has a complete local/dev
 mirror: repo-root `compose.yml`, `.devcontainer/`, `.env.example`, and
-`bash scripts/healthz-smoke.sh`. See [`deploy/container/README.md`](./deploy/container/README.md).
+`bash scripts/healthz-smoke.sh`. Authentik OIDC canary:
+`bash scripts/oidc-authorize-canary.sh`. See
+[`deploy/container/README.md`](./deploy/container/README.md) and
+[`deploy/oidc/CUTOVER-CHECKLIST.md`](./deploy/oidc/CUTOVER-CHECKLIST.md).
 
 ## Git hooks
 

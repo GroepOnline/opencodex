@@ -347,13 +347,25 @@ pass `OPENCODEX_API_AUTH_TOKEN` directly.
 Local/dev uses the same image contract via repo-root `compose.yml` (loopback `:10100` only; no
 Tailscale bind). Copy `.env.example` and run `bash scripts/healthz-smoke.sh` against
 `http://127.0.0.1:10100/healthz`. Optional `OIDC_*` variables and
-`deploy/oidc/authentik-ocx-client.placeholder.json` are Authentik client placeholders
-(`client_id` `chefgroep-ocx-oidc`). The public issuer at
+`deploy/oidc/authentik-ocx-client.placeholder.json` wire the Authentik
+product consumer (`client_id` `chefgroep-ocx-oidc`). The public issuer at
 `https://auth.chefgroep.online/application/o/ocx/` is APPLY DONE 2026-09-18
-(discovery/JWKS 200, authorize 302) and is not DNS HOLD. The runtime does not
-verify those tokens yet; Cloudflare Access remains the live public-host
-dashboard gate until product token verify lands. Never commit a client secret;
-use `OIDC_CLIENT_SECRET_FILE`. See `deploy/container/README.md`.
+(discovery/JWKS 200, authorize 302) and is not DNS HOLD. The runtime verifies
+Authentik ID tokens (JWKS) and runs `GET /oauth/login` → `/oauth/callback`
+when `OIDC_CLIENT_SECRET_FILE` is set. Cloudflare Access remains the live
+public-host dashboard gate until `deploy/oidc/CUTOVER-CHECKLIST.md` is
+executed. Never commit a client secret; use `OIDC_CLIENT_SECRET_FILE`. See
+[Access vs Authentik](/guides/access-vs-authentik/) and
+`deploy/container/README.md`.
+
+| Variable                                                              | Required for       | Meaning                                                                                                            |
+| --------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `OIDC_ISSUER`                                                         | Token verify       | Authentik issuer, including trailing slash. Default live value: `https://auth.chefgroep.online/application/o/ocx/` |
+| `OIDC_CLIENT_ID`                                                      | Token verify       | Confidential client id. Live value: `chefgroep-ocx-oidc`                                                           |
+| `OIDC_CLIENT_SECRET_FILE`                                             | `GET /oauth/login` | Path to the client secret. Never a raw `OIDC_CLIENT_SECRET` env var                                                |
+| `OIDC_REDIRECT_URI`                                                   | `GET /oauth/login` | Must match the Authentik client. Local default: `http://127.0.0.1:10100/oauth/callback`                            |
+| `OIDC_ALLOWED_HOSTS`                                                  | Public GUI         | Extra comma-separated hostnames (for example `ocx.chefgroep.online`) trusted for OIDC admission                    |
+| `CF_ACCESS_TEAM_DOMAIN` / `CF_ACCESS_AUD` / `CF_ACCESS_ALLOWED_HOSTS` | Live public GUI    | Cloudflare Access remains the live public-host gate until cutover                                                  |
 
 Under `read_only: true` the only writable paths are the `/var/lib/opencodex` volume (`OPENCODEX_HOME`)
 and the `/tmp` tmpfs. A clean image ships no Codex install, so Codex-config injection is skipped and

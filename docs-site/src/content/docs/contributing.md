@@ -27,9 +27,9 @@ To run the same Compose path production uses (image + file-backed token +
 `127.0.0.1:10100/healthz`), copy [`.env.example`](https://github.com/GroepOnline/opencodex/blob/main/.env.example)
 to `.env`, create a local token file, and `docker compose up -d --build`.
 Dev Container setup is in [`.devcontainer/`](https://github.com/GroepOnline/opencodex/tree/main/.devcontainer).
-Operator notes and Authentik OIDC placeholders (`chefgroep-ocx-oidc`; issuer
-APPLY DONE 2026-09-18; Cloudflare Access remains the live public-host gate)
-are in
+Operator notes and Authentik OIDC (`chefgroep-ocx-oidc`; issuer
+APPLY DONE 2026-09-18; consumer JWKS + `/oauth/login`; Cloudflare Access
+remains the live public-host gate until the cutover checklist) are in
 [`deploy/container/README.md`](https://github.com/GroepOnline/opencodex/blob/main/deploy/container/README.md).
 
 ## Git hooks
