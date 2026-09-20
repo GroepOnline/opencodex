@@ -705,12 +705,20 @@ function hostAllowedForFlow(req: Request): boolean {
   );
 }
 
+function returnToHasUnsafeChars(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (value[i] === "\\" || code < 32 || code === 127) return true;
+  }
+  return false;
+}
+
 export function safeOidcReturnTo(value: string | null | undefined): string {
   const requested = value || "/";
   if (
     requested.startsWith("/") &&
     !requested.startsWith("//") &&
-    !/[\\\x00-\x1F\x7F]/.test(requested)
+    !returnToHasUnsafeChars(requested)
   ) {
     return requested;
   }
@@ -738,14 +746,26 @@ export function oidcDashboardChallengeResponse(req: Request): Response {
   );
 }
 
-export async function handleOidcAuthorize(req: Request): Promise<Response> {
+function requireOidcCodeFlow(
+  req: Request,
+  unavailableMessage: string,
+): Response | null {
   if (!oidcConfigured()) return textResponse(404, "OIDC is not configured");
   if (!oidcCodeFlowConfigured()) {
     return textResponse(503, "OIDC client secret file is not configured");
   }
   if (!hostAllowedForFlow(req)) {
-    return textResponse(403, "OIDC login is not available on this host");
+    return textResponse(403, unavailableMessage);
   }
+  return null;
+}
+
+export async function handleOidcAuthorize(req: Request): Promise<Response> {
+  const gated = requireOidcCodeFlow(
+    req,
+    "OIDC login is not available on this host",
+  );
+  if (gated) return gated;
 
   const redirectUri = oidcRedirectUri();
   const clientId = oidcClientId();
@@ -831,29 +851,41 @@ function idTokenExpSeconds(token: string): number | undefined {
   }
 }
 
-export async function handleOidcCallback(req: Request): Promise<Response> {
-  if (!oidcConfigured()) return textResponse(404, "OIDC is not configured");
-  if (!oidcCodeFlowConfigured()) {
-    return textResponse(503, "OIDC client secret file is not configured");
-  }
-  if (!hostAllowedForFlow(req)) {
-    return textResponse(403, "OIDC callback is not available on this host");
-  }
-
+function readCallbackQuery(
+  req: Request,
+):
+  | { ok: true; code: string; state: string }
+  | { ok: false; response: Response } {
   let url: URL;
   try {
     url = new URL(req.url);
   } catch {
-    return textResponse(400, "OIDC callback URL is invalid");
+    return {
+      ok: false,
+      response: textResponse(400, "OIDC callback URL is invalid"),
+    };
   }
   if (url.searchParams.get("error")) {
-    return textResponse(400, "OIDC authorization was denied");
+    return {
+      ok: false,
+      response: textResponse(400, "OIDC authorization was denied"),
+    };
   }
   const code = url.searchParams.get("code")?.trim();
   const state = url.searchParams.get("state")?.trim();
-  if (!code || !state)
-    return textResponse(400, "OIDC callback is missing code or state");
+  if (!code || !state) {
+    return {
+      ok: false,
+      response: textResponse(400, "OIDC callback is missing code or state"),
+    };
+  }
+  return { ok: true, code, state };
+}
 
+function consumePendingFlow(
+  req: Request,
+  state: string,
+): PendingFlow | Response {
   pruneMaps(pendingFlows, PENDING_LIMIT);
   const pending = pendingFlows.get(state);
   if (
@@ -863,6 +895,73 @@ export async function handleOidcCallback(req: Request): Promise<Response> {
     return textResponse(400, "OIDC callback state is invalid");
   }
   pendingFlows.delete(state);
+  return pending;
+}
+
+async function exchangeAuthorizationCode(
+  pending: PendingFlow,
+  code: string,
+  clientId: string,
+  secret: string,
+): Promise<{ idToken: string; accessToken?: string }> {
+  const discovery = await loadDiscovery();
+  const credentials = Buffer.from(`${clientId}:${secret}`, "utf8").toString(
+    "base64",
+  );
+  const tokenResponse = (await fetchJson(discovery.token_endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: pending.redirectUri,
+      client_id: clientId,
+      code_verifier: pending.verifier,
+    }),
+  })) as { id_token?: unknown; access_token?: unknown };
+  return {
+    idToken:
+      typeof tokenResponse.id_token === "string" ? tokenResponse.id_token : "",
+    accessToken:
+      typeof tokenResponse.access_token === "string" &&
+      tokenResponse.access_token
+        ? tokenResponse.access_token
+        : undefined,
+  };
+}
+
+function callbackSessionRedirect(
+  req: Request,
+  pending: PendingFlow,
+  identity: OidcIdentity,
+  tokens: { idToken: string; accessToken?: string },
+): Response {
+  const session = mintSession(
+    identity,
+    tokens.accessToken,
+    idTokenExpSeconds(tokens.idToken),
+  );
+  return redirectResponse(pending.returnTo, [
+    sessionCookie(req, session.token, session.maxAge),
+    sessionCookie(req, "", 0, FLOW_COOKIE),
+  ]);
+}
+
+export async function handleOidcCallback(req: Request): Promise<Response> {
+  const gated = requireOidcCodeFlow(
+    req,
+    "OIDC callback is not available on this host",
+  );
+  if (gated) return gated;
+
+  const query = readCallbackQuery(req);
+  if (!query.ok) return query.response;
+
+  const pending = consumePendingFlow(req, query.state);
+  if (pending instanceof Response) return pending;
 
   const secret = readClientSecret();
   const clientId = oidcClientId();
@@ -871,43 +970,15 @@ export async function handleOidcCallback(req: Request): Promise<Response> {
   }
 
   try {
-    const discovery = await loadDiscovery();
-    const credentials = Buffer.from(`${clientId}:${secret}`, "utf8").toString(
-      "base64",
+    const tokens = await exchangeAuthorizationCode(
+      pending,
+      query.code,
+      clientId,
+      secret,
     );
-    const body = new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: pending.redirectUri,
-      client_id: clientId,
-      code_verifier: pending.verifier,
-    });
-    const tokenResponse = (await fetchJson(discovery.token_endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${credentials}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body,
-    })) as { id_token?: unknown; access_token?: unknown };
-    const idToken =
-      typeof tokenResponse.id_token === "string" ? tokenResponse.id_token : "";
-    const identity = await verifyOidcIdToken(idToken, pending.nonce);
+    const identity = await verifyOidcIdToken(tokens.idToken, pending.nonce);
     if (!identity) return textResponse(401, "OIDC identity token is invalid");
-    const accessToken =
-      typeof tokenResponse.access_token === "string" &&
-      tokenResponse.access_token
-        ? tokenResponse.access_token
-        : undefined;
-    const session = mintSession(
-      identity,
-      accessToken,
-      idTokenExpSeconds(idToken),
-    );
-    return redirectResponse(pending.returnTo, [
-      sessionCookie(req, session.token, session.maxAge),
-      sessionCookie(req, "", 0, FLOW_COOKIE),
-    ]);
+    return callbackSessionRedirect(req, pending, identity, tokens);
   } catch (error) {
     console.warn(
       "OIDC callback failed",

@@ -202,6 +202,32 @@ function randomSessionSecret(prefix: "ocx_session_"): string {
   return `${prefix}${randomBytes(32).toString("base64url")}`;
 }
 
+async function resolvePublicDashboardAccess(
+  req: Request,
+  hostname: string,
+): Promise<{ accessSession: boolean; oidcSubject?: string }> {
+  // Public trusted host (Cloudflare Access JWT and/or Authentik OIDC): mint
+  // only when a valid human identity is present. CF Access remains the live
+  // public-host gate until operators execute the cutover checklist.
+  if (cfAccessConfigured() && isCfAccessTrustedHost(hostname)) {
+    if (await verifyCfAccessRequest(req)) {
+      return { accessSession: true };
+    }
+  }
+  if (oidcConfigured() && isOidcTrustedHost(hostname)) {
+    const identity = await verifyOidcRequest(req);
+    if (!identity) return { accessSession: false };
+    // Bind revocation only to a browser OIDC session (cookie / ocx_oidc_
+    // bearer). A one-shot ID-token Bearer cannot be re-checked after the GUI
+    // session token replaces it on later /api/* calls.
+    return {
+      accessSession: true,
+      ...(oidcBrowserSessionPresent(req) ? { oidcSubject: identity.sub } : {}),
+    };
+  }
+  return { accessSession: false };
+}
+
 export async function issueGuiSession(
   req: Request,
   config: OcxConfig,
@@ -219,34 +245,11 @@ export async function issueGuiSession(
   // Loopback GUI session (laptop tunnel / local bind) — unchanged trust model.
   const loopbackSession =
     !isApiAuthRequired(config) && isLoopbackHostname(host.hostname);
-  // Public trusted host (Cloudflare Access JWT and/or Authentik OIDC): mint
-  // only when a valid human identity is present. CF Access remains the live
-  // public-host gate until operators execute the cutover checklist.
-  let accessSession = false;
-  let oidcSubject: string | undefined;
-  if (
-    !loopbackSession &&
-    cfAccessConfigured() &&
-    isCfAccessTrustedHost(host.hostname)
-  ) {
-    accessSession = !!(await verifyCfAccessRequest(req));
-  }
-  if (
-    !loopbackSession &&
-    !accessSession &&
-    oidcConfigured() &&
-    isOidcTrustedHost(host.hostname)
-  ) {
-    const identity = await verifyOidcRequest(req);
-    accessSession = !!identity;
-    // Bind revocation only to a browser OIDC session (cookie / ocx_oidc_
-    // bearer). A one-shot ID-token Bearer cannot be re-checked after the GUI
-    // session token replaces it on later /api/* calls.
-    if (identity && oidcBrowserSessionPresent(req)) {
-      oidcSubject = identity.sub;
-    }
-  }
-  if (!loopbackSession && !accessSession) return null;
+  const publicAccess = loopbackSession
+    ? { accessSession: false }
+    : await resolvePublicDashboardAccess(req, host.hostname);
+  if (!loopbackSession && !publicAccess.accessSession) return null;
+  const oidcSubject = publicAccess.oidcSubject;
 
   const origin = managementRequestOrigin(req, config);
   if (!origin) return null;
