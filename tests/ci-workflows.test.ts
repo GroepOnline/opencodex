@@ -86,6 +86,7 @@ describe("GitHub Actions hardening", () => {
     }
     for (const job of [
       "ubuntu-latest",
+      "ubuntu-latest shard 2/2",
       "macos-latest",
       "macos-quality",
       "windows-latest",

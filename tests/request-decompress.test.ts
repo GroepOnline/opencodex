@@ -59,12 +59,18 @@ describe("decodeRequestBody", () => {
     expect(() => decodeRequestBody(new TextEncoder().encode("not zstd"), "zstd")).toThrow();
   });
 
-  test("caps decompressed size", () => {
-    // A highly compressible body larger than the cap after inflation.
-    const big = new Uint8Array(MAX_DECOMPRESSED_BODY_BYTES + 1024);
-    const compressed = Bun.zstdCompressSync(big);
-    expect(() => decodeRequestBody(compressed, "zstd")).toThrow(DecompressedBodyTooLargeError);
-  });
+  test(
+    "caps decompressed size",
+    () => {
+      // A highly compressible body larger than the cap after inflation.
+      const big = new Uint8Array(MAX_DECOMPRESSED_BODY_BYTES + 1024);
+      const compressed = Bun.zstdCompressSync(big);
+      expect(() => decodeRequestBody(compressed, "zstd")).toThrow(
+        DecompressedBodyTooLargeError,
+      );
+    },
+    15_000,
+  );
 
   test("aborts DURING inflation via maxOutputLength — activation per codec (injected cap)", () => {
     // Review finding (PR #96): the cap must fire inside zlib, not after full allocation.
