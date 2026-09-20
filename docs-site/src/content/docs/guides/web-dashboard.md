@@ -36,8 +36,10 @@ Authentik OIDC is the product consumer for the same dashboard
 `chefgroep-ocx-oidc`, local + `https://ocx.chefgroep.online` redirects). The
 public issuer `https://auth.chefgroep.online/application/o/ocx/` is APPLY DONE
 2026-09-18 (discovery/JWKS 200, authorize 302) and is not DNS HOLD. The proxy
-verifies Authentik ID tokens and can start `GET /oauth/login` when
-`OIDC_CLIENT_SECRET_FILE` is set. **Cloudflare Access remains the live
+verifies Authentik ID tokens and starts `GET /oauth/login?return_to=` when
+`OIDC_CLIENT_SECRET_FILE` is set. On a public OIDC host the dashboard
+redirects unauthenticated HTML navigations to that login and never puts
+tokens in the URL. **Cloudflare Access remains the live
 public-host dashboard gate** until operators execute
 `deploy/oidc/CUTOVER-CHECKLIST.md`. See
 [Cloudflare Access vs Authentik OIDC](/guides/access-vs-authentik/).

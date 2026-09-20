@@ -13,6 +13,7 @@ import {
   oidcCodeFlowConfigured,
   oidcConfigured,
   resetOidcStateForTests,
+  safeOidcReturnTo,
   setOidcFetchForTests,
   verifyOidcIdToken,
   verifyOidcRequest,
@@ -31,6 +32,8 @@ const TOKEN = "https://auth.chefgroep.online/application/o/token/";
 const JWKS = "https://auth.chefgroep.online/application/o/ocx/jwks/";
 const END_SESSION =
   "https://auth.chefgroep.online/application/o/ocx/end-session/";
+const INTROSPECT =
+  "https://auth.chefgroep.online/application/o/ocx/introspect/";
 
 const previousHome = process.env.OPENCODEX_HOME;
 const previousAdmin = process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
@@ -77,6 +80,7 @@ function validPayload(
   return {
     iss: ISSUER,
     aud: CLIENT_ID,
+    iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 300,
     sub: "user-1",
     email: "operator@example.test",
@@ -84,24 +88,52 @@ function validPayload(
   };
 }
 
-function discoveryDocument() {
+function discoveryDocument(includeIntrospection = false) {
   return {
     issuer: ISSUER,
     authorization_endpoint: AUTHORIZE,
     token_endpoint: TOKEN,
     jwks_uri: JWKS,
     end_session_endpoint: END_SESSION,
+    ...(includeIntrospection ? { introspection_endpoint: INTROSPECT } : {}),
   };
+}
+
+function setCookies(response: Response): string[] {
+  const typed = response.headers as Headers & {
+    getSetCookie?: () => string[];
+  };
+  if (typeof typed.getSetCookie === "function") return typed.getSetCookie();
+  const single = response.headers.get("Set-Cookie");
+  return single ? [single] : [];
+}
+
+function cookiePair(response: Response, name: string): string | null {
+  for (const cookie of setCookies(response)) {
+    const [pair] = cookie.split(";");
+    if (pair?.startsWith(`${name}=`)) return pair ?? null;
+  }
+  return null;
+}
+
+function cookieLine(response: Response, name: string): string | null {
+  return (
+    setCookies(response).find((cookie) => cookie.startsWith(`${name}=`)) ?? null
+  );
 }
 
 function mockOidcNetwork(options?: {
   idToken?: string;
+  accessToken?: string;
   tokenStatus?: number;
+  introspectActive?: boolean;
 }): void {
   setOidcFetchForTests(async (input) => {
     const url = String(input);
     if (url.includes(".well-known/openid-configuration")) {
-      return Response.json(discoveryDocument());
+      return Response.json(
+        discoveryDocument(options?.introspectActive !== undefined),
+      );
     }
     if (url === JWKS) {
       return Response.json({ keys: [jwk] });
@@ -113,6 +145,14 @@ function mockOidcNetwork(options?: {
       return Response.json({
         id_token:
           options?.idToken ?? signJwt(validPayload({ nonce: "will-replace" })),
+        ...(options?.accessToken ? { access_token: options.accessToken } : {}),
+      });
+    }
+    if (url === INTROSPECT) {
+      return Response.json({
+        active: options?.introspectActive !== false,
+        sub: "user-1",
+        client_id: CLIENT_ID,
       });
     }
     return new Response("missing", { status: 404 });
@@ -231,7 +271,7 @@ describe("Authentik OIDC consumer", () => {
     configureOidc(true);
     mockOidcNetwork();
     const response = await handleOidcAuthorize(
-      new Request("http://127.0.0.1:10100/oauth/login", {
+      new Request("http://127.0.0.1:10100/oauth/login?return_to=/usage", {
         headers: { Host: "127.0.0.1:10100" },
       }),
     );
@@ -250,6 +290,22 @@ describe("Authentik OIDC consumer", () => {
     expect(location.searchParams.get("state")).toBeTruthy();
     expect(location.searchParams.get("nonce")).toBeTruthy();
     expect(location.searchParams.get("scope")).toContain("openid");
+    const flow = cookieLine(response, "ocx_oidc_flow");
+    expect(flow).toContain("HttpOnly");
+    expect(flow).toContain("SameSite=Lax");
+    expect(flow).toContain("Max-Age=600");
+    expect(flow).not.toContain("Secure");
+  });
+
+  test("return_to accepts same-origin relative paths and rejects open redirects", () => {
+    expect(safeOidcReturnTo("/usage")).toBe("/usage");
+    expect(safeOidcReturnTo("/providers?tab=oauth")).toBe(
+      "/providers?tab=oauth",
+    );
+    expect(safeOidcReturnTo("//evil.test")).toBe("/");
+    expect(safeOidcReturnTo("https://evil.test/")).toBe("/");
+    expect(safeOidcReturnTo("\\evil")).toBe("/");
+    expect(safeOidcReturnTo(" /oops")).toBe("/");
   });
 
   test("GET /oauth/login without a secret file fails closed", async () => {
@@ -261,6 +317,26 @@ describe("Authentik OIDC consumer", () => {
     );
     expect(response.status).toBe(503);
   });
+
+  async function startLogin(returnTo = "/"): Promise<{
+    state: string;
+    nonce: string;
+    flow: string;
+  }> {
+    const start = await handleOidcAuthorize(
+      new Request(
+        `http://127.0.0.1:10100/oauth/login?return_to=${encodeURIComponent(returnTo)}`,
+        { headers: { Host: "127.0.0.1:10100" } },
+      ),
+    );
+    expect(start.status).toBe(302);
+    const authorize = new URL(start.headers.get("Location") ?? "");
+    return {
+      state: authorize.searchParams.get("state") ?? "",
+      nonce: authorize.searchParams.get("nonce") ?? "",
+      flow: cookiePair(start, "ocx_oidc_flow") ?? "",
+    };
+  }
 
   test("GET /oauth/callback exchanges the code, sets a session cookie, and rejects replayed state", async () => {
     configureOidc(true);
@@ -279,38 +355,63 @@ describe("Authentik OIDC consumer", () => {
         expect(String(init?.body)).not.toContain("test-client-secret");
         return Response.json({
           id_token: signJwt(validPayload({ nonce: capturedNonce })),
+          access_token: "access-one",
         });
       }
       return new Response("missing", { status: 404 });
     });
 
-    const start = await handleOidcAuthorize(
-      new Request("http://127.0.0.1:10100/oauth/login", {
-        headers: { Host: "127.0.0.1:10100" },
-      }),
-    );
-    const authorize = new URL(start.headers.get("Location") ?? "");
-    capturedNonce = authorize.searchParams.get("nonce") ?? "";
-    const state = authorize.searchParams.get("state") ?? "";
+    const started = await startLogin("/usage");
+    capturedNonce = started.nonce;
 
-    const callback = await handleOidcCallback(
+    const missingBinding = await handleOidcCallback(
       new Request(
-        `http://127.0.0.1:10100/oauth/callback?code=one-time&state=${state}`,
+        `http://127.0.0.1:10100/oauth/callback?code=one-time&state=${started.state}`,
         { headers: { Host: "127.0.0.1:10100" } },
       ),
     );
+    expect(missingBinding.status).toBe(400);
+
+    const wrongBinding = await handleOidcCallback(
+      new Request(
+        `http://127.0.0.1:10100/oauth/callback?code=one-time&state=${started.state}`,
+        {
+          headers: {
+            Host: "127.0.0.1:10100",
+            Cookie: "ocx_oidc_flow=not-the-binding",
+          },
+        },
+      ),
+    );
+    expect(wrongBinding.status).toBe(400);
+
+    const callback = await handleOidcCallback(
+      new Request(
+        `http://127.0.0.1:10100/oauth/callback?code=one-time&state=${started.state}`,
+        {
+          headers: {
+            Host: "127.0.0.1:10100",
+            Cookie: started.flow,
+          },
+        },
+      ),
+    );
     expect(callback.status).toBe(302);
-    expect(callback.headers.get("Location")).toBe("/");
-    const cookie = callback.headers.get("Set-Cookie") ?? "";
-    expect(cookie).toContain("ocx_oidc=");
-    expect(cookie).toContain("HttpOnly");
-    expect(cookie).not.toContain("test-client-secret");
+    expect(callback.headers.get("Location")).toBe("/usage");
+    expect(callback.headers.get("Location")).not.toContain("access-one");
+    const sessionCookie = cookieLine(callback, "ocx_oidc") ?? "";
+    expect(sessionCookie).toContain("ocx_oidc=");
+    expect(sessionCookie).toContain("HttpOnly");
+    expect(sessionCookie).toContain("SameSite=Lax");
+    expect(sessionCookie).not.toContain("test-client-secret");
+    expect(sessionCookie).not.toContain("access-one");
+    expect(cookieLine(callback, "ocx_oidc_flow")).toContain("Max-Age=0");
 
     const identity = await verifyOidcRequest(
       new Request("http://127.0.0.1:10100/", {
         headers: {
           Host: "127.0.0.1:10100",
-          Cookie: cookie.split(";")[0] ?? "",
+          Cookie: cookiePair(callback, "ocx_oidc") ?? "",
         },
       }),
     );
@@ -318,11 +419,61 @@ describe("Authentik OIDC consumer", () => {
 
     const replay = await handleOidcCallback(
       new Request(
-        `http://127.0.0.1:10100/oauth/callback?code=one-time&state=${state}`,
-        { headers: { Host: "127.0.0.1:10100" } },
+        `http://127.0.0.1:10100/oauth/callback?code=one-time&state=${started.state}`,
+        {
+          headers: {
+            Host: "127.0.0.1:10100",
+            Cookie: started.flow,
+          },
+        },
       ),
     );
     expect(replay.status).toBe(400);
+  });
+
+  test("callback rejects forged issuer, audience, expiry, and nonce without minting a session", async () => {
+    configureOidc(true);
+    for (const payload of [
+      validPayload({ nonce: "wrong-nonce" }),
+      validPayload({ iss: "https://evil.test/application/o/ocx/" }),
+      validPayload({ aud: "other-client" }),
+      validPayload({ exp: Math.floor(Date.now() / 1000) - 30 }),
+    ]) {
+      resetOidcStateForTests();
+      let capturedNonce = "";
+      setOidcFetchForTests(async (input) => {
+        const url = String(input);
+        if (url.includes(".well-known/openid-configuration")) {
+          return Response.json(discoveryDocument());
+        }
+        if (url === JWKS) return Response.json({ keys: [jwk] });
+        if (url === TOKEN) {
+          return Response.json({
+            id_token: signJwt(
+              payload.nonce === "wrong-nonce"
+                ? payload
+                : { ...payload, nonce: capturedNonce },
+            ),
+          });
+        }
+        return new Response("missing", { status: 404 });
+      });
+      const started = await startLogin();
+      capturedNonce = started.nonce;
+      const callback = await handleOidcCallback(
+        new Request(
+          `http://127.0.0.1:10100/oauth/callback?code=bad&state=${started.state}`,
+          {
+            headers: {
+              Host: "127.0.0.1:10100",
+              Cookie: started.flow,
+            },
+          },
+        ),
+      );
+      expect(callback.status).toBe(401);
+      expect(cookiePair(callback, "ocx_oidc")).toBeNull();
+    }
   });
 
   test("GET /oauth/logout clears the session cookie and can hand off to Authentik", async () => {
@@ -335,7 +486,8 @@ describe("Authentik OIDC consumer", () => {
     );
     expect(logout.status).toBe(302);
     expect(logout.headers.get("Location")).toContain(END_SESSION);
-    expect(logout.headers.get("Set-Cookie")).toContain("Max-Age=0");
+    expect(cookieLine(logout, "ocx_oidc")).toContain("Max-Age=0");
+    expect(cookieLine(logout, "ocx_oidc_flow")).toContain("Max-Age=0");
   });
 
   test("Authentik OIDC authorizes public GUI management without an admin token", async () => {
@@ -410,5 +562,274 @@ describe("Authentik OIDC consumer", () => {
     } finally {
       await server.stop(true);
     }
+  });
+
+  test("logout and IdP introspection revoke dashboard access on the next request", async () => {
+    configureOidc(true);
+    let capturedNonce = "";
+    let introspectActive = true;
+    setOidcFetchForTests(async (input) => {
+      const url = String(input);
+      if (url.includes(".well-known/openid-configuration")) {
+        return Response.json(discoveryDocument(true));
+      }
+      if (url === JWKS) return Response.json({ keys: [jwk] });
+      if (url === TOKEN) {
+        return Response.json({
+          id_token: signJwt(validPayload({ nonce: capturedNonce })),
+          access_token: "access-live",
+        });
+      }
+      if (url === INTROSPECT) {
+        return Response.json({
+          active: introspectActive,
+          sub: "user-1",
+          client_id: CLIENT_ID,
+        });
+      }
+      return new Response("missing", { status: 404 });
+    });
+
+    const started = await startLogin();
+    capturedNonce = started.nonce;
+    const callback = await handleOidcCallback(
+      new Request(
+        `http://127.0.0.1:10100/oauth/callback?code=one-time&state=${started.state}`,
+        {
+          headers: {
+            Host: "127.0.0.1:10100",
+            Cookie: started.flow,
+          },
+        },
+      ),
+    );
+    const sessionPair = cookiePair(callback, "ocx_oidc") ?? "";
+    const config = remoteConfig();
+    const state = initializeManagementAuthState(config);
+    const page = new Request("http://0.0.0.0:10100/", {
+      headers: {
+        Host: "ocx.chefgroep.online",
+        "x-forwarded-proto": "https",
+        Cookie: sessionPair,
+      },
+    });
+    const session = await issueGuiSession(page, config, state);
+    expect(session).not.toBeNull();
+
+    const allowed = await requireManagementAuth(
+      new Request("http://0.0.0.0:10100/api/usage", {
+        headers: {
+          Host: "ocx.chefgroep.online",
+          Origin: "https://ocx.chefgroep.online",
+          "x-forwarded-proto": "https",
+          "x-opencodex-gui-origin": "https://ocx.chefgroep.online",
+          Authorization: `Bearer ${session?.token}`,
+          Cookie: sessionPair,
+        },
+      }),
+      state,
+      config,
+    );
+    expect(allowed).toBeNull();
+
+    await handleOidcLogout(
+      new Request("http://127.0.0.1:10100/oauth/logout", {
+        headers: {
+          Host: "127.0.0.1:10100",
+          Cookie: sessionPair,
+        },
+      }),
+    );
+    const afterLogout = await requireManagementAuth(
+      new Request("http://0.0.0.0:10100/api/usage", {
+        headers: {
+          Host: "ocx.chefgroep.online",
+          Origin: "https://ocx.chefgroep.online",
+          "x-forwarded-proto": "https",
+          "x-opencodex-gui-origin": "https://ocx.chefgroep.online",
+          Authorization: `Bearer ${session?.token}`,
+        },
+      }),
+      state,
+      config,
+    );
+    expect(afterLogout?.status).toBe(401);
+
+    const startedAgain = await startLogin();
+    capturedNonce = startedAgain.nonce;
+    const second = await handleOidcCallback(
+      new Request(
+        `http://127.0.0.1:10100/oauth/callback?code=two&state=${startedAgain.state}`,
+        {
+          headers: {
+            Host: "127.0.0.1:10100",
+            Cookie: startedAgain.flow,
+          },
+        },
+      ),
+    );
+    const secondPair = cookiePair(second, "ocx_oidc") ?? "";
+    expect(
+      await verifyOidcRequest(
+        new Request("http://127.0.0.1:10100/", {
+          headers: { Host: "127.0.0.1:10100", Cookie: secondPair },
+        }),
+      ),
+    ).toEqual({ email: "operator@example.test", sub: "user-1" });
+    introspectActive = false;
+    expect(
+      await verifyOidcRequest(
+        new Request("http://127.0.0.1:10100/", {
+          headers: { Host: "127.0.0.1:10100", Cookie: secondPair },
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  test("public dashboard without an OIDC session redirects to login; a session serves 200", async () => {
+    configureOidc(true);
+    mockOidcNetwork();
+    saveConfig(remoteConfig());
+    const server = startServer(0);
+    try {
+      const denied = await fetch(new URL("/", server.url), {
+        redirect: "manual",
+        headers: {
+          Host: "ocx.chefgroep.online",
+          "x-forwarded-proto": "https",
+        },
+      });
+      expect(denied.status).toBe(302);
+      expect(denied.headers.get("location")).toBe("/oauth/login?return_to=%2F");
+
+      let capturedNonce = "";
+      setOidcFetchForTests(async (input) => {
+        const url = String(input);
+        if (url.includes(".well-known/openid-configuration")) {
+          return Response.json(discoveryDocument());
+        }
+        if (url === JWKS) return Response.json({ keys: [jwk] });
+        if (url === TOKEN) {
+          return Response.json({
+            id_token: signJwt(validPayload({ nonce: capturedNonce })),
+          });
+        }
+        return new Response("missing", { status: 404 });
+      });
+      const started = await startLogin();
+      capturedNonce = started.nonce;
+      const callback = await handleOidcCallback(
+        new Request(
+          `http://127.0.0.1:10100/oauth/callback?code=dash&state=${started.state}`,
+          {
+            headers: {
+              Host: "127.0.0.1:10100",
+              Cookie: started.flow,
+            },
+          },
+        ),
+      );
+      const sessionPair = cookiePair(callback, "ocx_oidc") ?? "";
+      const allowed = await fetch(new URL("/", server.url), {
+        redirect: "manual",
+        headers: {
+          Host: "ocx.chefgroep.online",
+          "x-forwarded-proto": "https",
+          Cookie: sessionPair,
+        },
+      });
+      expect(allowed.status).toBe(200);
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  test("an OIDC browser session never authorizes the data plane or model proxy", async () => {
+    configureOidc(true);
+    let capturedNonce = "";
+    setOidcFetchForTests(async (input) => {
+      const url = String(input);
+      if (url.includes(".well-known/openid-configuration")) {
+        return Response.json(discoveryDocument());
+      }
+      if (url === JWKS) return Response.json({ keys: [jwk] });
+      if (url === TOKEN) {
+        return Response.json({
+          id_token: signJwt(validPayload({ nonce: capturedNonce })),
+        });
+      }
+      return new Response("missing", { status: 404 });
+    });
+    saveConfig(remoteConfig());
+    const server = startServer(0);
+    try {
+      const started = await startLogin();
+      capturedNonce = started.nonce;
+      const callback = await handleOidcCallback(
+        new Request(
+          `http://127.0.0.1:10100/oauth/callback?code=plane&state=${started.state}`,
+          {
+            headers: {
+              Host: "127.0.0.1:10100",
+              Cookie: started.flow,
+            },
+          },
+        ),
+      );
+      const sessionPair = cookiePair(callback, "ocx_oidc") ?? "";
+      const idToken = signJwt(validPayload());
+
+      const cookieModels = await fetch(new URL("/v1/models", server.url), {
+        headers: { Cookie: sessionPair },
+      });
+      expect(cookieModels.status).toBe(401);
+
+      const sessionBearer = await fetch(new URL("/v1/models", server.url), {
+        headers: {
+          Authorization: `Bearer ${sessionPair.replace("ocx_oidc=", "")}`,
+        },
+      });
+      expect(sessionBearer.status).toBe(401);
+
+      const idTokenModels = await fetch(new URL("/v1/models", server.url), {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      expect(idTokenModels.status).toBe(401);
+
+      const chat = await fetch(new URL("/v1/chat/completions", server.url), {
+        method: "POST",
+        headers: {
+          Cookie: sessionPair,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ model: "gpt-test", messages: [] }),
+      });
+      expect(chat.status).toBe(401);
+
+      const withDataKey = await fetch(new URL("/v1/models", server.url), {
+        headers: { Authorization: "Bearer data-secret" },
+      });
+      expect(withDataKey.status).toBe(200);
+
+      const healthz = await fetch(new URL("/healthz", server.url));
+      expect(healthz.status).toBe(200);
+      expect(await healthz.json()).toMatchObject({
+        status: "ok",
+        service: "opencodex",
+      });
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  test("OIDC login is refused on an untrusted host", async () => {
+    configureOidc(true);
+    mockOidcNetwork();
+    const response = await handleOidcAuthorize(
+      new Request("http://attacker.test/oauth/login", {
+        headers: { Host: "attacker.test" },
+      }),
+    );
+    expect(response.status).toBe(403);
   });
 });

@@ -5,17 +5,19 @@ description: How the OpenCodex dashboard uses Cloudflare Access today and Authen
 
 OpenCodex has two human-dashboard gates. They are not interchangeable today.
 
-| Gate                          | What the proxy checks                                                                                                                     | Live on `ocx.chefgroep.online`               | When to use                                |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------ |
-| **Cloudflare Access**         | `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD` JWT (`cf-access-jwt-assertion` or `CF_Authorization`)                                           | **Yes** — current public GUI gate            | Production public host until cutover       |
-| **Authentik OIDC**            | Issuer `https://auth.chefgroep.online/application/o/ocx/`, client `chefgroep-ocx-oidc`, JWKS ID-token verify, optional `GET /oauth/login` | Consumer wired; **not** the live public gate | Local canary and the later Access cutover  |
-| **Admin token / GUI session** | `OPENCODEX_ADMIN_AUTH_TOKEN` or loopback-minted session                                                                                   | Unchanged                                    | Loopback and Tailscale without Access/OIDC |
-| **Service API token**         | `OPENCODEX_API_AUTH_TOKEN`                                                                                                                | Unchanged                                    | Data-plane `/v1/*` only                    |
+| Gate                          | What the proxy checks                                                                                                                                              | Live on `ocx.chefgroep.online`               | When to use                                |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------- | ------------------------------------------ |
+| **Cloudflare Access**         | `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD` JWT (`cf-access-jwt-assertion` or `CF_Authorization`)                                                                    | **Yes** — current public GUI gate            | Production public host until cutover       |
+| **Authentik OIDC**            | Issuer `https://auth.chefgroep.online/application/o/ocx/`, client `chefgroep-ocx-oidc`, JWKS ID-token verify, `GET /oauth/login` → flow cookie → `/oauth/callback` | Consumer wired; **not** the live public gate | Local canary and the later Access cutover  |
+| **Admin token / GUI session** | `OPENCODEX_ADMIN_AUTH_TOKEN` or loopback-minted session                                                                                                            | Unchanged                                    | Loopback and Tailscale without Access/OIDC |
+| **Service API token**         | `OPENCODEX_API_AUTH_TOKEN`                                                                                                                                         | Unchanged                                    | Data-plane `/v1/*` only                    |
 
 Authentik is also the Cloudflare Access identity provider. Product OIDC means
 the **proxy** verifies ChefGroep Auth tokens itself (`GET /oauth/login` →
-`/oauth/callback`, then an `ocx_oidc` cookie or a Bearer ID token). It does not
-register a second client in ChefFactory.
+browser-bound flow cookie → `/oauth/callback`, then an `ocx_oidc` cookie or a
+Bearer ID token). Logout and IdP introspection revoke the next dashboard
+request. An OIDC browser session never admits `/v1/*`. It does not register a
+second client in ChefFactory.
 
 `GET /healthz` on `:10100` stays unauthenticated on both planes.
 

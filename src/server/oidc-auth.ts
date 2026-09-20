@@ -5,7 +5,9 @@
  * (Authorization Bearer) or an `ocx_oidc` session cookie authorizes human
  * GUI/API use without the separate ocx_admin_* prompt. Authorization-code
  * + PKCE (`GET /oauth/login` → `/oauth/callback`) requires a readable
- * OIDC_CLIENT_SECRET_FILE. Data-plane /v1/* stays on service-api-token.
+ * OIDC_CLIENT_SECRET_FILE. The login transaction is bound to the browser
+ * with an HttpOnly flow cookie (state/nonce/PKCE/browserBinding/returnTo).
+ * Data-plane /v1/* stays on service-api-token.
  * Fail closed when env is unset or the token is invalid.
  */
 
@@ -25,6 +27,7 @@ type OidcDiscovery = {
   token_endpoint: string;
   jwks_uri: string;
   end_session_endpoint?: string;
+  introspection_endpoint?: string;
 };
 
 type JwksCache = { keys: Jwk[]; fetchedAt: number };
@@ -34,11 +37,14 @@ type PendingFlow = {
   verifier: string;
   nonce: string;
   redirectUri: string;
+  browserBinding: string;
+  returnTo: string;
   expiresAt: number;
 };
 
 type OidcSessionRecord = {
   identity: OidcIdentity;
+  accessToken?: string;
   expiresAt: number;
 };
 
@@ -51,6 +57,7 @@ const SESSION_LIMIT = 128;
 const SESSION_TTL_CAP_MS = 60 * 60_000;
 const SECRET_FILE_MAX_BYTES = 4_096;
 const OIDC_COOKIE = "ocx_oidc";
+const FLOW_COOKIE = "ocx_oidc_flow";
 const OIDC_SCOPES = "openid profile email";
 
 let jwksCache: JwksCache | null = null;
@@ -93,7 +100,22 @@ function oidcFetch(
 
 export function oidcIssuer(): string | null {
   const raw = Bun.env.OIDC_ISSUER?.trim();
-  return raw ? normalizeIssuer(raw) : null;
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash
+    ) {
+      return null;
+    }
+    return raw;
+  } catch {
+    return null;
+  }
 }
 
 export function oidcClientId(): string | null {
@@ -110,8 +132,18 @@ export function oidcRedirectUri(): string | null {
   if (!raw) return null;
   try {
     const parsed = new URL(raw);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
+    const loopbackHttp =
+      parsed.protocol === "http:" && isLoopbackHostname(parsed.hostname);
+    if (
+      (parsed.protocol !== "https:" && !loopbackHttp) ||
+      parsed.username ||
+      parsed.password ||
+      parsed.search ||
+      parsed.hash ||
+      parsed.pathname !== "/oauth/callback"
+    ) {
       return null;
+    }
     return parsed.toString();
   } catch {
     return null;
@@ -235,6 +267,20 @@ async function fetchJson(url: string, init?: RequestInit): Promise<unknown> {
   }
 }
 
+function assertTrustedIssuerEndpoint(endpoint: string, issuer: string): void {
+  const url = new URL(endpoint);
+  const issuerUrl = new URL(issuer);
+  if (
+    url.protocol !== "https:" ||
+    url.origin !== issuerUrl.origin ||
+    url.username ||
+    url.password ||
+    url.hash
+  ) {
+    throw new Error("OIDC endpoint is not on the trusted issuer origin");
+  }
+}
+
 async function loadDiscovery(): Promise<OidcDiscovery> {
   const issuer = oidcIssuer();
   if (!issuer) throw new Error("OIDC issuer is not configured");
@@ -256,11 +302,24 @@ async function loadDiscovery(): Promise<OidcDiscovery> {
   if (!issuerEquals(body.issuer, issuer)) {
     throw new Error("OIDC discovery issuer mismatch");
   }
+  for (const endpoint of [
+    body.authorization_endpoint,
+    body.token_endpoint,
+    body.jwks_uri,
+    body.end_session_endpoint,
+    body.introspection_endpoint,
+  ]) {
+    if (endpoint) assertTrustedIssuerEndpoint(endpoint, issuer);
+  }
   const discovery: OidcDiscovery = {
-    issuer: normalizeIssuer(body.issuer),
+    issuer: body.issuer,
     authorization_endpoint: body.authorization_endpoint,
     token_endpoint: body.token_endpoint,
     jwks_uri: body.jwks_uri,
+    introspection_endpoint:
+      typeof body.introspection_endpoint === "string"
+        ? body.introspection_endpoint
+        : undefined,
     end_session_endpoint:
       typeof body.end_session_endpoint === "string"
         ? body.end_session_endpoint
@@ -313,6 +372,9 @@ type OidcJwtPayload = {
   aud?: unknown;
   iss?: string;
   exp?: number;
+  iat?: number;
+  nbf?: number;
+  azp?: string;
   nonce?: string;
   email?: unknown;
   preferred_username?: unknown;
@@ -348,7 +410,34 @@ function oidcClaimsMatch(
   clientId: string,
   expectedNonce?: string,
 ): boolean {
-  if (typeof payload.exp !== "number" || payload.exp * 1000 <= Date.now()) {
+  if (
+    typeof payload.exp !== "number" ||
+    !Number.isFinite(payload.exp) ||
+    payload.exp * 1000 <= Date.now()
+  ) {
+    return false;
+  }
+  if (
+    typeof payload.iat !== "number" ||
+    !Number.isFinite(payload.iat) ||
+    payload.iat * 1000 > Date.now() + 30_000
+  ) {
+    return false;
+  }
+  if (
+    payload.nbf !== undefined &&
+    (typeof payload.nbf !== "number" ||
+      !Number.isFinite(payload.nbf) ||
+      payload.nbf * 1000 > Date.now())
+  ) {
+    return false;
+  }
+  if (payload.azp !== undefined && payload.azp !== clientId) return false;
+  if (
+    Array.isArray(payload.aud) &&
+    payload.aud.length > 1 &&
+    payload.azp !== clientId
+  ) {
     return false;
   }
   if (!issuerEquals(payload.iss, issuer)) return false;
@@ -420,16 +509,26 @@ function extractOidcBearer(req: Request): string | null {
   return match?.[1]?.trim() || null;
 }
 
-function extractOidcCookie(req: Request): string | null {
+function extractOidcCookie(
+  req: Request,
+  cookieName = OIDC_COOKIE,
+): string | null {
   const cookie = req.headers.get("cookie") || req.headers.get("Cookie") || "";
   for (const part of cookie.split(";")) {
     const [name, ...rest] = part.trim().split("=");
-    if (name === OIDC_COOKIE && rest.length) {
+    if (name === cookieName && rest.length) {
       const value = rest.join("=").trim();
       if (value) return value;
     }
   }
   return null;
+}
+
+export function oidcBrowserSessionPresent(req: Request): boolean {
+  const cookie = extractOidcCookie(req);
+  if (cookie?.startsWith("ocx_oidc_")) return true;
+  const bearer = extractOidcBearer(req);
+  return !!bearer?.startsWith("ocx_oidc_");
 }
 
 function pruneMaps(
@@ -447,11 +546,54 @@ function pruneMaps(
   }
 }
 
-function lookupSession(token: string, now = Date.now()): OidcIdentity | null {
+async function sessionStillActive(
+  session: OidcSessionRecord,
+): Promise<boolean> {
+  if (!session.accessToken) return true;
+  try {
+    const discovery = await loadDiscovery();
+    const secret = readClientSecret();
+    const clientId = oidcClientId();
+    if (!discovery.introspection_endpoint || !secret || !clientId) {
+      return true;
+    }
+    const credentials = Buffer.from(`${clientId}:${secret}`, "utf8").toString(
+      "base64",
+    );
+    const result = (await fetchJson(discovery.introspection_endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${credentials}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        token: session.accessToken,
+        token_type_hint: "access_token",
+      }),
+    })) as { active?: unknown; sub?: unknown; client_id?: unknown };
+    return (
+      result.active === true &&
+      (result.sub === undefined || result.sub === session.identity.sub) &&
+      (result.client_id === undefined || result.client_id === clientId)
+    );
+  } catch {
+    // Local TTL + logout still revoke. An IdP blip must not drop every session.
+    return true;
+  }
+}
+
+async function lookupSession(
+  token: string,
+  now = Date.now(),
+): Promise<OidcIdentity | null> {
   pruneMaps(oidcSessions, SESSION_LIMIT, now);
   const session = oidcSessions.get(token);
   if (!session || session.expiresAt <= now) {
     if (session) oidcSessions.delete(token);
+    return null;
+  }
+  if (!(await sessionStillActive(session))) {
+    oidcSessions.delete(token);
     return null;
   }
   return session.identity;
@@ -461,16 +603,19 @@ export async function verifyOidcRequest(
   req: Request,
 ): Promise<OidcIdentity | null> {
   if (verifyOverrideForTests) return verifyOverrideForTests(req);
-  if (!oidcConfigured()) return null;
-
-  const bearer = extractOidcBearer(req);
-  if (bearer) {
-    if (bearer.startsWith("ocx_oidc_")) return lookupSession(bearer);
-    if (bearer.includes(".")) return verifyOidcIdToken(bearer);
+  if (!oidcConfigured() || !isOidcTrustedHost(requestHostname(req))) {
+    return null;
   }
 
   const cookie = extractOidcCookie(req);
-  if (cookie) return lookupSession(cookie);
+  if (cookie) {
+    const identity = await lookupSession(cookie);
+    if (identity) return identity;
+  }
+
+  const bearer = extractOidcBearer(req);
+  if (bearer?.startsWith("ocx_oidc_")) return lookupSession(bearer);
+  if (bearer?.includes(".")) return verifyOidcIdToken(bearer);
   return null;
 }
 
@@ -492,9 +637,15 @@ function textResponse(status: number, message: string): Response {
   });
 }
 
-function redirectResponse(location: string, cookie?: string): Response {
+function redirectResponse(
+  location: string,
+  cookies?: string | string[],
+): Response {
   const headers = new Headers({ Location: location, ...securityHeaders() });
-  if (cookie) headers.append("Set-Cookie", cookie);
+  if (typeof cookies === "string") headers.append("Set-Cookie", cookies);
+  else if (cookies) {
+    for (const cookie of cookies) headers.append("Set-Cookie", cookie);
+  }
   return new Response(null, { status: 302, headers });
 }
 
@@ -502,30 +653,119 @@ function pkceChallenge(verifier: string): string {
   return createHash("sha256").update(verifier).digest("base64url");
 }
 
-function sessionCookie(req: Request, token: string, maxAge: number): string {
-  const secure = requestIsHttps(req) ? "; Secure" : "";
-  return `${OIDC_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
+function sessionCookie(
+  req: Request,
+  token: string,
+  maxAge: number,
+  name = OIDC_COOKIE,
+): string {
+  const secure =
+    oidcRedirectUri()?.startsWith("https:") || requestIsHttps(req)
+      ? "; Secure"
+      : "";
+  return `${name}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
 }
 
-function clearCookie(req: Request): string {
-  const secure = requestIsHttps(req) ? "; Secure" : "";
-  return `${OIDC_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`;
+function clearCookies(req: Request): string[] {
+  return [
+    sessionCookie(req, "", 0, OIDC_COOKIE),
+    sessionCookie(req, "", 0, FLOW_COOKIE),
+  ];
+}
+
+function requestHostMatchesRedirect(req: Request, redirect: string): boolean {
+  const requestHost = req.headers.get("host")?.toLowerCase();
+  if (!requestHost) return false;
+  const redirectUrl = new URL(redirect);
+  if (requestHost === redirectUrl.host.toLowerCase()) return true;
+  try {
+    const parsed = new URL(`http://${requestHost}`);
+    if (parsed.hostname.toLowerCase() !== redirectUrl.hostname.toLowerCase()) {
+      return false;
+    }
+    const requestPort = parsed.port || (requestIsHttps(req) ? "443" : "80");
+    const redirectPort =
+      redirectUrl.port || (redirectUrl.protocol === "https:" ? "443" : "80");
+    return requestPort === redirectPort;
+  } catch {
+    return false;
+  }
 }
 
 function hostAllowedForFlow(req: Request): boolean {
   const hostname = requestHostname(req);
-  if (!hostname) return false;
-  return isLoopbackHostname(hostname) || isOidcTrustedHost(hostname);
+  if (!hostname || !isOidcTrustedHost(hostname)) return false;
+  const redirect = oidcRedirectUri();
+  if (!redirect) return false;
+  if (requestHostMatchesRedirect(req, redirect)) return true;
+  // Loopback canaries bind a random port while redirect stays on :10100.
+  return (
+    isLoopbackHostname(hostname) &&
+    isLoopbackHostname(new URL(redirect).hostname)
+  );
 }
 
-export async function handleOidcAuthorize(req: Request): Promise<Response> {
+function returnToHasUnsafeChars(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (value[i] === "\\" || code < 32 || code === 127) return true;
+  }
+  return false;
+}
+
+export function safeOidcReturnTo(value: string | null | undefined): string {
+  const requested = value || "/";
+  if (
+    requested.startsWith("/") &&
+    !requested.startsWith("//") &&
+    !returnToHasUnsafeChars(requested)
+  ) {
+    return requested;
+  }
+  return "/";
+}
+
+export function oidcShouldChallengeDashboard(req: Request): boolean {
+  if (!oidcCodeFlowConfigured()) return false;
+  const hostname = requestHostname(req);
+  return (
+    !!hostname && isOidcTrustedHost(hostname) && !isLoopbackHostname(hostname)
+  );
+}
+
+export function oidcDashboardChallengeResponse(req: Request): Response {
+  let path = "/";
+  try {
+    const url = new URL(req.url);
+    path = `${url.pathname}${url.search}`;
+  } catch {
+    /* default */
+  }
+  return redirectResponse(
+    `/oauth/login?return_to=${encodeURIComponent(safeOidcReturnTo(path))}`,
+  );
+}
+
+function requireOidcCodeFlow(
+  req: Request,
+  unavailableMessage: string,
+): Response | null {
   if (!oidcConfigured()) return textResponse(404, "OIDC is not configured");
   if (!oidcCodeFlowConfigured()) {
     return textResponse(503, "OIDC client secret file is not configured");
   }
   if (!hostAllowedForFlow(req)) {
-    return textResponse(403, "OIDC login is not available on this host");
+    return textResponse(403, unavailableMessage);
   }
+  return null;
+}
+
+export async function handleOidcAuthorize(req: Request): Promise<Response> {
+  const gated = requireOidcCodeFlow(
+    req,
+    "OIDC login is not available on this host",
+  );
+  if (gated) return gated;
 
   const redirectUri = oidcRedirectUri();
   const clientId = oidcClientId();
@@ -539,7 +779,12 @@ export async function handleOidcAuthorize(req: Request): Promise<Response> {
     const state = randomBytes(32).toString("base64url");
     const verifier = randomBytes(32).toString("base64url");
     const nonce = randomBytes(32).toString("base64url");
+    const browserBinding = randomBytes(32).toString("base64url");
+    const requestedReturn = new URL(req.url).searchParams.get("return_to");
+    const returnTo = safeOidcReturnTo(requestedReturn);
     pendingFlows.set(state, {
+      browserBinding,
+      returnTo,
       verifier,
       nonce,
       redirectUri,
@@ -554,7 +799,15 @@ export async function handleOidcAuthorize(req: Request): Promise<Response> {
     authorize.searchParams.set("nonce", nonce);
     authorize.searchParams.set("code_challenge", pkceChallenge(verifier));
     authorize.searchParams.set("code_challenge_method", "S256");
-    return redirectResponse(authorize.toString());
+    return redirectResponse(
+      authorize.toString(),
+      sessionCookie(
+        req,
+        browserBinding,
+        Math.floor(PENDING_TTL_MS / 1000),
+        FLOW_COOKIE,
+      ),
+    );
   } catch (error) {
     console.warn(
       "OIDC authorize start failed",
@@ -566,6 +819,7 @@ export async function handleOidcAuthorize(req: Request): Promise<Response> {
 
 function mintSession(
   identity: OidcIdentity,
+  accessToken: string | undefined,
   expSeconds?: number,
 ): {
   token: string;
@@ -577,8 +831,12 @@ function mintSession(
     typeof expSeconds === "number"
       ? Math.max(0, expSeconds * 1000 - Date.now())
       : SESSION_TTL_CAP_MS;
-  const ttl = Math.min(fromToken || SESSION_TTL_CAP_MS, SESSION_TTL_CAP_MS);
-  oidcSessions.set(token, { identity, expiresAt: Date.now() + ttl });
+  const ttl = Math.min(fromToken, SESSION_TTL_CAP_MS);
+  oidcSessions.set(token, {
+    identity,
+    ...(accessToken ? { accessToken } : {}),
+    expiresAt: Date.now() + ttl,
+  });
   return { token, maxAge: Math.max(1, Math.floor(ttl / 1000)) };
 }
 
@@ -593,33 +851,117 @@ function idTokenExpSeconds(token: string): number | undefined {
   }
 }
 
-export async function handleOidcCallback(req: Request): Promise<Response> {
-  if (!oidcConfigured()) return textResponse(404, "OIDC is not configured");
-  if (!oidcCodeFlowConfigured()) {
-    return textResponse(503, "OIDC client secret file is not configured");
-  }
-  if (!hostAllowedForFlow(req)) {
-    return textResponse(403, "OIDC callback is not available on this host");
-  }
-
+function readCallbackQuery(
+  req: Request,
+):
+  | { ok: true; code: string; state: string }
+  | { ok: false; response: Response } {
   let url: URL;
   try {
     url = new URL(req.url);
   } catch {
-    return textResponse(400, "OIDC callback URL is invalid");
+    return {
+      ok: false,
+      response: textResponse(400, "OIDC callback URL is invalid"),
+    };
   }
   if (url.searchParams.get("error")) {
-    return textResponse(400, "OIDC authorization was denied");
+    return {
+      ok: false,
+      response: textResponse(400, "OIDC authorization was denied"),
+    };
   }
   const code = url.searchParams.get("code")?.trim();
   const state = url.searchParams.get("state")?.trim();
-  if (!code || !state)
-    return textResponse(400, "OIDC callback is missing code or state");
+  if (!code || !state) {
+    return {
+      ok: false,
+      response: textResponse(400, "OIDC callback is missing code or state"),
+    };
+  }
+  return { ok: true, code, state };
+}
 
+function consumePendingFlow(
+  req: Request,
+  state: string,
+): PendingFlow | Response {
   pruneMaps(pendingFlows, PENDING_LIMIT);
   const pending = pendingFlows.get(state);
+  if (
+    !pending ||
+    extractOidcCookie(req, FLOW_COOKIE) !== pending.browserBinding
+  ) {
+    return textResponse(400, "OIDC callback state is invalid");
+  }
   pendingFlows.delete(state);
-  if (!pending) return textResponse(400, "OIDC callback state is invalid");
+  return pending;
+}
+
+async function exchangeAuthorizationCode(
+  pending: PendingFlow,
+  code: string,
+  clientId: string,
+  secret: string,
+): Promise<{ idToken: string; accessToken?: string }> {
+  const discovery = await loadDiscovery();
+  const credentials = Buffer.from(`${clientId}:${secret}`, "utf8").toString(
+    "base64",
+  );
+  const tokenResponse = (await fetchJson(discovery.token_endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: pending.redirectUri,
+      client_id: clientId,
+      code_verifier: pending.verifier,
+    }),
+  })) as { id_token?: unknown; access_token?: unknown };
+  return {
+    idToken:
+      typeof tokenResponse.id_token === "string" ? tokenResponse.id_token : "",
+    accessToken:
+      typeof tokenResponse.access_token === "string" &&
+      tokenResponse.access_token
+        ? tokenResponse.access_token
+        : undefined,
+  };
+}
+
+function callbackSessionRedirect(
+  req: Request,
+  pending: PendingFlow,
+  identity: OidcIdentity,
+  tokens: { idToken: string; accessToken?: string },
+): Response {
+  const session = mintSession(
+    identity,
+    tokens.accessToken,
+    idTokenExpSeconds(tokens.idToken),
+  );
+  return redirectResponse(pending.returnTo, [
+    sessionCookie(req, session.token, session.maxAge),
+    sessionCookie(req, "", 0, FLOW_COOKIE),
+  ]);
+}
+
+export async function handleOidcCallback(req: Request): Promise<Response> {
+  const gated = requireOidcCodeFlow(
+    req,
+    "OIDC callback is not available on this host",
+  );
+  if (gated) return gated;
+
+  const query = readCallbackQuery(req);
+  if (!query.ok) return query.response;
+
+  const pending = consumePendingFlow(req, query.state);
+  if (pending instanceof Response) return pending;
 
   const secret = readClientSecret();
   const clientId = oidcClientId();
@@ -628,34 +970,15 @@ export async function handleOidcCallback(req: Request): Promise<Response> {
   }
 
   try {
-    const discovery = await loadDiscovery();
-    const credentials = Buffer.from(`${clientId}:${secret}`, "utf8").toString(
-      "base64",
+    const tokens = await exchangeAuthorizationCode(
+      pending,
+      query.code,
+      clientId,
+      secret,
     );
-    const body = new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: pending.redirectUri,
-      client_id: clientId,
-      code_verifier: pending.verifier,
-    });
-    const tokenResponse = (await fetchJson(discovery.token_endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${credentials}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body,
-    })) as { id_token?: unknown };
-    const idToken =
-      typeof tokenResponse.id_token === "string" ? tokenResponse.id_token : "";
-    const identity = await verifyOidcIdToken(idToken, pending.nonce);
+    const identity = await verifyOidcIdToken(tokens.idToken, pending.nonce);
     if (!identity) return textResponse(401, "OIDC identity token is invalid");
-    const session = mintSession(identity, idTokenExpSeconds(idToken));
-    return redirectResponse(
-      "/",
-      sessionCookie(req, session.token, session.maxAge),
-    );
+    return callbackSessionRedirect(req, pending, identity, tokens);
   } catch (error) {
     console.warn(
       "OIDC callback failed",
@@ -666,8 +989,13 @@ export async function handleOidcCallback(req: Request): Promise<Response> {
 }
 
 export async function handleOidcLogout(req: Request): Promise<Response> {
+  if (!hostAllowedForFlow(req)) {
+    return textResponse(403, "OIDC logout is not available on this host");
+  }
   const cookie = extractOidcCookie(req);
   if (cookie) oidcSessions.delete(cookie);
+  const bearer = extractOidcBearer(req);
+  if (bearer?.startsWith("ocx_oidc_")) oidcSessions.delete(bearer);
 
   let location = "/";
   const redirect = oidcRedirectUri();
@@ -687,11 +1015,11 @@ export async function handleOidcLogout(req: Request): Promise<Response> {
         const endSession = new URL(discovery.end_session_endpoint);
         endSession.searchParams.set("client_id", clientId);
         endSession.searchParams.set("post_logout_redirect_uri", location);
-        return redirectResponse(endSession.toString(), clearCookie(req));
+        return redirectResponse(endSession.toString(), clearCookies(req));
       }
     } catch {
       /* local cookie clear is enough */
     }
   }
-  return redirectResponse(location, clearCookie(req));
+  return redirectResponse(location, clearCookies(req));
 }

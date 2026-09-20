@@ -195,6 +195,8 @@ import {
   handleOidcCallback,
   handleOidcLogout,
   oidcConfigured,
+  oidcDashboardChallengeResponse,
+  oidcShouldChallengeDashboard,
 } from "./oidc-auth";
 import { runtimeMetrics } from "../observability/metrics";
 import { ensureUsageLogMetricsObserver } from "../observability/usage-log-metrics";
@@ -1543,11 +1545,19 @@ export function startServer(port?: number) {
         return jsonResponse(session, 200, req, config);
       }
 
-      const guiSessionCandidate =
+      const wantsDashboardHtml =
         req.method === "GET" &&
-        (url.pathname === "/" || !url.pathname.includes("."))
-          ? await issueGuiSession(req, config, managementAuth)
-          : null;
+        (url.pathname === "/" || !url.pathname.includes("."));
+      const guiSessionCandidate = wantsDashboardHtml
+        ? await issueGuiSession(req, config, managementAuth)
+        : null;
+      if (
+        wantsDashboardHtml &&
+        !guiSessionCandidate &&
+        oidcShouldChallengeDashboard(req)
+      ) {
+        return oidcDashboardChallengeResponse(req);
+      }
       const guiFile = serveGuiFile(
         url.pathname,
         undefined,
