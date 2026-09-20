@@ -31,6 +31,7 @@ import {
 } from "./cf-access-auth";
 import {
   isOidcTrustedHost,
+  oidcBrowserSessionPresent,
   oidcConfigured,
   verifyOidcRequest,
 } from "./oidc-auth";
@@ -42,6 +43,7 @@ interface GuiSessionRecord {
   csrfToken: string;
   origin: string;
   expiresAt: number;
+  oidcSubject?: string;
 }
 
 export interface GuiSessionBootstrap extends GuiSessionRecord {
@@ -221,6 +223,7 @@ export async function issueGuiSession(
   // only when a valid human identity is present. CF Access remains the live
   // public-host gate until operators execute the cutover checklist.
   let accessSession = false;
+  let oidcSubject: string | undefined;
   if (
     !loopbackSession &&
     cfAccessConfigured() &&
@@ -234,7 +237,14 @@ export async function issueGuiSession(
     oidcConfigured() &&
     isOidcTrustedHost(host.hostname)
   ) {
-    accessSession = !!(await verifyOidcRequest(req));
+    const identity = await verifyOidcRequest(req);
+    accessSession = !!identity;
+    // Bind revocation only to a browser OIDC session (cookie / ocx_oidc_
+    // bearer). A one-shot ID-token Bearer cannot be re-checked after the GUI
+    // session token replaces it on later /api/* calls.
+    if (identity && oidcBrowserSessionPresent(req)) {
+      oidcSubject = identity.sub;
+    }
   }
   if (!loopbackSession && !accessSession) return null;
 
@@ -252,6 +262,7 @@ export async function issueGuiSession(
     csrfToken: randomBytes(32).toString("base64url"),
     origin,
     expiresAt: now + GUI_SESSION_TTL_MS,
+    ...(oidcSubject ? { oidcSubject } : {}),
   };
   state.sessions.set(token, session);
   return { token, ...session };
@@ -310,6 +321,16 @@ export async function requireManagementAuth(
     removeExpiredSessions(state);
     const session = state.sessions.get(actual);
     if (session) {
+      if (
+        session.oidcSubject &&
+        (await verifyOidcRequest(req))?.sub !== session.oidcSubject
+      ) {
+        state.sessions.delete(actual);
+        return Response.json(
+          { error: "OIDC session expired" },
+          { status: 401 },
+        );
+      }
       const requestOrigin = managementRequestOrigin(req, config);
       const claimedOrigin = req.headers.get("x-opencodex-gui-origin");
       const browserOrigin = req.headers.get("Origin");
