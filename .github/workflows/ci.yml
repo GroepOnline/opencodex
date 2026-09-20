@@ -301,13 +301,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if ! command -v yamllint >/dev/null 2>&1; then
+          if command -v yamllint >/dev/null 2>&1; then
+            yamllint_bin="$(command -v yamllint)"
+          else
             venv="$(mktemp -d)"
             python3 -m venv "$venv"
             "$venv/bin/pip" install 'yamllint==1.35.1'
+            yamllint_bin="$venv/bin/yamllint"
             echo "$venv/bin" >> "$GITHUB_PATH"
           fi
-          yamllint --version
+          "$yamllint_bin" --version
 
       - name: Lint YAML
         uses: ibiqlik/action-yamllint@2576378a8e339169678f9939646ee3ee325e845c # v3.1.1
