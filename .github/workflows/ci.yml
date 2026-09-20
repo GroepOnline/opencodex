@@ -297,6 +297,16 @@ jobs:
           ./actionlint -version
           ./actionlint -config-file .github/actionlint.yaml -shellcheck=
 
+      - name: Ensure yamllint CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v yamllint >/dev/null 2>&1; then
+            python3 -m pip install --user 'yamllint==1.35.1'
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
+          yamllint --version
+
       - name: Lint YAML
         uses: ibiqlik/action-yamllint@2576378a8e339169678f9939646ee3ee325e845c # v3.1.1
         with:
