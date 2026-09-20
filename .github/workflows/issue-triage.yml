@@ -11,7 +11,7 @@ concurrency:
 jobs:
   find-duplicates:
     name: Find similar issues
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, opencodex]
     timeout-minutes: 10
     permissions:
       contents: read
@@ -136,7 +136,7 @@ jobs:
     name: Post duplicate comment
     needs: find-duplicates
     if: needs.find-duplicates.outputs.matches
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, opencodex]
     timeout-minutes: 10
     permissions:
       issues: write

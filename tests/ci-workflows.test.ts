@@ -86,12 +86,13 @@ describe("GitHub Actions hardening", () => {
     }
     for (const job of [
       "ubuntu-latest",
+      "ubuntu-latest shard 2/2",
       "macos-latest",
       "macos-quality",
       "windows-latest",
       "windows-latest shard 2/2",
       "windows-quality",
-      "npm-global ubuntu-latest",
+      "npm-global opencodex",
       "npm-global macos-latest",
       "npm-global windows-latest",
       "Security audit",
@@ -174,8 +175,9 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toContain("bun run scripts/test.ts");
     expect(workflow).toContain("bun run scripts/ci-test-shard.ts");
     expect(workflow).not.toContain("bun test --isolate tests");
+    expect(workflow).toContain("ACTIONLINT_VERSION=1.7.8");
     expect(workflow).toContain(
-      "raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7",
+      "./actionlint -config-file .github/actionlint.yaml",
     );
     expect(workflow).toContain("bun audit --audit-level=high");
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
@@ -946,7 +948,12 @@ describe("GitHub Actions hardening", () => {
     // `defaults:`, and no `<<:` merge key to reintroduce any of them sideways.
     const [, job] = jobs[0]!;
     expect(Object.keys(job).sort()).toEqual(["runs-on", "steps"]);
-    expect(job["runs-on"]).toBe("ubuntu-latest");
+    expect(job["runs-on"]).toEqual([
+      "self-hosted",
+      "Linux",
+      "X64",
+      "opencodex",
+    ]);
 
     // Checkout trusted scripts, then run the gate. Anything more is an extra
     // privileged action nobody reviewed.
@@ -3613,7 +3620,7 @@ describe("GitHub Actions hardening", () => {
     expect(helperSrc).not.toContain(".ocx-translation-state");
   });
 
-  test("container image workflow builds on ubuntu-latest and pushes only gated GHCR digests", async () => {
+  test("container image workflow builds on self-hosted opencodex and pushes only gated GHCR digests", async () => {
     const text = await readText(".github/workflows/container.yml");
     const workflow = Bun.YAML.parse(text) as {
       on?: {
@@ -3651,7 +3658,8 @@ describe("GitHub Actions hardening", () => {
     expect(workflow.on?.push?.tags).toEqual(["v*.*.*"]);
     expect(workflow.on).toHaveProperty("workflow_dispatch");
     expect(workflow.on?.workflow_dispatch?.inputs?.expected_sha).toEqual({
-      description: "Optional immutable release SHA; required by release.yml tag dispatches",
+      description:
+        "Optional immutable release SHA; required by release.yml tag dispatches",
       required: false,
       type: "string",
     });
@@ -3661,8 +3669,18 @@ describe("GitHub Actions hardening", () => {
     expect(jobs).toEqual(["image", "publish"]);
     const image = workflow.jobs?.image;
     const publish = workflow.jobs?.publish;
-    expect(image?.["runs-on"]).toBe("ubuntu-latest");
-    expect(publish?.["runs-on"]).toBe("ubuntu-latest");
+    expect(image?.["runs-on"]).toEqual([
+      "self-hosted",
+      "Linux",
+      "X64",
+      "opencodex",
+    ]);
+    expect(publish?.["runs-on"]).toEqual([
+      "self-hosted",
+      "Linux",
+      "X64",
+      "opencodex",
+    ]);
     expect(image?.["timeout-minutes"]).toBe(20);
     expect(publish?.["timeout-minutes"]).toBe(20);
     expect(image?.permissions).toEqual({ contents: "read", packages: "none" });
@@ -3690,7 +3708,6 @@ describe("GitHub Actions hardening", () => {
       "cancel-in-progress: ${{ !((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))) }}",
     );
 
-    expect(text).not.toContain("self-hosted");
     expect(text).not.toContain("chef-control");
     expect(text).not.toContain("/home/joep");
     expect(text).not.toContain("deploy.yml");
@@ -3805,7 +3822,8 @@ describe("GitHub Actions hardening", () => {
         (ref === "refs/heads/main" || ref.startsWith("refs/tags/v")));
     const shouldPush = (event: string, ref: string) =>
       shouldPublishJob(event, ref) &&
-      (((event === "push" || event === "workflow_dispatch") && tagShape.test(ref)) ||
+      (((event === "push" || event === "workflow_dispatch") &&
+        tagShape.test(ref)) ||
         (event === "workflow_dispatch" && ref === "refs/heads/main"));
     expect(shouldPush("push", "refs/tags/v1.2.3")).toBe(true);
     expect(shouldPush("push", "refs/tags/v1.2.3-preview.4")).toBe(true);
