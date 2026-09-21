@@ -302,6 +302,27 @@ describe("digest deploy workflow contract", () => {
     );
     expect(run).toContain("STATUS_VERSION_BINDING_FILE");
     expect(run).not.toContain("--display-version");
+
+    // Verify enhanced error handling for binding file
+    expect(run).toContain("DEPLOY_ENVIRONMENT");
+    expect(run).toContain("Production deployment requires binding file");
+    expect(run).toContain("STATUS_VERSION_BINDING_REQUIRED");
+    expect(run).toContain("json.load(open('$binding'))");
+    expect(run).toContain("not valid JSON");
+
+    // Verify retry logic for dashboard fetch
+    expect(run).toContain("max_retries=3");
+    expect(run).toContain("retry_delay=2");
+    expect(run).toContain("Failed to fetch dashboard HTML from ${dashboard_url} after");
+    expect(run).toContain("Attempt ${i}/${max_retries} failed");
+
+    // Verify timeout and error handling for receipt generation
+    expect(run).toContain("timeout 30");
+    expect(run).toContain("Failed to generate receipt with status-version-receipt.py");
+
+    // Verify receipt output validation
+    expect(run).toContain("output file not found at ${receipt}");
+    expect(run).toContain("Generated receipt is not valid JSON");
     // Rollback still verifies the previous runtime, not the new tag's version.
     const rollback = workflow.slice(
       workflow.indexOf("- name: Rollback on failure"),
