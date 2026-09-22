@@ -1,12 +1,27 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+  mkdirSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { collectStatus, proxyRestartHintLines, proxyStatusIsUp, resolveStatusPid, selectListenTarget } from "../src/cli/status";
+import {
+  collectStatus,
+  proxyRestartHintLines,
+  proxyStatusIsUp,
+  resolveStatusPid,
+  selectListenTarget,
+} from "../src/cli/status";
 
-const repoRoot = dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
+const repoRoot = dirname(
+  fileURLToPath(new URL("../package.json", import.meta.url)),
+);
 const cliPath = join(repoRoot, "src", "cli", "index.ts");
 
 function runStatusJson(opencodexHome: string) {
@@ -22,19 +37,23 @@ describe("CLI status JSON", () => {
     const opencodexHome = mkdtempSync(join(tmpdir(), "ocx-status-json-"));
     try {
       const configPath = join(opencodexHome, "config.json");
-      writeFileSync(configPath, JSON.stringify({
-        port: 9,
-        providers: {
-          openai: {
-            adapter: "openai-responses",
-            baseUrl: "https://chatgpt.com/backend-api/codex",
-            authMode: "forward",
-            apiKey: "sk-test-secret",
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          port: 9,
+          providers: {
+            openai: {
+              adapter: "openai-responses",
+              baseUrl: "https://chatgpt.com/backend-api/codex",
+              authMode: "forward",
+              apiKey: "sk-test-secret",
+            },
           },
-        },
-        defaultProvider: "openai",
-        codexAutoStart: false,
-      }), "utf8");
+          defaultProvider: "openai",
+          codexAutoStart: false,
+        }),
+        "utf8",
+      );
 
       const beforeFiles = readdirSync(opencodexHome).sort();
       const result = runStatusJson(opencodexHome);
@@ -47,7 +66,11 @@ describe("CLI status JSON", () => {
 
       const parsed = JSON.parse(result.stdout) as {
         schemaVersion?: unknown;
-        proxy?: { running?: unknown; pid?: unknown; health?: { ok?: unknown; url?: unknown; message?: unknown } };
+        proxy?: {
+          running?: unknown;
+          pid?: unknown;
+          health?: { ok?: unknown; url?: unknown; message?: unknown };
+        };
         dashboard?: { url?: unknown };
         listen?: { port?: unknown; source?: unknown };
         paths?: { config?: unknown; pid?: unknown; runtime?: unknown };
@@ -74,7 +97,11 @@ describe("CLI status JSON", () => {
           source?: unknown;
           warning?: unknown;
           newerAvailable?: unknown;
-          catalogClamp?: { active?: unknown; removedEfforts?: unknown; runtimeVersion?: unknown };
+          catalogClamp?: {
+            active?: unknown;
+            removedEfforts?: unknown;
+            runtimeVersion?: unknown;
+          };
         };
         codexHome?: {
           effectiveCodexHome?: unknown;
@@ -99,13 +126,17 @@ describe("CLI status JSON", () => {
       expect(typeof parsed.paths?.runtime).toBe("string");
       expect(typeof parsed.runtime?.source).toBe("string");
       expect(parsed.codexAutostart).toBe(false);
-      expect(["native", "protected", "at-risk"]).toContain(parsed.startup?.status);
+      expect(["native", "protected", "at-risk"]).toContain(
+        parsed.startup?.status,
+      );
       expect(typeof parsed.startup?.rebootSafe).toBe("boolean");
       expect(typeof parsed.startup?.routingInjected).toBe("boolean");
       expect(typeof parsed.startup?.serviceInstalled).toBe("boolean");
       expect(typeof parsed.startup?.shimInstalled).toBe("boolean");
       expect(typeof parsed.startup?.shimHealthy).toBe("boolean");
-      expect(["full", "cli-only", "none"]).toContain(parsed.startup?.shimCoverage);
+      expect(["full", "cli-only", "none"]).toContain(
+        parsed.startup?.shimCoverage,
+      );
       expect(typeof parsed.startup?.serviceSupported).toBe("boolean");
       expect(typeof parsed.startup?.commands).toBe("object");
       expect(parsed.defaultProvider).toBe("openai");
@@ -115,22 +146,41 @@ describe("CLI status JSON", () => {
       expect(typeof parsed.codexShim?.summary).toBe("string");
       expect(typeof parsed.codexRuntime?.path).toBe("string");
       expect(typeof parsed.codexRuntime?.source).toBe("string");
-      expect(parsed.codexRuntime?.version === null || typeof parsed.codexRuntime?.version === "string").toBe(true);
-      expect(parsed.codexRuntime?.warning === null || typeof parsed.codexRuntime?.warning === "string").toBe(true);
       expect(
-        parsed.codexRuntime?.newerAvailable === null
-        || (typeof parsed.codexRuntime?.newerAvailable === "object" && parsed.codexRuntime?.newerAvailable !== null),
+        parsed.codexRuntime?.version === null ||
+          typeof parsed.codexRuntime?.version === "string",
+      ).toBe(true);
+      expect(
+        parsed.codexRuntime?.warning === null ||
+          typeof parsed.codexRuntime?.warning === "string",
+      ).toBe(true);
+      expect(
+        parsed.codexRuntime?.newerAvailable === null ||
+          (typeof parsed.codexRuntime?.newerAvailable === "object" &&
+            parsed.codexRuntime?.newerAvailable !== null),
       ).toBe(true);
       expect(parsed.codexRuntime?.catalogClamp?.active).toBe(false);
-      expect(Array.isArray(parsed.codexRuntime?.catalogClamp?.removedEfforts)).toBe(true);
+      expect(
+        Array.isArray(parsed.codexRuntime?.catalogClamp?.removedEfforts),
+      ).toBe(true);
       expect(parsed.codexRuntime?.catalogClamp?.runtimeVersion).toBeNull();
       expect(typeof parsed.codexHome?.effectiveCodexHome).toBe("string");
       expect(typeof parsed.codexHome?.appCodexHome).toBe("string");
       expect(typeof parsed.codexHome?.mismatch).toBe("boolean");
-      expect(parsed.codexHome?.warning === null || typeof parsed.codexHome?.warning === "string").toBe(true);
+      expect(
+        parsed.codexHome?.warning === null ||
+          typeof parsed.codexHome?.warning === "string",
+      ).toBe(true);
 
       const serialized = JSON.stringify(parsed).toLowerCase();
-      for (const forbidden of ["apikey", "sk-test-secret", "token", "refreshtoken", "authorization", "email"]) {
+      for (const forbidden of [
+        "apikey",
+        "sk-test-secret",
+        "token",
+        "refreshtoken",
+        "authorization",
+        "email",
+      ]) {
         expect(serialized).not.toContain(forbidden);
       }
     } finally {
@@ -140,47 +190,74 @@ describe("CLI status JSON", () => {
 
   test("status --json reports catalogClamp.runtimeVersion when clamp is active", async () => {
     const { chmodSync } = await import("node:fs");
-    const { persistEffortClamp, resetCodexRuntimeResolveCacheForTests } = await import("../src/codex/runtime");
+    const { persistEffortClamp, resetCodexRuntimeResolveCacheForTests } =
+      await import("../src/codex/runtime");
     const opencodexHome = mkdtempSync(join(tmpdir(), "ocx-status-clamp-"));
     try {
-      writeFileSync(join(opencodexHome, "config.json"), JSON.stringify({
-        port: 9,
-        providers: {},
-        defaultProvider: "openai",
-      }), "utf8");
-      const fakeCodex = process.platform === "win32"
-        ? join(opencodexHome, "bin", "codex.cmd")
-        : join(opencodexHome, "bin", "codex");
+      writeFileSync(
+        join(opencodexHome, "config.json"),
+        JSON.stringify({
+          port: 9,
+          providers: {},
+          defaultProvider: "openai",
+        }),
+        "utf8",
+      );
+      const fakeCodex =
+        process.platform === "win32"
+          ? join(opencodexHome, "bin", "codex.cmd")
+          : join(opencodexHome, "bin", "codex");
       mkdirSync(join(opencodexHome, "bin"), { recursive: true });
       if (process.platform === "win32") {
-        writeFileSync(fakeCodex, "@echo off\r\necho codex-cli 0.133.0\r\n", "utf8");
+        writeFileSync(
+          fakeCodex,
+          "@echo off\r\necho codex-cli 0.133.0\r\n",
+          "utf8",
+        );
       } else {
-        writeFileSync(fakeCodex, "#!/bin/sh\necho 'codex-cli 0.133.0'\n", "utf8");
+        writeFileSync(
+          fakeCodex,
+          "#!/bin/sh\necho 'codex-cli 0.133.0'\n",
+          "utf8",
+        );
         chmodSync(fakeCodex, 0o755);
       }
-      persistEffortClamp({
-        runtimePath: fakeCodex,
-        runtimeVersion: "0.133.0",
-        removedEfforts: ["max", "ultra"],
-        affectedModels: ["gpt-5.6-sol"],
-      }, { configDir: opencodexHome });
+      persistEffortClamp(
+        {
+          runtimePath: fakeCodex,
+          runtimeVersion: "0.133.0",
+          removedEfforts: ["max", "ultra"],
+          affectedModels: ["gpt-5.6-sol"],
+        },
+        { configDir: opencodexHome },
+      );
       resetCodexRuntimeResolveCacheForTests();
 
-      const result = spawnSync(process.execPath, [cliPath, "status", "--json"], {
-        cwd: repoRoot,
-        env: {
-          ...process.env,
-          OPENCODEX_HOME: opencodexHome,
-          CODEX_CLI_PATH: fakeCodex,
-          PATH: "",
+      const result = spawnSync(
+        process.execPath,
+        [cliPath, "status", "--json"],
+        {
+          cwd: repoRoot,
+          env: {
+            ...process.env,
+            OPENCODEX_HOME: opencodexHome,
+            CODEX_CLI_PATH: fakeCodex,
+            // Empty PATH makes Bun on macOS GitHub runners exit with status null.
+            // Keep only the system dirs so `codex` is still not resolved from PATH.
+            PATH: "/usr/bin:/bin",
+          },
+          encoding: "utf8",
         },
-        encoding: "utf8",
-      });
+      );
       expect(result.status).toBe(0);
       const parsed = JSON.parse(result.stdout) as {
         codexRuntime?: {
           version?: string | null;
-          catalogClamp?: { active?: boolean; removedEfforts?: string[]; runtimeVersion?: string | null };
+          catalogClamp?: {
+            active?: boolean;
+            removedEfforts?: string[];
+            runtimeVersion?: string | null;
+          };
         };
       };
       expect(parsed.codexRuntime?.version).toBe("0.133.0");
@@ -198,17 +275,25 @@ describe("CLI status JSON", () => {
   test("status rejects unknown flags instead of silently printing human text", () => {
     const opencodexHome = mkdtempSync(join(tmpdir(), "ocx-status-json-"));
     try {
-      writeFileSync(join(opencodexHome, "config.json"), JSON.stringify({
-        port: 9,
-        providers: {},
-        defaultProvider: "openai",
-      }), "utf8");
+      writeFileSync(
+        join(opencodexHome, "config.json"),
+        JSON.stringify({
+          port: 9,
+          providers: {},
+          defaultProvider: "openai",
+        }),
+        "utf8",
+      );
 
-      const result = spawnSync(process.execPath, [cliPath, "status", "--yaml"], {
-        cwd: repoRoot,
-        env: { ...process.env, OPENCODEX_HOME: opencodexHome },
-        encoding: "utf8",
-      });
+      const result = spawnSync(
+        process.execPath,
+        [cliPath, "status", "--yaml"],
+        {
+          cwd: repoRoot,
+          env: { ...process.env, OPENCODEX_HOME: opencodexHome },
+          encoding: "utf8",
+        },
+      );
 
       expect(result.status).toBe(1);
       expect(result.stderr).toContain("Usage: ocx status [--json]");
@@ -221,17 +306,25 @@ describe("CLI status JSON", () => {
   test("status --json rejects additional flags", () => {
     const opencodexHome = mkdtempSync(join(tmpdir(), "ocx-status-json-"));
     try {
-      writeFileSync(join(opencodexHome, "config.json"), JSON.stringify({
-        port: 9,
-        providers: {},
-        defaultProvider: "openai",
-      }), "utf8");
+      writeFileSync(
+        join(opencodexHome, "config.json"),
+        JSON.stringify({
+          port: 9,
+          providers: {},
+          defaultProvider: "openai",
+        }),
+        "utf8",
+      );
 
-      const result = spawnSync(process.execPath, [cliPath, "status", "--json", "--yaml"], {
-        cwd: repoRoot,
-        env: { ...process.env, OPENCODEX_HOME: opencodexHome },
-        encoding: "utf8",
-      });
+      const result = spawnSync(
+        process.execPath,
+        [cliPath, "status", "--json", "--yaml"],
+        {
+          cwd: repoRoot,
+          env: { ...process.env, OPENCODEX_HOME: opencodexHome },
+          encoding: "utf8",
+        },
+      );
 
       expect(result.status).toBe(1);
       expect(result.stderr).toContain("Usage: ocx status [--json]");
@@ -245,7 +338,11 @@ describe("CLI status JSON", () => {
     const opencodexHome = mkdtempSync(join(tmpdir(), "ocx-status-json-"));
     try {
       const configPath = join(opencodexHome, "config.json");
-      writeFileSync(configPath, '{ "apiKey": "sk-status-secret", invalid json', "utf8");
+      writeFileSync(
+        configPath,
+        '{ "apiKey": "sk-status-secret", invalid json',
+        "utf8",
+      );
       const beforeFiles = readdirSync(opencodexHome).sort();
 
       const result = runStatusJson(opencodexHome);
@@ -254,7 +351,9 @@ describe("CLI status JSON", () => {
       expect(result.status).toBe(0);
       expect(result.stderr).toBe("");
       expect(afterFiles).toEqual(beforeFiles);
-      expect(afterFiles.some(name => name.startsWith("config.json.invalid-"))).toBe(false);
+      expect(
+        afterFiles.some((name) => name.startsWith("config.json.invalid-")),
+      ).toBe(false);
 
       const parsed = JSON.parse(result.stdout) as {
         config?: { source?: unknown; error?: unknown };
@@ -279,25 +378,39 @@ describe("CLI status JSON", () => {
     let healthProbes = 0;
     try {
       process.env.OPENCODEX_HOME = opencodexHome;
-      writeFileSync(join(opencodexHome, "config.json"), JSON.stringify({
-        port: 19191,
-        hostname: "127.0.0.1",
-        providers: {},
-        defaultProvider: "openai",
-      }), "utf8");
+      writeFileSync(
+        join(opencodexHome, "config.json"),
+        JSON.stringify({
+          port: 19191,
+          hostname: "127.0.0.1",
+          providers: {},
+          defaultProvider: "openai",
+        }),
+        "utf8",
+      );
       globalThis.fetch = (async (input: string | URL | Request) => {
         const url = String(input);
         if (url === "http://127.0.0.1:19191/healthz") {
           healthProbes += 1;
-          return new Response(JSON.stringify({
-            status: "ok", service: "opencodex", version: "1.2.2", uptime: 10, pid: 7, port: 10100,
-          }), { status: 200 });
+          return new Response(
+            JSON.stringify({
+              status: "ok",
+              service: "opencodex",
+              version: "1.2.2",
+              uptime: 10,
+              pid: 7,
+              port: 10100,
+            }),
+            { status: 200 },
+          );
         }
         throw new Error(`unexpected fetch: ${url}`);
       }) as typeof fetch;
 
       const view = await collectStatus();
-      expect(view.proxyLabel).toBe("reachable (no verified local PID; forwarded/remote endpoint)");
+      expect(view.proxyLabel).toBe(
+        "reachable (no verified local PID; forwarded/remote endpoint)",
+      );
       expect(view.json.proxy.running).toBe(true);
       expect(view.json.proxy.pid).toBeNull();
       expect(view.json.proxy.health.ok).toBe(true);
@@ -314,26 +427,40 @@ describe("CLI status JSON", () => {
   });
 
   test("pidless liveness stays up when a follow-up health fetch would fail", async () => {
-    const opencodexHome = mkdtempSync(join(tmpdir(), "ocx-status-forwarded-followup-"));
+    const opencodexHome = mkdtempSync(
+      join(tmpdir(), "ocx-status-forwarded-followup-"),
+    );
     const previousOcxHome = process.env.OPENCODEX_HOME;
     const originalFetch = globalThis.fetch;
     let healthProbes = 0;
     try {
       process.env.OPENCODEX_HOME = opencodexHome;
-      writeFileSync(join(opencodexHome, "config.json"), JSON.stringify({
-        port: 19192,
-        hostname: "127.0.0.1",
-        providers: {},
-        defaultProvider: "openai",
-      }), "utf8");
+      writeFileSync(
+        join(opencodexHome, "config.json"),
+        JSON.stringify({
+          port: 19192,
+          hostname: "127.0.0.1",
+          providers: {},
+          defaultProvider: "openai",
+        }),
+        "utf8",
+      );
       globalThis.fetch = (async (input: string | URL | Request) => {
         const url = String(input);
         if (url === "http://127.0.0.1:19192/healthz") {
           healthProbes += 1;
           if (healthProbes === 1) {
-            return new Response(JSON.stringify({
-              status: "ok", service: "opencodex", version: "1.2.2", uptime: 10, pid: 7, port: 10100,
-            }), { status: 200 });
+            return new Response(
+              JSON.stringify({
+                status: "ok",
+                service: "opencodex",
+                version: "1.2.2",
+                uptime: 10,
+                pid: 7,
+                port: 10100,
+              }),
+              { status: 200 },
+            );
           }
           throw new Error("cold forward timed out");
         }
@@ -347,7 +474,9 @@ describe("CLI status JSON", () => {
       expect(view.proxyLabel).toContain("forwarded/remote");
       expect(healthProbes).toBe(1);
       expect(proxyStatusIsUp(view)).toBe(true);
-      expect(proxyRestartHintLines(view).join("\n")).not.toContain("Not running");
+      expect(proxyRestartHintLines(view).join("\n")).not.toContain(
+        "Not running",
+      );
     } finally {
       globalThis.fetch = originalFetch;
       if (previousOcxHome === undefined) delete process.env.OPENCODEX_HOME;
@@ -377,11 +506,11 @@ describe("CLI status JSON", () => {
   });
 
   test("listen target brackets raw IPv6 hostnames in the health URL", () => {
-    const target = selectListenTarget(
-      { port: 10100, hostname: "::1" },
-      123,
-      { pid: 123, port: 58195, hostname: "::1" },
-    );
+    const target = selectListenTarget({ port: 10100, hostname: "::1" }, 123, {
+      pid: 123,
+      port: 58195,
+      hostname: "::1",
+    });
 
     expect(target.healthUrl).toBe("http://[::1]:58195/healthz");
     expect(target.dashboardUrl).toBe("http://localhost:58195/");
