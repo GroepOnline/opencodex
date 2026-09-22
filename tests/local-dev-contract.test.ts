@@ -243,11 +243,11 @@ describe("healthz-smoke against a live proxy", () => {
     try {
       const ok = await runHealthzSmoke({
         OPENCODEX_HEALTH_URL: `http://127.0.0.1:${server.port}/healthz`,
-        OPENCODEX_SMOKE_EXPECT_VERSION: "1.4.2",
+        OPENCODEX_SMOKE_EXPECT_VERSION: "1.5.0",
       });
       expect(ok.exitCode).toBe(0);
       expect(ok.stdout).toContain('"service": "opencodex"');
-      expect(ok.stdout).toContain('"version": "1.4.2"');
+      expect(ok.stdout).toContain('"version": "1.5.0"');
     } finally {
       await server.stop(true);
     }

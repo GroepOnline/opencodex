@@ -7,6 +7,8 @@ All notable changes to the GroepOnline `opencodex` fork. Format follows
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-09-22
+
 ### Added
 
 - Local/dev Compose, Dev Container, `.env.example`, and `scripts/healthz-smoke.sh`
@@ -20,6 +22,14 @@ All notable changes to the GroepOnline `opencodex` fork. Format follows
   `/oauth/logout`) when `OIDC_CLIENT_SECRET_FILE` is set. Cloudflare Access
   remains the live public-host gate until
   `deploy/oidc/CUTOVER-CHECKLIST.md` is executed.
+- Browser-bound Authentik login (#263). The login transaction is tied to the
+  browser, and logout or expiry revokes the short GUI session. Cloudflare
+  Access stays the public gate.
+
+### Changed
+
+- Linux CI and release jobs run on the online jan runner. The retired AWS
+  runner label is no longer required for those jobs.
 
 ## [1.4.2] — 2026-09-08
 
