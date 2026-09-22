@@ -87,13 +87,10 @@ describe("GitHub Actions hardening", () => {
     for (const job of [
       "ubuntu-latest",
       "ubuntu-latest shard 2/2",
-      "macos-latest",
-      "macos-quality",
       "windows-latest",
       "windows-latest shard 2/2",
       "windows-quality",
       "npm-global opencodex",
-      "npm-global macos-latest",
       "npm-global windows-latest",
       "Security audit",
       "Lint GitHub Actions",

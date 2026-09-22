@@ -53,5 +53,5 @@ bun run setup:hooks
 
 **Pre-push** runs `bun run prepush` — `typecheck`, `lint:gui`, `test`, `privacy:scan`,
 and `doctor:gui:if-changed` — before every `git push`. The same checks run on
-ubuntu-latest, macos-latest, and windows-latest in CI (CI additionally builds the GUI
+ubuntu-latest and windows-latest in CI (CI additionally builds the GUI
 and smoke-tests the CLI). Skip in an emergency with `git push --no-verify`.
