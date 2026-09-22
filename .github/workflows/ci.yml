@@ -52,12 +52,13 @@ jobs:
   test:
     name: ${{ matrix.name }}
     runs-on: ${{ fromJSON(matrix.runner) }}
-    # Keep the 20-minute ceiling as a real performance boundary. The combined provider-security
-    # and admission suites pushed the serial macOS/Windows jobs into this ceiling even though the
-    # root tests themselves remained green. Slow platforms therefore separate root tests from GUI
-    # quality work, and Windows root tests are deterministically balanced over two shards.
-    # Linux-only on push/PR; manual pre-release verification and release tags run every platform.
-    timeout-minutes: 20
+    # 40 minutes, not 20. A quiet Linux shard finishes in about 5 minutes, but this
+    # self-hosted host shares its CPUs with other runners. scripts/test.ts records that
+    # contention stretches a ~210s suite to ~26 minutes while Bun's per-test timers do
+    # not fire, so a 20-minute cap cancels a green shard. macOS and Windows still split
+    # root tests from GUI quality work. Linux-only on push/PR; workflow_dispatch and
+    # release tags run every platform.
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
