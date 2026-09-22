@@ -81,6 +81,24 @@ bash scripts/oidc-authorize-canary.sh
 OPENCODEX_OIDC_CANARY_URL=http://127.0.0.1:10100 bash scripts/oidc-authorize-canary.sh
 ```
 
+## Fleet model catalog
+
+Runtime providers are not part of the image pin. The key-free default is
+[`model-catalog.example.json`](./model-catalog.example.json), described in
+[`../../docs/models.md`](../../docs/models.md).
+
+| Check | Rule |
+| --- | --- |
+| Providers | `azure-us` (`openaichef`, eastus), `azure-se` (`openaichef-se`, swedencentral), `azure-foundry-us` (`azure-foundry-us`, eastus) |
+| Wire | `openai-chat` against `https://<resource>.cognitiveservices.azure.com/openai/v1` |
+| Keys | Host env only: `AZURE_OPENAI_KEY_OPENAICHEF`, `AZURE_OPENAI_KEY_OPENAICHEF_SE`, `AZURE_OPENAI_KEY_AZURE_FOUNDRY_US`. Never commit values. |
+| Removed | `jort-7512-resource`, AWS/Bedrock hosts, `chef-control-az-01` as a model upstream, stopped llama.cpp/weg54 inference |
+| Apply | Edit the host `~/.opencodex/config.json`, keep mode `0600`, then restart `opencodex-proxy`. Do not retarget the binary pin from this file. |
+| Check | `ocx config validate` before restart. `GET /v1/models` on the bind address must list `azure-us/*`, `azure-se/*`, and `azure-foundry-us/fw-deepseek-v4-pro`. |
+
+Copying the example over a live file drops every other provider. Merge it into
+the existing `providers` map instead.
+
 ## Honest blockers
 
 1. Authentik issuer public apply is done (2026-09-18). The consumer is wired,
