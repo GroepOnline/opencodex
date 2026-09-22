@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   publish:
-    runs-on: [self-hosted, Linux, X64, opencodex]
+    runs-on: [self-hosted, Linux, X64, jan]
     timeout-minutes: 15
     outputs:
       version: ${{ steps.version.outputs.version }}

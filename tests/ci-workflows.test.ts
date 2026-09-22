@@ -106,11 +106,11 @@ describe("GitHub Actions hardening", () => {
   test("cross-platform CI keeps bounded jobs and immutable action references", async () => {
     const workflow = await readText(".github/workflows/ci.yml");
 
-    // The cross-platform `test` job sits at 20 minutes: a green Windows run measured
-    // 11.8 min against 4.6 on Linux, and the previous 12-minute ceiling left ~12s of
-    // margin, so runner variance rather than the code decided the verdict (#717).
-    // `npm-global-smoke` stays at 8; it finishes in 1-2 minutes.
-    expect(count(workflow, "timeout-minutes: 20")).toBe(1);
+    // The cross-platform `test` job sits at 40 minutes. A quiet Linux shard is ~5
+    // minutes, but the self-hosted host shares CPUs and a contended suite runs ~26
+    // minutes without tripping Bun's per-test timers (scripts/test.ts). The old
+    // 20-minute cap cancelled those green shards. `npm-global-smoke` stays at 8.
+    expect(count(workflow, "timeout-minutes: 40")).toBe(1);
     expect(count(workflow, "timeout-minutes: 8")).toBe(1);
     // EVERY job must stay bounded — an unbounded job can hang a queue for hours.
     // Derived from the job set rather than a hardcoded count, so adding a job
@@ -948,12 +948,7 @@ describe("GitHub Actions hardening", () => {
     // `defaults:`, and no `<<:` merge key to reintroduce any of them sideways.
     const [, job] = jobs[0]!;
     expect(Object.keys(job).sort()).toEqual(["runs-on", "steps"]);
-    expect(job["runs-on"]).toEqual([
-      "self-hosted",
-      "Linux",
-      "X64",
-      "opencodex",
-    ]);
+    expect(job["runs-on"]).toEqual(["self-hosted", "Linux", "X64", "jan"]);
 
     // Checkout trusted scripts, then run the gate. Anything more is an extra
     // privileged action nobody reviewed.
@@ -2891,6 +2886,7 @@ describe("GitHub Actions hardening", () => {
     // declared here or CI linting the workflow itself would go red.
     expect(config["self-hosted-runner"]?.labels).toEqual([
       "deploy",
+      "jan",
       "opencodex",
     ]);
 
@@ -3669,17 +3665,12 @@ describe("GitHub Actions hardening", () => {
     expect(jobs).toEqual(["image", "publish"]);
     const image = workflow.jobs?.image;
     const publish = workflow.jobs?.publish;
-    expect(image?.["runs-on"]).toEqual([
-      "self-hosted",
-      "Linux",
-      "X64",
-      "opencodex",
-    ]);
+    expect(image?.["runs-on"]).toEqual(["self-hosted", "Linux", "X64", "jan"]);
     expect(publish?.["runs-on"]).toEqual([
       "self-hosted",
       "Linux",
       "X64",
-      "opencodex",
+      "jan",
     ]);
     expect(image?.["timeout-minutes"]).toBe(20);
     expect(publish?.["timeout-minutes"]).toBe(20);
