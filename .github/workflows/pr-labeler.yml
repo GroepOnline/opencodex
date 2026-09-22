@@ -29,7 +29,7 @@ permissions:
 
 jobs:
   label:
-    runs-on: [self-hosted, Linux, X64, opencodex]
+    runs-on: [self-hosted, Linux, X64, jan]
     timeout-minutes: 10
     steps:
       - name: Checkout labeler script (default-branch trusted code)

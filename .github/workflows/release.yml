@@ -57,7 +57,7 @@ concurrency:
 
 jobs:
   publish:
-    runs-on: [self-hosted, Linux, X64, opencodex]
+    runs-on: [self-hosted, Linux, X64, jan]
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -601,7 +601,7 @@ jobs:
   rollout:
     needs: publish
     if: github.event.inputs.dry-run != 'true'
-    runs-on: [self-hosted, Linux, X64, opencodex]
+    runs-on: [self-hosted, Linux, X64, jan]
     timeout-minutes: 10
     permissions:
       contents: read

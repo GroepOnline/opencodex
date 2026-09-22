@@ -948,12 +948,7 @@ describe("GitHub Actions hardening", () => {
     // `defaults:`, and no `<<:` merge key to reintroduce any of them sideways.
     const [, job] = jobs[0]!;
     expect(Object.keys(job).sort()).toEqual(["runs-on", "steps"]);
-    expect(job["runs-on"]).toEqual([
-      "self-hosted",
-      "Linux",
-      "X64",
-      "opencodex",
-    ]);
+    expect(job["runs-on"]).toEqual(["self-hosted", "Linux", "X64", "jan"]);
 
     // Checkout trusted scripts, then run the gate. Anything more is an extra
     // privileged action nobody reviewed.
@@ -2891,6 +2886,7 @@ describe("GitHub Actions hardening", () => {
     // declared here or CI linting the workflow itself would go red.
     expect(config["self-hosted-runner"]?.labels).toEqual([
       "deploy",
+      "jan",
       "opencodex",
     ]);
 
@@ -3669,17 +3665,12 @@ describe("GitHub Actions hardening", () => {
     expect(jobs).toEqual(["image", "publish"]);
     const image = workflow.jobs?.image;
     const publish = workflow.jobs?.publish;
-    expect(image?.["runs-on"]).toEqual([
-      "self-hosted",
-      "Linux",
-      "X64",
-      "opencodex",
-    ]);
+    expect(image?.["runs-on"]).toEqual(["self-hosted", "Linux", "X64", "jan"]);
     expect(publish?.["runs-on"]).toEqual([
       "self-hosted",
       "Linux",
       "X64",
-      "opencodex",
+      "jan",
     ]);
     expect(image?.["timeout-minutes"]).toBe(20);
     expect(publish?.["timeout-minutes"]).toBe(20);

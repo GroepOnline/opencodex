@@ -63,8 +63,8 @@ jobs:
       matrix:
         include:
           ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v'))
-          && fromJSON('[{"name":"ubuntu-latest","os":"opencodex","runner":"[\"self-hosted\",\"Linux\",\"X64\",\"opencodex\"]","run_tests":true,"run_quality":true,"run_typecheck":true,"shard_index":0,"shard_count":2},{"name":"ubuntu-latest shard 2/2","os":"opencodex","runner":"[\"self-hosted\",\"Linux\",\"X64\",\"opencodex\"]","run_tests":true,"run_quality":false,"run_typecheck":false,"shard_index":1,"shard_count":2},{"name":"macos-latest","os":"macos-latest","runner":"\"macos-latest\"","run_tests":true,"run_quality":false,"run_typecheck":true,"shard_index":0,"shard_count":1},{"name":"macos-quality","os":"macos-latest","runner":"\"macos-latest\"","run_tests":false,"run_quality":true,"run_typecheck":false,"shard_index":0,"shard_count":1},{"name":"windows-latest","os":"windows-latest","runner":"\"windows-latest\"","run_tests":true,"run_quality":false,"run_typecheck":true,"shard_index":0,"shard_count":2},{"name":"windows-latest shard 2/2","os":"windows-latest","runner":"\"windows-latest\"","run_tests":true,"run_quality":false,"run_typecheck":false,"shard_index":1,"shard_count":2},{"name":"windows-quality","os":"windows-latest","runner":"\"windows-latest\"","run_tests":false,"run_quality":true,"run_typecheck":false,"shard_index":0,"shard_count":1}]')
-          || fromJSON('[{"name":"ubuntu-latest","os":"opencodex","runner":"[\"self-hosted\",\"Linux\",\"X64\",\"opencodex\"]","run_tests":true,"run_quality":true,"run_typecheck":true,"shard_index":0,"shard_count":2},{"name":"ubuntu-latest shard 2/2","os":"opencodex","runner":"[\"self-hosted\",\"Linux\",\"X64\",\"opencodex\"]","run_tests":true,"run_quality":false,"run_typecheck":false,"shard_index":1,"shard_count":2}]') }}
+          && fromJSON('[{"name":"ubuntu-latest","os":"opencodex","runner":"[\"self-hosted\",\"Linux\",\"X64\",\"jan\"]","run_tests":true,"run_quality":true,"run_typecheck":true,"shard_index":0,"shard_count":2},{"name":"ubuntu-latest shard 2/2","os":"opencodex","runner":"[\"self-hosted\",\"Linux\",\"X64\",\"jan\"]","run_tests":true,"run_quality":false,"run_typecheck":false,"shard_index":1,"shard_count":2},{"name":"macos-latest","os":"macos-latest","runner":"\"macos-latest\"","run_tests":true,"run_quality":false,"run_typecheck":true,"shard_index":0,"shard_count":1},{"name":"macos-quality","os":"macos-latest","runner":"\"macos-latest\"","run_tests":false,"run_quality":true,"run_typecheck":false,"shard_index":0,"shard_count":1},{"name":"windows-latest","os":"windows-latest","runner":"\"windows-latest\"","run_tests":true,"run_quality":false,"run_typecheck":true,"shard_index":0,"shard_count":2},{"name":"windows-latest shard 2/2","os":"windows-latest","runner":"\"windows-latest\"","run_tests":true,"run_quality":false,"run_typecheck":false,"shard_index":1,"shard_count":2},{"name":"windows-quality","os":"windows-latest","runner":"\"windows-latest\"","run_tests":false,"run_quality":true,"run_typecheck":false,"shard_index":0,"shard_count":1}]')
+          || fromJSON('[{"name":"ubuntu-latest","os":"opencodex","runner":"[\"self-hosted\",\"Linux\",\"X64\",\"jan\"]","run_tests":true,"run_quality":true,"run_typecheck":true,"shard_index":0,"shard_count":2},{"name":"ubuntu-latest shard 2/2","os":"opencodex","runner":"[\"self-hosted\",\"Linux\",\"X64\",\"jan\"]","run_tests":true,"run_quality":false,"run_typecheck":false,"shard_index":1,"shard_count":2}]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -174,7 +174,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) && fromJSON('[{"platform":"opencodex","runner":"[\"self-hosted\",\"Linux\",\"X64\",\"opencodex\"]"},{"platform":"windows-latest","runner":"\"windows-latest\""},{"platform":"macos-latest","runner":"\"macos-latest\""}]') || fromJSON('[{"platform":"opencodex","runner":"[\"self-hosted\",\"Linux\",\"X64\",\"opencodex\"]"}]') }}
+        include: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) && fromJSON('[{"platform":"opencodex","runner":"[\"self-hosted\",\"Linux\",\"X64\",\"jan\"]"},{"platform":"windows-latest","runner":"\"windows-latest\""},{"platform":"macos-latest","runner":"\"macos-latest\""}]') || fromJSON('[{"platform":"opencodex","runner":"[\"self-hosted\",\"Linux\",\"X64\",\"jan\"]"}]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -208,7 +208,7 @@ jobs:
 
   security:
     name: Security audit
-    runs-on: [self-hosted, Linux, X64, opencodex]
+    runs-on: [self-hosted, Linux, X64, jan]
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -282,7 +282,7 @@ jobs:
 
   lint-github-actions:
     name: Lint GitHub Actions
-    runs-on: [self-hosted, Linux, X64, opencodex]
+    runs-on: [self-hosted, Linux, X64, jan]
     timeout-minutes: 3
     steps:
       - name: Checkout
