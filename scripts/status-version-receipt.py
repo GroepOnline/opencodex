@@ -7,6 +7,7 @@ Display fields come from the compiled app (HTML meta), never from /healthz.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timedelta, timezone
 import json
 import re
 import sys
@@ -63,6 +64,18 @@ def parse_digest(value: str, name: str) -> str:
     if not DIGEST.match(digest):
         fail(f"{name} must be sha256: plus 64 hex")
     return digest
+
+
+def validate_freshness(now: str, fresh_until: str) -> None:
+    if not INSTANT.fullmatch(now) or not INSTANT.fullmatch(fresh_until):
+        fail("--now and --fresh-until must be UTC YYYY-MM-DDTHH:MM:SSZ")
+    try:
+        start = datetime.strptime(now, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        expiry = datetime.strptime(fresh_until, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        fail("--now and --fresh-until must be valid UTC instants")
+    if not start < expiry <= start + timedelta(minutes=10):
+        fail("--fresh-until must be later than --now and within ten minutes")
 
 
 def load_binding(path: Path) -> dict:
@@ -179,8 +192,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--evidence-ref", required=True)
     parser.add_argument("--out", required=True)
     args = parser.parse_args(argv)
-    if not INSTANT.match(args.now) or not INSTANT.match(args.fresh_until):
-        fail("--now and --fresh-until must be UTC YYYY-MM-DDTHH:MM:SSZ")
+    validate_freshness(args.now, args.fresh_until)
     if args.operation_status not in OPERATION_STATUSES:
         fail("--operation-status is not an admitted operation status")
     if not SHA.match(args.artifact_source_sha) or not SHA.match(args.runtime_source_sha) or not SHA.match(args.desired_sha):
@@ -216,7 +228,10 @@ def main(argv: list[str]) -> int:
         display={
             "version": display_version if display_version and VERSION.match(display_version) else None,
             "source_sha": display_sha if display_sha and SHA.match(display_sha) else None,
-            "artifact_digest": args.display_digest,
+            "artifact_digest": (
+                parse_digest(args.display_digest, "--display-digest")
+                if args.display_digest else None
+            ),
             "verification_ref": args.verification_ref,
             "independent": independent,
         },
