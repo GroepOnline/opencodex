@@ -327,30 +327,22 @@
   letter-spacing: -0.03em;
 }
 
-/* Horizontal KPI strip (Traffic) becomes the same card grammar */
+/* KPI strip stays a strip — no per-item cards (bento farm). */
 .ocx-workspace .stat-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-  gap: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-8);
   padding: 0;
   margin-bottom: var(--section-gap);
 }
 .ocx-workspace .stat-strip-item {
-  gap: 8px;
-  padding: 16px 18px;
-  background: var(--surface);
-  border: 1px solid var(--card-border);
-  border-radius: var(--card-radius);
-  box-shadow: var(--card-shadow);
-  transition:
-    border-color var(--motion-fast) var(--ease-out),
-    box-shadow var(--motion-normal) var(--ease-out),
-    transform var(--motion-normal) var(--ease-out);
-}
-.ocx-workspace .stat-strip-item:hover {
-  border-color: var(--border);
-  box-shadow: var(--card-shadow-raised);
-  transform: translateY(-1px);
+  gap: var(--space-1);
+  padding: 0;
+  min-width: 7rem;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 .ocx-workspace .stat-strip-waarde {
   order: 2;

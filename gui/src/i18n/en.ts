@@ -2042,7 +2042,7 @@ export const en = {
   "sys.stopConfirmTitle": "Stop the proxy?",
   "sys.stopConfirmDesc": "Codex and Cursor will lose their connection.",
   "sys.keepRunning": "Keep running",
-  "vk.subtitle": "What flows through the proxy — recent requests, live.",
+  "vk.subtitle": "What flows through the proxy. Recent requests, live.",
   "vk.statsAria": "Traffic figures",
   "vk.tokens30d": "tokens (30d)",
   "vk.requestsToday": "requests today",

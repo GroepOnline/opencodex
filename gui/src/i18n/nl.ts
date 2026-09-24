@@ -575,7 +575,7 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "sys.stopConfirmTitle": "Proxy stoppen?",
   "sys.stopConfirmDesc": "Codex en Cursor verliezen hun verbinding.",
   "sys.keepRunning": "Laat draaien",
-  "vk.subtitle": "Wat er door de proxy gaat — recente requests, live.",
+  "vk.subtitle": "Wat er door de proxy gaat. Recente requests, live.",
   "vk.statsAria": "Verkeerscijfers",
   "vk.tokens30d": "tokens (30d)",
   "vk.requestsToday": "requests vandaag",
