@@ -47,7 +47,7 @@ OPENCODEX_OIDC_CANARY_URL=http://127.0.0.1:10100 bash scripts/oidc-authorize-can
 
 The operator checklist for dual-run and Cloudflare Access cutover is
 [`deploy/oidc/CUTOVER-CHECKLIST.md`](https://github.com/GroepOnline/opencodex/blob/main/deploy/oidc/CUTOVER-CHECKLIST.md).
-Merging the consumer does not move the live `1.4.2` place lock and is not a
+Merging the consumer does not move the live `1.5.0` place lock and is not a
 cutover.
 
 ## See also

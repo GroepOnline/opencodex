@@ -528,7 +528,7 @@ mirrors that path:
 | Dev Container | `.devcontainer/` (Bun 1.4.0)                                       |
 | Health smoke  | `bash scripts/healthz-smoke.sh` → `http://127.0.0.1:10100/healthz` |
 
-Operator notes, the live `1.4.2` / `529bb6a9` place lock, and Authentik OIDC
+Operator notes, the live `1.5.0` / `f5cc348b7` place lock, and Authentik OIDC
 (`chefgroep-ocx-oidc`; issuer APPLY DONE 2026-09-18; consumer JWKS +
 `/oauth/login`) are in
 [`deploy/container/README.md`](./deploy/container/README.md). Cloudflare Access

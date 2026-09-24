@@ -21,41 +21,20 @@ describe("Cloudflare Access container deploy contract", () => {
     expect(compose).toContain("OIDC_ALLOWED_HOSTS: ${OIDC_ALLOWED_HOSTS:-}");
   });
 
-  test("digest deploy and rollback write the trusted OCX Access identity from secrets", async () => {
+  test("retired deploy workflow retains no Access secrets or cutover state", async () => {
     const workflow = await Bun.file(
       new URL(".github/workflows/deploy.yml", root),
     ).text();
     for (const name of ["TEAM_DOMAIN", "AUD", "ALLOWED_HOSTS"]) {
-      expect(
-        workflow.match(new RegExp(`secrets\\.OCX_CF_ACCESS_${name}`, "g"))
-          ?.length,
-      ).toBe(2);
-      expect(
-        workflow.split(`printf 'CF_ACCESS_${name}=%s\\n'`).length - 1,
-      ).toBe(2);
+      expect(workflow).not.toContain(`secrets.OCX_CF_ACCESS_${name}`);
+      expect(workflow).not.toContain(`CF_ACCESS_${name}=`);
     }
+    expect(workflow).not.toContain("secret+live merge");
+    expect(workflow).not.toContain("cutover_started=true");
     expect(workflow).not.toContain("chefgroep.cloudflareaccess.com");
     expect(workflow).not.toContain(
       "113d678ff9b96cabf41e8e2076166fa692bc078db28e792019c9302fa0e53286",
     );
     expect(workflow).not.toContain("ocx.chefgroep.online");
-    expect(workflow).toContain("secret+live merge");
-    expect(
-      workflow.split("OCX_CF_ACCESS_* repo secrets or keep them").length - 1,
-    ).toBe(2);
-    const accessPreflight = workflow.indexOf(
-      "CF Access identity incomplete after secret+live merge",
-    );
-    const cutoverArmed = workflow.indexOf("cutover_started=true");
-    expect(accessPreflight).toBeGreaterThan(-1);
-    expect(cutoverArmed).toBeGreaterThan(accessPreflight);
-    const rollbackPreflight = workflow.indexOf(
-      "CF Access identity incomplete during rollback after secret+live merge",
-    );
-    const rollbackDown = workflow.indexOf(
-      "# Mirror deploy cleanup: a leftover compose unit holding the",
-    );
-    expect(rollbackPreflight).toBeGreaterThan(-1);
-    expect(rollbackDown).toBeGreaterThan(rollbackPreflight);
   });
 });

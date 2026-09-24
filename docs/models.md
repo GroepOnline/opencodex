@@ -13,14 +13,16 @@ query). The same resources also answer on `openai.azure.com` and
 `services.ai.azure.com`; the catalog uses one base URL per resource because
 OCX rejects query strings on `baseUrl`.
 
-| Provider id | Resource | Region | Resource group | Env var |
-| --- | --- | --- | --- | --- |
-| `azure-us` | `openaichef` | eastus | `azureai-us0-east` | `AZURE_OPENAI_KEY_OPENAICHEF` |
-| `azure-se` | `openaichef-se` | swedencentral | `azureai-se-central` | `AZURE_OPENAI_KEY_OPENAICHEF_SE` |
-| `azure-foundry-us` | `azure-foundry-us` | eastus | `foundry` | `AZURE_OPENAI_KEY_AZURE_FOUNDRY_US` |
+| Provider id        | Resource           | Region        | Resource group       | Env var                             |
+| ------------------ | ------------------ | ------------- | -------------------- | ----------------------------------- |
+| `azure-us`         | `openaichef`       | eastus        | `azureai-us0-east`   | `AZURE_OPENAI_KEY_OPENAICHEF`       |
+| `azure-se`         | `openaichef-se`    | swedencentral | `azureai-se-central` | `AZURE_OPENAI_KEY_OPENAICHEF_SE`    |
+| `azure-foundry-us` | `azure-foundry-us` | eastus        | `foundry`            | `AZURE_OPENAI_KEY_AZURE_FOUNDRY_US` |
+
+The 2026-09-24 live deployment check moved DeepSeek V4 Pro off `openaichef`: only `azure-foundry-us/fw-deepseek-v4-pro` is advertised for that model family now.
 
 Public model ids are `<provider>/<deployment>` because a provider id cannot
-contain `/`. Examples: `azure-se/grok-4-6`, `azure-us/DeepSeek-V4-Pro`,
+contain `/`. Examples: `azure-se/grok-4-6`, `azure-us/DeepSeek-V4-1-Flash`,
 `azure-foundry-us/fw-deepseek-v4-pro`. Deployment names are sent upstream
 unchanged.
 
@@ -39,5 +41,5 @@ Do not add these upstreams back:
 - llama.cpp / weg54 local inference — those servers are stopped
 - offline Tailscale addresses
 
-`deploy.yml` still names `chef-control-az-01` as a deploy runner. That workflow
-is not a model provider and this catalog does not retarget it.
+The former `deploy.yml` Azure route is retired fail-closed. It is not a model
+provider and must not be retargeted through this catalog.

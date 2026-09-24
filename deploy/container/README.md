@@ -20,17 +20,18 @@ proxy/app path (`:10100/healthz`) without touching the live place lock.
 Do **not** retarget, redeploy, or rewrite the live pin from this repository
 change. Reported live identity:
 
-| Field      | Value                                                                |
-| ---------- | -------------------------------------------------------------------- |
-| Unit       | `opencodex-proxy.service`                                            |
-| Version    | `1.4.2`                                                              |
-| Source SHA | `529bb6a9c0ab2650f883e88c9373002ed1eb14f7` (tag `v1.4.2`)            |
-| Health     | `GET /healthz` on loopback and the host Tailscale IPv4, port `10100` |
+| Field      | Value                                                     |
+| ---------- | --------------------------------------------------------- |
+| Unit       | `opencodex-proxy.service`                                 |
+| Version    | `1.5.0`                                                   |
+| Source SHA | `f5cc348b7f0b7a48a9241cac17714399c2777c0f` (tag `v1.5.0`) |
+| Health     | `GET /healthz` on the host Tailscale IPv4, port `10100`   |
 
-The immutable GHCR digest is stored only on the live host as `OPENCODEX_IMAGE`
-in `/opt/chef/deploy/opencodex/.env`. This unit file does not embed a version.
-`.github/workflows/deploy.yml` still names `chef-control-az-01`; reconciling
-that runner label with a later host is out of scope here.
+The live bc-scan-2 service runs the published npm package from
+`/home/joep/.opencodex/releases/current`; this unit file does not embed a
+version. `.github/workflows/deploy.yml` is retired fail-closed and no longer
+retargets or rolls back any host. A source-owned bc-scan-2 package deployment
+contract remains a separate operation.
 
 ## Local/dev (complete proxy/app path)
 
@@ -87,14 +88,14 @@ Runtime providers are not part of the image pin. The key-free default is
 [`model-catalog.example.json`](./model-catalog.example.json), described in
 [`../../docs/models.md`](../../docs/models.md).
 
-| Check | Rule |
-| --- | --- |
-| Providers | `azure-us` (`openaichef`, eastus), `azure-se` (`openaichef-se`, swedencentral), `azure-foundry-us` (`azure-foundry-us`, eastus) |
-| Wire | `openai-chat` against `https://<resource>.cognitiveservices.azure.com/openai/v1` |
-| Keys | Host env only: `AZURE_OPENAI_KEY_OPENAICHEF`, `AZURE_OPENAI_KEY_OPENAICHEF_SE`, `AZURE_OPENAI_KEY_AZURE_FOUNDRY_US`. Never commit values. |
-| Removed | `jort-7512-resource`, AWS/Bedrock hosts, `chef-control-az-01` as a model upstream, stopped llama.cpp/weg54 inference |
-| Apply | Edit the host `~/.opencodex/config.json`, keep mode `0600`, then restart `opencodex-proxy`. Do not retarget the binary pin from this file. |
-| Check | `ocx config validate` before restart. `GET /v1/models` on the bind address must list `azure-us/*`, `azure-se/*`, and `azure-foundry-us/fw-deepseek-v4-pro`. |
+| Check     | Rule                                                                                                                                                        |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Providers | `azure-us` (`openaichef`, eastus), `azure-se` (`openaichef-se`, swedencentral), `azure-foundry-us` (`azure-foundry-us`, eastus)                             |
+| Wire      | `openai-chat` against `https://<resource>.cognitiveservices.azure.com/openai/v1`                                                                            |
+| Keys      | Host env only: `AZURE_OPENAI_KEY_OPENAICHEF`, `AZURE_OPENAI_KEY_OPENAICHEF_SE`, `AZURE_OPENAI_KEY_AZURE_FOUNDRY_US`. Never commit values.                   |
+| Removed   | `jort-7512-resource`, AWS/Bedrock hosts, `chef-control-az-01` as a model upstream, stopped llama.cpp/weg54 inference                                        |
+| Apply     | Edit the host `~/.opencodex/config.json`, keep mode `0600`, then restart `opencodex-proxy`. Do not retarget the binary pin from this file.                  |
+| Check     | `ocx config validate` before restart. `GET /v1/models` on the bind address must list `azure-us/*`, `azure-se/*`, and `azure-foundry-us/fw-deepseek-v4-pro`. |
 
 Copying the example over a live file drops every other provider. Merge it into
 the existing `providers` map instead.
@@ -104,9 +105,9 @@ the existing `providers` map instead.
 1. Authentik issuer public apply is done (2026-09-18). The consumer is wired,
    but Cloudflare Access remains the live public-host gate until the cutover
    checklist is executed. Client secret is not in git.
-2. This change documents the `1.4.2` / `529bb6a9` pin and does not move it.
-   Do not deploy this PR to bc-scan-2.
-3. `deploy.yml` still targets the az-01 deploy runner; do not treat a merge
-   here as a live cutover.
+2. This change documents the `1.5.0` / `f5cc348b7` live release and does not
+   move it. Do not deploy this PR to bc-scan-2.
+3. The former Azure `deploy.yml` route is retired fail-closed; do not treat a
+   merge here as a live cutover.
 4. Public `ocx.chefgroep.online` Cloudflare is already applied; this repo does
    not mutate DNS or ChefFactory catalogs.
