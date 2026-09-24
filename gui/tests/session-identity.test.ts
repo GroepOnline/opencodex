@@ -7,9 +7,9 @@ import {
 describe("parseSessionIdentity", () => {
   test("accepts a verified email and source", () => {
     expect(
-      parseSessionIdentity({ email: "Joep@ChefGroep.online", source: "oidc" }),
+      parseSessionIdentity({ email: "Operator@Example.test", source: "oidc" }),
     ).toEqual({
-      email: "joep@chefgroep.online",
+      email: "operator@example.test",
       source: "oidc",
     });
   });
@@ -30,12 +30,12 @@ describe("parseSessionIdentity", () => {
     });
     expect(
       parseSessionIdentity({
-        email: "joep@chefgroep.online",
+        email: "operator@example.test",
         token: "secret",
         source: "jwt",
       }),
     ).toEqual({
-      email: "joep@chefgroep.online",
+      email: "operator@example.test",
       source: "none",
     });
   });
@@ -55,7 +55,7 @@ describe("loadSessionIdentity", () => {
       calls.push(url);
       if (url.includes("/api/whoami")) {
         return new Response(
-          JSON.stringify({ email: "joep@chefgroep.online", source: "oidc" }),
+          JSON.stringify({ email: "operator@example.test", source: "oidc" }),
           {
             status: 200,
             headers: { "content-type": "application/json" },
@@ -66,7 +66,7 @@ describe("loadSessionIdentity", () => {
     }) as typeof fetch;
 
     await expect(loadSessionIdentity()).resolves.toEqual({
-      email: "joep@chefgroep.online",
+      email: "operator@example.test",
       source: "oidc",
     });
     expect(calls).toEqual(["/api/whoami"]);
@@ -83,7 +83,7 @@ describe("loadSessionIdentity", () => {
       if (url.includes("/cdn-cgi/access/get-identity")) {
         return new Response(
           JSON.stringify({
-            email: "joep@chefgroep.online",
+            email: "operator@example.test",
             idp: { name: "authentik" },
             groups: [],
           }),
@@ -94,7 +94,7 @@ describe("loadSessionIdentity", () => {
     }) as typeof fetch;
 
     await expect(loadSessionIdentity()).resolves.toEqual({
-      email: "joep@chefgroep.online",
+      email: "operator@example.test",
       source: "cf-access",
     });
   });
