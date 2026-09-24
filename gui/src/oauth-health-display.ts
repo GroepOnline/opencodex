@@ -7,7 +7,8 @@
 import type { TFn, TKey } from "./i18n";
 import { displayAccountId } from "./lib/privacy";
 
-export type OAuthHealthStatus = "healthy" | "cooldown" | "reauth_required" | "warning" | "disabled";
+export type OAuthHealthStatus =
+  "healthy" | "cooldown" | "reauth_required" | "warning" | "disabled";
 
 export type OAuthHealthReason =
   | "rate_limit"
@@ -26,24 +27,40 @@ export type OAuthHealthView = {
   until?: string;
 };
 
-export type OAuthHealthBadgeTone = "ok" | "warn" | "muted";
+export type OAuthHealthBadgeTone = "ok" | "warn" | "muted" | "err";
 
-export function oauthHealthBadgeTone(status: OAuthHealthStatus | undefined): OAuthHealthBadgeTone {
+export function oauthHealthBadgeTone(
+  status: OAuthHealthStatus | undefined,
+  reason?: OAuthHealthReason | string,
+): OAuthHealthBadgeTone {
   if (status === "healthy") return "ok";
-  if (status === "cooldown") return "muted";
-  if (status === "reauth_required" || status === "warning" || status === "disabled") return "warn";
+  if (status === "cooldown" && (reason === "quota" || reason === "forbidden"))
+    return "err";
+  if (status === "cooldown") return "warn";
+  if (
+    status === "reauth_required" ||
+    status === "warning" ||
+    status === "disabled"
+  )
+    return "warn";
   return "muted";
 }
 
-export function oauthHealthBadgeClass(status: OAuthHealthStatus | undefined): string {
-  const tone = oauthHealthBadgeTone(status);
+export function oauthHealthBadgeClass(
+  status: OAuthHealthStatus | undefined,
+  reason?: OAuthHealthReason | string,
+): string {
+  const tone = oauthHealthBadgeTone(status, reason);
   if (tone === "ok") return "badge badge-green";
+  if (tone === "err") return "badge badge-red";
   if (tone === "warn") return "badge badge-amber";
   return "badge badge-muted";
 }
 
 /** Whether the UI should offer reauthenticate (not during cooldown-only). */
-export function oauthHealthShowsReauth(status: OAuthHealthStatus | undefined): boolean {
+export function oauthHealthShowsReauth(
+  status: OAuthHealthStatus | undefined,
+): boolean {
   return status === "reauth_required";
 }
 
@@ -52,27 +69,41 @@ export function oauthHealthShowsReauth(status: OAuthHealthStatus | undefined): b
  * Health-only `reauth_required` must still demote Providers overview attention state.
  */
 export function accountNeedsReauth(
-  account: { needsReauth?: boolean; health?: { status?: OAuthHealthStatus } | null } | null | undefined,
+  account:
+    | { needsReauth?: boolean; health?: { status?: OAuthHealthStatus } | null }
+    | null
+    | undefined,
 ): boolean {
-  return Boolean(account?.needsReauth) || oauthHealthShowsReauth(account?.health?.status);
+  return (
+    Boolean(account?.needsReauth) ||
+    oauthHealthShowsReauth(account?.health?.status)
+  );
 }
 
 /** Expired seats are not switchable, same as reauth. */
-export function oauthHealthIsDisabled(status: OAuthHealthStatus | undefined): boolean {
+export function oauthHealthIsDisabled(
+  status: OAuthHealthStatus | undefined,
+): boolean {
   return status === "disabled";
 }
 
 /** Cooldown: show wait copy; do not urge probing or immediate retry. */
-export function oauthHealthIsCooldown(status: OAuthHealthStatus | undefined): boolean {
+export function oauthHealthIsCooldown(
+  status: OAuthHealthStatus | undefined,
+): boolean {
   return status === "cooldown";
 }
 
 /** Non-healthy states where copying `ocx doctor` is a useful next step. */
-export function oauthHealthShowsDoctor(status: OAuthHealthStatus | undefined): boolean {
+export function oauthHealthShowsDoctor(
+  status: OAuthHealthStatus | undefined,
+): boolean {
   return status === "warning" || status === "reauth_required";
 }
 
-export function oauthHealthLabelKey(health: OAuthHealthView | undefined): TKey | null {
+export function oauthHealthLabelKey(
+  health: OAuthHealthView | undefined,
+): TKey | null {
   if (!health || health.status === "healthy") return null;
   if (health.status === "cooldown") {
     return health.reason === "rate_limit"
@@ -99,7 +130,10 @@ export function oauthHealthLabelKey(health: OAuthHealthView | undefined): TKey |
   }
 }
 
-export function formatOAuthHealthLabel(t: TFn, health: OAuthHealthView | undefined): string | null {
+export function formatOAuthHealthLabel(
+  t: TFn,
+  health: OAuthHealthView | undefined,
+): string | null {
   const key = oauthHealthLabelKey(health);
   return key ? t(key) : null;
 }
@@ -111,11 +145,16 @@ export function formatOAuthHealthSummary(
   health: OAuthHealthView | undefined,
 ): string | null {
   if (!health || health.status === "healthy") return null;
-  const account = accountId === "__main__" ? t("codexAuth.mainAccount") : displayAccountId(accountId);
+  const account =
+    accountId === "__main__"
+      ? t("codexAuth.mainAccount")
+      : displayAccountId(accountId);
   if (health.status === "cooldown") {
     const until = health.until ? new Date(health.until).toLocaleString() : "";
     return t(
-      health.reason === "rate_limit" ? "pws.healthSummary.rateLimited" : "pws.healthSummary.quotaLimited",
+      health.reason === "rate_limit"
+        ? "pws.healthSummary.rateLimited"
+        : "pws.healthSummary.quotaLimited",
       { provider, account, until },
     );
   }
@@ -155,7 +194,11 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
 }
 
 function copyViaExecCommand(text: string): boolean {
-  if (typeof document === "undefined" || typeof document.execCommand !== "function") return false;
+  if (
+    typeof document === "undefined" ||
+    typeof document.execCommand !== "function"
+  )
+    return false;
   const area = document.createElement("textarea");
   area.value = text;
   area.setAttribute("readonly", "");
@@ -180,6 +223,7 @@ export function doctorCopyButtonLabel(
   outcome: "copied" | "unavailable" | null | undefined,
 ): string {
   if (!outcome) return t("pws.copyDoctor");
-  return outcome === "copied" ? t("pws.doctorCopied") : t("pws.doctorCopyUnavailable");
+  return outcome === "copied"
+    ? t("pws.doctorCopied")
+    : t("pws.doctorCopyUnavailable");
 }
-

@@ -1,4 +1,4 @@
-// Dutch — operator "De Pas" voice (design-system v2 §14).
+// Dutch — Joep-facing operator voice (Signaal DESIGN.md §9).
 // Ships ONLY the overrides (~2 kB chunk): the runtime composes nl = {...en, ...overrides}
 // after lazily loading this module, so English fallbacks come from the static en dict
 // without bundling it twice. Tests compose via ../i18n/dicts.
@@ -20,8 +20,11 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "nav.verkeer": "Verkeer",
   "nav.dashboard": "Overzicht",
   "nav.systeem": "Systeem",
-  "nav.views": "Views",
+  "nav.views": "Onderdelen",
   "nav.sections": "Secties",
+  "nav.grok": "Grok",
+  "app.skipToContent": "Naar inhoud",
+  "session.signedInAs": "Ingelogd als {email}",
   "sub.overview": "Overzicht",
   "sub.logs": "Logs",
   "sub.debug": "Debug",
@@ -45,8 +48,32 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "pws.quota.retry": "Opnieuw proberen",
   "pws.quota.retryAt": "Opnieuw om {time}",
   "pws.healthLabel.expired": "Verlopen",
+  "pws.healthLabel.rateLimited": "Begrensd (429)",
+  "pws.healthLabel.quotaLimited": "Quota of betaling (402)",
+  "pws.healthLabel.reauthRequired": "Opnieuw inloggen",
+  "pws.healthLabel.refreshFailed": "Vernieuwen mislukt",
+  "pws.healthLabel.metadataMismatch": "Metadata klopt niet",
+  "pws.healthLabel.credentialConflict": "Inlogconflict",
   "pws.healthSummary.expired":
     "{provider} {account}: de seat-datum is voorbij. Routing voor dit account staat stil.",
+  "pws.healthSummary.rateLimited":
+    "{provider} {account}: begrensd tot {until}. Dit account wacht tot de limiet reset.",
+  "pws.healthSummary.quotaLimited":
+    "{provider} {account}: tegoed of facturatie ontbreekt tot {until}.",
+  "pws.healthSummary.reauthRequired":
+    "{provider} {account}: log opnieuw in. Dit account is nu niet te gebruiken.",
+  "pws.healthSummary.staleCredentials":
+    "{provider} {account}: de bewaarde login is verouderd.",
+  "pws.healthSummary.credentialConflict":
+    "{provider} {account}: twee logins botsen. Kies er een.",
+  "pws.healthSummary.metadataMismatch":
+    "{provider} {account}: de opgeslagen metadata klopt niet meer.",
+  "pws.attention.missingCredentials": "Inlog of sleutel ontbreekt",
+  "pws.attention.reauth": "Opnieuw inloggen",
+  "pws.attentionTitle": "Aandacht nodig",
+  "dash.http429": "Begrensd (429)",
+  "dash.cooldown": "Afkoeling",
+  "dash.cooldownHint": "{count} leverancier(s) in afkoeling",
   "pws.accountExpires": "Seat tot {date}",
   "pws.accountExpired": "Seat verlopen op {date}",
 
@@ -397,10 +424,7 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "dash.volume30d": "Volume (30d)",
   "dash.economics": "Kosten",
   "dash.reliability": "Betrouwbaarheid",
-  "dash.http429": "HTTP 429",
   "dash.http50x": "HTTP 50x",
-  "dash.cooldown": "Cooldown",
-  "dash.cooldownHint": "{count} leverancier(s) in cooldown",
   "dash.healthAria": "Proxy-status",
   "dash.providers": "Leveranciers",
   "dash.tokens30d": "Tokens (30d)",
@@ -583,6 +607,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "vk.stampDone": "Klaar",
   "vk.stampError": "Fout",
   "vk.stampBusy": "Bezig",
+  "vk.stampRateLimited": "Begrensd (429)",
+  "vk.stampPayment": "Betaling nodig (402)",
   "vk.detailError": "fout: {code}",
   "vk.detailInOut": "in {in} · uit {out}",
   "vk.rowTokens": "{n} tok",
@@ -716,7 +742,10 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "pws.capCooldown.paused":
     "Routing voor deze leverancier staat tot die tijd stil.",
   "pws.capCooldown.badge": "Vol",
-  "pws.attention.capCooldown": "Wekelijks/inference-limiet — {reset}",
+  "pws.capCooldown.paymentBadge": "Betaling nodig (402)",
+  "pws.capCooldown.paymentBanner":
+    "{provider} heeft tegoed of facturatie nodig. {reset}",
+  "pws.attention.capCooldown": "Wekelijks/inference-limiet tot {reset}",
 
   "prov.waitingBrowser": "Wachten op de browser…",
   "pws.addAccount": "Account toevoegen",

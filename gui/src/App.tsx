@@ -2,12 +2,19 @@ import { lazy, Suspense, useEffect, useRef, useState, type Ref } from "react";
 import { useKeyedClientResource } from "./client-resource";
 import ErrorBoundary from "./components/ErrorBoundary";
 import SettingsSheet from "./components/SettingsSheet";
-import { IconAlert, IconCheck, IconPower, IconSettings } from "./icons";
+import {
+  IconAlert,
+  IconCheck,
+  IconPower,
+  IconSettings,
+  IconUser,
+} from "./icons";
 import { useT } from "./i18n/shared";
 import { installApiAuthFetch } from "./api";
 import { canonicalHashFor, type View } from "./app-routing";
 import { useAppRouteState } from "./use-app-route-state";
 import { requestProxyStop } from "./stop-proxy";
+import { loadSessionIdentity, type SessionIdentity } from "./session-identity";
 import { domMax, LazyMotion, MotionConfig } from "motion/react";
 import WorkspaceNavigation, {
   type WorkspaceDestination,
@@ -190,6 +197,11 @@ function DashboardShell({
     },
     { pollMs: 30_000 },
   );
+  const identityPoll = useKeyedClientResource<SessionIdentity>(
+    `app-whoami:${API_BASE}`,
+    [],
+    () => loadSessionIdentity(),
+  );
 
   const displayedVersion: string = healthPoll.data?.version ?? __APP_VERSION__;
   // null = first poll still in flight: no stamp until the first verdict.
@@ -215,6 +227,9 @@ function DashboardShell({
     <MotionConfig reducedMotion="user">
       <LazyMotion features={domMax} strict>
         <div className="app ocx-workspace">
+          <a className="skip-link" href="#main-content">
+            {t("app.skipToContent")}
+          </a>
           <header className="topbar">
             {brand}
             <WorkspaceNavigation
@@ -223,6 +238,22 @@ function DashboardShell({
               onNavigate={(view) => navigateTo({ view, sub: null })}
             />
             <div className="topbar-right">
+              {identityPoll.data?.email ? (
+                <span
+                  className="session-identity"
+                  aria-label={t("session.signedInAs", {
+                    email: identityPoll.data.email,
+                  })}
+                  title={t("session.signedInAs", {
+                    email: identityPoll.data.email,
+                  })}
+                >
+                  <IconUser size={15} aria-hidden />
+                  <span className="session-identity-email">
+                    {identityPoll.data.email}
+                  </span>
+                </span>
+              ) : null}
               {proxyOnline !== null && (
                 <span
                   className={`stamp${proxyOnline ? " stamp-ok" : " stamp-err"}`}
@@ -266,7 +297,7 @@ function DashboardShell({
             </div>
           )}
 
-          <main className="main">
+          <main id="main-content" className="main" tabIndex={-1}>
             <div
               className={`main-inner${route.view === "modellen" && route.sub === "combos" ? " main-inner--combos" : ""}`}
             >
