@@ -15,7 +15,7 @@ services:
       dockerfile: Dockerfile
       args:
         VCS_REF: ${OPENCODEX_GIT_SHA:-dev}
-        VERSION: ${OPENCODEX_VERSION:-1.4.2}
+        VERSION: ${OPENCODEX_VERSION:-1.5.0}
     restart: unless-stopped
     read_only: true
     environment:

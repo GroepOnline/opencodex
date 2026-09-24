@@ -64,17 +64,14 @@ The Release workflow (manual dispatch, `concurrency: release`):
 
 `prepublishOnly` runs typecheck + `build:gui` (bundled `gui/dist`) before the pack.
 
-After a real publish the `rollout` job continues the chain on the exact tag. The tag is
-pushed with `GITHUB_TOKEN`, and GitHub never starts `push` runs for refs created by that
-token, so nothing downstream would fire on its own:
+After a real publish the `rollout` job continues only the immutable artifact chain on the
+exact tag. The tag is pushed with `GITHUB_TOKEN`, and GitHub never starts `push` runs for refs
+created by that token, so `container.yml` is dispatched explicitly on `refs/tags/v<version>`.
 
-- `container.yml` is dispatched on `refs/tags/v<version>` and publishes the GHCR image
-  tagged with the release SHA, `v<version>` and `<version>` (immutable artifact identity).
-- `deploy.yml` is dispatched with `ref=v<version>` **only** when the `deploy` input is
-  `true`. Default `false`: the live cutover on `chef-control-az-01` stays a coordinated
-  step (`gh workflow run deploy.yml -f ref=v<version>`). Deploy waits for the image, pins
-  its digest, and only passes when `/healthz` reports `version` **and** `gitSha` equal to
-  the tag; the GUI shows that same `/healthz.version` top-left.
+Runtime cutover is intentionally not part of release publication. The former Azure deploy
+route is permanently retired; leave the `deploy` input at its default `false`. Deploying the
+bc-scan-2 package service is a separate operation with its own immutable artifact, health and
+rollback evidence.
 
 ## Post-release
 
