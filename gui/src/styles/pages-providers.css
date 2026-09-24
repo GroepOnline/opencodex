@@ -260,6 +260,13 @@
   }
 }
 
+.quota-refresh-failed {
+  color: var(--amber);
+}
+.combos-rail-empty-filter {
+  padding: var(--space-4);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .providers-workspace-rail-row:active,
   .pws-dashboard-row:active,

@@ -1,15 +1,15 @@
 import { cn } from "cn";
-import { Loader2Icon } from "lucide-react";
 import { useT } from "../../i18n/shared";
 
-function Spinner({ className, ...props }: React.ComponentProps<"svg">) {
+/** Signaal activity mark: a 2px bar that travels once per beat, never a spinner. */
+function Spinner({ className, ...props }: React.ComponentProps<"span">) {
   const t = useT();
   return (
-    <Loader2Icon
+    <span
       data-slot="spinner"
       role="status"
       aria-label={t("common.loading")}
-      className={cn("size-4 motion-safe:animate-spin", className)}
+      className={cn("spin busy", className)}
       {...props}
     />
   );

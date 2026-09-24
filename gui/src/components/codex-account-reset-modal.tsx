@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useI18n } from "../i18n/shared";
-import { IconAlert, IconTicket } from "../icons";
+import { IconAlert, IconCoins } from "../icons";
 import type { CodexAccountEntry } from "./codex-account-pool-types";
 import { CodexCreditItem } from "./codex-account-pool-helpers";
 import { formatCreditDate } from "./codex-account-pool-utils";
@@ -60,7 +60,7 @@ export function CodexAccountResetModal({
         {!resetConfirm ? (
           <>
             <h3 id="codex-reset-title">
-              <IconTicket width={15} /> {t("codexAuth.resetCreditsTitle")}
+              <IconCoins size={15} /> {t("codexAuth.resetCreditsTitle")}
             </h3>
             <div className="card-sub">
               {resetPopup.email}

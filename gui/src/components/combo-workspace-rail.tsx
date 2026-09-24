@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import type { ComboItem } from "../combo-workspace-data";
 import { IconChevron, IconPlus, IconSearch, IconShuffle } from "../icons";
 import { useT, type TKey } from "../i18n/shared";
-import MatrixMark from "./MatrixMark";
 import {
   Empty,
   EmptyDescription,
@@ -33,7 +32,12 @@ export function ComboWorkspaceRailHeader({
         <div className="combos-workspace-rail-title">{t("nav.combos")}</div>
         <div className="combos-workspace-rail-count">{count}</div>
       </div>
-      <button type="button" className="btn btn-primary btn-sm" onClick={onAdd} aria-label={t("cws.add")}>
+      <button
+        type="button"
+        className="btn btn-primary btn-sm"
+        onClick={onAdd}
+        aria-label={t("cws.add")}
+      >
         <IconPlus width={15} height={15} /> {t("cws.add")}
       </button>
     </div>
@@ -112,7 +116,10 @@ export function ComboWorkspaceRailRow({
           ? t("cws.targetCountOne")
           : t("cws.targetCount", { count: item.targets.length })}
       </span>
-      <IconChevron className="combos-workspace-rail-chevron" aria-hidden="true" />
+      <IconChevron
+        className="combos-workspace-rail-chevron"
+        aria-hidden="true"
+      />
     </button>
   );
 }
@@ -146,18 +153,24 @@ export function ComboWorkspaceRail({
           <Empty className="combos-rail-empty">
             <EmptyHeader>
               <EmptyMedia>
-                <MatrixMark />
+                <IconShuffle size={24} aria-hidden />
               </EmptyMedia>
               <EmptyTitle>{t("cws.emptyRailTitle")}</EmptyTitle>
               <EmptyDescription>{t("cws.emptyRailHint")}</EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : emptyFiltered ? (
-          <p className="muted" style={{ padding: "16px" }}>{t("cws.noSearchResults")}</p>
+          <p className="muted combos-rail-empty-filter">
+            {t("cws.noSearchResults")}
+          </p>
         ) : (
           groups.map(({ key, labelKey, items }) =>
             items.length > 0 ? (
-              <ComboWorkspaceRailGroup key={key} labelKey={labelKey} count={items.length}>
+              <ComboWorkspaceRailGroup
+                key={key}
+                labelKey={labelKey}
+                count={items.length}
+              >
                 {items.map((item) => (
                   <ComboWorkspaceRailRow
                     key={item.id}

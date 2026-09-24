@@ -7,7 +7,10 @@ import { useEffect, useState } from "react";
 import { useT, useI18n } from "../../i18n/shared";
 import { IconClock, IconLock, IconTrash } from "../../icons";
 import type { WorkspaceItem } from "../../provider-workspace/catalog";
-import { oauthAccountDisplayLabel, providerAuthSurface } from "../../provider-workspace/auth";
+import {
+  oauthAccountDisplayLabel,
+  providerAuthSurface,
+} from "../../provider-workspace/auth";
 import { displayAccountId } from "../../lib/privacy";
 import {
   doctorCopyButtonLabel,
@@ -20,27 +23,48 @@ import {
   oauthHealthShowsReauth,
 } from "../../oauth-health-display";
 import CodexAccountPool from "../CodexAccountPool";
-import OAuthAccountPoolSettings, { type OAuthPoolProvider } from "./OAuthAccountPoolSettings";
-import { DotMatrix } from "../../DotMatrix";
+import OAuthAccountPoolSettings, {
+  type OAuthPoolProvider,
+} from "./OAuthAccountPoolSettings";
+import { Spinner } from "../primitives/spinner";
 import { LoginUrlBlock } from "../login-url-block";
 import QuotaBars, { formatResetFuture } from "../QuotaBars";
 import { useCopyFeedback } from "../use-copy-feedback";
 import type { CodexAccountPoolController } from "../../hooks/useCodexAccountPool";
-import type { AccountLoadState, OAuthAccountRow, ApiKeyRow, LoginHint, ProviderAuthHandlers } from "./types";
+import type {
+  AccountLoadState,
+  OAuthAccountRow,
+  ApiKeyRow,
+  LoginHint,
+  ProviderAuthHandlers,
+} from "./types";
 
 const DOCTOR_CMD = "ocx doctor";
 const QUOTA_ENRICH_RESERVE_MS = 4_000;
 const EMPTY_OAUTH_ACCOUNTS: OAuthAccountRow[] = [];
 const EMPTY_API_KEYS: ApiKeyRow[] = [];
-const OAUTH_POOL_PROVIDERS = new Set<string>(["anthropic", "cursor", "google-antigravity"]);
+const OAUTH_POOL_PROVIDERS = new Set<string>([
+  "anthropic",
+  "cursor",
+  "google-antigravity",
+]);
 
 function isOAuthPoolProvider(name: string): name is OAuthPoolProvider {
   return OAUTH_POOL_PROVIDERS.has(name);
 }
 
 export default function ProviderAuthPanel({
-  item, apiBase, oauth, accounts = EMPTY_OAUTH_ACCOUNTS, keys = EMPTY_API_KEYS, accountLoadState = "ready",
-  switchingAccountId = null, busy = false, loginHint, authHandlers, onCodexActiveNeedsReauthChange,
+  item,
+  apiBase,
+  oauth,
+  accounts = EMPTY_OAUTH_ACCOUNTS,
+  keys = EMPTY_API_KEYS,
+  accountLoadState = "ready",
+  switchingAccountId = null,
+  busy = false,
+  loginHint,
+  authHandlers,
+  onCodexActiveNeedsReauthChange,
   codexController,
 }: {
   item: WorkspaceItem;
@@ -66,7 +90,9 @@ export default function ProviderAuthPanel({
   const [cursorApiKey, setCursorApiKey] = useState("");
   const [cursorKeyBusy, setCursorKeyBusy] = useState(false);
   const [cursorKeyError, setCursorKeyError] = useState<string | null>(null);
-  const [clearingCooldownId, setClearingCooldownId] = useState<string | null>(null);
+  const [clearingCooldownId, setClearingCooldownId] = useState<string | null>(
+    null,
+  );
   const [cooldownError, setCooldownError] = useState<string | null>(null);
   const [reserveQuotaSlots, setReserveQuotaSlots] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -91,23 +117,34 @@ export default function ProviderAuthPanel({
       setReserveQuotaSlots(false);
       return;
     }
-    const needsFill = accounts.some(a => a.quota == null && !a.quotaUnavailable);
+    const needsFill = accounts.some(
+      (a) => a.quota == null && !a.quotaUnavailable,
+    );
     if (!needsFill) {
       setReserveQuotaSlots(false);
       return;
     }
     setReserveQuotaSlots(true);
-    const timer = window.setTimeout(() => setReserveQuotaSlots(false), QUOTA_ENRICH_RESERVE_MS);
+    const timer = window.setTimeout(
+      () => setReserveQuotaSlots(false),
+      QUOTA_ENRICH_RESERVE_MS,
+    );
     return () => window.clearTimeout(timer);
   }, [accounts]);
 
-  const surface = providerAuthSurface({ ...item, hasApiKey: item.hasApiKey || keys.length > 0 });
+  const surface = providerAuthSurface({
+    ...item,
+    hasApiKey: item.hasApiKey || keys.length > 0,
+  });
   const isOauth = surface === "oauth-accounts";
   const isKeyAuth = surface === "api-keys";
 
   if (surface === "codex-accounts") {
     return (
-      <section className="pwi-section pwi-auth-section" aria-label={t("pws.availableAccounts")}>
+      <section
+        className="pwi-section pwi-auth-section"
+        aria-label={t("pws.availableAccounts")}
+      >
         <h3 className="pwi-section-title">{t("pws.availableAccounts")}</h3>
         <div className="pwi-auth-body">
           <CodexAccountPool
@@ -126,13 +163,14 @@ export default function ProviderAuthPanel({
   const hintForThis = loginHint?.provider === item.name ? loginHint : null;
   const deviceCode = hintForThis?.deviceCode ?? "";
   const deviceCodeOutcome = deviceCodeCopy.outcomeFor(deviceCode);
-  const deviceCodeCopyLabel = deviceCodeOutcome === "copied"
-    ? t("prov.codeCopied")
-    : deviceCodeOutcome === "unavailable"
-      ? t("prov.linkCopyUnavailable")
-      : t("prov.copyCode");
+  const deviceCodeCopyLabel =
+    deviceCodeOutcome === "copied"
+      ? t("prov.codeCopied")
+      : deviceCodeOutcome === "unavailable"
+        ? t("prov.linkCopyUnavailable")
+        : t("prov.copyCode");
   const loggedIn = accounts.length > 0 || oauth?.loggedIn === true;
-  const activeReauthAccount = accounts.find(a => a.active && a.needsReauth);
+  const activeReauthAccount = accounts.find((a) => a.active && a.needsReauth);
   const activeNeedsReauth = Boolean(activeReauthAccount);
 
   const submitKey = async () => {
@@ -141,7 +179,10 @@ export default function ProviderAuthPanel({
     setKeyBusy(true);
     try {
       const ok = await authHandlers.onAddApiKey(item.name, key);
-      if (ok) { setNewKey(""); setAddingKey(false); }
+      if (ok) {
+        setNewKey("");
+        setAddingKey(false);
+      }
     } finally {
       setKeyBusy(false);
     }
@@ -159,9 +200,18 @@ export default function ProviderAuthPanel({
         body: JSON.stringify({ provider: "cursor", apiKey: key }),
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => null) as { error?: unknown } | null;
-        const invalid = typeof body?.error === "string" && body.error.includes("JWT");
-        setCursorKeyError(t(invalid ? "oauthPool.importKeyInvalid" : "oauthPool.importKeyFailed"));
+        const body = (await res.json().catch(() => null)) as {
+          error?: unknown;
+        } | null;
+        const invalid =
+          typeof body?.error === "string" && body.error.includes("JWT");
+        setCursorKeyError(
+          t(
+            invalid
+              ? "oauthPool.importKeyInvalid"
+              : "oauthPool.importKeyFailed",
+          ),
+        );
         return;
       }
       setCursorApiKey("");
@@ -196,32 +246,71 @@ export default function ProviderAuthPanel({
   };
 
   return (
-    <section className="pwi-section pwi-auth-section" aria-label={isOauth ? t("pws.availableAccounts") : t("pws.apiKeys")}>
-      <h3 className="pwi-section-title">{isOauth ? t("pws.availableAccounts") : t("pws.apiKeys")}</h3>
+    <section
+      className="pwi-section pwi-auth-section"
+      aria-label={isOauth ? t("pws.availableAccounts") : t("pws.apiKeys")}
+    >
+      <h3 className="pwi-section-title">
+        {isOauth ? t("pws.availableAccounts") : t("pws.apiKeys")}
+      </h3>
       <div className="pwi-auth-body">
         {isOauth && (
           <>
             {isOAuthPoolProvider(item.name) && (
-              <OAuthAccountPoolSettings provider={item.name} apiBase={apiBase} accountCount={accounts.length} />
+              <OAuthAccountPoolSettings
+                provider={item.name}
+                apiBase={apiBase}
+                accountCount={accounts.length}
+              />
             )}
             <div className="pwi-auth-status-row">
-              <span className={`pwi-auth-dot ${activeNeedsReauth ? "pwi-auth-dot--warn" : loggedIn ? "pwi-auth-dot--ok" : "pwi-auth-dot--off"}`} aria-hidden="true" />
+              <span
+                className={`pwi-auth-dot ${activeNeedsReauth ? "pwi-auth-dot--warn" : loggedIn ? "pwi-auth-dot--ok" : "pwi-auth-dot--off"}`}
+                aria-hidden="true"
+              />
               <span className="pwi-auth-status-text">
                 {loggedIn
-                  ? (accounts.length > 0 ? t("pws.loggedInTitle") : (oauth?.email ?? t("pws.loggedInTitle")))
-                  : (oauth?.error || t("pws.notLoggedInTitle"))}
+                  ? accounts.length > 0
+                    ? t("pws.loggedInTitle")
+                    : (oauth?.email ?? t("pws.loggedInTitle"))
+                  : oauth?.error || t("pws.notLoggedInTitle")}
               </span>
               <span className="pwi-auth-actions">
                 {activeReauthAccount && (
-                  <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => void authHandlers.onReauth(item.name, activeReauthAccount.id)}>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    disabled={busy}
+                    onClick={() =>
+                      void authHandlers.onReauth(
+                        item.name,
+                        activeReauthAccount.id,
+                      )
+                    }
+                  >
                     {t("pws.reauthenticate")}
                   </button>
                 )}
                 {loggedIn ? (
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => void authHandlers.onLogout(item.name)}>{t("prov.logout")}</button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => void authHandlers.onLogout(item.name)}
+                  >
+                    {t("prov.logout")}
+                  </button>
                 ) : (
-                  <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => void authHandlers.onLogin(item.name, false)}>
-                    {busy ? <DotMatrix size={13} dotSize={3} speed={1.1} color="var(--accent-blue-ink)" aria-hidden="true" /> : <IconLock style={{ width: 13, height: 13 }} aria-hidden="true" />}
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    disabled={busy}
+                    onClick={() => void authHandlers.onLogin(item.name, false)}
+                  >
+                    {busy ? (
+                      <Spinner />
+                    ) : (
+                      <IconLock size={13} aria-hidden="true" />
+                    )}
                     {busy ? t("prov.waitingBrowser") : t("prov.login")}
                   </button>
                 )}
@@ -229,22 +318,37 @@ export default function ProviderAuthPanel({
             </div>
             {busy && hintForThis && (
               <div className="pwi-auth-wait">
-                <DotMatrix size={16} dotSize={4} speed={1.1} color="var(--accent-blue)" aria-hidden="true" />
+                <Spinner />
                 <div className="pwi-auth-wait-copy">
-                  <div className="pwi-auth-wait-title">{t("prov.waitingBrowser")}</div>
+                  <div className="pwi-auth-wait-title">
+                    {t("prov.waitingBrowser")}
+                  </div>
                   {hintForThis.deviceCode && (
                     <div className="pwi-device-code-wrap">
                       <span>{t("prov.deviceCode")}</span>
-                      <code className="pwi-device-code">{hintForThis.deviceCode}</code>
-                      <button type="button" className="btn btn-primary btn-sm"
-                        onClick={() => deviceCodeCopy.copy(deviceCode, deviceCode)}>
+                      <code className="pwi-device-code">
+                        {hintForThis.deviceCode}
+                      </code>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() =>
+                          deviceCodeCopy.copy(deviceCode, deviceCode)
+                        }
+                      >
                         <span aria-live="polite">{deviceCodeCopyLabel}</span>
                       </button>
                     </div>
                   )}
                   <LoginUrlBlock url={hintForThis.url ?? ""} />
                   {authHandlers.onCancelLogin && (
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => void authHandlers.onCancelLogin?.(item.name)}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() =>
+                        void authHandlers.onCancelLogin?.(item.name)
+                      }
+                    >
                       {t("common.cancel")}
                     </button>
                   )}
@@ -253,148 +357,288 @@ export default function ProviderAuthPanel({
             )}
             {accountLoadState === "loading" && accounts.length === 0 && (
               <div className="pwi-auth-state" role="status">
-                <DotMatrix size={16} dotSize={4} speed={1.1} color="var(--accent-blue)" aria-hidden="true" />
+                <Spinner />
                 {t("pws.accountsLoading")}
               </div>
             )}
             {accountLoadState === "error" && (
-              <div className="pwi-auth-state pwi-auth-state--error" role="alert">
+              <div
+                className="pwi-auth-state pwi-auth-state--error"
+                role="alert"
+              >
                 <span>{t("pws.accountsLoadFailed")}</span>
                 {authHandlers.onRetryAccounts && (
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => void authHandlers.onRetryAccounts?.(item.name)}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() =>
+                      void authHandlers.onRetryAccounts?.(item.name)
+                    }
+                  >
                     {t("pws.retryAccounts")}
                   </button>
                 )}
               </div>
             )}
             {cooldownError && (
-              <div role="alert" className="card-sub" style={{ marginTop: 8, color: "var(--red)" }}>
+              <div
+                role="alert"
+                className="card-sub"
+                style={{ marginTop: 8, color: "var(--red)" }}
+              >
                 {cooldownError}
               </div>
             )}
             {accounts.length > 0 && (
               <ul className="pwi-auth-list">
-                {accounts.map(account => {
+                {accounts.map((account) => {
                   const label = oauthAccountDisplayLabel(accounts, account, t);
                   const switching = switchingAccountId === account.id;
                   const healthStatus = account.health?.status;
-                  const showReauth = Boolean(account.needsReauth) || oauthHealthShowsReauth(healthStatus);
+                  const showReauth =
+                    Boolean(account.needsReauth) ||
+                    oauthHealthShowsReauth(healthStatus);
                   const showDoctor = oauthHealthShowsDoctor(healthStatus);
                   const inCooldown = oauthHealthIsCooldown(healthStatus);
-                  const expired = oauthHealthIsDisabled(healthStatus) || Boolean(account.disabledByExpiry);
-                  const blocked = Boolean(showReauth || inCooldown || expired || (switchingAccountId && !switching));
+                  const expired =
+                    oauthHealthIsDisabled(healthStatus) ||
+                    Boolean(account.disabledByExpiry);
+                  const blocked = Boolean(
+                    showReauth ||
+                    inCooldown ||
+                    expired ||
+                    (switchingAccountId && !switching),
+                  );
                   const maskedId = displayAccountId(account.id);
                   const healthLabel = formatOAuthHealthLabel(t, account.health);
-                  const healthSummary = formatOAuthHealthSummary(t, item.name, account.id, account.health);
-                  const copyDoctor = () => { doctorCopy.copy(DOCTOR_CMD, account.id); };
+                  const healthSummary = formatOAuthHealthSummary(
+                    t,
+                    item.name,
+                    account.id,
+                    account.health,
+                  );
+                  const copyDoctor = () => {
+                    doctorCopy.copy(DOCTOR_CMD, account.id);
+                  };
                   return (
-                  <li key={account.id} className={`pwi-auth-acct${account.active ? " pwi-auth-acct--active" : ""}`}>
-                    <div className={`pwi-auth-row${account.active ? " pwi-auth-row--active" : ""}`}>
-                    <button type="button" className="pwi-auth-row-main"
-                      onClick={() => { if (!account.active && !showReauth && !inCooldown && !expired && !switchingAccountId) void authHandlers.onSwitchAccount(item.name, account); }}
-                      aria-current={account.active ? "true" : undefined}
-                      aria-label={`${label}${account.active ? ` — ${t("pws.accountCurrent")}` : ""}`}
-                      disabled={blocked}>
-                      <span className={`pwi-auth-dot ${showReauth || expired ? "pwi-auth-dot--warn" : account.active ? "pwi-auth-dot--ok" : "pwi-auth-dot--off"}`} aria-hidden="true" />
-                      <span className="pwi-auth-row-copy">
-                        <span className="pwi-auth-row-label">{label}</span>
-                        <span className="pwi-auth-row-secondary">{[account.email, `${t("prov.accountId")}: ${maskedId}`].filter(Boolean).join(" · ")}</span>
-                        {typeof account.accountExpiresAt === "number" && (
-                          <span className="pwi-auth-row-secondary faint">
-                            {t(account.accountExpiresAt <= nowMs ? "pws.accountExpired" : "pws.accountExpires", {
-                              date: new Date(account.accountExpiresAt).toLocaleString(locale),
-                            })}
-                          </span>
-                        )}
-                        {healthSummary && (
-                          <span className="pwi-auth-row-secondary faint">{healthSummary}</span>
-                        )}
-                        {inCooldown && (
-                          <span className="pwi-auth-row-secondary faint">{t("pws.healthCooldownHint")}</span>
-                        )}
-                      </span>
-                      {healthLabel && (
-                        <span className={oauthHealthBadgeClass(healthStatus)}>{healthLabel}</span>
-                      )}
-                      {showReauth && !healthLabel && <span className="badge badge-amber">{t("pws.reauth")}</span>}
-                      {account.active && <span className="badge badge-primary">{t("prov.accountActive")}</span>}
-                      {switching && <span className="badge badge-muted">{t("pws.accountSwitching")}</span>}
-                    </button>
-                    {showReauth && (
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        disabled={busy || Boolean(switchingAccountId)}
-                        onClick={() => void authHandlers.onReauth(item.name, account.id)}
+                    <li
+                      key={account.id}
+                      className={`pwi-auth-acct${account.active ? " pwi-auth-acct--active" : ""}`}
+                    >
+                      <div
+                        className={`pwi-auth-row${account.active ? " pwi-auth-row--active" : ""}`}
                       >
-                        {t("pws.reauthenticate")}
-                      </button>
-                    )}
-                    {showDoctor && (
-                      <button type="button" className="btn btn-ghost btn-sm codex-auth-action-btn" onClick={copyDoctor}>
-                        <span aria-live="polite">{doctorCopyButtonLabel(t, doctorCopy.outcomeFor(account.id))}</span>
-                      </button>
-                    )}
-                    {inCooldown && isOAuthPoolProvider(item.name) && (
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        disabled={busy || Boolean(switchingAccountId) || clearingCooldownId === account.id}
-                        onClick={() => void clearAccountCooldown(account.id)}
-                      >
-                        {t("oauthPool.clearCooldown")}
-                      </button>
-                    )}
-                    <button type="button" className="btn btn-ghost btn-sm"
-                      onClick={() => void authHandlers.onEditAlias(item.name, "oauth", account.id, account.alias)}>
-                      {t("prov.editAlias")}
-                    </button>
-                    <button type="button" className="btn btn-ghost btn-sm pwi-auth-row-remove"
-                      aria-label={`${t("common.remove")} — ${label}`}
-                      title={`${t("common.remove")} — ${label}`}
-                      disabled={Boolean(switchingAccountId)}
-                      onClick={() => void authHandlers.onRemoveAccount(item.name, account)}>
-                      <IconTrash style={{ width: 13, height: 13 }} aria-hidden="true" />
-                    </button>
-                    </div>
-                    {(account.quota != null || account.quotaUnavailable || (reserveQuotaSlots && account.quota == null)) && (
-                      <div className="pwi-auth-acct-quota">
-                        {account.quotaUnavailable ? (
-                          <p className="muted pwi-auth-acct-quota-stale">{t("pws.accountQuotaUnavailable")}</p>
-                        ) : (
-                          <QuotaBars
-                            quota={account.quota ?? null}
-                            plan={null}
-                            threshold={80}
-                            t={t}
-                            layout="stacked"
-                            pending={account.quota == null}
+                        <button
+                          type="button"
+                          className="pwi-auth-row-main"
+                          onClick={() => {
+                            if (
+                              !account.active &&
+                              !showReauth &&
+                              !inCooldown &&
+                              !expired &&
+                              !switchingAccountId
+                            )
+                              void authHandlers.onSwitchAccount(
+                                item.name,
+                                account,
+                              );
+                          }}
+                          aria-current={account.active ? "true" : undefined}
+                          aria-label={`${label}${account.active ? ` — ${t("pws.accountCurrent")}` : ""}`}
+                          disabled={blocked}
+                        >
+                          <span
+                            className={`pwi-auth-dot ${showReauth || expired ? "pwi-auth-dot--warn" : account.active ? "pwi-auth-dot--ok" : "pwi-auth-dot--off"}`}
+                            aria-hidden="true"
                           />
+                          <span className="pwi-auth-row-copy">
+                            <span className="pwi-auth-row-label">{label}</span>
+                            <span className="pwi-auth-row-secondary">
+                              {[
+                                account.email,
+                                `${t("prov.accountId")}: ${maskedId}`,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
+                            {typeof account.accountExpiresAt === "number" && (
+                              <span className="pwi-auth-row-secondary faint">
+                                {t(
+                                  account.accountExpiresAt <= nowMs
+                                    ? "pws.accountExpired"
+                                    : "pws.accountExpires",
+                                  {
+                                    date: new Date(
+                                      account.accountExpiresAt,
+                                    ).toLocaleString(locale),
+                                  },
+                                )}
+                              </span>
+                            )}
+                            {healthSummary && (
+                              <span className="pwi-auth-row-secondary faint">
+                                {healthSummary}
+                              </span>
+                            )}
+                            {inCooldown && (
+                              <span className="pwi-auth-row-secondary faint">
+                                {t("pws.healthCooldownHint")}
+                              </span>
+                            )}
+                          </span>
+                          {healthLabel && (
+                            <span
+                              className={oauthHealthBadgeClass(
+                                healthStatus,
+                                account.health?.reason,
+                              )}
+                            >
+                              {healthLabel}
+                            </span>
+                          )}
+                          {showReauth && !healthLabel && (
+                            <span className="badge badge-amber">
+                              {t("pws.reauth")}
+                            </span>
+                          )}
+                          {account.active && (
+                            <span className="badge badge-primary">
+                              {t("prov.accountActive")}
+                            </span>
+                          )}
+                          {switching && (
+                            <span className="badge badge-muted">
+                              {t("pws.accountSwitching")}
+                            </span>
+                          )}
+                        </button>
+                        {showReauth && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            disabled={busy || Boolean(switchingAccountId)}
+                            onClick={() =>
+                              void authHandlers.onReauth(item.name, account.id)
+                            }
+                          >
+                            {t("pws.reauthenticate")}
+                          </button>
                         )}
+                        {showDoctor && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm codex-auth-action-btn"
+                            onClick={copyDoctor}
+                          >
+                            <span aria-live="polite">
+                              {doctorCopyButtonLabel(
+                                t,
+                                doctorCopy.outcomeFor(account.id),
+                              )}
+                            </span>
+                          </button>
+                        )}
+                        {inCooldown && isOAuthPoolProvider(item.name) && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            disabled={
+                              busy ||
+                              Boolean(switchingAccountId) ||
+                              clearingCooldownId === account.id
+                            }
+                            onClick={() =>
+                              void clearAccountCooldown(account.id)
+                            }
+                          >
+                            {t("oauthPool.clearCooldown")}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() =>
+                            void authHandlers.onEditAlias(
+                              item.name,
+                              "oauth",
+                              account.id,
+                              account.alias,
+                            )
+                          }
+                        >
+                          {t("prov.editAlias")}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm pwi-auth-row-remove"
+                          aria-label={`${t("common.remove")} — ${label}`}
+                          title={`${t("common.remove")} — ${label}`}
+                          disabled={Boolean(switchingAccountId)}
+                          onClick={() =>
+                            void authHandlers.onRemoveAccount(
+                              item.name,
+                              account,
+                            )
+                          }
+                        >
+                          <IconTrash
+                            style={{ width: 13, height: 13 }}
+                            aria-hidden="true"
+                          />
+                        </button>
                       </div>
-                    )}
-                  </li>
+                      {(account.quota != null ||
+                        account.quotaUnavailable ||
+                        (reserveQuotaSlots && account.quota == null)) && (
+                        <div className="pwi-auth-acct-quota">
+                          {account.quotaUnavailable ? (
+                            <p className="muted pwi-auth-acct-quota-stale">
+                              {t("pws.accountQuotaUnavailable")}
+                            </p>
+                          ) : (
+                            <QuotaBars
+                              quota={account.quota ?? null}
+                              plan={null}
+                              threshold={80}
+                              t={t}
+                              layout="stacked"
+                              pending={account.quota == null}
+                            />
+                          )}
+                        </div>
+                      )}
+                    </li>
                   );
                 })}
               </ul>
             )}
-            {accountLoadState === "ready" && loggedIn && accounts.length === 0 && (
-              <div className="pwi-auth-state pwi-auth-state--empty">{t("pws.noAccounts")}</div>
-            )}
+            {accountLoadState === "ready" &&
+              loggedIn &&
+              accounts.length === 0 && (
+                <div className="pwi-auth-state pwi-auth-state--empty">
+                  {t("pws.noAccounts")}
+                </div>
+              )}
             {loggedIn && (
-              <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 8 }}
-                onClick={() => void authHandlers.onLogin(item.name, true)} disabled={busy || Boolean(switchingAccountId)}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ marginTop: 8 }}
+                onClick={() => void authHandlers.onLogin(item.name, true)}
+                disabled={busy || Boolean(switchingAccountId)}
+              >
                 {t("pws.addAccount")}
               </button>
             )}
-            {item.name === "cursor" && (
-              importingCursorKey ? (
+            {item.name === "cursor" &&
+              (importingCursorKey ? (
                 <div className="pwi-auth-add-key" style={{ marginTop: 8 }}>
                   <input
                     className="input"
                     type="password"
                     value={cursorApiKey}
-                    onChange={e => setCursorApiKey(e.target.value)}
+                    onChange={(e) => setCursorApiKey(e.target.value)}
                     placeholder={t("oauthPool.importKeyPlaceholder")}
                     autoComplete="off"
                     disabled={cursorKeyBusy}
@@ -405,18 +649,30 @@ export default function ProviderAuthPanel({
                     onClick={() => void submitCursorApiKey()}
                     disabled={cursorKeyBusy || !cursorApiKey.trim()}
                   >
-                    {cursorKeyBusy ? t("pws.saving") : t("oauthPool.importKeySubmit")}
+                    {cursorKeyBusy
+                      ? t("pws.saving")
+                      : t("oauthPool.importKeySubmit")}
                   </button>
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
-                    onClick={() => { setImportingCursorKey(false); setCursorApiKey(""); setCursorKeyError(null); }}
+                    onClick={() => {
+                      setImportingCursorKey(false);
+                      setCursorApiKey("");
+                      setCursorKeyError(null);
+                    }}
                   >
                     {t("common.cancel")}
                   </button>
-                  <div className="card-sub" style={{ flexBasis: "100%" }}>{t("oauthPool.importKeyHelp")}</div>
+                  <div className="card-sub" style={{ flexBasis: "100%" }}>
+                    {t("oauthPool.importKeyHelp")}
+                  </div>
                   {cursorKeyError && (
-                    <div role="alert" className="card-sub" style={{ flexBasis: "100%", color: "var(--red)" }}>
+                    <div
+                      role="alert"
+                      className="card-sub"
+                      style={{ flexBasis: "100%", color: "var(--red)" }}
+                    >
                       {cursorKeyError}
                     </div>
                   )}
@@ -426,13 +682,17 @@ export default function ProviderAuthPanel({
                   type="button"
                   className="btn btn-ghost btn-sm"
                   style={{ marginTop: 8 }}
-                  onClick={() => { setImportingCursorKey(true); setCursorKeyError(null); }}
-                  disabled={busy || cursorKeyBusy || Boolean(switchingAccountId)}
+                  onClick={() => {
+                    setImportingCursorKey(true);
+                    setCursorKeyError(null);
+                  }}
+                  disabled={
+                    busy || cursorKeyBusy || Boolean(switchingAccountId)
+                  }
                 >
                   {t("oauthPool.importKey")}
                 </button>
-              )
-            )}
+              ))}
           </>
         )}
 
@@ -440,64 +700,132 @@ export default function ProviderAuthPanel({
           <>
             {keys.length > 0 && (
               <ul className="pwi-auth-list">
-                {keys.map(entry => {
-                  const cooling = typeof entry.cooldownUntil === "number" && entry.cooldownUntil > nowMs;
+                {keys.map((entry) => {
+                  const cooling =
+                    typeof entry.cooldownUntil === "number" &&
+                    entry.cooldownUntil > nowMs;
                   const coolingReset = cooling
                     ? formatResetFuture(entry.cooldownUntil!, t, locale)
                     : "";
                   return (
-                  <li key={entry.id} className={`pwi-auth-row${entry.active ? " pwi-auth-row--active" : ""}`}>
-                    <button type="button" className="pwi-auth-row-main"
-                      onClick={() => { if (!cooling) void authHandlers.onSwitchApiKey(item.name, entry); }}
-                      disabled={entry.active || cooling}>
-                      <span className={`pwi-auth-dot ${entry.active ? "pwi-auth-dot--ok" : cooling ? "pwi-auth-dot--warn" : "pwi-auth-dot--off"}`} aria-hidden="true" />
-                      <span className="pwi-auth-row-copy">
-                        <span className="pwi-auth-row-label">{entry.label ?? entry.masked}</span>
-                        {entry.label && <code className="pwi-auth-row-secondary">{entry.masked} · {t("prov.accountId")}: {entry.id}</code>}
-                        {cooling && (
-                          <span className="pwi-auth-row-secondary faint">{t("pws.keyCoolingUntil", { reset: coolingReset })}</span>
-                        )}
-                      </span>
-                      {entry.active && <span className="badge badge-primary">{t("prov.accountActive")}</span>}
-                      {cooling && (
-                        <span className="badge badge-amber">
-                          <IconClock size={13} aria-hidden="true" />
-                          {t("pws.keyCooling")}
+                    <li
+                      key={entry.id}
+                      className={`pwi-auth-row${entry.active ? " pwi-auth-row--active" : ""}`}
+                    >
+                      <button
+                        type="button"
+                        className="pwi-auth-row-main"
+                        onClick={() => {
+                          if (!cooling)
+                            void authHandlers.onSwitchApiKey(item.name, entry);
+                        }}
+                        disabled={entry.active || cooling}
+                      >
+                        <span
+                          className={`pwi-auth-dot ${entry.active ? "pwi-auth-dot--ok" : cooling ? "pwi-auth-dot--warn" : "pwi-auth-dot--off"}`}
+                          aria-hidden="true"
+                        />
+                        <span className="pwi-auth-row-copy">
+                          <span className="pwi-auth-row-label">
+                            {entry.label ?? entry.masked}
+                          </span>
+                          {entry.label && (
+                            <code className="pwi-auth-row-secondary">
+                              {entry.masked} · {t("prov.accountId")}: {entry.id}
+                            </code>
+                          )}
+                          {cooling && (
+                            <span className="pwi-auth-row-secondary faint">
+                              {t("pws.keyCoolingUntil", {
+                                reset: coolingReset,
+                              })}
+                            </span>
+                          )}
                         </span>
-                      )}
-                    </button>
-                    <button type="button" className="btn btn-ghost btn-sm"
-                      onClick={() => void authHandlers.onEditAlias(item.name, "api-key", entry.id, entry.label)}>
-                      {t("prov.editAlias")}
-                    </button>
-                    <button type="button" className="btn btn-ghost btn-sm pwi-auth-row-remove"
-                      aria-label={`${t("common.remove")} — ${entry.label ?? entry.masked}`}
-                      title={`${t("common.remove")} — ${entry.label ?? entry.masked}`}
-                      onClick={() => void authHandlers.onRemoveApiKey(item.name, entry)}>
-                      <IconTrash size={13} aria-hidden="true" />
-                    </button>
-                  </li>
+                        {entry.active && (
+                          <span className="badge badge-primary">
+                            {t("prov.accountActive")}
+                          </span>
+                        )}
+                        {cooling && (
+                          <span className="badge badge-amber">
+                            <IconClock size={13} aria-hidden="true" />
+                            {t("pws.keyCooling")}
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() =>
+                          void authHandlers.onEditAlias(
+                            item.name,
+                            "api-key",
+                            entry.id,
+                            entry.label,
+                          )
+                        }
+                      >
+                        {t("prov.editAlias")}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm pwi-auth-row-remove"
+                        aria-label={`${t("common.remove")} — ${entry.label ?? entry.masked}`}
+                        title={`${t("common.remove")} — ${entry.label ?? entry.masked}`}
+                        onClick={() =>
+                          void authHandlers.onRemoveApiKey(item.name, entry)
+                        }
+                      >
+                        <IconTrash size={13} aria-hidden="true" />
+                      </button>
+                    </li>
                   );
                 })}
               </ul>
             )}
             {addingKey ? (
               <div className="pwi-auth-add-key">
-                <input className="input" type="password" value={newKey} onChange={e => setNewKey(e.target.value)}
-                  placeholder={t("modal.apiKeyPlaceholder")} autoComplete="off" disabled={keyBusy} />
-                <button type="button" className="btn btn-primary btn-sm" onClick={() => void submitKey()} disabled={keyBusy || !newKey.trim()}>
+                <input
+                  className="input"
+                  type="password"
+                  value={newKey}
+                  onChange={(e) => setNewKey(e.target.value)}
+                  placeholder={t("modal.apiKeyPlaceholder")}
+                  autoComplete="off"
+                  disabled={keyBusy}
+                />
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => void submitKey()}
+                  disabled={keyBusy || !newKey.trim()}
+                >
                   {keyBusy ? t("pws.saving") : t("pws.addKey")}
                 </button>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setAddingKey(false); setNewKey(""); }}>{t("common.cancel")}</button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    setAddingKey(false);
+                    setNewKey("");
+                  }}
+                >
+                  {t("common.cancel")}
+                </button>
               </div>
             ) : (
-              <button type="button" className="btn btn-ghost btn-sm pwi-auth-add"
-                onClick={() => setAddingKey(true)}>{t("pws.addKey")}</button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm pwi-auth-add"
+                onClick={() => setAddingKey(true)}
+              >
+                {t("pws.addKey")}
+              </button>
             )}
             <p className="card-sub pwi-auth-hint">{t("pws.keyPoolHint")}</p>
           </>
         )}
-
       </div>
     </section>
   );

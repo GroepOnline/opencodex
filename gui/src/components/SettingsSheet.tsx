@@ -1,5 +1,5 @@
 /* Application preferences; destructive actions remain in System. */
-import { useRef, type RefObject } from "react";
+import { useRef, useState, type RefObject } from "react";
 import { IconGithub, IconMonitor, IconMoon, IconSun, IconX } from "../icons";
 import { useI18n, useT, LOCALES, type Locale, type TKey } from "../i18n/shared";
 import { Select } from "../ui";
@@ -14,11 +14,36 @@ import { Button } from "./primitives/button";
 import { ToggleGroup, ToggleGroupItem } from "./primitives/toggle-group";
 
 type Theme = "light" | "dark" | "system";
+type Skin = "devin" | "strak";
 const THEME_OPTIONS: { id: Theme; tkey: TKey; Icon: typeof IconSun }[] = [
   { id: "light", tkey: "theme.light", Icon: IconSun },
   { id: "dark", tkey: "theme.dark", Icon: IconMoon },
   { id: "system", tkey: "theme.system", Icon: IconMonitor },
 ];
+const SKIN_OPTIONS: { id: Skin; tkey: TKey }[] = [
+  { id: "devin", tkey: "skin.devin" },
+  { id: "strak", tkey: "skin.strak" },
+];
+
+function readStoredSkin(): Skin {
+  try {
+    const stored = localStorage.getItem("ocx-style");
+    if (stored === "strak" || stored === "devin") return stored;
+  } catch {
+    /* ignore */
+  }
+  const attr = document.documentElement.getAttribute("data-style");
+  return attr === "strak" ? "strak" : "devin";
+}
+
+function applySkin(next: Skin) {
+  document.documentElement.setAttribute("data-style", next);
+  try {
+    localStorage.setItem("ocx-style", next);
+  } catch {
+    /* ignore */
+  }
+}
 
 export default function SettingsSheet({
   open,
@@ -38,6 +63,7 @@ export default function SettingsSheet({
   const t = useT();
   const { locale, setLocale } = useI18n();
   const closeRef = useRef<HTMLButtonElement>(null);
+  const [skin, setSkin] = useState<Skin>(readStoredSkin);
 
   return (
     <Sheet
@@ -93,6 +119,28 @@ export default function SettingsSheet({
               {THEME_OPTIONS.map(({ id, tkey, Icon }) => (
                 <ToggleGroupItem key={id} value={id}>
                   <Icon aria-hidden /> {t(tkey)}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </div>
+
+          <div className="sheet-section">
+            <div className="sheet-label">{t("settings.skin")}</div>
+            <ToggleGroup
+              value={[skin]}
+              variant="outline"
+              aria-label={t("settings.skin")}
+              onValueChange={(values) => {
+                const next = values[0];
+                if (next === "devin" || next === "strak") {
+                  setSkin(next);
+                  applySkin(next);
+                }
+              }}
+            >
+              {SKIN_OPTIONS.map(({ id, tkey }) => (
+                <ToggleGroupItem key={id} value={id}>
+                  {t(tkey)}
                 </ToggleGroupItem>
               ))}
             </ToggleGroup>
