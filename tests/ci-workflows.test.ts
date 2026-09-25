@@ -432,6 +432,7 @@ describe("GitHub Actions hardening", () => {
     const ciPaths = [
       ".gitattributes",
       ".github/workflows/ci.yml",
+      ".github/workflows/deploy.yml",
       ".github/workflows/enforce-pr-target.yml",
       ".github/workflows/issue-triage.yml",
       ".github/workflows/publish-on-tag.yml",
@@ -546,9 +547,10 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
   });
 
-  test("release workflow chains GHCR image and opt-in deploy on the exact tag without a human dispatch", async () => {
+  test("release workflow publishes the GHCR image and refuses the retired live deploy", async () => {
     // Tags pushed with GITHUB_TOKEN never start `push` runs, so container.yml
-    // and deploy.yml must be dispatched explicitly, on the tag, after publish.
+    // must be dispatched explicitly on the tag after publish. The retired
+    // deploy route must fail before any irreversible publication work.
     const text = await readText(".github/workflows/release.yml");
     const workflow = Bun.YAML.parse(text) as {
       on?: {
@@ -591,10 +593,16 @@ describe("GitHub Actions hardening", () => {
     });
     expect(rollout?.["timeout-minutes"]).toBe(10);
 
+    const publishSteps = publish?.steps ?? [];
+    expect(publishSteps[0]?.name).toBe("Reject retired runtime deploy request");
+    expect(publishSteps[0]?.env?.DEPLOY).toBe("${{ inputs.deploy }}");
+    expect(publishSteps[0]?.run).toContain('if [ "$DEPLOY" = "true" ]');
+    expect(publishSteps[0]?.run).toContain("exit 1");
+
     const steps = rollout?.steps ?? [];
     expect(steps.map((step) => step.name)).toEqual([
       "Dispatch GHCR image publish on the release tag",
-      "Dispatch live deploy (opt-in)",
+      "Refuse retired live deploy (opt-in)",
     ]);
     const image = steps[0]!;
     const deploy = steps[1]!;
@@ -606,16 +614,22 @@ describe("GitHub Actions hardening", () => {
       'gh workflow run container.yml --ref "${release_tag}" -f "expected_sha=${RELEASE_SHA}"',
     );
     expect(image.run).not.toContain("--ref main");
-    // Deploy is opt-in and reaches deploy.yml through its validated `ref` input.
+    // The retired route fails closed and is never dispatched.
     expect(deploy.env?.DEPLOY).toBe("${{ inputs.deploy }}");
     expect(deploy.run).toContain('if [ "$DEPLOY" != "true" ]');
     expect(deploy.run).toContain(
-      'gh workflow run deploy.yml --ref main -f "ref=${release_tag}"',
+      "deploy=true is disabled because deploy.yml targets retired chef-control-az-01.",
     );
+    expect(deploy.run).toContain(
+      "Use the separately verified bc-scan-2 package deployment contract.",
+    );
+    expect(deploy.run).not.toContain("gh workflow run deploy.yml");
+    expect(deploy.run).toContain("exit 1");
     for (const step of steps) {
       expect(step.run ?? "").not.toContain("${{");
-      expect(step.env?.GH_TOKEN).toBe("${{ github.token }}");
     }
+    expect(image.env?.GH_TOKEN).toBe("${{ github.token }}");
+    expect(deploy.env?.GH_TOKEN).toBeUndefined();
     // Dry runs never dispatch anything.
     expect(rollout?.if).not.toContain("always()");
   });
@@ -3028,64 +3042,31 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).not.toContain("bun@latest");
   });
 
-  test("az-01 deploy waits for GHCR publish and pins an immutable digest (no host bun build)", async () => {
+  test("legacy deploy workflow retains no deploy mechanism after retirement", async () => {
     const workflow = await readText(".github/workflows/deploy.yml");
-    expect(workflow).toContain("Wait for GHCR publish (container.yml)");
-    expect(workflow).toContain('select(.name=="publish")');
-    expect(workflow).toContain("sort_by(.createdAt) | reverse");
-    expect(workflow).toContain("timed_out");
-    expect(workflow).toContain("skipped|missing");
-    expect(workflow).toContain('conclusion // "pending"');
-    expect(workflow).not.toContain("--status success");
-    expect(workflow).not.toContain("gh run watch");
-    expect(workflow).not.toContain("docker/login-action@");
-    expect(workflow).toContain("sudo docker login ghcr.io");
-    expect(workflow).toContain("sudo docker pull");
-    expect(workflow).toContain(
-      "sudo docker image inspect --format='{{index .RepoDigests 0}}'",
-    );
-    expect(workflow).toContain("/etc/chef/opencodex/service-api-token");
-    expect(workflow).toContain('sudo sha256sum "$token_file"');
-    expect(workflow).toContain("OPENCODEX_IMAGE=");
-    expect(workflow).toContain("@sha256:");
-    expect(workflow).not.toContain("bun run build:gui");
-    expect(workflow).not.toContain("bun install --frozen-lockfile");
-    expect(workflow).not.toContain("git checkout --force");
-    expect(workflow).not.toContain("git reset --hard");
-    expect(workflow).not.toContain(
-      "Refuse dirty live checkout or dropped commits",
-    );
+    expect(workflow).toContain("Legacy deploy route retired");
+    expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).toContain("Refuse retired deployment route");
+    expect(workflow).toContain("exit 1");
+    expect(workflow).not.toContain("ghcr.io");
+    expect(workflow).not.toContain("docker ");
+    expect(workflow).not.toContain("actions/checkout@");
     expect(workflow).not.toContain("oven-sh/setup-bun@");
     expect(workflow).not.toContain("actions/setup-node@");
+    expect(workflow).not.toContain("github.token");
+    expect(workflow).not.toMatch(/\b(?:ssh|scp|rsync)\b/);
   });
 
-  test("actionlint config declares exactly the self-hosted labels the deploy workflow requires", async () => {
+  test("actionlint config declares exactly the available self-hosted runner labels", async () => {
     const config = Bun.YAML.parse(
       await readText(".github/actionlint.yaml"),
     ) as {
       "self-hosted-runner"?: { labels?: string[] };
     };
-    // actionlint fails closed on unknown `runs-on` labels for self-hosted runners,
-    // so every label deploy.yml's `runs-on: [self-hosted, ...]` uses must be
-    // declared here or CI linting the workflow itself would go red.
-    expect(config["self-hosted-runner"]?.labels).toEqual([
-      "deploy",
-      "jan",
-      "opencodex",
-    ]);
-
-    const deploy = Bun.YAML.parse(
-      await readText(".github/workflows/deploy.yml"),
-    ) as {
-      jobs?: Record<string, { "runs-on"?: unknown }>;
-    };
-    const runsOn = deploy.jobs?.deploy?.["runs-on"];
-    expect(Array.isArray(runsOn)).toBe(true);
-    for (const label of runsOn as string[]) {
-      if (label === "self-hosted" || label === "Linux" || label === "X64")
-        continue;
-      expect(config["self-hosted-runner"]?.labels).toContain(label);
-    }
+    // actionlint fails closed on unknown self-hosted labels. These are retained
+    // for the workflows that still need the dedicated publication runner; the
+    // retired deploy refusal deliberately uses a hosted runner instead.
+    expect(config["self-hosted-runner"]?.labels).toEqual(["jan", "opencodex"]);
   });
 
   test("cross-platform CI caches bun and GUI node_modules and lints YAML with the shared config", async () => {
@@ -3164,268 +3145,23 @@ describe("GitHub Actions hardening", () => {
     expect(actionlintIndex).toBeLessThan(yamllintIndex);
   });
 
-  test("az-01 deploy triggers only on version tags or an explicit dispatch, least-privilege and serialized", async () => {
-    const text = await readText(".github/workflows/deploy.yml");
-    const workflow = Bun.YAML.parse(text) as {
-      on?: {
-        push?: { tags?: string[] };
-        workflow_dispatch?: {
-          inputs?: Record<string, { required?: boolean; default?: string }>;
-        };
-      };
+  test("legacy deploy workflow is bounded and has no release trigger", async () => {
+    const workflow = Bun.YAML.parse(
+      await readText(".github/workflows/deploy.yml"),
+    ) as {
+      on?: { push?: unknown; workflow_dispatch?: unknown };
       permissions?: Record<string, string>;
-      concurrency?: { group?: string; "cancel-in-progress"?: boolean };
       jobs?: Record<
         string,
-        { "timeout-minutes"?: number; env?: Record<string, string> }
+        { "runs-on"?: string[] | string; "timeout-minutes"?: number }
       >;
     };
 
-    expect(workflow.on?.push?.tags).toEqual(["v*.*.*"]);
-    expect(workflow.on?.workflow_dispatch?.inputs?.ref?.required).toBe(false);
-    expect(workflow.on?.workflow_dispatch?.inputs?.ref?.default).toBe("");
-
-    // Read-only token plus GHCR pull: the job reads container metadata and pulls
-    // a digest-pinned image; it never pushes packages or mutates GitHub state.
-    expect(workflow.permissions).toEqual({
-      contents: "read",
-      packages: "read",
-      actions: "read",
-    });
-
-    // A second deploy must queue rather than race the first, and a mid-flight
-    // cancel could leave the live checkout half-updated with no rollback run.
-    expect(workflow.concurrency?.group).toBe("ocx-deploy-az-01");
-    expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
-
-    expect(workflow.jobs?.deploy?.["timeout-minutes"]).toBe(30);
-    expect(workflow.jobs?.deploy?.env?.DEPLOY_PATH).toBeUndefined();
-    expect(workflow.jobs?.deploy?.env?.COMPOSE_DIR).toBe(
-      "/opt/chef/deploy/opencodex",
-    );
-
-    expect(text).toContain(
-      "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
-    );
-    expect(text).toContain("sudo docker login ghcr.io");
-    expect(text).toContain("sudo docker logout ghcr.io");
-    expect(text).not.toContain("docker/login-action@");
-    expect(text).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
-  });
-
-  test("az-01 deploy resolves the dispatch ref via env (not inline interpolation) and validates its shape", async () => {
-    const text = await readText(".github/workflows/deploy.yml");
-    const workflow = Bun.YAML.parse(text) as {
-      jobs?: {
-        deploy?: {
-          steps?: Array<{
-            name?: string;
-            env?: Record<string, string>;
-            run?: string;
-          }>;
-        };
-      };
-    };
-    const steps = workflow.jobs?.deploy?.steps ?? [];
-    const resolve = steps.find((step) => step.name === "Resolve deploy tag");
-    expect(resolve).toBeDefined();
-
-    // The raw dispatch input must be delivered as data via env, never spliced
-    // directly into the shell — `${{ github.event.inputs.ref }}` inline would
-    // let a value like `v1.2.3$(whoami)` be command-substituted on the
-    // production deploy host before the shape guard below ever runs.
-    expect(resolve!.env?.INPUT_REF).toBe("${{ github.event.inputs.ref }}");
-    expect(resolve!.run ?? "").not.toContain("${{ github.event.inputs.ref }}");
-    expect(resolve!.run ?? "").not.toContain("${{");
-
-    // Extract the actual shape-guard regex and exercise it, rather than
-    // grepping for a substring a cosmetic rewrite could still satisfy.
-    const match = (resolve!.run ?? "").match(/=~ (\^\S+\$) \]\]/);
-    expect(match).not.toBeNull();
-    const shape = new RegExp(match![1]!);
-    expect(shape.test("v1.2.3")).toBe(true);
-    expect(shape.test("v1.2.3-preview.4")).toBe(true);
-    expect(shape.test("1.2.3")).toBe(false);
-    expect(shape.test("v1.2")).toBe(false);
-    expect(shape.test("v1.2.3.4")).toBe(false);
-    expect(shape.test("v1.2.3-beta.1")).toBe(false);
-    expect(shape.test("v1.2.3-preview")).toBe(false);
-
-    // No tag resolved (neither a dispatch input nor a `refs/tags/v*` push) must
-    // fail closed, not silently no-op.
-    expect(resolve!.run ?? "").toContain("no tag resolved for deploy");
-    expect(resolve!.run ?? "").toContain("exit 1");
-  });
-
-  test("az-01 deploy verifies tag ancestry then cutovers via compose (never a floating version tag)", async () => {
-    const text = await readText(".github/workflows/deploy.yml");
-    const workflow = Bun.YAML.parse(text) as {
-      jobs?: {
-        deploy?: {
-          steps?: Array<{
-            name?: string;
-            id?: string;
-            uses?: string;
-            run?: string;
-            with?: Record<string, unknown>;
-          }>;
-        };
-      };
-    };
-    const steps = workflow.jobs?.deploy?.steps ?? [];
-    const verify = steps.find((step) => step.id === "verify");
-    const deploy = steps.find(
-      (step) =>
-        step.name === "Deploy digest-pinned container (in-place cutover)",
-    );
-    expect(verify).toBeDefined();
-    expect(deploy).toBeDefined();
-
-    const checkouts = steps.filter((step) =>
-      step.uses?.startsWith("actions/checkout@"),
-    );
-    expect(checkouts).toHaveLength(2);
-    for (const checkout of checkouts) {
-      expect(checkout.with?.["persist-credentials"]).toBe(false);
-    }
-
-    expect(verify!.run ?? "").toContain(
-      'git merge-base --is-ancestor "refs/tags/$tag" "origin/main"',
-    );
-    expect(verify!.run ?? "").toContain("is not on origin/main");
-    const tagShaAssigns = [
-      ...(verify!.run ?? "").matchAll(/tag_sha=\$\(git rev-parse [^)]+\)/g),
-    ].map((match) => match[0]);
-    expect(tagShaAssigns).toEqual([
-      'tag_sha=$(git rev-parse "refs/tags/$tag^{}")',
-    ]);
-
-    const verifyIndex = steps.findIndex((step) => step.id === "verify");
-    const peeledCheckout = steps.findIndex(
-      (step) => step.name === "Checkout peeled tag commit",
-    );
-    expect(verifyIndex).toBeGreaterThanOrEqual(0);
-    expect(peeledCheckout).toBeGreaterThan(verifyIndex);
-    expect(text).toContain("ref: ${{ steps.verify.outputs.tag_sha }}");
-    expect(text).not.toContain("ref: ${{ steps.ref.outputs.tag }}");
-
-    expect(deploy!.run ?? "").toContain("deploy/container/compose.example.yml");
-    expect(deploy!.run ?? "").toContain(
-      "deploy/container/opencodex-proxy.service",
-    );
-    expect(deploy!.run ?? "").toContain(
-      "systemctl stop opencodex-proxy.service",
-    );
-    expect(deploy!.run ?? "").toContain(
-      "systemctl start opencodex-proxy.service",
-    );
-    const unit = await readText("deploy/container/opencodex-proxy.service");
-    expect(unit).toContain("docker compose up");
-    expect(unit).toContain(
-      "After=docker.service network-online.target tailscaled.service",
-    );
-    expect(unit).toContain("Wants=network-online.target tailscaled.service");
-    expect(deploy!.run ?? "").not.toContain("git checkout --force");
-    expect(deploy!.run ?? "").not.toContain("git reset --hard");
-    expect(text).not.toMatch(/ghcr\.io\/groeponline\/opencodex:v[0-9]/);
-  });
-
-  test("az-01 deploy health-gates gitSha for up to 60s and rolls back to a captured prior digest", async () => {
-    const text = await readText(".github/workflows/deploy.yml");
-    const workflow = Bun.YAML.parse(text) as {
-      jobs?: {
-        deploy?: {
-          steps?: Array<{
-            name?: string;
-            id?: string;
-            if?: string;
-            run?: string;
-            env?: Record<string, string>;
-          }>;
-        };
-      };
-    };
-    const steps = workflow.jobs?.deploy?.steps ?? [];
-    const health = steps.find((step) => step.id === "health");
-    const rollback = steps.find((step) => step.name === "Rollback on failure");
-    expect(health).toBeDefined();
-    expect(rollback).toBeDefined();
-
-    expect(health!.run ?? "").toContain("deadline=$((SECONDS + 60))");
-    expect(health!.run ?? "").toContain(
-      'b.get("gitSha") == os.environ["TAG_SHA"]',
-    );
-    expect(health!.run ?? "").toContain('b.get("service") == "opencodex"');
-    expect(health!.run ?? "").not.toContain("MainPID");
-    expect(health!.run ?? "").not.toContain('b.get("pid")');
-    expect(health!.run ?? "").toContain("--max-time");
-    expect(health!.run ?? "").toContain("gitSha-verified healthy within 60s");
-    expect(health!.run ?? "").toContain(
-      "<title>opencodex · proxy dashboard</title>",
-    );
-    const resolveHealthIndex = steps.findIndex(
-      (step) => step.name === "Resolve health URLs",
-    );
-    const deployIndex = steps.findIndex(
-      (step) =>
-        step.name === "Deploy digest-pinned container (in-place cutover)",
-    );
-    const resolveHealth = steps[resolveHealthIndex];
-    expect(resolveHealthIndex).toBeGreaterThanOrEqual(0);
-    expect(resolveHealthIndex).toBeLessThan(deployIndex);
-    expect(resolveHealth?.run ?? "").toContain(
-      "http://127.0.0.1:10100/healthz",
-    );
-    expect(resolveHealth?.run ?? "").toContain("tailscale ip -4");
-    expect(resolveHealth?.run ?? "").toContain(
-      "no discoverable Tailscale IPv4",
-    );
-    expect(resolveHealth?.run ?? "").toContain(
-      'urls="$urls http://${ts_ip}:10100/healthz"',
-    );
-    expect(resolveHealth?.run ?? "").toContain("OPENCODEX_BIND_IP=$ts_ip");
-    expect(resolveHealth?.run ?? "").not.toContain("tailscale_ipv4=");
-    expect(text).not.toContain("100.109.39.86");
-    expect(text).not.toContain("OPENCODEX_BIND_IP=127.0.0.1");
-
-    expect(rollback!.if).toBe(
-      "(failure() || cancelled()) && steps.prev.outcome == 'success' && steps.deploy.outputs.cutover_started == 'true'",
-    );
-    expect(rollback!.env?.PREV_IMAGE).toBe("${{ steps.prev.outputs.image }}");
-    expect(rollback!.env?.BUN_RUNTIME).toBe(
-      "${{ steps.prev.outputs.bun_runtime }}",
-    );
-    expect(rollback!.env?.UNIT_BACKUP).toBe(
-      "${{ steps.prev.outputs.unit_backup }}",
-    );
-    expect(rollback!.env?.PREV_HEALTH_URLS).toBe(
-      "${{ steps.prev.outputs.health_urls }}",
-    );
-    expect(rollback!.run ?? "").not.toContain("${{ steps.prev.outputs");
-    expect(rollback!.run ?? "").toContain("OPENCODEX_IMAGE=");
-    expect(rollback!.run ?? "").not.toContain("bun run build:gui");
-    expect(rollback!.run ?? "").not.toContain("git checkout --force");
-    expect(rollback!.run ?? "").not.toContain("git reset --hard");
-    expect(rollback!.run ?? "").toContain(
-      "sudo systemctl restart opencodex-proxy.service",
-    );
-    expect(rollback!.run ?? "").toContain('urls="$PREV_HEALTH_URLS"');
-    expect(rollback!.run ?? "").toContain(
-      "no pre-deploy healthy endpoint was captured for rollback verification",
-    );
-    expect(rollback!.run ?? "").not.toContain(
-      "${OCX_HEALTH_URLS:-http://127.0.0.1:10100/healthz}",
-    );
-    expect(rollback!.run ?? "").toContain(
-      "printf 'OPENCODEX_BIND_IP=%s\\n' \"$OPENCODEX_BIND_IP\"",
-    );
-    expect(rollback!.run ?? "").toContain("deadline=$((SECONDS + 30))");
-    expect(rollback!.run ?? "").not.toContain("MainPID");
-    expect(rollback!.run ?? "").toContain('b.get("service") == "opencodex"');
-    expect(rollback!.run ?? "").toContain("rolled back and healthy");
-    expect(rollback!.run ?? "").toContain(
-      "<title>opencodex · proxy dashboard</title>",
-    );
+    expect(workflow.on?.push).toBeUndefined();
+    expect(workflow.on?.workflow_dispatch).toBeNull();
+    expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(workflow.jobs?.retired?.["timeout-minutes"]).toBe(5);
+    expect(workflow.jobs?.retired?.["runs-on"]).toBe("ubuntu-latest");
   });
 
   test("design-system contract only runs when design-system inputs or the GUI change, identically on push and PR", async () => {
@@ -3451,15 +3187,14 @@ describe("GitHub Actions hardening", () => {
     );
   });
 
-  test("publish-on-tag no longer performs its own SSH deploy and defers live rollout to deploy.yml", async () => {
+  test("publish-on-tag publishes without any runtime deploy path", async () => {
     const text = await readText(".github/workflows/publish-on-tag.yml");
     const workflow = Bun.YAML.parse(text) as {
       jobs?: Record<string, { steps?: Array<{ name?: string; run?: string }> }>;
     };
 
     // The SSH-based `deploy` job (and its DEPLOY_HOST/DEPLOY_SSH_KEY secrets)
-    // must be gone entirely — reintroducing it would race the self-hosted
-    // deploy.yml rollout against a second, unhealth-gated deploy path.
+    // must stay gone; publication has no runtime side effect.
     expect(Object.keys(workflow.jobs ?? {})).toEqual(["publish"]);
     expect(text).not.toContain("DEPLOY_SSH_KEY");
     expect(text).not.toContain("DEPLOY_HOST");
@@ -3474,8 +3209,8 @@ describe("GitHub Actions hardening", () => {
     const releaseScript = createRelease!.run ?? "";
 
     // A pre-existing release for the same tag must short-circuit before
-    // `gh release create` is attempted (a re-run after the SSH deploy job was
-    // removed would otherwise fail on a duplicate release).
+    // `gh release create` is attempted (a re-run would otherwise fail on a
+    // duplicate release).
     const viewIndex = releaseScript.indexOf("gh release view");
     const skipIndex = releaseScript.indexOf("exit 0");
     const createIndex = releaseScript.indexOf("gh release create");
@@ -3483,17 +3218,20 @@ describe("GitHub Actions hardening", () => {
     expect(createIndex).toBeGreaterThan(-1);
     expect(viewIndex).toBeLessThan(skipIndex);
     expect(skipIndex).toBeLessThan(createIndex);
-    expect(releaseScript).toContain("Deploy workflow owns live rollout");
-    // The notes string escapes backticks for the shell (\\` ... \\`); match the
-    // raw source exactly rather than the unescaped rendering.
+    expect(releaseScript).toContain("publication does not deploy a runtime");
     expect(releaseScript).toContain(
-      "Live rollout to chef-control-az-01 runs in the \\`Deploy to chef-control-az-01\\` workflow.",
+      "Runtime cutover is a separately verified operation.",
     );
 
-    // The hand-off must be documented in-line so the ownership split doesn't
-    // silently rot as the two workflows evolve independently.
-    expect(text).toContain(".github/workflows/deploy.yml");
-    expect(text).toContain("self-hosted `deploy` runner");
+    // The retirement is documented in-line so the release path cannot silently
+    // regain the old Azure side effect as the workflows evolve independently.
+    expect(text).toContain(
+      "former chef-control-az-01 deploy route is permanently retired",
+    );
+    expect(text).toContain(
+      "Publication intentionally has no runtime side effect",
+    );
+    expect(text).toContain("bc-scan-2 package deployment contract");
   });
 
   test("service-lifecycle workflow file has no trailing blank line", async () => {

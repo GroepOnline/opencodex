@@ -13,27 +13,19 @@
       "models": [
         "grok-4-6",
         "DeepSeek-V4-1-Flash",
-        "DeepSeek-V4-Pro",
-        "DeepSeek-V4-Pro-dz",
         "fw-glm-5-3-flash",
         "fw-kimi-k3",
-        "fw-deepseek-v4-1-flash",
         "deepseek-v4-flash-0731",
         "kimi-k2-7-code",
-        "grok-4-20-reasoning",
         "fw-glm-5-3-dz"
       ],
       "selectedModels": [
         "grok-4-6",
         "DeepSeek-V4-1-Flash",
-        "DeepSeek-V4-Pro",
-        "DeepSeek-V4-Pro-dz",
         "fw-glm-5-3-flash",
         "fw-kimi-k3",
-        "fw-deepseek-v4-1-flash",
         "deepseek-v4-flash-0731",
         "kimi-k2-7-code",
-        "grok-4-20-reasoning",
         "fw-glm-5-3-dz"
       ]
     },

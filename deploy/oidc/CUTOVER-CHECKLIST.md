@@ -22,7 +22,7 @@ Authentik is also the Cloudflare Access IdP. Cutting over means the **proxy**
 verifies ChefGroep Auth tokens itself so Access can later be removed from the
 hostname. It is not a second identity provider.
 
-## Observed live state (read-only, 2026-09-20)
+## Observed live state (read-only, refreshed 2026-09-24)
 
 - [x] Issuer `https://auth.chefgroep.online/application/o/ocx/` discovery returns 200. JWKS URI in that document is live. Introspection is `https://auth.chefgroep.online/application/o/introspect/` (same origin).
 - [x] Client id is `chefgroep-ocx-oidc`. Client type in Authentik is `confidential`. Secret exists only in `OIDC_CLIENT_SECRET_FILE` on the host (never git).
@@ -36,15 +36,15 @@ hostname. It is not a second identity provider.
 - [x] Host `.env` names set (values not recorded): `OIDC_ISSUER`, `OIDC_CLIENT_ID`,
       `OIDC_CLIENT_SECRET_FILE`, `OIDC_REDIRECT_URI`, `OIDC_ALLOWED_HOSTS`, plus
       `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD`, `CF_ACCESS_ALLOWED_HOSTS`.
-- [x] Actual running artifact is npm package **1.4.2** from
-      `/home/joep/.opencodex/releases/b59c211502acecd6b731e7e9d5050c4cdcbfd22a`
+- [x] Actual running artifact is npm package **1.5.0** from
+      `/home/joep/.opencodex/releases/f5cc348b7f0b7a48a9241cac17714399c2777c0f`
       (`start-service.sh` → `src/cli/index.ts start --port 10100`). The unit-file
-      comment still cites historical pin `529bb6a9`; that SHA is **not** the
-      running tree. Package version remains 1.4.2.
+      comment and runtime health identity cite tag `v1.5.0` / source SHA
+      `f5cc348b7f0b7a48a9241cac17714399c2777c0f`.
 - [x] `GET http://100.65.83.86:10100/healthz` returns `status=ok`,
-      `service=opencodex`, `version=1.4.2`. Bind is the Tailscale IPv4, not
-      127.0.0.1. Public `https://ocx.chefgroep.online/` is still a Cloudflare
-      Access 302. Public `GET /healthz` also returns the same health JSON.
+      `service=opencodex`, `version=1.5.0`, and source SHA `f5cc348b7…`.
+      Bind is the Tailscale IPv4, not 127.0.0.1. Public
+      `https://ocx.chefgroep.online/` is still a Cloudflare Access 302.
 - [ ] systemd `opencodex-proxy.service` is **not** healthy: `ActiveState=activating`,
       `NRestarts` in the thousands, because PID `3197646` already holds
       `:10100` and `ocx start` refuses a duplicate. The orphan process is the
@@ -56,7 +56,7 @@ hostname. It is not a second identity provider.
 - [x] Issuer `https://auth.chefgroep.online/application/o/ocx/` discovery and JWKS return 200 (APPLY DONE 2026-09-18; not DNS HOLD).
 - [x] Client id is `chefgroep-ocx-oidc`. Client secret exists only in `OIDC_CLIENT_SECRET_FILE` on the host (never git, never ChefFactory catalog).
 - [x] Redirect URIs required by `deploy/oidc/authentik-ocx-client.placeholder.json` are present. Extra unused URIs remain; leave them.
-- [x] Live package version is still `1.4.2`. Running tree SHA is `b59c2115`, not the historical `529bb6a9` cited in the unit file. This checklist does not retarget the pin.
+- [x] Live package version is `1.5.0`. Running tree SHA is `f5cc348b7`. This checklist does not retarget the pin.
 - [x] `GET http://100.65.83.86:10100/healthz` still returns `status=ok`, `service=opencodex`.
 
 ## Authorize canary (no live cutover)
@@ -104,8 +104,8 @@ Do this in a later release that **intentionally** moves the live pin. Not this P
 - [ ] Change `OIDC_REDIRECT_URI` / Authentik redirect to the public callback only if local loopback URIs should drop.
 - [ ] Remove the Cloudflare Access application from `ocx.chefgroep.online` (or bypass it) **after** OIDC-only admission is proven.
 - [ ] Unset `CF_ACCESS_*` on the host only after Access is gone.
-- [ ] Re-check `/healthz` on loopback and Tailscale `:10100`.
-- [ ] Keep a rollback: restore `CF_ACCESS_*`, re-enable the Access application, restart `opencodex-proxy` onto the previous release tree (`b59c2115` / 1.4.2 today). Access stays the public gate if product OIDC is rolled back.
+- [ ] Re-check `/healthz` on the Tailscale IPv4 and laptop tunnel loopback `:10100`.
+- [ ] Keep a rollback: restore `CF_ACCESS_*`, re-enable the Access application, restart `opencodex-proxy` onto the previous release tree (`b59c2115` / 1.4.2 remains the on-disk previous release). Access stays the public gate if product OIDC is rolled back.
 
 ## Never from this repository
 

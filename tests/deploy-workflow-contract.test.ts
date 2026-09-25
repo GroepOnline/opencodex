@@ -4,311 +4,142 @@ const root = new URL("../", import.meta.url);
 
 type DeployStep = {
   name?: string;
-  id?: string;
   uses?: string;
-  env?: Record<string, string>;
-  with?: Record<string, unknown>;
   run?: string;
+  env?: Record<string, string>;
 };
 
-async function deployWorkflow(): Promise<string> {
+type DeployWorkflow = {
+  name?: string;
+  on?: {
+    push?: unknown;
+    workflow_dispatch?: { inputs?: Record<string, unknown> } | null;
+  };
+  permissions?: Record<string, string>;
+  concurrency?: unknown;
+  jobs?: Record<
+    string,
+    {
+      "runs-on"?: string[] | string;
+      "timeout-minutes"?: number;
+      env?: Record<string, string>;
+      steps?: DeployStep[];
+    }
+  >;
+};
+
+async function deployText(): Promise<string> {
   return await Bun.file(new URL(".github/workflows/deploy.yml", root)).text();
 }
 
-async function deploySteps(): Promise<DeployStep[]> {
-  const parsed = Bun.YAML.parse(await deployWorkflow()) as {
-    jobs?: { deploy?: { steps?: DeployStep[] } };
-  };
-  return parsed.jobs?.deploy?.steps ?? [];
+async function deployWorkflow(): Promise<DeployWorkflow> {
+  return Bun.YAML.parse(await deployText()) as DeployWorkflow;
 }
 
-describe("digest deploy workflow contract", () => {
-  test("can inspect Actions runs with least privilege", async () => {
+describe("retired deploy workflow contract", () => {
+  test("is manual-only and cannot be re-armed by a release tag", async () => {
     const workflow = await deployWorkflow();
-    expect(workflow).toContain("contents: read");
-    expect(workflow).toContain("packages: read # GHCR digest pull");
-    expect(workflow).toContain(
-      "actions: read # gh run list/view container.yml publish",
-    );
-    expect(workflow).toContain("gh run list --workflow container.yml");
-    expect(workflow).toContain("gh run view");
-    expect(workflow).toContain("sort_by(.createdAt) | reverse");
-    expect(workflow).toContain("timed_out");
-    expect(workflow).toContain("skipped|missing");
-    expect(workflow).toContain('conclusion // "pending"');
-    expect(workflow).toContain("sudo docker logout ghcr.io");
-    expect(workflow).toContain('sudo sha256sum "$token_file"');
 
-    const checkouts = (await deploySteps()).filter((step) =>
-      step.uses?.startsWith("actions/checkout@"),
+    expect(workflow.name).toBe("Legacy deploy route retired");
+    expect(Object.keys(workflow.on ?? {})).toEqual(["workflow_dispatch"]);
+    expect(workflow.on?.push).toBeUndefined();
+    expect(workflow.on?.workflow_dispatch?.inputs).toBeUndefined();
+
+    // The old concurrency group belongs to a live cutover. Keeping it here
+    // would imply that an accidental refusal run can still serialize a deploy.
+    expect(workflow.concurrency).toBeUndefined();
+  });
+
+  test("fails closed with a bounded refusal and no deployment side effects", async () => {
+    const workflow = await deployWorkflow();
+    expect(Object.keys(workflow.jobs ?? {})).toEqual(["retired"]);
+
+    const retired = workflow.jobs?.retired;
+    // The refusal needs neither private-network access nor credentials. A
+    // GitHub-hosted runner makes an accidental dispatch fail promptly even when
+    // the fleet's dedicated publication runner is unavailable.
+    expect(retired?.["runs-on"]).toBe("ubuntu-latest");
+    expect(retired?.["timeout-minutes"]).toBe(5);
+    expect(retired?.env).toBeUndefined();
+    expect(retired?.steps).toHaveLength(1);
+
+    const refusal = retired?.steps?.[0];
+    expect(refusal?.name).toBe("Refuse retired deployment route");
+    expect(refusal?.uses).toBeUndefined();
+    expect(refusal?.env).toBeUndefined();
+    expect(refusal?.run).toContain(
+      "The chef-control-az-01 deployment route is permanently retired.",
     );
-    expect(checkouts).toHaveLength(2);
-    for (const checkout of checkouts) {
-      expect(checkout.with?.["persist-credentials"]).toBe(false);
+    expect(refusal?.run).toContain(
+      "use the separately verified bc-scan-2 package deployment contract",
+    );
+    expect(refusal?.run?.trim().endsWith("exit 1")).toBe(true);
+    // This is a fail-closed audit stub. Do not let a future edit revive remote
+    // access inside its one permitted step.
+    expect(refusal?.run ?? "").not.toMatch(/\b(?:ssh|scp|rsync)\b/);
+  });
+
+  test("retains no credentials, package access, host paths, or rollout machinery", async () => {
+    const text = await deployText();
+    const workflow = await deployWorkflow();
+
+    expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(workflow.permissions).not.toHaveProperty("packages");
+    expect(workflow.permissions).not.toHaveProperty("actions");
+    expect(workflow.permissions).not.toHaveProperty("id-token");
+
+    for (const forbidden of [
+      "secrets.",
+      "github.token",
+      "GH_TOKEN",
+      "packages: read",
+      "actions: write",
+      "id-token:",
+      "ghcr.io",
+      "docker login",
+      "docker pull",
+      "docker compose",
+      "systemctl",
+      "curl ",
+      "bun install",
+      "npm publish",
+      "gh workflow run",
+      "/opt/chef/",
+      "/etc/opencodex/",
+    ]) {
+      expect(text).not.toContain(forbidden);
     }
+    expect(text).not.toMatch(/uses:\s*\S+@/);
   });
 
-  test("dispatch checkout and deploy identity are pinned to the validated tag commit", async () => {
-    const workflow = await deployWorkflow();
-    expect(workflow).not.toContain("ref: ${{ steps.ref.outputs.tag }}");
-    expect(workflow).toContain("ref: ${{ steps.verify.outputs.tag_sha }}");
-    const verify = (await deploySteps()).find((step) => step.id === "verify");
-    const assigns = [
-      ...(verify?.run ?? "").matchAll(/tag_sha=\$\(git rev-parse [^)]+\)/g),
-    ].map((match) => match[0]);
-    expect(assigns).toEqual(['tag_sha=$(git rev-parse "refs/tags/$tag^{}")']);
-    expect(workflow).toContain('echo "tag_sha=$tag_sha" >> "$GITHUB_OUTPUT"');
-    expect(
-      workflow.indexOf("- name: Verify tag is on origin/main"),
-    ).toBeLessThan(workflow.indexOf("- name: Checkout peeled tag commit"));
-  });
-
-  test("state migration quiesces the old runtime and constrains API-token access before start", async () => {
-    const workflow = await deployWorkflow();
-    const deployScript = workflow.slice(
-      workflow.indexOf("- name: Deploy digest-pinned container"),
-      workflow.indexOf("- name: Health gate"),
-    );
-    expect(deployScript).toContain(
-      "--network none --read-only --entrypoint /usr/bin/id",
-    );
-    expect(deployScript).toContain(
-      'sudo chown -R "$container_uid:$container_gid" "$STATE_DIR"',
-    );
-    expect(deployScript).not.toContain('sudo chown -R 1000:1000 "$STATE_DIR"');
-    expect(deployScript).toContain(
-      "opencodex-proxy.service remained active after stop",
-    );
-    const sMkdir = deployScript.indexOf("sudo mkdir -p");
-    const sStop = deployScript.indexOf("sudo systemctl stop");
-    const sRsync = deployScript.indexOf("sudo rsync -a --ignore-existing");
-    const sChown = deployScript.indexOf(
-      'sudo chown -R "$container_uid:$container_gid"',
-    );
-    const sStart = deployScript.indexOf("sudo systemctl start");
-    const sTokenOwner = deployScript.indexOf(
-      'sudo chown "root:${container_gid}" "$token_file"',
-    );
-    const sTokenMode = deployScript.indexOf('sudo chmod 0640 "$token_file"');
-    const sConfigStrip = deployScript.indexOf(
-      "stripped hostname from carried config",
-    );
-    expect(sMkdir).toBeGreaterThan(-1);
-    expect(sStop).toBeGreaterThan(sMkdir);
-    expect(sRsync).toBeGreaterThan(sStop);
-    expect(sChown).toBeGreaterThan(sRsync);
-    expect(sConfigStrip).toBeGreaterThan(sRsync);
-    expect(sChown).toBeGreaterThan(sConfigStrip);
-    expect(sStart).toBeGreaterThan(sChown);
-    expect(deployScript).toContain('if sudo test -f "$STATE_DIR/config.json"');
-    expect(deployScript).toContain("port 10100 still bound after stopping");
-    expect(sTokenOwner).toBeGreaterThan(-1);
-    expect(sTokenMode).toBeGreaterThan(sTokenOwner);
-    expect(sStart).toBeGreaterThan(sTokenMode);
-    expect(deployScript).toContain('"0:${container_gid}:640"');
-    expect(deployScript).toContain(
-      '--user "${container_uid}:${container_gid}"',
-    );
-    expect(deployScript).toContain(
-      "candidate runtime cannot read the constrained API token",
-    );
-    expect(deployScript).not.toContain('sudo chmod 0644 "$token_file"');
-    expect(deployScript.indexOf('echo "previous_token_owner=')).toBeLessThan(
-      sTokenOwner,
-    );
-    expect(deployScript.indexOf('echo "previous_token_mode=')).toBeLessThan(
-      sTokenOwner,
-    );
-    expect(deployScript).toContain("sudo docker rm -f opencodex-opencodex-1");
-    expect(
-      deployScript.indexOf("sudo docker rm -f opencodex-opencodex-1"),
-    ).toBeGreaterThan(sStop);
-    expect(
-      deployScript.indexOf("port 10100 still bound after stopping"),
-    ).toBeGreaterThan(
-      deployScript.indexOf("sudo docker rm -f opencodex-opencodex-1"),
-    );
-    expect(sRsync).toBeGreaterThan(
-      deployScript.indexOf("port 10100 still bound after stopping"),
-    );
-  });
-
-  test("rollback remains armed after cutover starts even if start fails", async () => {
-    const workflow = await deployWorkflow();
-    expect(workflow).toContain(
-      'echo "cutover_started=true" >> "$GITHUB_OUTPUT"',
-    );
-    expect(workflow).toContain(
-      "steps.deploy.outputs.cutover_started == 'true'",
-    );
-    expect(workflow).toContain("(failure() || cancelled())");
-    expect(workflow).not.toContain("steps.deploy.outcome == 'success'");
-    const deployScript = workflow.slice(
-      workflow.indexOf("- name: Deploy digest-pinned container"),
-      workflow.indexOf("- name: Health gate"),
-    );
-    expect(deployScript.indexOf("cutover_started=true")).toBeLessThan(
-      deployScript.indexOf("sudo mkdir -p"),
-    );
-  });
-
-  test("host publish includes Tailscale IPv4; health requires loopback and that address", async () => {
-    const workflow = await deployWorkflow();
-    const compose = await Bun.file(
-      new URL("deploy/container/compose.example.yml", root),
+  test("release and runbook copy preserve the publish/cutover boundary", async () => {
+    const releaseProcess = await Bun.file(
+      new URL("RELEASE_PROCESS.md", root),
     ).text();
-    const resolve = workflow.slice(
-      workflow.indexOf("- name: Resolve health URLs"),
-      workflow.indexOf("- name: Wait for GHCR publish"),
-    );
-    expect(resolve).toContain("http://127.0.0.1:10100/healthz");
-    expect(resolve).toContain("tailscale ip -4");
-    expect(resolve).toContain('urls="$urls http://${ts_ip}:10100/healthz"');
-    expect(resolve).toContain("OPENCODEX_BIND_IP=$ts_ip");
-    expect(workflow).toContain(
-      "printf 'OPENCODEX_BIND_IP=%s\\n' \"$OPENCODEX_BIND_IP\"",
-    );
-    expect(workflow).not.toContain("OPENCODEX_BIND_IP=127.0.0.1");
-    expect(workflow).not.toContain("100.109.39.86");
-    expect(workflow).toContain(
-      "OCX_HEALTH_URLS must include loopback and Tailscale",
-    );
-    expect(workflow).toContain('read -r -a health_urls <<< "$OCX_HEALTH_URLS"');
-    expect(workflow).not.toContain("set -- $OCX_HEALTH_URLS");
-    expect(workflow).toContain(
-      "docker inspect opencodex-opencodex-1 --format 'Status={{.State.Status}} Exit={{.State.ExitCode}} Error={{.State.Error}}'",
-    );
-    expect(compose).toContain('"127.0.0.1:10100:10100"');
-    expect(compose).toContain(
-      "${OPENCODEX_BIND_IP:?set the host Tailscale IPv4}:10100:10100",
-    );
-  });
+    const containerReadme = await Bun.file(
+      new URL("deploy/container/README.md", root),
+    ).text();
+    const publishOnTag = await Bun.file(
+      new URL(".github/workflows/publish-on-tag.yml", root),
+    ).text();
 
-  test("rollback verifies the exact pre-deploy runtime health contract", async () => {
-    const workflow = await deployWorkflow();
-    const capture = workflow.slice(
-      workflow.indexOf("- name: Capture pre-deploy runtime state"),
-      workflow.indexOf("- name: Resolve health URLs"),
+    expect(releaseProcess).toContain(
+      "leave the `deploy` input at its default `false`",
     );
-    const rollback = workflow.slice(
-      workflow.indexOf("- name: Rollback on failure"),
-      workflow.indexOf("- name: Log out of GHCR"),
+    expect(releaseProcess).toContain(
+      "Runtime cutover is intentionally not part of release publication",
     );
-    expect(capture).toContain('echo "health_urls=${prev_health_urls}"');
-    expect(capture).toContain("http://127.0.0.1:10100/healthz");
-    expect(capture).toContain("http://${ts_ip}:10100/healthz");
-    expect(capture).toContain(
-      "bun runtime is active but no healthy pre-deploy endpoint was captured",
-    );
-    expect(capture).toContain("discovery_deadline=$((SECONDS + 10))");
-    expect(capture).toContain("for attempt in 1 2 3 4 5");
-    expect(capture).toContain(
-      "no discoverable Tailscale IPv4 while capturing pre-deploy health",
-    );
-    expect(rollback).toContain(
-      "PREV_HEALTH_URLS: ${{ steps.prev.outputs.health_urls }}",
-    );
-    expect(rollback).toContain('urls="$PREV_HEALTH_URLS"');
-    expect(rollback).toContain('read -r -a rollback_urls <<< "$urls"');
-    expect(rollback).toContain(
-      "no pre-deploy healthy endpoint was captured for rollback verification",
-    );
-    expect(rollback).toContain("sudo docker rm -f opencodex-opencodex-1");
-    expect(rollback).toContain(
-      "port 10100 still bound before restoring the previous runtime",
-    );
-    expect(rollback).toContain('sudo docker image inspect "$prev_image"');
-    expect(rollback).toContain('--entrypoint /usr/bin/id "$prev_image" -u');
-    expect(rollback).toContain('--entrypoint /usr/bin/id "$prev_image" -g');
-    expect(rollback).toContain(
-      'sudo chown -R "$prev_uid:$prev_gid" "$STATE_DIR"',
-    );
-    expect(rollback).toContain('sudo chown "root:${prev_gid}" "$token_file"');
-    expect(rollback).toContain('sudo chmod 0640 "$token_file"');
-    expect(rollback).toContain('"0:${prev_gid}:640"');
-    expect(rollback).toContain('--user "${prev_uid}:${prev_gid}"');
-    expect(rollback).toContain(
-      "previous runtime cannot read the constrained API token during rollback",
-    );
-    expect(rollback).toContain(
-      "PREV_TOKEN_OWNER: ${{ steps.deploy.outputs.previous_token_owner }}",
-    );
-    expect(rollback).toContain(
-      "PREV_TOKEN_MODE: ${{ steps.deploy.outputs.previous_token_mode }}",
-    );
-    expect(rollback).toContain('sudo chown "$PREV_TOKEN_OWNER" "$token_file"');
-    expect(rollback).toContain('sudo chmod "$PREV_TOKEN_MODE" "$token_file"');
-    expect(rollback.indexOf('sudo chmod "$PREV_TOKEN_MODE"')).toBeLessThan(
-      rollback.indexOf('sudo cp "$unit_backup"'),
-    );
-    expect(rollback).toContain(
-      "could not resolve previous container uid/gid for rollback",
-    );
-    expect(rollback).not.toContain("logs --tail 120");
-    expect(rollback).not.toContain(
-      "OCX_HEALTH_URLS must include loopback and Tailscale",
-    );
-    expect(rollback).toContain(
-      "BUN_RUNTIME: ${{ steps.prev.outputs.bun_runtime }}",
-    );
-    expect(rollback.indexOf("BUN_RUNTIME:")).toBeLessThan(
-      rollback.indexOf('elif [ -n "$prev_image" ]'),
-    );
-    expect(rollback).toContain('[ "$bun_runtime" = "true" ]');
-    expect(rollback).toContain("bun runtime detected but unit backup missing");
-    expect(rollback).not.toContain(
-      '[ "$bun_runtime" = "true" ] && [ -n "$unit_backup" ]',
-    );
-    expect(rollback).toContain(
-      'echo "rolled back and healthy with GUI via $urls"',
-    );
-    expect(rollback).toContain("all_ok=1");
-    expect(workflow).toContain(
-      'sudo docker compose --env-file "$COMPOSE_ENV" -f "$COMPOSE_DIR/docker-compose.yml" down',
-    );
-    expect(workflow).not.toContain(
-      'sudo docker compose -f "$COMPOSE_DIR/docker-compose.yml" down',
-    );
-  });
+    expect(releaseProcess).not.toContain("gh workflow run deploy.yml");
 
-  test("health gate binds the visible runtime version and gitSha to the release tag and records deployment evidence", async () => {
-    const workflow = await deployWorkflow();
-    const health = (await deploySteps()).find((step) => step.id === "health");
-    expect(health).toBeDefined();
-    expect(health!.env).toMatchObject({
-      TAG_SHA: "${{ steps.verify.outputs.tag_sha }}",
-      TAG_NAME: "${{ steps.ref.outputs.tag }}",
-      PINNED_IMAGE: "${{ steps.image.outputs.ref }}",
-    });
-    const run = health!.run ?? "";
-    expect(run).toContain('TAG_VERSION="${TAG_NAME#v}"');
-    // /healthz.version is what the GUI shows top-left; it must equal the tag.
-    expect(run).toContain(
-      'b.get("gitSha") == os.environ["TAG_SHA"] and b.get("version") == os.environ["TAG_VERSION"]',
-    );
-    expect(run).toContain("### OpenCodex deployment");
-    expect(run).toContain("- release tag: \\`${TAG_NAME}\\`");
-    expect(run).toContain("- source sha: \\`${TAG_SHA}\\`");
-    expect(run).toContain("- image: \\`${PINNED_IMAGE}\\`");
-    expect(run).toContain('>> "$GITHUB_STEP_SUMMARY"');
-    expect(run).toContain("version+gitSha-verified healthy within 60s");
-    expect(run).not.toContain("${{");
-    // Rollback still verifies the previous runtime, not the new tag's version.
-    const rollback = workflow.slice(
-      workflow.indexOf("- name: Rollback on failure"),
-      workflow.indexOf("- name: Log out of GHCR"),
-    );
-    expect(rollback).not.toContain("TAG_VERSION");
-  });
+    expect(containerReadme).toContain("retired fail-closed");
+    expect(containerReadme).toContain("separate operation");
+    expect(containerReadme).not.toContain("OPENCODEX_IMAGE");
 
-  test("previous digest fallback inspects the running image, not the container", async () => {
-    const workflow = await deployWorkflow();
-    expect(workflow).toContain("docker inspect --format='{{.Image}}'");
-    expect(workflow).toContain(
-      "docker image inspect --format='{{index .RepoDigests 0}}'",
+    expect(publishOnTag).toContain("Publication does not deploy a runtime");
+    expect(publishOnTag).toContain(
+      "Runtime cutover is a separately verified operation",
     );
-    expect(workflow).not.toContain(
-      "docker inspect --format='{{index .RepoDigests 0}}'",
-    );
+    expect(publishOnTag).not.toContain("DEPLOY_HOST");
+    expect(publishOnTag).not.toContain("DEPLOY_SSH_KEY");
   });
 });

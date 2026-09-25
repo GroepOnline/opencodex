@@ -95,7 +95,7 @@ describe("local/dev complete path", () => {
     expect(compose).not.toContain("OIDC_CLIENT_SECRET_FILE:?");
   });
 
-  test("systemd unit keeps the compose place lock and documents 1.4.2 / 529bb6a9", async () => {
+  test("systemd unit keeps the compose place lock and documents 1.5.0 / f5cc348b7", async () => {
     const unit = await readRepo("deploy/container/opencodex-proxy.service");
     expect(unit).toContain(
       "ExecStart=/usr/bin/docker compose up -d --remove-orphans",
@@ -106,8 +106,8 @@ describe("local/dev complete path", () => {
     expect(unit).toContain(
       "After=docker.service network-online.target tailscaled.service",
     );
-    expect(unit).toContain("1.4.2");
-    expect(unit).toContain("529bb6a9c0ab2650f883e88c9373002ed1eb14f7");
+    expect(unit).toContain("1.5.0");
+    expect(unit).toContain("f5cc348b7f0b7a48a9241cac17714399c2777c0f");
     expect(unit).toContain("GET :10100/healthz");
   });
 
@@ -125,7 +125,7 @@ describe("local/dev complete path", () => {
       "OIDC_REDIRECT_URI=http://127.0.0.1:10100/oauth/callback",
     );
     expect(envExample).toContain("https://ocx.chefgroep.online/oauth/callback");
-    expect(envExample).toContain("529bb6a9c0ab2650f883e88c9373002ed1eb14f7");
+    expect(envExample).toContain("f5cc348b7f0b7a48a9241cac17714399c2777c0f");
     expect(envExample).not.toMatch(/OIDC_CLIENT_SECRET=/);
     expect(envExample).not.toMatch(/\bsk-[A-Za-z0-9_-]{20,}\b/);
     expect(envExample).not.toMatch(/\bghp_[A-Za-z0-9_]{20,}\b/);
@@ -230,7 +230,7 @@ describe("local/dev complete path", () => {
     expect(checklist).toContain("GET /oauth/login");
     expect(checklist).toContain("Do not apply Cloudflare DNS");
     expect(checklist).toContain("ChefFactory");
-    expect(checklist).toContain("1.4.2");
+    expect(checklist).toContain("1.5.0");
     expect(checklist).toContain(":10100");
   });
 });

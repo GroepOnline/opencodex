@@ -29,7 +29,7 @@ on:
         required: false
         type: string
       deploy:
-        description: "After the GHCR image is dispatched, also dispatch deploy.yml for this tag (live cutover on chef-control-az-01). Leave false unless the cutover is coordinated."
+        description: "Legacy deploy.yml targets a permanently retired host and must remain false. Runtime cutover uses a separately verified bc-scan-2 package deployment contract."
         required: false
         type: boolean
         default: false
@@ -60,6 +60,16 @@ jobs:
     runs-on: [self-hosted, Linux, X64, jan]
     timeout-minutes: 15
     steps:
+      - name: Reject retired runtime deploy request
+        env:
+          DEPLOY: ${{ inputs.deploy }}
+        run: |
+          if [ "$DEPLOY" = "true" ]; then
+            echo "::error::deploy=true is disabled because deploy.yml targets retired chef-control-az-01."
+            echo "::error::Use the separately verified bc-scan-2 package deployment contract."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -594,9 +604,9 @@ jobs:
           git push origin HEAD
 
   # The release tag above is pushed with GITHUB_TOKEN. GitHub never starts `push`
-  # runs for refs created by that token, so container.yml (GHCR image) and
-  # deploy.yml (live rollout) would otherwise wait for a human dispatch. This job
-  # closes that gap with explicit workflow_dispatch calls on the exact tag.
+  # runs for refs created by that token, so container.yml (GHCR image) would
+  # otherwise wait for a human dispatch. This job dispatches it explicitly on the
+  # exact tag. Runtime cutover is intentionally absent.
   # Job-scoped actions:write; the publish job keeps actions:read.
   rollout:
     needs: publish
@@ -605,7 +615,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      actions: write # gh workflow run container.yml / deploy.yml
+      actions: write # gh workflow run container.yml
     steps:
       - name: Dispatch GHCR image publish on the release tag
         env:
@@ -631,22 +641,16 @@ jobs:
             echo "- GHCR image: container.yml dispatched on \`refs/tags/${release_tag}\` (tags: sha, ${release_tag}, ${RELEASE_VERSION})"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Dispatch live deploy (opt-in)
+      - name: Refuse retired live deploy (opt-in)
         env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ inputs.version }}
           DEPLOY: ${{ inputs.deploy }}
         run: |
           set -euo pipefail
-          release_tag="v${RELEASE_VERSION}"
           if [ "$DEPLOY" != "true" ]; then
-            echo "::notice::deploy=false — live rollout not dispatched. Run deploy.yml with ref=${release_tag} when the cutover is coordinated."
-            echo "- live deploy: not dispatched (deploy=false); \`gh workflow run deploy.yml -f ref=${release_tag}\` when coordinated" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::deploy=false — runtime cutover is not part of this release."
+            echo "- runtime cutover: not dispatched; legacy Azure deployment is retired" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          # deploy.yml verifies the tag sits on origin/main, waits for the
-          # container.yml publish job on the peeled tag SHA and health-gates
-          # version + gitSha on the host before declaring the cutover done.
-          gh workflow run deploy.yml --ref main -f "ref=${release_tag}"
-          echo "dispatched deploy.yml for ${release_tag}"
-          echo "- live deploy: deploy.yml dispatched with ref=${release_tag}" >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::deploy=true is disabled because deploy.yml targets retired chef-control-az-01."
+          echo "::error::Use the separately verified bc-scan-2 package deployment contract."
+          exit 1
