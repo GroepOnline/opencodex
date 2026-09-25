@@ -113,8 +113,8 @@ Lucide React is exact gepind op 1.41.0; geen nieuwe transitieve runtimepackages.
 
 ### Geometrie en responsiviteit (actueel)
 
-De catalogusslice heeft een werkvlak tot 1800px en een desktopheader van minimaal
-64px met merk, globale navigatie en status op één regel. Onder 1280px krijgt de
+De catalogusslice heeft een werkvlak tot 1400px en een desktopheader van minimaal
+56px met merk, globale navigatie en status op één regel. Onder 1280px krijgt de
 navigatie een eigen regel. De modellenwerkplek gebruikt een vergelijkbare lijst
 en een detailpaneel van 320–400px met een vaste scheidingslijn. Geen drie smalle
 zijbalken of een mini-tabel in een grote kaart. Links uitlijnen, model-id's leesbaar
@@ -124,6 +124,20 @@ Controls mogen compact zijn op desktop, maar primaire touch-acties blijven minim
 44px. Mobiel toont lijst of detail met een expliciete terugactie en focusherstel,
 niet een verkleinde desktop. Bestaande hashes en bestemmingen blijven bereikbaar.
 Geen paginabrede horizontale overflow of acties die alleen op hover bestaan.
+
+### Afwerking met Auth als kwaliteitsreferentie — 2026-09-25
+
+Auth is de referentie voor rustige groepering en consistente uitlijning, niet voor
+een ander palet of een decoratief portal in de operatorwerkplek. Signaal blijft
+ongewijzigd. `workspace-orbit.css` bezit de shellgeometrie; de systeemlaag levert
+`--page-gutter` en `--section-gap` via bestaande spacingtokens zonder de mobiele
+padding opnieuw te overschrijven. Navigatie houdt 44px touchhoogte; mobiele
+subtabs kunnen over meerdere regels lopen. Combos deelt dezelfde mobiele gutter.
+
+De skip-link verplaatst focus en scroll zonder de routehash of geschiedenis te
+wijzigen. Gedragstests en CSS-contracttests bewaken die grenzen. Die tests zijn
+geen pixelbewijs: de volledige licht/donker-, mobiel- en reduced-motionbeoordeling
+blijft open totdat een toegestane renderer echte schermafbeeldingen levert.
 
 ### Toestanden en motion
 

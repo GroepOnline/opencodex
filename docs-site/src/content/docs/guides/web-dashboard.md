@@ -87,6 +87,10 @@ may apply instead.
 
 ### Keyboard navigation
 
+Use the first focusable link, **Skip to content**, to bypass the main navigation.
+Focus moves to the current page's content without changing the active route or
+adding a browser-history entry.
+
 In the provider catalog and combo editor, press **Tab** to focus the selected tab,
 then **Left/Right Arrow** to select an adjacent tab (wrapping at either end).
 **Home/End** select the first/last tab. Selection moves focus and opens that panel;

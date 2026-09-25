@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState, type Ref } from "react";
 import { useKeyedClientResource } from "./client-resource";
 import ErrorBoundary from "./components/ErrorBoundary";
 import SettingsSheet from "./components/SettingsSheet";
+import SkipLink from "./components/SkipLink";
 import {
   IconAlert,
   IconCheck,
@@ -227,9 +228,7 @@ function DashboardShell({
     <MotionConfig reducedMotion="user">
       <LazyMotion features={domMax} strict>
         <div className="app ocx-workspace">
-          <a className="skip-link" href="#main-content">
-            {t("app.skipToContent")}
-          </a>
+          <SkipLink targetId="main-content">{t("app.skipToContent")}</SkipLink>
           <header className="topbar">
             {brand}
             <WorkspaceNavigation

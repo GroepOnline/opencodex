@@ -15,7 +15,7 @@
   gap: var(--space-6);
   min-height: var(--workspace-header);
   height: auto;
-  padding: 0 var(--space-6);
+  padding: 0 var(--page-gutter);
   background: var(--surface);
   border-bottom: 1px solid var(--border-soft);
 }
@@ -99,13 +99,12 @@
 }
 .ocx-workspace .main-inner {
   max-width: var(--workspace-measure);
-  padding: var(--space-6) clamp(var(--space-5), 2.5vw, var(--space-12))
-    var(--space-10);
+  padding: var(--section-gap) var(--page-gutter) var(--space-16);
 }
 .ocx-workspace .main-inner.main-inner--combos {
   min-height: calc(100dvh - var(--workspace-header));
   height: auto;
-  padding: var(--space-4);
+  padding: var(--space-4) var(--page-gutter) var(--space-6);
   overflow: visible;
 }
 .ocx-workspace .sub-tabs {
@@ -223,7 +222,7 @@
   }
   .ocx-workspace .topbar {
     height: auto;
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-2) var(--page-gutter);
   }
   .ocx-workspace .workspace-navigation {
     display: grid;
@@ -241,8 +240,9 @@
     white-space: normal;
     line-height: var(--leading-tight);
   }
-  .ocx-workspace .main-inner {
-    padding: var(--space-4);
+  .ocx-workspace .main-inner,
+  .ocx-workspace .main-inner.main-inner--combos {
+    padding: var(--space-4) var(--page-gutter) var(--space-10);
   }
   .ocx-workspace .sub-tabs {
     margin-bottom: var(--space-5);
