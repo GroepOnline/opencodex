@@ -48,16 +48,20 @@ export function isUnknownTrafficLabel(value: string | undefined): boolean {
  * @param entry - The traffic record containing provider and model identifiers
  * @returns The provider/model label, the model label when the provider is unknown, or `null` when no usable model is available
  */
-export function trafficProviderModelLabel(entry: TrafficLogEntry): string | null {
-  const model = entry.resolvedModel
-    ?? (isUnknownTrafficLabel(entry.model) ? entry.requestedModel : entry.model);
+export function trafficProviderModelLabel(
+  entry: TrafficLogEntry,
+): string | null {
+  const model =
+    entry.resolvedModel ??
+    (isUnknownTrafficLabel(entry.model) ? entry.requestedModel : entry.model);
   if (isUnknownTrafficLabel(model)) return null;
   const provider = entry.provider?.trim();
   const trimmedModel = model!.trim();
   if (isUnknownTrafficLabel(provider)) return trimmedModel;
   // The model id may already carry its provider namespace (e.g. combo rows log `combo/<id>`);
   // don't prepend the provider again.
-  if (trimmedModel === provider || trimmedModel.startsWith(`${provider}/`)) return trimmedModel;
+  if (trimmedModel === provider || trimmedModel.startsWith(`${provider}/`))
+    return trimmedModel;
   return `${provider}/${trimmedModel}`;
 }
 
@@ -75,7 +79,8 @@ export function trafficPrincipalLabel(entry: TrafficLogEntry, t: TFn): string {
   const cut = provider!.lastIndexOf("-");
   if (cut > 0) {
     const suffix = provider!.slice(cut + 1);
-    if (suffix === "main" || CODEX_ACCOUNT_SUFFIX_RE.test(suffix)) return suffix;
+    if (suffix === "main" || CODEX_ACCOUNT_SUFFIX_RE.test(suffix))
+      return suffix;
   }
   return provider!;
 }
@@ -87,7 +92,10 @@ export function trafficPrincipalLabel(entry: TrafficLogEntry, t: TFn): string {
  * @param dayKey - The day to match in `YYYY-MM-DD` format
  * @returns The number of entries recorded on the specified day
  */
-export function countRequestsOnDay(logs: readonly TrafficLogEntry[], dayKey: string): number {
+export function countRequestsOnDay(
+  logs: readonly TrafficLogEntry[],
+  dayKey: string,
+): number {
   let count = 0;
   for (const entry of logs) {
     if (localCalendarDayKey(new Date(entry.timestamp)) === dayKey) count += 1;
@@ -108,7 +116,8 @@ export function requestsTodayCount(
 ): number {
   const key = localCalendarDayKey();
   const liveCount = countRequestsOnDay(logs, key);
-  const summaryCount = summaryDays?.find(day => day.date === key)?.requests ?? 0;
+  const summaryCount =
+    summaryDays?.find((day) => day.date === key)?.requests ?? 0;
   // The live endpoint is a bounded tail; the persisted summary is authoritative.
   return Math.max(liveCount, summaryCount);
 }
@@ -123,9 +132,18 @@ export function requestsTodayCount(
  */
 export function trafficStatusLabel(
   entry: TrafficLogEntry,
-  t: (key: "vk.stampDone" | "vk.stampError" | "vk.stampBusy") => string,
+  t: (
+    key:
+      | "vk.stampDone"
+      | "vk.stampError"
+      | "vk.stampBusy"
+      | "vk.stampRateLimited"
+      | "vk.stampPayment",
+  ) => string,
 ): string {
   if (entry.status >= 200 && entry.status < 300) return t("vk.stampDone");
+  if (entry.status === 429) return t("vk.stampRateLimited");
+  if (entry.status === 402) return t("vk.stampPayment");
   if (entry.status === 0) return t("vk.stampError");
   if (entry.status >= 400) return t("vk.stampError");
   return t("vk.stampBusy");
@@ -135,10 +153,11 @@ export function trafficStatusLabel(
  * Determines the CSS class for a traffic entry's status.
  *
  * @param entry - The traffic entry whose status determines the class
- * @returns A success class for 2xx statuses, an error class for HTTP errors or status `0`, or an empty string otherwise
+ * @returns A success class for 2xx statuses, hold for 429, error for other failures
  */
 export function trafficStatusClass(entry: TrafficLogEntry): string {
   if (entry.status >= 200 && entry.status < 300) return "traffic-status--ok";
+  if (entry.status === 429) return "traffic-status--hold";
   if (entry.status >= 400 || entry.status === 0) return "traffic-status--err";
   return "";
 }

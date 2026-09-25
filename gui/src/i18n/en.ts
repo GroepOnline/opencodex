@@ -1,6 +1,17 @@
 // English — source of truth. Its keys define the TKey type; nl overrides a subset (compile-checked).
 // Strings with {cmd} render a <code> chip via <Trans>; {var} are plain interpolations.
 export const en = {
+  "debug.settingsLoadError": "Could not load debug settings.",
+  "debug.settingsRefreshError":
+    "Could not refresh debug settings. Showing the last loaded settings.",
+  "debug.claudeInbound.loading": "Loading Claude inbound requests…",
+  "debug.claudeInbound.loadError": "Could not load Claude inbound requests.",
+  "debug.claudeInbound.refreshError":
+    "Could not refresh Claude inbound requests. Showing the last loaded result.",
+  "debug.logsLoading": "Loading debug logs…",
+  "debug.logsLoadError": "Could not load debug logs.",
+  "debug.logsRefreshError":
+    "Could not refresh debug logs. Showing the last loaded result.",
   "app.pageTitle": "{page} | opencodex",
   // sidebar / nav / common
   "nav.codexAuth": "Codex Auth",
@@ -49,6 +60,8 @@ export const en = {
   "common.retry": "Retry",
   "common.unavailable": "—",
   "app.logoAria": "opencodex logo",
+  "app.skipToContent": "Skip to content",
+  "session.signedInAs": "Signed in as {email}",
   "app.claudeOn": "Claude ON",
   "app.claudeOff": "Claude OFF",
   "theme.label": "Theme",
@@ -177,7 +190,7 @@ export const en = {
   "dash.volume30d": "Volume (30d)",
   "dash.economics": "Economics",
   "dash.reliability": "Reliability",
-  "dash.http429": "HTTP 429",
+  "dash.http429": "Rate limited (429)",
   "dash.http50x": "HTTP 50x",
   "dash.cooldown": "Cooldown",
   "dash.cooldownHint": "{count} provider(s) in cooldown",
@@ -1240,8 +1253,8 @@ export const en = {
   "pws.doctorCopyUnavailable": "Clipboard unavailable",
   "pws.healthCooldownHint":
     "Wait until the cooldown ends. Do not probe this account yet.",
-  "pws.healthLabel.rateLimited": "Rate limited",
-  "pws.healthLabel.quotaLimited": "Quota limited",
+  "pws.healthLabel.rateLimited": "Rate limited (429)",
+  "pws.healthLabel.quotaLimited": "Quota / payment (402)",
   "pws.healthLabel.reauthRequired": "Reauthentication required",
   "pws.healthLabel.refreshFailed": "Refresh failed",
   "pws.healthLabel.metadataMismatch": "Metadata mismatch",
@@ -1302,6 +1315,9 @@ export const en = {
   "pws.capCooldown.disabled": "Temporarily disabled until the limit resets.",
   "pws.capCooldown.paused": "Routing for this provider is paused until then.",
   "pws.capCooldown.badge": "Capped",
+  "pws.capCooldown.paymentBadge": "Payment needed (402)",
+  "pws.capCooldown.paymentBanner":
+    "{provider} needs billing or credits. {reset}",
   "pws.attention.capCooldown": "Weekly/inference limit — {reset}",
   "pws.allProviders": "Provider Overview",
   "pws.enabledLabel": "Enabled",
@@ -2037,7 +2053,7 @@ export const en = {
   "sys.stopConfirmTitle": "Stop the proxy?",
   "sys.stopConfirmDesc": "Codex and Cursor will lose their connection.",
   "sys.keepRunning": "Keep running",
-  "vk.subtitle": "What flows through the proxy — recent requests, live.",
+  "vk.subtitle": "What flows through the proxy. Recent requests, live.",
   "vk.statsAria": "Traffic figures",
   "vk.tokens30d": "tokens (30d)",
   "vk.requestsToday": "requests today",
@@ -2068,6 +2084,8 @@ export const en = {
   "vk.stampDone": "Done",
   "vk.stampError": "Error",
   "vk.stampBusy": "Busy",
+  "vk.stampRateLimited": "Rate limited (429)",
+  "vk.stampPayment": "Payment needed (402)",
   "vk.detailError": "error: {code}",
   "vk.detailInOut": "in {in} · out {out}",
   "vk.rowTokens": "{n} tok",

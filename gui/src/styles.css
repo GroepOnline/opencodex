@@ -155,6 +155,8 @@
   --control-md: 34px;
   --control-lg: 40px;
   --control-touch: 44px;
+  --workspace-header: 56px;
+  --radius-group: 12px;
 
   --icon-sm: 14px;
   --icon-md: 16px;
@@ -1632,9 +1634,13 @@ select.input {
   background: currentColor;
   opacity: 0.4;
 }
-.spin.go::before {
+.spin.go::before,
+.spin.busy::before {
   animation: ocx-rippleflow 1.1s var(--ease-out) 1;
   opacity: 0.9;
+}
+.spin.busy::before {
+  animation-iteration-count: infinite;
 }
 @keyframes ocx-rippleflow {
   0% {

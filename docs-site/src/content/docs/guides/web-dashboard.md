@@ -87,11 +87,37 @@ may apply instead.
 
 ### Keyboard navigation
 
+Use the first focusable link, **Skip to content**, to bypass the main navigation.
+Focus moves to the current page's content without changing the active route or
+adding a browser-history entry.
+
 In the provider catalog and combo editor, press **Tab** to focus the selected tab,
 then **Left/Right Arrow** to select an adjacent tab (wrapping at either end).
 **Home/End** select the first/last tab. Selection moves focus and opens that panel;
 **Tab** continues to the next control. Provider settings retain their existing
 unsaved-change confirmation when switching tabs.
+
+Provider confirmation dialogs keep keyboard focus inside, use **Escape** to cancel,
+and return focus to the opening control (or a nearby surviving action if that
+control was removed). Add provider follows the same focus rules; an open OAuth
+warning or nested control handles its own keyboard interaction first.
+
+### Loading and recovery
+
+Usage, traffic, and Debug distinguish pending requests and failures from a
+successful empty result. Unknown totals are not presented as zero. A failed
+refresh keeps the last successful readings for the same API and query visible
+alongside an error; **Retry** reloads the affected resource. Changing the API,
+usage range, or usage surface does not reuse another query's readings.
+
+Dashboard usage and recent traffic load independently, so one failing source does
+not hide the other. Traffic summary, response-cache statistics, and logs also have
+separate loading and error states. Debug keeps settings, inbound requests, and log
+streams independent, and waits for a slow log request before polling again.
+
+Catalog load failures offer **Retry** without clearing an already loaded catalog
+or its selected model. Combo model-ID copying reports clipboard failure as well
+as success; changing the combo does not inherit an earlier copy result.
 
 ### Sub-navigation and motion
 

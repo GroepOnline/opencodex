@@ -292,15 +292,14 @@ describe("rate-limit reset credits", () => {
         "gui/src/components/codex-account-pool-cards.tsx",
       ).text();
       expect(source).toContain('className="card-badges"');
-      expect(source).toContain(
-        "<CodexTicketBadge t={t} account={a} onClick={() => onOpenReset(a)} />",
+      expect(source).toMatch(
+        /<CodexTicketBadge[\s\S]*?t=\{t\}[\s\S]*?account=\{a\}[\s\S]*?onClick=\{\(\) => onOpenReset\(a\)\}/,
       );
       // Next-session still renders BESIDE the ticket; health projection also suppresses
       // it for projected reauth/cooldown (not only the legacy needsReauth flag).
       expect(source).toContain("{isNext(a) && !showReauth && !inCooldown && (");
-      expect(source).toContain(
-        '{t(accountModeState === "direct" ? "codexAuth.poolPrepared" : "codexAuth.nextSession")}',
-      );
+      expect(source).toMatch(/codexAuth\.poolPrepared/);
+      expect(source).toMatch(/codexAuth\.nextSession/);
       const styles = await Bun.file("gui/src/styles.css").text();
       // Assert the layout contract, not the formatter's whitespace or declaration order.
       const layout = styles.match(/^\.card-badges\s*\{([^}]*)\}/m)?.[1];

@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useT } from "../i18n/shared";
-import { IconCheck, IconChevron, IconServer } from "../icons";
-import MatrixMark from "../components/MatrixMark";
+import { IconCheck, IconChevron, IconServer, IconBoxes } from "../icons";
 import { Button } from "../components/primitives/button";
 import { Badge } from "../components/primitives/badge";
 import {
@@ -281,7 +280,7 @@ export default function ModelInspector({
         <Empty className="model-inspector-empty">
           <EmptyHeader>
             <EmptyMedia>
-              <MatrixMark />
+              <IconBoxes size={24} aria-hidden />
             </EmptyMedia>
             <EmptyTitle>{t("models.workspace.chooseModel")}</EmptyTitle>
             <EmptyDescription>

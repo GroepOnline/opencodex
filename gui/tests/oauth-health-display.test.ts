@@ -26,12 +26,16 @@ const t: TFn = ((key: string, vars?: Record<string, string | number>) => {
 describe("oauth health badge helpers", () => {
   test("maps statuses to badge tones and classes", () => {
     expect(oauthHealthBadgeTone("healthy")).toBe("ok");
-    expect(oauthHealthBadgeTone("cooldown")).toBe("muted");
+    expect(oauthHealthBadgeTone("cooldown")).toBe("warn");
+    expect(oauthHealthBadgeTone("cooldown", "rate_limit")).toBe("warn");
+    expect(oauthHealthBadgeTone("cooldown", "quota")).toBe("err");
+    expect(oauthHealthBadgeTone("cooldown", "forbidden")).toBe("err");
     expect(oauthHealthBadgeTone("reauth_required")).toBe("warn");
     expect(oauthHealthBadgeTone("warning")).toBe("warn");
     expect(oauthHealthBadgeClass("healthy")).toBe("badge badge-green");
     expect(oauthHealthBadgeClass("reauth_required")).toBe("badge badge-amber");
-    expect(oauthHealthBadgeClass("cooldown")).toBe("badge badge-muted");
+    expect(oauthHealthBadgeClass("cooldown")).toBe("badge badge-amber");
+    expect(oauthHealthBadgeClass("cooldown", "quota")).toBe("badge badge-red");
   });
 
   test("action gates: reauth and doctor, not during cooldown probe", () => {
@@ -49,28 +53,59 @@ describe("oauth health badge helpers", () => {
   test("accountNeedsReauth combines legacy flag with health-only reauth", () => {
     expect(accountNeedsReauth(undefined)).toBe(false);
     expect(accountNeedsReauth({ needsReauth: true })).toBe(true);
-    expect(accountNeedsReauth({ health: { status: "reauth_required" } })).toBe(true);
-    expect(accountNeedsReauth({ needsReauth: false, health: { status: "healthy" } })).toBe(false);
+    expect(accountNeedsReauth({ health: { status: "reauth_required" } })).toBe(
+      true,
+    );
+    expect(
+      accountNeedsReauth({ needsReauth: false, health: { status: "healthy" } }),
+    ).toBe(false);
     expect(accountNeedsReauth({ health: { status: "cooldown" } })).toBe(false);
     expect(accountNeedsReauth({ health: { status: "warning" } })).toBe(false);
   });
 
   test("localizes labels and summaries from structured health", () => {
     expect(formatOAuthHealthLabel(t, { status: "healthy" })).toBeNull();
-    expect(formatOAuthHealthLabel(t, { status: "cooldown", reason: "rate_limit", until: "2026-07-26T00:00:00.000Z" }))
-      .toBe("pws.healthLabel.rateLimited");
-    expect(formatOAuthHealthLabel(t, { status: "cooldown", reason: "quota", until: "2026-07-26T00:00:00.000Z" }))
-      .toBe("pws.healthLabel.quotaLimited");
-    expect(formatOAuthHealthLabel(t, { status: "warning", reason: "refresh_conflict" }))
-      .toBe("pws.healthLabel.credentialConflict");
-    expect(formatOAuthHealthLabel(t, { status: "disabled", reason: "expired" }))
-      .toBe("pws.healthLabel.expired");
-    expect(formatOAuthHealthSummary(t, "anthropic", "acct_abcd1234", { status: "disabled", reason: "expired" }))
-      .toBe("pws.healthSummary.expired");
-    expect(formatOAuthHealthSummary(t, "xai", "acct_abcd1234", { status: "reauth_required", reason: "refresh_failed" }))
-      .toBe("pws.healthSummary.reauthRequired");
-    expect(formatOAuthHealthSummary(t, "xai", "acct_abcd1234", { status: "warning", reason: "stale_credentials" }))
-      .toContain("pws.healthSummary.staleCredentials");
+    expect(
+      formatOAuthHealthLabel(t, {
+        status: "cooldown",
+        reason: "rate_limit",
+        until: "2026-07-26T00:00:00.000Z",
+      }),
+    ).toBe("pws.healthLabel.rateLimited");
+    expect(
+      formatOAuthHealthLabel(t, {
+        status: "cooldown",
+        reason: "quota",
+        until: "2026-07-26T00:00:00.000Z",
+      }),
+    ).toBe("pws.healthLabel.quotaLimited");
+    expect(
+      formatOAuthHealthLabel(t, {
+        status: "warning",
+        reason: "refresh_conflict",
+      }),
+    ).toBe("pws.healthLabel.credentialConflict");
+    expect(
+      formatOAuthHealthLabel(t, { status: "disabled", reason: "expired" }),
+    ).toBe("pws.healthLabel.expired");
+    expect(
+      formatOAuthHealthSummary(t, "anthropic", "acct_abcd1234", {
+        status: "disabled",
+        reason: "expired",
+      }),
+    ).toBe("pws.healthSummary.expired");
+    expect(
+      formatOAuthHealthSummary(t, "xai", "acct_abcd1234", {
+        status: "reauth_required",
+        reason: "refresh_failed",
+      }),
+    ).toBe("pws.healthSummary.reauthRequired");
+    expect(
+      formatOAuthHealthSummary(t, "xai", "acct_abcd1234", {
+        status: "warning",
+        reason: "stale_credentials",
+      }),
+    ).toContain("pws.healthSummary.staleCredentials");
   });
 
   // Scope resolution now belongs to useCopyFeedback; the label only maps an outcome.
@@ -78,18 +113,26 @@ describe("oauth health badge helpers", () => {
     expect(doctorCopyButtonLabel(t, null)).toBe("pws.copyDoctor");
     expect(doctorCopyButtonLabel(t, undefined)).toBe("pws.copyDoctor");
     expect(doctorCopyButtonLabel(t, "copied")).toBe("pws.doctorCopied");
-    expect(doctorCopyButtonLabel(t, "unavailable")).toBe("pws.doctorCopyUnavailable");
+    expect(doctorCopyButtonLabel(t, "unavailable")).toBe(
+      "pws.doctorCopyUnavailable",
+    );
   });
 
   test("copyTextToClipboard returns false when Clipboard API is missing", async () => {
     const hadClipboard = "clipboard" in navigator;
     const original = hadClipboard ? navigator.clipboard : undefined;
-    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: undefined,
+    });
     try {
       expect(await copyTextToClipboard("ocx doctor")).toBe(false);
     } finally {
       if (hadClipboard) {
-        Object.defineProperty(navigator, "clipboard", { configurable: true, value: original });
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: original,
+        });
       } else {
         // @ts-expect-error restore missing clipboard
         delete (navigator as { clipboard?: Clipboard }).clipboard;
@@ -110,7 +153,10 @@ describe("oauth health badge helpers", () => {
       expect(writeText).toHaveBeenCalledWith("ocx doctor");
     } finally {
       if (hadClipboard) {
-        Object.defineProperty(navigator, "clipboard", { configurable: true, value: original });
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: original,
+        });
       } else {
         // @ts-expect-error restore missing clipboard
         delete (navigator as { clipboard?: Clipboard }).clipboard;

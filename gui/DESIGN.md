@@ -1,21 +1,22 @@
-# OCX — productinterface in herontwerp
+# OCX — productinterface
 
-## Actuele autoriteit: expliciete redesignopdracht 2026-09-06
+## Actuele autoriteit: Signaal (Joep, 2026-09-24)
 
-Joep heeft voor OCX expliciet een volledig nieuwe identiteit gevraagd: niet de
-bestaande ChefGroep/Signaal-stijl, maar moderner, componentgedreven, met betere
-verhoudingen en meer motion. Deze sectie vervangt daarom de visuele voorschriften
-hieronder voor de nieuwe interface. De historische Signaal-beschrijving blijft
-alleen migratiecontext, niet een reden om nieuw werk terug te draaien. Andere
-ChefGroep-producten en het gedeelde design-system worden hiermee niet gewijzigd.
+Joep vroeg de frontend volledig aan te pakken. Visuele P0 is Signaal v3 in
+`GroepOnline/design-system` (`DESIGN.md`, `tokens.css`, `motion-spec.md`,
+`taste/`). Dit bestand is de surface binding: catalogus-eerst IA, bestaande
+hashes, geen parallelle identiteit.
+
+De Orbit/Manrope-opdracht van 2026-09-06 is afgewezen (inkt/mint, daarna een
+generiek blauw dashboard, sv-matrix als leeg-staat-motief). Nieuw werk volgt
+Signaal: warm off-white `#F7F6F5`, één accentblauw `#317CFF`, General Sans +
+JetBrains Mono, radius 6/10/12, ripple in plaats van spinner, Lucide stroke
+1.75. Geen glas, glow, gradients in de app-shell, bento, geneste kaarten,
+paarse mesh of terminal-als-sfeer.
+
+Andere ChefGroep-producten en het gedeelde design-system wijzigen hier niet.
 
 ### Richting en componenten
-
-Zowel de eerste inkt/mint-richting (werknaam Orbit) als de daaropvolgende blauwe
-dashboardcorrectie zijn door Joep afgewezen als generiek. De bestaande runtime is
-dus geen visueel geaccepteerd ontwerp. Blauw en paars zijn uitgesloten als merk-,
-actie-, selectie- en focusaccent voor het herontwerp; een andere accentkleur op
-dezelfde dashboardcompositie is geen oplossing. Het product blijft opencodex.
 
 De catalogusslice vertrekt vanuit het dagelijkse werk: een model vinden,
 de bijbehorende provider begrijpen en de bestaande instellingen aanpassen. Een
@@ -24,14 +25,10 @@ overzicht van zeven even grote getallen. Bestaande verkeer- en gebruiksschermen
 blijven bereikbaar; metrics verdwijnen niet, maar bepalen niet automatisch de
 hele werkinterface. Geen verzonnen routinggrafiek of nieuwe backend hiervoor.
 
-De voorgestelde basis is monochroom: wit `#ffffff`, lichtgrijs `#f1f1f1`, lijn
-`#d4d4d4`, secundaire inkt `#656565`, donker oppervlak `#262626`, inkt `#161616`.
-Dit zijn de basisrollen van de branch, geen uitgerolde productie-identiteit. Primaire acties
-gebruiken tekst/achtergrond-inversie; selectie gebruikt neutraal vlak plus gewicht
-of contour. Groen, amber en rood blijven betekenisvolle statussen met tekst,
-niet een nieuw merkpalet. Toets focus en tekstcontrast in beide thema's.
-Manrope blijft voorlopig voor interfacecopy, JetBrains Mono voor machinedata:
-een nieuwe fontdependency is niet de oplossing voor gebrekkige hiërarchie.
+Kleur, type en radius komen uit `src/styles.css` (Signaal, `light-dark()` +
+`data-style` skins `devin`/`strak`). Primaire acties gebruiken
+tekst/achtergrond-inversie. Groen, amber en rood zijn status met icoon én tekst.
+General Sans is de UI-face (self-hosted); JetBrains Mono alleen voor machinedata.
 
 ### Onderzoeksbasis en wat we niet kopiëren
 
@@ -57,21 +54,19 @@ Aanvullende referenties van Joep voor de polishlaag:
 - [Kinetics](https://kinetics.colorion.co/#library): retargetbare selectie en
   beperkte microfeedback. Geen magneetknoppen, springende cijfers of gekopieerde
   height/left-animaties; de bestaande Motion-laag blijft eigenaar van navigatie.
-- [sv-matrix](https://sv-matrix.vercel.app/): een 5×5 midden-naar-buiten motief in
-  het lege detailpaneel. `MatrixMark` is een eigen React/SVG-implementatie van het
-  motief, geen Svelte-runtime of overgenomen upstreamcomponent. Eén opacity-reveal
-  per lege staat, drie ringgroepen, klaar binnen 820ms; geen loader of live-status.
+- Lege staten gebruiken shadcn `Empty` + Lucide, geen sv-matrix/MatrixMark als
+  productmotief. Reduced-motion toont de statische eindstaat.
 - [Libraries.dev Beam](https://libraries.dev/beam): gerichte randfeedback bij een
-  actie. Hier een monochrome lijn langs het model-ID na bewezen kopieersucces,
+  actie. Hier een lijn langs het model-ID na bewezen kopieersucces,
   met transform/opacity en zonder loop, shader, gradient of extra dependency.
-- `GroepOnline/design-system` op `2a8da31`: `DESIGN.md` §15–16,
-  `taste/taste-rules.md` en `surfaces/auth-landing.md` bieden relevante
-  product-/eerste-indrukdiscipline. Hun historische blauwe accent, loginontwerp
-  en branding worden niet naar OCX gekopieerd. Die repo blijft ongewijzigd.
+- `GroepOnline/design-system`: `DESIGN.md` §15–16, `taste/taste-rules.md` en
+  `surfaces/auth-landing.md` bieden product-/eerste-indrukdiscipline. OCX neemt
+  Signaal over (één blauw accent, geen tweede merktaal). Die repo blijft
+  ongewijzigd.
 
-De matrix is verborgen voor assistieve technologie. Reduced-motion toont de
-statische eindstaat; toetsenbordgestuurde kopieerfeedback heeft geen lijnbeweging.
-Kopieersucces blijft daarnaast leesbare tekst met een check-icoon, nooit alleen motion.
+Reduced-motion toont de statische eindstaat; toetsenbordgestuurde
+kopieerfeedback heeft geen lijnbeweging. Kopieersucces blijft daarnaast leesbare
+tekst met een check-icoon, nooit alleen motion.
 
 - `WorkspaceNavigation`: één getypeerde bestemmingencatalogus, iconen, labels,
   actieve pagina en een gedeelde Motion-selectie. Bestaande hashes blijven werken.
@@ -104,12 +99,11 @@ visibility gebruikt Base UI `role="switch"`/`aria-checked`; selectie houdt
 `aria-pressed`. De providerfilter krijgt een portaled Base UI Select. Legacy
 Selects binnen geavanceerde controls en Settings worden niet stilzwijgend vervangen.
 
-Spinners zijn door deze expliciete opdracht toegestaan bij echte pending acties:
-initiële catalogusload, providerrefresh en custom-model opslaan. Geen loader in
-rust, geen kunstmatige minimumduur; tekst blijft aanwezig en reduced-motion stopt
-de rotatie. Accordion-motion volgt de Base UI-paneelhoogte, 180ms, geen max-height
-hack; keyboard/reduced-motion opent zonder beweging. Dit verfijnt de eerdere
-spinner-ban uitsluitend voor deze gevraagde OCX-opdracht.
+Pending acties (catalogusload, providerrefresh, opslaan) tonen het Signaal-ripple
+(`.spin.busy`), nooit een roterende spinner. Geen loader in rust, geen
+kunstmatige minimumduur; tekst blijft aanwezig. `prefers-reduced-motion` toont
+de statische balk. Accordion-motion volgt de Base UI-paneelhoogte, 180ms, geen
+max-height hack; keyboard/reduced-motion opent zonder beweging.
 
 Registrybron gelezen via CLI/docs. Aanpassingen blijven in de componentlaag:
 geen `transition-all`, geen tweede dark-palet, gelokaliseerde spinner, een expliciete
@@ -119,8 +113,8 @@ Lucide React is exact gepind op 1.41.0; geen nieuwe transitieve runtimepackages.
 
 ### Geometrie en responsiviteit (actueel)
 
-De catalogusslice heeft een werkvlak tot 1800px en een desktopheader van minimaal
-64px met merk, globale navigatie en status op één regel. Onder 1280px krijgt de
+De catalogusslice heeft een werkvlak tot 1400px en een desktopheader van minimaal
+56px met merk, globale navigatie en status op één regel. Onder 1280px krijgt de
 navigatie een eigen regel. De modellenwerkplek gebruikt een vergelijkbare lijst
 en een detailpaneel van 320–400px met een vaste scheidingslijn. Geen drie smalle
 zijbalken of een mini-tabel in een grote kaart. Links uitlijnen, model-id's leesbaar
@@ -130,6 +124,20 @@ Controls mogen compact zijn op desktop, maar primaire touch-acties blijven minim
 44px. Mobiel toont lijst of detail met een expliciete terugactie en focusherstel,
 niet een verkleinde desktop. Bestaande hashes en bestemmingen blijven bereikbaar.
 Geen paginabrede horizontale overflow of acties die alleen op hover bestaan.
+
+### Afwerking met Auth als kwaliteitsreferentie — 2026-09-25
+
+Auth is de referentie voor rustige groepering en consistente uitlijning, niet voor
+een ander palet of een decoratief portal in de operatorwerkplek. Signaal blijft
+ongewijzigd. `workspace-orbit.css` bezit de shellgeometrie; de systeemlaag levert
+`--page-gutter` en `--section-gap` via bestaande spacingtokens zonder de mobiele
+padding opnieuw te overschrijven. Navigatie houdt 44px touchhoogte; mobiele
+subtabs kunnen over meerdere regels lopen. Combos deelt dezelfde mobiele gutter.
+
+De skip-link verplaatst focus en scroll zonder de routehash of geschiedenis te
+wijzigen. Gedragstests en CSS-contracttests bewaken die grenzen. Die tests zijn
+geen pixelbewijs: de volledige licht/donker-, mobiel- en reduced-motionbeoordeling
+blijft open totdat een toegestane renderer echte schermafbeeldingen levert.
 
 ### Toestanden en motion
 
@@ -175,19 +183,18 @@ Runtime CSS is canoniek, niet een gegenereerde tweede tokenbron:
 
 | Eigenaar                         | Verantwoordelijkheid                                                              |
 | -------------------------------- | --------------------------------------------------------------------------------- |
-| `src/styles.css`                 | Bestaande reset, spacing, semantische status en legacy controls                   |
-| `src/styles/workspace-orbit.css` | Actuele kleur-, type-, geometrie- en scrollbarrollen; bestandsnaam is geen merk   |
+| `src/styles.css`                 | Signaal tokens, type, radii, light-dark + skins, ripple                           |
+| `src/styles/workspace-orbit.css` | Alleen dashboard-layout (nav, skip-link, identity); geen kleur/type-override      |
 | `src/styles/app-base.css`        | Cascadevolgorde; legacy CSS in eigen laag                                         |
 | `src/styles/primitives.css`      | Tailwind-semantieken verwijzen naar runtime-rollen; geen preflight of eigen palet |
-| `src/styles/ocx-system.css`      | Afwerklaag: maat-, kaart-, focus- en motion-tokens; route-choreografie           |
+| `src/styles/ocx-system.css`      | Afwerklaag: maat-, kaart-, focus- en motion-tokens; route-choreografie            |
 | `src/styles/pages-*.css`         | Pagina-specifieke verfijning per werkplekgroep; hergebruikt systeemtokens         |
 | `components.json`                | Officiële shadcn-registry, Base UI-style en gedeelde componentpaden               |
 
 Tailwind `text-xs/sm/base` verwijzen naar `--text-caption/control/body` met hun
-line-height. Geen rem-afhankelijke tweede letterladder. Historische `devin/strak`
-waarden blijven leesbaar voor compatibiliteit, maar de settings-skinselector is
-verwijderd: de nieuwe tokens oversturen beide skins en twee gelijke keuzes zijn
-misleidend. Licht/donker/systeem en EN/NL blijven beschikbaar.
+line-height. Geen rem-afhankelijke tweede letterladder. Skins `devin` (default)
+en `strak` blijven in Instellingen; elke nieuwe kleur bestaat in `:root` én beide
+skins. Licht/donker/systeem en EN/NL blijven beschikbaar.
 
 ### Implementatiestatus en acceptatie
 
@@ -205,12 +212,14 @@ Detailpanelen, volledige componentmigratie, landing en volledige visuele accepta
 blijven expliciete vervolgstappen. Brave-browserchecks van deze slice zijn geen
 productie- of brede toegankelijkheidscertificering. Niet als volledig
 redesign of live release presenteren zolang die niet aantoonbaar zijn afgerond.
-Tokens: `src/styles/workspace-orbit.css`; die worden na de bestaande laag geladen.
-Geen nieuwe parallelle app, backend, routing- of authenticatielaag.
+Tokens: `src/styles.css` (Signaal). `workspace-orbit.css` is alleen layout.
+Geen nieuwe parallelle app, backend, routing- of authenticatielaag. `GET /api/whoami`
+is additief (e-mail + bron, geen tokens) zodat de chrome een ingelogde identiteit
+kan tonen als Cloudflare Access of OIDC die heeft geverifieerd.
 
 ---
 
-# Historisch: Signaal-binding vóór de redesignopdracht
+# Historisch: Signaal-contract (nog steeds de visuele taal)
 
 > De levende ontwerp- en smaakgids voor het opencodex-dashboard (`gui/`).
 > Dit is de ChefGroep-taal (v3 "Signaal"): een stil, warm, mat instrument.

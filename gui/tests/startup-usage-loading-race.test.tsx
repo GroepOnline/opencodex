@@ -16,13 +16,22 @@ await seedDicts();
  * silently. The shape is identical: start a replacement request, then settle the superseded one
  * afterwards and assert it neither clears loading nor installs its stale payload.
  */
-const globals = ["document", "window", "navigator", "localStorage", "IS_REACT_ACT_ENVIRONMENT", "ResizeObserver"] as const;
+const globals = [
+  "document",
+  "window",
+  "navigator",
+  "localStorage",
+  "IS_REACT_ACT_ENVIRONMENT",
+  "ResizeObserver",
+] as const;
 let previousGlobals: Record<(typeof globals)[number], unknown>;
 let testWindow: Window;
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
-  previousGlobals = Object.fromEntries(globals.map(key => [key, Reflect.get(globalThis, key)])) as typeof previousGlobals;
+  previousGlobals = Object.fromEntries(
+    globals.map((key) => [key, Reflect.get(globalThis, key)]),
+  ) as typeof previousGlobals;
   testWindow = new Window({ url: "http://localhost/" });
   Object.defineProperties(globalThis, {
     document: { configurable: true, value: testWindow.document },
@@ -30,37 +39,51 @@ beforeEach(() => {
     navigator: { configurable: true, value: testWindow.navigator },
     localStorage: { configurable: true, value: testWindow.localStorage },
   });
-  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  (
+    globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT = true;
   class ResizeObserverStub {
     observe() {}
     unobserve() {}
     disconnect() {}
   }
-  Object.defineProperty(globalThis, "ResizeObserver", { configurable: true, value: ResizeObserverStub });
-  Object.defineProperty(testWindow, "ResizeObserver", { configurable: true, value: ResizeObserverStub });
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    configurable: true,
+    value: ResizeObserverStub,
+  });
+  Object.defineProperty(testWindow, "ResizeObserver", {
+    configurable: true,
+    value: ResizeObserverStub,
+  });
 });
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   testWindow.close();
   for (const key of globals) {
-    Object.defineProperty(globalThis, key, { configurable: true, value: previousGlobals[key] });
+    Object.defineProperty(globalThis, key, {
+      configurable: true,
+      value: previousGlobals[key],
+    });
   }
 });
 
-async function waitFor(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 1000,
+): Promise<void> {
   const start = Date.now();
   while (!predicate()) {
     if (Date.now() - start > timeoutMs) throw new Error("waitFor timed out");
     await act(async () => {
-      await new Promise<void>(resolve => testWindow.setTimeout(resolve, 10));
+      await new Promise<void>((resolve) => testWindow.setTimeout(resolve, 10));
     });
   }
 }
 
 async function settle(): Promise<void> {
   await act(async () => {
-    await new Promise<void>(resolve => testWindow.setTimeout(resolve, 0));
+    await new Promise<void>((resolve) => testWindow.setTimeout(resolve, 0));
   });
 }
 
@@ -76,8 +99,11 @@ test("an aborted Startup fetch must not clear loading while its replacement is i
     const url = String(input);
     // Only the primary health call is gated; the follow-up calls resolve immediately so the
     // test observes the generation guard rather than incidental request ordering.
-    if (!url.includes("/api/startup-health")) return new Response(null, { status: 404 });
-    const body = await new Promise<unknown>(resolve => { gates.push({ resolve }); });
+    if (!url.includes("/api/startup-health"))
+      return new Response(null, { status: 404 });
+    const body = await new Promise<unknown>((resolve) => {
+      gates.push({ resolve });
+    });
     return Response.json(body);
   }) as typeof fetch;
 
@@ -102,14 +128,19 @@ test("an aborted Startup fetch must not clear loading while its replacement is i
     platform: "darwin",
     recommendedCommand,
     diagnosticStale: false,
-    commands: { installService: "ocx service install", installShim: "ocx shim install", restoreNative: "ocx restore" },
+    commands: {
+      installService: "ocx service install",
+      installShim: "ocx shim install",
+      restoreNative: "ocx restore",
+    },
   });
   const STALE = health("stale-startup-marker");
   const FRESH = health("fresh-startup-marker");
 
   function Harness() {
     const [apiBase, setApiBase] = useState("http://old");
-    (window as unknown as { __bumpApiBase?: () => void }).__bumpApiBase = () => setApiBase("http://new");
+    (window as unknown as { __bumpApiBase?: () => void }).__bumpApiBase = () =>
+      setApiBase("http://new");
     return (
       <LanguageProvider>
         <Startup apiBase={apiBase} />
@@ -146,10 +177,15 @@ test("an aborted Startup fetch must not clear loading while its replacement is i
     gates[1]!.resolve(FRESH);
     await Promise.resolve();
   });
-  await waitFor(() => !(container.textContent ?? "").includes("Checking startup protection"));
+  await waitFor(
+    () =>
+      !(container.textContent ?? "").includes("Checking startup protection"),
+  );
   expect(refresh?.disabled).toBe(false);
 
-  await act(async () => { root.unmount(); });
+  await act(async () => {
+    root.unmount();
+  });
   container.remove();
 });
 
@@ -162,25 +198,43 @@ test("an aborted Usage fetch must not clear loading while its replacement is in 
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = String(input);
     if (!url.includes("/api/usage")) return new Response(null, { status: 404 });
-    const body = await new Promise<unknown>(resolve => { gates.push({ resolve }); });
+    const body = await new Promise<unknown>((resolve) => {
+      gates.push({ resolve });
+    });
     return Response.json(body);
   }) as typeof fetch;
 
   const summary = {
-    requests: 0, measuredRequests: 0, reportedRequests: 0, unreportedRequests: 0,
-    unsupportedRequests: 0, estimatedRequests: 0, inputTokens: 0, outputTokens: 0,
-    cachedInputTokens: 0, reasoningOutputTokens: 0, totalTokens: 0, coverageRatio: 1,
+    requests: 0,
+    measuredRequests: 0,
+    reportedRequests: 0,
+    unreportedRequests: 0,
+    unsupportedRequests: 0,
+    estimatedRequests: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cachedInputTokens: 0,
+    reasoningOutputTokens: 0,
+    totalTokens: 0,
+    coverageRatio: 1,
   };
   const usage = (generatedAt: number) => ({
-    range: "7d", surface: "all", since: null, generatedAt,
-    summary, days: [], models: [], providers: [],
+    range: "7d",
+    surface: "all",
+    since: null,
+    generatedAt,
+    summary,
+    days: [],
+    models: [],
+    providers: [],
   });
   const STALE = usage(1);
   const FRESH = usage(2);
 
   function Harness() {
     const [apiBase, setApiBase] = useState("http://old");
-    (window as unknown as { __bumpApiBase?: () => void }).__bumpApiBase = () => setApiBase("http://new");
+    (window as unknown as { __bumpApiBase?: () => void }).__bumpApiBase = () =>
+      setApiBase("http://new");
     return (
       <LanguageProvider>
         <Usage apiBase={apiBase} />
@@ -215,18 +269,23 @@ test("an aborted Usage fetch must not clear loading while its replacement is in 
     gates[1]!.resolve(FRESH);
     await Promise.resolve();
   });
-  await waitFor(() => !(container.textContent ?? "").includes("Loading usage data"));
+  await waitFor(
+    () => !(container.textContent ?? "").includes("Loading usage data"),
+  );
 
-  await act(async () => { root.unmount(); });
+  await act(async () => {
+    root.unmount();
+  });
   container.remove();
 });
 
-test("a failed Usage refresh keeps last-good data on screen", async () => {
+test("a failed Usage API change does not retain another resource's readings", async () => {
   const { createRoot } = await import("react-dom/client");
   const container = document.createElement("div");
   document.body.append(container);
 
   let call = 0;
+  let failNext!: (response: Response) => void;
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = String(input);
     if (!url.includes("/api/usage")) return new Response(null, { status: 404 });
@@ -256,12 +315,15 @@ test("a failed Usage refresh keeps last-good data on screen", async () => {
         providers: [],
       });
     }
-    return new Response(null, { status: 503 });
+    return new Promise<Response>((resolve) => {
+      failNext = resolve;
+    });
   }) as typeof fetch;
 
   function Harness() {
     const [apiBase, setApiBase] = useState("http://old");
-    (window as unknown as { __bumpApiBase?: () => void }).__bumpApiBase = () => setApiBase("http://new");
+    (window as unknown as { __bumpApiBase?: () => void }).__bumpApiBase = () =>
+      setApiBase("http://new");
     return (
       <LanguageProvider>
         <Usage apiBase={apiBase} />
@@ -283,11 +345,84 @@ test("a failed Usage refresh keeps last-good data on screen", async () => {
   await settle();
   await waitFor(() => call >= 2);
 
-  expect(container.textContent).toContain("42");
-  expect(container.textContent).not.toContain("Could not load usage data");
+  expect(container.textContent).not.toContain("42");
+  expect(container.textContent).toContain("Loading usage data");
+  await act(async () => {
+    failNext(new Response(null, { status: 503 }));
+  });
+  expect(container.textContent).not.toContain("42");
+  expect(container.textContent).toContain("Could not load usage data");
 
-  await act(async () => { root.unmount(); });
+  await act(async () => {
+    root.unmount();
+  });
   container.remove();
+});
+
+test("a failed same-query Usage refresh retains readings and exposes recovery", async () => {
+  const { createRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  document.body.append(container);
+  let poll: (() => void) | undefined;
+  const originalInterval = window.setInterval;
+  window.setInterval = ((callback: TimerHandler, delay?: number) => {
+    if (delay === 30_000 && typeof callback === "function") poll = callback;
+    return 0;
+  }) as typeof window.setInterval;
+  let fail = false;
+  globalThis.fetch = (async () =>
+    fail
+      ? new Response(null, { status: 503 })
+      : Response.json({
+          range: "30d",
+          surface: "all",
+          summary: {
+            requests: 42,
+            measuredRequests: 42,
+            reportedRequests: 42,
+            unreportedRequests: 0,
+            unsupportedRequests: 0,
+            estimatedRequests: 0,
+            inputTokens: 100,
+            outputTokens: 200,
+            cachedInputTokens: 0,
+            reasoningOutputTokens: 0,
+            totalTokens: 300,
+            coverageRatio: 1,
+          },
+          days: [],
+          models: [],
+          providers: [],
+        })) as typeof fetch;
+  const root = createRoot(container);
+  try {
+    await act(async () =>
+      root.render(
+        <LanguageProvider>
+          <Usage apiBase="http://test" />
+        </LanguageProvider>,
+      ),
+    );
+    await settle();
+    await waitFor(() => (container.textContent ?? "").includes("42"));
+    expect(poll).toBeDefined();
+    fail = true;
+    await act(async () => poll!());
+    expect(container.textContent).toContain("42");
+    expect(container.textContent).toContain("Could not load usage data");
+    fail = false;
+    const retry = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent === "Retry",
+    );
+    expect(retry).toBeDefined();
+    await act(async () => retry!.click());
+    expect(container.textContent).not.toContain("Could not load usage data");
+    expect(container.textContent).toContain("42");
+  } finally {
+    window.setInterval = originalInterval;
+    await act(async () => root.unmount());
+    container.remove();
+  }
 });
 
 test("a failed Usage range switch shows an error instead of last-good data", async () => {
@@ -338,17 +473,23 @@ test("a failed Usage range switch shows an error instead of last-good data", asy
   await settle();
   await waitFor(() => (container.textContent ?? "").includes("42"));
 
-  const range7d = container.querySelector<HTMLButtonElement>('button[aria-label="7d"]');
+  const range7d = container.querySelector<HTMLButtonElement>(
+    'button[aria-label="7d"]',
+  );
   expect(range7d).toBeTruthy();
   await act(async () => {
     range7d!.click();
   });
   await settle();
-  await waitFor(() => (container.textContent ?? "").includes("Could not load usage data"));
+  await waitFor(() =>
+    (container.textContent ?? "").includes("Could not load usage data"),
+  );
 
   expect(container.textContent).not.toContain("42");
 
-  await act(async () => { root.unmount(); });
+  await act(async () => {
+    root.unmount();
+  });
   container.remove();
 });
 
@@ -373,10 +514,14 @@ test("Usage shows an error when the first load fails with no data", async () => 
     );
   });
   await settle();
-  await waitFor(() => (container.textContent ?? "").includes("Could not load usage data"));
+  await waitFor(() =>
+    (container.textContent ?? "").includes("Could not load usage data"),
+  );
 
   expect(container.textContent).toContain("Retry");
 
-  await act(async () => { root.unmount(); });
+  await act(async () => {
+    root.unmount();
+  });
   container.remove();
 });

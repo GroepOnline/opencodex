@@ -7,18 +7,16 @@
 :root,
 :root[data-style] {
   --workspace-measure: 1400px;
-  --page-gutter: clamp(24px, 3vw, 48px);
-  --section-gap: 28px;
-  --card-radius: 12px;
+  --page-gutter: clamp(var(--space-4), 3vw, var(--space-12));
+  --section-gap: var(--space-6);
+  --card-radius: var(--radius-group);
   --card-border: var(--border-soft);
-  --card-shadow: 0 1px 2px light-dark(rgba(0, 0, 0, 0.04), rgba(0, 0, 0, 0.3));
-  --card-shadow-raised:
-    0 1px 2px light-dark(rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.35)),
-    0 10px 30px -14px light-dark(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.7));
+  --card-shadow: none;
+  --card-shadow-raised: none;
   --focus-ring: 0 0 0 3px var(--accent-soft);
 
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-spring: cubic-bezier(0.34, 1.32, 0.64, 1);
+  --ease-spring: var(--ease-out);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --motion-instant: 90ms;
   --motion-fast: 150ms;
@@ -34,14 +32,12 @@
   position: sticky;
   top: 0;
   z-index: var(--z-sticky);
-  gap: 20px;
-  padding: 0 var(--page-gutter);
   background: color-mix(in srgb, var(--surface) 96%, transparent);
   border-bottom: 1px solid var(--border-soft);
 }
 .ocx-workspace .brand .name {
-  font-weight: 700;
-  letter-spacing: -0.03em;
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
 }
 .ocx-workspace .brand .ver {
   font-family: var(--font-code);
@@ -77,26 +73,13 @@
     color var(--motion-fast) var(--ease-out),
     transform var(--motion-fast) var(--ease-out);
 }
-.ocx-workspace .gbtn:hover svg {
-  transform: rotate(22deg);
-}
 .ocx-workspace .gbtn svg {
-  transition: transform var(--motion-normal) var(--ease-spring);
-}
-
-.ocx-workspace .main-inner {
-  max-width: var(--workspace-measure);
-  padding: 28px var(--page-gutter) 72px;
-}
-.ocx-workspace .main-inner.main-inner--combos {
-  padding: var(--space-4) var(--page-gutter) var(--space-6);
+  transition: transform var(--motion-fast) var(--ease-out);
 }
 
 /* Workspace navigation: quieter rest state, crisp selected pill */
 .workspace-navigation .workspace-destination {
-  font-weight: 500;
-  padding: 8px 14px;
-  min-height: 40px;
+  font-weight: var(--weight-medium);
   border-radius: var(--radius-sm);
   transition:
     color var(--motion-fast) var(--ease-out),
@@ -195,10 +178,10 @@
   gap: 6px;
 }
 .ocx-workspace .page-head h2 {
-  font-size: 26px;
-  font-weight: 650;
-  letter-spacing: -0.03em;
-  line-height: 1.15;
+  font-size: var(--text-title);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
 }
 .ocx-workspace .page-head p,
 .ocx-workspace .page-head .page-sub {
@@ -332,30 +315,22 @@
   letter-spacing: -0.03em;
 }
 
-/* Horizontal KPI strip (Traffic) becomes the same card grammar */
+/* KPI strip stays a strip — no per-item cards (bento farm). */
 .ocx-workspace .stat-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-  gap: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-8);
   padding: 0;
   margin-bottom: var(--section-gap);
 }
 .ocx-workspace .stat-strip-item {
-  gap: 8px;
-  padding: 16px 18px;
-  background: var(--surface);
-  border: 1px solid var(--card-border);
-  border-radius: var(--card-radius);
-  box-shadow: var(--card-shadow);
-  transition:
-    border-color var(--motion-fast) var(--ease-out),
-    box-shadow var(--motion-normal) var(--ease-out),
-    transform var(--motion-normal) var(--ease-out);
-}
-.ocx-workspace .stat-strip-item:hover {
-  border-color: var(--border);
-  box-shadow: var(--card-shadow-raised);
-  transform: translateY(-1px);
+  gap: var(--space-1);
+  padding: 0;
+  min-width: 7rem;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 .ocx-workspace .stat-strip-waarde {
   order: 2;
@@ -561,7 +536,7 @@
 .ocx-workspace .toggle-knob {
   left: 2px;
   transform: translate(0, -50%);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  box-shadow: none;
   transition:
     transform var(--motion-normal) var(--ease-spring),
     background var(--motion-normal) var(--ease-out);
@@ -793,14 +768,18 @@
 }
 
 @media (max-width: 760px) {
-  .ocx-workspace .main-inner {
-    padding: var(--space-4) var(--space-4) var(--space-10);
-  }
   .ocx-workspace .page-head h2 {
-    font-size: 22px;
+    font-size: var(--text-title);
   }
   .ocx-workspace .sub-tabs {
-    margin-bottom: 20px;
+    flex-wrap: wrap;
+    margin-bottom: var(--space-5);
+    border-radius: var(--radius-group);
+  }
+  .ocx-workspace .sub-tab,
+  .ocx-workspace .topbar .gbtn {
+    min-height: var(--control-touch);
+    min-width: var(--control-touch);
   }
   .ocx-workspace .stat .value,
   .ocx-workspace .stat .stat-value,

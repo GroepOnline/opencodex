@@ -138,6 +138,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
   const [status, setStatus] = useState("");
   const [ok, setOk] = useState(false);
   const [loading, setLoading] = useState(() => !cached);
+  const [loadError, setLoadError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [fetchingProvider, setFetchingProvider] = useState<string | null>(null);
   const busyRef = useRef(false);
@@ -320,6 +321,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
         setSelectedModels(selectionData);
         if (value !== undefined) setContextCapValue(value);
         setContextCaps(nextCaps);
+        setLoadError(false);
         hasCacheRef.current = true;
         writeSessionListCache(cacheKey, {
           models: data,
@@ -331,12 +333,8 @@ export default function Models({ apiBase }: { apiBase: string }) {
         } satisfies CachedModelsPage);
         return true;
       } catch {
-        if (
-          shouldApplyLoadGeneration(generation, loadGenerationRef.current) &&
-          !hasCacheRef.current
-        ) {
-          setOk(false);
-          setStatus(t("models.loadFail"));
+        if (shouldApplyLoadGeneration(generation, loadGenerationRef.current)) {
+          setLoadError(true);
         }
         return false;
       } finally {
@@ -346,7 +344,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
         }
       }
     },
-    [apiBase, cacheKey, clearMissingSelection, t],
+    [apiBase, cacheKey, clearMissingSelection],
   );
 
   // Shadow/v2 controls must not wait on the models catalog (live discovery can be slow).
@@ -834,6 +832,9 @@ export default function Models({ apiBase }: { apiBase: string }) {
     return (
       <Alert variant="destructive">
         <AlertDescription>{t("models.loadFail")}</AlertDescription>
+        <Button variant="outline" onClick={() => void load(true)}>
+          {t("common.retry")}
+        </Button>
       </Alert>
     );
   }
@@ -1052,6 +1053,18 @@ export default function Models({ apiBase }: { apiBase: string }) {
         }
       />
       <ModelsStatus status={status} ok={ok} />
+      {loadError && (
+        <Alert variant="destructive">
+          <AlertDescription>{t("models.loadFail")}</AlertDescription>
+          <Button
+            variant="outline"
+            disabled={busy || loading}
+            onClick={() => void load()}
+          >
+            {t("common.retry")}
+          </Button>
+        </Alert>
+      )}
       <div className="models-catalog-toolbar">
         <InputGroup className="models-search-field">
           <InputGroupInput

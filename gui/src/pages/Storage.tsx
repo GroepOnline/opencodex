@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { useI18n, type TFn, type Locale } from "../i18n/shared";
-import { IconRefresh } from "../icons";
+import { IconRefresh, IconHardDrive, IconAlert } from "../icons";
 import { formatBytes } from "../format-bytes";
 import { NumberStepper } from "../components/NumberStepper";
 import { clampNumberDraft } from "../clamp-draft";
@@ -33,7 +33,7 @@ import {
   EmptyTitle,
 } from "../components/primitives/empty";
 import { Timestamp } from "../components/primitives/timestamp";
-import MatrixMark from "../components/MatrixMark";
+import { Spinner } from "../components/primitives/spinner";
 
 interface CleanupPreview {
   percent: number;
@@ -1806,7 +1806,7 @@ export default function Storage({ apiBase }: { apiBase: string }) {
         <Empty className="storage-empty-panel">
           <EmptyHeader>
             <EmptyMedia>
-              <MatrixMark />
+              <Spinner />
             </EmptyMedia>
             <EmptyTitle>{t("storage.loading")}</EmptyTitle>
           </EmptyHeader>
@@ -1815,7 +1815,7 @@ export default function Storage({ apiBase }: { apiBase: string }) {
         <Empty className="storage-empty-panel">
           <EmptyHeader>
             <EmptyMedia>
-              <MatrixMark />
+              <IconAlert size={24} aria-hidden />
             </EmptyMedia>
             <EmptyTitle>{t("storage.error")}</EmptyTitle>
           </EmptyHeader>
@@ -1824,7 +1824,7 @@ export default function Storage({ apiBase }: { apiBase: string }) {
         <Empty className="storage-empty-panel">
           <EmptyHeader>
             <EmptyMedia>
-              <MatrixMark />
+              <IconHardDrive size={24} aria-hidden />
             </EmptyMedia>
             <EmptyTitle>{t("storage.empty")}</EmptyTitle>
           </EmptyHeader>

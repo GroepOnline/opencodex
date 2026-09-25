@@ -3,10 +3,22 @@
  */
 import { useMemo } from "react";
 import { useT, useI18n } from "../../i18n/shared";
-import { IconAlert, IconCheck, IconChevron, IconClock, IconX } from "../../icons";
-import type { WorkspaceSections, WorkspaceItem } from "../../provider-workspace/catalog";
+import {
+  IconAlert,
+  IconCheck,
+  IconChevron,
+  IconClock,
+  IconX,
+} from "../../icons";
+import type {
+  WorkspaceSections,
+  WorkspaceItem,
+} from "../../provider-workspace/catalog";
 import { providerAvailabilityLine } from "../../provider-workspace/catalog";
-import { accountQuotaFromReport, type ProviderQuotaReportView } from "../../provider-workspace/report";
+import {
+  accountQuotaFromReport,
+  type ProviderQuotaReportView,
+} from "../../provider-workspace/report";
 import {
   attentionReasonKey,
   buildAttentionItems,
@@ -19,7 +31,10 @@ import { ProviderIcon } from "./ProviderRail";
 import { formatProviderDisplayName } from "../../provider-icons";
 import QuotaBars from "../QuotaBars";
 import type { QuotaCardState } from "./use-provider-quotas";
-import type { AvailabilityProviderView, ProviderCapCooldown } from "../../pages/providers-shared";
+import type {
+  AvailabilityProviderView,
+  ProviderCapCooldown,
+} from "../../pages/providers-shared";
 import { StatStrip, StatStripItem } from "../primitives/stat-strip";
 import { Status } from "../primitives/status";
 import { SectionHeader } from "../primitives/section-header";
@@ -101,7 +116,10 @@ export default function ProviderOverviewDashboard({
     () => [...sections.ready, ...sections.needsSetup, ...sections.disabled],
     [sections],
   );
-  const knownNames = useMemo(() => new Set(allItems.map(p => p.name)), [allItems]);
+  const knownNames = useMemo(
+    () => new Set(allItems.map((p) => p.name)),
+    [allItems],
+  );
 
   const cooldownOverrides = useMemo(() => {
     const out: Record<string, string> = {};
@@ -119,19 +137,27 @@ export default function ProviderOverviewDashboard({
       if (!entry || typeof entry.until !== "number") continue;
       result.push({ name, entry });
     }
-    return result.sort((a, b) => a.entry.until - b.entry.until || a.name.localeCompare(b.name));
+    return result.sort(
+      (a, b) => a.entry.until - b.entry.until || a.name.localeCompare(b.name),
+    );
   }, [providerCooldowns]);
-  const cappedNames = useMemo(() => new Set(cappedProviders.map(row => row.name)), [cappedProviders]);
+  const cappedNames = useMemo(
+    () => new Set(cappedProviders.map((row) => row.name)),
+    [cappedProviders],
+  );
 
   // Capped providers get the richer "Usage caps" section below, so keep them out of the
   // generic attention list instead of listing the same provider twice.
   const attention = useMemo(
-    () => buildAttentionItems(sections, cooldownOverrides).filter(item => !cappedNames.has(item.name)),
+    () =>
+      buildAttentionItems(sections, cooldownOverrides).filter(
+        (item) => !cappedNames.has(item.name),
+      ),
     [sections, cooldownOverrides, cappedNames],
   );
   const attentionCount = attention.length;
   const readyReauthCount = useMemo(
-    () => sections.ready.filter(p => p.activeNeedsReauth).length,
+    () => sections.ready.filter((p) => p.activeNeedsReauth).length,
     [sections],
   );
   const readyCount = sections.ready.length - readyReauthCount;
@@ -139,16 +165,35 @@ export default function ProviderOverviewDashboard({
 
   /* Rate-limit rows: per-provider card state (ready/stale/error/loading), urgency first. */
   const quotaProviders = useMemo(() => {
-    const result: Array<{ item: WorkspaceItem; report?: ProviderQuotaReportView; card: QuotaCardState; urgency: number }> = [];
+    const result: Array<{
+      item: WorkspaceItem;
+      report?: ProviderQuotaReportView;
+      card: QuotaCardState;
+      urgency: number;
+    }> = [];
     for (const item of allItems) {
       const card = quotaCards[item.name];
       if (!card || card.status === "unsupported") continue; // no quota API: no row here
-      if (card.status === "error") { result.push({ item, report: card.report, card, urgency: -1 }); continue; }
-      if (card.status === "loading") { result.push({ item, report: card.report, card, urgency: -1 }); continue; }
+      if (card.status === "error") {
+        result.push({ item, report: card.report, card, urgency: -1 });
+        continue;
+      }
+      if (card.status === "loading") {
+        result.push({ item, report: card.report, card, urgency: -1 });
+        continue;
+      }
       const quota = card.report ? accountQuotaFromReport(card.report) : null;
-      if (quota) result.push({ item, report: card.report, card, urgency: maxQuotaUtilisation(quota) });
+      if (quota)
+        result.push({
+          item,
+          report: card.report,
+          card,
+          urgency: maxQuotaUtilisation(quota),
+        });
     }
-    return result.sort((a, b) => b.urgency - a.urgency || a.item.name.localeCompare(b.item.name));
+    return result.sort(
+      (a, b) => b.urgency - a.urgency || a.item.name.localeCompare(b.item.name),
+    );
   }, [allItems, quotaCards]);
 
   /* Recently-used: filter to known provider names and cap at 4 (PR #139 parity) */
@@ -174,9 +219,13 @@ export default function ProviderOverviewDashboard({
   }, [availability]);
 
   const poolCount = useMemo(
-    () => allItems.filter(item => (
-      (availabilityByName[item.name]?.keyPoolCount ?? item.keyPoolCount) ?? 0
-    ) >= 2).length,
+    () =>
+      allItems.filter(
+        (item) =>
+          (availabilityByName[item.name]?.keyPoolCount ??
+            item.keyPoolCount ??
+            0) >= 2,
+      ).length,
     [allItems, availabilityByName],
   );
 
@@ -190,30 +239,45 @@ export default function ProviderOverviewDashboard({
         : item.fallback,
     });
     const parts: string[] = [];
-    if (line.poolCount >= 2) parts.push(t("pws.availability.pool", { count: String(line.poolCount) }));
+    if (line.poolCount >= 2)
+      parts.push(t("pws.availability.pool", { count: String(line.poolCount) }));
     if ((live?.coolingKeyCount ?? 0) > 0) {
       parts.push(
         live!.coolingKeyCount === 1
           ? t("pws.availability.coolingOne")
-          : t("pws.availability.cooling", { count: String(live!.coolingKeyCount) }),
+          : t("pws.availability.cooling", {
+              count: String(live!.coolingKeyCount),
+            }),
       );
     }
     if (line.hopProvider) {
-      parts.push(t("pws.availability.hop", { provider: formatProviderDisplayName(line.hopProvider) }));
+      parts.push(
+        t("pws.availability.hop", {
+          provider: formatProviderDisplayName(line.hopProvider),
+        }),
+      );
     }
     return parts.length > 0 ? parts.join(" · ") : null;
   };
 
-  const rowStatus = (item: WorkspaceItem): { label: string; tone: "ready" | "warn" | "cool" | "off" } => {
+  const rowStatus = (
+    item: WorkspaceItem,
+  ): { label: string; tone: "ready" | "warn" | "cool" | "off" } => {
     const live = availabilityByName[item.name];
     const cooling = live?.coolingKeyCount ?? 0;
     const pool = live?.keyPoolCount ?? 0;
     const allKeysCooling = pool >= 2 && cooling >= pool;
     if (cappedNames.has(item.name) || allKeysCooling) {
-      return { label: cappedNames.has(item.name) ? t("pws.capCooldown.badge") : t("pws.keyCooling"), tone: "cool" };
+      return {
+        label: cappedNames.has(item.name)
+          ? t("pws.capCooldown.badge")
+          : t("pws.keyCooling"),
+        tone: "cool",
+      };
     }
     if (item.disabled) return { label: t("prov.disabledBadge"), tone: "off" };
-    if (item.activeNeedsReauth) return { label: t("pws.status.needsAttention"), tone: "warn" };
+    if (item.activeNeedsReauth)
+      return { label: t("pws.status.needsAttention"), tone: "warn" };
     if (item.tier) return { label: t("pws.status.ready"), tone: "ready" };
     return { label: t("pws.status.needsSetup"), tone: "warn" };
   };
@@ -223,35 +287,57 @@ export default function ProviderOverviewDashboard({
       <div className="pws-dashboard-header">
         <div className="pws-dashboard-header-text">
           <h2 className="pws-dashboard-title">{t("pws.dashboard.title")}</h2>
-          <p className="muted pws-dashboard-subtitle">{t("pws.dashboard.subtitle")}</p>
+          <p className="muted pws-dashboard-subtitle">
+            {t("pws.dashboard.subtitle")}
+          </p>
         </div>
         {onEditConfig && (
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onEditConfig}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={onEditConfig}
+          >
             {t("prov.editJson")}
           </button>
         )}
       </div>
 
-      <StatStrip label={t("pws.statsAria")} className="stat-strip pws-dashboard-stat-strip">
+      <StatStrip
+        label={t("pws.statsAria")}
+        className="stat-strip pws-dashboard-stat-strip"
+      >
         <StatStripItem label={t("pws.status.ready")} value={readyCount} />
         <StatStripItem
-          label={readyReauthCount > 0 ? t("pws.status.needsAttention") : t("pws.status.needsSetup")}
+          label={
+            readyReauthCount > 0
+              ? t("pws.status.needsAttention")
+              : t("pws.status.needsSetup")
+          }
           value={
-            <span className={needsAttentionCount > 0 ? "pws-stat-warn" : undefined}>
+            <span
+              className={needsAttentionCount > 0 ? "pws-stat-warn" : undefined}
+            >
               {needsAttentionCount}
             </span>
           }
         />
-        <StatStripItem label={t("prov.disabledBadge")} value={sections.disabled.length} />
+        <StatStripItem
+          label={t("prov.disabledBadge")}
+          value={sections.disabled.length}
+        />
         <StatStripItem label={t("pws.availability.pools")} value={poolCount} />
       </StatStrip>
 
       {cappedProviders.length > 0 && (
-        <section className="pws-dashboard-section pws-dashboard-caps" aria-label={t("pws.capCooldown.section")}>
+        <section
+          className="pws-dashboard-section pws-dashboard-caps"
+          aria-label={t("pws.capCooldown.section")}
+        >
           <SectionHeader title={t("pws.capCooldown.section")} />
           <div className="pws-dashboard-group ocx-reveal-list">
             {cappedProviders.map(({ name, entry }) => {
               const reset = formatResetFuture(entry.until, t, locale);
+              const payment = entry.source === "upstream-402";
               return (
                 <button
                   key={name}
@@ -259,19 +345,42 @@ export default function ProviderOverviewDashboard({
                   className="pws-dashboard-row pws-dashboard-row--attention"
                   onClick={() => onSelectProvider(name)}
                 >
-                  <ProviderIcon name={name} adapter="" baseUrl="" cls="pws-dashboard-row-icon" />
+                  <ProviderIcon
+                    name={name}
+                    adapter=""
+                    baseUrl=""
+                    cls="pws-dashboard-row-icon"
+                  />
                   <div className="pws-dashboard-row-info">
-                    <span className="pws-dashboard-row-name">{formatProviderDisplayName(name)}</span>
+                    <span className="pws-dashboard-row-name">
+                      {formatProviderDisplayName(name)}
+                    </span>
                     <span className="pws-dashboard-row-meta muted">
-                      {t("pws.capCooldown.banner", {
-                        provider: formatProviderDisplayName(name),
-                        reset,
-                      })}
-                      {" "}
-                      {entry.disabledProvider ? t("pws.capCooldown.disabled") : t("pws.capCooldown.paused")}
+                      {t(
+                        payment
+                          ? "pws.capCooldown.paymentBanner"
+                          : "pws.capCooldown.banner",
+                        {
+                          provider: formatProviderDisplayName(name),
+                          reset,
+                        },
+                      )}{" "}
+                      {entry.disabledProvider
+                        ? t("pws.capCooldown.disabled")
+                        : t("pws.capCooldown.paused")}
                     </span>
                   </div>
-                  <IconChevron className="pws-dashboard-row-chevron" aria-hidden="true" />
+                  <Status tone={payment ? "error" : "warning"}>
+                    {t(
+                      payment
+                        ? "pws.capCooldown.paymentBadge"
+                        : "pws.capCooldown.badge",
+                    )}
+                  </Status>
+                  <IconChevron
+                    className="pws-dashboard-row-chevron"
+                    aria-hidden="true"
+                  />
                 </button>
               );
             })}
@@ -280,55 +389,87 @@ export default function ProviderOverviewDashboard({
       )}
 
       {attentionCount > 0 && (
-        <section className="pws-dashboard-section pws-dashboard-attention" aria-label={t("pws.attentionTitle")}>
+        <section
+          className="pws-dashboard-section pws-dashboard-attention"
+          aria-label={t("pws.attentionTitle")}
+        >
           <SectionHeader title={t("pws.attentionTitle")} />
           <div className="pws-dashboard-group ocx-reveal-list">
-            {attention.map(item => (
+            {attention.map((item) => (
               <button
                 key={`${item.name}:${item.reason}`}
                 type="button"
                 className="pws-dashboard-row pws-dashboard-row--attention"
                 onClick={() => onSelectProvider(item.name)}
               >
-                <ProviderIcon name={item.name} adapter="" baseUrl="" cls="pws-dashboard-row-icon" />
+                <ProviderIcon
+                  name={item.name}
+                  adapter=""
+                  baseUrl=""
+                  cls="pws-dashboard-row-icon"
+                />
                 <div className="pws-dashboard-row-info">
-                  <span className="pws-dashboard-row-name">{formatProviderDisplayName(item.name)}</span>
-                  <span className="pws-dashboard-row-meta muted">{localizeAttentionReason(item.reason)}</span>
+                  <span className="pws-dashboard-row-name">
+                    {formatProviderDisplayName(item.name)}
+                  </span>
+                  <span className="pws-dashboard-row-meta muted">
+                    {localizeAttentionReason(item.reason)}
+                  </span>
                 </div>
-                <IconChevron className="pws-dashboard-row-chevron" aria-hidden="true" />
+                <IconChevron
+                  className="pws-dashboard-row-chevron"
+                  aria-hidden="true"
+                />
               </button>
             ))}
           </div>
         </section>
       )}
 
-      <section className="pws-dashboard-section" aria-label={t("pws.dashboard.configuredProviders")}>
+      <section
+        className="pws-dashboard-section"
+        aria-label={t("pws.dashboard.configuredProviders")}
+      >
         <SectionHeader title={t("pws.dashboard.configuredProviders")} />
         {allItems.length > 0 ? (
           <div className="pws-dashboard-group ocx-reveal-list">
-            {allItems.map(item => {
+            {allItems.map((item) => {
               const line = rowAvailability(item);
               const status = rowStatus(item);
               return (
-              <button
-                key={item.name}
-                type="button"
-                className="pws-dashboard-row"
-                onClick={() => onSelectProvider(item.name)}
-              >
-                <ProviderIcon name={item.name} adapter={item.adapter} baseUrl={item.baseUrl} cls="pws-dashboard-row-icon" />
-                <div className="pws-dashboard-row-info">
-                  <span className="pws-dashboard-row-name">{formatProviderDisplayName(item.name)}</span>
-                  {line && (
-                    <span className="pws-dashboard-row-meta muted">{line}</span>
-                  )}
-                </div>
-                <span className={`pws-dashboard-status pws-dashboard-status--${status.tone}`}>
-                  <StatusMark tone={status.tone} />
-                  {status.label}
-                </span>
-                <IconChevron className="pws-dashboard-row-chevron" aria-hidden="true" />
-              </button>
+                <button
+                  key={item.name}
+                  type="button"
+                  className="pws-dashboard-row"
+                  onClick={() => onSelectProvider(item.name)}
+                >
+                  <ProviderIcon
+                    name={item.name}
+                    adapter={item.adapter}
+                    baseUrl={item.baseUrl}
+                    cls="pws-dashboard-row-icon"
+                  />
+                  <div className="pws-dashboard-row-info">
+                    <span className="pws-dashboard-row-name">
+                      {formatProviderDisplayName(item.name)}
+                    </span>
+                    {line && (
+                      <span className="pws-dashboard-row-meta muted">
+                        {line}
+                      </span>
+                    )}
+                  </div>
+                  <span
+                    className={`pws-dashboard-status pws-dashboard-status--${status.tone}`}
+                  >
+                    <StatusMark tone={status.tone} />
+                    {status.label}
+                  </span>
+                  <IconChevron
+                    className="pws-dashboard-row-chevron"
+                    aria-hidden="true"
+                  />
+                </button>
               );
             })}
           </div>
@@ -349,11 +490,21 @@ export default function ProviderOverviewDashboard({
               {quotaProviders.map(({ item, report, card }) => {
                 const stamp =
                   card.status === "error" ? (
-                    <span className="quota-stamp quota-stamp--fout">{t("pws.quota.fout")}</span>
+                    <span className="quota-stamp quota-stamp--fout">
+                      {t("pws.quota.fout")}
+                    </span>
                   ) : card.status === "stale" ? (
-                    <span className="quota-stamp quota-stamp--verouderd">{t("pws.quota.verouderd")}{report?.updatedAt ? ` · ${clockTime(report.updatedAt)}` : ""}</span>
+                    <span className="quota-stamp quota-stamp--verouderd">
+                      {t("pws.quota.verouderd")}
+                      {report?.updatedAt
+                        ? ` · ${clockTime(report.updatedAt)}`
+                        : ""}
+                    </span>
                   ) : (
-                    <span className="quota-stamp quota-stamp--vers">{t("pws.quota.vers")} · {report?.updatedAt ? clockTime(report.updatedAt) : ""}</span>
+                    <span className="quota-stamp quota-stamp--vers">
+                      {t("pws.quota.vers")} ·{" "}
+                      {report?.updatedAt ? clockTime(report.updatedAt) : ""}
+                    </span>
                   );
                 return card.status === "error" ? (
                   <div key={item.name} className="pws-quota-error-card">
@@ -369,15 +520,24 @@ export default function ProviderOverviewDashboard({
                         }
                       }}
                     >
-                      <ProviderIcon name={item.name} adapter={item.adapter} baseUrl={item.baseUrl} cls="pws-dashboard-row-icon" />
+                      <ProviderIcon
+                        name={item.name}
+                        adapter={item.adapter}
+                        baseUrl={item.baseUrl}
+                        cls="pws-dashboard-row-icon"
+                      />
                       <div className="pws-dashboard-row-info">
-                        <span className="pws-dashboard-row-name">{formatProviderDisplayName(item.name)}</span>
+                        <span className="pws-dashboard-row-name">
+                          {formatProviderDisplayName(item.name)}
+                        </span>
                         <Status tone="error">{t("pws.quota.fout")}</Status>
                       </div>
                     </div>
                     {card.nextRetryAt ? (
                       <span className="mono pws-quota-retry-at">
-                        {t("pws.quota.retryAt", { time: clockTime(card.nextRetryAt) })}
+                        {t("pws.quota.retryAt", {
+                          time: clockTime(card.nextRetryAt),
+                        })}
                       </span>
                     ) : null}
                     <button
@@ -390,18 +550,44 @@ export default function ProviderOverviewDashboard({
                   </div>
                 ) : (
                   <div key={item.name} className="pws-dashboard-quota-row">
-                    <div className="pws-dashboard-row-select"
-                      role="button" tabIndex={0}
+                    <div
+                      className="pws-dashboard-row-select"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => onSelectProvider(item.name)}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectProvider(item.name); } }}>
-                      <ProviderIcon name={item.name} adapter={item.adapter} baseUrl={item.baseUrl} cls="pws-dashboard-row-icon" />
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onSelectProvider(item.name);
+                        }
+                      }}
+                    >
+                      <ProviderIcon
+                        name={item.name}
+                        adapter={item.adapter}
+                        baseUrl={item.baseUrl}
+                        cls="pws-dashboard-row-icon"
+                      />
                       <div className="pws-dashboard-row-info">
-                        <span className="pws-dashboard-row-name">{formatProviderDisplayName(item.name)}</span>
-                        <span className="pws-dashboard-row-meta muted">{stamp}</span>
+                        <span className="pws-dashboard-row-name">
+                          {formatProviderDisplayName(item.name)}
+                        </span>
+                        <span className="pws-dashboard-row-meta muted">
+                          {stamp}
+                        </span>
                       </div>
-                      <IconChevron className="pws-dashboard-row-chevron" aria-hidden="true" />
+                      <IconChevron
+                        className="pws-dashboard-row-chevron"
+                        aria-hidden="true"
+                      />
                       <div className="pws-dashboard-row-bars">
-                        <QuotaBars quota={report ? accountQuotaFromReport(report) : null} threshold={80} t={t} layout="stacked" pending={card.status === "loading" || !report?.quota} />
+                        <QuotaBars
+                          quota={report ? accountQuotaFromReport(report) : null}
+                          threshold={80}
+                          t={t}
+                          layout="stacked"
+                          pending={card.status === "loading" || !report?.quota}
+                        />
                       </div>
                     </div>
                   </div>
@@ -409,16 +595,28 @@ export default function ProviderOverviewDashboard({
               })}
             </div>
           ) : quotasLoading ? (
-            <div className="pws-dashboard-rows pws-dashboard-rows--pending" aria-hidden="true">
+            <div
+              className="pws-dashboard-rows pws-dashboard-rows--pending"
+              aria-hidden="true"
+            >
               {Array.from({ length: 3 }, (_, index) => (
-                <div key={index} className="pws-dashboard-row pws-dashboard-row--skeleton">
+                <div
+                  key={index}
+                  className="pws-dashboard-row pws-dashboard-row--skeleton"
+                >
                   <span className="pws-dashboard-row-icon pws-skel" />
                   <div className="pws-dashboard-row-info">
                     <span className="pws-skel pws-skel--name" />
                     <span className="pws-skel pws-skel--meta" />
                   </div>
                   <div className="pws-dashboard-row-bars">
-                    <QuotaBars quota={null} threshold={80} t={t} layout="stacked" pending />
+                    <QuotaBars
+                      quota={null}
+                      threshold={80}
+                      t={t}
+                      layout="stacked"
+                      pending
+                    />
                   </div>
                 </div>
               ))}
@@ -436,28 +634,46 @@ export default function ProviderOverviewDashboard({
           <SectionHeader title={t("pws.dashboard.recentlyUsed")} />
           {mostUsed.length > 0 ? (
             <div className="pws-dashboard-rows ocx-reveal-list">
-              {mostUsed.map(provider => (
+              {mostUsed.map((provider) => (
                 <button
                   key={provider.name}
                   type="button"
                   className="pws-dashboard-row"
                   onClick={() => onSelectProvider(provider.name)}
                 >
-                  <ProviderIcon name={provider.name} adapter="" baseUrl="" cls="pws-dashboard-row-icon" />
-                  <span className="pws-dashboard-row-name">{formatProviderDisplayName(provider.name)}</span>
+                  <ProviderIcon
+                    name={provider.name}
+                    adapter=""
+                    baseUrl=""
+                    cls="pws-dashboard-row-icon"
+                  />
+                  <span className="pws-dashboard-row-name">
+                    {formatProviderDisplayName(provider.name)}
+                  </span>
                   <span className="pws-dashboard-row-count muted">
                     {provider.requests === 1
                       ? t("pws.dashboard.requestOne")
-                      : t("pws.dashboard.requests", { count: formatRequestCount(provider.requests, locale) })}
+                      : t("pws.dashboard.requests", {
+                          count: formatRequestCount(provider.requests, locale),
+                        })}
                   </span>
-                  <IconChevron className="pws-dashboard-row-chevron" aria-hidden="true" />
+                  <IconChevron
+                    className="pws-dashboard-row-chevron"
+                    aria-hidden="true"
+                  />
                 </button>
               ))}
             </div>
           ) : usageLoading ? (
-            <div className="pws-dashboard-rows pws-dashboard-rows--pending" aria-hidden="true">
+            <div
+              className="pws-dashboard-rows pws-dashboard-rows--pending"
+              aria-hidden="true"
+            >
               {Array.from({ length: 3 }, (_, index) => (
-                <div key={index} className="pws-dashboard-row pws-dashboard-row--skeleton">
+                <div
+                  key={index}
+                  className="pws-dashboard-row pws-dashboard-row--skeleton"
+                >
                   <span className="pws-dashboard-row-icon pws-skel" />
                   <span className="pws-skel pws-skel--name" />
                   <span className="pws-skel pws-skel--count" />

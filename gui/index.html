@@ -13,6 +13,8 @@
         try {
           var t = localStorage.getItem("ocx-theme");
           if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+          var s = localStorage.getItem("ocx-style");
+          if (s === "strak" || s === "devin") document.documentElement.setAttribute("data-style", s);
         } catch (e) {}
       })();
     </script>

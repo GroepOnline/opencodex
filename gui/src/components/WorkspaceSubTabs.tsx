@@ -49,7 +49,7 @@ export default function WorkspaceSubTabs({
                   transition={
                     reduceMotion !== false || keyboardNavigation
                       ? { duration: 0 }
-                      : { type: "spring", visualDuration: 0.22, bounce: 0.12 }
+                      : { type: "spring", visualDuration: 0.22, bounce: 0 }
                   }
                   aria-hidden
                 />

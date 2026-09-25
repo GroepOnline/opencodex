@@ -57,7 +57,7 @@ describe("oauth ToS warning UI seam", () => {
     expect(modal).toContain("OAuthTosWarningModal");
     expect(modal).toContain("requestLoginOAuth");
     expect(modal).toContain("if (oauthBusy) return");
-    expect(modal).toContain("!oauthTosPending");
+    expect(modal).toContain("suspended: Boolean(oauthTosPending)");
     expect(warn).toContain("oauthTos.acknowledge");
     expect(warn).toContain("disabled={!acknowledged || submitted}");
     expect(warn).toContain("showModal()");

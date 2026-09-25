@@ -25,8 +25,12 @@ import { Stat, StatGroup } from "../components/primitives/stat";
 type Range = "all" | "30d" | "7d";
 type UsageSurface = "all" | "codex" | "claude" | "grok";
 
-function usagePayloadKey(range: Range, surface: UsageSurface): string {
-  return `${range}:${surface}`;
+function usagePayloadKey(
+  apiBase: string,
+  range: Range,
+  surface: UsageSurface,
+): string {
+  return `${apiBase}:${range}:${surface}`;
 }
 
 interface UsageSummaryTotals {
@@ -871,7 +875,14 @@ export default function Usage({ apiBase }: { apiBase: string }) {
   const { t, locale } = useI18n();
   const [range, setRange] = useState<Range>("30d");
   const [surface, setSurface] = useState<UsageSurface>("all");
-  const [data, setData] = useState<UsageResponse | null>(null);
+  const [snapshot, setSnapshot] = useState<{
+    key: string;
+    data: UsageResponse;
+  } | null>(null);
+  const data =
+    snapshot?.key === usagePayloadKey(apiBase, range, surface)
+      ? snapshot.data
+      : null;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modelQuery, setModelQuery] = useState("");
@@ -886,7 +897,7 @@ export default function Usage({ apiBase }: { apiBase: string }) {
       signal: AbortSignal,
     ) => {
       const generation = ++loadGenerationRef.current;
-      const requestKey = usagePayloadKey(nextRange, nextSurface);
+      const requestKey = usagePayloadKey(apiBase, nextRange, nextSurface);
       setLoading(true);
       try {
         const res = await fetch(
@@ -898,15 +909,16 @@ export default function Usage({ apiBase }: { apiBase: string }) {
         if (signal.aborted || generation !== loadGenerationRef.current) return;
         lastGoodKeyRef.current = requestKey;
         dataRef.current = json;
-        setData(json);
+        setSnapshot({ key: requestKey, data: json });
         setError(null);
       } catch (cause) {
         // A stale request (range/apiBase changed, or unmount) must not overwrite newer state.
         if (signal.aborted || generation !== loadGenerationRef.current) return;
-        // Last-good applies only when the same range+surface is already on screen.
-        if (lastGoodKeyRef.current === requestKey && dataRef.current) return;
-        dataRef.current = null;
-        setData(null);
+        // Keep last-good readings only for this API, range and surface.
+        if (lastGoodKeyRef.current !== requestKey || !dataRef.current) {
+          dataRef.current = null;
+          setSnapshot(null);
+        }
         const detail = cause instanceof Error ? cause.message : "";
         setError(
           detail ? `${t("usage.loadError")} ${detail}` : t("usage.loadError"),
@@ -985,7 +997,7 @@ export default function Usage({ apiBase }: { apiBase: string }) {
         }
       />
 
-      {error && !data ? (
+      {error ? (
         <Notice tone="err">
           {error}{" "}
           <button
@@ -999,7 +1011,8 @@ export default function Usage({ apiBase }: { apiBase: string }) {
             {t("common.retry")}
           </button>
         </Notice>
-      ) : loading && !data ? (
+      ) : null}
+      {loading && !data ? (
         <Empty>
           <EmptyHeader>
             <EmptyMedia variant="icon">

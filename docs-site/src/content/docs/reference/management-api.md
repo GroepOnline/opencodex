@@ -8,6 +8,14 @@ The dashboard and `ocx account` CLI talk to the running proxy over these routes.
 They return operator data only: no raw API keys, OAuth tokens, or account identifiers
 that could be replayed.
 
+## Dashboard session identity
+
+`GET /api/whoami` uses the standard management authentication and origin checks.
+It returns only `email` and `source` (`cf-access`, `oidc`, or `none`) for the
+verified dashboard identity. When no human identity is available, `email` is
+`null` and `source` is `none`; an admin token does not imply a human identity.
+The response uses `Cache-Control: no-store` and never includes tokens or subjects.
+
 ## Provider quotas
 
 `GET /api/provider-quotas` returns quota reports for the configured providers. To

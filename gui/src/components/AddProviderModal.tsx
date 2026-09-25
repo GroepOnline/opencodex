@@ -29,6 +29,7 @@ import {
   createInitialAddProviderState,
 } from "./add-provider-modal-reducer";
 import { Modal, ModalCard, ModalHead } from "./primitives/modal";
+import { useModalFocus } from "./primitives/use-modal-focus";
 
 export type ProviderConfig = ProviderPayload;
 
@@ -83,7 +84,6 @@ export default function AddProviderModal({
       createInitialAddProviderState(custom, t("modal.customProvider")),
   );
   const aliveRef = useRef(true);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   const oauthPoll = useKeyedClientResource(
@@ -145,31 +145,16 @@ export default function AddProviderModal({
     oauthTosPending,
   } = state;
 
+  useModalFocus(dialogRef, { onClose, suspended: Boolean(oauthTosPending) });
+
   useEffect(() => {
     aliveRef.current = true;
-    previousFocusRef.current = document.activeElement as HTMLElement | null;
     onOpen?.();
-    const dialog = dialogRef.current;
-    if (dialog) {
-      const focusable = dialog.querySelector<HTMLElement>(
-        "input:not([disabled]), button:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
-      );
-      if (focusable) focusable.focus();
-    }
     return () => {
       aliveRef.current = false;
-      previousFocusRef.current?.focus();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only open hook
   }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !oauthTosPending) onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, oauthTosPending]);
 
   const presetDescription = (candidate: Preset): string | undefined => {
     const key = codexPresetDescriptionKey(candidate);
