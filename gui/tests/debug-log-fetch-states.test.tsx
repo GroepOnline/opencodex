@@ -65,7 +65,9 @@ function installLayoutStubs(win: Window): void {
     },
   });
   class ResizeObserverStub {
-    constructor(_callback: ResizeObserverCallback) {}
+    constructor(callback: ResizeObserverCallback) {
+      void callback;
+    }
     observe() {}
     unobserve() {}
     disconnect() {}
