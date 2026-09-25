@@ -48,10 +48,23 @@ function evaluateRunnerExpression(
     .replace(/'((?:[^']|'')*)'/g, (_, value: string) =>
       JSON.stringify(value.replace(/''/g, "'")),
     );
+  const github = new Proxy(
+    { event_name: event, ref },
+    {
+      get(target, property) {
+        if (typeof property !== "string" || !Object.hasOwn(target, property)) {
+          throw new Error(
+            `Unsupported github context property: ${String(property)}`,
+          );
+        }
+        return target[property as keyof typeof target];
+      },
+    },
+  );
   return runInNewContext(
     source,
     {
-      github: { event_name: event, ref },
+      github,
       fromJSON: JSON.parse,
       startsWith: (value: string, prefix: string) =>
         value.toLowerCase().startsWith(prefix.toLowerCase()),
@@ -83,6 +96,16 @@ function expectReadOnlyJob(workflow: RunnerWorkflow, job: RunnerJob): void {
 }
 
 describe("GitHub Actions hardening", () => {
+  test("workflow expression evaluation rejects unknown GitHub context properties", () => {
+    expect(() =>
+      evaluateRunnerExpression(
+        "${{ github.repository_owner == 'GroepOnline' }}",
+        "push",
+        "refs/heads/main",
+      ),
+    ).toThrow("Unsupported github context property: repository_owner");
+  });
+
   test("PR runner isolation covers both CI matrix branches without dropping release platforms", async () => {
     const workflow = Bun.YAML.parse(
       await readText(".github/workflows/ci.yml"),
