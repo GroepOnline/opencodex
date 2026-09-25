@@ -1,6 +1,6 @@
 name: Container image
 
-# Builds the OpenCodex image on the self-hosted `opencodex` Linux runner (Docker).
+# Builds the OpenCodex image on an ephemeral GitHub-hosted Linux runner (Docker).
 # Push to GHCR is a separate job: tag v*.*.* push, workflow_dispatch on main, or
 # workflow_dispatch on a v*.*.* tag ref. The tag-ref dispatch exists because
 # release.yml creates the tag with GITHUB_TOKEN, and tag pushes made with that
@@ -32,7 +32,7 @@ concurrency:
 jobs:
   image:
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev') || (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v'))
-    runs-on: [self-hosted, Linux, X64, jan]
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
@@ -100,6 +100,7 @@ jobs:
 
   publish:
     if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
+    # Trusted release execution remains on the dedicated fleet runner.
     runs-on: [self-hosted, Linux, X64, jan]
     timeout-minutes: 20
     permissions:
