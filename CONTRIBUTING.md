@@ -51,7 +51,10 @@ bun run setup:hooks
 **Pre-commit** runs `lint-staged` (Prettier on staged files). Skip in an emergency with
 `git commit --no-verify`.
 
-**Pre-push** runs `bun run prepush` — `typecheck`, `lint:gui`, `test`, `privacy:scan`,
-and `doctor:gui:if-changed` — before every `git push`. The same checks run on
-ubuntu-latest and windows-latest in CI (CI additionally builds the GUI
-and smoke-tests the CLI). Skip in an emergency with `git push --no-verify`.
+**Pre-push** dispatches the full `bun run prepush` gate — `typecheck`, `lint:gui`,
+`test`, `privacy:scan`, and `doctor:gui:if-changed` — before every `git push`.
+On a developer laptop it skips that heavyweight gate unless
+`OCX_RUN_LOCAL_PREPUSH=1` is set, so the push can trigger verification on
+GitHub-hosted CI or another authorized isolated build environment. CI builds the
+GUI and smoke-tests the CLI as well. Do not use `git push --no-verify`; inspect the
+exact-head CI result before merging.

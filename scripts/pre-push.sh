@@ -1,5 +1,4 @@
 #!/usr/bin/env sh
-# Pre-push hook shim. The actual command list lives in package.json ("prepush").
-# Legacy shim; Husky runs `bun run prepush` from .husky/pre-push after `bun install`.
+# Legacy shim; Husky and this compatibility entry point use the same dispatcher.
 set -e
-exec bun run prepush
+exec bun scripts/pre-push.ts

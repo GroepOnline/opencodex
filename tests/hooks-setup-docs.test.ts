@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { shouldRunPrePush, skipMessage } from "../scripts/pre-push";
 
 const repoRoot = join(import.meta.dirname, "..");
 
@@ -18,7 +19,8 @@ test("husky hook wiring is committed and documented", () => {
   expect(preCommit).not.toContain("bun run test");
 
   const prePush = readFileSync(join(repoRoot, ".husky/pre-push"), "utf8");
-  expect(prePush).toContain("bun run prepush");
+  expect(prePush).toContain("bun scripts/pre-push.ts");
+  expect(prePush).not.toContain("bun run prepush");
 
   const contributing = readFileSync(join(repoRoot, "CONTRIBUTING.md"), "utf8");
   expect(contributing).toContain("Husky");
@@ -40,4 +42,16 @@ test("husky hook wiring is committed and documented", () => {
   expect(setupHooks).toContain('"x", "husky"');
   expect(setupHooks).not.toContain("shell: true");
   expect(setupHooks).not.toContain('"bunx"');
+});
+
+test("pre-push keeps heavyweight checks off developer laptops by default", () => {
+  expect(shouldRunPrePush({})).toBe(false);
+  expect(shouldRunPrePush({ OCX_RUN_LOCAL_PREPUSH: "1" })).toBe(true);
+  expect(shouldRunPrePush({ OCX_ISOLATED_BUILD: "1" })).toBe(true);
+  expect(shouldRunPrePush({ CI: "true" })).toBe(true);
+  expect(shouldRunPrePush({ CI: "false" })).toBe(false);
+  expect(skipMessage("developer-laptop")).toContain("developer-laptop");
+  expect(skipMessage("developer-laptop")).toContain(
+    "GitHub-hosted CI or an authorized isolated build",
+  );
 });

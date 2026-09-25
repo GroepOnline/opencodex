@@ -39,8 +39,12 @@ remains the live public-host gate until the cutover checklist) are in
 once.
 
 - **Pre-commit:** `lint-staged` (Prettier on staged files). Skip with `git commit --no-verify`.
-- **Pre-push:** `bun run prepush` (`typecheck`, `lint:gui`, `test`, `privacy:scan`, and
-  `doctor:gui:if-changed` when `gui/` changed). Skip with `git push --no-verify`.
+- **Pre-push:** dispatches `bun run prepush` (`typecheck`, `lint:gui`, `test`,
+  `privacy:scan`, and `doctor:gui:if-changed` when `gui/` changed). Developer
+  laptops skip the heavyweight local gate unless `OCX_RUN_LOCAL_PREPUSH=1` is
+  set, allowing the push to trigger GitHub-hosted CI or another authorized
+  isolated build environment; inspect the exact-head result before merging. Do
+  not use `git push --no-verify`.
 
 ## Build and test commands
 
