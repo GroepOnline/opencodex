@@ -1109,7 +1109,7 @@ describe("GitHub Actions hardening", () => {
     // `defaults:`, and no `<<:` merge key to reintroduce any of them sideways.
     const [, job] = jobs[0]!;
     expect(Object.keys(job).sort()).toEqual(["runs-on", "steps"]);
-    expect(job["runs-on"]).toEqual(["self-hosted", "Linux", "X64", "jan"]);
+    expect(job["runs-on"]).toBe("ubuntu-latest");
 
     // Checkout trusted scripts, then run the gate. Anything more is an extra
     // privileged action nobody reviewed.
