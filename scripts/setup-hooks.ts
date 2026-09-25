@@ -23,6 +23,7 @@ execFileSync(process.execPath, ["x", "husky"], {
   stdio: "inherit",
 });
 console.log("Husky hooks installed (.husky/pre-commit and .husky/pre-push).");
+console.log("Skip pre-commit in an emergency with: git commit --no-verify");
 console.log(
-  "Skip in an emergency with: git commit --no-verify / git push --no-verify",
+  "Pre-push requires remote/isolated verification, or OCX_RUN_LOCAL_PREPUSH=1 for an intentional local run.",
 );

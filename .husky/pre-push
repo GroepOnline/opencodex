@@ -6,4 +6,4 @@ set -e
 # from cwd instead of mutating this checkout's shared worktree metadata.
 unset $(git rev-parse --local-env-vars)
 
-exec bun run prepush
+exec bun scripts/pre-push.ts
