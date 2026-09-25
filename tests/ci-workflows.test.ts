@@ -627,8 +627,9 @@ describe("GitHub Actions hardening", () => {
     expect(deploy.run).toContain("exit 1");
     for (const step of steps) {
       expect(step.run ?? "").not.toContain("${{");
-      expect(step.env?.GH_TOKEN).toBe("${{ github.token }}");
     }
+    expect(image.env?.GH_TOKEN).toBe("${{ github.token }}");
+    expect(deploy.env?.GH_TOKEN).toBeUndefined();
     // Dry runs never dispatch anything.
     expect(rollout?.if).not.toContain("always()");
   });

@@ -643,12 +643,9 @@ jobs:
 
       - name: Refuse retired live deploy (opt-in)
         env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ inputs.version }}
           DEPLOY: ${{ inputs.deploy }}
         run: |
           set -euo pipefail
-          release_tag="v${RELEASE_VERSION}"
           if [ "$DEPLOY" != "true" ]; then
             echo "::notice::deploy=false — runtime cutover is not part of this release."
             echo "- runtime cutover: not dispatched; legacy Azure deployment is retired" >> "$GITHUB_STEP_SUMMARY"
