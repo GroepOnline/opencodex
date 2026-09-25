@@ -6,6 +6,9 @@ const LOCAL_OPT_IN = "OCX_RUN_LOCAL_PREPUSH";
 const TRUSTED_CI = "CI";
 const ISOLATED_BUILD = "OCX_ISOLATED_BUILD";
 
+// Matches the CI verification job budget, while ensuring an opted-in hook cannot wait forever.
+export const PREPUSH_TIMEOUT_MS = 40 * 60 * 1_000;
+
 export type PrePushEnvironment = Record<string, string | undefined>;
 
 export function shouldRunPrePush(
@@ -26,6 +29,17 @@ export function skipMessage(host = hostname()): string {
   ].join("\n");
 }
 
+export function prePushFailureMessage(error: {
+  code?: string;
+  message: string;
+}): string {
+  if (error.code === "ETIMEDOUT") {
+    return `pre-push: verification timed out after ${PREPUSH_TIMEOUT_MS / 60_000} minutes; check for orphaned child processes before retrying.`;
+  }
+
+  return `pre-push: could not start verification: ${error.message}`;
+}
+
 if (import.meta.main) {
   if (!shouldRunPrePush()) {
     console.log(skipMessage());
@@ -37,12 +51,11 @@ if (import.meta.main) {
     cwd: repoRoot,
     env: process.env,
     stdio: "inherit",
+    timeout: PREPUSH_TIMEOUT_MS,
   });
 
   if (result.error) {
-    console.error(
-      `pre-push: could not start verification: ${result.error.message}`,
-    );
+    console.error(prePushFailureMessage(result.error));
     process.exit(1);
   }
   process.exit(result.status ?? 1);

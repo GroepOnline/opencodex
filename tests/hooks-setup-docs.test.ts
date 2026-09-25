@@ -1,7 +1,12 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { shouldRunPrePush, skipMessage } from "../scripts/pre-push";
+import {
+  PREPUSH_TIMEOUT_MS,
+  prePushFailureMessage,
+  shouldRunPrePush,
+  skipMessage,
+} from "../scripts/pre-push";
 
 const repoRoot = join(import.meta.dirname, "..");
 
@@ -33,6 +38,8 @@ test("husky hook wiring is committed and documented", () => {
   );
   expect(docsContributing).toContain("Husky");
   expect(docsContributing).toContain("lint-staged");
+  expect(docsContributing).toContain("when enabled");
+  expect(docsContributing).toContain("40-minute limit");
 
   const setupHooks = readFileSync(
     join(repoRoot, "scripts/setup-hooks.ts"),
@@ -54,4 +61,19 @@ test("pre-push keeps heavyweight checks off developer laptops by default", () =>
   expect(skipMessage("developer-laptop")).toContain(
     "GitHub-hosted CI or an authorized isolated build",
   );
+  expect(PREPUSH_TIMEOUT_MS).toBe(40 * 60 * 1_000);
+  expect(
+    prePushFailureMessage({ code: "ETIMEDOUT", message: "timed out" }),
+  ).toContain("verification timed out after 40 minutes");
+  expect(
+    prePushFailureMessage({ code: "ENOENT", message: "bun not found" }),
+  ).toBe("pre-push: could not start verification: bun not found");
+
+  const prePushScript = readFileSync(
+    join(repoRoot, "scripts/pre-push.ts"),
+    "utf8",
+  );
+  expect(prePushScript).toContain("timeout: PREPUSH_TIMEOUT_MS");
+  expect(prePushScript).toContain("prePushFailureMessage(result.error)");
+  expect(prePushScript).toContain("orphaned child processes");
 });
