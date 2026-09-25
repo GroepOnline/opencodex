@@ -63,7 +63,7 @@ describe("container image", () => {
       join(repoRoot, ".github/workflows/container.yml"),
     ).text();
     expect(workflow).toContain("VCS_REF=${{ github.sha }}");
-    expect(workflow).toContain("runs-on: [self-hosted, Linux, X64, jan]");
+    expect(workflow).toContain("runs-on: ubuntu-latest");
     expect(compose).toContain("OPENCODEX_IMAGE:?pin an immutable image digest");
     expect(compose).toContain(
       "OPENCODEX_API_AUTH_TOKEN_FILE: /run/secrets/opencodex_api_token",
