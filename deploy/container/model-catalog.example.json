@@ -1,0 +1,75 @@
+{
+  "port": 10100,
+  "defaultProvider": "azure-us",
+  "providers": {
+    "azure-us": {
+      "adapter": "openai-chat",
+      "baseUrl": "https://openaichef.cognitiveservices.azure.com/openai/v1",
+      "authMode": "key",
+      "apiKey": "$AZURE_OPENAI_KEY_OPENAICHEF",
+      "liveModels": false,
+      "contextWindow": 128000,
+      "defaultModel": "deepseek-v4-flash-0731",
+      "models": [
+        "grok-4-6",
+        "DeepSeek-V4-1-Flash",
+        "DeepSeek-V4-Pro",
+        "DeepSeek-V4-Pro-dz",
+        "fw-glm-5-3-flash",
+        "fw-kimi-k3",
+        "fw-deepseek-v4-1-flash",
+        "deepseek-v4-flash-0731",
+        "kimi-k2-7-code",
+        "grok-4-20-reasoning",
+        "fw-glm-5-3-dz"
+      ],
+      "selectedModels": [
+        "grok-4-6",
+        "DeepSeek-V4-1-Flash",
+        "DeepSeek-V4-Pro",
+        "DeepSeek-V4-Pro-dz",
+        "fw-glm-5-3-flash",
+        "fw-kimi-k3",
+        "fw-deepseek-v4-1-flash",
+        "deepseek-v4-flash-0731",
+        "kimi-k2-7-code",
+        "grok-4-20-reasoning",
+        "fw-glm-5-3-dz"
+      ]
+    },
+    "azure-se": {
+      "adapter": "openai-chat",
+      "baseUrl": "https://openaichef-se.cognitiveservices.azure.com/openai/v1",
+      "authMode": "key",
+      "apiKey": "$AZURE_OPENAI_KEY_OPENAICHEF_SE",
+      "liveModels": false,
+      "contextWindow": 128000,
+      "defaultModel": "deepseek-v4-flash-dz",
+      "models": [
+        "grok-4-6",
+        "DeepSeek-V4-1-Flash",
+        "grok-4-20-non-reasoning",
+        "kimi-k2-6",
+        "deepseek-v4-flash-dz"
+      ],
+      "selectedModels": [
+        "grok-4-6",
+        "DeepSeek-V4-1-Flash",
+        "grok-4-20-non-reasoning",
+        "kimi-k2-6",
+        "deepseek-v4-flash-dz"
+      ]
+    },
+    "azure-foundry-us": {
+      "adapter": "openai-chat",
+      "baseUrl": "https://azure-foundry-us.cognitiveservices.azure.com/openai/v1",
+      "authMode": "key",
+      "apiKey": "$AZURE_OPENAI_KEY_AZURE_FOUNDRY_US",
+      "liveModels": false,
+      "contextWindow": 128000,
+      "defaultModel": "fw-deepseek-v4-pro",
+      "models": ["fw-deepseek-v4-pro"],
+      "selectedModels": ["fw-deepseek-v4-pro"]
+    }
+  }
+}

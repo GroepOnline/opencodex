@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 import {
   SCRIPT_BINDINGS,
   callsTo,
@@ -33,7 +34,195 @@ function count(text: string, fragment: string): number {
   return text.split(fragment).length - 1;
 }
 
+// These workflow expressions use the JS-compatible boolean/string subset of
+// Actions syntax. Evaluate the YAML itself, not a second copy of its routing logic.
+function evaluateRunnerExpression(
+  expression: string,
+  event: string,
+  ref: string,
+): unknown {
+  const source = expression
+    .trim()
+    .replace(/^\$\{\{\s*|\s*\}\}$/g, "")
+    // Actions strings preserve backslashes and escape apostrophes by doubling them.
+    .replace(/'((?:[^']|'')*)'/g, (_, value: string) =>
+      JSON.stringify(value.replace(/''/g, "'")),
+    );
+  const github = new Proxy(
+    { event_name: event, ref },
+    {
+      get(target, property) {
+        if (typeof property !== "string" || !Object.hasOwn(target, property)) {
+          throw new Error(
+            `Unsupported github context property: ${String(property)}`,
+          );
+        }
+        return target[property as keyof typeof target];
+      },
+    },
+  );
+  return runInNewContext(
+    source,
+    {
+      github,
+      fromJSON: JSON.parse,
+      startsWith: (value: string, prefix: string) =>
+        value.toLowerCase().startsWith(prefix.toLowerCase()),
+    },
+    { timeout: 1_000 },
+  );
+}
+
+type RunnerJob = {
+  if?: string;
+  "runs-on": string | string[];
+  permissions?: Record<string, string>;
+  strategy?: { matrix: { include: string } };
+};
+type RunnerWorkflow = {
+  on: Record<string, unknown>;
+  permissions: Record<string, string>;
+  jobs: Record<string, RunnerJob>;
+};
+
+function expectReadOnlyJob(workflow: RunnerWorkflow, job: RunnerJob): void {
+  const permissions = job.permissions ?? workflow.permissions;
+  expect(typeof permissions).toBe("object");
+  expect(permissions.contents).toBe("read");
+  for (const level of Object.values(permissions)) {
+    expect(["read", "none"]).toContain(level);
+  }
+  expect(JSON.stringify(job)).not.toMatch(/\$\{\{[^}]*\bsecrets\s*[.\[]/i);
+}
+
 describe("GitHub Actions hardening", () => {
+  test("workflow expression evaluation rejects unknown GitHub context properties", () => {
+    expect(() =>
+      evaluateRunnerExpression(
+        "${{ github.repository_owner == 'GroepOnline' }}",
+        "push",
+        "refs/heads/main",
+      ),
+    ).toThrow("Unsupported github context property: repository_owner");
+  });
+
+  test("PR runner isolation covers both CI matrix branches without dropping release platforms", async () => {
+    const workflow = Bun.YAML.parse(
+      await readText(".github/workflows/ci.yml"),
+    ) as RunnerWorkflow;
+    expect(workflow.on).toHaveProperty("pull_request");
+    expect(workflow.on).not.toHaveProperty("pull_request_target");
+    expect(Object.keys(workflow.jobs).sort()).toEqual([
+      "lint-github-actions",
+      "npm-global-smoke",
+      "security",
+      "test",
+    ]);
+    for (const [event, ref, fullMatrix] of [
+      ["pull_request", "refs/pull/42/merge", false],
+      ["push", "refs/heads/main", false],
+      ["workflow_dispatch", "refs/heads/main", true],
+      ["workflow_dispatch", "refs/tags/v1.5.0", true],
+    ] as const) {
+      for (const [id, job] of Object.entries(workflow.jobs)) {
+        expectReadOnlyJob(workflow, job);
+        if (job.strategy) {
+          expect(job["runs-on"]).toBe("${{ fromJSON(matrix.runner) }}");
+          const rows = evaluateRunnerExpression(
+            job.strategy.matrix.include,
+            event,
+            ref,
+          ) as Array<{ name?: string; platform?: string; runner: string }>;
+          const labels = rows.map((row) => JSON.parse(row.runner));
+          const expectedLabels =
+            id === "test"
+              ? ["ubuntu-latest", "ubuntu-latest"]
+              : ["ubuntu-latest"];
+          if (fullMatrix)
+            expectedLabels.push(
+              ...(id === "test"
+                ? ["windows-latest", "windows-latest", "windows-latest"]
+                : ["windows-latest"]),
+            );
+          expect(labels).toEqual(expectedLabels);
+          if (id === "npm-global-smoke") {
+            // Publication gates consume this name, not the runner's label.
+            expect(rows[0]?.platform).toBe("opencodex");
+          }
+        } else {
+          expect(job["runs-on"]).toBe("ubuntu-latest");
+        }
+      }
+    }
+  });
+
+  test.each([
+    "design-system-contract",
+    "issue-quality-tests",
+    "react-doctor",
+    "security-audit",
+    "service-lifecycle",
+  ])("PR runner isolation keeps %s hosted and read-only", async (name) => {
+    const workflow = Bun.YAML.parse(
+      await readText(`.github/workflows/${name}.yml`),
+    ) as RunnerWorkflow;
+    expect(workflow.on).toHaveProperty("pull_request");
+    expect(workflow.on).not.toHaveProperty("pull_request_target");
+    expect(Object.keys(workflow.jobs).length).toBeGreaterThan(0);
+    for (const job of Object.values(workflow.jobs)) {
+      expect(job["runs-on"]).toBe("ubuntu-latest");
+      expectReadOnlyJob(workflow, job);
+    }
+  });
+
+  test("PR runner isolation never schedules trusted container publication for PRs or feature dispatches", async () => {
+    const workflow = Bun.YAML.parse(
+      await readText(".github/workflows/container.yml"),
+    ) as RunnerWorkflow;
+    expect(workflow.on).not.toHaveProperty("pull_request_target");
+    for (const [event, ref, expectedJob] of [
+      ["pull_request", "refs/pull/42/merge", "image"],
+      ["pull_request", "refs/heads/main", "image"],
+      ["pull_request", "refs/tags/v1.5.0", "image"],
+      ["pull_request_target", "refs/heads/main", undefined],
+      ["push", "refs/heads/dev", "image"],
+      ["push", "refs/heads/main", undefined],
+      ["push", "refs/tags/v1.5.0", "publish"],
+      ["workflow_dispatch", "refs/heads/feature", "image"],
+      ["workflow_dispatch", "refs/heads/dev", "image"],
+      ["workflow_dispatch", "refs/heads/main", "publish"],
+      ["workflow_dispatch", "refs/tags/v1.5.0", "publish"],
+      ["workflow_dispatch", "refs/tags/v1.5.1-preview.1", "publish"],
+    ] as const) {
+      const scheduled = Object.entries(workflow.jobs).filter(
+        ([, job]) =>
+          job.if === undefined || evaluateRunnerExpression(job.if, event, ref),
+      );
+      expect(scheduled.map(([id]) => id)).toEqual(
+        expectedJob ? [expectedJob] : [],
+      );
+      for (const [id, job] of scheduled) {
+        if (id === "publish") {
+          expect(job["runs-on"]).toEqual([
+            "self-hosted",
+            "Linux",
+            "X64",
+            "jan",
+          ]);
+          expect(job.permissions).toEqual({
+            contents: "read",
+            packages: "write",
+            actions: "read",
+          });
+        } else {
+          expect(job["runs-on"]).toBe("ubuntu-latest");
+          expectReadOnlyJob(workflow, job);
+          expect(job.permissions?.packages).toBe("none");
+        }
+      }
+    }
+  });
+
   test("CI and release verify with the Bun runtime actually shipped in the package", async () => {
     const pkg = JSON.parse(await readText("package.json"));
     const workflows = await Promise.all([
@@ -87,13 +276,10 @@ describe("GitHub Actions hardening", () => {
     for (const job of [
       "ubuntu-latest",
       "ubuntu-latest shard 2/2",
-      "macos-latest",
-      "macos-quality",
       "windows-latest",
       "windows-latest shard 2/2",
       "windows-quality",
       "npm-global opencodex",
-      "npm-global macos-latest",
       "npm-global windows-latest",
       "Security audit",
       "Lint GitHub Actions",
@@ -106,11 +292,9 @@ describe("GitHub Actions hardening", () => {
   test("cross-platform CI keeps bounded jobs and immutable action references", async () => {
     const workflow = await readText(".github/workflows/ci.yml");
 
-    // The cross-platform `test` job sits at 20 minutes: a green Windows run measured
-    // 11.8 min against 4.6 on Linux, and the previous 12-minute ceiling left ~12s of
-    // margin, so runner variance rather than the code decided the verdict (#717).
-    // `npm-global-smoke` stays at 8; it finishes in 1-2 minutes.
-    expect(count(workflow, "timeout-minutes: 20")).toBe(1);
+    // The cross-platform `test` job has a bounded 40-minute budget. Its Linux
+    // shard runs on an ephemeral hosted runner; `npm-global-smoke` stays at 8.
+    expect(count(workflow, "timeout-minutes: 40")).toBe(1);
     expect(count(workflow, "timeout-minutes: 8")).toBe(1);
     // EVERY job must stay bounded — an unbounded job can hang a queue for hours.
     // Derived from the job set rather than a hardcoded count, so adding a job
@@ -948,12 +1132,7 @@ describe("GitHub Actions hardening", () => {
     // `defaults:`, and no `<<:` merge key to reintroduce any of them sideways.
     const [, job] = jobs[0]!;
     expect(Object.keys(job).sort()).toEqual(["runs-on", "steps"]);
-    expect(job["runs-on"]).toEqual([
-      "self-hosted",
-      "Linux",
-      "X64",
-      "opencodex",
-    ]);
+    expect(job["runs-on"]).toBe("ubuntu-latest");
 
     // Checkout trusted scripts, then run the gate. Anything more is an extra
     // privileged action nobody reviewed.
@@ -2891,6 +3070,7 @@ describe("GitHub Actions hardening", () => {
     // declared here or CI linting the workflow itself would go red.
     expect(config["self-hosted-runner"]?.labels).toEqual([
       "deploy",
+      "jan",
       "opencodex",
     ]);
 
@@ -3620,7 +3800,7 @@ describe("GitHub Actions hardening", () => {
     expect(helperSrc).not.toContain(".ocx-translation-state");
   });
 
-  test("container image workflow builds on self-hosted opencodex and pushes only gated GHCR digests", async () => {
+  test("container image workflow builds on hosted runners and pushes only gated GHCR digests", async () => {
     const text = await readText(".github/workflows/container.yml");
     const workflow = Bun.YAML.parse(text) as {
       on?: {
@@ -3669,17 +3849,12 @@ describe("GitHub Actions hardening", () => {
     expect(jobs).toEqual(["image", "publish"]);
     const image = workflow.jobs?.image;
     const publish = workflow.jobs?.publish;
-    expect(image?.["runs-on"]).toEqual([
-      "self-hosted",
-      "Linux",
-      "X64",
-      "opencodex",
-    ]);
+    expect(image?.["runs-on"]).toBe("ubuntu-latest");
     expect(publish?.["runs-on"]).toEqual([
       "self-hosted",
       "Linux",
       "X64",
-      "opencodex",
+      "jan",
     ]);
     expect(image?.["timeout-minutes"]).toBe(20);
     expect(publish?.["timeout-minutes"]).toBe(20);
@@ -3815,11 +3990,7 @@ describe("GitHub Actions hardening", () => {
     const tagShape = new RegExp(match![1]!);
     const publishIf = String(publish?.if ?? "");
     const shouldPublishJob = (event: string, ref: string) =>
-      (event === "push" &&
-        publishIf.includes("refs/tags/v") &&
-        ref.startsWith("refs/tags/v")) ||
-      (event === "workflow_dispatch" &&
-        (ref === "refs/heads/main" || ref.startsWith("refs/tags/v")));
+      Boolean(evaluateRunnerExpression(publishIf, event, ref));
     const shouldPush = (event: string, ref: string) =>
       shouldPublishJob(event, ref) &&
       (((event === "push" || event === "workflow_dispatch") &&

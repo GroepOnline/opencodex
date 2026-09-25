@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: [self-hosted, Linux, X64, opencodex]
+    runs-on: [self-hosted, Linux, X64, jan]
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -33,7 +33,7 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: [self-hosted, Linux, X64, opencodex]
+    runs-on: [self-hosted, Linux, X64, jan]
     timeout-minutes: 10
     environment:
       name: github-pages
