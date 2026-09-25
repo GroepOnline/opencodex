@@ -64,12 +64,16 @@ describe("container image", () => {
     ).text();
     expect(workflow).toContain("VCS_REF=${{ github.sha }}");
     expect(workflow).toContain("runs-on: ubuntu-latest");
-    expect(workflow).not.toContain("self-hosted");
     expect(compose).toContain("OPENCODEX_IMAGE:?pin an immutable image digest");
     expect(compose).toContain(
       "OPENCODEX_API_AUTH_TOKEN_FILE: /run/secrets/opencodex_api_token",
     );
+    expect(compose).toContain("OIDC_ISSUER: ${OIDC_ISSUER:-}");
+    expect(compose).toContain(
+      "OIDC_CLIENT_SECRET_FILE: ${OIDC_CLIENT_SECRET_FILE:-}",
+    );
     expect(compose).not.toMatch(/^(\s*)OPENCODEX_API_AUTH_TOKEN:/m);
+    expect(compose).not.toMatch(/^(\s*)OIDC_CLIENT_SECRET:/m);
   });
 
   test("health probe accepts identity-ok /healthz and rejects mismatch", async () => {

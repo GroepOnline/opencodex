@@ -1,0 +1,26 @@
+{
+  "name": "opencodex",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "forwardPorts": [10100],
+  "portsAttributes": {
+    "10100": {
+      "label": "opencodex /healthz + dashboard",
+      "onAutoForward": "silent"
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "remoteEnv": {
+    "OPENCODEX_HEALTH_HOST": "127.0.0.1",
+    "OPENCODEX_HEALTH_PORT": "10100"
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "editor.formatOnSave": true
+      }
+    }
+  }
+}

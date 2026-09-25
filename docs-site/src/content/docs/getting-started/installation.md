@@ -9,20 +9,20 @@ vision and web-search sidecars can also use your ChatGPT login when a routed mod
 
 ## Prerequisites
 
-| Requirement | Why |
-| --- | --- |
+| Requirement                         | Why                                                                                                                                     |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | **[Node](https://nodejs.org) ≥ 18** | `ocx` runs on the Bun runtime, but the runtime is bundled automatically on `npm install` — you do **not** need to install Bun yourself. |
-| A provider account or API key | Anthropic, xAI, Kimi, Ollama Cloud, OpenRouter, an OpenAI-compatible endpoint, or your ChatGPT login. |
+| A provider account or API key       | Anthropic, xAI, Kimi, Ollama Cloud, OpenRouter, an OpenAI-compatible endpoint, or your ChatGPT login.                                   |
 
 ## Optional clients
 
 opencodex is a standalone local proxy. You do **not** need Codex installed to run `ocx start`, open
 the dashboard, or call `/v1/*`.
 
-| Client | When you need it |
-| --- | --- |
+| Client                                                          | When you need it                                                                                                                            |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | **[OpenAI Codex](https://openai.com/codex)** (CLI, App, or SDK) | Route Codex through the proxy; opencodex writes to `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`) when you opt in during setup. |
-| **Claude Code**, **OpenCode**, or any Responses-compatible tool | Point the client at `http://localhost:<port>/v1` instead of OpenAI. |
+| **Claude Code**, **OpenCode**, or any Responses-compatible tool | Point the client at `http://localhost:<port>/v1` instead of OpenAI.                                                                         |
 
 ## Install
 
@@ -31,7 +31,6 @@ the dashboard, or call `/v1/*`.
 ```bash
 brew install GroepOnline/tap/opencodex
 ```
-
 
 ```bash
 npm install -g @groeponline/opencodex
@@ -50,6 +49,7 @@ npm install -g --allow-scripts=bun @groeponline/opencodex
 # if the original install used sudo, keep using sudo:
 sudo npm install -g --allow-scripts=bun @groeponline/opencodex
 ```
+
 :::
 
 Verify both command aliases are on your `PATH`:
@@ -88,6 +88,8 @@ To hack on opencodex itself:
 git clone https://github.com/GroepOnline/opencodex.git
 cd opencodex
 bun install
+bun run start       # proxy + packaged dashboard on localhost:10100
+bash scripts/healthz-smoke.sh
 bun run dev:proxy   # starts the proxy API in dev mode (src/cli/index.ts start)
 bun run dev:gui     # starts the dashboard dev server (another terminal)
 ```
@@ -97,21 +99,26 @@ bun run dev:gui     # starts the dashboard dev server (another terminal)
 has produced `gui/dist`. While hacking on the dashboard, run the frontend separately with
 `bun run dev:gui`.
 
+The production listen path is `:10100/healthz`. Repo-root `compose.yml` and
+`.devcontainer/` run that same path locally. See the
+[contributing guide](/contributing/) and
+[`deploy/container/README.md`](https://github.com/GroepOnline/opencodex/blob/main/deploy/container/README.md).
+
 ## What gets created
 
 opencodex state lives under `$OPENCODEX_HOME` (default `~/.opencodex`). When you enable Codex
 integration, files also appear under `$CODEX_HOME` (default `~/.codex`).
 
-| Path | Purpose |
-| --- | --- |
-| `$OPENCODEX_HOME/config.json` | Your providers, default provider, port, and options. |
-| `$OPENCODEX_HOME/ocx.pid` | PID of the running proxy (single-instance guard). |
-| `$OPENCODEX_HOME/runtime-port.json` | The live PID, hostname, and port, including an automatically selected fallback port. |
-| `$OPENCODEX_HOME/auth.json` | Stored OAuth credentials (when you `ocx login`). |
-| `$OPENCODEX_HOME/catalog-backup*.json` | Codex model catalog backups made before opencodex edits it. |
-| `$CODEX_HOME/config.toml` | On loopback, opencodex adds a marker-owned root `openai_base_url`; non-loopback binds use `model_provider = "opencodex"` plus `[model_providers.opencodex]` so Codex can send the API-auth header. |
-| `$CODEX_HOME/opencodex.config.toml` | Fallback/reference profile written alongside the main Codex config. |
-| `$CODEX_HOME/opencodex-catalog.json` | Synced native and routed model catalog used by Codex. |
+| Path                                   | Purpose                                                                                                                                                                                            |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `$OPENCODEX_HOME/config.json`          | Your providers, default provider, port, and options.                                                                                                                                               |
+| `$OPENCODEX_HOME/ocx.pid`              | PID of the running proxy (single-instance guard).                                                                                                                                                  |
+| `$OPENCODEX_HOME/runtime-port.json`    | The live PID, hostname, and port, including an automatically selected fallback port.                                                                                                               |
+| `$OPENCODEX_HOME/auth.json`            | Stored OAuth credentials (when you `ocx login`).                                                                                                                                                   |
+| `$OPENCODEX_HOME/catalog-backup*.json` | Codex model catalog backups made before opencodex edits it.                                                                                                                                        |
+| `$CODEX_HOME/config.toml`              | On loopback, opencodex adds a marker-owned root `openai_base_url`; non-loopback binds use `model_provider = "opencodex"` plus `[model_providers.opencodex]` so Codex can send the API-auth header. |
+| `$CODEX_HOME/opencodex.config.toml`    | Fallback/reference profile written alongside the main Codex config.                                                                                                                                |
+| `$CODEX_HOME/opencodex-catalog.json`   | Synced native and routed model catalog used by Codex.                                                                                                                                              |
 
 :::note
 opencodex never deletes your Codex config. Every injection is reversible — `ocx stop`, `ocx restore`,

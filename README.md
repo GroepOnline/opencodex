@@ -81,11 +81,11 @@ flowchart LR
 
 ## Supported platforms
 
-| OS | Status | Service manager |
-|---|---|---|
-| macOS (arm64 / x64) | Fully supported | launchd |
-| Linux (x64 / arm64) | Fully supported | systemd (user unit) |
-| Windows (x64) | Fully supported | Task Scheduler (hidden) / opt-in native service (`--native`, WinSW) |
+| OS                  | Status          | Service manager                                                     |
+| ------------------- | --------------- | ------------------------------------------------------------------- |
+| macOS (arm64 / x64) | Fully supported | launchd                                                             |
+| Linux (x64 / arm64) | Fully supported | systemd (user unit)                                                 |
+| Windows (x64)       | Fully supported | Task Scheduler (hidden) / opt-in native service (`--native`, WinSW) |
 
 Requires [Node](https://nodejs.org) 18+. The Bun runtime is bundled automatically on `npm install` — no separate Bun install needed. All three platforms work natively (no WSL needed on Windows).
 
@@ -206,10 +206,10 @@ routing and catalog metadata for accounts and providers that can serve them.
 
 ## OpenAI provider account modes
 
-| Provider ID | Route | Credential | Behavior |
-|---|---|---|---|
-| `openai` | Codex login | Main + added Codex accounts | Pool by default; optional Direct mode |
-| `openai-apikey` | OpenAI API | API key/key pool | No Codex account routing |
+| Provider ID     | Route       | Credential                  | Behavior                              |
+| --------------- | ----------- | --------------------------- | ------------------------------------- |
+| `openai`        | Codex login | Main + added Codex accounts | Pool by default; optional Direct mode |
+| `openai-apikey` | OpenAI API  | API key/key pool            | No Codex account routing              |
 
 - Pool includes the main Codex login and added accounts, with affinity, quota, cooldown, and failover.
 - Direct short-circuits pool state and uses only the current caller/main-login bearer.
@@ -272,20 +272,20 @@ next Codex session. opencodex keeps these behaviors:
 
 ## Providers & adapters
 
-| Provider | Adapter | Auth |
-|---|---|---|
-| OpenAI (ChatGPT login) | `openai-responses` | forward (no key) |
-| OpenAI (API key) | `openai-responses` | key |
-| Umans AI Coding Plan | `anthropic` | key |
-| Anthropic Claude | `anthropic` | oauth / key |
-| xAI Grok | `openai-chat` | oauth / key |
-| Kimi (Moonshot) | `openai-chat` | oauth / key |
-| Google Gemini | `google` | key |
-| Azure OpenAI | `azure-openai` | key |
-| Cursor (experimental) | `cursor` | dashboard/local config; live transport; unsafe native local exec is opt-in |
-| Ollama Cloud + 17-provider catalog | `openai-chat` | key |
-| Ollama / vLLM / LM Studio (local) | `openai-chat` | key (usually blank) |
-| Any OpenAI-compatible endpoint | `openai-chat` | key |
+| Provider                           | Adapter            | Auth                                                                       |
+| ---------------------------------- | ------------------ | -------------------------------------------------------------------------- |
+| OpenAI (ChatGPT login)             | `openai-responses` | forward (no key)                                                           |
+| OpenAI (API key)                   | `openai-responses` | key                                                                        |
+| Umans AI Coding Plan               | `anthropic`        | key                                                                        |
+| Anthropic Claude                   | `anthropic`        | oauth / key                                                                |
+| xAI Grok                           | `openai-chat`      | oauth / key                                                                |
+| Kimi (Moonshot)                    | `openai-chat`      | oauth / key                                                                |
+| Google Gemini                      | `google`           | key                                                                        |
+| Azure OpenAI                       | `azure-openai`     | key                                                                        |
+| Cursor (experimental)              | `cursor`           | dashboard/local config; live transport; unsafe native local exec is opt-in |
+| Ollama Cloud + 17-provider catalog | `openai-chat`      | key                                                                        |
+| Ollama / vLLM / LM Studio (local)  | `openai-chat`      | key (usually blank)                                                        |
+| Any OpenAI-compatible endpoint     | `openai-chat`      | key                                                                        |
 
 Plus DeepSeek, Groq, OpenRouter, Together, Fireworks, Cerebras, Mistral, Hugging Face, NVIDIA NIM, MiniMax, Qwen Cloud, Xiaomi MiMo, Tencent Cloud Coding Plan, SiliconFlow, and more. See the full list with `ocx init` or in the [provider docs](https://opencodex.me/reference/configuration/).
 
@@ -355,13 +355,13 @@ an empty family; a non-empty family always needs a default. The older apply form
 
 opencodex has two ways to auto-start the proxy:
 
-| | `ocx service` / `ocx service install` | `ocx codex-shim install` |
-|---|---|---|
-| **How** | OS service manager (launchd / systemd / schtasks) | Wraps script launchers for `codex`; real `codex.exe` is left untouched |
-| **When** | Always running after login | On-demand — runs `ocx ensure` when `codex` is launched |
-| **Restart** | Auto-restarts on crash | Starts once per `codex` invocation |
-| **Codex updates** | Unaffected | A completed stable launcher replacement is repaired by the next ordinary `ocx` command |
-| **Remove** | `ocx service uninstall` | `ocx codex-shim uninstall` |
+|                   | `ocx service` / `ocx service install`             | `ocx codex-shim install`                                                               |
+| ----------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **How**           | OS service manager (launchd / systemd / schtasks) | Wraps script launchers for `codex`; real `codex.exe` is left untouched                 |
+| **When**          | Always running after login                        | On-demand — runs `ocx ensure` when `codex` is launched                                 |
+| **Restart**       | Auto-restarts on crash                            | Starts once per `codex` invocation                                                     |
+| **Codex updates** | Unaffected                                        | A completed stable launcher replacement is repaired by the next ordinary `ocx` command |
+| **Remove**        | `ocx service uninstall`                           | `ocx codex-shim uninstall`                                                             |
 
 Use the **service** for always-on proxy (recommended for development machines). Use the **shim** for
 lightweight, on-demand proxy startup without a background daemon. Shim autostart is enabled by default
@@ -517,6 +517,25 @@ not a public issue.
 Source development requires the `bun` CLI on your `PATH`. This is separate from the published npm
 package's bundled Bun runtime, which is used only by installed `ocx` commands.
 
+The production proxy/app path is Docker Compose under systemd
+(`deploy/container/`) on `:10100` with identity-checked `GET /healthz`. Local/dev
+mirrors that path:
+
+| Lane          | How                                                                |
+| ------------- | ------------------------------------------------------------------ |
+| Source        | `bun install` then `bun run start` (or `bun run dev:preview`)      |
+| Compose       | repo-root `compose.yml` + `.env.example` (loopback `:10100` only)  |
+| Dev Container | `.devcontainer/` (Bun 1.4.0)                                       |
+| Health smoke  | `bash scripts/healthz-smoke.sh` → `http://127.0.0.1:10100/healthz` |
+
+Operator notes, the live `1.4.2` / `529bb6a9` place lock, and Authentik OIDC
+(`chefgroep-ocx-oidc`; issuer APPLY DONE 2026-09-18; consumer JWKS +
+`/oauth/login`) are in
+[`deploy/container/README.md`](./deploy/container/README.md). Cloudflare Access
+remains the live public-host gate until
+[`deploy/oidc/CUTOVER-CHECKLIST.md`](./deploy/oidc/CUTOVER-CHECKLIST.md)
+is executed.
+
 `bun run dev:preview` starts the proxy and dashboard together: the dashboard binds to
 `PORT`/`0.0.0.0`, while the proxy stays on an internal loopback port and the Vite dev proxy forwards
 `/api/*` and `/healthz`.
@@ -525,8 +544,10 @@ package's bundled Bun runtime, which is used only by installed `ocx` commands.
 git clone https://github.com/GroepOnline/opencodex.git
 cd opencodex
 bun install
-bun run dev:preview  # start the complete proxy + dashboard preview on PORT (or 5173)
-bun x tsc --noEmit   # typecheck
+bun run start            # proxy + packaged dashboard on localhost:10100
+bash scripts/healthz-smoke.sh
+bun run dev:preview      # complete proxy + dashboard preview on PORT (or 5173)
+bun x tsc --noEmit       # typecheck
 ```
 
 `bun run dev` remains an alias for `bun run dev:proxy` for compatibility. In a source checkout,

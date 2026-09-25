@@ -12,6 +12,8 @@ Bun runtime for users, but this checkout's scripts run through your local Bun in
 git clone https://github.com/GroepOnline/opencodex.git
 cd opencodex
 bun install
+bun run start        # proxy + packaged dashboard on localhost:10100
+bash scripts/healthz-smoke.sh
 bun run dev:proxy    # proxy API in dev mode
 bun run dev:gui      # dashboard dev server (another terminal)
 bun run typecheck    # bun x tsc --noEmit
@@ -20,6 +22,15 @@ bun run test         # bun test ./tests/
 
 `bun run dev` remains an alias for `bun run dev:proxy`. The dashboard dev server is `bun run dev:gui`;
 the packaged dashboard at `GET /` is produced by `bun run build:gui` (`gui/dist`).
+
+To run the same Compose path production uses (image + file-backed token +
+`127.0.0.1:10100/healthz`), copy [`.env.example`](https://github.com/GroepOnline/opencodex/blob/main/.env.example)
+to `.env`, create a local token file, and `docker compose up -d --build`.
+Dev Container setup is in [`.devcontainer/`](https://github.com/GroepOnline/opencodex/tree/main/.devcontainer).
+Operator notes and Authentik OIDC (`chefgroep-ocx-oidc`; issuer
+APPLY DONE 2026-09-18; consumer JWKS + `/oauth/login`; Cloudflare Access
+remains the live public-host gate until the cutover checklist) are in
+[`deploy/container/README.md`](https://github.com/GroepOnline/opencodex/blob/main/deploy/container/README.md).
 
 ## Git hooks
 

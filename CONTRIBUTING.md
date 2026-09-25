@@ -32,6 +32,13 @@ Source development requires the `bun` CLI on your `PATH`. The published npm pack
 Bun runtime for end users, but contributor commands such as `bun install`, `bun run test`, and
 `bun run prepush` run from your local Bun installation.
 
+The production proxy path (Compose + systemd + `:10100/healthz`) has a complete local/dev
+mirror: repo-root `compose.yml`, `.devcontainer/`, `.env.example`, and
+`bash scripts/healthz-smoke.sh`. Authentik OIDC canary:
+`bash scripts/oidc-authorize-canary.sh`. See
+[`deploy/container/README.md`](./deploy/container/README.md) and
+[`deploy/oidc/CUTOVER-CHECKLIST.md`](./deploy/oidc/CUTOVER-CHECKLIST.md).
+
 ## Git hooks
 
 `bun install` runs Husky via the `prepare` script and installs committed hooks from
@@ -46,5 +53,5 @@ bun run setup:hooks
 
 **Pre-push** runs `bun run prepush` — `typecheck`, `lint:gui`, `test`, `privacy:scan`,
 and `doctor:gui:if-changed` — before every `git push`. The same checks run on
-ubuntu-latest, macos-latest, and windows-latest in CI (CI additionally builds the GUI
+ubuntu-latest and windows-latest in CI (CI additionally builds the GUI
 and smoke-tests the CLI). Skip in an emergency with `git push --no-verify`.

@@ -17,7 +17,12 @@ import type { OcxConfig } from "../src/types";
 import type { OAuthController } from "../src/oauth/types";
 import { getCredential } from "../src/oauth/store";
 import * as oauthStore from "../src/oauth/store";
-import { armClaudeCodeBaseline, loadConfig, saveConfig, saveConfigPreservingClaudeCode } from "../src/config";
+import {
+  armClaudeCodeBaseline,
+  loadConfig,
+  saveConfig,
+  saveConfigPreservingClaudeCode,
+} from "../src/config";
 import { isApiAuthRequired, requireApiAuth } from "../src/server/auth-cors";
 
 const TEST_DIR = join(import.meta.dir, ".tmp-oauth-public-surface");
@@ -51,7 +56,9 @@ afterEach(() => {
   rmSync(TEST_DIR, { recursive: true, force: true });
 });
 
-async function waitForOAuthDone(provider: string): Promise<ReturnType<typeof getLoginStatus>> {
+async function waitForOAuthDone(
+  provider: string,
+): Promise<ReturnType<typeof getLoginStatus>> {
   for (let attempt = 0; attempt < 200; attempt += 1) {
     const status = getLoginStatus(provider);
     if (status.done) return status;
@@ -74,27 +81,45 @@ describe("legacy ChatGPT OAuth public-surface exclusion", () => {
     const cfg = config();
     const requests = [
       new Request("http://localhost/api/oauth/login", {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: "chatgpt" }),
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ provider: "chatgpt" }),
       }),
       new Request("http://localhost/api/oauth/login/code", {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: "chatgpt", input: "code" }),
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ provider: "chatgpt", input: "code" }),
       }),
       new Request("http://localhost/api/oauth/status?provider=chatgpt"),
-      new Request("http://localhost/api/oauth/logout?provider=chatgpt", { method: "POST" }),
+      new Request("http://localhost/api/oauth/logout?provider=chatgpt", {
+        method: "POST",
+      }),
       new Request("http://localhost/api/oauth/accounts?provider=chatgpt"),
       new Request("http://localhost/api/oauth/accounts/active", {
-        method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: "chatgpt", accountId: "a" }),
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ provider: "chatgpt", accountId: "a" }),
       }),
-      new Request("http://localhost/api/oauth/accounts?provider=chatgpt&id=a", { method: "DELETE" }),
+      new Request("http://localhost/api/oauth/accounts?provider=chatgpt&id=a", {
+        method: "DELETE",
+      }),
     ];
     for (const req of requests) {
       const response = await handleManagementAPI(req, new URL(req.url), cfg);
       expect(response?.status).toBe(400);
-      expect(await response?.json()).toEqual({ error: "unknown oauth provider" });
+      expect(await response?.json()).toEqual({
+        error: "unknown oauth provider",
+      });
     }
     const discoveryReq = new Request("http://localhost/api/oauth/providers");
-    const discovery = await handleManagementAPI(discoveryReq, new URL(discoveryReq.url), cfg);
-    expect((await discovery?.json() as { providers: string[] }).providers).not.toContain("chatgpt");
+    const discovery = await handleManagementAPI(
+      discoveryReq,
+      new URL(discoveryReq.url),
+      cfg,
+    );
+    expect(
+      ((await discovery?.json()) as { providers: string[] }).providers,
+    ).not.toContain("chatgpt");
   });
 
   test("internal chatgpt login persists credentials without creating a fourth provider", async () => {
@@ -122,7 +147,9 @@ describe("legacy ChatGPT OAuth public-surface exclusion", () => {
     cfg.codexAccountNamespaces = { XAI: "side-account-id" };
     const before = structuredClone(cfg.providers);
 
-    expect(() => upsertOAuthProvider(cfg, "xai")).toThrow(/must not collide with a configured Codex account namespace/);
+    expect(() => upsertOAuthProvider(cfg, "xai")).toThrow(
+      /must not collide with a configured Codex account namespace/,
+    );
     expect(cfg.providers).toEqual(before);
 
     const routeReq = new Request("http://localhost/api/oauth/login", {
@@ -130,10 +157,15 @@ describe("legacy ChatGPT OAuth public-surface exclusion", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ provider: "xai" }),
     });
-    const routeResponse = await handleManagementAPI(routeReq, new URL(routeReq.url), cfg);
+    const routeResponse = await handleManagementAPI(
+      routeReq,
+      new URL(routeReq.url),
+      cfg,
+    );
     expect(routeResponse?.status).toBe(409);
     expect(await routeResponse?.json()).toEqual({
-      error: "provider name must not collide with a configured Codex account namespace",
+      error:
+        "provider name must not collide with a configured Codex account namespace",
     });
 
     saveConfig(cfg);
@@ -184,22 +216,24 @@ describe("legacy ChatGPT OAuth public-surface exclusion", () => {
       accountId: "post-check-account",
       expires: Date.now() + 60_000,
     });
-    const saveSpy = spyOn(oauthStore, "saveCredential").mockImplementation(async (provider, credential) => {
-      credentialWrites += 1;
-      await originalSaveCredential(provider, credential);
-      const changed = config();
-      changed.defaultProvider = "concurrent";
-      changed.providers.concurrent = {
-        adapter: "openai-chat",
-        baseUrl: "https://concurrent.example.test/v1",
-      };
-      changed.codexAccountNamespaces = {
-        XAI: "side-account-id",
-        retained: "retained-account-id",
-      };
-      saveConfig(changed);
-      changedAfterCredential = true;
-    });
+    const saveSpy = spyOn(oauthStore, "saveCredential").mockImplementation(
+      async (provider, credential) => {
+        credentialWrites += 1;
+        await originalSaveCredential(provider, credential);
+        const changed = config();
+        changed.defaultProvider = "concurrent";
+        changed.providers.concurrent = {
+          adapter: "openai-chat",
+          baseUrl: "https://concurrent.example.test/v1",
+        };
+        changed.codexAccountNamespaces = {
+          XAI: "side-account-id",
+          retained: "retained-account-id",
+        };
+        saveConfig(changed);
+        changedAfterCredential = true;
+      },
+    );
 
     try {
       await expect(runLogin("xai", {} as OAuthController)).rejects.toThrow(
@@ -247,20 +281,22 @@ describe("legacy ChatGPT OAuth public-surface exclusion", () => {
       accountId: "same-provider-account",
       expires: Date.now() + 60_000,
     });
-    const saveSpy = spyOn(oauthStore, "saveCredential").mockImplementation(async (provider, credential) => {
-      await originalSaveCredential(provider, credential);
-      const changed = loadConfig();
-      changed.providers.xai = {
-        ...changed.providers.xai!,
-        authMode: "key",
-        apiKey: "test-key-b",
-        apiKeyPool: [
-          { id: "key-a", key: "test-key-a" },
-          { id: "key-b", key: "test-key-b" },
-        ],
-      };
-      saveConfig(changed);
-    });
+    const saveSpy = spyOn(oauthStore, "saveCredential").mockImplementation(
+      async (provider, credential) => {
+        await originalSaveCredential(provider, credential);
+        const changed = loadConfig();
+        changed.providers.xai = {
+          ...changed.providers.xai!,
+          authMode: "key",
+          apiKey: "test-key-b",
+          apiKeyPool: [
+            { id: "key-a", key: "test-key-a" },
+            { id: "key-b", key: "test-key-b" },
+          ],
+        };
+        saveConfig(changed);
+      },
+    );
 
     try {
       await runLogin("xai", {} as OAuthController);
@@ -284,7 +320,9 @@ describe("legacy ChatGPT OAuth public-surface exclusion", () => {
     saveConfig(liveConfig);
     const originalLogin = OAUTH_PROVIDERS.xai.login;
     let releaseLogin!: () => void;
-    const loginGate = new Promise<void>((resolve) => { releaseLogin = resolve; });
+    const loginGate = new Promise<void>((resolve) => {
+      releaseLogin = resolve;
+    });
     OAUTH_PROVIDERS.xai.login = async (ctrl) => {
       ctrl.onAuth({
         url: "https://auth.example.test/authorize",
@@ -305,7 +343,11 @@ describe("legacy ChatGPT OAuth public-surface exclusion", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ provider: "xai" }),
       });
-      const response = await handleManagementAPI(request, new URL(request.url), liveConfig);
+      const response = await handleManagementAPI(
+        request,
+        new URL(request.url),
+        liveConfig,
+      );
       expect(response?.status).toBe(200);
       expect(liveConfig.providers.xai).toBeUndefined();
       expect(getLoginStatus("xai").done).toBe(false);
@@ -350,7 +392,11 @@ describe("legacy ChatGPT OAuth public-surface exclusion", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ provider: "xai" }),
       });
-      const response = await handleManagementAPI(request, new URL(request.url), liveConfig);
+      const response = await handleManagementAPI(
+        request,
+        new URL(request.url),
+        liveConfig,
+      );
       expect(response?.status).toBe(200);
 
       const status = await waitForOAuthDone("xai");
@@ -362,7 +408,9 @@ describe("legacy ChatGPT OAuth public-surface exclusion", () => {
       });
 
       saveConfigPreservingClaudeCode(liveConfig);
-      expect(loadConfig().providers.xai?.selectedModels).toEqual(["pending-model"]);
+      expect(loadConfig().providers.xai?.selectedModels).toEqual([
+        "pending-model",
+      ]);
     } finally {
       OAUTH_PROVIDERS.xai.login = originalLogin;
       clearLoginState("xai");
@@ -382,7 +430,9 @@ describe("legacy ChatGPT OAuth public-surface exclusion", () => {
 
     try {
       await startLoginFlow("xai", undefined, {
-        onSettled: () => { throw new Error("runtime reconciliation failed"); },
+        onSettled: () => {
+          throw new Error("runtime reconciliation failed");
+        },
       });
       const status = await waitForOAuthDone("xai");
       expect(status.done).toBe(true);
@@ -411,7 +461,9 @@ describe("legacy ChatGPT OAuth public-surface exclusion", () => {
 
     try {
       await startLoginFlow("xai", undefined, {
-        onSettled: () => { throw new Error("runtime reconciliation failed"); },
+        onSettled: () => {
+          throw new Error("runtime reconciliation failed");
+        },
       });
       const status = await waitForOAuthDone("xai");
       expect(status.done).toBe(true);
@@ -446,21 +498,23 @@ describe("legacy ChatGPT OAuth public-surface exclusion", () => {
         expires: Date.now() + 60_000,
       };
     };
-    const saveSpy = spyOn(oauthStore, "saveCredential").mockImplementation(async (provider, credential) => {
-      await originalSaveCredential(provider, credential);
-      const concurrentConfig = config();
-      concurrentConfig.defaultProvider = "concurrent";
-      concurrentConfig.providers.concurrent = {
-        adapter: "openai-chat",
-        baseUrl: "https://concurrent.example.test/v1",
-      };
-      concurrentConfig.codexAccountNamespaces = {
-        XAI: "side-account-id",
-        retained: "retained-account-id",
-      };
-      concurrentConfig.claudeCode = { authMode: "proxy" };
-      saveConfig(concurrentConfig);
-    });
+    const saveSpy = spyOn(oauthStore, "saveCredential").mockImplementation(
+      async (provider, credential) => {
+        await originalSaveCredential(provider, credential);
+        const concurrentConfig = config();
+        concurrentConfig.defaultProvider = "concurrent";
+        concurrentConfig.providers.concurrent = {
+          adapter: "openai-chat",
+          baseUrl: "https://concurrent.example.test/v1",
+        };
+        concurrentConfig.codexAccountNamespaces = {
+          XAI: "side-account-id",
+          retained: "retained-account-id",
+        };
+        concurrentConfig.claudeCode = { authMode: "proxy" };
+        saveConfig(concurrentConfig);
+      },
+    );
 
     try {
       const request = new Request("http://localhost/api/oauth/login", {
@@ -468,12 +522,18 @@ describe("legacy ChatGPT OAuth public-surface exclusion", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ provider: "xai" }),
       });
-      const response = await handleManagementAPI(request, new URL(request.url), liveConfig);
+      const response = await handleManagementAPI(
+        request,
+        new URL(request.url),
+        liveConfig,
+      );
       expect(response?.status).toBe(200);
 
       const status = await waitForOAuthDone("xai");
       expect(status.loggedIn).toBe(true);
-      expect(status.error).toMatch(/credential for "xai" was saved, but the provider entry was not written/);
+      expect(status.error).toMatch(
+        /credential for "xai" was saved, but the provider entry was not written/,
+      );
       expect(getCredential("xai")?.access).toBe("route-collision-access");
       expect(liveConfig).toMatchObject({
         defaultProvider: "concurrent",
@@ -495,10 +555,15 @@ describe("legacy ChatGPT OAuth public-surface exclusion", () => {
       expect(liveConfig.hostname).toBe("0.0.0.0");
       expect(liveConfig.port).toBe(10444);
       expect(isApiAuthRequired(liveConfig)).toBe(true);
-      const forgedLoopbackRequest = new Request("http://localhost:10444/api/config", {
-        headers: { host: "localhost:10444" },
-      });
-      expect(requireApiAuth(forgedLoopbackRequest, liveConfig, "management")?.status).toBe(401);
+      const forgedLoopbackRequest = new Request(
+        "http://localhost:10444/api/config",
+        {
+          headers: { host: "localhost:10444" },
+        },
+      );
+      expect(requireApiAuth(forgedLoopbackRequest, liveConfig)?.status).toBe(
+        401,
+      );
       expect(loadConfig().providers.xai).toBeUndefined();
 
       // A second disk edit must be compared with the state OAuth just adopted, not
@@ -518,15 +583,24 @@ describe("legacy ChatGPT OAuth public-surface exclusion", () => {
       expect(afterLaterSave.providers.concurrent).toBeDefined();
       expect(afterLaterSave.providers.xai).toBeUndefined();
       expect(afterLaterSave.disabledModels).toEqual(["pending/provider-model"]);
-      expect(afterLaterSave.claudeCode).toEqual({ authMode: "subscription", systemEnv: true });
-      expect(liveConfig.claudeCode).toEqual({ authMode: "subscription", systemEnv: true });
+      expect(afterLaterSave.claudeCode).toEqual({
+        authMode: "subscription",
+        systemEnv: true,
+      });
+      expect(liveConfig.claudeCode).toEqual({
+        authMode: "subscription",
+        systemEnv: true,
+      });
       // Runtime admission remains tied to the open socket, but the next-start
       // binding adopted from disk must survive this unrelated live save.
       expect(liveConfig.hostname).toBe("0.0.0.0");
       expect(liveConfig.port).toBe(10444);
       expect(afterLaterSave.hostname).toBe("127.0.0.1");
       expect(afterLaterSave.port).toBe(11445);
-      expect(loadConfig()).toMatchObject({ hostname: "127.0.0.1", port: 11445 });
+      expect(loadConfig()).toMatchObject({
+        hostname: "127.0.0.1",
+        port: 11445,
+      });
     } finally {
       OAUTH_PROVIDERS.xai.login = originalLogin;
       saveSpy.mockRestore();
