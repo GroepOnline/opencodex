@@ -29,7 +29,8 @@ permissions:
 
 jobs:
   label:
-    runs-on: [self-hosted, Linux, X64, jan]
+    # GitHub-hosted execution prevents an unavailable fleet runner from delaying PR labels.
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout labeler script (default-branch trusted code)
