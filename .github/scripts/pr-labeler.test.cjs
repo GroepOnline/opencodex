@@ -162,8 +162,11 @@ describe("pr-labeler workflow", () => {
     assert.ok(types.includes("synchronize"), "missing pull_request_target type: synchronize");
   });
 
-  it("keeps trusted default-branch checkout, concurrency cancel, and minimal permissions", () => {
+  it("uses a GitHub-hosted runner while keeping trusted default-branch checkout and minimal permissions", () => {
+    assert.match(workflow, /runs-on:\s*ubuntu-latest/);
+    assert.doesNotMatch(workflow, /runs-on:\s*\[\s*self-hosted\b/);
     assert.match(workflow, /ref:\s*\$\{\{\s*github\.event\.repository\.default_branch\s*\}\}/);
+    assert.match(workflow, /persist-credentials:\s*false/);
     assert.match(workflow, /cancel-in-progress:\s*true/);
     assert.match(workflow, /issues:\s*write/);
     // The issues label endpoints are shared with pull requests: writing a label
