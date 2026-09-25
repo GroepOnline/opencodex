@@ -33,6 +33,7 @@ describe("session identity", () => {
     const res = await handleManagementAPI(req, new URL(req.url), config());
     expect(res).not.toBeNull();
     expect(res!.status).toBe(200);
+    expect(res!.headers.get("Cache-Control")).toBe("no-store");
     const body = (await res!.json()) as Record<string, unknown>;
     expect(Object.keys(body).sort()).toEqual(["email", "source"]);
     expect(body.email).toBeNull();

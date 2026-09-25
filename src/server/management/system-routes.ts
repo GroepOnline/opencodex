@@ -27,7 +27,7 @@ import {
   observedMemoryCounter,
 } from "../memory-watchdog";
 import { responseStateMetrics } from "../../responses/state";
-import { jsonResponse } from "../auth-cors";
+import { jsonResponse, withNoStore } from "../auth-cors";
 import { resolveSessionIdentity } from "../session-identity";
 import type { ManagementContext } from "./context";
 import { acceptSystemRestart } from "./system-restart";
@@ -40,7 +40,9 @@ export async function handleSystemRoutes(
   const { req, url, config } = ctx;
 
   if (url.pathname === "/api/whoami" && req.method === "GET") {
-    return jsonResponse(await resolveSessionIdentity(req), 200, req, config);
+    return withNoStore(
+      jsonResponse(await resolveSessionIdentity(req), 200, req, config),
+    );
   }
 
   if (url.pathname === "/api/metrics/json" && req.method === "GET") {
