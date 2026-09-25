@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
+import { useKeyedClientResource } from "../client-resource";
+import { Notice } from "../ui";
+import { Spinner } from "../components/primitives/spinner";
 import { Activity } from "lucide-react";
 import { formatTokens } from "../format-tokens";
 import { formatPercent, formatUsd } from "../intl-formatters";
@@ -118,9 +121,9 @@ function TrafficStatsStrip({
   locale,
   t,
 }: {
-  tokens30d: number;
-  requestsVandaag: number;
-  requests30d: number;
+  tokens30d: number | undefined;
+  requestsVandaag: number | undefined;
+  requests30d: number | undefined;
   cacheReadRatio: number | undefined;
   proxyCacheRatio: number | null;
   estimatedCostUsd: number | undefined;
@@ -134,15 +137,27 @@ function TrafficStatsStrip({
     <StatStrip label={t("vk.statsAria")}>
       <StatStripItem
         label={t("vk.tokens30d")}
-        value={formatTokens(tokens30d, locale)}
+        value={
+          tokens30d === undefined
+            ? unavailable
+            : formatTokens(tokens30d, locale)
+        }
       />
       <StatStripItem
         label={t("vk.requestsToday")}
-        value={requestsVandaag.toLocaleString(locale)}
+        value={
+          requestsVandaag === undefined
+            ? unavailable
+            : requestsVandaag.toLocaleString(locale)
+        }
       />
       <StatStripItem
         label={t("vk.requests30d")}
-        value={requests30d.toLocaleString(locale)}
+        value={
+          requests30d === undefined
+            ? unavailable
+            : requests30d.toLocaleString(locale)
+        }
       />
       <StatStripItem
         label={t("vk.cacheHit")}
@@ -350,99 +365,54 @@ function TrafficProviderFilters({
  */
 export default function Verkeer({ apiBase }: { apiBase: string }) {
   const { locale, t } = useI18n();
-  const [summary30d, setSummary30d] = useState<UsageSummary | null>(null);
-  const [logs, setLogs] = useState<TrafficLogEntry[]>([]);
-  const [logsFailed, setLogsFailed] = useState(false);
+  const summaryPoll = useKeyedClientResource(
+    `traffic-summary:${apiBase}`,
+    [],
+    async (signal) => {
+      const res = await fetch(`${apiBase}/api/usage?range=30d`, { signal });
+      if (!res.ok) throw new Error(String(res.status));
+      return (await res.json()) as UsageSummary;
+    },
+    { pollMs: 60_000 },
+  );
+  const summary30d = summaryPoll.data;
+  const cachePoll = useKeyedClientResource(
+    `traffic-cache:${apiBase}`,
+    [],
+    async (signal) => {
+      const res = await fetch(`${apiBase}/api/response-cache`, { signal });
+      if (!res.ok) throw new Error(String(res.status));
+      const data = (await res.json()) as {
+        enabled?: boolean;
+        stats?: { hits: number; misses: number };
+      };
+      const hits = data.stats?.hits ?? 0;
+      const lookups = hits + (data.stats?.misses ?? 0);
+      return data.enabled && lookups > 0 ? hits / lookups : null;
+    },
+    { pollMs: 15_000 },
+  );
+  const proxyCacheRatio = cachePoll.data ?? null;
   const [providerFilter, setProviderFilter] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   const [openBon, setOpenBon] = useState<string | null>(null);
   const [analyseOpen, setAnalyseOpen] = useState(false);
   const [opsOpen, setOpsOpen] = useState(false);
-  // Proxy response-cache hit-rate (hits / (hits+misses)) from GET /api/response-cache — the same
-  // source ResponseCachePanel reads. null when the cache is off or the endpoint is unreachable.
-  // This is DISTINCT from summary.cacheReadRatio, which is Anthropic prompt-cache token reuse.
-  const [proxyCacheRatio, setProxyCacheRatio] = useState<number | null>(null);
-  const pausedRef = useRef(paused);
-  useEffect(() => {
-    pausedRef.current = paused;
-  }, [paused]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const res = await fetch(`${apiBase}/api/usage?range=30d`);
-        if (!res.ok) return;
-        const data = (await res.json()) as UsageSummary;
-        if (!cancelled) setSummary30d(data);
-      } catch {
-        /* keep last-good */
-      }
-    };
-    void load();
-    const iv = setInterval(() => void load(), 60_000);
-    return () => {
-      cancelled = true;
-      clearInterval(iv);
-    };
-  }, [apiBase]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadCache = async () => {
-      try {
-        const res = await fetch(`${apiBase}/api/response-cache`);
-        if (!res.ok) throw new Error(String(res.status));
-        const data = (await res.json()) as {
-          enabled?: boolean;
-          stats?: { hits: number; misses: number };
-        };
-        if (cancelled) return;
-        const hits = data.stats?.hits ?? 0;
-        const misses = data.stats?.misses ?? 0;
-        const lookups = hits + misses;
-        // Only surface a ratio when the cache is on AND has been probed: 0 lookups is "no signal",
-        // not a 0% hit-rate, so leave it null rather than showing a misleading 0%.
-        setProxyCacheRatio(data.enabled && lookups > 0 ? hits / lookups : null);
-      } catch {
-        if (!cancelled) setProxyCacheRatio(null);
-      }
-    };
-    void loadCache();
-    const iv = setInterval(() => void loadCache(), 15_000);
-    return () => {
-      cancelled = true;
-      clearInterval(iv);
-    };
-  }, [apiBase]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const tail = async () => {
-      if (pausedRef.current) return;
-      try {
-        const res = await fetch(`${apiBase}/api/logs`);
-        if (!res.ok) throw new Error(String(res.status));
-        const data = (await res.json()) as TrafficLogEntry[];
-        if (!cancelled) {
-          setLogs(
-            Array.isArray(data)
-              ? data.toSorted((a, b) => b.timestamp - a.timestamp)
-              : [],
-          );
-          setLogsFailed(false);
-        }
-      } catch {
-        if (!cancelled) setLogsFailed(true);
-      }
-    };
-    void tail();
-    const iv = setInterval(() => void tail(), TAIL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(iv);
-    };
-  }, [apiBase]);
+  const logsPoll = useKeyedClientResource(
+    `traffic-logs:${apiBase}`,
+    [],
+    async (signal) => {
+      const res = await fetch(`${apiBase}/api/logs`, { signal });
+      if (!res.ok) throw new Error(String(res.status));
+      const data = (await res.json()) as TrafficLogEntry[];
+      return Array.isArray(data)
+        ? data.toSorted((a, b) => b.timestamp - a.timestamp)
+        : [];
+    },
+    { pollMs: TAIL_INTERVAL_MS, enabled: !paused },
+  );
+  const logs = useMemo(() => logsPoll.data ?? [], [logsPoll.data]);
+  const logsFailed = logsPoll.error !== undefined;
 
   const providers = useMemo(() => {
     const names = new Set<string>();
@@ -475,8 +445,8 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
     [logs, summary30d],
   );
 
-  const requests30d = summary30d?.summary.requests ?? 0;
-  const tokens30d = summary30d?.summary.totalTokens ?? 0;
+  const requests30d = summary30d?.summary.requests;
+  const tokens30d = summary30d?.summary.totalTokens;
 
   /** Per-model breakdown (top 12 by requests, 30d from /api/usage models[]). */
   const topModellen = useMemo(() => {
@@ -493,7 +463,11 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
 
       <TrafficStatsStrip
         tokens30d={tokens30d}
-        requestsVandaag={requestsVandaag}
+        requestsVandaag={
+          summary30d || logsPoll.data !== undefined
+            ? requestsVandaag
+            : undefined
+        }
         requests30d={requests30d}
         cacheReadRatio={summary30d?.summary.cacheReadRatio}
         proxyCacheRatio={proxyCacheRatio}
@@ -503,6 +477,43 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
         locale={locale}
         t={t}
       />
+
+      {summaryPoll.loading && summaryPoll.data === undefined && (
+        <p role="status" className="muted text-caption">
+          {t("usage.loading")}
+        </p>
+      )}
+      {summaryPoll.error !== undefined && (
+        <Notice tone="err">
+          {t("usage.loadError")}
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={summaryPoll.loading}
+            onClick={() => summaryPoll.refresh({ forceLoading: true })}
+          >
+            {t("common.retry")}
+          </button>
+        </Notice>
+      )}
+      {cachePoll.loading && cachePoll.data === undefined && (
+        <p role="status" className="muted text-caption">
+          {t("ops.cacheHead")}: {t("common.loading")}
+        </p>
+      )}
+      {cachePoll.error !== undefined && (
+        <Notice tone="err">
+          {t("ops.cacheFailed")}
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={cachePoll.loading}
+            onClick={() => cachePoll.refresh({ forceLoading: true })}
+          >
+            {t("common.retry")}
+          </button>
+        </Notice>
+      )}
 
       {summary30d?.providers && summary30d.providers.length > 0 ? (
         <ProviderShareTable
@@ -542,7 +553,18 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
         aria-live="polite"
         onFocus={() => setPaused(true)}
       >
-        {zichtbaar.length === 0 ? (
+        {logsPoll.data === undefined ? (
+          !logsFailed ? (
+            <Empty role="status">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Spinner />
+                </EmptyMedia>
+                <EmptyTitle>{t("common.loading")}</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
+          ) : null
+        ) : zichtbaar.length === 0 ? (
           <Empty>
             <EmptyHeader>
               <EmptyMedia variant="icon">

@@ -16,10 +16,11 @@ export function WorkspaceDialog({
   "aria-modal": ariaModal = true,
   tabIndex = -1,
   onClick,
+  onDismiss,
   ...props
-}: ComponentPropsWithoutRef<"div">) {
+}: ComponentPropsWithoutRef<"div"> & { onDismiss?: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
-  useModalFocus(ref);
+  useModalFocus(ref, { onClose: onDismiss });
   return (
     <div
       className={className}

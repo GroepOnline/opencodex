@@ -60,51 +60,62 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
     { pollMs: 15_000 },
   );
 
-  const [summary, setSummary] = useState<UsageSummary | null>(null);
-  const [logs, setLogs] = useState<TrafficLogEntry[]>([]);
-  const [usageFailed, setUsageFailed] = useState(false);
-  const [logsFailed, setLogsFailed] = useState(false);
-  const [logsLoaded, setLogsLoaded] = useState(false);
+  const [usageSnapshot, setUsageSnapshot] = useState<{
+    apiBase: string;
+    data: UsageSummary;
+  } | null>(null);
+  const [logsSnapshot, setLogsSnapshot] = useState<{
+    apiBase: string;
+    data: TrafficLogEntry[];
+  } | null>(null);
+  const [usageFailure, setUsageFailure] = useState<string | null>(null);
+  const [logsFailure, setLogsFailure] = useState<string | null>(null);
+  const summary =
+    usageSnapshot?.apiBase === apiBase ? usageSnapshot.data : null;
+  const logs = useMemo(
+    () => (logsSnapshot?.apiBase === apiBase ? logsSnapshot.data : []),
+    [apiBase, logsSnapshot],
+  );
+  const usageFailed = usageFailure === apiBase;
+  const logsFailed = logsFailure === apiBase;
+  const logsLoaded = logsSnapshot?.apiBase === apiBase;
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      try {
-        const [usageRes, logsRes] = await Promise.all([
-          fetch(`${apiBase}/api/usage?range=30d`),
-          fetch(`${apiBase}/api/logs`),
-        ]);
-
-        if (usageRes.ok) {
-          const data = (await usageRes.json()) as UsageSummary;
-          if (!cancelled) {
-            setSummary(data);
-            setUsageFailed(false);
+      await Promise.allSettled([
+        (async () => {
+          try {
+            const res = await fetch(`${apiBase}/api/usage?range=30d`);
+            if (!res.ok) throw new Error(String(res.status));
+            const data = (await res.json()) as UsageSummary;
+            if (!cancelled) {
+              setUsageSnapshot({ apiBase, data });
+              setUsageFailure(null);
+            }
+          } catch {
+            if (!cancelled) setUsageFailure(apiBase);
           }
-        } else if (!cancelled) {
-          setUsageFailed(true);
-        }
-
-        if (logsRes.ok) {
-          const data = (await logsRes.json()) as TrafficLogEntry[];
-          if (!cancelled) {
-            setLogs(
-              Array.isArray(data)
-                ? data.toSorted((a, b) => b.timestamp - a.timestamp)
-                : [],
-            );
-            setLogsFailed(false);
-            setLogsLoaded(true);
+        })(),
+        (async () => {
+          try {
+            const res = await fetch(`${apiBase}/api/logs`);
+            if (!res.ok) throw new Error(String(res.status));
+            const data = (await res.json()) as TrafficLogEntry[];
+            if (!cancelled) {
+              setLogsSnapshot({
+                apiBase,
+                data: Array.isArray(data)
+                  ? data.toSorted((a, b) => b.timestamp - a.timestamp)
+                  : [],
+              });
+              setLogsFailure(null);
+            }
+          } catch {
+            if (!cancelled) setLogsFailure(apiBase);
           }
-        } else if (!cancelled) {
-          setLogsFailed(true);
-        }
-      } catch {
-        if (!cancelled) {
-          setUsageFailed(true);
-          setLogsFailed(true);
-        }
-      }
+        })(),
+      ]);
     };
 
     void load();

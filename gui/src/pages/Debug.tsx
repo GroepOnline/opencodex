@@ -20,6 +20,7 @@ import { DebugLogViewer } from "./debug-log-viewer";
 import { DebugPageHeader, DebugSettingsPanel } from "./debug-settings-panel";
 import {
   Empty,
+  EmptyContent,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
@@ -27,6 +28,7 @@ import {
 import { Spinner } from "../components/primitives/spinner";
 import {
   DEBUG_STREAMS,
+  type DebugLogEntry,
   type DebugSettings,
   type LogStream,
   isStreamEnabled,
@@ -34,6 +36,86 @@ import {
 
 function debugSettingsKey(apiBase: string): string {
   return `debug-settings:${apiBase}`;
+}
+
+function isDebugLogEntry(value: unknown): value is DebugLogEntry {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "seq" in value &&
+    typeof value.seq === "number" &&
+    "at" in value &&
+    typeof value.at === "number" &&
+    "line" in value &&
+    typeof value.line === "string"
+  );
+}
+
+function DebugResourceLoadState({
+  loading,
+  loadingLabel,
+  errorLabel,
+  onRetry,
+}: {
+  loading: boolean;
+  loadingLabel: string;
+  errorLabel: string;
+  onRetry: () => void;
+}) {
+  const { t } = useI18n();
+  if (loading) {
+    return (
+      <Empty role="status">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <Spinner />
+          </EmptyMedia>
+          <EmptyTitle>{loadingLabel}</EmptyTitle>
+        </EmptyHeader>
+      </Empty>
+    );
+  }
+  return (
+    <Empty role="alert">
+      <EmptyHeader>
+        <EmptyTitle>{errorLabel}</EmptyTitle>
+      </EmptyHeader>
+      <EmptyContent>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={onRetry}
+        >
+          {t("common.retry")}
+        </button>
+      </EmptyContent>
+    </Empty>
+  );
+}
+
+function DebugRefreshError({
+  message,
+  retrying,
+  onRetry,
+}: {
+  message: string;
+  retrying: boolean;
+  onRetry: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="row" role="alert">
+      <p className="err">{message}</p>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        disabled={retrying}
+        onClick={onRetry}
+      >
+        {t("common.retry")}
+      </button>
+    </div>
+  );
 }
 
 export default function Debug({
@@ -55,7 +137,13 @@ export default function Debug({
   >([]);
   const [follow, setFollow] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [logState, setLogState] = useState<{
+    identity: string;
+    status: "loading" | "ready" | "error" | "refresh-error";
+  } | null>(null);
   const afterRef = useRef(0);
+  const hasLoadedLogsRef = useRef(false);
+  const logRequestRef = useRef<AbortController | null>(null);
   const mutationGenerationRef = useRef(0);
   const logGenerationRef = useRef(0);
   const mutationQueueRef = useRef<Promise<void> | null>(null);
@@ -69,7 +157,7 @@ export default function Debug({
     [apiBase],
     async (signal) => {
       const res = await fetch(`${apiBase}/api/debug`, { signal });
-      if (!res.ok) return null;
+      if (!res.ok) throw new Error(String(res.status));
       const next = (await res.json()) as DebugSettings;
       writeSessionListCache(settingsCacheKey, next);
       return next;
@@ -77,6 +165,7 @@ export default function Debug({
     { pollMs: 2000, enabled: active },
   );
   const debug = debugPoll.data ?? cachedSettings ?? null;
+  const hasDebugSettings = debug !== null;
 
   const claudePoll = useKeyedClientResource(
     `debug-claude-inbound:${apiBase}`,
@@ -85,15 +174,16 @@ export default function Debug({
       const res = await fetch(`${apiBase}/api/claude/inbound-debug`, {
         signal,
       });
-      if (!res.ok) return [] as import("./debug-shared").ClaudeInboundEntry[];
+      if (!res.ok) throw new Error(String(res.status));
       const data = (await res.json()) as {
         entries?: import("./debug-shared").ClaudeInboundEntry[];
       };
-      return Array.isArray(data.entries) ? data.entries : [];
+      if (!Array.isArray(data.entries))
+        throw new Error("Invalid Claude inbound response");
+      return data.entries;
     },
     { pollMs: 2000, enabled: active && !!debug?.claude },
   );
-  const claudeEntries = claudePoll.data ?? [];
 
   // eslint-disable-next-line react-hooks/incompatible-library -- known useVirtualizer limitation
   const lineVirtualizer = useVirtualizer({
@@ -125,65 +215,91 @@ export default function Debug({
         ? `${apiBase}/api/debug/usage-logs`
         : `${apiBase}/api/debug/injection-logs`;
 
+  const streamIdentity = `${apiBase}:${stream}:${streamEnabled}`;
+  const logStatus =
+    logState?.identity === streamIdentity ? logState.status : "loading";
+
   const fetchLogs = useCallback(
-    async (initial: boolean, signal?: AbortSignal) => {
+    async (initial: boolean) => {
+      // A slow response must be allowed to finish instead of being superseded on every tick.
+      if (!active || logRequestRef.current) return;
       const generation = ++logGenerationRef.current;
       if (!streamEnabled) {
         if (generation === logGenerationRef.current) {
           setEntries([]);
           afterRef.current = 0;
+          hasLoadedLogsRef.current = false;
+          setLogState({ identity: streamIdentity, status: "ready" });
+          setRefreshing(false);
         }
         return;
       }
+      const controller = new AbortController();
+      logRequestRef.current = controller;
+      const { signal } = controller;
+      const firstLoad = !hasLoadedLogsRef.current;
+      if (firstLoad)
+        setLogState({ identity: streamIdentity, status: "loading" });
       setRefreshing(true);
       try {
         const params = new URLSearchParams({ limit: "500" });
         if (!initial && afterRef.current > 0)
           params.set("after", String(afterRef.current));
         const res = await fetch(`${logsPath}?${params}`, { signal });
-        if (
-          !res.ok ||
-          signal?.aborted ||
-          generation !== logGenerationRef.current
-        )
-          return;
-        const next =
-          (await res.json()) as import("./debug-shared").DebugLogEntry[];
-        if (signal?.aborted || generation !== logGenerationRef.current) return;
-        if (next.length === 0) return;
-        setEntries((prev) =>
-          (initial ? next : [...prev, ...next]).slice(-2000),
-        );
-        afterRef.current = next[next.length - 1]!.seq;
+        if (!res.ok) throw new Error(String(res.status));
+        if (signal.aborted || generation !== logGenerationRef.current) return;
+        const next: unknown = await res.json();
+        if (!Array.isArray(next) || !next.every(isDebugLogEntry)) {
+          throw new Error("Invalid debug log response");
+        }
+        if (signal.aborted || generation !== logGenerationRef.current) return;
+        if (initial || next.length > 0) {
+          setEntries((prev) =>
+            (initial ? next : [...prev, ...next]).slice(-2000),
+          );
+          afterRef.current = next.at(-1)?.seq ?? 0;
+        }
+        hasLoadedLogsRef.current = true;
+        setLogState({ identity: streamIdentity, status: "ready" });
       } catch {
-        /* ignore abort / network */
+        if (!signal.aborted && generation === logGenerationRef.current) {
+          setLogState({
+            identity: streamIdentity,
+            status: firstLoad ? "error" : "refresh-error",
+          });
+        }
       } finally {
-        if (generation === logGenerationRef.current) setRefreshing(false);
+        if (generation === logGenerationRef.current) {
+          setRefreshing(false);
+          logRequestRef.current = null;
+        }
       }
     },
-    [logsPath, streamEnabled],
+    [active, logsPath, streamEnabled, streamIdentity],
   );
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || !hasDebugSettings) return;
     const identity = `${apiBase}:${stream}:${streamEnabled}`;
     const changed = streamIdentityRef.current !== identity;
     streamIdentityRef.current = identity;
-    if (!changed && entries.length > 0) return;
-    afterRef.current = 0;
-    const controller = new AbortController();
     const timeout = window.setTimeout(() => {
+      setRefreshing(false);
+      if (!changed && hasLoadedLogsRef.current) return;
+      afterRef.current = 0;
+      hasLoadedLogsRef.current = false;
       if (changed) setEntries([]);
-      void fetchLogs(true, controller.signal);
+      void fetchLogs(true);
     }, 0);
     return () => {
       window.clearTimeout(timeout);
       logGenerationRef.current += 1;
-      controller.abort();
+      logRequestRef.current?.abort();
+      logRequestRef.current = null;
     };
-    // Intentionally omit fetchLogs/entries — identity gate prevents switch storms.
+    // Intentionally omit fetchLogs — identity gate prevents switch storms.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- stream identity only
-  }, [active, apiBase, stream, streamEnabled]);
+  }, [active, apiBase, hasDebugSettings, stream, streamEnabled]);
 
   const pollLogs = useEffectEvent((initial: boolean) => {
     void fetchLogs(initial);
@@ -258,39 +374,86 @@ export default function Debug({
       />
 
       {!debug ? (
-        <Empty>
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <Spinner />
-            </EmptyMedia>
-            <EmptyTitle>{t("debug.loading")}</EmptyTitle>
-          </EmptyHeader>
-        </Empty>
+        <DebugResourceLoadState
+          loading={debugPoll.loading || debugPoll.error === undefined}
+          loadingLabel={t("debug.loading")}
+          errorLabel={t("debug.settingsLoadError")}
+          onRetry={() => debugPoll.refresh()}
+        />
       ) : (
-        <DebugSettingsPanel
-          debug={debug}
-          debugBusy={debugBusy}
-          stream={stream}
-          onSetFlag={(flag, enabled) => {
-            void setDebugFlag(flag, enabled);
-          }}
-          onReset={() => {
-            void resetDebug();
-          }}
-          onStreamChange={setStream}
+        <>
+          {debugPoll.error !== undefined && (
+            <DebugRefreshError
+              message={t("debug.settingsRefreshError")}
+              retrying={debugPoll.loading}
+              onRetry={() => debugPoll.refresh({ forceLoading: true })}
+            />
+          )}
+          <DebugSettingsPanel
+            debug={debug}
+            debugBusy={debugBusy}
+            stream={stream}
+            onSetFlag={(flag, enabled) => {
+              void setDebugFlag(flag, enabled);
+            }}
+            onReset={() => {
+              void resetDebug();
+            }}
+            onStreamChange={setStream}
+          />
+        </>
+      )}
+
+      {debug?.claude && (
+        <DebugClaudeInboundPanel
+          entries={claudePoll.data}
+          feedback={
+            claudePoll.data === undefined ? (
+              <DebugResourceLoadState
+                loading={claudePoll.loading || claudePoll.error === undefined}
+                loadingLabel={t("debug.claudeInbound.loading")}
+                errorLabel={t("debug.claudeInbound.loadError")}
+                onRetry={() => claudePoll.refresh()}
+              />
+            ) : claudePoll.error !== undefined ? (
+              <DebugRefreshError
+                message={t("debug.claudeInbound.refreshError")}
+                retrying={claudePoll.loading}
+                onRetry={() => claudePoll.refresh({ forceLoading: true })}
+              />
+            ) : undefined
+          }
         />
       )}
 
-      {debug?.claude && <DebugClaudeInboundPanel entries={claudeEntries} />}
-
-      <DebugLogViewer
-        debug={!!debug}
-        stream={stream}
-        streamEnabled={streamEnabled}
-        entries={entries}
-        scrollContainerRef={scrollContainerRef}
-        lineVirtualizer={lineVirtualizer}
-      />
+      {debug &&
+      streamEnabled &&
+      (logStatus === "loading" || logStatus === "error") ? (
+        <DebugResourceLoadState
+          loading={logStatus === "loading"}
+          loadingLabel={t("debug.logsLoading")}
+          errorLabel={t("debug.logsLoadError")}
+          onRetry={() => void fetchLogs(true)}
+        />
+      ) : (
+        <>
+          {debug && streamEnabled && logStatus === "refresh-error" && (
+            <DebugRefreshError
+              message={t("debug.logsRefreshError")}
+              retrying={refreshing}
+              onRetry={() => void fetchLogs(false)}
+            />
+          )}
+          <DebugLogViewer
+            debug={!!debug}
+            stream={stream}
+            streamEnabled={streamEnabled}
+            entries={entries}
+            scrollContainerRef={scrollContainerRef}
+            lineVirtualizer={lineVirtualizer}
+          />
+        </>
+      )}
     </div>
   );
 }

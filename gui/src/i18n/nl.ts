@@ -5,6 +5,18 @@
 import type { TKey } from "./en";
 
 export const nlOverrides: Partial<Record<TKey, string>> = {
+  "debug.logsLoading": "Debuglogs laden…",
+  "debug.logsLoadError": "Debuglogs konden niet worden geladen.",
+  "debug.logsRefreshError":
+    "Debuglogs konden niet worden vernieuwd. Het laatst geladen resultaat wordt getoond.",
+  "debug.settingsLoadError": "Debuginstellingen konden niet worden geladen.",
+  "debug.settingsRefreshError":
+    "Debuginstellingen konden niet worden vernieuwd. De laatst geladen instellingen worden getoond.",
+  "debug.claudeInbound.loading": "Inkomende Claude-verzoeken laden…",
+  "debug.claudeInbound.loadError":
+    "Inkomende Claude-verzoeken konden niet worden geladen.",
+  "debug.claudeInbound.refreshError":
+    "Inkomende Claude-verzoeken konden niet worden vernieuwd. Het laatst geladen resultaat wordt getoond.",
   "app.pageTitle": "{page} | opencodex",
   // sidebar / nav
   "nav.providers": "Leveranciers",

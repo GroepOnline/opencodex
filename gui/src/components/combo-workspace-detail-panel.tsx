@@ -18,6 +18,7 @@ import {
   TargetEditor,
 } from "./combo-workspace-controls";
 import { clampedNumberInput } from "./combo-workspace-utils";
+import { useCopyFeedback } from "./use-copy-feedback";
 
 type DetailTab = "config" | "about";
 
@@ -59,7 +60,12 @@ export function DetailPanel({
   const [draft, setDraft] = useState<ComboItem>(baseline);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [copied, setCopied] = useState(false);
+  const copyScope = useMemo(
+    () => ({ comboId: baseline.id, model: baseline.model }),
+    [baseline.id, baseline.model],
+  );
+  const modelCopy = useCopyFeedback<typeof copyScope>();
+  const copyOutcome = modelCopy.outcomeFor(copyScope);
   const dirty = !draftEquals(draft, baseline);
   const baselineSyncKey = `${baseline.id}:${baseline.alias ?? ""}:${baseline.strategy}:${baseline.stickyLimit}:${baseline.defaultEffort}:${baseline.targets.map((t) => `${t.provider}/${t.model}:${t.weight ?? 1}`).join(",")}`;
   const effortMap = useMemo(() => {
@@ -93,16 +99,6 @@ export function DetailPanel({
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: key captures baseline payload
   }, [baselineSyncKey]);
-
-  const copyModel = async () => {
-    try {
-      await navigator.clipboard.writeText(baseline.model);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
-    } catch {
-      /* ignore */
-    }
-  };
 
   const save = async () => {
     const code = validateComboDraft(draft, {
@@ -179,12 +175,16 @@ export function DetailPanel({
           <button
             type="button"
             className="chip cwi-copy-chip"
-            onClick={() => {
-              void copyModel();
-            }}
+            onClick={() => modelCopy.copy(baseline.model, copyScope)}
             title={t("cws.copyModel")}
           >
-            {copied ? t("cws.copied") : t("cws.copyModel")}
+            <span aria-live="polite">
+              {copyOutcome === "copied"
+                ? t("cws.copied")
+                : copyOutcome === "unavailable"
+                  ? t("models.workspace.copyUnavailable")
+                  : t("cws.copyModel")}
+            </span>
           </button>
         )}
         <div className="combos-workspace-detail-actions">
@@ -236,10 +236,18 @@ export function DetailPanel({
       </PageTabs>
 
       {/* Every tab has a control target; only the active editor is mounted. */}
-      {(["config", "about"] as const).filter(candidate => candidate !== tab).map(candidate => (
-        <PageTabPanel key={candidate} id={`cws-panel-${candidate}`}
-          labelledBy={`cws-tab-${candidate}`} hidden>{null}</PageTabPanel>
-      ))}
+      {(["config", "about"] as const)
+        .filter((candidate) => candidate !== tab)
+        .map((candidate) => (
+          <PageTabPanel
+            key={candidate}
+            id={`cws-panel-${candidate}`}
+            labelledBy={`cws-tab-${candidate}`}
+            hidden
+          >
+            {null}
+          </PageTabPanel>
+        ))}
       <PageTabPanel
         id={`cws-panel-${tab}`}
         labelledBy={`cws-tab-${tab}`}

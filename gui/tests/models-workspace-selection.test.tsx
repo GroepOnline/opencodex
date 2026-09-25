@@ -39,6 +39,7 @@ let execCommandDescriptor: PropertyDescriptor | undefined;
 let models: ModelRow[];
 let selected: Record<string, string[]>;
 let failVisibility: boolean;
+let failCatalogLoad: boolean;
 let deletionDelay: Promise<void> | undefined;
 let providerRefreshResponse: Promise<Response> | undefined;
 let polls: Array<() => void>;
@@ -100,6 +101,18 @@ async function mockWorkspaceFetch(
     ? (JSON.parse(String(init.body)) as Record<string, unknown>)
     : null;
   if (method !== "GET") writes.push({ path, method, body });
+  if (
+    failCatalogLoad &&
+    method === "GET" &&
+    [
+      "/api/models",
+      "/api/providers",
+      "/api/provider-context-caps",
+      "/api/selected-models",
+    ].includes(path)
+  ) {
+    throw new TypeError("Catalog unavailable");
+  }
   if (path === "/api/model-visibility" && method === "PUT")
     return updateModelVisibility(body as VisibilityUpdate);
   if (path.startsWith("/api/custom-models/") && method === "DELETE") {
@@ -196,6 +209,7 @@ beforeEach(async () => {
   ];
   selected = { alpha: ["shared"], beta: [] };
   failVisibility = false;
+  failCatalogLoad = false;
   deletionDelay = undefined;
   providerRefreshResponse = undefined;
   writes = [];
@@ -318,6 +332,37 @@ async function refresh() {
   });
   await settle();
 }
+
+test("catalog recovery preserves accepted selection and never fabricates an initial catalog", async () => {
+  failCatalogLoad = true;
+  root = (await import("react-dom/client")).createRoot(host);
+  await act(async () =>
+    root!.render(
+      <LanguageProvider>
+        <Models apiBase="http://localhost" />
+      </LanguageProvider>,
+    ),
+  );
+  await settle();
+  expect(inspectButtons()).toHaveLength(0);
+  expect(host.textContent).toContain("Failed to load models");
+  expect(host.textContent).toContain("Retry");
+  failCatalogLoad = false;
+  await click(button("Retry"));
+  expect(inspectButtons()).toHaveLength(3);
+  await click(button("Inspect alpha/shared"));
+  failCatalogLoad = true;
+  await refresh();
+  expect(host.textContent).toContain("Failed to load models");
+  expect(inspector().querySelector("h3")?.textContent).toBe("Atlas Vision");
+  expect(button("Inspect alpha/shared").getAttribute("aria-pressed")).toBe(
+    "true",
+  );
+  failCatalogLoad = false;
+  await click(button("Retry"));
+  expect(host.textContent).not.toContain("Failed to load models");
+  expect(inspector().querySelector("h3")?.textContent).toBe("Atlas Vision");
+});
 
 test("model workspace opens new-user groups and inspects a provider-qualified identity without mutating visibility", async () => {
   await mount();

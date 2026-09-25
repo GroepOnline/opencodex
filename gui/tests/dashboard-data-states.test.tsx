@@ -164,6 +164,26 @@ function assertFailureNotices() {
 }
 
 describe("Dashboard observed data states", () => {
+  test("a failed resource preserves independent readings and a new API never inherits old readings", async () => {
+    usageReply = async () => Response.json(usage(17, 321));
+    logsReply = async () => {
+      throw new TypeError("Failed to fetch");
+    };
+    await mount();
+    expect(values()).toEqual(["321", "17", "0"]);
+    expect(host.textContent).not.toContain("Could not load usage data.");
+    expect(host.textContent).toContain("Could not load traffic.");
+    usageReply = async () => new Response(null, { status: 503 });
+    await act(async () =>
+      root!.render(
+        <LanguageProvider>
+          <Dashboard apiBase="http://localhost/changed-resource" />
+        </LanguageProvider>,
+      ),
+    );
+    expect(values()).toEqual(["—", "—", "—"]);
+    expect(host.textContent).toContain("Could not load usage data.");
+  });
   test("first load shows unknown values until usage and traffic resolve, not fake zeroes", async () => {
     let resolveUsage!: (response: Response) => void;
     let resolveLogs!: (response: Response) => void;

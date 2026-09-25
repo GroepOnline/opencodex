@@ -12,7 +12,9 @@ import {
 } from "../primitives/workspace-dialog";
 
 export function RemoveConfirmDialog({
-  providerName, onConfirm, onCancel,
+  providerName,
+  onConfirm,
+  onCancel,
 }: {
   providerName: string;
   onConfirm: () => void;
@@ -21,12 +23,23 @@ export function RemoveConfirmDialog({
   const t = useT();
   return (
     <WorkspaceDialogBackdrop onClick={onCancel}>
-      <WorkspaceDialog aria-label={t("pws.removeConfirmTitle")}>
-        <WorkspaceDialogTitle>{t("pws.removeConfirmTitle")}</WorkspaceDialogTitle>
-        <WorkspaceDialogBody>{t("pws.removeConfirmBody", { name: providerName })}</WorkspaceDialogBody>
+      <WorkspaceDialog
+        onDismiss={onCancel}
+        aria-label={t("pws.removeConfirmTitle")}
+      >
+        <WorkspaceDialogTitle>
+          {t("pws.removeConfirmTitle")}
+        </WorkspaceDialogTitle>
+        <WorkspaceDialogBody>
+          {t("pws.removeConfirmBody", { name: providerName })}
+        </WorkspaceDialogBody>
         <WorkspaceDialogActions>
-          <button type="button" className="btn btn-ghost" onClick={onCancel}>{t("common.cancel")}</button>
-          <button type="button" className="btn btn-danger" onClick={onConfirm}>{t("pws.removeConfirm")}</button>
+          <button type="button" className="btn btn-ghost" onClick={onCancel}>
+            {t("common.cancel")}
+          </button>
+          <button type="button" className="btn btn-danger" onClick={onConfirm}>
+            {t("pws.removeConfirm")}
+          </button>
         </WorkspaceDialogActions>
       </WorkspaceDialog>
     </WorkspaceDialogBackdrop>
@@ -34,7 +47,10 @@ export function RemoveConfirmDialog({
 }
 
 export function UnsavedLeaveDialog({
-  onSave, onDiscard, onCancel, saving = false,
+  onSave,
+  onDiscard,
+  onCancel,
+  saving = false,
 }: {
   onSave: () => void;
   onDiscard: () => void;
@@ -44,13 +60,27 @@ export function UnsavedLeaveDialog({
   const t = useT();
   return (
     <WorkspaceDialogBackdrop onClick={onCancel}>
-      <WorkspaceDialog aria-label={t("pws.unsavedLeaveTitle")}>
-        <WorkspaceDialogTitle>{t("pws.unsavedLeaveTitle")}</WorkspaceDialogTitle>
+      <WorkspaceDialog
+        onDismiss={onCancel}
+        aria-label={t("pws.unsavedLeaveTitle")}
+      >
+        <WorkspaceDialogTitle>
+          {t("pws.unsavedLeaveTitle")}
+        </WorkspaceDialogTitle>
         <WorkspaceDialogBody>{t("pws.unsavedLeaveBody")}</WorkspaceDialogBody>
         <WorkspaceDialogActions>
-          <button type="button" className="btn btn-ghost" onClick={onCancel}>{t("common.cancel")}</button>
-          <button type="button" className="btn btn-ghost" onClick={onDiscard}>{t("pws.discardSettings")}</button>
-          <button type="button" className="btn btn-primary" onClick={onSave} disabled={saving}>
+          <button type="button" className="btn btn-ghost" onClick={onCancel}>
+            {t("common.cancel")}
+          </button>
+          <button type="button" className="btn btn-ghost" onClick={onDiscard}>
+            {t("pws.discardSettings")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={onSave}
+            disabled={saving}
+          >
             {saving ? t("pws.saving") : t("pws.saveSettings")}
           </button>
         </WorkspaceDialogActions>

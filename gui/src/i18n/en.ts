@@ -1,6 +1,17 @@
 // English — source of truth. Its keys define the TKey type; nl overrides a subset (compile-checked).
 // Strings with {cmd} render a <code> chip via <Trans>; {var} are plain interpolations.
 export const en = {
+  "debug.settingsLoadError": "Could not load debug settings.",
+  "debug.settingsRefreshError":
+    "Could not refresh debug settings. Showing the last loaded settings.",
+  "debug.claudeInbound.loading": "Loading Claude inbound requests…",
+  "debug.claudeInbound.loadError": "Could not load Claude inbound requests.",
+  "debug.claudeInbound.refreshError":
+    "Could not refresh Claude inbound requests. Showing the last loaded result.",
+  "debug.logsLoading": "Loading debug logs…",
+  "debug.logsLoadError": "Could not load debug logs.",
+  "debug.logsRefreshError":
+    "Could not refresh debug logs. Showing the last loaded result.",
   "app.pageTitle": "{page} | opencodex",
   // sidebar / nav / common
   "nav.codexAuth": "Codex Auth",
