@@ -20,7 +20,7 @@ type DeployWorkflow = {
   jobs?: Record<
     string,
     {
-      "runs-on"?: string[];
+      "runs-on"?: string[] | string;
       "timeout-minutes"?: number;
       env?: Record<string, string>;
       steps?: DeployStep[];
@@ -55,12 +55,10 @@ describe("retired deploy workflow contract", () => {
     expect(Object.keys(workflow.jobs ?? {})).toEqual(["retired"]);
 
     const retired = workflow.jobs?.retired;
-    expect(retired?.["runs-on"]).toEqual([
-      "self-hosted",
-      "Linux",
-      "X64",
-      "jan",
-    ]);
+    // The refusal needs neither private-network access nor credentials. A
+    // GitHub-hosted runner makes an accidental dispatch fail promptly even when
+    // the fleet's dedicated publication runner is unavailable.
+    expect(retired?.["runs-on"]).toBe("ubuntu-latest");
     expect(retired?.["timeout-minutes"]).toBe(5);
     expect(retired?.env).toBeUndefined();
     expect(retired?.steps).toHaveLength(1);
@@ -76,6 +74,9 @@ describe("retired deploy workflow contract", () => {
       "use the separately verified bc-scan-2 package deployment contract",
     );
     expect(refusal?.run?.trim().endsWith("exit 1")).toBe(true);
+    // This is a fail-closed audit stub. Do not let a future edit revive remote
+    // access inside its one permitted step.
+    expect(refusal?.run ?? "").not.toMatch(/\b(?:ssh|scp|rsync)\b/);
   });
 
   test("retains no credentials, package access, host paths, or rollout machinery", async () => {
@@ -89,6 +90,7 @@ describe("retired deploy workflow contract", () => {
 
     for (const forbidden of [
       "secrets.",
+      "github.token",
       "GH_TOKEN",
       "packages: read",
       "actions: write",

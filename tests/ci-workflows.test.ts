@@ -3053,31 +3053,20 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).not.toContain("actions/checkout@");
     expect(workflow).not.toContain("oven-sh/setup-bun@");
     expect(workflow).not.toContain("actions/setup-node@");
+    expect(workflow).not.toContain("github.token");
+    expect(workflow).not.toMatch(/\b(?:ssh|scp|rsync)\b/);
   });
 
-  test("actionlint config declares exactly the self-hosted labels the deploy workflow requires", async () => {
+  test("actionlint config declares exactly the available self-hosted runner labels", async () => {
     const config = Bun.YAML.parse(
       await readText(".github/actionlint.yaml"),
     ) as {
       "self-hosted-runner"?: { labels?: string[] };
     };
-    // actionlint fails closed on unknown `runs-on` labels for self-hosted runners,
-    // so every label deploy.yml's `runs-on: [self-hosted, ...]` uses must be
-    // declared here or CI linting the workflow itself would go red.
+    // actionlint fails closed on unknown self-hosted labels. These are retained
+    // for the workflows that still need the dedicated publication runner; the
+    // retired deploy refusal deliberately uses a hosted runner instead.
     expect(config["self-hosted-runner"]?.labels).toEqual(["jan", "opencodex"]);
-
-    const deploy = Bun.YAML.parse(
-      await readText(".github/workflows/deploy.yml"),
-    ) as {
-      jobs?: Record<string, { "runs-on"?: unknown }>;
-    };
-    const runsOn = deploy.jobs?.retired?.["runs-on"];
-    expect(Array.isArray(runsOn)).toBe(true);
-    for (const label of runsOn as string[]) {
-      if (label === "self-hosted" || label === "Linux" || label === "X64")
-        continue;
-      expect(config["self-hosted-runner"]?.labels).toContain(label);
-    }
   });
 
   test("cross-platform CI caches bun and GUI node_modules and lints YAML with the shared config", async () => {
@@ -3164,7 +3153,7 @@ describe("GitHub Actions hardening", () => {
       permissions?: Record<string, string>;
       jobs?: Record<
         string,
-        { "runs-on"?: string[]; "timeout-minutes"?: number }
+        { "runs-on"?: string[] | string; "timeout-minutes"?: number }
       >;
     };
 
@@ -3172,12 +3161,7 @@ describe("GitHub Actions hardening", () => {
     expect(workflow.on?.workflow_dispatch).toBeNull();
     expect(workflow.permissions).toEqual({ contents: "read" });
     expect(workflow.jobs?.retired?.["timeout-minutes"]).toBe(5);
-    expect(workflow.jobs?.retired?.["runs-on"]).toEqual([
-      "self-hosted",
-      "Linux",
-      "X64",
-      "jan",
-    ]);
+    expect(workflow.jobs?.retired?.["runs-on"]).toBe("ubuntu-latest");
   });
 
   test("design-system contract only runs when design-system inputs or the GUI change, identically on push and PR", async () => {
