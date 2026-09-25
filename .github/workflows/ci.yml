@@ -52,20 +52,17 @@ jobs:
   test:
     name: ${{ matrix.name }}
     runs-on: ${{ fromJSON(matrix.runner) }}
-    # 40 minutes, not 20. A quiet Linux shard finishes in about 5 minutes, but this
-    # self-hosted host shares its CPUs with other runners. scripts/test.ts records that
-    # contention stretches a ~210s suite to ~26 minutes while Bun's per-test timers do
-    # not fire, so a 20-minute cap cancels a green shard. macOS and Windows still split
-    # root tests from GUI quality work. Linux-only on push/PR; workflow_dispatch and
-    # release tags run every platform.
+    # Linux-only on push/PR; workflow_dispatch and release tags run every platform.
+    # Run untrusted PR code on an ephemeral hosted runner, rather than a persistent
+    # fleet machine, and keep CI available when fleet capacity is unavailable.
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
         include:
           ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v'))
-          && fromJSON('[{"name":"ubuntu-latest","os":"opencodex","runner":"[\"self-hosted\",\"Linux\",\"X64\",\"jan\"]","run_tests":true,"run_quality":true,"run_typecheck":true,"shard_index":0,"shard_count":2},{"name":"ubuntu-latest shard 2/2","os":"opencodex","runner":"[\"self-hosted\",\"Linux\",\"X64\",\"jan\"]","run_tests":true,"run_quality":false,"run_typecheck":false,"shard_index":1,"shard_count":2},{"name":"windows-latest","os":"windows-latest","runner":"\"windows-latest\"","run_tests":true,"run_quality":false,"run_typecheck":true,"shard_index":0,"shard_count":2},{"name":"windows-latest shard 2/2","os":"windows-latest","runner":"\"windows-latest\"","run_tests":true,"run_quality":false,"run_typecheck":false,"shard_index":1,"shard_count":2},{"name":"windows-quality","os":"windows-latest","runner":"\"windows-latest\"","run_tests":false,"run_quality":true,"run_typecheck":false,"shard_index":0,"shard_count":1}]')
-          || fromJSON('[{"name":"ubuntu-latest","os":"opencodex","runner":"[\"self-hosted\",\"Linux\",\"X64\",\"jan\"]","run_tests":true,"run_quality":true,"run_typecheck":true,"shard_index":0,"shard_count":2},{"name":"ubuntu-latest shard 2/2","os":"opencodex","runner":"[\"self-hosted\",\"Linux\",\"X64\",\"jan\"]","run_tests":true,"run_quality":false,"run_typecheck":false,"shard_index":1,"shard_count":2}]') }}
+          && fromJSON('[{"name":"ubuntu-latest","os":"ubuntu-latest","runner":"\"ubuntu-latest\"","run_tests":true,"run_quality":true,"run_typecheck":true,"shard_index":0,"shard_count":2},{"name":"ubuntu-latest shard 2/2","os":"ubuntu-latest","runner":"\"ubuntu-latest\"","run_tests":true,"run_quality":false,"run_typecheck":false,"shard_index":1,"shard_count":2},{"name":"windows-latest","os":"windows-latest","runner":"\"windows-latest\"","run_tests":true,"run_quality":false,"run_typecheck":true,"shard_index":0,"shard_count":2},{"name":"windows-latest shard 2/2","os":"windows-latest","runner":"\"windows-latest\"","run_tests":true,"run_quality":false,"run_typecheck":false,"shard_index":1,"shard_count":2},{"name":"windows-quality","os":"windows-latest","runner":"\"windows-latest\"","run_tests":false,"run_quality":true,"run_typecheck":false,"shard_index":0,"shard_count":1}]')
+          || fromJSON('[{"name":"ubuntu-latest","os":"ubuntu-latest","runner":"\"ubuntu-latest\"","run_tests":true,"run_quality":true,"run_typecheck":true,"shard_index":0,"shard_count":2},{"name":"ubuntu-latest shard 2/2","os":"ubuntu-latest","runner":"\"ubuntu-latest\"","run_tests":true,"run_quality":false,"run_typecheck":false,"shard_index":1,"shard_count":2}]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -73,7 +70,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.0
+          bun-version: 1.4.2
           no-cache: false
 
       - name: Cache GUI node_modules
@@ -175,7 +172,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) && fromJSON('[{"platform":"opencodex","runner":"[\"self-hosted\",\"Linux\",\"X64\",\"jan\"]"},{"platform":"windows-latest","runner":"\"windows-latest\""}]') || fromJSON('[{"platform":"opencodex","runner":"[\"self-hosted\",\"Linux\",\"X64\",\"jan\"]"}]') }}
+        include: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) && fromJSON('[{"platform":"opencodex","runner":"\"ubuntu-latest\""},{"platform":"windows-latest","runner":"\"windows-latest\""}]') || fromJSON('[{"platform":"opencodex","runner":"\"ubuntu-latest\""}]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -209,7 +206,7 @@ jobs:
 
   security:
     name: Security audit
-    runs-on: [self-hosted, Linux, X64, jan]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -218,7 +215,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.0
+          bun-version: 1.4.2
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -283,7 +280,7 @@ jobs:
 
   lint-github-actions:
     name: Lint GitHub Actions
-    runs-on: [self-hosted, Linux, X64, jan]
+    runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
       - name: Checkout
