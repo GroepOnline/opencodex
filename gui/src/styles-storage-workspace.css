@@ -85,7 +85,9 @@
   color: inherit;
   font: inherit;
   overflow: hidden;
-  transition: background var(--motion-fast), box-shadow var(--motion-fast);
+  transition:
+    background var(--motion-fast),
+    box-shadow var(--motion-fast);
 }
 
 .storage-workspace-rail-row:hover {
@@ -201,7 +203,7 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted);
-  margin: 0 0 8px 0;
+  margin: 0 0 8px;
 }
 
 .stw-hint {
@@ -284,7 +286,10 @@
   cursor: pointer;
   padding: 6px 12px 6px 8px;
   margin: 0;
-  transition: background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast);
+  transition:
+    background var(--motion-fast),
+    border-color var(--motion-fast),
+    color var(--motion-fast);
 }
 
 .stw-detail-back:hover {
@@ -314,7 +319,7 @@
 .stw-detail-title {
   font-size: 1.1rem;
   font-weight: 600;
-  margin: 0 0 12px 0;
+  margin: 0 0 12px;
   min-width: 0;
   word-break: break-word;
 }
@@ -322,7 +327,7 @@
 .stw-kv {
   display: flex;
   flex-direction: column;
-  margin: 0 0 16px 0;
+  margin: 0 0 16px;
 }
 
 .stw-kv-row {

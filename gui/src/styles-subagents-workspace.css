@@ -179,7 +179,10 @@
   background: none;
   color: var(--faint);
   cursor: pointer;
-  transition: background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast);
+  transition:
+    background var(--motion-fast),
+    border-color var(--motion-fast),
+    color var(--motion-fast);
 }
 
 .subagents-workspace-rail-toggle:hover {
@@ -213,7 +216,6 @@
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
-
 
 /* ── Main ─────────────────────────────────────────────── */
 
@@ -307,7 +309,6 @@
   flex-shrink: 0;
 }
 
-
 .swi-save-row {
   display: flex;
   align-items: center;
@@ -382,7 +383,7 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted);
-  margin: 0 0 8px 0;
+  margin: 0 0 8px;
 }
 
 .swi-detail-kv {

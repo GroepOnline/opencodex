@@ -267,7 +267,7 @@ describe("WS endpoint re-framer (120/132)", () => {
 
   test("stale pump cleanup does not erase the replacement turn cancel hook", async () => {
     const { ws } = mockWs();
-    let current = false;
+    const current = false;
     const stalePump = pumpResponsesSseToWebSocket(
       ws,
       sseStream([
