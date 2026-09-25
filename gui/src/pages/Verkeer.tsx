@@ -409,7 +409,7 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
         ? data.toSorted((a, b) => b.timestamp - a.timestamp)
         : [];
     },
-    { pollMs: TAIL_INTERVAL_MS, enabled: !paused },
+    { pollMs: paused ? undefined : TAIL_INTERVAL_MS },
   );
   const logs = useMemo(() => logsPoll.data ?? [], [logsPoll.data]);
   const logsFailed = logsPoll.error !== undefined;

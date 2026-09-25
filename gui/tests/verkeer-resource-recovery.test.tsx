@@ -34,6 +34,7 @@ let root: Root;
 let Verkeer: typeof import("../src/pages/Verkeer").default;
 let usageReply: () => Promise<Response>;
 let cacheReply: () => Promise<Response>;
+let logsReply: () => Promise<Response>;
 let polls: Map<number, () => void>;
 
 beforeEach(async () => {
@@ -76,11 +77,12 @@ beforeEach(async () => {
   }) as typeof setInterval;
   usageReply = async () => new Response(null, { status: 503 });
   cacheReply = async () => new Response(null, { status: 503 });
+  logsReply = async () => Response.json([]);
   globalThis.fetch = (async (input) => {
     const url = String(input);
     if (url.includes("/api/usage")) return usageReply();
     if (url.endsWith("/api/response-cache")) return cacheReply();
-    if (url.endsWith("/api/logs")) return Response.json([]);
+    if (url.endsWith("/api/logs")) return logsReply();
     throw new Error(`Unexpected request ${url}`);
   }) as typeof fetch;
   host = document.createElement("div");
@@ -114,6 +116,32 @@ async function render(apiBase = "http://localhost/traffic") {
     ),
   );
 }
+
+test("focusing a traffic row pauses polling without discarding its loaded logs", async () => {
+  logsReply = async () =>
+    Response.json([
+      {
+        requestId: "request-1",
+        timestamp: 1_700_000_000_000,
+        model: "gpt-test",
+        provider: "openai",
+        status: 200,
+        durationMs: 12,
+      },
+    ]);
+
+  await render();
+  const row = host.querySelector<HTMLButtonElement>(
+    ".traffic-entry-head--button",
+  );
+  expect(row).not.toBeNull();
+
+  await act(async () => row!.focus());
+  expect(row!.getAttribute("aria-expanded")).toBe("false");
+  expect(host.textContent).toContain("Follow");
+  expect(host.querySelector(".traffic-entry-head--button")).not.toBeNull();
+  expect(host.textContent).not.toContain("Loading");
+});
 
 test("traffic resources show unknown failures, recover independently and retain only same-API readings", async () => {
   await render();
