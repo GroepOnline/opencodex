@@ -63,6 +63,9 @@ export function resolveBedrockCredentials(
 }
 
 function hmac(key: Buffer | string, data: string): Buffer {
+  // AWS SigV4 key derivation: HMAC-SHA256 is mandated by the protocol, not password hashing.
+  // lgtm[js/insufficient-password-hash]
+  // codeql[js/insufficient-password-hash]
   return createHmac("sha256", key).update(data, "utf8").digest();
 }
 
@@ -122,6 +125,9 @@ export function sigv4(
   key = hmac(key, region);
   key = hmac(key, service);
   key = hmac(key, "aws4_request");
+  // SigV4 final signature: HMAC-SHA256 is the protocol definition (see hmac() note).
+  // lgtm[js/insufficient-password-hash]
+  // codeql[js/insufficient-password-hash]
   const signature = createHmac("sha256", key)
     .update(stringToSign, "utf8")
     .digest("hex");
