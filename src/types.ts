@@ -27,7 +27,10 @@ export interface OcxParsedRequest {
    */
   _cursorIsolateConversation?: boolean;
   /** Account-scoped, non-secret Kiro request metadata selected with the OAuth access token. */
-  _kiroAuthContext?: Pick<KiroOAuthMetadata, "profileArn" | "apiRegion" | "ssoRegion">;
+  _kiroAuthContext?: Pick<
+    KiroOAuthMetadata,
+    "profileArn" | "apiRegion" | "ssoRegion"
+  >;
   /** Provider-private continuation metadata resolved from the Responses previous_response_id chain. */
   _providerContinuation?: OcxProviderContinuationState;
   /**
@@ -37,7 +40,10 @@ export interface OcxParsedRequest {
    */
   _webSearch?: Record<string, unknown>;
   /** Hosted image_generation tool config stashed for the image bridge sidecar (see src/images). */
-  _imageGeneration?: { toolNames: Set<string>; originalTool?: Record<string, unknown> };
+  _imageGeneration?: {
+    toolNames: Set<string>;
+    originalTool?: Record<string, unknown>;
+  };
   /**
    * True when Codex requested structured output (`text.format` = json_schema/json_object). The
    * web-search tool_result is then rendered as compact JSON instead of markdown prose, so its
@@ -142,7 +148,8 @@ export interface OcxToolCall {
   namespace?: string;
 }
 
-export type OcxAssistantContentPart = OcxTextContent | OcxThinkingContent | OcxToolCall;
+export type OcxAssistantContentPart =
+  OcxTextContent | OcxThinkingContent | OcxToolCall;
 
 export interface OcxTool {
   name: string;
@@ -171,21 +178,34 @@ export interface OcxTool {
  * the proxy maps this back to {namespace, name} on the return trip (Codex routes MCP
  * calls by an explicit `namespace` field, not by parsing the name).
  */
-export function namespacedToolName(namespace: string | undefined, name: string): string {
+export function namespacedToolName(
+  namespace: string | undefined,
+  name: string,
+): string {
   return namespace ? `${namespace}__${name}` : name;
 }
 
-export function toolChoiceAliases(tool: Pick<OcxTool, "namespace" | "name">): string[] {
+export function toolChoiceAliases(
+  tool: Pick<OcxTool, "namespace" | "name">,
+): string[] {
   const wireName = namespacedToolName(tool.namespace, tool.name);
-  return tool.namespace ? [wireName, `${tool.namespace}.${tool.name}`] : [wireName];
+  return tool.namespace
+    ? [wireName, `${tool.namespace}.${tool.name}`]
+    : [wireName];
 }
 
-export function toolAllowedByChoice(tool: Pick<OcxTool, "namespace" | "name">, allowedTools: ReadonlySet<string>): boolean {
-  return toolChoiceAliases(tool).some(name => allowedTools.has(name));
+export function toolAllowedByChoice(
+  tool: Pick<OcxTool, "namespace" | "name">,
+  allowedTools: ReadonlySet<string>,
+): boolean {
+  return toolChoiceAliases(tool).some((name) => allowedTools.has(name));
 }
 
-export function resolveToolChoiceWireName(tools: readonly Pick<OcxTool, "namespace" | "name">[] | undefined, name: string): string {
-  const match = tools?.find(tool => toolChoiceAliases(tool).includes(name));
+export function resolveToolChoiceWireName(
+  tools: readonly Pick<OcxTool, "namespace" | "name">[] | undefined,
+  name: string,
+): string {
+  const match = tools?.find((tool) => toolChoiceAliases(tool).includes(name));
   return match ? namespacedToolName(match.namespace, match.name) : name;
 }
 
@@ -194,7 +214,10 @@ export function resolveToolChoiceWireName(tools: readonly Pick<OcxTool, "namespa
  * id, OR — for Ollama-style ids — the family before the ":size" tag, so a `gpt-oss` entry covers
  * `gpt-oss:120b`/`gpt-oss:20b`. Colon-less ids (e.g. `grok-build-0.1`) still match exactly only.
  */
-export function modelInList(list: string[] | undefined, modelId: string): boolean {
+export function modelInList(
+  list: string[] | undefined,
+  modelId: string,
+): boolean {
   if (!list || list.length === 0) return false;
   if (list.includes(modelId)) return true;
   const colon = modelId.indexOf(":");
@@ -208,7 +231,9 @@ export type OcxToolChoice =
   | { name: string }
   | { allowedTools: string[]; mode: "auto" | "required" };
 
-export function isAllowedToolChoice(value: OcxToolChoice | undefined): value is { allowedTools: string[]; mode: "auto" | "required" } {
+export function isAllowedToolChoice(
+  value: OcxToolChoice | undefined,
+): value is { allowedTools: string[]; mode: "auto" | "required" } {
   return typeof value === "object" && value !== null && "allowedTools" in value;
 }
 
@@ -266,7 +291,13 @@ export type AdapterEvent =
   // output_item.added(in_progress) and end → the matching output_item.done(completed|failed) under
   // the SAME output index, so the activity animates instead of flashing completed instantly.
   | { type: "web_search_call_begin"; id: string }
-  | { type: "web_search_call_end"; id: string; queries: string[]; status?: "completed" | "failed"; sources?: OcxUrlCitation[] }
+  | {
+      type: "web_search_call_end";
+      id: string;
+      queries: string[];
+      status?: "completed" | "failed";
+      sources?: OcxUrlCitation[];
+    }
   | {
       type: "done";
       usage?: OcxUsage;
@@ -373,8 +404,8 @@ export interface OcxClaudeCodeConfig {
   /** Inbound model id remaps: exact id first, then date-stripped (`-\d{8}$`). */
   modelMap?: Record<string, string>;
   /**
-  * Inject ANTHROPIC_BASE_URL etc. into the macOS user domain via `launchctl setenv`
-  * so plain `claude` commands route through the proxy without `ocx claude`. Reverted
+   * Inject ANTHROPIC_BASE_URL etc. into the macOS user domain via `launchctl setenv`
+   * so plain `claude` commands route through the proxy without `ocx claude`. Reverted
    * on stop/shutdown. Default: false (opt-in). macOS only.
    */
   systemEnv?: boolean;
@@ -418,7 +449,12 @@ export interface OcxClaudeCodeConfig {
    * to proxy models. haiku falls back to smallFastModel (one effective value feeds
    * both ANTHROPIC_DEFAULT_HAIKU_MODEL and legacy ANTHROPIC_SMALL_FAST_MODEL).
    */
-  tierModels?: { opus?: string; sonnet?: string; haiku?: string; fable?: string };
+  tierModels?: {
+    opus?: string;
+    sonnet?: string;
+    haiku?: string;
+    fable?: string;
+  };
   /**
    * Auto-context (devlog 260712 020): when not false, routed/native models whose
    * authoritative window is > 200k AND >= the compact window get the [1m] marker
@@ -877,10 +913,12 @@ export interface OcxConfig {
   corsAllowOrigins?: string[];
 }
 
-export type OcxAccountPoolRotationStrategy = "quota" | "round-robin" | "fill-first";
+export type OcxAccountPoolRotationStrategy =
+  "quota" | "round-robin" | "fill-first";
 
 export type OcxComboStrategy = "failover" | "round-robin";
-export type OcxComboDefaultEffort = "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+export type OcxComboDefaultEffort =
+  "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 
 export interface OcxCodexRequestPacing {
   /** Master switch. Default false. */
@@ -1086,6 +1124,13 @@ export interface OcxProviderConfig {
    */
   credentialRef?: string;
   apiKey?: string;
+  /** AWS credentials for the bedrock adapter (each optionally an $ENV reference). */
+  awsAccessKeyId?: string;
+  awsSecretAccessKey?: string;
+  /** Optional STS session token for temporary AWS credentials ($ENV reference supported). */
+  awsSessionToken?: string;
+  /** AWS region override; defaults to the region parsed from a bedrock-runtime.<region>.amazonaws.com host. */
+  awsRegion?: string;
   /**
    * Key-auth header style for Anthropic-compatible providers.
    * Defaults to the native Anthropic `x-api-key`; gateways may require
@@ -1097,7 +1142,12 @@ export interface OcxProviderConfig {
    * entry so routing stays single-key; managed via /api/providers/keys. A legacy bare
    * `apiKey` seeds a one-entry pool on first management touch.
    */
-  apiKeyPool?: Array<{ id: string; key: string; label?: string; addedAt?: number }>;
+  apiKeyPool?: Array<{
+    id: string;
+    key: string;
+    label?: string;
+    addedAt?: number;
+  }>;
   defaultModel?: string;
   models?: string[];
   /**
@@ -1258,7 +1308,10 @@ export interface OcxProviderConfig {
    * as callable tools. Each entry is spawned (stdio `command`) or connected (`url`) lazily per
    * stream; their tools are advertised to the Cursor server and executed against the live server.
    */
-  mcpServers?: Record<string, import("./adapters/cursor/mcp-config").CursorMcpServerConfig>;
+  mcpServers?: Record<
+    string,
+    import("./adapters/cursor/mcp-config").CursorMcpServerConfig
+  >;
   /**
    * Cursor adapter only: opt-in external executor for computer-use / record-screen. opencodex is
    * headless and cannot control a screen itself; provide commands here only when running on a host
@@ -1295,7 +1348,8 @@ export const REASONING_SUMMARY_DELIVERY_VALUES = [
   "concurrent_cutoff",
 ] as const;
 
-export type ReasoningSummaryDelivery = typeof REASONING_SUMMARY_DELIVERY_VALUES[number];
+export type ReasoningSummaryDelivery =
+  (typeof REASONING_SUMMARY_DELIVERY_VALUES)[number];
 
 /** Trusted runtime ownership for Codex-account credentials. Never persisted per provider. */
 export type CodexAccountMode = "direct" | "pool";
@@ -1335,12 +1389,18 @@ const ANTHROPIC_WIRE_MODELS: Record<string, ReadonlySet<string>> = {
  * more than once per request, and a check phrased as "pin differs from the current
  * adapter" would pass on the first pass and then let the override win on the second.
  */
-export function isWirePinnedModel(providerName: string, modelId: string): boolean {
+export function isWirePinnedModel(
+  providerName: string,
+  modelId: string,
+): boolean {
   return ANTHROPIC_WIRE_MODELS[providerName]?.has(modelId) ?? false;
 }
 
 /** The wire a pinned model must use, or undefined when the model is not pinned. */
-export function pinnedWireAdapter(providerName: string, modelId: string): string | undefined {
+export function pinnedWireAdapter(
+  providerName: string,
+  modelId: string,
+): string | undefined {
   return isWirePinnedModel(providerName, modelId) ? "anthropic" : undefined;
 }
 

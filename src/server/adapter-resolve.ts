@@ -1,5 +1,6 @@
 import { createAnthropicAdapter } from "../adapters/anthropic";
 import { createAzureAdapter } from "../adapters/azure";
+import { createBedrockAdapter } from "../adapters/bedrock";
 import { createCursorAdapter } from "../adapters/cursor";
 import { createGoogleAdapter } from "../adapters/google";
 import { createKiroAdapter } from "../adapters/kiro";
@@ -73,6 +74,8 @@ export function resolveAdapter(
         providerConfig,
         createAzureAdapter(providerConfig),
       );
+    case "bedrock":
+      return createBedrockAdapter(providerConfig);
     case "cursor":
       return createCursorAdapter(providerConfig);
     case "mimo-free":
