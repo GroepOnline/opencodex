@@ -1,6 +1,6 @@
 {
-  "git_sha": "f5cc348b7f0b7a48a9241cac17714399c2777c0f",
+  "git_sha": "c88648fa87001d04beedc8df853bee7700253422",
   "built_at": "2026-09-24T09:30:48.055Z",
   "release": "v1.5.0",
-  "gui_version": "1.5.0"
+  "gui_version": "1.5.1"
 }

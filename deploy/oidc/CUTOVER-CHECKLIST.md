@@ -36,13 +36,13 @@ hostname. It is not a second identity provider.
 - [x] Host `.env` names set (values not recorded): `OIDC_ISSUER`, `OIDC_CLIENT_ID`,
       `OIDC_CLIENT_SECRET_FILE`, `OIDC_REDIRECT_URI`, `OIDC_ALLOWED_HOSTS`, plus
       `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD`, `CF_ACCESS_ALLOWED_HOSTS`.
-- [x] Actual running artifact is npm package **1.5.0** from
-      `/home/joep/.opencodex/releases/f5cc348b7f0b7a48a9241cac17714399c2777c0f`
+- [x] Actual running artifact is npm package **1.5.1** from
+      `/home/joep/.opencodex/releases/c88648fa87001d04beedc8df853bee7700253422`
       (`start-service.sh` → `src/cli/index.ts start --port 10100`). The unit-file
-      comment and runtime health identity cite tag `v1.5.0` / source SHA
-      `f5cc348b7f0b7a48a9241cac17714399c2777c0f`.
+      comment and runtime health identity cite tag `v1.5.1` / source SHA
+      `c88648fa87001d04beedc8df853bee7700253422`.
 - [x] `GET http://100.65.83.86:10100/healthz` returns `status=ok`,
-      `service=opencodex`, `version=1.5.0`, and source SHA `f5cc348b7…`.
+      `service=opencodex`, `version=1.5.1`, and source SHA `c88648fa8…`.
       Bind is the Tailscale IPv4, not 127.0.0.1. Public
       `https://ocx.chefgroep.online/` is still a Cloudflare Access 302.
 - [ ] systemd `opencodex-proxy.service` is **not** healthy: `ActiveState=activating`,
@@ -56,7 +56,7 @@ hostname. It is not a second identity provider.
 - [x] Issuer `https://auth.chefgroep.online/application/o/ocx/` discovery and JWKS return 200 (APPLY DONE 2026-09-18; not DNS HOLD).
 - [x] Client id is `chefgroep-ocx-oidc`. Client secret exists only in `OIDC_CLIENT_SECRET_FILE` on the host (never git, never ChefFactory catalog).
 - [x] Redirect URIs required by `deploy/oidc/authentik-ocx-client.placeholder.json` are present. Extra unused URIs remain; leave them.
-- [x] Live package version is `1.5.0`. Running tree SHA is `f5cc348b7`. This checklist does not retarget the pin.
+- [x] Live package version is `1.5.1`. Running tree SHA is `c88648fa8`. This checklist does not retarget the pin.
 - [x] `GET http://100.65.83.86:10100/healthz` still returns `status=ok`, `service=opencodex`.
 
 ## Authorize canary (no live cutover)

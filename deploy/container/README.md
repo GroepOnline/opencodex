@@ -24,8 +24,8 @@ change. Reported live identity:
 | ---------- | --------------------------------------------------------- |
 | Unit       | `opencodex-proxy.service`                                 |
 | Unit state | Non-serving; a separate npm process owns port `10100`     |
-| Version    | `1.5.0`                                                   |
-| Source SHA | `f5cc348b7f0b7a48a9241cac17714399c2777c0f` (tag `v1.5.0`) |
+| Version    | `1.5.1`                                                   |
+| Source SHA | `c88648fa87001d04beedc8df853bee7700253422` (tag `v1.5.1`) |
 | Health     | `GET /healthz` on the host Tailscale IPv4, port `10100`   |
 
 The live bc-scan-2 service runs the published npm package from
@@ -107,7 +107,7 @@ the existing `providers` map instead.
 1. Authentik issuer public apply is done (2026-09-18). The consumer is wired,
    but Cloudflare Access remains the live public-host gate until the cutover
    checklist is executed. Client secret is not in git.
-2. This change documents the `1.5.0` / `f5cc348b7` live release and does not
+2. This change documents the `1.5.1` / `c88648fa8` live release and does not
    move it. Do not deploy this PR to bc-scan-2.
 3. The former Azure `deploy.yml` route is retired fail-closed; do not treat a
    merge here as a live cutover.

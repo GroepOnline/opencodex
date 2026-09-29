@@ -95,7 +95,7 @@ describe("local/dev complete path", () => {
     expect(compose).not.toContain("OIDC_CLIENT_SECRET_FILE:?");
   });
 
-  test("systemd unit keeps the compose place lock and documents 1.5.0 / f5cc348b7", async () => {
+  test("systemd unit keeps the compose place lock and documents 1.5.1 / c88648fa8", async () => {
     const unit = await readRepo("deploy/container/opencodex-proxy.service");
     expect(unit).toContain(
       "ExecStart=/usr/bin/docker compose up -d --remove-orphans",
@@ -106,8 +106,8 @@ describe("local/dev complete path", () => {
     expect(unit).toContain(
       "After=docker.service network-online.target tailscaled.service",
     );
-    expect(unit).toContain("1.5.0");
-    expect(unit).toContain("f5cc348b7f0b7a48a9241cac17714399c2777c0f");
+    expect(unit).toContain("1.5.1");
+    expect(unit).toContain("c88648fa87001d04beedc8df853bee7700253422");
     expect(unit).toContain("GET :10100/healthz");
   });
 
@@ -125,7 +125,7 @@ describe("local/dev complete path", () => {
       "OIDC_REDIRECT_URI=http://127.0.0.1:10100/oauth/callback",
     );
     expect(envExample).toContain("https://ocx.chefgroep.online/oauth/callback");
-    expect(envExample).toContain("f5cc348b7f0b7a48a9241cac17714399c2777c0f");
+    expect(envExample).toContain("c88648fa87001d04beedc8df853bee7700253422");
     expect(envExample).not.toMatch(/OIDC_CLIENT_SECRET=/);
     expect(envExample).not.toMatch(/\bsk-[A-Za-z0-9_-]{20,}\b/);
     expect(envExample).not.toMatch(/\bghp_[A-Za-z0-9_]{20,}\b/);
@@ -230,7 +230,7 @@ describe("local/dev complete path", () => {
     expect(checklist).toContain("GET /oauth/login");
     expect(checklist).toContain("Do not apply Cloudflare DNS");
     expect(checklist).toContain("ChefFactory");
-    expect(checklist).toContain("1.5.0");
+    expect(checklist).toContain("1.5.1");
     expect(checklist).toContain(":10100");
   });
 });
@@ -243,11 +243,11 @@ describe("healthz-smoke against a live proxy", () => {
     try {
       const ok = await runHealthzSmoke({
         OPENCODEX_HEALTH_URL: `http://127.0.0.1:${server.port}/healthz`,
-        OPENCODEX_SMOKE_EXPECT_VERSION: "1.5.0",
+        OPENCODEX_SMOKE_EXPECT_VERSION: "1.5.1",
       });
       expect(ok.exitCode).toBe(0);
       expect(ok.stdout).toContain('"service": "opencodex"');
-      expect(ok.stdout).toContain('"version": "1.5.0"');
+      expect(ok.stdout).toContain('"version": "1.5.1"');
     } finally {
       await server.stop(true);
     }
