@@ -1,4 +1,5 @@
 import { formatErrorResponse } from "../../bridge";
+import { sanitizeCloudflareBlockPayload } from "../../adapters/upstream-http-error";
 import {
   resolveClientRetryAfter,
   validateClientRetryAfterHeader,
@@ -11,7 +12,10 @@ import {
  *
  * Non-empty bodies (including ChatGPT `{detail: ...}` account-model 400s and
  * HTML/text errors) must keep their original bytes and headers so pool-retry
- * activation and client diagnostics stay honest.
+ * activation and client diagnostics stay honest. The one exception is a
+ * Cloudflare edge page: its HTML is never provider output, pool-retry decisions
+ * are already taken from the raw response upstream of this call, and relaying
+ * it verbatim dumps multi-KB markup into the client error.
  *
  * Retry-After is validated independently of the body path:
  * - valid upstream values are preserved
@@ -28,7 +32,10 @@ export function formatPassthroughUpstreamError(
     now?: number;
   },
 ): Response {
-  const trimmed = bodyText.trim();
+  const payload = sanitizeCloudflareBlockPayload(bodyText, status);
+  const trimmed = payload.trim();
+  // Replacing an HTML edge page with plain text must not leave a text/html type behind.
+  const relayContentType = payload !== bodyText ? "text/plain; charset=utf-8" : undefined;
   const now = options?.now ?? Date.now();
   const upstreamRetryAfter = options?.headers?.get("retry-after")?.trim() || undefined;
   const originalValid = validateClientRetryAfterHeader(upstreamRetryAfter, now);
@@ -46,19 +53,24 @@ export function formatPassthroughUpstreamError(
       && originalValid === undefined;
 
     if (!needsSet && !needsDelete) {
-      return new Response(bodyText, {
+      const headers = options?.headers
+        ? new Headers(options.headers)
+        : new Headers({ "Content-Type": "application/json" });
+      if (relayContentType) headers.set("Content-Type", relayContentType);
+      return new Response(payload, {
         status,
         ...(options?.statusText ? { statusText: options.statusText } : {}),
-        ...(options?.headers ? { headers: options.headers } : { headers: { "Content-Type": "application/json" } }),
+        headers,
       });
     }
 
     const headers = options?.headers
       ? new Headers(options.headers)
       : new Headers({ "Content-Type": "application/json" });
+    if (relayContentType) headers.set("Content-Type", relayContentType);
     if (needsSet) headers.set("Retry-After", resolved!);
     else headers.delete("Retry-After");
-    return new Response(bodyText, {
+    return new Response(payload, {
       status,
       ...(options?.statusText ? { statusText: options.statusText } : {}),
       headers,

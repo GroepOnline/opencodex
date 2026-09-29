@@ -1,4 +1,9 @@
-import { parseUpstreamJsonPayload, safeUpstreamErrorString, sanitizeUpstreamErrorText } from "./upstream-http-error";
+import {
+  parseUpstreamJsonPayload,
+  safeUpstreamErrorString,
+  sanitizeCloudflareBlockPayload,
+  sanitizeUpstreamErrorText,
+} from "./upstream-http-error";
 const DETAIL_KEYS = ["__type", "code", "error", "name", "reason", "message", "Message", "errorMessage"];
 
 export interface KiroErrorClassification {
@@ -97,9 +102,13 @@ function classifyKiroFailure(
   payloadText: string,
   status?: number,
 ): KiroErrorClassification {
-  const message = normalizedKiroErrorMessage(headers, payloadText, status);
+  // Cloudflare edge HTML would otherwise be adopted verbatim as Kiro payload
+  // detail (payloadDetails treats any non-JSON body as detail). Stream errors
+  // carry no status, so they keep the raw payload.
+  const payload = status === undefined ? payloadText : sanitizeCloudflareBlockPayload(payloadText, status);
+  const message = normalizedKiroErrorMessage(headers, payload, status);
   const headerType = headerValue(headers, ":exception-type") || headerValue(headers, ":error-type") || "";
-  const evidence = [headerType, ...payloadDetails(payloadText), message].join(" ").toLowerCase();
+  const evidence = [headerType, ...payloadDetails(payload), message].join(" ").toLowerCase();
   if (isContentLengthError(evidence)) {
     return {
       message: "Kiro rejected the request because the conversation exceeds the model's context window. Compact or reduce the history, or start a new session.",

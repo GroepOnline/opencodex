@@ -1,4 +1,9 @@
-import { parseUpstreamJsonPayload, safeUpstreamErrorString, sanitizeUpstreamErrorText } from "./upstream-http-error";
+import {
+  parseUpstreamJsonPayload,
+  safeUpstreamErrorString,
+  sanitizeCloudflareBlockPayload,
+  sanitizeUpstreamErrorText,
+} from "./upstream-http-error";
 
 /** Pull the human detail out of the Google API error envelope `{error:{message,status,code}}`. */
 function googleErrorDetail(payloadText: string): { message?: string; status?: string } {
@@ -47,7 +52,10 @@ function classifyGoogle(label: string, status: number | undefined, enumStatus: s
  * "Antigravity").
  */
 export function safeGoogleHttpErrorMessage(label: string, status: number, payloadText: string): string {
-  const { message, status: enumStatus } = googleErrorDetail(payloadText);
+  // Cloudflare edge HTML would otherwise be adopted verbatim as the Google
+  // error "message" (googleErrorDetail treats any non-JSON body as the message).
+  const payload = sanitizeCloudflareBlockPayload(payloadText, status);
+  const { message, status: enumStatus } = googleErrorDetail(payload);
   const prefix = classifyGoogle(label, status, enumStatus, [message, enumStatus].filter(Boolean).join(" "));
   const detail = message ? sanitizeUpstreamErrorText(message).slice(0, 500) : `HTTP ${status}`;
   return `${prefix}: ${detail}`;
