@@ -2,7 +2,7 @@ name: Publish on tag
 
 # Tag a commit on main with `vX.Y.Z` and this workflow publishes
 # `@groeponline/opencodex` to npm. Publication does not deploy a runtime: the
-# former chef-control-az-01 deploy route is permanently retired.
+# former production deploy route is permanently retired.
 #
 # Publishing prefers npm Trusted Publishing (OIDC, no token). The Trusted Publisher
 # on npmjs.com is registered for the `Release` workflow, so OIDC is only accepted
@@ -132,5 +132,5 @@ jobs:
           gh release create "v${VERSION}" --title "v${VERSION}" --notes "$notes"
 
   # Publication intentionally has no runtime side effect. The old Azure deploy
-  # route is retired and a bc-scan-2 package deployment contract must provide
+  # route is retired and a private production deployment contract must provide
   # its own target, immutable artifact, health, and rollback verification.

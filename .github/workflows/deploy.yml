@@ -1,10 +1,9 @@
 name: Legacy deploy route retired
 
-# `chef-control-az-01` is permanently retired. The previous Docker/GHCR
-# workflow ran on a runner located there, so it must never be selected by a tag
-# push or manual release dispatch. OCX now runs as a package release under the
-# system service on bc-scan-2; its source-owned deployment contract is tracked
-# separately and must be introduced with its own target and rollback evidence.
+# The previous production Docker/GHCR deployment route is permanently retired.
+# It must never be selected by a tag push or manual release dispatch. Production
+# runtime cutover is owned by a private deployment contract with an explicit
+# target, immutable artifact identity, health proof and rollback evidence.
 #
 # Keeping this small, explicit workflow provides a clear audit result for an
 # accidental legacy dispatch without retaining credentials, host paths, or any
@@ -22,6 +21,6 @@ jobs:
     steps:
       - name: Refuse retired deployment route
         run: |
-          echo "::error::The chef-control-az-01 deployment route is permanently retired."
-          echo "::error::Do not deploy this workflow; use the separately verified bc-scan-2 package deployment contract."
+          echo "::error::The previous production deployment route is permanently retired."
+          echo "::error::Do not deploy this workflow; use the separately verified private production deployment contract."
           exit 1

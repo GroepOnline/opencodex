@@ -70,7 +70,7 @@ created by that token, so `container.yml` is dispatched explicitly on `refs/tags
 
 Runtime cutover is intentionally not part of release publication. The former Azure deploy
 route is permanently retired; leave the `deploy` input at its default `false`. Deploying the
-bc-scan-2 package service is a separate operation with its own immutable artifact, health and
+private production service is a separate operation with its own immutable artifact, health and
 rollback evidence.
 
 ## Post-release

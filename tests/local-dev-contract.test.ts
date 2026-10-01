@@ -127,37 +127,36 @@ describe("local/dev complete path", () => {
     expect(compose).not.toContain("OIDC_CLIENT_SECRET_FILE:?");
   });
 
-  test("systemd unit keeps the compose place lock and documents 1.5.1 / c88648fa8", async () => {
+  test("systemd example is deployment-neutral and compose-only", async () => {
     const unit = await readRepo("deploy/container/opencodex-proxy.service");
     expect(unit).toContain(
       "ExecStart=/usr/bin/docker compose up -d --remove-orphans",
     );
     expect(unit).toContain("ExecStop=/usr/bin/docker compose down");
-    expect(unit).toContain("WorkingDirectory=/opt/chef/deploy/opencodex");
-    expect(unit).toContain("EnvironmentFile=-/opt/chef/deploy/opencodex/.env");
+    expect(unit).toContain("WorkingDirectory=/opt/opencodex");
+    expect(unit).toContain("EnvironmentFile=-/opt/opencodex/.env");
     expect(unit).toContain(
       "After=docker.service network-online.target tailscaled.service",
     );
-    expect(unit).toContain("1.5.1");
-    expect(unit).toContain("c88648fa87001d04beedc8df853bee7700253422");
-    expect(unit).toContain("GET :10100/healthz");
+    expect(unit).toContain("Wants=network-online.target tailscaled.service");
+    expect(unit).not.toContain("/opt/chef/");
+    expect(unit).not.toMatch(/100\.\d+\.\d+\.\d+/);
+    expect(unit).not.toMatch(/[0-9a-f]{40}/);
   });
 
-  test(".env.example and OIDC placeholder carry redirects and no secrets", async () => {
+  test(".env.example and OIDC placeholder are generic and secret-free", async () => {
     const envExample = await readRepo(".env.example");
     expect(envExample).toContain(
-      "OIDC_ISSUER=https://auth.chefgroep.online/application/o/ocx/",
+      "OIDC_ISSUER=https://id.example.com/application/o/opencodex/",
     );
-    expect(envExample).toContain("OIDC_CLIENT_ID=chefgroep-ocx-oidc");
+    expect(envExample).toContain("OIDC_CLIENT_ID=opencodex");
     expect(envExample).toContain("OIDC_CLIENT_SECRET_FILE=");
     expect(envExample).toContain("OIDC_ALLOWED_HOSTS=");
-    expect(envExample).toContain("CUTOVER-CHECKLIST.md");
-    expect(envExample).toContain("APPLY DONE 2026-09-18");
     expect(envExample).toContain(
       "OIDC_REDIRECT_URI=http://127.0.0.1:10100/oauth/callback",
     );
-    expect(envExample).toContain("https://ocx.chefgroep.online/oauth/callback");
-    expect(envExample).toContain("c88648fa87001d04beedc8df853bee7700253422");
+    expect(envExample).not.toContain("chefgroep.online");
+    expect(envExample).not.toMatch(/[0-9a-f]{40}/);
     expect(envExample).not.toMatch(/OIDC_CLIENT_SECRET=/);
     expect(envExample).not.toMatch(/\bsk-[A-Za-z0-9_-]{20,}\b/);
     expect(envExample).not.toMatch(/\bghp_[A-Za-z0-9_]{20,}\b/);
@@ -175,44 +174,30 @@ describe("local/dev complete path", () => {
         post_logout_redirect_uris: string[];
       };
     };
-    expect(oidc.status).toBe("consumer-wired");
+    expect(oidc.status).toBe("example-only");
     expect(oidc.application.client_secret).toBeNull();
-    expect(oidc.application.client_id).toBe("chefgroep-ocx-oidc");
+    expect(oidc.application.client_id).toBe("opencodex");
     expect(oidc.application.issuer).toBe(
-      "https://auth.chefgroep.online/application/o/ocx/",
+      "https://id.example.com/application/o/opencodex/",
     );
-    expect(oidc.notes.join("\n")).toContain("APPLY DONE 2026-09-18");
-    expect(oidc.notes.join("\n")).toContain("not DNS HOLD");
-    expect(oidc.notes.join("\n")).toContain(
-      "The proxy verifies Authentik ID tokens",
-    );
-    expect(oidc.notes.join("\n")).toContain(
-      "Cloudflare Access remains the live public-host dashboard gate",
-    );
-    expect(oidc.notes.join("\n")).toContain("CUTOVER-CHECKLIST.md");
     expect(oidc.application.redirect_uris).toEqual([
       "http://127.0.0.1:10100/oauth/callback",
       "http://localhost:10100/oauth/callback",
-      "https://ocx.chefgroep.online/oauth/callback",
+      "https://opencodex.example.com/oauth/callback",
     ]);
     expect(oidc.application.post_logout_redirect_uris).toContain(
-      "https://ocx.chefgroep.online/",
+      "https://opencodex.example.com/",
     );
+    expect(oidc.notes.join("\n")).toContain("product example");
+    expect(oidc.notes.join("\n")).toContain("OIDC_CLIENT_SECRET_FILE");
 
     const operatorNotes = await readRepo("deploy/container/README.md");
-    expect(operatorNotes).toContain("APPLY DONE 2026-09-18");
-    expect(operatorNotes).toContain("chefgroep-ocx-oidc");
-    expect(operatorNotes).toContain("Cloudflare Access remains the live");
-    expect(operatorNotes).toMatch(/\*\*not\*\* DNS HOLD/);
-    expect(operatorNotes).toContain("Do not deploy this PR to bc-scan-2");
+    expect(operatorNotes).toContain("Production boundary");
+    expect(operatorNotes).toContain("private deployment");
     expect(operatorNotes).toContain("CUTOVER-CHECKLIST.md");
-    expect(operatorNotes).toContain("verifies Authentik ID tokens");
-    expect(operatorNotes).not.toMatch(
-      /Authentik product gate is greenfield: no live issuer/,
-    );
-    expect(operatorNotes).not.toMatch(
-      /The proxy does \*\*not\*\* verify Authentik tokens yet/,
-    );
+    expect(operatorNotes).not.toContain("chefgroep.online");
+    expect(operatorNotes).not.toMatch(/100\.\d+\.\d+\.\d+/);
+    expect(operatorNotes).not.toMatch(/\/home\/[A-Za-z0-9_-]+\//);
   });
 
   test("devcontainer forwards :10100 and bootstraps Bun 1.4.0", async () => {
@@ -245,25 +230,26 @@ describe("local/dev complete path", () => {
     expect(script).not.toMatch(/OPENCODEX_API_AUTH_TOKEN=/);
   });
 
-  test("oidc-authorize-canary.sh probes discovery/JWKS and optional /oauth/login", async () => {
+  test("oidc-authorize-canary.sh requires deployment-owned issuer/client and probes discovery", async () => {
     const script = await readRepo("scripts/oidc-authorize-canary.sh");
-    expect(script).toContain(
-      "https://auth.chefgroep.online/application/o/ocx/",
-    );
-    expect(script).toContain("chefgroep-ocx-oidc");
+    expect(script).toContain("OIDC_ISSUER is required");
+    expect(script).toContain("OIDC_CLIENT_ID is required");
     expect(script).toContain(".well-known/openid-configuration");
     expect(script).toContain("/oauth/login");
     expect(script).toContain("code_challenge=");
+    expect(script).not.toContain("auth.chefgroep.online");
+    expect(script).not.toContain("chefgroep-ocx-oidc");
     expect(script).not.toMatch(/OIDC_CLIENT_SECRET=/);
     expect(script).not.toMatch(/\bsk-[A-Za-z0-9_-]{20,}\b/);
 
     const checklist = await readRepo("deploy/oidc/CUTOVER-CHECKLIST.md");
-    expect(checklist).toContain("Cloudflare Access remains the live");
+    expect(checklist).toContain("deployment-neutral");
     expect(checklist).toContain("GET /oauth/login");
-    expect(checklist).toContain("Do not apply Cloudflare DNS");
-    expect(checklist).toContain("ChefFactory");
-    expect(checklist).toContain("1.5.1");
-    expect(checklist).toContain(":10100");
+    expect(checklist).toContain("Do not apply production DNS");
+    expect(checklist).toContain("private deployment repository");
+    expect(checklist).toContain("/v1/models");
+    expect(checklist).not.toMatch(/100\.\d+\.\d+\.\d+/);
+    expect(checklist).not.toMatch(/[0-9a-f]{40}/);
   });
 });
 

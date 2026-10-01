@@ -617,10 +617,10 @@ describe("GitHub Actions hardening", () => {
     expect(deploy.env?.DEPLOY).toBe("${{ inputs.deploy }}");
     expect(deploy.run).toContain('if [ "$DEPLOY" != "true" ]');
     expect(deploy.run).toContain(
-      "deploy=true is disabled because deploy.yml targets retired chef-control-az-01.",
+      "deploy=true is disabled because deploy.yml targets retired production host.",
     );
     expect(deploy.run).toContain(
-      "Use the separately verified bc-scan-2 package deployment contract.",
+      "Use the separately verified private production deployment contract.",
     );
     expect(deploy.run).not.toContain("gh workflow run deploy.yml");
     expect(deploy.run).toContain("exit 1");
@@ -3236,12 +3236,12 @@ describe("GitHub Actions hardening", () => {
     // The retirement is documented in-line so the release path cannot silently
     // regain the old Azure side effect as the workflows evolve independently.
     expect(text).toContain(
-      "former chef-control-az-01 deploy route is permanently retired",
+      "former production deploy route is permanently retired",
     );
     expect(text).toContain(
       "Publication intentionally has no runtime side effect",
     );
-    expect(text).toContain("bc-scan-2 package deployment contract");
+    expect(text).toContain("private production deployment contract");
   });
 
   test("service-lifecycle workflow file has no trailing blank line", async () => {
@@ -3631,7 +3631,7 @@ describe("GitHub Actions hardening", () => {
     );
 
     expect(text).not.toContain("chef-control");
-    expect(text).not.toContain("/home/joep");
+    expect(text).not.toMatch(/\/home\/[A-Za-z0-9_-]+\//);
     expect(text).not.toContain("deploy.yml");
     expect(text).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
     expect(text).not.toMatch(

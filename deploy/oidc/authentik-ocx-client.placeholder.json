@@ -1,31 +1,31 @@
 {
-  "status": "consumer-wired",
-  "authority": "GroepOnline/chefgroep-auth",
-  "catalog_owner": "ChefFactory (do not register this client from opencodex)",
+  "status": "example-only",
+  "authority": "deployment-owned",
+  "catalog_owner": "deployment-owned",
   "application": {
-    "slug": "ocx",
+    "slug": "opencodex",
     "name": "OpenCodex",
     "client_type": "confidential",
-    "client_id": "chefgroep-ocx-oidc",
+    "client_id": "opencodex",
     "client_secret": null,
-    "issuer": "https://auth.chefgroep.online/application/o/ocx/",
+    "issuer": "https://id.example.com/application/o/opencodex/",
     "token_endpoint_auth_method": "client_secret_basic",
     "grant_types": ["authorization_code", "refresh_token"],
     "scopes": ["openid", "profile", "email"],
     "redirect_uris": [
       "http://127.0.0.1:10100/oauth/callback",
       "http://localhost:10100/oauth/callback",
-      "https://ocx.chefgroep.online/oauth/callback"
+      "https://opencodex.example.com/oauth/callback"
     ],
     "post_logout_redirect_uris": [
       "http://127.0.0.1:10100/",
       "http://localhost:10100/",
-      "https://ocx.chefgroep.online/"
+      "https://opencodex.example.com/"
     ]
   },
   "consumer": {
-    "discovery": "https://auth.chefgroep.online/application/o/ocx/.well-known/openid-configuration",
-    "jwks": "https://auth.chefgroep.online/application/o/ocx/jwks/",
+    "discovery": "https://id.example.com/application/o/opencodex/.well-known/openid-configuration",
+    "jwks": "https://id.example.com/application/o/opencodex/jwks/",
     "authorize": "GET /oauth/login",
     "callback": "GET /oauth/callback",
     "logout": "GET /oauth/logout",
@@ -33,10 +33,9 @@
     "secret_delivery": "OIDC_CLIENT_SECRET_FILE"
   },
   "notes": [
-    "Public issuer APPLY DONE 2026-09-18: discovery/JWKS 200, authorize 302 at https://auth.chefgroep.online/application/o/ocx/. This is not DNS HOLD.",
-    "Live client_id is chefgroep-ocx-oidc (Infra smoke + Cloudflare Access IdP). client_secret stays null / file-only.",
-    "This file is the consumer contract only. Do not register this client in ChefFactory catalogs from this repository.",
-    "The proxy verifies Authentik ID tokens (JWKS) and runs authorization-code + PKCE when OIDC_CLIENT_SECRET_FILE is set. Cloudflare Access remains the live public-host dashboard gate until operators execute deploy/oidc/CUTOVER-CHECKLIST.md.",
-    "Do not apply Cloudflare DNS from this repository."
+    "This file is a product example, not a live registration.",
+    "The proxy verifies OIDC ID tokens and uses authorization-code plus PKCE when OIDC_CLIENT_SECRET_FILE is configured.",
+    "Production issuer, client id, redirects, edge policy, and cutover evidence belong to the deployment owner.",
+    "Do not put a client secret in this repository."
   ]
 }

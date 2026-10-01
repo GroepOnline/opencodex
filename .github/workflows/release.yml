@@ -29,7 +29,7 @@ on:
         required: false
         type: string
       deploy:
-        description: "Legacy deploy.yml targets a permanently retired host and must remain false. Runtime cutover uses a separately verified bc-scan-2 package deployment contract."
+        description: "Legacy deploy.yml targets a permanently retired host and must remain false. Runtime cutover uses a separately verified private production deployment contract."
         required: false
         type: boolean
         default: false
@@ -65,8 +65,8 @@ jobs:
           DEPLOY: ${{ inputs.deploy }}
         run: |
           if [ "$DEPLOY" = "true" ]; then
-            echo "::error::deploy=true is disabled because deploy.yml targets retired chef-control-az-01."
-            echo "::error::Use the separately verified bc-scan-2 package deployment contract."
+            echo "::error::deploy=true is disabled because deploy.yml targets retired production host."
+            echo "::error::Use the separately verified private production deployment contract."
             exit 1
           fi
 
@@ -651,6 +651,6 @@ jobs:
             echo "- runtime cutover: not dispatched; legacy Azure deployment is retired" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          echo "::error::deploy=true is disabled because deploy.yml targets retired chef-control-az-01."
-          echo "::error::Use the separately verified bc-scan-2 package deployment contract."
+          echo "::error::deploy=true is disabled because deploy.yml targets retired production host."
+          echo "::error::Use the separately verified private production deployment contract."
           exit 1

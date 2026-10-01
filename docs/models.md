@@ -1,45 +1,34 @@
-# Fleet model catalog
+# Model catalog example
 
-This is the ChefGroep runtime catalog for the OpenCodex proxy. It is not a
-built-in provider preset. Keys stay in the host environment file. The key-free
-shape lives in [`deploy/container/model-catalog.example.json`](../deploy/container/model-catalog.example.json).
+OpenCodex ships a key-free example catalog at
+[`deploy/container/model-catalog.example.json`](../deploy/container/model-catalog.example.json).
+It demonstrates the configuration shape only; it is not a production inventory.
 
-Verified 2026-09-22 against the three Foundry resources in subscription
-"Azure subscription 1". Each deployment was `Succeeded` and `chatCompletion=true`.
-Chat on `https://<resource>.cognitiveservices.azure.com/openai/v1/chat/completions`
-returns 200 with `Authorization: Bearer` for these deployments, which is the
-`openai-chat` adapter (`baseUrl` plus `/chat/completions`, no `api-version`
-query). The same resources also answer on `openai.azure.com` and
-`services.ai.azure.com`; the catalog uses one base URL per resource because
-OCX rejects query strings on `baseUrl`.
+Provider credentials belong in environment variables or the configured secret
+plane. Production provider names, account/resource identifiers, private network
+locations and deployment-specific model allowlists must stay outside the public
+product repository.
 
-| Provider id        | Resource           | Region        | Resource group       | Env var                             |
-| ------------------ | ------------------ | ------------- | -------------------- | ----------------------------------- |
-| `azure-us`         | `openaichef`       | eastus        | `azureai-us0-east`   | `AZURE_OPENAI_KEY_OPENAICHEF`       |
-| `azure-se`         | `openaichef-se`    | swedencentral | `azureai-se-central` | `AZURE_OPENAI_KEY_OPENAICHEF_SE`    |
-| `azure-foundry-us` | `azure-foundry-us` | eastus        | `foundry`            | `AZURE_OPENAI_KEY_AZURE_FOUNDRY_US` |
+The example uses an OpenAI-compatible chat endpoint:
 
-The 2026-09-24 live deployment check moved DeepSeek V4 Pro off `openaichef`: only `azure-foundry-us/fw-deepseek-v4-pro` is advertised for that model family now.
+```json
+{
+  "defaultProvider": "example-openai",
+  "providers": {
+    "example-openai": {
+      "adapter": "openai-chat",
+      "baseUrl": "https://api.example.com/v1",
+      "authMode": "key",
+      "apiKey": "$EXAMPLE_OPENAI_API_KEY",
+      "defaultModel": "example-chat",
+      "models": ["example-chat"],
+      "selectedModels": ["example-chat"]
+    }
+  }
+}
+```
 
-Public model ids are `<provider>/<deployment>` because a provider id cannot
-contain `/`. Examples: `azure-se/grok-4-6`, `azure-us/DeepSeek-V4-1-Flash`,
-`azure-foundry-us/fw-deepseek-v4-pro`. Deployment names are sent upstream
-unchanged.
-
-A bare deployment name routes only when it is unique. `grok-4-6` and
-`DeepSeek-V4-1-Flash` exist on both `azure-us` and `azure-se`; the first
-configured provider (`azure-us`, also `defaultProvider`) wins for those bare
-names. Use the provider prefix when the region matters.
-
-## Not in this catalog
-
-Do not add these upstreams back:
-
-- `jort-7512-resource` (retired Foundry resource, not in the current subscription)
-- AWS hosts (`chef-platform-aws-01`, `*.amazonaws.com` Bedrock) — AWS is closed
-- `chef-control-az-01` — retired control host
-- llama.cpp / weg54 local inference — those servers are stopped
-- offline Tailscale addresses
-
-The former `deploy.yml` Azure route is retired fail-closed. It is not a model
-provider and must not be retargeted through this catalog.
+For a real deployment, maintain the fleet/provider inventory in the deployment
+repository or secret/configuration system that owns that environment. Validate
+the resulting OpenCodex configuration before restart and verify `/v1/models`
+through the deployment's authenticated data-plane path.
