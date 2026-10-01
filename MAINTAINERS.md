@@ -20,9 +20,10 @@ see [The retired `dev2-go` line](#the-retired-dev2-go-line).
 ## Review and merge policy
 
 - Pull requests target `main`. It is the only integration line. The
-  target-branch check accepts `main` as the integration base. A same-repository
-  maintainer promotion from `dev` onto `main` remains an explicit leftover
-  exception; a feature or fork head targeting `dev` is `wrong_base`.
+  target-branch check accepts `main` as the integration base. The
+  same-repository `dev` → `main` promotion leftover exception remains in the
+  check but has been dormant since `dev` was retired on 2026-10-01; a feature
+  or fork head targeting `dev` is `wrong_base`.
 - The **`enforce-target`** CI check rejects empty, thin, or malformed
   descriptions; authors with repository push permission skip the leftover
   ancestry heuristic only. Required technical checks must succeed on the exact
@@ -52,7 +53,8 @@ see [The retired `dev2-go` line](#the-retired-dev2-go-line).
 - Additional maintainer review is welcome when available, without waiting for it.
 - Direct pushes are reserved for maintainer-owned integration work, urgent repairs, or incident
   recovery. The same CI and documentation requirements still apply.
-- Promotion from `dev` to `main` and npm releases is maintainer-controlled.
+- npm releases are maintainer-controlled. (The `dev` → `main` promotion path
+  ended when `dev` was retired on 2026-10-01.)
 
 ### Review means repair within the authorized task
 
@@ -72,7 +74,9 @@ and ported under `go/`. That policy is withdrawn as of 2026-07-30.
 The dual-track cost outran its return: the carry backlog never cleared (17
 commits and 9 open `needs-go-port` issues at the time of the decision, against
 594 commits of divergence), and dogfooding the Go runtime kept producing new
-defects. Bun-native TypeScript on `dev` is the single runtime line again.
+defects. Bun-native TypeScript is the single runtime line again — then on
+`dev`, whose leftover branch was retired on 2026-10-01 once its content had
+fully landed on `main`.
 
 - The branch has been deleted from this repository. Its full history is
   published at
@@ -82,7 +86,7 @@ defects. Bun-native TypeScript on `dev` is the single runtime line again.
   issues (#661, #663, #666, #670, #674, #678, #680, #685, #703) were closed as
   not planned, and the `needs-go-port` label no longer exists on the
   repository.
-- Future native work is expected to be an incremental module landing on `dev`
+- Future native work is expected to be an incremental module landing on `main`
   (Rust via N-API is the current candidate), not a second integration branch.
   Reopening a parallel runtime line is an owner decision.
 

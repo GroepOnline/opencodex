@@ -118,9 +118,10 @@ sha / branch / detached / dirty only — never the diff.
 ## Branch policy
 
 - `main` — the single integration branch and the target for every pull request.
-- `dev` — leftover line. Same-repository `dev` → `main` promotion remains an
-  explicit exception in the target-branch check. Do not open feature PRs
-  against `dev`.
+- `dev` — retired on 2026-10-01. Its content had fully landed on `main`
+  (#181) and the branch was deleted. The `dev` → `main` promotion exception
+  in the target-branch check is dormant; do not recreate `dev` as an
+  integration or feature base.
 - `preview` — prerelease train (`x.y.z-preview.*` versions).
 
 Bun-native TypeScript on `main` is the only runtime line. If native code
@@ -137,10 +138,10 @@ is ordinary maintenance — open it as a normal pull request and name the source
 commits in the description.
 
 The **`enforce-target`** CI check accepts **`main`** as the only integration
-base. A same-repository maintainer promotion from **`dev`** onto **`main`**
-remains an explicit leftover exception. It rejects empty, thin, or malformed
-descriptions; authors with repository push permission skip the leftover
-ancestry heuristic only. Required technical checks apply even when branch
+base. The same-repository **`dev`** → **`main`** promotion leftover exception
+stays in the check but has been dormant since `dev` was retired. It rejects
+empty, thin, or malformed descriptions; authors with repository push permission
+skip the leftover ancestry heuristic only. Required technical checks apply even when branch
 protection is not configured. External approval is advisory, never a blocker.
 
 [`MAINTAINERS.md`](./MAINTAINERS.md) is authoritative for review and merge
@@ -163,8 +164,8 @@ reviewers (Codex, CodeRabbit).
   concrete failure mode, and suggest a fix. Avoid vague or purely stylistic
   commentary.
 - **Branch targeting:** flag any pull request that does not target `main`
-  (same-repository `dev` → `main` promotions and stacked children are the
-  only exceptions).
+  (stacked children are the only live exception; the retired `dev` → `main`
+  promotion exception is dormant).
 - **Security boundary (highest priority):** changes touching authentication,
   credential/token handling, OAuth flows, GitHub Actions workflows, release
   automation (`scripts/release.ts`, `.github/workflows/release.yml`), or
