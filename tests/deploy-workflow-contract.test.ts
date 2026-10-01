@@ -68,10 +68,10 @@ describe("retired deploy workflow contract", () => {
     expect(refusal?.uses).toBeUndefined();
     expect(refusal?.env).toBeUndefined();
     expect(refusal?.run).toContain(
-      "The chef-control-az-01 deployment route is permanently retired.",
+      "The previous production deployment route is permanently retired.",
     );
     expect(refusal?.run).toContain(
-      "use the separately verified bc-scan-2 package deployment contract",
+      "use the separately verified private production deployment contract",
     );
     expect(refusal?.run?.trim().endsWith("exit 1")).toBe(true);
     // This is a fail-closed audit stub. Do not let a future edit revive remote
@@ -131,8 +131,8 @@ describe("retired deploy workflow contract", () => {
     );
     expect(releaseProcess).not.toContain("gh workflow run deploy.yml");
 
-    expect(containerReadme).toContain("retired fail-closed");
-    expect(containerReadme).toContain("separate operation");
+    expect(containerReadme).toContain("intentionally fails closed");
+    expect(containerReadme).toContain("private deployment repository");
     expect(containerReadme).not.toContain("OPENCODEX_IMAGE");
 
     expect(publishOnTag).toContain("Publication does not deploy a runtime");

@@ -1,21 +1,30 @@
 #!/bin/sh
-# Probe the live Authentik issuer and, optionally, a running OCX authorize
-# entry. Never prints secrets. Default issuer is the ChefGroep Auth apply
-# from 2026-09-18. /healthz is not this script — use scripts/healthz-smoke.sh.
+# Probe a configured Authentik issuer and, optionally, a running OpenCodex
+# authorize entry. Never prints secrets. /healthz is not this script — use
+# scripts/healthz-smoke.sh.
 #
+# Required:
+#   OIDC_ISSUER
+#   OIDC_CLIENT_ID
 # Optional:
-#   OIDC_ISSUER                 default https://auth.chefgroep.online/application/o/ocx/
-#   OIDC_CLIENT_ID              default chefgroep-ocx-oidc
 #   OPENCODEX_OIDC_CANARY_URL   proxy origin, e.g. http://127.0.0.1:10100
 #                               When set, GET /oauth/login must 302 to Authentik.
 set -eu
 
-ISSUER="${OIDC_ISSUER:-https://auth.chefgroep.online/application/o/ocx/}"
+ISSUER="${OIDC_ISSUER:-}"
+[ -n "$ISSUER" ] || {
+  echo "oidc-authorize-canary: OIDC_ISSUER is required" >&2
+  exit 78
+}
 case "$ISSUER" in
   */) ;;
   *) ISSUER="${ISSUER}/" ;;
 esac
-CLIENT_ID="${OIDC_CLIENT_ID:-chefgroep-ocx-oidc}"
+CLIENT_ID="${OIDC_CLIENT_ID:-}"
+[ -n "$CLIENT_ID" ] || {
+  echo "oidc-authorize-canary: OIDC_CLIENT_ID is required" >&2
+  exit 78
+}
 DISCOVERY="${ISSUER}.well-known/openid-configuration"
 
 if ! command -v python3 >/dev/null 2>&1; then
