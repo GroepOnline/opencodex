@@ -2432,7 +2432,7 @@ export function diagnoseService(): ServiceDiagnostic {
         stale: false,
         conflict: false,
         backend: null,
-        summary: "unsupported: systemd not found",
+        summary: `unsupported: systemd not found (${diagnostics})`,
       };
     const installed =
       existsSync(unitPath()) && !isMaskedSystemdUnit(unitPath());
@@ -2486,7 +2486,7 @@ export function diagnoseService(): ServiceDiagnostic {
     stale: false,
     conflict: false,
     backend: null,
-    summary: `unsupported on ${process.platform}`,
+    summary: `unsupported on ${process.platform} (${diagnostics})`,
   };
 }
 
@@ -2532,6 +2532,32 @@ export function parseServiceArgs(args: string[]): ParsedServiceArgs {
   return { sub: normalizeServiceSubcommand(sub), backend, invalid };
 }
 
+const SERVICE_SUBCOMMANDS = new Set([
+  "install",
+  "repair",
+  "start",
+  "stop",
+  "status",
+  "uninstall",
+  "remove",
+]);
+
+function printServiceUsage(): never {
+  console.error(
+    "Usage: ocx service [install|repair|start|stop|status|uninstall|remove] [--native|--scheduler]",
+  );
+  console.error(
+    "       With no subcommand, installs/updates and starts the background service.",
+  );
+  console.error(
+    "       repair: refresh assets and restart an already-installed service (no admin re-prompt).",
+  );
+  console.error(
+    "       --native (Windows only): register a real SCM service via WinSW instead of Task Scheduler.",
+  );
+  process.exit(1);
+}
+
 export async function serviceCommand(
   ...args: (string | undefined)[]
 ): Promise<void> {
@@ -2541,6 +2567,11 @@ export async function serviceCommand(
     console.error(`Unknown service option: ${parsed.invalid.join(" ")}`);
     process.exit(1);
   }
+  // Usage errors are host-independent: an unknown subcommand must print usage on
+  // every platform, so this validation runs before any service-manager capability
+  // gate. The Docker/systemd early exits used to swallow it and report an
+  // environment problem for what is really a typo in the subcommand.
+  if (!SERVICE_SUBCOMMANDS.has(command)) printServiceUsage();
   if (parsed.backend && command !== "install") {
     console.error(
       "--native/--scheduler apply to `ocx service install` only; other subcommands use the installed backend.",
@@ -2665,18 +2696,6 @@ export async function serviceCommand(
       console.log("✅ service uninstalled.");
       break;
     default:
-      console.error(
-        "Usage: ocx service [install|repair|start|stop|status|uninstall|remove] [--native|--scheduler]",
-      );
-      console.error(
-        "       With no subcommand, installs/updates and starts the background service.",
-      );
-      console.error(
-        "       repair: refresh assets and restart an already-installed service (no admin re-prompt).",
-      );
-      console.error(
-        "       --native (Windows only): register a real SCM service via WinSW instead of Task Scheduler.",
-      );
-      process.exit(1);
+      printServiceUsage();
   }
 }

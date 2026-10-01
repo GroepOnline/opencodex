@@ -9,6 +9,21 @@ All notable changes to the GroepOnline `opencodex` fork. Format follows
 
 ### Fixed
 
+- `ocx service <unknown>` now prints its usage text on every host. Subcommand
+  validity is checked before the service-manager capability gates, so Docker or
+  non-systemd Linux machines no longer report "Docker detected"/"systemd not
+  found" for what is a usage typo.
+- The service status summary always exposes the service log path, including on
+  hosts without a supported service manager (`unsupported: systemd not found`,
+  `unsupported on <platform>`); previously those two branches omitted the
+  diagnostics suffix.
+- Runtime resolution with `discoverAlternatives: false` no longer probes shim or
+  `PATH` binaries after the pinned runtime fails. Such probes could silently
+  substitute a different Codex on the machine, bypassing the explicit fallback
+  and making `CODEX_CLI_PATH`-pinned behavior host-dependent.
+- `docs-site` contributing guide no longer documents the removed `dev` → `main`
+  promotion exception in `enforce-target`.
+
 - Cloudflare edge pages (WAF block, managed challenge, origin/DNS error pages)
   no longer reach client-facing upstream error messages as raw HTML. Combo
   failures, passthrough relays, continuation errors, and the Google/Kiro error

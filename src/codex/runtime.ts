@@ -527,11 +527,17 @@ function resolveCodexRuntimeUncached(
     ordered.push({ command: persisted.command, source: "configured" });
   }
 
-  for (const command of shimCandidates(deps)) {
-    ordered.push({ command, source: "shim" });
-  }
-  for (const command of pathCandidates(deps)) {
-    ordered.push({ command, source: "path" });
+  // Explicit runtime selection (discoverAlternatives: false) probes only the
+  // pinned candidates: the env override and the persisted selection. Falling
+  // back to a shim or PATH binary after the pinned one fails is precisely
+  // "discovering an alternative", so those candidates stay out of the search.
+  if (deps.discoverAlternatives !== false) {
+    for (const command of shimCandidates(deps)) {
+      ordered.push({ command, source: "shim" });
+    }
+    for (const command of pathCandidates(deps)) {
+      ordered.push({ command, source: "path" });
+    }
   }
   const fallbackCommand = deps.fallbackCommand ?? "codex";
   ordered.push({ command: fallbackCommand, source: "fallback" });
