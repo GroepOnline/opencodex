@@ -51,7 +51,7 @@ describe("systemd detection tolerates a no-DBUS SSH session (F9)", () => {
     expect(src).toContain("function ensureUserBusEnv()");
     // The version probe passing + a runtime dir existing is enough — not a hard fail on the --user probe.
     expect(src).toMatch(
-      /catch \{ \/\* no user bus in this session \*\/ \}\s*\n\s*return userRuntimeDir\(\) !== null;/,
+      /catch \{\s*\/\* no user bus in this session \*\/\s*\}\s*\n\s*return userRuntimeDir\(\) !== null;/,
     );
   });
   test("install ensures the user-bus env before touching systemctl --user", () => {

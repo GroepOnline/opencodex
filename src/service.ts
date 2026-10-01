@@ -6,10 +6,25 @@
  * restore it via the command.
  */
 import { execFileSync, execSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { expandUserPath, getConfigDir, readPid, removePid, removeRuntimePort } from "./config";
+import {
+  expandUserPath,
+  getConfigDir,
+  readPid,
+  removePid,
+  removeRuntimePort,
+} from "./config";
 import { loadConfig } from "./config";
 import { restoreNativeCodex } from "./codex/inject";
 import { stripGrokConfig } from "./grok/inject";
@@ -32,9 +47,23 @@ import {
   type ElevatedSchtasksCreateAndRunExecution,
   type ElevatedSchtasksCreateAndRunResult,
 } from "./lib/windows-elevation";
-import { defaultWinswEntry, installWinswService, startWinswService, stopWinswService, statusWinswRaw, uninstallWinswService, winswStatusSummary, WINSW_SERVICE_ID, WINSW_SHA256, WINSW_VERSION } from "./lib/winsw";
+import {
+  defaultWinswEntry,
+  installWinswService,
+  startWinswService,
+  stopWinswService,
+  statusWinswRaw,
+  uninstallWinswService,
+  winswStatusSummary,
+  WINSW_SERVICE_ID,
+  WINSW_SHA256,
+  WINSW_VERSION,
+} from "./lib/winsw";
 import { hardenSecretDir, hardenSecretPath } from "./lib/windows-secret-acl";
-import { windowsEnvIndirectBatchPathList, windowsEnvIndirectBatchValue } from "./lib/win-paths";
+import {
+  windowsEnvIndirectBatchPathList,
+  windowsEnvIndirectBatchValue,
+} from "./lib/win-paths";
 import { recordOwnedConfigPath } from "./lib/config-ownership";
 import { maybeShowStarPrompt } from "./cli/star-prompt";
 
@@ -47,7 +76,10 @@ function cliEntry(): { bun: string; cli: string } {
   // Bake the bundled Bun (npm global prefix, survives `ocx update`) rather than
   // a transient system Bun, so launchd/systemd/schtasks keep resolving even if a
   // standalone Bun is later removed. The CLI entry lives at src/cli/index.ts.
-  return { bun: durableBunPath(), cli: join(import.meta.dir, "cli", "index.ts") };
+  return {
+    bun: durableBunPath(),
+    cli: join(import.meta.dir, "cli", "index.ts"),
+  };
 }
 
 function plistPath(): string {
@@ -85,7 +117,10 @@ function defaultOpenCodexHome(): string {
 function serviceStatePaths(): string[] {
   const paths = [serviceStatePath()];
   const defaultPath = join(defaultOpenCodexHome(), "service-state.json");
-  if (normalizePathForCompare(defaultPath) !== normalizePathForCompare(paths[0])) paths.push(defaultPath);
+  if (
+    normalizePathForCompare(defaultPath) !== normalizePathForCompare(paths[0])
+  )
+    paths.push(defaultPath);
   return paths;
 }
 
@@ -119,14 +154,30 @@ export interface ServiceInstallState {
   winswSha256?: string;
 }
 
-export function parseServiceInstallState(value: unknown): ServiceInstallState | null {
+export function parseServiceInstallState(
+  value: unknown,
+): ServiceInstallState | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const state = value as Record<string, unknown>;
   if (state.version !== 1 && state.version !== 2) return null;
-  if (typeof state.codexHome !== "string" || state.codexHome.length === 0) return null;
-  if (typeof state.opencodexHome !== "string" || state.opencodexHome.length === 0) return null;
-  for (const key of ["bunPath", "cliPath", "winswVersion", "winswSha256"] as const) {
-    if (state[key] !== undefined && (typeof state[key] !== "string" || state[key].length === 0)) return null;
+  if (typeof state.codexHome !== "string" || state.codexHome.length === 0)
+    return null;
+  if (
+    typeof state.opencodexHome !== "string" ||
+    state.opencodexHome.length === 0
+  )
+    return null;
+  for (const key of [
+    "bunPath",
+    "cliPath",
+    "winswVersion",
+    "winswSha256",
+  ] as const) {
+    if (
+      state[key] !== undefined &&
+      (typeof state[key] !== "string" || state[key].length === 0)
+    )
+      return null;
   }
   if (state.version === 1) {
     if (state.backend !== undefined) return null;
@@ -145,22 +196,34 @@ function writeServiceInstallState(backend: ServiceBackend = "scheduler"): void {
     bunPath: bun,
     cliPath: cli,
     backend,
-    ...(backend === "native" ? { winswVersion: WINSW_VERSION, winswSha256: WINSW_SHA256 } : {}),
+    ...(backend === "native"
+      ? { winswVersion: WINSW_VERSION, winswSha256: WINSW_SHA256 }
+      : {}),
   };
   for (const path of serviceStatePaths()) {
     const dir = dirname(path);
     recordOwnedConfigPath(getConfigDir(), path);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
-    writeFileSync(path, JSON.stringify(state, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
-    try { chmodSync(path, 0o600); } catch { /* best-effort */ }
-    if (process.platform === "win32") hardenSecretPath(path, { required: true });
+    writeFileSync(path, JSON.stringify(state, null, 2) + "\n", {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    try {
+      chmodSync(path, 0o600);
+    } catch {
+      /* best-effort */
+    }
+    if (process.platform === "win32")
+      hardenSecretPath(path, { required: true });
   }
 }
 
 function readServiceInstallState(): ServiceInstallState | null {
   for (const path of serviceStatePaths()) {
     try {
-      const parsed = parseServiceInstallState(JSON.parse(readFileSync(path, "utf8")));
+      const parsed = parseServiceInstallState(
+        JSON.parse(readFileSync(path, "utf8")),
+      );
       if (parsed) return parsed;
     } catch {
       /* try the next known state path */
@@ -171,12 +234,16 @@ function readServiceInstallState(): ServiceInstallState | null {
 
 /** Single accessor for update/reinstall code — v1/legacy state maps to scheduler. */
 export function readServiceBackend(): ServiceBackend {
-  return readServiceInstallState()?.backend === "native" ? "native" : "scheduler";
+  return readServiceInstallState()?.backend === "native"
+    ? "native"
+    : "scheduler";
 }
 
 /** The `ocx` argv that reinstalls the currently-chosen service backend (update paths). */
 export function serviceReinstallArgs(): string[] {
-  return readServiceBackend() === "native" ? ["service", "install", "--native"] : ["service", "install"];
+  return readServiceBackend() === "native"
+    ? ["service", "install", "--native"]
+    : ["service", "install"];
 }
 
 /**
@@ -189,7 +256,9 @@ export class ServiceOwnershipError extends Error {
   readonly code = "service-ownership-mismatch" as const;
 }
 
-export function isServiceOwnershipError(err: unknown): err is ServiceOwnershipError {
+export function isServiceOwnershipError(
+  err: unknown,
+): err is ServiceOwnershipError {
   return err instanceof ServiceOwnershipError;
 }
 
@@ -257,7 +326,11 @@ function writeServiceApiTokenFile(): string | null {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
   if (process.platform === "win32") hardenSecretDir(dir, { required: true });
   writeFileSync(path, `${token}\n`, { encoding: "utf8", mode: 0o600 });
-  try { chmodSync(path, 0o600); } catch { /* best-effort */ }
+  try {
+    chmodSync(path, 0o600);
+  } catch {
+    /* best-effort */
+  }
   if (process.platform === "win32") hardenSecretPath(path, { required: true });
   return path;
 }
@@ -271,9 +344,15 @@ export function buildPlist(): string {
   const envLines = [
     `    <key>OCX_SERVICE</key><string>1</string>`,
     `    <key>PATH</key><string>${plistString(path)}</string>`,
-    codexHome ? `    <key>CODEX_HOME</key><string>${plistString(codexHome)}</string>` : null,
-    opencodexHome ? `    <key>OPENCODEX_HOME</key><string>${plistString(opencodexHome)}</string>` : null,
-  ].filter((line): line is string => Boolean(line)).join("\n");
+    codexHome
+      ? `    <key>CODEX_HOME</key><string>${plistString(codexHome)}</string>`
+      : null,
+    opencodexHome
+      ? `    <key>OPENCODEX_HOME</key><string>${plistString(opencodexHome)}</string>`
+      : null,
+  ]
+    .filter((line): line is string => Boolean(line))
+    .join("\n");
   const command = buildServiceShellCommand(bun, cli);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -310,7 +389,12 @@ function shellQuote(value: string): string {
  * so treat 0 / invalid like unset (default 10100) instead of baking `--port 0`.
  */
 export function resolveServiceListenPort(override?: number): number {
-  if (typeof override === "number" && Number.isFinite(override) && override > 0 && override <= 65535) {
+  if (
+    typeof override === "number" &&
+    Number.isFinite(override) &&
+    override > 0 &&
+    override <= 65535
+  ) {
     return Math.trunc(override);
   }
   const baked = process.env.OCX_BAKE_PORT?.trim();
@@ -319,11 +403,16 @@ export function resolveServiceListenPort(override?: number): number {
     if (n > 0 && n <= 65535) return n;
   }
   const configured = loadConfig().port;
-  if (typeof configured === "number" && configured > 0 && configured <= 65535) return configured;
+  if (typeof configured === "number" && configured > 0 && configured <= 65535)
+    return configured;
   return 10100;
 }
 
-function buildServiceShellCommand(bun: string, cli: string, port = resolveServiceListenPort()): string {
+function buildServiceShellCommand(
+  bun: string,
+  cli: string,
+  port = resolveServiceListenPort(),
+): string {
   const tokenFile = serviceApiTokenFilePath();
   return `if [ -f ${shellQuote(tokenFile)} ]; then OPENCODEX_API_AUTH_TOKEN="$(cat ${shellQuote(tokenFile)})"; export OPENCODEX_API_AUTH_TOKEN; fi; exec ${shellQuote(bun)} ${shellQuote(cli)} start --port ${port}`;
 }
@@ -331,12 +420,15 @@ function buildServiceShellCommand(bun: string, cli: string, port = resolveServic
 function systemdQuote(value: string): string {
   return `"${value
     .replace(/\\/g, "\\\\")
-    .replace(/"/g, "\\\"")
+    .replace(/"/g, '\\"')
     .replace(/%/g, "%%")
     .replace(/\n/g, "\\n")}"`;
 }
 
-function systemdEnvironmentAssignment(name: string, value: string | undefined): string | null {
+function systemdEnvironmentAssignment(
+  name: string,
+  value: string | undefined,
+): string | null {
   if (!value) return null;
   return `Environment=${systemdQuote(`${name}=${value}`)}`;
 }
@@ -348,7 +440,11 @@ function systemdOutputTarget(value: string): string {
 }
 
 function sh(cmd: string): string {
-  return execSync(cmd, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], timeout: 15_000 }).trim();
+  return execSync(cmd, {
+    encoding: "utf8",
+    stdio: ["pipe", "pipe", "pipe"],
+    timeout: 15_000,
+  }).trim();
 }
 
 /**
@@ -358,14 +454,20 @@ function sh(cmd: string): string {
  */
 export function decodeSchtasksOutput(buffer: Buffer): string {
   if (buffer.length === 0) return "";
-  const bomUtf16Le = buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe;
-  const bomUtf16Be = buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff;
-  const looksUtf16Le = buffer.length >= 4
-    && buffer[1] === 0x00
-    && buffer[3] === 0x00
-    && buffer[0] !== 0x00;
+  const bomUtf16Le =
+    buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe;
+  const bomUtf16Be =
+    buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff;
+  const looksUtf16Le =
+    buffer.length >= 4 &&
+    buffer[1] === 0x00 &&
+    buffer[3] === 0x00 &&
+    buffer[0] !== 0x00;
   if (bomUtf16Le || looksUtf16Le) {
-    return buffer.toString("utf16le").replace(/^\uFEFF/, "").trim();
+    return buffer
+      .toString("utf16le")
+      .replace(/^\uFEFF/, "")
+      .trim();
   }
   if (bomUtf16Be) {
     // Swap pairs then decode as utf16le.
@@ -376,7 +478,10 @@ export function decodeSchtasksOutput(buffer: Buffer): string {
     }
     return swapped.toString("utf16le").trim();
   }
-  return buffer.toString("utf8").replace(/^\uFEFF/, "").trim();
+  return buffer
+    .toString("utf8")
+    .replace(/^\uFEFF/, "")
+    .trim();
 }
 
 function runFile(file: string, args: string[]): string {
@@ -393,7 +498,11 @@ function windowsSchtasks(): string {
 }
 
 function windowsWscript(): string {
-  const candidate = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "wscript.exe");
+  const candidate = join(
+    process.env.SystemRoot ?? "C:\\Windows",
+    "System32",
+    "wscript.exe",
+  );
   return existsSync(candidate) ? candidate : "wscript.exe";
 }
 
@@ -405,7 +514,9 @@ function querySchtasks(args: string[]): string {
 }
 
 /** Test-only seam for Task Scheduler query used by presence probes. */
-export function setQuerySchtasksForTests(next: ((args: string[]) => string) | null): void {
+export function setQuerySchtasksForTests(
+  next: ((args: string[]) => string) | null,
+): void {
   querySchtasksForTests = next;
 }
 
@@ -428,16 +539,21 @@ function schtasksErrorDetail(error: unknown): string {
 }
 
 /** True when a schtasks CSV listing line refers to the given task name. */
-export function windowsSchedulerCsvIncludesTask(csv: string, taskName: string): boolean {
+export function windowsSchedulerCsvIncludesTask(
+  csv: string,
+  taskName: string,
+): boolean {
   const needle = taskName.toLowerCase();
   for (const line of csv.split(/\r?\n/)) {
     const lower = line.toLowerCase();
     if (!lower.includes(needle)) continue;
     // Prefer exact CSV field matches ("\TaskName" / "TaskName") before a substring hit.
     if (
-      lower.includes(`"\\${needle}"`)
-      || lower.includes(`"${needle}"`)
-      || new RegExp(`(^|[,\\\\])${needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([,"]|$)`).test(lower)
+      lower.includes(`"\\${needle}"`) ||
+      lower.includes(`"${needle}"`) ||
+      new RegExp(
+        `(^|[,\\\\])${needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([,"]|$)`,
+      ).test(lower)
     ) {
       return true;
     }
@@ -450,7 +566,9 @@ export function windowsSchedulerCsvIncludesTask(csv: string, taskName: string): 
  * Query failures fall back to a CSV listing before concluding absence; if both
  * fail, returns `unknown` so callers can fail closed instead of releasing locks.
  */
-export function probeWindowsSchedulerTask(taskName = TASK): WindowsSchedulerTaskProbe {
+export function probeWindowsSchedulerTask(
+  taskName = TASK,
+): WindowsSchedulerTaskProbe {
   if (process.platform !== "win32") return { status: "absent" };
 
   let queryFailure: string | null = null;
@@ -463,7 +581,8 @@ export function probeWindowsSchedulerTask(taskName = TASK): WindowsSchedulerTask
 
   try {
     const csv = querySchtasks(["/query", "/fo", "CSV"]);
-    if (windowsSchedulerCsvIncludesTask(csv, taskName)) return { status: "present" };
+    if (windowsSchedulerCsvIncludesTask(csv, taskName))
+      return { status: "present" };
     return { status: "absent" };
   } catch (error) {
     const listDetail = schtasksErrorDetail(error);
@@ -500,15 +619,22 @@ export function evaluateWindowsSchedulerInstallVerification(inputs: {
   wscript?: string;
   launcher?: string;
 }): WindowsSchedulerInstallVerification {
-  const registrationHealthy = inputs.xml.length > 0
-    && windowsTaskRegistrationHealthy(inputs.xml, inputs.wscript, inputs.launcher);
+  const registrationHealthy =
+    inputs.xml.length > 0 &&
+    windowsTaskRegistrationHealthy(inputs.xml, inputs.wscript, inputs.launcher);
   const assetsHealthy = inputs.assetsExist;
   const nativeServiceAbsent = inputs.nativeStatus === "nonexistent";
   const nativeStatusUnknown = inputs.nativeStatus === "unknown";
   // Only treat proven WinSW presence as a backend conflict — never "unknown".
-  const conflict = inputs.taskInstalled
-    && (inputs.nativeStatus === "started" || inputs.nativeStatus === "stopped");
-  const ok = inputs.taskInstalled && registrationHealthy && assetsHealthy && nativeServiceAbsent && !conflict;
+  const conflict =
+    inputs.taskInstalled &&
+    (inputs.nativeStatus === "started" || inputs.nativeStatus === "stopped");
+  const ok =
+    inputs.taskInstalled &&
+    registrationHealthy &&
+    assetsHealthy &&
+    nativeServiceAbsent &&
+    !conflict;
   const detail = !inputs.taskInstalled
     ? "Task Scheduler task is not installed."
     : conflict
@@ -516,9 +642,9 @@ export function evaluateWindowsSchedulerInstallVerification(inputs: {
       : !assetsHealthy
         ? "Required scheduler service assets are missing."
         : !registrationHealthy
-          ? (inputs.xml.trim()
+          ? inputs.xml.trim()
             ? "Task Scheduler registration is present but unhealthy."
-            : "Task Scheduler task is present but its XML could not be read.")
+            : "Task Scheduler task is present but its XML could not be read."
           : nativeStatusUnknown
             ? "The Task Scheduler task was created, but OpenCodex could not verify that the native WinSW service is absent."
             : "ok";
@@ -535,24 +661,38 @@ export function evaluateWindowsSchedulerInstallVerification(inputs: {
 }
 
 /** Conflict-free postcondition check for an elevated scheduler install. */
-export function verifyWindowsSchedulerInstall(taskName = TASK): WindowsSchedulerInstallVerification {
+export function verifyWindowsSchedulerInstall(
+  taskName = TASK,
+): WindowsSchedulerInstallVerification {
   const taskInstalled = windowsSchedulerTaskInstalled(taskName);
   let xml = "";
   if (taskInstalled) {
-    try { xml = querySchtasks(["/query", "/tn", taskName, "/xml"]); } catch { xml = ""; }
+    try {
+      xml = querySchtasks(["/query", "/tn", taskName, "/xml"]);
+    } catch {
+      xml = "";
+    }
   }
   // After elevated create, non-elevated `/query /xml` can fail or return empty while the
   // task is still listed. Fall back to the on-disk document we registered.
   if (taskInstalled && !xml.trim()) {
     const diskPath = windowsTaskXmlPath();
     if (existsSync(diskPath)) {
-      try { xml = decodeSchtasksOutput(readFileSync(diskPath)); } catch { /* keep empty */ }
+      try {
+        xml = decodeSchtasksOutput(readFileSync(diskPath));
+      } catch {
+        /* keep empty */
+      }
     }
   }
   return evaluateWindowsSchedulerInstallVerification({
     taskInstalled,
     xml,
-    assetsExist: [windowsServiceScriptPath(), windowsLauncherVbsPath(), windowsTaskXmlPath()].every(existsSync),
+    assetsExist: [
+      windowsServiceScriptPath(),
+      windowsLauncherVbsPath(),
+      windowsTaskXmlPath(),
+    ].every(existsSync),
     nativeStatus: statusWinswRaw(),
   });
 }
@@ -560,11 +700,15 @@ export function verifyWindowsSchedulerInstall(taskName = TASK): WindowsScheduler
 async function elevateSchtasks(args: string[]): Promise<void> {
   const exitCode = await runWindowsElevated(windowsSchtasks(), args);
   if (exitCode !== 0) {
-    throw new Error(`Background service install failed with exit code ${exitCode}.`);
+    throw new Error(
+      `Background service install failed with exit code ${exitCode}.`,
+    );
   }
 }
 
-async function rollbackElevatedSchedulerTask(taskName = TASK): Promise<string | null> {
+async function rollbackElevatedSchedulerTask(
+  taskName = TASK,
+): Promise<string | null> {
   try {
     await elevateSchtasks(["/delete", "/tn", taskName, "/f"]);
   } catch (error) {
@@ -607,16 +751,22 @@ type FinalizeHooks = {
 
 let finalizeHooks: FinalizeHooks | null = null;
 
-function resolveWindowsSchedulerTaskProbe(taskName = TASK): WindowsSchedulerTaskProbe {
+function resolveWindowsSchedulerTaskProbe(
+  taskName = TASK,
+): WindowsSchedulerTaskProbe {
   if (finalizeHooks?.probeTask) return finalizeHooks.probeTask();
   if (finalizeHooks?.taskInstalled) {
-    return finalizeHooks.taskInstalled() ? { status: "present" } : { status: "absent" };
+    return finalizeHooks.taskInstalled()
+      ? { status: "present" }
+      : { status: "absent" };
   }
   return probeWindowsSchedulerTask(taskName);
 }
 
 /** Test-only hooks for elevated create+run finalization. */
-export function setFinalizeWindowsSchedulerHooksForTests(hooks: FinalizeHooks | null): void {
+export function setFinalizeWindowsSchedulerHooksForTests(
+  hooks: FinalizeHooks | null,
+): void {
   finalizeHooks = hooks;
 }
 
@@ -629,7 +779,9 @@ function throwPartialInstall(parts: string[]): never {
  * Never invent a create-vs-run classification; inspect actual task state first.
  * An unverifiable probe must fail closed (partial / blocked), never release.
  */
-async function reconcileUnknownElevatedOutcome(exitCode: number): Promise<void> {
+async function reconcileUnknownElevatedOutcome(
+  exitCode: number,
+): Promise<void> {
   const probe = resolveWindowsSchedulerTaskProbe();
   const parts = [
     "The elevated Task Scheduler operation returned an unknown result.",
@@ -637,19 +789,25 @@ async function reconcileUnknownElevatedOutcome(exitCode: number): Promise<void> 
     "OpenCodex could not prove whether task creation completed, so installation state was not written.",
   ];
   if (probe.status === "unknown") {
-    parts.push(`Task Scheduler presence could not be verified: ${probe.detail}`);
+    parts.push(
+      `Task Scheduler presence could not be verified: ${probe.detail}`,
+    );
     parts.push("A partial Task Scheduler backend may remain.");
     throwPartialInstall(parts);
   }
   if (probe.status === "absent") {
-    parts.push("No OpenCodex Task Scheduler task was found after the elevated operation.");
+    parts.push(
+      "No OpenCodex Task Scheduler task was found after the elevated operation.",
+    );
     throwPartialInstall(parts);
   }
   parts.push("A Task Scheduler task is present; attempting cleanup.");
   const rollbackError = await rollbackElevatedSchedulerTask();
   if (rollbackError) {
     parts.push(`Cleanup also failed: ${rollbackError}`);
-    parts.push(`Remove the task manually with 'schtasks /delete /tn ${TASK} /f' if it remains.`);
+    parts.push(
+      `Remove the task manually with 'schtasks /delete /tn ${TASK} /f' if it remains.`,
+    );
   } else {
     parts.push("The elevated Task Scheduler task was removed.");
   }
@@ -677,7 +835,9 @@ async function applyElevatedSchedulerResult(
   const outcome: ElevatedSchedulerOutcome = result.outcome;
 
   if (outcome === "create-failed") {
-    throw new Error("Elevated schtasks /create failed. The Task Scheduler task was not registered.");
+    throw new Error(
+      "Elevated schtasks /create failed. The Task Scheduler task was not registered.",
+    );
   }
   if (outcome === "run-failed-rolled-back") {
     throw new Error(
@@ -696,15 +856,18 @@ async function applyElevatedSchedulerResult(
     await reconcileUnknownElevatedOutcome(result.exitCode);
   }
 
-  const verification = (finalizeHooks?.verify ?? verifyWindowsSchedulerInstall)();
+  const verification = (
+    finalizeHooks?.verify ?? verifyWindowsSchedulerInstall
+  )();
   if (!verification.ok) {
     // Preserve a healthy elevated task when WinSW absence cannot be proven (unknown SCM status).
     // Unknown is not a confirmed dual-backend conflict; install state is still withheld.
-    const preserveElevatedTask = verification.taskInstalled
-      && verification.registrationHealthy
-      && verification.assetsHealthy
-      && !verification.conflict
-      && verification.nativeStatusUnknown;
+    const preserveElevatedTask =
+      verification.taskInstalled &&
+      verification.registrationHealthy &&
+      verification.assetsHealthy &&
+      !verification.conflict &&
+      verification.nativeStatusUnknown;
     if (preserveElevatedTask) {
       throwPartialInstall([
         "Elevated Task Scheduler registration did not produce a conflict-free install.",
@@ -720,7 +883,9 @@ async function applyElevatedSchedulerResult(
     ];
     if (rollbackError) {
       parts.push(`Rollback also failed: ${rollbackError}`);
-      parts.push(`Remove the task manually with 'schtasks /delete /tn ${TASK} /f' and the native service with 'sc delete ${WINSW_SERVICE_ID}' if present.`);
+      parts.push(
+        `Remove the task manually with 'schtasks /delete /tn ${TASK} /f' and the native service with 'sc delete ${WINSW_SERVICE_ID}' if present.`,
+      );
     } else {
       parts.push("The elevated Task Scheduler task was rolled back.");
     }
@@ -731,14 +896,15 @@ async function applyElevatedSchedulerResult(
     if (!attemptStillOwned(options)) {
       return;
     }
-    (finalizeHooks?.writeInstallState ?? (() => writeServiceInstallState("scheduler")))();
+    (
+      finalizeHooks?.writeInstallState ??
+      (() => writeServiceInstallState("scheduler"))
+    )();
   }
 }
 
 /** Outcome of late reconciliation after a request-level elevation timeout. */
-export type ElevatedReconciliationOutcome =
-  | "released"
-  | "blocked-partial";
+export type ElevatedReconciliationOutcome = "released" | "blocked-partial";
 
 export type FinalizeWindowsSchedulerResult =
   | { kind: "done" }
@@ -762,21 +928,40 @@ function startElevateExecution(
   deleteArgs: string[],
 ): ElevatedSchtasksCreateAndRunExecution {
   if (finalizeHooks?.startElevateCreateAndRun) {
-    return finalizeHooks.startElevateCreateAndRun(schtasksPath, createArgs, runArgs, deleteArgs);
+    return finalizeHooks.startElevateCreateAndRun(
+      schtasksPath,
+      createArgs,
+      runArgs,
+      deleteArgs,
+    );
   }
   if (finalizeHooks?.elevateCreateAndRun) {
-    const completion = finalizeHooks.elevateCreateAndRun(schtasksPath, createArgs, runArgs, deleteArgs);
+    const completion = finalizeHooks.elevateCreateAndRun(
+      schtasksPath,
+      createArgs,
+      runArgs,
+      deleteArgs,
+    );
     return { completion, launcherPid: null };
   }
-  return startElevatedSchtasksCreateAndRun(schtasksPath, createArgs, runArgs, deleteArgs);
+  return startElevatedSchtasksCreateAndRun(
+    schtasksPath,
+    createArgs,
+    runArgs,
+    deleteArgs,
+  );
 }
 
 function isPartialInstallError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
-  return /partial Task Scheduler/i.test(error.message)
-    || /Cleanup also failed/i.test(error.message)
-    || /left in place because native WinSW status could not be verified/i.test(error.message)
-    || /Task Scheduler presence could not be verified/i.test(error.message);
+  return (
+    /partial Task Scheduler/i.test(error.message) ||
+    /Cleanup also failed/i.test(error.message) ||
+    /left in place because native WinSW status could not be verified/i.test(
+      error.message,
+    ) ||
+    /Task Scheduler presence could not be verified/i.test(error.message)
+  );
 }
 
 /**
@@ -790,26 +975,44 @@ export async function finalizeWindowsSchedulerServiceRegistration(
   options?: FinalizeWindowsSchedulerOptions,
 ): Promise<FinalizeWindowsSchedulerResult> {
   if (process.platform !== "win32") {
-    throw new Error("Windows scheduler registration is only supported on Windows.");
+    throw new Error(
+      "Windows scheduler registration is only supported on Windows.",
+    );
   }
   const attemptId = options?.attemptId ?? randomUUID();
-  const stillOwnsAttempt = options?.stillOwnsAttempt ?? finalizeHooks?.stillOwnsAttempt;
+  const stillOwnsAttempt =
+    options?.stillOwnsAttempt ?? finalizeHooks?.stillOwnsAttempt;
   const createArgs = buildWindowsSchtasksCreateArgs(script);
   const runArgs = ["/run", "/tn", TASK];
   const deleteArgs = ["/delete", "/tn", TASK, "/f"];
-  const started = startElevateExecution(windowsSchtasks(), createArgs, runArgs, deleteArgs);
-  const timeoutMs = options?.requestTimeoutMs
-    ?? finalizeHooks?.requestTimeoutMs
-    ?? ELEVATION_REQUEST_TIMEOUT_MS;
-  const applyOpts: ApplyElevatedOptions = { attemptId, writeOnSuccess: true, stillOwnsAttempt };
+  const started = startElevateExecution(
+    windowsSchtasks(),
+    createArgs,
+    runArgs,
+    deleteArgs,
+  );
+  const timeoutMs =
+    options?.requestTimeoutMs ??
+    finalizeHooks?.requestTimeoutMs ??
+    ELEVATION_REQUEST_TIMEOUT_MS;
+  const applyOpts: ApplyElevatedOptions = {
+    attemptId,
+    writeOnSuccess: true,
+    stillOwnsAttempt,
+  };
 
-  let raced: { status: "completed"; value: ElevatedSchtasksCreateAndRunResult } | { status: "timed-out" };
+  let raced:
+    | { status: "completed"; value: ElevatedSchtasksCreateAndRunResult }
+    | { status: "timed-out" };
   try {
     raced = await raceWithTimeout(started.completion, timeoutMs);
   } catch (error) {
     // Cancellation / launch failure / signal before or instead of a protocol result.
     // Signal after Start-Process may leave an elevated child; reconcile conservatively.
-    if (error instanceof WindowsElevationError && error.reason === "terminated") {
+    if (
+      error instanceof WindowsElevationError &&
+      error.reason === "terminated"
+    ) {
       try {
         await reconcileUnknownElevatedOutcome(OCX_ELEVATED_PROTOCOL_FAILED);
       } catch (reconcileError) {
@@ -832,18 +1035,29 @@ export async function finalizeWindowsSchedulerServiceRegistration(
       await applyElevatedSchedulerResult(result, applyOpts);
       return "released";
     } catch (error) {
-      if (error instanceof WindowsElevationError && error.reason === "cancelled") {
+      if (
+        error instanceof WindowsElevationError &&
+        error.reason === "cancelled"
+      ) {
         return "released";
       }
-      if (error instanceof WindowsElevationError && error.reason === "launch-failed") {
+      if (
+        error instanceof WindowsElevationError &&
+        error.reason === "launch-failed"
+      ) {
         return "released";
       }
-      if (error instanceof WindowsElevationError && error.reason === "terminated") {
+      if (
+        error instanceof WindowsElevationError &&
+        error.reason === "terminated"
+      ) {
         try {
           await reconcileUnknownElevatedOutcome(OCX_ELEVATED_PROTOCOL_FAILED);
           return "released";
         } catch (reconcileError) {
-          return isPartialInstallError(reconcileError) ? "blocked-partial" : "released";
+          return isPartialInstallError(reconcileError)
+            ? "blocked-partial"
+            : "released";
         }
       }
       // applyElevatedSchedulerResult failures are expected (create/run/conflict); swallow for background.
@@ -868,11 +1082,18 @@ export function evaluateSchedulerInstallRestartReconciliation(inputs: {
   nativeStatus: "started" | "stopped" | "nonexistent" | "unknown";
   installStateBackend: "scheduler" | "native" | null;
 }): {
-  status: "healthy" | "orphan-task" | "stale-install-state" | "conflict" | "unhealthy" | "unverified";
+  status:
+    | "healthy"
+    | "orphan-task"
+    | "stale-install-state"
+    | "conflict"
+    | "unhealthy"
+    | "unverified";
   detail: string;
 } {
-  const conflict = inputs.taskInstalled
-    && (inputs.nativeStatus === "started" || inputs.nativeStatus === "stopped");
+  const conflict =
+    inputs.taskInstalled &&
+    (inputs.nativeStatus === "started" || inputs.nativeStatus === "stopped");
   if (conflict) {
     return {
       status: "conflict",
@@ -882,10 +1103,14 @@ export function evaluateSchedulerInstallRestartReconciliation(inputs: {
   if (inputs.taskInstalled && inputs.nativeStatus === "unknown") {
     return {
       status: "unverified",
-      detail: "The Task Scheduler task exists, but native WinSW status could not be verified.",
+      detail:
+        "The Task Scheduler task exists, but native WinSW status could not be verified.",
     };
   }
-  if (inputs.taskInstalled && (!inputs.registrationHealthy || !inputs.assetsHealthy)) {
+  if (
+    inputs.taskInstalled &&
+    (!inputs.registrationHealthy || !inputs.assetsHealthy)
+  ) {
     return {
       status: "unhealthy",
       detail: !inputs.assetsHealthy
@@ -896,13 +1121,15 @@ export function evaluateSchedulerInstallRestartReconciliation(inputs: {
   if (inputs.taskInstalled && inputs.installStateBackend !== "scheduler") {
     return {
       status: "orphan-task",
-      detail: "A Task Scheduler task is present without matching scheduler install state.",
+      detail:
+        "A Task Scheduler task is present without matching scheduler install state.",
     };
   }
   if (!inputs.taskInstalled && inputs.installStateBackend === "scheduler") {
     return {
       status: "stale-install-state",
-      detail: "Scheduler install state is present but the Task Scheduler task is absent.",
+      detail:
+        "Scheduler install state is present but the Task Scheduler task is absent.",
     };
   }
   return { status: "healthy", detail: "ok" };
@@ -918,12 +1145,18 @@ function windowsBatchValue(value: string): string {
 
 type WindowsBatchValueKind = "raw" | "path" | "pathList";
 
-function windowsBatchSet(name: string, value: string | undefined, kind: WindowsBatchValueKind = "raw"): string | null {
+function windowsBatchSet(
+  name: string,
+  value: string | undefined,
+  kind: WindowsBatchValueKind = "raw",
+): string | null {
   if (!value) return null;
   const rendered =
-    kind === "path" ? windowsEnvIndirectBatchValue(value, windowsBatchValue)
-    : kind === "pathList" ? windowsEnvIndirectBatchPathList(value, windowsBatchValue)
-    : windowsBatchValue(value);
+    kind === "path"
+      ? windowsEnvIndirectBatchValue(value, windowsBatchValue)
+      : kind === "pathList"
+        ? windowsEnvIndirectBatchPathList(value, windowsBatchValue)
+        : windowsBatchValue(value);
   return `set "${name}=${rendered}"`;
 }
 
@@ -948,11 +1181,20 @@ function taskXmlRunLevelAcceptable(principal: string): boolean {
   const count = taskXmlElementCount(principal, "RunLevel");
   if (count === 0) return true;
   if (count > 1) return false;
-  const value = new RegExp(`<RunLevel(?:\\s[^>]*?)?>\\s*([^<]*?)\\s*<\\/RunLevel>`, "i").exec(principal)?.[1]?.trim().toLowerCase();
+  const value = new RegExp(
+    `<RunLevel(?:\\s[^>]*?)?>\\s*([^<]*?)\\s*<\\/RunLevel>`,
+    "i",
+  )
+    .exec(principal)?.[1]
+    ?.trim()
+    .toLowerCase();
   return value === "leastprivilege" || value === "highestavailable";
 }
 
-export function buildWindowsServiceScript(entry = cliEntry(), port = resolveServiceListenPort()): string {
+export function buildWindowsServiceScript(
+  entry = cliEntry(),
+  port = resolveServiceListenPort(),
+): string {
   const { bun, cli } = entry;
   const bunRuntime = durableBunRuntime();
   const path = process.env.PATH ?? "";
@@ -965,7 +1207,11 @@ export function buildWindowsServiceScript(entry = cliEntry(), port = resolveServ
     windowsBatchSet("OCX_SERVICE", "1"),
     windowsBatchSet("PATH", path, "pathList"),
     windowsBatchSet("CODEX_HOME", process.env.CODEX_HOME?.trim(), "path"),
-    windowsBatchSet("OPENCODEX_HOME", process.env.OPENCODEX_HOME?.trim(), "path"),
+    windowsBatchSet(
+      "OPENCODEX_HOME",
+      process.env.OPENCODEX_HOME?.trim(),
+      "path",
+    ),
     windowsBatchSet("OCX_API_TOKEN_FILE", serviceApiTokenFilePath(), "path"),
     windowsBatchSet("OCX_SERVICE_LOG", serviceLogPath(), "path"),
     windowsBatchSet("OCX_BUN", bun, "path"),
@@ -994,8 +1240,13 @@ export function buildWindowsServiceScript(entry = cliEntry(), port = resolveServ
   return `${lines.join("\r\n")}\r\n`;
 }
 
-export function buildWindowsSchtasksCreateArgs(script = windowsServiceScriptPath()): string[] {
-  const xml = script === windowsServiceScriptPath() ? windowsTaskXmlPath() : `${script}.xml`;
+export function buildWindowsSchtasksCreateArgs(
+  script = windowsServiceScriptPath(),
+): string[] {
+  const xml =
+    script === windowsServiceScriptPath()
+      ? windowsTaskXmlPath()
+      : `${script}.xml`;
   return ["/create", "/tn", TASK, "/xml", xml, "/f"];
 }
 
@@ -1007,7 +1258,9 @@ export function buildWindowsSchtasksCreateArgs(script = windowsServiceScriptPath
  * launcher, the console batch action shows a closable cmd window in the interactive
  * session (issue #165). VBS string literals escape `"` as `""`.
  */
-export function buildWindowsLauncherVbs(script = windowsServiceScriptPath()): string {
+export function buildWindowsLauncherVbs(
+  script = windowsServiceScriptPath(),
+): string {
   const escaped = script.replace(/"/g, '""');
   const lines = [
     "' OpenCodex service launcher — runs the batch wrapper with a hidden window.",
@@ -1019,7 +1272,10 @@ export function buildWindowsLauncherVbs(script = windowsServiceScriptPath()): st
   return `${lines.join("\r\n")}\r\n`;
 }
 
-export function buildWindowsTaskXml(script = windowsServiceScriptPath(), launcher = windowsLauncherVbsPath()): string {
+export function buildWindowsTaskXml(
+  script = windowsServiceScriptPath(),
+  launcher = windowsLauncherVbsPath(),
+): string {
   const escapedWscript = taskXmlString(windowsWscript());
   // Escape the launcher path independently for the <Arguments> element; quoting it
   // keeps spaces intact, and /b (batch mode) suppresses script error popups.
@@ -1068,13 +1324,20 @@ export function buildWindowsTaskXml(script = windowsServiceScriptPath(), launche
 }
 
 function taskXmlSection(xml: string, tag: string): string {
-  return new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`, "i").exec(xml)?.[1] ?? "";
+  return (
+    new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`, "i").exec(
+      xml,
+    )?.[1] ?? ""
+  );
 }
 
 /** Drop comments and CDATA in ONE pass, including unterminated tails, so a
  * commented-out decoy cannot satisfy any check (CodeQL incomplete-multi-character-sanitization). */
 function taskXmlWithoutCommentsAndCdata(xml: string): string {
-  return xml.replace(/<!--[\s\S]*?(?:-->|$)|<!\[CDATA\[[\s\S]*?(?:\]\]>|$)/g, "");
+  return xml.replace(
+    /<!--[\s\S]*?(?:-->|$)|<!\[CDATA\[[\s\S]*?(?:\]\]>|$)/g,
+    "",
+  );
 }
 
 /**
@@ -1082,7 +1345,9 @@ function taskXmlWithoutCommentsAndCdata(xml: string): string {
  * element boundary matters: `<EnabledExtra>` must not count as `Enabled`.
  */
 function taskXmlElementCount(xml: string, tag: string): number {
-  return xml.match(new RegExp(`<${tag}(?:\\s[^>]*?)?\\s*\\/?>`, "gi"))?.length ?? 0;
+  return (
+    xml.match(new RegExp(`<${tag}(?:\\s[^>]*?)?\\s*\\/?>`, "gi"))?.length ?? 0
+  );
 }
 
 /**
@@ -1111,13 +1376,17 @@ function taskXmlHasPrefixedTag(xml: string, tag: string): boolean {
  * letting a doubly-encoded value impersonate the expected launcher path.
  */
 function taskXmlDecodeEntities(value: string): string {
-  return value.replace(/&(amp|lt|gt|quot|apos);/g, (_, name: string) => (
-    name === "amp" ? "&"
-      : name === "lt" ? "<"
-        : name === "gt" ? ">"
-          : name === "quot" ? "\""
-            : "'"
-  ));
+  return value.replace(/&(amp|lt|gt|quot|apos);/g, (_, name: string) =>
+    name === "amp"
+      ? "&"
+      : name === "lt"
+        ? "<"
+        : name === "gt"
+          ? ">"
+          : name === "quot"
+            ? '"'
+            : "'",
+  );
 }
 
 /**
@@ -1127,24 +1396,41 @@ function taskXmlDecodeEntities(value: string): string {
  * elements name what actually gets executed, so a missing <Command>/<Arguments>
  * must fail the health check rather than inherit a schema default.
  */
-function taskXmlDecodedValueEquals(xml: string, tag: string, expected: string): boolean {
+function taskXmlDecodedValueEquals(
+  xml: string,
+  tag: string,
+  expected: string,
+): boolean {
   // Same reasoning as the optional helper: `<t:Arguments>` must not read as absent.
   if (taskXmlHasPrefixedTag(xml, tag)) return false;
   if (taskXmlElementCount(xml, tag) !== 1) return false;
   // `[^<]*` refuses nested markup, so a decoy inside a child element cannot match.
-  const value = new RegExp(`<${tag}(?:\\s[^>]*?)?>([^<]*)<\\/${tag}>`, "i").exec(xml)?.[1];
+  const value = new RegExp(
+    `<${tag}(?:\\s[^>]*?)?>([^<]*)<\\/${tag}>`,
+    "i",
+  ).exec(xml)?.[1];
   if (value === undefined) return false;
-  return taskXmlDecodeEntities(value).trim().toLowerCase() === expected.trim().toLowerCase();
+  return (
+    taskXmlDecodeEntities(value).trim().toLowerCase() ===
+    expected.trim().toLowerCase()
+  );
 }
 
-function taskXmlOptionalValueEquals(xml: string, tag: string, expected: string): boolean {
+function taskXmlOptionalValueEquals(
+  xml: string,
+  tag: string,
+  expected: string,
+): boolean {
   // Check the prefixed form first: treating `<t:Enabled>false</t:Enabled>` as an
   // omission would turn an explicitly disabled task into a healthy one.
   if (taskXmlHasPrefixedTag(xml, tag)) return false;
   const count = taskXmlElementCount(xml, tag);
   if (count === 0) return true;
   if (count > 1) return false;
-  const value = new RegExp(`<${tag}(?:\\s[^>]*?)?>\\s*([^<]*?)\\s*<\\/${tag}>`, "i").exec(xml)?.[1];
+  const value = new RegExp(
+    `<${tag}(?:\\s[^>]*?)?>\\s*([^<]*?)\\s*<\\/${tag}>`,
+    "i",
+  ).exec(xml)?.[1];
   return value?.trim().toLowerCase() === expected.toLowerCase();
 }
 
@@ -1159,7 +1445,11 @@ export function windowsTaskRegistrationHealthy(
   // Task/Data, so a Data block placed before the real sections could shadow them.
   // We never emit Data, so its presence alone disqualifies the registration. Both
   // forms are rejected because taskXmlElementCount() ignores prefixed tags.
-  if (taskXmlElementCount(scrubbed, "Data") > 0 || taskXmlHasPrefixedTag(scrubbed, "Data")) return false;
+  if (
+    taskXmlElementCount(scrubbed, "Data") > 0 ||
+    taskXmlHasPrefixedTag(scrubbed, "Data")
+  )
+    return false;
   const triggers = taskXmlSection(scrubbed, "Triggers");
   const trigger = taskXmlSection(triggers, "LogonTrigger");
   const principal = taskXmlSection(scrubbed, "Principal");
@@ -1167,19 +1457,23 @@ export function windowsTaskRegistrationHealthy(
   const action = taskXmlSection(scrubbed, "Exec");
   // A self-closing <LogonTrigger /> leaves an empty section, so look for the element
   // itself — scoped to <Triggers> so a decoy elsewhere cannot satisfy it.
-  return taskXmlElementCount(triggers, "LogonTrigger") > 0
-    && taskXmlOptionalValueEquals(trigger, "Enabled", "true")
-    && /<LogonType>\s*InteractiveToken\s*<\/LogonType>/i.test(principal)
-    && taskXmlRunLevelAcceptable(principal)
-    && taskXmlOptionalValueEquals(settings, "Enabled", "true")
-    && /<MultipleInstancesPolicy>\s*IgnoreNew\s*<\/MultipleInstancesPolicy>/i.test(settings)
-    && /<ExecutionTimeLimit>\s*PT0S\s*<\/ExecutionTimeLimit>/i.test(settings)
+  return (
+    taskXmlElementCount(triggers, "LogonTrigger") > 0 &&
+    taskXmlOptionalValueEquals(trigger, "Enabled", "true") &&
+    /<LogonType>\s*InteractiveToken\s*<\/LogonType>/i.test(principal) &&
+    taskXmlRunLevelAcceptable(principal) &&
+    taskXmlOptionalValueEquals(settings, "Enabled", "true") &&
+    /<MultipleInstancesPolicy>\s*IgnoreNew\s*<\/MultipleInstancesPolicy>/i.test(
+      settings,
+    ) &&
+    /<ExecutionTimeLimit>\s*PT0S\s*<\/ExecutionTimeLimit>/i.test(settings) &&
     // Compare decoded VALUES, not encodings: Task Scheduler canonicalizes the
     // quotes we wrote as `&quot;` back to literal `"` on export, so an escaped
     // needle never matched and a healthy task read as permanently stale (#608).
     // Case-insensitive: elevated `schtasks /create` may rewrite System32 casing.
-    && taskXmlDecodedValueEquals(action, "Command", wscript)
-    && taskXmlDecodedValueEquals(action, "Arguments", `/b /nologo "${launcher}"`);
+    taskXmlDecodedValueEquals(action, "Command", wscript) &&
+    taskXmlDecodedValueEquals(action, "Arguments", `/b /nologo "${launcher}"`)
+  );
 }
 
 export interface WindowsSchedulerXmlState {
@@ -1199,13 +1493,17 @@ export function readWindowsSchedulerXmlState(
   launcher?: string,
 ): WindowsSchedulerXmlState {
   const installed = xml.length > 0;
-  if (!installed) return { installed: false, enabled: false, registrationHealthy: false };
+  if (!installed)
+    return { installed: false, enabled: false, registrationHealthy: false };
   const scrubbed = taskXmlWithoutCommentsAndCdata(xml);
-  const hasData = taskXmlElementCount(scrubbed, "Data") > 0 || taskXmlHasPrefixedTag(scrubbed, "Data");
+  const hasData =
+    taskXmlElementCount(scrubbed, "Data") > 0 ||
+    taskXmlHasPrefixedTag(scrubbed, "Data");
   const settings = hasData ? "" : taskXmlSection(scrubbed, "Settings");
   return {
     installed: true,
-    enabled: !hasData && taskXmlOptionalValueEquals(settings, "Enabled", "true"),
+    enabled:
+      !hasData && taskXmlOptionalValueEquals(settings, "Enabled", "true"),
     registrationHealthy: windowsTaskRegistrationHealthy(xml, wscript, launcher),
   };
 }
@@ -1215,20 +1513,43 @@ function installLaunchd(): void {
   const dir = join(homedir(), "Library", "LaunchAgents");
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   recordOwnedConfigPath(getConfigDir(), serviceStatePath());
-  if (!existsSync(getConfigDir())) mkdirSync(getConfigDir(), { recursive: true });
+  if (!existsSync(getConfigDir()))
+    mkdirSync(getConfigDir(), { recursive: true });
   writeServiceApiTokenFile();
   const p = plistPath();
   writeFileSync(p, buildPlist(), "utf8");
-  try { sh(`launchctl unload "${p}" 2>/dev/null`); } catch { /* not loaded */ }
+  try {
+    sh(`launchctl unload "${p}" 2>/dev/null`);
+  } catch {
+    /* not loaded */
+  }
   sh(`launchctl load -w "${p}"`);
   writeServiceInstallState();
 }
-function startLaunchd(): void { sh(`launchctl load -w "${plistPath()}"`); }
-function stopLaunchd(): void { try { sh(`launchctl unload "${plistPath()}"`); } catch { /* not loaded */ } }
-function statusLaunchd(): string { try { return sh(`launchctl list | grep ${LABEL} || true`); } catch { return ""; } }
+function startLaunchd(): void {
+  sh(`launchctl load -w "${plistPath()}"`);
+}
+function stopLaunchd(): void {
+  try {
+    sh(`launchctl unload "${plistPath()}"`);
+  } catch {
+    /* not loaded */
+  }
+}
+function statusLaunchd(): string {
+  try {
+    return sh(`launchctl list | grep ${LABEL} || true`);
+  } catch {
+    return "";
+  }
+}
 function uninstallLaunchd(): void {
   const p = plistPath();
-  try { sh(`launchctl unload "${p}" 2>/dev/null`); } catch { /* not loaded */ }
+  try {
+    sh(`launchctl unload "${p}" 2>/dev/null`);
+  } catch {
+    /* not loaded */
+  }
   if (existsSync(p)) unlinkSync(p);
 }
 
@@ -1237,14 +1558,22 @@ function uninstallLaunchd(): void {
  * In-place service-asset write that tolerates the transient EBUSY/EPERM/EACCES Windows
  * throws while the just-ended task's cmd.exe (or an AV scanner) still holds the file.
  */
-function writeServiceAssetWithRetry(path: string, content: string, encoding: "utf8" | "utf16le"): void {
+function writeServiceAssetWithRetry(
+  path: string,
+  content: string,
+  encoding: "utf8" | "utf16le",
+): void {
   for (let attempt = 0; ; attempt++) {
     try {
       writeFileSync(path, content, encoding);
       return;
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
-      if (attempt >= 2 || (code !== "EBUSY" && code !== "EPERM" && code !== "EACCES")) throw err;
+      if (
+        attempt >= 2 ||
+        (code !== "EBUSY" && code !== "EPERM" && code !== "EACCES")
+      )
+        throw err;
       Bun.sleepSync(150);
     }
   }
@@ -1255,14 +1584,23 @@ function writeServiceAssetWithRetry(path: string, content: string, encoding: "ut
  * Used by fresh install (before schtasks /create) and by repair (no elevation).
  */
 function writeWindowsSchedulerAssets(): void {
-  if (!existsSync(getConfigDir())) mkdirSync(getConfigDir(), { recursive: true });
+  if (!existsSync(getConfigDir()))
+    mkdirSync(getConfigDir(), { recursive: true });
   writeServiceApiTokenFile();
   const script = windowsServiceScriptPath();
   writeServiceAssetWithRetry(script, buildWindowsServiceScript(), "utf8");
   // UTF-16LE + BOM: a BOM-less UTF-8 VBS mis-decodes non-ASCII (e.g. Korean) profile
   // paths on some WSH/codepage combinations — same contract as the task XML below.
-  writeServiceAssetWithRetry(windowsLauncherVbsPath(), `\uFEFF${buildWindowsLauncherVbs(script)}`, "utf16le");
-  writeServiceAssetWithRetry(windowsTaskXmlPath(), `\uFEFF${buildWindowsTaskXml(script)}`, "utf16le");
+  writeServiceAssetWithRetry(
+    windowsLauncherVbsPath(),
+    `\uFEFF${buildWindowsLauncherVbs(script)}`,
+    "utf16le",
+  );
+  writeServiceAssetWithRetry(
+    windowsTaskXmlPath(),
+    `\uFEFF${buildWindowsTaskXml(script)}`,
+    "utf16le",
+  );
 }
 
 function installWindows(): void {
@@ -1270,19 +1608,29 @@ function installWindows(): void {
   // Transactional backend switch: installing the scheduler backend removes a native
   // service first — two live managers would both respawn the proxy (conflict).
   if (statusWinswRaw() !== "nonexistent") {
-    console.log("🔁 Removing the native (WinSW) service before installing the Task Scheduler backend...");
+    console.log(
+      "🔁 Removing the native (WinSW) service before installing the Task Scheduler backend...",
+    );
     try {
       uninstallWinswService();
     } catch (err) {
-      throw new Error(`Cannot remove the native service before switching to Task Scheduler: ${err instanceof Error ? err.message : String(err)}. Remove it manually with 'sc delete ${WINSW_SERVICE_ID}' or retry.`);
+      throw new Error(
+        `Cannot remove the native service before switching to Task Scheduler: ${err instanceof Error ? err.message : String(err)}. Remove it manually with 'sc delete ${WINSW_SERVICE_ID}' or retry.`,
+      );
     }
     if (statusWinswRaw() !== "nonexistent") {
-      throw new Error(`Native service registration could not be re-verified after the removal attempt — aborting switch. Check 'sc.exe query ${WINSW_SERVICE_ID}' and remove it manually if present.`);
+      throw new Error(
+        `Native service registration could not be re-verified after the removal attempt — aborting switch. Check 'sc.exe query ${WINSW_SERVICE_ID}' and remove it manually if present.`,
+      );
     }
   }
   // End a running task BEFORE rewriting the assets it is executing — cmd.exe reading the
   // script mid-rewrite runs a torn batch file, and its open handle can fail the write.
-  try { stopWindows(); } catch { /* not running */ }
+  try {
+    stopWindows();
+  } catch {
+    /* not running */
+  }
   writeWindowsSchedulerAssets();
   schtasks(buildWindowsSchtasksCreateArgs(windowsServiceScriptPath()));
   schtasks(["/run", "/tn", TASK]);
@@ -1312,7 +1660,9 @@ export interface RepairServiceDeps {
  * Windows native: WinSW asset rewrite + restart (skips `install /p` when present).
  * macOS/Linux: re-run the user-level install/reload path.
  */
-export async function repairService(deps: RepairServiceDeps = {}): Promise<void> {
+export async function repairService(
+  deps: RepairServiceDeps = {},
+): Promise<void> {
   const diagnose = deps.diagnose ?? diagnoseService;
   const platform = deps.platform ?? process.platform;
   const diag = diagnose();
@@ -1321,12 +1671,14 @@ export async function repairService(deps: RepairServiceDeps = {}): Promise<void>
   }
   if (diag.conflict) {
     throw new Error(
-      "Cannot repair while Task Scheduler and native WinSW are both present. "
-        + "Run 'ocx service uninstall' then reinstall one backend with 'ocx service install'.",
+      "Cannot repair while Task Scheduler and native WinSW are both present. " +
+        "Run 'ocx service uninstall' then reinstall one backend with 'ocx service install'.",
     );
   }
   if (!diag.installed) {
-    throw new Error("Background service is not installed. Run 'ocx service install' first.");
+    throw new Error(
+      "Background service is not installed. Run 'ocx service install' first.",
+    );
   }
 
   (deps.assertEnv ?? assertServiceEnvironmentMatchesInstall)();
@@ -1334,14 +1686,23 @@ export async function repairService(deps: RepairServiceDeps = {}): Promise<void>
 
   if (platform === "win32") {
     if (diag.backend === "native") {
-      await (deps.repairNative ?? (() => installWinswService(defaultWinswEntry(import.meta.dir))))();
+      await (
+        deps.repairNative ??
+        (() => installWinswService(defaultWinswEntry(import.meta.dir)))
+      )();
       (deps.writeNativeState ?? (() => writeServiceInstallState("native")))();
       return;
     }
-    try { (deps.stopScheduler ?? stopWindows)(); } catch { /* not running */ }
+    try {
+      (deps.stopScheduler ?? stopWindows)();
+    } catch {
+      /* not running */
+    }
     (deps.writeSchedulerAssets ?? writeWindowsSchedulerAssets)();
     (deps.startScheduler ?? startWindows)();
-    (deps.writeSchedulerState ?? (() => writeServiceInstallState("scheduler")))();
+    (
+      deps.writeSchedulerState ?? (() => writeServiceInstallState("scheduler"))
+    )();
     return;
   }
   if (platform === "darwin") {
@@ -1362,24 +1723,37 @@ export async function repairService(deps: RepairServiceDeps = {}): Promise<void>
  */
 async function installWindowsNative(): Promise<void> {
   recordOwnedConfigPath(getConfigDir(), serviceStatePath());
-  if (!existsSync(getConfigDir())) mkdirSync(getConfigDir(), { recursive: true });
+  if (!existsSync(getConfigDir()))
+    mkdirSync(getConfigDir(), { recursive: true });
   writeServiceApiTokenFile();
   let hadScheduler = false;
   try {
     hadScheduler = schtasks(["/query", "/tn", TASK]).includes(TASK);
-  } catch { /* task absent */ }
+  } catch {
+    /* task absent */
+  }
   if (hadScheduler) {
-    console.log("🔁 Removing the Task Scheduler backend before installing the native (WinSW) service...");
-    try { stopWindows(); } catch { /* not running */ }
+    console.log(
+      "🔁 Removing the Task Scheduler backend before installing the native (WinSW) service...",
+    );
+    try {
+      stopWindows();
+    } catch {
+      /* not running */
+    }
     try {
       uninstallWindows();
     } catch (err) {
-      throw new Error(`Cannot remove the Task Scheduler backend before switching to native: ${err instanceof Error ? err.message : String(err)}`);
+      throw new Error(
+        `Cannot remove the Task Scheduler backend before switching to native: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
     // Verify removal — schtasks /delete can silently fail if UAC or policy blocks it.
     try {
       if (schtasks(["/query", "/tn", TASK]).includes(TASK)) {
-        throw new Error("Task Scheduler backend still present after removal — aborting switch.");
+        throw new Error(
+          "Task Scheduler backend still present after removal — aborting switch.",
+        );
       }
     } catch (e) {
       if (e instanceof Error && e.message.includes("still present")) throw e;
@@ -1389,19 +1763,48 @@ async function installWindowsNative(): Promise<void> {
   try {
     await installWinswService(defaultWinswEntry(import.meta.dir));
   } catch (err) {
-    if (hadScheduler) console.error("⚠️  Native install failed AFTER removing the Task Scheduler backend — no service is installed now. Run `ocx service install` to restore the scheduler backend, or retry `--native`.");
+    if (hadScheduler)
+      console.error(
+        "⚠️  Native install failed AFTER removing the Task Scheduler backend — no service is installed now. Run `ocx service install` to restore the scheduler backend, or retry `--native`.",
+      );
     throw err;
   }
   writeServiceInstallState("native");
 }
-function startWindows(): void { schtasks(["/run", "/tn", TASK]); }
-function stopWindows(): void { try { schtasks(["/end", "/tn", TASK]); } catch { /* not running */ } }
-function statusWindows(): string { try { return schtasks(["/query", "/tn", TASK]); } catch { return ""; } }
-function statusWindowsXml(): string { try { return schtasks(["/query", "/tn", TASK, "/xml"]); } catch { return ""; } }
+function startWindows(): void {
+  schtasks(["/run", "/tn", TASK]);
+}
+function stopWindows(): void {
+  try {
+    schtasks(["/end", "/tn", TASK]);
+  } catch {
+    /* not running */
+  }
+}
+function statusWindows(): string {
+  try {
+    return schtasks(["/query", "/tn", TASK]);
+  } catch {
+    return "";
+  }
+}
+function statusWindowsXml(): string {
+  try {
+    return schtasks(["/query", "/tn", TASK, "/xml"]);
+  } catch {
+    return "";
+  }
+}
 function uninstallWindows(): void {
-  try { schtasks(["/delete", "/tn", TASK, "/f"]); } catch { /* absent */ }
-  if (existsSync(windowsServiceScriptPath())) unlinkSync(windowsServiceScriptPath());
-  if (existsSync(windowsLauncherVbsPath())) unlinkSync(windowsLauncherVbsPath());
+  try {
+    schtasks(["/delete", "/tn", TASK, "/f"]);
+  } catch {
+    /* absent */
+  }
+  if (existsSync(windowsServiceScriptPath()))
+    unlinkSync(windowsServiceScriptPath());
+  if (existsSync(windowsLauncherVbsPath()))
+    unlinkSync(windowsLauncherVbsPath());
   if (existsSync(windowsTaskXmlPath())) unlinkSync(windowsTaskXmlPath());
 }
 
@@ -1413,14 +1816,18 @@ function uninstallWindows(): void {
 export function bakedServicePathsDiagnostic(): string | null {
   const state = readServiceInstallState();
   if (!state?.bunPath || !state?.cliPath) return null;
-  const missing = [state.bunPath, state.cliPath].filter(path => !existsSync(path));
+  const missing = [state.bunPath, state.cliPath].filter(
+    (path) => !existsSync(path),
+  );
   if (missing.length === 0) return null;
   return `STALE baked paths (missing: ${missing.join(", ")}) — run 'ocx service install' to re-bake`;
 }
 
 function serviceDiagnosticsSummary(): string {
   const stale = bakedServicePathsDiagnostic();
-  return stale ? `${stale}; logs: ${serviceLogPath()}` : `logs: ${serviceLogPath()}`;
+  return stale
+    ? `${stale}; logs: ${serviceLogPath()}`
+    : `logs: ${serviceLogPath()}`;
 }
 
 // ── Linux (systemd user unit) ──
@@ -1443,11 +1850,27 @@ export function isMaskedSystemdUnit(path: string): boolean {
 }
 
 /** Fleet/proxy hosts often run a system unit instead of the per-user one `ocx service install` writes. */
-function diagnoseSystemSystemdUnit(): { installed: boolean; enabled: boolean; running: boolean } | null {
+function diagnoseSystemSystemdUnit(): {
+  installed: boolean;
+  enabled: boolean;
+  running: boolean;
+} | null {
   const path = `/etc/systemd/system/${TASK}.service`;
   if (!existsSync(path) || isMaskedSystemdUnit(path)) return null;
-  const enabled = (() => { try { return sh(`systemctl is-enabled ${TASK}.service`) === "enabled"; } catch { return false; } })();
-  const running = (() => { try { return sh(`systemctl is-active ${TASK}.service`) === "active"; } catch { return false; } })();
+  const enabled = (() => {
+    try {
+      return sh(`systemctl is-enabled ${TASK}.service`) === "enabled";
+    } catch {
+      return false;
+    }
+  })();
+  const running = (() => {
+    try {
+      return sh(`systemctl is-active ${TASK}.service`) === "active";
+    } catch {
+      return false;
+    }
+  })();
   return { installed: true, enabled, running };
 }
 
@@ -1455,14 +1878,22 @@ export function buildUnit(): string {
   const { bun, cli } = cliEntry();
   const log = logPath();
   const path = process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin";
-  const codexHome = systemdEnvironmentAssignment("CODEX_HOME", process.env.CODEX_HOME?.trim());
-  const opencodexHome = systemdEnvironmentAssignment("OPENCODEX_HOME", process.env.OPENCODEX_HOME?.trim());
+  const codexHome = systemdEnvironmentAssignment(
+    "CODEX_HOME",
+    process.env.CODEX_HOME?.trim(),
+  );
+  const opencodexHome = systemdEnvironmentAssignment(
+    "OPENCODEX_HOME",
+    process.env.OPENCODEX_HOME?.trim(),
+  );
   const envLines = [
     systemdEnvironmentAssignment("OCX_SERVICE", "1"),
     systemdEnvironmentAssignment("PATH", path),
     codexHome,
     opencodexHome,
-  ].filter((line): line is string => Boolean(line)).join("\n");
+  ]
+    .filter((line): line is string => Boolean(line))
+    .join("\n");
   return `[Unit]
 Description=OpenCodex Proxy Server
 After=network-online.target
@@ -1506,12 +1937,24 @@ function ensureUserBusEnv(): void {
 }
 
 function isSystemd(): boolean {
-  try { execSync("systemctl --version", { stdio: "pipe", timeout: 15_000 }); } catch { return false; }
+  try {
+    execSync("systemctl --version", { stdio: "pipe", timeout: 15_000 });
+  } catch {
+    return false;
+  }
   ensureUserBusEnv();
   // Prefer the user-bus probe; but an SSH session without a user D-Bus fails it even when systemd
   // is present (F9). Fall back to the per-user runtime dir existing — a strong signal the user
   // systemd instance is available — so a first-time `ocx service install` isn't wrongly refused.
-  try { execSync("systemctl --user show-environment", { stdio: "pipe", timeout: 15_000 }); return true; } catch { /* no user bus in this session */ }
+  try {
+    execSync("systemctl --user show-environment", {
+      stdio: "pipe",
+      timeout: 15_000,
+    });
+    return true;
+  } catch {
+    /* no user bus in this session */
+  }
   return userRuntimeDir() !== null;
 }
 
@@ -1520,7 +1963,8 @@ function installSystemd(): void {
   const dir = unitDir();
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   recordOwnedConfigPath(getConfigDir(), serviceStatePath());
-  if (!existsSync(getConfigDir())) mkdirSync(getConfigDir(), { recursive: true });
+  if (!existsSync(getConfigDir()))
+    mkdirSync(getConfigDir(), { recursive: true });
   writeServiceApiTokenFile();
   writeFileSync(unitPath(), buildUnit(), "utf8");
   sh("systemctl --user daemon-reload");
@@ -1532,45 +1976,100 @@ function startSystemd(): void {
   ensureUserBusEnv();
   if (!existsSync(unitPath())) {
     console.error(`opencodex service is not installed: ${unitPath()}`);
-    console.error("Run `ocx service install` first to create and enable the systemd user unit.");
+    console.error(
+      "Run `ocx service install` first to create and enable the systemd user unit.",
+    );
     process.exit(1);
   }
   sh(`systemctl --user start ${TASK}`);
 }
-function stopSystemd(): void { try { sh(`systemctl --user stop ${TASK}`); } catch { /* not running */ } }
-function statusSystemd(): string { try { return sh(`systemctl --user status ${TASK}`); } catch { return ""; } }
+function stopSystemd(): void {
+  try {
+    sh(`systemctl --user stop ${TASK}`);
+  } catch {
+    /* not running */
+  }
+}
+function statusSystemd(): string {
+  try {
+    return sh(`systemctl --user status ${TASK}`);
+  } catch {
+    return "";
+  }
+}
 function uninstallSystemd(): void {
-  try { sh(`systemctl --user disable --now ${TASK}`); } catch { /* absent */ }
+  try {
+    sh(`systemctl --user disable --now ${TASK}`);
+  } catch {
+    /* absent */
+  }
   if (existsSync(unitPath())) unlinkSync(unitPath());
-  try { sh("systemctl --user daemon-reload"); } catch { /* best-effort */ }
+  try {
+    sh("systemctl --user daemon-reload");
+  } catch {
+    /* best-effort */
+  }
 }
 
 type ServiceOps = {
-  install: () => void | Promise<void>; start: () => void; stop: () => void;
-  status: () => string; uninstall: () => void;
+  install: () => void | Promise<void>;
+  start: () => void;
+  stop: () => void;
+  status: () => string;
+  uninstall: () => void;
 };
 
 function platformOps(backend: ServiceBackend = "scheduler"): ServiceOps | null {
   if (process.platform === "darwin")
-    return { install: installLaunchd, start: startLaunchd, stop: stopLaunchd, status: statusLaunchd, uninstall: uninstallLaunchd };
+    return {
+      install: installLaunchd,
+      start: startLaunchd,
+      stop: stopLaunchd,
+      status: statusLaunchd,
+      uninstall: uninstallLaunchd,
+    };
   if (process.platform === "win32") {
     if (backend === "native")
-      return { install: installWindowsNative, start: startWinswService, stop: stopWinswService, status: winswStatusSummary, uninstall: uninstallWinswService };
-    return { install: installWindows, start: startWindows, stop: stopWindows, status: statusWindows, uninstall: uninstallWindows };
+      return {
+        install: installWindowsNative,
+        start: startWinswService,
+        stop: stopWinswService,
+        status: winswStatusSummary,
+        uninstall: uninstallWinswService,
+      };
+    return {
+      install: installWindows,
+      start: startWindows,
+      stop: stopWindows,
+      status: statusWindows,
+      uninstall: uninstallWindows,
+    };
   }
   if (process.platform === "linux") {
     if (existsSync("/.dockerenv")) {
-      console.error("Docker detected. Run 'ocx start' directly instead of using the service manager.");
+      console.error(
+        "Docker detected. Run 'ocx start' directly instead of using the service manager.",
+      );
       process.exit(1);
     }
     if (!isSystemd() && !existsSync(unitPath())) {
-      console.error("systemd not found. Run 'ocx start' under your process supervisor.");
+      console.error(
+        "systemd not found. Run 'ocx start' under your process supervisor.",
+      );
       if (isWslRuntime()) {
-        console.error("WSL detected: enable systemd by adding [boot] systemd=true to /etc/wsl.conf, then run 'wsl --shutdown' from Windows and reopen the distro (WSL 0.67.6+).");
+        console.error(
+          "WSL detected: enable systemd by adding [boot] systemd=true to /etc/wsl.conf, then run 'wsl --shutdown' from Windows and reopen the distro (WSL 0.67.6+).",
+        );
       }
       process.exit(1);
     }
-    return { install: installSystemd, start: startSystemd, stop: stopSystemd, status: statusSystemd, uninstall: uninstallSystemd };
+    return {
+      install: installSystemd,
+      start: startSystemd,
+      stop: stopSystemd,
+      status: statusSystemd,
+      uninstall: uninstallSystemd,
+    };
   }
   return null;
 }
@@ -1595,7 +2094,9 @@ async function stopTrackedProxyForServiceCommand(): Promise<TrackedProxyCleanupR
   try {
     return await stopTrackedProxyIfRunning();
   } catch (err) {
-    console.error(`⚠️  Failed to stop proxy: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(
+      `⚠️  Failed to stop proxy: ${err instanceof Error ? err.message : String(err)}`,
+    );
     return "none";
   }
 }
@@ -1608,7 +2109,12 @@ export function stopServiceIfInstalled(): boolean {
   assertServiceEnvironmentMatchesInstall();
   if (process.platform === "darwin") {
     if (existsSync(plistPath())) {
-      try { stopLaunchd(); return true; } catch { return false; }
+      try {
+        stopLaunchd();
+        return true;
+      } catch {
+        return false;
+      }
     }
   } else if (process.platform === "win32") {
     // Query BOTH backends regardless of state: a failed switch or stale state can leave
@@ -1616,14 +2122,33 @@ export function stopServiceIfInstalled(): boolean {
     let stopped = false;
     try {
       const q = schtasks(["/query", "/tn", TASK]);
-      if (q.includes(TASK)) { stopWindows(); stopped = true; }
-    } catch { /* task not found */ }
+      if (q.includes(TASK)) {
+        stopWindows();
+        stopped = true;
+      }
+    } catch {
+      /* task not found */
+    }
     if (statusWinswRaw() !== "nonexistent") {
-      try { stopWinswService(); stopped = true; } catch { /* best-effort */ }
+      try {
+        stopWinswService();
+        stopped = true;
+      } catch {
+        /* best-effort */
+      }
     }
     if (stopped) return true;
-  } else if (process.platform === "linux" && isSystemd() && existsSync(unitPath())) {
-    try { stopSystemd(); return true; } catch { return false; }
+  } else if (
+    process.platform === "linux" &&
+    isSystemd() &&
+    existsSync(unitPath())
+  ) {
+    try {
+      stopSystemd();
+      return true;
+    } catch {
+      return false;
+    }
   }
   return false;
 }
@@ -1631,7 +2156,11 @@ export function stopServiceIfInstalled(): boolean {
 /** Delete install-state files; stale state would make `ocx update` "reinstall" a service that no longer exists. */
 function removeServiceInstallState(): void {
   for (const path of serviceStatePaths()) {
-    try { if (existsSync(path)) unlinkSync(path); } catch { /* best-effort */ }
+    try {
+      if (existsSync(path)) unlinkSync(path);
+    } catch {
+      /* best-effort */
+    }
   }
 }
 
@@ -1644,26 +2173,52 @@ export function uninstallServiceIfInstalled(): boolean {
   assertServiceEnvironmentMatchesInstall();
   if (process.platform === "darwin") {
     if (existsSync(plistPath())) {
-      try { uninstallLaunchd(); removeServiceInstallState(); return true; } catch { return false; }
+      try {
+        uninstallLaunchd();
+        removeServiceInstallState();
+        return true;
+      } catch {
+        return false;
+      }
     }
   } else if (process.platform === "win32") {
     let removed = false;
     try {
       const q = schtasks(["/query", "/tn", TASK]);
-      if (q.includes(TASK)) { uninstallWindows(); removed = true; }
-    } catch { /* task not found */ }
+      if (q.includes(TASK)) {
+        uninstallWindows();
+        removed = true;
+      }
+    } catch {
+      /* task not found */
+    }
     if (statusWinswRaw() !== "nonexistent") {
       try {
         uninstallWinswService();
         removed = true;
       } catch (err) {
-        console.warn(`⚠️  Failed to remove native service: ${err instanceof Error ? err.message : String(err)}. Check 'sc.exe query ${WINSW_SERVICE_ID}'.`);
+        console.warn(
+          `⚠️  Failed to remove native service: ${err instanceof Error ? err.message : String(err)}. Check 'sc.exe query ${WINSW_SERVICE_ID}'.`,
+        );
       }
     }
-    if (removed) { removeServiceInstallState(); return true; }
+    if (removed) {
+      removeServiceInstallState();
+      return true;
+    }
   } else if (process.platform === "linux" && existsSync(unitPath())) {
-    try { uninstallSystemd(); removeServiceInstallState(); return true; } catch {
-      try { unlinkSync(unitPath()); removeServiceInstallState(); return true; } catch { return false; }
+    try {
+      uninstallSystemd();
+      removeServiceInstallState();
+      return true;
+    } catch {
+      try {
+        unlinkSync(unitPath());
+        removeServiceInstallState();
+        return true;
+      } catch {
+        return false;
+      }
     }
   }
   return false;
@@ -1709,27 +2264,45 @@ export interface WindowsServiceDiagnosticInputs {
   diagnostics: string;
 }
 
-export function deriveWindowsServiceDiagnostic(inputs: WindowsServiceDiagnosticInputs): ServiceDiagnostic {
+export function deriveWindowsServiceDiagnostic(
+  inputs: WindowsServiceDiagnosticInputs,
+): ServiceDiagnostic {
   const schedulerState = readWindowsSchedulerXmlState(inputs.schedulerXml);
   const schedulerInstalled = schedulerState.installed;
   const schedulerEnabled = schedulerState.enabled;
-  const schedulerAssetsHealthy = inputs.schedulerAssetsPresent && schedulerState.registrationHealthy;
+  const schedulerAssetsHealthy =
+    inputs.schedulerAssetsPresent && schedulerState.registrationHealthy;
   const nativeInstalled = inputs.nativeStatus !== "nonexistent";
   const conflict = schedulerInstalled && nativeInstalled;
   const backendStateMismatch = schedulerInstalled
     ? inputs.recordedBackend !== "scheduler"
     : nativeInstalled && inputs.recordedBackend !== "native";
-  const stale = inputs.staleBakedPaths
-    || (schedulerInstalled && !schedulerAssetsHealthy)
-    || backendStateMismatch
-    || (inputs.nativeStatus === "nonexistent" && inputs.nativeRepairAssetsOnly);
-  const backend = schedulerInstalled ? "scheduler" : nativeInstalled ? "native" : null;
-  const enabled = schedulerInstalled ? schedulerEnabled : inputs.nativeStatus === "started";
-  const running = nativeInstalled ? inputs.nativeStatus === "started" : schedulerInstalled && schedulerEnabled;
-  const viable = !conflict && !stale
-    && (schedulerInstalled ? schedulerEnabled && schedulerAssetsHealthy : inputs.nativeStatus === "started");
-  const startable = !conflict && !stale
-    && (schedulerInstalled
+  const stale =
+    inputs.staleBakedPaths ||
+    (schedulerInstalled && !schedulerAssetsHealthy) ||
+    backendStateMismatch ||
+    (inputs.nativeStatus === "nonexistent" && inputs.nativeRepairAssetsOnly);
+  const backend = schedulerInstalled
+    ? "scheduler"
+    : nativeInstalled
+      ? "native"
+      : null;
+  const enabled = schedulerInstalled
+    ? schedulerEnabled
+    : inputs.nativeStatus === "started";
+  const running = nativeInstalled
+    ? inputs.nativeStatus === "started"
+    : schedulerInstalled && schedulerEnabled;
+  const viable =
+    !conflict &&
+    !stale &&
+    (schedulerInstalled
+      ? schedulerEnabled && schedulerAssetsHealthy
+      : inputs.nativeStatus === "started");
+  const startable =
+    !conflict &&
+    !stale &&
+    (schedulerInstalled
       ? schedulerEnabled && schedulerAssetsHealthy
       : inputs.nativeStatus === "started" || inputs.nativeStatus === "stopped");
   const detail = conflict
@@ -1737,11 +2310,15 @@ export function deriveWindowsServiceDiagnostic(inputs: WindowsServiceDiagnosticI
     : stale
       ? "stale or missing service assets — run 'ocx service install' to repair"
       : schedulerInstalled
-        ? schedulerEnabled ? "Task Scheduler enabled" : "Task Scheduler disabled"
+        ? schedulerEnabled
+          ? "Task Scheduler enabled"
+          : "Task Scheduler disabled"
         : nativeInstalled
           ? `native (WinSW ${WINSW_VERSION}): ${inputs.nativeStatus}`
           : "not installed";
-  const summary = backend ? `installed, ${detail} (${inputs.diagnostics})` : `not installed (${inputs.diagnostics})`;
+  const summary = backend
+    ? `installed, ${detail} (${inputs.diagnostics})`
+    : `not installed (${inputs.diagnostics})`;
   return {
     supported: true,
     installed: schedulerInstalled || nativeInstalled,
@@ -1768,21 +2345,40 @@ export function diagnoseService(): ServiceDiagnostic {
     const running = installed && Boolean(statusLaunchd());
     const stale = installed && bakedServicePathsDiagnostic() !== null;
     const viable = installed && running && !stale;
-    const summary = !installed ? `not installed (${diagnostics})`
-      : stale ? `installed, but stale (launchd; ${diagnostics})`
-        : running ? `installed and loaded (launchd; ${diagnostics})`
+    const summary = !installed
+      ? `not installed (${diagnostics})`
+      : stale
+        ? `installed, but stale (launchd; ${diagnostics})`
+        : running
+          ? `installed and loaded (launchd; ${diagnostics})`
           : `installed, not loaded (launchd; ${diagnostics})`;
-    return { supported: true, installed, enabled: running, running, viable, startable: installed && !stale, stale, conflict: false, backend: "launchd", summary };
+    return {
+      supported: true,
+      installed,
+      enabled: running,
+      running,
+      viable,
+      startable: installed && !stale,
+      stale,
+      conflict: false,
+      backend: "launchd",
+      summary,
+    };
   }
   if (process.platform === "win32") {
     const schedulerXml = statusWindowsXml();
-    const schedulerAssetsPresent = [windowsServiceScriptPath(), windowsLauncherVbsPath(), windowsTaskXmlPath()]
-      .every(existsSync);
+    const schedulerAssetsPresent = [
+      windowsServiceScriptPath(),
+      windowsLauncherVbsPath(),
+      windowsTaskXmlPath(),
+    ].every(existsSync);
     const nativeStatus = statusWinswRaw();
     const installState = readServiceInstallState();
     const recordedBackend: ServiceBackend | null = !installState
       ? null
-      : installState.backend === "native" ? "native" : "scheduler";
+      : installState.backend === "native"
+        ? "native"
+        : "scheduler";
     return deriveWindowsServiceDiagnostic({
       schedulerXml,
       schedulerAssetsPresent,
@@ -1794,7 +2390,19 @@ export function diagnoseService(): ServiceDiagnostic {
     });
   }
   if (process.platform === "linux") {
-    if (existsSync("/.dockerenv")) return { supported: false, installed: false, enabled: false, running: false, viable: false, startable: false, stale: false, conflict: false, backend: null, summary: "unsupported in Docker" };
+    if (existsSync("/.dockerenv"))
+      return {
+        supported: false,
+        installed: false,
+        enabled: false,
+        running: false,
+        viable: false,
+        startable: false,
+        stale: false,
+        conflict: false,
+        backend: null,
+        summary: "unsupported in Docker",
+      };
     const systemUnit = diagnoseSystemSystemdUnit();
     if (systemUnit?.installed) {
       return {
@@ -1807,24 +2415,79 @@ export function diagnoseService(): ServiceDiagnostic {
         stale: false,
         conflict: false,
         backend: "systemd",
-        summary: systemUnit.enabled && systemUnit.running
-          ? `systemd system unit running, unmanaged (${diagnostics})`
-          : `systemd system unit present but ${!systemUnit.enabled ? "disabled" : "not running"}, unmanaged (${diagnostics})`,
+        summary:
+          systemUnit.enabled && systemUnit.running
+            ? `systemd system unit running, unmanaged (${diagnostics})`
+            : `systemd system unit present but ${!systemUnit.enabled ? "disabled" : "not running"}, unmanaged (${diagnostics})`,
       };
     }
-    if (!isSystemd()) return { supported: false, installed: false, enabled: false, running: false, viable: false, startable: false, stale: false, conflict: false, backend: null, summary: "unsupported: systemd not found" };
-    const installed = existsSync(unitPath()) && !isMaskedSystemdUnit(unitPath());
-    const enabled = installed && (() => { try { return sh(`systemctl --user is-enabled ${TASK}`) === "enabled"; } catch { return false; } })();
-    const running = installed && (() => { try { return sh(`systemctl --user is-active ${TASK}`) === "active"; } catch { return false; } })();
+    if (!isSystemd())
+      return {
+        supported: false,
+        installed: false,
+        enabled: false,
+        running: false,
+        viable: false,
+        startable: false,
+        stale: false,
+        conflict: false,
+        backend: null,
+        summary: `unsupported: systemd not found (${diagnostics})`,
+      };
+    const installed =
+      existsSync(unitPath()) && !isMaskedSystemdUnit(unitPath());
+    const enabled =
+      installed &&
+      (() => {
+        try {
+          return sh(`systemctl --user is-enabled ${TASK}`) === "enabled";
+        } catch {
+          return false;
+        }
+      })();
+    const running =
+      installed &&
+      (() => {
+        try {
+          return sh(`systemctl --user is-active ${TASK}`) === "active";
+        } catch {
+          return false;
+        }
+      })();
     const stale = installed && bakedServicePathsDiagnostic() !== null;
     const viable = installed && enabled && running && !stale;
-    const summary = !installed ? `not installed (${diagnostics})`
-      : stale ? `installed, but stale (systemd user; ${diagnostics})`
-        : viable ? `installed, enabled and running (systemd user; ${diagnostics})`
+    const summary = !installed
+      ? `not installed (${diagnostics})`
+      : stale
+        ? `installed, but stale (systemd user; ${diagnostics})`
+        : viable
+          ? `installed, enabled and running (systemd user; ${diagnostics})`
           : `installed, but ${!enabled ? "disabled" : "not running"} (systemd user; ${diagnostics})`;
-    return { supported: true, installed, enabled, running, viable, startable: installed && !stale, stale, conflict: false, backend: "systemd", summary };
+    return {
+      supported: true,
+      installed,
+      enabled,
+      running,
+      viable,
+      startable: installed && !stale,
+      stale,
+      conflict: false,
+      backend: "systemd",
+      summary,
+    };
   }
-  return { supported: false, installed: false, enabled: false, running: false, viable: false, startable: false, stale: false, conflict: false, backend: null, summary: `unsupported on ${process.platform}` };
+  return {
+    supported: false,
+    installed: false,
+    enabled: false,
+    running: false,
+    viable: false,
+    startable: false,
+    stale: false,
+    conflict: false,
+    backend: null,
+    summary: `unsupported on ${process.platform} (${diagnostics})`,
+  };
 }
 
 export function serviceStatusSummary(): string {
@@ -1851,29 +2514,68 @@ export function parseServiceArgs(args: string[]): ParsedServiceArgs {
   const invalid: string[] = [];
   for (const arg of args) {
     if (arg === "--native") {
-      if (backend === "scheduler") { invalid.push("--native (conflicts with --scheduler)"); continue; }
+      if (backend === "scheduler") {
+        invalid.push("--native (conflicts with --scheduler)");
+        continue;
+      }
       backend = "native";
-    }
-    else if (arg === "--scheduler") {
-      if (backend === "native") { invalid.push("--scheduler (conflicts with --native)"); continue; }
+    } else if (arg === "--scheduler") {
+      if (backend === "native") {
+        invalid.push("--scheduler (conflicts with --native)");
+        continue;
+      }
       backend = "scheduler";
-    }
-    else if (arg.startsWith("--")) invalid.push(arg);
+    } else if (arg.startsWith("--")) invalid.push(arg);
     else if (sub === undefined) sub = arg;
     else invalid.push(arg);
   }
   return { sub: normalizeServiceSubcommand(sub), backend, invalid };
 }
 
-export async function serviceCommand(...args: (string | undefined)[]): Promise<void> {
+const SERVICE_SUBCOMMANDS = new Set([
+  "install",
+  "repair",
+  "start",
+  "stop",
+  "status",
+  "uninstall",
+  "remove",
+]);
+
+function printServiceUsage(): never {
+  console.error(
+    "Usage: ocx service [install|repair|start|stop|status|uninstall|remove] [--native|--scheduler]",
+  );
+  console.error(
+    "       With no subcommand, installs/updates and starts the background service.",
+  );
+  console.error(
+    "       repair: refresh assets and restart an already-installed service (no admin re-prompt).",
+  );
+  console.error(
+    "       --native (Windows only): register a real SCM service via WinSW instead of Task Scheduler.",
+  );
+  process.exit(1);
+}
+
+export async function serviceCommand(
+  ...args: (string | undefined)[]
+): Promise<void> {
   const parsed = parseServiceArgs(args.filter((a): a is string => Boolean(a)));
   const command = parsed.sub;
   if (parsed.invalid.length > 0) {
     console.error(`Unknown service option: ${parsed.invalid.join(" ")}`);
     process.exit(1);
   }
+  // Usage errors are host-independent: an unknown subcommand must print usage on
+  // every platform, so this validation runs before any service-manager capability
+  // gate. The Docker/systemd early exits used to swallow it and report an
+  // environment problem for what is really a typo in the subcommand.
+  if (!SERVICE_SUBCOMMANDS.has(command)) printServiceUsage();
   if (parsed.backend && command !== "install") {
-    console.error("--native/--scheduler apply to `ocx service install` only; other subcommands use the installed backend.");
+    console.error(
+      "--native/--scheduler apply to `ocx service install` only; other subcommands use the installed backend.",
+    );
     process.exit(1);
   }
   if (parsed.backend === "native" && process.platform !== "win32") {
@@ -1884,14 +2586,20 @@ export async function serviceCommand(...args: (string | undefined)[]): Promise<v
     assertServiceEnvironmentMatchesInstall();
     assertServiceAuthEnvironment();
     await repairService();
-    console.log("✅ opencodex background service repaired (assets refreshed, no Task Scheduler re-registration).");
+    console.log(
+      "✅ opencodex background service repaired (assets refreshed, no Task Scheduler re-registration).",
+    );
     return;
   }
   // Non-install subcommands follow the backend recorded at install time (state v2).
-  const backend: ServiceBackend = parsed.backend ?? (process.platform === "win32" ? readServiceBackend() : "scheduler");
+  const backend: ServiceBackend =
+    parsed.backend ??
+    (process.platform === "win32" ? readServiceBackend() : "scheduler");
   const ops = platformOps(backend);
   if (!ops) {
-    console.error("ocx service supports macOS (launchd), Windows (Task Scheduler), and Linux (systemd).");
+    console.error(
+      "ocx service supports macOS (launchd), Windows (Task Scheduler), and Linux (systemd).",
+    );
     process.exit(1);
   }
   switch (command) {
@@ -1899,10 +2607,13 @@ export async function serviceCommand(...args: (string | undefined)[]): Promise<v
       assertServiceEnvironmentMatchesInstall();
       assertServiceAuthEnvironment();
       await ops.install();
-      console.log(backend === "native"
-        ? "✅ opencodex native service installed + started (windowless, starts at boot, auto-restarts on crash)."
-        : "✅ opencodex service installed + started (auto-starts on login, auto-restarts on crash).");
-      if (process.platform === "linux") console.log("   For auto-start on boot: loginctl enable-linger $USER");
+      console.log(
+        backend === "native"
+          ? "✅ opencodex native service installed + started (windowless, starts at boot, auto-restarts on crash)."
+          : "✅ opencodex service installed + started (auto-starts on login, auto-restarts on crash).",
+      );
+      if (process.platform === "linux")
+        console.log("   For auto-start on boot: loginctl enable-linger $USER");
       // Service users never reach the `ocx start` prompt: the proxy they run is the
       // supervised child, which always carries OCX_SERVICE=1. This command, though, is
       // hand-typed in a real terminal, so it is the one interactive moment they get.
@@ -1921,8 +2632,12 @@ export async function serviceCommand(...args: (string | undefined)[]): Promise<v
       await stopTrackedProxyForServiceCommand();
       {
         const restore = restoreNativeCodex();
-        if (restore.success) console.log("✅ service stopped + native Codex restored.");
-        else console.error(`⚠️ service stopped, but native Codex restore FAILED: ${restore.message}\nRun \`ocx restore\` (or check $CODEX_HOME/config.toml) before using native Codex.`);
+        if (restore.success)
+          console.log("✅ service stopped + native Codex restored.");
+        else
+          console.error(
+            `⚠️ service stopped, but native Codex restore FAILED: ${restore.message}\nRun \`ocx restore\` (or check $CODEX_HOME/config.toml) before using native Codex.`,
+          );
         // The Grok fence is the other managed config this command owns. Leaving it behind
         // pointed grok at a dead endpoint while native Codex was already restored.
         const grok = stripGrokConfig();
@@ -1932,42 +2647,55 @@ export async function serviceCommand(...args: (string | undefined)[]): Promise<v
       break;
     case "status": {
       const s = ops.status();
-      console.log(s ? `✅ running:\n${s}` : "❌ service not installed/running.");
+      console.log(
+        s ? `✅ running:\n${s}` : "❌ service not installed/running.",
+      );
       console.log(`Diagnostics: ${serviceDiagnosticsSummary()}`);
       break;
     }
     case "uninstall":
     case "remove":
       assertServiceEnvironmentMatchesInstall();
-      try { ops.stop(); } catch (err) {
-        console.warn(`⚠️  Service stop failed: ${err instanceof Error ? err.message : String(err)}`);
+      try {
+        ops.stop();
+      } catch (err) {
+        console.warn(
+          `⚠️  Service stop failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
       await stopTrackedProxyForServiceCommand();
       try {
         ops.uninstall();
       } catch (err) {
-        console.error(`❌ Service uninstall failed: ${err instanceof Error ? err.message : String(err)}`);
-        console.error("The service may still be installed. Check with 'ocx service status' or remove manually.");
+        console.error(
+          `❌ Service uninstall failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        console.error(
+          "The service may still be installed. Check with 'ocx service status' or remove manually.",
+        );
         process.exit(1);
       }
       {
         const restore = restoreNativeCodex();
         if (!restore.success) {
-          console.error(`⚠️ native Codex restore FAILED: ${restore.message}\nRun \`ocx restore\` before using native Codex.`);
+          console.error(
+            `⚠️ native Codex restore FAILED: ${restore.message}\nRun \`ocx restore\` before using native Codex.`,
+          );
         }
         const grok = stripGrokConfig();
         if (grok.changed) console.log(`↩️  ${grok.message}`);
         else if (!grok.ok) console.error(`⚠️  ${grok.message}`);
       }
       removeServiceInstallState();
-      try { if (existsSync(serviceApiTokenFilePath())) unlinkSync(serviceApiTokenFilePath()); } catch { /* best-effort */ }
+      try {
+        if (existsSync(serviceApiTokenFilePath()))
+          unlinkSync(serviceApiTokenFilePath());
+      } catch {
+        /* best-effort */
+      }
       console.log("✅ service uninstalled.");
       break;
     default:
-      console.error("Usage: ocx service [install|repair|start|stop|status|uninstall|remove] [--native|--scheduler]");
-      console.error("       With no subcommand, installs/updates and starts the background service.");
-      console.error("       repair: refresh assets and restart an already-installed service (no admin re-prompt).");
-      console.error("       --native (Windows only): register a real SCM service via WinSW instead of Task Scheduler.");
-      process.exit(1);
+      printServiceUsage();
   }
 }
