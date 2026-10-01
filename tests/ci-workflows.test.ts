@@ -428,16 +428,16 @@ describe("GitHub Actions hardening", () => {
     // deletes nothing visible: the workflow still exists, still lists the right
     // branches, and simply never fires for a PR that touches only that surface.
     // Round 16 dropped `src/**`, `tests/**`, and both workflow self-references
-    // one at a time and the suite stayed green each time. Pin the list.
+    // one at a time and the suite stayed green each time.
+    //
+    // Workflow files are covered by a glob rather than an enumerated list. The
+    // enumeration had drifted: `container.yml` and `deploy-docs.yml` were
+    // missing, so a PR touching only one of them ran no tests whatsoever, and
+    // three dependabot action bumps merged a commit that broke this very file
+    // without any check firing. A glob cannot drift the same way.
     const ciPaths = [
       ".gitattributes",
-      ".github/workflows/ci.yml",
-      ".github/workflows/deploy.yml",
-      ".github/workflows/enforce-pr-target.yml",
-      ".github/workflows/issue-triage.yml",
-      ".github/workflows/publish-on-tag.yml",
-      ".github/workflows/release.yml",
-      ".github/workflows/stale-needs-info.yml",
+      ".github/workflows/**",
       ".npmignore",
       "bin/**",
       "bun.lock",
@@ -3025,10 +3025,10 @@ describe("GitHub Actions hardening", () => {
       "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
     );
     expect(workflow).toContain(
-      "withastro/action@e84f40bd8d2caa9e768ec82ad30dd81f0b280853",
+      "withastro/action@3eafd002e65cc31b4f0eae0bb05450d521562247",
     );
     expect(workflow).toContain(
-      "actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128",
+      "actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346",
     );
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
 
@@ -3635,7 +3635,7 @@ describe("GitHub Actions hardening", () => {
       "docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0",
     );
     expect(text).toContain(
-      "docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0",
+      "docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0",
     );
 
     const imageSteps = image?.steps ?? [];
@@ -3692,10 +3692,10 @@ describe("GitHub Actions hardening", () => {
       "docker/login-action@dbcb813823bdd20940b903addbd779551569679f",
     );
     expect(imageBuild!.uses).toBe(
-      "docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a",
+      "docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc",
     );
     expect(publishBuild!.uses).toBe(
-      "docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a",
+      "docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc",
     );
     expect(imageBuild!.with?.push).toBe(false);
     expect(imageBuild!.with?.load).toBe(true);

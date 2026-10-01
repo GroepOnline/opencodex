@@ -14,13 +14,12 @@ on:
       - "package.json"
       - "bun.lock"
       - "tsconfig.json"
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/deploy.yml"
-      - ".github/workflows/release.yml"
-      - ".github/workflows/enforce-pr-target.yml"
-      - ".github/workflows/stale-needs-info.yml"
-      - ".github/workflows/issue-triage.yml"
-      - ".github/workflows/publish-on-tag.yml"
+      # Glob, not a per-file list. The enumerated list silently drifted:
+      # container.yml and deploy-docs.yml were omitted, so a PR that only
+      # bumped an action pin in one of them ran NO tests at all — which is how
+      # three dependabot merges landed a commit that broke
+      # tests/ci-workflows.test.ts without anything noticing.
+      - ".github/workflows/**"
   push:
     branches: [main, preview, dev]
     paths:
@@ -34,13 +33,9 @@ on:
       - "package.json"
       - "bun.lock"
       - "tsconfig.json"
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/deploy.yml"
-      - ".github/workflows/release.yml"
-      - ".github/workflows/enforce-pr-target.yml"
-      - ".github/workflows/stale-needs-info.yml"
-      - ".github/workflows/issue-triage.yml"
-      - ".github/workflows/publish-on-tag.yml"
+      # Must stay identical to the pull_request list above, or a change lands
+      # on main having been checked on one trigger and not the other.
+      - ".github/workflows/**"
   workflow_dispatch:
 
 permissions:
