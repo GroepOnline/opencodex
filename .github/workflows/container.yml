@@ -6,13 +6,12 @@ name: Container image
 # release.yml creates the tag with GITHUB_TOKEN, and tag pushes made with that
 # token never start a `push` run; release.yml therefore dispatches this workflow
 # on the exact tag so the GHCR image carries the release identity (SHA + version).
-# Pull requests, push to dev, and off-main branch dispatch build-and-load. They do not push.
+# Pull requests and off-main branch dispatch build-and-load. They do not push.
 # packages permissions stay static literals. actionlint rejects expressions there.
 on:
   pull_request:
-    branches: [main, dev]
+    branches: [main]
   push:
-    branches: [dev]
     tags:
       - "v*.*.*"
   workflow_dispatch:
@@ -31,7 +30,7 @@ concurrency:
 
 jobs:
   image:
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev') || (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v'))
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

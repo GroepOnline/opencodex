@@ -20,6 +20,7 @@ The workflow runs on `main` pushes touching `docs-site/**` or the workflow itsel
 `docs-site`, uploads the artifact, and deploys with GitHub Pages.
 
 [Decision Log]
+
 - 목적과 의도: Serve this fork's public documentation on a ChefGroep hostname, proxied by Cloudflare.
 - 기존 구현 및 제약 조건: Upstream Pages still owns `opencodex.me`. GitHub project Pages at `/opencodex` 404s root-relative `/_astro` assets. `ocx.chefgroep.online` is the live GUI tunnel, not docs.
 - 검토한 주요 대안: Keep `groeponline.github.io/opencodex` as canonical; steal `opencodex.me`; put docs on the ocx tunnel.
@@ -37,12 +38,12 @@ bun run build
 
 ## GitHub workflow map
 
-| Workflow | Trigger | Purpose |
-| --- | --- | --- |
-| `.github/workflows/ci.yml` | `pull_request`, `push` to `main`/`dev`/`preview`, or manual dispatch when runtime/package paths change | Cross-platform runtime/package quality gate on Linux, Windows, and macOS. The `test` job (Bun) runs typecheck, `bun test --isolate tests`, the privacy scan, release-helper syntax check, GUI lint/build, and `ocx help`; `npm-global-smoke` (Node only, **no setup-bun**) builds package assets, packs the tarball, installs it globally, and runs `ocx help` to prove the bundled-Bun launcher works without a separate Bun install. |
-| `.github/workflows/release.yml` | Manual dispatch only | npm publish/dry-run workflow. It requires the exact `GITHUB_SHA` to have a successful Cross-platform CI run before publish or dry-run. |
-| `.github/workflows/deploy-docs.yml` | `push` to `main` touching `docs-site/**` or the workflow, or manual dispatch | Build and publish the Astro/Starlight docs site to GitHub Pages. |
-| `.github/workflows/service-lifecycle.yml` | `push` touching `src/service.ts`, `src/cli/index.ts`, or the workflow, or manual dispatch | Linux systemd smoke test: install, verify, `ocx stop` stops the service, uninstall. |
+| Workflow                                  | Trigger                                                                                          | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.github/workflows/ci.yml`                | `pull_request`, `push` to `main`/`preview`, or manual dispatch when runtime/package paths change | Cross-platform runtime/package quality gate on Linux, Windows, and macOS. The `test` job (Bun) runs typecheck, `bun test --isolate tests`, the privacy scan, release-helper syntax check, GUI lint/build, and `ocx help`; `npm-global-smoke` (Node only, **no setup-bun**) builds package assets, packs the tarball, installs it globally, and runs `ocx help` to prove the bundled-Bun launcher works without a separate Bun install. |
+| `.github/workflows/release.yml`           | Manual dispatch only                                                                             | npm publish/dry-run workflow. It requires the exact `GITHUB_SHA` to have a successful Cross-platform CI run before publish or dry-run.                                                                                                                                                                                                                                                                                                 |
+| `.github/workflows/deploy-docs.yml`       | `push` to `main` touching `docs-site/**` or the workflow, or manual dispatch                     | Build and publish the Astro/Starlight docs site to GitHub Pages.                                                                                                                                                                                                                                                                                                                                                                       |
+| `.github/workflows/service-lifecycle.yml` | `push` touching `src/service.ts`, `src/cli/index.ts`, or the workflow, or manual dispatch        | Linux systemd smoke test: install, verify, `ocx stop` stops the service, uninstall.                                                                                                                                                                                                                                                                                                                                                    |
 
 Docs-only changes intentionally route through the docs workflow instead of the runtime CI gate. If a
 docs change also edits runtime/package/release files, run the relevant local runtime checks before
@@ -70,6 +71,7 @@ repository settings remain the source of truth for actual account permissions an
 enforcement.
 
 [Decision Log]
+
 - 목적과 의도: Make project ownership and review authority discoverable without exposing credentials or treating a documentation file as an access-control mechanism.
 - 기존 구현 및 제약 조건: Contribution and security docs referred to maintainers generically, while the repository had no maintainer roster or CODEOWNERS policy. GitHub permissions can change independently of the source tree.
 - 검토한 주요 대안: Keep the roster only in GitHub settings; introduce a larger standalone governance charter; list raw GitHub permission levels in the repository.
@@ -108,12 +110,12 @@ Release workflow dispatch. Docs publishing is separate from npm release publishi
 
 Every npm release version must map cleanly across four surfaces:
 
-| Surface | Required state |
-| --- | --- |
-| `package.json` | `version` equals the release workflow `version` input. |
-| npm registry | `@groeponline/opencodex@<version>` does not exist before publish, then exists after publish with the requested dist-tag. |
-| Git tag | `v<version>` does not exist before publish, then points at the exact release commit. |
-| GitHub Release | `v<version>` does not exist before publish, then is created from the exact release commit. |
+| Surface        | Required state                                                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `package.json` | `version` equals the release workflow `version` input.                                                                   |
+| npm registry   | `@groeponline/opencodex@<version>` does not exist before publish, then exists after publish with the requested dist-tag. |
+| Git tag        | `v<version>` does not exist before publish, then points at the exact release commit.                                     |
+| GitHub Release | `v<version>` does not exist before publish, then is created from the exact release commit.                               |
 
 The release must fail before `npm publish` if npm, the Git tag, or the GitHub Release already has the
 requested version. This prevents partial releases where npm is published but GitHub Release creation

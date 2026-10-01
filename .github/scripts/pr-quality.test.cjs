@@ -8,7 +8,6 @@ const {
   authorHasPushPermission,
   assessPrDescription,
   collectPrQualityFailures,
-  isSameGithubRepo,
 } = require("./pr-quality.cjs");
 
 describe("isWrongAncestry", () => {
@@ -21,12 +20,21 @@ describe("isWrongAncestry", () => {
 
   it("uses threshold 20 by default", () => {
     assert.equal(ANCESTRY_BEHIND_THRESHOLD, 20);
-    assert.equal(isWrongAncestry({ behindMain: 0, behindBase: 20, aheadMain: 1 }), true);
-    assert.equal(isWrongAncestry({ behindMain: 0, behindBase: 19, aheadMain: 1 }), false);
+    assert.equal(
+      isWrongAncestry({ behindMain: 0, behindBase: 20, aheadMain: 1 }),
+      true,
+    );
+    assert.equal(
+      isWrongAncestry({ behindMain: 0, behindBase: 19, aheadMain: 1 }),
+      false,
+    );
   });
 
   it("passes when head is behind main (not sitting on main tip)", () => {
-    assert.equal(isWrongAncestry({ behindMain: 1, behindBase: 44, aheadMain: 1 }), false);
+    assert.equal(
+      isWrongAncestry({ behindMain: 1, behindBase: 44, aheadMain: 1 }),
+      false,
+    );
   });
 
   it("passes stale dev-based branches that are many commits ahead of main", () => {
@@ -53,7 +61,9 @@ describe("assessPrDescription", () => {
     assert.equal(assessPrDescription("").ok, false);
     assert.equal(assessPrDescription("   ").ok, false);
     assert.equal(
-      assessPrDescription("<!-- release notes by coderabbit.ai -->\n\n<!-- end -->").reason,
+      assessPrDescription(
+        "<!-- release notes by coderabbit.ai -->\n\n<!-- end -->",
+      ).reason,
       "empty",
     );
   });
@@ -122,7 +132,8 @@ describe("collectPrQualityFailures", () => {
     const failures = collectPrQualityFailures({
       baseRef: "main",
       allowedBases: allowed,
-      body: "## Summary\n" + "x".repeat(50) + "\n\n## Test plan\n" + "y".repeat(50),
+      body:
+        "## Summary\n" + "x".repeat(50) + "\n\n## Test plan\n" + "y".repeat(50),
       behindMain: 0,
       behindBase: 0,
       authorPermission: "read",
@@ -279,11 +290,13 @@ describe("collectPrQualityFailures", () => {
     assert.ok(failures.some((f) => f.code === "wrong_base"));
   });
 
-  it("does not flag wrong_base for same-repo maintainer promotion main + head dev", () => {
+  it("no longer special-cases a promotion-shaped main + head dev PR", () => {
+    // The dev → main promotion exception was removed with the retired branch.
+    // With `main` outside this test's allow-list, a promotion-shaped PR is an
+    // ordinary wrong_base like any other non-allow-listed base — the head name
+    // never gets special treatment again.
     const failures = collectPrQualityFailures({
       baseRef: "main",
-      headRef: "dev",
-      headFromSameRepo: true,
       allowedBases: allowed,
       body: [
         "## Summary",
@@ -297,15 +310,13 @@ describe("collectPrQualityFailures", () => {
       behindBase: 0,
       authorPermission: "write",
     });
-    assert.ok(!failures.some((f) => f.code === "wrong_base"));
+    assert.ok(failures.some((f) => f.code === "wrong_base"));
     assert.ok(!failures.some((f) => f.code === "wrong_ancestry"));
   });
 
-  it("still flags wrong_base for a fork head named dev targeting main", () => {
+  it("still flags wrong_base for a head named dev on a non-allow-listed base", () => {
     const failures = collectPrQualityFailures({
       baseRef: "main",
-      headRef: "dev",
-      headFromSameRepo: false,
       allowedBases: allowed,
       body: [
         "## Summary",
@@ -325,7 +336,6 @@ describe("collectPrQualityFailures", () => {
   it("still flags wrong_base for main + head other", () => {
     const failures = collectPrQualityFailures({
       baseRef: "main",
-      headRef: "feat/other",
       allowedBases: allowed,
       body: [
         "## Summary",
@@ -340,48 +350,5 @@ describe("collectPrQualityFailures", () => {
       authorPermission: "read",
     });
     assert.ok(failures.some((f) => f.code === "wrong_base"));
-  });
-});
-
-describe("isSameGithubRepo", () => {
-  it("matches numeric ids and rejects a fork id", () => {
-    assert.equal(isSameGithubRepo({ id: 1 }, { id: 1 }), true);
-    assert.equal(isSameGithubRepo({ id: 1 }, { id: 2 }), false);
-  });
-
-  it("does not treat missing ids as equal", () => {
-    assert.equal(isSameGithubRepo({}, {}), false);
-    assert.equal(isSameGithubRepo(null, { id: 1 }), false);
-  });
-
-  it("falls back to full_name then owner/name", () => {
-    assert.equal(
-      isSameGithubRepo(
-        { full_name: "GroepOnline/opencodex" },
-        { full_name: "GroepOnline/opencodex" },
-      ),
-      true,
-    );
-    assert.equal(
-      isSameGithubRepo(
-        { full_name: "fork/opencodex" },
-        { full_name: "GroepOnline/opencodex" },
-      ),
-      false,
-    );
-    assert.equal(
-      isSameGithubRepo(
-        { name: "opencodex", owner: { login: "GroepOnline" } },
-        { name: "opencodex", owner: { login: "GroepOnline" } },
-      ),
-      true,
-    );
-    assert.equal(
-      isSameGithubRepo(
-        { name: "opencodex", owner: { login: "contributor" } },
-        { name: "opencodex", owner: { login: "GroepOnline" } },
-      ),
-      false,
-    );
   });
 });

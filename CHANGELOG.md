@@ -27,6 +27,14 @@ All notable changes to the GroepOnline `opencodex` fork. Format follows
 
 ### Security
 
+- `security-audit.yml` only triggered for pull requests targeting `dev`, so
+  since `main` became the integration line the audit never ran on any pull
+  request at all. It now gates pull requests targeting `main` again (push stays
+  on `main`), restoring fail-closed audit gating before merge. The retired
+  `dev` CI lanes (ci/container push triggers) and the dormant `dev` → `main`
+  promotion exception in `enforce-target` were removed together with the
+  branch; the exception was also dead logic, since `main` is always in the
+  allow-list.
 - Dependency advisories published 2026-09-29 are resolved; `bun audit` now
   reports zero findings at every severity in both the root and `gui` workspaces.
   `brace-expansion` 5.0.9 -> 5.0.12 (GHSA-qhr7-859c-m2p7, **high**, DoS via
