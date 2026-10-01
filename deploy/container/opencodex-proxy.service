@@ -1,9 +1,9 @@
 [Unit]
 Description=OpenCodex proxy (Docker Compose)
 Documentation=https://github.com/GroepOnline/opencodex
-After=docker.service network-online.target
+After=docker.service network-online.target tailscaled.service
 Requires=docker.service
-Wants=network-online.target
+Wants=network-online.target tailscaled.service
 
 [Service]
 Type=oneshot

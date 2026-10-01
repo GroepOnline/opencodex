@@ -135,7 +135,10 @@ describe("local/dev complete path", () => {
     expect(unit).toContain("ExecStop=/usr/bin/docker compose down");
     expect(unit).toContain("WorkingDirectory=/opt/opencodex");
     expect(unit).toContain("EnvironmentFile=-/opt/opencodex/.env");
-    expect(unit).toContain("After=docker.service network-online.target");
+    expect(unit).toContain(
+      "After=docker.service network-online.target tailscaled.service",
+    );
+    expect(unit).toContain("Wants=network-online.target tailscaled.service");
     expect(unit).not.toContain("/opt/chef/");
     expect(unit).not.toMatch(/100\.\d+\.\d+\.\d+/);
     expect(unit).not.toMatch(/[0-9a-f]{40}/);
