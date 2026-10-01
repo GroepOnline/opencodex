@@ -8,12 +8,14 @@ human dashboard. These are separate trust boundaries.
 
 | Gate | What the proxy checks | Typical use |
 | --- | --- | --- |
-| **Edge access gateway** | `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD` JWT (`cf-access-jwt-assertion` or `CF_Authorization`) | Optional outer browser gate during migration or defense in depth |
+| **Cloudflare Access (edge gateway example)** | `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD` JWT (`cf-access-jwt-assertion` or `CF_Authorization`) | Optional Cloudflare-specific outer browser gate during migration or defense in depth |
 | **Product OIDC** | Configured issuer/client, JWKS ID-token verification, `GET /oauth/login` → flow cookie → `/oauth/callback` | Browser identity enforced directly by OpenCodex |
 | **Admin token / GUI session** | `OPENCODEX_ADMIN_AUTH_TOKEN` or loopback-minted session | Local/admin management access |
 | **Service API token / client key** | OpenCodex data-plane admission credential | `/v1/*` only |
 
-An OIDC browser session never admits `/v1/*`. Edge-gateway and OIDC
+On deployments that require data-plane authentication, an OIDC browser
+session does not admit `/v1/*` by itself. Loopback deployments may admit
+`/v1/*` without an additional data-plane credential. Edge-gateway and OIDC
 configuration must not silently widen data-plane admission.
 
 `GET /healthz` remains governed by the deployment's health policy and should
