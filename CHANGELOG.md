@@ -7,6 +7,26 @@ All notable changes to the GroepOnline `opencodex` fork. Format follows
 
 ## [Unreleased]
 
+### Security
+
+- Dependency advisories published 2026-09-29 are resolved; `bun audit` now
+  reports zero findings at every severity in both the root and `gui` workspaces.
+  `brace-expansion` 5.0.9 -> 5.0.12 (GHSA-qhr7-859c-m2p7, **high**, DoS via
+  uncontrolled recursion), `fast-uri` 3.1.5 -> 3.1.8
+  (GHSA-hrr3-gc8f-f4qj), `ip-address` 10.4.0 -> 10.7.2 (four SSRF /
+  trust-boundary advisories), `hono` 4.12.x -> 4.13.12 (memory exhaustion,
+  query-parser differentials, JSX escaping), and `dompurify` 3.4.13 -> 3.4.16
+  (DOM XSS). All are `overrides` bumps, so no direct dependency range changed.
+- Cross-platform CI now triggers on `.github/workflows/**` instead of an
+  enumerated list of workflow files. The enumeration had drifted and omitted
+  `container.yml` and `deploy-docs.yml`, so a pull request touching only one of
+  them ran **no tests at all** — which is how three merged action-pin bumps
+  landed a commit that broke `tests/ci-workflows.test.ts` with nothing noticing.
+- `tests/ci-workflows.test.ts` action pins updated to the merged Dependabot
+  SHAs (`withastro/action` v6.1.3, `actions/deploy-pages` v5.0.1,
+  `docker/build-push-action` v7.4.0). Every pinned SHA was verified against the
+  upstream release tag before merge.
+
 ## [1.5.0] — 2026-09-22
 
 ### Added
