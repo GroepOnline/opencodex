@@ -21,7 +21,7 @@ on:
       # tests/ci-workflows.test.ts without anything noticing.
       - ".github/workflows/**"
   push:
-    branches: [main, preview, dev]
+    branches: [main, preview]
     paths:
       - "src/**"
       - "bin/**"

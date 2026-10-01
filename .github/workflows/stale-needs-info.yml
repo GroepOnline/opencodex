@@ -1,7 +1,7 @@
 name: Close stale needs-info issues
 
 # Scheduled workflows only run from the repository DEFAULT branch
-# (currently `main`), not from `dev`. Landing here on `dev` alone does not
+# (currently `main`). Landing here on a non-default branch alone does not
 # change live issue-stale behavior until the change is also on that default
 # branch.
 on:

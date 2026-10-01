@@ -21,9 +21,9 @@ see [The retired `dev2-go` line](#the-retired-dev2-go-line).
 
 - Pull requests target `main`. It is the only integration line. The
   target-branch check accepts `main` as the integration base. The
-  same-repository `dev` → `main` promotion leftover exception remains in the
-  check but has been dormant since `dev` was retired on 2026-10-01; a feature
-  or fork head targeting `dev` is `wrong_base`.
+  same-repository `dev` → `main` promotion leftover exception was removed
+  when `dev` was retired on 2026-10-01; a feature or fork head targeting `dev`
+  is `wrong_base`.
 - The **`enforce-target`** CI check rejects empty, thin, or malformed
   descriptions; authors with repository push permission skip the leftover
   ancestry heuristic only. Required technical checks must succeed on the exact

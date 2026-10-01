@@ -8,12 +8,12 @@ name: Security & Config Audit
 #   4. Privacy scan (credential/token/email leakage in tracked files)
 #   5. TypeScript strict typecheck
 #
-# Runs on every PR targeting dev, on push to dev/main, and on manual dispatch.
+# Runs on every PR targeting main, on push to main, and on manual dispatch.
 # A finding blocks merge — the fix is always a code change, never a suppression.
 
 on:
   pull_request:
-    branches: [dev]
+    branches: [main]
     paths:
       - "src/**"
       - "gui/src/**"
@@ -26,7 +26,7 @@ on:
       - "package.json"
       - "tsconfig.json"
   push:
-    branches: [dev, main]
+    branches: [main]
     paths:
       - "src/**"
       - "gui/src/**"

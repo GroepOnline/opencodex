@@ -35,14 +35,16 @@ function isWrongAncestry({
   aheadMainMax = ANCESTRY_AHEAD_MAIN_MAX,
 }) {
   return (
-    behindMain === 0 &&
-    behindBase >= threshold &&
-    aheadMain <= aheadMainMax
+    behindMain === 0 && behindBase >= threshold && aheadMain <= aheadMainMax
   );
 }
 
 function authorHasPushPermission(permission) {
-  return permission === "admin" || permission === "maintain" || permission === "write";
+  return (
+    permission === "admin" ||
+    permission === "maintain" ||
+    permission === "write"
+  );
 }
 
 /**
@@ -103,7 +105,9 @@ function assessPrDescription(body) {
   const cleaned = clean(withoutTemplate);
   if (!cleaned) {
     // Unterminated comment tails removed as well — see stripHtmlComments in issue-quality.cjs.
-    const strippedComments = withoutTemplate.replace(/<!--[\s\S]*?(?:-->|$)/g, "").trim();
+    const strippedComments = withoutTemplate
+      .replace(/<!--[\s\S]*?(?:-->|$)/g, "")
+      .trim();
     if (!strippedComments) return { ok: false, reason: "empty" };
     if (isPlaceholderOnlyValue(strippedComments)) {
       return { ok: false, reason: "placeholder" };
@@ -113,7 +117,9 @@ function assessPrDescription(body) {
   if (isPlaceholderOnlyValue(cleaned)) {
     return { ok: false, reason: "placeholder" };
   }
-  if (hasSubstantialStructuredContent(cleaned, MIN_SECTION_LEN, MIN_RICH_SECTIONS)) {
+  if (
+    hasSubstantialStructuredContent(cleaned, MIN_SECTION_LEN, MIN_RICH_SECTIONS)
+  ) {
     return { ok: true };
   }
   if (
@@ -123,34 +129,6 @@ function assessPrDescription(body) {
     return { ok: true };
   }
   return { ok: false, reason: "thin" };
-}
-
-/**
- * Fail-closed same-repository check. A fork can name its head `dev`; that is
- * not a maintainer promotion. Prefer numeric GitHub repo ids; fall back to
- * `full_name`, then owner/name. Missing fields never compare equal.
- */
-function isSameGithubRepo(headRepo, baseRepo) {
-  if (!headRepo || !baseRepo || typeof headRepo !== "object" || typeof baseRepo !== "object") {
-    return false;
-  }
-  if (typeof headRepo.id === "number" && typeof baseRepo.id === "number") {
-    return headRepo.id === baseRepo.id;
-  }
-  const headFull = typeof headRepo.full_name === "string" ? headRepo.full_name : "";
-  const baseFull = typeof baseRepo.full_name === "string" ? baseRepo.full_name : "";
-  if (headFull && baseFull) {
-    return headFull === baseFull;
-  }
-  const headOwner = headRepo.owner && headRepo.owner.login;
-  const baseOwner = baseRepo.owner && baseRepo.owner.login;
-  return Boolean(
-    headOwner &&
-      baseOwner &&
-      headOwner === baseOwner &&
-      headRepo.name &&
-      headRepo.name === baseRepo.name,
-  );
 }
 
 function collectPrQualityFailures({
@@ -165,15 +143,9 @@ function collectPrQualityFailures({
   ancestryLookupFailed = false,
   /** True when baseRef is another open PR's head (stacked child). */
   stackedBase = false,
-  /** PR head ref. Promotion also requires same-repository head. */
-  headRef,
-  /** True only when head and base resolve to the same GitHub repository. */
-  headFromSameRepo = false,
 }) {
   const failures = [];
-  const promotionBase =
-    baseRef === "main" && headRef === "dev" && headFromSameRepo === true;
-  const wrongBase = !allowedBases.includes(baseRef) && !stackedBase && !promotionBase;
+  const wrongBase = !allowedBases.includes(baseRef) && !stackedBase;
   if (wrongBase) {
     failures.push({ code: "wrong_base" });
   } else {
@@ -204,7 +176,6 @@ module.exports = {
   ANCESTRY_BEHIND_THRESHOLD,
   ANCESTRY_AHEAD_MAIN_MAX,
   isWrongAncestry,
-  isSameGithubRepo,
   authorHasPushPermission,
   assessPrDescription,
   collectPrQualityFailures,

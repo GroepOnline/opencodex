@@ -185,7 +185,7 @@ describe("GitHub Actions hardening", () => {
       ["pull_request", "refs/heads/main", "image"],
       ["pull_request", "refs/tags/v1.5.0", "image"],
       ["pull_request_target", "refs/heads/main", undefined],
-      ["push", "refs/heads/dev", "image"],
+      ["push", "refs/heads/dev", undefined],
       ["push", "refs/heads/main", undefined],
       ["push", "refs/tags/v1.5.0", "publish"],
       ["workflow_dispatch", "refs/heads/feature", "image"],
@@ -419,7 +419,6 @@ describe("GitHub Actions hardening", () => {
       };
     };
     expect([...(ci.on?.push?.branches ?? [])].sort()).toEqual([
-      "dev",
       "main",
       "preview",
     ]);
@@ -1226,9 +1225,17 @@ describe("GitHub Actions hardening", () => {
     // at once while every behavioural scenario below still passes.
     expect(script).toMatch(/const ALLOWED_BASES = \["main"\];/);
     expect(script).toMatch(/const DEFAULT_BASE = "main";/);
-    expect(script).toContain("headRef: pr.head.ref");
-    expect(script).toContain(
-      "headFromSameRepo: isSameGithubRepo(pr.head.repo, pr.base.repo)",
+    // The retired dev-promotion exception is gone for good. It was also dead
+    // logic — promotionBase required base `main`, which the allow-list already
+    // accepts — so removal is behaviour-neutral by construction. These pins
+    // keep it from being silently reintroduced.
+    expect(script).not.toContain("isSameGithubRepo");
+    expect(script).not.toContain("promotionBase");
+    const quality = await readText(".github/scripts/pr-quality.cjs");
+    expect(quality).not.toContain("isSameGithubRepo");
+    expect(quality).not.toContain("promotionBase");
+    expect(quality).toMatch(
+      /const wrongBase = !allowedBases\.includes\(baseRef\) && !stackedBase;/,
     );
 
     // Every mutation targets the PR the event fired for. `pull_number` is the
@@ -1631,7 +1638,10 @@ describe("GitHub Actions hardening", () => {
       expect(commentBody).not.toContain("dev2-go");
     });
 
-    test("a maintainer promotion PR from dev onto main is not wrong-base", async () => {
+    test("a head named dev onto main passes wrong-base only via the allow-list", async () => {
+      // The dev → main promotion exception was removed with the branch. A head
+      // named `dev` gets no special treatment: this passes only because `main`
+      // is the allow-listed base, exactly like any other head.
       const result = await run({
         pr: {
           base: { ref: "main" },
@@ -3569,10 +3579,9 @@ describe("GitHub Actions hardening", () => {
     };
 
     expect([...(workflow.on?.pull_request?.branches ?? [])].sort()).toEqual([
-      "dev",
       "main",
     ]);
-    expect([...(workflow.on?.push?.branches ?? [])]).toEqual(["dev"]);
+    expect([...(workflow.on?.push?.branches ?? [])]).toEqual([]);
     expect(workflow.on?.push?.tags).toEqual(["v*.*.*"]);
     expect(workflow.on).toHaveProperty("workflow_dispatch");
     expect(workflow.on?.workflow_dispatch?.inputs?.expected_sha).toEqual({
@@ -3604,7 +3613,7 @@ describe("GitHub Actions hardening", () => {
     });
     expect(text).not.toMatch(/packages:\s*\$\{\{/);
     expect(String(image?.if ?? "")).toContain("pull_request");
-    expect(String(image?.if ?? "")).toContain("refs/heads/dev");
+    expect(String(image?.if ?? "")).not.toContain("refs/heads/dev");
     expect(String(publish?.if ?? "")).toContain("refs/tags/v");
     expect(String(publish?.if ?? "")).toContain("workflow_dispatch");
     expect(String(publish?.if ?? "")).toContain("refs/heads/main");

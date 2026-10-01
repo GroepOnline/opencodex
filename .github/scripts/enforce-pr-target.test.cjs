@@ -6,7 +6,10 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
 
 describe("enforce-pr-target workflow", () => {
-  const workflowPath = path.join(__dirname, "../workflows/enforce-pr-target.yml");
+  const workflowPath = path.join(
+    __dirname,
+    "../workflows/enforce-pr-target.yml",
+  );
   const workflow = fs.readFileSync(workflowPath, "utf8");
 
   it("uses pull_request_target without checking out PR head code", () => {
@@ -23,8 +26,13 @@ describe("enforce-pr-target workflow", () => {
     // "Resource not accessible by integration" when contents stays unset/read
     // (seen on #626). Assert the real permissions block, not comment text
     // that also mentions these scopes.
-    const permissionsBlock = workflow.match(/^permissions:\n((?:[ \t]+.+\n)+)/m);
-    assert.ok(permissionsBlock, "workflow must declare a top-level permissions block");
+    const permissionsBlock = workflow.match(
+      /^permissions:\n((?:[ \t]+.+\n)+)/m,
+    );
+    assert.ok(
+      permissionsBlock,
+      "workflow must declare a top-level permissions block",
+    );
     const lines = permissionsBlock[1]
       .split("\n")
       .map((line) => line.trim())
@@ -50,10 +58,16 @@ describe("enforce-pr-target workflow", () => {
 
   it("checks out trusted default-branch scripts only (never PR head)", () => {
     assert.match(workflow, /actions\/checkout@[0-9a-f]{40}/);
-    assert.match(workflow, /ref:\s*\$\{\{\s*github\.event\.repository\.default_branch\s*\}\}/);
+    assert.match(
+      workflow,
+      /ref:\s*\$\{\{\s*github\.event\.repository\.default_branch\s*\}\}/,
+    );
     assert.match(workflow, /sparse-checkout:\s*\.github\/scripts/);
     assert.match(workflow, /persist-credentials:\s*false/);
-    assert.doesNotMatch(workflow, /ref:\s*\$\{\{\s*github\.event\.pull_request\.head/);
+    assert.doesNotMatch(
+      workflow,
+      /ref:\s*\$\{\{\s*github\.event\.pull_request\.head/,
+    );
   });
 
   it("loads pr-quality via require from the checked-out scripts", () => {
@@ -70,8 +84,11 @@ describe("enforce-pr-target workflow", () => {
     );
     assert.ok(qualityCall, "must call collectPrQualityFailures");
     assert.match(qualityCall[1], /stackedBase/);
-    assert.match(qualityCall[1], /headFromSameRepo/);
-    assert.match(qualityCall[1], /isSameGithubRepo/);
+    // The retired dev-promotion exception is gone: no same-repo `dev` head
+    // may ever be special-cased again, so these must stay absent.
+    assert.doesNotMatch(qualityCall[1], /headFromSameRepo/);
+    assert.doesNotMatch(qualityCall[1], /isSameGithubRepo/);
+    assert.doesNotMatch(qualityCall[1], /headRef/);
   });
 
   it("strips stale WRONG BRANCH prefix on failure when base is corrected", () => {

@@ -1,7 +1,7 @@
 name: Enforce issue quality
 
 # Issue events always load this workflow from the repository DEFAULT branch
-# (currently `main`), not from `dev`. Landing here on `dev` alone does not
+# (currently `main`). Landing here on a non-default branch alone does not
 # change live issue-quality behavior until the change is also on that default
 # branch.
 on:
