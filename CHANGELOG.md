@@ -23,6 +23,10 @@ All notable changes to the GroepOnline `opencodex` fork. Format follows
   and making `CODEX_CLI_PATH`-pinned behavior host-dependent.
 - `docs-site` contributing guide no longer documents the removed `dev` → `main`
   promotion exception in `enforce-target`.
+- Service-suite test pins that read `src/service.ts` source text now match token
+  shape instead of one exact line layout. The pre-commit `lint-staged` prettier
+  run wraps long calls and imports, which silently broke those assertions for
+  any committer touching the file.
 
 - Cloudflare edge pages (WAF block, managed challenge, origin/DNS error pages)
   no longer reach client-facing upstream error messages as raw HTML. Combo
