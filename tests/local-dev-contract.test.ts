@@ -36,6 +36,38 @@ async function runHealthzSmoke(env: Record<string, string>): Promise<{
   return { exitCode, stdout, stderr };
 }
 
+/**
+ * Block until the live endpoint identifies itself as opencodex.
+ *
+ * `startServer(0)` returns as soon as `Bun.serve` has bound the socket, but the
+ * smoke script's `curl` is the *first* client to connect, so it still races the
+ * listener's accept loop. On a CI runner executing `bun test --isolate` with ~80
+ * files per batch — each spawning `bash`, `curl`, and `python3` concurrently —
+ * that first connect can be refused outright, and the script reports it as
+ * `unreachable` with exit 1.
+ *
+ * The script's own 4s `--max-time` is not what fires here: a refused connect
+ * returns in milliseconds, which is why the recorded failures took the same
+ * 45-80ms as a passing run. Readiness is therefore established here, in-process
+ * and with a real response to assert on, before the shell probe is allowed to run.
+ */
+async function waitForHealthz(port: number, timeoutMs = 5_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = "no attempt made";
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/healthz`);
+      const body = (await res.json()) as { service?: unknown };
+      if (body.service === "opencodex") return;
+      lastError = `responded with service=${JSON.stringify(body.service)}`;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+    await Bun.sleep(25);
+  }
+  throw new Error(`healthz never became ready on :${port} (${lastError})`);
+}
+
 describe("local/dev complete path", () => {
   test("compose, devcontainer, env example, and healthz smoke exist", async () => {
     for (const rel of [
@@ -241,11 +273,22 @@ describe("healthz-smoke against a live proxy", () => {
     process.env.OPENCODEX_HOME = dir;
     const server = startServer(0);
     try {
+      await waitForHealthz(server.port);
       const ok = await runHealthzSmoke({
         OPENCODEX_HEALTH_URL: `http://127.0.0.1:${server.port}/healthz`,
         OPENCODEX_SMOKE_EXPECT_VERSION: "1.5.1",
       });
-      expect(ok.exitCode).toBe(0);
+      // Surface the probe's own output on failure. A bare exit-code assertion
+      // collapses "listener refused the connect" and "identity field missing"
+      // into the same opaque Expected: 0 / Received: 1, which is what left
+      // this flake undiagnosed across two separate failing runs.
+      if (ok.exitCode !== 0) {
+        throw new Error(
+          `healthz-smoke.sh exited ${ok.exitCode}\n` +
+            `stdout: ${ok.stdout.trim() || "(empty)"}\n` +
+            `stderr: ${ok.stderr.trim() || "(empty)"}`,
+        );
+      }
       expect(ok.stdout).toContain('"service": "opencodex"');
       expect(ok.stdout).toContain('"version": "1.5.1"');
     } finally {
@@ -276,4 +319,21 @@ describe("healthz-smoke against a live proxy", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 15_000);
+
+  // Guards the readiness helper itself: a port nothing is listening on must
+  // fail loudly with its last probe error rather than hanging or passing, so a
+  // future regression cannot quietly reintroduce the opaque exit-code failure.
+  test("readiness wait fails loudly when nothing serves /healthz", async () => {
+    const closed = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => new Response(""),
+    });
+    const port = closed.port;
+    closed.stop(true);
+
+    await expect(waitForHealthz(port, 300)).rejects.toThrow(
+      /healthz never became ready/,
+    );
+  });
 });

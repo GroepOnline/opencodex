@@ -7,6 +7,24 @@ All notable changes to the GroepOnline `opencodex` fork. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Cloudflare edge pages (WAF block, managed challenge, origin/DNS error pages)
+  no longer reach client-facing upstream error messages as raw HTML. Combo
+  failures, passthrough relays, continuation errors, and the Google/Kiro error
+  formatters now emit a one-line message carrying the Ray ID. Origin error
+  pages (521 / 1xxx) are reported as a Cloudflare error page instead of being
+  described as a block; non-Cloudflare bodies stay byte-identical.
+- `tests/local-dev-contract.test.ts` no longer fails intermittently on CI runners.
+  The healthz smoke probe was the first client to connect to a just-bound socket,
+  so under `bun test --isolate` (≈80 files per batch, each spawning `bash`, `curl`
+  and `python3` concurrently) that first connect could be refused outright and the
+  script exited 1 in milliseconds — the same 45–80 ms as a passing run, so its own
+  4s `--max-time` was never involved. Readiness is now established in-process
+  before the shell probe runs, and a failing probe reports its own stdout/stderr
+  instead of a bare `Expected: 0 / Received: 1`. This flake also failed on `main`
+  (run 36603843646, the v1.5.1 release commit), so it was never branch-specific.
+
 ### Security
 
 - Dependency advisories published 2026-09-29 are resolved; `bun audit` now

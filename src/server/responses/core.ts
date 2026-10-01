@@ -10,6 +10,7 @@ import { parseRequest } from "../../responses/parser";
 import { buildCompactV1Output, COMPACT_PROMPT, decodeCompactionSummary, extractCompactUserMessages } from "../../responses/compaction";
 import { FORWARD_HEADERS, sanitizeReasoningInputContent } from "../../adapters/openai-responses";
 import type { AdapterRequest } from "../../adapters/base";
+import { sanitizeCloudflareBlockPayload } from "../../adapters/upstream-http-error";
 import { expandPreviousResponseInput, previousResponseProviderState, rememberResponseState } from "../../responses/state";
 import { routeModel, type RouteResult } from "../../router";
 import {
@@ -652,7 +653,9 @@ export async function consumeComboFailure(
     const body = await readBoundedResponseBody(response, { signal });
     usage = usageFromComboFailureText(body.text);
     if (body.displaySafe) {
-      const safeText = redactSecretString(body.text).slice(0, 500);
+      // Cloudflare edge HTML must not become the first 500 chars of a
+      // client-facing "Provider error 403: …" message.
+      const safeText = redactSecretString(sanitizeCloudflareBlockPayload(body.text, response.status)).slice(0, 500);
       if (safeText) classificationText = safeText;
       try {
         const parsed = JSON.parse(body.text) as { error?: { code?: unknown } | string };
@@ -2835,6 +2838,11 @@ export async function handleResponses(
         return failure.response;
       }
       const errorText = await upstreamResponse.text().catch(() => "unknown error");
+      // Cloudflare edge HTML must not become the first 500 chars of a
+      // client-facing "Provider error N: …" message.
+      const safeUpstreamText = redactSecretString(
+        sanitizeCloudflareBlockPayload(errorText, upstreamResponse.status),
+      ).slice(0, 500);
       recordCapOutcome({
         config,
         persistConfig,
@@ -2851,13 +2859,13 @@ export async function handleResponses(
         subagentQuotaFailureModel,
         upstreamResponse.status === 429 || upstreamResponse.status === 402
           ? upstreamResponse.status
-          : `Provider error ${upstreamResponse.status}: ${redactSecretString(errorText.slice(0, 500))}`,
+          : `Provider error ${upstreamResponse.status}: ${safeUpstreamText}`,
         config,
         subagentFallbackAccountId,
       );
       // Upstreams occasionally echo request details in error bodies — scrub token-shaped
       // material before it reaches the client-facing error surface.
-      const message = `Provider error ${upstreamResponse.status}: ${redactSecretString(errorText.slice(0, 500))}`;
+      const message = `Provider error ${upstreamResponse.status}: ${safeUpstreamText}`;
       const retryAfter = resolveClientRetryAfter({
         status: upstreamResponse.status,
         message,
@@ -3032,7 +3040,9 @@ export async function handleResponses(
       yield {
         type: "error",
         status: response.status,
-        message: `Provider continuation error ${response.status}: ${redactSecretString(errorText.slice(0, 500))}`,
+        message: `Provider continuation error ${response.status}: ${redactSecretString(
+          sanitizeCloudflareBlockPayload(errorText, response.status).slice(0, 500),
+        )}`,
       };
       return;
     }
