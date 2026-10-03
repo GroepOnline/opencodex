@@ -114,6 +114,7 @@ describe("codex routing", () => {
 
   test("usage score uses the hottest known quota window", () => {
     expect(computeCodexUsageScore({ weeklyPercent: 81 })).toBe(81);
+    expect(computeCodexUsageScore({ fiveHourPercent: 94, weeklyPercent: 15, monthlyPercent: 91 })).toBe(94);
     expect(computeCodexUsageScore({ weeklyPercent: 15, monthlyPercent: 91 })).toBe(91);
     expect(computeCodexUsageScore({ weeklyPercent: 15 })).toBe(15);
   });
