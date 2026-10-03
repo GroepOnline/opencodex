@@ -282,8 +282,10 @@ export function updateAccountQuota(
   if (nextWeekly === undefined && nextMonthly === undefined && resetCredits === undefined) return;
 
   const quota: StoredAccountQuota = {
+    ...(existing?.fiveHourPercent !== undefined ? { fiveHourPercent: existing.fiveHourPercent } : {}),
     ...(existing?.weeklyPercent !== undefined ? { weeklyPercent: existing.weeklyPercent } : {}),
     ...(existing?.monthlyPercent !== undefined ? { monthlyPercent: existing.monthlyPercent } : {}),
+    ...(existing?.fiveHourResetAt !== undefined ? { fiveHourResetAt: existing.fiveHourResetAt } : {}),
     ...(existing?.weeklyResetAt !== undefined ? { weeklyResetAt: existing.weeklyResetAt } : {}),
     ...(existing?.monthlyResetAt !== undefined ? { monthlyResetAt: existing.monthlyResetAt } : {}),
     ...(existing?.resetCredits !== undefined ? { resetCredits: existing.resetCredits } : {}),
