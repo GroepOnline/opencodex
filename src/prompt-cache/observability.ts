@@ -25,19 +25,39 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-function canonicalValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalValue);
-  if (!isRecord(value)) return value;
-  const out: Record<string, unknown> = {};
-  for (const key of Object.keys(value).sort()) {
-    out[key] = canonicalValue(value[key]);
+/**
+ * Serialize JSON-compatible input with stable object-key ordering.
+ * Arrays retain their wire order and object keys such as "__proto__" remain ordinary data.
+ */
+function canonicalJson(value: unknown): string | undefined {
+  if (value === null) return "null";
+  if (Array.isArray(value)) {
+    const items = value.map(item => canonicalJson(item) ?? "null");
+    return "[" + items.join(",") + "]";
   }
-  return out;
+  if (isRecord(value)) {
+    const fields: string[] = [];
+    for (const key of Object.keys(value).sort()) {
+      const child = canonicalJson(value[key]);
+      if (child === undefined) continue;
+      fields.push(JSON.stringify(key) + ":" + child);
+    }
+    return "{" + fields.join(",") + "}";
+  }
+  if (typeof value === "number" && !Number.isFinite(value)) return "null";
+  if (
+    typeof value === "string"
+    || typeof value === "number"
+    || typeof value === "boolean"
+  ) {
+    return JSON.stringify(value);
+  }
+  return undefined;
 }
 
 function fingerprint(value: unknown): string | undefined {
-  const serialized = JSON.stringify(canonicalValue(value));
-  if (typeof serialized !== "string") return undefined;
+  const serialized = canonicalJson(value);
+  if (serialized === undefined) return undefined;
   return createHash("sha256").update(serialized).digest("hex").slice(0, 24);
 }
 
@@ -94,7 +114,8 @@ export function observeOpenAiResponsesPromptCache(
     : options?.mode === "implicit"
       ? "implicit"
       : "default";
-  const ttl = options?.ttl === "30m" ? "30m" as const : undefined;
+  const ttl: PromptCacheRequestObservation["ttl"] =
+    options?.ttl === "30m" ? "30m" : undefined;
   const retention = value.prompt_cache_retention === "in_memory"
     || value.prompt_cache_retention === "24h"
     ? value.prompt_cache_retention

@@ -20,7 +20,6 @@ import {
   getRequestLogEntries,
   hydrateRequestLogsFromDisk,
   noteAttemptSend,
-  recordAdapterReasoning,
   recordAdapterRequestMetadata,
   recordFirstOutput,
   requestLogEntryFromPersistedUsage,
@@ -121,7 +120,7 @@ describe("request log metadata", () => {
       activeAttempt: attempt,
     };
 
-    recordAdapterReasoning(logCtx, {
+    recordAdapterRequestMetadata(logCtx, {
       url: "https://api.x.ai/v1/chat/completions",
       method: "POST",
       headers: {},
@@ -147,7 +146,7 @@ describe("request log metadata", () => {
     });
 
     const sensitiveAlias = ["sk", "proj", "redaction-fixture"].join("-");
-    recordAdapterReasoning(logCtx, {
+    recordAdapterRequestMetadata(logCtx, {
       url: "https://provider.test/v1/chat/completions",
       method: "POST",
       headers: {},
@@ -247,7 +246,7 @@ describe("request log metadata", () => {
         reasoningWireValue: "stale",
       });
 
-      expect(() => recordAdapterReasoning(logCtx, {
+      expect(() => recordAdapterRequestMetadata(logCtx, {
         url: "https://provider.test/v1/chat/completions",
         method: "POST",
         headers: {},
@@ -371,7 +370,7 @@ describe("request log metadata", () => {
   test("final combo logging keeps one logical row and finalizes its active attempt", () => {
     const entries: RequestLogEntry[] = [];
     const a = beginRequestAttempt(1, "a", "model-a", "openai-chat");
-    recordAdapterReasoning({
+    recordAdapterRequestMetadata({
       model: "model-a",
       provider: "a",
       requestedEffort: "minimal",
@@ -409,7 +408,7 @@ describe("request log metadata", () => {
       activeAttempt: b,
       activeAttemptStartedAt: start,
     };
-    recordAdapterReasoning(logCtx, {
+    recordAdapterRequestMetadata(logCtx, {
       url: "https://provider.test/v1/chat/completions",
       method: "POST",
       headers: {},

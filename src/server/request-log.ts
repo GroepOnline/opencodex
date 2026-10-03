@@ -39,10 +39,7 @@ import {
 } from "../usage/debug";
 import { matchesLogConversationId } from "./request-log-conversation";
 import { captureRequestTelemetry } from "../telemetry/posthog-server";
-import {
-  normalizePromptCacheRequestObservation,
-  type PromptCacheRequestObservation,
-} from "../prompt-cache/observability";
+import type { PromptCacheRequestObservation } from "../prompt-cache/observability";
 
 export interface RequestLogContext {
   model: string;
@@ -481,7 +478,7 @@ export function recordAttemptRequestedEffort(logCtx: RequestLogContext): void {
 }
 
 /** Copy the adapter's exact outbound reasoning parameter into the durable request log. */
-export function recordAdapterReasoning(
+function recordAdapterReasoning(
   logCtx: RequestLogContext,
   request: AdapterRequest,
 ): void {
@@ -531,27 +528,16 @@ export function recordAdapterReasoning(
   }
 }
 
-/** Copy prompt-cache diagnostics from the exact outbound adapter request. */
-export function recordAdapterPromptCache(
-  logCtx: RequestLogContext,
-  request: AdapterRequest,
-): void {
-  delete logCtx.promptCache;
-  try {
-    const observation = normalizePromptCacheRequestObservation(request.promptCacheLog);
-    if (observation) logCtx.promptCache = observation;
-  } catch {
-    // Request logging is best-effort and must not affect request delivery.
-  }
-}
-
 /** Record all adapter-derived request diagnostics at one lifecycle seam. */
 export function recordAdapterRequestMetadata(
   logCtx: RequestLogContext,
   request: AdapterRequest,
 ): void {
   recordAdapterReasoning(logCtx, request);
-  recordAdapterPromptCache(logCtx, request);
+  delete logCtx.promptCache;
+  if (request.promptCacheLog) {
+    logCtx.promptCache = { ...request.promptCacheLog };
+  }
 }
 
 export function requestLogErrorCode(status: number, upstreamError?: string): string | undefined {

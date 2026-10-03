@@ -2,8 +2,22 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import {
+  normalizePromptCacheRequestObservation,
+  type PromptCacheRequestObservation,
+} from "../src/prompt-cache/observability";
 
 type RangeName = "7d" | "30d" | "all";
+type CohortSignal = "write-heavy" | "low-reuse" | "healthy" | "mixed";
+
+interface AnalyzerOptions {
+  source: string;
+  range: RangeName;
+  top: number;
+  nowMs: number;
+  jsonMode: boolean;
+  help: boolean;
+}
 
 interface CacheUsage {
   input: number;
@@ -11,11 +25,14 @@ interface CacheUsage {
   write: number;
 }
 
-interface Cohort {
+interface CohortDimensions {
   adapter: string;
   provider: string;
   model: string;
   surface: string;
+}
+
+interface Cohort extends CohortDimensions {
   requests: number;
   reportedSuccess: number;
   input: number;
@@ -27,10 +44,31 @@ interface Cohort {
   conversations: Map<string, number>;
 }
 
-interface ShapeSummary {
-  shape: string;
-  mode: string;
-  ttl: string | null;
+interface CohortSummary extends CohortDimensions {
+  signal: CohortSignal;
+  requests: number;
+  reportedSuccess: number;
+  inputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  uncachedInputTokens: number;
+  cacheReadRatio: number;
+  cacheWriteRatio: number;
+  cacheHitRequestRatio: number;
+  cacheWriteRequestRatio: number;
+  conversations: number;
+  multiTurnConversations: number;
+}
+
+interface ShapeBucket {
+  dimensions: CohortDimensions;
+  observation: PromptCacheRequestObservation;
+  rows: Record<string, unknown>[];
+}
+
+interface ShapeSummary extends CohortDimensions {
+  mode: PromptCacheRequestObservation["mode"];
+  ttl: PromptCacheRequestObservation["ttl"] | null;
   keyPresent: boolean;
   breakpointCount: number;
   toolCount: number;
@@ -47,6 +85,19 @@ interface ShapeSummary {
   cacheWriteRatio: number;
 }
 
+function usageText(): string {
+  return [
+    "Usage: bun scripts/analyze-prompt-cache-usage.ts [usage.jsonl|-] [options]",
+    "",
+    "Options:",
+    "  --range=7d|30d|all    Analysis window (default: 7d)",
+    "  --top=N                Maximum cohorts/shapes to print, 1..200 (default: 20)",
+    "  --now=ISO|epoch-ms     Anchor relative windows for reproducible analysis",
+    "  --json                 Emit JSON",
+    "  --help                 Show this help",
+  ].join("\n");
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
@@ -59,6 +110,71 @@ function nonNegativeNumber(value: unknown): number | undefined {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function parseRange(value: string): RangeName {
+  if (value === "7d" || value === "30d" || value === "all") return value;
+  throw new Error(`invalid --range value: ${value}`);
+}
+
+function parseTop(value: string): number {
+  if (!/^\d+$/u.test(value)) throw new Error(`invalid --top value: ${value}`);
+  const parsed = Number.parseInt(value, 10);
+  if (parsed < 1 || parsed > 200) throw new Error("--top must be between 1 and 200");
+  return parsed;
+}
+
+function parseNow(value: string): number {
+  if (/^\d+$/u.test(value)) {
+    const numeric = Number(value);
+    if (Number.isSafeInteger(numeric) && numeric >= 0) return numeric;
+  }
+  const parsed = Date.parse(value);
+  if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+  throw new Error(`invalid --now value: ${value}`);
+}
+
+function parseArgs(args: string[]): AnalyzerOptions {
+  const defaultSource = join(
+    process.env.OPENCODEX_HOME?.trim() || join(homedir(), ".opencodex"),
+    "usage.jsonl",
+  );
+  let source = defaultSource;
+  let positionalSeen = false;
+  let range: RangeName = "7d";
+  let top = 20;
+  let nowMs = Date.now();
+  let jsonMode = false;
+  let help = false;
+
+  for (const arg of args) {
+    if (arg === "--json") {
+      jsonMode = true;
+      continue;
+    }
+    if (arg === "--help") {
+      help = true;
+      continue;
+    }
+    if (arg.startsWith("--range=")) {
+      range = parseRange(arg.slice("--range=".length));
+      continue;
+    }
+    if (arg.startsWith("--top=")) {
+      top = parseTop(arg.slice("--top=".length));
+      continue;
+    }
+    if (arg.startsWith("--now=")) {
+      nowMs = parseNow(arg.slice("--now=".length));
+      continue;
+    }
+    if (arg.startsWith("--")) throw new Error(`unknown option: ${arg}`);
+    if (positionalSeen) throw new Error("only one usage-log path may be supplied");
+    source = arg;
+    positionalSeen = true;
+  }
+
+  return { source, range, top, nowMs, jsonMode, help };
 }
 
 function cacheUsage(row: Record<string, unknown>): CacheUsage | undefined {
@@ -79,29 +195,32 @@ function cacheUsage(row: Record<string, unknown>): CacheUsage | undefined {
   return { input, read, write };
 }
 
-function parseRange(value: string | undefined): RangeName {
-  return value === "7d" || value === "30d" || value === "all" ? value : "7d";
-}
-
-function sinceFor(range: RangeName, now: number): number {
+function sinceFor(range: RangeName, nowMs: number): number {
   if (range === "all") return 0;
-  return now - (range === "7d" ? 7 : 30) * 86_400_000;
+  return nowMs - (range === "7d" ? 7 : 30) * 86_400_000;
 }
 
-function keyParts(row: Record<string, unknown>): [string, string, string, string] {
-  const adapter = stringValue(row.adapter) ?? "unknown";
-  const provider = stringValue(row.provider) ?? "unknown";
-  const model = stringValue(row.resolvedModel) ?? stringValue(row.model) ?? "unknown";
-  const surface = stringValue(row.surface) ?? "unknown";
-  return [adapter, provider, model, surface];
-}
-
-function emptyCohort(parts: [string, string, string, string]): Cohort {
+function dimensionsFrom(row: Record<string, unknown>): CohortDimensions {
   return {
-    adapter: parts[0],
-    provider: parts[1],
-    model: parts[2],
-    surface: parts[3],
+    adapter: stringValue(row.adapter) ?? "unknown",
+    provider: stringValue(row.provider) ?? "unknown",
+    model: stringValue(row.resolvedModel) ?? stringValue(row.model) ?? "unknown",
+    surface: stringValue(row.surface) ?? "unknown",
+  };
+}
+
+function dimensionsKey(dimensions: CohortDimensions): string {
+  return JSON.stringify([
+    dimensions.adapter,
+    dimensions.provider,
+    dimensions.model,
+    dimensions.surface,
+  ]);
+}
+
+function emptyCohort(dimensions: CohortDimensions): Cohort {
+  return {
+    ...dimensions,
     requests: 0,
     reportedSuccess: 0,
     input: 0,
@@ -118,7 +237,7 @@ function ratio(numerator: number, denominator: number): number {
   return denominator > 0 ? numerator / denominator : 0;
 }
 
-function signal(cohort: Cohort): string {
+function signal(cohort: Cohort): CohortSignal {
   const readRatio = ratio(cohort.cacheRead, cohort.input);
   const writeRatio = ratio(cohort.cacheWrite, cohort.input);
   if (writeRatio >= 0.5 && readRatio < 0.1) return "write-heavy";
@@ -127,7 +246,7 @@ function signal(cohort: Cohort): string {
   return "mixed";
 }
 
-function publicCohort(cohort: Cohort): Record<string, unknown> {
+function summarizeCohort(cohort: Cohort): CohortSummary {
   let multiTurnConversations = 0;
   for (const count of cohort.conversations.values()) {
     if (count > 1) multiTurnConversations += 1;
@@ -153,30 +272,26 @@ function publicCohort(cohort: Cohort): Record<string, unknown> {
   };
 }
 
-function cacheShapeKey(row: Record<string, unknown>): string | undefined {
-  if (!isRecord(row.promptCache)) return undefined;
-  const pc = row.promptCache;
-  const parts = [
-    stringValue(pc.mode) ?? "default",
-    stringValue(pc.ttl) ?? "-",
-    pc.keyPresent === true ? "key" : "nokey",
-    String(nonNegativeNumber(pc.breakpointCount) ?? 0),
-    stringValue(pc.toolsFingerprint) ?? "-",
-    stringValue(pc.stablePrefixFingerprint) ?? "-",
-    stringValue(pc.textFormatFingerprint) ?? "-",
-    stringValue(pc.verbosity) ?? "-",
-  ];
-  return parts.join("|");
+function cacheShapeKey(observation: PromptCacheRequestObservation): string {
+  return JSON.stringify([
+    observation.mode,
+    observation.ttl ?? null,
+    observation.keyPresent,
+    observation.breakpointCount,
+    observation.toolsFingerprint ?? null,
+    observation.stablePrefixFingerprint ?? null,
+    observation.textFormatFingerprint ?? null,
+    observation.verbosity ?? null,
+  ]);
 }
 
-function shapeSummary(key: string, rows: Record<string, unknown>[]): ShapeSummary {
-  const first = rows[0]?.promptCache;
-  const pc = isRecord(first) ? first : {};
+function summarizeShape(bucket: ShapeBucket): ShapeSummary {
+  const pc = bucket.observation;
   let input = 0;
   let read = 0;
   let write = 0;
   let reportedSuccess = 0;
-  for (const row of rows) {
+  for (const row of bucket.rows) {
     const usage = cacheUsage(row);
     if (!usage) continue;
     reportedSuccess += 1;
@@ -185,17 +300,17 @@ function shapeSummary(key: string, rows: Record<string, unknown>[]): ShapeSummar
     write += usage.write;
   }
   return {
-    shape: key,
-    mode: stringValue(pc.mode) ?? "default",
-    ttl: stringValue(pc.ttl) ?? null,
-    keyPresent: pc.keyPresent === true,
-    breakpointCount: nonNegativeNumber(pc.breakpointCount) ?? 0,
-    toolCount: nonNegativeNumber(pc.toolCount) ?? 0,
-    toolsFingerprint: stringValue(pc.toolsFingerprint) ?? null,
-    stablePrefixFingerprint: stringValue(pc.stablePrefixFingerprint) ?? null,
-    textFormatFingerprint: stringValue(pc.textFormatFingerprint) ?? null,
-    verbosity: stringValue(pc.verbosity) ?? null,
-    requests: rows.length,
+    ...bucket.dimensions,
+    mode: pc.mode,
+    ttl: pc.ttl ?? null,
+    keyPresent: pc.keyPresent,
+    breakpointCount: pc.breakpointCount,
+    toolCount: pc.toolCount,
+    toolsFingerprint: pc.toolsFingerprint ?? null,
+    stablePrefixFingerprint: pc.stablePrefixFingerprint ?? null,
+    textFormatFingerprint: pc.textFormatFingerprint ?? null,
+    verbosity: pc.verbosity ?? null,
+    requests: bucket.rows.length,
     reportedSuccess,
     inputTokens: input,
     cacheReadTokens: read,
@@ -205,158 +320,178 @@ function shapeSummary(key: string, rows: Record<string, unknown>[]): ShapeSummar
   };
 }
 
-function formatPercent(value: unknown): string {
-  return typeof value === "number" ? (value * 100).toFixed(1) + "%" : "-";
+function formatPercent(value: number): string {
+  return (value * 100).toFixed(1) + "%";
 }
 
-const args = Bun.argv.slice(2);
-const source = args.find(arg => !arg.startsWith("--"))
-  ?? join(process.env.OPENCODEX_HOME?.trim() || join(homedir(), ".opencodex"), "usage.jsonl");
-const rangeArg = args.find(arg => arg.startsWith("--range="))?.slice("--range=".length);
-const topArg = args.find(arg => arg.startsWith("--top="))?.slice("--top=".length);
-const range = parseRange(rangeArg);
-const top = Math.max(1, Math.min(200, Number.parseInt(topArg ?? "20", 10) || 20));
-const jsonMode = args.includes("--json");
-const now = Date.now();
-const since = sinceFor(range, now);
-const text = source === "-" ? readFileSync(0, "utf8") : readFileSync(source, "utf8");
-
-const rows: Record<string, unknown>[] = [];
-let invalidLines = 0;
-for (const line of text.split(/\r?\n/u)) {
-  if (!line.trim()) continue;
+function main(): number {
+  let options: AnalyzerOptions;
   try {
-    const parsed: unknown = JSON.parse(line);
-    if (isRecord(parsed)) rows.push(parsed);
-    else invalidLines += 1;
-  } catch {
-    invalidLines += 1;
-  }
-}
-
-const selected = rows.filter(row => {
-  const timestamp = nonNegativeNumber(row.timestamp);
-  return timestamp !== undefined && timestamp >= since;
-});
-const cohorts = new Map<string, Cohort>();
-const shapeRows = new Map<string, Record<string, unknown>[]>();
-let reportedSuccess = 0;
-let input = 0;
-let read = 0;
-let write = 0;
-
-for (const row of selected) {
-  const parts = keyParts(row);
-  const key = parts.join("\0");
-  const cohort = cohorts.get(key) ?? emptyCohort(parts);
-  cohorts.set(key, cohort);
-  cohort.requests += 1;
-  const conversationId = stringValue(row.conversationId);
-  if (conversationId) {
-    cohort.conversations.set(
-      conversationId,
-      (cohort.conversations.get(conversationId) ?? 0) + 1,
-    );
+    options = parseArgs(Bun.argv.slice(2));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "invalid arguments";
+    console.error(message);
+    console.error(usageText());
+    return 2;
   }
 
-  const usage = cacheUsage(row);
-  if (usage) {
-    cohort.reportedSuccess += 1;
-    cohort.input += usage.input;
-    cohort.cacheRead += usage.read;
-    cohort.cacheWrite += usage.write;
-    cohort.uncachedInput += Math.max(0, usage.input - usage.read - usage.write);
-    if (usage.read > 0) cohort.hitRequests += 1;
-    if (usage.write > 0) cohort.writeRequests += 1;
-    reportedSuccess += 1;
-    input += usage.input;
-    read += usage.read;
-    write += usage.write;
+  if (options.help) {
+    console.log(usageText());
+    return 0;
   }
 
-  const shape = cacheShapeKey(row);
-  if (shape) {
-    const compositeShape = [...parts, shape].join("\0");
-    const existing = shapeRows.get(compositeShape);
-    if (existing) existing.push(row);
-    else shapeRows.set(compositeShape, [row]);
+  const since = sinceFor(options.range, options.nowMs);
+  const text = options.source === "-"
+    ? readFileSync(0, "utf8")
+    : readFileSync(options.source, "utf8");
+
+  const rows: Record<string, unknown>[] = [];
+  let invalidLines = 0;
+  for (const line of text.split(/\r?\n/u)) {
+    if (!line.trim()) continue;
+    try {
+      const parsed: unknown = JSON.parse(line);
+      if (isRecord(parsed)) rows.push(parsed);
+      else invalidLines += 1;
+    } catch {
+      invalidLines += 1;
+    }
   }
-}
 
-const cohortOutput = [...cohorts.values()]
-  .filter(cohort => cohort.reportedSuccess > 0)
-  .sort((a, b) => b.input - a.input)
-  .slice(0, top)
-  .map(publicCohort);
-const shapeOutput = [...shapeRows.entries()]
-  .map(([key, value]) => shapeSummary(key.split("\0").slice(4).join("|"), value))
-  .filter(shape => shape.reportedSuccess > 0)
-  .sort((a, b) => b.inputTokens - a.inputTokens)
-  .slice(0, top);
+  const selected = rows.filter(row => {
+    const timestamp = nonNegativeNumber(row.timestamp);
+    return timestamp !== undefined && timestamp >= since && timestamp <= options.nowMs;
+  });
+  const cohorts = new Map<string, Cohort>();
+  const shapeBuckets = new Map<string, ShapeBucket>();
+  let reportedSuccess = 0;
+  let input = 0;
+  let read = 0;
+  let write = 0;
 
-const output = {
-  source: source === "-" ? "stdin" : source,
-  range,
-  rows: selected.length,
-  invalidLines,
-  proofBoundary: "status=200 AND usageStatus=reported",
-  summary: {
-    reportedSuccess,
-    inputTokens: input,
-    cacheReadTokens: read,
-    cacheWriteTokens: write,
-    uncachedInputTokens: Math.max(0, input - read - write),
-    cacheReadRatio: ratio(read, input),
-    cacheWriteRatio: ratio(write, input),
-  },
-  cohorts: cohortOutput,
-  cacheShapes: shapeOutput,
-};
+  for (const row of selected) {
+    const dimensions = dimensionsFrom(row);
+    const key = dimensionsKey(dimensions);
+    const cohort = cohorts.get(key) ?? emptyCohort(dimensions);
+    cohorts.set(key, cohort);
+    cohort.requests += 1;
+    const conversationId = stringValue(row.conversationId);
+    if (conversationId) {
+      cohort.conversations.set(
+        conversationId,
+        (cohort.conversations.get(conversationId) ?? 0) + 1,
+      );
+    }
 
-if (jsonMode) {
-  process.stdout.write(JSON.stringify(output, null, 2) + "\n");
-  process.exit(0);
-}
+    const usage = cacheUsage(row);
+    if (usage) {
+      cohort.reportedSuccess += 1;
+      cohort.input += usage.input;
+      cohort.cacheRead += usage.read;
+      cohort.cacheWrite += usage.write;
+      cohort.uncachedInput += Math.max(0, usage.input - usage.read - usage.write);
+      if (usage.read > 0) cohort.hitRequests += 1;
+      if (usage.write > 0) cohort.writeRequests += 1;
+      reportedSuccess += 1;
+      input += usage.input;
+      read += usage.read;
+      write += usage.write;
+    }
 
-console.log("Prompt cache usage (" + range + ")");
-console.log("proof: " + output.proofBoundary);
-console.log(
-  "reported-success=" + reportedSuccess
-  + " input=" + Math.round(input)
-  + " read=" + Math.round(read) + " (" + formatPercent(output.summary.cacheReadRatio) + ")"
-  + " write=" + Math.round(write) + " (" + formatPercent(output.summary.cacheWriteRatio) + ")",
-);
-console.log("");
-console.log("Top cohorts by measured input:");
-for (const item of cohortOutput) {
+    const observation = normalizePromptCacheRequestObservation(row.promptCache);
+    if (observation) {
+      const shapeKey = JSON.stringify([key, cacheShapeKey(observation)]);
+      const existing = shapeBuckets.get(shapeKey);
+      if (existing) existing.rows.push(row);
+      else shapeBuckets.set(shapeKey, { dimensions, observation, rows: [row] });
+    }
+  }
+
+  const cohortOutput = [...cohorts.values()]
+    .filter(cohort => cohort.reportedSuccess > 0)
+    .sort((a, b) => b.input - a.input)
+    .slice(0, options.top)
+    .map(summarizeCohort);
+  const shapeOutput = [...shapeBuckets.values()]
+    .map(summarizeShape)
+    .filter(shape => shape.reportedSuccess > 0)
+    .sort((a, b) => b.inputTokens - a.inputTokens)
+    .slice(0, options.top);
+
+  const output = {
+    source: options.source === "-" ? "stdin" : options.source,
+    range: options.range,
+    windowStartMs: since,
+    windowEndMs: options.nowMs,
+    windowStart: new Date(since).toISOString(),
+    windowEnd: new Date(options.nowMs).toISOString(),
+    rows: selected.length,
+    invalidLines,
+    proofBoundary: "status=200 AND usageStatus=reported",
+    summary: {
+      reportedSuccess,
+      inputTokens: input,
+      cacheReadTokens: read,
+      cacheWriteTokens: write,
+      uncachedInputTokens: Math.max(0, input - read - write),
+      cacheReadRatio: ratio(read, input),
+      cacheWriteRatio: ratio(write, input),
+    },
+    cohorts: cohortOutput,
+    cacheShapes: shapeOutput,
+  };
+
+  if (options.jsonMode) {
+    process.stdout.write(JSON.stringify(output, null, 2) + "\n");
+    return 0;
+  }
+
+  console.log("Prompt cache usage (" + options.range + ")");
+  console.log("window: " + output.windowStart + " .. " + output.windowEnd);
+  console.log("proof: " + output.proofBoundary);
   console.log(
-    String(item.signal).padEnd(11)
-    + " " + String(item.adapter) + "/" + String(item.provider) + "/" + String(item.model)
-    + " surface=" + String(item.surface)
-    + " input=" + String(item.inputTokens)
-    + " read=" + formatPercent(item.cacheReadRatio)
-    + " write=" + formatPercent(item.cacheWriteRatio)
-    + " hits=" + formatPercent(item.cacheHitRequestRatio)
-    + " n=" + String(item.reportedSuccess) + "/" + String(item.requests),
+    "reported-success=" + reportedSuccess
+    + " input=" + Math.round(input)
+    + " read=" + Math.round(read) + " (" + formatPercent(output.summary.cacheReadRatio) + ")"
+    + " write=" + Math.round(write) + " (" + formatPercent(output.summary.cacheWriteRatio) + ")",
   );
-}
-if (shapeOutput.length > 0) {
   console.log("");
-  console.log("Observed outbound cache shapes:");
-  for (const item of shapeOutput) {
+  console.log("Top cohorts by measured input:");
+  for (const item of cohortOutput) {
     console.log(
-      item.mode.padEnd(8)
-      + " tools=" + item.toolCount
-      + " bp=" + item.breakpointCount
+      item.signal.padEnd(11)
+      + " " + item.adapter + "/" + item.provider + "/" + item.model
+      + " surface=" + item.surface
       + " input=" + item.inputTokens
       + " read=" + formatPercent(item.cacheReadRatio)
       + " write=" + formatPercent(item.cacheWriteRatio)
-      + " n=" + item.reportedSuccess + "/" + item.requests
-      + " prefix=" + (item.stablePrefixFingerprint ?? "-")
-      + " toolsHash=" + (item.toolsFingerprint ?? "-"),
+      + " hits=" + formatPercent(item.cacheHitRequestRatio)
+      + " n=" + item.reportedSuccess + "/" + item.requests,
     );
   }
-} else {
-  console.log("");
-  console.log("No promptCache observations in this window (historical rows predate instrumentation).");
+  if (shapeOutput.length > 0) {
+    console.log("");
+    console.log("Observed outbound cache shapes:");
+    for (const item of shapeOutput) {
+      console.log(
+        item.adapter + "/" + item.provider + "/" + item.model
+        + " surface=" + item.surface
+        + " mode=" + item.mode
+        + " tools=" + item.toolCount
+        + " bp=" + item.breakpointCount
+        + " input=" + item.inputTokens
+        + " read=" + formatPercent(item.cacheReadRatio)
+        + " write=" + formatPercent(item.cacheWriteRatio)
+        + " n=" + item.reportedSuccess + "/" + item.requests
+        + " prefix=" + (item.stablePrefixFingerprint ?? "-")
+        + " toolsHash=" + (item.toolsFingerprint ?? "-"),
+      );
+    }
+  } else {
+    console.log("");
+    console.log("No promptCache observations in this window (historical rows predate instrumentation).");
+  }
+  return 0;
 }
+
+process.exitCode = main();
