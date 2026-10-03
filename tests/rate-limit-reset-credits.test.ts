@@ -122,6 +122,30 @@ describe("rate-limit reset credits", () => {
       expect(quota).toEqual({ weeklyPercent: 60, weeklyResetAt: 1787000000 });
     });
 
+    it("separates a 5h primary window from the weekly secondary window", () => {
+      const quota = parseUsageQuota({
+        plan_type: "team",
+        rate_limit: {
+          primary_window: {
+            used_percent: 0,
+            reset_at: 1787000000,
+            limit_window_seconds: 18000,
+          },
+          secondary_window: {
+            used_percent: 17,
+            reset_at: 1787500000,
+            limit_window_seconds: 604800,
+          },
+        },
+      });
+      expect(quota).toEqual({
+        fiveHourPercent: 0,
+        fiveHourResetAt: 1787000000,
+        weeklyPercent: 17,
+        weeklyResetAt: 1787500000,
+      });
+    });
+
     it("classifies a ~30.4d primary window as monthly (reporter repro)", () => {
       const quota = parseUsageQuota({
         plan_type: "team",
