@@ -260,9 +260,12 @@ describe("healthz-smoke against a live proxy", () => {
     const server = startServer(0);
     try {
       await waitForHealthz(server.port);
+      const packageVersion = (
+        JSON.parse(await readRepo("package.json")) as { version: string }
+      ).version;
       const ok = await runHealthzSmoke({
         OPENCODEX_HEALTH_URL: `http://127.0.0.1:${server.port}/healthz`,
-        OPENCODEX_SMOKE_EXPECT_VERSION: "1.5.1",
+        OPENCODEX_SMOKE_EXPECT_VERSION: packageVersion,
       });
       // Surface the probe's own output on failure. A bare exit-code assertion
       // collapses "listener refused the connect" and "identity field missing"
@@ -276,7 +279,7 @@ describe("healthz-smoke against a live proxy", () => {
         );
       }
       expect(ok.stdout).toContain('"service": "opencodex"');
-      expect(ok.stdout).toContain('"version": "1.5.1"');
+      expect(ok.stdout).toContain(`"version": "${packageVersion}"`);
     } finally {
       await server.stop(true);
     }
