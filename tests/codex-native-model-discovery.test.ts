@@ -105,6 +105,39 @@ describe("live native OpenAI catalog discovery", () => {
     expect(result.models.map(model => model.slug)).toEqual(["gpt-6.1-sol"]);
   });
 
+  test("falls back when a successful response body fails while reading", async () => {
+    let calls = 0;
+    const result = await discoverNativeOpenAiCatalog(config({
+      codexAccounts: [{ id: "pool-stream", email: "stream@example.test", isMain: false }],
+    }), {
+      getEffectiveActiveCodexAccountId: () => undefined,
+      getMainAccountToken: () => ({
+        accessToken: "main-stream-fails",
+        chatgptAccountId: "main-stream-account",
+      }),
+      getValidCodexToken: async () => ({
+        accessToken: "pool-stream-good",
+        chatgptAccountId: "pool-stream-account",
+        generation: 1,
+      }),
+      resolveClientVersion: () => "0.160.0",
+      fetch: async () => {
+        calls += 1;
+        if (calls === 1) {
+          return new Response(new ReadableStream({
+            start(controller) {
+              controller.error(new Error("upstream body failed"));
+            },
+          }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ models: [liveNative] }), { status: 200 });
+      },
+    });
+
+    expect(calls).toBe(2);
+    expect(result.models.map(model => model.slug)).toEqual(["gpt-6.1-sol"]);
+  });
+
   test("does not consult pool credentials when account pools are disabled", async () => {
     let poolReads = 0;
     const result = await discoverNativeOpenAiCatalog(config({
