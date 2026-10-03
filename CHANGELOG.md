@@ -1,3 +1,15 @@
+## 1.5.2
+
+- fix(errors): sanitize Cloudflare edge HTML in client-facing upstream errors (#279)
+- fix(cli): make service usage, status summary, and runtime probing host-independent (#287)
+- security: separate product docs from private runtime state (#288)
+- chore(ci): remove retired dev lanes and dormant promotion exception (#286)
+- docs: retire leftover dev branch and sync branch policy (#285)
+- fix(release): make tag creation hook-independent (#289)
+- docs: refresh OpenCodex roadmap truth (#290)
+- deps: bump actions/deploy-pages, withastro/action, docker/build-push-action (#281-#283)
+- chore(deps): clear 2026-09-29 advisories, close CI path-filter blind spot (#284)
+
 # Changelog
 
 All notable changes to the GroepOnline `opencodex` fork. Format follows
