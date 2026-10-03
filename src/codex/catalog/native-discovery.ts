@@ -15,7 +15,22 @@ import { resolveCodexRuntime } from "../runtime";
 import type { RawEntry } from "./parsing";
 
 const NATIVE_MODELS_ENDPOINT = "https://chatgpt.com/backend-api/codex/models";
-const NATIVE_MODEL_ID_CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+
+function hasNativeModelIdControlChars(value: string): boolean {
+  for (const char of value) {
+    const code = char.codePointAt(0);
+    if (code === undefined) continue;
+    if (
+      code <= 0x1f
+      || (code >= 0x7f && code <= 0x9f)
+      || code === 0x2028
+      || code === 0x2029
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
 
 type NativeCredential = {
   accessToken: string;
@@ -111,7 +126,7 @@ function validatedNativeModels(value: unknown): RawEntry[] | null {
       || !slug
       || slug !== slug.trim()
       || slug.length > MODEL_DISCOVERY_MAX_MODEL_ID_LENGTH
-      || NATIVE_MODEL_ID_CONTROL_CHARS.test(slug)
+      || hasNativeModelIdControlChars(slug)
     ) {
       return null;
     }
