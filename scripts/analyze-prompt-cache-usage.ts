@@ -324,6 +324,235 @@ function formatPercent(value: number): string {
   return (value * 100).toFixed(1) + "%";
 }
 
+interface ParsedUsageRows {
+  rows: Record<string, unknown>[];
+  invalidLines: number;
+}
+
+interface AnalysisTotals {
+  reportedSuccess: number;
+  input: number;
+  read: number;
+  write: number;
+}
+
+interface AnalysisState {
+  cohorts: Map<string, Cohort>;
+  shapeBuckets: Map<string, ShapeBucket>;
+  totals: AnalysisTotals;
+}
+
+function readUsageSource(options: AnalyzerOptions): string {
+  return options.source === "-"
+    ? readFileSync(0, "utf8")
+    : readFileSync(options.source, "utf8");
+}
+
+function parseUsageRows(text: string): ParsedUsageRows {
+  const rows: Record<string, unknown>[] = [];
+  let invalidLines = 0;
+  for (const line of text.split(/\r?\n/u)) {
+    if (!line.trim()) continue;
+    try {
+      const parsed: unknown = JSON.parse(line);
+      if (isRecord(parsed)) rows.push(parsed);
+      else invalidLines += 1;
+    } catch {
+      invalidLines += 1;
+    }
+  }
+  return { rows, invalidLines };
+}
+
+function rowsInWindow(
+  rows: readonly Record<string, unknown>[],
+  since: number,
+  nowMs: number,
+): Record<string, unknown>[] {
+  return rows.filter(row => {
+    const timestamp = nonNegativeNumber(row.timestamp);
+    return timestamp !== undefined && timestamp >= since && timestamp <= nowMs;
+  });
+}
+
+function recordConversation(cohort: Cohort, row: Record<string, unknown>): void {
+  const conversationId = stringValue(row.conversationId);
+  if (!conversationId) return;
+  cohort.conversations.set(
+    conversationId,
+    (cohort.conversations.get(conversationId) ?? 0) + 1,
+  );
+}
+
+function recordCacheUsage(
+  cohort: Cohort,
+  usage: CacheUsage | undefined,
+  totals: AnalysisTotals,
+): void {
+  if (!usage) return;
+  cohort.reportedSuccess += 1;
+  cohort.input += usage.input;
+  cohort.cacheRead += usage.read;
+  cohort.cacheWrite += usage.write;
+  cohort.uncachedInput += Math.max(0, usage.input - usage.read - usage.write);
+  if (usage.read > 0) cohort.hitRequests += 1;
+  if (usage.write > 0) cohort.writeRequests += 1;
+  totals.reportedSuccess += 1;
+  totals.input += usage.input;
+  totals.read += usage.read;
+  totals.write += usage.write;
+}
+
+function recordCacheShape(
+  buckets: Map<string, ShapeBucket>,
+  key: string,
+  dimensions: CohortDimensions,
+  row: Record<string, unknown>,
+): void {
+  const observation = normalizePromptCacheRequestObservation(row.promptCache);
+  if (!observation) return;
+  const shapeKey = JSON.stringify([key, cacheShapeKey(observation)]);
+  const existing = buckets.get(shapeKey);
+  if (existing) {
+    existing.rows.push(row);
+    return;
+  }
+  buckets.set(shapeKey, { dimensions, observation, rows: [row] });
+}
+
+function analyzeRows(rows: readonly Record<string, unknown>[]): AnalysisState {
+  const cohorts = new Map<string, Cohort>();
+  const shapeBuckets = new Map<string, ShapeBucket>();
+  const totals: AnalysisTotals = {
+    reportedSuccess: 0,
+    input: 0,
+    read: 0,
+    write: 0,
+  };
+
+  for (const row of rows) {
+    const dimensions = dimensionsFrom(row);
+    const key = dimensionsKey(dimensions);
+    const cohort = cohorts.get(key) ?? emptyCohort(dimensions);
+    cohorts.set(key, cohort);
+    cohort.requests += 1;
+    recordConversation(cohort, row);
+    recordCacheUsage(cohort, cacheUsage(row), totals);
+    recordCacheShape(shapeBuckets, key, dimensions, row);
+  }
+
+  return { cohorts, shapeBuckets, totals };
+}
+
+function topCohorts(cohorts: Map<string, Cohort>, top: number): CohortSummary[] {
+  return [...cohorts.values()]
+    .filter(cohort => cohort.reportedSuccess > 0)
+    .sort((a, b) => b.input - a.input)
+    .slice(0, top)
+    .map(summarizeCohort);
+}
+
+function topShapes(
+  buckets: Map<string, ShapeBucket>,
+  top: number,
+): ShapeSummary[] {
+  return [...buckets.values()]
+    .map(summarizeShape)
+    .filter(shape => shape.reportedSuccess > 0)
+    .sort((a, b) => b.inputTokens - a.inputTokens)
+    .slice(0, top);
+}
+
+function buildOutput(
+  options: AnalyzerOptions,
+  since: number,
+  selectedRows: number,
+  invalidLines: number,
+  analysis: AnalysisState,
+) {
+  const cohorts = topCohorts(analysis.cohorts, options.top);
+  const cacheShapes = topShapes(analysis.shapeBuckets, options.top);
+  const { reportedSuccess, input, read, write } = analysis.totals;
+  return {
+    source: options.source === "-" ? "stdin" : options.source,
+    range: options.range,
+    windowStartMs: since,
+    windowEndMs: options.nowMs,
+    windowStart: new Date(since).toISOString(),
+    windowEnd: new Date(options.nowMs).toISOString(),
+    rows: selectedRows,
+    invalidLines,
+    proofBoundary: "status=200 AND usageStatus=reported",
+    summary: {
+      reportedSuccess,
+      inputTokens: input,
+      cacheReadTokens: read,
+      cacheWriteTokens: write,
+      uncachedInputTokens: Math.max(0, input - read - write),
+      cacheReadRatio: ratio(read, input),
+      cacheWriteRatio: ratio(write, input),
+    },
+    cohorts,
+    cacheShapes,
+  };
+}
+
+type AnalyzerOutput = ReturnType<typeof buildOutput>;
+
+function printHumanOutput(output: AnalyzerOutput): void {
+  console.log("Prompt cache usage (" + output.range + ")");
+  console.log("window: " + output.windowStart + " .. " + output.windowEnd);
+  console.log("proof: " + output.proofBoundary);
+  console.log(
+    "reported-success=" + output.summary.reportedSuccess
+    + " input=" + Math.round(output.summary.inputTokens)
+    + " read=" + Math.round(output.summary.cacheReadTokens)
+    + " (" + formatPercent(output.summary.cacheReadRatio) + ")"
+    + " write=" + Math.round(output.summary.cacheWriteTokens)
+    + " (" + formatPercent(output.summary.cacheWriteRatio) + ")",
+  );
+  console.log("");
+  console.log("Top cohorts by measured input:");
+  for (const item of output.cohorts) {
+    console.log(
+      item.signal.padEnd(11)
+      + " " + item.adapter + "/" + item.provider + "/" + item.model
+      + " surface=" + item.surface
+      + " input=" + item.inputTokens
+      + " read=" + formatPercent(item.cacheReadRatio)
+      + " write=" + formatPercent(item.cacheWriteRatio)
+      + " hits=" + formatPercent(item.cacheHitRequestRatio)
+      + " n=" + item.reportedSuccess + "/" + item.requests,
+    );
+  }
+  printCacheShapes(output.cacheShapes);
+}
+
+function printCacheShapes(shapes: readonly ShapeSummary[]): void {
+  console.log("");
+  if (shapes.length === 0) {
+    console.log("No promptCache observations in this window (historical rows predate instrumentation).");
+    return;
+  }
+
+  console.log("Observed outbound cache shapes:");
+  for (const item of shapes) {
+    console.log(
+      item.adapter + "/" + item.provider + "/" + item.model
+      + " surface=" + item.surface
+      + " mode=" + item.mode
+      + " tools=" + item.toolCount
+      + " bp=" + item.breakpointCount
+      + " input=" + item.inputTokens
+      + " read=" + formatPercent(item.cacheReadRatio)
+      + " write=" + formatPercent(item.cacheWriteRatio)
+      + " n=" + item.reportedSuccess + "/" + item.requests
+      + " prefix=" + (item.stablePrefixFingerprint ?? "-")
+      + " toolsHash=" + (item.toolsFingerprint ?? "-"),
+    );
+  }
+}
+
 function main(): number {
   let options: AnalyzerOptions;
   try {
@@ -341,156 +570,22 @@ function main(): number {
   }
 
   const since = sinceFor(options.range, options.nowMs);
-  const text = options.source === "-"
-    ? readFileSync(0, "utf8")
-    : readFileSync(options.source, "utf8");
-
-  const rows: Record<string, unknown>[] = [];
-  let invalidLines = 0;
-  for (const line of text.split(/\r?\n/u)) {
-    if (!line.trim()) continue;
-    try {
-      const parsed: unknown = JSON.parse(line);
-      if (isRecord(parsed)) rows.push(parsed);
-      else invalidLines += 1;
-    } catch {
-      invalidLines += 1;
-    }
-  }
-
-  const selected = rows.filter(row => {
-    const timestamp = nonNegativeNumber(row.timestamp);
-    return timestamp !== undefined && timestamp >= since && timestamp <= options.nowMs;
-  });
-  const cohorts = new Map<string, Cohort>();
-  const shapeBuckets = new Map<string, ShapeBucket>();
-  let reportedSuccess = 0;
-  let input = 0;
-  let read = 0;
-  let write = 0;
-
-  for (const row of selected) {
-    const dimensions = dimensionsFrom(row);
-    const key = dimensionsKey(dimensions);
-    const cohort = cohorts.get(key) ?? emptyCohort(dimensions);
-    cohorts.set(key, cohort);
-    cohort.requests += 1;
-    const conversationId = stringValue(row.conversationId);
-    if (conversationId) {
-      cohort.conversations.set(
-        conversationId,
-        (cohort.conversations.get(conversationId) ?? 0) + 1,
-      );
-    }
-
-    const usage = cacheUsage(row);
-    if (usage) {
-      cohort.reportedSuccess += 1;
-      cohort.input += usage.input;
-      cohort.cacheRead += usage.read;
-      cohort.cacheWrite += usage.write;
-      cohort.uncachedInput += Math.max(0, usage.input - usage.read - usage.write);
-      if (usage.read > 0) cohort.hitRequests += 1;
-      if (usage.write > 0) cohort.writeRequests += 1;
-      reportedSuccess += 1;
-      input += usage.input;
-      read += usage.read;
-      write += usage.write;
-    }
-
-    const observation = normalizePromptCacheRequestObservation(row.promptCache);
-    if (observation) {
-      const shapeKey = JSON.stringify([key, cacheShapeKey(observation)]);
-      const existing = shapeBuckets.get(shapeKey);
-      if (existing) existing.rows.push(row);
-      else shapeBuckets.set(shapeKey, { dimensions, observation, rows: [row] });
-    }
-  }
-
-  const cohortOutput = [...cohorts.values()]
-    .filter(cohort => cohort.reportedSuccess > 0)
-    .sort((a, b) => b.input - a.input)
-    .slice(0, options.top)
-    .map(summarizeCohort);
-  const shapeOutput = [...shapeBuckets.values()]
-    .map(summarizeShape)
-    .filter(shape => shape.reportedSuccess > 0)
-    .sort((a, b) => b.inputTokens - a.inputTokens)
-    .slice(0, options.top);
-
-  const output = {
-    source: options.source === "-" ? "stdin" : options.source,
-    range: options.range,
-    windowStartMs: since,
-    windowEndMs: options.nowMs,
-    windowStart: new Date(since).toISOString(),
-    windowEnd: new Date(options.nowMs).toISOString(),
-    rows: selected.length,
-    invalidLines,
-    proofBoundary: "status=200 AND usageStatus=reported",
-    summary: {
-      reportedSuccess,
-      inputTokens: input,
-      cacheReadTokens: read,
-      cacheWriteTokens: write,
-      uncachedInputTokens: Math.max(0, input - read - write),
-      cacheReadRatio: ratio(read, input),
-      cacheWriteRatio: ratio(write, input),
-    },
-    cohorts: cohortOutput,
-    cacheShapes: shapeOutput,
-  };
+  const parsed = parseUsageRows(readUsageSource(options));
+  const selected = rowsInWindow(parsed.rows, since, options.nowMs);
+  const output = buildOutput(
+    options,
+    since,
+    selected.length,
+    parsed.invalidLines,
+    analyzeRows(selected),
+  );
 
   if (options.jsonMode) {
     process.stdout.write(JSON.stringify(output, null, 2) + "\n");
     return 0;
   }
 
-  console.log("Prompt cache usage (" + options.range + ")");
-  console.log("window: " + output.windowStart + " .. " + output.windowEnd);
-  console.log("proof: " + output.proofBoundary);
-  console.log(
-    "reported-success=" + reportedSuccess
-    + " input=" + Math.round(input)
-    + " read=" + Math.round(read) + " (" + formatPercent(output.summary.cacheReadRatio) + ")"
-    + " write=" + Math.round(write) + " (" + formatPercent(output.summary.cacheWriteRatio) + ")",
-  );
-  console.log("");
-  console.log("Top cohorts by measured input:");
-  for (const item of cohortOutput) {
-    console.log(
-      item.signal.padEnd(11)
-      + " " + item.adapter + "/" + item.provider + "/" + item.model
-      + " surface=" + item.surface
-      + " input=" + item.inputTokens
-      + " read=" + formatPercent(item.cacheReadRatio)
-      + " write=" + formatPercent(item.cacheWriteRatio)
-      + " hits=" + formatPercent(item.cacheHitRequestRatio)
-      + " n=" + item.reportedSuccess + "/" + item.requests,
-    );
-  }
-  if (shapeOutput.length > 0) {
-    console.log("");
-    console.log("Observed outbound cache shapes:");
-    for (const item of shapeOutput) {
-      console.log(
-        item.adapter + "/" + item.provider + "/" + item.model
-        + " surface=" + item.surface
-        + " mode=" + item.mode
-        + " tools=" + item.toolCount
-        + " bp=" + item.breakpointCount
-        + " input=" + item.inputTokens
-        + " read=" + formatPercent(item.cacheReadRatio)
-        + " write=" + formatPercent(item.cacheWriteRatio)
-        + " n=" + item.reportedSuccess + "/" + item.requests
-        + " prefix=" + (item.stablePrefixFingerprint ?? "-")
-        + " toolsHash=" + (item.toolsFingerprint ?? "-"),
-      );
-    }
-  } else {
-    console.log("");
-    console.log("No promptCache observations in this window (historical rows predate instrumentation).");
-  }
+  printHumanOutput(output);
   return 0;
 }
 

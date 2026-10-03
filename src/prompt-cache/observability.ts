@@ -101,6 +101,55 @@ function boundedString(value: unknown, maxLength = 32): string | undefined {
   return trimmed.slice(0, maxLength);
 }
 
+function hasNonEmptyString(value: unknown): boolean {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function promptCacheMode(options: Record<string, unknown> | undefined): PromptCacheMode {
+  if (options?.mode === "explicit") return "explicit";
+  if (options?.mode === "implicit") return "implicit";
+  return "default";
+}
+
+function promptCacheTtl(
+  options: Record<string, unknown> | undefined,
+): PromptCacheRequestObservation["ttl"] {
+  return options?.ttl === "30m" ? "30m" : undefined;
+}
+
+function promptCacheLegacyRetention(value: unknown): PromptCacheLegacyRetention | undefined {
+  if (value === "in_memory" || value === "24h") return value;
+  return undefined;
+}
+
+function promptCacheInputItemCount(input: unknown): number {
+  if (Array.isArray(input)) return input.length;
+  return input === undefined ? 0 : 1;
+}
+
+interface PromptCacheObservationExtras {
+  toolsFingerprint?: string;
+  stablePrefixFingerprint?: string;
+  textFormatFingerprint?: string;
+  verbosity?: string;
+}
+
+function promptCacheObservationExtras(input: {
+  tools: unknown[];
+  prefix: unknown[];
+  textFormat: unknown;
+  verbosity: string | undefined;
+}): PromptCacheObservationExtras {
+  const extras: PromptCacheObservationExtras = {};
+  if (input.tools.length > 0) extras.toolsFingerprint = fingerprint(input.tools);
+  if (input.prefix.length > 0) extras.stablePrefixFingerprint = fingerprint(input.prefix);
+  if (input.textFormat !== undefined) {
+    extras.textFormatFingerprint = fingerprint(input.textFormat);
+  }
+  if (input.verbosity) extras.verbosity = input.verbosity;
+  return extras;
+}
+
 export function observeOpenAiResponsesPromptCache(
   value: unknown,
 ): PromptCacheRequestObservation | undefined {
@@ -109,17 +158,8 @@ export function observeOpenAiResponsesPromptCache(
   const options = isRecord(value.prompt_cache_options)
     ? value.prompt_cache_options
     : undefined;
-  const mode: PromptCacheMode = options?.mode === "explicit"
-    ? "explicit"
-    : options?.mode === "implicit"
-      ? "implicit"
-      : "default";
-  const ttl: PromptCacheRequestObservation["ttl"] =
-    options?.ttl === "30m" ? "30m" : undefined;
-  const retention = value.prompt_cache_retention === "in_memory"
-    || value.prompt_cache_retention === "24h"
-    ? value.prompt_cache_retention
-    : undefined;
+  const ttl = promptCacheTtl(options);
+  const retention = promptCacheLegacyRetention(value.prompt_cache_retention);
   const tools = Array.isArray(value.tools) ? value.tools : [];
   const input = value.input;
   const prefix = stablePrefix(value);
@@ -129,23 +169,17 @@ export function observeOpenAiResponsesPromptCache(
 
   return {
     version: 1,
-    keyPresent: typeof value.prompt_cache_key === "string"
-      && value.prompt_cache_key.trim().length > 0,
-    mode,
+    keyPresent: hasNonEmptyString(value.prompt_cache_key),
+    mode: promptCacheMode(options),
     ...(ttl ? { ttl } : {}),
     ...(retention ? { legacyRetention: retention } : {}),
     prewarm: options?.prewarm === true,
-    comparisonRequested: typeof options?.comparison_response_id === "string"
-      && options.comparison_response_id.trim().length > 0,
-    previousResponseIdPresent: typeof value.previous_response_id === "string"
-      && value.previous_response_id.trim().length > 0,
+    comparisonRequested: hasNonEmptyString(options?.comparison_response_id),
+    previousResponseIdPresent: hasNonEmptyString(value.previous_response_id),
     breakpointCount: countExplicitBreakpoints(input),
-    inputItemCount: Array.isArray(input) ? input.length : input === undefined ? 0 : 1,
+    inputItemCount: promptCacheInputItemCount(input),
     toolCount: tools.length,
-    ...(tools.length > 0 ? { toolsFingerprint: fingerprint(tools) } : {}),
-    ...(prefix.length > 0 ? { stablePrefixFingerprint: fingerprint(prefix) } : {}),
-    ...(textFormat !== undefined ? { textFormatFingerprint: fingerprint(textFormat) } : {}),
-    ...(verbosity ? { verbosity } : {}),
+    ...promptCacheObservationExtras({ tools, prefix, textFormat, verbosity }),
   };
 }
 
@@ -160,32 +194,65 @@ function isBoundedCount(value: unknown): value is number {
     && value <= 1_000_000;
 }
 
+interface PromptCacheObservationCore {
+  keyPresent: boolean;
+  prewarm: boolean;
+  comparisonRequested: boolean;
+  previousResponseIdPresent: boolean;
+  breakpointCount: number;
+  inputItemCount: number;
+  toolCount: number;
+}
+
+function hasPromptCacheObservationCore(
+  value: Record<string, unknown>,
+): value is Record<string, unknown> & PromptCacheObservationCore {
+  return typeof value.keyPresent === "boolean"
+    && typeof value.prewarm === "boolean"
+    && typeof value.comparisonRequested === "boolean"
+    && typeof value.previousResponseIdPresent === "boolean"
+    && isBoundedCount(value.breakpointCount)
+    && isBoundedCount(value.inputItemCount)
+    && isBoundedCount(value.toolCount);
+}
+
+function normalizedPromptCacheMode(value: unknown): PromptCacheMode | undefined {
+  if (value === "default" || value === "implicit" || value === "explicit") return value;
+  return undefined;
+}
+
+function normalizedPromptCacheTtl(value: unknown): PromptCacheRequestObservation["ttl"] {
+  return value === "30m" ? "30m" : undefined;
+}
+
+function normalizedPromptCacheExtras(
+  value: Record<string, unknown>,
+): PromptCacheObservationExtras {
+  const extras: PromptCacheObservationExtras = {};
+  if (isFingerprint(value.toolsFingerprint)) {
+    extras.toolsFingerprint = value.toolsFingerprint;
+  }
+  if (isFingerprint(value.stablePrefixFingerprint)) {
+    extras.stablePrefixFingerprint = value.stablePrefixFingerprint;
+  }
+  if (isFingerprint(value.textFormatFingerprint)) {
+    extras.textFormatFingerprint = value.textFormatFingerprint;
+  }
+  const verbosity = boundedString(value.verbosity);
+  if (verbosity) extras.verbosity = verbosity;
+  return extras;
+}
+
 export function normalizePromptCacheRequestObservation(
   value: unknown,
 ): PromptCacheRequestObservation | undefined {
   if (!isRecord(value) || value.version !== 1) return undefined;
-  if (typeof value.keyPresent !== "boolean"
-    || typeof value.prewarm !== "boolean"
-    || typeof value.comparisonRequested !== "boolean"
-    || typeof value.previousResponseIdPresent !== "boolean"
-    || !isBoundedCount(value.breakpointCount)
-    || !isBoundedCount(value.inputItemCount)
-    || !isBoundedCount(value.toolCount)) {
-    return undefined;
-  }
-  const mode = value.mode === "default"
-    || value.mode === "implicit"
-    || value.mode === "explicit"
-    ? value.mode
-    : undefined;
+  if (!hasPromptCacheObservationCore(value)) return undefined;
+  const mode = normalizedPromptCacheMode(value.mode);
   if (!mode) return undefined;
 
-  const ttl = value.ttl === "30m" ? value.ttl : undefined;
-  const legacyRetention = value.legacyRetention === "in_memory"
-    || value.legacyRetention === "24h"
-    ? value.legacyRetention
-    : undefined;
-  const verbosity = boundedString(value.verbosity);
+  const ttl = normalizedPromptCacheTtl(value.ttl);
+  const legacyRetention = promptCacheLegacyRetention(value.legacyRetention);
   return {
     version: 1,
     keyPresent: value.keyPresent,
@@ -198,12 +265,6 @@ export function normalizePromptCacheRequestObservation(
     breakpointCount: value.breakpointCount,
     inputItemCount: value.inputItemCount,
     toolCount: value.toolCount,
-    ...(isFingerprint(value.toolsFingerprint)
-      ? { toolsFingerprint: value.toolsFingerprint } : {}),
-    ...(isFingerprint(value.stablePrefixFingerprint)
-      ? { stablePrefixFingerprint: value.stablePrefixFingerprint } : {}),
-    ...(isFingerprint(value.textFormatFingerprint)
-      ? { textFormatFingerprint: value.textFormatFingerprint } : {}),
-    ...(verbosity ? { verbosity } : {}),
+    ...normalizedPromptCacheExtras(value),
   };
 }
