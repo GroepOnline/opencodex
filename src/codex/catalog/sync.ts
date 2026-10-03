@@ -33,6 +33,7 @@ import upstreamModelsSnapshot from "../data/upstream-models.json";
 
 import { activeCodexModelsCachePath, applyJawcodeCatalogMetadata, applyMultiAgentMode, applyNativeOpenAiContextOverride, catalogModelSlug, ensureCatalogBackup, ensureStrictCatalogFields, findNativeTemplate, isRoutedModelCompatibilityExcluded, normalizeRoutedCatalogEntry, normalizeServiceTiers, readCatalog, readCatalogBackup, readCodexCatalogPath, readNativeBaseline } from "./parsing";
 import type { CatalogModel, MultiAgentMode, RawEntry } from "./parsing";
+import { discoverNativeOpenAiCatalog, mergeDiscoveredNativeCatalogRows } from "./native-discovery";
 import { applyNativeVisibility, disabledNativeSlugs, isUnsupportedOpenAiNativeSlug, nativeOpenAiSlugs, shouldUpgradeToUpstreamEntry, upstreamNativeEntry } from "./metadata";
 import { loadCatalogForSync, resetBundledCatalogCacheForTests } from "./bundled";
 import { applyCatalogModelMetadata, applyReasoningLevels, catalogEntryEfforts, clampCatalogModelsToCodexSupport, ensureGpt56ReasoningLevels, ensureUltraReasoningLevel, isGpt56NativeSlug } from "./effort";
@@ -332,6 +333,7 @@ export function mergeCatalogEntriesForSync(
   exactComboSlugs: ReadonlySet<string> = new Set(),
   hasPhysicalComboProvider = false,
   includeNativeOpenAi = true,
+  authoritativeNativeSlugs: ReadonlySet<string> = new Set(),
 ): RawEntry[] {
   const rank = new Map(featured.map((slug, i) => [slug, i] as const));
   const native = includeNativeOpenAi
@@ -340,7 +342,10 @@ export function mergeCatalogEntriesForSync(
       && !(m.slug as string).includes("/")
       && m.owned_by !== COMBO_NAMESPACE
       && !goIds.has(m.slug as string)
-      && !isUnsupportedOpenAiNativeSlug(m.slug as string))
+      && (
+        !isUnsupportedOpenAiNativeSlug(m.slug as string)
+        || authoritativeNativeSlugs.has(m.slug as string)
+      ))
     .map(m => {
       const slug = m.slug as string;
       // Featured models rank first (rank order); non-featured natives are pushed below the featured
@@ -369,7 +374,9 @@ export function mergeCatalogEntriesForSync(
       const preserved = normalizeServiceTiers({ ...m, priority });
       // Older natives kept from disk still need the mock top tiers (max + ultra always
       // for subagent max spawns; wire-clamped to the model's real top rung).
-      if (!isGpt56NativeSlug(slug)) ensureUltraReasoningLevel(preserved);
+      if (!authoritativeNativeSlugs.has(slug) && !isGpt56NativeSlug(slug)) {
+        ensureUltraReasoningLevel(preserved);
+      }
       return preserved;
     })
     : [];
@@ -432,6 +439,8 @@ export function mergeCatalogEntriesForSync(
     const normalized = normalizeServiceTiers(m);
     applyNativeOpenAiContextOverride(normalized);
     const exactCombo = typeof m.slug === "string" && exactComboSlugs.has(m.slug);
+    const authoritativeNative = typeof m.slug === "string"
+      && authoritativeNativeSlugs.has(m.slug);
     const e = ensureStrictCatalogFields(normalized, {
       preserveExactInputModalities: exactCombo,
       isRouted: finalRoutedEntries.includes(m),
@@ -439,7 +448,7 @@ export function mergeCatalogEntriesForSync(
     // Mock-max universality (260709): preserved routed entries from disk may predate
     // the max rung — ensure it here so subagent max spawns validate on every
     // reasoning-capable entry. max only: 5.6 exact ladders (luna: no ultra) stay intact.
-    if (!exactCombo) {
+    if (!exactCombo && !authoritativeNative) {
       const levels = Array.isArray(e.supported_reasoning_levels)
         ? e.supported_reasoning_levels as Array<{ effort?: string }>
         : [];
@@ -459,7 +468,10 @@ export function mergeCatalogEntriesForSync(
   });
   // Native enable/disable (single choke point: bare slugs in `disabledModels`). Runs as the
   // LAST pass so the upstream-upgrade branch above can never clobber a hide flag back to list.
-  return applyMultiAgentMode(applyNativeVisibility(mergedEntries, disabledNative), multiAgentMode);
+  return applyMultiAgentMode(
+    applyNativeVisibility(mergedEntries, disabledNative, authoritativeNativeSlugs),
+    multiAgentMode,
+  );
 }
 
 export async function syncCatalogModels(config: OcxConfig): Promise<{
@@ -516,7 +528,34 @@ export async function syncCatalogModels(config: OcxConfig): Promise<{
   // bare gpt-* rows that hard-404 via NoEnabledOpenAiProviderError. Keep natives when no
   // providers are configured yet (fresh install / catalog bootstrap tests).
   const includeNativeOpenAi = enabledProviders.length === 0 || hasCanonicalOpenai;
-  catalog.models = mergeCatalogEntriesForSync(catalog.models ?? [], goEntries, baseline, featured, wsEnabled, goIds, template, disabledNativeSlugs(config), gatheredProviderNames, multiAgentMode, exactComboSlugs, hasPhysicalComboProvider, includeNativeOpenAi);
+  const liveNative = includeNativeOpenAi
+    ? await discoverNativeOpenAiCatalog(config)
+    : { models: [], clientVersion: null };
+  const authoritativeNativeSlugs = new Set(
+    liveNative.models.flatMap(model =>
+      typeof model.slug === "string" && !model.slug.includes("/") ? [model.slug] : []
+    ),
+  );
+  const catalogModels = mergeDiscoveredNativeCatalogRows(
+    catalog.models ?? [],
+    liveNative.models,
+  );
+  catalog.models = mergeCatalogEntriesForSync(
+    catalogModels,
+    goEntries,
+    baseline,
+    featured,
+    wsEnabled,
+    goIds,
+    template,
+    disabledNativeSlugs(config),
+    gatheredProviderNames,
+    multiAgentMode,
+    exactComboSlugs,
+    hasPhysicalComboProvider,
+    includeNativeOpenAi,
+    authoritativeNativeSlugs,
+  );
   clampCatalogModelsToCodexSupport(catalog.models);
 
   atomicWriteFile(catalogPath, JSON.stringify(catalog, null, 2) + "\n");
