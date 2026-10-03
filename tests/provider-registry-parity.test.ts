@@ -763,6 +763,7 @@ describe("provider registry parity", () => {
       "uncloseai",
       "llm7",
       "navy",
+      "cohere",
       "nvidia",
       "cloudflare-workers-ai",
       "omniroute",
