@@ -188,10 +188,15 @@ export async function discoverNativeOpenAiCatalog(
       continue;
     }
 
-    const parsed = await readBoundedDiscoveryJson(
-      response,
-      MODEL_DISCOVERY_MAX_RESPONSE_BYTES,
-    );
+    let parsed;
+    try {
+      parsed = await readBoundedDiscoveryJson(
+        response,
+        MODEL_DISCOVERY_MAX_RESPONSE_BYTES,
+      );
+    } catch {
+      continue;
+    }
     if (!parsed.ok) continue;
     const models = validatedNativeModels(parsed.value);
     if (!models) continue;
