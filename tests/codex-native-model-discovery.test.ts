@@ -18,7 +18,10 @@ const liveNative = {
 };
 
 function config(
-  overrides: Pick<OcxConfig, "codexAccounts" | "activeCodexAccountId"> = {},
+  overrides: Pick<
+    OcxConfig,
+    "codexAccounts" | "activeCodexAccountId" | "codexAccountPools"
+  > = {},
 ): OcxConfig {
   return {
     port: 10100,
@@ -100,6 +103,34 @@ describe("live native OpenAI catalog discovery", () => {
 
     expect(seenAuth).toEqual(["Bearer dead-main", "Bearer pool-good"]);
     expect(result.models.map(model => model.slug)).toEqual(["gpt-6.1-sol"]);
+  });
+
+  test("does not consult pool credentials when account pools are disabled", async () => {
+    let poolReads = 0;
+    const result = await discoverNativeOpenAiCatalog(config({
+      codexAccountPools: false,
+      codexAccounts: [{ id: "pool-disabled", email: "off@example.test", isMain: false }],
+      activeCodexAccountId: "pool-disabled",
+    }), {
+      getEffectiveActiveCodexAccountId: () => "pool-disabled",
+      getMainAccountToken: () => ({
+        accessToken: "dead-main",
+        chatgptAccountId: "dead-main-account",
+      }),
+      getValidCodexToken: async () => {
+        poolReads += 1;
+        return {
+          accessToken: "must-not-be-read",
+          chatgptAccountId: "must-not-be-read",
+          generation: 1,
+        };
+      },
+      resolveClientVersion: () => "0.160.0",
+      fetch: async () => new Response("", { status: 401 }),
+    });
+
+    expect(poolReads).toBe(0);
+    expect(result.models).toEqual([]);
   });
 
   test("shares one total request deadline across account fallbacks", async () => {
