@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { discoverNativeOpenAiCatalog } from "../src/codex/catalog/native-discovery";
 import { mergeCatalogEntriesForSync } from "../src/codex/catalog/sync";
+import type { OcxConfig } from "../src/types";
 
 const liveNative = {
   slug: "gpt-6.1-sol",
@@ -16,16 +17,26 @@ const liveNative = {
   input_modalities: ["text", "image"],
 };
 
+function config(
+  overrides: Pick<OcxConfig, "codexAccounts" | "activeCodexAccountId"> = {},
+): OcxConfig {
+  return {
+    port: 10100,
+    providers: {},
+    defaultProvider: "openai",
+    ...overrides,
+  };
+}
+
 describe("live native OpenAI catalog discovery", () => {
   test("uses the explicitly selected pool account before the physical main account", async () => {
     let mainReads = 0;
     const requests: Array<{ url: string; headers: Headers }> = [];
 
-    const result = await discoverNativeOpenAiCatalog({
-      providers: {},
+    const result = await discoverNativeOpenAiCatalog(config({
       codexAccounts: [{ id: "pool-a", email: "a@example.test", isMain: false }],
       activeCodexAccountId: "pool-a",
-    } as any, {
+    }), {
       getEffectiveActiveCodexAccountId: () => "pool-a",
       getMainAccountToken: () => {
         mainReads += 1;
@@ -51,22 +62,23 @@ describe("live native OpenAI catalog discovery", () => {
 
     expect(mainReads).toBe(0);
     expect(requests).toHaveLength(1);
-    expect(requests[0]!.url).toBe(
+    const request = requests[0];
+    if (!request) throw new Error("expected one native catalog request");
+    expect(request.url).toBe(
       "https://chatgpt.com/backend-api/codex/models?client_version=0.160.0",
     );
-    expect(requests[0]!.headers.get("authorization")).toBe("Bearer pool-access");
-    expect(requests[0]!.headers.get("chatgpt-account-id")).toBe("pool-chatgpt-account");
-    expect(requests[0]!.headers.get("originator")).toBe("codex_cli_rs");
-    expect(requests[0]!.headers.get("version")).toBe("0.160.0");
+    expect(request.headers.get("authorization")).toBe("Bearer pool-access");
+    expect(request.headers.get("chatgpt-account-id")).toBe("pool-chatgpt-account");
+    expect(request.headers.get("originator")).toBe("codex_cli_rs");
+    expect(request.headers.get("version")).toBe("0.160.0");
     expect(result.models.map(model => model.slug)).toEqual(["gpt-6.1-sol"]);
   });
 
   test("falls back from a dead physical main account to a usable pool credential", async () => {
     const seenAuth: string[] = [];
-    const result = await discoverNativeOpenAiCatalog({
-      providers: {},
+    const result = await discoverNativeOpenAiCatalog(config({
       codexAccounts: [{ id: "pool-b", email: "b@example.test", isMain: false }],
-    } as any, {
+    }), {
       getEffectiveActiveCodexAccountId: () => undefined,
       getMainAccountToken: () => ({
         accessToken: "dead-main",
@@ -87,6 +99,39 @@ describe("live native OpenAI catalog discovery", () => {
     });
 
     expect(seenAuth).toEqual(["Bearer dead-main", "Bearer pool-good"]);
+    expect(result.models.map(model => model.slug)).toEqual(["gpt-6.1-sol"]);
+  });
+
+  test("shares one total request deadline across account fallbacks", async () => {
+    const signals: AbortSignal[] = [];
+    let calls = 0;
+    const result = await discoverNativeOpenAiCatalog(config({
+      codexAccounts: [{ id: "pool-c", email: "c@example.test", isMain: false }],
+    }), {
+      getEffectiveActiveCodexAccountId: () => undefined,
+      getMainAccountToken: () => ({
+        accessToken: "dead-main",
+        chatgptAccountId: "dead-main-account",
+      }),
+      getValidCodexToken: async () => ({
+        accessToken: "pool-good",
+        chatgptAccountId: "pool-good-account",
+        generation: 1,
+      }),
+      resolveClientVersion: () => "0.160.0",
+      fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (!(init?.signal instanceof AbortSignal)) {
+          throw new Error("expected native catalog request deadline");
+        }
+        signals.push(init.signal);
+        calls += 1;
+        if (calls === 1) return new Response("", { status: 401 });
+        return new Response(JSON.stringify({ models: [liveNative] }), { status: 200 });
+      },
+    });
+
+    expect(signals).toHaveLength(2);
+    expect(signals[1]).toBe(signals[0]);
     expect(result.models.map(model => model.slug)).toEqual(["gpt-6.1-sol"]);
   });
 
