@@ -133,6 +133,17 @@ export function finishUpstreamNativeEntry(clone: RawEntry, priority: number): Ra
   return ensureStrictCatalogFields(normalizeServiceTiers(clone));
 }
 
+/**
+ * Normalize a live native Codex row without synthesizing reasoning tiers.
+ * The upstream response is already filtered for the requesting Codex version.
+ */
+export function finishAuthoritativeNativeEntry(entry: RawEntry, priority: number): RawEntry {
+  const clone = structuredClone(entry);
+  if (priority !== 9) clone.priority = priority;
+  applyNativeOpenAiContextOverride(clone);
+  return ensureStrictCatalogFields(normalizeServiceTiers(clone));
+}
+
 export function isExactComboCatalogModel(
   model: CatalogModel | undefined,
   exactComboSlugs: ReadonlySet<string>,
@@ -236,6 +247,7 @@ export function buildCatalogEntries(
   wsEnabled = false,
   multiAgentMode: MultiAgentMode = "default",
   exactComboSlugs: ReadonlySet<string> = new Set(),
+  authoritativeNativeEntries: ReadonlyMap<string, RawEntry> = new Map(),
 ): RawEntry[] {
   // Codex's models-manager sorts by `priority` ASC and advertises the first 5 picker-visible
   // models to spawn_agent (sort_by_key(priority) + MAX_MODEL_OVERRIDES_IN_SPAWN_AGENT=5). Catalog
@@ -248,7 +260,10 @@ export function buildCatalogEntries(
     .filter(model => model.provider === COMBO_NAMESPACE)
     .map(catalogModelSlug));
   for (const slug of gptSlugs) {
-    const e = deriveEntry(template, slug, "OpenAI native model (Codex OAuth passthrough).", 9);
+    const authoritative = authoritativeNativeEntries.get(slug);
+    const e = authoritative
+      ? finishAuthoritativeNativeEntry(authoritative, 9)
+      : deriveEntry(template, slug, "OpenAI native model (Codex OAuth passthrough).", 9);
     if (rank.has(slug)) e.priority = rank.get(slug)!;
     out.push(e);
   }
