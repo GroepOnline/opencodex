@@ -237,6 +237,12 @@ enabled, also pass `x-opencodex-api-key` from `OPENCODEX_API_AUTH_TOKEN`, matchi
 provider form above. To let OpenCodex inject routing directly, first switch Codex back to its
 built-in `openai` provider and remove any user-owned root `openai_base_url`, then rerun `ocx start`.
 
+When the external provider is a loopback OCX endpoint, client-only sync mirrors the central catalog
+into that isolated Codex home. Native OpenAI models keep their bare model ids and native display
+names and are pinned ahead of the routed OCX block in the picker. Featured/subagent ordering is
+preserved within the routed OCX block, so adding or featuring provider models cannot move native GPT
+rows below them.
+
 ### Catalog troubleshooting
 
 If a model is missing from Codex, or the catalog order/visibility looks wrong, check in order:
