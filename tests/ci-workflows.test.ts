@@ -837,9 +837,17 @@ describe("GitHub Actions hardening", () => {
     }
     expect(createStep).not.toContain("set +e\n            pr_notes");
     expect(createStep.indexOf("gh api")).toBeGreaterThan(-1);
-    expect(createStep.indexOf('git tag "$release_tag"')).toBeGreaterThan(-1);
-    expect(createStep.indexOf("gh api")).toBeLessThan(
-      createStep.indexOf('git tag "$release_tag"'),
+    const tagCreate =
+      'gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs"';
+    expect(createStep).toContain(tagCreate);
+    expect(createStep).toContain('-f "ref=refs/tags/${release_tag}"');
+    expect(createStep).toContain('-f "sha=${GITHUB_SHA}"');
+    expect(createStep).not.toContain('git tag "$release_tag"');
+    expect(createStep).not.toContain(
+      'git push origin "refs/tags/${release_tag}"',
+    );
+    expect(createStep.indexOf('"${assemble_args[@]}"')).toBeLessThan(
+      createStep.indexOf(tagCreate),
     );
     // First-channel releases must not call generate-notes without an explicit baseline
     // (GitHub would otherwise pick the newest repo tag, possibly from the other channel).

@@ -565,8 +565,13 @@ jobs:
           "${assemble_args[@]}"
 
           if [ -z "$existing_tag_sha" ]; then
-            git tag "$release_tag" "$GITHUB_SHA"
-            git push origin "refs/tags/${release_tag}"
+            # Create the immutable release ref through the GitHub API. A local
+            # git push would execute repository pre-push hooks after packaging
+            # has modified the checkout, which can fail after npm publication
+            # and leave the release without its tag/GitHub Release.
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f "ref=refs/tags/${release_tag}" \
+              -f "sha=${GITHUB_SHA}" >/dev/null
           fi
 
           gh release create "$release_tag" --target "$GITHUB_SHA" --title "$release_tag" \
