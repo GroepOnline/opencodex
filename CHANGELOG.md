@@ -72,6 +72,35 @@ All notable changes to the GroepOnline `opencodex` fork. Format follows
   `docker/build-push-action` v7.4.0). Every pinned SHA was verified against the
   upstream release tag before merge.
 
+## [1.5.1] — 2026-09-29
+
+### Added
+
+- AWS Bedrock adapter with per-request SigV4 while preserving the
+  OpenAI-compatible chat wire.
+- Restored the Signaal GUI overhaul and its provider/workspace interaction
+  improvements.
+
+### Fixed
+
+- Codex client launchers verify the central OCX route before starting local app
+  servers, avoiding a split route between the client and the central proxy.
+- GUI dependency/lockfile drift and workspace layout regressions were reconciled.
+- Heavy pre-push verification stays on remote/release lanes rather than running
+  implicitly on developer laptop pushes.
+
+### Changed
+
+- PR validation and the PR labeler were isolated from the dedicated publication
+  runner.
+- The retired Azure runtime deployment path now fails closed, and release/live
+  place-lock evidence was synchronized with the npm `1.5.1` artifact.
+- npm `1.5.1` was published from
+  `f7341facc84e4bb2deca52bf106339510506ebd6` on 2026-09-29. The matching
+  Git tag and GitHub Release were reconciled on 2026-10-03 after the original
+  release job had already passed registry smoke but failed while pushing its
+  tag through a local pre-push hook.
+
 ## [1.5.0] — 2026-09-22
 
 ### Added
