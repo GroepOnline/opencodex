@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 export type PromptCacheMode = "default" | "implicit" | "explicit";
 export type PromptCacheLegacyRetention = "in_memory" | "24h";
+export type PromptCacheVerbosity = "low" | "medium" | "high";
 
 export interface PromptCacheRequestObservation {
   version: 1;
@@ -18,7 +19,7 @@ export interface PromptCacheRequestObservation {
   toolsFingerprint?: string;
   stablePrefixFingerprint?: string;
   textFormatFingerprint?: string;
-  verbosity?: string;
+  verbosity?: PromptCacheVerbosity;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -94,11 +95,9 @@ function stablePrefix(body: Record<string, unknown>): unknown[] {
   return prefix;
 }
 
-function boundedString(value: unknown, maxLength = 32): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  return trimmed.slice(0, maxLength);
+function promptCacheVerbosity(value: unknown): PromptCacheVerbosity | undefined {
+  if (value === "low" || value === "medium" || value === "high") return value;
+  return undefined;
 }
 
 function hasNonEmptyString(value: unknown): boolean {
@@ -131,14 +130,14 @@ interface PromptCacheObservationExtras {
   toolsFingerprint?: string;
   stablePrefixFingerprint?: string;
   textFormatFingerprint?: string;
-  verbosity?: string;
+  verbosity?: PromptCacheVerbosity;
 }
 
 function promptCacheObservationExtras(input: {
   tools: unknown[];
   prefix: unknown[];
   textFormat: unknown;
-  verbosity: string | undefined;
+  verbosity: PromptCacheVerbosity | undefined;
 }): PromptCacheObservationExtras {
   const extras: PromptCacheObservationExtras = {};
   if (input.tools.length > 0) extras.toolsFingerprint = fingerprint(input.tools);
@@ -165,7 +164,7 @@ export function observeOpenAiResponsesPromptCache(
   const prefix = stablePrefix(value);
   const text = isRecord(value.text) ? value.text : undefined;
   const textFormat = text?.format;
-  const verbosity = boundedString(text?.verbosity);
+  const verbosity = promptCacheVerbosity(text?.verbosity);
 
   return {
     version: 1,
@@ -238,7 +237,7 @@ function normalizedPromptCacheExtras(
   if (isFingerprint(value.textFormatFingerprint)) {
     extras.textFormatFingerprint = value.textFormatFingerprint;
   }
-  const verbosity = boundedString(value.verbosity);
+  const verbosity = promptCacheVerbosity(value.verbosity);
   if (verbosity) extras.verbosity = verbosity;
   return extras;
 }

@@ -132,6 +132,54 @@ describe("prompt-cache usage analyzer", () => {
     ]);
   });
 
+  test("does not treat malformed explicit cache-read usage as legacy cache data", () => {
+    const path = tempUsageFile([
+      {
+        requestId: "malformed-explicit",
+        timestamp: Date.parse("2026-10-02T10:00:00Z"),
+        provider: "openai",
+        model: "gpt-5.6-terra",
+        status: 200,
+        usageStatus: "reported",
+        usage: {
+          inputTokens: 100,
+          outputTokens: 1,
+          cacheReadInputTokens: "not-a-number",
+          cachedInputTokens: 90,
+        },
+      },
+      {
+        requestId: "legacy-valid",
+        timestamp: Date.parse("2026-10-02T11:00:00Z"),
+        provider: "openai",
+        model: "gpt-5.6-terra",
+        status: 200,
+        usageStatus: "reported",
+        usage: {
+          inputTokens: 100,
+          outputTokens: 1,
+          cachedInputTokens: 60,
+        },
+      },
+    ]);
+
+    const result = run(
+      path,
+      "--range=7d",
+      "--now=2026-10-03T12:00:00Z",
+      "--json",
+    );
+    expect(result.exitCode).toBe(0);
+    const output = JSON.parse(result.stdout.toString());
+    expect(output.rows).toBe(2);
+    expect(output.summary).toMatchObject({
+      reportedSuccess: 1,
+      inputTokens: 100,
+      cacheReadTokens: 60,
+      cacheReadRatio: 0.6,
+    });
+  });
+
   test("rejects invalid CLI arguments instead of silently changing the analysis", () => {
     const path = tempUsageFile([]);
     const invalidRange = run(path, "--range=week");

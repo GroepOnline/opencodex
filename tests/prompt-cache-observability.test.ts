@@ -80,6 +80,27 @@ describe("prompt cache observability", () => {
     expect(serialized).not.toContain("private-format");
   });
 
+  test("only persists supported Responses verbosity values", () => {
+    expect(observeOpenAiResponsesPromptCache({
+      text: { verbosity: "low" },
+    })?.verbosity).toBe("low");
+    expect(observeOpenAiResponsesPromptCache({
+      text: { verbosity: "medium" },
+    })?.verbosity).toBe("medium");
+    expect(observeOpenAiResponsesPromptCache({
+      text: { verbosity: "high" },
+    })?.verbosity).toBe("high");
+
+    const unsupported = observeOpenAiResponsesPromptCache({
+      text: { verbosity: "private caller-controlled marker" },
+    });
+    expect(unsupported).not.toHaveProperty("verbosity");
+    expect(normalizePromptCacheRequestObservation({
+      ...unsupported,
+      verbosity: "private persisted marker",
+    })).not.toHaveProperty("verbosity");
+  });
+
   test("fingerprints are stable for object-key order but preserve tool array order", () => {
     const a = observeOpenAiResponsesPromptCache({
       instructions: "stable",

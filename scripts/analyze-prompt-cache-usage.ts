@@ -102,6 +102,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function hasOwn(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
 function nonNegativeNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value >= 0
     ? value
@@ -184,13 +188,17 @@ function cacheUsage(row: Record<string, unknown>): CacheUsage | undefined {
   const input = nonNegativeNumber(row.usage.inputTokens);
   if (input === undefined) return undefined;
   const write = nonNegativeNumber(row.usage.cacheCreationInputTokens) ?? 0;
-  const explicitRead = nonNegativeNumber(row.usage.cacheReadInputTokens);
-  const legacyCached = nonNegativeNumber(row.usage.cachedInputTokens);
-  const read = explicitRead
-    ?? (legacyCached !== undefined && row.usage.cacheCreationInputTokens !== undefined
+  let read: number;
+  if (hasOwn(row.usage, "cacheReadInputTokens")) {
+    const explicitRead = nonNegativeNumber(row.usage.cacheReadInputTokens);
+    if (explicitRead === undefined) return undefined;
+    read = explicitRead;
+  } else {
+    const legacyCached = nonNegativeNumber(row.usage.cachedInputTokens);
+    read = (legacyCached !== undefined && row.usage.cacheCreationInputTokens !== undefined
       ? Math.max(0, legacyCached - write)
-      : legacyCached)
-    ?? 0;
+      : legacyCached) ?? 0;
+  }
   if (read + write > input) return undefined;
   return { input, read, write };
 }
