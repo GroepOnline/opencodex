@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { discoverNativeOpenAiCatalog } from "../src/codex/catalog/native-discovery";
-import { mergeCatalogEntriesForSync } from "../src/codex/catalog/sync";
+import { buildCatalogEntries, mergeCatalogEntriesForSync } from "../src/codex/catalog/sync";
 import type { OcxConfig } from "../src/types";
 
 const liveNative = {
@@ -197,6 +197,26 @@ describe("live native OpenAI catalog discovery", () => {
     expect(signals).toHaveLength(2);
     expect(signals[1]).toBe(signals[0]);
     expect(result.models.map(model => model.slug)).toEqual(["gpt-6.1-sol"]);
+  });
+
+  test("catalog builder preserves authoritative metadata for a newly rolled-out native slug", () => {
+    const entries = buildCatalogEntries(
+      null,
+      ["gpt-6.1-sol"],
+      [],
+      undefined,
+      false,
+      "default",
+      new Set(),
+      new Map([["gpt-6.1-sol", liveNative]]),
+    );
+
+    const row = entries.find(entry => entry.slug === "gpt-6.1-sol");
+    expect(row?.display_name).toBe("GPT-6.1 Sol");
+    expect(row?.context_window).toBe(400_000);
+    expect(row?.supported_reasoning_levels).toEqual([
+      { effort: "high", description: "High reasoning" },
+    ]);
   });
 
   test("authoritative live native rows survive the static native whitelist unchanged", () => {
