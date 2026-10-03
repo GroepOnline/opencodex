@@ -1,14 +1,19 @@
 /**
- * Authentik OIDC consumer for the management GUI.
+ * OIDC consumer for the management GUI.
  *
- * When OIDC_ISSUER + OIDC_CLIENT_ID are set, a verified Authentik ID token
+ * When OIDC_ISSUER + OIDC_CLIENT_ID are set, a verified ID token
  * (Authorization Bearer) or an `ocx_oidc` session cookie authorizes human
  * GUI/API use without the separate ocx_admin_* prompt. Authorization-code
- * + PKCE (`GET /oauth/login` → `/oauth/callback`) requires a readable
- * OIDC_CLIENT_SECRET_FILE. The login transaction is bound to the browser
- * with an HttpOnly flow cookie (state/nonce/PKCE/browserBinding/returnTo).
+ * + PKCE (`GET /oauth/login` → `/oauth/callback`) supports confidential
+ * clients via OIDC_CLIENT_SECRET_FILE and public PKCE clients when discovery
+ * advertises token_endpoint_auth_methods_supported=["none"].
+ *
+ * OIDC_RESOURCE optionally sends an RFC 8707 resource indicator on authorize
+ * and token exchange. The login transaction is bound to the browser with an
+ * HttpOnly flow cookie (state/nonce/PKCE/browserBinding/returnTo).
  * Data-plane /v1/* stays on service-api-token.
- * Fail closed when env is unset or the token is invalid.
+ * Fail closed when env is unset, discovery is incompatible, or the token is
+ * invalid.
  */
 
 import { createHash, randomBytes } from "node:crypto";
@@ -19,7 +24,13 @@ export type OidcIdentity = {
   sub: string;
 };
 
-type Jwk = JsonWebKey & { kid?: string; kty: string };
+type Jwk = JsonWebKey & {
+  kid?: string;
+  kty: string;
+  alg?: string;
+  use?: string;
+  key_ops?: string[];
+};
 
 type OidcDiscovery = {
   issuer: string;
@@ -28,6 +39,8 @@ type OidcDiscovery = {
   jwks_uri: string;
   end_session_endpoint?: string;
   introspection_endpoint?: string;
+  token_endpoint_auth_methods_supported?: string[];
+  id_token_signing_alg_values_supported?: string[];
 };
 
 type JwksCache = { keys: Jwk[]; fetchedAt: number };
@@ -127,6 +140,25 @@ export function oidcConfigured(): boolean {
   return !!oidcIssuer() && !!oidcClientId();
 }
 
+export function oidcResource(): string | null {
+  const raw = Bun.env.OIDC_RESOURCE?.trim();
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    if (
+      parsed.protocol !== "https:" ||
+      parsed.username ||
+      parsed.password ||
+      parsed.hash
+    ) {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
 export function oidcRedirectUri(): string | null {
   const raw = Bun.env.OIDC_REDIRECT_URI?.trim();
   if (!raw) return null;
@@ -199,7 +231,7 @@ export function isOidcTrustedHost(hostname: string | undefined): boolean {
 }
 
 export function oidcCodeFlowConfigured(): boolean {
-  return oidcConfigured() && !!oidcRedirectUri() && !!readClientSecret();
+  return oidcConfigured() && !!oidcRedirectUri();
 }
 
 function readClientSecret(): string | null {
@@ -311,6 +343,20 @@ async function loadDiscovery(): Promise<OidcDiscovery> {
   ]) {
     if (endpoint) assertTrustedIssuerEndpoint(endpoint, issuer);
   }
+  const tokenAuthMethods = Array.isArray(
+    body.token_endpoint_auth_methods_supported,
+  )
+    ? body.token_endpoint_auth_methods_supported.filter(
+        (value): value is string => typeof value === "string",
+      )
+    : undefined;
+  const signingAlgs = Array.isArray(
+    body.id_token_signing_alg_values_supported,
+  )
+    ? body.id_token_signing_alg_values_supported.filter(
+        (value): value is string => typeof value === "string",
+      )
+    : undefined;
   const discovery: OidcDiscovery = {
     issuer: body.issuer,
     authorization_endpoint: body.authorization_endpoint,
@@ -324,9 +370,37 @@ async function loadDiscovery(): Promise<OidcDiscovery> {
       typeof body.end_session_endpoint === "string"
         ? body.end_session_endpoint
         : undefined,
+    ...(tokenAuthMethods
+      ? { token_endpoint_auth_methods_supported: tokenAuthMethods }
+      : {}),
+    ...(signingAlgs
+      ? { id_token_signing_alg_values_supported: signingAlgs }
+      : {}),
   };
   discoveryCache = { discovery, fetchedAt: now };
   return discovery;
+}
+
+type OidcTokenAuthMode = "client_secret_basic" | "none";
+
+function tokenEndpointAuthMode(
+  discovery: OidcDiscovery,
+): OidcTokenAuthMode | null {
+  const methods = discovery.token_endpoint_auth_methods_supported;
+  const secret = readClientSecret();
+
+  if (methods?.includes("client_secret_basic") && secret) {
+    return "client_secret_basic";
+  }
+  if (methods?.includes("none")) return "none";
+
+  // OIDC providers predating RFC 8414 metadata commonly omit the field.
+  // Preserve the existing confidential-client behavior only when a secret is
+  // configured; never silently downgrade a secretless client to public.
+  if ((!methods || methods.length === 0) && secret) {
+    return "client_secret_basic";
+  }
+  return null;
 }
 
 async function loadJwks(): Promise<Jwk[]> {
@@ -446,25 +520,49 @@ function oidcClaimsMatch(
   return true;
 }
 
-async function verifyRs256Signature(
+async function verifyOidcSignature(
   headerB64: string,
   payloadB64: string,
   signatureB64: string,
   kid: string,
+  alg: "RS256" | "ES256",
 ): Promise<boolean> {
   const keys = await loadJwks();
   const jwk = keys.find((key) => key.kid === kid);
   if (!jwk) return false;
+  if (jwk.alg && jwk.alg !== alg) return false;
+  if (jwk.use && jwk.use !== "sig") return false;
+  if (jwk.key_ops && !jwk.key_ops.includes("verify")) return false;
+
+  const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
+  const signature = Buffer.from(signatureB64, "base64url");
+
+  if (alg === "RS256") {
+    if (jwk.kty !== "RSA") return false;
+    const key = await crypto.subtle.importKey(
+      "jwk",
+      jwk,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    return crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature, data);
+  }
+
+  if (jwk.kty !== "EC" || jwk.crv !== "P-256") return false;
   const key = await crypto.subtle.importKey(
     "jwk",
     jwk,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    { name: "ECDSA", namedCurve: "P-256" },
     false,
     ["verify"],
   );
-  const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
-  const signature = Buffer.from(signatureB64, "base64url");
-  return crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature, data);
+  return crypto.subtle.verify(
+    { name: "ECDSA", hash: "SHA-256" },
+    key,
+    signature,
+    data,
+  );
 }
 
 export async function verifyOidcIdToken(
@@ -476,7 +574,12 @@ export async function verifyOidcIdToken(
   if (!issuer || !clientId) return null;
 
   const parsed = parseOidcJwt(token);
-  if (!parsed || parsed.header.alg !== "RS256" || !parsed.header.kid) {
+  const alg = parsed?.header.alg;
+  if (
+    !parsed ||
+    (alg !== "RS256" && alg !== "ES256") ||
+    !parsed.header.kid
+  ) {
     return null;
   }
   if (!oidcClaimsMatch(parsed.payload, issuer, clientId, expectedNonce)) {
@@ -486,11 +589,15 @@ export async function verifyOidcIdToken(
   if (!identity) return null;
 
   try {
-    const ok = await verifyRs256Signature(
+    const discovery = await loadDiscovery();
+    const advertised = discovery.id_token_signing_alg_values_supported;
+    if (advertised?.length && !advertised.includes(alg)) return null;
+    const ok = await verifyOidcSignature(
       parsed.headerB64,
       parsed.payloadB64,
       parsed.signatureB64,
       parsed.header.kid,
+      alg,
     );
     return ok ? identity : null;
   } catch (error) {
@@ -752,7 +859,7 @@ function requireOidcCodeFlow(
 ): Response | null {
   if (!oidcConfigured()) return textResponse(404, "OIDC is not configured");
   if (!oidcCodeFlowConfigured()) {
-    return textResponse(503, "OIDC client secret file is not configured");
+    return textResponse(503, "OIDC authorization-code flow is not configured");
   }
   if (!hostAllowedForFlow(req)) {
     return textResponse(403, unavailableMessage);
@@ -770,11 +877,20 @@ export async function handleOidcAuthorize(req: Request): Promise<Response> {
   const redirectUri = oidcRedirectUri();
   const clientId = oidcClientId();
   if (!redirectUri || !clientId) {
-    return textResponse(503, "OIDC client secret file is not configured");
+    return textResponse(503, "OIDC authorization-code flow is not configured");
+  }
+  if (Bun.env.OIDC_RESOURCE?.trim() && !oidcResource()) {
+    return textResponse(503, "OIDC resource indicator is invalid");
   }
 
   try {
     const discovery = await loadDiscovery();
+    if (!tokenEndpointAuthMode(discovery)) {
+      return textResponse(
+        503,
+        "OIDC token endpoint authentication is not supported",
+      );
+    }
     pruneMaps(pendingFlows, PENDING_LIMIT);
     const state = randomBytes(32).toString("base64url");
     const verifier = randomBytes(32).toString("base64url");
@@ -799,6 +915,8 @@ export async function handleOidcAuthorize(req: Request): Promise<Response> {
     authorize.searchParams.set("nonce", nonce);
     authorize.searchParams.set("code_challenge", pkceChallenge(verifier));
     authorize.searchParams.set("code_challenge_method", "S256");
+    const resource = oidcResource();
+    if (resource) authorize.searchParams.set("resource", resource);
     return redirectResponse(
       authorize.toString(),
       sessionCookie(
@@ -902,25 +1020,40 @@ async function exchangeAuthorizationCode(
   pending: PendingFlow,
   code: string,
   clientId: string,
-  secret: string,
 ): Promise<{ idToken: string; accessToken?: string }> {
   const discovery = await loadDiscovery();
-  const credentials = Buffer.from(`${clientId}:${secret}`, "utf8").toString(
-    "base64",
-  );
+  const mode = tokenEndpointAuthMode(discovery);
+  if (!mode) {
+    throw new Error("OIDC token endpoint authentication is not supported");
+  }
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+  if (mode === "client_secret_basic") {
+    const secret = readClientSecret();
+    if (!secret) throw new Error("OIDC client secret is unavailable");
+    const credentials = Buffer.from(
+      `${clientId}:${secret}`,
+      "utf8",
+    ).toString("base64");
+    headers.Authorization = `Basic ${credentials}`;
+  }
+
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: pending.redirectUri,
+    client_id: clientId,
+    code_verifier: pending.verifier,
+  });
+  const resource = oidcResource();
+  if (resource) body.set("resource", resource);
+
   const tokenResponse = (await fetchJson(discovery.token_endpoint, {
     method: "POST",
-    headers: {
-      Authorization: `Basic ${credentials}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: pending.redirectUri,
-      client_id: clientId,
-      code_verifier: pending.verifier,
-    }),
+    headers,
+    body,
   })) as { id_token?: unknown; access_token?: unknown };
   return {
     idToken:
@@ -963,10 +1096,9 @@ export async function handleOidcCallback(req: Request): Promise<Response> {
   const pending = consumePendingFlow(req, query.state);
   if (pending instanceof Response) return pending;
 
-  const secret = readClientSecret();
   const clientId = oidcClientId();
-  if (!secret || !clientId) {
-    return textResponse(503, "OIDC client secret file is not configured");
+  if (!clientId) {
+    return textResponse(503, "OIDC client id is not configured");
   }
 
   try {
@@ -974,7 +1106,6 @@ export async function handleOidcCallback(req: Request): Promise<Response> {
       pending,
       query.code,
       clientId,
-      secret,
     );
     const identity = await verifyOidcIdToken(tokens.idToken, pending.nonce);
     if (!identity) return textResponse(401, "OIDC identity token is invalid");

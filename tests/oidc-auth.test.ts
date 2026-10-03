@@ -44,6 +44,7 @@ const oidcEnvKeys = [
   "OIDC_CLIENT_SECRET_FILE",
   "OIDC_REDIRECT_URI",
   "OIDC_ALLOWED_HOSTS",
+  "OIDC_RESOURCE",
 ] as const;
 const previousOidc = Object.fromEntries(
   oidcEnvKeys.map((key) => [key, process.env[key]]),
@@ -58,6 +59,21 @@ const { publicKey, privateKey } = generateKeyPairSync("rsa", {
   privateKeyEncoding: { type: "pkcs8", format: "pem" },
 });
 const jwk = { ...publicKey, kid: "test-kid", use: "sig", alg: "RS256" };
+const { publicKey: ecPublicKey, privateKey: ecPrivateKey } = generateKeyPairSync(
+  "ec",
+  {
+    namedCurve: "prime256v1",
+    publicKeyEncoding: { type: "spki", format: "jwk" },
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+  },
+);
+const ecJwk = {
+  ...ecPublicKey,
+  kid: "test-ec-kid",
+  use: "sig",
+  alg: "ES256",
+  key_ops: ["verify"],
+};
 
 function b64urlJson(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -72,6 +88,17 @@ function signJwt(
   signer.update(encoded);
   signer.end();
   return `${encoded}.${signer.sign(privateKey).toString("base64url")}`;
+}
+function signEsJwt(payload: Record<string, unknown>): string {
+  const encoded = `${b64urlJson({ alg: "ES256", kid: "test-ec-kid" })}.${b64urlJson(payload)}`;
+  const signer = createSign("SHA256");
+  signer.update(encoded);
+  signer.end();
+  const signature = signer.sign({
+    key: ecPrivateKey,
+    dsaEncoding: "ieee-p1363",
+  });
+  return `${encoded}.${signature.toString("base64url")}`;
 }
 
 function validPayload(
@@ -88,13 +115,19 @@ function validPayload(
   };
 }
 
-function discoveryDocument(includeIntrospection = false) {
+function discoveryDocument(
+  includeIntrospection = false,
+  tokenAuthMethods: string[] = ["client_secret_basic"],
+  signingAlgs: string[] = ["RS256"],
+) {
   return {
     issuer: ISSUER,
     authorization_endpoint: AUTHORIZE,
     token_endpoint: TOKEN,
     jwks_uri: JWKS,
     end_session_endpoint: END_SESSION,
+    token_endpoint_auth_methods_supported: tokenAuthMethods,
+    id_token_signing_alg_values_supported: signingAlgs,
     ...(includeIntrospection ? { introspection_endpoint: INTROSPECT } : {}),
   };
 }
@@ -219,15 +252,15 @@ afterEach(() => {
   rmSync(secretDir, { recursive: true, force: true });
 });
 
-describe("Authentik OIDC consumer", () => {
-  test("token verify needs issuer + client_id; code flow also needs secret file", () => {
+describe("OIDC consumer", () => {
+  test("token verify needs issuer + client_id; code flow also needs a redirect", () => {
     expect(oidcConfigured()).toBe(false);
     expect(oidcCodeFlowConfigured()).toBe(false);
     process.env.OIDC_ISSUER = ISSUER;
     process.env.OIDC_CLIENT_ID = CLIENT_ID;
     expect(oidcConfigured()).toBe(true);
     expect(oidcCodeFlowConfigured()).toBe(false);
-    configureOidc(true);
+    configureOidc(false);
     expect(oidcCodeFlowConfigured()).toBe(true);
   });
 
@@ -265,6 +298,25 @@ describe("Authentik OIDC consumer", () => {
         ),
       ),
     ).resolves.toBeNull();
+  });
+
+  test("verifies ES256 ID tokens advertised by the issuer", async () => {
+    configureOidc(false);
+    setOidcFetchForTests(async (input) => {
+      const url = String(input);
+      if (url.includes(".well-known/openid-configuration")) {
+        return Response.json(
+          discoveryDocument(false, ["none"], ["ES256"]),
+        );
+      }
+      if (url === JWKS) return Response.json({ keys: [ecJwk] });
+      return new Response("missing", { status: 404 });
+    });
+    await expect(verifyOidcIdToken(signEsJwt(validPayload()))).resolves.toEqual({
+      email: "operator@example.test",
+      sub: "user-1",
+    });
+    await expect(verifyOidcIdToken(signJwt(validPayload()))).resolves.toBeNull();
   });
 
   test("GET /oauth/login redirects to Authentik authorize with PKCE", async () => {
@@ -308,14 +360,31 @@ describe("Authentik OIDC consumer", () => {
     expect(safeOidcReturnTo(" /oops")).toBe("/");
   });
 
-  test("GET /oauth/login without a secret file fails closed", async () => {
+  test("invalid OIDC resource indicators fail closed before authorize", async () => {
     configureOidc(false);
+    process.env.OIDC_RESOURCE = "http://not-secure.example.test/v1";
+    setOidcFetchForTests(async () => {
+      throw new Error("discovery must not run");
+    });
     const response = await handleOidcAuthorize(
       new Request("http://127.0.0.1:10100/oauth/login", {
         headers: { Host: "127.0.0.1:10100" },
       }),
     );
     expect(response.status).toBe(503);
+    expect(await response.text()).toContain("resource indicator is invalid");
+  });
+
+  test("GET /oauth/login without a secret fails closed for confidential-only issuers", async () => {
+    configureOidc(false);
+    mockOidcNetwork();
+    const response = await handleOidcAuthorize(
+      new Request("http://127.0.0.1:10100/oauth/login", {
+        headers: { Host: "127.0.0.1:10100" },
+      }),
+    );
+    expect(response.status).toBe(503);
+    expect(await response.text()).toContain("token endpoint authentication");
   });
 
   async function startLogin(returnTo = "/"): Promise<{
@@ -337,6 +406,63 @@ describe("Authentik OIDC consumer", () => {
       flow: cookiePair(start, "ocx_oidc_flow") ?? "",
     };
   }
+
+  test("public PKCE clients use token auth none and forward the resource indicator", async () => {
+    configureOidc(false);
+    process.env.OIDC_RESOURCE = "https://auth.example.test/v1";
+    let capturedNonce = "";
+    setOidcFetchForTests(async (input, init) => {
+      const url = String(input);
+      if (url.includes(".well-known/openid-configuration")) {
+        return Response.json(
+          discoveryDocument(false, ["none"], ["RS256"]),
+        );
+      }
+      if (url === JWKS) return Response.json({ keys: [jwk] });
+      if (url === TOKEN) {
+        const headers = new Headers(init?.headers);
+        expect(headers.get("authorization")).toBeNull();
+        const body = new URLSearchParams(String(init?.body));
+        expect(body.get("client_id")).toBe(CLIENT_ID);
+        expect(body.get("resource")).toBe("https://auth.example.test/v1");
+        expect(body.get("code_verifier")).toBeTruthy();
+        return Response.json({
+          id_token: signJwt(validPayload({ nonce: capturedNonce })),
+          access_token: "public-access",
+        });
+      }
+      return new Response("missing", { status: 404 });
+    });
+
+    const start = await handleOidcAuthorize(
+      new Request("http://127.0.0.1:10100/oauth/login?return_to=/usage", {
+        headers: { Host: "127.0.0.1:10100" },
+      }),
+    );
+    expect(start.status).toBe(302);
+    const authorize = new URL(start.headers.get("Location") ?? "");
+    expect(authorize.searchParams.get("resource")).toBe(
+      "https://auth.example.test/v1",
+    );
+    capturedNonce = authorize.searchParams.get("nonce") ?? "";
+    const state = authorize.searchParams.get("state") ?? "";
+    const flow = cookiePair(start, "ocx_oidc_flow") ?? "";
+
+    const callback = await handleOidcCallback(
+      new Request(
+        `http://127.0.0.1:10100/oauth/callback?code=public-code&state=${state}`,
+        {
+          headers: {
+            Host: "127.0.0.1:10100",
+            Cookie: flow,
+          },
+        },
+      ),
+    );
+    expect(callback.status).toBe(302);
+    expect(callback.headers.get("Location")).toBe("/usage");
+    expect(cookiePair(callback, "ocx_oidc")).toContain("ocx_oidc=");
+  });
 
   test("GET /oauth/callback exchanges the code, sets a session cookie, and rejects replayed state", async () => {
     configureOidc(true);
