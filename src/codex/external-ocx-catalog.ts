@@ -12,7 +12,7 @@ import {
   type CatalogModel,
 } from "./catalog";
 import { loadCatalogForSync } from "./catalog/bundled";
-import { findNativeTemplate } from "./catalog/parsing";
+import { findNativeTemplate, type RawEntry } from "./catalog/parsing";
 
 type RemoteModelRow = CatalogModel & {
   namespaced?: string;
@@ -74,6 +74,42 @@ function remoteCatalogModel(row: RemoteModelRow): CatalogModel {
     ...(row.capabilities ? { capabilities: row.capabilities } : {}),
   };
 }
+const EXTERNAL_ROUTED_FEATURED_PRIORITY_BASE = 100;
+const EXTERNAL_ROUTED_PRIORITY = 200;
+
+/**
+ * External/client-only Codex homes should keep OpenAI-native bare models at the top of the picker.
+ * Codex sorts by numeric priority rather than catalog array order, so reserve a later priority band
+ * for OCX-routed rows while preserving the configured featured order inside that routed block.
+ */
+function prioritizeExternalOcxPicker(
+  models: RawEntry[],
+  nativeSlugs: readonly string[],
+  routedModels: readonly CatalogModel[],
+  featured: readonly string[],
+): RawEntry[] {
+  const nativeSet = new Set(nativeSlugs);
+  const featuredRank = new Map(featured.map((slug, index) => [slug, index] as const));
+  const routedBySlug = new Map(
+    routedModels.map(model => [catalogModelSlug(model), model] as const),
+  );
+
+  return models.map(entry => {
+    const slug = typeof entry.slug === "string" ? entry.slug : "";
+    if (!slug || nativeSet.has(slug)) return entry;
+
+    const model = routedBySlug.get(slug);
+    const rank = featuredRank.get(slug)
+      ?? (model ? featuredRank.get(`${model.provider}/${model.id}`) : undefined);
+    return {
+      ...entry,
+      priority: rank === undefined
+        ? EXTERNAL_ROUTED_PRIORITY
+        : EXTERNAL_ROUTED_FEATURED_PRIORITY_BASE + rank,
+    };
+  });
+}
+
 async function jsonOrThrow<T>(response: Response, label: string): Promise<T> {
   if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}`);
   try {
@@ -135,14 +171,19 @@ export async function syncExternalOcxCatalog(
   const exactCombos = new Set(
     routed.filter(model => model.provider === "combo").map(catalogModelSlug),
   );
-  const models = buildCatalogEntries(
-    template,
+  const models = prioritizeExternalOcxPicker(
+    buildCatalogEntries(
+      template,
+      native,
+      routed,
+      featured,
+      false,
+      "default",
+      exactCombos,
+    ),
     native,
     routed,
     featured,
-    false,
-    "default",
-    exactCombos,
   );
   if (models.length === 0) throw new Error("OCX catalog conversion produced no Codex models");
 
