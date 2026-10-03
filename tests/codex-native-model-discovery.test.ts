@@ -220,7 +220,7 @@ describe("live native OpenAI catalog discovery", () => {
   });
 
   test("authoritative live native rows survive the static native whitelist unchanged", () => {
-    const result = mergeCatalogEntriesForSync(
+    const args: Parameters<typeof mergeCatalogEntriesForSync> = [
       [liveNative],
       [],
       new Map(),
@@ -235,7 +235,8 @@ describe("live native OpenAI catalog discovery", () => {
       false,
       true,
       new Set(["gpt-6.1-sol"]),
-    );
+    ];
+    const result = mergeCatalogEntriesForSync(...args);
 
     const row = result.find(entry => entry.slug === "gpt-6.1-sol");
     expect(row).toBeDefined();
