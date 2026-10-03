@@ -73,6 +73,7 @@ describe("syncExternalOcxCatalog", () => {
         }
         return Response.json([
           { provider: "openai", id: "gpt-5.6-sol", namespaced: "gpt-5.6-sol", disabled: false, native: true, contextWindow: 372000 },
+          { provider: "openai", id: "gpt-5.5", namespaced: "gpt-5.5", disabled: false, native: true, contextWindow: 272000 },
           { provider: "combo", id: "factory", namespaced: "combo/factory", disabled: false, parallelToolCalls: true },
           { provider: "azure-foundry", id: "DeepSeek-V4-Flash-0731", namespaced: "azure-foundry/DeepSeek-V4-Flash-0731", disabled: false, contextWindow: 128000 },
           { provider: "stale", id: "hidden", namespaced: "stale/hidden", disabled: true },
@@ -82,12 +83,13 @@ describe("syncExternalOcxCatalog", () => {
     expect(result).toEqual({
       handled: true,
       catalogPath: "/tmp/client/opencodex-catalog.json",
-      models: 3,
+      models: 4,
       cacheSynced: true,
     });
     expect(requests[0]).toEqual({ url: "http://127.0.0.1:10100/healthz", key: null });
     expect(requests.slice(1).every(request => request.key?.startsWith("ocx_admin_") === true)).toBe(true);
     expect(catalog).toContain('"slug": "gpt-5.6-sol"');
+    expect(catalog).toContain('"slug": "gpt-5.5"');
     expect(catalog).toContain('"slug": "combo/factory"');
     expect(catalog).toContain('"slug": "azure-foundry/DeepSeek-V4-Flash-0731"');
     expect(catalog).not.toContain("stale/hidden");
@@ -95,11 +97,13 @@ describe("syncExternalOcxCatalog", () => {
     const parsed = JSON.parse(catalog) as {
       models: Array<{ slug?: string; display_name?: string; priority?: number }>;
     };
-    const native = parsed.models.find(model => model.slug === "gpt-5.6-sol");
+    const sol = parsed.models.find(model => model.slug === "gpt-5.6-sol");
+    const gpt55 = parsed.models.find(model => model.slug === "gpt-5.5");
     const featuredOcx = parsed.models.find(model => model.slug === "combo/factory");
     const ordinaryOcx = parsed.models.find(model => model.slug === "azure-foundry/DeepSeek-V4-Flash-0731");
-    expect(native?.display_name).toBe("GPT-5.6-Sol");
-    expect(native?.priority).toBeLessThan(featuredOcx?.priority ?? -1);
+    expect(sol?.display_name).toBe("GPT-5.6-Sol");
+    expect(sol?.priority).toBeLessThan(featuredOcx?.priority ?? -1);
+    expect(gpt55?.priority).toBeLessThan(ordinaryOcx?.priority ?? -1);
     expect(featuredOcx?.priority).toBe(100);
     expect(ordinaryOcx?.priority).toBe(200);
     expect(writtenConfig).toContain('model_catalog_json = "/tmp/client/opencodex-catalog.json"');
