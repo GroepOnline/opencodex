@@ -42,6 +42,10 @@ type CredentialCandidate =
   | { kind: "main" }
   | { kind: "pool"; id: string };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function defaultClientVersion(): string | null {
   return resolveCodexRuntime({ discoverAlternatives: false }).runtime.version;
 }
@@ -97,9 +101,8 @@ function validatedNativeModels(value: unknown): RawEntry[] | null {
   const models: RawEntry[] = [];
   const seen = new Set<string>();
   for (const raw of envelope.rows) {
-    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
-    const entry = raw as RawEntry;
-    const slug = entry.slug;
+    if (!isRecord(raw)) return null;
+    const slug = raw.slug;
     if (
       typeof slug !== "string"
       || !slug
@@ -111,7 +114,7 @@ function validatedNativeModels(value: unknown): RawEntry[] | null {
     }
     if (seen.has(slug)) continue;
     seen.add(slug);
-    const clone = { ...entry };
+    const clone: RawEntry = { ...raw };
     // The request is already version-filtered for the installed Codex runtime. Keeping this
     // field would make a proxy serving another compatible Codex build hide an otherwise usable row.
     delete clone.minimal_client_version;
@@ -151,6 +154,9 @@ export async function discoverNativeOpenAiCatalog(
     config,
     deps.getEffectiveActiveCodexAccountId(config),
   );
+  // One wall-clock budget for the entire account fallback sequence. A dead upstream must not
+  // multiply the discovery delay by the number of configured pool accounts.
+  const requestSignal = AbortSignal.timeout(8_000);
   for (const candidate of candidates) {
     const credential = await resolveCredential(candidate, deps);
     if (!credential?.accessToken || !credential.chatgptAccountId) continue;
@@ -165,7 +171,7 @@ export async function discoverNativeOpenAiCatalog(
           originator: "codex_cli_rs",
           version: clientVersion,
         },
-        signal: AbortSignal.timeout(8_000),
+        signal: requestSignal,
       });
     } catch {
       continue;
