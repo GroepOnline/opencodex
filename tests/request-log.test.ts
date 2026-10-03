@@ -21,6 +21,7 @@ import {
   hydrateRequestLogsFromDisk,
   noteAttemptSend,
   recordAdapterReasoning,
+  recordAdapterRequestMetadata,
   recordFirstOutput,
   requestLogEntryFromPersistedUsage,
   sealRequestAttemptIdentity,
@@ -161,6 +162,59 @@ describe("request log metadata", () => {
     expect(logCtx.reasoningWireValue).not.toContain("redaction-fixture");
     expect(attempt.effectiveEffort).not.toContain("redaction-fixture");
     expect(attempt.reasoningWireValue).not.toContain("redaction-fixture");
+  });
+
+  test("records and replaces outbound prompt-cache metadata at the adapter seam", () => {
+    const logCtx: RequestLogContext = {
+      model: "gpt-5.6-terra",
+      provider: "openai",
+      promptCache: {
+        version: 1,
+        keyPresent: false,
+        mode: "default",
+        prewarm: false,
+        comparisonRequested: false,
+        previousResponseIdPresent: false,
+        breakpointCount: 0,
+        inputItemCount: 0,
+        toolCount: 0,
+      },
+    };
+
+    recordAdapterRequestMetadata(logCtx, {
+      url: "https://api.openai.com/v1/responses",
+      method: "POST",
+      headers: {},
+      body: "{}",
+      promptCacheLog: {
+        version: 1,
+        keyPresent: true,
+        mode: "implicit",
+        ttl: "30m",
+        prewarm: false,
+        comparisonRequested: false,
+        previousResponseIdPresent: true,
+        breakpointCount: 1,
+        inputItemCount: 3,
+        toolCount: 2,
+        toolsFingerprint: "0123456789abcdef01234567",
+      },
+    });
+    expect(logCtx.promptCache).toMatchObject({
+      keyPresent: true,
+      mode: "implicit",
+      previousResponseIdPresent: true,
+      breakpointCount: 1,
+      toolCount: 2,
+    });
+
+    recordAdapterRequestMetadata(logCtx, {
+      url: "https://strict-provider.test/v1/responses",
+      method: "POST",
+      headers: {},
+      body: "{}",
+    });
+    expect(logCtx.promptCache).toBeUndefined();
   });
 
   test("malformed adapter reasoning metadata never interrupts request logging", () => {
