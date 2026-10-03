@@ -5,6 +5,7 @@ import {
   MODEL_DISCOVERY_MAX_RESPONSE_BYTES,
   extractModelEnvelopeRows,
   readBoundedDiscoveryJson,
+  type BoundedDiscoveryJsonResult,
 } from "../../providers/model-discovery";
 import { isSelectableCodexPoolAccount, MAIN_CODEX_ACCOUNT_ID } from "../account-id";
 import { getValidCodexToken } from "../account-store";
@@ -188,7 +189,7 @@ export async function discoverNativeOpenAiCatalog(
       continue;
     }
 
-    let parsed;
+    let parsed: BoundedDiscoveryJsonResult;
     try {
       parsed = await readBoundedDiscoveryJson(
         response,
