@@ -265,6 +265,7 @@ function deleteScopedHealth(accountId: string, scope: CodexQuotaScope): void {
 }
 
 export function computeCodexUsageScore(quota: {
+  fiveHourPercent?: number;
   weeklyPercent?: number;
   monthlyPercent?: number;
 } | null, plan?: string | null): number {
@@ -275,7 +276,7 @@ export function computeCodexUsageScore(quota: {
       ? quota.monthlyPercent
       : CODEX_UNKNOWN_USAGE_SCORE;
   }
-  const values = [quota.weeklyPercent, quota.monthlyPercent]
+  const values = [quota.fiveHourPercent, quota.weeklyPercent, quota.monthlyPercent]
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
   return values.length > 0 ? Math.max(...values) : CODEX_UNKNOWN_USAGE_SCORE;
 }
