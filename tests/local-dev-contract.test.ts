@@ -7,6 +7,10 @@ import { startServer } from "../src/server";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const previousHome = process.env.OPENCODEX_HOME;
+const pkg = (await Bun.file(join(repoRoot, "package.json")).json()) as {
+  version: string;
+};
+const version = pkg.version;
 
 afterEach(() => {
   if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
@@ -262,7 +266,7 @@ describe("healthz-smoke against a live proxy", () => {
       await waitForHealthz(server.port);
       const ok = await runHealthzSmoke({
         OPENCODEX_HEALTH_URL: `http://127.0.0.1:${server.port}/healthz`,
-        OPENCODEX_SMOKE_EXPECT_VERSION: "1.5.1",
+        OPENCODEX_SMOKE_EXPECT_VERSION: version,
       });
       // Surface the probe's own output on failure. A bare exit-code assertion
       // collapses "listener refused the connect" and "identity field missing"
@@ -275,8 +279,9 @@ describe("healthz-smoke against a live proxy", () => {
             `stderr: ${ok.stderr.trim() || "(empty)"}`,
         );
       }
+      // Track package.json so every version bump keeps this green.
       expect(ok.stdout).toContain('"service": "opencodex"');
-      expect(ok.stdout).toContain('"version": "1.5.1"');
+      expect(ok.stdout).toContain(`"version": "${version}"`);
     } finally {
       await server.stop(true);
     }
