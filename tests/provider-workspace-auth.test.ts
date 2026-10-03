@@ -222,6 +222,8 @@ describe("workspace account integration seam", () => {
     expect(oauthHook).toContain("&reauth=1");
     expect(modal).toContain("reauthAccountId");
     expect(cards).toContain("codexAuth.reauthenticate");
+    expect(cards).toContain('showReauth ? "btn-primary" : "btn-ghost"');
+    expect(cards).not.toContain("{showReauth && (\n                <button");
     expect(mainCard).toContain("codexAuth.mainTokenExpired");
     // The panel now shares the controller instead of reporting health upward.
     expect(panel).toContain("controller={codexController}");
