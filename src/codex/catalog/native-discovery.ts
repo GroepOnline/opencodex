@@ -165,6 +165,7 @@ export async function discoverNativeOpenAiCatalog(
           originator: "codex_cli_rs",
           version: clientVersion,
         },
+        signal: AbortSignal.timeout(8_000),
       });
     } catch {
       continue;
@@ -172,7 +173,7 @@ export async function discoverNativeOpenAiCatalog(
 
     if (!response.ok) {
       try {
-        void response.body?.cancel();
+        void response.body?.cancel().catch(() => undefined);
       } catch {
         // Best-effort body cleanup only.
       }
