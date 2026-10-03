@@ -55,10 +55,12 @@ function credentialCandidates(
   selectedId: string | undefined,
 ): CredentialCandidate[] {
   const paused = new Set(config.pausedCodexAccountIds ?? []);
-  const poolIds = (config.codexAccounts ?? [])
-    .filter(isSelectableCodexPoolAccount)
-    .map(account => account.id)
-    .filter(id => !paused.has(id));
+  const poolIds = config.codexAccountPools === false
+    ? []
+    : (config.codexAccounts ?? [])
+      .filter(isSelectableCodexPoolAccount)
+      .map(account => account.id)
+      .filter(id => !paused.has(id));
 
   const selectedPool = selectedId
     && selectedId !== MAIN_CODEX_ACCOUNT_ID
@@ -206,13 +208,12 @@ export function mergeDiscoveredNativeCatalogRows(
 ): RawEntry[] {
   if (discoveredModels.length === 0) return catalogModels;
 
-  const bySlug = new Map(
-    discoveredModels.flatMap(model =>
-      typeof model.slug === "string" && !model.slug.includes("/")
-        ? [[model.slug, model] as const]
-        : []
-    ),
-  );
+  const bySlug = new Map<string, RawEntry>();
+  for (const model of discoveredModels) {
+    if (typeof model.slug === "string" && !model.slug.includes("/")) {
+      bySlug.set(model.slug, model);
+    }
+  }
   if (bySlug.size === 0) return catalogModels;
 
   const merged = catalogModels.map(model => {
