@@ -129,15 +129,14 @@ export function CodexAccountPoolCards({
                   {switchActionLabel}
                 </button>
               )}
-              {showReauth && (
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={() => onReauth(a.id)}
-                >
-                  {t("codexAuth.reauthenticate")}
-                </button>
-              )}
+              <button
+                type="button"
+                className={`btn btn-sm ${showReauth ? "btn-primary" : "btn-ghost"} codex-auth-action-btn`}
+                onClick={() => onReauth(a.id)}
+                title={t("codexAuth.reauthenticate")}
+              >
+                {t("codexAuth.reauthenticate")}
+              </button>
               {onCopyDoctor && oauthHealthShowsDoctor(healthStatus) && (
                 <button
                   type="button"
