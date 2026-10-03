@@ -748,6 +748,7 @@ describe("provider registry parity", () => {
     expect(nvidia?.keyOptional).toBeUndefined();
     expect(freeTierProviders).toEqual([
       "tokenharbor",
+      "cohere",
       "nvidia",
       "cloudflare-workers-ai",
       "omniroute",
