@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, setDefaultTimeout, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { saveConfig } from "../src/config";
@@ -47,6 +47,23 @@ function configWithStaticModels(claudeCode?: OcxConfig["claudeCode"]): OcxConfig
     },
     ...(claudeCode ? { claudeCode } : {}),
   } as OcxConfig;
+}
+
+function configWithNativeOpenAi(): OcxConfig {
+  return {
+    port: 0,
+    defaultProvider: "openai",
+    openaiProviderTierVersion: 2,
+    codexAccountPools: false,
+    providers: {
+      openai: {
+        adapter: "openai-responses",
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+        authMode: "forward",
+        codexAccountMode: "direct",
+      },
+    },
+  };
 }
 
 test("anthropic-version header flips /v1/models to the discovery contract", async () => {
@@ -155,6 +172,78 @@ test("OpenAI list shape and Codex catalog shape stay unchanged", async () => {
     expect(Array.isArray(codexJson.models)).toBe(true);
     expect(codexJson.data).toBeUndefined();
   } finally {
+    server.stop(true);
+  }
+});
+
+test("Codex client catalog includes live native metadata for its client version", async () => {
+  if (!isolatedCodexHome) throw new Error("isolated Codex home not installed");
+  writeFileSync(
+    join(isolatedCodexHome.path, "auth.json"),
+    JSON.stringify({
+      tokens: {
+        access_token: "native-test-access",
+        account_id: "native-test-account",
+      },
+    }),
+    "utf8",
+  );
+  saveConfig(configWithNativeOpenAi());
+
+  const server = startServer(0);
+  const originalFetch = globalThis.fetch;
+  let upstreamRequest: { url: string; headers: Headers } | null = null;
+  const mockFetch: typeof fetch = async (input, init) => {
+    const target = String(input);
+    if (target.startsWith("https://chatgpt.com/backend-api/codex/models")) {
+      upstreamRequest = { url: target, headers: new Headers(init?.headers) };
+      return new Response(JSON.stringify({
+        models: [{
+          slug: "gpt-6.1-sol",
+          display_name: "GPT-6.1 Sol",
+          description: "Live native model",
+          base_instructions: "Live native instructions.",
+          shell_type: "shell_command",
+          visibility: "list",
+          priority: 1,
+          supported_in_api: true,
+          default_reasoning_level: "high",
+          supported_reasoning_levels: [
+            { effort: "high", description: "High reasoning" },
+          ],
+          context_window: 400_000,
+          input_modalities: ["text", "image"],
+        }],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return originalFetch(input, init);
+  };
+  globalThis.fetch = mockFetch;
+
+  try {
+    const response = await originalFetch(
+      new URL("/v1/models?client_version=9.9.9", server.url),
+    );
+    expect(response.status).toBe(200);
+    const json: { models?: Array<Record<string, unknown>> } = await response.json();
+    const live = json.models?.find(model => model.slug === "gpt-6.1-sol");
+    expect(live?.display_name).toBe("GPT-6.1 Sol");
+    expect(live?.context_window).toBe(400_000);
+    expect(live?.supported_reasoning_levels).toEqual([
+      { effort: "high", description: "High reasoning" },
+    ]);
+
+    if (!upstreamRequest) throw new Error("expected native upstream catalog request");
+    const upstreamUrl = new URL(upstreamRequest.url);
+    expect(upstreamUrl.searchParams.get("client_version")).toBe("9.9.9");
+    expect(upstreamRequest.headers.get("authorization")).toBe(
+      "Bearer native-test-access",
+    );
+    expect(upstreamRequest.headers.get("chatgpt-account-id")).toBe(
+      "native-test-account",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
     server.stop(true);
   }
 });

@@ -1439,6 +1439,70 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     dashboardUrl: "https://cloud.cerebras.ai/platform/apikeys",
     defaultModel: "gpt-oss-120b",
   },
+  // Cohere's OpenAI Compatibility API supports the OpenAI SDK at this base URL.
+  // Trial/evaluation API keys are free but rate-limited.
+  // Evidence: https://docs.cohere.com/docs/compatibility-api
+  //           https://docs.cohere.com/v2/docs/rate-limits
+  {
+    id: "cohere",
+    label: "Cohere",
+    baseUrl: "https://api.cohere.ai/compatibility/v1",
+    adapter: "openai-chat",
+    authKind: "key",
+    dashboardUrl: "https://dashboard.cohere.com/api-keys",
+    freeTier: true,
+    liveModels: true,
+    preserveCustomDestination: true,
+    note: "OpenAI Compatibility API. Free evaluation keys are rate-limited and intended for evaluation/prototyping.",
+  },
+  // Friendli Model API is OpenAI-compatible and publishes GET /models on the same serverless base.
+  // Evidence: https://learn.friendli.ai/articles/4213111023-q10-1-how-do-i-connect-friendliai-with-litellm-or-other-openai-compatible-client
+  {
+    id: "friendliai",
+    label: "FriendliAI",
+    baseUrl: "https://api.friendli.ai/serverless/v1",
+    adapter: "openai-chat",
+    authKind: "key",
+    dashboardUrl: "https://suite.friendli.ai",
+    liveModels: true,
+    preserveCustomDestination: true,
+  },
+  // SambaCloud documents an OpenAI-compatible API at api.sambanova.ai/v1.
+  // Evidence: https://cloud.sambanova.ai/dashboard
+  {
+    id: "sambanova",
+    label: "SambaNova",
+    baseUrl: "https://api.sambanova.ai/v1",
+    adapter: "openai-chat",
+    authKind: "key",
+    dashboardUrl: "https://cloud.sambanova.ai/apis",
+    liveModels: true,
+    preserveCustomDestination: true,
+  },
+  // Nebius AI Studio's current OpenAI-compatible OAS publishes chat, responses and GET /v1/models.
+  // Evidence: https://api.studio.nebius.com/docs
+  {
+    id: "nebius",
+    label: "Nebius AI Studio",
+    baseUrl: "https://api.studio.nebius.com/v1",
+    adapter: "openai-chat",
+    authKind: "key",
+    dashboardUrl: "https://studio.nebius.com",
+    liveModels: true,
+    preserveCustomDestination: true,
+  },
+  // Novita's current serverless docs use the OpenAI-compatible /openai/v1 path.
+  // Evidence: https://blogs.novita.ai/glm-5-1-api-novita-ai/
+  {
+    id: "novita",
+    label: "Novita AI",
+    baseUrl: "https://api.novita.ai/openai/v1",
+    adapter: "openai-chat",
+    authKind: "key",
+    dashboardUrl: "https://novita.ai/settings/key-management",
+    liveModels: true,
+    preserveCustomDestination: true,
+  },
   // FREEZE 2026-07-10: exact serverless ids remain auth-gated/unverified. Evidence: devlog/_plan/260710_provider_hardening/003_research_aggregators.md.
   {
     id: "together",
