@@ -49,6 +49,10 @@ function byteLength(text: string): number {
   return Buffer.byteLength(text, "utf8");
 }
 
+/**
+ * Keep a prefix within `maxBytes` UTF-8 bytes without splitting a character.
+ * Return the retained byte count and whether any input was omitted.
+ */
 function truncateUtf8(
   text: string,
   maxBytes: number,
@@ -72,7 +76,11 @@ function truncateUtf8(
   return { text: "", bytes: 0, truncated: true };
 }
 
-/** Create a capture for this request, or undefined when tracing is off. */
+/**
+ * Create a capture from current settings, or undefined when tracing is off.
+ * Sampling controls body persistence in redacted/full mode; metadata is still
+ * collected for requests that are not sampled.
+ */
 export function createTraceCapture(): TraceCapture | undefined {
   const settings = getTraceSettings();
   if (settings.mode === "off") return undefined;
@@ -92,7 +100,12 @@ export function createTraceCapture(): TraceCapture | undefined {
   };
 }
 
-/** Attach a capture to `logCtx` and read the inbound body from a clone of `req`. Never throws. */
+/**
+ * Attach a capture and read a clone of `req`, leaving the original body readable.
+ * Do nothing when tracing is off. Omit the inbound body and byte count if the
+ * declared or observed size exceeds 8 MiB. Failures are swallowed and may leave
+ * a capture without inbound data.
+ */
 export async function beginTrace(
   logCtx: { trace?: TraceCapture },
   req: Request,
@@ -140,7 +153,11 @@ export async function beginTrace(
   }
 }
 
-/** Run `fn` with `logCtx.trace` installed for the shared fetch helper. No-op when tracing is off. */
+/**
+ * Run `fn` with `logCtx.trace` available to outbound capture in its async context.
+ * Without a capture, call `fn` directly. Return its result unchanged, including
+ * promises, and propagate its errors.
+ */
 export function runWithTrace<T>(
   logCtx: { trace?: TraceCapture },
   fn: () => T,
@@ -148,7 +165,11 @@ export function runWithTrace<T>(
   return logCtx.trace ? traceStorage.run(logCtx.trace, fn) : fn();
 }
 
-/** Called from the shared upstream fetch helper with the request init body. Last body wins (retries). */
+/**
+ * Record a string or UTF-8 Uint8Array body in the active, unfinished capture.
+ * The last accepted body wins and increments the outbound count, including
+ * retries. Ignore other body types, absent/finished captures, and capture errors.
+ */
 export function noteOutboundRequestBody(body: unknown): void {
   const trace = traceStorage.getStore();
   if (!trace || trace.done) return;
@@ -191,7 +212,13 @@ export function noteTraceCacheHit(
   }
 }
 
-/** Append one response payload (SSE data block or JSON body) to the bounded response copy. */
+/**
+ * Hash and count one response payload (SSE data block or JSON body) before
+ * redaction or truncation. For sampled body capture, retain a UTF-8 byte-capped
+ * copy, redacting each payload in redacted mode. Inserted newlines count toward
+ * storage limits but not response bytes or hashes. Ignore empty payloads,
+ * absent/finished captures, and capture errors.
+ */
 export function appendTraceResponse(
   trace: TraceCapture | undefined,
   chunk: string,
@@ -252,6 +279,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+/**
+ * Count top-level messages/input and tool definitions in a parsed request body.
+ * Count recognized tool calls and attachments outside tool definitions, visiting
+ * up to 20,000 objects/arrays through depth 8; these counts may be partial.
+ * Non-object or array roots yield zero calls/attachments and no other counts.
+ */
 export function shapeOf(parsed: unknown): BodyShape {
   const shape: BodyShape = { toolCallCount: 0, attachmentCount: 0 };
   if (!isRecord(parsed)) return shape;
@@ -299,9 +332,11 @@ export interface SectionHashes {
 }
 
 /**
- * Section hashes of a provider wire body. When two consecutive turns of one conversation share a
- * `prefixHash` the provider could have cached the prefix; when `systemHash` or `toolsHash` moved, that
- * section is what broke it.
+ * Hash JSON-serialized system/instructions, tools, and messages/input excluding
+ * the last turn, using the first 32 hexadecimal SHA-256 characters. The prefix
+ * hash covers only that turn array, not system or tools; it does not establish
+ * provider cache eligibility. Missing sections are omitted; non-object or array
+ * roots return {}. JSON serialization errors propagate to the caller.
  */
 export function sectionHashes(parsed: unknown): SectionHashes {
   if (!isRecord(parsed)) return {};
@@ -320,6 +355,7 @@ export function sectionHashes(parsed: unknown): SectionHashes {
   return out;
 }
 
+/** Parse JSON, returning undefined for missing or invalid text. */
 function tryParse(text: string | undefined): unknown {
   if (text === undefined) return undefined;
   try {
@@ -329,6 +365,10 @@ function tryParse(text: string | undefined): unknown {
   }
 }
 
+/**
+ * Redact known sensitive keys and value patterns in parsed JSON, or known
+ * value patterns in non-JSON text. Secrets matching neither remain unchanged.
+ */
 function redactBodyForStorage(text: string): string {
   const parsed = tryParse(text);
   return parsed !== undefined
@@ -336,6 +376,10 @@ function redactBodyForStorage(text: string): string {
     : redactSecretString(text);
 }
 
+/**
+ * Prepare an optional body for storage, redacting in redacted mode before
+ * truncating to `max` UTF-8 bytes. An absent body is not marked truncated.
+ */
 function storableBody(
   text: string | undefined,
   mode: Exclude<TraceMode, "off">,
@@ -361,7 +405,14 @@ export interface TraceFinalizeResult {
   trace?: UsageTraceMeta;
 }
 
-/** Compute the usage-row metadata and (in redacted/full mode) persist the bodies. Idempotent. */
+/**
+ * Finalize a capture once, returning usage metadata and, on a successful sampled
+ * body write, `requestId` as `traceId`. `info.timestamp` is the request start in
+ * Unix milliseconds; retention is measured from the write time. Shape counts use
+ * parsed inbound data with an outbound fallback; section hashes prefer outbound.
+ * Release buffered bodies even on failure. Missing/finished captures and capture
+ * errors return {}; a failed store write retains metadata with `stored: false`.
+ */
 export function finalizeTrace(
   requestId: string,
   logCtx: { trace?: TraceCapture },

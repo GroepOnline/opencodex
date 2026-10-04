@@ -540,6 +540,22 @@ Proxy response-cache hits are traced without duplicating the cached response bod
 `cacheHit`, a response hash/byte count, and the request id that originally populated the cache when known.
 WebSocket/live/realtime traffic is not yet covered.
 
+Stored traces can be inspected directly from the local SQLite store; the proxy does not need to be running:
+
+```bash
+ocx trace list
+ocx trace list --conversation <conversation-id> --limit 20
+ocx trace show <trace-id>
+ocx trace show <trace-id> --json
+ocx trace show <trace-id> --body
+```
+
+`trace list` and `trace show` are payload-free by default. `--json` changes only the output format and
+does **not** reveal request or response bodies. Bodies are included only when `--body` is explicitly
+provided. Human `--body` output JSON-escapes stored strings so terminal control sequences from traced
+content are not executed. Metadata-only trace summaries remain in `usage.jsonl`; `ocx trace list`
+enumerates rows whose bodies were actually persisted in `trace.sqlite`.
+
 ## Updating
 
 ### `ocx update`

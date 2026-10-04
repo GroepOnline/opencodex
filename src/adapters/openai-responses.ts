@@ -9,6 +9,7 @@ import { decodeServerSentEvents } from "../lib/sse-decoder";
 import { supportsNativeRemoteCompactionV2 } from "../providers/openai-tiers";
 import { OCX_REASONING_PREFIX } from "../responses/reasoning-envelope";
 import { modelRecordValue } from "../reasoning-effort";
+import { observeOpenAiResponsesPromptCache } from "../prompt-cache/observability";
 
 // Headers relayed verbatim from the caller in OAuth-passthrough ("forward") mode.
 // Exported so the web-search sidecar reuses the exact same forwarded-auth set for its ChatGPT call.
@@ -954,15 +955,17 @@ export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): 
         outBody = buildRoutedCompactionBody(outBody);
       }
       const sanitizedBody = stripSparkCompatibility(stripUnsupportedReasoningParams(stripItemIdsWhenUnstored(stripInvalidItemIds(stripUnsupportedHostedTools(sanitizeReasoningInputContent(scrubOcxCompactionItems(outBody)))))));
+      const finalBody = stripDisabledReasoningSummaries(
+        normalizeConfiguredReasoningSummaryDelivery(sanitizedBody, provider, parsed.modelId),
+        provider,
+        parsed.modelId,
+      );
       return {
         url,
         method: "POST",
         headers,
-        body: JSON.stringify(stripDisabledReasoningSummaries(
-          normalizeConfiguredReasoningSummaryDelivery(sanitizedBody, provider, parsed.modelId),
-          provider,
-          parsed.modelId,
-        )),
+        body: JSON.stringify(finalBody),
+        promptCacheLog: observeOpenAiResponsesPromptCache(finalBody),
       };
     },
 

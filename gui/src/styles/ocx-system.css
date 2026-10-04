@@ -6,13 +6,23 @@
 
 :root,
 :root[data-style] {
-  --workspace-measure: 1400px;
-  --page-gutter: clamp(var(--space-4), 3vw, var(--space-12));
-  --section-gap: var(--space-6);
-  --card-radius: var(--radius-group);
-  --card-border: var(--border-soft);
+  /* Auth-inspired semantic aliases. The underlying Signaal palette stays canonical. */
+  --surface-canvas: var(--bg);
+  --surface-paper: var(--surface);
+  --surface-raised: var(--raised);
+  --text-primary: var(--text);
+  --text-secondary: var(--muted);
+  --border-subtle: var(--border-soft);
+  --interactive-accent: var(--accent-blue);
+
+  --workspace-measure: 1480px;
+  --page-gutter: clamp(var(--space-4), 3.5vw, var(--space-12));
+  --section-gap: var(--space-8);
+  --card-radius: var(--radius-lg);
+  --card-border: var(--border-subtle);
   --card-shadow: none;
-  --card-shadow-raised: none;
+  --card-shadow-raised: 0 12px 34px
+    color-mix(in srgb, var(--text) 7%, transparent);
   --focus-ring: 0 0 0 3px var(--accent-soft);
 
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -32,8 +42,8 @@
   position: sticky;
   top: 0;
   z-index: var(--z-sticky);
-  background: color-mix(in srgb, var(--surface) 96%, transparent);
-  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface-paper);
+  border-bottom: 1px solid var(--border-subtle);
 }
 .ocx-workspace .brand .name {
   font-weight: var(--weight-semibold);
@@ -168,8 +178,9 @@
    --------------------------------------------------------------------------- */
 .ocx-workspace .page-head {
   align-items: flex-start;
-  gap: 24px;
-  margin-bottom: 24px;
+  gap: var(--space-8);
+  margin-bottom: var(--space-8);
+  padding-top: var(--space-2);
 }
 .ocx-workspace .page-head > div:first-child {
   min-width: 0;
@@ -178,18 +189,20 @@
   gap: 6px;
 }
 .ocx-workspace .page-head h2 {
-  font-size: var(--text-title);
+  max-width: 18ch;
+  font-size: clamp(1.9rem, 3vw, 2.8rem);
   font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-tight);
-  line-height: var(--leading-tight);
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+  text-wrap: balance;
 }
 .ocx-workspace .page-head p,
 .ocx-workspace .page-head .page-sub {
   margin: 0;
-  color: var(--muted);
-  font-size: var(--text-control);
-  line-height: var(--leading-body);
-  max-width: 64ch;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  max-width: 62ch;
 }
 .ocx-workspace .page-head-actions {
   flex-shrink: 0;
@@ -254,6 +267,7 @@
    --------------------------------------------------------------------------- */
 .ocx-workspace .panel,
 .ocx-workspace .card {
+  background: var(--surface-paper);
   border-color: var(--card-border);
   border-radius: var(--card-radius);
   box-shadow: var(--card-shadow);

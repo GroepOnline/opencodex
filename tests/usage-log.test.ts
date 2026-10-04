@@ -102,6 +102,60 @@ describe("usage log", () => {
     })]);
   });
 
+  test("persists adapter and bounded prompt-cache observations", () => {
+    appendUsageEntry({
+      requestId: "ocx-cache-observation",
+      timestamp: 1,
+      provider: "openai",
+      model: "gpt-5.6-terra",
+      adapter: "openai-responses",
+      promptCache: {
+        version: 1,
+        keyPresent: true,
+        mode: "implicit",
+        ttl: "30m",
+        prewarm: false,
+        comparisonRequested: false,
+        previousResponseIdPresent: false,
+        breakpointCount: 0,
+        inputItemCount: 2,
+        toolCount: 1,
+        toolsFingerprint: "0123456789abcdef01234567",
+        stablePrefixFingerprint: "89abcdef0123456789abcdef",
+      },
+      status: 200,
+      durationMs: 1,
+      usageStatus: "reported",
+      usage: { inputTokens: 100, outputTokens: 1, cacheReadInputTokens: 80 },
+      totalTokens: 101,
+    });
+    expect(readUsageEntries()).toEqual([expect.objectContaining({
+      adapter: "openai-responses",
+      promptCache: expect.objectContaining({
+        mode: "implicit",
+        ttl: "30m",
+        toolCount: 1,
+        toolsFingerprint: "0123456789abcdef01234567",
+      }),
+    })]);
+  });
+
+  test("drops malformed prompt-cache observations from hand-edited logs", () => {
+    writeFileSync(usageLogPath(), JSON.stringify({
+      requestId: "bad-cache-shape",
+      timestamp: 1,
+      provider: "openai",
+      model: "gpt-5.6-terra",
+      adapter: "openai-responses",
+      promptCache: { version: 1, mode: "implicit", keyPresent: true },
+      status: 200,
+      durationMs: 1,
+      usageStatus: "reported",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    }) + "\n");
+    expect(readUsageEntries()[0]).not.toHaveProperty("promptCache");
+  });
+
   test("persists providerAccountId separately from the display account label", () => {
     appendUsageEntry({
       requestId: "ocx-account-id",
