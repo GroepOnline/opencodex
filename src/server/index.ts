@@ -1,5 +1,10 @@
 import { markActivity } from "../lib/sidecar-tracker";
-import { beginTrace, runWithTrace } from "../trace/capture";
+import {
+  appendTraceResponse,
+  beginTrace,
+  noteTraceCacheHit,
+  runWithTrace,
+} from "../trace/capture";
 import { initServerSentry } from "../telemetry/sentry-server";
 import {
   buildWarmupCompletionFrames,
@@ -221,14 +226,16 @@ const LIVE_SIDEBAND_PENDING_MAX = 32;
  * and addFinalRequestLog omits the usage/totalTokens fields when it is absent. The response itself
  * already carries `x-cache: HIT`; this is purely the request-count / observability entry.
  */
-function logCacheHitRequest(hit: CacheHit): void {
+async function logCacheHitRequest(hit: CacheHit): Promise<void> {
   const start = Date.now();
-  addFinalRequestLog(
-    nextRequestLogId(start),
-    start,
-    { model: hit.model || "unknown", provider: hit.provider || "unknown" },
-    200,
-  );
+  const requestId = nextRequestLogId(start);
+  const logCtx: RequestLogContext = {
+    model: hit.model || "unknown",
+    provider: hit.provider || "unknown",
+  };
+  await beginTrace(logCtx, hit.request);
+  noteTraceCacheHit(logCtx.trace, hit.responseBody, hit.sourceTraceId);
+  addFinalRequestLog(requestId, start, logCtx, 200);
 }
 
 function closeLiveSideband(
@@ -991,15 +998,23 @@ export function startServer(port?: number) {
           model: "unknown",
           provider: "unknown",
         };
+        await beginTrace(logCtx, req);
         let response: Response;
         try {
-          response = await handleResponsesCompact(req, config, logCtx);
+          response = await runWithTrace(
+            logCtx,
+            () => handleResponsesCompact(req, config, logCtx),
+          );
         } catch {
           response = formatErrorResponse(
             500,
             "server_error",
             "Unexpected compact request failure",
           );
+        }
+        if (logCtx.trace) {
+          const tracedBody = await response.clone().text().catch(() => "");
+          if (tracedBody) appendTraceResponse(logCtx.trace, tracedBody);
         }
         addFinalRequestLog(
           requestId,
@@ -1194,7 +1209,7 @@ export function startServer(port?: number) {
           "responses",
         );
         if (responsesCacheProbe && "hit" in responsesCacheProbe) {
-          logCacheHitRequest(responsesCacheProbe);
+          await logCacheHitRequest(responsesCacheProbe);
           return withCors(responsesCacheProbe.hit, req, config);
         }
         const responsesWorkReq = responsesCacheProbe?.request ?? req;
@@ -1237,7 +1252,7 @@ export function startServer(port?: number) {
             },
           },
         ));
-        responsesCacheProbe?.store(response);
+        responsesCacheProbe?.store(response, requestId);
         return withCors(
           responseWithDeferredRequestLog(response, requestId, start, logCtx),
           req,
@@ -1334,7 +1349,7 @@ export function startServer(port?: number) {
           "messages",
         );
         if (messagesCacheProbe && "hit" in messagesCacheProbe) {
-          logCacheHitRequest(messagesCacheProbe);
+          await logCacheHitRequest(messagesCacheProbe);
           return withCors(messagesCacheProbe.hit, req, config);
         }
         const messagesWorkReq = messagesCacheProbe?.request ?? req;
@@ -1354,7 +1369,7 @@ export function startServer(port?: number) {
           logCtx,
           { requestId, start },
         ));
-        messagesCacheProbe?.store(response);
+        messagesCacheProbe?.store(response, requestId);
         return withCors(response, req, config);
       }
 
@@ -1390,7 +1405,7 @@ export function startServer(port?: number) {
           "chat-completions",
         );
         if (chatCacheProbe && "hit" in chatCacheProbe) {
-          logCacheHitRequest(chatCacheProbe);
+          await logCacheHitRequest(chatCacheProbe);
           return withCors(chatCacheProbe.hit, req, config);
         }
         const chatWorkReq = chatCacheProbe?.request ?? req;
@@ -1407,7 +1422,7 @@ export function startServer(port?: number) {
           logCtx,
           { requestId, start },
         ));
-        chatCacheProbe?.store(response);
+        chatCacheProbe?.store(response, requestId);
         return withCors(response, req, config);
       }
 

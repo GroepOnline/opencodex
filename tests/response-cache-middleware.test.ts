@@ -183,13 +183,22 @@ describe("probeResponseCache", () => {
       probeA.store(new Response(JSON.stringify({ ok: true }), {
         status: 200,
         headers: { "content-type": "application/json" },
-      }));
+      }), "ocx-source-123");
       await new Promise(r => setTimeout(r, 0)); // store() resolves asynchronously
     }
 
     const probeB = await probeResponseCache(b, baseConfig(), "messages");
     expect(probeB).not.toBeNull();
     expect("hit" in probeB!).toBe(true); // stable order → same key → HIT
+    if (probeB && "hit" in probeB) {
+      expect(probeB.sourceTraceId).toBe("ocx-source-123");
+      expect(probeB.responseBody).toBe(JSON.stringify({ ok: true }));
+      expect(await probeB.request.json()).toMatchObject({
+        model: "claude-opus-4-8",
+        a: 2,
+        z: 1,
+      });
+    }
   });
 
   test("miss exposes a rebuilt request + store that captures a 2xx body", async () => {
