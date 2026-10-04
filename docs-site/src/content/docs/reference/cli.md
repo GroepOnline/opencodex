@@ -534,8 +534,11 @@ Tracing is **off by default** and is configured by environment variable at proxy
   detectable, so treat the store as sensitive.
 - `full` stores bodies verbatim. Use it deliberately and briefly.
 
-Outbound capture covers adapters that send through the shared upstream fetch helper; the inbound request
-and response are captured for `/v1/responses`, `/v1/messages`, and `/v1/chat/completions`.
+Outbound capture covers adapters that send through the shared upstream fetch helper; inbound and response
+capture covers `/v1/responses`, `/v1/messages`, `/v1/chat/completions`, and `/v1/responses/compact`.
+Proxy response-cache hits are traced without duplicating the cached response body: the usage trace records
+`cacheHit`, a response hash/byte count, and the request id that originally populated the cache when known.
+WebSocket/live/realtime traffic is not yet covered.
 
 ## Updating
 

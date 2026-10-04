@@ -34,6 +34,8 @@ export interface TraceCapture {
   responseStoredBytes: number;
   responseTruncated: boolean;
   responseHasher: Hash;
+  cacheHit: boolean;
+  cacheSourceTraceId?: string;
   done: boolean;
 }
 
@@ -85,6 +87,7 @@ export function createTraceCapture(): TraceCapture | undefined {
     responseStoredBytes: 0,
     responseTruncated: false,
     responseHasher: createHash("sha256"),
+    cacheHit: false,
     done: false,
   };
 }
@@ -157,6 +160,32 @@ export function noteOutboundRequestBody(body: unknown): void {
     trace.outbound = text;
     trace.outboundBytes = byteLength(text);
     trace.outboundCount += 1;
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Record a proxy response-cache hit without copying the cached response body into trace.sqlite.
+ * The full cached body is hashed/count-measured for correlation, while persisted payload capture
+ * remains limited to the hit request itself.
+ */
+export function noteTraceCacheHit(
+  trace: TraceCapture | undefined,
+  responseBody: string,
+  sourceTraceId?: string,
+): void {
+  if (!trace || trace.done) return;
+  try {
+    trace.cacheHit = true;
+    if (
+      typeof sourceTraceId === "string"
+      && /^[A-Za-z0-9._:-]{1,128}$/u.test(sourceTraceId)
+    ) {
+      trace.cacheSourceTraceId = sourceTraceId;
+    }
+    trace.responseHasher.update(responseBody);
+    trace.responseBytes += byteLength(responseBody);
   } catch {
     /* ignore */
   }
@@ -369,6 +398,10 @@ export function finalizeTrace(
       attachmentCount: shape.attachmentCount,
       ...(trace.outboundCount > 0
         ? { outboundCount: trace.outboundCount }
+        : {}),
+      ...(trace.cacheHit ? { cacheHit: true } : {}),
+      ...(trace.cacheSourceTraceId
+        ? { cacheSourceTraceId: trace.cacheSourceTraceId }
         : {}),
       ...(trace.inbound !== undefined
         ? { requestHash: sha(trace.inbound) }

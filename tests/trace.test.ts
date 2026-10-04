@@ -8,6 +8,7 @@ import {
   createTraceCapture,
   finalizeTrace,
   noteOutboundRequestBody,
+  noteTraceCacheHit,
   runWithTrace,
   sectionHashes,
   shapeOf,
@@ -299,6 +300,44 @@ describe("outbound capture", () => {
     expect(out.trace?.outboundCount).toBe(2);
     expect(out.trace?.toolsHash).toBeDefined();
     expect(out.trace?.outboundHash).toBe(finalizeHashOf(body()));
+  });
+});
+
+describe("cache-hit trace metadata", () => {
+  test("hashes cached response and links source trace without duplicating its body", () => {
+    setTraceSettings({ mode: "full", maxBodyBytes: 4096 });
+    const trace = createTraceCapture();
+    if (!trace) throw new Error("trace expected");
+    trace.inbound = body();
+    trace.inboundBytes = Buffer.byteLength(trace.inbound);
+    noteTraceCacheHit(trace, '{"cached":"response"}', "ocx-source-123");
+
+    const out = finalizeTrace("ocx-hit-456", { trace }, { timestamp: Date.now() });
+    expect(out.trace).toMatchObject({
+      cacheHit: true,
+      cacheSourceTraceId: "ocx-source-123",
+      responseBytes: Buffer.byteLength('{"cached":"response"}'),
+    });
+    expect(out.trace?.responseHash).toBe(
+      finalizeHashOf('{"cached":"response"}'),
+    );
+
+    const row = readTrace("ocx-hit-456");
+    expect(row?.inbound).toBe(body());
+    expect(row?.response).toBeUndefined();
+  });
+
+  test("drops an unsafe persisted cache source trace id", () => {
+    expect(normalizeUsageTraceMeta({
+      mode: "metadata",
+      stored: false,
+      cacheHit: true,
+      cacheSourceTraceId: "bad\nterminal-id",
+    })).toEqual({
+      mode: "metadata",
+      stored: false,
+      cacheHit: true,
+    });
   });
 });
 
