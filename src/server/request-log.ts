@@ -315,6 +315,8 @@ export function requestLogEntryFromPersistedUsage(entry: PersistedUsageEntry): R
     ...(entry.usage ? { usage: entry.usage } : {}),
     ...(entry.totalTokens !== undefined ? { totalTokens: entry.totalTokens } : {}),
     ...(entry.attempts?.length ? { attempts: entry.attempts } : {}),
+    ...(entry.traceId ? { traceId: entry.traceId } : {}),
+    ...(entry.trace ? { trace: entry.trace } : {}),
   };
 }
 

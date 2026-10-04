@@ -31,6 +31,7 @@ export interface TraceCapture {
   outboundCount: number;
   response: string;
   responseBytes: number;
+  responseStoredBytes: number;
   responseTruncated: boolean;
   responseHasher: Hash;
   done: boolean;
@@ -46,6 +47,29 @@ function byteLength(text: string): number {
   return Buffer.byteLength(text, "utf8");
 }
 
+function truncateUtf8(
+  text: string,
+  maxBytes: number,
+): { text: string; bytes: number; truncated: boolean } {
+  const encoded = new TextEncoder().encode(text);
+  if (encoded.byteLength <= maxBytes) {
+    return { text, bytes: encoded.byteLength, truncated: false };
+  }
+
+  let end = Math.max(0, Math.min(maxBytes, encoded.byteLength));
+  while (end > 0) {
+    try {
+      const decoded = new TextDecoder("utf-8", { fatal: true }).decode(
+        encoded.subarray(0, end),
+      );
+      return { text: decoded, bytes: end, truncated: true };
+    } catch {
+      end -= 1;
+    }
+  }
+  return { text: "", bytes: 0, truncated: true };
+}
+
 /** Create a capture for this request, or undefined when tracing is off. */
 export function createTraceCapture(): TraceCapture | undefined {
   const settings = getTraceSettings();
@@ -58,6 +82,7 @@ export function createTraceCapture(): TraceCapture | undefined {
     outboundCount: 0,
     response: "",
     responseBytes: 0,
+    responseStoredBytes: 0,
     responseTruncated: false,
     responseHasher: createHash("sha256"),
     done: false,
@@ -73,12 +98,40 @@ export async function beginTrace(
     const trace = createTraceCapture();
     if (!trace) return;
     logCtx.trace = trace;
-    const declared = Number(req.headers.get("content-length"));
-    if (Number.isFinite(declared) && declared > MAX_INBOUND_READ_BYTES) return;
-    const text = await req.clone().text();
-    if (byteLength(text) > MAX_INBOUND_READ_BYTES) return;
-    trace.inbound = text;
-    trace.inboundBytes = byteLength(text);
+    const contentLength = req.headers.get("content-length");
+    if (contentLength !== null) {
+      const declared = Number(contentLength);
+      if (Number.isFinite(declared) && declared > MAX_INBOUND_READ_BYTES) return;
+    }
+
+    const reader = req.clone().body?.getReader();
+    if (!reader) {
+      trace.inbound = "";
+      trace.inboundBytes = 0;
+      return;
+    }
+
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > MAX_INBOUND_READ_BYTES) {
+        void reader.cancel().catch(() => {});
+        return;
+      }
+      chunks.push(value);
+    }
+
+    const body = new Uint8Array(bytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      body.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    trace.inbound = new TextDecoder().decode(body);
+    trace.inboundBytes = bytes;
   } catch {
     /* tracing is best-effort */
   }
@@ -119,14 +172,24 @@ export function appendTraceResponse(
     trace.responseHasher.update(chunk);
     trace.responseBytes += byteLength(chunk);
     if (!trace.persist) return;
-    const remaining = trace.maxBodyBytes - trace.response.length;
-    if (remaining <= 0) {
+    const storedChunk = trace.mode === "redacted"
+      ? redactBodyForStorage(chunk)
+      : chunk;
+    const separator = trace.response ? "\n" : "";
+    const separatorBytes = separator ? 1 : 0;
+    const remaining = trace.maxBodyBytes - trace.responseStoredBytes;
+    if (remaining <= separatorBytes) {
       trace.responseTruncated = true;
       return;
     }
-    const piece = chunk.length > remaining ? chunk.slice(0, remaining) : chunk;
-    if (piece.length < chunk.length) trace.responseTruncated = true;
-    trace.response += trace.response ? `\n${piece}` : piece;
+    const piece = truncateUtf8(storedChunk, remaining - separatorBytes);
+    if (!piece.text) {
+      trace.responseTruncated = true;
+      return;
+    }
+    trace.response += separator + piece.text;
+    trace.responseStoredBytes += separatorBytes + piece.bytes;
+    if (piece.truncated) trace.responseTruncated = true;
   } catch {
     /* ignore */
   }
@@ -237,22 +300,22 @@ function tryParse(text: string | undefined): unknown {
   }
 }
 
+function redactBodyForStorage(text: string): string {
+  const parsed = tryParse(text);
+  return parsed !== undefined
+    ? JSON.stringify(redactSecrets(parsed))
+    : redactSecretString(text);
+}
+
 function storableBody(
   text: string | undefined,
   mode: Exclude<TraceMode, "off">,
   max: number,
 ): { text?: string; truncated: boolean } {
   if (text === undefined) return { truncated: false };
-  let out = text;
-  if (mode === "redacted") {
-    const parsed = tryParse(text);
-    out =
-      parsed !== undefined
-        ? JSON.stringify(redactSecrets(parsed))
-        : redactSecretString(text);
-  }
-  if (out.length > max) return { text: out.slice(0, max), truncated: true };
-  return { text: out, truncated: false };
+  const out = mode === "redacted" ? redactBodyForStorage(text) : text;
+  const bounded = truncateUtf8(out, max);
+  return { text: bounded.text, truncated: bounded.truncated };
 }
 
 export interface TraceFinalizeInfo {

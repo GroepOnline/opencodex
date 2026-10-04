@@ -34,12 +34,23 @@ import {
 
 let testDir = "";
 let previousHome: string | undefined;
-let previousMode: string | undefined;
+const traceEnvNames = [
+  "OCX_TRACE",
+  "OCX_TRACE_TTL_HOURS",
+  "OCX_TRACE_MAX_BODY_BYTES",
+  "OCX_TRACE_MAX_DB_MB",
+  "OCX_TRACE_SAMPLE",
+] as const;
+let previousTraceEnv: Partial<Record<(typeof traceEnvNames)[number], string>> = {};
 
 beforeEach(() => {
   previousHome = process.env.OPENCODEX_HOME;
-  previousMode = process.env.OCX_TRACE;
-  delete process.env.OCX_TRACE;
+  previousTraceEnv = {};
+  for (const name of traceEnvNames) {
+    const value = process.env[name];
+    if (value !== undefined) previousTraceEnv[name] = value;
+    delete process.env[name];
+  }
   testDir = mkdtempSync(join(tmpdir(), "ocx-trace-"));
   process.env.OPENCODEX_HOME = testDir;
   resetUsageReadCacheForTests();
@@ -51,8 +62,11 @@ afterEach(() => {
   resetTraceSettingsForTests();
   if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
   else process.env.OPENCODEX_HOME = previousHome;
-  if (previousMode === undefined) delete process.env.OCX_TRACE;
-  else process.env.OCX_TRACE = previousMode;
+  for (const name of traceEnvNames) {
+    const value = previousTraceEnv[name];
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
   if (testDir) rmSync(testDir, { recursive: true, force: true });
 });
 
@@ -88,8 +102,6 @@ describe("trace settings", () => {
     expect(s.mode).toBe("redacted");
     expect(s.ttlHours).toBe(720);
     expect(s.sample).toBe(1);
-    delete process.env.OCX_TRACE_TTL_HOURS;
-    delete process.env.OCX_TRACE_SAMPLE;
   });
 
   test("invalid mode falls back to off", () => {
@@ -154,7 +166,7 @@ describe("trace store", () => {
     expect(listTraces({ conversationId: "other" })).toEqual([]);
   });
 
-  test("expired rows are invisible and pruned", () => {
+  test("expired rows are invisible and physically pruned on read activity", () => {
     setTraceSettings({ ttlHours: 1 });
     writeTrace({
       traceId: "old",
@@ -166,7 +178,7 @@ describe("trace store", () => {
     });
     const later = Date.now() + 2 * 3_600_000;
     expect(readTrace("old", later)).toBeNull();
-    expect(pruneTraces(later)).toBe(1);
+    expect(pruneTraces(later)).toBe(0);
   });
 });
 
@@ -223,15 +235,40 @@ describe("finalizeTrace", () => {
     expect(out.trace?.requestHash).toBe(finalizeHashOf(raw));
   });
 
-  test("full mode keeps bodies verbatim and caps stored size", () => {
+  test("redacted mode preserves structured redaction across response chunks", () => {
+    const trace = capture("redacted");
+    appendTraceResponse(trace, JSON.stringify({ password: "plain-private-value" }));
+    appendTraceResponse(trace, JSON.stringify({ ok: true }));
+    const out = finalizeTrace("r2", { trace }, { timestamp: 1 });
+    expect(out.trace?.stored).toBe(true);
+    const row = readTrace("r2");
+    expect(row?.response).not.toContain("plain-private-value");
+    expect(row?.response).toContain("[REDACTED]");
+  });
+
+  test("full mode keeps bodies verbatim and caps stored UTF-8 bytes", () => {
     setTraceSettings({ mode: "full", maxBodyBytes: 4096 });
     const trace = createTraceCapture()!;
-    trace.inbound = "x".repeat(10_000);
-    trace.inboundBytes = 10_000;
+    trace.inbound = "😀".repeat(3000);
+    trace.inboundBytes = Buffer.byteLength(trace.inbound);
     const out = finalizeTrace("f1", { trace }, { timestamp: 1 });
-    expect(out.trace?.requestBytes).toBe(10_000);
+    expect(out.trace?.requestBytes).toBe(12_000);
     const row = readTrace("f1");
-    expect(row?.inbound?.length).toBe(4096);
+    expect(Buffer.byteLength(row?.inbound ?? "", "utf8")).toBeLessThanOrEqual(4096);
+    expect(row?.inbound).not.toContain("�");
+    expect(row?.truncated).toBe(true);
+  });
+
+  test("response capture counts UTF-8 bytes and separators against the cap", () => {
+    setTraceSettings({ mode: "full", maxBodyBytes: 4096 });
+    const trace = createTraceCapture()!;
+    appendTraceResponse(trace, "😀".repeat(1500));
+    appendTraceResponse(trace, "界".repeat(1500));
+    const out = finalizeTrace("f2", { trace }, { timestamp: 1 });
+    expect(out.trace?.responseBytes).toBe(10_500);
+    const row = readTrace("f2");
+    expect(Buffer.byteLength(row?.response ?? "", "utf8")).toBeLessThanOrEqual(4096);
+    expect(row?.response).not.toContain("�");
     expect(row?.truncated).toBe(true);
   });
 
@@ -276,6 +313,29 @@ describe("beginTrace", () => {
     await beginTrace(logCtx, req);
     expect(logCtx.trace?.inboundBytes).toBe(Buffer.byteLength(body()));
     expect(await req.text()).toBe(body());
+  });
+
+  test("stops reading a chunked clone once the inbound byte limit is exceeded", async () => {
+    setTraceSettings({ mode: "metadata" });
+    const chunk = new Uint8Array(1024 * 1024);
+    const totalChunks = 20;
+    let pulls = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        controller.enqueue(chunk);
+        if (pulls >= totalChunks) controller.close();
+      },
+    });
+    const req = new Request("http://localhost/v1/responses", {
+      method: "POST",
+      body: stream,
+    });
+    const logCtx: { trace?: TraceCapture } = {};
+    await beginTrace(logCtx, req);
+    expect(logCtx.trace).toBeDefined();
+    expect(logCtx.trace?.inbound).toBeUndefined();
+    expect(pulls).toBeLessThan(totalChunks);
   });
 
   test("does nothing when off", async () => {

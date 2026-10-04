@@ -136,14 +136,23 @@ function dbBytes(path: string): number {
   return total;
 }
 
+function deleteExpiredRows(store: Database, now: number): number {
+  return store
+    .query("DELETE FROM traces WHERE expires_at <= ?")
+    .run(now).changes;
+}
+
+function compactAfterDelete(store: Database): void {
+  store.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  store.exec("PRAGMA incremental_vacuum");
+}
+
 /** Drop expired rows, then oldest rows until the store is under its size cap. Returns rows deleted. */
 export function pruneTraces(now = Date.now()): number {
   try {
     const store = openStore();
     const settings = getTraceSettings();
-    let deleted = store
-      .query("DELETE FROM traces WHERE expires_at <= ?")
-      .run(now).changes;
+    let deleted = deleteExpiredRows(store, now);
     const capBytes = settings.maxDbMb * 1024 * 1024;
     const path = traceDbPath();
     let guard = 0;
@@ -156,12 +165,10 @@ export function pruneTraces(now = Date.now()): number {
         .run().changes;
       if (changes === 0) break;
       deleted += changes;
-      store.exec("PRAGMA wal_checkpoint(TRUNCATE)");
-      store.exec("PRAGMA incremental_vacuum");
+      compactAfterDelete(store);
     }
     if (deleted > 0) {
-      store.exec("PRAGMA wal_checkpoint(TRUNCATE)");
-      store.exec("PRAGMA incremental_vacuum");
+      compactAfterDelete(store);
     }
     lastPruneAt = now;
     writesSincePrune = 0;
@@ -238,7 +245,9 @@ export function readTrace(
   | null {
   try {
     if (!existsSync(traceDbPath())) return null;
-    const r = openStore()
+    const store = openStore();
+    if (deleteExpiredRows(store, now) > 0) compactAfterDelete(store);
+    const r = store
       .query("SELECT * FROM traces WHERE trace_id = ? AND expires_at > ?")
       .get(traceId, now) as Record<string, unknown> | null;
     if (!r) return null;
@@ -264,6 +273,7 @@ export function listTraces(
     const limit = Math.min(Math.max(options.limit ?? 50, 1), 500);
     const now = options.now ?? Date.now();
     const store = openStore();
+    if (deleteExpiredRows(store, now) > 0) compactAfterDelete(store);
     const rows = (
       options.conversationId
         ? store
