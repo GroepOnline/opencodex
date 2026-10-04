@@ -1,5 +1,6 @@
 import type { AdapterEvent, OcxParsedRequest } from "../types";
 import type { UpstreamAttemptBudget } from "../lib/upstream-attempt-budget";
+import type { PromptCacheRequestObservation } from "../prompt-cache/observability";
 
 /** Metadata about the caller's incoming request, for auth-forwarding adapters. */
 export interface IncomingMeta {
@@ -105,6 +106,8 @@ export interface AdapterRequest {
       inputTokens?: number;
       estimated?: boolean;
     };
+    /** Structural prompt-cache diagnostics derived from the exact outbound body. */
+    promptCacheLog?: PromptCacheRequestObservation;
 }
 
 export interface AdapterFetchContext {

@@ -39,6 +39,7 @@ import {
 } from "../usage/debug";
 import { matchesLogConversationId } from "./request-log-conversation";
 import { captureRequestTelemetry } from "../telemetry/posthog-server";
+import type { PromptCacheRequestObservation } from "../prompt-cache/observability";
 
 export interface RequestLogContext {
   model: string;
@@ -83,6 +84,8 @@ export interface RequestLogContext {
   /** Route adapter type ("cursor"/"kiro"/"anthropic"/…): drives estimated-usage detection
    *  independent of the user-chosen provider NAME (devlog 130 B2). */
   providerAdapter?: string;
+  /** Structural prompt-cache metadata captured from the exact outbound adapter body. */
+  promptCache?: PromptCacheRequestObservation;
   /**
    * Stable store id for the OAuth account or key-pool entry that served this request.
    * Distinct from the display `account` label persisted on the usage row.
@@ -113,6 +116,10 @@ export interface RequestLogEntry {
   timestamp: number;
   model: string;
   provider: string;
+  /** Adapter that produced the final upstream wire request. */
+  adapter?: string;
+  /** Structural prompt-cache metadata captured from the exact outbound adapter body. */
+  promptCache?: PromptCacheRequestObservation;
   /** Whether the client requested a streamed generation. */
   stream?: boolean;
   /** TTFT: ms from request start to the first non-empty model output delta; unset for non-streaming/tool-only. */
@@ -277,6 +284,8 @@ export function requestLogEntryFromPersistedUsage(entry: PersistedUsageEntry): R
     timestamp: entry.timestamp,
     model: entry.model,
     provider: entry.provider,
+    ...(entry.adapter ? { adapter: entry.adapter } : {}),
+    ...(entry.promptCache ? { promptCache: { ...entry.promptCache } } : {}),
     ...(entry.firstOutputMs !== undefined ? { firstOutputMs: entry.firstOutputMs } : {}),
     ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
     ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
@@ -394,6 +403,8 @@ export function addRequestLog(entry: RequestLogEntry) {
       timestamp: entry.timestamp,
       provider: entry.provider,
       model: entry.model,
+      ...(entry.adapter ? { adapter: entry.adapter } : {}),
+      ...(entry.promptCache ? { promptCache: { ...entry.promptCache } } : {}),
       ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
       ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
       ...(account ? { account } : {}),
@@ -467,7 +478,7 @@ export function recordAttemptRequestedEffort(logCtx: RequestLogContext): void {
 }
 
 /** Copy the adapter's exact outbound reasoning parameter into the durable request log. */
-export function recordAdapterReasoning(
+function recordAdapterReasoning(
   logCtx: RequestLogContext,
   request: AdapterRequest,
 ): void {
@@ -514,6 +525,18 @@ export function recordAdapterReasoning(
     }
   } catch {
     // Request logging is best-effort and must not affect request delivery.
+  }
+}
+
+/** Record all adapter-derived request diagnostics at one lifecycle seam. */
+export function recordAdapterRequestMetadata(
+  logCtx: RequestLogContext,
+  request: AdapterRequest,
+): void {
+  recordAdapterReasoning(logCtx, request);
+  delete logCtx.promptCache;
+  if (request.promptCacheLog) {
+    logCtx.promptCache = { ...request.promptCacheLog };
   }
 }
 
@@ -874,6 +897,9 @@ export function addFinalRequestLog(
       recoveryKinds: [...attempt.recoveryKinds],
       ...(attempt.usage ? { usage: { ...attempt.usage } } : {}),
     }));
+    const adapter = isCombo
+      ? attempts?.at(-1)?.adapter ?? logCtx.providerAdapter
+      : logCtx.providerAdapter;
     const aggregate = isCombo ? aggregateAttemptUsage(attempts ?? []) : null;
     const loggedUsage = aggregate?.usage ?? existing.usage;
     const usageStatus = aggregate?.status ?? existing.status;
@@ -883,6 +909,8 @@ export function addFinalRequestLog(
       timestamp: start,
       model,
       provider,
+      ...(adapter ? { adapter } : {}),
+      ...(logCtx.promptCache ? { promptCache: { ...logCtx.promptCache } } : {}),
       ...(account ? { account } : {}),
       ...(providerAccountId ? { providerAccountId } : {}),
       ...(logCtx.surface ? { surface: logCtx.surface } : {}),

@@ -416,6 +416,54 @@ describe("OpenAI Responses passthrough sanitization", () => {
     expect(body.prompt_cache_retention).toBe("24h");
   });
 
+  test("records structural prompt-cache metadata from the final outbound body", () => {
+    const adapter = createResponsesPassthroughAdapter(provider);
+    const request = adapter.buildRequest({
+      modelId: "gpt-5.6-terra",
+      context: { messages: [] },
+      stream: true,
+      options: { promptCacheKey: "private-cache-key" },
+      _rawBody: {
+        model: "gpt-5.6-terra",
+        instructions: "private fixed instruction",
+        prompt_cache_key: "private-cache-key",
+        prompt_cache_options: { mode: "implicit", ttl: "30m" },
+        text: { verbosity: "medium", format: { type: "text" } },
+        tools: [{ type: "function", name: "shell", parameters: { type: "object" } }],
+        input: [{
+          role: "developer",
+          content: [{
+            type: "input_text",
+            text: "private developer text",
+            prompt_cache_breakpoint: { mode: "explicit" },
+          }],
+        }, {
+          role: "user",
+          content: [{ type: "input_text", text: "private user text" }],
+        }],
+      },
+    }, { headers: new Headers({ authorization: "Bearer token" }) });
+
+    expect(request.promptCacheLog).toMatchObject({
+      version: 1,
+      keyPresent: true,
+      mode: "implicit",
+      ttl: "30m",
+      breakpointCount: 1,
+      inputItemCount: 2,
+      toolCount: 1,
+      verbosity: "medium",
+    });
+    expect(request.promptCacheLog?.toolsFingerprint).toMatch(/^[0-9a-f]{24}$/);
+    expect(request.promptCacheLog?.stablePrefixFingerprint).toMatch(/^[0-9a-f]{24}$/);
+    expect(JSON.stringify(request.promptCacheLog)).not.toContain("private-cache-key");
+    expect(JSON.stringify(request.promptCacheLog)).not.toContain("private developer text");
+    expect(JSON.parse(request.body)).toMatchObject({
+      prompt_cache_key: "private-cache-key",
+      prompt_cache_options: { mode: "implicit", ttl: "30m" },
+    });
+  });
+
   const expandedRawBody = {
     model: "gpt-5.5",
     previous_response_id: "resp_1",
