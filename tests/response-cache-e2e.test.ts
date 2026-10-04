@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { saveConfig } from "../src/config";
 import { startServer } from "../src/server";
+import { clearRequestLogsForTests, getRequestLogEntries } from "../src/server/request-log";
 import type { OcxConfig } from "../src/types";
 import { installIsolatedCodexHome, type IsolatedCodexHome } from "./helpers/isolated-codex-home";
 import { managementFetch } from "./helpers/management-auth";
@@ -24,6 +25,7 @@ const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   previousHome = process.env.OPENCODEX_HOME;
+  clearRequestLogsForTests();
   isolatedCodexHome = installIsolatedCodexHome("ocx-resp-cache-e2e-");
   testDir = mkdtempSync(join(tmpdir(), "ocx-resp-cache-e2e-"));
   process.env.OPENCODEX_HOME = testDir;
@@ -31,6 +33,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  delete process.env.OCX_TRACE;
   if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
   else process.env.OPENCODEX_HOME = previousHome;
   isolatedCodexHome?.restore();
@@ -78,6 +81,7 @@ function mockConfig(baseUrl: string): OcxConfig {
 }
 
 test("identical non-streaming request hits the cache on the second call", async () => {
+  process.env.OCX_TRACE = "metadata";
   const upstream = mockJsonUpstream();
   saveConfig(mockConfig(`${upstream.url.toString().replace(/\/$/, "")}/v1`));
   const server = startServer(0);
@@ -104,6 +108,10 @@ test("identical non-streaming request hits the cache on the second call", async 
     expect(second.status).toBe(200);
     expect(second.headers.get("x-cache")).toBe("HIT");
     expect(upstreamHits).toBe(1); // upstream was NOT called again
+    const hitLog = getRequestLogEntries().at(-1);
+    expect(hitLog?.trace?.cacheHit).toBe(true);
+    expect(hitLog?.trace?.cacheSourceTraceId).toMatch(/^ocx-[A-Za-z0-9-]+$/);
+    expect(hitLog?.trace?.cacheSourceTraceId).not.toBe(hitLog?.requestId);
     const replayed = await second.json() as { object: string; choices: Array<{ message: { content: string } }> };
     expect(replayed.object).toBe("chat.completion");
     expect(replayed.choices[0]?.message.content).toBe("pong");

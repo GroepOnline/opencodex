@@ -160,6 +160,15 @@ const helpEntries: Record<string, HelpEntry> = {
     usage: "ocx observe <logs|usage|storage|memory|cache|debug|claude-inbound|injection> ...",
     summary: "Inspect proxy requests, usage, storage, memory, response cache, and debug data.",
   },
+  trace: {
+    usage: "ocx trace <list|show> ...",
+    summary: "Inspect locally stored request traces without exposing payloads by default.",
+    details: [
+      "list [--conversation <id>] [--limit <n>] [--json]",
+      "show <trace-id> [--body] [--json]",
+      "Bodies are never printed unless --body is provided; --json alone remains metadata-only.",
+    ],
+  },
   logs: { usage: "ocx logs [filters] [--follow] [--json|--jsonl]", summary: "Alias of ocx observe logs." },
   usage: { usage: "ocx usage [--range <7d|30d|all>] [--surface <all|codex|claude|grok>] [--json]", summary: "Alias of ocx observe usage." },
   storage: { usage: "ocx storage [--json]", summary: "Alias of ocx observe storage." },
@@ -286,6 +295,7 @@ Usage:
   ocx combo <sub>             Combo failover/round-robin routing
   ocx agent <sub>             Subagents, injection, effort caps, and sidecars
   ocx observe <sub>           Logs, usage, storage, memory, cache, and debug data
+  ocx trace <sub>             Inspect local trace metadata; bodies require explicit --body
   ocx access <sub>            External API keys and endpoint information
   ocx grok <sub>              Grok Build model selection and apply
   ocx system <sub>            Runtime settings, startup, sync, and updates

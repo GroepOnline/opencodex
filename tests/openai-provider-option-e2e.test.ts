@@ -118,6 +118,7 @@ describe("OpenAI provider-option integration spine", () => {
       OPENCODEX_HOME: process.env.OPENCODEX_HOME,
       CODEX_HOME: process.env.CODEX_HOME,
       CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
+      OCX_TRACE: process.env.OCX_TRACE,
     };
     const savedFetch = globalThis.fetch;
     const captures: Capture[] = [];
@@ -154,6 +155,7 @@ describe("OpenAI provider-option integration spine", () => {
       process.env.OPENCODEX_HOME = opencodexHome;
       process.env.CODEX_HOME = codexHome;
       process.env.CLAUDE_CONFIG_DIR = claudeConfigDir;
+      process.env.OCX_TRACE = "metadata";
       const authPath = join(codexHome, "auth.json");
       writeFileSync(authPath, JSON.stringify({
         tokens: { access_token: "fixture-main-access", account_id: "fixture-main-account" },
@@ -361,6 +363,15 @@ describe("OpenAI provider-option integration spine", () => {
         accountId: "fixture-pool-account",
         body: { model: "gpt-5.6-sol" },
       });
+      const wsTrace = requestLog.getRequestLogEntries().at(-1)?.trace;
+      expect(wsTrace).toMatchObject({
+        mode: "metadata",
+        stored: false,
+        responseBytes: expect.any(Number),
+      });
+      expect(wsTrace?.requestHash).toMatch(/^[0-9a-f]{32}$/);
+      expect(wsTrace?.outboundHash).toMatch(/^[0-9a-f]{32}$/);
+      expect(wsTrace?.responseHash).toMatch(/^[0-9a-f]{32}$/);
       expect(websocketRegistry.getTrackedCodexWebSocketCountForAccount("fixture-pool")).toBe(1);
 
       const directPatch = await patchMode("direct");
@@ -581,6 +592,7 @@ describe("OpenAI provider-option integration spine", () => {
         restoreEnv("OPENCODEX_HOME", previousEnv.OPENCODEX_HOME);
         restoreEnv("CODEX_HOME", previousEnv.CODEX_HOME);
         restoreEnv("CLAUDE_CONFIG_DIR", previousEnv.CLAUDE_CONFIG_DIR);
+        restoreEnv("OCX_TRACE", previousEnv.OCX_TRACE);
         rmSync(root, { recursive: true, force: true });
         expect(hashTree(realClaudeDir)).toBe(realClaudeHashBefore);
       }

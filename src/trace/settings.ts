@@ -45,6 +45,7 @@ const DEFAULTS: TraceSettings = {
 
 let override: Partial<TraceSettings> = {};
 
+/** Parse a mode case-insensitively after trimming; return undefined for unrecognized values. */
 export function parseTraceMode(value: unknown): TraceMode | undefined {
   if (typeof value !== "string") return undefined;
   const v = value.trim().toLowerCase();
@@ -64,6 +65,11 @@ function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
 
+/**
+ * Resolve process overrides, then environment values, then defaults on each call.
+ * Clamp retention to 1–720 hours, body caps to 4 KiB–8 MiB, database caps to
+ * 16–4096 MiB, and sampling to 0–1; round body and database caps down.
+ */
 export function getTraceSettings(): TraceSettings {
   const mode =
     override.mode ??
@@ -88,6 +94,10 @@ export function getTraceSettings(): TraceSettings {
   };
 }
 
+/**
+ * Merge process-wide overrides, retaining unspecified fields, and return the
+ * resolved settings. Clamping occurs when settings are read.
+ */
 export function setTraceSettings(
   partial: Partial<TraceSettings>,
 ): TraceSettings {

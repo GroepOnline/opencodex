@@ -51,6 +51,12 @@ export function getInstalledCache(): ResponseCache | null {
 
 export interface CacheHit {
   hit: Response;
+  /** Rebuilt request whose body was consumed while computing the cache key. */
+  request: Request;
+  /** Cached response body for payload-free trace hashing/counting; never exposed to clients separately. */
+  responseBody: string;
+  /** Request id that originally populated this entry, when available. */
+  sourceTraceId?: string;
   /** Route this hit replayed, so the server can log the served request without re-parsing the body. */
   provider: string;
   model: string;
@@ -65,7 +71,7 @@ export interface CacheMiss {
   normalizedBody: string;
   endpoint: "responses" | "messages" | "chat-completions";
   /** Store a 2xx non-streaming response into the cache (no-op if not cacheable). */
-  store: (response: Response) => void;
+  store: (response: Response, sourceTraceId?: string) => void;
 }
 
 export type CacheProbe = CacheHit | CacheMiss | null;
@@ -173,6 +179,9 @@ export async function probeResponseCache(
     );
     return {
       hit: new Response(hit.body, { status: 200, headers }),
+      request: rebuild(req, raw),
+      responseBody: hit.body,
+      ...(hit.sourceTraceId ? { sourceTraceId: hit.sourceTraceId } : {}),
       provider: route.providerName,
       model: route.modelId,
     };
@@ -180,7 +189,7 @@ export async function probeResponseCache(
 
   const rebuilt = rebuild(req, raw);
 
-  const store = (response: Response) => {
+  const store = (response: Response, sourceTraceId?: string) => {
     if (response.status < 200 || response.status >= 300) return;
     const ct = response.headers.get("content-type") ?? "application/json";
     if (ct.includes("text/event-stream")) return;
@@ -190,7 +199,16 @@ export async function probeResponseCache(
       .text()
       .then((body) => {
         if (!body) return;
-        cache.set(route.providerName, route.modelId, scopedNormalized, body, ct, endpoint);
+        cache.set(
+          route.providerName,
+          route.modelId,
+          scopedNormalized,
+          body,
+          ct,
+          endpoint,
+          Date.now(),
+          sourceTraceId,
+        );
       })
       .catch(() => {
         /* clone read failure is non-fatal */

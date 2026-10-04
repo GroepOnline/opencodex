@@ -534,10 +534,32 @@ Tracing is **off by default** and is configured by environment variable at proxy
   detectable, so treat the store as sensitive.
 - `full` stores bodies verbatim. Use it deliberately and briefly.
 
-Outbound capture covers adapters that send through the shared upstream fetch helper; inbound request and
-response capture covers `/v1/responses`, `/v1/messages`, `/v1/chat/completions`, and live call-create HTTP
-(`/v1/live` and `/v1/realtime/calls`). Live call-create also records the rewritten provider wire body before
-its bounded upstream POST. Voice/realtime sideband WebSockets remain outside this trace lane.
+Outbound capture covers adapters that send through the shared upstream fetch helper; inbound and response
+capture covers `/v1/responses`, `/v1/messages`, `/v1/chat/completions`, `/v1/responses/compact`, and live call-create HTTP
+(`/v1/live` and `/v1/realtime/calls`).
+Proxy response-cache hits are traced without duplicating the cached response body: the usage trace records
+`cacheHit`, a response hash/byte count, and the request id that originally populated the cache when known.
+Responses WebSocket `response.create` turns are traced as separate logical requests: the inbound hash covers
+the client WS frame, while the outbound hash covers the final provider wire body. Voice/realtime live-sideband
+WebSockets remain outside this trace lane because they are long-lived bidirectional sessions rather than
+request/response turns. Live call-create also records the rewritten provider wire body before its bounded
+upstream POST.
+
+Stored traces can be inspected directly from the local SQLite store; the proxy does not need to be running:
+
+```bash
+ocx trace list
+ocx trace list --conversation <conversation-id> --limit 20
+ocx trace show <trace-id>
+ocx trace show <trace-id> --json
+ocx trace show <trace-id> --body
+```
+
+`trace list` and `trace show` are payload-free by default. `--json` changes only the output format and
+does **not** reveal request or response bodies. Bodies are included only when `--body` is explicitly
+provided. Human `--body` output JSON-escapes stored strings so terminal control sequences from traced
+content are not executed. Metadata-only trace summaries remain in `usage.jsonl`; `ocx trace list`
+enumerates rows whose bodies were actually persisted in `trace.sqlite`.
 
 ## Updating
 

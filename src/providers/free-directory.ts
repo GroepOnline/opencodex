@@ -202,13 +202,13 @@ const CONNECTABLE: Record<string, ConnectableOverride> = {
     },
   ),
   cohere: openAi(
-    "https://api.cohere.com/compatibility/v1",
+    "https://api.cohere.ai/compatibility/v1",
     "https://dashboard.cohere.com/api-keys",
     {
       supportLevel: "supported",
       verification: "official",
       documentationUrl: "https://docs.cohere.com/reference/list-models",
-      modelsUrl: "https://api.cohere.com/compatibility/v1/models",
+      modelsUrl: "https://api.cohere.ai/compatibility/v1/models",
     },
   ),
   friendliai: openAi(
@@ -677,7 +677,7 @@ const CONNECTABLE: Record<string, ConnectableOverride> = {
     verification: "official",
   }),
   nebius: openAi(
-    "https://api.tokenfactory.nebius.com/v1",
+    "https://api.studio.nebius.com/v1",
     "https://studio.nebius.com",
     { verification: "official" },
   ),
