@@ -2,7 +2,7 @@
    Shell-owned pws-* names only; the rail row keeps its verbatim source class names. */
 
 .main-inner:has(.pws-shell-container) {
-  max-width: 1440px;
+  max-width: var(--workspace-measure);
 }
 
 .pws-shell-container {
@@ -14,8 +14,8 @@
 
 .pws-root {
   display: grid;
-  grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
-  gap: var(--space-4);
+  grid-template-columns: minmax(250px, 292px) minmax(0, 1fr);
+  gap: var(--space-8);
   width: 100%;
   max-width: 100%;
   min-height: calc(var(--space-16) * 7 + var(--space-8));
@@ -27,11 +27,16 @@
   flex-direction: column;
   gap: var(--space-3);
   min-width: 0;
-  padding: var(--space-3);
-  background: var(--surface);
-  border: 1px solid var(--card-border);
-  border-radius: var(--card-radius);
-  box-shadow: var(--card-shadow);
+  align-self: start;
+  position: sticky;
+  top: calc(var(--workspace-header) + var(--space-6));
+  max-height: calc(100dvh - var(--workspace-header) - var(--space-12));
+  padding: 0 var(--space-5) 0 0;
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--border-subtle);
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .pws-search-row {
@@ -61,6 +66,9 @@
 .pws-search-wrap .pws-search-input {
   width: 100%;
   padding-left: 40px;
+  min-height: 40px;
+  background: var(--surface-paper);
+  border-color: var(--border-subtle);
 }
 
 .pws-filter-wrap {
@@ -69,7 +77,7 @@
 
 .pws-filter-btn {
   appearance: none;
-  background: var(--surface);
+  background: var(--surface-paper);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm);
   padding: 0;
@@ -107,10 +115,10 @@
   top: calc(100% + var(--space-1-5));
   z-index: 30;
   min-width: calc(var(--space-16) * 3 + var(--space-10));
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow);
+  background: var(--surface-paper);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--card-shadow-raised);
   padding: calc(var(--space-2) + var(--space-0-5));
   display: flex;
   flex-direction: column;
@@ -253,19 +261,12 @@
 }
 
 .providers-workspace-rail-row--selected {
-  background: var(--raised);
-  box-shadow: none;
+  background: var(--surface-paper);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
 }
 
 .providers-workspace-rail-row--selected::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 2px;
-  border-radius: 2px;
-  background: var(--text);
+  content: none;
 }
 
 /* WP4: hover accelerator for deleting a provider.
@@ -297,7 +298,9 @@
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--motion-fast), background var(--motion-fast);
+  transition:
+    opacity var(--motion-fast),
+    background var(--motion-fast);
 }
 
 .pws-rail-row-wrap:hover .pws-rail-row-remove,
@@ -307,7 +310,9 @@
 }
 
 /* Keep it legible above the selected row's tinted background. */
-.pws-rail-row-wrap:hover .providers-workspace-rail-row--selected ~ .pws-rail-row-remove {
+.pws-rail-row-wrap:hover
+  .providers-workspace-rail-row--selected
+  ~ .pws-rail-row-remove {
   background: var(--raised);
 }
 
@@ -460,7 +465,7 @@
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
-  padding: 0 var(--space-2);
+  padding: 0;
 }
 
 .pws-detail-placeholder {
@@ -535,18 +540,18 @@
 
   .pws-rail {
     --pws-rail-row-height: var(--control-touch);
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-    padding-right: 0;
-    padding-bottom: var(--space-3);
+    position: static;
     max-height: calc(var(--space-16) * 5);
+    border-right: none;
+    border-bottom: 1px solid var(--border-subtle);
+    padding-right: 0;
+    padding-bottom: var(--space-4);
     overflow-y: auto;
   }
 
   .pws-main {
     padding: var(--space-2) 0 0;
   }
-
 }
 
 @media (max-width: 768px) {
@@ -555,11 +560,12 @@
     min-height: auto;
   }
   .pws-rail {
+    position: static;
+    max-height: calc(var(--space-16) * 5);
     border-right: none;
     padding-right: 0;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: var(--space-3);
-    max-height: calc(var(--space-16) * 5);
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: var(--space-4);
     overflow-y: auto;
   }
   .pws-main {
@@ -776,7 +782,11 @@
   gap: 0;
   width: 100%;
   min-width: 0;
-  max-width: 960px;
+  max-width: 1080px;
+  padding: var(--space-8);
+  background: var(--surface-paper);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
 }
 
 .pws-detail-icon {
@@ -800,21 +810,22 @@
 }
 
 .pws-detail-title {
-  font-size: 1.15rem;
+  font-size: clamp(1.55rem, 2.2vw, 2rem);
   font-weight: var(--weight-semibold);
+  letter-spacing: -0.03em;
   margin: 0;
-  line-height: 1.3;
+  line-height: 1.08;
 }
 
 /* Tabs */
 .pws-detail-tabs {
   display: flex;
-  gap: 0;
+  gap: var(--space-1);
   overflow-x: auto;
   scrollbar-width: thin;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: var(--space-4);
-  margin-top: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-6);
+  margin-top: var(--space-4);
 }
 
 .pws-detail-tab {
@@ -822,14 +833,16 @@
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
-  padding: var(--space-2) calc(var(--space-3) + var(--space-0-5));
+  padding: var(--space-2) var(--space-3);
   font: inherit;
   font-size: 0.82rem;
   font-weight: 500;
   color: var(--muted);
   cursor: pointer;
   position: relative;
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .pws-detail-tab:hover {
@@ -838,15 +851,20 @@
 
 .pws-detail-tab--active {
   color: var(--text);
-  border-bottom-color: transparent;
+  border-bottom-color: var(--text);
 }
 
 .pws-detail-tab--active::after {
   content: none;
 }
 
-.pws-detail-tab:focus-visible { outline: var(--space-0-5) solid var(--accent-ring); outline-offset: calc(-1 * var(--space-0-5)); }
-.pws-detail-panel:focus { outline: none; }
+.pws-detail-tab:focus-visible {
+  outline: var(--space-0-5) solid var(--accent-ring);
+  outline-offset: calc(-1 * var(--space-0-5));
+}
+.pws-detail-panel:focus {
+  outline: none;
+}
 
 /* Section blocks */
 .pws-section {
@@ -1015,10 +1033,15 @@
   align-items: center;
   gap: calc(var(--space-2) + var(--space-0-5));
   max-width: 100%;
-  padding: var(--space-2) calc(var(--space-2) + var(--space-0-5)) var(--space-2) var(--space-3);
+  padding: var(--space-2) calc(var(--space-2) + var(--space-0-5)) var(--space-2)
+    var(--space-3);
   border: 1px solid color-mix(in oklab, var(--border) 85%, transparent);
   border-radius: var(--radius-sm);
-  background: color-mix(in oklab, var(--surface, var(--panel)) 92%, var(--text) 4%);
+  background: color-mix(
+    in oklab,
+    var(--surface, var(--panel)) 92%,
+    var(--text) 4%
+  );
 }
 
 .pws-model-chip-off {
@@ -1055,7 +1078,14 @@
 }
 
 .pws-model-id {
-  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-family: var(
+    --mono,
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace
+  );
   font-size: var(--text-label);
   font-weight: var(--weight-semibold);
   line-height: 1.35;
@@ -1138,19 +1168,59 @@
   font-size: 0.75rem;
   margin-top: var(--space-2);
 }
-.pws-model-table { width: 100%; border-collapse: collapse; font-size: var(--text-label); }
-.pws-model-table th { text-align: left; font-weight: var(--weight-semibold); padding: var(--space-1-5) var(--space-2); border-bottom: 1px solid var(--border); }
-.pws-model-table td { padding: var(--space-1-5) var(--space-2); border-bottom: 1px solid var(--border-soft); }
-.pws-model-table .num { text-align: right; font-variant-numeric: tabular-nums; }
-.pws-model-table .mono { font-family: var(--font-mono, monospace); font-size: 0.78rem; }
-.pws-model-row:hover { background: var(--raised); }
-.pws-share-bar { height: var(--space-1-5); background: var(--border-soft); border-radius: var(--radius-2xs); min-width: calc(var(--space-12) + var(--space-3)); }
-.pws-share-bar-fill { height: 100%; background: var(--green); border-radius: var(--radius-2xs); }
-.pws-model-detail { background: var(--raised); }
-.pws-model-detail td { padding: var(--space-2) var(--space-2) var(--space-2) var(--space-6); }
-.pws-model-detail-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-2) var(--space-6); font-size: var(--text-label); }
+.pws-model-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-label);
+}
+.pws-model-table th {
+  text-align: left;
+  font-weight: var(--weight-semibold);
+  padding: var(--space-1-5) var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.pws-model-table td {
+  padding: var(--space-1-5) var(--space-2);
+  border-bottom: 1px solid var(--border-soft);
+}
+.pws-model-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.pws-model-table .mono {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+}
+.pws-model-row:hover {
+  background: var(--raised);
+}
+.pws-share-bar {
+  height: var(--space-1-5);
+  background: var(--border-soft);
+  border-radius: var(--radius-2xs);
+  min-width: calc(var(--space-12) + var(--space-3));
+}
+.pws-share-bar-fill {
+  height: 100%;
+  background: var(--green);
+  border-radius: var(--radius-2xs);
+}
+.pws-model-detail {
+  background: var(--raised);
+}
+.pws-model-detail td {
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-6);
+}
+.pws-model-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-2) var(--space-6);
+  font-size: var(--text-label);
+}
 @media (max-width: 600px) {
-  .pws-usage-metrics-3 { grid-template-columns: 1fr; }
+  .pws-usage-metrics-3 {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
@@ -1163,5 +1233,12 @@
 @media (prefers-reduced-motion: reduce) {
   .providers-workspace-rail-row:active {
     transform: none;
+  }
+}
+
+@container provider-workspace (max-width: 680px) {
+  .pws-detail {
+    padding: var(--space-5) var(--space-4);
+    border-radius: var(--radius-lg);
   }
 }
