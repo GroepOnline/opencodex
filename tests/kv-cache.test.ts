@@ -184,7 +184,16 @@ describe("ResponseCache observability + guards (Fase D quality round)", () => {
         { enabled: true, ttlMs: 60_000, maxEntries: 8, persist: true },
         dir,
       );
-      first.set("p", "m", "req", '{"warm":true}', "application/json");
+      first.set(
+        "p",
+        "m",
+        "req",
+        '{"warm":true}',
+        "application/json",
+        "responses",
+        Date.now(),
+        "ocx-source-123",
+      );
 
       const second = new ResponseCache(
         { enabled: true, ttlMs: 60_000, maxEntries: 8, persist: true },
@@ -193,6 +202,7 @@ describe("ResponseCache observability + guards (Fase D quality round)", () => {
       const hit = second.get("p", "m", "req");
       expect(hit).not.toBeNull();
       expect(hit!.body).toBe('{"warm":true}');
+      expect(hit!.sourceTraceId).toBe("ocx-source-123");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

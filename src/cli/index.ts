@@ -1034,6 +1034,11 @@ switch (command) {
     process.exitCode = await handleObserveCommand([command, ...args.slice(1)]);
     break;
   }
+  case "trace": {
+    const { handleTraceCommand } = await import("./trace");
+    process.exitCode = await handleTraceCommand(args.slice(1));
+    break;
+  }
   case "access": {
     const { handleAccessCommand } = await import("./access");
     process.exitCode = await handleAccessCommand(args.slice(1));

@@ -48,10 +48,16 @@ let dbPath = "";
 let writesSincePrune = 0;
 let lastPruneAt = 0;
 
+/** Return the trace database path in the current config directory without opening it. */
 export function traceDbPath(): string {
   return join(getConfigDir(), "trace.sqlite");
 }
 
+/**
+ * Open or reuse the store for the current config directory, creating its schema
+ * as needed and closing any handle for a previous directory. Permission changes
+ * are best-effort; directory creation and SQLite errors propagate to callers.
+ */
 function openStore(): Database {
   const path = traceDbPath();
   if (db && dbPath === path) return db;
@@ -98,6 +104,7 @@ function openStore(): Database {
   return fresh;
 }
 
+/** Close the cached database and reset pruning counters, ignoring close errors. */
 export function closeTraceStore(): void {
   if (db) {
     try {
@@ -117,6 +124,10 @@ function pack(text: string | undefined): Uint8Array | null {
   return Bun.gzipSync(new TextEncoder().encode(text));
 }
 
+/**
+ * Decode a gzip byte buffer as UTF-8, or return undefined for a non-buffer value.
+ * Decompression errors propagate to the caller.
+ */
 function unpack(blob: unknown): string | undefined {
   if (!(blob instanceof Uint8Array)) return undefined;
   // bun:sqlite may surface a SharedArrayBuffer-backed view, while gunzipSync
@@ -124,6 +135,7 @@ function unpack(blob: unknown): string | undefined {
   return new TextDecoder().decode(Bun.gunzipSync(Uint8Array.from(blob)));
 }
 
+/** Sum database, WAL, and shared-memory file sizes in bytes, ignoring stat failures. */
 function dbBytes(path: string): number {
   let total = 0;
   for (const suffix of ["", "-wal", "-shm"]) {
@@ -147,7 +159,13 @@ function compactAfterDelete(store: Database): void {
   store.exec("PRAGMA incremental_vacuum");
 }
 
-/** Drop expired rows, then oldest rows until the store is under its size cap. Returns rows deleted. */
+/**
+ * Delete rows expiring at or before `now` (Unix milliseconds), then evict oldest
+ * rows toward the configured database size cap, including WAL and shared memory.
+ * Eviction is bounded to 200 batches of 50 rows, so the cap may remain exceeded.
+ * May create the store. Return rows deleted, or 0 on error even if some deletions
+ * already succeeded.
+ */
 export function pruneTraces(now = Date.now()): number {
   try {
     const store = openStore();
@@ -178,7 +196,13 @@ export function pruneTraces(now = Date.now()): number {
   }
 }
 
-/** Persist one trace. Returns false (never throws) when the write failed. */
+/**
+ * Insert or replace a trace by ID, gzip-compressing supplied bodies as-is.
+ * Retention starts at write time, independently of `row.createdAt` (Unix
+ * milliseconds). May create the store and prune expired/oldest rows. The caller
+ * controls sampling, redaction, and body limits. Return false on write failure;
+ * pruning failures are swallowed and do not change a successful result.
+ */
 export function writeTrace(row: TraceRow): boolean {
   try {
     const store = openStore();
@@ -236,7 +260,11 @@ function summaryFromRow(r: Record<string, unknown>): TraceRowSummary {
   };
 }
 
-/** Read one trace (expired rows are invisible even before the next prune). */
+/**
+ * Read an unexpired trace with decompressed bodies, deleting expired rows first.
+ * `now` is Unix milliseconds; rows expiring at that instant are expired. Return
+ * null for a missing database/trace or any read, cleanup, or decoding failure.
+ */
 export function readTrace(
   traceId: string,
   now = Date.now(),
@@ -265,6 +293,12 @@ export function readTrace(
   }
 }
 
+/**
+ * List unexpired summaries newest first, optionally matching a nonempty
+ * `conversationId`. Default to 50 results and clamp `limit` to 1–500.
+ * `now` defaults to the current Unix time in milliseconds; expired rows are deleted
+ * first. Return [] for a missing database or any cleanup, query, or decoding error.
+ */
 export function listTraces(
   options: { conversationId?: string; limit?: number; now?: number } = {},
 ): TraceRowSummary[] {

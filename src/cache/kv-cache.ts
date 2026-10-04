@@ -34,6 +34,8 @@ export interface CacheEntry {
   storedAt: number;
   /** Byte size of `body`, for capacity accounting. */
   size: number;
+  /** Request id that produced this cached response, for trace correlation only. */
+  sourceTraceId?: string;
 }
 
 export interface ResponseCacheOptions {
@@ -180,7 +182,7 @@ export class ResponseCache {
     normalizedBody: string,
     endpoint = "responses",
     now = Date.now(),
-  ): { body: string; contentType: string } | null {
+  ): { body: string; contentType: string; sourceTraceId?: string } | null {
     if (!this.opts.enabled) return null;
     const key = cacheKeyFor(endpoint, provider, model, normalizedBody);
     const entry = this.map.get(key);
@@ -198,7 +200,11 @@ export class ResponseCache {
     this.map.delete(key);
     this.map.set(key, entry);
     this.stats.hits += 1;
-    return { body: entry.body, contentType: entry.contentType };
+    return {
+      body: entry.body,
+      contentType: entry.contentType,
+      ...(entry.sourceTraceId ? { sourceTraceId: entry.sourceTraceId } : {}),
+    };
   }
 
   /** Store a completed response. No-op when disabled or over capacity after eviction. */
@@ -210,6 +216,7 @@ export class ResponseCache {
     contentType: string,
     endpoint = "responses",
     now = Date.now(),
+    sourceTraceId?: string,
   ): void {
     if (!this.opts.enabled) return;
     // Measure real UTF-8 bytes, not UTF-16 code units: `body.length` under-counts multi-byte
@@ -229,6 +236,7 @@ export class ResponseCache {
       expiresAt: now + this.opts.ttlMs,
       storedAt: now,
       size: byteSize,
+      ...(sourceTraceId ? { sourceTraceId } : {}),
     };
     this.map.delete(key);
     this.map.set(key, entry);

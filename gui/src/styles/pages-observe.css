@@ -143,9 +143,13 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
   font-family: var(--font-ui);
+  background: var(--surface-paper);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
 }
 
 .verkeer-filters .usage-segmented {
@@ -175,6 +179,7 @@
 
 .verkeer-disclosure {
   margin-top: var(--section-gap);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .verkeer-disclosure .ocx-group-body {
@@ -207,6 +212,10 @@
    --------------------------------------------------------------------------- */
 .logs-page .logs-toolbar {
   font-family: var(--font-ui);
+  padding: var(--space-3);
+  background: var(--surface-paper);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
 }
 
 .logs-page .tbl tbody tr {
@@ -214,11 +223,33 @@
 }
 
 .logs-page .tbl tbody tr:hover td {
-  background: var(--hover);
+  background: var(--surface-raised);
 }
 
 .logs-page .tbl tbody tr:active td {
-  background: var(--raised);
+  background: var(--surface-raised);
+}
+
+.verkeer-page .tbl-wrap,
+.logs-page .logs-table-wrap {
+  background: var(--surface-paper);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: auto;
+}
+
+.verkeer-page .tbl,
+.logs-page .logs-table {
+  margin: 0;
+}
+
+.verkeer-page .tbl tbody td,
+.logs-page .tbl tbody td {
+  border-bottom-color: var(--border-subtle);
+}
+
+.logs-page .logs-table-wrap {
+  margin-top: var(--space-4);
 }
 
 /* ---------------------------------------------------------------------------

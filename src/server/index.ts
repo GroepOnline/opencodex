@@ -1,5 +1,10 @@
 import { markActivity } from "../lib/sidecar-tracker";
-import { beginTrace, runWithTrace } from "../trace/capture";
+import {
+  appendTraceResponse,
+  beginTrace,
+  noteTraceCacheHit,
+  runWithTrace,
+} from "../trace/capture";
 import { initServerSentry } from "../telemetry/sentry-server";
 import {
   buildWarmupCompletionFrames,
@@ -221,14 +226,16 @@ const LIVE_SIDEBAND_PENDING_MAX = 32;
  * and addFinalRequestLog omits the usage/totalTokens fields when it is absent. The response itself
  * already carries `x-cache: HIT`; this is purely the request-count / observability entry.
  */
-function logCacheHitRequest(hit: CacheHit): void {
+async function logCacheHitRequest(hit: CacheHit): Promise<void> {
   const start = Date.now();
-  addFinalRequestLog(
-    nextRequestLogId(start),
-    start,
-    { model: hit.model || "unknown", provider: hit.provider || "unknown" },
-    200,
-  );
+  const requestId = nextRequestLogId(start);
+  const logCtx: RequestLogContext = {
+    model: hit.model || "unknown",
+    provider: hit.provider || "unknown",
+  };
+  await beginTrace(logCtx, hit.request);
+  noteTraceCacheHit(logCtx.trace, hit.responseBody, hit.sourceTraceId);
+  addFinalRequestLog(requestId, start, logCtx, 200);
 }
 
 function closeLiveSideband(
@@ -351,6 +358,12 @@ function attachLiveSidebandUpstream(ws: ServerWebSocket<WsData>): void {
 // trackSseForRequestLog(
 // export function relaySseWithHeartbeat
 
+/**
+ * Start the proxy, management API, and dashboard using the loaded configuration.
+ * Apply startup migrations and initialize background maintenance. `port` overrides
+ * the configured port (default 10100); 0 requests an available port. Return the
+ * listening Bun server. Synchronous initialization and listen errors propagate.
+ */
 export function startServer(port?: number) {
   initServerSentry();
   const config = runAlibabaRegionStartupMigration(
@@ -836,8 +849,27 @@ export function startServer(port?: number) {
           return jsonResponse({ data }, 200, req, config);
         }
         if (url.searchParams.has("client_version")) {
-          // Codex client → Codex catalog shape: native gpt + namespaced routed models,
-          // cloned from a native template so required fields (base_instructions, etc.) are present.
+          // Codex client → Codex catalog shape. Ask the same upstream catalog the client would
+          // use, but authenticate with OCX's effective account so a stale Desktop main login
+          // cannot hide models available to the selected pool account.
+          const { discoverNativeOpenAiCatalog } =
+            await import("../codex/catalog/native-discovery");
+          const requestedClientVersion = url.searchParams.get("client_version")?.trim() || null;
+          const liveNative = await discoverNativeOpenAiCatalog(config, {
+            resolveClientVersion: () => requestedClientVersion,
+          });
+          const authoritativeNativeEntries =
+            new Map<string, (typeof liveNative.models)[number]>();
+          for (const model of liveNative.models) {
+            if (typeof model.slug === "string" && !model.slug.includes("/")) {
+              authoritativeNativeEntries.set(model.slug, model);
+            }
+          }
+          const authoritativeNativeSlugs = new Set(authoritativeNativeEntries.keys());
+          const codexNativeSlugs = [
+            ...new Set([...nativeSlugs, ...authoritativeNativeSlugs]),
+          ];
+
           // Pass the subagent picks so featured models lead by priority (matches the on-disk file).
           // Disabled natives stay in the catalog shape with visibility "hide" (mirrors the
           // on-disk sync; codex-rs keeps them out of the picker itself).
@@ -847,18 +879,20 @@ export function startServer(port?: number) {
               : "default";
           const entries = buildCatalogEntries(
             loadCatalogTemplate(),
-            nativeSlugs,
+            codexNativeSlugs,
             goOrdered,
             config.subagentModels,
             websocketsEnabled(config),
             maMode as "v1" | "default" | "v2",
             exactComboCatalogSlugs(config),
+            authoritativeNativeEntries,
           );
           return jsonResponse(
             {
               models: applyNativeVisibility(
                 entries,
                 disabledNativeSlugs(config),
+                authoritativeNativeSlugs,
               ),
             },
             200,
@@ -969,15 +1003,23 @@ export function startServer(port?: number) {
           model: "unknown",
           provider: "unknown",
         };
+        await beginTrace(logCtx, req);
         let response: Response;
         try {
-          response = await handleResponsesCompact(req, config, logCtx);
+          response = await runWithTrace(
+            logCtx,
+            () => handleResponsesCompact(req, config, logCtx),
+          );
         } catch {
           response = formatErrorResponse(
             500,
             "server_error",
             "Unexpected compact request failure",
           );
+        }
+        if (logCtx.trace) {
+          const tracedBody = await response.clone().text().catch(() => "");
+          if (tracedBody) appendTraceResponse(logCtx.trace, tracedBody);
         }
         addFinalRequestLog(
           requestId,
@@ -1172,7 +1214,7 @@ export function startServer(port?: number) {
           "responses",
         );
         if (responsesCacheProbe && "hit" in responsesCacheProbe) {
-          logCacheHitRequest(responsesCacheProbe);
+          await logCacheHitRequest(responsesCacheProbe);
           return withCors(responsesCacheProbe.hit, req, config);
         }
         const responsesWorkReq = responsesCacheProbe?.request ?? req;
@@ -1215,7 +1257,7 @@ export function startServer(port?: number) {
             },
           },
         ));
-        responsesCacheProbe?.store(response);
+        responsesCacheProbe?.store(response, requestId);
         return withCors(
           responseWithDeferredRequestLog(response, requestId, start, logCtx),
           req,
@@ -1312,7 +1354,7 @@ export function startServer(port?: number) {
           "messages",
         );
         if (messagesCacheProbe && "hit" in messagesCacheProbe) {
-          logCacheHitRequest(messagesCacheProbe);
+          await logCacheHitRequest(messagesCacheProbe);
           return withCors(messagesCacheProbe.hit, req, config);
         }
         const messagesWorkReq = messagesCacheProbe?.request ?? req;
@@ -1332,7 +1374,7 @@ export function startServer(port?: number) {
           logCtx,
           { requestId, start },
         ));
-        messagesCacheProbe?.store(response);
+        messagesCacheProbe?.store(response, requestId);
         return withCors(response, req, config);
       }
 
@@ -1368,7 +1410,7 @@ export function startServer(port?: number) {
           "chat-completions",
         );
         if (chatCacheProbe && "hit" in chatCacheProbe) {
-          logCacheHitRequest(chatCacheProbe);
+          await logCacheHitRequest(chatCacheProbe);
           return withCors(chatCacheProbe.hit, req, config);
         }
         const chatWorkReq = chatCacheProbe?.request ?? req;
@@ -1385,7 +1427,7 @@ export function startServer(port?: number) {
           logCtx,
           { requestId, start },
         ));
-        chatCacheProbe?.store(response);
+        chatCacheProbe?.store(response, requestId);
         return withCors(response, req, config);
       }
 

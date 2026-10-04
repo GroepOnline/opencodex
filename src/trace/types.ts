@@ -16,6 +16,10 @@ export interface UsageTraceMeta {
   attachmentCount?: number;
   /** Number of times a provider wire body was sent (retries/continuations). */
   outboundCount?: number;
+  /** True when the proxy response cache served this request without an upstream call. */
+  cacheHit?: boolean;
+  /** Request id that originally populated the response-cache entry, when known. */
+  cacheSourceTraceId?: string;
   requestHash?: string;
   outboundHash?: string;
   responseHash?: string;
@@ -64,6 +68,13 @@ export function normalizeUsageTraceMeta(
   for (const key of ints) {
     const v = nonNegInt(r[key]);
     if (v !== undefined) out[key] = v;
+  }
+  if (r.cacheHit === true) out.cacheHit = true;
+  if (
+    typeof r.cacheSourceTraceId === "string"
+    && /^[A-Za-z0-9._:-]{1,128}$/u.test(r.cacheSourceTraceId)
+  ) {
+    out.cacheSourceTraceId = r.cacheSourceTraceId;
   }
   const hashes = [
     "requestHash",
