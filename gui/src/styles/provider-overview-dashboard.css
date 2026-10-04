@@ -3,7 +3,7 @@
 .pws-dashboard {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-6);
   padding: var(--space-1) 0;
   max-width: 100%;
   overflow-x: clip;
@@ -40,9 +40,10 @@
 .pws-dashboard-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  border: 1px solid var(--border);
+  gap: 1px;
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  background: var(--surface);
+  background: var(--border-subtle);
   overflow: hidden;
 }
 
@@ -54,13 +55,14 @@
 .pws-dashboard-stat {
   display: flex;
   flex-direction: column;
-  gap: var(--space-0-5);
-  padding: var(--space-2) var(--space-3);
+  gap: var(--space-1);
+  padding: var(--space-4);
   min-width: 0;
+  background: var(--surface-paper);
 }
 
 .pws-dashboard-stat + .pws-dashboard-stat {
-  border-left: 1px solid var(--border-soft);
+  border-left: 0;
 }
 
 .pws-dashboard-stat-count {
@@ -119,22 +121,23 @@
 .pws-dashboard-group {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  border: none;
+  gap: 0;
+  border-top: 1px solid var(--border-subtle);
   background: transparent;
   overflow: visible;
 }
 
 .pws-dashboard-group .pws-dashboard-row {
-  border-radius: var(--card-radius);
-  padding: 12px;
-  border: 1px solid var(--card-border);
-  background: var(--surface);
-  box-shadow: var(--card-shadow);
+  border-radius: 0;
+  padding: var(--space-3) var(--space-2);
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  box-shadow: none;
 }
 
 .pws-dashboard-group .pws-dashboard-row:last-child {
-  border-bottom: 1px solid var(--card-border);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .pws-dashboard-status {
@@ -145,10 +148,18 @@
   white-space: nowrap;
 }
 
-.pws-dashboard-status--ready { color: var(--muted); }
-.pws-dashboard-status--warn { color: var(--amber); }
-.pws-dashboard-status--cool { color: var(--amber); }
-.pws-dashboard-status--off { color: var(--faint); }
+.pws-dashboard-status--ready {
+  color: var(--muted);
+}
+.pws-dashboard-status--warn {
+  color: var(--amber);
+}
+.pws-dashboard-status--cool {
+  color: var(--amber);
+}
+.pws-dashboard-status--off {
+  color: var(--faint);
+}
 
 .pws-dashboard-row--attention {
   border-color: color-mix(in srgb, var(--amber) 40%, var(--border));
@@ -175,7 +186,8 @@
 .pws-dashboard-rows {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .pws-dashboard-row {
@@ -183,11 +195,12 @@
   grid-template-columns: var(--icon-lg) minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--space-2);
-  padding: 12px;
-  border-radius: var(--card-radius);
-  border: 1px solid var(--card-border);
-  background: var(--surface);
-  box-shadow: var(--card-shadow);
+  padding: var(--space-3) var(--space-2);
+  border-radius: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  box-shadow: none;
   width: 100%;
   color: inherit;
   font: inherit;
@@ -223,9 +236,9 @@
 }
 
 .pws-dashboard-row:hover {
-  background: var(--raised);
-  border-color: var(--border);
-  box-shadow: var(--card-shadow-raised);
+  background: var(--surface-raised);
+  border-color: var(--border-subtle);
+  box-shadow: none;
 }
 
 .pws-dashboard-row:active {

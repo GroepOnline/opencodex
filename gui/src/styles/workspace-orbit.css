@@ -99,7 +99,8 @@
 }
 .ocx-workspace .main-inner {
   max-width: var(--workspace-measure);
-  padding: var(--section-gap) var(--page-gutter) var(--space-16);
+  margin-inline: auto;
+  padding: var(--space-10) var(--page-gutter) var(--space-16);
 }
 .ocx-workspace .main-inner.main-inner--combos {
   min-height: calc(100dvh - var(--workspace-header));

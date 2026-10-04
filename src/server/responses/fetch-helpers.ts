@@ -32,6 +32,14 @@ export function providerFetch(provider: OcxProviderConfig): typeof globalThis.fe
 
 
 
+/**
+ * Fetch with caller cancellation and a timeout of `timeoutMs` milliseconds until
+ * the executor settles; the timer does not cover reading the response body.
+ * Record supported outbound bodies in the active trace. `preferIdentityEncoding`
+ * adds Accept-Encoding: identity only when the caller has not set that header.
+ * Return the response unchanged, including HTTP errors; header-construction and
+ * executor errors (including abort/timeout rejections) propagate.
+ */
 export async function fetchWithHeaderTimeout(
   url: string,
   init: Omit<RequestInit, "signal">,
