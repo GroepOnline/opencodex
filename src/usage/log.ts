@@ -4,6 +4,10 @@ import { getConfigDir } from "../config";
 import { recordOwnedConfigPath } from "../lib/config-ownership";
 import { usageDisplayTotalTokens } from "./totals";
 import type { OcxUsage } from "../types";
+import {
+  normalizePromptCacheRequestObservation,
+  type PromptCacheRequestObservation,
+} from "../prompt-cache/observability";
 import { normalizeUsageTraceMeta, type UsageTraceMeta } from "../trace/types";
 
 export type UsageStatus = "reported" | "unreported" | "unsupported" | "estimated";
@@ -51,6 +55,10 @@ export interface PersistedUsageEntry {
   timestamp: number;
   provider: string;
   model: string;
+  /** Adapter that produced the final upstream wire request. */
+  adapter?: string;
+  /** Structural prompt-cache metadata from the final outbound request. */
+  promptCache?: PromptCacheRequestObservation;
   surface?: "claude" | "claude-desktop" | "codex" | "grok";
   /** Best-effort chat/session correlation for Logs grouping (#330). */
   conversationId?: string;
@@ -302,11 +310,16 @@ function capMetadataString(s: string): string {
  */
 function normalizeUsageEntry(entry: PersistedUsageEntry): PersistedUsageEntry {
   const attempts = normalizedAttempts(entry.attempts);
+  const promptCache = normalizePromptCacheRequestObservation(entry.promptCache);
   return {
     requestId: entry.requestId,
     timestamp: entry.timestamp,
     provider: entry.provider,
     model: entry.model,
+    ...(typeof entry.adapter === "string" && entry.adapter.trim()
+      ? { adapter: capMetadataString(entry.adapter.trim()) }
+      : {}),
+    ...(promptCache ? { promptCache } : {}),
     ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
     ...(typeof entry.conversationId === "string" && entry.conversationId.trim()
       ? { conversationId: entry.conversationId.trim().slice(0, 128) }

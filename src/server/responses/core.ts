@@ -147,7 +147,7 @@ import {
   inspectResponseLogJson,
   noteAttemptSend,
   readConfiguredCodexServiceTier,
-  recordAdapterReasoning,
+  recordAdapterRequestMetadata,
   recordAttemptRequestedEffort,
   requestLogSpeedLabel,
   sealRequestAttemptIdentity,
@@ -398,7 +398,7 @@ async function retryCodexPoolOnAlternateAccount(
   } catch (err) {
     return { kind: "build-request-failed", response: resolveAdapterBuildRequestError(err, options.abortSignal) };
   }
-  recordAdapterReasoning(logCtx, request);
+  recordAdapterRequestMetadata(logCtx, request);
 
   await firstResponse.body?.cancel().catch(() => undefined);
   options.onCodexAuthContextResolved?.(retryAuthCtx);
@@ -1687,7 +1687,7 @@ export async function handleResponses(
     } catch (err) {
       return resolveAdapterBuildRequestError(err, options.abortSignal);
     }
-    recordAdapterReasoning(logCtx, request);
+    recordAdapterRequestMetadata(logCtx, request);
     const passthroughEstimate = typeof request.usageLog?.inputTokens === "number"
       ? request.usageLog.inputTokens
       : undefined;
@@ -2125,7 +2125,7 @@ export async function handleResponses(
       connectTimeoutMs: config.connectTimeoutMs ?? 200_000,
       stallTimeoutSec: config.stallTimeoutSec,
       fetchImpl: providerFetch(route.provider),
-      onRequestBuilt: request => recordAdapterReasoning(logCtx, request),
+      onRequestBuilt: request => recordAdapterRequestMetadata(logCtx, request),
       ...(vidPlan?.timeoutMs ? { videoTimeoutMs: vidPlan.timeoutMs } : {}),
       onUsage: usage => {
         // Cursor may assign _cursorConversationId inside the image loop's first runTurn;
@@ -2208,7 +2208,7 @@ export async function handleResponses(
       forceEmptyResponseId: true,
       abortSignal: options.abortSignal,
       ...(options.onFirstOutput ? { onFirstOutput: options.onFirstOutput } : {}),
-      onRequestBuilt: request => recordAdapterReasoning(logCtx, request),
+      onRequestBuilt: request => recordAdapterRequestMetadata(logCtx, request),
       onUsage: usage => {
         logCtx.usageFromBridge = true;
         if (usage) {
@@ -2487,7 +2487,7 @@ export async function handleResponses(
     cleanupUpstreamAbort();
     return resolveAdapterBuildRequestError(err, options.abortSignal);
   }
-  recordAdapterReasoning(logCtx, request);
+  recordAdapterRequestMetadata(logCtx, request);
   const inputTokenEstimate = typeof request.usageLog?.inputTokens === "number"
     ? request.usageLog.inputTokens
     : undefined;
@@ -2563,7 +2563,7 @@ export async function handleResponses(
         cleanupUpstreamAbort();
         return { failed: resolveAdapterBuildRequestError(err, options.abortSignal) };
       }
-      recordAdapterReasoning(logCtx, retryRequest);
+      recordAdapterRequestMetadata(logCtx, retryRequest);
       const retryEstimate = typeof retryRequest.usageLog?.inputTokens === "number"
         ? retryRequest.usageLog.inputTokens
         : undefined;
@@ -2907,7 +2907,7 @@ export async function handleResponses(
         };
         return;
       }
-      recordAdapterReasoning(logCtx, continuationRequest);
+      recordAdapterRequestMetadata(logCtx, continuationRequest);
       const continuationEstimate = typeof continuationRequest.usageLog?.inputTokens === "number"
         ? continuationRequest.usageLog.inputTokens
         : undefined;
