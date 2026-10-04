@@ -661,6 +661,11 @@ export function usageFromResponsesPayload(usage: unknown): OcxUsage | undefined 
   return undefined;
 }
 
+/**
+ * Update response metadata and error diagnostics from a complete response body,
+ * and append it to any active trace. Invalid JSON skips metadata extraction but
+ * still reaches error and trace capture. Retain a bounded sample when debug is enabled.
+ */
 export function inspectResponseLogJson(logCtx: RequestLogContext, text: string): void {
   try {
     applyResponseLogMetadata(logCtx, JSON.parse(text));
@@ -675,6 +680,12 @@ export function inspectResponseLogJson(logCtx: RequestLogContext, text: string):
   }
 }
 
+/**
+ * Inspect one SSE data payload for response metadata and error diagnostics,
+ * append it to any active trace, and accumulate a bounded sample when debug is
+ * enabled. Ignore null, empty, and [DONE] payloads; invalid JSON still reaches
+ * error and trace capture.
+ */
 export function inspectResponseLogSsePayload(logCtx: RequestLogContext, payload: string | null): void {
   if (!payload || payload.trim() === "[DONE]") return;
   const debugEnabled = isUsageDebugEnabled();
@@ -821,6 +832,9 @@ export function httpStatusForRequestLogTerminal(
 
 /**
  * Finalizes and records a request log entry with status, diagnostics, usage, routing, and retry-attempt data.
+ *
+ * Finalizes any trace before storing the entry and always releases the bound
+ * provider account. Errors from `addLog` propagate after account release.
  *
  * @param requestId - The request identifier
  * @param start - The request start timestamp in milliseconds

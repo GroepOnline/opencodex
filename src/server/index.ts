@@ -351,6 +351,12 @@ function attachLiveSidebandUpstream(ws: ServerWebSocket<WsData>): void {
 // trackSseForRequestLog(
 // export function relaySseWithHeartbeat
 
+/**
+ * Start the proxy, management API, and dashboard using the loaded configuration.
+ * Apply startup migrations and initialize background maintenance. `port` overrides
+ * the configured port (default 10100); 0 requests an available port. Return the
+ * listening Bun server. Synchronous initialization and listen errors propagate.
+ */
 export function startServer(port?: number) {
   initServerSentry();
   const config = runAlibabaRegionStartupMigration(
