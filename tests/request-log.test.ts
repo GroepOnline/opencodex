@@ -28,9 +28,14 @@ import {
   bindLogProviderAccount,
   type RequestLogContext,
 } from "../src/server/request-log";
-import { clearProviderAccountRuntimeState, getProviderAccountOccupancy, releaseRequestProviderAccount } from "../src/providers/account-runtime-state";
+import {
+  clearProviderAccountRuntimeState,
+  getProviderAccountOccupancy,
+  releaseRequestProviderAccount,
+} from "../src/providers/account-runtime-state";
 import { findKeyPoolEntryId } from "../src/providers/api-keys";
 import { fallbackCodexAccountLogLabel } from "../src/codex/account-label";
+import { observeOpenAiResponsesPromptCache } from "../src/prompt-cache/observability";
 import { bridgeToResponsesSSE } from "../src/bridge";
 import type { AdapterEvent, OcxUsage } from "../src/types";
 import {
@@ -44,7 +49,9 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-async function* replayAdapterEvents(events: AdapterEvent[]): AsyncGenerator<AdapterEvent> {
+async function* replayAdapterEvents(
+  events: AdapterEvent[],
+): AsyncGenerator<AdapterEvent> {
   for (const event of events) yield event;
 }
 
@@ -63,48 +70,80 @@ function log(overrides: Partial<RequestLogEntry>): RequestLogEntry {
 
 describe("request telemetry privacy", () => {
   test("strips account-scoped provider labels before external telemetry", () => {
-    const telemetry = spyOn(posthogTelemetry, "captureRequestTelemetry").mockImplementation(() => {});
+    const telemetry = spyOn(
+      posthogTelemetry,
+      "captureRequestTelemetry",
+    ).mockImplementation(() => {});
     clearRequestLogsForTests();
 
     const entry = log({ provider: "openai-pabcdef" });
     addRequestLog(entry);
 
-    expect(telemetry).toHaveBeenCalledWith(expect.objectContaining({ provider: "openai" }));
+    expect(telemetry).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "openai" }),
+    );
     expect(getRequestLogEntries()[0]?.provider).toBe("openai-pabcdef");
     telemetry.mockRestore();
     clearRequestLogsForTests();
   });
 
   test("forwards only pricing-safe combo attempt fields to external generation telemetry", () => {
-    const telemetry = spyOn(posthogTelemetry, "captureRequestTelemetry").mockImplementation(() => {});
+    const telemetry = spyOn(
+      posthogTelemetry,
+      "captureRequestTelemetry",
+    ).mockImplementation(() => {});
     clearRequestLogsForTests();
 
-    addRequestLog(log({
-      provider: "combo",
-      attempts: [{
-        ordinal: 1, provider: "openai-pabcdef", model: "gpt-5.6-sol", adapter: "openai-chat",
-        status: 200, durationMs: 10, sendCount: 1, recoveryKinds: [], usageStatus: "reported",
-        usage: { inputTokens: 10, outputTokens: 2 }, providerAccountId: "must-not-leave-local-log",
-      }],
-    }));
+    addRequestLog(
+      log({
+        provider: "combo",
+        attempts: [
+          {
+            ordinal: 1,
+            provider: "openai-pabcdef",
+            model: "gpt-5.6-sol",
+            adapter: "openai-chat",
+            status: 200,
+            durationMs: 10,
+            sendCount: 1,
+            recoveryKinds: [],
+            usageStatus: "reported",
+            usage: { inputTokens: 10, outputTokens: 2 },
+            providerAccountId: "must-not-leave-local-log",
+          },
+        ],
+      }),
+    );
 
-    expect(telemetry).toHaveBeenCalledWith(expect.objectContaining({
-      attempts: [{
-        ordinal: 1, provider: "openai", model: "gpt-5.6-sol", usageStatus: "reported",
-        usage: { inputTokens: 10, outputTokens: 2 },
-      }],
-    }));
+    expect(telemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attempts: [
+          {
+            ordinal: 1,
+            provider: "openai",
+            model: "gpt-5.6-sol",
+            usageStatus: "reported",
+            usage: { inputTokens: 10, outputTokens: 2 },
+          },
+        ],
+      }),
+    );
     telemetry.mockRestore();
     clearRequestLogsForTests();
   });
 
   test("forwards client streaming state to external generation telemetry", () => {
-    const telemetry = spyOn(posthogTelemetry, "captureRequestTelemetry").mockImplementation(() => {});
+    const telemetry = spyOn(
+      posthogTelemetry,
+      "captureRequestTelemetry",
+    ).mockImplementation(() => {});
     clearRequestLogsForTests();
 
     addRequestLog(log({ stream: true }));
 
-    expect(telemetry).toHaveBeenCalledWith(expect.objectContaining({ stream: true }));
+    expect(telemetry).toHaveBeenCalledWith(
+      expect.objectContaining({ stream: true }),
+    );
     telemetry.mockRestore();
     clearRequestLogsForTests();
   });
@@ -219,13 +258,25 @@ describe("request log metadata", () => {
   test("malformed adapter reasoning metadata never interrupts request logging", () => {
     const malformed = [
       { effectiveEffort: 123, wireField: "reasoning_effort", wireValue: 123 },
-      { effectiveEffort: null, wireField: "reasoning_effort", wireValue: "high" },
+      {
+        effectiveEffort: null,
+        wireField: "reasoning_effort",
+        wireValue: "high",
+      },
       { effectiveEffort: {}, wireField: "reasoning_effort", wireValue: "high" },
       { effectiveEffort: "high", wireField: "unknown", wireValue: "high" },
       { effectiveEffort: "high", wireField: "reasoning_effort", wireValue: "" },
-      { effectiveEffort: "high", wireField: "thinking_budget", wireValue: null },
+      {
+        effectiveEffort: "high",
+        wireField: "thinking_budget",
+        wireValue: null,
+      },
       { effectiveEffort: "high", wireField: "thinking_budget", wireValue: {} },
-      { effectiveEffort: "high", wireField: "thinking_budget", wireValue: Number.NaN },
+      {
+        effectiveEffort: "high",
+        wireField: "thinking_budget",
+        wireValue: Number.NaN,
+      },
       { effectiveEffort: "high", wireField: "thinking_budget", wireValue: -1 },
     ];
 
@@ -246,13 +297,15 @@ describe("request log metadata", () => {
         reasoningWireValue: "stale",
       });
 
-      expect(() => recordAdapterRequestMetadata(logCtx, {
-        url: "https://provider.test/v1/chat/completions",
-        method: "POST",
-        headers: {},
-        body: "{}",
-        reasoningLog: reasoningLog as never,
-      })).not.toThrow();
+      expect(() =>
+        recordAdapterRequestMetadata(logCtx, {
+          url: "https://provider.test/v1/chat/completions",
+          method: "POST",
+          headers: {},
+          body: "{}",
+          reasoningLog: reasoningLog as never,
+        }),
+      ).not.toThrow();
       expect(logCtx.effectiveEffort).toBeUndefined();
       expect(logCtx.reasoningWireField).toBeUndefined();
       expect(logCtx.reasoningWireValue).toBeUndefined();
@@ -272,8 +325,8 @@ describe("request log metadata", () => {
       activeAttemptStartedAt: 1_000,
     };
     recordFirstOutput(logCtx, 500, 1_250);
-    expect(logCtx.firstOutputMs).toBe(750);   // request-relative
-    expect(attempt.firstOutputMs).toBe(250);  // attempt-relative
+    expect(logCtx.firstOutputMs).toBe(750); // request-relative
+    expect(attempt.firstOutputMs).toBe(250); // attempt-relative
     // second call is a no-op
     recordFirstOutput(logCtx, 500, 9_999);
     expect(logCtx.firstOutputMs).toBe(750);
@@ -286,16 +339,37 @@ describe("request log metadata", () => {
 
   test("addFinalRequestLog preserves client stream state", () => {
     const entries: RequestLogEntry[] = [];
-    addFinalRequestLog("ocx-stream", 0, { model: "m", provider: "p", stream: true }, 200, undefined, entry => entries.push(entry));
+    addFinalRequestLog(
+      "ocx-stream",
+      0,
+      { model: "m", provider: "p", stream: true },
+      200,
+      undefined,
+      (entry) => entries.push(entry),
+    );
     expect(entries[0]?.stream).toBe(true);
   });
 
   test("addFinalRequestLog preserves firstOutputMs; unset stays absent", () => {
     const captured: RequestLogEntry[] = [];
-    addFinalRequestLog("ocx-ttft", 0, { model: "m", provider: "p", firstOutputMs: 12 }, 200, undefined, entry => captured.push(entry));
+    addFinalRequestLog(
+      "ocx-ttft",
+      0,
+      { model: "m", provider: "p", firstOutputMs: 12 },
+      200,
+      undefined,
+      (entry) => captured.push(entry),
+    );
     expect(captured[0]?.firstOutputMs).toBe(12);
     const captured2: RequestLogEntry[] = [];
-    addFinalRequestLog("ocx-nostream", 0, { model: "m", provider: "p" }, 200, undefined, entry => captured2.push(entry));
+    addFinalRequestLog(
+      "ocx-nostream",
+      0,
+      { model: "m", provider: "p" },
+      200,
+      undefined,
+      (entry) => captured2.push(entry),
+    );
     expect(captured2[0]).not.toHaveProperty("firstOutputMs");
   });
 
@@ -329,7 +403,12 @@ describe("request log metadata", () => {
       totalTokens: 120,
       errorCode: "server_is_overloaded",
     });
-    expect(b).toMatchObject({ status: 200, sendCount: 1, usageStatus: "reported", totalTokens: 12 });
+    expect(b).toMatchObject({
+      status: 200,
+      sendCount: 1,
+      usageStatus: "reported",
+      totalTokens: 12,
+    });
 
     expect(aggregateAttemptUsage([a, b])).toEqual({
       status: "estimated",
@@ -363,35 +442,39 @@ describe("request log metadata", () => {
       totalTokens: 5,
     });
     const unsupportedA = { ...unreported, usageStatus: "unsupported" as const };
-    const unsupportedB = { ...unreported, ordinal: 3, usageStatus: "unsupported" as const };
-    expect(aggregateAttemptUsage([unsupportedA, unsupportedB])).toEqual({ status: "unsupported" });
+    const unsupportedB = {
+      ...unreported,
+      ordinal: 3,
+      usageStatus: "unsupported" as const,
+    };
+    expect(aggregateAttemptUsage([unsupportedA, unsupportedB])).toEqual({
+      status: "unsupported",
+    });
   });
 
   test("final combo logging keeps one logical row and finalizes its active attempt", () => {
     const entries: RequestLogEntry[] = [];
     const a = beginRequestAttempt(1, "a", "model-a", "openai-chat");
-    recordAdapterRequestMetadata({
-      model: "model-a",
-      provider: "a",
-      requestedEffort: "minimal",
-      activeAttempt: a,
-    }, {
-      url: "https://provider-a.test/v1/chat/completions",
-      method: "POST",
-      headers: {},
-      body: "{}",
-      reasoningLog: {
-        effectiveEffort: "low",
-        wireField: "thinking_budget",
-        wireValue: 0,
+    recordAdapterRequestMetadata(
+      {
+        model: "model-a",
+        provider: "a",
+        requestedEffort: "minimal",
+        activeAttempt: a,
       },
-    });
-    finishRequestAttempt(
-      a,
-      503,
-      3,
-      { inputTokens: 4, outputTokens: 1 },
+      {
+        url: "https://provider-a.test/v1/chat/completions",
+        method: "POST",
+        headers: {},
+        body: "{}",
+        reasoningLog: {
+          effectiveEffort: "low",
+          wireField: "thinking_budget",
+          wireValue: 0,
+        },
+      },
     );
+    finishRequestAttempt(a, 503, 3, { inputTokens: 4, outputTokens: 1 });
     const b = beginRequestAttempt(2, "b", "model-b", "openai-chat");
     noteAttemptSend(b, undefined);
     const start = Date.now();
@@ -419,7 +502,9 @@ describe("request log metadata", () => {
         wireValue: "high",
       },
     });
-    addFinalRequestLog("combo-parent", start, logCtx, 200, undefined, entry => entries.push(entry));
+    addFinalRequestLog("combo-parent", start, logCtx, 200, undefined, (entry) =>
+      entries.push(entry),
+    );
 
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
@@ -454,10 +539,23 @@ describe("request log metadata", () => {
 
   test("combo finalization does not backfill winner account id onto other providers", () => {
     const entries: RequestLogEntry[] = [];
-    const openaiAttempt = beginRequestAttempt(1, "openai", "gpt", "openai-chat");
-    const anthropicAttempt = beginRequestAttempt(2, "anthropic", "claude", "anthropic");
+    const openaiAttempt = beginRequestAttempt(
+      1,
+      "openai",
+      "gpt",
+      "openai-chat",
+    );
+    const anthropicAttempt = beginRequestAttempt(
+      2,
+      "anthropic",
+      "claude",
+      "anthropic",
+    );
     finishRequestAttempt(openaiAttempt, 503, 1);
-    finishRequestAttempt(anthropicAttempt, 200, 2, { inputTokens: 1, outputTokens: 1 });
+    finishRequestAttempt(anthropicAttempt, 200, 2, {
+      inputTokens: 1,
+      outputTokens: 1,
+    });
     const logCtx: RequestLogContext = {
       model: "combo/free",
       provider: "anthropic",
@@ -467,10 +565,19 @@ describe("request log metadata", () => {
       attempts: [openaiAttempt, anthropicAttempt],
       activeAttempt: anthropicAttempt,
     };
-    addFinalRequestLog("combo-xprov", Date.now(), logCtx, 200, undefined, entry => entries.push(entry));
+    addFinalRequestLog(
+      "combo-xprov",
+      Date.now(),
+      logCtx,
+      200,
+      undefined,
+      (entry) => entries.push(entry),
+    );
     expect(entries[0]?.providerAccountId).toBe("anthropic-seat-x");
     expect(entries[0]?.attempts?.[0]?.providerAccountId).toBeUndefined();
-    expect(entries[0]?.attempts?.[1]?.providerAccountId).toBe("anthropic-seat-x");
+    expect(entries[0]?.attempts?.[1]?.providerAccountId).toBe(
+      "anthropic-seat-x",
+    );
   });
 
   test("streaming terminal usage updates only the committed final attempt", async () => {
@@ -486,7 +593,9 @@ describe("request log metadata", () => {
       },
     });
     const response = responseWithDeferredRequestLog(
-      new Response(`data: ${payload}\n\n`, { headers: { "content-type": "text/event-stream" } }),
+      new Response(`data: ${payload}\n\n`, {
+        headers: { "content-type": "text/event-stream" },
+      }),
       "combo-stream",
       Date.now(),
       {
@@ -497,7 +606,7 @@ describe("request log metadata", () => {
         activeAttempt: attempt,
         activeAttemptStartedAt: Date.now(),
       },
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
     await response.text();
     expect(entries).toHaveLength(1);
@@ -516,20 +625,26 @@ describe("request log metadata", () => {
       provider: "combo",
       model: "combo/free",
       status: 200,
-      attempts: [{
-        ordinal: 1,
-        provider: "a",
-        model: "m1",
-        adapter: "openai-chat",
-        status: 503,
-        durationMs: 2,
-        sendCount: 1,
-        recoveryKinds: [],
-        usageStatus: "unreported",
-      }],
+      attempts: [
+        {
+          ordinal: 1,
+          provider: "a",
+          model: "m1",
+          adapter: "openai-chat",
+          status: 503,
+          durationMs: 2,
+          sendCount: 1,
+          recoveryKinds: [],
+          usageStatus: "unreported",
+        },
+      ],
     });
-    expect(filterRequestLogs([combo], new URLSearchParams("provider=a"))).toEqual([combo]);
-    expect(filterRequestLogs([combo], new URLSearchParams("provider=a&status=503"))).toEqual([]);
+    expect(
+      filterRequestLogs([combo], new URLSearchParams("provider=a")),
+    ).toEqual([combo]);
+    expect(
+      filterRequestLogs([combo], new URLSearchParams("provider=a&status=503")),
+    ).toEqual([]);
   });
 
   test("records the Claude surface on the final log entry", () => {
@@ -540,7 +655,7 @@ describe("request log metadata", () => {
       { model: "claude-sonnet-4-5", provider: "openai", surface: "claude" },
       200,
       { closeReason: "non_stream" },
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
 
     expect(entries).toHaveLength(1);
@@ -562,11 +677,15 @@ describe("request log metadata", () => {
       },
       200,
       { closeReason: "terminal" },
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
     expect(entries).toHaveLength(1);
     expect(entries[0]!.usageStatus).toBe("estimated");
-    expect(entries[0]!.usage).toMatchObject({ inputTokens: 44000, outputTokens: 98, estimated: true });
+    expect(entries[0]!.usage).toMatchObject({
+      inputTokens: 44000,
+      outputTokens: 98,
+      estimated: true,
+    });
   });
 
   test("accurate providers stay untouched when no input estimate is stashed", () => {
@@ -579,20 +698,33 @@ describe("request log metadata", () => {
         provider: "anthropic-pb51d9b",
         providerAdapter: "anthropic",
         surface: "claude",
-        usage: { inputTokens: 353000, outputTokens: 2033, cachedInputTokens: 350000, cacheReadInputTokens: 350000, cacheCreationInputTokens: 1200 },
+        usage: {
+          inputTokens: 353000,
+          outputTokens: 2033,
+          cachedInputTokens: 350000,
+          cacheReadInputTokens: 350000,
+          cacheCreationInputTokens: 1200,
+        },
       },
       200,
       { closeReason: "terminal" },
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
     expect(entries[0]!.usageStatus).toBe("reported");
-    expect(entries[0]!.usage).toMatchObject({ inputTokens: 353000, cacheReadInputTokens: 350000 });
+    expect(entries[0]!.usage).toMatchObject({
+      inputTokens: 353000,
+      cacheReadInputTokens: 350000,
+    });
     expect(entries[0]!.usage!.estimated).toBeUndefined();
   });
 
   test("generates compact request ids", () => {
-    expect(nextRequestLogId(1_700_000_000_000)).toMatch(/^ocx-[a-z0-9]+-[a-z0-9]+$/);
-    expect(nextRequestLogId(1_700_000_000_000)).not.toBe(nextRequestLogId(1_700_000_000_000));
+    expect(nextRequestLogId(1_700_000_000_000)).toMatch(
+      /^ocx-[a-z0-9]+-[a-z0-9]+$/,
+    );
+    expect(nextRequestLogId(1_700_000_000_000)).not.toBe(
+      nextRequestLogId(1_700_000_000_000),
+    );
   });
 
   test("classifies status codes with optional upstream error context", () => {
@@ -600,18 +732,26 @@ describe("request log metadata", () => {
     expect(requestLogErrorCode(400)).toBe("invalid_request_error");
     expect(requestLogErrorCode(401)).toBe("invalid_api_key");
     expect(requestLogErrorCode(403)).toBe("permission_denied");
-    expect(requestLogErrorCode(403, "Provider error 403")).toBe("permission_denied");
-    expect(requestLogErrorCode(
-      403,
-      "Provider error 403: this model requires a subscription, upgrade for access: https://ollama.com/upgrade",
-    )).toBe("subscription_required");
-    expect(requestLogErrorCode(
-      401,
-      "Provider error 401: this model requires a subscription, upgrade for access",
-    )).toBe("invalid_api_key");
+    expect(requestLogErrorCode(403, "Provider error 403")).toBe(
+      "permission_denied",
+    );
+    expect(
+      requestLogErrorCode(
+        403,
+        "Provider error 403: this model requires a subscription, upgrade for access: https://ollama.com/upgrade",
+      ),
+    ).toBe("subscription_required");
+    expect(
+      requestLogErrorCode(
+        401,
+        "Provider error 401: this model requires a subscription, upgrade for access",
+      ),
+    ).toBe("invalid_api_key");
     expect(requestLogErrorCode(429)).toBe("rate_limit_exceeded");
     expect(requestLogErrorCode(499)).toBe("client_closed_request");
-    expect(requestLogErrorCode(502, "client closed request during web-search")).toBe("client_closed_request");
+    expect(
+      requestLogErrorCode(502, "client closed request during web-search"),
+    ).toBe("client_closed_request");
     expect(requestLogErrorCode(503)).toBe("server_is_overloaded");
     expect(requestLogErrorCode(502)).toBe("upstream_server_error");
     expect(requestLogErrorCode(404)).toBe("http_404");
@@ -630,7 +770,7 @@ describe("request log metadata", () => {
       },
       403,
       { closeReason: "non_stream" },
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
     expect(entries[0]).toMatchObject({
       status: 403,
@@ -645,11 +785,12 @@ describe("request log metadata", () => {
       {
         model: "kimi-k2.7-code",
         provider: "ollama-cloud",
-        upstreamError: "Provider error 403: this model requires a subscription, upgrade for access: https://ollama.com/upgrade",
+        upstreamError:
+          "Provider error 403: this model requires a subscription, upgrade for access: https://ollama.com/upgrade",
       },
       403,
       { closeReason: "non_stream" },
-      entry => subEntries.push(entry),
+      (entry) => subEntries.push(entry),
     );
     expect(subEntries[0]).toMatchObject({
       status: 403,
@@ -669,17 +810,42 @@ describe("request log metadata", () => {
     const logs = [
       log({ requestId: "a", provider: "openai", status: 200 }),
       log({ requestId: "b", provider: "umans", status: 429 }),
-      log({ requestId: "c", provider: "umans", status: 502, requestedServiceTier: "priority", requestedSpeedLabel: "fast" }),
+      log({
+        requestId: "c",
+        provider: "umans",
+        status: 502,
+        requestedServiceTier: "priority",
+        requestedSpeedLabel: "fast",
+      }),
       log({ requestId: "d", provider: "opencode-go", status: 500 }),
     ];
 
-    expect(filterRequestLogs(logs, new URLSearchParams("provider=umans")).map(entry => entry.requestId)).toEqual(["b", "c"]);
-    expect(filterRequestLogs(logs, new URLSearchParams("status=5xx")).map(entry => entry.requestId)).toEqual(["c", "d"]);
-    expect(filterRequestLogs(logs, new URLSearchParams("status=429")).map(entry => entry.requestId)).toEqual(["b"]);
-    expect(filterRequestLogs(logs, new URLSearchParams("tail=2")).map(entry => entry.requestId)).toEqual(["c", "d"]);
+    expect(
+      filterRequestLogs(logs, new URLSearchParams("provider=umans")).map(
+        (entry) => entry.requestId,
+      ),
+    ).toEqual(["b", "c"]);
+    expect(
+      filterRequestLogs(logs, new URLSearchParams("status=5xx")).map(
+        (entry) => entry.requestId,
+      ),
+    ).toEqual(["c", "d"]);
+    expect(
+      filterRequestLogs(logs, new URLSearchParams("status=429")).map(
+        (entry) => entry.requestId,
+      ),
+    ).toEqual(["b"]);
+    expect(
+      filterRequestLogs(logs, new URLSearchParams("tail=2")).map(
+        (entry) => entry.requestId,
+      ),
+    ).toEqual(["c", "d"]);
 
-    const combined = filterRequestLogs(logs, new URLSearchParams("provider=umans&status=5xx&tail=1"));
-    expect(combined.map(entry => entry.requestId)).toEqual(["c"]);
+    const combined = filterRequestLogs(
+      logs,
+      new URLSearchParams("provider=umans&status=5xx&tail=1"),
+    );
+    expect(combined.map((entry) => entry.requestId)).toEqual(["c"]);
   });
 
   test("deferred JSON logging preserves response service tier before final log", async () => {
@@ -699,18 +865,24 @@ describe("request log metadata", () => {
       modelSupportsServiceTier: true,
     };
     const response = responseWithDeferredRequestLog(
-      new Response(JSON.stringify({
-        model: "gpt-5.5",
-        service_tier: "auto",
-        status: "completed",
-      }), { status: 200, headers: { "content-type": "application/json" } }),
+      new Response(
+        JSON.stringify({
+          model: "gpt-5.5",
+          service_tier: "auto",
+          status: "completed",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
       "ocx-test-json",
       Date.now(),
       logCtx,
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
 
-    expect(await response.json()).toMatchObject({ model: "gpt-5.5", service_tier: "auto" });
+    expect(await response.json()).toMatchObject({
+      model: "gpt-5.5",
+      service_tier: "auto",
+    });
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
       requestedModel: "gpt-5.5",
@@ -732,20 +904,23 @@ describe("request log metadata", () => {
   test("deferred JSON logging captures reported usage", async () => {
     const entries: RequestLogEntry[] = [];
     const response = responseWithDeferredRequestLog(
-      new Response(JSON.stringify({
-        model: "gpt-5.5",
-        status: "completed",
-        usage: {
-          input_tokens: 100,
-          output_tokens: 23,
-          input_tokens_details: { cached_tokens: 7, cache_write_tokens: 3 },
-          output_tokens_details: { reasoning_tokens: 5 },
-        },
-      }), { status: 200, headers: { "content-type": "application/json" } }),
+      new Response(
+        JSON.stringify({
+          model: "gpt-5.5",
+          status: "completed",
+          usage: {
+            input_tokens: 100,
+            output_tokens: 23,
+            input_tokens_details: { cached_tokens: 7, cache_write_tokens: 3 },
+            output_tokens_details: { reasoning_tokens: 5 },
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
       "ocx-test-json-usage",
       Date.now(),
       { model: "gpt-5.5", provider: "openai" },
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
 
     await response.text();
@@ -768,14 +943,17 @@ describe("request log metadata", () => {
   test("deferred JSON logging accepts ChatCompletions-shape usage", async () => {
     const entries: RequestLogEntry[] = [];
     const response = responseWithDeferredRequestLog(
-      new Response(JSON.stringify({
-        model: "gpt-5.5",
-        usage: { prompt_tokens: 42, completion_tokens: 7 },
-      }), { status: 200, headers: { "content-type": "application/json" } }),
+      new Response(
+        JSON.stringify({
+          model: "gpt-5.5",
+          usage: { prompt_tokens: 42, completion_tokens: 7 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
       "ocx-test-json-chat-completions",
       Date.now(),
       { model: "gpt-5.5", provider: "chatgpt" },
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
     await response.text();
     expect(entries).toHaveLength(1);
@@ -790,18 +968,23 @@ describe("request log metadata", () => {
     const entries: RequestLogEntry[] = [];
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode(
-          "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"model\":\"gpt-5.5\",\"usage\":{\"input_tokens\":9,\"output_tokens\":4}}}\n\n",
-        ));
+        controller.enqueue(
+          new TextEncoder().encode(
+            'data: {"type":"response.completed","response":{"status":"completed","model":"gpt-5.5","usage":{"input_tokens":9,"output_tokens":4}}}\n\n',
+          ),
+        );
         controller.close();
       },
     });
     const response = responseWithDeferredRequestLog(
-      new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
       "ocx-test-sse-usage",
       Date.now(),
       { model: "gpt-5.5", provider: "openai" },
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
 
     await response.text();
@@ -816,7 +999,8 @@ describe("request log metadata", () => {
 
   test("deferred SSE logging marks Kiro usage as estimated without changing SSE payload", async () => {
     const entries: RequestLogEntry[] = [];
-    const payload = "{\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"model\":\"kiro/claude-sonnet-4.5\",\"usage\":{\"input_tokens\":9,\"output_tokens\":4}}}";
+    const payload =
+      '{"type":"response.completed","response":{"status":"completed","model":"kiro/claude-sonnet-4.5","usage":{"input_tokens":9,"output_tokens":4}}}';
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(new TextEncoder().encode(`data: ${payload}\n\n`));
@@ -824,15 +1008,18 @@ describe("request log metadata", () => {
       },
     });
     const response = responseWithDeferredRequestLog(
-      new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
       "ocx-test-kiro-sse-usage",
       Date.now(),
       { model: "kiro/claude-sonnet-4.5", provider: "kiro-p9d8524" },
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
 
     const text = await response.text();
-    expect(text).toContain("\"usage\":{\"input_tokens\":9,\"output_tokens\":4}");
+    expect(text).toContain('"usage":{"input_tokens":9,"output_tokens":4}');
     expect(text).not.toContain("estimated");
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
@@ -845,26 +1032,40 @@ describe("request log metadata", () => {
 
   test("deferred SSE logging captures the granular upstream reason from response.failed", async () => {
     const entries: RequestLogEntry[] = [];
-    const cursorMessage = "Cursor rate limit exceeded: Cursor Connect error resource_exhausted: too many requests";
+    const cursorMessage =
+      "Cursor rate limit exceeded: Cursor Connect error resource_exhausted: too many requests";
     const failedPayload = JSON.stringify({
       type: "response.failed",
       response: {
-        error: { type: "rate_limit_error", code: "rate_limit_exceeded", message: cursorMessage },
-        last_error: { type: "rate_limit_error", code: "rate_limit_exceeded", message: cursorMessage },
+        error: {
+          type: "rate_limit_error",
+          code: "rate_limit_exceeded",
+          message: cursorMessage,
+        },
+        last_error: {
+          type: "rate_limit_error",
+          code: "rate_limit_exceeded",
+          message: cursorMessage,
+        },
       },
     });
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode(`data: ${failedPayload}\n\n`));
+        controller.enqueue(
+          new TextEncoder().encode(`data: ${failedPayload}\n\n`),
+        );
         controller.close();
       },
     });
     const response = responseWithDeferredRequestLog(
-      new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
       "ocx-test-cursor-rate-limit",
       Date.now(),
       { model: "cursor/gpt-5", provider: "cursor" },
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
 
     await response.text();
@@ -883,22 +1084,35 @@ describe("request log metadata", () => {
     const failedPayload = JSON.stringify({
       type: "response.failed",
       response: {
-        error: { type: "invalid_request_error", code: "client_closed_request", message },
-        last_error: { type: "invalid_request_error", code: "client_closed_request", message },
+        error: {
+          type: "invalid_request_error",
+          code: "client_closed_request",
+          message,
+        },
+        last_error: {
+          type: "invalid_request_error",
+          code: "client_closed_request",
+          message,
+        },
       },
     });
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode(`data: ${failedPayload}\n\n`));
+        controller.enqueue(
+          new TextEncoder().encode(`data: ${failedPayload}\n\n`),
+        );
         controller.close();
       },
     });
     const response = responseWithDeferredRequestLog(
-      new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
       "ocx-test-web-search-client-close",
       Date.now(),
       { model: "k3", provider: "kimi" },
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
 
     await response.text();
@@ -921,7 +1135,8 @@ describe("request log metadata", () => {
         model: "cline-sonnet",
         provider: "cline-pass",
         providerConfigKey: "cline-pass",
-        upstreamError: 'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly Clinepass limit. The limit resets in 1d 22h"}',
+        upstreamError:
+          'Error 429: {"code":"INFERENCE_CAP_ERROR","message":"weekly Clinepass limit. The limit resets in 1d 22h"}',
       },
       429,
       { closeReason: "non_stream" },
@@ -943,7 +1158,7 @@ describe("request log metadata", () => {
       },
       502,
       { terminalStatus: "failed", closeReason: "terminal" },
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
     expect(entries[0]).toMatchObject({
       status: 499,
@@ -966,7 +1181,7 @@ describe("request log metadata", () => {
       },
       400,
       { closeReason: "non_stream" },
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
     expect(entries[0]).toMatchObject({
       model: "tencent/hy3:free",
@@ -983,7 +1198,7 @@ describe("request log metadata", () => {
       { model: "gpt-5.6-sol", provider: "openai-p104398" },
       200,
       undefined,
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
     expect(entries[0]).toMatchObject({
       provider: "openai-p104398",
@@ -1000,7 +1215,12 @@ describe("request log metadata", () => {
     // Placeholder token shape is constrained by scripts/privacy-scan.ts's tests/ allowlist.
     const secret = "sk-test-000111222333444";
     try {
-      const attempt = beginRequestAttempt(1, "openai", "gpt-5.5", "openai-chat");
+      const attempt = beginRequestAttempt(
+        1,
+        "openai",
+        "gpt-5.5",
+        "openai-chat",
+      );
       const logCtx: RequestLogContext = {
         model: "gpt-5.5",
         provider: "openai",
@@ -1016,9 +1236,13 @@ describe("request log metadata", () => {
         keyPool: { provider: "openai", accountId: resolvedId! },
       });
       bindLogProviderAccount(logCtx, "key-pool", "openai", "k2b3c4d5");
-      expect(getProviderAccountOccupancy("key-pool", "openai", "k2b3c4d5").inFlight).toBe(1);
+      expect(
+        getProviderAccountOccupancy("key-pool", "openai", "k2b3c4d5").inFlight,
+      ).toBe(1);
       addFinalRequestLog("ocx-key-pool", 1, logCtx, 200);
-      expect(getProviderAccountOccupancy("key-pool", "openai", "k2b3c4d5").inFlight).toBe(0);
+      expect(
+        getProviderAccountOccupancy("key-pool", "openai", "k2b3c4d5").inFlight,
+      ).toBe(0);
       expect(logCtx.providerAccountId).toBeUndefined();
       const raw = readFileSync(usageLogPath(), "utf-8");
       expect(raw).not.toContain(secret);
@@ -1039,8 +1263,12 @@ describe("request log metadata", () => {
 
   test("codex bind without config hashes providerAccountId for usage", () => {
     const logCtx: RequestLogContext = { model: "gpt-5", provider: "codex" };
-    bindLogFromSelectCandidate(logCtx, { authCtx: { kind: "pool", accountId: "raw-store-id-12345" } });
-    expect(logCtx.providerAccountId).toBe(fallbackCodexAccountLogLabel("raw-store-id-12345"));
+    bindLogFromSelectCandidate(logCtx, {
+      authCtx: { kind: "pool", accountId: "raw-store-id-12345" },
+    });
+    expect(logCtx.providerAccountId).toBe(
+      fallbackCodexAccountLogLabel("raw-store-id-12345"),
+    );
     expect(logCtx.providerAccountId).not.toBe("raw-store-id-12345");
     releaseRequestProviderAccount(logCtx);
   });
@@ -1053,56 +1281,84 @@ describe("request log metadata", () => {
       activeAttempt: beginRequestAttempt(1, "anthropic", "claude", "anthropic"),
     };
     bindLogProviderAccount(logCtx, "oauth", "anthropic", "aaaa1111");
-    expect(getProviderAccountOccupancy("oauth", "anthropic", "aaaa1111").inFlight).toBe(1);
-    expect(() => addFinalRequestLog("throw-log", Date.now(), logCtx, 500, undefined, () => {
-      throw new Error("persist failed");
-    })).toThrow("persist failed");
-    expect(getProviderAccountOccupancy("oauth", "anthropic", "aaaa1111").inFlight).toBe(0);
+    expect(
+      getProviderAccountOccupancy("oauth", "anthropic", "aaaa1111").inFlight,
+    ).toBe(1);
+    expect(() =>
+      addFinalRequestLog(
+        "throw-log",
+        Date.now(),
+        logCtx,
+        500,
+        undefined,
+        () => {
+          throw new Error("persist failed");
+        },
+      ),
+    ).toThrow("persist failed");
+    expect(
+      getProviderAccountOccupancy("oauth", "anthropic", "aaaa1111").inFlight,
+    ).toBe(0);
   });
 
   test("httpStatusFromTerminalError maps Cursor tool catalog limits to 400", () => {
-    expect(httpStatusFromTerminalError({
-      type: "invalid_request_error",
-      code: "tool_catalog_too_large",
-      message: "Cursor resource limit exceeded: tool catalog too large",
-    })).toBe(400);
+    expect(
+      httpStatusFromTerminalError({
+        type: "invalid_request_error",
+        code: "tool_catalog_too_large",
+        message: "Cursor resource limit exceeded: tool catalog too large",
+      }),
+    ).toBe(400);
   });
 
   test("httpStatusFromTerminalError maps Cursor quota-style resource exhaustion to 429", () => {
-    expect(httpStatusFromTerminalError({
-      type: "rate_limit_error",
-      code: "rate_limit_exceeded",
-      message: "Cursor rate limit exceeded: Cursor Connect error resource limit exceeded: Error",
-    })).toBe(429);
+    expect(
+      httpStatusFromTerminalError({
+        type: "rate_limit_error",
+        code: "rate_limit_exceeded",
+        message:
+          "Cursor rate limit exceeded: Cursor Connect error resource limit exceeded: Error",
+      }),
+    ).toBe(429);
   });
 
   test("httpStatusFromTerminalError maps client-closed web-search aborts to 499", () => {
-    expect(httpStatusFromTerminalError({
-      type: "invalid_request_error",
-      code: "client_closed_request",
-      message: "client closed request during web-search",
-    })).toBe(499);
-    expect(httpStatusFromTerminalError({
-      message: "client closed request during web-search",
-    })).toBe(499);
+    expect(
+      httpStatusFromTerminalError({
+        type: "invalid_request_error",
+        code: "client_closed_request",
+        message: "client closed request during web-search",
+      }),
+    ).toBe(499);
+    expect(
+      httpStatusFromTerminalError({
+        message: "client closed request during web-search",
+      }),
+    ).toBe(499);
   });
 
   test("httpStatusFromTerminalError preserves auth precedence and permission status", () => {
-    expect(httpStatusFromTerminalError({
-      type: "authentication_error",
-      code: "invalid_api_key",
-      message: "upgrade your subscription",
-    })).toBe(401);
-    expect(httpStatusFromTerminalError({
-      type: "permission_error",
-      code: "permission_denied",
-      message: "Access denied",
-    })).toBe(403);
-    expect(httpStatusFromTerminalError({
-      type: "permission_error",
-      code: "subscription_required",
-      message: "this model requires a subscription",
-    })).toBe(403);
+    expect(
+      httpStatusFromTerminalError({
+        type: "authentication_error",
+        code: "invalid_api_key",
+        message: "upgrade your subscription",
+      }),
+    ).toBe(401);
+    expect(
+      httpStatusFromTerminalError({
+        type: "permission_error",
+        code: "permission_denied",
+        message: "Access denied",
+      }),
+    ).toBe(403);
+    expect(
+      httpStatusFromTerminalError({
+        type: "permission_error",
+        code: "subscription_required",
+        message: "this model requires a subscription",
+      }),
+    ).toBe(403);
   });
 
   test("upstream reason capture redacts secret-shaped error messages", async () => {
@@ -1113,20 +1369,27 @@ describe("request log metadata", () => {
     });
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode(`data: ${failedPayload}\n\n`));
+        controller.enqueue(
+          new TextEncoder().encode(`data: ${failedPayload}\n\n`),
+        );
         controller.close();
       },
     });
     const response = responseWithDeferredRequestLog(
-      new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
       "ocx-test-cursor-redact",
       Date.now(),
       { model: "cursor/gpt-5", provider: "cursor" },
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
 
     const text = await response.text();
-    expect(text).toContain("\"message\":\"unauthorized: Bearer secret-leak-abc123\"");
+    expect(text).toContain(
+      '"message":"unauthorized: Bearer secret-leak-abc123"',
+    );
     expect(entries).toHaveLength(1);
     expect(entries[0].upstreamError).not.toContain("secret-leak-abc123");
     expect(entries[0].upstreamError).toContain("[REDACTED]");
@@ -1135,11 +1398,17 @@ describe("request log metadata", () => {
   test("plain-text upstream errors are captured in deferred logging", async () => {
     const entries: RequestLogEntry[] = [];
     const response = responseWithDeferredRequestLog(
-      new Response("provider says nope", { status: 400, headers: { "content-type": "text/plain" } }),
+      new Response("provider says nope", {
+        status: 400,
+        headers: { "content-type": "text/plain" },
+      }),
       "ocx-test-plain-upstream-error",
       Date.now(),
-      { model: "opencode-free/deepseek-v4-flash-free", provider: "opencode-free" },
-      entry => entries.push(entry),
+      {
+        model: "opencode-free/deepseek-v4-flash-free",
+        provider: "opencode-free",
+      },
+      (entry) => entries.push(entry),
     );
 
     const text = await response.text();
@@ -1150,7 +1419,8 @@ describe("request log metadata", () => {
 
   test("deferred SSE logging uses adapter-provided Kiro log input tokens", async () => {
     const entries: RequestLogEntry[] = [];
-    const payload = "{\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"model\":\"kiro/claude-sonnet-4.5\",\"usage\":{\"input_tokens\":9,\"output_tokens\":4}}}";
+    const payload =
+      '{"type":"response.completed","response":{"status":"completed","model":"kiro/claude-sonnet-4.5","usage":{"input_tokens":9,"output_tokens":4}}}';
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(new TextEncoder().encode(`data: ${payload}\n\n`));
@@ -1158,15 +1428,22 @@ describe("request log metadata", () => {
       },
     });
     const response = responseWithDeferredRequestLog(
-      new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
       "ocx-test-kiro-sse-log-usage",
       Date.now(),
-      { model: "kiro/claude-sonnet-4.5", provider: "kiro-p9d8524", usageLogInputTokens: 240_000 },
-      entry => entries.push(entry),
+      {
+        model: "kiro/claude-sonnet-4.5",
+        provider: "kiro-p9d8524",
+        usageLogInputTokens: 240_000,
+      },
+      (entry) => entries.push(entry),
     );
 
     const text = await response.text();
-    expect(text).toContain("\"input_tokens\":9");
+    expect(text).toContain('"input_tokens":9');
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
       usageStatus: "estimated",
@@ -1177,21 +1454,33 @@ describe("request log metadata", () => {
 
   test("deferred logging preserves a bridged Kiro absolute context checkpoint", async () => {
     const entries: RequestLogEntry[] = [];
-    const body = bridgeToResponsesSSE(replayAdapterEvents([{
-      type: "done",
-      usage: {
-        inputTokens: 58,
-        outputTokens: 100,
-        contextTotalTokens: 50_000,
-        estimated: true,
-      },
-    }]), "kiro/claude-opus-5");
+    const body = bridgeToResponsesSSE(
+      replayAdapterEvents([
+        {
+          type: "done",
+          usage: {
+            inputTokens: 58,
+            outputTokens: 100,
+            contextTotalTokens: 50_000,
+            estimated: true,
+          },
+        },
+      ]),
+      "kiro/claude-opus-5",
+    );
     const response = responseWithDeferredRequestLog(
-      new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
       "ocx-test-kiro-context-checkpoint",
       Date.now(),
-      { model: "kiro/claude-opus-5", provider: "kiro-p9d8524", usageLogInputTokens: 200 },
-      entry => entries.push(entry),
+      {
+        model: "kiro/claude-opus-5",
+        provider: "kiro-p9d8524",
+        usageLogInputTokens: 200,
+      },
+      (entry) => entries.push(entry),
     );
 
     const text = await response.text();
@@ -1201,7 +1490,12 @@ describe("request log metadata", () => {
     expect(entries[0]).toMatchObject({
       usageStatus: "estimated",
       totalTokens: 50_000,
-      usage: { inputTokens: 49_900, outputTokens: 100, totalTokens: 50_000, estimated: true },
+      usage: {
+        inputTokens: 49_900,
+        outputTokens: 100,
+        totalTokens: 50_000,
+        estimated: true,
+      },
     });
   });
 
@@ -1221,15 +1515,17 @@ describe("request log metadata", () => {
       usageLogInputTokens: 200,
     };
     const body = bridgeToResponsesSSE(
-      replayAdapterEvents([{
-        type: "done",
-        usage: {
-          inputTokens: 58,
-          outputTokens: 100,
-          contextTotalTokens: 50_000,
-          estimated: true,
+      replayAdapterEvents([
+        {
+          type: "done",
+          usage: {
+            inputTokens: 58,
+            outputTokens: 100,
+            contextTotalTokens: 50_000,
+            estimated: true,
+          },
         },
-      }]),
+      ]),
       "kiro/claude-opus-5",
       undefined,
       undefined,
@@ -1237,7 +1533,7 @@ describe("request log metadata", () => {
       undefined,
       undefined,
       {
-        onUsage: usage => {
+        onUsage: (usage) => {
           // Mirror responses/core.ts: store RAW adapter usage and mark provenance so the
           // deferred logger does not re-parse the wire.
           reportedRaw = usage;
@@ -1247,16 +1543,22 @@ describe("request log metadata", () => {
       },
     );
     const response = responseWithDeferredRequestLog(
-      new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
       "ocx-test-kiro-raw-usage-checkpoint",
       Date.now(),
       logCtx,
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
     await response.text();
 
     // The bridge hands the logger the RAW adapter usage, not the projected wire shape.
-    expect(reportedRaw).toMatchObject({ inputTokens: 58, contextTotalTokens: 50_000 });
+    expect(reportedRaw).toMatchObject({
+      inputTokens: 58,
+      contextTotalTokens: 50_000,
+    });
     expect(entries).toHaveLength(1);
     const logged = entries[0]?.usage;
     expect(logged?.contextTotalTokens).toBe(50_000);
@@ -1299,8 +1601,12 @@ describe("request log metadata", () => {
       new Response(null, { status: 200 }),
       "ocx-test-kiro-fallback-log-usage",
       Date.now(),
-      { model: "kiro/claude-opus-4.8", provider: "kiro-p442fff", usageLogInputTokens: 133_900 },
-      entry => entries.push(entry),
+      {
+        model: "kiro/claude-opus-4.8",
+        provider: "kiro-p442fff",
+        usageLogInputTokens: 133_900,
+      },
+      (entry) => entries.push(entry),
     );
 
     await response.text();
@@ -1323,16 +1629,21 @@ describe("request log metadata", () => {
     });
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode(`data: ${incompletePayload}\n\n`));
+        controller.enqueue(
+          new TextEncoder().encode(`data: ${incompletePayload}\n\n`),
+        );
         controller.close();
       },
     });
     const response = responseWithDeferredRequestLog(
-      new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
       "ocx-test-stall-timeout",
       Date.now(),
       { model: "cursor/kimi-k2.7-code", provider: "cursor" },
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
 
     await response.text();
@@ -1358,16 +1669,21 @@ describe("request log metadata", () => {
     });
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode(`data: ${incompletePayload}\n\n`));
+        controller.enqueue(
+          new TextEncoder().encode(`data: ${incompletePayload}\n\n`),
+        );
         controller.close();
       },
     });
     const response = responseWithDeferredRequestLog(
-      new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
       "ocx-test-requested-output-limit",
       Date.now(),
       { model: "anthropic/claude-sonnet-5", provider: "anthropic" },
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
 
     await response.text();
@@ -1377,7 +1693,8 @@ describe("request log metadata", () => {
       status: 200,
       usageStatus: "reported",
       usage: { inputTokens: 9, outputTokens: 64 },
-      upstreamError: "Output reached the requested token limit (max_output_tokens)",
+      upstreamError:
+        "Output reached the requested token limit (max_output_tokens)",
     });
     expect(entries[0]).not.toHaveProperty("errorCode");
   });
@@ -1393,16 +1710,21 @@ describe("request log metadata", () => {
     });
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode(`data: ${incompletePayload}\n\n`));
+        controller.enqueue(
+          new TextEncoder().encode(`data: ${incompletePayload}\n\n`),
+        );
         controller.close();
       },
     });
     const response = responseWithDeferredRequestLog(
-      new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
       "ocx-test-adapter-eof",
       Date.now(),
       { model: "cursor/kimi-k2.7-code", provider: "cursor" },
-      entry => entries.push(entry),
+      (entry) => entries.push(entry),
     );
 
     await response.text();
@@ -1500,7 +1822,10 @@ describe("request log restart hydrate", () => {
     ];
 
     expect(hydrateRequestLogsFromDisk(() => persisted)).toBe(2);
-    expect(getRequestLogEntries().map(e => e.requestId)).toEqual(["ocx-old", "ocx-sticky-502"]);
+    expect(getRequestLogEntries().map((e) => e.requestId)).toEqual([
+      "ocx-old",
+      "ocx-sticky-502",
+    ]);
     expect(getRequestLogEntries()[1]).toMatchObject({
       requestId: "ocx-sticky-502",
       status: 502,
@@ -1516,17 +1841,20 @@ describe("request log restart hydrate", () => {
 
   test("hydrate keeps only the newest MAX_LOG_SIZE rows from a long usage.jsonl", () => {
     clearRequestLogsForTests();
-    const persisted: PersistedUsageEntry[] = Array.from({ length: 205 }, (_, i) => ({
-      requestId: `ocx-${i}`,
-      timestamp: i,
-      provider: "openai",
-      model: "gpt",
-      status: 200,
-      durationMs: 1,
-      usageStatus: "unreported" as const,
-    }));
+    const persisted: PersistedUsageEntry[] = Array.from(
+      { length: 205 },
+      (_, i) => ({
+        requestId: `ocx-${i}`,
+        timestamp: i,
+        provider: "openai",
+        model: "gpt",
+        status: 200,
+        durationMs: 1,
+        usageStatus: "unreported" as const,
+      }),
+    );
     expect(hydrateRequestLogsFromDisk(() => persisted)).toBe(200);
-    const ids = getRequestLogEntries().map(e => e.requestId);
+    const ids = getRequestLogEntries().map((e) => e.requestId);
     expect(ids[0]).toBe("ocx-5");
     expect(ids.at(-1)).toBe("ocx-204");
   });
@@ -1535,17 +1863,134 @@ describe("request log restart hydrate", () => {
     clearRequestLogsForTests();
     const warn = spyOn(console, "warn").mockImplementation(() => {});
     try {
-      expect(hydrateRequestLogsFromDisk(() => {
-        throw new Error("EISDIR: illegal operation on a directory");
-      })).toBe(0);
+      expect(
+        hydrateRequestLogsFromDisk(() => {
+          throw new Error("EISDIR: illegal operation on a directory");
+        }),
+      ).toBe(0);
       expect(getRequestLogEntries()).toHaveLength(0);
       expect(warn).toHaveBeenCalled();
       // Still idempotent after the failed attempt.
-      expect(hydrateRequestLogsFromDisk(() => {
-        throw new Error("should not run");
-      })).toBe(0);
+      expect(
+        hydrateRequestLogsFromDisk(() => {
+          throw new Error("should not run");
+        }),
+      ).toBe(0);
     } finally {
       warn.mockRestore();
     }
+  });
+});
+
+describe("prompt-cache request log lifecycle", () => {
+  test("snapshots adapter metadata at recording, finalization, and hydration", () => {
+    const observation = observeOpenAiResponsesPromptCache({
+      tools: [{ type: "function", name: "lookup" }],
+    })!;
+    const context: RequestLogContext = {
+      provider: "openai",
+      model: "test-model",
+      providerAdapter: "openai-responses",
+    };
+    recordAdapterRequestMetadata(context, {
+      url: "https://provider.test/v1/responses",
+      method: "POST",
+      headers: {},
+      body: "{}",
+      promptCacheLog: observation,
+    });
+    expect(context.promptCache).toEqual(observation);
+    expect(context.promptCache).not.toBe(observation);
+    observation.toolCount = 99;
+    expect(context.promptCache?.toolCount).toBe(1);
+
+    const entries: RequestLogEntry[] = [];
+    addFinalRequestLog(
+      "cache-snapshot",
+      Date.now(),
+      context,
+      200,
+      undefined,
+      (entry) => entries.push(entry),
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      adapter: "openai-responses",
+      promptCache: { toolCount: 1 },
+    });
+    expect(entries[0].promptCache).not.toBe(context.promptCache);
+    context.promptCache!.toolCount = 50;
+    expect(entries[0].promptCache?.toolCount).toBe(1);
+
+    const restored = requestLogEntryFromPersistedUsage(entries[0]);
+    expect(restored.adapter).toBe("openai-responses");
+    expect(restored.promptCache).toEqual(entries[0].promptCache);
+    expect(restored.promptCache).not.toBe(entries[0].promptCache);
+    restored.promptCache!.toolCount = 25;
+    expect(entries[0].promptCache?.toolCount).toBe(1);
+  });
+
+  test.each([true, false])(
+    "combo winner determines adapter and cache metadata (observed=%s)",
+    (observed) => {
+      const context: RequestLogContext = {
+        provider: "winner",
+        model: "combo/test",
+        comboId: "test",
+        providerAdapter: "openai-responses",
+        attempts: [
+          finishRequestAttempt(
+            beginRequestAttempt(1, "first", "a", "openai-responses"),
+            503,
+            1,
+          ),
+          finishRequestAttempt(
+            beginRequestAttempt(2, "winner", "b", "openai-chat"),
+            200,
+            1,
+          ),
+        ],
+      };
+      const request = {
+        url: "https://provider.test/v1/responses",
+        method: "POST" as const,
+        headers: {},
+        body: "{}",
+      };
+      recordAdapterRequestMetadata(context, {
+        ...request,
+        promptCacheLog: observeOpenAiResponsesPromptCache({
+          prompt_cache_key: "initial",
+        }),
+      });
+      const finalObservation = observed
+        ? observeOpenAiResponsesPromptCache({
+            prompt_cache_options: { mode: "explicit" },
+          })
+        : undefined;
+      recordAdapterRequestMetadata(context, {
+        ...request,
+        promptCacheLog: finalObservation,
+      });
+      const entries: RequestLogEntry[] = [];
+      addFinalRequestLog(
+        "cache-failover",
+        Date.now(),
+        context,
+        200,
+        undefined,
+        (entry) => entries.push(entry),
+      );
+      expect(entries).toHaveLength(1);
+      expect(entries[0].adapter).toBe("openai-chat");
+      if (observed) expect(entries[0].promptCache).toEqual(finalObservation);
+      else expect(entries[0]).not.toHaveProperty("promptCache");
+    },
+  );
+
+  test("historical usage rows hydrate without inventing adapter or cache metadata", () => {
+    const restored = requestLogEntryFromPersistedUsage(log({}));
+    expect(restored).not.toHaveProperty("adapter");
+    expect(restored).not.toHaveProperty("promptCache");
   });
 });

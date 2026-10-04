@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -18,6 +25,8 @@ import {
   usageLogRevisionKey,
 } from "../src/usage/log";
 
+import { observeOpenAiResponsesPromptCache } from "../src/prompt-cache/observability";
+
 let testDir = "";
 let previousHome: string | undefined;
 
@@ -35,24 +44,28 @@ afterEach(() => {
 });
 
 describe("usage log", () => {
-  const persistedLine = (requestId: string) => JSON.stringify({
-    requestId,
-    timestamp: 1,
-    provider: "openai",
-    model: "gpt-5.5",
-    status: 200,
-    durationMs: 1,
-    usageStatus: "reported",
-    usage: { inputTokens: 1, outputTokens: 1 },
-    totalTokens: 2,
-  });
+  const persistedLine = (requestId: string) =>
+    JSON.stringify({
+      requestId,
+      timestamp: 1,
+      provider: "openai",
+      model: "gpt-5.5",
+      status: 200,
+      durationMs: 1,
+      usageStatus: "reported",
+      usage: { inputTokens: 1, outputTokens: 1 },
+      totalTokens: 2,
+    });
 
   test("file revisions change after append and in-place rewrite", () => {
-    writeFileSync(usageLogPath(), `${persistedLine("a")}\n${persistedLine("b")}\n`);
+    writeFileSync(
+      usageLogPath(),
+      `${persistedLine("a")}\n${persistedLine("b")}\n`,
+    );
     const first = usageLogRevisionKey(currentUsageLogRevision());
     writeFileSync(usageLogPath(), `${persistedLine("new")}\n`);
     expect(usageLogRevisionKey(currentUsageLogRevision())).not.toBe(first);
-    expect(readUsageEntries().map(entry => entry.requestId)).toEqual(["new"]);
+    expect(readUsageEntries().map((entry) => entry.requestId)).toEqual(["new"]);
   });
 
   test("management full reads yield while parsing a large existing log", async () => {
@@ -61,11 +74,17 @@ describe("usage log", () => {
       `${Array.from({ length: 2_100 }, (_, index) => persistedLine(`row-${index}`)).join("\n")}\n`,
     );
     let timerRan = false;
-    setTimeout(() => { timerRan = true; }, 0);
+    setTimeout(() => {
+      timerRan = true;
+    }, 0);
     const entries = await readUsageEntriesForManagement();
     expect(entries).toHaveLength(2_100);
     expect(timerRan).toBe(true);
-    expect(usageReadCacheStatsForTests()).toEqual({ fullReads: 1, tailReads: 0, parsedLines: 2_100 });
+    expect(usageReadCacheStatsForTests()).toEqual({
+      fullReads: 1,
+      tailReads: 0,
+      parsedLines: 2_100,
+    });
   });
 
   test("a replacement does not join an in-flight read for the previous file revision", async () => {
@@ -74,13 +93,17 @@ describe("usage log", () => {
       `${Array.from({ length: 2_100 }, (_, index) => persistedLine(`old-${index}`)).join("\n")}\n`,
     );
     const oldRead = readUsageSnapshotForManagement();
-    await new Promise<void>(resolve => setTimeout(resolve, 0));
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     writeFileSync(usageLogPath(), `${persistedLine("replacement")}\n`);
     const newRead = readUsageSnapshotForManagement();
     const [oldSnapshot, newSnapshot] = await Promise.all([oldRead, newRead]);
     expect(oldSnapshot.entries).toHaveLength(2_100);
-    expect(newSnapshot.entries.map(entry => entry.requestId)).toEqual(["replacement"]);
-    expect(usageLogRevisionKey(newSnapshot.revision)).not.toBe(usageLogRevisionKey(oldSnapshot.revision));
+    expect(newSnapshot.entries.map((entry) => entry.requestId)).toEqual([
+      "replacement",
+    ]);
+    expect(usageLogRevisionKey(newSnapshot.revision)).not.toBe(
+      usageLogRevisionKey(oldSnapshot.revision),
+    );
   });
 
   test("persists conversationId for Logs session correlation", () => {
@@ -96,10 +119,12 @@ describe("usage log", () => {
       usage: { inputTokens: 1, outputTokens: 1 },
       totalTokens: 2,
     });
-    expect(readUsageEntries()).toEqual([expect.objectContaining({
-      requestId: "ocx-conversation",
-      conversationId: "thread-abc",
-    })]);
+    expect(readUsageEntries()).toEqual([
+      expect.objectContaining({
+        requestId: "ocx-conversation",
+        conversationId: "thread-abc",
+      }),
+    ]);
   });
 
   test("persists adapter and bounded prompt-cache observations", () => {
@@ -129,32 +154,89 @@ describe("usage log", () => {
       usage: { inputTokens: 100, outputTokens: 1, cacheReadInputTokens: 80 },
       totalTokens: 101,
     });
-    expect(readUsageEntries()).toEqual([expect.objectContaining({
-      adapter: "openai-responses",
-      promptCache: expect.objectContaining({
-        mode: "implicit",
-        ttl: "30m",
-        toolCount: 1,
-        toolsFingerprint: "0123456789abcdef01234567",
+    expect(readUsageEntries()).toEqual([
+      expect.objectContaining({
+        adapter: "openai-responses",
+        promptCache: expect.objectContaining({
+          mode: "implicit",
+          ttl: "30m",
+          toolCount: 1,
+          toolsFingerprint: "0123456789abcdef01234567",
+        }),
       }),
-    })]);
+    ]);
   });
 
   test("drops malformed prompt-cache observations from hand-edited logs", () => {
-    writeFileSync(usageLogPath(), JSON.stringify({
-      requestId: "bad-cache-shape",
-      timestamp: 1,
-      provider: "openai",
-      model: "gpt-5.6-terra",
-      adapter: "openai-responses",
-      promptCache: { version: 1, mode: "implicit", keyPresent: true },
-      status: 200,
-      durationMs: 1,
-      usageStatus: "reported",
-      usage: { inputTokens: 1, outputTokens: 1 },
-    }) + "\n");
+    writeFileSync(
+      usageLogPath(),
+      JSON.stringify({
+        requestId: "bad-cache-shape",
+        timestamp: 1,
+        provider: "openai",
+        model: "gpt-5.6-terra",
+        adapter: "openai-responses",
+        promptCache: { version: 1, mode: "implicit", keyPresent: true },
+        status: 200,
+        durationMs: 1,
+        usageStatus: "reported",
+        usage: { inputTokens: 1, outputTokens: 1 },
+      }) + "\n",
+    );
     expect(readUsageEntries()[0]).not.toHaveProperty("promptCache");
   });
+
+  test("sanitizes prompt-cache fields before writing bytes and after reading hand-edited logs", () => {
+    const core = observeOpenAiResponsesPromptCache({});
+    const entry = {
+      requestId: "cache-boundary",
+      timestamp: 1,
+      provider: "openai",
+      model: "test-model",
+      adapter: "  openai-responses  ",
+      status: 200,
+      durationMs: 1,
+      usageStatus: "reported" as const,
+      promptCache: {
+        ...core!,
+        toolsFingerprint: "private fingerprint",
+        ttl: "30m" as const,
+        prompt_cache_key: "private cache key",
+        instructions: "private instructions",
+      },
+    };
+    appendUsageEntry(entry);
+    const expected = {
+      ...entry,
+      adapter: "openai-responses",
+      promptCache: { ...core, ttl: "30m" },
+    };
+    expect(JSON.parse(readFileSync(usageLogPath(), "utf8"))).toEqual(expected);
+    expect(readUsageEntries()).toEqual([expected]);
+
+    writeFileSync(usageLogPath(), JSON.stringify(entry) + "\n");
+    resetUsageReadCacheForTests();
+    expect(readUsageEntries()).toEqual([expected]);
+  });
+
+  test.each(["", " \t", null, 42, "x".repeat(65)])(
+    "bounds persisted adapter identity: %j",
+    (adapter) => {
+      writeFileSync(
+        usageLogPath(),
+        JSON.stringify({
+          ...JSON.parse(persistedLine("adapter-boundary")),
+          adapter,
+        }) + "\n",
+      );
+      const entry = readUsageEntries()[0];
+      if (typeof adapter === "string" && adapter.trim()) {
+        expect(entry.adapter).toBe("x".repeat(64));
+      } else {
+        expect(entry).not.toHaveProperty("adapter");
+      }
+    },
+  );
 
   test("persists providerAccountId separately from the display account label", () => {
     appendUsageEntry({
@@ -167,25 +249,29 @@ describe("usage log", () => {
       usageStatus: "reported",
       account: "pab12cd",
       providerAccountId: "aaaa1111",
-      attempts: [{
-        ordinal: 1,
-        provider: "anthropic",
-        model: "claude-opus-4",
-        adapter: "anthropic",
-        status: 200,
-        durationMs: 1,
-        sendCount: 1,
-        recoveryKinds: [],
-        usageStatus: "reported",
-        providerAccountId: "aaaa1111",
-      }],
+      attempts: [
+        {
+          ordinal: 1,
+          provider: "anthropic",
+          model: "claude-opus-4",
+          adapter: "anthropic",
+          status: 200,
+          durationMs: 1,
+          sendCount: 1,
+          recoveryKinds: [],
+          usageStatus: "reported",
+          providerAccountId: "aaaa1111",
+        },
+      ],
     });
-    expect(readUsageEntries()).toEqual([expect.objectContaining({
-      requestId: "ocx-account-id",
-      account: "pab12cd",
-      providerAccountId: "aaaa1111",
-      attempts: [expect.objectContaining({ providerAccountId: "aaaa1111" })],
-    })]);
+    expect(readUsageEntries()).toEqual([
+      expect.objectContaining({
+        requestId: "ocx-account-id",
+        account: "pab12cd",
+        providerAccountId: "aaaa1111",
+        attempts: [expect.objectContaining({ providerAccountId: "aaaa1111" })],
+      }),
+    ]);
   });
 
   test("persists an absolute context checkpoint for stateful providers", () => {
@@ -200,20 +286,27 @@ describe("usage log", () => {
       status: 200,
       durationMs: 10,
       usageStatus: "estimated",
-      usage: { inputTokens: 220, outputTokens: 252, contextTotalTokens: 127_000, estimated: true },
-      totalTokens: 472,
-    });
-    expect(readUsageEntries()).toEqual([expect.objectContaining({
-      requestId: "ocx-context-checkpoint",
-      usage: expect.objectContaining({
+      usage: {
         inputTokens: 220,
         outputTokens: 252,
         contextTotalTokens: 127_000,
         estimated: true,
-      }),
-      // The checkpoint must NOT be folded into the per-request total.
+      },
       totalTokens: 472,
-    })]);
+    });
+    expect(readUsageEntries()).toEqual([
+      expect.objectContaining({
+        requestId: "ocx-context-checkpoint",
+        usage: expect.objectContaining({
+          inputTokens: 220,
+          outputTokens: 252,
+          contextTotalTokens: 127_000,
+          estimated: true,
+        }),
+        // The checkpoint must NOT be folded into the per-request total.
+        totalTokens: 472,
+      }),
+    ]);
   });
 
   test("never invents a context checkpoint when the adapter reported none", () => {
@@ -246,7 +339,56 @@ describe("usage log", () => {
       usageStatus: "estimated",
       usage: { inputTokens: 15, outputTokens: 2, estimated: true },
       totalTokens: 17,
-      attempts: [{
+      attempts: [
+        {
+          ordinal: 1,
+          provider: "a",
+          model: "m1",
+          adapter: "openai-chat",
+          status: 503,
+          durationMs: 4,
+          sendCount: 2,
+          recoveryKinds: ["transient-5xx", "transient-5xx", "oauth-401"],
+          usageStatus: "estimated",
+          inputTokenEstimate: 5,
+          usage: { inputTokens: 5, outputTokens: 0, estimated: true },
+          totalTokens: 5,
+          requestedEffort: "max",
+          effectiveEffort: "high",
+          reasoningWireField: "reasoning_effort",
+          reasoningWireValue: "high",
+          headers: { authorization: "Bearer attempt-token" },
+          body: "attempt body secret",
+          messages: ["attempt message secret"],
+          accessToken: "attempt-access",
+          refreshToken: "attempt-refresh",
+          error: "raw attempt error",
+        } as never,
+      ],
+      headers: { authorization: "Bearer parent-token" },
+      body: "parent body secret",
+      messages: ["parent message secret"],
+    } as unknown as Parameters<typeof appendUsageEntry>[0]);
+
+    const raw = readFileSync(usageLogPath(), "utf-8");
+    for (const forbidden of [
+      "attempt-token",
+      "attempt body secret",
+      "attempt message secret",
+      "attempt-access",
+      "attempt-refresh",
+      "raw attempt error",
+      "parent-token",
+      "parent body secret",
+      "parent message secret",
+      "authorization",
+      "headers",
+      "messages",
+      "refreshToken",
+    ])
+      expect(raw).not.toContain(forbidden);
+    expect(readUsageEntries()[0]?.attempts).toEqual([
+      {
         ordinal: 1,
         provider: "a",
         model: "m1",
@@ -254,7 +396,7 @@ describe("usage log", () => {
         status: 503,
         durationMs: 4,
         sendCount: 2,
-        recoveryKinds: ["transient-5xx", "transient-5xx", "oauth-401"],
+        recoveryKinds: ["transient-5xx", "oauth-401"],
         usageStatus: "estimated",
         inputTokenEstimate: 5,
         usage: { inputTokens: 5, outputTokens: 0, estimated: true },
@@ -263,43 +405,8 @@ describe("usage log", () => {
         effectiveEffort: "high",
         reasoningWireField: "reasoning_effort",
         reasoningWireValue: "high",
-        headers: { authorization: "Bearer attempt-token" },
-        body: "attempt body secret",
-        messages: ["attempt message secret"],
-        accessToken: "attempt-access",
-        refreshToken: "attempt-refresh",
-        error: "raw attempt error",
-      } as never],
-      headers: { authorization: "Bearer parent-token" },
-      body: "parent body secret",
-      messages: ["parent message secret"],
-    } as unknown as Parameters<typeof appendUsageEntry>[0]);
-
-    const raw = readFileSync(usageLogPath(), "utf-8");
-    for (const forbidden of [
-      "attempt-token", "attempt body secret", "attempt message secret",
-      "attempt-access", "attempt-refresh", "raw attempt error",
-      "parent-token", "parent body secret", "parent message secret",
-      "authorization", "headers", "messages", "refreshToken",
-    ]) expect(raw).not.toContain(forbidden);
-    expect(readUsageEntries()[0]?.attempts).toEqual([{
-      ordinal: 1,
-      provider: "a",
-      model: "m1",
-      adapter: "openai-chat",
-      status: 503,
-      durationMs: 4,
-      sendCount: 2,
-      recoveryKinds: ["transient-5xx", "oauth-401"],
-      usageStatus: "estimated",
-      inputTokenEstimate: 5,
-      usage: { inputTokens: 5, outputTokens: 0, estimated: true },
-      totalTokens: 5,
-      requestedEffort: "max",
-      effectiveEffort: "high",
-      reasoningWireField: "reasoning_effort",
-      reasoningWireValue: "high",
-    }]);
+      },
+    ]);
   });
 
   test("omits malformed optional attempt reasoning metadata without dropping the attempt", () => {
@@ -311,21 +418,23 @@ describe("usage log", () => {
       status: 200,
       durationMs: 4,
       usageStatus: "unreported",
-      attempts: [{
-        ordinal: 1,
-        provider: "a",
-        model: "m1",
-        adapter: "openai-chat",
-        status: 200,
-        durationMs: 3,
-        sendCount: 1,
-        recoveryKinds: [],
-        usageStatus: "unreported",
-        requestedEffort: 123,
-        effectiveEffort: null,
-        reasoningWireField: {},
-        reasoningWireValue: -1,
-      } as never],
+      attempts: [
+        {
+          ordinal: 1,
+          provider: "a",
+          model: "m1",
+          adapter: "openai-chat",
+          status: 200,
+          durationMs: 3,
+          sendCount: 1,
+          recoveryKinds: [],
+          usageStatus: "unreported",
+          requestedEffort: 123,
+          effectiveEffort: null,
+          reasoningWireField: {},
+          reasoningWireValue: -1,
+        } as never,
+      ],
     });
 
     const attempt = readUsageEntries()[0]?.attempts?.[0];
@@ -363,21 +472,26 @@ describe("usage log", () => {
       { ...valid(2), usage: { inputTokens: 2, outputTokens: "1" } },
     ];
     for (const middle of malformed) {
-      writeFileSync(usageLogPath(), `${JSON.stringify({
-        requestId: "parent",
-        timestamp: 1,
-        provider: "combo",
-        model: "combo/free",
-        status: 200,
-        durationMs: 3,
-        usageStatus: "reported",
-        usage: { inputTokens: 4, outputTokens: 2 },
-        totalTokens: 6,
-        attempts: [valid(1), middle, valid(3)],
-      })}\n`);
+      writeFileSync(
+        usageLogPath(),
+        `${JSON.stringify({
+          requestId: "parent",
+          timestamp: 1,
+          provider: "combo",
+          model: "combo/free",
+          status: 200,
+          durationMs: 3,
+          usageStatus: "reported",
+          usage: { inputTokens: 4, outputTokens: 2 },
+          totalTokens: 6,
+          attempts: [valid(1), middle, valid(3)],
+        })}\n`,
+      );
       const [entry] = readUsageEntries();
       expect(entry?.requestId).toBe("parent");
-      expect(entry?.attempts?.map(attempt => attempt.ordinal)).toEqual([1, 3]);
+      expect(entry?.attempts?.map((attempt) => attempt.ordinal)).toEqual([
+        1, 3,
+      ]);
     }
   });
 
@@ -393,20 +507,22 @@ describe("usage log", () => {
       usageStatus: "reported",
       usage: { inputTokens: 10, outputTokens: 5 },
       totalTokens: 15,
-      attempts: [{
-        ordinal: 1,
-        provider: "a",
-        model: "m1",
-        adapter: "openai-chat",
-        status: 200,
-        durationMs: 18,
-        firstOutputMs: 3,
-        sendCount: 1,
-        recoveryKinds: [],
-        usageStatus: "reported",
-        usage: { inputTokens: 10, outputTokens: 5 },
-        totalTokens: 15,
-      }],
+      attempts: [
+        {
+          ordinal: 1,
+          provider: "a",
+          model: "m1",
+          adapter: "openai-chat",
+          status: 200,
+          durationMs: 18,
+          firstOutputMs: 3,
+          sendCount: 1,
+          recoveryKinds: [],
+          usageStatus: "reported",
+          usage: { inputTokens: 10, outputTokens: 5 },
+          totalTokens: 15,
+        },
+      ],
     });
     const [entry] = readUsageEntries();
     expect(entry?.firstOutputMs).toBe(7);
@@ -436,45 +552,51 @@ describe("usage log", () => {
   });
 
   test("legacy lines without firstOutputMs stay readable and unset", () => {
-    writeFileSync(usageLogPath(), `${JSON.stringify({
-      requestId: "legacy",
-      timestamp: 1,
-      provider: "a",
-      model: "m1",
-      status: 200,
-      durationMs: 5,
-      usageStatus: "reported",
-      usage: { inputTokens: 1, outputTokens: 1 },
-    })}\n`);
+    writeFileSync(
+      usageLogPath(),
+      `${JSON.stringify({
+        requestId: "legacy",
+        timestamp: 1,
+        provider: "a",
+        model: "m1",
+        status: 200,
+        durationMs: 5,
+        usageStatus: "reported",
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })}\n`,
+    );
     const [entry] = readUsageEntries();
     expect(entry?.requestId).toBe("legacy");
     expect(entry).not.toHaveProperty("firstOutputMs");
   });
 
   test("ignores malformed attempt arrays and keeps legacy parents readable", () => {
-    writeFileSync(usageLogPath(), [
-      JSON.stringify({
-        requestId: "bad-attempt-array",
-        timestamp: 1,
-        provider: "combo",
-        model: "combo/free",
-        status: 200,
-        durationMs: 1,
-        usageStatus: "unreported",
-        attempts: { ordinal: 1 },
-      }),
-      JSON.stringify({
-        requestId: "legacy",
-        timestamp: 2,
-        provider: "openai",
-        model: "gpt-5.5",
-        status: 200,
-        durationMs: 1,
-        usageStatus: "reported",
-        usage: { inputTokens: 1, outputTokens: 2 },
-        totalTokens: 3,
-      }),
-    ].join("\n"));
+    writeFileSync(
+      usageLogPath(),
+      [
+        JSON.stringify({
+          requestId: "bad-attempt-array",
+          timestamp: 1,
+          provider: "combo",
+          model: "combo/free",
+          status: 200,
+          durationMs: 1,
+          usageStatus: "unreported",
+          attempts: { ordinal: 1 },
+        }),
+        JSON.stringify({
+          requestId: "legacy",
+          timestamp: 2,
+          provider: "openai",
+          model: "gpt-5.5",
+          status: 200,
+          durationMs: 1,
+          usageStatus: "reported",
+          usage: { inputTokens: 1, outputTokens: 2 },
+          totalTokens: 3,
+        }),
+      ].join("\n"),
+    );
     const entries = readUsageEntries();
     expect(entries).toHaveLength(2);
     expect(entries[0]).not.toHaveProperty("attempts");
@@ -514,24 +636,26 @@ describe("usage log", () => {
 
     expect(existsSync(usageLogPath())).toBe(true);
     const raw = readFileSync(usageLogPath(), "utf-8");
-    expect(raw).toContain("\"requestId\":\"ocx-1\"");
+    expect(raw).toContain('"requestId":"ocx-1"');
     expect(raw).not.toContain("prompt");
     expect(raw).not.toContain("authorization");
-    expect(readUsageEntries()).toEqual([{
-      requestId: "ocx-1",
-      timestamp: 1,
-      provider: "openai",
-      model: "gpt-5.5",
-      surface: "claude",
-      requestedModel: "openai-apikey/gpt-5.5",
-      resolvedModel: "gpt-5.5",
-      stream: true,
-      status: 200,
-      durationMs: 42,
-      usageStatus: "reported",
-      usage: { inputTokens: 10, outputTokens: 3, cachedInputTokens: 2 },
-      totalTokens: 13,
-    }]);
+    expect(readUsageEntries()).toEqual([
+      {
+        requestId: "ocx-1",
+        timestamp: 1,
+        provider: "openai",
+        model: "gpt-5.5",
+        surface: "claude",
+        requestedModel: "openai-apikey/gpt-5.5",
+        resolvedModel: "gpt-5.5",
+        stream: true,
+        status: 200,
+        durationMs: 42,
+        usageStatus: "reported",
+        usage: { inputTokens: 10, outputTokens: 3, cachedInputTokens: 2 },
+        totalTokens: 13,
+      },
+    ]);
     if (process.platform !== "win32") {
       expect((statSync(usageLogPath()).mode & 0o777).toString(8)).toBe("600");
     }
@@ -576,51 +700,102 @@ describe("usage log", () => {
     ]) {
       expect(raw).not.toContain(leaked);
     }
-    expect(readUsageEntries()).toEqual([{
-      requestId: "ocx-extra",
-      timestamp: 2,
-      provider: "openai",
-      model: "gpt-5.5",
-      surface: "codex",
-      status: 200,
-      durationMs: 12,
-      usageStatus: "reported",
-      usage: { inputTokens: 1, outputTokens: 2, estimated: true },
-      totalTokens: 3,
-    }]);
+    expect(readUsageEntries()).toEqual([
+      {
+        requestId: "ocx-extra",
+        timestamp: 2,
+        provider: "openai",
+        model: "gpt-5.5",
+        surface: "codex",
+        status: 200,
+        durationMs: 12,
+        usageStatus: "reported",
+        usage: { inputTokens: 1, outputTokens: 2, estimated: true },
+        totalTokens: 3,
+      },
+    ]);
   });
 
   test("skips malformed JSONL lines while keeping valid entries", () => {
-    writeFileSync(usageLogPath(), [
-      "{\"requestId\":\"a\",\"timestamp\":1,\"provider\":\"p\",\"model\":\"m\",\"status\":200,\"durationMs\":1,\"usageStatus\":\"unreported\"}",
-      "{not-json",
-      "{\"requestId\":\"b\",\"timestamp\":2,\"provider\":\"p\",\"model\":\"m\",\"status\":200,\"durationMs\":1,\"usageStatus\":\"reported\",\"usage\":{\"inputTokens\":1,\"outputTokens\":2},\"totalTokens\":3}",
-    ].join("\n"));
+    writeFileSync(
+      usageLogPath(),
+      [
+        '{"requestId":"a","timestamp":1,"provider":"p","model":"m","status":200,"durationMs":1,"usageStatus":"unreported"}',
+        "{not-json",
+        '{"requestId":"b","timestamp":2,"provider":"p","model":"m","status":200,"durationMs":1,"usageStatus":"reported","usage":{"inputTokens":1,"outputTokens":2},"totalTokens":3}',
+      ].join("\n"),
+    );
 
-    expect(readUsageEntries().map(entry => entry.requestId)).toEqual(["a", "b"]);
+    expect(readUsageEntries().map((entry) => entry.requestId)).toEqual([
+      "a",
+      "b",
+    ]);
   });
 
   test("keeps missing usage distinct from zero usage", () => {
     expect(usageStatusForFinalLog(undefined)).toBe("unreported");
-    expect(usageStatusForFinalLog({ inputTokens: 0, outputTokens: 0 })).toBe("reported");
-    expect(usageStatusForFinalLog({ inputTokens: 0, outputTokens: 0, estimated: true })).toBe("estimated");
+    expect(usageStatusForFinalLog({ inputTokens: 0, outputTokens: 0 })).toBe(
+      "reported",
+    );
+    expect(
+      usageStatusForFinalLog({
+        inputTokens: 0,
+        outputTokens: 0,
+        estimated: true,
+      }),
+    ).toBe("estimated");
     expect(usageTotalTokens(undefined)).toBeUndefined();
-    expect(usageTotalTokens({ inputTokens: 4, outputTokens: 6, cachedInputTokens: 2 })).toBe(10);
+    expect(
+      usageTotalTokens({
+        inputTokens: 4,
+        outputTokens: 6,
+        cachedInputTokens: 2,
+      }),
+    ).toBe(10);
     // inputTokens is inclusive of cache detail — the total never re-adds it
-    expect(usageTotalTokens({ inputTokens: 4, outputTokens: 6, cachedInputTokens: 2, cacheReadInputTokens: 1, cacheCreationInputTokens: 1 })).toBe(10);
-    expect(usageTotalTokens({ inputTokens: 4, outputTokens: 6, totalTokens: 50_000 })).toBe(50_000);
+    expect(
+      usageTotalTokens({
+        inputTokens: 4,
+        outputTokens: 6,
+        cachedInputTokens: 2,
+        cacheReadInputTokens: 1,
+        cacheCreationInputTokens: 1,
+      }),
+    ).toBe(10);
+    expect(
+      usageTotalTokens({
+        inputTokens: 4,
+        outputTokens: 6,
+        totalTokens: 50_000,
+      }),
+    ).toBe(50_000);
   });
 
   test("marks Kiro final log usage as estimated without changing other providers", () => {
     const usage = { inputTokens: 4, outputTokens: 6 };
-    expect(usageForFinalLog("kiro", usage)).toEqual({ ...usage, estimated: true });
-    expect(usageForFinalLog("kiro-p9d8524", usage)).toEqual({ ...usage, estimated: true });
+    expect(usageForFinalLog("kiro", usage)).toEqual({
+      ...usage,
+      estimated: true,
+    });
+    expect(usageForFinalLog("kiro-p9d8524", usage)).toEqual({
+      ...usage,
+      estimated: true,
+    });
     // cursor: adapter name AND configured-provider-name prefixes both count (devlog 130 B2 —
     // "cursor-pb51d9b" rows previously logged as accurately "reported").
-    expect(usageForFinalLog("cursor", usage)).toEqual({ ...usage, estimated: true });
-    expect(usageForFinalLog("cursor-pb51d9b", usage)).toEqual({ ...usage, estimated: true });
+    expect(usageForFinalLog("cursor", usage)).toEqual({
+      ...usage,
+      estimated: true,
+    });
+    expect(usageForFinalLog("cursor-pb51d9b", usage)).toEqual({
+      ...usage,
+      estimated: true,
+    });
     expect(usageForFinalLog("openai", usage)).toEqual(usage);
-    expect(usageForFinalLog("openai", { ...usage, estimated: true })).toEqual({ ...usage, estimated: true });
+    expect(usageForFinalLog("openai", { ...usage, estimated: true })).toEqual({
+      ...usage,
+      estimated: true,
+    });
   });
 
   test("preserves cached token counts alongside estimated status", () => {
@@ -709,7 +884,7 @@ describe("usage log", () => {
         usageStatus: "unreported",
       });
     }
-    expect(readRecentUsageEntries(5).map(e => e.requestId)).toEqual([
+    expect(readRecentUsageEntries(5).map((e) => e.requestId)).toEqual([
       "ocx-tail-7",
       "ocx-tail-8",
       "ocx-tail-9",
