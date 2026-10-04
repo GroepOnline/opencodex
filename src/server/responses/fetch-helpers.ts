@@ -1,6 +1,7 @@
 import type { Server } from "bun";
 import type { OcxProviderConfig } from "../../types";
 import type { WsData } from "../ws-bridge";
+import { noteOutboundRequestBody } from "../../trace/capture";
 
 
 export function disableResponsesRequestTimeout(req: Request, server: Pick<Server<WsData>, "timeout"> | undefined): boolean {
@@ -44,6 +45,7 @@ export async function fetchWithHeaderTimeout(
     if (!timeout.signal.aborted) timeout.abort(new DOMException("Timeout elapsed", "TimeoutError"));
   }, timeoutMs);
   const headers = new Headers(init.headers);
+  noteOutboundRequestBody(init.body);
   // Compressed SSE can be held until the decompressor has a complete block. Streaming calls
   // default to identity for low-latency frame delivery, while an explicit caller choice wins.
   if (preferIdentityEncoding && !headers.has("accept-encoding")) {
