@@ -119,7 +119,9 @@ function pack(text: string | undefined): Uint8Array | null {
 
 function unpack(blob: unknown): string | undefined {
   if (!(blob instanceof Uint8Array)) return undefined;
-  return new TextDecoder().decode(Bun.gunzipSync(blob));
+  // bun:sqlite may surface a SharedArrayBuffer-backed view, while gunzipSync
+  // requires an owned ArrayBuffer-backed Uint8Array. Copy at this boundary.
+  return new TextDecoder().decode(Bun.gunzipSync(Uint8Array.from(blob)));
 }
 
 function dbBytes(path: string): number {
