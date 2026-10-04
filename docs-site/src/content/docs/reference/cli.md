@@ -534,8 +534,11 @@ Tracing is **off by default** and is configured by environment variable at proxy
   detectable, so treat the store as sensitive.
 - `full` stores bodies verbatim. Use it deliberately and briefly.
 
-Outbound capture covers adapters that send through the shared upstream fetch helper; the inbound request
-and response are captured for `/v1/responses`, `/v1/messages`, and `/v1/chat/completions`.
+Outbound capture covers adapters that send through the shared upstream fetch helper; inbound request and
+response capture covers `/v1/responses`, `/v1/messages`, and `/v1/chat/completions`. Responses WebSocket
+`response.create` turns are traced as separate logical requests: the inbound hash covers the client WS frame,
+while the outbound hash covers the final provider wire body. Voice/realtime live-sideband WebSockets remain
+outside this trace lane because they are long-lived bidirectional sessions rather than request/response turns.
 
 ## Updating
 
