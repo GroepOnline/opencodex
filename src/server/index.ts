@@ -1,4 +1,5 @@
 import { markActivity } from "../lib/sidecar-tracker";
+import { beginTrace, runWithTrace } from "../trace/capture";
 import { initServerSentry } from "../telemetry/sentry-server";
 import {
   buildWarmupCompletionFrames,
@@ -1199,7 +1200,8 @@ export function startServer(port?: number) {
         const responsesWorkReq = responsesCacheProbe?.request ?? req;
         const start = Date.now();
         const requestId = nextRequestLogId(start);
-        const logCtx = { model: "unknown", provider: "unknown" };
+        const logCtx: RequestLogContext = { model: "unknown", provider: "unknown" };
+        await beginTrace(logCtx, responsesWorkReq);
         let logged = false;
         const finalizeNativePassthroughLog = (
           status: number,
@@ -1212,7 +1214,7 @@ export function startServer(port?: number) {
           logged = true;
           addFinalRequestLog(requestId, start, logCtx, status, meta);
         };
-        const response = await handleResponses(
+        const response = await runWithTrace(logCtx, () => handleResponses(
           responsesWorkReq,
           config,
           logCtx,
@@ -1234,7 +1236,7 @@ export function startServer(port?: number) {
               });
             },
           },
-        );
+        ));
         responsesCacheProbe?.store(response);
         return withCors(
           responseWithDeferredRequestLog(response, requestId, start, logCtx),
@@ -1342,15 +1344,16 @@ export function startServer(port?: number) {
           model: "unknown",
           provider: "unknown",
         };
+        await beginTrace(logCtx, messagesWorkReq);
         // Logging is finalized inside handleClaudeMessages (Responses-vocab tap on the
         // pre-translation stream + native passthrough callbacks) — do not re-wrap the
         // translated Anthropic stream here.
-        const response = await handleClaudeMessages(
+        const response = await runWithTrace(logCtx, () => handleClaudeMessages(
           messagesWorkReq,
           config,
           logCtx,
           { requestId, start },
-        );
+        ));
         messagesCacheProbe?.store(response);
         return withCors(response, req, config);
       }
@@ -1397,12 +1400,13 @@ export function startServer(port?: number) {
           model: "unknown",
           provider: "unknown",
         };
-        const response = await handleChatCompletions(
+        await beginTrace(logCtx, chatWorkReq);
+        const response = await runWithTrace(logCtx, () => handleChatCompletions(
           chatWorkReq,
           config,
           logCtx,
           { requestId, start },
-        );
+        ));
         chatCacheProbe?.store(response);
         return withCors(response, req, config);
       }

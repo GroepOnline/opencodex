@@ -511,6 +511,32 @@ With no scope, `ocx debug` prints usage and, when the proxy is stopped, the next
 defaults. Provider debug defaults from `OCX_DEBUG=1` (legacy `OCX_DEBUG_FRAMES=1` also works); usage
 debug defaults from `OPENCODEX_USAGE_DEBUG=1`.
 
+## Request traces
+
+`usage.jsonl` stays a compact telemetry log. Full prompts and responses go to a separate local store,
+`trace.sqlite` in the opencodex config directory, linked to usage rows by `traceId` (the request id).
+Tracing is **off by default** and is configured by environment variable at proxy start:
+
+| Variable                   | Default  | Meaning                                                                 |
+| -------------------------- | -------- | ----------------------------------------------------------------------- |
+| `OCX_TRACE`                | `off`    | `off`, `metadata`, `redacted`, or `full`.                               |
+| `OCX_TRACE_TTL_HOURS`      | `24`     | Retention for stored traces (1–720).                                    |
+| `OCX_TRACE_MAX_BODY_BYTES` | `524288` | Cap per stored body. Hashes and byte counts always cover the full body. |
+| `OCX_TRACE_MAX_DB_MB`      | `256`    | Total store cap; oldest traces are evicted first.                       |
+| `OCX_TRACE_SAMPLE`         | `1`      | Fraction of requests whose bodies are stored in `redacted`/`full` mode. |
+
+- `metadata` stores nothing but adds a payload-free `trace` object to each usage row: byte sizes,
+  message/tool-call/attachment counts, request/outbound/response hashes, and `systemHash`, `toolsHash`
+  and `prefixHash` of the final provider wire body. Comparing these between two turns of one conversation
+  shows which section broke a provider prompt-cache prefix.
+- `redacted` also stores the inbound request, the final provider body, and the response, with credentials
+  and token-shaped values removed. Free-text secrets in prompts that do not match a known pattern are not
+  detectable, so treat the store as sensitive.
+- `full` stores bodies verbatim. Use it deliberately and briefly.
+
+Outbound capture covers adapters that send through the shared upstream fetch helper; the inbound request
+and response are captured for `/v1/responses`, `/v1/messages`, and `/v1/chat/completions`.
+
 ## Updating
 
 ### `ocx update`
