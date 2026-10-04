@@ -534,8 +534,10 @@ Tracing is **off by default** and is configured by environment variable at proxy
   detectable, so treat the store as sensitive.
 - `full` stores bodies verbatim. Use it deliberately and briefly.
 
-Outbound capture covers adapters that send through the shared upstream fetch helper; the inbound request
-and response are captured for `/v1/responses`, `/v1/messages`, and `/v1/chat/completions`.
+Outbound capture covers adapters that send through the shared upstream fetch helper; inbound request and
+response capture covers `/v1/responses`, `/v1/messages`, `/v1/chat/completions`, and live call-create HTTP
+(`/v1/live` and `/v1/realtime/calls`). Live call-create also records the rewritten provider wire body before
+its bounded upstream POST. Voice/realtime sideband WebSockets remain outside this trace lane.
 
 ## Updating
 

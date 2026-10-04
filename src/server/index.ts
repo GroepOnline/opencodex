@@ -1424,7 +1424,10 @@ export function startServer(port?: number) {
           model: "gpt-live",
           provider: "unknown",
         };
-        const response = await handleLive(req, config, logCtx);
+        await beginTrace(logCtx, req);
+        const response = await runWithTrace(logCtx, () =>
+          handleLive(req, config, logCtx),
+        );
         addFinalRequestLog(
           requestId,
           start,

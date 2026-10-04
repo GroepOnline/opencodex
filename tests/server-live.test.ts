@@ -16,6 +16,7 @@ import {
 } from "../src/codex/routing";
 import { saveConfig } from "../src/config";
 import { startServer } from "../src/server";
+import { clearRequestLogsForTests, getRequestLogEntries } from "../src/server/request-log";
 import type { OcxConfig } from "../src/types";
 import { fakeChatGptJwt } from "./helpers/fake-chatgpt-jwt";
 import {
@@ -25,6 +26,7 @@ import {
 
 const previousApiToken = process.env.OPENCODEX_API_AUTH_TOKEN;
 const previousOpencodexHome = process.env.OPENCODEX_HOME;
+const previousTraceMode = process.env.OCX_TRACE;
 const originalFetch = globalThis.fetch;
 const TEST_DIR = join(import.meta.dir, ".tmp-server-live-test");
 let isolatedCodexHome: IsolatedCodexHome | null = null;
@@ -35,6 +37,8 @@ beforeEach(() => {
   mkdirSync(TEST_DIR, { recursive: true });
   process.env.OPENCODEX_HOME = TEST_DIR;
   delete process.env.OPENCODEX_API_AUTH_TOKEN;
+  delete process.env.OCX_TRACE;
+  clearRequestLogsForTests();
   isolatedCodexHome = installIsolatedCodexHome("ocx-server-live-codex-");
   clearCodexUpstreamHealth();
   clearThreadAccountMap();
@@ -50,6 +54,8 @@ afterEach(() => {
   else process.env.OPENCODEX_API_AUTH_TOKEN = previousApiToken;
   if (previousOpencodexHome === undefined) delete process.env.OPENCODEX_HOME;
   else process.env.OPENCODEX_HOME = previousOpencodexHome;
+  if (previousTraceMode === undefined) delete process.env.OCX_TRACE;
+  else process.env.OCX_TRACE = previousTraceMode;
   isolatedCodexHome?.restore();
   isolatedCodexHome = null;
   clearCodexUpstreamHealth();
@@ -167,6 +173,7 @@ function multipartLiveBody(
 }
 
 test("POST /v1/live rewrites ChatGPT multipart into backend realtime/calls JSON", async () => {
+  process.env.OCX_TRACE = "metadata";
   const captured: CapturedRequest[] = [];
   const upstream = fakeLiveUpstream(captured);
   saveConfig(forwardConfig());
@@ -205,6 +212,14 @@ test("POST /v1/live rewrites ChatGPT multipart into backend realtime/calls JSON"
       sdp: "v=0-offer",
       session: { model: "gpt-live", instructions: "hi" },
     });
+    const liveTrace = getRequestLogEntries().at(-1)?.trace;
+    expect(liveTrace).toMatchObject({ mode: "metadata", stored: false });
+    expect(liveTrace?.requestHash).toMatch(/^[0-9a-f]{32}$/);
+    expect(liveTrace?.outboundHash).toMatch(/^[0-9a-f]{32}$/);
+    expect(liveTrace?.responseHash).toMatch(/^[0-9a-f]{32}$/);
+    expect(liveTrace?.requestBytes).toBeGreaterThan(0);
+    expect(liveTrace?.outboundBytes).toBeGreaterThan(0);
+    expect(liveTrace?.responseBytes).toBeGreaterThan(0);
   } finally {
     await server.stop(true);
     await upstream.stop(true);
