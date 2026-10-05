@@ -15,6 +15,7 @@ import {
   POOL_KEY_ANTIGRAVITY,
   seedPoolRotationAccount,
 } from "../codex/pool-rotation";
+import { persistPoolCooldown } from "../accounts/runtime";
 import { getCachedProviderAccountQuota } from "../providers/quota";
 import type {
   OcxAccountPoolRotationStrategy,
@@ -145,6 +146,13 @@ export function getGoogleAntigravityAccountHealthSnapshot(
   };
 }
 
+export function hydrateGoogleAntigravityAccountHealth(
+  accountId: string,
+  health: AccountHealth,
+): void {
+  upstreamHealth.set(accountId, health);
+}
+
 export function clearGoogleAntigravityAccountCooldown(accountId: string): boolean {
   return upstreamHealth.delete(accountId);
 }
@@ -193,22 +201,29 @@ export function getGoogleAntigravityPoolRetryAfterSeconds(
   return Math.max(1, Math.ceil((earliest - now) / 1_000));
 }
 
+function customWindowPercent(quota: { customWindows?: Array<{ percent?: number }> } | null): number | undefined {
+  const percents = quota?.customWindows
+    ?.map(window => window.percent)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  if (!percents || percents.length === 0) return undefined;
+  return Math.max(...percents);
+}
+
 function usageScore(accountId: string): number {
   const quota = getCachedProviderAccountQuota(PROVIDER, accountId);
-  if (
-    !quota
-    || typeof quota.fiveHourPercent !== "number"
-    || !Number.isFinite(quota.fiveHourPercent)
-  ) {
-    return UNKNOWN_USAGE_SCORE;
-  }
-  return Math.max(0, Math.min(100, quota.fiveHourPercent));
+  const fiveHour = typeof quota?.fiveHourPercent === "number" && Number.isFinite(quota.fiveHourPercent)
+    ? quota.fiveHourPercent
+    : undefined;
+  const fromWindows = customWindowPercent(quota);
+  const value = fiveHour ?? fromWindows;
+  if (value === undefined) return UNKNOWN_USAGE_SCORE;
+  return Math.max(0, Math.min(100, value));
 }
 
 function hasKnownUsage(accountId: string): boolean {
   const quota = getCachedProviderAccountQuota(PROVIDER, accountId);
-  return typeof quota?.fiveHourPercent === "number"
-    && Number.isFinite(quota.fiveHourPercent);
+  if (typeof quota?.fiveHourPercent === "number" && Number.isFinite(quota.fiveHourPercent)) return true;
+  return customWindowPercent(quota) !== undefined;
 }
 
 function pickLowestUsage(excludeId: string | undefined, now: number): string | null {
@@ -439,9 +454,18 @@ export function rotateGoogleAntigravityAccountOn429(
 ): string | null {
   if (!isGoogleAntigravityAccountPoolEnabled(config)) return null;
   const parsedRetryAfter = parseRetryAfterMs(retryAfterHeader, now);
+  const cooldownUntil = now + (parsedRetryAfter ?? DEFAULT_COOLDOWN_MS);
+  const cooldownSource = parsedRetryAfter ? "retry-after" : "default";
   upstreamHealth.set(failedAccountId, {
-    cooldownUntil: now + (parsedRetryAfter ?? DEFAULT_COOLDOWN_MS),
-    cooldownSource: parsedRetryAfter ? "retry-after" : "default",
+    cooldownUntil,
+    cooldownSource,
+  });
+  persistPoolCooldown({
+    provider: PROVIDER,
+    accountId: failedAccountId,
+    cooldownUntil,
+    cooldownSource,
+    now,
   });
   clearGoogleAntigravitySessionAffinityForAccount(failedAccountId);
   notePoolRotationFailure(POOL_KEY_ANTIGRAVITY, failedAccountId);

@@ -8,6 +8,7 @@
  *
  * Modelled after src/codex/routing.ts cooldown logic but scoped to plain API-key pools.
  */
+import { persistPoolCooldown, keyRuntimeProvider } from "../accounts/runtime";
 import { saveConfigPreservingClaudeCode } from "../config";
 import type { OcxConfig, OcxProviderConfig } from "../types";
 import { resolveProviderTransport, type OcxProviderTransport } from "./xai-transport";
@@ -95,9 +96,17 @@ export function rotateKeyOn429(
   const failedKey = attemptedKey ?? provider.apiKey;
   const currentEntry = pool.find(e => e.key === failedKey);
   if (currentEntry) {
-    const cooldownMs = parseRetryAfterMs(retryAfterHeader, now) ?? DEFAULT_COOLDOWN_MS;
+    const parsedRetryAfter = parseRetryAfterMs(retryAfterHeader, now);
+    const cooldownUntil = now + (parsedRetryAfter ?? DEFAULT_COOLDOWN_MS);
     keyCooldowns.set(cooldownKey(providerName, currentEntry.id), {
-      cooldownUntil: now + cooldownMs,
+      cooldownUntil,
+    });
+    persistPoolCooldown({
+      provider: keyRuntimeProvider(providerName),
+      accountId: currentEntry.id,
+      cooldownUntil,
+      cooldownSource: parsedRetryAfter ? "retry-after" : "default",
+      now,
     });
   }
 
@@ -169,6 +178,10 @@ export function rotateProviderTransportOn429(
         options.promptCacheKey,
       )
     : null;
+}
+
+export function hydrateKeyCooldown(providerName: string, keyId: string, cooldownUntil: number): void {
+  keyCooldowns.set(cooldownKey(providerName, keyId), { cooldownUntil });
 }
 
 /** Clear cooldown state for a provider (e.g. after manual key management). */

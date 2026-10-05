@@ -1,3 +1,4 @@
+import { getAccountRuntime, listAccountRuntimes, type AccountReason, type AccountRuntime } from "../accounts/runtime";
 import { getCodexAccountHealthSnapshot, type CodexCooldownSource } from "../codex/routing";
 import { getAnthropicAccountHealthSnapshot } from "./anthropic-routing";
 import { getGoogleAntigravityAccountHealthSnapshot } from "./google-antigravity-routing";
@@ -54,6 +55,42 @@ export type CollectOAuthHealthOptions = {
 };
 
 type OAuthWarningReason = "refresh_conflict" | "metadata_mismatch" | "stale_credentials";
+
+function reauthReasonFromRuntime(reason: AccountReason): "unauthorized" | "forbidden" | "refresh_failed" {
+  if (reason === "unauthorized" || reason === "forbidden") return reason;
+  return "refresh_failed";
+}
+
+function cooldownReasonFromRuntime(record: AccountRuntime): "rate_limit" | "quota" {
+  return record.state === "RATE_LIMITED" || record.reason === "retry_after" ? "rate_limit" : "quota";
+}
+
+/** Read projection from the persist ledger. Used by doctor/management when Maps are empty. */
+export function projectAccountRuntimeHealth(
+  record: AccountRuntime | null | undefined,
+  now = Date.now(),
+): OAuthAccountHealth {
+  if (!record) return { status: "healthy" };
+  if (record.state === "AUTH_FAILED") {
+    return projectOAuthAccountHealth({
+      needsReauth: true,
+      reauthReason: reauthReasonFromRuntime(record.reason),
+      now,
+    });
+  }
+  if (
+    (record.state === "RATE_LIMITED" || record.state === "COOLDOWN")
+    && typeof record.until === "number"
+    && record.until > now
+  ) {
+    return projectOAuthAccountHealth({
+      cooldownUntilMs: record.until,
+      cooldownReason: cooldownReasonFromRuntime(record),
+      now,
+    });
+  }
+  return { status: "healthy" };
+}
 
 export function projectOAuthAccountHealth(input: {
   needsReauth?: boolean;
@@ -184,11 +221,20 @@ export function projectStoredOAuthAccountHealth(
       : provider === "cursor"
         ? getCursorAccountHealthSnapshot(account.id, now)
         : null;
+  const persisted = getAccountRuntime(provider, account.id, now);
   return projectOAuthAccountHealth({
-    needsReauth: account.needsReauth === true,
-    reauthReason: account.needsReauth === true ? "refresh_failed" : undefined,
-    cooldownUntilMs: poolSnapshot?.cooldownUntil,
-    cooldownReason: poolSnapshot?.cooldownSource === "retry-after" ? "rate_limit" : poolSnapshot ? "quota" : undefined,
+    needsReauth: account.needsReauth === true || persisted?.state === "AUTH_FAILED",
+    reauthReason: account.needsReauth === true
+      ? "refresh_failed"
+      : persisted?.state === "AUTH_FAILED"
+        ? reauthReasonFromRuntime(persisted.reason)
+        : undefined,
+    cooldownUntilMs: poolSnapshot?.cooldownUntil ?? persisted?.until,
+    cooldownReason: poolSnapshot
+      ? (poolSnapshot.cooldownSource === "retry-after" ? "rate_limit" : "quota")
+      : persisted
+        ? cooldownReasonFromRuntime(persisted)
+        : undefined,
     warningReason: detectOAuthWarning(provider, account, opts.observeOnly === true, now),
     now,
   });
@@ -201,11 +247,20 @@ export function projectCodexAccountHealth(input: {
 }): OAuthAccountHealth {
   const now = input.now ?? Date.now();
   const snap = getCodexAccountHealthSnapshot(input.accountId, now);
+  const persisted = getAccountRuntime("codex", input.accountId, now);
   return projectOAuthAccountHealth({
-    needsReauth: input.needsReauth,
-    reauthReason: input.needsReauth ? "refresh_failed" : undefined,
-    cooldownUntilMs: snap?.cooldownUntil,
-    cooldownReason: cooldownReasonFromSource(snap?.cooldownSource),
+    needsReauth: input.needsReauth || persisted?.state === "AUTH_FAILED",
+    reauthReason: input.needsReauth
+      ? "refresh_failed"
+      : persisted?.state === "AUTH_FAILED"
+        ? reauthReasonFromRuntime(persisted.reason)
+        : undefined,
+    cooldownUntilMs: snap?.cooldownUntil ?? persisted?.until,
+    cooldownReason: snap
+      ? cooldownReasonFromSource(snap.cooldownSource)
+      : persisted
+        ? cooldownReasonFromRuntime(persisted)
+        : undefined,
     now,
   });
 }
@@ -263,10 +318,24 @@ function pushEntry(
   });
 }
 
+function collectPersistedCodexEntries(now: number): OAuthHealthEntry[] {
+  const entries: OAuthHealthEntry[] = [];
+  for (const record of listAccountRuntimes(now)) {
+    if (record.provider !== "codex") continue;
+    const health = projectAccountRuntimeHealth(record, now);
+    if (health.status === "healthy") continue;
+    pushEntry(entries, "codex", record.accountId, health);
+  }
+  return entries;
+}
+
 function collectLocalCodexEntries(now: number): OAuthHealthEntry[] {
   const entries: OAuthHealthEntry[] = [];
   const codexIds = new Set(listCodexAccountIds());
   codexIds.add(MAIN_CODEX_ACCOUNT_ID);
+  for (const record of listAccountRuntimes(now)) {
+    if (record.provider === "codex") codexIds.add(record.accountId);
+  }
   for (const accountId of codexIds) {
     const snap = getCodexAccountHealthSnapshot(accountId, now);
     const needsReauth = isAccountNeedsReauth(accountId);
@@ -355,7 +424,7 @@ async function fetchCodexHealthFromLiveProxy(
 }
 
 /** How CLI/doctor obtained Codex cooldown/reauth (proxy memory only lives in the proxy). */
-export type CodexHealthSource = "management-api" | "unavailable";
+export type CodexHealthSource = "management-api" | "persisted" | "unavailable";
 
 export type OAuthCliHealthReport = {
   entries: OAuthHealthEntry[];
@@ -382,6 +451,11 @@ export async function collectOAuthHealthEntriesForCli(
   if (remote) {
     for (const entry of remote) entries.push(entry);
     return { entries, codexHealthSource: "management-api" };
+  }
+  const persisted = collectPersistedCodexEntries(now);
+  if (persisted.length > 0) {
+    for (const entry of persisted) entries.push(entry);
+    return { entries, codexHealthSource: "persisted" };
   }
   return { entries, codexHealthSource: "unavailable" };
 }

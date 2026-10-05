@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { persistAccountHealthy } from "../src/accounts/runtime";
 import { saveCodexAccountCredential } from "../src/codex/account-store";
 import { getTrackedCodexWebSocketCountForAccount } from "../src/codex/websocket-registry";
 import { clearAccountNeedsReauth, clearAccountQuota, getAccountQuota, isAccountNeedsReauth, markAccountNeedsReauth, updateAccountQuota } from "../src/codex/auth-api";
@@ -1168,6 +1169,7 @@ describe("server local API auth", () => {
         await cooledMulti.stop(true);
       }
       clearCodexUpstreamHealth();
+      persistAccountHealthy("codex", "pool-a");
       const multi = startServer(0);
       try {
         expect((await request(multi, { authorization: "Bearer local-secret" })).status).toBe(200);

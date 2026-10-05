@@ -37,6 +37,7 @@ const MANIFEST_MAX_PATHS = 1024;
 const INITIAL_OWNED_PATHS = [
   ".star-prompted",
   "artifacts",
+  "account-runtime.json",
   "auth.json",
   "auth.store.lock",
   "catalog-backup.json",

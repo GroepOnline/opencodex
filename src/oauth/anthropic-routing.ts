@@ -15,6 +15,7 @@
  * store (existing OAuth path) so the account is excluded from eligibility.
  */
 import { createHash } from "node:crypto";
+import { persistPoolCooldown } from "../accounts/runtime";
 import { setActiveAccount, getAccountSet, getAccountCredential } from "./store";
 import { getCachedProviderAccountQuota } from "../providers/quota";
 import { fallbackCodexAccountLogLabel } from "../codex/account-label";
@@ -104,6 +105,13 @@ export function getAnthropicAccountHealthSnapshot(
     return null;
   }
   return { cooldownUntil: entry.cooldownUntil, cooldownSource: entry.cooldownSource };
+}
+
+export function hydrateAnthropicAccountHealth(
+  accountId: string,
+  health: AccountHealth,
+): void {
+  upstreamHealth.set(accountId, health);
 }
 
 export function clearAnthropicAccountCooldown(accountId: string): boolean {
@@ -459,10 +467,18 @@ export function rotateAnthropicAccountOn429(
   if (!isAnthropicAccountPoolEnabled(config)) return null;
 
   const parsedRetry = parseRetryAfterMs(retryAfterHeader, now);
-  const cooldownMs = parsedRetry ?? DEFAULT_COOLDOWN_MS;
+  const cooldownUntil = now + (parsedRetry ?? DEFAULT_COOLDOWN_MS);
+  const cooldownSource = parsedRetry ? "retry-after" : "default";
   upstreamHealth.set(failedAccountId, {
-    cooldownUntil: now + cooldownMs,
-    cooldownSource: parsedRetry ? "retry-after" : "default",
+    cooldownUntil,
+    cooldownSource,
+  });
+  persistPoolCooldown({
+    provider: PROVIDER,
+    accountId: failedAccountId,
+    cooldownUntil,
+    cooldownSource,
+    now,
   });
   clearAnthropicSessionAffinityForAccount(failedAccountId);
   notePoolRotationFailure(POOL_KEY_ANTHROPIC, failedAccountId);

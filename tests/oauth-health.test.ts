@@ -195,8 +195,7 @@ describe("collectOAuthHealthEntriesForCli", () => {
     expect(remote?.action).toContain("wait until");
   });
 
-  test("labels unavailable fallback and omits process-local Codex maps", async () => {
-    markCodexAccountNeedsReauth(MAIN_CODEX_ACCOUNT_ID);
+  test("labels unavailable fallback when persist is empty and omits process-local Codex maps", async () => {
     const report = await collectOAuthHealthEntriesForCli(Date.now(), {
       findLiveProxyImpl: async () => null,
     });
@@ -205,6 +204,16 @@ describe("collectOAuthHealthEntriesForCli", () => {
     const text = formatOAuthHealthForStatus(report);
     expect(text).toContain(CODEX_HEALTH_UNAVAILABLE_NOTE);
     expect(text).not.toContain(MAIN_CODEX_ACCOUNT_ID);
+  });
+
+  test("persisted Codex AUTH_FAILED is visible to CLI when the proxy is down", async () => {
+    markCodexAccountNeedsReauth(MAIN_CODEX_ACCOUNT_ID);
+    const report = await collectOAuthHealthEntriesForCli(Date.now(), {
+      findLiveProxyImpl: async () => null,
+    });
+    expect(report.codexHealthSource).toBe("persisted");
+    const entry = report.entries.find(e => e.provider === "codex" && e.accountId === MAIN_CODEX_ACCOUNT_ID);
+    expect(entry?.health).toEqual({ status: "reauth_required", reason: "refresh_failed" });
   });
 
   test("malformed remote health is re-derived instead of rendering undefined", async () => {

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { persistAccountHealthy, persistPoolCooldown } from "../accounts/runtime";
 import { saveConfigPreservingClaudeCode } from "../config";
 import { isCodexAccountGenerationLive, readCodexAccountRecord } from "./account-store";
 import { codexAccountLogLabel } from "./account-label";
@@ -49,8 +50,9 @@ function resolveCodexPoolStrategy(config: OcxConfig): OcxAccountPoolRotationStra
 }
 
 /**
- * Reset the Codex round-robin ring. Intended for deterministic tests; the cursor now lives
- * in `pool-rotation`'s per-pool selection state rather than a persisted file.
+ * Reset the Codex round-robin ring. Intended for deterministic tests. The live
+ * cursor lives in `pool-rotation`'s per-pool selection state and is hydrated
+ * from account-runtime.json on process start.
  */
 export function resetCodexRoundRobinCursor(): void {
   clearPoolRotationState(POOL_KEY_CODEX);
@@ -225,6 +227,20 @@ export function clearThreadAccountMapForAccount(accountId: string): void {
     }
     if (affinities.size === 0) threadAccountMap.delete(threadId);
   }
+}
+
+export function hydrateCodexAccountHealth(
+  accountId: string,
+  health: { cooldownUntil: number; cooldownSource: CodexCooldownSource },
+): void {
+  const current = upstreamHealth.get(accountId);
+  upstreamHealth.set(accountId, {
+    consecutiveFailures: current?.consecutiveFailures ?? 0,
+    cooldownUntil: health.cooldownUntil,
+    cooldownSince: current?.cooldownSince ?? Date.now(),
+    cooldownSource: health.cooldownSource,
+    cooldownGeneration: current?.cooldownGeneration ?? 1,
+  });
 }
 
 export function clearCodexUpstreamHealth(): void {
@@ -581,6 +597,7 @@ export function clearCodexAccountCooldown(accountId: string, now = Date.now()): 
     const next = clear(accountHealth);
     if (next) {
       upstreamHealth.set(accountId, next);
+      persistAccountHealthy("codex", accountId, now);
       cleared = true;
     }
   }
@@ -1245,6 +1262,7 @@ export function recordCodexUpstreamOutcome(
     // account recovered: clear the hard cooldown outright (#433).
     if (cooldownUntil && probeMayClearCooldown(current, meta)) {
       upstreamHealth.delete(accountId);
+      persistAccountHealthy("codex", accountId, now);
       return;
     }
     // Owning probe on a stale generation: the lease is done, but a newer 429
@@ -1330,6 +1348,13 @@ export function recordCodexUpstreamOutcome(
       // The shared native scope is the existing account-wide native behavior:
       // threads must leave it and new requests should prefer an eligible account.
       // Spark remains isolated so a same-account Terra/Luna combo fallback can run.
+      persistPoolCooldown({
+        provider: "codex",
+        accountId,
+        cooldownUntil: until,
+        cooldownSource: source,
+        now,
+      });
       if (quotaScope === "shared") {
         clearThreadAccountMapForAccount(accountId);
         notePoolRotationFailure(POOL_KEY_CODEX, accountId);
@@ -1374,6 +1399,13 @@ export function recordCodexUpstreamOutcome(
           ...(prior?.probeLeaseGeneration !== undefined ? { probeLeaseGeneration: prior.probeLeaseGeneration } : {}),
           ...(prior?.lastProbeAt !== undefined ? { lastProbeAt: prior.lastProbeAt } : {}),
         }),
+    });
+    persistPoolCooldown({
+      provider: "codex",
+      accountId,
+      cooldownUntil: until,
+      cooldownSource: source,
+      now,
     });
     clearThreadAccountMapForAccount(accountId);
     notePoolRotationFailure(POOL_KEY_CODEX, accountId);

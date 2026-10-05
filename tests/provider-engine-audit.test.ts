@@ -2,10 +2,17 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { markAccountNeedsReauth, isAccountNeedsReauth, clearAccountNeedsReauth } from "../src/codex/account-runtime-state";
+import { hydrateAccountRuntimeFromDisk } from "../src/accounts/hydrate";
+import { getAccountRuntime, getAccountRuntimePath, resetAccountRuntimeCacheForTests } from "../src/accounts/runtime";
+import {
+  markAccountNeedsReauth,
+  isAccountNeedsReauth,
+  clearAccountNeedsReauth,
+  resetAccountNeedsReauthMemoryForTests,
+} from "../src/codex/account-runtime-state";
+import { clearCodexUpstreamHealth } from "../src/codex/routing";
 import {
   clearPoolRotationState,
-  pickRoundRobinAccount,
   peekRoundRobinAccount,
   POOL_KEY_ANTIGRAVITY,
 } from "../src/codex/pool-rotation";
@@ -37,7 +44,9 @@ beforeEach(() => {
   clearPoolRotationState();
   clearAccountQuotaCache(PROVIDER);
   clearKeyCooldowns();
-  clearAccountNeedsReauth("codex-audit");
+  clearCodexUpstreamHealth();
+  resetAccountNeedsReauthMemoryForTests();
+  resetAccountRuntimeCacheForTests();
 });
 
 afterEach(() => {
@@ -45,7 +54,9 @@ afterEach(() => {
   clearPoolRotationState();
   clearAccountQuotaCache(PROVIDER);
   clearKeyCooldowns();
-  clearAccountNeedsReauth("codex-audit");
+  clearCodexUpstreamHealth();
+  resetAccountNeedsReauthMemoryForTests();
+  resetAccountRuntimeCacheForTests();
   if (originalHome === undefined) delete process.env.OPENCODEX_HOME;
   else process.env.OPENCODEX_HOME = originalHome;
   rmSync(home, { recursive: true, force: true });
@@ -114,17 +125,28 @@ function diskRuntimeArtifacts(): string[] {
   );
 }
 
+function simulateProcessRestart(now?: number): void {
+  clearGoogleAntigravityAccountPoolState();
+  clearPoolRotationState();
+  clearKeyCooldowns();
+  clearCodexUpstreamHealth();
+  resetAccountNeedsReauthMemoryForTests();
+  resetAccountRuntimeCacheForTests();
+  hydrateAccountRuntimeFromDisk(now);
+}
+
 describe("provider engine audit — persistence", () => {
-  test("API-key 429 cooldown is process-local and never written to disk", () => {
+  test("API-key 429 cooldown is written through and still cooled after reload", () => {
     const now = 1_000_000;
     rotateKeyOn429(keyConfig(), "p", "30", now);
     expect(getKeyCooldownUntil("p", "k1", now)).toBe(now + 30_000);
-    expect(diskRuntimeArtifacts()).toEqual([]);
-    clearKeyCooldowns();
-    expect(getKeyCooldownUntil("p", "k1", now)).toBeNull();
+    expect(existsSync(getAccountRuntimePath())).toBe(true);
+    expect(getAccountRuntime("key:p", "k1", now)?.state).toBe("RATE_LIMITED");
+    simulateProcessRestart(now);
+    expect(getKeyCooldownUntil("p", "k1", now)).toBe(now + 30_000);
   });
 
-  test("Antigravity pool cooldown and RR cursor are process-local", async () => {
+  test("Antigravity pool cooldown and RR cursor survive reload", async () => {
     const [firstId, secondId] = await seedAntigravityAccounts();
     const now = 2_000_000;
     expect(rotateGoogleAntigravityAccountOn429(
@@ -135,29 +157,41 @@ describe("provider engine audit — persistence", () => {
       now,
     )).toBe(secondId);
     expect(getGoogleAntigravityAccountHealthSnapshot(firstId, now)?.cooldownUntil).toBe(now + 45_000);
+    expect(getAccountRuntime(PROVIDER, firstId, now)?.state).toBe("RATE_LIMITED");
 
-    pickRoundRobinAccount(POOL_KEY_ANTIGRAVITY, [firstId, secondId], 1);
-    expect(peekRoundRobinAccount(POOL_KEY_ANTIGRAVITY, [firstId, secondId], 1)).not.toBeNull();
+    expect(resolveGoogleAntigravityAccountForSession(
+      "fresh-session",
+      antigravityConfig("round-robin"),
+      now,
+    ).accountId).not.toBe(firstId);
+    const nextBeforeRestart = peekRoundRobinAccount(POOL_KEY_ANTIGRAVITY, [secondId], 1);
+    expect(nextBeforeRestart).toBe(secondId);
     expect(diskRuntimeArtifacts()).toEqual([]);
 
-    clearGoogleAntigravityAccountPoolState();
-    clearPoolRotationState(POOL_KEY_ANTIGRAVITY);
-    expect(getGoogleAntigravityAccountHealthSnapshot(firstId, now)).toBeNull();
+    simulateProcessRestart(now);
+    expect(getGoogleAntigravityAccountHealthSnapshot(firstId, now)?.cooldownUntil).toBe(now + 45_000);
+    expect(existsSync(getAccountRuntimePath())).toBe(true);
+    expect(peekRoundRobinAccount(POOL_KEY_ANTIGRAVITY, [secondId], 1)).toBe(nextBeforeRestart);
+    expect(resolveGoogleAntigravityAccountForSession(
+      "fresh-session",
+      antigravityConfig("round-robin"),
+      now,
+    ).accountId).not.toBe(firstId);
   });
 
-  test("Codex needsReauth is an in-memory Set with no persist path", () => {
+  test("Codex AUTH_FAILED is written through and still failed after reload", () => {
     markAccountNeedsReauth("codex-audit");
     expect(isAccountNeedsReauth("codex-audit")).toBe(true);
-    expect(diskRuntimeArtifacts()).toEqual([]);
+    expect(getAccountRuntime("codex", "codex-audit")?.state).toBe("AUTH_FAILED");
+    simulateProcessRestart();
+    expect(isAccountNeedsReauth("codex-audit")).toBe(true);
     clearAccountNeedsReauth("codex-audit");
     expect(isAccountNeedsReauth("codex-audit")).toBe(false);
   });
 });
 
 describe("provider engine audit — Antigravity quota scoring", () => {
-  // parseAntigravityModelsQuota only writes customWindows (Gem/Cla). usageScore()
-  // reads fiveHourPercent, so live Antigravity probes never inform quota pick.
-  test("customWindows-only quota is treated as unknown, so quota pick stays on active", async () => {
+  test("customWindows-only quota informs quota pick via max(Gem/Cla)", async () => {
     const [activeId, otherId] = await seedAntigravityAccounts();
     setCachedProviderAccountQuotaForTests(PROVIDER, activeId, {
       customWindows: [{ label: "Gem", percent: 99, resetAt: Date.now() + 3_600_000 }],
@@ -172,8 +206,8 @@ describe("provider engine audit — Antigravity quota scoring", () => {
       "new-session",
       antigravityConfig("quota"),
     );
-    expect(selection).toEqual({ accountId: activeId, reason: "active" });
-    expect(selection.accountId).not.toBe(otherId);
+    expect(selection).toEqual({ accountId: otherId, reason: "lowest-usage" });
+    expect(selection.accountId).not.toBe(activeId);
   });
 });
 

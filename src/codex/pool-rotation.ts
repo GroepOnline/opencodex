@@ -1,3 +1,9 @@
+import {
+  persistPoolRotationCleared,
+  persistPoolRotationCursor,
+  type PoolRotationCursor,
+  type PoolRotationCursorWrite,
+} from "../accounts/runtime";
 import type { OcxAccountPoolRotationStrategy } from "../types";
 
 export const POOL_KEY_CODEX = "codex";
@@ -41,6 +47,23 @@ export function normalizeAccountPoolStrategy(raw: unknown): OcxAccountPoolRotati
 
 export function normalizeAccountPoolStickyLimit(raw: unknown): number {
   return parseAccountPoolStickyLimit(raw) ?? DEFAULT_STICKY_LIMIT;
+}
+
+function snapshotState(state: SelectionState): PoolRotationCursorWrite {
+  return {
+    successes: state.successes,
+    weights: Object.fromEntries(state.currentWeights),
+    ...(state.activeKey ? { activeKey: state.activeKey } : {}),
+  };
+}
+
+function persistLiveCursor(poolKey: string): void {
+  const state = selectionState.get(poolKey);
+  if (!state) {
+    persistPoolRotationCleared(poolKey);
+    return;
+  }
+  persistPoolRotationCursor(poolKey, snapshotState(state));
 }
 
 function getOrCreateState(poolKey: string): SelectionState {
@@ -121,7 +144,24 @@ export function pickRoundRobinAccount(
   eligibleIds: string[],
   stickyLimit: number,
 ): string | null {
-  return pickRoundRobinFromState(eligibleIds, stickyLimit, getOrCreateState(poolKey), true);
+  const picked = pickRoundRobinFromState(eligibleIds, stickyLimit, getOrCreateState(poolKey), true);
+  persistLiveCursor(poolKey);
+  return picked;
+}
+
+/** Hydrate-only: restore the ring without writing the ledger again. */
+export function hydratePoolRotation(poolKey: string, cursor: PoolRotationCursor): void {
+  const state: SelectionState = {
+    successes: cursor.successes,
+    currentWeights: new Map(Object.entries(cursor.weights)),
+  };
+  if (cursor.activeKey) state.activeKey = cursor.activeKey;
+  selectionState.set(poolKey, state);
+}
+
+export function getPoolRotationSnapshot(poolKey: string): PoolRotationCursorWrite | null {
+  const state = selectionState.get(poolKey);
+  return state ? snapshotState(state) : null;
 }
 
 /**
@@ -157,6 +197,7 @@ export function notePoolRotationSuccess(
     delete state.activeKey;
     state.successes = 0;
   }
+  persistLiveCursor(poolKey);
 }
 
 export function notePoolRotationFailure(poolKey: string, accountId: string): void {
@@ -164,6 +205,7 @@ export function notePoolRotationFailure(poolKey: string, accountId: string): voi
   if (state?.activeKey === accountId) {
     delete state.activeKey;
     state.successes = 0;
+    persistLiveCursor(poolKey);
   }
 }
 
@@ -177,6 +219,7 @@ export function seedPoolRotationAccount(poolKey: string, accountId: string): voi
   state.activeKey = accountId;
   state.successes = 0;
   state.currentWeights.clear();
+  persistLiveCursor(poolKey);
 }
 
 export function clearPoolRotationState(poolKey?: string): void {

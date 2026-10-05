@@ -16,6 +16,7 @@ import {
   POOL_KEY_CURSOR,
   seedPoolRotationAccount,
 } from "../codex/pool-rotation";
+import { persistPoolCooldown } from "../accounts/runtime";
 import { classifyCursorUpstreamOutcome } from "../lib/upstream-outcome";
 import { getCachedProviderAccountQuota } from "../providers/quota";
 import type { OcxAccountPoolRotationStrategy, OcxConfig } from "../types";
@@ -124,6 +125,13 @@ export function getCursorAccountHealthSnapshot(
     cooldownUntil: entry.cooldownUntil,
     cooldownSource: entry.cooldownSource,
   };
+}
+
+export function hydrateCursorAccountHealth(
+  accountId: string,
+  health: AccountHealth,
+): void {
+  upstreamHealth.set(accountId, health);
 }
 
 export function clearCursorAccountCooldown(accountId: string): boolean {
@@ -338,9 +346,18 @@ export function rotateCursorAccountOnQuota(
 ): string | null {
   if (!isCursorAccountPoolEnabled(config)) return null;
   const parsedRetryAfter = parseRetryAfterMs(retryAfter, now);
+  const cooldownUntil = now + (parsedRetryAfter ?? DEFAULT_COOLDOWN_MS);
+  const cooldownSource = parsedRetryAfter ? "retry-after" : "default";
   upstreamHealth.set(failedAccountId, {
-    cooldownUntil: now + (parsedRetryAfter ?? DEFAULT_COOLDOWN_MS),
-    cooldownSource: parsedRetryAfter ? "retry-after" : "default",
+    cooldownUntil,
+    cooldownSource,
+  });
+  persistPoolCooldown({
+    provider: PROVIDER,
+    accountId: failedAccountId,
+    cooldownUntil,
+    cooldownSource,
+    now,
   });
   clearCursorSessionAffinityForAccount(failedAccountId);
   notePoolRotationFailure(POOL_KEY_CURSOR, failedAccountId);

@@ -18,6 +18,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, closeSync, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { getAccountRuntime, persistAccountAuthFailed, persistAccountHealthy } from "../accounts/runtime";
 import { getConfigDir, atomicWriteFile, backupInvalidConfig, hardenConfigDir, hardenExistingSecret } from "../config";
 import { recordOwnedConfigPath } from "../lib/config-ownership";
 import { validateCopilotApiBaseUrl } from "./github-copilot";
@@ -469,13 +470,42 @@ export async function replaceProviderAccountSet(
 }
 
 export async function markAccountNeedsReauth(provider: string, accountId: string, needsReauth: boolean): Promise<void> {
-  await mutateStore(store => {
+  const changed = await mutateStore(store => {
     const account = store[provider]?.accounts.find(a => a.id === accountId);
-    if (!account) return;
+    if (!account) return false;
     if (needsReauth) account.needsReauth = true;
     else delete account.needsReauth;
+    return true;
   });
+  if (!changed) return;
+  if (needsReauth) persistAccountAuthFailed({ provider, accountId, reason: "refresh_failed" });
+  else if (getAccountRuntime(provider, accountId)?.state === "AUTH_FAILED") {
+    persistAccountHealthy(provider, accountId);
+  }
 }
 
-export async function mergeAccountCredential(provider:string,accountId:string,credential:OAuthCredentials,opts:{expectedGeneration?:string;afterPrePersistRead?:()=>void|Promise<void>}={}):Promise<{superseded:false}|{superseded:true;stored:OAuthCredentials}>{const safe=normalizeCredential(credential);if(!safe)throw new Error("Refusing to persist invalid OAuth credential");return await mutateStore(async store=>{await opts.afterPrePersistRead?.();const account=store[provider]?.accounts.find(x=>x.id===accountId);if(!account)throw new Error(`OAuth account disappeared before persist: ${provider}`);if(opts.expectedGeneration!==undefined&&credentialGeneration(account.credential)!==opts.expectedGeneration)return{superseded:true,stored:account.credential};account.credential=safe;delete account.needsReauth;return{superseded:false};});}
-export async function markAccountNeedsReauthIfGeneration(provider:string,accountId:string,generation:string):Promise<boolean>{return await mutateStore(store=>{const account=store[provider]?.accounts.find(x=>x.id===accountId);if(!account?.credential||credentialGeneration(account.credential)!==generation)return false;account.needsReauth=true;return true;});}
+export async function mergeAccountCredential(
+  provider: string,
+  accountId: string,
+  credential: OAuthCredentials,
+  opts: { expectedGeneration?: string; afterPrePersistRead?: () => void | Promise<void> } = {},
+): Promise<{ superseded: false } | { superseded: true; stored: OAuthCredentials }> {
+  const safe = normalizeCredential(credential);
+  if (!safe) throw new Error("Refusing to persist invalid OAuth credential");
+  const result = await mutateStore(async (store): Promise<{ superseded: false } | { superseded: true; stored: OAuthCredentials }> => {
+    await opts.afterPrePersistRead?.();
+    const account = store[provider]?.accounts.find(x => x.id === accountId);
+    if (!account) throw new Error(`OAuth account disappeared before persist: ${provider}`);
+    if (opts.expectedGeneration !== undefined && credentialGeneration(account.credential) !== opts.expectedGeneration) {
+      return { superseded: true, stored: account.credential };
+    }
+    account.credential = safe;
+    delete account.needsReauth;
+    return { superseded: false };
+  });
+  if (!result.superseded && getAccountRuntime(provider, accountId)?.state === "AUTH_FAILED") {
+    persistAccountHealthy(provider, accountId);
+  }
+  return result;
+}
+export async function markAccountNeedsReauthIfGeneration(provider:string,accountId:string,generation:string):Promise<boolean>{const marked=await mutateStore(store=>{const account=store[provider]?.accounts.find(x=>x.id===accountId);if(!account?.credential||credentialGeneration(account.credential)!==generation)return false;account.needsReauth=true;return true;});if(marked)persistAccountAuthFailed({provider,accountId,reason:"refresh_failed"});return marked;}

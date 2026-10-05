@@ -67,6 +67,7 @@ export {
   trackStreamLifetime,
   unregisterTurn,
 } from "./lifecycle";
+import { hydrateAccountRuntimeFromDisk } from "../accounts/hydrate";
 import {
   addFinalRequestLog,
   hydrateRequestLogsFromDisk,
@@ -331,6 +332,7 @@ export function startServer(port?: number) {
   // usage.jsonl already persists every request; rehydrate the in-memory Logs ring so
   // /api/logs (and the GUI) survive `ocx stop` / `ocx start` process restarts.
   hydrateRequestLogsFromDisk();
+  hydrateAccountRuntimeFromDisk();
   // #314: warn-only RSS observability (unref'd, idempotent — safe under repeated
   // startServer(0) in tests). Snapshot surfaces via GET /api/system/memory.
   startMemoryWatchdog();
