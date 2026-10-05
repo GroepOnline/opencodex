@@ -450,11 +450,11 @@ export function mergeCatalogEntriesForSync(
   }
 
   const mergedEntries = [...native, ...finalRoutedEntries].map(m => {
-    const normalized = normalizeServiceTiers(m);
-    applyNativeOpenAiContextOverride(normalized);
-    const exactCombo = typeof m.slug === "string" && exactComboSlugs.has(m.slug);
     const authoritativeNative = typeof m.slug === "string"
       && authoritativeNativeSlugs.has(m.slug);
+    const normalized = normalizeServiceTiers(m);
+    if (!authoritativeNative) applyNativeOpenAiContextOverride(normalized);
+    const exactCombo = typeof m.slug === "string" && exactComboSlugs.has(m.slug);
     const e = ensureStrictCatalogFields(normalized, {
       preserveExactInputModalities: exactCombo,
       isRouted: finalRoutedEntries.includes(m),
