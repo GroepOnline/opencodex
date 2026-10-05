@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   applyEol,
   buildOpenaiBaseUrlLine,
@@ -312,6 +315,48 @@ describe("Codex config injection", () => {
     );
 
     expect(path).toBeNull();
+  });
+
+  test("falls back to native metadata when the managed catalog omits the selected native model", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ocx-native-coverage-"));
+    const catalogPath = join(dir, "opencodex-catalog.json");
+    try {
+      writeFileSync(catalogPath, JSON.stringify({
+        models: [{ slug: "gpt-5.6-sol", context_window: 372000 }],
+      }));
+
+      const config = [
+        'model = "gpt-6.1-sol"',
+        'model_catalog_json = "/stale/native-plus-ocx.json"',
+        "",
+      ].join("\n");
+      expect(chooseCatalogPathForInjection(config, catalogPath)).toBeNull();
+
+      writeFileSync(catalogPath, JSON.stringify({
+        models: [{
+          slug: "gpt-6.1-sol",
+          context_window: 400000,
+          supports_search_tool: true,
+          tool_mode: "code_mode_only",
+        }],
+      }));
+      expect(chooseCatalogPathForInjection(config, catalogPath)).toBe(catalogPath);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("does not misclassify a bare third-party selector as a native coverage guard", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ocx-bare-routed-"));
+    const catalogPath = join(dir, "opencodex-catalog.json");
+    try {
+      writeFileSync(catalogPath, JSON.stringify({ models: [] }));
+      expect(
+        chooseCatalogPathForInjection('model = "glm-5.2-fast-preview"\n', catalogPath),
+      ).toBe(catalogPath);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("managed routing replaces a pre-existing merged catalog with the canonical OCX catalog", () => {
