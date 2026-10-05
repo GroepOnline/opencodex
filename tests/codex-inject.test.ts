@@ -6,6 +6,7 @@ import {
   buildProviderTableBlock,
   chooseCatalogPathForInjection,
   dominantEol,
+  hasUserOwnedRootOpenaiBaseUrl,
   setRootModelCatalogPath,
   setRootOpenaiBaseUrl,
   shouldInjectApiAuthHeader,
@@ -290,6 +291,18 @@ describe("Codex config injection", () => {
       if (previous === undefined) delete process.env.CF_ACCESS_ALLOWED_HOSTS;
       else process.env.CF_ACCESS_ALLOWED_HOSTS = previous;
     }
+  });
+
+  test("treats an unmarked root openai_base_url as an external ownership boundary", () => {
+    expect(hasUserOwnedRootOpenaiBaseUrl(
+      'openai_base_url = "https://my-own-gateway.example/v1"\n',
+    )).toBe(true);
+
+    const managed = setRootOpenaiBaseUrl(
+      'model = "gpt-6.1-sol"\n',
+      10100,
+    ).content;
+    expect(hasUserOwnedRootOpenaiBaseUrl(managed)).toBe(false);
   });
 
   test("honors an explicit unavailable catalog decision", () => {
