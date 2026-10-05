@@ -11,6 +11,8 @@ import { readCodexCatalogPath } from "../codex/catalog";
 import type { OcxConfig, OcxUsage } from "../types";
 import type { AdapterRequest } from "../adapters/base";
 import { redactSecretString } from "../lib/redact";
+import { appendTraceResponse, finalizeTrace, type TraceCapture } from "../trace/capture";
+import type { UsageTraceMeta } from "../trace/types";
 import { providerAccountLabel, baseProviderLabel } from "../providers/label";
 import { getAccountSet } from "../oauth/store";
 import {
@@ -109,6 +111,8 @@ export interface RequestLogContext {
   affinity?: "reused" | "new_bind" | "rebound" | "cleared";
   transportPhase?: "pre_headers" | "mid_stream" | "terminal_sse";
   terminalSource?: "upstream" | "synthetic";
+  /** Internal per-request trace capture (src/trace); never persisted or serialized. */
+  trace?: TraceCapture;
 }
 
 export interface RequestLogEntry {
@@ -160,6 +164,10 @@ export interface RequestLogEntry {
   transportPhase?: "pre_headers" | "mid_stream" | "terminal_sse";
   /** Whether the terminal came from a real upstream SSE event or a proxy synthetic tail. */
   terminalSource?: "upstream" | "synthetic";
+  /** Key into trace.sqlite when this request's bodies were stored. */
+  traceId?: string;
+  /** Payload-free trace summary (sizes, counts, hashes). */
+  trace?: UsageTraceMeta;
 }
 
 const requestLog: RequestLogEntry[] = [];
@@ -316,6 +324,8 @@ export function requestLogEntryFromPersistedUsage(entry: PersistedUsageEntry): R
     ...(entry.usage ? { usage: entry.usage } : {}),
     ...(entry.totalTokens !== undefined ? { totalTokens: entry.totalTokens } : {}),
     ...(entry.attempts?.length ? { attempts: entry.attempts } : {}),
+    ...(entry.traceId ? { traceId: entry.traceId } : {}),
+    ...(entry.trace ? { trace: entry.trace } : {}),
   };
 }
 
@@ -432,6 +442,8 @@ export function addRequestLog(entry: RequestLogEntry) {
       ...(entry.totalTokens !== undefined ? { totalTokens: entry.totalTokens } : {}),
       ...(entry.attempts?.length ? { attempts: entry.attempts } : {}),
       ...failureDiagnostics,
+      ...(entry.traceId ? { traceId: entry.traceId } : {}),
+      ...(entry.trace ? { trace: entry.trace } : {}),
     });
   } catch {
     /* request logging must never fail a user request */
@@ -679,6 +691,7 @@ export function inspectResponseLogJson(logCtx: RequestLogContext, text: string):
     /* body may not be JSON; request log metadata is best-effort only */
   }
   captureUpstreamError(logCtx, text);
+  appendTraceResponse(logCtx.trace, text);
   if (isUsageDebugEnabled() && logCtx.usageDebugBodyKind === undefined) {
     logCtx.usageDebugBodyKind = "json";
     logCtx.usageDebugBodySample = truncateForDebug(text);
@@ -695,6 +708,7 @@ export function inspectResponseLogSsePayload(logCtx: RequestLogContext, payload:
     /* SSE block payload may not be JSON; metadata inspection is best-effort */
   }
   captureUpstreamError(logCtx, payload);
+  appendTraceResponse(logCtx.trace, payload);
   if (debugEnabled) {
     if (!sseAlreadyMarked) {
       logCtx.usageDebugBodyKind = "sse";
@@ -904,6 +918,13 @@ export function addFinalRequestLog(
     const loggedUsage = aggregate?.usage ?? existing.usage;
     const usageStatus = aggregate?.status ?? existing.status;
     const totalTokens = aggregate?.totalTokens ?? existing.totalTokens;
+    const traced = finalizeTrace(requestId, logCtx, {
+      ...(logCtx.conversationId ? { conversationId: logCtx.conversationId } : {}),
+      provider,
+      model,
+      status: effectiveStatus,
+      timestamp: start,
+    });
     addLog({
       requestId,
       timestamp: start,
@@ -942,6 +963,8 @@ export function addFinalRequestLog(
       ...(logCtx.affinity ? { affinity: logCtx.affinity } : {}),
       ...(logCtx.transportPhase ? { transportPhase: logCtx.transportPhase } : {}),
       ...(logCtx.terminalSource ? { terminalSource: logCtx.terminalSource } : {}),
+      ...(traced.traceId ? { traceId: traced.traceId } : {}),
+      ...(traced.trace ? { trace: traced.trace } : {}),
     });
     if (isUsageDebugEnabled()) {
       appendUsageDebug({

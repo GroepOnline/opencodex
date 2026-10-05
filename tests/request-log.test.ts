@@ -1763,6 +1763,13 @@ describe("request log restart hydrate", () => {
       terminalStatus: "failed",
       closeReason: "terminal",
       upstreamError: "socket connection was closed unexpectedly",
+      traceId: "ocx-revive",
+      trace: {
+        mode: "redacted",
+        stored: true,
+        requestBytes: 42,
+        requestHash: "a".repeat(32),
+      },
     };
     expect(requestLogEntryFromPersistedUsage(persisted)).toEqual({
       requestId: "ocx-revive",
@@ -1786,6 +1793,13 @@ describe("request log restart hydrate", () => {
       terminalStatus: "failed",
       closeReason: "terminal",
       upstreamError: "socket connection was closed unexpectedly",
+      traceId: "ocx-revive",
+      trace: {
+        mode: "redacted",
+        stored: true,
+        requestBytes: 42,
+        requestHash: "a".repeat(32),
+      },
     });
   });
 

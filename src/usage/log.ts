@@ -8,6 +8,7 @@ import {
   normalizePromptCacheRequestObservation,
   type PromptCacheRequestObservation,
 } from "../prompt-cache/observability";
+import { normalizeUsageTraceMeta, type UsageTraceMeta } from "../trace/types";
 
 export type UsageStatus = "reported" | "unreported" | "unsupported" | "estimated";
 
@@ -104,6 +105,10 @@ export interface PersistedUsageEntry {
   closeReason?: "terminal" | "client_cancel" | "non_stream" | "body_stall" | "body_overflow";
   /** Already redacted + capped at capture (request-log.ts redactSecretString().slice(0,500)). */
   upstreamError?: string;
+  /** Key into trace.sqlite; present only when this request's bodies were stored there. */
+  traceId?: string;
+  /** Payload-free trace summary (sizes, counts, hashes); see src/trace. */
+  trace?: UsageTraceMeta;
 }
 
 const KNOWN_USAGE_SURFACES = new Set<NonNullable<PersistedUsageEntry["surface"]>>([
@@ -373,6 +378,10 @@ function normalizeUsageEntry(entry: PersistedUsageEntry): PersistedUsageEntry {
     ...(entry.terminalStatus ? { terminalStatus: entry.terminalStatus } : {}),
     ...(entry.closeReason ? { closeReason: entry.closeReason } : {}),
     ...(entry.upstreamError ? { upstreamError: entry.upstreamError } : {}),
+    ...(typeof entry.traceId === "string" && entry.traceId
+      ? { traceId: capMetadataString(entry.traceId) }
+      : {}),
+    ...(normalizeUsageTraceMeta(entry.trace) ? { trace: normalizeUsageTraceMeta(entry.trace) } : {}),
   };
 }
 
