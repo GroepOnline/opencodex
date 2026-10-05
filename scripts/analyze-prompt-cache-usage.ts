@@ -85,6 +85,7 @@ interface ShapeSummary extends CohortDimensions {
   cacheWriteRatio: number;
 }
 
+/** Describe the analyzer CLI options and their defaults. */
 function usageText(): string {
   return [
     "Usage: bun scripts/analyze-prompt-cache-usage.ts [usage.jsonl|-] [options]",
@@ -98,36 +99,44 @@ function usageText(): string {
   ].join("\n");
 }
 
+/** Narrow parsed JSON values to non-null, non-array objects. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+/** Check for an explicitly stored field without consulting the prototype chain. */
 function hasOwn(value: Record<string, unknown>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
 
+/** Return finite, non-negative numeric usage values, or undefined for invalid data. */
 function nonNegativeNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value >= 0
     ? value
     : undefined;
 }
 
+/** Trim a string dimension, returning undefined when it is absent or blank. */
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+/** Accept a supported analysis window; throw for an unknown range. */
 function parseRange(value: string): RangeName {
   if (value === "7d" || value === "30d" || value === "all") return value;
   throw new Error(`invalid --range value: ${value}`);
 }
 
+/** Parse a decimal result limit from 1 through 200; throw for invalid input. */
 function parseTop(value: string): number {
   if (!/^\d+$/u.test(value)) throw new Error(`invalid --top value: ${value}`);
   const parsed = Number.parseInt(value, 10);
-  if (parsed < 1 || parsed > 200) throw new Error("--top must be between 1 and 200");
+  if (parsed < 1 || parsed > 200)
+    throw new Error("--top must be between 1 and 200");
   return parsed;
 }
 
+/** Parse a non-negative epoch-millisecond or date-string anchor; throw if invalid. */
 function parseNow(value: string): number {
   if (/^\d+$/u.test(value)) {
     const numeric = Number(value);
@@ -138,6 +147,7 @@ function parseNow(value: string): number {
   throw new Error(`invalid --now value: ${value}`);
 }
 
+/** Resolve CLI options and the usage-log path; throw on invalid or extra arguments. */
 function parseArgs(args: string[]): AnalyzerOptions {
   const defaultSource = join(
     process.env.OPENCODEX_HOME?.trim() || join(homedir(), ".opencodex"),
@@ -173,7 +183,8 @@ function parseArgs(args: string[]): AnalyzerOptions {
       continue;
     }
     if (arg.startsWith("--")) throw new Error(`unknown option: ${arg}`);
-    if (positionalSeen) throw new Error("only one usage-log path may be supplied");
+    if (positionalSeen)
+      throw new Error("only one usage-log path may be supplied");
     source = arg;
     positionalSeen = true;
   }
@@ -181,8 +192,17 @@ function parseArgs(args: string[]): AnalyzerOptions {
   return { source, range, top, nowMs, jsonMode, help };
 }
 
+/**
+ * Read cache totals only from successful, provider-reported usage rows.
+ * Prefer explicit reads over legacy cached totals, subtract legacy writes when present,
+ * and reject malformed reads or cache totals exceeding input tokens.
+ */
 function cacheUsage(row: Record<string, unknown>): CacheUsage | undefined {
-  if (row.status !== 200 || row.usageStatus !== "reported" || !isRecord(row.usage)) {
+  if (
+    row.status !== 200 ||
+    row.usageStatus !== "reported" ||
+    !isRecord(row.usage)
+  ) {
     return undefined;
   }
   const input = nonNegativeNumber(row.usage.inputTokens);
@@ -195,28 +215,34 @@ function cacheUsage(row: Record<string, unknown>): CacheUsage | undefined {
     read = explicitRead;
   } else {
     const legacyCached = nonNegativeNumber(row.usage.cachedInputTokens);
-    read = (legacyCached !== undefined && row.usage.cacheCreationInputTokens !== undefined
-      ? Math.max(0, legacyCached - write)
-      : legacyCached) ?? 0;
+    read =
+      (legacyCached !== undefined &&
+      row.usage.cacheCreationInputTokens !== undefined
+        ? Math.max(0, legacyCached - write)
+        : legacyCached) ?? 0;
   }
   if (read + write > input) return undefined;
   return { input, read, write };
 }
 
+/** Compute the inclusive window start in milliseconds, using epoch zero for all history. */
 function sinceFor(range: RangeName, nowMs: number): number {
   if (range === "all") return 0;
   return nowMs - (range === "7d" ? 7 : 30) * 86_400_000;
 }
 
+/** Extract cohort dimensions, preferring the resolved model and marking missing values unknown. */
 function dimensionsFrom(row: Record<string, unknown>): CohortDimensions {
   return {
     adapter: stringValue(row.adapter) ?? "unknown",
     provider: stringValue(row.provider) ?? "unknown",
-    model: stringValue(row.resolvedModel) ?? stringValue(row.model) ?? "unknown",
+    model:
+      stringValue(row.resolvedModel) ?? stringValue(row.model) ?? "unknown",
     surface: stringValue(row.surface) ?? "unknown",
   };
 }
 
+/** Encode adapter, provider, model, and surface as an unambiguous cohort key. */
 function dimensionsKey(dimensions: CohortDimensions): string {
   return JSON.stringify([
     dimensions.adapter,
@@ -226,6 +252,7 @@ function dimensionsKey(dimensions: CohortDimensions): string {
   ]);
 }
 
+/** Initialize usage and conversation counters for a cohort. */
 function emptyCohort(dimensions: CohortDimensions): Cohort {
   return {
     ...dimensions,
@@ -241,10 +268,12 @@ function emptyCohort(dimensions: CohortDimensions): Cohort {
   };
 }
 
+/** Divide by a positive denominator, returning zero when no measurable denominator exists. */
 function ratio(numerator: number, denominator: number): number {
   return denominator > 0 ? numerator / denominator : 0;
 }
 
+/** Classify measured reuse using cache-read, cache-write, and input-volume thresholds. */
 function signal(cohort: Cohort): CohortSignal {
   const readRatio = ratio(cohort.cacheRead, cohort.input);
   const writeRatio = ratio(cohort.cacheWrite, cohort.input);
@@ -254,6 +283,7 @@ function signal(cohort: Cohort): CohortSignal {
   return "mixed";
 }
 
+/** Convert cohort counters into token totals, ratios, and conversation counts. */
 function summarizeCohort(cohort: Cohort): CohortSummary {
   let multiTurnConversations = 0;
   for (const count of cohort.conversations.values()) {
@@ -280,6 +310,7 @@ function summarizeCohort(cohort: Cohort): CohortSummary {
   };
 }
 
+/** Encode the cache settings and fingerprints used to group comparable request shapes. */
 function cacheShapeKey(observation: PromptCacheRequestObservation): string {
   return JSON.stringify([
     observation.mode,
@@ -293,6 +324,7 @@ function cacheShapeKey(observation: PromptCacheRequestObservation): string {
   ]);
 }
 
+/** Summarize a shape bucket, measuring tokens only from valid reported-success rows. */
 function summarizeShape(bucket: ShapeBucket): ShapeSummary {
   const pc = bucket.observation;
   let input = 0;
@@ -328,6 +360,7 @@ function summarizeShape(bucket: ShapeBucket): ShapeSummary {
   };
 }
 
+/** Render a fractional ratio as a percentage with one decimal place. */
 function formatPercent(value: number): string {
   return (value * 100).toFixed(1) + "%";
 }
@@ -350,12 +383,14 @@ interface AnalysisState {
   totals: AnalysisTotals;
 }
 
+/** Read UTF-8 usage JSONL from the selected file or stdin; propagate read errors. */
 function readUsageSource(options: AnalyzerOptions): string {
   return options.source === "-"
     ? readFileSync(0, "utf8")
     : readFileSync(options.source, "utf8");
 }
 
+/** Parse JSONL objects, skipping blank lines and counting malformed or non-object rows. */
 function parseUsageRows(text: string): ParsedUsageRows {
   const rows: Record<string, unknown>[] = [];
   let invalidLines = 0;
@@ -372,18 +407,23 @@ function parseUsageRows(text: string): ParsedUsageRows {
   return { rows, invalidLines };
 }
 
+/** Select rows with valid timestamps inside the inclusive analysis window. */
 function rowsInWindow(
   rows: readonly Record<string, unknown>[],
   since: number,
   nowMs: number,
 ): Record<string, unknown>[] {
-  return rows.filter(row => {
+  return rows.filter((row) => {
     const timestamp = nonNegativeNumber(row.timestamp);
     return timestamp !== undefined && timestamp >= since && timestamp <= nowMs;
   });
 }
 
-function recordConversation(cohort: Cohort, row: Record<string, unknown>): void {
+/** Increment a cohort conversation count when the row has a non-blank identifier. */
+function recordConversation(
+  cohort: Cohort,
+  row: Record<string, unknown>,
+): void {
   const conversationId = stringValue(row.conversationId);
   if (!conversationId) return;
   cohort.conversations.set(
@@ -392,6 +432,7 @@ function recordConversation(cohort: Cohort, row: Record<string, unknown>): void 
   );
 }
 
+/** Accumulate validated usage into cohort and global counters, ignoring absent measurements. */
 function recordCacheUsage(
   cohort: Cohort,
   usage: CacheUsage | undefined,
@@ -411,6 +452,7 @@ function recordCacheUsage(
   totals.write += usage.write;
 }
 
+/** Validate a row observation and add it to the matching cohort and cache-shape bucket. */
 function recordCacheShape(
   buckets: Map<string, ShapeBucket>,
   key: string,
@@ -428,6 +470,7 @@ function recordCacheShape(
   buckets.set(shapeKey, { dimensions, observation, rows: [row] });
 }
 
+/** Group selected rows into cohorts and shapes while accumulating valid usage totals. */
 function analyzeRows(rows: readonly Record<string, unknown>[]): AnalysisState {
   const cohorts = new Map<string, Cohort>();
   const shapeBuckets = new Map<string, ShapeBucket>();
@@ -452,25 +495,31 @@ function analyzeRows(rows: readonly Record<string, unknown>[]): AnalysisState {
   return { cohorts, shapeBuckets, totals };
 }
 
-function topCohorts(cohorts: Map<string, Cohort>, top: number): CohortSummary[] {
+/** Select cohorts with measured successes, ordered by descending input tokens and capped at top. */
+function topCohorts(
+  cohorts: Map<string, Cohort>,
+  top: number,
+): CohortSummary[] {
   return [...cohorts.values()]
-    .filter(cohort => cohort.reportedSuccess > 0)
+    .filter((cohort) => cohort.reportedSuccess > 0)
     .sort((a, b) => b.input - a.input)
     .slice(0, top)
     .map(summarizeCohort);
 }
 
+/** Select cache shapes with measured successes, ordered by descending input tokens and capped at top. */
 function topShapes(
   buckets: Map<string, ShapeBucket>,
   top: number,
 ): ShapeSummary[] {
   return [...buckets.values()]
     .map(summarizeShape)
-    .filter(shape => shape.reportedSuccess > 0)
+    .filter((shape) => shape.reportedSuccess > 0)
     .sort((a, b) => b.inputTokens - a.inputTokens)
     .slice(0, top);
 }
 
+/** Assemble window metadata, the measurement boundary, totals, and ranked summaries. */
 function buildOutput(
   options: AnalyzerOptions,
   since: number,
@@ -507,66 +556,109 @@ function buildOutput(
 
 type AnalyzerOutput = ReturnType<typeof buildOutput>;
 
+/** Print the analysis window, aggregate usage, ranked cohorts, and cache shapes. */
 function printHumanOutput(output: AnalyzerOutput): void {
   console.log("Prompt cache usage (" + output.range + ")");
   console.log("window: " + output.windowStart + " .. " + output.windowEnd);
   console.log("proof: " + output.proofBoundary);
   console.log(
-    "reported-success=" + output.summary.reportedSuccess
-    + " input=" + Math.round(output.summary.inputTokens)
-    + " read=" + Math.round(output.summary.cacheReadTokens)
-    + " (" + formatPercent(output.summary.cacheReadRatio) + ")"
-    + " write=" + Math.round(output.summary.cacheWriteTokens)
-    + " (" + formatPercent(output.summary.cacheWriteRatio) + ")",
+    "reported-success=" +
+      output.summary.reportedSuccess +
+      " input=" +
+      Math.round(output.summary.inputTokens) +
+      " read=" +
+      Math.round(output.summary.cacheReadTokens) +
+      " (" +
+      formatPercent(output.summary.cacheReadRatio) +
+      ")" +
+      " write=" +
+      Math.round(output.summary.cacheWriteTokens) +
+      " (" +
+      formatPercent(output.summary.cacheWriteRatio) +
+      ")",
   );
   console.log("");
   console.log("Top cohorts by measured input:");
   for (const item of output.cohorts) {
     console.log(
-      item.signal.padEnd(11)
-      + " " + item.adapter + "/" + item.provider + "/" + item.model
-      + " surface=" + item.surface
-      + " input=" + item.inputTokens
-      + " read=" + formatPercent(item.cacheReadRatio)
-      + " write=" + formatPercent(item.cacheWriteRatio)
-      + " hits=" + formatPercent(item.cacheHitRequestRatio)
-      + " n=" + item.reportedSuccess + "/" + item.requests,
+      item.signal.padEnd(11) +
+        " " +
+        item.adapter +
+        "/" +
+        item.provider +
+        "/" +
+        item.model +
+        " surface=" +
+        item.surface +
+        " input=" +
+        item.inputTokens +
+        " read=" +
+        formatPercent(item.cacheReadRatio) +
+        " write=" +
+        formatPercent(item.cacheWriteRatio) +
+        " hits=" +
+        formatPercent(item.cacheHitRequestRatio) +
+        " n=" +
+        item.reportedSuccess +
+        "/" +
+        item.requests,
     );
   }
   printCacheShapes(output.cacheShapes);
 }
 
+/** Print measured cache shapes or explain that the window contains no observations. */
 function printCacheShapes(shapes: readonly ShapeSummary[]): void {
   console.log("");
   if (shapes.length === 0) {
-    console.log("No promptCache observations in this window (historical rows predate instrumentation).");
+    console.log(
+      "No promptCache observations in this window (historical rows predate instrumentation).",
+    );
     return;
   }
 
   console.log("Observed outbound cache shapes:");
   for (const item of shapes) {
     console.log(
-      item.adapter + "/" + item.provider + "/" + item.model
-      + " surface=" + item.surface
-      + " mode=" + item.mode
-      + " tools=" + item.toolCount
-      + " bp=" + item.breakpointCount
-      + " input=" + item.inputTokens
-      + " read=" + formatPercent(item.cacheReadRatio)
-      + " write=" + formatPercent(item.cacheWriteRatio)
-      + " n=" + item.reportedSuccess + "/" + item.requests
-      + " prefix=" + (item.stablePrefixFingerprint ?? "-")
-      + " toolsHash=" + (item.toolsFingerprint ?? "-"),
+      item.adapter +
+        "/" +
+        item.provider +
+        "/" +
+        item.model +
+        " surface=" +
+        item.surface +
+        " mode=" +
+        item.mode +
+        " tools=" +
+        item.toolCount +
+        " bp=" +
+        item.breakpointCount +
+        " input=" +
+        item.inputTokens +
+        " read=" +
+        formatPercent(item.cacheReadRatio) +
+        " write=" +
+        formatPercent(item.cacheWriteRatio) +
+        " n=" +
+        item.reportedSuccess +
+        "/" +
+        item.requests +
+        " prefix=" +
+        (item.stablePrefixFingerprint ?? "-") +
+        " toolsHash=" +
+        (item.toolsFingerprint ?? "-"),
     );
   }
 }
 
+/** Run the analyzer and return zero on success or help, or two for invalid CLI arguments. */
 function main(): number {
   let options: AnalyzerOptions;
   try {
     options = parseArgs(Bun.argv.slice(2));
   } catch (error) {
-    const message = error instanceof Error ? error.message : "invalid arguments";
+    const message =
+      error instanceof Error ? error.message : "invalid arguments";
     console.error(message);
     console.error(usageText());
     return 2;

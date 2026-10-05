@@ -22,6 +22,7 @@ export interface PromptCacheRequestObservation {
   verbosity?: PromptCacheVerbosity;
 }
 
+/** Narrow a value to a non-null, non-array object before reading request fields. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
@@ -33,7 +34,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function canonicalJson(value: unknown): string | undefined {
   if (value === null) return "null";
   if (Array.isArray(value)) {
-    const items = value.map(item => canonicalJson(item) ?? "null");
+    const items = value.map((item) => canonicalJson(item) ?? "null");
     return "[" + items.join(",") + "]";
   }
   if (isRecord(value)) {
@@ -47,24 +48,29 @@ function canonicalJson(value: unknown): string | undefined {
   }
   if (typeof value === "number" && !Number.isFinite(value)) return "null";
   if (
-    typeof value === "string"
-    || typeof value === "number"
-    || typeof value === "boolean"
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
   ) {
     return JSON.stringify(value);
   }
   return undefined;
 }
 
+/** Hash canonical JSON to 24 lowercase hex characters, or return undefined for unsupported values. */
 function fingerprint(value: unknown): string | undefined {
   const serialized = canonicalJson(value);
   if (serialized === undefined) return undefined;
   return createHash("sha256").update(serialized).digest("hex").slice(0, 24);
 }
 
+/** Recursively count explicit prompt-cache breakpoints without descending into breakpoint metadata. */
 function countExplicitBreakpoints(value: unknown): number {
   if (Array.isArray(value)) {
-    return value.reduce((total, item) => total + countExplicitBreakpoints(item), 0);
+    return value.reduce(
+      (total, item) => total + countExplicitBreakpoints(item),
+      0,
+    );
   }
   if (!isRecord(value)) return 0;
   const breakpoint = value.prompt_cache_breakpoint;
@@ -76,6 +82,7 @@ function countExplicitBreakpoints(value: unknown): number {
   return count;
 }
 
+/** Collect instructions and consecutive leading developer/system messages for fingerprinting. */
 function stablePrefix(body: Record<string, unknown>): unknown[] {
   const prefix: unknown[] = [];
   if (body.instructions !== undefined) {
@@ -90,37 +97,52 @@ function stablePrefix(body: Record<string, unknown>): unknown[] {
     initialDeveloperItems.push(item);
   }
   if (initialDeveloperItems.length > 0) {
-    prefix.push({ kind: "initial_developer_messages", value: initialDeveloperItems });
+    prefix.push({
+      kind: "initial_developer_messages",
+      value: initialDeveloperItems,
+    });
   }
   return prefix;
 }
 
-function promptCacheVerbosity(value: unknown): PromptCacheVerbosity | undefined {
+/** Accept only supported verbosity labels so arbitrary caller text is omitted from diagnostics. */
+function promptCacheVerbosity(
+  value: unknown,
+): PromptCacheVerbosity | undefined {
   if (value === "low" || value === "medium" || value === "high") return value;
   return undefined;
 }
 
+/** Check for non-whitespace string content without retaining the string value. */
 function hasNonEmptyString(value: unknown): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function promptCacheMode(options: Record<string, unknown> | undefined): PromptCacheMode {
+/** Read a recognized outbound cache mode, falling back to default for absent or unknown values. */
+function promptCacheMode(
+  options: Record<string, unknown> | undefined,
+): PromptCacheMode {
   if (options?.mode === "explicit") return "explicit";
   if (options?.mode === "implicit") return "implicit";
   return "default";
 }
 
+/** Extract the supported 30-minute TTL from outbound cache options. */
 function promptCacheTtl(
   options: Record<string, unknown> | undefined,
 ): PromptCacheRequestObservation["ttl"] {
   return options?.ttl === "30m" ? "30m" : undefined;
 }
 
-function promptCacheLegacyRetention(value: unknown): PromptCacheLegacyRetention | undefined {
+/** Accept only the supported legacy retention labels, omitting unknown values. */
+function promptCacheLegacyRetention(
+  value: unknown,
+): PromptCacheLegacyRetention | undefined {
   if (value === "in_memory" || value === "24h") return value;
   return undefined;
 }
 
+/** Count input-array items, treating absent input as zero and other input values as one. */
 function promptCacheInputItemCount(input: unknown): number {
   if (Array.isArray(input)) return input.length;
   return input === undefined ? 0 : 1;
@@ -133,6 +155,7 @@ interface PromptCacheObservationExtras {
   verbosity?: PromptCacheVerbosity;
 }
 
+/** Fingerprint present tools, stable prefix, and text format, and include supported verbosity. */
 function promptCacheObservationExtras(input: {
   tools: unknown[];
   prefix: unknown[];
@@ -140,8 +163,10 @@ function promptCacheObservationExtras(input: {
   verbosity: PromptCacheVerbosity | undefined;
 }): PromptCacheObservationExtras {
   const extras: PromptCacheObservationExtras = {};
-  if (input.tools.length > 0) extras.toolsFingerprint = fingerprint(input.tools);
-  if (input.prefix.length > 0) extras.stablePrefixFingerprint = fingerprint(input.prefix);
+  if (input.tools.length > 0)
+    extras.toolsFingerprint = fingerprint(input.tools);
+  if (input.prefix.length > 0)
+    extras.stablePrefixFingerprint = fingerprint(input.prefix);
   if (input.textFormat !== undefined) {
     extras.textFormatFingerprint = fingerprint(input.textFormat);
   }
@@ -149,6 +174,11 @@ function promptCacheObservationExtras(input: {
   return extras;
 }
 
+/**
+ * Describe cache settings and request structure from the final outbound Responses body.
+ * Retain fingerprints and presence flags rather than raw content or cache keys.
+ * Return undefined for non-object input without changing the supplied body.
+ */
 export function observeOpenAiResponsesPromptCache(
   value: unknown,
 ): PromptCacheRequestObservation | undefined {
@@ -182,15 +212,19 @@ export function observeOpenAiResponsesPromptCache(
   };
 }
 
+/** Check that a persisted fingerprint contains exactly 24 lowercase hexadecimal characters. */
 function isFingerprint(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{24}$/u.test(value);
 }
 
+/** Accept persisted integer counts from zero through one million. */
 function isBoundedCount(value: unknown): value is number {
-  return typeof value === "number"
-    && Number.isInteger(value)
-    && value >= 0
-    && value <= 1_000_000;
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= 1_000_000
+  );
 }
 
 interface PromptCacheObservationCore {
@@ -203,27 +237,38 @@ interface PromptCacheObservationCore {
   toolCount: number;
 }
 
+/** Validate the required boolean flags and bounded counts of a persisted observation. */
 function hasPromptCacheObservationCore(
   value: Record<string, unknown>,
 ): value is Record<string, unknown> & PromptCacheObservationCore {
-  return typeof value.keyPresent === "boolean"
-    && typeof value.prewarm === "boolean"
-    && typeof value.comparisonRequested === "boolean"
-    && typeof value.previousResponseIdPresent === "boolean"
-    && isBoundedCount(value.breakpointCount)
-    && isBoundedCount(value.inputItemCount)
-    && isBoundedCount(value.toolCount);
+  return (
+    typeof value.keyPresent === "boolean" &&
+    typeof value.prewarm === "boolean" &&
+    typeof value.comparisonRequested === "boolean" &&
+    typeof value.previousResponseIdPresent === "boolean" &&
+    isBoundedCount(value.breakpointCount) &&
+    isBoundedCount(value.inputItemCount) &&
+    isBoundedCount(value.toolCount)
+  );
 }
 
-function normalizedPromptCacheMode(value: unknown): PromptCacheMode | undefined {
-  if (value === "default" || value === "implicit" || value === "explicit") return value;
+/** Accept a persisted cache-mode label, returning undefined for unrecognized values. */
+function normalizedPromptCacheMode(
+  value: unknown,
+): PromptCacheMode | undefined {
+  if (value === "default" || value === "implicit" || value === "explicit")
+    return value;
   return undefined;
 }
 
-function normalizedPromptCacheTtl(value: unknown): PromptCacheRequestObservation["ttl"] {
+/** Retain only the supported 30-minute TTL from a persisted observation. */
+function normalizedPromptCacheTtl(
+  value: unknown,
+): PromptCacheRequestObservation["ttl"] {
   return value === "30m" ? "30m" : undefined;
 }
 
+/** Copy only well-formed fingerprints and supported verbosity from persisted metadata. */
 function normalizedPromptCacheExtras(
   value: Record<string, unknown>,
 ): PromptCacheObservationExtras {
@@ -242,6 +287,10 @@ function normalizedPromptCacheExtras(
   return extras;
 }
 
+/**
+ * Validate untrusted persisted metadata and rebuild an allowlisted version-1 observation.
+ * Reject invalid versions or required fields; omit unknown fields and invalid optional values.
+ */
 export function normalizePromptCacheRequestObservation(
   value: unknown,
 ): PromptCacheRequestObservation | undefined {
