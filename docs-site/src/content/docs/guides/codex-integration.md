@@ -271,21 +271,29 @@ rows below them.
 ### Catalog troubleshooting
 
 If a model is missing from Codex, or the catalog order/visibility looks wrong, check in order:
-\n2. **Active catalog ownership** — while OCX owns routing, the root `model_catalog_json` should point
+
+1. **Active catalog ownership** — while OCX owns routing, the root `model_catalog_json` should point
    to `$CODEX_HOME/opencodex-catalog.json`. A parallel `native-plus-ocx.json` or other merged file
    is drift. Run `ocx sync` (or `ocx ensure`) to repair the managed pointer; `ocx stop` restores
-   the pre-OCX user value from the journal.\n2. **`selectedModels`** on the provider — a non-empty allowlist exposes only those ids to Codex;
+   the pre-OCX user value from the journal.
+2. **`selectedModels`** on the provider — a non-empty allowlist exposes only those ids to Codex;
    empty or omitted exposes all discovered models. An id not in the allowlist never reaches the
-   catalog.\n3. **`disabledModels`** (top level) — hides models from both the catalog and `/v1/models`, and flips
-   bare native GPT slugs to `visibility: "hide"`.\n4. **`liveModels: false` with empty `models`** — when live discovery is off and `models` is empty or
-   omitted, opencodex exposes no routed models for that provider.\n5. **Cursor `GetUsableModels`** — the Cursor adapter discovers models through its protobuf
+   catalog.
+3. **`disabledModels`** (top level) — hides models from both the catalog and `/v1/models`, and flips
+   bare native GPT slugs to `visibility: "hide"`.
+4. **`liveModels: false` with empty `models`** — when live discovery is off and `models` is empty or
+   omitted, opencodex exposes no routed models for that provider.
+5. **Cursor `GetUsableModels`** — the Cursor adapter discovers models through its protobuf
    `GetUsableModels` RPC, not `/models`, so a Cursor-side change can alter which ids are visible
-   independently of other providers.\n6. **Cache and `ocx sync`** — live catalogs are cached for about five minutes (`modelCacheTtlMs`,
-   default `300000`). Run `ocx sync` to force a fresh fetch and rewrite the catalog immediately.\n7. **Running Codex `app-server`** — rewriting the on-disk catalog is not enough while a long-lived
+   independently of other providers.
+6. **Cache and `ocx sync`** — live catalogs are cached for about five minutes (`modelCacheTtlMs`,
+   default `300000`). Run `ocx sync` to force a fresh fetch and rewrite the catalog immediately.
+7. **Running Codex `app-server`** — rewriting the on-disk catalog is not enough while a long-lived
    Codex `app-server` (Desktop / CLI background host) keeps the previous list in memory. `ocx sync`
    and `ocx sync-cache` warn when those processes are detected. Restart them with
    `ocx sync --restart-codex` (or stop the matching `app-server` processes yourself), then let Codex
-   recreate them so the new list appears.\n8. **`hideUnavailableModels`** — when enabled, a provider that is dead (all accounts need reauth, or
+   recreate them so the new list appears.
+8. **`hideUnavailableModels`** — when enabled, a provider that is dead (all accounts need reauth, or
    discovery fails N times) drops from `/v1/models` and the new-session picker while the admin Models
    tab still shows last-good rows with a reason. Codex and Cursor cache their pickers; start a **new
    session** (or restart the client / run `ocx sync --restart-codex`) before expecting the filtered
