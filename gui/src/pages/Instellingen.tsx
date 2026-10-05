@@ -1,12 +1,19 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useI18n, LOCALES, type Locale } from "../i18n/shared";
 import { IconX } from "../icons";
 import { applyTheme, readTheme, type Theme } from "../theme";
+import { Switch } from "../ui";
 import { Modal, ModalCard, ModalHead } from "../components/primitives/modal";
 import {
   SegmentedControl,
   SegmentedOption,
 } from "../components/primitives/segmented-control";
+import {
+  isPostHogTelemetryAllowed,
+  readPostHogPreference,
+  writePostHogPreference,
+  type PostHogPreference,
+} from "../posthog";
 
 const THEMES: {
   value: Theme;
@@ -105,7 +112,27 @@ export default function Instellingen({
 }) {
   const { locale, setLocale, t } = useI18n();
   const [theme, setTheme] = useState<Theme>(() => readTheme());
+  const [telemetry, setTelemetry] = useState<PostHogPreference>(() =>
+    typeof window === "undefined" ? null : readPostHogPreference(localStorage),
+  );
   const titleId = "settings-title";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    writePostHogPreference(localStorage, telemetry);
+    if (telemetry === "0") {
+      // Reload applies the opt-out immediately: posthog-js is initialized
+      // once at startup and keeps queueing without a page load.
+      window.location.reload();
+    }
+  }, [telemetry]);
+
+  const telemetryOn = isPostHogTelemetryAllowed(
+    typeof window === "undefined" ? undefined : localStorage,
+    typeof navigator === "undefined"
+      ? undefined
+      : (navigator.doNotTrack ?? null),
+  );
 
   return (
     <Modal
@@ -155,6 +182,19 @@ export default function Instellingen({
             }}
             label={t("theme.label")}
             optionLabel={(key) => t(key)}
+          />
+        </SettingRow>
+
+        <SettingRow
+          title={t("telemetry.label")}
+          description={t(
+            telemetryOn ? "telemetry.stateOn" : "telemetry.stateOff",
+          )}
+        >
+          <Switch
+            on={telemetryOn}
+            onClick={() => setTelemetry(telemetry === "0" ? "1" : "0")}
+            label={t("telemetry.label")}
           />
         </SettingRow>
       </ModalCard>
