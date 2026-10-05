@@ -576,8 +576,8 @@ export async function injectCodexConfig(port: number, config?: OcxConfig, option
     // original pre-OCX baseline for reversible cleanup of still-owned state.
     return {
       success: true,
-      message: `⚠️ Codex routing and catalog NOT injected: config.toml has a user-owned root openai_base_url.\n`
-        + `  OpenCodex leaves both routing and model_catalog_json untouched to avoid split ownership.\n`
+      message: `⚠️ Codex routing NOT injected: config.toml has a user-owned root openai_base_url.\n`
+        + `  Codex model catalog is also left untouched to avoid split ownership.\n`
         + `  To let OpenCodex manage native Codex plus routed providers together, remove that root override and rerun 'ocx start'.`,
     };
   }
