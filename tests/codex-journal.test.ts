@@ -287,7 +287,7 @@ describe("codex-journal", () => {
         const configPath = path.join(process.env.CODEX_HOME, "config.toml");
         fs.writeFileSync(
           configPath,
-          'openai_base_url = "https://user-gateway.example/v1"\nmodel = "gpt-5.5"\n',
+          'openai_base_url = "https://user-gateway.example/v1"\\nmodel = "gpt-5.5"\\n',
           "utf8",
         );
         const second = await injectCodexConfig(
