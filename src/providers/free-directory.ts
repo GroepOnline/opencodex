@@ -55,6 +55,8 @@ export const FREE_PROVIDER_ACCESS_GROUPS = {
     "sparkdesk",
     "t3-web",
     "uncloseai",
+    "unorouter",
+    "chatanywhere",
   ],
   "recurring-uncapped": [
     "agnes",
@@ -100,6 +102,7 @@ export const FREE_PROVIDER_ACCESS_GROUPS = {
     "stepfun",
     "together",
     "vertex",
+    "nearai",
   ],
 } as const satisfies Record<ProviderAccessGroup, readonly string[]>;
 
@@ -211,6 +214,16 @@ const CONNECTABLE: Record<string, ConnectableOverride> = {
       modelsUrl: "https://api.cohere.com/compatibility/v1/models",
     },
   ),
+  chatanywhere: openAi(
+    "https://api.chatanywhere.tech/v1",
+    "https://github.com/chatanywhere/GPT_API_free",
+    {
+      verification: "official",
+      documentationUrl: "https://github.com/chatanywhere/GPT_API_free",
+      modelsUrl: "https://api.chatanywhere.tech/v1/models",
+      note: "Free shared keys are claimed via the documented repo flow; bring your own key.",
+    },
+  ),
   friendliai: openAi(
     "https://api.friendli.ai/serverless/v1",
     "https://suite.friendli.ai",
@@ -297,6 +310,17 @@ const CONNECTABLE: Record<string, ConnectableOverride> = {
     "https://inference.liquid.ai/v1",
     "https://playground.liquid.ai",
     { modelsUrl: "https://inference.liquid.ai/v1/models" },
+  ),
+  llm7: openAi(
+    "https://api.llm7.io/v1",
+    "https://github.com/chigwell/llm7.io",
+    {
+      verification: "primary",
+      documentationUrl: "https://github.com/chigwell/llm7.io",
+      modelsUrl: "https://api.llm7.io/v1/models",
+      keyOptional: true,
+      note: "Keyless public endpoint serving a live model list; treat as public-only.",
+    },
   ),
   mistral: openAi(
     "https://api.mistral.ai/v1",
@@ -444,6 +468,19 @@ const CONNECTABLE: Record<string, ConnectableOverride> = {
     "https://pollinations.ai",
     { keyOptional: true },
   ),
+  navy: openAi("https://api.navy/v1", "https://api.navy", {
+    verification: "primary",
+    documentationUrl: "https://api.navy",
+    modelsUrl: "https://api.navy/v1/models",
+    keyOptional: true,
+    note: "Keyless endpoint with token_multiplier: 0 free models in the live list; treat as public-only.",
+  }),
+  nearai: openAi("https://cloud-api.near.ai/v1", "https://docs.near.ai", {
+    verification: "official",
+    documentationUrl: "https://docs.near.ai",
+    modelsUrl: "https://cloud-api.near.ai/v1/models",
+    note: "OpenAI-compatible NEAR AI Cloud; requires a NEAR account with free tier.",
+  }),
   reka: openAi("https://api.reka.ai/v1", "https://platform.reka.ai"),
   sambanova: openAi(
     "https://api.sambanova.ai/v1",
@@ -527,6 +564,27 @@ const CONNECTABLE: Record<string, ConnectableOverride> = {
   routeway: openAi("https://api.routeway.ai/v1", "https://routeway.ai", {
     modelsUrl: "https://api.routeway.ai/v1/models",
   }),
+  uncloseai: openAi(
+    "https://hermes.ai.unturf.com/v1",
+    "https://uncloseai.com/inference.html",
+    {
+      verification: "official",
+      documentationUrl: "https://uncloseai.com/inference.html",
+      modelsUrl: "https://hermes.ai.unturf.com/v1/models",
+      keyOptional: true,
+      note: "Hermes endpoint is public (3 rps/IP); the qwen.ai.unturf.com endpoint requires a key.",
+    },
+  ),
+  unorouter: openAi(
+    "https://api.unorouter.com/v1",
+    "https://unorouter.com/en/token",
+    {
+      verification: "primary",
+      documentationUrl: "https://unorouter.com/en/token",
+      modelsUrl: "https://api.unorouter.com/v1/models",
+      note: "Free :free-suffixed models (e.g. glm-4.5-flash:free); bring your own key.",
+    },
+  ),
   sealion: openAi("https://api.sea-lion.ai/v1", "https://sea-lion.ai", {
     discovery: "static",
     liveModels: false,
@@ -759,6 +817,7 @@ const LABELS: Record<string, string> = {
   bazaarlink: "BazaarLink",
   blackbox: "Blackbox",
   bluesminds: "Bluesminds",
+  chatanywhere: "ChatAnywhere",
   "cloudflare-ai": "Cloudflare AI",
   coze: "Coze",
   "duckduckgo-web": "DuckDuckGo Web",
@@ -772,6 +831,8 @@ const LABELS: Record<string, string> = {
   "inference-net": "Inference.net",
   llm7: "LLM7",
   "muse-spark-web": "Muse Spark Web",
+  navy: "NavyAI",
+  nearai: "NEAR AI Cloud",
   nlpcloud: "NLP Cloud",
   "ollama-cloud": "Ollama Cloud",
   ovhcloud: "OVHcloud",
@@ -780,6 +841,7 @@ const LABELS: Record<string, string> = {
   "qwen-web": "Qwen Web",
   "t3-web": "T3 Web",
   uncloseai: "UncloseAI",
+  unorouter: "UnoRouter",
   ainative: "AI Native",
   baidu: "Baidu Qianfan",
   glm: "Z.AI GLM",

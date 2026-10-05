@@ -45,6 +45,12 @@ const EXPECTED_KEY_PROVIDER_IDS = [
   "tokenharbor",
   "orcarouter",
   "bizrouter",
+  "nearai",
+  "unorouter",
+  "chatanywhere",
+  "uncloseai",
+  "llm7",
+  "navy",
   "groq",
   "google",
   "google-vertex",
@@ -726,6 +732,9 @@ describe("provider registry parity", () => {
     expect(litellm?.authKind).toBe("key");
     expect(providerConfigSeed(litellm!).keyOptional).toBe(true);
     expect(optionalKeyProviders).toEqual([
+      "uncloseai",
+      "llm7",
+      "navy",
       "litellm",
       "opencode-free",
       "mimo-free",
@@ -743,6 +752,12 @@ describe("provider registry parity", () => {
     expect(nvidia?.keyOptional).toBeUndefined();
     expect(freeTierProviders).toEqual([
       "tokenharbor",
+      "nearai",
+      "unorouter",
+      "chatanywhere",
+      "uncloseai",
+      "llm7",
+      "navy",
       "nvidia",
       "cloudflare-workers-ai",
       "omniroute",

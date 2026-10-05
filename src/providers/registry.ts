@@ -1249,6 +1249,89 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     note: "Korean enterprise LLM gateway. Per-key allowed models are discovered live from /v1/models. Full catalog: https://bizrouter.ai/models",
   },
   {
+    // NEAR AI Cloud (cloud-api.near.ai): OpenAI-compatible inference with live
+    // /v1/models discovery. Verified 2026-10-05: official docs state
+    // OpenAI-compatibility; the models endpoint serves a live list.
+    id: "nearai",
+    label: "NEAR AI Cloud",
+    adapter: "openai-chat",
+    baseUrl: "https://cloud-api.near.ai/v1",
+    authKind: "key",
+    dashboardUrl: "https://docs.near.ai",
+    liveModels: true,
+    freeTier: true,
+    note: "Requires a NEAR account with free tier.",
+  },
+  {
+    // UnoRouter (api.unorouter.com): OpenAI-compatible router with live /v1/models.
+    // Verified 2026-10-05: the unauthenticated endpoint returns 401 with key-creation
+    // guidance (Bearer scheme), incl. free :free-suffixed models.
+    id: "unorouter",
+    label: "UnoRouter",
+    adapter: "openai-chat",
+    baseUrl: "https://api.unorouter.com/v1",
+    authKind: "key",
+    dashboardUrl: "https://unorouter.com/en/token",
+    liveModels: true,
+    freeTier: true,
+  },
+  {
+    // ChatAnywhere (api.chatanywhere.tech): community free-key gateway with live
+    // /v1/models. Verified 2026-10-05: official repo documents the base URL and
+    // the free-key claim flow.
+    id: "chatanywhere",
+    label: "ChatAnywhere",
+    adapter: "openai-chat",
+    baseUrl: "https://api.chatanywhere.tech/v1",
+    authKind: "key",
+    dashboardUrl: "https://github.com/chatanywhere/GPT_API_free",
+    liveModels: true,
+    freeTier: true,
+  },
+  {
+    // UncloseAI hermes endpoint (hermes.ai.unturf.com): public keyless OpenAI-compatible
+    // endpoint with live /v1/models. Verified 2026-10-05: official inference docs
+    // describe both endpoints; the qwen sibling requires a key.
+    id: "uncloseai",
+    label: "UncloseAI",
+    adapter: "openai-chat",
+    baseUrl: "https://hermes.ai.unturf.com/v1",
+    authKind: "key",
+    keyOptional: true,
+    dashboardUrl: "https://uncloseai.com/inference.html",
+    liveModels: true,
+    freeTier: true,
+    note: "Hermes endpoint is public (3 rps/IP); the qwen endpoint needs a key.",
+  },
+  {
+    // LLM7 (api.llm7.io): keyless public OpenAI-compatible endpoint with live
+    // /v1/models. Verified 2026-10-05: official repo confirms the base URL.
+    id: "llm7",
+    label: "LLM7",
+    adapter: "openai-chat",
+    baseUrl: "https://api.llm7.io/v1",
+    authKind: "key",
+    keyOptional: true,
+    dashboardUrl: "https://github.com/chigwell/llm7.io",
+    liveModels: true,
+    freeTier: true,
+    note: "Keyless public endpoint; treat as public-only.",
+  },
+  {
+    // NavyAI (api.navy): keyless endpoint with token_multiplier: 0 free models in the
+    // live /v1/models list. Verified 2026-10-05 against the live endpoint.
+    id: "navy",
+    label: "NavyAI",
+    adapter: "openai-chat",
+    baseUrl: "https://api.navy/v1",
+    authKind: "key",
+    keyOptional: true,
+    dashboardUrl: "https://api.navy",
+    liveModels: true,
+    freeTier: true,
+    note: "Keyless endpoint with free models in the live list; treat as public-only.",
+  },
+  {
     id: "groq",
     label: "Groq",
     adapter: "openai-chat",
