@@ -51,11 +51,6 @@ const EXPECTED_KEY_PROVIDER_IDS = [
   "azure-openai",
   "deepseek",
   "cerebras",
-  "cohere",
-  "friendliai",
-  "sambanova",
-  "nebius",
-  "novita",
   "together",
   "fireworks",
   "firepass",
@@ -748,7 +743,6 @@ describe("provider registry parity", () => {
     expect(nvidia?.keyOptional).toBeUndefined();
     expect(freeTierProviders).toEqual([
       "tokenharbor",
-      "cohere",
       "nvidia",
       "cloudflare-workers-ai",
       "omniroute",
