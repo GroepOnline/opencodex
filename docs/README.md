@@ -1,8 +1,12 @@
-# Historical Notes
+Documents
+=========
 
-This folder contains investigations and diagnostic notes. It is not the primary user manual and it
-is not the maintainer source of truth for current invariants.
-
-- Public user workflows live in [`../docs-site/`](../docs-site).
-- Current maintainer invariants live in [`../structure/`](../structure).
-- Keep files here when the detail is useful for archaeology, debugging, or source research.
+- [Checks](checks.md): Full list of all checks done by actionlint with example inputs, outputs, and playground links.
+- [Installation](install.md): Installation instructions. Prebuilt binaries, Homebrew package, a Docker image, building from
+  source, a download script (for CI) are available.
+- [Usage](usage.md): How to use `actionlint` command locally or on GitHub Actions, the online playground, an official Docker
+  image, and integrations with reviewdog, Problem Matchers, super-linter, pre-commit.
+- [Configuration](config.md): How to configure actionlint behavior. Currently, only labels of self-hosted runners can be
+  configured.
+- [Go API](api.md): How to use actionlint as Go library.
+- [References](reference.md): Links to resources.
