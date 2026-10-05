@@ -31,6 +31,28 @@ The proxy listens on port `10100` by default and serves `POST /v1/responses`,
 `POST /v1/responses/compact`, `POST /v1/images/generations`, `POST /v1/images/edits`,
 `GET /v1/models`, `GET /healthz`, and the `/api/*` management surface.
 
+### Native Codex and OpenCodex together
+
+The loopback setup is intentionally **native-first**. You stay signed in to Codex with your normal
+ChatGPT/Codex account, threads keep the native `openai` provider id, and native OpenAI models remain
+bare ids such as `gpt-6.1-sol`. OpenCodex adds routing and extra providers around that native path;
+it does not require a second Codex identity.
+
+While OpenCodex owns that routing, `$CODEX_HOME/opencodex-catalog.json` is the active merged catalog.
+`ocx start`, `ocx ensure`, and `ocx sync` enforce that pointer. If `config.toml` previously
+pointed at another custom merge file, that value is journaled for restore but is not kept as the
+active catalog while OCX is running. This prevents a stale custom catalog from downgrading a newly
+rolled-out native model to Codex's generic fallback metadata.
+
+Native rows are discovered from ChatGPT's Codex model endpoint with the installed Codex client
+version and the effective Codex account. Their upstream capability fields are authoritative,
+including context window, reasoning levels, search/deferred-tool support, Responses-lite behavior,
+modalities, and visibility. If the OCX merged catalog cannot be built, OpenCodex prefers Codex's
+native catalog rather than leaving an unrelated custom root `model_catalog_json` active.
+
+Do not manually create a second `native-plus-ocx.json` style catalog to combine the two. The
+canonical OCX catalog is already the native-plus-routed merge.
+
 ### Built-in image generation (`image_gen`)
 
 Codex's built-in `image_gen` tool does not go through `/v1/responses` — the codex-rs extension
@@ -184,13 +206,16 @@ start and on `ocx sync`, opencodex:
 
 1. **Backs up** the pristine catalog once to `~/.opencodex/catalog-backup.json` (so featuring is
    reversible).
-2. **Fetches** eligible providers' live model catalogs (cached ~5 min; falls back to the last good
-   list, then configured `models[]`). Forward auth has no model endpoint, and Cursor uses its
-   `GetUsableModels` RPC rather than `/models`.
-3. **Merges** routed models in as namespaced entries (`provider/model`), cloned from a native Codex
-   catalog template so Codex's strict parser accepts them.
-4. **Filters** `config.disabledModels` and each provider's non-empty `selectedModels` allowlist.
-5. **Re-ranks** so featured models sort first (see below), then writes the merged catalog back.
+2. **Discovers native OpenAI rows live** from the Codex model endpoint using the installed client
+   version and the effective ChatGPT/Codex account. New native slugs are accepted without waiting
+   for an OpenCodex release, and their upstream metadata is preserved.
+3. **Fetches** eligible routed providers' live model catalogs (cached ~5 min; falls back to the last
+   good list, then configured `models[]`). Forward auth has no generic provider model endpoint, and
+   Cursor uses its `GetUsableModels` RPC rather than `/models`.
+4. **Merges** routed models in as namespaced entries (`provider/model`), cloned from a native Codex
+   catalog template so Codex's strict parser accepts them without mutating authoritative native rows.
+5. **Filters** `config.disabledModels` and each provider's non-empty `selectedModels` allowlist.
+6. **Re-ranks** so featured models sort first (see below), then writes the merged catalog back.
 
 Routed catalog entries also get their GPT-5 identity rewritten to the real upstream model name.
 Reasoning controls come from provider/model metadata across Codex's `low | medium | high | xhigh |
@@ -246,38 +271,33 @@ rows below them.
 ### Catalog troubleshooting
 
 If a model is missing from Codex, or the catalog order/visibility looks wrong, check in order:
-
-1. **`selectedModels`** on the provider — a non-empty allowlist exposes only those ids to Codex;
+\n2. **Active catalog ownership** — while OCX owns routing, the root `model_catalog_json` should point
+   to `$CODEX_HOME/opencodex-catalog.json`. A parallel `native-plus-ocx.json` or other merged file
+   is drift. Run `ocx sync` (or `ocx ensure`) to repair the managed pointer; `ocx stop` restores
+   the pre-OCX user value from the journal.\n2. **`selectedModels`** on the provider — a non-empty allowlist exposes only those ids to Codex;
    empty or omitted exposes all discovered models. An id not in the allowlist never reaches the
-   catalog.
-2. **`disabledModels`** (top level) — hides models from both the catalog and `/v1/models`, and flips
-   bare native GPT slugs to `visibility: "hide"`.
-3. **`liveModels: false` with empty `models`** — when live discovery is off and `models` is empty or
-   omitted, opencodex exposes no routed models for that provider.
-4. **Cursor `GetUsableModels`** — the Cursor adapter discovers models through its protobuf
+   catalog.\n3. **`disabledModels`** (top level) — hides models from both the catalog and `/v1/models`, and flips
+   bare native GPT slugs to `visibility: "hide"`.\n4. **`liveModels: false` with empty `models`** — when live discovery is off and `models` is empty or
+   omitted, opencodex exposes no routed models for that provider.\n5. **Cursor `GetUsableModels`** — the Cursor adapter discovers models through its protobuf
    `GetUsableModels` RPC, not `/models`, so a Cursor-side change can alter which ids are visible
-   independently of other providers.
-5. **Cache and `ocx sync`** — live catalogs are cached for about five minutes (`modelCacheTtlMs`,
-   default `300000`). Run `ocx sync` to force a fresh fetch and rewrite the catalog immediately.
-6. **Running Codex `app-server`** — rewriting the on-disk catalog is not enough while a long-lived
+   independently of other providers.\n6. **Cache and `ocx sync`** — live catalogs are cached for about five minutes (`modelCacheTtlMs`,
+   default `300000`). Run `ocx sync` to force a fresh fetch and rewrite the catalog immediately.\n7. **Running Codex `app-server`** — rewriting the on-disk catalog is not enough while a long-lived
    Codex `app-server` (Desktop / CLI background host) keeps the previous list in memory. `ocx sync`
    and `ocx sync-cache` warn when those processes are detected. Restart them with
    `ocx sync --restart-codex` (or stop the matching `app-server` processes yourself), then let Codex
-   recreate them so the new list appears.
-7. **`hideUnavailableModels`** — when enabled, a provider that is dead (all accounts need reauth, or
+   recreate them so the new list appears.\n8. **`hideUnavailableModels`** — when enabled, a provider that is dead (all accounts need reauth, or
    discovery fails N times) drops from `/v1/models` and the new-session picker while the admin Models
    tab still shows last-good rows with a reason. Codex and Cursor cache their pickers; start a **new
    session** (or restart the client / run `ocx sync --restart-codex`) before expecting the filtered
    list. Existing sessions keep routing to last-good models.
 
 :::caution[Other local writers]
-Catalog writes (`opencodex-catalog.json`, `config.toml`) are atomic **inside** opencodex, which only
-prevents half-written files when two opencodex-owned writers race. That does **not** stop another
-local process, file watcher, or sync agent from rewriting catalog visibility or order after opencodex
-has written. Codex keeps its separate `models_cache.json` and can refresh it independently, changing
-the visible list without rewriting `opencodex-catalog.json`. If models flip unexpectedly while the
-proxy is running, stop or reconfigure the competing writers, then run `ocx sync` — this is an
-external-writer hazard, not a confirmed opencodex defect.
+Catalog writes (`opencodex-catalog.json`, `config.toml`) are atomic **inside** opencodex. Another
+local process can still rewrite them afterwards. While OCX owns routing, changing the root
+`model_catalog_json` to a competing merged catalog is configuration drift; the next `ocx start`,
+`ocx ensure`, or `ocx sync` repairs the managed pointer. Codex also keeps
+`models_cache.json` and can retain a stale in-memory catalog in a long-lived app-server, so restart
+that client after a catalog repair when needed.
 :::
 
 ## Proxy connection errors
