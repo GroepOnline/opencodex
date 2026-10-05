@@ -69,6 +69,9 @@ export const en = {
   "theme.dark": "Dark",
   "theme.system": "System",
   "lang.label": "Language",
+  "telemetry.label": "Usage analytics",
+  "telemetry.stateOn": "On — privacy-safe, no prompts",
+  "telemetry.stateOff": "Off",
   "errorBoundary.title": "Page failed to load",
   "errorBoundary.message":
     "This section hit a rendering error. Reload it to try again.",

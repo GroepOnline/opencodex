@@ -234,6 +234,82 @@ describe("codex-journal", () => {
     expect(existsSync(join(testDir, "opencodex-journal.json"))).toBe(false);
   });
 
+  test("restoreNativeCodex never rewrites a restored user-owned catalog", () => {
+    const userCatalogPath = join(testDir, "native-plus-ocx.json");
+    const userCatalog = JSON.stringify({
+      models: [
+        { slug: "gpt-5.5", display_name: "GPT-5.5" },
+        { slug: "user-provider/custom-model", display_name: "User custom route" },
+      ],
+    }, null, 2) + "\n";
+    const original = [
+      'model = "gpt-5.5"',
+      `model_catalog_json = ${JSON.stringify(userCatalogPath)}`,
+      "",
+    ].join("\n");
+    writeFileSync(join(testDir, "config.toml"), original, "utf8");
+    writeFileSync(userCatalogPath, userCatalog, "utf8");
+
+    const r = runScript(testDir, `
+      const { injectCodexConfig, restoreNativeCodex } = require("./src/codex/inject");
+      (async () => {
+        const injected = await injectCodexConfig(
+          10100,
+          { port: 10100, providers: {}, defaultProvider: "openai" },
+          { catalogPath: null },
+        );
+        if (!injected.success) throw new Error(injected.message);
+        console.log(JSON.stringify(restoreNativeCodex()));
+      })();
+    `);
+
+    expect(r.status).toBe(0);
+    expect(JSON.parse(r.stdout).success).toBe(true);
+    expect(readFileSync(join(testDir, "config.toml"), "utf8")).toBe(original);
+    expect(readFileSync(userCatalogPath, "utf8")).toBe(userCatalog);
+  });
+
+  test("user-owned openai_base_url takeover keeps the pre-OCX restore journal", () => {
+    const original = '# original config\nmodel = "gpt-5.5"\n';
+    writeFileSync(join(testDir, "config.toml"), original, "utf8");
+
+    const r = runScript(testDir, `
+      const fs = require("fs");
+      const path = require("path");
+      const { injectCodexConfig } = require("./src/codex/inject");
+      (async () => {
+        const first = await injectCodexConfig(
+          10100,
+          { port: 10100, providers: {}, defaultProvider: "openai" },
+          { catalogPath: null },
+        );
+        if (!first.success) throw new Error(first.message);
+        const configPath = path.join(process.env.CODEX_HOME, "config.toml");
+        fs.writeFileSync(
+          configPath,
+          'openai_base_url = "https://user-gateway.example/v1"\\nmodel = "gpt-5.5"\\n',
+          "utf8",
+        );
+        const second = await injectCodexConfig(
+          10100,
+          { port: 10100, providers: {}, defaultProvider: "openai" },
+          { catalogPath: null },
+        );
+        console.log(JSON.stringify({
+          success: second.success,
+          journalExists: fs.existsSync(path.join(process.env.CODEX_HOME, "opencodex-journal.json")),
+          config: fs.readFileSync(configPath, "utf8"),
+        }));
+      })();
+    `);
+
+    expect(r.status).toBe(0);
+    const result = JSON.parse(r.stdout) as { success: boolean; journalExists: boolean; config: string };
+    expect(result.success).toBe(true);
+    expect(result.journalExists).toBe(true);
+    expect(result.config).toContain('openai_base_url = "https://user-gateway.example/v1"');
+  });
+
   test("restoreNativeCodex reports damaged managed-default cleanup during fallback restore", () => {
     const original = '# original config\nmodel_provider = "openai"\n';
     writeFileSync(join(testDir, "config.toml"), original, "utf8");

@@ -159,10 +159,102 @@ describe("GUI/CLI Codex sync backend", () => {
       currentExternalCodexModelProvider: () => null,
     });
 
-    expect(injectedCatalogPath).toBeUndefined();
+    expect(injectedCatalogPath).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.catalogPath).toBeNull();
     expect(result.warning).toContain("catalog boom");
+  });
+
+  test("forces the canonical OCX catalog build target before injection", async () => {
+    writeFileSync(
+      join(TEST_CODEX_HOME, "config.toml"),
+      'model = "gpt-5.5"\nmodel_catalog_json = "native-plus-ocx.json"\n',
+      "utf8",
+    );
+    let refreshedCatalogPath: string | undefined;
+    let injectedCatalogPath: string | null | undefined;
+
+    const result = await syncModelsToCodex(10100, config, null, {
+      refreshCodexModelCatalog: async (_config, _deps, options) => {
+        const catalogPath = options?.catalogPath;
+        if (!catalogPath) throw new Error("expected canonical catalog target");
+        refreshedCatalogPath = catalogPath;
+        return {
+          added: 0,
+          path: catalogPath,
+          catalogExists: true,
+          catalogWritten: true,
+          cacheSynced: true,
+          comboOmissions: [],
+        };
+      },
+      injectCodexConfig: async (_port, _config, options) => {
+        injectedCatalogPath = options.catalogPath;
+        return { success: true, message: "injected canonical" };
+      },
+      currentExternalCodexModelProvider: () => null,
+      currentUserOwnedRootOpenaiBaseUrl: () => false,
+    });
+
+    const expected = join(TEST_CODEX_HOME, "opencodex-catalog.json");
+    expect(refreshedCatalogPath).toBe(expected);
+    expect(injectedCatalogPath).toBe(expected);
+    expect(result.catalogPath).toBe(expected);
+    expect(result.catalogWritten).toBe(true);
+  });
+
+  test("does not refresh any catalog when a user owns root openai_base_url", async () => {
+    let refreshed = false;
+    let injectedCatalogPath: string | null | undefined = "unset";
+
+    const result = await syncModelsToCodex(10100, config, null, {
+      refreshCodexModelCatalog: async () => {
+        refreshed = true;
+        throw new Error("must not refresh");
+      },
+      injectCodexConfig: async (_port, _config, options) => {
+        injectedCatalogPath = options.catalogPath;
+        return { success: true, message: "user routing preserved" };
+      },
+      currentExternalCodexModelProvider: () => null,
+      currentUserOwnedRootOpenaiBaseUrl: () => true,
+    });
+
+    expect(refreshed).toBe(false);
+    expect(injectedCatalogPath).toBeUndefined();
+    expect(result).toEqual({
+      ok: true,
+      added: 0,
+      catalogPath: null,
+      catalogExists: false,
+      catalogWritten: false,
+      cacheSynced: false,
+      message: "user routing preserved",
+    });
+  });
+
+  test("existing but unwritten managed catalog is not injected", async () => {
+    let injectedCatalogPath: string | null | undefined = "unset";
+    const result = await syncModelsToCodex(10100, config, null, {
+      refreshCodexModelCatalog: async (_config, _deps, options) => ({
+        added: 0,
+        path: options?.catalogPath ?? "missing-canonical-catalog",
+        catalogExists: true,
+        catalogWritten: false,
+        cacheSynced: false,
+        comboOmissions: [],
+      }),
+      injectCodexConfig: async (_port, _config, options) => {
+        injectedCatalogPath = options.catalogPath;
+        return { success: true, message: "native fallback" };
+      },
+      currentExternalCodexModelProvider: () => null,
+      currentUserOwnedRootOpenaiBaseUrl: () => false,
+    });
+
+    expect(injectedCatalogPath).toBeNull();
+    expect(result.catalogWritten).toBe(false);
+    expect(result.warning).toContain("did not materialize");
   });
 
   test("returns native subagent default conflicts as structured warnings", async () => {

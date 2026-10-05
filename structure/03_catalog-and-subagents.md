@@ -4,8 +4,12 @@
 
 `src/codex/catalog.ts` builds a shared Codex-shaped catalog for CLI, TUI, App, and SDK. It:
 
-- preserves native OpenAI entries from the live catalog or static fallback, and emits
-  gpt-5.6 natives from the pinned upstream models.json snapshot
+- preserves native OpenAI entries from authoritative live Codex discovery for the installed
+  client/effective ChatGPT account, falling back only when live discovery is unavailable; newly
+  rolled-out bare native slugs are admitted without waiting for a static OpenCodex whitelist;
+- preserves authoritative native capability metadata unchanged, including context-window,
+  reasoning, search/tool-exposure, Responses-lite, modalities, and visibility fields;
+- keeps the pinned upstream models.json snapshot only as fallback metadata for known static natives
   (`src/codex/data/upstream-models.json` — exact per-slug ladders: luna has no ultra);
 - clones a native template for routed `provider/model` entries;
 - forces strict Codex catalog fields required by the current parser;
@@ -35,13 +39,24 @@ display name use `provider/model`.
 
 ## Native passthrough
 
-Native bare OpenAI entries form one `openai` group. The provider's Pool(default)/Direct option
-changes account selection without changing those ids; `openai-apikey/<model>` creates the separate
-API-key identity. The API GPT-5.6 rows use 1,050,000 context / 922,000 max input; their `*-pro` virtual rows
-rewrite to the base upstream model with `reasoning.mode: "pro"` while public state keeps the virtual
-slug. Native OpenAI entries remain available for ChatGPT passthrough. Routed non-OpenAI models must not
-inherit native-only service tier or WebSocket metadata unless the user explicitly enables that
-capability. Detailed invariants live in [`08_openai-provider-tiers.md`](08_openai-provider-tiers.md).
+Native bare OpenAI entries form one `openai` group and remain native even while OCX is active. On
+loopback installs Codex keeps its built-in `openai` provider id and ordinary ChatGPT/Codex login;
+OCX is the transport/routing layer, not a replacement identity. The provider's Pool(default)/Direct
+option changes account selection without changing those ids; `openai-apikey/<model>` creates the
+separate API-key identity.
+
+The active merged catalog is `$CODEX_HOME/opencodex-catalog.json`. Do not create a second
+"native + OCX" merge file or point active Codex routing at a competing root `model_catalog_json`.
+Live native discovery is the authority for bare OpenAI rows, including future model slugs. If a live
+row says that a model supports deferred/search-tool exposure, Responses-lite, a larger context
+window, or a specific reasoning ladder, those fields must survive catalog assembly unchanged; a
+static template must not downgrade them to generic Codex fallback metadata.
+
+The API GPT-5.6 rows use 1,050,000 context / 922,000 max input; their `*-pro` virtual rows rewrite
+to the base upstream model with `reasoning.mode: "pro"` while public state keeps the virtual slug.
+Routed non-OpenAI models must not inherit native-only service tier or WebSocket metadata unless the
+user explicitly enables that capability. Detailed invariants live in
+[`08_openai-provider-tiers.md`](08_openai-provider-tiers.md).
 
 ## Multi-agent surface mode (3-state)
 
