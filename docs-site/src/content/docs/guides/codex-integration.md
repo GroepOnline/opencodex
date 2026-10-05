@@ -157,9 +157,9 @@ mode leaves this profile untouched.
 
 :::caution
 Root keys such as `openai_base_url`, `model_provider`, and `model_catalog_json` **must** sit before the
-first `[table]` header. The injector guarantees that placement, removes its own stale/duplicate
-copies, and never overwrites a user-owned root `openai_base_url`; if one exists, sync updates the
-catalog but reports that routing was not injected.
+first `[table]` header. The injector guarantees that placement and removes its own stale/duplicate
+copies. A user-owned root `openai_base_url` is an ownership boundary: OpenCodex leaves both routing
+and the root catalog pointer untouched rather than managing only half of the configuration.
 :::
 
 ## Shared model catalog
