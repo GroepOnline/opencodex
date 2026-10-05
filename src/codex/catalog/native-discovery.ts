@@ -7,7 +7,10 @@ import {
   readBoundedDiscoveryJson,
   type BoundedDiscoveryJsonResult,
 } from "../../providers/model-discovery";
-import { isSelectableCodexPoolAccount, MAIN_CODEX_ACCOUNT_ID } from "../account-id";
+import {
+  isSelectableCodexPoolAccount,
+  MAIN_CODEX_ACCOUNT_ID,
+} from "../account-id";
 import { getValidCodexToken } from "../account-store";
 import { getMainAccountToken } from "../main-account";
 import { getEffectiveActiveCodexAccountId } from "../routing";
@@ -21,15 +24,31 @@ function hasNativeModelIdControlChars(value: string): boolean {
     const code = char.codePointAt(0);
     if (code === undefined) continue;
     if (
-      code <= 0x1f
-      || (code >= 0x7f && code <= 0x9f)
-      || code === 0x2028
-      || code === 0x2029
+      code <= 0x1f ||
+      (code >= 0x7f && code <= 0x9f) ||
+      code === 0x2028 ||
+      code === 0x2029
     ) {
       return true;
     }
   }
   return false;
+}
+
+/** Bare native slug without a routed provider namespace. */
+export function isBareNativeSlug(value: unknown): value is string {
+  return typeof value === "string" && !value.includes("/");
+}
+
+/** Index discovered native rows by their bare slug for authoritative merge. */
+export function authoritativeNativeEntriesBySlug<T extends { slug?: unknown }>(
+  models: readonly T[],
+): Map<string, T> {
+  const bySlug = new Map<string, T>();
+  for (const model of models) {
+    if (isBareNativeSlug(model.slug)) bySlug.set(model.slug, model);
+  }
+  return bySlug;
 }
 
 type NativeCredential = {
@@ -56,9 +75,7 @@ export interface NativeOpenAiCatalogDiscoveryDeps {
   timeoutMs?: number;
 }
 
-type CredentialCandidate =
-  | { kind: "main" }
-  | { kind: "pool"; id: string };
+type CredentialCandidate = { kind: "main" } | { kind: "pool"; id: string };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -73,18 +90,20 @@ function credentialCandidates(
   selectedId: string | undefined,
 ): CredentialCandidate[] {
   const paused = new Set(config.pausedCodexAccountIds ?? []);
-  const poolIds = config.codexAccountPools === false
-    ? []
-    : (config.codexAccounts ?? [])
-      .filter(isSelectableCodexPoolAccount)
-      .map(account => account.id)
-      .filter(id => !paused.has(id));
+  const poolIds =
+    config.codexAccountPools === false
+      ? []
+      : (config.codexAccounts ?? [])
+          .filter(isSelectableCodexPoolAccount)
+          .map((account) => account.id)
+          .filter((id) => !paused.has(id));
 
-  const selectedPool = selectedId
-    && selectedId !== MAIN_CODEX_ACCOUNT_ID
-    && poolIds.includes(selectedId)
-    ? selectedId
-    : undefined;
+  const selectedPool =
+    selectedId &&
+    selectedId !== MAIN_CODEX_ACCOUNT_ID &&
+    poolIds.includes(selectedId)
+      ? selectedId
+      : undefined;
 
   const out: CredentialCandidate[] = [];
   if (selectedPool) out.push({ kind: "pool", id: selectedPool });
@@ -97,10 +116,12 @@ function credentialCandidates(
 
 async function resolveCredential(
   candidate: CredentialCandidate,
-  deps: Required<Pick<
-    NativeOpenAiCatalogDiscoveryDeps,
-    "getMainAccountToken" | "getValidCodexToken"
-  >>,
+  deps: Required<
+    Pick<
+      NativeOpenAiCatalogDiscoveryDeps,
+      "getMainAccountToken" | "getValidCodexToken"
+    >
+  >,
 ): Promise<NativeCredential | null> {
   if (candidate.kind === "main") return deps.getMainAccountToken();
   try {
@@ -116,19 +137,21 @@ async function resolveCredential(
 
 async function resolveCredentialBeforeDeadline(
   candidate: CredentialCandidate,
-  deps: Required<Pick<
-    NativeOpenAiCatalogDiscoveryDeps,
-    "getMainAccountToken" | "getValidCodexToken"
-  >>,
+  deps: Required<
+    Pick<
+      NativeOpenAiCatalogDiscoveryDeps,
+      "getMainAccountToken" | "getValidCodexToken"
+    >
+  >,
   signal: AbortSignal,
 ): Promise<NativeCredential | null> {
   if (signal.aborted) return null;
   const credentialPromise = resolveCredential(candidate, deps);
-  return await new Promise<NativeCredential | null>(resolve => {
+  return await new Promise<NativeCredential | null>((resolve) => {
     const onAbort = () => resolve(null);
     signal.addEventListener("abort", onAbort, { once: true });
     void credentialPromise.then(
-      credential => {
+      (credential) => {
         signal.removeEventListener("abort", onAbort);
         resolve(credential);
       },
@@ -141,7 +164,9 @@ async function resolveCredentialBeforeDeadline(
 }
 
 function validatedNativeModels(value: unknown): RawEntry[] | null {
-  const envelope = extractModelEnvelopeRows(value, MODEL_DISCOVERY_MAX_MODELS, ["models"]);
+  const envelope = extractModelEnvelopeRows(value, MODEL_DISCOVERY_MAX_MODELS, [
+    "models",
+  ]);
   if (!envelope.ok) return null;
 
   const models: RawEntry[] = [];
@@ -150,11 +175,11 @@ function validatedNativeModels(value: unknown): RawEntry[] | null {
     if (!isRecord(raw)) return null;
     const slug = raw.slug;
     if (
-      typeof slug !== "string"
-      || !slug
-      || slug !== slug.trim()
-      || slug.length > MODEL_DISCOVERY_MAX_MODEL_ID_LENGTH
-      || hasNativeModelIdControlChars(slug)
+      typeof slug !== "string" ||
+      !slug ||
+      slug !== slug.trim() ||
+      slug.length > MODEL_DISCOVERY_MAX_MODEL_ID_LENGTH ||
+      hasNativeModelIdControlChars(slug)
     ) {
       return null;
     }
@@ -181,78 +206,125 @@ export async function discoverNativeOpenAiCatalog(
   config: OcxConfig,
   injected: NativeOpenAiCatalogDiscoveryDeps = {},
 ): Promise<NativeOpenAiCatalogDiscovery> {
-  const deps = {
-    fetch: injected.fetch ?? fetch,
-    getEffectiveActiveCodexAccountId:
-      injected.getEffectiveActiveCodexAccountId ?? getEffectiveActiveCodexAccountId,
-    getMainAccountToken: injected.getMainAccountToken ?? getMainAccountToken,
-    getValidCodexToken: injected.getValidCodexToken ?? getValidCodexToken,
-    resolveClientVersion: injected.resolveClientVersion ?? defaultClientVersion,
-    timeoutMs: injected.timeoutMs ?? 8_000,
-  };
-
-  const clientVersion = deps.resolveClientVersion();
-  if (!clientVersion) return { models: [], clientVersion: null };
-
-  const url = new URL(NATIVE_MODELS_ENDPOINT);
-  url.searchParams.set("client_version", clientVersion);
+  const prepared = prepareNativeDiscovery(config, injected);
+  if (!prepared) return { models: [], clientVersion: null };
+  const { deps, url, clientVersion, signal } = prepared;
 
   const candidates = credentialCandidates(
     config,
     deps.getEffectiveActiveCodexAccountId(config),
   );
-  // One wall-clock budget for credential resolution plus the entire account fallback sequence.
-  // A dead token refresher or upstream must not multiply discovery delay by account count.
-  const timeoutMs = Number.isFinite(deps.timeoutMs) && deps.timeoutMs > 0
-    ? Math.max(1, Math.floor(deps.timeoutMs))
-    : 8_000;
-  const requestSignal = AbortSignal.timeout(timeoutMs);
   for (const candidate of candidates) {
-    const credential = await resolveCredentialBeforeDeadline(candidate, deps, requestSignal);
-    if (requestSignal.aborted) break;
+    const credential = await resolveCredentialBeforeDeadline(
+      candidate,
+      deps,
+      signal,
+    );
+    if (signal.aborted) break;
     if (!credential?.accessToken || !credential.chatgptAccountId) continue;
-
-    let response: Response;
-    try {
-      response = await deps.fetch(url, {
-        method: "GET",
-        headers: {
-          authorization: `Bearer ${credential.accessToken}`,
-          "chatgpt-account-id": credential.chatgptAccountId,
-          originator: "codex_cli_rs",
-          version: clientVersion,
-        },
-        signal: requestSignal,
-      });
-    } catch {
-      continue;
-    }
-
-    if (!response.ok) {
-      try {
-        void response.body?.cancel().catch(() => undefined);
-      } catch {
-        // Best-effort body cleanup only.
-      }
-      continue;
-    }
-
-    let parsed: BoundedDiscoveryJsonResult;
-    try {
-      parsed = await readBoundedDiscoveryJson(
-        response,
-        MODEL_DISCOVERY_MAX_RESPONSE_BYTES,
-      );
-    } catch {
-      continue;
-    }
-    if (!parsed.ok) continue;
-    const models = validatedNativeModels(parsed.value);
-    if (!models) continue;
-    return { models, clientVersion };
+    const models = await fetchNativeModelsWithCredential(
+      deps,
+      url,
+      clientVersion,
+      credential,
+      signal,
+    );
+    if (models) return { models, clientVersion };
   }
 
   return { models: [], clientVersion };
+}
+
+type ResolvedDiscoveryDeps = {
+  fetch: typeof fetch;
+  getEffectiveActiveCodexAccountId: (config: OcxConfig) => string | undefined;
+  getMainAccountToken: () => NativeCredential | null;
+  getValidCodexToken: (id: string) => Promise<NativePoolToken>;
+  resolveClientVersion: () => string | null;
+  timeoutMs: number;
+};
+
+type PreparedNativeDiscovery = {
+  deps: ResolvedDiscoveryDeps;
+  url: URL;
+  clientVersion: string;
+  signal: AbortSignal;
+};
+
+function prepareNativeDiscovery(
+  config: OcxConfig,
+  injected: NativeOpenAiCatalogDiscoveryDeps,
+): PreparedNativeDiscovery | null {
+  const deps: ResolvedDiscoveryDeps = {
+    fetch: injected.fetch ?? fetch,
+    getEffectiveActiveCodexAccountId:
+      injected.getEffectiveActiveCodexAccountId ??
+      getEffectiveActiveCodexAccountId,
+    getMainAccountToken: injected.getMainAccountToken ?? getMainAccountToken,
+    getValidCodexToken: injected.getValidCodexToken ?? getValidCodexToken,
+    resolveClientVersion: injected.resolveClientVersion ?? defaultClientVersion,
+    timeoutMs: injected.timeoutMs ?? 8_000,
+  };
+  void config;
+
+  const clientVersion = deps.resolveClientVersion();
+  if (!clientVersion) return null;
+
+  const url = new URL(NATIVE_MODELS_ENDPOINT);
+  url.searchParams.set("client_version", clientVersion);
+
+  // One wall-clock budget for credential resolution plus the entire account fallback sequence.
+  // A dead token refresher or upstream must not multiply discovery delay by account count.
+  const timeoutMs =
+    Number.isFinite(deps.timeoutMs) && deps.timeoutMs > 0
+      ? Math.max(1, Math.floor(deps.timeoutMs))
+      : 8_000;
+  return { deps, url, clientVersion, signal: AbortSignal.timeout(timeoutMs) };
+}
+
+async function fetchNativeModelsWithCredential(
+  deps: Pick<ResolvedDiscoveryDeps, "fetch">,
+  url: URL,
+  clientVersion: string,
+  credential: NativeCredential,
+  signal: AbortSignal,
+): Promise<RawEntry[] | null> {
+  let response: Response;
+  try {
+    response = await deps.fetch(url, {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${credential.accessToken}`,
+        "chatgpt-account-id": credential.chatgptAccountId,
+        originator: "codex_cli_rs",
+        version: clientVersion,
+      },
+      signal,
+    });
+  } catch {
+    return null;
+  }
+
+  if (!response.ok) {
+    try {
+      void response.body?.cancel().catch(() => undefined);
+    } catch {
+      // Best-effort body cleanup only.
+    }
+    return null;
+  }
+
+  let parsed: BoundedDiscoveryJsonResult;
+  try {
+    parsed = await readBoundedDiscoveryJson(
+      response,
+      MODEL_DISCOVERY_MAX_RESPONSE_BYTES,
+    );
+  } catch {
+    return null;
+  }
+  if (!parsed.ok) return null;
+  return validatedNativeModels(parsed.value);
 }
 
 /** Replace same-slug native rows with live authoritative rows and append newly rolled-out ones. */
@@ -262,18 +334,11 @@ export function mergeDiscoveredNativeCatalogRows(
 ): RawEntry[] {
   if (discoveredModels.length === 0) return catalogModels;
 
-  const bySlug = new Map<string, RawEntry>();
-  for (const model of discoveredModels) {
-    if (typeof model.slug === "string" && !model.slug.includes("/")) {
-      bySlug.set(model.slug, model);
-    }
-  }
+  const bySlug = authoritativeNativeEntriesBySlug(discoveredModels);
   if (bySlug.size === 0) return catalogModels;
 
-  const merged = catalogModels.map(model => {
-    const slug = typeof model.slug === "string" && !model.slug.includes("/")
-      ? model.slug
-      : undefined;
+  const merged = catalogModels.map((model) => {
+    const slug = isBareNativeSlug(model.slug) ? model.slug : undefined;
     if (!slug) return model;
     const replacement = bySlug.get(slug);
     if (!replacement) return model;

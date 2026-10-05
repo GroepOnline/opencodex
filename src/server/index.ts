@@ -838,20 +838,21 @@ export function startServer(port?: number) {
           // Codex client → Codex catalog shape. Ask the same upstream catalog the client would
           // use, but authenticate with OCX's effective account so a stale Desktop main login
           // cannot hide models available to the selected pool account.
-          const { discoverNativeOpenAiCatalog } =
-            await import("../codex/catalog/native-discovery");
-          const requestedClientVersion = url.searchParams.get("client_version")?.trim() || null;
+          const {
+            authoritativeNativeEntriesBySlug,
+            discoverNativeOpenAiCatalog,
+          } = await import("../codex/catalog/native-discovery");
+          const requestedClientVersion =
+            url.searchParams.get("client_version")?.trim() || null;
           const liveNative = await discoverNativeOpenAiCatalog(config, {
             resolveClientVersion: () => requestedClientVersion,
           });
-          const authoritativeNativeEntries =
-            new Map<string, (typeof liveNative.models)[number]>();
-          for (const model of liveNative.models) {
-            if (typeof model.slug === "string" && !model.slug.includes("/")) {
-              authoritativeNativeEntries.set(model.slug, model);
-            }
-          }
-          const authoritativeNativeSlugs = new Set(authoritativeNativeEntries.keys());
+          const authoritativeNativeEntries = authoritativeNativeEntriesBySlug(
+            liveNative.models as { slug?: unknown }[],
+          );
+          const authoritativeNativeSlugs = new Set(
+            authoritativeNativeEntries.keys(),
+          );
           const codexNativeSlugs = [
             ...new Set([...nativeSlugs, ...authoritativeNativeSlugs]),
           ];
