@@ -31,7 +31,8 @@ describe("ocx restart", () => {
   test("help restart shows restart help entry", () => {
     const result = runCli(["help", "restart"]);
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("Stop the proxy and restart");
+    expect(result.stdout).toContain("Stop and restart the proxy");
+    expect(result.stdout).toContain("preserving proxy-only mode");
   });
 });
 

@@ -74,10 +74,10 @@ for (const source of ["explicit-file", "default-file", "marker-helper"] as const
     }
     await syncClaudeDesktopLibrary({ ...f.options, env, runKeyHelper: () => {
       helpers++;
-      return "fixture-helper-admission";
+      return "fixture-helper-key";
     } });
     expect(new Headers(f.calls[1]!.init?.headers).get("authorization")).toBe(
-      source === "marker-helper" ? "Bearer fixture-helper-admission" : "Bearer fixture-file-admission",
+      source === "marker-helper" ? "Bearer fixture-helper-key" : "Bearer fixture-file-admission",
     );
     expect(helpers).toBe(source === "marker-helper" ? 1 : 0);
   });

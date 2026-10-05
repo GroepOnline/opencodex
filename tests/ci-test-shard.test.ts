@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 
 import {
   assignBalancedShards,
@@ -11,6 +11,19 @@ import {
 } from "../scripts/ci-test-shard";
 
 describe("ci-test-shard batch completion", () => {
+  test("names the earlier failed batch after a later green batch", async () => {
+    const errors = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const paths = Array.from({ length: 81 }, (_, i) => `tests/fixture-${i}.test.ts`);
+      let batch = 0;
+      expect(await runAllBatches(paths, async () => batch++ === 0 ? 1 : 0)).toBe(1);
+      expect(errors.mock.calls.map(call => call[0])).toEqual([
+        "[ci-test-shard] batch 1 failed (exit 1); later green batches do not clear this failure",
+        "[ci-test-shard] shard failed (exit 1); inspect the failed batch above",
+      ]);
+    } finally { errors.mockRestore(); }
+  });
+
   test.each([
     [1, 0, 0],
     [0, 2, 0],

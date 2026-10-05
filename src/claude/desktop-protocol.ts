@@ -60,7 +60,12 @@ function absolutePath(value: string): string {
 
 /** Desktop Entry string escaping is applied after Exec argument quoting, not shell quoting. */
 function execArgument(value: string): string {
-  return `"${value.replace(/[\\"`$]/g, "\\$&").replace(/\\/g, "\\\\").replace(/%/g, "%%")}"`;
+  const escaped = value.replace(/[\\"`$%]/g, char => {
+    if (char === "%") return "%%";
+    if (char === "\\") return "\\".repeat(4);
+    return "\\".repeat(2) + char;
+  });
+  return `"${escaped}"`;
 }
 
 function desktopEntry(runtimePath: string, cliPath: string): string {

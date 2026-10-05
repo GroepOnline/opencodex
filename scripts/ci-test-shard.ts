@@ -127,8 +127,12 @@ export async function runAllBatches(
     );
     const exitCode = await execute(batch);
     // Preserve failure, but collect the remaining platform evidence in this run.
-    if (exitCode !== 0 && result === 0) result = exitCode;
+    if (exitCode !== 0) {
+      console.error(`[ci-test-shard] batch ${Math.floor(offset / BATCH_SIZE) + 1} failed (exit ${exitCode}); later green batches do not clear this failure`);
+      if (result === 0) result = exitCode;
+    }
   }
+  if (result !== 0) console.error(`[ci-test-shard] shard failed (exit ${result}); inspect the failed batch above`);
   return result;
 }
 

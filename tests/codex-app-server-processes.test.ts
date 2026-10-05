@@ -256,7 +256,9 @@ describe("CLI /api sync wiring for stale app-servers (#476)", () => {
 
   test("ocx sync only handles app-servers after a catalog/cache write and forwards --restart-codex", () => {
     const syncCase = cliSource.slice(cliSource.indexOf('case "sync":'), cliSource.indexOf('case "v2":'));
-    expect(syncCase).toContain('args.slice(1).includes("--restart-codex")');
+    expect(syncCase).toContain('const flags = args.slice(1)');
+    expect(syncCase).toContain('const restartCodex = flags.includes("--restart-codex")');
+    expect(syncCase.indexOf("if (desktopOnly) break;")).toBeLessThan(syncCase.indexOf("const restartCodex"));
     expect(syncCase).toContain("synced.catalogWritten || synced.cacheSynced");
     expect(syncCase).toContain("afterCatalogWriteHandleAppServers");
     expect(syncCase).toContain("restart: restartCodex");

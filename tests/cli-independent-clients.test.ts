@@ -27,7 +27,7 @@ function fixture() {
     syncResumeHistory: false, tokenGuardian: { enabled: false },
   }));
   return { home, codex, env: { ...process.env, OPENCODEX_HOME: home, CODEX_HOME: codex,
-    OPENCODEX_CLAUDE_DESKTOP_CONFIG_DIR: join(home, "desktop"), OPENCODEX_ADMIN_AUTH_TOKEN: "fixture-admin", HOME: home, CI: "1" } };
+    OPENCODEX_CLAUDE_DESKTOP_CONFIG_DIR: join(home, "desktop"), OPENCODEX_ADMIN_AUTH_TOKEN: "fixture-admin", HOME: home, USERPROFILE: home, CI: "1" } };
 }
 async function run(args: string[], env: NodeJS.ProcessEnv) {
   const child = Bun.spawn([process.execPath, cli, ...args], { env, stdout: "pipe", stderr: "pipe" });
@@ -159,6 +159,7 @@ for (const orphan of [false, true]) {
       const first = await waitForFixtureProxy(port);
       if (orphan) unlinkSync(join(f.home, "ocx.pid"));
       const restarted = await run(["restart"], f.env);
+      if (restarted.status !== 0) throw new Error(`Fixture restart failed (${restarted.status}): ${restarted.stdout}\n${restarted.stderr}`);
       expect(restarted.status).toBe(0);
       const next = await waitForFixtureProxy(port, first.pid);
       const runtime = JSON.parse(readFileSync(join(f.home, "runtime-port.json"), "utf8"));
