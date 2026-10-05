@@ -574,8 +574,12 @@ export async function injectCodexConfig(port: number, config?: OcxConfig, option
     // A user/external manager owns the routing surface. Do not half-own the same config. Keep an
     // existing journal: injected-state hashes prevent replay over user edits while retaining the
     // original pre-OCX baseline for reversible cleanup of still-owned state.
+    const nativeSubagentDefaultsWarning = configuredManagedSubagentDefaults(config)
+      ? "Native Codex sub-agent defaults were not injected: a user-owned root openai_base_url prevents OpenCodex from managing active Codex routing."
+      : undefined;
     return {
       success: true,
+      ...(nativeSubagentDefaultsWarning ? { nativeSubagentDefaultsWarning } : {}),
       message: `⚠️ Codex routing NOT injected: config.toml has a user-owned root openai_base_url.\n`
         + `  Codex model catalog is also left untouched to avoid split ownership.\n`
         + `  To let OpenCodex manage native Codex plus routed providers together, remove that root override and rerun 'ocx start'.`,
