@@ -52,6 +52,8 @@ export interface NativeOpenAiCatalogDiscoveryDeps {
   getMainAccountToken?: () => NativeCredential | null;
   getValidCodexToken?: (id: string) => Promise<NativePoolToken>;
   resolveClientVersion?: () => string | null;
+  /** One wall-clock budget for credential resolution plus upstream model discovery. */
+  timeoutMs?: number;
 }
 
 type CredentialCandidate =
@@ -112,6 +114,32 @@ async function resolveCredential(
   }
 }
 
+async function resolveCredentialBeforeDeadline(
+  candidate: CredentialCandidate,
+  deps: Required<Pick<
+    NativeOpenAiCatalogDiscoveryDeps,
+    "getMainAccountToken" | "getValidCodexToken"
+  >>,
+  signal: AbortSignal,
+): Promise<NativeCredential | null> {
+  if (signal.aborted) return null;
+  const credentialPromise = resolveCredential(candidate, deps);
+  return await new Promise<NativeCredential | null>(resolve => {
+    const onAbort = () => resolve(null);
+    signal.addEventListener("abort", onAbort, { once: true });
+    void credentialPromise.then(
+      credential => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(credential);
+      },
+      () => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(null);
+      },
+    );
+  });
+}
+
 function validatedNativeModels(value: unknown): RawEntry[] | null {
   const envelope = extractModelEnvelopeRows(value, MODEL_DISCOVERY_MAX_MODELS, ["models"]);
   if (!envelope.ok) return null;
@@ -160,6 +188,7 @@ export async function discoverNativeOpenAiCatalog(
     getMainAccountToken: injected.getMainAccountToken ?? getMainAccountToken,
     getValidCodexToken: injected.getValidCodexToken ?? getValidCodexToken,
     resolveClientVersion: injected.resolveClientVersion ?? defaultClientVersion,
+    timeoutMs: injected.timeoutMs ?? 8_000,
   };
 
   const clientVersion = deps.resolveClientVersion();
@@ -172,11 +201,15 @@ export async function discoverNativeOpenAiCatalog(
     config,
     deps.getEffectiveActiveCodexAccountId(config),
   );
-  // One wall-clock budget for the entire account fallback sequence. A dead upstream must not
-  // multiply the discovery delay by the number of configured pool accounts.
-  const requestSignal = AbortSignal.timeout(8_000);
+  // One wall-clock budget for credential resolution plus the entire account fallback sequence.
+  // A dead token refresher or upstream must not multiply discovery delay by account count.
+  const timeoutMs = Number.isFinite(deps.timeoutMs) && deps.timeoutMs > 0
+    ? Math.max(1, Math.floor(deps.timeoutMs))
+    : 8_000;
+  const requestSignal = AbortSignal.timeout(timeoutMs);
   for (const candidate of candidates) {
-    const credential = await resolveCredential(candidate, deps);
+    const credential = await resolveCredentialBeforeDeadline(candidate, deps, requestSignal);
+    if (requestSignal.aborted) break;
     if (!credential?.accessToken || !credential.chatgptAccountId) continue;
 
     let response: Response;
