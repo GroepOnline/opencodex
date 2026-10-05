@@ -1673,11 +1673,10 @@ export function startServer(port?: number) {
           ws.close(1009, "message too large");
           return;
         }
+        const rawText = typeof raw === "string" ? raw : raw.toString();
         let frame: Record<string, unknown>;
         try {
-          frame = JSON.parse(
-            typeof raw === "string" ? raw : raw.toString(),
-          ) as Record<string, unknown>;
+          frame = JSON.parse(rawText) as Record<string, unknown>;
         } catch {
           return; // text-only contract; ignore unparseable frames
         }
@@ -1735,6 +1734,12 @@ export function startServer(port?: number) {
             headers: fwd,
             body: JSON.stringify({ ...payload, stream: true }),
           });
+          const traceReq = new Request("http://localhost/v1/responses", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: rawText,
+          });
+          await beginTrace(logCtx, traceReq);
           try {
             let terminalRecorder:
               | ((
@@ -1742,17 +1747,19 @@ export function startServer(port?: number) {
                   httpStatusOverride?: number,
                 ) => void)
               | undefined;
-            const response = await handleResponses(req, config, logCtx, {
-              forceEmptyResponseId: true,
-              abortSignal: turnAbort.signal,
-              onFirstOutput: () => recordFirstOutput(logCtx, start),
-              onCodexAuthContextResolved: (context) =>
-                updateCodexWebSocketAuthContext(ws, context),
-              recordTerminalOutcomes: false,
-              setTerminalOutcomeRecorder: (recorder) => {
-                terminalRecorder = recorder;
-              },
-            });
+            const response = await runWithTrace(logCtx, () =>
+              handleResponses(req, config, logCtx, {
+                forceEmptyResponseId: true,
+                abortSignal: turnAbort.signal,
+                onFirstOutput: () => recordFirstOutput(logCtx, start),
+                onCodexAuthContextResolved: (context) =>
+                  updateCodexWebSocketAuthContext(ws, context),
+                recordTerminalOutcomes: false,
+                setTerminalOutcomeRecorder: (recorder) => {
+                  terminalRecorder = recorder;
+                },
+              }),
+            );
             await sendResponseToWebSocket(ws, response, isCurrent, {
               onSsePayload: (payload) =>
                 inspectResponseLogSsePayload(logCtx, payload),
