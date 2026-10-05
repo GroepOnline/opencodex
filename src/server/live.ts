@@ -32,6 +32,7 @@ import {
 import { formatCodexProviderForLog } from "../codex/routing";
 import { signalWithTimeout } from "../lib/abort";
 import { sidecarEnter } from "../lib/sidecar-tracker";
+import { appendTraceResponse, noteOutboundRequestBody } from "../trace/capture";
 import type { OcxConfig } from "../types";
 import { resolveFirstUsableOpenAiSidecar, selectOpenAiImagesProvider } from "../providers/openai-sidecar";
 import { ForwardAdmissionCredentialError, validateForwardAdmissionCredential } from "./auth-cors";
@@ -490,6 +491,7 @@ export async function handleLive(
   const linkedSignal = signalWithTimeout(LIVE_UPSTREAM_TIMEOUT_MS, req.signal);
   const sidecarExit = sidecarEnter("live");
   try {
+    noteOutboundRequestBody(new Uint8Array(outboundBody));
     const upstreamResponse = await fetch(url, {
       method: "POST",
       headers,
@@ -505,6 +507,7 @@ export async function handleLive(
       total => `live response too large (${total} bytes)`,
     );
     if (payload instanceof Response) return payload;
+    appendTraceResponse(logCtx.trace, new TextDecoder().decode(payload));
     const relayHeaders: Record<string, string> = {};
     for (const name of LIVE_RELAY_HEADERS) {
       const value = upstreamResponse.headers.get(name);

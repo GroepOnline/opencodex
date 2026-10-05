@@ -546,10 +546,12 @@ Tracing is **off by default** and is configured by environment variable at proxy
 - `full` stores bodies verbatim. Use it deliberately and briefly.
 
 Outbound capture covers adapters that send through the shared upstream fetch helper; inbound request and
-response capture covers `/v1/responses`, `/v1/messages`, and `/v1/chat/completions`. Responses WebSocket
-`response.create` turns are traced as separate logical requests: the inbound hash covers the client WS frame,
-while the outbound hash covers the final provider wire body. Voice/realtime live-sideband WebSockets remain
-outside this trace lane because they are long-lived bidirectional sessions rather than request/response turns.
+response capture covers `/v1/responses`, `/v1/messages`, `/v1/chat/completions`, and live call-create HTTP
+(`/v1/live` and `/v1/realtime/calls`). Live call-create also records the rewritten provider wire body before
+its bounded upstream POST. Responses WebSocket `response.create` turns are traced as separate logical
+requests: the inbound hash covers the client WS frame, while the outbound hash covers the final provider
+wire body. Voice/realtime live-sideband WebSockets remain outside this trace lane because they are
+long-lived bidirectional sessions rather than request/response turns.
 Proxy response-cache hits are traced without duplicating the cached response body: the usage trace records
 `cacheHit`, a response hash/byte count, and the request id that originally populated the cache when known.
 WebSocket/live/realtime traffic is not yet covered.
