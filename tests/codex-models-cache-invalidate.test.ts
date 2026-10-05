@@ -54,6 +54,27 @@ describe("invalidateCodexModelsCache write gate (#476 / #518)", () => {
     expect(cache.models).toEqual([{ slug: "gpt-5.5" }]);
   });
 
+  test("explicit cache source never follows a user model_catalog_json pointer", () => {
+    const userCatalogPath = join(codexHome, "native-plus-ocx.json");
+    const managedCatalogPath = join(codexHome, "opencodex-catalog.json");
+    const userCatalog = JSON.stringify({
+      models: [{ slug: "user-provider/custom-model" }],
+    }, null, 2) + "\n";
+    writeFileSync(join(codexHome, "config.toml"), 'model_catalog_json = "native-plus-ocx.json"\n', "utf8");
+    writeFileSync(userCatalogPath, userCatalog, "utf8");
+    writeFileSync(managedCatalogPath, JSON.stringify({
+      models: [{ slug: "gpt-6.1-sol", context_window: 400000 }],
+    }, null, 2) + "\n", "utf8");
+
+    expect(invalidateCodexModelsCache(managedCatalogPath)).toBe(true);
+    expect(readFileSync(userCatalogPath, "utf8")).toBe(userCatalog);
+
+    const cache = JSON.parse(readFileSync(join(codexHome, "models_cache.json"), "utf8")) as {
+      models: Array<{ slug: string; context_window?: number }>;
+    };
+    expect(cache.models).toEqual([{ slug: "gpt-6.1-sol", context_window: 400000 }]);
+  });
+
   test("returns false for a missing catalog and does not warn/restart app-servers", () => {
     const errors: string[] = [];
     const logs: string[] = [];
@@ -111,46 +132,37 @@ describe("invalidateCodexModelsCache write gate (#476 / #518)", () => {
     expect(logs).toEqual([]);
   });
 
-  test("ocx sync --restart-codex neither warns nor restarts when catalog exists but is unreadable", async () => {
-    // Non-default catalog path that exists on disk but cannot be read or rewritten as JSON.
-    // (A directory at the catalog path: existsSync true, load/write both fail.)
-    writeFileSync(join(codexHome, "config.toml"), 'model_catalog_json = "broken.json"\n', "utf8");
-    mkdirSync(join(codexHome, "broken.json"));
+  test("refresh forwards one explicit managed path to build and cache invalidation", async () => {
+    const managedCatalogPath = join(codexHome, "opencodex-catalog.json");
+    let syncTarget: string | undefined;
+    let invalidatedPath: string | undefined;
 
-    const syncResult = await syncModelsToCodex(10100, emptyConfig, null, {
-      refreshCodexModelCatalog,
-      injectCodexConfig: async () => ({ success: true, message: "injected" }),
-      currentExternalCodexModelProvider: () => null,
-    });
+    const result = await refreshCodexModelCatalog(emptyConfig, {
+      syncCatalogModels: async (_config, options) => {
+        syncTarget = options?.catalogPath;
+        writeFileSync(
+          managedCatalogPath,
+          JSON.stringify({ models: [{ slug: "gpt-6.1-sol" }] }),
+          "utf8",
+        );
+        return {
+          added: 0,
+          path: managedCatalogPath,
+          catalogWritten: true,
+          comboOmissions: [],
+        };
+      },
+      invalidateCodexModelsCache: (path) => {
+        invalidatedPath = path;
+        return true;
+      },
+      existsSync,
+    }, { catalogPath: managedCatalogPath });
 
-    expect(syncResult.catalogExists).toBe(true);
-    expect(syncResult.catalogWritten).toBe(false);
-    expect(syncResult.cacheSynced).toBe(false);
-
-    const errors: string[] = [];
-    const logs: string[] = [];
-    let listed = 0;
-
-    // Mirrors `ocx sync --restart-codex`: only handle app-servers after a real write.
-    if (syncResult.catalogWritten || syncResult.cacheSynced) {
-      afterCatalogWriteHandleAppServers({
-        restart: true,
-        log: { log: line => logs.push(String(line)), error: line => errors.push(String(line)) },
-        io: {
-          listSnapshots: () => {
-            listed += 1;
-            return [{ pid: 7, commandLine: "codex app-server" }];
-          },
-          kill: () => {},
-          isAlive: () => false,
-          waitExit: () => true,
-        },
-      });
-    }
-
-    expect(listed).toBe(0);
-    expect(errors).toEqual([]);
-    expect(logs).toEqual([]);
+    expect(syncTarget).toBe(managedCatalogPath);
+    expect(invalidatedPath).toBe(managedCatalogPath);
+    expect(result.catalogWritten).toBe(true);
+    expect(result.cacheSynced).toBe(true);
   });
 
   test("ocx sync --restart-codex neither warns nor restarts when catalog JSON is malformed", async () => {

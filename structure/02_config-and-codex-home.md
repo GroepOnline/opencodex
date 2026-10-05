@@ -66,8 +66,12 @@ model_catalog_json = "/absolute/path/to/opencodex-catalog.json"
 
 The merged catalog is `$CODEX_HOME/opencodex-catalog.json`. While OpenCodex owns active routing,
 that path is the only supported root `model_catalog_json`: a pre-existing custom catalog pointer is
-journaled for restore but replaced for the active OCX session. Parallel merge artifacts such as
-`~/.codex/model-catalogs/native-plus-ocx.json` are configuration drift and must not remain active.
+journaled for restore but replaced for the active OCX session. Catalog refresh writes the canonical
+path directly **before** injection changes the root pointer, so a user catalog is never mutated as an
+intermediate OCX build target. Cache invalidation reads the exact path written by that refresh.
+Restore cleanup also targets only the canonical OCX catalog after journal restore, never the restored
+user catalog. Parallel merge artifacts such as `~/.codex/model-catalogs/native-plus-ocx.json` are
+configuration drift and must not remain active.
 
 If the managed catalog cannot be materialized, injection removes the active root catalog override
 instead of leaving an unrelated or stale custom catalog in control. That deliberately falls back to

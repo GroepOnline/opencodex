@@ -43,6 +43,16 @@ export function hasUserOwnedRootOpenaiBaseUrl(content: string): boolean {
     && !hasInjectedOpenaiBaseUrl(content);
 }
 
+/* Read-only ownership probe used before sync so catalog writes cannot precede routing checks. */
+export function currentUserOwnedRootOpenaiBaseUrl(): boolean {
+  if (!existsSync(CODEX_CONFIG_PATH)) return false;
+  try {
+    return hasUserOwnedRootOpenaiBaseUrl(readFileSync(CODEX_CONFIG_PATH, "utf8"));
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Detect the file's dominant line ending. Every transform in this module is LF-pure
  * (split("\n") + hard "\n" joins), so CRLF configs (Windows-edited config.toml) are
@@ -561,10 +571,9 @@ export async function injectCodexConfig(port: number, config?: OcxConfig, option
   }
 
   if (hasUserOwnedRootOpenaiBaseUrl(rawContent)) {
-    // A user/external manager owns the routing surface. Clear any stale OCX journal so a later
-    // shutdown cannot replay an obsolete snapshot over that ownership, and do not half-own the
-    // same config by changing only its catalog or fast-mode keys.
-    removeJournal();
+    // A user/external manager owns the routing surface. Do not half-own the same config. Keep an
+    // existing journal: injected-state hashes prevent replay over user edits while retaining the
+    // original pre-OCX baseline for reversible cleanup of still-owned state.
     return {
       success: true,
       message: `⚠️ Codex routing and catalog NOT injected: config.toml has a user-owned root openai_base_url.\n`
@@ -861,7 +870,9 @@ export function restoreNativeCodex(): { success: boolean; message: string } {
   const cfg = journal.configRestored
     ? { success: true, message: "Codex config restored from opencodex journal." }
     : removeCodexConfig({ preserveProfile: journal.profileRestored || journal.profileChanged });
-  const cat = restoreCodexCatalog();
+  // Never follow a catalog pointer that the journal just restored. Only the canonical OCX
+  // catalog is ours to rewrite; a restored user catalog is immutable here.
+  const cat = restoreCodexCatalog(DEFAULT_CATALOG_PATH);
   // Design B (loopback) steady state: threads are already tagged openai, so prove the
   // no-op with a readonly probe instead of write-opening a DB the Codex app may hold
   // (Windows: WAL writer lock -> seconds of stalling + a false warning on every stop).
