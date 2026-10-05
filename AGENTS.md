@@ -91,6 +91,12 @@ authority for native model metadata.
 - While OCX owns active routing, `$CODEX_HOME/opencodex-catalog.json` is the only active merged
   catalog. Never create or point Codex at parallel merge files such as
   `~/.codex/model-catalogs/native-plus-ocx.json`.
+- Managed sync/build must target that canonical catalog **before** config injection. Never use the
+  current root `model_catalog_json` as an OCX write target: it may still be the user's pre-OCX
+  catalog. Cache invalidation must consume the exact catalog path written by the same sync.
+- Restore/eject may restore a user-owned catalog pointer from the journal, but catalog cleanup must
+  still target only the canonical OCX-managed catalog. Never strip routed rows from that restored
+  user catalog.
 - Bare native OpenAI rows must come from authoritative native discovery for the installed Codex
   client/account and retain upstream capability metadata. In particular, do not drop or synthesize
   `context_window`, reasoning ladders, `supports_search_tool`, `tool_mode`, or

@@ -489,13 +489,21 @@ export function mergeCatalogEntriesForSync(
   );
 }
 
-export async function syncCatalogModels(config: OcxConfig): Promise<{
+export interface SyncCatalogModelsOptions {
+  /** Explicit build target. Managed lifecycle callers use the canonical OCX catalog. */
+  catalogPath?: string;
+}
+
+export async function syncCatalogModels(
+  config: OcxConfig,
+  options: SyncCatalogModelsOptions = {},
+): Promise<{
   added: number;
   path: string;
   catalogWritten: boolean;
   comboOmissions: ComboCatalogOmission[];
 }> {
-  const catalogPath = readCodexCatalogPath();
+  const catalogPath = options.catalogPath ?? readCodexCatalogPath();
   const catalog = loadCatalogForSync(catalogPath);
   if (!catalog) return { added: 0, path: catalogPath, catalogWritten: false, comboOmissions: [] };
 
@@ -577,8 +585,9 @@ export async function syncCatalogModels(config: OcxConfig): Promise<{
   return { added: goEntries.length, path: catalogPath, catalogWritten: true, comboOmissions };
 }
 
-export function restoreCodexCatalog(): { removed: number; kept: number; path: string } {
-  const catalogPath = readCodexCatalogPath();
+export function restoreCodexCatalog(
+  catalogPath: string = readCodexCatalogPath(),
+): { removed: number; kept: number; path: string } {
   const catalog = readCatalog(catalogPath);
   if (!catalog || !Array.isArray(catalog.models)) return { removed: 0, kept: 0, path: catalogPath };
   const backup = readCatalogBackup(catalogPath);
@@ -606,9 +615,10 @@ export function restoreCodexCatalog(): { removed: number; kept: number; path: st
 }
 
 /** Force Codex's models_cache stale from the on-disk catalog. Returns whether a cache write occurred. */
-export function invalidateCodexModelsCache(): boolean {
+export function invalidateCodexModelsCache(
+  catalogPath: string = readCodexCatalogPath(),
+): boolean {
   try {
-    const catalogPath = readCodexCatalogPath();
     if (!existsSync(catalogPath)) return false;
     const catalog = JSON.parse(readFileSync(catalogPath, "utf8"));
     const models = catalog.models ?? catalog;

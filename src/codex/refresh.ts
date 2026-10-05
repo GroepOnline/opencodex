@@ -26,6 +26,11 @@ const defaultDeps: RefreshDeps = {
   existsSync,
 };
 
+export interface CodexCatalogRefreshOptions {
+  /** Managed lifecycle callers pass the canonical OCX catalog path explicitly. */
+  catalogPath?: string;
+}
+
 export function syncCodexModelsCacheFromCatalog(catalogPath: string): void {
   const content = readFileSync(catalogPath, "utf8");
   atomicWriteFile(CODEX_MODELS_CACHE_PATH, content);
@@ -40,14 +45,15 @@ export function syncCodexModelsCacheFromCatalog(catalogPath: string): void {
 export async function refreshCodexModelCatalog(
   config: OcxConfig,
   deps: RefreshDeps = defaultDeps,
+  options: CodexCatalogRefreshOptions = {},
 ): Promise<CodexCatalogRefreshResult> {
-  const result = await deps.syncCatalogModels(config);
+  const result = await deps.syncCatalogModels(config, options);
   const catalogExists = deps.existsSync(result.path);
   const catalogWritten = result.catalogWritten === true;
   const comboOmissions = result.comboOmissions ?? [];
   if (!catalogExists) {
     return { ...result, catalogExists, catalogWritten: false, cacheSynced: false, comboOmissions };
   }
-  const cacheSynced = deps.invalidateCodexModelsCache();
+  const cacheSynced = deps.invalidateCodexModelsCache(result.path);
   return { ...result, catalogExists, catalogWritten, cacheSynced, comboOmissions };
 }
