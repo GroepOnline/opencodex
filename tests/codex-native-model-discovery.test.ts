@@ -13,6 +13,9 @@ const liveNative = {
   visibility: "list",
   priority: 1,
   supported_in_api: true,
+  supports_search_tool: true,
+  tool_mode: "code_mode_only",
+  use_responses_lite: true,
   context_window: 400_000,
   input_modalities: ["text", "image"],
 };
@@ -217,6 +220,9 @@ describe("live native OpenAI catalog discovery", () => {
     expect(row?.supported_reasoning_levels).toEqual([
       { effort: "high", description: "High reasoning" },
     ]);
+    expect(row?.supports_search_tool).toBe(true);
+    expect(row?.tool_mode).toBe("code_mode_only");
+    expect(row?.use_responses_lite).toBe(true);
   });
 
   test("authoritative live native rows survive the static native whitelist unchanged", () => {
@@ -244,5 +250,9 @@ describe("live native OpenAI catalog discovery", () => {
     expect(row?.supported_reasoning_levels).toEqual([
       { effort: "high", description: "High reasoning" },
     ]);
+    expect(row?.context_window).toBe(400_000);
+    expect(row?.supports_search_tool).toBe(true);
+    expect(row?.tool_mode).toBe("code_mode_only");
+    expect(row?.use_responses_lite).toBe(true);
   });
 });
