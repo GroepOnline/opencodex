@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { MANAGEMENT_CONTRACT_VERSION } from "./contract-version";
 import { VERSION } from "./management-api";
 
