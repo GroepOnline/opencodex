@@ -13,7 +13,7 @@ import {
   rootTomlString,
   tomlStringPattern,
 } from "./injected-marker";
-import { CODEX_CONFIG_PATH, CODEX_PROFILE_PATH, DEFAULT_CATALOG_PATH, parseTomlString, readRootTomlString, tomlString } from "./paths";
+import { CODEX_CONFIG_PATH, CODEX_PROFILE_PATH, DEFAULT_CATALOG_PATH, parseTomlString, readRootTomlString, resolveCodexConfigPath, tomlString } from "./paths";
 import { resolveEffectiveProjectModelProvider } from "./project-config-warnings";
 import {
   transformManagedSubagentDefaults,
@@ -485,9 +485,48 @@ export function buildProfileFile(port: number, catalogPath?: string | null, supp
   return lines.join("\n");
 }
 
-export function chooseCatalogPathForInjection(_content: string, requested?: string | null): string | null {
-  if (requested !== undefined) return requested;
-  return existsSync(DEFAULT_CATALOG_PATH) ? DEFAULT_CATALOG_PATH : null;
+function isBareNativeCodexModelId(model: string | null): model is string {
+  return model !== null
+    && !model.includes("/")
+    && /^(?:gpt-|codex-)/i.test(model);
+}
+
+function catalogContainsModelSlug(catalogPath: string, slug: string): boolean {
+  try {
+    const parsed = JSON.parse(
+      readFileSync(resolveCodexConfigPath(catalogPath), "utf8"),
+    ) as { models?: unknown };
+    return Array.isArray(parsed.models)
+      && parsed.models.some(model =>
+        model !== null
+        && typeof model === "object"
+        && (model as { slug?: unknown }).slug === slug
+      );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Choose the one active OCX catalog, but never let that catalog make a selected native model
+ * disappear. A missing native row would make Codex synthesize generic fallback metadata (including
+ * the wrong context/tool capabilities); leaving model_catalog_json unset lets native Codex own the
+ * model metadata instead.
+ */
+export function chooseCatalogPathForInjection(content: string, requested?: string | null): string | null {
+  const candidate = requested !== undefined
+    ? requested
+    : (existsSync(DEFAULT_CATALOG_PATH) ? DEFAULT_CATALOG_PATH : null);
+  if (!candidate) return null;
+
+  const selectedModel = readRootTomlString(content, "model");
+  if (
+    isBareNativeCodexModelId(selectedModel)
+    && !catalogContainsModelSlug(candidate, selectedModel)
+  ) {
+    return null;
+  }
+  return candidate;
 }
 
 export interface CodexInjectResult {
@@ -584,8 +623,15 @@ export async function injectCodexConfig(port: number, config?: OcxConfig, option
   content = normalizeServiceTier(content);
   content = ensureFastModeFeature(content);
 
+  const candidateCatalogPath = options.catalogPath !== undefined
+    ? options.catalogPath
+    : (existsSync(DEFAULT_CATALOG_PATH) ? DEFAULT_CATALOG_PATH : null);
+  const selectedModel = readRootTomlString(content, "model");
   const catalogPath = chooseCatalogPathForInjection(content, options.catalogPath);
-  // No OCX catalog means "native catalog", never "whatever custom root catalog happened to be there".
+  const nativeCatalogFallback = candidateCatalogPath !== null
+    && catalogPath === null
+    && isBareNativeCodexModelId(selectedModel);
+  // No safe OCX catalog means "native catalog", never "whatever custom root catalog happened to be there".
   // The original user value remains in the journal and is restored on stop/eject.
   content = catalogPath ? setRootModelCatalogPath(content, catalogPath) : stripRootModelCatalogPath(content);
 
@@ -646,7 +692,9 @@ export async function injectCodexConfig(port: number, config?: OcxConfig, option
 
   const catalogMessage = catalogPath
     ? `  Codex model catalog: ${catalogPath}\n`
-    : `  Codex model catalog not injected because no opencodex catalog file exists yet.\n`;
+    : nativeCatalogFallback
+      ? `  ⚠️ Codex model catalog: native fallback because the managed OCX catalog does not contain selected native model ${tomlString(selectedModel!)}.\n`
+      : `  Codex model catalog not injected because no safe opencodex catalog file exists yet.\n`;
   const migratedRows = (history.rows ?? 0) + ("ejectedRows" in history ? history.ejectedRows ?? 0 : 0);
   const historyMessage = config?.syncResumeHistory === false
     ? `  Codex resume history: left unchanged (syncResumeHistory=false).\n`
