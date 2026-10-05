@@ -101,7 +101,8 @@ export async function beginTrace(
     const contentLength = req.headers.get("content-length");
     if (contentLength !== null) {
       const declared = Number(contentLength);
-      if (Number.isFinite(declared) && declared > MAX_INBOUND_READ_BYTES) return;
+      if (Number.isFinite(declared) && declared > MAX_INBOUND_READ_BYTES)
+        return;
     }
 
     const reader = req.clone().body?.getReader();
@@ -172,9 +173,8 @@ export function appendTraceResponse(
     trace.responseHasher.update(chunk);
     trace.responseBytes += byteLength(chunk);
     if (!trace.persist) return;
-    const storedChunk = trace.mode === "redacted"
-      ? redactBodyForStorage(chunk)
-      : chunk;
+    const storedChunk =
+      trace.mode === "redacted" ? redactBodyForStorage(chunk) : chunk;
     const separator = trace.response ? "\n" : "";
     const separatorBytes = separator ? 1 : 0;
     const remaining = trace.maxBodyBytes - trace.responseStoredBytes;
@@ -332,6 +332,77 @@ export interface TraceFinalizeResult {
   trace?: UsageTraceMeta;
 }
 
+function buildTraceMeta(
+  trace: TraceCapture,
+  wire: unknown,
+  inboundParsed: unknown,
+  outboundParsed: unknown,
+  shape: BodyShape,
+  hashes: SectionHashes,
+): UsageTraceMeta {
+  return {
+    mode: trace.mode,
+    stored: false,
+    ...(trace.inboundBytes !== undefined
+      ? { requestBytes: trace.inboundBytes }
+      : {}),
+    ...(trace.outboundBytes !== undefined
+      ? { outboundBytes: trace.outboundBytes }
+      : {}),
+    ...(trace.responseBytes > 0 ? { responseBytes: trace.responseBytes } : {}),
+    ...(shape.messageCount !== undefined
+      ? { messageCount: shape.messageCount }
+      : {}),
+    toolCallCount: shape.toolCallCount,
+    ...(shape.toolDefCount !== undefined
+      ? { toolDefCount: shape.toolDefCount }
+      : {}),
+    attachmentCount: shape.attachmentCount,
+    ...(trace.outboundCount > 0 ? { outboundCount: trace.outboundCount } : {}),
+    ...(trace.inbound !== undefined ? { requestHash: sha(trace.inbound) } : {}),
+    ...(trace.outbound !== undefined
+      ? { outboundHash: sha(trace.outbound) }
+      : {}),
+    ...(trace.responseBytes > 0
+      ? { responseHash: trace.responseHasher.digest("hex").slice(0, 32) }
+      : {}),
+    ...hashes,
+  };
+}
+
+function persistTraceBodies(
+  requestId: string,
+  trace: TraceCapture,
+  info: TraceFinalizeInfo,
+  meta: UsageTraceMeta,
+): void {
+  const inbound = storableBody(trace.inbound, trace.mode, trace.maxBodyBytes);
+  const outbound = storableBody(trace.outbound, trace.mode, trace.maxBodyBytes);
+  const response = storableBody(
+    trace.response || undefined,
+    trace.mode,
+    trace.maxBodyBytes,
+  );
+  meta.stored = writeTrace({
+    traceId: requestId,
+    createdAt: info.timestamp,
+    mode: trace.mode,
+    ...(info.conversationId ? { conversationId: info.conversationId } : {}),
+    ...(info.provider ? { provider: info.provider } : {}),
+    ...(info.model ? { model: info.model } : {}),
+    ...(info.status !== undefined ? { status: info.status } : {}),
+    meta: { ...meta, stored: true },
+    ...(inbound.text !== undefined ? { inbound: inbound.text } : {}),
+    ...(outbound.text !== undefined ? { outbound: outbound.text } : {}),
+    ...(response.text !== undefined ? { response: response.text } : {}),
+    truncated:
+      inbound.truncated ||
+      outbound.truncated ||
+      response.truncated ||
+      trace.responseTruncated,
+  });
+}
+
 /** Compute the usage-row metadata and (in redacted/full mode) persist the bodies. Idempotent. */
 export function finalizeTrace(
   requestId: string,
@@ -346,76 +417,15 @@ export function finalizeTrace(
     const outboundParsed = tryParse(trace.outbound);
     const wire = outboundParsed ?? inboundParsed;
     const shape = shapeOf(inboundParsed ?? outboundParsed);
-    const hashes = sectionHashes(wire);
-    const meta: UsageTraceMeta = {
-      mode: trace.mode,
-      stored: false,
-      ...(trace.inboundBytes !== undefined
-        ? { requestBytes: trace.inboundBytes }
-        : {}),
-      ...(trace.outboundBytes !== undefined
-        ? { outboundBytes: trace.outboundBytes }
-        : {}),
-      ...(trace.responseBytes > 0
-        ? { responseBytes: trace.responseBytes }
-        : {}),
-      ...(shape.messageCount !== undefined
-        ? { messageCount: shape.messageCount }
-        : {}),
-      toolCallCount: shape.toolCallCount,
-      ...(shape.toolDefCount !== undefined
-        ? { toolDefCount: shape.toolDefCount }
-        : {}),
-      attachmentCount: shape.attachmentCount,
-      ...(trace.outboundCount > 0
-        ? { outboundCount: trace.outboundCount }
-        : {}),
-      ...(trace.inbound !== undefined
-        ? { requestHash: sha(trace.inbound) }
-        : {}),
-      ...(trace.outbound !== undefined
-        ? { outboundHash: sha(trace.outbound) }
-        : {}),
-      ...(trace.responseBytes > 0
-        ? { responseHash: trace.responseHasher.digest("hex").slice(0, 32) }
-        : {}),
-      ...hashes,
-    };
-    if (trace.persist) {
-      const inbound = storableBody(
-        trace.inbound,
-        trace.mode,
-        trace.maxBodyBytes,
-      );
-      const outbound = storableBody(
-        trace.outbound,
-        trace.mode,
-        trace.maxBodyBytes,
-      );
-      const response = storableBody(
-        trace.response || undefined,
-        trace.mode,
-        trace.maxBodyBytes,
-      );
-      meta.stored = writeTrace({
-        traceId: requestId,
-        createdAt: info.timestamp,
-        mode: trace.mode,
-        ...(info.conversationId ? { conversationId: info.conversationId } : {}),
-        ...(info.provider ? { provider: info.provider } : {}),
-        ...(info.model ? { model: info.model } : {}),
-        ...(info.status !== undefined ? { status: info.status } : {}),
-        meta: { ...meta, stored: true },
-        ...(inbound.text !== undefined ? { inbound: inbound.text } : {}),
-        ...(outbound.text !== undefined ? { outbound: outbound.text } : {}),
-        ...(response.text !== undefined ? { response: response.text } : {}),
-        truncated:
-          inbound.truncated ||
-          outbound.truncated ||
-          response.truncated ||
-          trace.responseTruncated,
-      });
-    }
+    const meta = buildTraceMeta(
+      trace,
+      wire,
+      inboundParsed,
+      outboundParsed,
+      shape,
+      sectionHashes(wire),
+    );
+    if (trace.persist) persistTraceBodies(requestId, trace, info, meta);
     return { ...(meta.stored ? { traceId: requestId } : {}), trace: meta };
   } catch {
     return {};
