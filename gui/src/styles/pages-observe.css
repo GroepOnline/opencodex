@@ -76,9 +76,6 @@
   background: var(--hover);
 }
 
-.dashboard-workspace .pws-dashboard-row:active {
-  transform: scale(0.995);
-}
 
 .dashboard-workspace .panel-head .btn {
   flex-shrink: 0;
@@ -194,12 +191,9 @@
   padding: 0 14px 14px;
 }
 
-.verkeer-disclosure .ocx-group:not(.collapsed) .ocx-group-body {
-  animation: ocx-rise var(--motion-normal) var(--ease-out) both;
-}
 
 .verkeer-disclosure .ocx-group .ocx-chevron {
-  transition: transform var(--motion-normal) var(--ease-spring);
+  transition: transform var(--motion-normal) var(--ease-out);
   transform: rotate(0deg);
 }
 
@@ -310,7 +304,7 @@
 }
 
 .startup-page .startup-recovery .ocx-chevron {
-  transition: transform var(--motion-normal) var(--ease-spring);
+  transition: transform var(--motion-normal) var(--ease-out);
   transform: rotate(0deg);
 }
 
@@ -318,9 +312,6 @@
   transform: rotate(90deg);
 }
 
-.startup-page .startup-recovery:not(.collapsed) .ocx-group-body {
-  animation: ocx-rise var(--motion-normal) var(--ease-out) both;
-}
 
 .startup-page .startup-recovery .ocx-group-body {
   padding: 0 14px 14px;
@@ -360,7 +351,7 @@
 }
 
 .startup-page .mem-card-details .ocx-chevron {
-  transition: transform var(--motion-normal) var(--ease-spring);
+  transition: transform var(--motion-normal) var(--ease-out);
   transform: rotate(0deg);
 }
 
@@ -368,9 +359,6 @@
   transform: rotate(90deg);
 }
 
-.startup-page .mem-card-details[open] .mem-card-details-body {
-  animation: ocx-rise var(--motion-normal) var(--ease-out) both;
-}
 
 .startup-page .mem-card-restart {
   margin-top: 14px;

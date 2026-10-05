@@ -16,7 +16,7 @@
 }
 .traffic-entry-head:active {
   background: var(--raised);
-  transform: scale(0.995);
+
 }
 .traffic-entry-head--button {
   width: 100%;

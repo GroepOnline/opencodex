@@ -21,7 +21,7 @@ import {
 } from "../../oauth-health-display";
 import CodexAccountPool from "../CodexAccountPool";
 import OAuthAccountPoolSettings, { type OAuthPoolProvider } from "./OAuthAccountPoolSettings";
-import { DotMatrix } from "../../DotMatrix";
+import { Spinner } from "../primitives/spinner";
 import { LoginUrlBlock } from "../login-url-block";
 import QuotaBars, { formatResetFuture } from "../QuotaBars";
 import { useCopyFeedback } from "../use-copy-feedback";
@@ -221,7 +221,7 @@ export default function ProviderAuthPanel({
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => void authHandlers.onLogout(item.name)}>{t("prov.logout")}</button>
                 ) : (
                   <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => void authHandlers.onLogin(item.name, false)}>
-                    {busy ? <DotMatrix size={13} dotSize={3} speed={1.1} color="var(--accent-blue-ink)" aria-hidden="true" /> : <IconLock style={{ width: 13, height: 13 }} aria-hidden="true" />}
+                    {busy ? <Spinner aria-hidden="true" /> : <IconLock style={{ width: 13, height: 13 }} aria-hidden="true" />}
                     {busy ? t("prov.waitingBrowser") : t("prov.login")}
                   </button>
                 )}
@@ -229,7 +229,7 @@ export default function ProviderAuthPanel({
             </div>
             {busy && hintForThis && (
               <div className="pwi-auth-wait">
-                <DotMatrix size={16} dotSize={4} speed={1.1} color="var(--accent-blue)" aria-hidden="true" />
+                <Spinner aria-hidden="true" />
                 <div className="pwi-auth-wait-copy">
                   <div className="pwi-auth-wait-title">{t("prov.waitingBrowser")}</div>
                   {hintForThis.deviceCode && (
@@ -253,7 +253,7 @@ export default function ProviderAuthPanel({
             )}
             {accountLoadState === "loading" && accounts.length === 0 && (
               <div className="pwi-auth-state" role="status">
-                <DotMatrix size={16} dotSize={4} speed={1.1} color="var(--accent-blue)" aria-hidden="true" />
+                <Spinner aria-hidden="true" />
                 {t("pws.accountsLoading")}
               </div>
             )}

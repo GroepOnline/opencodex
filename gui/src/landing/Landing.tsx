@@ -1,16 +1,9 @@
 import type { MouseEvent } from "react";
 import { useT } from "../i18n/shared";
-import HeroCanvas from "./HeroCanvas";
 
-/**
- * Landing — public marketing page for OpenCodex.
- *
- * Standalone route, rendered outside the authenticated dashboard shell.
- * One WebGL scene (HeroCanvas) lives behind the hero copy; everything below
- * the fold is flat 2D. Design language: Signaal v3 (one accent, hairlines,
- * Instrument Serif display, General Sans body, JetBrains Mono for data).
- * Public copy follows the same EN/NL locale contract as the product UI.
- */
+
+/** Public entry. Examples describe setup; they never read or imply runtime health.
+ * Uses the workspace's OCX type and neutral palette at a larger reading scale. */
 
 const GITHUB_URL = "https://github.com/GroepOnline/opencodex";
 const DOCS_URL = "https://groeponline.github.io/opencodex/";
@@ -59,35 +52,14 @@ function Mark({ size = 24 }: { size?: number }) {
   );
 }
 
-/* Hero headline as word-level split text (Signaal §16): each word rises out
-   of an overflow-hidden mask, staggered by CSS animation-delay. The h1 keeps
-   a plain aria-label so assistive tech reads one sentence. */
 function HeroTitle() {
   const t = useT();
-  const prefix = t("landing.hero.titlePrefix");
-  const accent = t("landing.hero.titleAccent");
-  const suffix = t("landing.hero.titleSuffix");
-  const words: Array<{ t: string; accent?: boolean; breakAfter?: boolean }> = [
-    ...prefix.split(" ").map((word) => ({ t: word })),
-    { t: accent, accent: true, breakAfter: true },
-    ...suffix.split(" ").map((word) => ({ t: word })),
-  ];
-
   return (
-    <h1 className="lp-h1" aria-label={`${prefix} ${accent} ${suffix}`}>
-      {words.map((w, i) => (
-        <span key={`${i}:${w.t}`}>
-          <span className="lp-w" aria-hidden="true">
-            <span
-              className={w.accent ? "lp-wi lp-h1__accent" : "lp-wi"}
-              style={{ animationDelay: `${140 + i * 75}ms` }}
-            >
-              {w.t}
-            </span>
-          </span>
-          {w.breakAfter ? <br /> : null}
-        </span>
-      ))}
+    <h1 className="lp-h1">
+      {t("landing.hero.titlePrefix")}{" "}
+      <span className="lp-h1__accent">{t("landing.hero.titleAccent")}</span>
+      <br />
+      {t("landing.hero.titleSuffix")}
     </h1>
   );
 }
@@ -149,7 +121,6 @@ export default function Landing() {
 
       {/* ── Hero ── */}
       <section className="lp-hero" id="top">
-        <HeroCanvas />
         <div className="lp-hero__inner">
           <p className="lp-eyebrow">
             <span className="lp-eyebrow__tick" aria-hidden="true" />
@@ -183,8 +154,9 @@ export default function Landing() {
           </p>
         </div>
 
-        {/* Instrument readout pinned to the hero edge: real values, mono. */}
-        <div className="lp-hero__readout" aria-hidden="true">
+        {/* Static setup example. Never a runtime reading. */}
+        <div className="lp-hero__readout">
+          <p className="lp-readout-title">{t("landing.readout.example")}</p>
           <div className="lp-readout-row">
             <span className="lp-readout-key">
               {t("landing.readout.endpoint")}
@@ -217,17 +189,14 @@ export default function Landing() {
         </SectionEyebrow>
         <div className="lp-features">
           <article className="lp-feature lp-reveal">
-            <span className="lp-feature__index">/01</span>
             <h2>{t("landing.features.oneTitle")}</h2>
             <p>{t("landing.features.oneBody")}</p>
           </article>
           <article className="lp-feature lp-reveal">
-            <span className="lp-feature__index">/02</span>
             <h2>{t("landing.features.twoTitle")}</h2>
             <p>{t("landing.features.twoBody")}</p>
           </article>
           <article className="lp-feature lp-reveal">
-            <span className="lp-feature__index">/03</span>
             <h2>{t("landing.features.threeTitle")}</h2>
             <p>{t("landing.features.threeBody")}</p>
           </article>

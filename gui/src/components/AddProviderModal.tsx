@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useReducer, useRef } from "react";
 import { IconX } from "../icons";
 import { useT } from "../i18n/shared";
+import { useModalFocus } from "../use-modal-focus";
 import { useKeyedClientResource } from "../client-resource";
 import {
   buildProviderPostBody,
@@ -83,8 +84,6 @@ export default function AddProviderModal({
       createInitialAddProviderState(custom, t("modal.customProvider")),
   );
   const aliveRef = useRef(true);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
 
   const oauthPoll = useKeyedClientResource(
     `add-provider-oauth:${apiBase}`,
@@ -144,32 +143,16 @@ export default function AddProviderModal({
     endpointChoice,
     oauthTosPending,
   } = state;
+  const closeRef = useModalFocus({ onClose, suspended: Boolean(oauthTosPending) });
 
   useEffect(() => {
     aliveRef.current = true;
-    previousFocusRef.current = document.activeElement as HTMLElement | null;
     onOpen?.();
-    const dialog = dialogRef.current;
-    if (dialog) {
-      const focusable = dialog.querySelector<HTMLElement>(
-        "input:not([disabled]), button:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
-      );
-      if (focusable) focusable.focus();
-    }
     return () => {
       aliveRef.current = false;
-      previousFocusRef.current?.focus();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only open hook
   }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !oauthTosPending) onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, oauthTosPending]);
 
   const presetDescription = (candidate: Preset): string | undefined => {
     const key = codexPresetDescriptionKey(candidate);
@@ -305,7 +288,7 @@ export default function AddProviderModal({
   return (
     <>
       <Modal aria-label={t("modal.add")} onClick={onClose}>
-        <ModalCard ref={dialogRef} onClick={(e) => e.stopPropagation()}>
+        <ModalCard onClick={(e) => e.stopPropagation()}>
           <ModalHead
             title={
               preset
@@ -314,6 +297,7 @@ export default function AddProviderModal({
             }
             actions={
               <button
+                ref={closeRef}
                 type="button"
                 className="btn btn-ghost btn-icon"
                 aria-label={t("common.close")}

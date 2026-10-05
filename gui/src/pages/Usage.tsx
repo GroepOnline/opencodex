@@ -25,8 +25,12 @@ import { Stat, StatGroup } from "../components/primitives/stat";
 type Range = "all" | "30d" | "7d";
 type UsageSurface = "all" | "codex" | "claude" | "grok";
 
-function usagePayloadKey(range: Range, surface: UsageSurface): string {
-  return `${range}:${surface}`;
+function usagePayloadKey(
+  apiBase: string,
+  range: Range,
+  surface: UsageSurface,
+): string {
+  return `${apiBase}:${range}:${surface}`;
 }
 
 interface UsageSummaryTotals {
@@ -886,7 +890,7 @@ export default function Usage({ apiBase }: { apiBase: string }) {
       signal: AbortSignal,
     ) => {
       const generation = ++loadGenerationRef.current;
-      const requestKey = usagePayloadKey(nextRange, nextSurface);
+      const requestKey = usagePayloadKey(apiBase, nextRange, nextSurface);
       setLoading(true);
       try {
         const res = await fetch(
@@ -904,7 +908,13 @@ export default function Usage({ apiBase }: { apiBase: string }) {
         // A stale request (range/apiBase changed, or unmount) must not overwrite newer state.
         if (signal.aborted || generation !== loadGenerationRef.current) return;
         // Last-good applies only when the same range+surface is already on screen.
-        if (lastGoodKeyRef.current === requestKey && dataRef.current) return;
+        if (lastGoodKeyRef.current === requestKey && dataRef.current) {
+          const detail = cause instanceof Error ? cause.message : "";
+          setError(
+            detail ? `${t("usage.loadError")} ${detail}` : t("usage.loadError"),
+          );
+          return;
+        }
         dataRef.current = null;
         setData(null);
         const detail = cause instanceof Error ? cause.message : "";
@@ -985,7 +995,7 @@ export default function Usage({ apiBase }: { apiBase: string }) {
         }
       />
 
-      {error && !data ? (
+      {error ? (
         <Notice tone="err">
           {error}{" "}
           <button
@@ -999,7 +1009,8 @@ export default function Usage({ apiBase }: { apiBase: string }) {
             {t("common.retry")}
           </button>
         </Notice>
-      ) : loading && !data ? (
+      ) : null}
+      {loading && !data ? (
         <Empty>
           <EmptyHeader>
             <EmptyMedia variant="icon">

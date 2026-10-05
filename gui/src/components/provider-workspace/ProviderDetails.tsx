@@ -6,6 +6,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useT } from "../../i18n/shared";
 import type { WorkspaceItem } from "../../provider-workspace/catalog";
 import { formatProviderDisplayName } from "../../provider-icons";
+import { RoutingLine } from "../primitives/routing-line";
 import { PageTab, PageTabPanel, PageTabs } from "../primitives/page-tabs";
 import { isFreeProvider } from "../../provider-workspace/catalog";
 import { isLocalProvider } from "../../provider-workspace/kind";
@@ -325,6 +326,10 @@ export default function ProviderDetails({
           )}
         </div>
       </div>
+      <RoutingLine
+        context={<code>{item.name}</code>}
+        evidence={t(isDisabled ? "pws.routing.disabled" : "pws.routing.configured")}
+      />
       {fetchModelsStatus && (
         <p
           className="muted text-label"

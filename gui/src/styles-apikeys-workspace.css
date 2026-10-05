@@ -91,10 +91,11 @@
   width: 100%;
   min-height: 56px;
   appearance: none;
-  background: var(--surface);
-  border: 1px solid var(--card-border);
-  border-radius: var(--card-radius);
-  box-shadow: var(--card-shadow);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border-soft);
+  border-radius: 0;
+  box-shadow: none;
   padding: 10px 12px;
   cursor: pointer;
   text-align: left;
@@ -108,13 +109,13 @@
 }
 
 .apikeys-workspace-rail-row:hover {
-  box-shadow: var(--card-shadow-raised);
-  transform: translateY(-1px);
+  box-shadow: none;
+  background: var(--hover);
 }
 
 .apikeys-workspace-rail-row--selected {
   background: var(--raised);
-  box-shadow: var(--card-shadow-raised);
+  box-shadow: none;
   border-color: var(--border);
 }
 

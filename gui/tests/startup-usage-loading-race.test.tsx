@@ -221,7 +221,7 @@ test("an aborted Usage fetch must not clear loading while its replacement is in 
   container.remove();
 });
 
-test("a failed Usage refresh keeps last-good data on screen", async () => {
+test("a failed Usage api-base change clears data from the previous resource", async () => {
   const { createRoot } = await import("react-dom/client");
   const container = document.createElement("div");
   document.body.append(container);
@@ -283,11 +283,75 @@ test("a failed Usage refresh keeps last-good data on screen", async () => {
   await settle();
   await waitFor(() => call >= 2);
 
-  expect(container.textContent).toContain("42");
-  expect(container.textContent).not.toContain("Could not load usage data");
+  expect(container.textContent).not.toContain("42");
+  expect(container.textContent).toContain("Could not load usage data");
 
   await act(async () => { root.unmount(); });
   container.remove();
+});
+
+test("a failed same-query Usage refresh keeps data visible and marks the refresh error", async () => {
+  const { createRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  document.body.append(container);
+
+  let poll: (() => void) | undefined;
+  const originalSetInterval = window.setInterval;
+  window.setInterval = ((callback: TimerHandler, delay?: number) => {
+    if (delay === 30_000 && typeof callback === "function") poll = callback;
+    return 0 as unknown as ReturnType<typeof setInterval>;
+  }) as typeof window.setInterval;
+
+  let fail = false;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    if (!String(input).includes("/api/usage")) return new Response(null, { status: 404 });
+    if (fail) return new Response(null, { status: 503 });
+    return Response.json({
+      range: "30d",
+      surface: "all",
+      since: null,
+      generatedAt: 1,
+      summary: {
+        requests: 42,
+        measuredRequests: 42,
+        reportedRequests: 42,
+        unreportedRequests: 0,
+        unsupportedRequests: 0,
+        estimatedRequests: 0,
+        inputTokens: 100,
+        outputTokens: 200,
+        cachedInputTokens: 0,
+        reasoningOutputTokens: 0,
+        totalTokens: 300,
+        coverageRatio: 1,
+      },
+      days: [],
+      models: [],
+      providers: [],
+    });
+  }) as typeof fetch;
+
+  let root!: Root;
+  try {
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<LanguageProvider><Usage apiBase="http://test" /></LanguageProvider>);
+    });
+    await settle();
+    await waitFor(() => (container.textContent ?? "").includes("42"));
+    expect(poll).toBeDefined();
+
+    fail = true;
+    await act(async () => {
+      poll!();
+    });
+    await waitFor(() => (container.textContent ?? "").includes("Could not load usage data"));
+    expect(container.textContent).toContain("42");
+  } finally {
+    window.setInterval = originalSetInterval;
+    await act(async () => { root.unmount(); });
+    container.remove();
+  }
 });
 
 test("a failed Usage range switch shows an error instead of last-good data", async () => {

@@ -1,11 +1,11 @@
 ---
 title: Web Dashboard
-description: The opencodex GUI for proxy health, providers, models, delegation guidance, auth pools, usage, and logs.
+description: The opencodex GUI for proxy status, providers, models, routing configuration, usage, and request evidence.
 ---
 
 opencodex ships a local web dashboard (a Vite/React app under `gui/`) served from the proxy. It is the
-shortest path to managing providers, Codex/ChatGPT accounts, catalog models, sidecars, sub-agent
-settings, and request traffic.
+shortest path to managing providers, Codex/ChatGPT accounts, catalog models, sidecars, featured
+subagent models, and request traffic.
 
 ## Opening it
 
@@ -23,20 +23,23 @@ bun run dev:gui
 
 ## Sign-in
 
-On the default loopback bind (`localhost` / `127.0.0.1`) the dashboard never asks for a token:
-the proxy mints short-lived GUI sessions into the served page and renews them silently when
-they expire or the proxy restarts. On a public host protected by Cloudflare Access, a valid
-Access login also authorizes the dashboard without an admin-token prompt (configure
+On the default loopback bind (`localhost` / `127.0.0.1`), the proxy can mint short-lived,
+memory-only GUI sessions into the served page and renew them when they expire or the proxy
+restarts. On a public host protected by Cloudflare Access, a valid Access login can authorize
+the dashboard without an admin-token prompt (configure
 `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD`, and the trusted host settings). Other dashboards
 bound to a non-loopback hostname require the admin token (`OPENCODEX_ADMIN_AUTH_TOKEN`, or the
 auto-generated `~/.opencodex/admin-api-token` file).
+
+The GUI session and management credentials are only for the same-origin `/api/*` management
+surface. Provider credentials are used for `/v1/*`; the dashboard never attaches its management
+session or admin credential to data-plane requests.
 
 ## What you can do
 
 | Area                     | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Dashboard summary**    | Multi-agent mode, online state, version, uptime, provider count, 30-day token total, estimated cost, usage coverage, 429/502 ratios, active providers, and available native/routed models.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| **Sub-agent delegation** | Choose a native or routed model and optional reasoning effort shared by OpenCodex delegation guidance and the separate native-default opt-in. This is not a proxy-side per-spawn router; see below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **Dashboard summary**    | Proxy state, version, uptime, provider count, 30-day token total, estimated cost, usage coverage, recent activity, and the currently reported provider/model readings.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | **Sidecars**             | Choose the web-search model and effort plus the vision-description model. Changes apply on the next request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | **Maintenance**          | Resync the Codex model catalog, inspect project-local config bypass warnings, check the latest or preview release, and run an update with optional proxy restart.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | **Startup safety**       | Show whether injected Codex routing survives a restart, with separate service and launcher-shim health plus exact repair commands.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -45,7 +48,7 @@ auto-generated `~/.opencodex/admin-api-token` file).
 | **Providers**            | Add, edit, enable/disable, and remove providers; manage OAuth account pools and API-key pools where supported. Provider Settings can disable live model discovery for endpoints with missing, slow, or oversized `/models` catalogs. Claude, Cursor, and Google Antigravity OAuth surfaces each have an experimental account-pool card. Claude and Cursor show per-account usage bars (usage is per credential); a failed probe keeps the last-known bars and marks them unavailable until the next successful refresh. Cursor accepts a second account via browser login or a pasted user API key (JWT) on the same login surface. The pool turns on automatically when a second account is added; you can still turn it off. Cooldown rows have a clear-cooldown control. |
 | **Add provider**         | Search registry-backed presets for account login, API-key services, local servers, or a custom endpoint.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | **Codex Auth**           | Add ChatGPT/Codex pool accounts, select the next-session account, refresh 5h / weekly / 30d quotas, enable or disable quota auto-switch, set its 1–100% threshold, and configure transient-failure failover.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| **Subagents**            | Feature up to five bare native or namespaced routed models in the `spawn_agent` override list.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **Subagents**            | Choose and order up to five featured bare native or namespaced routed model IDs for the `spawn_agent` override list. This route does not configure delegation guidance, reasoning effort, or native Codex defaults.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | **Models**               | Toggle native GPT and routed models, set provider allowlists and context caps, choose v1/base/v2, and configure the v2 thread limit. Configured providers stay visible as zero-model groups when discovery is off or returns no rows.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | **Logs**                 | Auto-refresh recent requests with tokens, requested effort and (when available) effective outbound effort, resolved model, provider, status, request id, duration, and error details. The detail view includes the exact reasoning wire field when the adapter emits one. Filter by opaque conversation/session id (when the client sends one) to total tokens and estimated list-price cost for the currently loaded Logs ring.                                                                                                                                                                                                                                                                                                                                            |
 | **Usage / Debug**        | Inspect token-usage coverage and trends, or enable opt-in provider transport and usage-extraction diagnostics.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -58,15 +61,21 @@ active scan. Scanning remains read-only and does not enable cleanup.
 
 ### Linking to a section
 
-There is a single layout, so there is no layout switch to configure. The top-level **Verbruik**
-(usage) view provides detailed usage analytics, while the Dashboard also shows estimated cost,
-coverage, and 429/502 error-ratio insight cards. Dashboard sections are addressable instead:
-`#dashboard` opens Overview, and `#dashboard/providers` and `#dashboard/models` open the other two.
-Reload, bookmark, and Back all keep the section you were on. **Verkeer** (traffic logs) and
-**Verbruik** use canonical hashes `#verkeer`, `#verkeer/debug`, and `#verbruik`. Legacy bookmarks
-map explicitly: `#logs` → `#verkeer`, `#logs/debug` → `#verkeer/debug`, and the historical
-`#usage` bookmark → `#verbruik`. An older `#providers/workspace` bookmark now lands on
-`#leveranciers`.
+The dashboard uses hash routes. Canonical destinations are:
+
+| Area | Hashes |
+| --- | --- |
+| Public entry and summary | `#landing`, `#dashboard` |
+| Providers | `#leveranciers`, `#leveranciers/claude`, `#leveranciers/grok` |
+| Models | `#modellen`, `#modellen/combos`, `#modellen/subagents` |
+| Runtime evidence | `#verkeer`, `#verkeer/debug`, `#verbruik` |
+| System configuration | `#systeem`, `#systeem/storage`, `#systeem/api` |
+
+Legacy bookmarks keep working: `#dashboard/providers` → `#leveranciers`,
+`#dashboard/models` → `#modellen`, `#logs` → `#verkeer`, `#logs/debug` and
+`#debug` → `#verkeer/debug`, `#usage` → `#verbruik`, and `#providers`,
+`#providers/workspace`, and `#codex-auth` → `#leveranciers`. Reload, bookmark,
+and Back/Forward retain or normalize the current destination.
 
 Cost values in **Logs** and **Usage** are API list-price equivalents calculated from reported tokens.
 They are not billing receipts or evidence of an actual charge; subscription usage or provider credits
@@ -82,12 +91,13 @@ unsaved-change confirmation when switching tabs.
 
 ### Sub-navigation and motion
 
-Each workspace shows its sections as a segmented rail under the main navigation;
-the active segment is marked with a sliding pill and `aria-current="page"`. Pointer
-selection animates the pill briefly, keyboard selection moves it instantly, and
-page content fades in once per route change. When your system has
-**Reduce motion** enabled, the dashboard renders every state immediately with no
-movement or delay.
+Navigation and local tabs show the current destination with a restrained selection
+indicator and `aria-current="page"`. Motion is used only when it explains a
+selection, a list-to-detail/provider/account context change, a disclosure, an
+accepted change, copy feedback, or a relevant row insert/remove. It never indicates
+that a backend request has succeeded or is still running. There are no ambient loops,
+generic page entrances, or hover lifts. Keyboard actions and **Reduce motion** render
+the final state immediately.
 
 ## Model visibility
 
@@ -121,35 +131,17 @@ may still have the earlier layout.
 
 The **Models** switches show final Codex visibility: a routed model is on only when its provider allowlist includes it (or no allowlist is set) and it is not disabled. Turning a model on reconciles both filters atomically; **All on** clears the provider allowlist so newly discovered models are also on.
 
-## Delegation picker vs spawn routing
+## Reading runtime evidence
 
-The Dashboard's **Sub-agent delegation** picker stores `injectionModel` and, optionally,
-`injectionEffort`. **OpenCodex multi-agent guidance** independently controls the delegation
-instructions that use those values. On eligible v2 turns, that guidance tells the parent
-agent which exact model and reasoning effort to pass to `spawn_agent`; clearing the model also clears
-the stored effort.
+Configured catalog, provider, and mapping data is distinct from observed request
+evidence. A traffic row reports the request/model identity, provider or account context,
+outcome, and time only when the proxy supplied them. A visible catalog entry, configuration,
+quota, or health response does not prove that a provider can serve a request.
 
-The default-off **Use as native Codex subagent defaults** switch applies the same selection to Codex's
-native `[agents]` defaults on the next sync/restart when OpenCodex manages the active Codex routing.
-External user-managed provider configs remain untouched. Those defaults affect newly created Codex tasks
-and do not themselves cause delegation. Existing user-owned `[agents]` defaults are preserved rather
-than overwritten, so they may continue to override the requested defaults.
-
-:::caution
-Neither control is a proxy-side cross-model spawn router. OpenCodex guidance asks Codex to pass
-overrides to `spawn_agent`; native `[agents]` defaults apply only when Codex creates a new task after
-they have been synchronized. See
-[Sub-agent Surface](/guides/sub-agent-surface/) for the canonical v1/base/v2 behavior.
-:::
-
-The spawn override guarantee applies to the **built-in** v2 guidance text. A custom
-`injectionPrompt` replaces that text entirely and must include `{{model}}` and `{{effort}}`
-placeholders (and optionally `{{roster}}`) or those values will not appear in the injected
-guidance.
-
-The picker offers enabled native and routed models plus the global Codex effort ladder. The API
-validates the selected effort globally; Codex still validates a spawn effort against the target
-catalog entry.
+Missing data is shown as unknown or not reported, not as zero. During a refresh failure, the
+dashboard retains a successful reading for the same resource when available, marks the failure,
+and offers recovery rather than presenting old data as current. Usage is derived from local JSONL
+aggregation and excludes prompts; the request log is a bounded set of recent metadata.
 
 ## Codex Auth and account pools
 
@@ -183,7 +175,6 @@ The GUI is a thin client over the proxy's JSON management API. Useful endpoints 
 | `POST /api/providers/models/refresh?name=...`                                                                     | Force-fetch one provider's live `/models` list (ignores cache and failure cooldown) and resync the Codex catalog. Dashboard **Fetch models** uses this.                                                                                                                                                                               |
 | `GET /api/update/check` · `POST /api/update/run` · `GET /api/update/status`                                       | Check, run, and monitor self-update jobs. Worker PIDs are persisted so a crashed job recovers automatically; legacy no-PID jobs recover after ten minutes.                                                                                                                                                                            |
 | `GET` / `PUT /api/sidecar-settings`                                                                               | Read or set search/vision sidecar model settings.                                                                                                                                                                                                                                                                                     |
-| `GET` / `PUT /api/injection-model`                                                                                | Read or set the shared sub-agent model/effort selection and the independent guidance/native-default switches.                                                                                                                                                                                                                         |
 | `GET` / `PUT /api/v2`                                                                                             | Read or set the surface mode, Codex feature flag, and v2 thread limit.                                                                                                                                                                                                                                                                |
 | `GET /api/providers` · `POST /api/providers` · `PATCH /api/providers?name=...` · `DELETE /api/providers?name=...` | List, add/replace, partially edit, or remove providers. PATCH accepts `noReasoningModels` as an array of non-empty model strings; `[]` clears the opt-out, while omitted fields and stored credentials are preserved. API keys must use the dedicated key endpoints. Never POST a masked GET response back as provider configuration. |
 | `GET /api/models` · `PUT /api/disabled-models`                                                                    | List native/routed model rows and update the shared disabled-model set.                                                                                                                                                                                                                                                               |
@@ -194,7 +185,7 @@ The GUI is a thin client over the proxy's JSON management API. Useful endpoints 
 | `PUT /api/codex-auth/active` · `PUT /api/codex-auth/auto-switch` · `PUT /api/codex-auth/failover`                 | Select the account for the next request and configure pool routing.                                                                                                                                                                                                                                                                   |
 | `POST /api/codex-auth/login` · `GET /api/codex-auth/login-status`                                                 | Add a pool account through browser login.                                                                                                                                                                                                                                                                                             |
 | `GET /api/logs?tail=50&provider=...&status=5xx`                                                                   | Read recent request metadata with optional tail, provider, and exact/class status filters.                                                                                                                                                                                                                                            |
-| `GET` / `PUT /api/subagent-models`                                                                                | Read or set the five featured `spawn_agent` override models.                                                                                                                                                                                                                                                                          |
+| `GET` / `PUT /api/subagent-models`                                                                                | Read or set the ordered featured `spawn_agent` override model IDs (maximum five).                                                                                                                                                                                                                                                     |
 | `POST /api/stop`                                                                                                  | Stop the proxy/service, restore native Codex, and exit.                                                                                                                                                                                                                                                                               |
 
 :::tip

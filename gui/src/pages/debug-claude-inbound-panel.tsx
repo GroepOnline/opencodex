@@ -1,15 +1,20 @@
+import type { ReactNode } from "react";
 import { useI18n } from "../i18n/shared";
 import type { ClaudeInboundEntry } from "./debug-shared";
 import { formatClaudeInboundTime } from "./debug-shared";
 
-export function DebugClaudeInboundPanel({ entries }: { entries: ClaudeInboundEntry[] }) {
+export function DebugClaudeInboundPanel({ entries, feedback }: {
+  entries: ClaudeInboundEntry[] | undefined;
+  feedback?: ReactNode;
+}) {
   const { t } = useI18n();
 
   return (
     <div className="card" style={{ marginBottom: 16, padding: "12px 14px" }}>
       <div className="font-semibold" style={{ marginBottom: 4 }}>{t("debug.claudeInbound.title")}</div>
       <div className="muted text-control" style={{ marginBottom: 10 }}>{t("debug.claudeInbound.sub")}</div>
-      {entries.length === 0 ? (
+      {feedback}
+      {entries === undefined ? null : entries.length === 0 ? (
         <div className="muted text-control">{t("debug.claudeInbound.empty")}</div>
       ) : (
         <div style={{ overflowX: "auto" }}>

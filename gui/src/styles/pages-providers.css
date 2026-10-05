@@ -216,9 +216,6 @@
   padding: 24px 0;
 }
 
-.dialog-backdrop {
-  animation: ocx-fade var(--motion-fast) var(--ease-out) both;
-}
 
 .add-provider-form-pane .modal-actions,
 .modal-card .modal-actions {
@@ -226,10 +223,10 @@
 }
 
 .modal-card .modal-head .btn.btn-ghost.btn-icon {
-  width: 28px;
-  height: 28px;
-  min-width: 28px;
-  min-height: 28px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
   padding: 0;
   gap: 0;
   border-color: transparent;
@@ -273,4 +270,11 @@
     transition: none;
     animation: none;
   }
+}
+
+.ocx-workspace .main-inner:has(.pws-shell-container) { max-width: 1800px; }
+.pws-detail > .routing-line { margin: 0 0 20px; }
+.pws-detail > .routing-line .routing-line-context { max-width: 640px; }
+@container provider-workspace (max-width: 760px) {
+  .pws-rail { border-right: 0; border-bottom: 1px solid var(--border-soft); }
 }

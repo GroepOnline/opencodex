@@ -223,6 +223,20 @@ describe("Dashboard observed data states", () => {
     });
   }
 
+  test("one rejected resource does not discard the other dashboard reading", async () => {
+    usageReply = async () => Response.json(usage(17, 321));
+    logsReply = async () => {
+      throw new TypeError("Failed to fetch");
+    };
+    await mount();
+
+    expect(values()).toEqual(["321", "17", "0"]);
+    expect(host.textContent).not.toContain("Could not load usage data.");
+    expect(host.textContent).toContain(
+      "Could not load traffic. Last known rows stay visible.",
+    );
+  });
+
   test("successful empty logs and zero usage show actual zeroes without failure notices", async () => {
     await mount();
     expect(values()).toEqual(["0", "0", "0"]);

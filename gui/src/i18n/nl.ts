@@ -5,6 +5,14 @@
 import type { TKey } from "./en";
 
 export const nlOverrides: Partial<Record<TKey, string>> = {
+  "debug.logsLoading": "Debuglogs laden…",
+  "debug.logsLoadError": "Debuglogs konden niet worden geladen.",
+  "debug.logsRefreshError": "Debuglogs konden niet worden vernieuwd. Het laatst geladen resultaat wordt getoond.",
+  "debug.settingsLoadError": "Debuginstellingen konden niet worden geladen.",
+  "debug.settingsRefreshError": "Debuginstellingen konden niet worden vernieuwd. De laatst geladen instellingen worden getoond.",
+  "debug.claudeInbound.loading": "Inkomende Claude-verzoeken laden…",
+  "debug.claudeInbound.loadError": "Inkomende Claude-verzoeken konden niet worden geladen.",
+  "debug.claudeInbound.refreshError": "Inkomende Claude-verzoeken konden niet worden vernieuwd. Het laatst geladen resultaat wordt getoond.",
   "app.pageTitle": "{page} | opencodex",
   // sidebar / nav
   "nav.providers": "Leveranciers",
@@ -126,6 +134,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "pws.allProviders": "Leveranciersoverzicht",
   "pws.saveSettings": "Bewaar",
   "pws.saving": "Bewaren…",
+  "pws.routing.configured": "Ingestelde provider",
+  "pws.routing.disabled": "Uitgeschakeld in configuratie",
   "pws.enabledLabel": "Aan",
   "pws.testConnection": "Test verbinding",
   "pws.testing": "Testen…",
@@ -243,6 +253,7 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "models.workspace.modelId": "Model-ID",
   "models.workspace.copyId": "Kopieer ID",
   "models.workspace.copyUnavailable": "Klembord niet beschikbaar",
+  "models.workspace.catalogSource": "Catalogus",
   "models.workspace.catalogEvidence": "Catalogusdata, geen live verificatie",
   "models.workspace.changeVisibility": "Geselecteerd model in kiezer tonen",
   "models.workspace.shown": "Opgenomen in je modelinstellingen",
@@ -821,16 +832,17 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "landing.nav.pricing": "Prijzen",
   "landing.nav.signIn": "Inloggen",
   "landing.nav.start": "Start met bouwen",
-  "landing.hero.eyebrow": "Open-source code-agent",
-  "landing.hero.titlePrefix": "Code die",
-  "landing.hero.titleAccent": "werkt.",
-  "landing.hero.titleSuffix": "Geen slides.",
+  "landing.hero.eyebrow": "Modelroutering · lokale proxy",
+  "landing.hero.titlePrefix": "Routeer je",
+  "landing.hero.titleAccent": "modellen.",
+  "landing.hero.titleSuffix": "Zie wat er draaide.",
   "landing.hero.sub":
     "OpenCodex routeert Claude, Gemini, Grok, DeepSeek en Ollama via één lokale endpoint, zodat je Codex CLI, app of SDK met elk model praat zonder iets te wijzigen.",
   "landing.hero.github": "Bekijk op GitHub",
   "landing.hero.proofLicense": "MIT-licentie",
   "landing.hero.proofLocal": "Draait lokaal",
   "landing.hero.proofProcess": "Eén Bun-proces",
+  "landing.readout.example": "Voorbeeldconfiguratie",
   "landing.readout.endpoint": "endpoint",
   "landing.readout.routing": "routering",
   "landing.readout.quotaAware": "quotabewust",
@@ -846,7 +858,7 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "landing.features.threeBody":
     "De proxy draait als één Bun-proces op je machine of fleet. Credentials verlaten je infrastructuur niet. Request-bodies worden nooit gelogd.",
   "landing.terminal.eyebrow": "In de terminal",
-  "landing.terminal.meta": "sessie · lokaal",
+  "landing.terminal.meta": "Voorbeeldsessie · geen live uitvoer",
   "landing.terminal.proxyListening":
     "opencodex {version} · proxy luistert op http://localhost:8317",
   "landing.terminal.dashboard": "dashboard → http://localhost:8317/#dashboard",

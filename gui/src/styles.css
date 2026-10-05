@@ -621,10 +621,6 @@ a.btn:hover {
   opacity: 0.55;
   cursor: default;
 }
-/* design language press-physics: settle, never bounce */
-.btn:active:not(:disabled) {
-  transform: scale(0.97);
-}
 .btn-primary {
   background: var(--accent);
   color: var(--accent-ink);
@@ -1632,27 +1628,7 @@ select.input {
   background: currentColor;
   opacity: 0.4;
 }
-.spin.go::before {
-  animation: ocx-rippleflow 1.1s var(--ease-out) 1;
-  opacity: 0.9;
-}
-@keyframes ocx-rippleflow {
-  0% {
-    transform: scaleX(0.15);
-    transform-origin: left;
-  }
-  45% {
-    transform: scaleX(1);
-    transform-origin: left;
-  }
-  46% {
-    transform-origin: right;
-  }
-  100% {
-    transform: scaleX(0.15);
-    transform-origin: right;
-  }
-}
+.spin.go::before { opacity: 0.9; }
 
 /* Loading skeleton: a quiet raised block. No shimmer loop — activity is the
    ripple's job; the skeleton only reserves layout. */
@@ -1675,23 +1651,7 @@ select.input {
    duration + a keyframe here; never animate width/height/top/left.
    ============================================================================ */
 
-/* Intent reveal — one calm rise per navigation (ErrorBoundary is keyed by page,
-   so its subtree remounts and replays this). Not per-card: a wall of staggered
-   items is theater. */
-/* keyed on the current page (App.tsx), so it re-creates and replays per nav */
-.page-reveal {
-  animation: ocx-page-in var(--motion-slow) var(--ease-out) both;
-}
-@keyframes ocx-page-in {
-  from {
-    opacity: 0;
-    transform: translateY(14px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
+.page-reveal { animation: none; }
 
 /* Modal enter — scrim fades, card rises and settles. */
 @keyframes ocx-overlay-in {
@@ -1727,14 +1687,6 @@ select.input {
     border-color var(--motion-fast) var(--ease-out),
     transform 100ms var(--ease-out);
 }
-.page-tab:active,
-.select-option:active,
-.chip:active,
-.seg button:active,
-.usage-segmented-btn:active,
-.claude-tabs button:active {
-  transform: scale(0.98);
-}
 
 /* ---- modal ---- */
 /* Matte dim — no backdrop blur (glass ban). Overlay alone blocks reading through. */
@@ -1747,7 +1699,7 @@ select.input {
   justify-content: center;
   padding: 8vh 16px;
   z-index: var(--z-modal);
-  animation: ocx-overlay-in var(--motion-fast) var(--ease-out);
+
 }
 /* Native <dialog>.showModal() UA styles (solid border + ::backdrop) stack on top of
    .modal-overlay and produce a white frame + double dim. Reset when the dialog IS the overlay. */
@@ -1775,7 +1727,7 @@ dialog.modal-overlay::backdrop {
   box-shadow: var(--shadow);
   max-height: 84vh;
   overflow-y: auto;
-  animation: ocx-modal-in var(--motion-normal) var(--ease-out);
+
 }
 .modal-head {
   display: flex;
@@ -4371,10 +4323,6 @@ button.prov-account-row.active {
   border-radius: 1px;
   background: var(--accent-blue);
 }
-.view-tab:active,
-.sub-tab:active {
-  transform: scale(0.98);
-}
 
 /* ghost icon button (design-system .gbtn) */
 .gbtn {
@@ -4403,7 +4351,7 @@ button.prov-account-row.active {
   inset: 0;
   z-index: var(--z-modal);
   background: light-dark(rgba(20, 18, 16, 0.35), rgba(0, 0, 0, 0.6));
-  animation: ocx-overlay-in var(--motion-fast) var(--ease-out);
+
 }
 .settings-sheet {
   position: fixed;
@@ -4418,7 +4366,7 @@ button.prov-account-row.active {
   background: var(--surface);
   border-left: 1px solid var(--border);
   overflow-y: auto;
-  animation: ocx-sheet-in var(--motion-normal) var(--ease-out);
+
 }
 @keyframes ocx-sheet-in {
   from {

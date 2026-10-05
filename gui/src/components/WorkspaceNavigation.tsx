@@ -45,7 +45,7 @@ export default function WorkspaceNavigation({
                 transition={
                   reduceMotion || keyboardNavigation
                     ? { duration: 0 }
-                    : { type: "spring", visualDuration: 0.18, bounce: 0 }
+                    : { type: "tween", duration: 0.18, ease: "easeOut" }
                 }
                 aria-hidden
               />

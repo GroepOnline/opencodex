@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useT } from "../i18n/shared";
-import { IconCheck, IconChevron, IconServer } from "../icons";
+import { IconCheck, IconChevron } from "../icons";
 import MatrixMark from "../components/MatrixMark";
 import { Button } from "../components/primitives/button";
 import { Badge } from "../components/primitives/badge";
@@ -32,6 +32,7 @@ import {
 } from "../components/primitives/inspector";
 import { Metric, MetricGroup } from "../components/primitives/metric";
 import { Separator } from "../components/primitives/separator";
+import { RoutingLine } from "../components/primitives/routing-line";
 import {
   useCopyFeedback,
   type CopyOutcome,
@@ -76,7 +77,11 @@ function ModelIdentifier({
           </span>
         </Button>
       </div>
-      <code>{model.native ? model.id : model.namespaced}</code>
+      <RoutingLine
+        identity={<code>{model.native ? model.id : model.namespaced}</code>}
+        context={model.provider}
+        evidence={t("models.workspace.catalogSource")}
+      />
     </div>
   );
 }
@@ -202,12 +207,6 @@ export default function ModelInspector({
             className="model-inspector-heading"
             kickerClassName="model-inspector-provider"
             headingRef={headingRef}
-            kicker={
-              <>
-                <IconServer size={15} aria-hidden />
-                {model.provider}
-              </>
-            }
             title={model.displayName || modelLabel(model.id)}
             badge={
               model.custom ? (

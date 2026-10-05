@@ -4,6 +4,7 @@ import { formatTokens } from "../format-tokens";
 import { useI18n, type Locale, type TFn } from "../i18n/shared";
 import { IconChevron } from "../icons";
 import { KeyPoolHealthPanel, ResponseCachePanel } from "../ops-panels";
+import { Notice } from "../ui";
 import {
   Empty,
   EmptyDescription,
@@ -25,6 +26,7 @@ import {
 } from "../components/primitives/segmented-control";
 import { StatStrip, StatStripItem } from "../components/primitives/stat-strip";
 import { Timestamp } from "../components/primitives/timestamp";
+import { Spinner } from "../components/primitives/spinner";
 import { TrafficColumnHead, TrafficRowCells } from "../traffic-row";
 import {
   requestsTodayCount,
@@ -105,9 +107,9 @@ function TrafficStatsStrip({
   locale,
   t,
 }: {
-  tokens30d: number;
-  requestsVandaag: number;
-  requests30d: number;
+  tokens30d: number | undefined;
+  requestsVandaag: number | undefined;
+  requests30d: number | undefined;
   cacheReadRatio: number | undefined;
   proxyCacheRatio: number | null;
   estimatedCostUsd: number | undefined;
@@ -120,15 +122,19 @@ function TrafficStatsStrip({
     <StatStrip label={t("vk.statsAria")}>
       <StatStripItem
         label={t("vk.tokens30d")}
-        value={formatTokens(tokens30d, locale)}
+        value={tokens30d === undefined ? "—" : formatTokens(tokens30d, locale)}
       />
       <StatStripItem
         label={t("vk.requestsToday")}
-        value={requestsVandaag.toLocaleString(locale)}
+        value={
+          requestsVandaag === undefined
+            ? "—"
+            : requestsVandaag.toLocaleString(locale)
+        }
       />
       <StatStripItem
         label={t("vk.requests30d")}
-        value={requests30d.toLocaleString(locale)}
+        value={requests30d === undefined ? "—" : requests30d.toLocaleString(locale)}
       />
       <StatStripItem label={t("vk.cacheHit")} value={dashPct(cacheReadRatio)} />
       <StatStripItem
@@ -312,7 +318,12 @@ function TrafficProviderFilters({
 export default function Verkeer({ apiBase }: { apiBase: string }) {
   const { locale, t } = useI18n();
   const [summary30d, setSummary30d] = useState<UsageSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [summaryLoaded, setSummaryLoaded] = useState(false);
+  const [summaryFailed, setSummaryFailed] = useState(false);
+  const [summaryRetry, setSummaryRetry] = useState(0);
   const [logs, setLogs] = useState<TrafficLogEntry[]>([]);
+  const [logsLoaded, setLogsLoaded] = useState(false);
   const [logsFailed, setLogsFailed] = useState(false);
   const [providerFilter, setProviderFilter] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
@@ -320,9 +331,17 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
   const [analyseOpen, setAnalyseOpen] = useState(false);
   const [opsOpen, setOpsOpen] = useState(false);
   // Proxy response-cache hit-rate (hits / (hits+misses)) from GET /api/response-cache — the same
-  // source ResponseCachePanel reads. null when the cache is off or the endpoint is unreachable.
+  // source ResponseCachePanel reads. null when the cache is off or unprobed.
   // This is DISTINCT from summary.cacheReadRatio, which is Anthropic prompt-cache token reuse.
   const [proxyCacheRatio, setProxyCacheRatio] = useState<number | null>(null);
+  const [cacheLoading, setCacheLoading] = useState(true);
+  const [cacheLoaded, setCacheLoaded] = useState(false);
+  const [cacheFailed, setCacheFailed] = useState(false);
+  const [cacheRetry, setCacheRetry] = useState(0);
+  const hasSummaryRef = useRef(false);
+  const hasCacheRef = useRef(false);
+  const summaryApiBaseRef = useRef(apiBase);
+  const cacheApiBaseRef = useRef(apiBase);
   const pausedRef = useRef(paused);
   useEffect(() => {
     pausedRef.current = paused;
@@ -330,14 +349,31 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    if (summaryApiBaseRef.current !== apiBase) {
+      summaryApiBaseRef.current = apiBase;
+      hasSummaryRef.current = false;
+      setSummary30d(null);
+      setSummaryLoading(true);
+      setSummaryLoaded(false);
+      setSummaryFailed(false);
+    }
     const load = async () => {
       try {
         const res = await fetch(`${apiBase}/api/usage?range=30d`);
-        if (!res.ok) return;
+        if (!res.ok) throw new Error(String(res.status));
         const data = (await res.json()) as UsageSummary;
-        if (!cancelled) setSummary30d(data);
+        if (!cancelled) {
+          hasSummaryRef.current = true;
+          setSummary30d(data);
+          setSummaryLoading(false);
+          setSummaryLoaded(true);
+          setSummaryFailed(false);
+        }
       } catch {
-        /* keep last-good */
+        if (!cancelled) {
+          setSummaryLoading(false);
+          setSummaryFailed(true);
+        }
       }
     };
     void load();
@@ -346,10 +382,18 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
       cancelled = true;
       clearInterval(iv);
     };
-  }, [apiBase]);
+  }, [apiBase, summaryRetry]);
 
   useEffect(() => {
     let cancelled = false;
+    if (cacheApiBaseRef.current !== apiBase) {
+      cacheApiBaseRef.current = apiBase;
+      hasCacheRef.current = false;
+      setProxyCacheRatio(null);
+      setCacheLoading(true);
+      setCacheLoaded(false);
+      setCacheFailed(false);
+    }
     const loadCache = async () => {
       try {
         const res = await fetch(`${apiBase}/api/response-cache`);
@@ -364,9 +408,16 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
         const lookups = hits + misses;
         // Only surface a ratio when the cache is on AND has been probed: 0 lookups is "no signal",
         // not a 0% hit-rate, so leave it null rather than showing a misleading 0%.
+        hasCacheRef.current = true;
         setProxyCacheRatio(data.enabled && lookups > 0 ? hits / lookups : null);
+        setCacheLoading(false);
+        setCacheLoaded(true);
+        setCacheFailed(false);
       } catch {
-        if (!cancelled) setProxyCacheRatio(null);
+        if (!cancelled) {
+          setCacheLoading(false);
+          setCacheFailed(true);
+        }
       }
     };
     void loadCache();
@@ -375,7 +426,7 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
       cancelled = true;
       clearInterval(iv);
     };
-  }, [apiBase]);
+  }, [apiBase, cacheRetry]);
 
   useEffect(() => {
     let cancelled = false;
@@ -391,6 +442,7 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
               ? data.toSorted((a, b) => b.timestamp - a.timestamp)
               : [],
           );
+          setLogsLoaded(true);
           setLogsFailed(false);
         }
       } catch {
@@ -435,9 +487,11 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
     () => requestsTodayCount(logs, summary30d?.days),
     [logs, summary30d],
   );
+  const requestsVandaagReading =
+    summary30d || logsLoaded ? requestsVandaag : undefined;
 
-  const requests30d = summary30d?.summary.requests ?? 0;
-  const tokens30d = summary30d?.summary.totalTokens ?? 0;
+  const requests30d = summary30d?.summary.requests;
+  const tokens30d = summary30d?.summary.totalTokens;
 
   /** Per-model breakdown (top 12 by requests, 30d from /api/usage models[]). */
   const topModellen = useMemo(() => {
@@ -454,7 +508,7 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
 
       <TrafficStatsStrip
         tokens30d={tokens30d}
-        requestsVandaag={requestsVandaag}
+        requestsVandaag={requestsVandaagReading}
         requests30d={requests30d}
         cacheReadRatio={summary30d?.summary.cacheReadRatio}
         proxyCacheRatio={proxyCacheRatio}
@@ -464,6 +518,41 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
         locale={locale}
         t={t}
       />
+
+      {summaryLoading && !summaryLoaded ? (
+        <p className="muted text-caption" role="status">
+          {t("usage.loading")}
+        </p>
+      ) : null}
+      {summaryFailed ? (
+        <Notice tone="err">
+          {t("usage.loadError")}
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setSummaryRetry((current) => current + 1)}
+          >
+            {t("common.retry")}
+          </button>
+        </Notice>
+      ) : null}
+      {cacheLoading && !cacheLoaded ? (
+        <p className="muted text-caption" role="status">
+          {t("ops.cacheHead")}: {t("common.loading")}
+        </p>
+      ) : null}
+      {cacheFailed ? (
+        <Notice tone="err">
+          {t("ops.cacheFailed")}
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setCacheRetry((current) => current + 1)}
+          >
+            {t("common.retry")}
+          </button>
+        </Notice>
+      ) : null}
 
       {summary30d?.providers && summary30d.providers.length > 0 ? (
         <ProviderShareTable
@@ -499,7 +588,16 @@ export default function Verkeer({ apiBase }: { apiBase: string }) {
       <TrafficColumnHead />
 
       <div className="rail ocx-reveal-list" aria-live="polite" onFocus={() => setPaused(true)}>
-        {zichtbaar.length === 0 ? (
+        {!logsLoaded && !logsFailed ? (
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Spinner />
+              </EmptyMedia>
+              <EmptyTitle>{t("common.loading")}</EmptyTitle>
+            </EmptyHeader>
+          </Empty>
+        ) : zichtbaar.length === 0 ? (
           <Empty>
             <EmptyHeader>
               <EmptyMedia variant="icon">

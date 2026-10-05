@@ -9,7 +9,7 @@ export interface WorkspaceSubTab {
 }
 
 /** Second-level navigation under the topbar: a segmented rail whose selection
- *  pill travels between destinations with a shared-layout spring. Pointer
+ *  pill travels between destinations with a finite shared-layout transition. Pointer
  *  navigation animates; keyboard and reduced motion switch instantly. */
 export default function WorkspaceSubTabs({
   tabs,
@@ -49,7 +49,7 @@ export default function WorkspaceSubTabs({
                   transition={
                     reduceMotion || keyboardNavigation
                       ? { duration: 0 }
-                      : { type: "spring", visualDuration: 0.22, bounce: 0.12 }
+                      : { type: "tween", duration: 0.18, ease: "easeOut" }
                   }
                   aria-hidden
                 />

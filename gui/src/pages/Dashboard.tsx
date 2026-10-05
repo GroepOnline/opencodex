@@ -34,6 +34,8 @@ interface UsageSummary {
   providers: UsageProviderRow[];
 }
 
+const EMPTY_TRAFFIC_LOGS: TrafficLogEntry[] = [];
+
 /** Formats a 0..1 ratio as a rounded percentage; em-dash when absent. */
 function formatRatio(value: number | undefined): string {
   return typeof value === "number" && Number.isFinite(value)
@@ -61,49 +63,60 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
   );
 
   const [summary, setSummary] = useState<UsageSummary | null>(null);
+  const [summarySource, setSummarySource] = useState<string | null>(null);
   const [logs, setLogs] = useState<TrafficLogEntry[]>([]);
+  const [logsSource, setLogsSource] = useState<string | null>(null);
   const [usageFailed, setUsageFailed] = useState(false);
+  const [usageFailureSource, setUsageFailureSource] = useState<string | null>(
+    null,
+  );
   const [logsFailed, setLogsFailed] = useState(false);
+  const [logsFailureSource, setLogsFailureSource] = useState<string | null>(
+    null,
+  );
   const [logsLoaded, setLogsLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      try {
-        const [usageRes, logsRes] = await Promise.all([
-          fetch(`${apiBase}/api/usage?range=30d`),
-          fetch(`${apiBase}/api/logs`),
-        ]);
+      const [usageResult, logsResult] = await Promise.allSettled([
+        (async () => {
+          const res = await fetch(`${apiBase}/api/usage?range=30d`);
+          if (!res.ok) throw new Error(String(res.status));
+          return (await res.json()) as UsageSummary;
+        })(),
+        (async () => {
+          const res = await fetch(`${apiBase}/api/logs`);
+          if (!res.ok) throw new Error(String(res.status));
+          return (await res.json()) as TrafficLogEntry[];
+        })(),
+      ]);
 
-        if (usageRes.ok) {
-          const data = (await usageRes.json()) as UsageSummary;
-          if (!cancelled) {
-            setSummary(data);
-            setUsageFailed(false);
-          }
-        } else if (!cancelled) {
-          setUsageFailed(true);
-        }
+      if (cancelled) return;
+      if (usageResult.status === "fulfilled") {
+        setSummary(usageResult.value);
+        setSummarySource(apiBase);
+        setUsageFailed(false);
+        setUsageFailureSource(null);
+      } else {
+        setUsageFailed(true);
+        setUsageFailureSource(apiBase);
+      }
 
-        if (logsRes.ok) {
-          const data = (await logsRes.json()) as TrafficLogEntry[];
-          if (!cancelled) {
-            setLogs(
-              Array.isArray(data)
-                ? data.toSorted((a, b) => b.timestamp - a.timestamp)
-                : [],
-            );
-            setLogsFailed(false);
-            setLogsLoaded(true);
-          }
-        } else if (!cancelled) {
-          setLogsFailed(true);
-        }
-      } catch {
-        if (!cancelled) {
-          setUsageFailed(true);
-          setLogsFailed(true);
-        }
+      if (logsResult.status === "fulfilled") {
+        const data = logsResult.value;
+        setLogs(
+          Array.isArray(data)
+            ? data.toSorted((a, b) => b.timestamp - a.timestamp)
+            : [],
+        );
+        setLogsSource(apiBase);
+        setLogsFailed(false);
+        setLogsFailureSource(null);
+        setLogsLoaded(true);
+      } else {
+        setLogsFailed(true);
+        setLogsFailureSource(apiBase);
       }
     };
 
@@ -115,32 +128,39 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
     };
   }, [apiBase]);
 
+  const currentSummary = summarySource === apiBase ? summary : null;
+  const currentLogs = logsSource === apiBase ? logs : EMPTY_TRAFFIC_LOGS;
+  const currentUsageFailed =
+    usageFailed && usageFailureSource === apiBase;
+  const currentLogsFailed = logsFailed && logsFailureSource === apiBase;
+  const currentLogsLoaded = logsLoaded && logsSource === apiBase;
+
   const requestsToday = useMemo(
-    () => requestsTodayCount(logs, summary?.days),
-    [logs, summary],
+    () => requestsTodayCount(currentLogs, currentSummary?.days),
+    [currentLogs, currentSummary],
   );
 
   const providers = useMemo(
     () =>
-      (summary?.providers ?? [])
+      (currentSummary?.providers ?? [])
         .toSorted((a, b) => b.requests - a.requests)
         .slice(0, 5),
-    [summary],
+    [currentSummary],
   );
 
-  const recentRequests = useMemo(() => logs.slice(0, 8), [logs]);
+  const recentRequests = useMemo(() => currentLogs.slice(0, 8), [currentLogs]);
   const proxyOnline = health.data ? true : health.error ? false : null;
-  const requests30d = summary?.summary.requests ?? 0;
-  const tokens30d = summary?.summary.totalTokens ?? 0;
+  const requests30d = currentSummary?.summary.requests ?? 0;
+  const tokens30d = currentSummary?.summary.totalTokens ?? 0;
 
   const costUsd =
-    typeof summary?.summary.estimatedCostUsd === "number" &&
-    Number.isFinite(summary.summary.estimatedCostUsd)
+    typeof currentSummary?.summary.estimatedCostUsd === "number" &&
+    Number.isFinite(currentSummary.summary.estimatedCostUsd)
       ? new Intl.NumberFormat(locale, {
           style: "currency",
           currency: "USD",
           maximumFractionDigits: 2,
-        }).format(summary.summary.estimatedCostUsd)
+        }).format(currentSummary.summary.estimatedCostUsd)
       : "—";
 
   return (
@@ -184,29 +204,31 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
         metrics={[
           {
             label: t("vk.tokens30d"),
-            value: summary ? formatTokens(tokens30d, locale) : "—",
+            value: currentSummary ? formatTokens(tokens30d, locale) : "—",
           },
           {
             label: t("vk.requestsToday"),
             value:
-              summary || logsLoaded ? requestsToday.toLocaleString(locale) : "—",
+              currentSummary || currentLogsLoaded
+                ? requestsToday.toLocaleString(locale)
+                : "—",
           },
           {
             label: t("vk.requests30d"),
-            value: summary ? requests30d.toLocaleString(locale) : "—",
+            value: currentSummary ? requests30d.toLocaleString(locale) : "—",
           },
           { label: t("vk.costUsd"), value: costUsd },
           {
             label: t("dash.coverageLabel"),
-            value: formatRatio(summary?.summary.coverageRatio),
+            value: formatRatio(currentSummary?.summary.coverageRatio),
           },
           {
             label: t("dash.http429"),
-            value: formatRatio(summary?.summary.ratio429),
+            value: formatRatio(currentSummary?.summary.ratio429),
           },
           {
             label: t("dash.http50x"),
-            value: formatRatio(summary?.summary.ratio502),
+            value: formatRatio(currentSummary?.summary.ratio502),
           },
         ]}
       />
@@ -215,8 +237,8 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
         <ProviderUsageList
           providers={providers}
           locale={locale}
-          failed={usageFailed}
-          loaded={summary !== null}
+          failed={currentUsageFailed}
+          loaded={currentSummary !== null}
           labels={{
             title: t("dash.providers"),
             loadError: t("usage.loadError"),
@@ -233,8 +255,8 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
         <RequestActivityList
           entries={recentRequests}
           locale={locale}
-          failed={logsFailed}
-          loaded={logsLoaded}
+          failed={currentLogsFailed}
+          loaded={currentLogsLoaded}
           labels={{
             title: t("nav.verkeer"),
             loadError: t("vk.loadFailed"),

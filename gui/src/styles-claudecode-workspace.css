@@ -90,9 +90,6 @@
   background: var(--hover);
 }
 
-.claudecode-workspace-rail-row:active {
-  transform: scale(0.98);
-}
 
 .claudecode-workspace-rail-row--selected {
   background: var(--raised);

@@ -84,7 +84,7 @@ export function PageTabIndicator({
       transition={
         ctx.instant
           ? { duration: 0 }
-          : { type: "spring", visualDuration: 0.22, bounce: 0.1 }
+          : { type: "tween", duration: 0.18, ease: "easeOut" }
       }
       aria-hidden
     />

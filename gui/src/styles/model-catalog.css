@@ -1,6 +1,6 @@
 .models-workspace-root {
   grid-template-columns: minmax(0, 1fr) clamp(320px, 24vw, 400px);
-  gap: 32px;
+  gap: 24px;
   align-items: start;
   min-height: max(400px, calc(100dvh - 330px));
 }
@@ -10,28 +10,6 @@
   font-size: var(--text-control);
   line-height: 1.5;
   max-width: 64ch;
-}
-.models-workspace-shell .page-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px 16px;
-  align-items: center;
-}
-.models-workspace-shell .page-head > div {
-  display: contents;
-}
-.models-workspace-shell .page-head h2 {
-  grid-column: 1;
-  grid-row: 1;
-}
-.models-workspace-shell .page-head > a {
-  grid-column: 2;
-  grid-row: 1;
-}
-.models-workspace-shell .page-head .models-catalog-description {
-  grid-column: 1 / -1;
-  grid-row: 2;
-  margin: 0;
 }
 .models-catalog-toolbar {
   display: flex;
@@ -79,7 +57,7 @@
   gap: 0;
 }
 .models-provider-list {
-  gap: 12px;
+  gap: 24px;
 }
 .models-provider-card {
   overflow: visible;
@@ -137,11 +115,12 @@
   position: relative;
   gap: 16px;
   padding: 0 12px 0 0;
-  border-radius: 6px;
-  min-height: 56px;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border-soft);
+  min-height: 52px;
 }
 .models-catalog-row + .models-catalog-row {
-  margin-top: 2px;
+  margin-top: 0;
 }
 @media (hover: hover) and (pointer: fine) {
   .models-catalog-row:hover {
@@ -202,9 +181,9 @@
   gap: 12px;
   flex: 1;
   min-width: 0;
-  min-height: 56px;
-  height: 56px;
-  padding: 0 12px;
+  min-height: 52px;
+  height: auto;
+  padding: 8px 12px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -267,10 +246,11 @@
 }
 .model-inspector-empty {
   min-height: 220px;
+  padding-top: 8px;
 }
 .model-inspector h3 {
   margin: 0;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 650;
   line-height: 1.35;
   letter-spacing: -0.025em;
@@ -343,16 +323,16 @@
 .model-inspector-identifier {
   position: relative;
   overflow: hidden;
-  background: var(--rail);
-  border: 1px solid var(--border-soft);
-  border-radius: 8px;
-  padding: 4px 12px 12px;
+  background: transparent;
+  border-block: 1px solid var(--border-soft);
+  border-radius: 0;
+  padding: 4px 0 12px;
 }
 .model-inspector-identifier::after {
   content: "";
   position: absolute;
-  left: 12px;
-  right: 12px;
+  left: 0;
+  right: 0;
   bottom: 0;
   height: 1px;
   background: var(--text);
@@ -420,25 +400,11 @@
 @media (prefers-reduced-motion: no-preference) {
   .model-inspector-identifier::after {
     transition:
-      transform 420ms cubic-bezier(0.22, 1, 0.36, 1),
+      transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
       opacity 180ms ease-out;
   }
   .model-inspector-identifier:has(button:focus-visible)::after {
     transition: none;
-  }
-  .matrix-mark circle {
-    animation: matrix-arrive 600ms ease-out backwards;
-  }
-  .matrix-mark circle[data-ring="1"] {
-    animation-delay: 110ms;
-  }
-  .matrix-mark circle[data-ring="2"] {
-    animation-delay: 220ms;
-  }
-  @keyframes matrix-arrive {
-    from {
-      opacity: 0;
-    }
   }
   .model-inspector.is-populated .model-inspector-heading {
     animation: model-detail-in 140ms ease-out;
@@ -495,7 +461,7 @@
   }
 }
 @media (max-width: 560px) {
-  .models-workspace-shell .page-head > a {
+  .models-workspace-shell .page-head-actions a {
     font-size: var(--text-caption);
     min-height: 44px;
   }
@@ -533,4 +499,39 @@
   .model-inspector [data-slot="button"] {
     min-height: 44px;
   }
+}
+
+.ocx-workspace .main-inner:has(.models-workspace-shell) {
+  max-width: 1800px;
+}
+.model-inspector-identifier .routing-line-identity code {
+  color: var(--text);
+  font-size: 12px;
+}
+.model-inspector-identifier .routing-line-context {
+  flex-wrap: nowrap;
+}
+.model-inspector-identifier .routing-line-evidence {
+  max-width: 22ch;
+  font-size: 11px;
+}
+@media (max-width: 760px) {
+  .models-workspace-shell .page-head { flex-wrap: wrap; }
+  .models-workspace-shell .page-head-actions { width: 100%; }
+  .models-search-field,
+  .models-catalog-toolbar [data-slot="select-trigger"].models-provider-filter {
+    min-height: 44px;
+    height: auto;
+  }
+}
+
+.ocx-workspace .model-inspector-facts .metric-reading {
+  flex-direction: row;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.ocx-workspace .model-inspector-facts .metric-reading dd {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
 }

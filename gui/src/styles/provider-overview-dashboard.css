@@ -40,9 +40,9 @@
 .pws-dashboard-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
+  border-block: 1px solid var(--border-soft);
+  border-radius: 0;
+  background: transparent;
   overflow: hidden;
 }
 
@@ -126,11 +126,12 @@
 }
 
 .pws-dashboard-group .pws-dashboard-row {
-  border-radius: var(--card-radius);
-  padding: 12px;
-  border: 1px solid var(--card-border);
-  background: var(--surface);
-  box-shadow: var(--card-shadow);
+  border-radius: 0;
+  padding: 12px 0;
+  border: 0;
+  border-bottom: 1px solid var(--border-soft);
+  background: transparent;
+  box-shadow: none;
 }
 
 .pws-dashboard-group .pws-dashboard-row:last-child {
@@ -175,7 +176,7 @@
 .pws-dashboard-rows {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
 }
 
 .pws-dashboard-row {
@@ -183,11 +184,12 @@
   grid-template-columns: var(--icon-lg) minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--space-2);
-  padding: 12px;
-  border-radius: var(--card-radius);
-  border: 1px solid var(--card-border);
-  background: var(--surface);
-  box-shadow: var(--card-shadow);
+  padding: 12px 8px;
+  border-radius: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border-soft);
+  background: transparent;
+  box-shadow: none;
   width: 100%;
   color: inherit;
   font: inherit;
@@ -225,12 +227,9 @@
 .pws-dashboard-row:hover {
   background: var(--raised);
   border-color: var(--border);
-  box-shadow: var(--card-shadow-raised);
+  box-shadow: none;
 }
 
-.pws-dashboard-row:active {
-  transform: scale(0.98);
-}
 
 .pws-dashboard-row-icon {
   width: var(--icon-lg);

@@ -28,10 +28,11 @@
   gap: var(--space-3);
   min-width: 0;
   padding: var(--space-3);
-  background: var(--surface);
-  border: 1px solid var(--card-border);
-  border-radius: var(--card-radius);
-  box-shadow: var(--card-shadow);
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--border-soft);
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .pws-search-row {
@@ -248,9 +249,6 @@
   background: var(--hover);
 }
 
-.providers-workspace-rail-row:active {
-  transform: scale(0.98);
-}
 
 .providers-workspace-rail-row--selected {
   background: var(--raised);

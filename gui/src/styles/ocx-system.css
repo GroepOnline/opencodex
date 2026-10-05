@@ -1,8 +1,6 @@
-/* OCX system layer — the single finishing coat over every page.
-   Loaded last (after the legacy sheet, Orbit tokens, catalog and primitives) so
-   one file owns rhythm, chrome, controls and motion for the whole dashboard.
-   Rules: transform/opacity motion only, one easing family, monochrome accents,
-   reduced-motion collapses to the static end state with zero information loss. */
+/* OCX workspace rhythm and surface roles. Palette/type remain in workspace-orbit.css.
+   Sections and readings use alignment and hairlines; boundaries belong to
+   independent transactions. See DESIGN.md for the finite motion contract. */
 
 :root,
 :root[data-style] {
@@ -11,20 +9,18 @@
   --section-gap: 28px;
   --card-radius: 12px;
   --card-border: var(--border-soft);
-  --card-shadow: 0 1px 2px light-dark(rgba(0, 0, 0, 0.04), rgba(0, 0, 0, 0.3));
+  --card-shadow: none;
   --card-shadow-raised:
     0 1px 2px light-dark(rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.35)),
     0 10px 30px -14px light-dark(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.7));
   --focus-ring: 0 0 0 3px var(--accent-soft);
 
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-spring: cubic-bezier(0.34, 1.32, 0.64, 1);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --motion-instant: 90ms;
   --motion-fast: 150ms;
-  --motion-normal: 260ms;
+  --motion-normal: 180ms;
   --motion-slow: 420ms;
-  --motion-stagger: 42ms;
 }
 
 /* ---------------------------------------------------------------------------
@@ -36,7 +32,7 @@
   z-index: var(--z-sticky);
   gap: 20px;
   padding: 0 var(--page-gutter);
-  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  background: var(--bg);
   border-bottom: 1px solid var(--border-soft);
 }
 .ocx-workspace .brand .name {
@@ -68,22 +64,6 @@
 .ocx-workspace .stamp-err {
   background: var(--red-soft);
 }
-.ocx-workspace .stamp svg {
-  animation: ocx-pop var(--motion-slow) var(--ease-spring) both;
-}
-.ocx-workspace .gbtn {
-  transition:
-    background var(--motion-fast) var(--ease-out),
-    color var(--motion-fast) var(--ease-out),
-    transform var(--motion-fast) var(--ease-out);
-}
-.ocx-workspace .gbtn:hover svg {
-  transform: rotate(22deg);
-}
-.ocx-workspace .gbtn svg {
-  transition: transform var(--motion-normal) var(--ease-spring);
-}
-
 .ocx-workspace .main-inner {
   max-width: var(--workspace-measure);
   padding: 28px var(--page-gutter) 72px;
@@ -96,18 +76,14 @@
 .workspace-navigation .workspace-destination {
   font-weight: 500;
   padding: 8px 14px;
-  min-height: 40px;
+  min-height: 44px;
   border-radius: var(--radius-sm);
   transition:
-    color var(--motion-fast) var(--ease-out),
-    transform var(--motion-fast) var(--ease-out);
+    color var(--motion-fast) var(--ease-out);
 }
 .workspace-navigation .workspace-destination:hover:not(.active) {
   color: var(--text);
   background: var(--hover);
-}
-.workspace-navigation .workspace-destination:active {
-  transform: scale(0.97);
 }
 .workspace-selection {
   background: var(--raised);
@@ -115,43 +91,39 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Sub navigation: a segmented rail with a shared-layout selection pill
+   Sub navigation: one travelling rule below stable labels
    --------------------------------------------------------------------------- */
 .ocx-workspace .sub-tabs {
   position: relative;
-  /* One stacking context for the rail: the travelling pill sits at z 0 and
-     every label at z 1, so the pill never covers a neighbouring label. */
+  /* The travelling rule stays below every label, including while retargeting. */
   isolation: isolate;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 16px;
   width: fit-content;
   max-width: 100%;
-  padding: 3px;
   margin: 0 0 var(--section-gap);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-pill);
-  background: var(--rail);
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border-soft);
+  border-radius: 0;
+  background: transparent;
   overflow: visible;
 }
 .ocx-workspace .sub-tab {
   position: relative;
-  min-height: 32px;
-  padding: 5px 14px;
+  min-height: 44px;
+  padding: 8px 2px;
   border: 0;
   border-radius: var(--radius-pill);
   font-size: 13px;
   font-weight: 500;
   color: var(--muted);
   transition:
-    color var(--motion-fast) var(--ease-out),
-    transform var(--motion-fast) var(--ease-out);
+    color var(--motion-fast) var(--ease-out);
 }
 .ocx-workspace .sub-tab:hover {
   color: var(--text);
-}
-.ocx-workspace .sub-tab:active {
-  transform: scale(0.97);
 }
 .ocx-workspace .sub-tab.active {
   color: var(--text);
@@ -167,12 +139,12 @@
 }
 .sub-tab-indicator {
   position: absolute;
-  inset: 0;
+  inset: auto 0 -1px;
+  height: 2px;
   z-index: 0;
-  border-radius: inherit;
-  background: var(--surface);
-  border: 1px solid var(--border-soft);
-  box-shadow: var(--card-shadow);
+  border-radius: 1px;
+  background: var(--text);
+  pointer-events: none;
 }
 .ocx-workspace .sub-tab-label {
   position: relative;
@@ -265,17 +237,20 @@
   display: block;
 }
 
-/* ---------------------------------------------------------------------------
-   Surfaces: one card grammar for panels, cards and stats
-   --------------------------------------------------------------------------- */
-.ocx-workspace .panel,
+/* Sections and readings share the canvas. A card still denotes an independent
+   form/action, but a panel title alone does not justify a boundary. */
+.ocx-workspace .panel {
+  padding: 20px 0;
+  border: 0;
+  border-top: 1px solid var(--border-soft);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
 .ocx-workspace .card {
   border-color: var(--card-border);
   border-radius: var(--card-radius);
-  box-shadow: var(--card-shadow);
-}
-.ocx-workspace .panel {
-  padding: 20px;
+  box-shadow: none;
 }
 .ocx-workspace .panel-title {
   font-size: var(--text-subtitle);
@@ -287,91 +262,49 @@
   gap: 12px;
   margin-bottom: 14px;
 }
-
-.ocx-workspace .stat-row {
-  gap: 12px;
+.ocx-workspace .stat-row,
+.ocx-workspace .stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 16px 24px;
+  padding: 16px 0;
   margin-bottom: var(--section-gap);
+  border-block: 1px solid var(--border-soft);
+  border-radius: 0;
+  background: transparent;
 }
-.ocx-workspace .stat {
-  padding: 16px 18px;
-  border-color: var(--card-border);
-  border-radius: var(--card-radius);
-  box-shadow: var(--card-shadow);
-  transition:
-    border-color var(--motion-fast) var(--ease-out),
-    box-shadow var(--motion-normal) var(--ease-out),
-    transform var(--motion-normal) var(--ease-out);
-}
-.ocx-workspace .stat:hover {
-  border-color: var(--border);
-  box-shadow: var(--card-shadow-raised);
-  transform: translateY(-1px);
+.ocx-workspace .stat,
+.ocx-workspace .stat-strip-item {
+  padding: 0;
+  gap: 6px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 .ocx-workspace .stat .label,
-.ocx-workspace .stat > .muted:first-child {
+.ocx-workspace .stat > .muted:first-child,
+.ocx-workspace .stat-strip-label {
   font-size: var(--text-caption);
   font-weight: 500;
   text-transform: none;
   letter-spacing: 0;
   color: var(--muted);
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 .ocx-workspace .stat .value,
 .ocx-workspace .stat .stat-value,
-.ocx-workspace .usage-cards .stat-value {
-  font-size: 26px;
+.ocx-workspace .usage-cards .stat-value,
+.ocx-workspace .stat-strip-waarde {
+  font-family: var(--font-ui);
+  font-size: 24px;
   font-weight: 650;
   letter-spacing: -0.03em;
-  line-height: 1.1;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
-.ocx-workspace .stat .value.mono {
-  font-family: var(--font-ui);
-  font-size: 26px;
-  letter-spacing: -0.03em;
-}
-
-/* Horizontal KPI strip (Traffic) becomes the same card grammar */
-.ocx-workspace .stat-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-  gap: 12px;
-  padding: 0;
-  margin-bottom: var(--section-gap);
-}
-.ocx-workspace .stat-strip-item {
-  gap: 8px;
-  padding: 16px 18px;
-  background: var(--surface);
-  border: 1px solid var(--card-border);
-  border-radius: var(--card-radius);
-  box-shadow: var(--card-shadow);
-  transition:
-    border-color var(--motion-fast) var(--ease-out),
-    box-shadow var(--motion-normal) var(--ease-out),
-    transform var(--motion-normal) var(--ease-out);
-}
-.ocx-workspace .stat-strip-item:hover {
-  border-color: var(--border);
-  box-shadow: var(--card-shadow-raised);
-  transform: translateY(-1px);
-}
-.ocx-workspace .stat-strip-waarde {
-  order: 2;
-  font-family: var(--font-ui);
-  font-size: 26px;
-  font-weight: 650;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
-}
-.ocx-workspace .stat-strip-label {
-  order: 1;
-  font-size: var(--text-caption);
-  font-weight: 500;
-  color: var(--muted);
-}
-
-/* Dashboard metric list: hairline readings share the stat typography */
+.ocx-workspace .stat-strip-label { order: 1; }
+.ocx-workspace .stat-strip-waarde { order: 2; }
 .ocx-workspace .metric-list {
   gap: 20px 32px;
   margin-bottom: var(--section-gap);
@@ -382,27 +315,26 @@
   font-weight: 500;
 }
 .ocx-workspace .metric-reading dd {
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 650;
   letter-spacing: -0.03em;
 }
 
-/* ---------------------------------------------------------------------------
-   Empty states: one calm, centered shape everywhere
-   --------------------------------------------------------------------------- */
+/* Empty collections start where their rows would start. Detail and first-run
+   surfaces can own extra space without inheriting a centered framed panel. */
 .ocx-workspace .empty,
 .ocx-workspace [data-slot="empty"] {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 48px 24px;
-  border: 1px solid var(--card-border);
-  border-radius: var(--card-radius);
-  background: color-mix(in srgb, var(--rail) 60%, var(--surface));
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 24px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--muted);
-  text-align: center;
+  text-align: left;
 }
 .ocx-workspace .empty .title,
 .ocx-workspace [data-slot="empty-title"] {
@@ -416,22 +348,52 @@
   color: var(--muted);
 }
 .ocx-workspace [data-slot="empty-header"] {
+  align-items: flex-start;
   gap: 4px;
 }
 .ocx-workspace [data-slot="empty-content"] {
-  margin-top: 10px;
+  align-items: flex-start;
+  margin-top: 8px;
 }
 .ocx-workspace [data-slot="empty-icon"] {
-  width: 40px;
-  height: 40px;
+  width: 24px;
+  height: 24px;
   margin-bottom: 8px;
-  border-radius: var(--radius);
-  background: var(--surface);
-  border: 1px solid var(--card-border);
-  box-shadow: var(--card-shadow);
-  color: var(--text);
-  animation: ocx-pop var(--motion-slow) var(--ease-spring) both;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
 }
+
+/* The routing line keeps supplied identity, context and evidence in reading
+   order. Its rule means relationship, never measured progress or a live hop. */
+.routing-line { min-width: 0; }
+.routing-line-identity {
+  display: block;
+  overflow-wrap: anywhere;
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.routing-line-context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: var(--text-caption);
+  line-height: 1.6;
+  color: var(--muted);
+}
+.routing-line-rule {
+  align-self: center;
+  flex: 1 0 20px;
+  border-top: 1px solid var(--border);
+}
+.routing-line-evidence { overflow-wrap: anywhere; }
 
 /* ---------------------------------------------------------------------------
    Controls: buttons, inputs, selects, toggles, badges
@@ -447,14 +409,7 @@
     border-color var(--motion-fast) var(--ease-out),
     color var(--motion-fast) var(--ease-out),
     box-shadow var(--motion-fast) var(--ease-out),
-    opacity var(--motion-fast) var(--ease-out),
-    transform var(--motion-fast) var(--ease-out);
-}
-.ocx-workspace .btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-}
-.ocx-workspace .btn:active:not(:disabled) {
-  transform: translateY(0) scale(0.98);
+    opacity var(--motion-fast) var(--ease-out);
 }
 .ocx-workspace .btn:focus-visible {
   outline: 2px solid var(--accent-ring);
@@ -487,22 +442,14 @@
 .ocx-workspace .btn-icon {
   transition:
     background var(--motion-fast) var(--ease-out),
-    color var(--motion-fast) var(--ease-out),
-    transform var(--motion-fast) var(--ease-out);
-}
-.ocx-workspace .btn-icon:active {
-  transform: scale(0.92);
+    color var(--motion-fast) var(--ease-out);
 }
 .ocx-workspace [data-slot="button"] {
   transition:
     background-color var(--motion-fast) var(--ease-out),
     border-color var(--motion-fast) var(--ease-out),
     color var(--motion-fast) var(--ease-out),
-    box-shadow var(--motion-fast) var(--ease-out),
-    transform var(--motion-fast) var(--ease-out);
-}
-.ocx-workspace [data-slot="button"]:not(.workspace-destination):active:not(:disabled) {
-  transform: scale(0.98);
+    box-shadow var(--motion-fast) var(--ease-out);
 }
 
 .ocx-workspace .input,
@@ -541,7 +488,7 @@
   border-radius: var(--radius);
   border-color: var(--border-soft);
   box-shadow: var(--card-shadow-raised);
-  animation: ocx-menu-in var(--motion-fast) var(--ease-out) both;
+
 }
 
 .ocx-workspace .toggle {
@@ -559,7 +506,7 @@
   transform: translate(0, -50%);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
   transition:
-    transform var(--motion-normal) var(--ease-spring),
+    transform var(--motion-normal) var(--ease-out),
     background var(--motion-normal) var(--ease-out);
 }
 .ocx-workspace .toggle.on .toggle-knob {
@@ -592,13 +539,6 @@
   box-shadow: var(--card-shadow);
 }
 
-/* ---------------------------------------------------------------------------
-   Overlays: modal, sheet, tooltip, menus
-   --------------------------------------------------------------------------- */
-.ocx-workspace .modal-overlay,
-.modal-overlay {
-  animation: ocx-fade var(--motion-fast) var(--ease-out) both;
-}
 .ocx-workspace .modal-card,
 .modal-card {
   border-color: var(--card-border);
@@ -607,7 +547,7 @@
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.08),
     0 24px 64px -24px light-dark(rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.9));
-  animation: ocx-modal-spring var(--motion-slow) var(--ease-spring) both;
+
 }
 .ocx-workspace .modal-head h3 {
   font-size: 17px;
@@ -639,154 +579,15 @@
     border-color var(--motion-fast) var(--ease-out),
     transform var(--motion-fast) var(--ease-out);
 }
-.ocx-workspace .offline-banner {
-  animation: ocx-rise var(--motion-normal) var(--ease-out) both;
-}
 .ocx-workspace .notice {
   border-radius: var(--radius-sm);
-  animation: ocx-rise var(--motion-normal) var(--ease-out) both;
+
 }
 
-/* ---------------------------------------------------------------------------
-   Motion system — keyframes + page choreography
-   --------------------------------------------------------------------------- */
-@keyframes ocx-fade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-@keyframes ocx-rise {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@keyframes ocx-pop {
-  from {
-    opacity: 0;
-    transform: scale(0.6);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@keyframes ocx-modal-spring {
-  from {
-    opacity: 0;
-    transform: translateY(18px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@keyframes ocx-menu-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-/* Page choreography: the routed page rises once, and its first blocks follow
-   in a short cascade. Keyed per route in App.tsx, so it replays on navigation. */
-.ocx-page {
-  animation: ocx-fade var(--motion-normal) var(--ease-out) both;
-}
-.ocx-page > *,
-.ocx-page > .ocx-page-root > * {
-  --ocx-i: 0;
-  animation: ocx-rise var(--motion-slow) var(--ease-out) both;
-  animation-delay: min(calc(var(--ocx-i) * var(--motion-stagger)), 360ms);
-}
-.ocx-page > .ocx-page-root {
-  animation: none;
-}
-.ocx-page > :nth-child(2),
-.ocx-page > .ocx-page-root > :nth-child(2) {
-  --ocx-i: 1;
-}
-.ocx-page > :nth-child(3),
-.ocx-page > .ocx-page-root > :nth-child(3) {
-  --ocx-i: 2;
-}
-.ocx-page > :nth-child(4),
-.ocx-page > .ocx-page-root > :nth-child(4) {
-  --ocx-i: 3;
-}
-.ocx-page > :nth-child(5),
-.ocx-page > .ocx-page-root > :nth-child(5) {
-  --ocx-i: 4;
-}
-.ocx-page > :nth-child(6),
-.ocx-page > .ocx-page-root > :nth-child(6) {
-  --ocx-i: 5;
-}
-.ocx-page > :nth-child(7),
-.ocx-page > .ocx-page-root > :nth-child(7) {
-  --ocx-i: 6;
-}
-.ocx-page > :nth-child(n + 8),
-.ocx-page > .ocx-page-root > :nth-child(n + 8) {
-  --ocx-i: 7;
-}
-
-/* Opt-in cascade for lists: set --ocx-i inline or rely on nth-child(1..8). */
-.ocx-reveal {
-  animation: ocx-rise var(--motion-slow) var(--ease-out) both;
-  animation-delay: min(calc(var(--ocx-i, 0) * var(--motion-stagger)), 360ms);
-}
-.ocx-reveal-list > * {
-  --ocx-i: 0;
-  animation: ocx-rise var(--motion-normal) var(--ease-out) both;
-  animation-delay: min(calc(var(--ocx-i) * 28ms), 280ms);
-}
-.ocx-reveal-list > :nth-child(2) {
-  --ocx-i: 1;
-}
-.ocx-reveal-list > :nth-child(3) {
-  --ocx-i: 2;
-}
-.ocx-reveal-list > :nth-child(4) {
-  --ocx-i: 3;
-}
-.ocx-reveal-list > :nth-child(5) {
-  --ocx-i: 4;
-}
-.ocx-reveal-list > :nth-child(6) {
-  --ocx-i: 5;
-}
-.ocx-reveal-list > :nth-child(7) {
-  --ocx-i: 6;
-}
-.ocx-reveal-list > :nth-child(8) {
-  --ocx-i: 7;
-}
-.ocx-reveal-list > :nth-child(n + 9) {
-  --ocx-i: 8;
-}
-
-/* Skeletons fade in instead of popping, and never shimmer in a loop. */
-.ocx-workspace .skeleton {
-  animation: ocx-fade var(--motion-normal) var(--ease-out) both;
-}
-
-/* Fixed overlays must never inherit a page-level transform containing block. */
-.ocx-page .modal-overlay,
-.ocx-page dialog.modal-overlay {
-  animation-name: ocx-fade;
-}
+/* Route content, status and pending indicators are static. Motion is owned by
+   selection/disclosure/copy primitives so polls cannot replay a page. */
+.ocx-page { min-width: 0; }
+.ocx-workspace .skeleton { animation: none; }
 
 @media (max-width: 760px) {
   .ocx-workspace .main-inner {
@@ -807,30 +608,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ocx-page,
-  .ocx-page > *,
-  .ocx-page > .ocx-page-root > *,
-  .ocx-reveal,
-  .ocx-reveal-list > *,
-  .ocx-workspace .stamp svg,
-  .ocx-workspace [data-slot="empty-icon"],
-  .ocx-workspace .notice,
-  .ocx-workspace .offline-banner,
-  .ocx-workspace .skeleton,
-  .modal-overlay,
-  .modal-card,
-  .ocx-workspace .select-dropdown {
-    animation: none;
-  }
-  .ocx-workspace .btn:hover:not(:disabled),
-  .ocx-workspace .stat:hover,
-  .ocx-workspace .stat-strip-item:hover {
-    transform: none;
-  }
-  .ocx-workspace .gbtn:hover svg {
-    transform: none;
-  }
-  .ocx-workspace .toggle-knob {
-    transition: none;
+  .ocx-workspace *, .modal-overlay, .modal-card {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto;
   }
 }
