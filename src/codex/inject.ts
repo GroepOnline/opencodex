@@ -37,6 +37,22 @@ export function currentExternalCodexModelProvider(): string | null {
   return externalCodexModelProvider(readFileSync(CODEX_CONFIG_PATH, "utf8"));
 }
 
+/** A root base URL without the OCX ownership marker belongs to another config manager or the user. */
+export function hasUserOwnedRootOpenaiBaseUrl(content: string): boolean {
+  return rootTomlString(content, "openai_base_url") !== null
+    && !hasInjectedOpenaiBaseUrl(content);
+}
+
+/* Read-only ownership probe used before sync so catalog writes cannot precede routing checks. */
+export function currentUserOwnedRootOpenaiBaseUrl(): boolean {
+  if (!existsSync(CODEX_CONFIG_PATH)) return false;
+  try {
+    return hasUserOwnedRootOpenaiBaseUrl(readFileSync(CODEX_CONFIG_PATH, "utf8"));
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Detect the file's dominant line ending. Every transform in this module is LF-pure
  * (split("\n") + hard "\n" joins), so CRLF configs (Windows-edited config.toml) are
@@ -354,24 +370,23 @@ function setRootModelProvider(content: string): string {
   return lines.join("\n");
 }
 
-function readRootModelCatalogPath(content: string): string | null {
-  return readRootTomlString(content, "model_catalog_json");
-}
-
+/**
+ * While OpenCodex owns active Codex routing, it also owns the active root model catalog pointer.
+ *
+ * A pre-existing user catalog is preserved by the injection journal and restored on stop/eject,
+ * but it must not remain the runtime source of truth while the proxy is active. Leaving a second
+ * merged catalog in place can silently strip newly rolled-out native OpenAI metadata and force
+ * Codex onto generic fallback model capabilities.
+ */
 export function setRootModelCatalogPath(content: string, catalogPath: string): string {
   const lines = content.split("\n");
   const firstTable = lines.findIndex(l => /^\s*\[/.test(l));
   const key = `model_catalog_json = ${tomlString(catalogPath)}`;
   const rootEnd = firstTable === -1 ? lines.length : firstTable;
   for (let i = 0; i < rootEnd; i++) {
-    const m = lines[i].match(/^\s*model_catalog_json\s*=\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\s*$/);
-    if (!m) continue;
-    const existing = parseTomlString(m[1]);
-    if (isOpencodexCatalogPath(existing)) {
-      lines[i] = key;
-      return lines.join("\n");
-    }
-    return content;
+    if (!/^\s*model_catalog_json\s*=/.test(lines[i])) continue;
+    lines[i] = key;
+    return lines.join("\n");
   }
   if (firstTable === -1) {
     return content.replace(/\n+$/, "") + "\n" + key + "\n";
@@ -380,6 +395,16 @@ export function setRootModelCatalogPath(content: string, catalogPath: string): s
   while (insertAt > 0 && lines[insertAt - 1].trim() === "") insertAt--;
   lines.splice(insertAt, 0, key);
   return lines.join("\n");
+}
+
+/** Remove any root catalog override while OCX is active without touching table-scoped values. */
+export function stripRootModelCatalogPath(content: string): string {
+  const lines = content.split("\n");
+  const firstTable = lines.findIndex(l => /^\s*\[/.test(l));
+  const rootEnd = firstTable === -1 ? lines.length : firstTable;
+  return lines
+    .filter((line, index) => index >= rootEnd || !/^\s*model_catalog_json\s*=/.test(line))
+    .join("\n");
 }
 
 function removeProfileSection(content: string): string {
@@ -470,16 +495,48 @@ export function buildProfileFile(port: number, catalogPath?: string | null, supp
   return lines.join("\n");
 }
 
-export function chooseCatalogPathForInjection(content: string, requested?: string | null): string | null {
-  if (requested !== undefined) return requested;
+function isBareNativeCodexModelId(model: string | null): model is string {
+  return model !== null
+    && !model.includes("/")
+    && /^(?:gpt-|codex-)/i.test(model);
+}
 
-  const existing = readRootModelCatalogPath(content);
-  if (existing) {
-    const resolved = resolveCodexConfigPath(existing);
-    if (!isOpencodexCatalogPath(resolved) || existsSync(resolved)) return existing;
+function catalogContainsModelSlug(catalogPath: string, slug: string): boolean {
+  try {
+    const parsed = JSON.parse(
+      readFileSync(resolveCodexConfigPath(catalogPath), "utf8"),
+    ) as { models?: unknown };
+    return Array.isArray(parsed.models)
+      && parsed.models.some(model =>
+        model !== null
+        && typeof model === "object"
+        && (model as { slug?: unknown }).slug === slug
+      );
+  } catch {
+    return false;
   }
+}
 
-  return existsSync(DEFAULT_CATALOG_PATH) ? DEFAULT_CATALOG_PATH : null;
+/**
+ * Choose the one active OCX catalog, but never let that catalog make a selected native model
+ * disappear. A missing native row would make Codex synthesize generic fallback metadata (including
+ * the wrong context/tool capabilities); leaving model_catalog_json unset lets native Codex own the
+ * model metadata instead.
+ */
+export function chooseCatalogPathForInjection(content: string, requested?: string | null): string | null {
+  const candidate = requested !== undefined
+    ? requested
+    : (existsSync(DEFAULT_CATALOG_PATH) ? DEFAULT_CATALOG_PATH : null);
+  if (!candidate) return null;
+
+  const selectedModel = readRootTomlString(content, "model");
+  if (
+    isBareNativeCodexModelId(selectedModel)
+    && !catalogContainsModelSlug(candidate, selectedModel)
+  ) {
+    return null;
+  }
+  return candidate;
 }
 
 export interface CodexInjectResult {
@@ -510,6 +567,31 @@ export async function injectCodexConfig(port: number, config?: OcxConfig, option
         `  Configure that provider for Responses passthrough at http://${providerBaseHost(config?.hostname)}:${port}/v1` +
         `${shouldInjectApiAuthHeader(config) ? ` with x-opencodex-api-key from OPENCODEX_API_AUTH_TOKEN` : ""}.\n` +
         `  For direct injection, switch to the built-in openai provider, remove any user-owned root openai_base_url, and rerun 'ocx start'.`,
+    };
+  }
+
+  if (hasUserOwnedRootOpenaiBaseUrl(rawContent)) {
+    // A user/external manager owns the routing surface. Do not half-own the same config. Keep an
+    // existing journal: injected-state hashes prevent replay over user edits while retaining the
+    // original pre-OCX baseline for reversible cleanup of still-owned state.
+    const nativeSubagentDefaultsWarning = configuredManagedSubagentDefaults(config)
+      ? "Native Codex sub-agent defaults were not injected: a user-owned root openai_base_url prevents OpenCodex from managing active Codex routing."
+      : undefined;
+    return {
+      success: true,
+      ...(nativeSubagentDefaultsWarning ? { nativeSubagentDefaultsWarning } : {}),
+      message: `⚠️ Codex routing NOT injected: config.toml has a user-owned root openai_base_url.\n`
+        + `  Codex model catalog is also left untouched to avoid split ownership.\n`
+        + `  To let OpenCodex manage native Codex plus routed providers together, remove that root override and rerun 'ocx start'.`,
+    };
+  }
+
+  if (options.catalogPath && !isOpencodexCatalogPath(options.catalogPath)) {
+    return {
+      success: false,
+      message: `Codex config injection refused: OpenCodex owns the active merged catalog while routing is managed, `
+        + `but the requested catalog is not the canonical opencodex-catalog.json: ${options.catalogPath}. `
+        + `No files were changed; rebuild the catalog through 'ocx sync'.`,
     };
   }
 
@@ -554,8 +636,17 @@ export async function injectCodexConfig(port: number, config?: OcxConfig, option
   content = normalizeServiceTier(content);
   content = ensureFastModeFeature(content);
 
+  const candidateCatalogPath = options.catalogPath !== undefined
+    ? options.catalogPath
+    : (existsSync(DEFAULT_CATALOG_PATH) ? DEFAULT_CATALOG_PATH : null);
+  const selectedModel = readRootTomlString(content, "model");
   const catalogPath = chooseCatalogPathForInjection(content, options.catalogPath);
-  content = catalogPath ? setRootModelCatalogPath(content, catalogPath) : stripOpencodexCatalogPath(content);
+  const nativeCatalogFallback = candidateCatalogPath !== null
+    && catalogPath === null
+    && isBareNativeCodexModelId(selectedModel);
+  // No safe OCX catalog means "native catalog", never "whatever custom root catalog happened to be there".
+  // The original user value remains in the journal and is restored on stop/eject.
+  content = catalogPath ? setRootModelCatalogPath(content, catalogPath) : stripRootModelCatalogPath(content);
 
   const legacyMode = shouldInjectApiAuthHeader(config);
   let keptUserBaseUrl = false;
@@ -614,7 +705,9 @@ export async function injectCodexConfig(port: number, config?: OcxConfig, option
 
   const catalogMessage = catalogPath
     ? `  Codex model catalog: ${catalogPath}\n`
-    : `  Codex model catalog not injected because no opencodex catalog file exists yet.\n`;
+    : nativeCatalogFallback
+      ? `  ⚠️ Codex model catalog: native fallback because the managed OCX catalog does not contain selected native model ${tomlString(selectedModel!)}.\n`
+      : `  Codex model catalog not injected because no safe opencodex catalog file exists yet.\n`;
   const migratedRows = (history.rows ?? 0) + ("ejectedRows" in history ? history.ejectedRows ?? 0 : 0);
   const historyMessage = config?.syncResumeHistory === false
     ? `  Codex resume history: left unchanged (syncResumeHistory=false).\n`
@@ -781,7 +874,9 @@ export function restoreNativeCodex(): { success: boolean; message: string } {
   const cfg = journal.configRestored
     ? { success: true, message: "Codex config restored from opencodex journal." }
     : removeCodexConfig({ preserveProfile: journal.profileRestored || journal.profileChanged });
-  const cat = restoreCodexCatalog();
+  // Never follow a catalog pointer that the journal just restored. Only the canonical OCX
+  // catalog is ours to rewrite; a restored user catalog is immutable here.
+  const cat = restoreCodexCatalog(DEFAULT_CATALOG_PATH);
   // Design B (loopback) steady state: threads are already tagged openai, so prove the
   // no-op with a readonly probe instead of write-opening a DB the Codex app may hold
   // (Windows: WAL writer lock -> seconds of stalling + a false warning on every stop).

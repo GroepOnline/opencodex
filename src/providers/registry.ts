@@ -1522,6 +1522,9 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     dashboardUrl: "https://cloud.cerebras.ai/platform/apikeys",
     defaultModel: "gpt-oss-120b",
   },
+  // Cohere's OpenAI Compatibility API supports the OpenAI SDK at this base URL.
+  // Trial/evaluation API keys are free but rate-limited.
+  // Evidence: https://docs.cohere.com/docs/compatibility-api
   // FREEZE 2026-07-10: exact serverless ids remain auth-gated/unverified. Evidence: devlog/_plan/260710_provider_hardening/003_research_aggregators.md.
   {
     id: "together",
