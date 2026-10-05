@@ -65,6 +65,23 @@ describe("acceptSystemRestart", () => {
     expect(calls).toEqual(["draining:true", "drain:60000", "start:10123", "recycle", "exit:0"]);
   });
 
+  test("captures proxy-only mode before drain and passes it to the replacement", async () => {
+    let mode = true;
+    let scheduled: (() => void | Promise<void>) | null = null;
+    let replacement: [number | undefined, boolean | undefined] | undefined;
+    acceptSystemRestart({
+      isDraining: () => false, getActiveTurnCount: () => 0,
+      isSupervisedServiceChild: () => false, listenPort: () => 10123,
+      proxyOnly: () => mode,
+      schedule: fn => { scheduled = fn; }, setDraining: () => {},
+      drainAndShutdown: async () => { mode = false; },
+      spawnStart: (port, proxyOnly) => { replacement = [port, proxyOnly]; },
+      markRecycling: () => {}, exitProcess: () => {},
+    });
+    await scheduled!();
+    expect(replacement).toEqual([10123, true]);
+  });
+
   test("supervised service child exits 1 so failure-only supervisors respawn", async () => {
     const calls: string[] = [];
     let scheduled: (() => void | Promise<void>) | null = null;

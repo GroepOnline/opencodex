@@ -23,6 +23,22 @@ describe("ocx.mjs npm launcher (source invariants)", () => {
     expect(source).not.toMatch(/if \(tagIndex !== -1 && process\.argv\[tagIndex \+ 1\]\) return process\.argv/);
   });
 
+  test("Linux protocol repair uses fresh CLI and never opts an absent handler in", () => {
+    expect(source).toContain('process.platform !== "linux" || !existsSync(join(configDir(), "claude-desktop-protocol.json"))');
+    expect(source).toContain('[launcher, "claude", "desktop", "protocol", "__repair"]');
+    expect(source.indexOf("repairClaudeDesktopProtocolIfNeeded();")).toBeGreaterThan(
+      source.indexOf("spawnSync(installInvocation.file, installInvocation.args"),
+    );
+    expect(source).not.toContain('[launcher, "claude", "desktop", "protocol", "install"]');
+  });
+
+  test("self-update preserves live proxy-only mode in fallback and restart instructions", () => {
+    expect(source).toContain("proxyOnly = rt.proxyOnly === true;");
+    expect(source).toContain('...(proxyOnly ? ["--proxy-only"] : [])');
+    expect(source).toContain('if (!proxyOnly) repairCodexShimIfNeeded();');
+    expect(source).toContain('${proxyOnly ? " --proxy-only" : ""}');
+  });
+
   // #701: the launcher is the only place that still knows whether an Anthropic credential
   // came from a real shell export or from a project dotenv, because Node does not
   // auto-load `.env` while the Bun child does. Losing this half silently returns the

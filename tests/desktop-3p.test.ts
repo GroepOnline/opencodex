@@ -1,8 +1,10 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import * as fs from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix, win32 } from "node:path";
 import {
+  activeDesktop3pAlias,
   atomicReplaceDesktopConfig,
   buildDesktop3pRegistry,
   deriveDesktop3pCode,
@@ -12,11 +14,19 @@ import {
   legacyDesktop3pAlias,
   parseDesktop3pModeArgs,
   readAppliedDesktop3pLibrary,
+  refreshDesktop3pRegistry,
+  resetDesktop3pRegistryForTests,
   resolveDesktop3pConfigLibraryPath,
   resolveDesktop3pAlias,
 } from "../src/claude/desktop-3p";
 import { moveDesktopRoute, reconcileDesktopProfile, setDesktopFamilyDefault } from "../src/claude/desktop-profile";
 import { resolveInboundModel } from "../src/claude/inbound";
+import { getConfigPath, saveConfig } from "../src/config";
+import { startServer } from "../src/server";
+import { clearRequestLogsForTests } from "../src/server/request-log";
+import { managementFetch } from "./helpers/management-auth";
+import { installIsolatedCodexHome } from "./helpers/isolated-codex-home";
+import type { OcxClaudeDesktopProfile, OcxConfig } from "../src/types";
 
 describe("Claude Desktop 3P models", () => {
   test("resolves the actual cross-platform Claude Desktop config library (#539)", () => {
@@ -278,6 +288,319 @@ describe("Claude Desktop 3P models", () => {
       expect(warning.mock.calls.flat().join(" ")).toContain("stays bound to test/model-123");
     } finally {
       warning.mockRestore();
+    }
+  });
+});
+
+describe("lazy applied Desktop registry", () => {
+  const aliasA = "claude-opus-4-8-20260101";
+  const aliasB = "claude-opus-4-8-20260102";
+  const aliasUnused = "claude-opus-4-8-20260103";
+  const nativeAlias = "claude-opus-4-6";
+
+  function profile(route: string, alias: string): OcxClaudeDesktopProfile {
+    return {
+      version: 1,
+      assignments: {
+        [route]: { family: "opus", alias },
+        "mock/unused": { family: "haiku", alias: aliasUnused },
+        [`anthropic/${nativeAlias}`]: { family: "sonnet", alias: nativeAlias },
+      },
+      defaults: { opus: route, fable: null, sonnet: `anthropic/${nativeAlias}`, haiku: "mock/unused" },
+    };
+  }
+
+  function externalReplace(path: string, value: unknown): void {
+    // Independent writer: do not call any registry/config generator in this process.
+    writeFileSync(`${path}.external`, JSON.stringify(value));
+    renameSync(`${path}.external`, path);
+  }
+
+  function fixture() {
+    const dir = mkdtempSync(join(tmpdir(), "ocx-desktop-registry-"));
+    const oldHome = process.env.OPENCODEX_HOME;
+    const oldLibrary = process.env.OPENCODEX_CLAUDE_DESKTOP_CONFIG_DIR;
+    const library = join(dir, "library");
+    mkdirSync(library);
+    process.env.OPENCODEX_HOME = dir;
+    process.env.OPENCODEX_CLAUDE_DESKTOP_CONFIG_DIR = library;
+    const metaPath = join(library, "_meta.json");
+    const activePath = join(library, "active.json");
+    externalReplace(metaPath, { appliedId: "active", entries: [{ name: "opencodex", id: "active" }] });
+    return {
+      dir, library, metaPath, activePath,
+      persist(stored: OcxClaudeDesktopProfile) {
+        externalReplace(getConfigPath(), { claudeCode: { desktopProfile: stored } });
+      },
+      apply(alias: string, path = activePath) {
+        externalReplace(path, { inferenceModels: [{ name: alias }, { name: nativeAlias }] });
+      },
+      restore() {
+        resetDesktop3pRegistryForTests();
+        if (oldHome === undefined) delete process.env.OPENCODEX_HOME;
+        else process.env.OPENCODEX_HOME = oldHome;
+        if (oldLibrary === undefined) delete process.env.OPENCODEX_CLAUDE_DESKTOP_CONFIG_DIR;
+        else process.env.OPENCODEX_CLAUDE_DESKTOP_CONFIG_DIR = oldLibrary;
+        rmSync(dir, { recursive: true, force: true });
+      },
+    };
+  }
+
+  test("only active exact assignments publish, unchanged sources reuse the snapshot", () => {
+    const f = fixture();
+    try {
+      f.persist(profile("mock/model-a", aliasA));
+      f.apply(aliasA);
+      expect(refreshDesktop3pRegistry()).toBe(true);
+      expect(resolveInboundModel(aliasA)).toBe("mock/model-a");
+      expect(activeDesktop3pAlias("mock", "model-a")).toBe(aliasA);
+      expect(resolveDesktop3pAlias(aliasUnused)).toBeNull();
+      expect(resolveDesktop3pAlias(nativeAlias)).toBeNull();
+      expect(resolveDesktop3pAlias(legacyDesktop3pAlias("mock", "model-a"))).toBe("mock/model-a");
+      expect(resolveInboundModel(legacyDesktop3pAlias("mock", "model-a"))).toBe("mock/model-a");
+      expect(resolveDesktop3pAlias(legacyDesktop3pAlias("mock", "unused"))).toBeNull();
+      expect(resolveDesktop3pAlias(legacyDesktop3pAlias("anthropic", nativeAlias))).toBeNull();
+      const read = spyOn(fs, "readSync");
+      try {
+        expect(refreshDesktop3pRegistry()).toBe(false);
+        expect(read).not.toHaveBeenCalled();
+      } finally { read.mockRestore(); }
+      const next = join(f.library, "next.json");
+      f.persist(profile("mock/model-b", aliasB));
+      f.apply(aliasB, next);
+      // The old applied alias is now unknown: defer the incomplete writer transaction.
+      expect(refreshDesktop3pRegistry()).toBe(false);
+      expect(resolveInboundModel(aliasA)).toBe("mock/model-a");
+      externalReplace(f.metaPath, { appliedId: "next", entries: [{ name: "opencodex", id: "next" }] });
+      expect(refreshDesktop3pRegistry()).toBe(true);
+      expect(resolveInboundModel(aliasB)).toBe("mock/model-b");
+      expect(resolveDesktop3pAlias(aliasA)).toBeNull();
+    } finally { f.restore(); }
+  });
+
+  test("lazy legacy hash collisions keep stable bindings across assignment and default order", () => {
+    const f = fixture();
+    try {
+      const assignments: OcxClaudeDesktopProfile["assignments"] = {
+        "test/model-155": { family: "opus", alias: aliasB },
+        "test/model-123": { family: "opus", alias: aliasA },
+      };
+      const stored: OcxClaudeDesktopProfile = {
+        version: 1, assignments,
+        defaults: { opus: "test/model-155", fable: null, sonnet: null, haiku: null },
+      };
+      f.persist(stored);
+      externalReplace(f.activePath, { inferenceModels: [{ name: aliasB }, { name: aliasA }] });
+      expect(refreshDesktop3pRegistry()).toBe(true);
+      const legacy = legacyDesktop3pAlias("test", "model-123");
+      expect(legacy).toBe(legacyDesktop3pAlias("test", "model-155"));
+      expect(resolveDesktop3pAlias(legacy)).toBe("test/model-123");
+      expect(resolveDesktop3pAlias(aliasA)).toBe("test/model-123");
+      expect(resolveDesktop3pAlias(aliasB)).toBe("test/model-155");
+      f.persist({
+        ...stored,
+        assignments: Object.fromEntries(Object.entries(assignments).reverse()),
+        defaults: { ...stored.defaults, opus: "test/model-123" },
+      });
+      externalReplace(f.activePath, { inferenceModels: [{ name: aliasA }, { name: aliasB }] });
+      expect(refreshDesktop3pRegistry()).toBe(true);
+      expect(resolveDesktop3pAlias(legacy)).toBe("test/model-123");
+    } finally { f.restore(); }
+  });
+
+  test("discovery and generation cannot replace last-good applied state", () => {
+    const f = fixture();
+    try {
+      const stale = profile("mock/model-a", aliasA);
+      f.persist(stale);
+      f.apply(aliasA);
+      expect(refreshDesktop3pRegistry()).toBe(true);
+      f.persist(profile("mock/model-b", aliasA));
+      f.apply(aliasA);
+      expect(refreshDesktop3pRegistry()).toBe(true);
+      const assertApplied = () => {
+        expect(resolveInboundModel(aliasA)).toBe("mock/model-b");
+        expect(activeDesktop3pAlias("mock", "model-b")).toBe(aliasA);
+        expect(resolveDesktop3pAlias(legacyDesktop3pAlias("mock", "model-b"))).toBe("mock/model-b");
+      };
+      const routed = [{ provider: "mock", id: "model-a" }];
+      expect(buildDesktop3pRegistry([], routed, stale).get(aliasA)).toBe("mock/model-a");
+      const discoveryAlias = activeDesktop3pAlias("mock", "model-a");
+      expect(discoveryAlias).toBe(legacyDesktop3pAlias("mock", "model-a"));
+      expect(resolveInboundModel(discoveryAlias)).toBe("mock/model-a");
+      assertApplied();
+      expect(refreshDesktop3pRegistry()).toBe(false);
+      writeFileSync(getConfigPath(), "{");
+      expect(refreshDesktop3pRegistry()).toBe(false);
+      assertApplied();
+      expect(generateDesktop3pModels([], routed, stale).some(model => model.name === aliasA)).toBe(true);
+      assertApplied();
+      generateDesktop3pConfig(10100, [], routed, "fixture", "discovery", stale);
+      assertApplied();
+      writeFileSync(f.activePath, "{");
+      buildDesktop3pRegistry([], []);
+      expect(refreshDesktop3pRegistry()).toBe(false);
+      assertApplied();
+      rmSync(f.metaPath);
+      buildDesktop3pRegistry([], routed, stale);
+      expect(refreshDesktop3pRegistry()).toBe(false);
+      assertApplied();
+      const discovery = profile("mock/model-c", aliasB);
+      const discovered = buildDesktop3pRegistry([], [{ provider: "mock", id: "model-c" }], discovery);
+      expect(discovered.get(aliasB)).toBe("mock/model-c");
+      expect(activeDesktop3pAlias("mock", "model-c")).toBe(aliasB);
+      expect(resolveInboundModel(aliasB)).toBe("mock/model-c");
+      assertApplied();
+    } finally { f.restore(); }
+  });
+
+  test("discovery never advertises an alias bound to another applied route", () => {
+    const f = fixture();
+    try {
+      f.persist(profile("test/model-123", aliasA));
+      f.apply(aliasA);
+      expect(refreshDesktop3pRegistry()).toBe(true);
+      buildDesktop3pRegistry([], [{ provider: "test", id: "model-155" }], profile("test/model-155", aliasA));
+      expect(legacyDesktop3pAlias("test", "model-155")).toBe(legacyDesktop3pAlias("test", "model-123"));
+      expect(() => activeDesktop3pAlias("test", "model-155")).toThrow("conflicts with the applied profile");
+      expect(resolveInboundModel(aliasA)).toBe("test/model-123");
+      expect(resolveDesktop3pAlias(legacyDesktop3pAlias("test", "model-123"))).toBe("test/model-123");
+    } finally { f.restore(); }
+  });
+
+  test("malformed, oversized, inactive, and missing sources retain the whole last-good snapshot", () => {
+    const f = fixture();
+    try {
+      f.persist(profile("mock/model-a", aliasA));
+      f.apply(aliasA);
+      expect(refreshDesktop3pRegistry()).toBe(true);
+      const preserved = () => {
+        expect(refreshDesktop3pRegistry()).toBe(false);
+        expect(resolveInboundModel(aliasA)).toBe("mock/model-a");
+        expect(activeDesktop3pAlias("mock", "model-a")).toBe(aliasA);
+      };
+      externalReplace(getConfigPath(), { claudeCode: { desktopProfile: { ...profile("mock/model-b", aliasB), version: 2 } } });
+      preserved();
+      f.persist(profile("mock/model-b", aliasB));
+      writeFileSync(f.activePath, "{");
+      preserved();
+      writeFileSync(f.activePath, " ".repeat(1024 * 1024 + 1));
+      preserved();
+      f.apply(aliasB);
+      externalReplace(f.metaPath, { appliedId: "../outside", entries: [{ name: "opencodex", id: "../outside" }] });
+      preserved();
+      externalReplace(f.metaPath, { appliedId: "other", entries: [{ name: "opencodex", id: "active" }] });
+      preserved();
+      rmSync(f.metaPath);
+      preserved();
+      externalReplace(f.metaPath, { appliedId: "active", entries: [{ name: "opencodex", id: "active" }] });
+      expect(refreshDesktop3pRegistry()).toBe(true);
+      expect(resolveInboundModel(aliasB)).toBe("mock/model-b");
+    } finally { f.restore(); }
+  });
+
+  test("a file replacement during candidate reads never publishes a mixed registry", () => {
+    const f = fixture();
+    try {
+      f.persist(profile("mock/model-a", aliasA));
+      f.apply(aliasA);
+      expect(refreshDesktop3pRegistry()).toBe(true);
+      f.persist(profile("mock/model-b", aliasB));
+      f.apply(aliasB);
+      const originalRead = fs.readSync;
+      let reads = 0;
+      const read = spyOn(fs, "readSync").mockImplementation((
+        fd: number, buffer: NodeJS.ArrayBufferView, offsetOrOptions?: number | fs.ReadOptions,
+        length?: number, position?: fs.ReadPosition | null,
+      ) => {
+        const result = typeof offsetOrOptions === "number"
+          ? originalRead(fd, buffer, offsetOrOptions, length!, position ?? null)
+          : originalRead(fd, buffer, offsetOrOptions);
+        if (++reads === 3) f.persist(profile("mock/model-c", aliasB));
+        return result;
+      });
+      try {
+        expect(refreshDesktop3pRegistry()).toBe(false);
+        expect(reads).toBeGreaterThanOrEqual(3);
+        expect(resolveInboundModel(aliasA)).toBe("mock/model-a");
+        expect(activeDesktop3pAlias("mock", "model-a")).toBe(aliasA);
+        expect(resolveDesktop3pAlias(aliasB)).toBeNull();
+      } finally { read.mockRestore(); }
+      expect(refreshDesktop3pRegistry()).toBe(true);
+      expect(resolveInboundModel(aliasB)).toBe("mock/model-c");
+    } finally { f.restore(); }
+  });
+
+  test("live messages and count_tokens observe independent atomic edits without discovery or restart", async () => {
+    const f = fixture();
+    const codex = installIsolatedCodexHome("ocx-desktop-registry-live-");
+    clearRequestLogsForTests();
+    const captured: string[] = [];
+    const upstream = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        expect(new URL(req.url).pathname).toBe("/v1/chat/completions");
+        const body = await req.json() as { model: string };
+        captured.push(body.model);
+        return new Response([
+          `data: ${JSON.stringify({ choices: [{ index: 0, delta: { role: "assistant", content: "ok" } }] })}\n\n`,
+          `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1 } })}\n\n`,
+          "data: [DONE]\n\n",
+        ].join(""), { headers: { "Content-Type": "text/event-stream" } });
+      },
+    });
+    let server: ReturnType<typeof startServer> | undefined;
+    try {
+      const config: OcxConfig = {
+        port: 0,
+        defaultProvider: "mock",
+        providers: { mock: {
+          adapter: "openai-chat", baseUrl: `${upstream.url.toString().replace(/\/$/, "")}/v1`,
+          apiKey: "fixture", allowPrivateNetwork: true, liveModels: false,
+        } },
+        claudeCode: { desktopProfile: profile("mock/model-a", aliasA) },
+      };
+      saveConfig(config);
+      f.apply(aliasA);
+      buildDesktop3pRegistry([], []);
+      server = startServer(0);
+      const post = (path: string, alias: string) => managementFetch(new URL(path, server!.url), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: alias, max_tokens: 32, messages: [{ role: "user", content: "hi" }] }),
+      });
+      const turn = async (alias: string) => {
+        const res = await post("/v1/messages", alias);
+        expect(res.status).toBe(200);
+        expect((await res.json() as { content: unknown }).content).toBeDefined();
+      };
+      await turn(aliasA);
+      expect(captured).toEqual(["model-a"]);
+      // Preserve routing config while changing only persisted Desktop state, outside the live server.
+      externalReplace(getConfigPath(), { ...config, claudeCode: { desktopProfile: profile("mock/model-b", aliasB) } });
+      f.apply(aliasB);
+      const counted = await post("/v1/messages/count_tokens", aliasB);
+      expect(counted.status).toBe(200);
+      expect((await counted.json() as { input_tokens: number }).input_tokens).toBeGreaterThan(0);
+      expect(resolveInboundModel(aliasB)).toBe("mock/model-b");
+      await turn(aliasB);
+      externalReplace(getConfigPath(), { ...config, claudeCode: { desktopProfile: profile("mock/model-c", aliasA) } });
+      f.apply(aliasA);
+      await turn(aliasA);
+      expect(captured).toEqual(["model-a", "model-b", "model-c"]);
+      writeFileSync(getConfigPath(), "{");
+      f.apply(aliasB);
+      await turn(aliasA);
+      externalReplace(getConfigPath(), { ...config, claudeCode: { desktopProfile: profile("mock/model-c", aliasA) } });
+      writeFileSync(f.activePath, "{");
+      await turn(aliasA);
+      expect(captured).toEqual(["model-a", "model-b", "model-c", "model-c", "model-c"]);
+    } finally {
+      await server?.stop(true);
+      await upstream.stop(true);
+      clearRequestLogsForTests();
+      codex.restore();
+      f.restore();
     }
   });
 });

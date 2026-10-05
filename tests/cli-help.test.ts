@@ -42,7 +42,7 @@ describe("CLI subcommand help", () => {
     expect(result.status).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.stdout).toContain("Usage: ocx start [--port <port>]");
-    expect(result.stdout).toContain("Start the proxy server and sync models to Codex.");
+    expect(result.stdout).toContain("Start the provider proxy; Codex is optional.");
   });
 
   test("top-level help forms exit before Codex shim auto-restore can mutate launchers", () => {

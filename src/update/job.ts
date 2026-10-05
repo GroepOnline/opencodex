@@ -184,12 +184,14 @@ export function restartCommand(
   launcher = packageLauncherPath(),
   port?: number,
   serviceArgs?: string[],
+  proxyOnly = false,
 ): { mode: "service" | "proxy"; bin: string; args: string[]; display: string } {
   const mode = serviceInstalled ? "service" : "proxy";
   const pinPort = !serviceInstalled && typeof port === "number" && Number.isFinite(port) && port > 0;
   const startArgs = pinPort
     ? [launcher, "start", "--port", String(Math.trunc(port))]
     : [launcher, "start"];
+  if (!serviceInstalled && proxyOnly) startArgs.push("--proxy-only");
   const svcArgs = serviceInstalled ? [launcher, ...(serviceArgs ?? ["service", "install"])] : startArgs;
   if (installer === "npm") {
     const bin = nodeBin();
@@ -369,8 +371,8 @@ function runLoggedCommand(job: UpdateJobState, bin: string, args: string[], time
   return { status: result.status, signal: result.signal };
 }
 
-function spawnDetachedStart(job: UpdateJobState, installer: Installer, port?: number): void {
-  const cmd = restartCommand(false, installer, packageLauncherPath(), port);
+function spawnDetachedStart(job: UpdateJobState, installer: Installer, port?: number, proxyOnly = false): void {
+  const cmd = restartCommand(false, installer, packageLauncherPath(), port, undefined, proxyOnly);
   const env = { ...process.env };
   delete env.OCX_SERVICE;
   updateJob(job, {}, `$ ${cmd.display}`);
@@ -392,7 +394,7 @@ export interface RestartProxyIdentity {
 /** Test seam: the wait/spawn pair is injectable so the restart path is verifiable. */
 export interface RestartIo {
   waitForPort?: typeof reclaimListenPort;
-  spawnStart?: (job: UpdateJobState, installer: Installer, port?: number) => void;
+  spawnStart?: (job: UpdateJobState, installer: Installer, port?: number, proxyOnly?: boolean) => void;
   serviceInstalledFn?: () => boolean;
   probeProxy?: (port: number, hostname?: string) => Promise<boolean>;
   /** Richer /healthz read for update-correlated restart evidence (pid + version). */
@@ -408,14 +410,14 @@ export interface RestartIo {
   /** Override the explicit restart path (used by finishGuiUpdateRestart tests). */
   restartAfterUpdateFn?: (
     job: UpdateJobState,
-    captured?: { port: number; hostname: string; oldPid?: number },
+    captured?: { port: number; hostname: string; oldPid?: number; proxyOnly?: boolean },
     io?: RestartIo,
   ) => Promise<void>;
 }
 
 async function restartAfterUpdate(
   job: UpdateJobState,
-  captured?: { port: number; hostname: string; oldPid?: number },
+  captured?: { port: number; hostname: string; oldPid?: number; proxyOnly?: boolean },
   io: RestartIo = {},
 ): Promise<void> {
   const serviceInstalled = (io.serviceInstalledFn ?? isServiceInstalled)();
@@ -487,24 +489,24 @@ async function restartAfterUpdate(
   // Only the trusted pre-update PID may be killed; never an arbitrary ocx listener.
   const freed = await waitFn(port, hostname, reclaimOpts);
   if (!freed) {
-    updateJob(job, {}, `Port ${port} still busy after ${Math.trunc(RESTART_PORT_RECLAIM_MS / 1000)}s (reclaim could not free the socket); not starting on another port. Retry 'ocx start --port ${port}'.`);
+    updateJob(job, {}, `Port ${port} still busy after ${Math.trunc(RESTART_PORT_RECLAIM_MS / 1000)}s (reclaim could not free the socket); not starting on another port. Retry 'ocx start --port ${port}${captured?.proxyOnly ? " --proxy-only" : ""}'.`);
     return;
   }
-  (io.spawnStart ?? spawnDetachedStart)(job, job.installer, port);
+  (io.spawnStart ?? spawnDetachedStart)(job, job.installer, port, captured?.proxyOnly === true);
 }
 
 /** Exposed for tests: drives the non-service restart path with injected io. */
 export function restartAfterUpdateForTests(
   job: UpdateJobState,
-  captured: { port: number; hostname: string; oldPid?: number },
+  captured: { port: number; hostname: string; oldPid?: number; proxyOnly?: boolean },
   io: RestartIo,
 ): Promise<void> {
   return restartAfterUpdate(job, captured, io);
 }
 
-function restartFailureHint(port: number): string {
+function restartFailureHint(port: number, proxyOnly = false): string {
   return `Update installed, but the restarted proxy did not stay healthy on port ${port}. `
-    + `Try 'ocx start --port ${port}'. `
+    + `Try 'ocx start --port ${port}${proxyOnly ? " --proxy-only" : ""}'. `
     + "If the update log shows bun postinstall or EPERM warnings, "
     + "reinstall with 'npm install -g --allow-scripts=bun @groeponline/opencodex'.";
 }
@@ -565,7 +567,7 @@ async function awaitRestartedProxyHealthy(
  */
 async function confirmRestartedProxy(
   job: UpdateJobState,
-  captured: { port: number; hostname: string },
+  captured: { port: number; hostname: string; proxyOnly?: boolean },
   io: RestartIo = {},
 ): Promise<boolean> {
   /* [Decision Log]
@@ -587,13 +589,13 @@ async function confirmRestartedProxy(
     status: "failed",
     restarted: false,
     error,
-  }, restartFailureHint(port));
+  }, restartFailureHint(port, captured.proxyOnly));
   return false;
 }
 
 export function confirmRestartAfterUpdateForTests(
   job: UpdateJobState,
-  captured: { port: number; hostname: string },
+  captured: { port: number; hostname: string; proxyOnly?: boolean },
   io: RestartIo,
 ): Promise<boolean> {
   return confirmRestartedProxy(job, captured, io);
@@ -682,7 +684,7 @@ export function npmSelfUpdateRestartEvidence(
  */
 export async function finishGuiUpdateRestart(
   job: UpdateJobState,
-  captured: { port: number; hostname: string; oldPid?: number },
+  captured: { port: number; hostname: string; oldPid?: number; proxyOnly?: boolean },
   installer: Installer,
   io: RestartIo = {},
 ): Promise<boolean> {
@@ -731,7 +733,7 @@ export async function finishGuiUpdateRestart(
  */
 async function confirmNpmExplicitRestart(
   job: UpdateJobState,
-  captured: { port: number; hostname: string; oldPid?: number },
+  captured: { port: number; hostname: string; oldPid?: number; proxyOnly?: boolean },
   io: RestartIo = {},
 ): Promise<boolean> {
   const healthy = await awaitRestartedProxyHealthy(job, captured, io);
@@ -745,7 +747,7 @@ async function confirmNpmExplicitRestart(
       status: "failed",
       restarted: false,
       error,
-    }, restartFailureHint(port));
+    }, restartFailureHint(port, captured.proxyOnly));
     return false;
   }
 
@@ -759,7 +761,7 @@ async function confirmNpmExplicitRestart(
       status: "failed",
       restarted: false,
       error: `proxy restart did not show update-correlated identity (${evidence.reason})`,
-    }, restartFailureHint(captured.port));
+    }, restartFailureHint(captured.port, captured.proxyOnly));
     return false;
   }
 
@@ -789,6 +791,7 @@ export async function runGuiUpdateWorker(jobId: string, channel: Channel, restar
     port: runtimeTrusted ? rt.port : configPort,
     hostname: (runtimeTrusted ? rt.hostname : undefined) ?? preUpdateConfig.hostname ?? "127.0.0.1",
     ...(runtimeTrusted && livePid ? { oldPid: livePid } : {}),
+    ...(runtimeTrusted && rt?.proxyOnly === true ? { proxyOnly: true } : {}),
   };
   let trayWasInstalled = false;
   let trayWasRunning = false;

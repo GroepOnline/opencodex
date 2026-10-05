@@ -90,9 +90,9 @@ describe("auto-context (devlog 260712 020 + audit 021)", () => {
     expect(resolveAutoContext({ maxContextTokens: 400_000 }).enabled).toBe(false);
   });
 
-  test("user env override drives the predicate; invalid override disables auto (audit #2)", () => {
+  test("user env override selects compaction threshold; invalid override disables auto", () => {
     expect(resolveAutoContext({}, "500000")).toEqual({ enabled: true, compactWindow: 500_000 });
-    // Invalid or out-of-range env: the CLI would ignore it -> marking sub-1M is unsafe.
+    // Invalid or out-of-range env: the CLI would ignore the requested compaction threshold.
     expect(resolveAutoContext({}, "50").enabled).toBe(false);
     expect(resolveAutoContext({}, "9999999").enabled).toBe(false);
     expect(resolveAutoContext({}, "abc").enabled).toBe(false);
@@ -100,14 +100,19 @@ describe("auto-context (devlog 260712 020 + audit 021)", () => {
     expect(resolveAutoContext({ autoContext: false }, "500000").enabled).toBe(false);
   });
 
-  test("shouldMarkOneMillion: >=1M always; auto widens only windows that host the compact window", () => {
-    const auto = { enabled: true, compactWindow: 350_000 };
-    expect(shouldMarkOneMillion(1_000_000, { enabled: false, compactWindow: 350_000 })).toBe(true);
-    expect(shouldMarkOneMillion(372_000, auto)).toBe(true);
-    expect(shouldMarkOneMillion(372_000, { enabled: true, compactWindow: 380_000 })).toBe(false); // real < threshold
-    expect(shouldMarkOneMillion(200_000, auto)).toBe(false); // floor is exclusive
-    expect(shouldMarkOneMillion(128_000, auto)).toBe(false);
-    expect(shouldMarkOneMillion(undefined, auto)).toBe(false);
+  test("shouldMarkOneMillion requires a finite authoritative >=1M window regardless of compaction", () => {
+    for (const auto of [
+      { enabled: false, compactWindow: 350_000 },
+      { enabled: true, compactWindow: 350_000 },
+      { enabled: true, compactWindow: 100_000 },
+      { enabled: true, compactWindow: 1_000_000 },
+    ]) {
+      for (const window of [128_000, 200_000, 372_000, 400_000, 999_999, 0, -1, NaN, Infinity, undefined]) {
+        expect(shouldMarkOneMillion(window, auto)).toBe(false);
+      }
+      expect(shouldMarkOneMillion(1_000_000, auto)).toBe(true);
+      expect(shouldMarkOneMillion(1_048_576, auto)).toBe(true);
+    }
   });
 
   test("anthropic sub-1M routes stay out of the map; >=1M anthropic stays in (audit #3)", () => {
@@ -132,16 +137,20 @@ describe("auto-context (devlog 260712 020 + audit 021)", () => {
     expect(map["gpt-5.6-sol"]).toBe(372_000); // native override, not 999k
   });
 
-  test("effectiveModelEnv auto-marks a 372k native slot under the default auto mode", () => {
-    const windows = buildClaudeContextWindows(["gpt-5.6-sol"], []);
-    const env = effectiveModelEnv({ model: "gpt-5.6-sol" }, windows);
-    expect(env.ANTHROPIC_MODEL).toBe("gpt-5.6-sol[1m]");
-    // Readable-alias slot value gets the same marking (audit 051 #4).
-    const readable = effectiveModelEnv({ model: "claude-ocx-native--gpt-5.6-sol" }, windows);
-    expect(readable.ANTHROPIC_MODEL).toBe("claude-ocx-native--gpt-5.6-sol[1m]");
-    // Explicit off: no marking below 1M.
-    const off = effectiveModelEnv({ model: "gpt-5.6-sol", autoContext: false }, windows);
-    expect(off.ANTHROPIC_MODEL).toBe("gpt-5.6-sol");
+  test("effectiveModelEnv never inflates 372k/400k slots while still marking authoritative 1M", () => {
+    const windows = buildClaudeContextWindows(["gpt-5.6-sol", "gpt-5.4"], [
+      { provider: "mock", id: "model-400k", contextWindow: 400_000 },
+    ]);
+    for (const selector of [
+      "gpt-5.6-sol", "claude-ocx-native--gpt-5.6-sol", desktop3pAlias("native", "gpt-5.6-sol"),
+      "mock/model-400k", "claude-ocx-mock--model-400k", desktop3pAlias("mock", "model-400k"),
+    ]) {
+      expect(effectiveModelEnv({ model: selector }, windows).ANTHROPIC_MODEL).toBe(selector);
+      expect(effectiveModelEnv({ model: selector, autoContext: false }, windows).ANTHROPIC_MODEL).toBe(selector);
+    }
+    expect(effectiveModelEnv({ model: "gpt-5.4" }, windows).ANTHROPIC_MODEL).toBe("gpt-5.4[1m]");
+    // Do not silently rewrite an explicit marker already stored by a user/older client.
+    expect(withOneMillionMarker("mock/model-400k[1M]", windows)).toBe("mock/model-400k[1M]");
   });
 
   test("[1m] handling is case-insensitive (audit #7)", () => {

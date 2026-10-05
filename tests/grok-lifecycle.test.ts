@@ -41,23 +41,24 @@ describe("Grok fence lifecycle wiring", () => {
     expect(spawnBranch).toContain("config.hostname ? { hostname: config.hostname }");
   });
 
-  test("handleStop gates shared teardown on ownership but still reverts system env", () => {
+  test("handleStop gates shared teardown on ownership and leaves proxy-only client env unchanged", () => {
     const stopFn = sliceFn(CLI_SOURCE, "async function handleStop(", "async function handleUninstall(");
 
     expect(stopFn).toContain("isServiceOwnershipError(err)");
     expect(stopFn).toContain("ownershipBlocked = true");
 
-    const gateAt = stopFn.indexOf("if (!ownershipBlocked)");
+    const gateAt = stopFn.indexOf("if (!ownershipBlocked && !proxyOnly)");
     const stripAt = stopFn.indexOf("stripGrokConfig()");
     const restoreAt = stopFn.indexOf("restoreNativeCodex()");
-    const revertAt = stopFn.indexOf("revertSystemEnv()");
+    const revertAt = stopFn.indexOf("try { revertSystemEnv();");
 
     expect(gateAt).toBeGreaterThan(-1);
     expect(stripAt).toBeGreaterThan(gateAt);
     expect(restoreAt).toBeGreaterThan(gateAt);
-    // revertSystemEnv carries its own ownership check and concerns launchctl env, not
-    // CODEX_HOME — gating it too would be over-broad.
-    expect(stopFn.slice(revertAt - 200, revertAt)).toContain("NOT gated");
+    // Integrated shutdown retains the environment ownership check; proxy-only does not mutate it.
+    expect(stopFn.slice(revertAt - 200, revertAt)).toContain("if (!proxyOnly)");
+    const grokGateAt = stopFn.lastIndexOf("if (!ownershipBlocked && !proxyOnly)", stripAt);
+    expect(grokGateAt).toBeGreaterThan(revertAt);
   });
 
   test("a refused Grok strip makes ocx stop fail instead of reporting success", () => {
@@ -88,7 +89,11 @@ describe("Grok fence lifecycle wiring", () => {
     expect(stopFn).not.toContain("process.exit(1)");
 
     const restartCase = sliceFn(CLI_SOURCE, 'case "restart"', 'case "health"');
-    expect(restartCase).toContain("if (await handleStop()) await handleEnsure()");
+    expect(restartCase).toContain("if (await handleStop()) {");
+    expect(restartCase).toContain("if (proxyOnly) {");
+    expect(restartCase).toContain("startArgv(runtime?.port, true)");
+    expect(restartCase).toContain("await handleEnsure();");
+    expect(restartCase.indexOf("if (await handleStop())")).toBeLessThan(restartCase.indexOf("await handleEnsure()"));
   });
 
   test("handleStop treats an incomplete native Codex restore as a stop failure", () => {

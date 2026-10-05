@@ -55,11 +55,10 @@ function inAutoCompactRange(value: number): boolean {
  * making both AUTO_COMPACT_WINDOW and [1m] accounting inert.
  *
  * `envOverride` is the raw CLAUDE_CODE_AUTO_COMPACT_WINDOW the USER already
- * exported (user-wins injection keeps it): a valid value drives the marking
- * predicate so marker and threshold never separate (audit 021 #2); an invalid
- * value disables auto marking entirely (the CLI would ignore it, leaving marked
- * sub-1M models without their safety net). Out-of-range CONFIG values fall back
- * to the 350k default (the management API rejects them; this guards hand-edits).
+ * exported (user-wins injection keeps it): a valid value selects the compaction
+ * threshold; an invalid value disables this auto-context mode. Neither changes
+ * the model's context window or eligibility for [1m]. Out-of-range CONFIG values
+ * fall back to the 350k default (the management API rejects them; this guards hand-edits).
  */
 export function resolveAutoContext(claudeCode: AutoContextConfigSlice | undefined, envOverride?: string): AutoContextMode {
   if (claudeCode?.autoContext === false) return AUTO_CONTEXT_OFF;
@@ -75,15 +74,11 @@ export function resolveAutoContext(claudeCode: AutoContextConfigSlice | undefine
 }
 
 /**
- * [1m]-marking predicate. Windows >= 1M always mark (CLI accounts exactly 1M).
- * Auto-context additionally marks windows > 200k that can safely host the compact
- * window — marking a model whose real window is BELOW the compact window would put
- * the compaction safety net behind the real API limit (mid-session 400s).
+ * [1m] asserts a full 1M client context, so only an authoritative >=1M window earns it.
+ * The auto-context argument is retained for callers; compaction cannot enlarge a window.
  */
-export function shouldMarkOneMillion(window: number | undefined, auto: AutoContextMode): boolean {
-  if (typeof window !== "number" || window <= 0) return false;
-  if (window >= ONE_MILLION) return true;
-  return auto.enabled && window > AUTO_CONTEXT_FLOOR && window >= auto.compactWindow;
+export function shouldMarkOneMillion(window: number | undefined, _auto: AutoContextMode): boolean {
+  return typeof window === "number" && Number.isFinite(window) && window >= ONE_MILLION;
 }
 
 export function buildClaudeContextWindows(
@@ -129,8 +124,8 @@ function bareSelector(value: string): string {
 /**
  * Apply the [1m] context-variant marker to a model selector when its authoritative
  * window is >= 1M (Claude Code accounts exactly 1M for the marker; compaction stays
- * alive) — or, in auto-context mode, when the window clears the marking predicate
- * above. Already-marked selectors pass through; unknown selectors stay untouched.
+ * alive). Auto-context does not broaden eligibility. Already-marked user selectors
+ * pass through for compatibility; unknown selectors stay untouched.
  */
 export function withOneMillionMarker(selector: string | undefined, windows: Record<string, number>, auto: AutoContextMode = AUTO_CONTEXT_OFF): string | undefined {
   if (!selector) return selector;

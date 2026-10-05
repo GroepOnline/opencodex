@@ -154,6 +154,29 @@ test("per-surface id style: ?ids= wins, claude-code UA gets readable, unknown UA
   }
 });
 
+test("live context_window reaches Claude discovery while unknown output tokens stay null", async () => {
+  const upstream = Bun.serve({ port: 0, fetch: () => Response.json({ data: [
+    { id: "gateway-model", context_window: 400_000, max_tokens: null },
+  ] }) });
+  const config = configWithStaticModels();
+  config.providers.mock!.baseUrl = `${upstream.url.origin}/v1`;
+  config.providers.mock!.liveModels = true;
+  config.providers.mock!.models = [];
+  saveConfig(config);
+  const server = startServer(0);
+  try {
+    const response = await fetch(new URL("/v1/models?flavor=anthropic&ids=cli", server.url));
+    expect(response.status).toBe(200);
+    const json = await response.json() as { data: { id: string; max_input_tokens: number; max_tokens: unknown }[] };
+    const model = json.data.find(m => m.id === "claude-ocx-mock--gateway-model");
+    expect(model?.max_input_tokens).toBe(400_000);
+    expect(model?.max_tokens).toBeNull();
+  } finally {
+    server.stop(true);
+    upstream.stop(true);
+  }
+});
+
 test("OpenAI list shape and Codex catalog shape stay unchanged", async () => {
   saveConfig(configWithStaticModels());
   const server = startServer(0);

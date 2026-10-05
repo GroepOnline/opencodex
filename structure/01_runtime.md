@@ -33,10 +33,21 @@ their own files.
 
 ## Lifecycle
 
-`ocx start` refuses a duplicate PID, starts the proxy, writes `~/.opencodex/ocx.pid`, syncs Codex
-config/catalog, then serves until shutdown. Normal shutdown restores native Codex. Service mode sets
-`OCX_SERVICE=1`, so managed restarts do not repeatedly restore/reinject; explicit service stop and
-uninstall still restore.
+`ocx start` refuses a duplicate PID, starts the proxy, and writes `~/.opencodex/ocx.pid`. Codex is
+an optional client: start syncs its config/catalog only when an existing config is present.
+`ocx start --proxy-only` skips client configuration, shell/environment injection, launcher repair,
+and Codex journal/history work. Its signal-driven shutdown and management stop do not restore client
+configuration. Runtime metadata retains this mode for CLI and dashboard restarts. Imports resolve
+explicit Codex paths lexically; actual Codex operations validate them strictly and never redirect an
+invalid explicit home to the default. Desktop sync completes before the default sync's Codex validation.
+Service mode sets `OCX_SERVICE=1`, so managed restarts do not repeatedly restore/reinject; explicit
+service stop and uninstall retain their existing restore contract.
+
+`ocx sync` independently synchronizes an existing OCX Desktop library and configured Codex. A
+Desktop failure does not prevent Codex sync, and a Codex failure does not undo a completed Desktop
+sync; failures return nonzero. An absent Codex config is skipped by default. `--desktop-only` and
+`--codex-only` select one client explicitly. Client process termination is never required by default;
+`--restart-codex` remains an explicit, potentially interrupting recovery option.
 
 An installed Codex shim is checked on ordinary CLI startup with a regular-file/1 MiB state bound plus
 bounded metadata and prefix reads. A complete replacement must produce identical fingerprints and
@@ -55,8 +66,9 @@ interval) of upstream silence with no real events, the stream is closed and the 
 cancelled. If the adapter generator ends without an explicit done/error event, the response is marked
 `incomplete` rather than `completed` so Codex can distinguish a clean finish from a truncated stream.
 
-The server exposes `POST /api/stop` which restores native Codex config, stops any installed service
-(to prevent respawn), and exits the process. The GUI sidebar stop button calls this endpoint.
+The server exposes authenticated `POST /api/stop`, which stops an owned installed service (to prevent
+respawn), drains, and exits. Normal client-integrated mode restores native Codex/Grok configuration;
+proxy-only mode leaves client configuration unchanged. The GUI sidebar stop button calls this endpoint.
 
 ## Providers and adapters
 

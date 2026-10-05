@@ -13,7 +13,7 @@ import {
   rootTomlString,
   tomlStringPattern,
 } from "./injected-marker";
-import { CODEX_CONFIG_PATH, CODEX_PROFILE_PATH, DEFAULT_CATALOG_PATH, parseTomlString, readRootTomlString, resolveCodexConfigPath, tomlString } from "./paths";
+import { CODEX_CONFIG_PATH, CODEX_PROFILE_PATH, DEFAULT_CATALOG_PATH, getCodexHome, parseTomlString, readRootTomlString, resolveCodexConfigPath, tomlString } from "./paths";
 import { resolveEffectiveProjectModelProvider } from "./project-config-warnings";
 import {
   transformManagedSubagentDefaults,
@@ -546,6 +546,7 @@ export interface CodexInjectResult {
 }
 
 export async function injectCodexConfig(port: number, config?: OcxConfig, options: InjectCodexOptions = {}): Promise<CodexInjectResult> {
+  getCodexHome();
   if (!existsSync(CODEX_CONFIG_PATH)) {
     return { success: false, message: `Codex config not found at ${CODEX_CONFIG_PATH}. Is Codex installed?` };
   }
@@ -824,6 +825,7 @@ function hasOpencodexRouting(content: string): boolean {
 }
 
 export function removeCodexConfig(options: { preserveProfile?: boolean } = {}): { success: boolean; message: string } {
+  getCodexHome();
   if (!existsSync(CODEX_CONFIG_PATH)) {
     if (!options.preserveProfile && existsSync(CODEX_PROFILE_PATH)) unlinkSync(CODEX_PROFILE_PATH);
     return {
@@ -865,6 +867,7 @@ export function removeCodexConfig(options: { preserveProfile?: boolean } = {}): 
  * handler, and `ocx restore`. Idempotent + atomic.
  */
 export function restoreNativeCodex(): { success: boolean; message: string } {
+  getCodexHome();
   const activeProvider = currentExternalCodexModelProvider();
   if (activeProvider) {
     removeJournal();

@@ -411,6 +411,7 @@ export function catalogHintsFromModelsApiItem(providerName: string, item: Provid
     positiveSafeInteger(
       limits?.max_context_length,
       item.context_length,
+      item.context_window,
       item.context_size,
       item.max_model_len,
       item.max_context_length,

@@ -227,6 +227,15 @@ describe("registry-owned provider model discovery", () => {
     });
   });
 
+  test("accepts context_window without inventing an output limit", () => {
+    expect(catalogHintsFromModelsApiItem("example", {
+      id: "gateway-model", context_window: 400_000, max_tokens: null,
+    })).toEqual({ contextWindow: 400_000 });
+    for (const context_window of [null, 0, -1, 1.5, "400000", Number.MAX_SAFE_INTEGER + 1]) {
+      expect(catalogHintsFromModelsApiItem("example", { id: "invalid", context_window })).toEqual({});
+    }
+  });
+
   test("accepts only positive safe-integer token limits from live metadata", () => {
     expect(catalogHintsFromModelsApiItem("example", {
       id: "fractional",

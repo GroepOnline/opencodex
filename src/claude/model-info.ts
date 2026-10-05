@@ -120,10 +120,9 @@ export function buildAnthropicModelInfos(
   const seen = new Set<string>();
   // [1m] picker variant (devlog 260712 B1): Claude Code accounts exactly 1M for ids
   // carrying the marker (2.1.207 binary: /\[1m\]/i → 1e6, compaction preserved), so
-  // models with an authoritative >=1M window get a second selectable row. In
-  // auto-context mode (devlog 020) the predicate widens to windows > 200k that can
-  // host the compact window — display stays honest (real window, not "1M"). Guards
-  // (audit R1#11): same dedupe set, never double-suffix.
+  // only models with an authoritative >=1M window get a second selectable row.
+  // The compact window is a summarization threshold, not a larger model capacity.
+  // Guards (audit R1#11): same dedupe set, never double-suffix.
   const push1mVariant = (base: AnthropicModelInfo, contextWindow: number | undefined, mode: AutoContextMode = auto) => {
     if (!shouldMarkOneMillion(contextWindow, mode)) return;
     if (base.id.includes("[1m]")) return;
@@ -135,7 +134,9 @@ export function buildAnthropicModelInfos(
     out.push({ ...base, id, display_name: `${base.display_name} · ${label}`, max_input_tokens: Math.min(window, ONE_MILLION) });
   };
   for (const slug of nativeSlugs) {
-    const id = idStyle === "readable" ? claudeCodeNativeAlias(slug) : aliasForRoute("native", slug);
+    let id: string;
+    try { id = idStyle === "readable" ? claudeCodeNativeAlias(slug) : aliasForRoute("native", slug); }
+    catch { continue; }
     if (seen.has(id)) continue;
     seen.add(id);
     const info = modelInfo(
@@ -150,7 +151,9 @@ export function buildAnthropicModelInfos(
     push1mVariant(info, nativeOpenAiContextWindow(slug));
   }
   for (const m of routedModels) {
-    const id = idStyle === "readable" ? claudeCodeAlias(m.provider, m.id) : aliasForRoute(m.provider, m.id);
+    let id: string;
+    try { id = idStyle === "readable" ? claudeCodeAlias(m.provider, m.id) : aliasForRoute(m.provider, m.id); }
+    catch { continue; }
     if (seen.has(id)) continue;
     seen.add(id);
     const ladder = Array.isArray(m.reasoningEfforts) ? m.reasoningEfforts : [];

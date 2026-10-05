@@ -16,15 +16,18 @@ default model, and proxy port; saves `~/.opencodex/config.json`; optionally inje
 `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`); and optionally installs the Codex
 autostart shim.
 
-### `ocx start [--port <port>]`
+### `ocx start [--port <port>] [--proxy-only]`
 
 Start the proxy server (preferred port `10100`). Without `--port`, if that port is occupied,
 opencodex selects and records another available port. An explicit `--port` stays pinned and
 fails if it remains busy; it never silently switches ports. Temporary availability probes close
 incoming discovery connections immediately so a scanner cannot keep startup waiting.
 It writes PID/runtime-port state and refuses to start a second live
-instance. On start it syncs each provider's models into Codex's catalog. On shutdown it restores
-native Codex — unless it was launched as a managed service (`OCX_SERVICE=1`).
+instance. Codex is optional: ordinary startup skips its integration when no Codex config exists.
+`--proxy-only` starts the API and dashboard without client config, shell-hook, launcher or Codex
+journal/history changes. The default keeps existing client integrations; its shutdown restores
+native Codex when applicable, unless launched as a managed service (`OCX_SERVICE=1`). Neither
+startup mode requires stopping a running Codex or Claude client.
 
 ```bash
 ocx start
@@ -33,7 +36,8 @@ ocx start --port 8080
 
 ### `ocx stop`
 
-Stop the running proxy (by PID), remove the PID file, and restore native Codex. If a managed
+Stop the running proxy (by PID) and remove its runtime state. Client-integrated mode restores
+managed native Codex/Grok configuration; proxy-only mode leaves client files unchanged. If a managed
 background service is installed, `ocx stop` also stops it first (so it won't respawn the proxy).
 The same action is available from the web dashboard's **Stop** button (`POST /api/stop`).
 
@@ -57,8 +61,9 @@ backup support existed. Close Codex first if its history database is locked.
 
 ### `ocx restart`
 
-Run `stop` followed by `ensure`: stop the proxy/service, restore native Codex, start the proxy in the
-background, and sync the live port back into Codex.
+Stop the proxy/service and restart it in the background. A live proxy-only instance keeps
+`--proxy-only` and its recorded port, without restoring or synchronizing client files.
+Client-integrated mode follows `stop` with `ensure` and its existing Codex integration.
 
 ### `ocx ensure`
 
@@ -145,10 +150,16 @@ opencodex local config only if all restore steps succeeded. `remove` is an alias
 
 ## Models & Codex
 
-### `ocx sync [--restart-codex]`
+### `ocx sync [--desktop-only | --codex-only] [--restart-codex]`
 
-Fetch the live model list from every configured provider and re-inject the merged catalog into Codex.
-Run it after adding a provider or to refresh available models.
+Synchronize configured clients independently. The default copies an existing OCX Desktop library
+through the configured local gateway, then updates Codex if its config exists. A Codex error does
+not prevent Desktop sync; errors still produce a nonzero exit status. An absent Codex config is
+skipped by default, but an explicitly invalid `CODEX_HOME` remains an error and never redirects
+writes to `~/.codex`. Help, version, Desktop-only sync and proxy-only startup do not require a
+valid Codex home.
+`--desktop-only` explicitly syncs Desktop without touching Codex; `--codex-only` explicitly targets
+Codex. These flags are mutually exclusive. No client restart is required.
 
 If long-lived Codex `app-server` processes are still running, `ocx sync` warns that they may keep
 serving the previous in-memory model list even though `opencodex-catalog.json` / `models_cache.json`

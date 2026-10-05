@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { getConfigDir, loadConfig, readPid, readRuntimePort } from "../config";
@@ -225,6 +225,7 @@ export async function runUpdate(): Promise<void> {
     port: runtimeTrusted ? preUpdateRt.port : configPort,
     hostname: (runtimeTrusted ? preUpdateRt.hostname : undefined) ?? preUpdateConfig.hostname ?? "127.0.0.1",
     ...(runtimeTrusted && livePid ? { oldPid: livePid } : {}),
+    proxyOnly: runtimeTrusted && preUpdateRt.proxyOnly === true,
   };
 
   // Never replace package files under a live proxy: the running server dynamic-imports
@@ -277,12 +278,18 @@ export async function runUpdate(): Promise<void> {
     // platform when one is installed (refresh-only; never installs fresh).
     try {
       const { isCodexShimInstalled, installCodexShim } = await import("../codex/shim");
-      if (isCodexShimInstalled()) {
+      if (!capturedListen.proxyOnly && isCodexShimInstalled()) {
         const result = installCodexShim();
         if (result.installed) console.log(`🔧 ${result.message}`);
       }
     } catch (e) {
       console.warn(`⚠️  Shim repair skipped: ${e instanceof Error ? e.message : e}`);
+    }
+    if (process.platform === "linux" && existsSync(join(getConfigDir(), "claude-desktop-protocol.json"))) {
+      const repair = spawnSync(process.execPath, [process.argv[1], "claude", "desktop", "protocol", "__repair"], {
+        stdio: "inherit", windowsHide: true,
+      });
+      if (repair.status !== 0) console.warn("Claude Desktop protocol repair failed. Check: ocx claude desktop protocol status");
     }
     if (trayWasInstalled) {
       const trayArgs = [process.argv[1], ...planWindowsTrayUpdate({ installed: trayWasInstalled, running: trayWasRunning }).installArgs];
@@ -334,7 +341,7 @@ export async function runUpdate(): Promise<void> {
             console.warn("   Run 'ocx service install' as administrator to refresh the background service.");
             const env = { ...process.env };
             delete env.OCX_SERVICE;
-            const child = spawn(process.execPath, [process.argv[1], "start", "--port", String(capturedListen.port)], {
+            const child = spawn(process.execPath, [process.argv[1], "start", "--port", String(capturedListen.port), ...(capturedListen.proxyOnly ? ["--proxy-only"] : [])], {
               detached: true,
               stdio: "ignore",
               windowsHide: true,
@@ -349,7 +356,7 @@ export async function runUpdate(): Promise<void> {
         else process.env.OCX_BAKE_PORT = prevBake;
       }
     } else {
-      console.log(`Restart the proxy:  ocx start --port ${capturedListen.port}`);
+      console.log(`Restart the proxy:  ocx start --port ${capturedListen.port}${capturedListen.proxyOnly ? " --proxy-only" : ""}`);
     }
   } else {
     if (trayWasRunning) {

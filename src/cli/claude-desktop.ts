@@ -24,6 +24,20 @@ import {
   fetchAllModels,
 } from "../server/management-api";
 import { findLiveProxy } from "../server/proxy-liveness";
+import {
+  assertClaudeDesktopProtocolUri,
+  getClaudeDesktopProtocolStatus,
+  installClaudeDesktopProtocol,
+  repairClaudeDesktopProtocol,
+  uninstallClaudeDesktopProtocol,
+  type DesktopProtocolOptions,
+} from "../claude/desktop-protocol";
+import type { DesktopSyncResult } from "../claude/desktop-sync";
+
+export interface ClaudeDesktopCommandOptions {
+  protocolOptions?: DesktopProtocolOptions;
+  syncLibrary?: () => Promise<DesktopSyncResult>;
+}
 
 function isFamily(value: string | undefined): value is DesktopFamily {
   return !!value && (DESKTOP_FAMILIES as readonly string[]).includes(value);
@@ -32,6 +46,9 @@ function isFamily(value: string | undefined): value is DesktopFamily {
 function printDesktopHelp(): void {
   console.log(`Usage:
   ocx claude desktop [apply] [--static|--hybrid|--discovery-only]
+  ocx claude desktop sync
+  ocx claude desktop protocol <install|status|uninstall>
+  ocx claude desktop protocol dispatch <uri>
   ocx claude desktop show [--json]
   ocx claude desktop move <provider/model> <opus|fable|sonnet|haiku> [--default]
   ocx claude desktop remove <provider/model>
@@ -71,11 +88,57 @@ async function applyProfile(
 
 export async function handleClaudeDesktopCommand(
   argv: string[],
+  options: ClaudeDesktopCommandOptions = {},
 ): Promise<number> {
   const command = argv[0];
   if (command === "help" || command === "--help" || command === "-h") {
     printDesktopHelp();
     return 0;
+  }
+
+  if (command === "protocol") {
+    const action = argv[1];
+    try {
+      if (action === "dispatch") {
+        if (argv.length !== 3) throw new Error("Usage: ocx claude desktop protocol dispatch <uri>");
+        assertClaudeDesktopProtocolUri(argv[2]!, options.protocolOptions);
+        return await handleClaudeDesktopCommand(["sync"], options);
+      }
+      // Internal package-update hook; unlike install, it never opts an absent handler in.
+      if (action === "__repair") {
+        if (argv.length !== 2) throw new Error("Usage: ocx claude desktop protocol __repair");
+        const result = repairClaudeDesktopProtocol(options.protocolOptions);
+        console.log(`Claude Desktop protocol: ${result.status}.`);
+        return 0;
+      }
+      if (argv.length !== 2 || !["install", "status", "uninstall"].includes(action ?? "")) {
+        throw new Error("Usage: ocx claude desktop protocol <install|status|uninstall>");
+      }
+      const result = action === "install" ? installClaudeDesktopProtocol(options.protocolOptions)
+        : action === "uninstall" ? uninstallClaudeDesktopProtocol(options.protocolOptions)
+        : getClaudeDesktopProtocolStatus(options.protocolOptions);
+      console.log(`Claude Desktop protocol: ${result.status}.`);
+      return 0;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : "Claude Desktop protocol command failed");
+      return 1;
+    }
+  }
+
+  if (command === "sync") {
+    if (argv.length !== 1) {
+      console.error("Usage: ocx claude desktop sync");
+      return 1;
+    }
+    try {
+      const { syncClaudeDesktopLibrary } = await import("../claude/desktop-sync");
+      const result = await (options.syncLibrary ?? syncClaudeDesktopLibrary)();
+      console.log(`Claude Desktop: ${result.models} models ${result.status}. Active sessions were not restarted.`);
+      return 0;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : "Claude Desktop sync failed");
+      return 1;
+    }
   }
 
   // Legacy mode flags remain apply aliases and are parsed before subcommands.
@@ -107,7 +170,7 @@ export async function handleClaudeDesktopCommand(
         return 1;
       }
       console.log(`Claude Desktop 설정을 적용했습니다: ${result.path}`);
-      console.log("Claude Desktop을 완전히 종료한 뒤 다시 열어 주세요.");
+      console.log("Active sessions were not restarted. Desktop may retain its current picker until it reloads configuration.");
       return 0;
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));

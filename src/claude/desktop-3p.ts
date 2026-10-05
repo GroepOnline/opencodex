@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { closeSync, constants, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { atomicWriteFile } from "../config";
+import { atomicWriteFile, getConfigPath } from "../config";
 import type { OcxClaudeDesktopProfile } from "../types";
 import { claudeDesktopConfigLibraryDir, resolveConfigLibraryDir } from "./desktop-3p-paths";
 import {
+  parseDesktopProfile,
   reconcileDesktopProfile,
   renderDesktopProfile,
   type DesktopProfileModel,
@@ -174,8 +175,124 @@ interface Desktop3pMetadata {
   [key: string]: unknown;
 }
 
-let desktop3pRegistry = new Map<string, string>();
-let desktop3pAliasesByRoute = new Map<string, string>();
+interface Desktop3pRegistrySnapshot {
+  registry: Map<string, string>;
+  aliasesByRoute: Map<string, string>;
+  sourceSignature?: string;
+}
+
+let desktop3pSnapshot: Desktop3pRegistrySnapshot = {
+  registry: new Map(),
+  aliasesByRoute: new Map(),
+};
+// Discovery/generation cannot replace the last validated on-disk assignments.
+let appliedDesktop3pSnapshot: Desktop3pRegistrySnapshot | undefined;
+
+const DESKTOP_REGISTRY_MAX_JSON_BYTES = 1024 * 1024;
+const DESKTOP_REGISTRY_MAX_META_BYTES = 64 * 1024;
+const DESKTOP_REGISTRY_MAX_MODELS = 2000;
+let desktop3pMetaCache: { path: string; signature: string; appliedId: string } | undefined;
+
+function desktopRegistryFileSignature(path: string, maxBytes: number): string {
+  const stat = statSync(path, { bigint: true });
+  if (!stat.isFile() || stat.size > BigInt(maxBytes)) throw new Error("Invalid Desktop registry source");
+  return [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(":");
+}
+
+/** Read at most the byte bound, from a stable regular-file descriptor (never a FIFO). */
+function readDesktopRegistryJson(path: string, signature: string, maxBytes: number): unknown {
+  const fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK);
+  try {
+    const stat = fstatSync(fd, { bigint: true });
+    if (!stat.isFile() || stat.size > BigInt(maxBytes) ||
+        [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(":") !== signature) {
+      throw new Error("Desktop registry source changed");
+    }
+    const buffer = Buffer.alloc(Number(stat.size) + 1);
+    let length = 0;
+    while (length < buffer.length) {
+      const count = readSync(fd, buffer, length, buffer.length - length, null);
+      if (count === 0) break;
+      length += count;
+    }
+    if (length !== Number(stat.size) || desktopRegistryFileSignature(path, maxBytes) !== signature) {
+      throw new Error("Desktop registry source changed");
+    }
+    return JSON.parse(buffer.subarray(0, length).toString("utf8").replace(/^﻿/, "")) as unknown;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function isDesktopRegistryObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Observe only persisted Desktop assignments and the applied static library. No discovery,
+ * config reload, or process lifecycle change: malformed or racing sources keep the last good map.
+ */
+export function refreshDesktop3pRegistry(): boolean {
+  try {
+    const profilePath = getConfigPath();
+    const metaPath = join(resolveDesktop3pConfigLibraryPath(), "_meta.json");
+    const profileSignature = desktopRegistryFileSignature(profilePath, DESKTOP_REGISTRY_MAX_JSON_BYTES);
+    const metaSignature = desktopRegistryFileSignature(metaPath, DESKTOP_REGISTRY_MAX_META_BYTES);
+    let appliedId: string;
+    if (desktop3pMetaCache?.path === metaPath && desktop3pMetaCache.signature === metaSignature) {
+      appliedId = desktop3pMetaCache.appliedId;
+    } else {
+      const meta = readDesktopRegistryJson(metaPath, metaSignature, DESKTOP_REGISTRY_MAX_META_BYTES);
+      if (!isDesktopRegistryObject(meta) || typeof meta.appliedId !== "string" ||
+          !APPLIED_DESKTOP_3P_ID.test(meta.appliedId) || meta.appliedId.length > 128 ||
+          !Array.isArray(meta.entries) || meta.entries.length > DESKTOP_REGISTRY_MAX_MODELS ||
+          !meta.entries.some(entry => isDesktopRegistryObject(entry) &&
+            entry.name === "opencodex" && entry.id === meta.appliedId)) return false;
+      appliedId = meta.appliedId;
+      desktop3pMetaCache = { path: metaPath, signature: metaSignature, appliedId };
+    }
+    const activePath = join(resolveDesktop3pConfigLibraryPath(), `${appliedId}.json`);
+    const activeSignature = desktopRegistryFileSignature(activePath, DESKTOP_REGISTRY_MAX_JSON_BYTES);
+    const sourceSignature = JSON.stringify([profilePath, profileSignature, metaPath, metaSignature, appliedId, activeSignature]);
+    if (appliedDesktop3pSnapshot?.sourceSignature === sourceSignature) return false;
+
+    const persisted = readDesktopRegistryJson(profilePath, profileSignature, DESKTOP_REGISTRY_MAX_JSON_BYTES);
+    if (!isDesktopRegistryObject(persisted) || !isDesktopRegistryObject(persisted.claudeCode)) return false;
+    const rawProfile = persisted.claudeCode.desktopProfile;
+    if (!isDesktopRegistryObject(rawProfile) || !isDesktopRegistryObject(rawProfile.assignments) ||
+        Object.keys(rawProfile.assignments).length > DESKTOP_REGISTRY_MAX_MODELS) return false;
+    const profile = parseDesktopProfile(rawProfile);
+    const active = readDesktopRegistryJson(activePath, activeSignature, DESKTOP_REGISTRY_MAX_JSON_BYTES);
+    if (!isDesktopRegistryObject(active) || !Array.isArray(active.inferenceModels) ||
+        active.inferenceModels.length > DESKTOP_REGISTRY_MAX_MODELS) return false;
+    const activeAliases = new Set<string>();
+    for (const model of active.inferenceModels) {
+      if (!isDesktopRegistryObject(model) || typeof model.name !== "string" ||
+          model.name.length > 200 || !/^claude-[a-z0-9-]+$/.test(model.name) ||
+          activeAliases.has(model.name)) return false;
+      activeAliases.add(model.name);
+    }
+    const registry = new Map<string, string>();
+    const aliasesByRoute = new Map<string, string>();
+    for (const [route, assignment] of Object.entries(profile.assignments)) {
+      if (!activeAliases.delete(assignment.alias)) continue;
+      aliasesByRoute.set(route, assignment.alias);
+      // Real Anthropic ids must remain identity-resolved for native passthrough.
+      if (!route.startsWith("anthropic/claude-")) registry.set(assignment.alias, route);
+    }
+    // An unknown active alias signals an incomplete profile/library pair; never guess its route.
+    if (activeAliases.size > 0) return false;
+    registerLegacyDesktop3pAliases(registry, aliasesByRoute.keys(), false);
+    if (desktopRegistryFileSignature(profilePath, DESKTOP_REGISTRY_MAX_JSON_BYTES) !== profileSignature ||
+        desktopRegistryFileSignature(metaPath, DESKTOP_REGISTRY_MAX_META_BYTES) !== metaSignature ||
+        desktopRegistryFileSignature(activePath, DESKTOP_REGISTRY_MAX_JSON_BYTES) !== activeSignature) return false;
+    appliedDesktop3pSnapshot = { registry, aliasesByRoute, sourceSignature };
+    return true;
+  } catch {
+    // Optional integration: never log source JSON (it can contain credentials).
+    return false;
+  }
+}
 
 /** Derive a stable letter-first, three-character base36 code from a route key. */
 export function deriveDesktop3pCode(route: string): string {
@@ -204,6 +321,32 @@ export function legacyDesktop3pAlias(provider: string, modelId: string): string 
   return `claude-opus-4-${deriveDesktop3pCode(`${provider}/${modelId}`)}`;
 }
 
+function registerLegacyDesktop3pAliases(
+  registry: Map<string, string>, routes: Iterable<string>, warnOnCollision = true,
+): void {
+  // Stable route order keeps compatibility hashes independent of picker/default ordering.
+  for (const route of [...routes].sort((a, b) => a.localeCompare(b))) {
+    if (route.startsWith("anthropic/claude-")) continue;
+    const providerEnd = route.indexOf("/");
+    const legacy = legacyDesktop3pAlias(route.slice(0, providerEnd), route.slice(providerEnd + 1));
+    const existing = registry.get(legacy);
+    if (existing && existing !== route) {
+      if (warnOnCollision) {
+        console.warn(`[opencodex] Claude Desktop legacy alias collision: ${legacy} stays bound to ${existing}; ignoring ${route}`);
+      }
+      continue;
+    }
+    registry.set(legacy, route);
+  }
+}
+
+/** Test seam: reset generated and applied state between isolated homes. */
+export function resetDesktop3pRegistryForTests(): void {
+  desktop3pSnapshot = { registry: new Map(), aliasesByRoute: new Map() };
+  appliedDesktop3pSnapshot = undefined;
+  desktop3pMetaCache = undefined;
+}
+
 function displayModelId(modelId: string): string {
   return modelId
     // Capability markers like [1m] are not name text: strip the brackets so the label
@@ -223,7 +366,7 @@ function collectDesktop3pModels(
   nativeSlugs: string[],
   routedModels: Array<Desktop3pRoutedModel>,
   profile?: OcxClaudeDesktopProfile,
-): { models: Desktop3pModelEntry[]; registry: Map<string, string> } {
+): { models: Desktop3pModelEntry[] } & Desktop3pRegistrySnapshot {
   const registry = new Map<string, string>();
   const models: Desktop3pModelEntry[] = [];
   const candidates: Desktop3pRoutedModel[] = [
@@ -257,23 +400,8 @@ function collectDesktop3pModels(
         ...(model.supports1m ? { supports1m: true, prefer1m: true } : {}),
       });
     }
-    // Legacy hashes are compatibility-only and can collide. Bind them in stable route order so
-    // changing a family default or rendered ordering can never silently rebind an old Desktop id.
-    for (const model of [...rendered].sort((a, b) => a.route.localeCompare(b.route))) {
-      if (model.route.startsWith("anthropic/claude-")) continue;
-      const providerEnd = model.route.indexOf("/");
-      const provider = model.route.slice(0, providerEnd);
-      const id = model.route.slice(providerEnd + 1);
-      const legacy = legacyDesktop3pAlias(provider, id);
-      const existing = registry.get(legacy);
-      if (existing && existing !== model.route) {
-        console.warn(`[opencodex] Claude Desktop legacy alias collision: ${legacy} stays bound to ${existing}; ignoring ${model.route}`);
-        continue;
-      }
-      registry.set(legacy, model.route);
-    }
-    desktop3pAliasesByRoute = aliasesByRoute;
-    return { models, registry };
+    registerLegacyDesktop3pAliases(registry, aliasesByRoute.keys());
+    return { models, registry, aliasesByRoute };
   }
 
   for (const { provider, id, contextWindow } of candidates) {
@@ -315,8 +443,8 @@ function collectDesktop3pModels(
   }
 
   if (models[0]) models[0].isFamilyDefault = true;
-  desktop3pAliasesByRoute = new Map(candidates.map(({ provider, id }) => [`${provider}/${id}`, desktop3pAlias(provider, id)]));
-  return { models, registry };
+  const aliasesByRoute = new Map(candidates.map(({ provider, id }) => [`${provider}/${id}`, desktop3pAlias(provider, id)]));
+  return { models, registry, aliasesByRoute };
 }
 
 /** Build and install the registry used to decode Desktop aliases. */
@@ -325,8 +453,8 @@ export function buildDesktop3pRegistry(
   routedModels: Array<Desktop3pRoutedModel>,
   profile?: OcxClaudeDesktopProfile,
 ): Map<string, string> {
-  const { registry } = collectDesktop3pModels(nativeSlugs, routedModels, profile);
-  desktop3pRegistry = registry;
+  const { registry, aliasesByRoute } = collectDesktop3pModels(nativeSlugs, routedModels, profile);
+  desktop3pSnapshot = { registry, aliasesByRoute };
   return registry;
 }
 
@@ -336,19 +464,30 @@ export function generateDesktop3pModels(
   routedModels: Array<Desktop3pRoutedModel>,
   profile?: OcxClaudeDesktopProfile,
 ): Desktop3pModelEntry[] {
-  const { models, registry } = collectDesktop3pModels(nativeSlugs, routedModels, profile);
-  desktop3pRegistry = registry;
+  const { models, registry, aliasesByRoute } = collectDesktop3pModels(nativeSlugs, routedModels, profile);
+  desktop3pSnapshot = { registry, aliasesByRoute };
   return models;
 }
 
-/** Resolve an alias using the most recently generated Desktop model registry. */
+/** Applied bindings take precedence; discovery can add aliases without rebinding applied ones. */
 export function resolveDesktop3pAlias(alias: string): string | null {
-  return desktop3pRegistry.get(alias) ?? null;
+  return appliedDesktop3pSnapshot?.registry.get(alias) ?? desktop3pSnapshot.registry.get(alias) ?? null;
 }
 
-/** Alias selected by the installed profile registry, falling back to the legacy hash shape. */
+/** Applied route aliases take precedence over generated discovery and legacy hashes. */
 export function activeDesktop3pAlias(provider: string, modelId: string): string {
-  return desktop3pAliasesByRoute.get(`${provider}/${modelId}`) ?? desktop3pAlias(provider, modelId);
+  const route = `${provider}/${modelId}`;
+  const applied = appliedDesktop3pSnapshot?.aliasesByRoute.get(route);
+  if (applied) return applied;
+  const generated = desktop3pSnapshot.aliasesByRoute.get(route);
+  if (generated) {
+    const binding = appliedDesktop3pSnapshot?.registry.get(generated);
+    if (!binding || binding === route) return generated;
+    const legacy = legacyDesktop3pAlias(provider, modelId);
+    if (resolveDesktop3pAlias(legacy) === route) return legacy;
+    throw new Error("Desktop discovery alias conflicts with the applied profile");
+  }
+  return desktop3pAlias(provider, modelId);
 }
 
 /**

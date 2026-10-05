@@ -2,8 +2,9 @@
 
 ## Codex home
 
-`src/codex/paths.ts` resolves Codex state from `CODEX_HOME` when set and valid, otherwise from
-`~/.codex`. The managed files are:
+`src/codex/paths.ts` resolves explicit `CODEX_HOME` paths lexically during import and validates
+them before Codex operations. An invalid explicit path is an error, never a fallback to `~/.codex`.
+Without an explicit override, the default is `~/.codex`. The managed files are:
 
 ```text
 $CODEX_HOME/config.toml

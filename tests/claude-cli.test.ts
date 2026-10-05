@@ -242,35 +242,39 @@ describe("ocx claude env assembly", () => {
     expect(env.ANTHROPIC_MODEL).toBe("cursor/gpt-5.6-luna");
   });
 
-  test("auto-context: 372k slot gets [1m] + compact window rides along (devlog 020)", () => {
-    const windows = { "mock/big": 372_000, "mock/small": 128_000 };
-    const env = buildClaudeEnv(cfg({
-      claudeCode: { model: "mock/big", smallFastModel: "mock/small" },
-    }), 10100, {}, windows);
-    expect(env.ANTHROPIC_MODEL).toBe("mock/big[1m]");
-    expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("mock/small"); // below floor, unmarked
-    expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("350000");
+  test("auto-context preserves 372k/400k slots and compaction without claiming 1M", () => {
+    const windows = { "mock/native-sized": 372_000, "mock/big": 400_000, "mock/small": 128_000 };
+    for (const model of ["mock/native-sized", "mock/big"]) {
+      const env = buildClaudeEnv(cfg({
+        claudeCode: { model, smallFastModel: "mock/small" },
+      }), 10100, {}, windows);
+      expect(env.ANTHROPIC_MODEL).toBe(model);
+      expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("mock/small");
+      expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("350000");
+      expect(env.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBeUndefined();
+      expect(env.DISABLE_COMPACT).toBeUndefined();
+    }
   });
 
-  test("auto-context: custom window moves both the env and the marking threshold", () => {
+  test("auto-context: custom compaction window never enlarges a model slot", () => {
     const windows = { "mock/big": 372_000 };
     const env = buildClaudeEnv(cfg({
       claudeCode: { model: "mock/big", autoCompactWindow: 380_000 },
     }), 10100, {}, windows);
-    // 372k real < 380k threshold -> marking would strand the safety net: no [1m].
+    // The compaction threshold is independent of capability: a 372k model never gets [1m].
     expect(env.ANTHROPIC_MODEL).toBe("mock/big");
     expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("380000");
   });
 
-  test("auto-context: user-exported env value drives the predicate (audit 021 #2)", () => {
+  test("auto-context: user-exported compaction value wins without changing 1M eligibility", () => {
     const windows = { "mock/big": 372_000 };
-    // User exported 500k: 372k model must NOT be marked (threshold beyond real window).
+    // User-selected compaction cannot turn a 372k model into a 1M model.
     const env = buildClaudeEnv(cfg({
       claudeCode: { model: "mock/big" },
     }), 10100, { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "500000" }, windows);
     expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("500000"); // user wins
     expect(env.ANTHROPIC_MODEL).toBe("mock/big");
-    // Invalid user value: CLI would ignore it -> auto marking fully disabled.
+    // Invalid user value stays untouched; it does not change marker eligibility.
     const env2 = buildClaudeEnv(cfg({
       claudeCode: { model: "mock/big" },
     }), 10100, { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "banana" }, windows);

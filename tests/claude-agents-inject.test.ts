@@ -33,13 +33,25 @@ describe("buildClaudeAgentDefs (devlog 070 + audit 071)", () => {
       claudeCode: {},
     }), windows, dir);
     const byName = Object.fromEntries(defs.map(d => [d.name, d]));
-    expect(byName["ocx-gpt-5-6-sol"]!.model).toBe("claude-ocx-native--gpt-5.6-sol[1m]"); // 372k >= 350k default
-    expect(byName["ocx-gpt-5-6-sol-2"]!.model).toBe("claude-ocx-cursor--gpt-5.6-sol[1m]"); // collision suffix
+    expect(byName["ocx-gpt-5-6-sol"]!.model).toBe("claude-ocx-native--gpt-5.6-sol"); // 372k is not 1M
+    expect(byName["ocx-gpt-5-6-sol-2"]!.model).toBe("claude-ocx-cursor--gpt-5.6-sol"); // collision suffix
     // Self pins the picker-saved default (inherit disproven live — devlog 072).
     expect(byName["ocx-self"]!.model).toBe("claude-ocx-native--gpt-5.6-sol[1m]");
     expect(defs).toHaveLength(3);
     // Dispatcher directive (live repro: model:"fable" override broke inherit).
     for (const d of defs) expect(d.description).toContain("`model` argument is ignored");
+  });
+
+  test("roster marks only authoritative 1M routes, including when auto-context is disabled", () => {
+    const dir = tempDir();
+    const windows = { "claude-ocx-native--gpt-5.4": 1_000_000, "claude-ocx-mock--model-400k": 400_000 };
+    for (const autoContext of [true, false]) {
+      const defs = buildClaudeAgentDefs(cfg({
+        subagentModels: ["gpt-5.4", "mock/model-400k"],
+        claudeCode: { autoContext },
+      }), windows, dir);
+      expect(defs.map(def => def.model)).toEqual(["claude-ocx-native--gpt-5.4[1m]", "claude-ocx-mock--model-400k"]);
+    }
   });
 
   test("dynamic routing emits one backend-neutral agent over the featured roster", () => {

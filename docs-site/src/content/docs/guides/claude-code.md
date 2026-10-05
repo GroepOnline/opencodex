@@ -223,33 +223,45 @@ keep their canonical ids on both surfaces.
 
 ### Context-variant `[1m]` marker
 
-Models with an authoritative context window of 1M (or, under auto-context, above 200k and at
-least the compaction threshold) get an extra `…[1m]` picker row. Selecting it makes Claude Code
-account a full 1M context. The proxy strips the case-insensitive `[1m]` suffix before alias
-resolution and routing.
+Only models with an authoritative context window **at least 1,000,000 tokens** get an extra
+`…[1m]` picker row or an automatically marked env slot. Selecting it makes Claude Code account
+exactly 1M context tokens. A 372k or 400k model never earns this marker, regardless of its
+compaction threshold. The proxy strips the case-insensitive `[1m]` suffix before alias resolution
+and routing; it does not increase the upstream model's capacity.
 
-## Auto context (big-context models without the 200k ceiling)
+Explicit markers already stored in a model selector remain accepted for compatibility. Remove an
+old `[1m]` selector when its route is not actually 1M-capable; do not use the suffix as a generic
+context-limit workaround.
 
-Claude Code accounts 200k tokens for any model it does not recognize. **Auto context** (on by
-default) fixes that:
+## Auto context (compaction threshold, not additional capacity)
 
-1. Models whose real window is above 200k **and** at least the auto-compact threshold get the
-   `[1m]` marker on their picker rows and env slots.
-2. `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (default `350000`, range `100000`–`1000000`) is injected so
-   the conversation auto-summarizes at that point.
+**Auto context** (on by default) injects `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (default `350000`,
+range `100000`–`1000000`). This controls the client's automatic summarization threshold; it does
+**not** increase its context limit or the upstream model's window. Claude Code can still account
+only 200k tokens for an unknown alias, even when discovery reports a larger authoritative window.
 
 Three config states:
 
-- **absent / `true`:** enabled (default)
-- **`false`:** disabled — no markers, no compaction window injection
-- **legacy `maxContextTokens` set:** auto-context is implicitly disabled
+- **absent / `true`:** compaction threshold injection enabled (default)
+- **`false`:** no compaction window injection
+- **legacy `maxContextTokens` set:** auto-context injection is implicitly disabled; that legacy
+  override also injects `DISABLE_COMPACT`
 
-The compaction value is adjustable on the Claude page. **Warning:** raising it past a model's real
-window breaks that model — the chat errors out before the summary can fire.
+Automatic `[1m]` marking remains restricted to authoritative 1M-capable models in all three states.
+The compaction value is adjustable on the Claude page. Keep it below the effective client and
+upstream limits, with room for output; setting 350k does not make an unknown 200k alias usable at
+350k. A threshold above the effective limit may never fire before a context-limit error.
 
-Sub-1M native Anthropic models are never auto-marked. Values you export yourself always win (the
-proxy uses YOUR value to decide which models are safe to mark). Invalid hand-edited config values
-fall back to 350k.
+For a measured sub-1M route, a raw `provider/model` selector plus an explicit client context limit
+may be appropriate if the installed Claude Code version honors that override for the selector.
+For example, `CLAUDE_CODE_MAX_CONTEXT_TOKENS=400000` with
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW=350000` is appropriate only after verifying that exact route
+supports 400k and the client applies both values without disabling compaction. Neither variable
+creates extra capacity. Verify effective client limits and real requests, rather than assuming
+the overrides took effect. OpenCodex does not rewrite model slots to raw routes automatically.
+
+Values you export yourself always win. Invalid hand-edited compaction config values fall back to
+350k; neither the value nor its fallback changes which models qualify for `[1m]`.
 
 ### Effective model environment
 
@@ -503,9 +515,12 @@ set (automatic with `ocx claude`). Run `ocx claude` to refresh the gateway model
 **Stale environment after port change** — If the proxy port changed, old shells may have a stale
 `ANTHROPIC_BASE_URL`. Open a new terminal, or re-run `ocx claude`.
 
-**200k context ceiling despite big model** — Select the `[1m]` variant in the picker, or enable
-auto-context (on by default). If the picker shows no `[1m]` row, the model's authoritative context
-window may be below the auto-compact threshold.
+**200k context ceiling despite big model** — Unknown aliases can retain Claude Code's 200k
+client limit even when discovery advertises a larger upstream window. Auto-compaction does not
+raise that limit. Use `[1m]` only for an authoritative 1M-capable route. For a measured sub-1M
+route, consider a raw model selector and a verified explicit client context override as described
+under [Auto context](#auto-context-compaction-threshold-not-additional-capacity); do not claim 1M
+for a 372k or 400k model.
 
 **High token count from skill loads** — The bundled `claude-api` skill (~136k tokens) auto-loads
 on Claude model mentions. This is normal for native passthrough; on routed models, opencodex stubs
