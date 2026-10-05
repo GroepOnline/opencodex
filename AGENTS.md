@@ -80,6 +80,37 @@ This applies to `AGENTS.md`-following agents as much as to humans. If a task
 asks you to write up a security finding, put the write-up in scratch space and
 say where it is; do not add it to `devlog/`, `structure/`, or `docs-site/`.
 
+## Native Codex + OpenCodex coexistence invariant
+
+OpenCodex extends native Codex; it does not replace the native OpenAI identity or create a second
+authority for native model metadata.
+
+- On the normal loopback install, keep Codex's built-in `openai` provider identity and the user's
+  ordinary ChatGPT/Codex login. Route it through OCX with the managed `openai_base_url` override;
+  do not re-tag native threads to an OCX provider.
+- While OCX owns active routing, `$CODEX_HOME/opencodex-catalog.json` is the only active merged
+  catalog. Never create or point Codex at parallel merge files such as
+  `~/.codex/model-catalogs/native-plus-ocx.json`.
+- Managed sync/build must target that canonical catalog **before** config injection. Never use the
+  current root `model_catalog_json` as an OCX write target: it may still be the user's pre-OCX
+  catalog. Cache invalidation must consume the exact catalog path written by the same sync.
+- Restore/eject may restore a user-owned catalog pointer from the journal, but catalog cleanup must
+  still target only the canonical OCX-managed catalog. Never strip routed rows from that restored
+  user catalog.
+- Bare native OpenAI rows must come from authoritative native discovery for the installed Codex
+  client/account and retain upstream capability metadata. In particular, do not drop or synthesize
+  `context_window`, reasoning ladders, `supports_search_tool`, `tool_mode`, or
+  `use_responses_lite` for newly rolled-out models.
+- If the OCX merged catalog cannot be materialized, or it does not contain the currently selected
+  bare native GPT/Codex model, prefer Codex's native catalog over generic fallback metadata or a
+  stale/custom root `model_catalog_json`. The injection journal preserves the user's prior
+  config/catalog pointer and restores it on stop/eject.
+- A user-owned external `model_provider` or root `openai_base_url` remains an ownership boundary;
+  OCX must not silently take it over.
+
+Any change to injection, catalog sync, native discovery, install/start/ensure, or restore must keep
+these invariants covered by focused regression tests.
+
 ## Commands
 
 ```bash

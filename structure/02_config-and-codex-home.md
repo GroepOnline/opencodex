@@ -2,8 +2,9 @@
 
 ## Codex home
 
-`src/codex/paths.ts` resolves Codex state from `CODEX_HOME` when set and valid, otherwise from
-`~/.codex`. The managed files are:
+`src/codex/paths.ts` resolves explicit `CODEX_HOME` paths lexically during import and validates
+them before Codex operations. An invalid explicit path is an error, never a fallback to `~/.codex`.
+Without an explicit override, the default is `~/.codex`. The managed files are:
 
 ```text
 $CODEX_HOME/config.toml
@@ -55,21 +56,42 @@ are consumed incrementally and at most 512 stale files are attempted per process
 
 ## Config injection
 
-`src/codex/inject.ts` inserts root-level keys and an opencodex provider table:
+The default loopback install is an additive native-Codex integration. OpenCodex keeps the built-in
+`openai` provider identity and the user's ordinary ChatGPT/Codex login, then points that native
+provider at the local proxy with the supported root override:
 
 ```toml
-model_provider = "opencodex"
+openai_base_url = "http://127.0.0.1:10100/v1"
 model_catalog_json = "/absolute/path/to/opencodex-catalog.json"
-
-[model_providers.opencodex]
-name = "OpenCodex Proxy"
-base_url = "http://127.0.0.1:10100/v1"
-wire_api = "responses"
-requires_openai_auth = true
 ```
 
+The merged catalog is `$CODEX_HOME/opencodex-catalog.json`. While OpenCodex owns active routing,
+that path is the only supported root `model_catalog_json`: a pre-existing custom catalog pointer is
+journaled for restore but replaced for the active OCX session. Catalog refresh writes the canonical
+path directly **before** injection changes the root pointer, so a user catalog is never mutated as an
+intermediate OCX build target. Cache invalidation reads the exact path written by that refresh.
+Restore cleanup also targets only the canonical OCX catalog after journal restore, never the restored
+user catalog. Parallel merge artifacts such as `~/.codex/model-catalogs/native-plus-ocx.json` are
+configuration drift and must not remain active.
+
+If the managed catalog cannot be materialized, injection removes the active root catalog override
+instead of leaving an unrelated or stale custom catalog in control. That deliberately falls back to
+Codex's native model metadata. The pre-OCX config is still preserved in the journal and is restored
+on stop/eject.
+
+Native bare OpenAI rows in the managed catalog are account/client-authoritative: they come from the
+native Codex model-discovery endpoint for the installed client and effective ChatGPT/Codex account.
+Do not synthesize newly rolled-out native rows from a static template when a live row is available,
+and do not drop native capability fields such as `context_window`, reasoning ladders,
+`supports_search_tool`, `tool_mode`, or `use_responses_lite`.
+
+Non-loopback binds still use the explicit `model_providers.opencodex` table because Codex's built-in
+provider cannot carry the required admission-token headers. That transport exception does not make
+OCX a second authority for native model metadata.
+
 Root TOML keys must be written before the first `[table]`. Re-injection strips stale opencodex
-blocks, stale root context-window overrides, and stale opencodex catalog paths before rewriting.
+blocks, stale root context-window overrides, and competing root catalog pointers before rewriting the
+managed state.
 
 Native Codex sub-agent defaults are a separate, explicit opt-in. When
 `syncCodexSubagentDefaults` is true and `injectionModel` is set, injection writes marker-owned
@@ -81,8 +103,8 @@ restore must preserve later user edits while stripping those managed values.
 If the root config selects a provider other than `openai` or `opencodex`, injection must leave the
 config byte-for-byte unchanged and skip profile creation/updates and history migration. External
 provider managers own that routing configuration, and replacing their provider id can hide
-otherwise intact Codex sessions. This ownership check must run before catalog/cache refresh,
-journal creation, and the background history migration guardian.
+otherwise intact Codex sessions. A user-owned root `openai_base_url` is the same kind of ownership
+boundary for loopback routing.
 
 `supports_websockets = true` is appended only when `websocketsEnabled(config)` returns true.
 

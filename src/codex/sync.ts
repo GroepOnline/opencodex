@@ -1,4 +1,8 @@
-import { currentExternalCodexModelProvider, injectCodexConfig } from "./inject";
+import {
+  currentExternalCodexModelProvider,
+  currentUserOwnedRootOpenaiBaseUrl,
+  injectCodexConfig,
+} from "./inject";
 import { printProjectCodexConfigWarnings, groupProjectCodexConfigWarningsByPath, type ProjectCodexConfigWarning } from "./project-config-warnings";
 import { refreshCodexModelCatalog } from "./refresh";
 import { applyProxyEnv, loadConfig } from "../config";
@@ -7,6 +11,7 @@ import { collectOrcaCodexHomeDiagnostic } from "./home";
 import { summarizeComboCatalogOmissions, type ComboCatalogOmission } from "./catalog/aggregation";
 import { syncExternalOcxCatalog } from "./external-ocx-catalog";
 import { getCodexHome } from "./paths";
+import { activeDefaultCatalogPath } from "./catalog/parsing";
 
 export interface CodexSyncResult {
   ok: boolean;
@@ -27,6 +32,7 @@ interface CodexSyncDeps {
   refreshCodexModelCatalog: typeof refreshCodexModelCatalog;
   injectCodexConfig: typeof injectCodexConfig;
   currentExternalCodexModelProvider?: typeof currentExternalCodexModelProvider;
+  currentUserOwnedRootOpenaiBaseUrl?: typeof currentUserOwnedRootOpenaiBaseUrl;
   collectCodexHomeDiagnostic?: typeof collectOrcaCodexHomeDiagnostic;
   syncExternalOcxCatalog?: typeof syncExternalOcxCatalog;
 }
@@ -110,6 +116,25 @@ export async function syncModelsToCodex(
     };
   }
 
+  const userOwnedBaseUrl =
+    (deps.currentUserOwnedRootOpenaiBaseUrl ?? currentUserOwnedRootOpenaiBaseUrl)();
+  if (userOwnedBaseUrl) {
+    // Routing and catalog ownership are atomic. Never refresh a catalog before this check.
+    const result = await deps.injectCodexConfig(p, config, {});
+    log?.log(result.message);
+    reportCodexHomeTarget(log, deps.collectCodexHomeDiagnostic ?? collectOrcaCodexHomeDiagnostic);
+    return {
+      ok: result.success,
+      added: 0,
+      catalogPath: null,
+      catalogExists: false,
+      catalogWritten: false,
+      cacheSynced: false,
+      message: result.message,
+      ...(result.nativeSubagentDefaultsWarning ? { nativeSubagentDefaultsWarning: result.nativeSubagentDefaultsWarning } : {}),
+    };
+  }
+
   applyProxyEnv(config); // `ocx ensure`/`ocx sync` fetch provider models outside the server process
   let added = 0;
   let catalogPath: string | null = null;
@@ -119,20 +144,29 @@ export async function syncModelsToCodex(
   let cacheSynced = false;
   let warning: string | undefined;
   let comboOmissions: ComboCatalogOmission[] = [];
+  const canonicalCatalogPath = activeDefaultCatalogPath();
 
   try {
-    const cat = await deps.refreshCodexModelCatalog(config);
+    const cat = await deps.refreshCodexModelCatalog(
+      config,
+      undefined,
+      { catalogPath: canonicalCatalogPath },
+    );
     added = cat.added;
     catalogExists = cat.catalogExists;
     catalogWritten = cat.catalogWritten;
     cacheSynced = cat.cacheSynced;
-    catalogPathForInjection = cat.catalogExists ? cat.path : null;
+    // Existence alone is not authority. Only advertise a catalog materialized by this sync.
+    catalogPathForInjection = cat.catalogExists && cat.catalogWritten ? cat.path : null;
     catalogPath = catalogPathForInjection;
     comboOmissions = cat.comboOmissions ?? [];
-    if (cat.added > 0) {
+    if (cat.added > 0 && cat.catalogWritten) {
       log?.log(`   + ${cat.added} models appended to Codex catalog (${cat.path})`);
     } else if (!cat.catalogExists) {
       warning = "catalog sync skipped: no Codex catalog source found; keeping Codex's native catalog.";
+      log?.error(warning);
+    } else if (!cat.catalogWritten) {
+      warning = "catalog sync did not materialize the managed OCX catalog; keeping Codex's native catalog.";
       log?.error(warning);
     }
     if (comboOmissions.length > 0) {
@@ -144,6 +178,8 @@ export async function syncModelsToCodex(
     }
   } catch (e) {
     warning = `catalog sync skipped: ${e instanceof Error ? e.message : String(e)}`;
+    // Explicit null prevents inject from reusing a stale managed catalog after refresh failed.
+    catalogPathForInjection = null;
     log?.error(warning);
   }
 

@@ -835,8 +835,28 @@ export function startServer(port?: number) {
           return jsonResponse({ data }, 200, req, config);
         }
         if (url.searchParams.has("client_version")) {
-          // Codex client → Codex catalog shape: native gpt + namespaced routed models,
-          // cloned from a native template so required fields (base_instructions, etc.) are present.
+          // Codex client → Codex catalog shape. Ask the same upstream catalog the client would
+          // use, but authenticate with OCX's effective account so a stale Desktop main login
+          // cannot hide models available to the selected pool account.
+          const {
+            authoritativeNativeEntriesBySlug,
+            discoverNativeOpenAiCatalog,
+          } = await import("../codex/catalog/native-discovery");
+          const requestedClientVersion =
+            url.searchParams.get("client_version")?.trim() || null;
+          const liveNative = await discoverNativeOpenAiCatalog(config, {
+            resolveClientVersion: () => requestedClientVersion,
+          });
+          const authoritativeNativeEntries = authoritativeNativeEntriesBySlug(
+            liveNative.models as { slug?: unknown }[],
+          );
+          const authoritativeNativeSlugs = new Set(
+            authoritativeNativeEntries.keys(),
+          );
+          const codexNativeSlugs = [
+            ...new Set([...nativeSlugs, ...authoritativeNativeSlugs]),
+          ];
+
           // Pass the subagent picks so featured models lead by priority (matches the on-disk file).
           // Disabled natives stay in the catalog shape with visibility "hide" (mirrors the
           // on-disk sync; codex-rs keeps them out of the picker itself).
@@ -846,18 +866,20 @@ export function startServer(port?: number) {
               : "default";
           const entries = buildCatalogEntries(
             loadCatalogTemplate(),
-            nativeSlugs,
+            codexNativeSlugs,
             goOrdered,
             config.subagentModels,
             websocketsEnabled(config),
             maMode as "v1" | "default" | "v2",
             exactComboCatalogSlugs(config),
+            authoritativeNativeEntries,
           );
           return jsonResponse(
             {
               models: applyNativeVisibility(
                 entries,
                 disabledNativeSlugs(config),
+                authoritativeNativeSlugs,
               ),
             },
             200,

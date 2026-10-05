@@ -10,6 +10,21 @@ function provider(id: string) {
 }
 
 describe("free-directory provider endpoint contracts", () => {
+  test("pins the verified Cohere OpenAI-compatibility endpoints", () => {
+    expect(provider("cohere")).toMatchObject({
+      baseUrl: "https://api.cohere.ai/compatibility/v1",
+      modelsUrl: "https://api.cohere.ai/compatibility/v1/models",
+      verification: "official",
+    });
+  });
+
+  test("pins the verified Nebius OpenAI-compatible base URL", () => {
+    expect(provider("nebius")).toMatchObject({
+      baseUrl: "https://api.studio.nebius.com/v1",
+      verification: "official",
+    });
+  });
+
   test("pins the verified NEAR AI Cloud endpoints", () => {
     expect(provider("nearai")).toMatchObject({
       baseUrl: "https://cloud-api.near.ai/v1",
