@@ -116,17 +116,17 @@ conflicts with `modelSupportsReasoningSummaries: false` for the same model.
 
 The Desktop profile writer and management status probe share
 `resolveDesktop3pConfigLibraryPath`. Explicit opencodex and Claude user-data overrides win; otherwise
-the resolver follows Electron's platform user-data convention under the `Claude` application
-directory. The retired hardcoded `Claude-3p` path is neither read nor migrated implicitly, so the
-status endpoint cannot report a self-consistent file that Desktop never sees.
+the resolver follows Desktop's shipped 3P user-data branch (`Claude-3p/configLibrary`), not the
+ordinary `Claude` profile. The writer and status probe use the same cross-platform resolver.
+No directories are scanned, renamed or migrated implicitly.
 
 [Decision Log]
 - 목적과 의도: Make the generated Claude Desktop profile land in the directory the installed Desktop application actually reads and keep dashboard status consistent with that write target.
-- 기존 구현 및 제약 조건: Both callers duplicated a macOS-only `Claude-3p` fallback, which made their internal status agree while Electron used `Claude/configLibrary`; users may also set explicit profile roots.
+- 기존 구현 및 제약 조건: Desktop's 3P mode derives a separate `Claude-3p` root; ordinary Electron `Claude` state is not its active 3P library. Users may set explicit profile roots.
 - 검토한 주요 대안: Rename only the CLI fallback; scan both directories; move or delete legacy files automatically; centralize a cross-platform resolver.
 - 선택한 방식: Centralize override-aware macOS, Windows, and Linux resolution and use it for both write and status paths without destructive migration.
 - 다른 대안 대신 이 방식을 선택한 이유: One resolver prevents drift, platform defaults match Electron, and leaving the legacy directory untouched avoids deleting user data or guessing which copy should win.
-- 장점, 단점 및 영향: New applies become visible to Desktop on every supported platform; old `Claude-3p` files remain harmless and users with nonstandard layouts must use the documented override.
+- 장점, 단점 및 영향: Applies and API-only laptop sync target Desktop's active 3P library on supported platforms; ordinary `Claude` state stays untouched and nonstandard layouts use the documented override.
 
 ## Cursor Native Exec
 

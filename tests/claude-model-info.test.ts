@@ -107,19 +107,25 @@ describe("anthropic-flavor ModelInfo discovery entries (devlog 130 B4b)", () => 
     expect(infos).toHaveLength(1);
   });
 
-  test("auto-context widens variants to safe sub-1M rows with honest labels (devlog 020)", () => {
+  test("auto-context retains real 372k/400k limits without advertising fictitious 1M variants", () => {
     const auto = { enabled: true, compactWindow: 350_000 };
     const infos = buildAnthropicModelInfos(["gpt-5.4", "gpt-5.6-sol"], [
       { provider: "mock", id: "small-model", contextWindow: 128_000 },
-      { provider: "mock", id: "mid-model", contextWindow: 300_000 }, // < compact window: unsafe, no row
+      { provider: "mock", id: "mid-model", contextWindow: 300_000 },
+      { provider: "mock", id: "model-400k", contextWindow: 400_000 },
     ], auto);
     const variants = infos.filter(i => i.id.endsWith("[1m]"));
-    expect(variants).toHaveLength(2); // gpt-5.4 (1M) + gpt-5.6-sol (372k)
-    const sol = variants.find(v => v.display_name.includes("gpt-5.6-sol"))!;
-    expect(sol.display_name.endsWith("· 372k")).toBe(true); // honest real window, not "1M"
-    expect(sol.max_input_tokens).toBe(372_000);
-    const five4 = variants.find(v => v.display_name.includes("gpt-5.4"))!;
-    expect(five4.display_name.endsWith("· 1M")).toBe(true);
+    expect(variants).toHaveLength(1);
+    expect(variants[0]!.display_name).toBe("gpt-5.4 (native) · 1M");
+    expect(variants[0]!.max_input_tokens).toBe(1_000_000);
+    const sol = infos.filter(v => v.display_name.includes("gpt-5.6-sol"));
+    expect(sol).toHaveLength(1);
+    expect(sol[0]!.id).not.toContain("[1m]");
+    expect(sol[0]!.max_input_tokens).toBe(372_000);
+    const model400k = infos.filter(v => v.display_name.includes("model-400k"));
+    expect(model400k).toHaveLength(1);
+    expect(model400k[0]!.id).not.toContain("[1m]");
+    expect(model400k[0]!.max_input_tokens).toBe(400_000);
   });
 
   test("auto-context never widens anthropic passthrough rows (audit 021 #3)", () => {
@@ -142,7 +148,7 @@ describe("anthropic-flavor ModelInfo discovery entries (devlog 130 B4b)", () => 
     ], auto, "readable");
     const ids = infos.map(i => i.id);
     expect(ids).toContain("claude-ocx-native--gpt-5.6-sol");
-    expect(ids).toContain("claude-ocx-native--gpt-5.6-sol[1m]"); // 372k native, auto-marked
+    expect(ids).not.toContain("claude-ocx-native--gpt-5.6-sol[1m]"); // 372k never claims 1M
     expect(ids).toContain("claude-ocx-cursor--gpt-5.6-luna");
     expect(ids).toContain("claude-ocx-cursor--gpt-5.6-luna[1m]");
     expect(ids).toContain("claude-opus-4-8"); // anthropic canonical passthrough

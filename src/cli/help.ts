@@ -13,8 +13,13 @@ type HelpEntry = {
 const helpEntries: Record<string, HelpEntry> = {
   init: { usage: "ocx init", summary: "Interactive setup for providers and Codex config injection." },
   setup: { usage: "ocx setup", summary: "Interactive setup for providers and Codex config injection (alias of init)." },
-  start: { usage: "ocx start [--port <port>]", summary: "Start the proxy server and sync models to Codex." },
-  stop: { usage: "ocx stop", summary: "Stop the proxy and restore native Codex config." },
+  start: {
+    usage: "ocx start [--port <port>] [--proxy-only]",
+    summary: "Start the provider proxy; Codex is optional.",
+    details: ["--proxy-only skips client config, shell-hook, Codex journal/history, and launcher changes.",
+      "Without it, existing client integrations are synchronized; an absent Codex config is skipped."],
+  },
+  stop: { usage: "ocx stop", summary: "Stop the proxy; proxy-only mode leaves client configuration unchanged." },
   restore: {
     usage: "ocx restore [back]",
     summary: "Restore native Codex config without stopping the proxy; `restore back` re-points codex at the running proxy.",
@@ -67,10 +72,12 @@ const helpEntries: Record<string, HelpEntry> = {
   },
   ensure: { usage: "ocx ensure", summary: "Ensure the proxy is running and Codex config/cache are current." },
   sync: {
-    usage: "ocx sync [--restart-codex]",
-    summary: "Fetch provider models and inject them into Codex config.",
+    usage: "ocx sync [--desktop-only | --codex-only] [--restart-codex]",
+    summary: "Synchronize configured clients independently; no restart is required.",
     details: [
-      "After writing the catalog, warns if long-lived Codex app-server processes are still running.",
+      "Default: sync an existing OCX Desktop library and configured Codex; absent Codex is skipped.",
+      "--desktop-only explicitly syncs Desktop without touching Codex; --codex-only targets Codex.",
+      "Long-lived clients may keep their current in-memory picker until they reload configuration.",
       "--restart-codex sends SIGTERM only to matching app-server / code-mode-host processes (may interrupt active turns).",
     ],
   },
@@ -193,6 +200,8 @@ const helpEntries: Record<string, HelpEntry> = {
       "",
       "Claude Desktop profile (alias: ocx claude-desktop <sub>):",
       "  ocx claude desktop [apply]                         Save and apply the four-family profile",
+      "  ocx claude desktop sync                            Copy applied library through the local gateway",
+      "  ocx claude desktop protocol <install|status|uninstall>  Manage the Linux sync link handler",
       "  ocx claude desktop show [--json]                   Show routes, families, and defaults",
       "  ocx claude desktop move <route> <family> [--default]",
       "  ocx claude desktop default <family> <route|none>",
@@ -221,7 +230,7 @@ const helpEntries: Record<string, HelpEntry> = {
   },
   restart: {
     usage: "ocx restart",
-    summary: "Stop the proxy and restart it (background). Equivalent to stop + ensure.",
+    summary: "Stop and restart the proxy in the background, preserving proxy-only mode.",
   },
   v2: {
     usage: "ocx v2 <status|on|off|mode <v1|default|v2>|threads <n>>",
@@ -252,11 +261,12 @@ export function printVersion(): void {
 }
 
 export function printUsage(): void {
-  console.log(`opencodex (ocx) — Universal provider proxy for Codex
+  console.log(`opencodex (ocx) — Universal provider proxy; clients are optional
 
 Usage:
   ocx setup                   Interactive setup (alias: init)
-  ocx start [--port <port>]   Start the proxy server (auto-syncs models to Codex)
+  ocx start [--port <port>] [--proxy-only]
+                              Start the proxy; --proxy-only skips client integration
   ocx stop                    Stop the proxy AND restore native Codex (plain codex works again)
   ocx restore                 Restore native Codex without stopping (alias: eject)
   ocx restore back            Re-point codex at the running proxy (undo restore)
@@ -267,7 +277,8 @@ Usage:
   ocx codex-shim <sub>        Auto-start proxy when \`codex\` launches (install|status|uninstall|remove)
   ocx tray <sub>              Windows status tray (install|start|stop|status|uninstall)
   ocx ensure                  Ensure the proxy is running and Codex config/cache are current
-  ocx sync [--restart-codex]  Fetch models from providers and inject into Codex config
+  ocx sync [--desktop-only | --codex-only] [--restart-codex]
+                              Sync configured clients independently, without restart
   ocx sync-cache [--restart-codex]
                               Refresh Codex's model cache from the active catalog
   ocx status                  Check proxy server status

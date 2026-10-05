@@ -88,6 +88,17 @@ function repairCodexShimIfNeeded() {
   }
 }
 
+function repairClaudeDesktopProtocolIfNeeded() {
+  if (process.platform !== "linux" || !existsSync(join(configDir(), "claude-desktop-protocol.json"))) return;
+  const launcher = fileURLToPath(import.meta.url);
+  const result = spawnSync(process.execPath, [launcher, "claude", "desktop", "protocol", "__repair"], {
+    stdio: "inherit", windowsHide: true,
+  });
+  if (result.status !== 0) {
+    console.warn("opencodex: Claude Desktop protocol repair failed. Check: ocx claude desktop protocol status");
+  }
+}
+
 function trayInstallState() {
   const statePath = join(configDir(), "tray-state.json");
   if (!existsSync(statePath)) return { installed: false, running: false };
@@ -151,6 +162,7 @@ function runNpmSelfUpdate() {
   // Capture listen target before stop clears runtime-port.json (mirrors GUI/CLI update worker).
   // Do not treat a live runtime port of 10100 as "missing" — track whether the read succeeded.
   let bakePort = 10100;
+  let proxyOnly = false;
   let sawRuntimePort = false;
   try {
     const rt = JSON.parse(readFileSync(join(configDir(), "runtime-port.json"), "utf8"));
@@ -168,6 +180,7 @@ function runNpmSelfUpdate() {
       }
       if (runtimeLive) {
         bakePort = Math.trunc(rt.port);
+        proxyOnly = rt.proxyOnly === true;
         sawRuntimePort = true;
       }
     }
@@ -229,7 +242,8 @@ function runNpmSelfUpdate() {
   });
   if (res.status === 0) {
     console.log(`\nUpdated${latest ? ` to v${latest}` : ""}.`);
-    repairCodexShimIfNeeded();
+    if (!proxyOnly) repairCodexShimIfNeeded();
+    repairClaudeDesktopProtocolIfNeeded();
     if (trayBeforeUpdate.refreshAfterReplacement) {
       const tray = spawnSync(process.execPath, [launcher, ...trayBeforeUpdate.installArgs], {
         stdio: "inherit",
@@ -258,7 +272,7 @@ function runNpmSelfUpdate() {
           console.warn("  Run 'ocx service install' as administrator to refresh the background service.");
           const env = { ...process.env };
           delete env.OCX_SERVICE;
-          const child = spawn(process.execPath, [launcher, "start", "--port", String(bakePort)], {
+          const child = spawn(process.execPath, [launcher, "start", "--port", String(bakePort), ...(proxyOnly ? ["--proxy-only"] : [])], {
             detached: true,
             stdio: "ignore",
             windowsHide: true,
@@ -272,7 +286,7 @@ function runNpmSelfUpdate() {
         else process.env.OCX_BAKE_PORT = prevBake;
       }
     } else {
-      console.log("Restart the proxy:  ocx start");
+      console.log(`Restart the proxy:  ocx start --port ${bakePort}${proxyOnly ? " --proxy-only" : ""}`);
     }
     process.exit(0);
   }

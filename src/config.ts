@@ -1797,6 +1797,7 @@ export type RuntimePortState = {
   pid: number;
   port: number;
   hostname?: string;
+  proxyOnly?: boolean;
 };
 
 function isValidRuntimePortState(value: unknown): value is RuntimePortState {
@@ -1808,7 +1809,8 @@ function isValidRuntimePortState(value: unknown): value is RuntimePortState {
     && Number.isInteger(state.port)
     && Number(state.port) > 0
     && Number(state.port) <= 65535
-    && hostnameOk;
+    && hostnameOk
+    && (state.proxyOnly === undefined || typeof state.proxyOnly === "boolean");
 }
 
 export function writeRuntimePort(state: RuntimePortState): void {

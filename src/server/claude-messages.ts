@@ -10,7 +10,7 @@ import { FORWARD_HEADERS } from "../adapters/openai-responses";
 import { enforceAnthropicImageLimits } from "../adapters/anthropic-image-guard";
 import { normalizeAnthropicImages } from "../adapters/anthropic-image-normalize";
 import { AnthropicRequestError, anthropicToResponsesTranslation, extractOcxEffortDirective, extractOcxRouteDirective, extractOcxRouteModeDirective, resolveInboundModel, type ClaudeCacheKeySource } from "../claude/inbound";
-import { resolveDesktop3pAlias } from "../claude/desktop-3p";
+import { refreshDesktop3pRegistry, resolveDesktop3pAlias } from "../claude/desktop-3p";
 import { buildClaudeDynamicAgentRoute } from "../claude/agent-routing";
 import { recordDesktopRequest } from "../claude/desktop-health";
 import { stripOneMillionMarker } from "../claude/context-windows";
@@ -592,6 +592,7 @@ export async function handleClaudeMessages(
         effortOverride = extractOcxEffortDirective(anthropicBody);
       }
     }
+    refreshDesktop3pRegistry();
     // Debug capture (opt-in allowlist scalars) BEFORE the passthrough branch so
     // native, routed, and disabled-alias paths are all observable (devlog 130 B1).
     captureClaudeInbound(
@@ -909,6 +910,7 @@ export async function handleClaudeCountTokens(req: Request, config: OcxConfig): 
     model = stripOneMillionMarker(countRoute);
   }
   raw.model = model;
+  refreshDesktop3pRegistry();
   captureClaudeInbound("count_tokens", raw, resolveInboundModel(model, config.claudeCode), req.headers.get("anthropic-beta") ?? undefined);
   if (wantsNativePassthrough(req, config, model)) {
     const passthrough = await anthropicNativePassthrough(req, config, { model, provider: "anthropic-native", surface: "claude" }, undefined, raw, "/v1/messages/count_tokens");

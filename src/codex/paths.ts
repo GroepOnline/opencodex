@@ -23,7 +23,9 @@ function resolveCodexHome(): string {
   return defaultCodexHome();
 }
 
-export const CODEX_HOME = resolveCodexHome();
+// Imports must not validate an optional client; Codex operations validate at runtime.
+const configuredHome = process.env.CODEX_HOME?.trim();
+export const CODEX_HOME = configuredHome ? resolve(expandUserPath(configuredHome)) : defaultCodexHome();
 export const CODEX_CONFIG_PATH = join(CODEX_HOME, "config.toml");
 export const CODEX_PROFILE_PATH = join(CODEX_HOME, "opencodex.config.toml");
 export const DEFAULT_CATALOG_PATH = join(CODEX_HOME, "opencodex-catalog.json");

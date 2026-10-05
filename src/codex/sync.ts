@@ -6,6 +6,7 @@ import type { OcxConfig } from "../types";
 import { collectOrcaCodexHomeDiagnostic } from "./home";
 import { summarizeComboCatalogOmissions, type ComboCatalogOmission } from "./catalog/aggregation";
 import { syncExternalOcxCatalog } from "./external-ocx-catalog";
+import { getCodexHome } from "./paths";
 
 export interface CodexSyncResult {
   ok: boolean;
@@ -54,6 +55,14 @@ export async function syncModelsToCodex(
   log: Pick<Console, "log" | "error"> | null = console,
   deps: CodexSyncDeps = defaultDeps,
 ): Promise<CodexSyncResult> {
+  if (deps === defaultDeps) {
+    try { getCodexHome(); } catch (error) {
+      const message = error instanceof Error ? error.message : "Codex home validation failed";
+      log?.error(message);
+      return { ok: false, added: 0, catalogPath: null, catalogExists: false,
+        catalogWritten: false, cacheSynced: false, message };
+    }
+  }
   const p = port ?? config.port ?? 10100;
   const externalProvider = (deps.currentExternalCodexModelProvider ?? currentExternalCodexModelProvider)();
   if (externalProvider) {

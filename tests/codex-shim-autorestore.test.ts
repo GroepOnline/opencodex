@@ -44,6 +44,24 @@ describe("Codex shim CLI auto-restore policy", () => {
     expect(skipsCodexShimAutoRestore("status", ["status"])).toBe(false);
   });
 
+  test("proxy-only and Desktop commands never probe or repair a Codex launcher", () => {
+    for (const [command, args] of [
+      ["start", ["start", "--proxy-only"]],
+      ["sync", ["sync", "--desktop-only"]],
+      ["claude", ["claude", "desktop", "sync"]],
+      ["claude-desktop", ["claude-desktop", "sync"]],
+    ] as const) {
+      const restore = () => { throw new Error("Codex launcher must not be touched"); };
+      const { deps, warnings, readConfigCalls } = cliDeps({ status: "healthy" }, { restore });
+      expect(skipsCodexShimAutoRestore(command, [...args])).toBe(true);
+      maybeAutoRestoreCodexShim(command, [...args], deps);
+      expect(warnings).toEqual([]);
+      expect(readConfigCalls()).toBe(0);
+    }
+    expect(skipsCodexShimAutoRestore("start", ["start"])).toBe(false);
+    expect(skipsCodexShimAutoRestore("sync", ["sync"])).toBe(false);
+  });
+
   test("restore failure -> warning only, command succeeds", () => {
     const { deps, warnings } = cliDeps({ status: "healthy" }, {
       restore: () => { throw new Error("permission denied"); },

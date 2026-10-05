@@ -73,6 +73,77 @@ describe("Responses noReasoningModels raw-body boundary", () => {
   });
 });
 
+describe("Responses configured reasoning effort boundary", () => {
+  for (const stream of [true, false]) {
+    for (const overrides of [
+      { modelReasoningEfforts: { "DeepSeek-V4.1-Flash": [] } },
+      { reasoningEfforts: [] },
+    ]) {
+      test(`empty effort ladder strips stale client effort, stream=${stream}, overrides=${JSON.stringify(overrides)}`, () => {
+        const rawBody = Object.freeze({
+          model: "DeepSeek-V4.1-Flash", input: "ping", stream,
+          reasoning: Object.freeze({ effort: "low", summary: "auto" }),
+        });
+        const request = createResponsesPassthroughAdapter({
+          adapter: "openai-responses", baseUrl: "https://provider.example/v1", ...overrides,
+        }).buildRequest({
+          modelId: rawBody.model, context: { messages: [] }, stream,
+          options: { reasoning: "low" }, _rawBody: rawBody,
+        });
+        expect(JSON.parse(request.body)).toEqual({ ...rawBody, reasoning: { summary: "auto" } });
+        expect(rawBody.reasoning.effort).toBe("low");
+      });
+    }
+  }
+
+  test("configured model ladders clamp effort without changing unrelated models", () => {
+    const adapter = createResponsesPassthroughAdapter({
+      adapter: "openai-responses", baseUrl: "https://provider.example/v1",
+      modelReasoningEfforts: { "gpt-test": ["low", "high"] },
+    });
+    for (const [modelId, expected] of [["gpt-test", "high"], ["other-model", "max"]]) {
+      const request = adapter.buildRequest({
+        modelId, context: { messages: [] }, stream: true, options: {},
+        _rawBody: { model: modelId, input: "ping", reasoning: { effort: "max", summary: "auto" } },
+      });
+      expect(JSON.parse(request.body).reasoning).toEqual({ effort: expected, summary: "auto" });
+    }
+  });
+
+  test("vendor wire values survive normalization, but Codex boundaries and opt-outs win", () => {
+    for (const noReasoningModels of [undefined, ["gpt-test"]]) {
+      const adapter = createResponsesPassthroughAdapter({
+        adapter: "openai-responses", baseUrl: "https://provider.example/v1",
+        modelReasoningEffortMap: { "gpt-test": { high: "enabled", ultra: "ultra", max: "high" } },
+        noReasoningModels,
+      });
+      for (const [effort, expected] of [["enabled", "enabled"], ["high", "enabled"], ["ultra", "high"]]) {
+        const request = adapter.buildRequest({
+          modelId: "gpt-test", context: { messages: [] }, stream: false, options: {},
+          _rawBody: { model: "gpt-test", input: "ping", reasoning: { effort, summary: "auto" } },
+        });
+        expect(JSON.parse(request.body).reasoning).toEqual(noReasoningModels
+          ? { summary: "auto" } : { effort: expected, summary: "auto" });
+      }
+    }
+  });
+
+  test("configured wire aliases are applied without injecting absent effort", () => {
+    const adapter = createResponsesPassthroughAdapter({
+      adapter: "openai-responses", baseUrl: "https://provider.example/v1",
+      modelReasoningEffortMap: { "gpt-test": { xhigh: "high" } },
+    });
+    for (const reasoning of [{ effort: "xhigh", summary: "auto" }, { summary: "auto" }]) {
+      const request = adapter.buildRequest({
+        modelId: "gpt-test", context: { messages: [] }, stream: false, options: {},
+        _rawBody: { model: "gpt-test", input: "ping", reasoning },
+      });
+      expect(JSON.parse(request.body).reasoning).toEqual("effort" in reasoning
+        ? { effort: "high", summary: "auto" } : reasoning);
+    }
+  });
+});
+
 describe("OpenAI Responses key-auth URL construction", () => {
   test("BUG-R289 preserves legacy /v1/responses URL when responsesPath is absent", () => {
     for (const [baseUrl, expectedUrl] of [

@@ -113,6 +113,7 @@ describe("GitHub Actions hardening", () => {
     expect(workflow.on).toHaveProperty("pull_request");
     expect(workflow.on).not.toHaveProperty("pull_request_target");
     expect(Object.keys(workflow.jobs).sort()).toEqual([
+      "desktop-clients",
       "lint-github-actions",
       "npm-global-smoke",
       "security",
@@ -134,11 +135,12 @@ describe("GitHub Actions hardening", () => {
             ref,
           ) as Array<{ name?: string; platform?: string; runner: string }>;
           const labels = rows.map((row) => JSON.parse(row.runner));
-          const expectedLabels =
-            id === "test"
+          const expectedLabels = id === "desktop-clients"
+            ? ["windows-latest", "macos-latest"]
+            : id === "test"
               ? ["ubuntu-latest", "ubuntu-latest"]
               : ["ubuntu-latest"];
-          if (fullMatrix)
+          if (fullMatrix && id !== "desktop-clients")
             expectedLabels.push(
               ...(id === "test"
                 ? ["windows-latest", "windows-latest", "windows-latest"]
@@ -154,6 +156,20 @@ describe("GitHub Actions hardening", () => {
         }
       }
     }
+  });
+
+  test("Desktop client regression job covers native Windows and macOS without live integrations", async () => {
+    const workflow = Bun.YAML.parse(await readText(".github/workflows/ci.yml")) as RunnerWorkflow;
+    const job = workflow.jobs["desktop-clients"] as RunnerJob & {
+      "timeout-minutes": number;
+      steps: Array<{ run?: string }>;
+    };
+    expect(job["timeout-minutes"]).toBe(10);
+    expectReadOnlyJob(workflow, job);
+    const commands = job.steps.map(step => step.run ?? "").join("\n");
+    expect(commands).toContain("bun install --frozen-lockfile");
+    expect(commands).toContain("bun test tests/claude-desktop-sync.test.ts tests/codex-paths.test.ts tests/claude-context-windows.test.ts");
+    expect(commands).not.toMatch(/ocx (?:start|sync|claude desktop protocol install)|claude-desktop-protocol\.test/);
   });
 
   test.each([
@@ -440,6 +456,7 @@ describe("GitHub Actions hardening", () => {
       ".npmignore",
       "bin/**",
       "bun.lock",
+      "docs-site/**",
       "gui/**",
       "package.json",
       "scripts/**",
@@ -462,6 +479,8 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toContain("bun run lint");
     expect(workflow).toContain("- name: GUI build");
     expect(workflow).toContain("bun run build");
+    expect(workflow).toContain("- name: Docs build");
+    expect(workflow).toContain("cd docs-site\n          bun install --frozen-lockfile\n          bun run build");
   });
 
   test("stale needs-info workflow is schedule-only and least-privilege", async () => {

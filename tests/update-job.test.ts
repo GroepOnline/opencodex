@@ -116,11 +116,20 @@ describe("GUI update execution decisions", () => {
     ]);
   });
 
+  test("proxy-only update restart preserves its mode without changing service commands", () => {
+    expect(restartCommand(false, "npm", "/pkg/bin/ocx.mjs", 10100, undefined, true).args).toEqual([
+      "/pkg/bin/ocx.mjs", "start", "--port", "10100", "--proxy-only",
+    ]);
+    expect(restartCommand(true, "npm", "/pkg/bin/ocx.mjs", 10100, undefined, true).args).toEqual([
+      "/pkg/bin/ocx.mjs", "service", "install",
+    ]);
+  });
+
   test("restart waits on the captured pre-update port unconditionally and pins the spawn to it", async () => {
     // The stop-first update flow clears pid/runtime state before restartAfterUpdate runs,
     // so the wait must fire even with no readable pid — driven here via the io seam.
     const waited: Array<{ port: number; hostname: string; opts?: { killOcxHolders?: boolean; onlyKillPids?: number[] } }> = [];
-    const spawned: Array<{ port?: number }> = [];
+    const spawned: Array<{ port?: number; proxyOnly?: boolean }> = [];
     const job: UpdateJobState = {
       id: "restart-io",
       status: "restarting",
@@ -135,7 +144,7 @@ describe("GUI update execution decisions", () => {
       log: [],
     };
     writeFileSync(updateJobPath(job.id), JSON.stringify(job));
-    await restartAfterUpdateForTests(job, { port: 12345, hostname: "127.0.0.1" }, {
+    await restartAfterUpdateForTests(job, { port: 12345, hostname: "127.0.0.1", proxyOnly: true }, {
       serviceInstalledFn: () => false, // drive the proxy-mode branch regardless of host state
       waitForPort: async (port, hostname, opts) => {
         waited.push({
@@ -148,8 +157,8 @@ describe("GUI update execution decisions", () => {
         });
         return true;
       },
-      spawnStart: (_job, _installer, port) => {
-        spawned.push({ port });
+      spawnStart: (_job, _installer, port, proxyOnly) => {
+        spawned.push({ port, proxyOnly });
       },
     });
     expect(waited).toEqual([{
@@ -157,7 +166,7 @@ describe("GUI update execution decisions", () => {
       hostname: "127.0.0.1",
       opts: { killOcxHolders: false, onlyKillPids: [] },
     }]);
-    expect(spawned).toEqual([{ port: 12345 }]);
+    expect(spawned).toEqual([{ port: 12345, proxyOnly: true }]);
   });
 
   test("restart reclaim allowlists only the trusted oldPid", async () => {
@@ -206,7 +215,7 @@ describe("GUI update execution decisions", () => {
       log: [],
     };
     writeFileSync(updateJobPath(job.id), JSON.stringify(job));
-    await restartAfterUpdateForTests(job, { port: 10100, hostname: "127.0.0.1" }, {
+    await restartAfterUpdateForTests(job, { port: 10100, hostname: "127.0.0.1", proxyOnly: true }, {
       serviceInstalledFn: () => false,
       waitForPort: async () => false,
       spawnStart: (_job, _installer, port) => {
@@ -216,6 +225,7 @@ describe("GUI update execution decisions", () => {
     expect(spawned).toEqual([]);
     const saved = readUpdateJob(job.id);
     expect(saved?.log.some(line => line.includes("still busy") && line.includes("not starting on another port"))).toBe(true);
+    expect(saved?.log.some(line => line.includes("ocx start --port 10100 --proxy-only"))).toBe(true);
   });
 
   test("service restart waits on the captured port and clears OCX_BAKE_PORT after install", async () => {
@@ -303,7 +313,7 @@ describe("GUI update execution decisions", () => {
       log: [],
     };
     writeFileSync(updateJobPath(job.id), JSON.stringify(job));
-    const ok = await confirmRestartAfterUpdateForTests(job, { port: 10100, hostname: "127.0.0.1" }, {
+    const ok = await confirmRestartAfterUpdateForTests(job, { port: 10100, hostname: "127.0.0.1", proxyOnly: true }, {
       probeProxy: async () => false,
       now: () => now,
       sleepMs: async (ms) => { now += ms; },
@@ -314,6 +324,7 @@ describe("GUI update execution decisions", () => {
       restarted: false,
       error: "proxy restart never became healthy on 127.0.0.1:10100",
     });
+    expect(readUpdateJob(job.id)?.log.some(line => line.includes("ocx start --port 10100 --proxy-only"))).toBe(true);
   });
 
   test("restart confirmation fails when the proxy dies during the stability window", async () => {

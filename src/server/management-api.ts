@@ -170,19 +170,21 @@ export async function handleManagementAPI(
       }
       throw err;
     }
-    const restore = restoreNativeCodex();
+    const { readRuntimePort } = await import("../config");
+    const proxyOnly = readRuntimePort(process.pid)?.proxyOnly === true;
+    const restore = proxyOnly ? { success: true, message: "Client configuration unchanged." } : restoreNativeCodex();
     // Both managed configs come down together on an explicit teardown. The daemon's own
     // syncCleanup skips this when OCX_SERVICE is set (so a crash/respawn keeps the fence),
     // which is exactly why an intentional stop has to do it here.
     const { stripGrokConfig } = await import("../grok/inject");
-    const grok = stripGrokConfig();
+    const grok = proxyOnly ? { ok: true, message: "" } : stripGrokConfig();
     setTimeout(async () => {
       await drainAndShutdown(undefined, config.shutdownTimeoutMs ?? 5000);
       process.exit(0);
     }, 200);
     const grokNote = grok.ok ? "" : ` Grok config cleanup failed: ${grok.message}`;
     return jsonResponse(restore.success
-      ? { success: true, message: `Proxy stopping, native Codex restored.${grokNote}` }
+      ? { success: true, message: proxyOnly ? "Proxy stopping; client configuration unchanged." : `Proxy stopping, native Codex restored.${grokNote}` }
       : { success: false, message: `Proxy stopping, but native Codex restore failed: ${restore.message}. Run \`ocx restore\`.${grokNote}` });
   }
 

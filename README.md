@@ -1,6 +1,6 @@
-<h3 align="center">make codex open!</h3>
-<p align="center"><b>Universal provider proxy for OpenAI Codex, Claude Code, Claude Desktop &amp; Grok Build</b><br>
-Two commands, and every one of them runs any LLM you point it at.</p>
+<h3 align="center">Your models. Your clients. One gateway.</h3>
+<p align="center"><b>OpenCodex — a universal model gateway with optional native client integrations</b><br>
+Use the API directly, or connect Claude Code, Claude Desktop, Codex, Grok Build and other compatible clients.</p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@groeponline/opencodex"><img src="https://img.shields.io/npm/v/@groeponline/opencodex?color=cb3837&label=npm&logo=npm" alt="npm version"></a>
@@ -10,7 +10,7 @@ Two commands, and every one of them runs any LLM you point it at.</p>
 
 ```bash
 npm install -g @groeponline/opencodex
-ocx start        # proxy + dashboard on localhost:10100
+ocx start --proxy-only   # API + dashboard on localhost:10100; no client config changes
 ```
 
 <table align="center">
@@ -44,13 +44,15 @@ ocx start        # proxy + dashboard on localhost:10100
   <img src="assets/architecture.png" alt="opencodex architecture — Codex CLI routes through opencodex proxy to any LLM provider" width="820">
 </p>
 
-Use Claude, Gemini, Grok, GLM, DeepSeek, Kimi, Qwen, Ollama, or any other LLM with Codex — and with **Claude Code**, **Claude Desktop**, and **Grok Build** — without waiting for anyone to add support.
+Route Claude, Gemini, Grok, GLM, DeepSeek, Kimi, Qwen, Ollama and other models through one gateway. Use the API directly or connect **Claude Code**, **Claude Desktop**, **Codex** and **Grok Build**; support depends on the provider's protocol and capabilities.
 
 Subagents cross the boundary too: Claude Desktop can answer as Opus and hand the next step to a
 GPT-5.6 Sol subagent, and Grok Build can drive a session on Sol while calling Kimi K3 — each side
 keeping its own native UI.
 
-opencodex is a lightweight local proxy that translates Codex's Responses API into whatever your provider speaks. Streaming, tool calls, reasoning tokens, images — everything works, in both directions.
+opencodex is a Bun-native provider gateway with OpenAI-compatible Responses and Chat Completions endpoints, an Anthropic Messages endpoint, model discovery, routing and a management dashboard. Use it locally or behind an authenticated central gateway. **Codex is not required:** no Codex installation, account or running app is needed for ordinary provider API routes.
+
+Client integration is a separate convenience layer. `ocx start --proxy-only` skips client config, shell-hook and launcher changes. Regular `ocx start` preserves the existing integration workflow and skips Codex when its config is absent. Streaming, tools, reasoning and images depend on the selected model and adapter; OCX publishes known capabilities rather than inventing support.
 
 It can also manage a **ChatGPT account pool** for Codex auth. Add multiple ChatGPT / Codex accounts,
 refresh their 5h / weekly / 30d quota in the dashboard, and let new sessions auto-route to the
@@ -58,11 +60,15 @@ lowest-usage healthy account. Existing Codex threads stay pinned to the account 
 so long SSH, tmux, or mobile-connected sessions do not jump accounts mid-conversation.
 
 ```
-Codex CLI / App / SDK ──/v1/responses──▶ opencodex ──▶ Any provider
-                                              │
-              Anthropic · Google · xAI · Kimi · Ollama Cloud · Groq
-              OpenRouter · Azure · DeepSeek · GLM · …and OpenAI itself
+API / SDK / compatible clients ── Responses / Chat / Messages ──▶ OCX ──▶ Providers
+Claude Code · Claude Desktop · Codex · Grok Build                  │
+                          Anthropic · Google · xAI · Kimi · Ollama · Groq
+                          OpenRouter · Azure · DeepSeek · GLM · OpenAI
 ```
+
+### Optional ChatGPT account pooling
+
+This is one integration, not a requirement for the gateway or other providers.
 
 ```mermaid
 flowchart LR
@@ -96,16 +102,24 @@ Requires [Node](https://nodejs.org) 18+. The Bun runtime is bundled automaticall
 # Prefer a user-owned Node (nvm/fnm) — avoid `sudo npm install -g …`
 npm install -g @groeponline/opencodex
 
-# Interactive setup (writes config, injects into Codex, and offers autostart shim install)
-ocx init
+# Start only the gateway — no Codex installation or client mutation required
+ocx start --proxy-only
 
-# Start the proxy
-ocx start
+# Open the dashboard to configure providers and inspect routes
+ocx gui
+```
 
-# If you skipped it during init, install the on-demand autostart shim later
-ocx codex-shim install
+Choose the client integrations you need. Existing workflows remain available:
 
-# Use Codex normally — it now routes through opencodex
+```bash
+ocx init                        # optional guided setup, including Codex integration
+ocx start                       # gateway + existing client integrations
+ocx claude                      # Claude Code
+ocx claude desktop sync         # applied Desktop library over the configured gateway
+ocx sync                        # sync configured clients independently, without restart
+ocx sync --desktop-only          # Desktop only; never touches Codex
+ocx sync --codex-only            # explicitly target Codex
+ocx codex-shim install           # optional on-demand Codex launcher
 codex "Write a hello world in Rust"
 ```
 
@@ -268,7 +282,7 @@ next Codex session. opencodex keeps these behaviors:
 - **Generate images natively.** Codex's standalone `image_gen` tool uses `POST /v1/images/generations` for generation and `POST /v1/images/edits` for edits; it is separate from the hosted Responses `image_generation` tool.
 - **See what's happening.** The web dashboard shows providers, OAuth status, model selection, and a live request log, including cached/cache-write token counts when upstream reports them — no more guessing why a request failed.
 - **Runs in the background.** Install as a system service (launchd / systemd / Task Scheduler) and forget about it. On macOS/Linux the proxy starts at login; on Windows the default Task Scheduler backend starts at logon (windowless), or use `ocx service install --native` for a real Windows service that starts at boot.
-- **Clean exit, zero residue.** `ocx stop` (or the dashboard's Stop button) shuts down the proxy, stops the background service if one is installed, and restores Codex to its original configuration. Plain `codex` works exactly as it did before — no leftover config, no orphaned processes.
+- **Client-aware shutdown.** `ocx stop` and the dashboard's Stop button drain the proxy and stop an owned background service. Client-integrated mode restores managed Codex/Grok configuration; proxy-only mode leaves client files unchanged. Configuration or history that cannot be safely restored is reported rather than silently discarded.
 
 ## Providers & adapters
 
@@ -311,7 +325,9 @@ ocx stop                       # stop + restore native Codex
 ocx restore                    # restore without stopping (alias: ocx eject)
 ocx uninstall                  # remove service/shim/config and restore native Codex
 ocx ensure                     # start if needed + refresh Codex config/cache
-ocx sync                       # refresh models + re-inject into Codex
+ocx sync                       # synchronize configured clients; absent Codex is skipped
+ocx sync --desktop-only         # explicitly sync Desktop without touching Codex
+ocx sync --codex-only           # explicitly sync Codex
 ocx codex-shim install         # run `ocx ensure` whenever `codex` is launched
 ocx status                     # is the proxy running?
 ocx login <provider>          # OAuth login (xai, anthropic, kimi, cursor, ...)
@@ -338,6 +354,7 @@ each request; **Logs → requestedModel** shows which id Desktop actually sent.
 
 ```bash
 ocx claude desktop [apply]                         # save and apply the current profile
+ocx claude desktop sync                           # copy the applied library through the local gateway
 ocx claude desktop show [--json]                   # inspect routes, families, and defaults
 ocx claude desktop move <route> <family> [--default]
 ocx claude desktop default <family> <route|none>
@@ -350,6 +367,12 @@ Claude-shaped aliases with a synthetic 2026 date slot; that date is an internal 
 model's release date. Real Anthropic Claude routes keep their real model ids. Use `none` only for
 an empty family; a non-empty family always needs a default. The older apply forms
 `ocx claude desktop --static`, `--hybrid`, and `--discovery-only` remain supported.
+
+`ocx sync` updates an already-configured OCX Desktop library independently of Codex's result.
+Desktop sync uses the existing data-plane credential or Claude Code `apiKeyHelper`, preserves other
+profiles, backs up replaced files and has no SCP fallback. Neither ordinary startup nor sync
+requires closing Codex or Desktop. Existing processes may keep an old in-memory picker until they
+reload; `--restart-codex` is an explicit, potentially interrupting recovery option, not a prerequisite.
 
 ### Autostart: service vs shim
 

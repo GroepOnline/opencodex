@@ -1404,6 +1404,13 @@ describe("opencodex config defaults", () => {
     expect(readRuntimePort(9999)).toBeNull();
   });
 
+  test("runtime metadata retains proxy-only mode without accepting malformed flags", () => {
+    writeRuntimePort({ pid: 1234, port: 58195, proxyOnly: true });
+    expect(readRuntimePort(1234)?.proxyOnly).toBe(true);
+    writeFileSync(getRuntimePortPath(), JSON.stringify({ pid: 1234, port: 58195, proxyOnly: "true" }));
+    expect(readRuntimePort()).toBeNull();
+  });
+
   test("runtime port metadata removal preserves newer pid state", () => {
     writeRuntimePort({ pid: 1234, port: 58195 });
 

@@ -1,14 +1,14 @@
 import { createHash } from "node:crypto";
 import type { AdapterRateLimitInfo, IncomingMeta, ProviderAdapter } from "./base";
 import { parseOpenAIRateLimit } from "../availability/rate-limit-parse";
-import { modelInList, namespacedToolName, type AdapterEvent, type OcxParsedRequest, type OcxProviderConfig, type OcxUsage } from "../types";
+import { namespacedToolName, type AdapterEvent, type OcxParsedRequest, type OcxProviderConfig, type OcxUsage } from "../types";
 import { catalogModelSupportsReasoningSummaries } from "../codex/catalog";
 import { COMPACT_PROMPT, decodeCompactionSummary, SUMMARY_PREFIX } from "../responses/compaction";
 import { collectResponsesToolGroups } from "../responses/tool-groups";
 import { decodeServerSentEvents } from "../lib/sse-decoder";
 import { supportsNativeRemoteCompactionV2 } from "../providers/openai-tiers";
 import { OCX_REASONING_PREFIX } from "../responses/reasoning-envelope";
-import { modelRecordValue } from "../reasoning-effort";
+import { configuredReasoningEfforts, isCodexReasoningEffort, mapReasoningEffort, modelRecordValue, reasoningEffortMapFor } from "../reasoning-effort";
 import { observeOpenAiResponsesPromptCache } from "../prompt-cache/observability";
 
 // Headers relayed verbatim from the caller in OAuth-passthrough ("forward") mode.
@@ -60,13 +60,22 @@ export function sanitizeReasoningInputContent(body: unknown): unknown {
   return changed ? { ...raw, input } : body;
 }
 
-function stripConfiguredReasoningEffort(body: unknown, provider: OcxProviderConfig, modelId: string): unknown {
-  if (!modelInList(provider.noReasoningModels, modelId)) return body;
+function normalizeConfiguredReasoningEffort(body: unknown, provider: OcxProviderConfig, modelId: string): unknown {
   if (!isPlainObject(body) || !isPlainObject(body.reasoning) || !("effort" in body.reasoning)) return body;
-  // Passthrough uses the raw request, bypassing mapReasoningEffort. Honor the same
-  // explicit model opt-out without dropping unrelated reasoning fields or mutating input.
+  const supported = configuredReasoningEfforts(provider, modelId);
+  const wireMap = reasoningEffortMapFor(provider, modelId);
+  // Passthrough preserves unconfigured wire values; explicit capabilities use the same
+  // mapping and opt-outs as bridged requests, including an empty per-model effort ladder.
+  if (supported === undefined && wireMap === undefined) return body;
+  const current = body.reasoning.effort;
+  const effort = supported?.length === 0
+    ? undefined
+    : typeof current === "string" && (isCodexReasoningEffort(current) || !Object.values(wireMap ?? {}).includes(current))
+      ? mapReasoningEffort(provider, modelId, current) : current;
+  if (effort === current) return body;
   const reasoning = { ...body.reasoning };
-  delete reasoning.effort;
+  if (effort === undefined) delete reasoning.effort;
+  else reasoning.effort = effort;
   const next = { ...body };
   if (Object.keys(reasoning).length > 0) next.reasoning = reasoning;
   else delete next.reasoning;
@@ -946,7 +955,7 @@ export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): 
       if (forward || parsed._previousResponseInputExpanded === true) {
         outBody = repairOversizedReplayCallIds(outBody);
       }
-      outBody = stripConfiguredReasoningEffort(outBody, provider, parsed.modelId);
+      outBody = normalizeConfiguredReasoningEffort(outBody, provider, parsed.modelId);
       outBody = stripUnsupportedReasoningSummaryDelivery(outBody, parsed.modelId);
       // Same predicate as the routedCompaction gate in handleResponses(): an
       // authMode check would let a noncanonical custom forward provider skip this

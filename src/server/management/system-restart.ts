@@ -38,7 +38,8 @@ export interface SystemRestartIo {
   isServiceInstalled?: () => boolean;
   isSupervisedServiceChild?: () => boolean;
   /** Must resolve only after the replacement process has actually started. */
-  spawnStart?: (port?: number) => void | Promise<void>;
+  spawnStart?: (port?: number, proxyOnly?: boolean) => void | Promise<void>;
+  proxyOnly?: () => boolean;
   markRecycling?: () => void;
   exitProcess?: (code: number) => void;
   schedule?: (fn: () => void | Promise<void>, ms: number) => void;
@@ -79,8 +80,9 @@ function spawnFailureCode(err: unknown): string {
   return "spawn_failed";
 }
 
-function spawnDetachedStart(port?: number): Promise<void> {
+function spawnDetachedStart(port?: number, proxyOnly = false): Promise<void> {
   const args = [process.argv[1], "start"];
+  if (proxyOnly) args.push("--proxy-only");
   if (typeof port === "number" && Number.isFinite(port) && port > 0 && port <= 65535) {
     args.push("--port", String(Math.trunc(port)));
   }
@@ -131,6 +133,7 @@ export function acceptSystemRestart(io: SystemRestartIo = restartIo): {
   const schedule = io.schedule ?? ((fn, ms) => { setTimeout(() => { void fn(); }, ms); });
 
   if (!alreadyDraining) {
+    const proxyOnly = (io.proxyOnly ?? (() => readRuntimePort(process.pid)?.proxyOnly === true))();
     restartAccepted = true;
     // Reject new data-plane traffic immediately (503), before the 200ms response-flush delay.
     (io.setDraining ?? setDraining)(true);
@@ -146,7 +149,7 @@ export function acceptSystemRestart(io: SystemRestartIo = restartIo): {
       const port = (io.listenPort ?? resolveListenPort)();
       const exitProcess = io.exitProcess ?? ((code: number) => { process.exit(code); });
       try {
-        await (io.spawnStart ?? spawnDetachedStart)(port);
+        await (io.spawnStart ?? spawnDetachedStart)(port, proxyOnly);
       } catch (err) {
         console.warn(
           `⚠️  Drain-and-restart spawn failed (${spawnFailureCode(err)}); exiting without replacement`,
