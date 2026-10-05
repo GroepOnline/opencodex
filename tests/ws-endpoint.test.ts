@@ -59,6 +59,8 @@ describe("WS endpoint re-framer (120/132)", () => {
     expect(source).toContain(
       "finalizeLog(turnAbort.signal.aborted ? 499 : response.status);",
     );
+    expect(source).toContain("await beginTrace(logCtx, traceReq);");
+    expect(source).toContain("const response = await runWithTrace(logCtx, () =>");
   });
 
   test("generate=false warmup completes locally without upstream and forces full next request", () => {
