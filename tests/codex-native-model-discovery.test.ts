@@ -225,6 +225,31 @@ describe("live native OpenAI catalog discovery", () => {
     expect(row?.use_responses_lite).toBe(true);
   });
 
+  test("keeps live metadata authoritative for known static native slugs", () => {
+    const knownNative = {
+      ...liveNative,
+      slug: "gpt-5.6-sol",
+      display_name: "Live GPT-5.6 Sol",
+      context_window: 444_444,
+    };
+    const entries = buildCatalogEntries(
+      null,
+      ["gpt-5.6-sol"],
+      [],
+      undefined,
+      false,
+      "default",
+      new Set(),
+      new Map([["gpt-5.6-sol", knownNative]]),
+    );
+
+    const row = entries.find(entry => entry.slug === "gpt-5.6-sol");
+    expect(row?.context_window).toBe(444_444);
+    expect(row?.supported_reasoning_levels).toEqual([
+      { effort: "high", description: "High reasoning" },
+    ]);
+  });
+
   test("authoritative live native rows survive the static native whitelist unchanged", () => {
     const args: Parameters<typeof mergeCatalogEntriesForSync> = [
       [liveNative],
