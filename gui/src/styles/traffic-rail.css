@@ -1,26 +1,33 @@
+.verkeer-page .rail {
+  overflow: hidden;
+  background: var(--surface-paper);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
 /* Verkeer request rail — column grid (Signaal v2/v3 tokens) */
 .traffic-entry {
-  border-bottom: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-subtle);
 }
 .traffic-entry-head {
   display: grid;
-  grid-template-columns: 7.5ch minmax(10rem, 1.6fr) minmax(
-      5rem,
-      0.8fr
-    ) auto auto auto;
+  grid-template-columns:
+    7.5ch minmax(10rem, 1.6fr) minmax(5rem, 0.8fr)
+    auto auto auto;
   gap: var(--space-2) var(--space-3);
   align-items: baseline;
-  padding: var(--space-2);
+  min-height: var(--control-touch);
+  padding: var(--space-3) var(--space-2);
   font-family: var(--font-ui);
   font-size: var(--text-caption);
   color: var(--text);
-  border-radius: var(--radius-xs);
+  border-radius: 0;
 }
 .traffic-entry-head:hover {
-  background: var(--hover);
+  background: var(--surface-raised);
 }
 .traffic-entry-head:active {
-  background: var(--raised);
+  background: var(--surface-raised);
   transform: scale(0.995);
 }
 .traffic-entry-head--button {
@@ -52,12 +59,16 @@
   font-variant-numeric: tabular-nums;
 }
 .traffic-detail {
-  padding: 0 var(--space-2) var(--space-3);
+  margin: 0 var(--space-2) var(--space-3);
+  padding: var(--space-3);
   color: var(--muted);
   font-family: var(--font-code);
   font-size: var(--text-caption);
   display: grid;
   gap: var(--space-1);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
 }
 .traffic-status {
   justify-self: end;
@@ -82,7 +93,7 @@
 }
 .traffic-entry--head {
   color: var(--muted);
-  border-bottom: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-subtle);
 }
 .traffic-entry--head .traffic-entry-head {
   font-family: var(--font-ui);
