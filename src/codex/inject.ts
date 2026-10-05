@@ -37,6 +37,12 @@ export function currentExternalCodexModelProvider(): string | null {
   return externalCodexModelProvider(readFileSync(CODEX_CONFIG_PATH, "utf8"));
 }
 
+/** A root base URL without the OCX ownership marker belongs to another config manager or the user. */
+export function hasUserOwnedRootOpenaiBaseUrl(content: string): boolean {
+  return rootTomlString(content, "openai_base_url") !== null
+    && !hasInjectedOpenaiBaseUrl(content);
+}
+
 /**
  * Detect the file's dominant line ending. Every transform in this module is LF-pure
  * (split("\n") + hard "\n" joins), so CRLF configs (Windows-edited config.toml) are
@@ -512,6 +518,19 @@ export async function injectCodexConfig(port: number, config?: OcxConfig, option
         `  Configure that provider for Responses passthrough at http://${providerBaseHost(config?.hostname)}:${port}/v1` +
         `${shouldInjectApiAuthHeader(config) ? ` with x-opencodex-api-key from OPENCODEX_API_AUTH_TOKEN` : ""}.\n` +
         `  For direct injection, switch to the built-in openai provider, remove any user-owned root openai_base_url, and rerun 'ocx start'.`,
+    };
+  }
+
+  if (hasUserOwnedRootOpenaiBaseUrl(rawContent)) {
+    // A user/external manager owns the routing surface. Clear any stale OCX journal so a later
+    // shutdown cannot replay an obsolete snapshot over that ownership, and do not half-own the
+    // same config by changing only its catalog or fast-mode keys.
+    removeJournal();
+    return {
+      success: true,
+      message: `⚠️ Codex routing and catalog NOT injected: config.toml has a user-owned root openai_base_url.\n`
+        + `  OpenCodex leaves both routing and model_catalog_json untouched to avoid split ownership.\n`
+        + `  To let OpenCodex manage native Codex plus routed providers together, remove that root override and rerun 'ocx start'.`,
     };
   }
 
