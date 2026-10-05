@@ -134,7 +134,9 @@ export function buildAnthropicModelInfos(
     out.push({ ...base, id, display_name: `${base.display_name} · ${label}`, max_input_tokens: Math.min(window, ONE_MILLION) });
   };
   for (const slug of nativeSlugs) {
-    const id = idStyle === "readable" ? claudeCodeNativeAlias(slug) : aliasForRoute("native", slug);
+    let id: string;
+    try { id = idStyle === "readable" ? claudeCodeNativeAlias(slug) : aliasForRoute("native", slug); }
+    catch { continue; }
     if (seen.has(id)) continue;
     seen.add(id);
     const info = modelInfo(
@@ -149,7 +151,9 @@ export function buildAnthropicModelInfos(
     push1mVariant(info, nativeOpenAiContextWindow(slug));
   }
   for (const m of routedModels) {
-    const id = idStyle === "readable" ? claudeCodeAlias(m.provider, m.id) : aliasForRoute(m.provider, m.id);
+    let id: string;
+    try { id = idStyle === "readable" ? claudeCodeAlias(m.provider, m.id) : aliasForRoute(m.provider, m.id); }
+    catch { continue; }
     if (seen.has(id)) continue;
     seen.add(id);
     const ladder = Array.isArray(m.reasoningEfforts) ? m.reasoningEfforts : [];

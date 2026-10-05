@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { getConfigDir, loadConfig, readPid, readRuntimePort } from "../config";
@@ -285,7 +285,7 @@ export async function runUpdate(): Promise<void> {
     } catch (e) {
       console.warn(`⚠️  Shim repair skipped: ${e instanceof Error ? e.message : e}`);
     }
-    if (process.platform === "linux") {
+    if (process.platform === "linux" && existsSync(join(getConfigDir(), "claude-desktop-protocol.json"))) {
       const repair = spawnSync(process.execPath, [process.argv[1], "claude", "desktop", "protocol", "__repair"], {
         stdio: "inherit", windowsHide: true,
       });

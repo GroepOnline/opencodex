@@ -73,7 +73,7 @@ describe("update stops the running proxy before replacing files", () => {
 
   test("source updates repair only owned Desktop handlers through fresh CLI and preserve proxy-only mode", () => {
     expect(updateSource).toContain('[process.argv[1], "claude", "desktop", "protocol", "__repair"]');
-    expect(updateSource).toContain('if (process.platform === "linux")');
+    expect(updateSource).toContain('process.platform === "linux" && existsSync(join(getConfigDir(), "claude-desktop-protocol.json"))');
     expect(updateSource.indexOf('"protocol", "__repair"')).toBeGreaterThan(updateSource.indexOf("spawnSync(target.bin, target.args"));
     expect(updateSource).toContain("proxyOnly: runtimeTrusted && preUpdateRt.proxyOnly === true");
     expect(updateSource).toContain('...(capturedListen.proxyOnly ? ["--proxy-only"] : [])');

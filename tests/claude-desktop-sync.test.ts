@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -60,6 +60,22 @@ test("API-only sync uses apiKeyHelper, preserves profiles and backups, and is id
   expect(readdirSync(f.dir).filter(p => p.endsWith(".bak"))).toEqual(backups);
 });
 
+test("Desktop sync resolves settings from the injected Claude config directory", async () => {
+  const f = fixture();
+  const configDir = join(f.dir, "isolated-claude");
+  mkdirSync(configDir);
+  writeFileSync(join(configDir, "settings.json"), JSON.stringify({ env: {
+    ANTHROPIC_BASE_URL: "http://127.0.0.1:10100", ANTHROPIC_AUTH_TOKEN: "fixture-config-key",
+  } }));
+  await syncClaudeDesktopLibrary({ ...f.options, settingsPath: undefined,
+    env: { CLAUDE_CONFIG_DIR: configDir },
+    runKeyHelper: () => { throw new Error("Wrong settings source"); },
+  });
+  expect(new Headers(f.calls[1]!.init?.headers).get("authorization")?.slice(7)).toBe("fixture-config-key");
+  expect(await syncClaudeDesktopLibrary({ ...f.options, env: { CLAUDE_CONFIG_DIR: join(f.dir, "missing") } }))
+    .toEqual({ status: "unchanged", models: 1 });
+});
+
 for (const source of ["explicit-file", "default-file", "marker-helper"] as const) {
   test(`Desktop sync follows existing admission credentials (${source})`, async () => {
     const f = fixture();
@@ -76,9 +92,9 @@ for (const source of ["explicit-file", "default-file", "marker-helper"] as const
       helpers++;
       return "fixture-helper-key";
     } });
-    expect(new Headers(f.calls[1]!.init?.headers).get("authorization")).toBe(
-      source === "marker-helper" ? "Bearer fixture-helper-key" : "Bearer fixture-file-admission",
-    );
+    const authorization = new Headers(f.calls[1]!.init?.headers).get("authorization");
+    expect(authorization?.startsWith("Bearer ")).toBe(true);
+    expect(authorization?.slice(7)).toBe(source === "marker-helper" ? "fixture-helper-key" : "fixture-file-admission");
     expect(helpers).toBe(source === "marker-helper" ? 1 : 0);
   });
 }

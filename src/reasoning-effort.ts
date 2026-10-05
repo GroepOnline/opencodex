@@ -122,9 +122,15 @@ export function mapReasoningEffort(provider: OcxProviderConfig, modelId: string,
   const boundary = requested === "ultra" ? "max" : requested;
 
   const wireMap = reasoningEffortMapFor(provider, modelId);
-  if (wireMap && Object.prototype.hasOwnProperty.call(wireMap, boundary)) return wireMap[boundary];
-
   const supported = configuredReasoningEfforts(provider, modelId);
+  if (supported?.length === 0) return undefined;
+  if (wireMap && Object.prototype.hasOwnProperty.call(wireMap, boundary)) {
+    const mapped = wireMap[boundary]!;
+    // Explicit mappings to supported Codex tiers (e.g. Kimi medium -> high) remain
+    // authoritative. Vendor wire aliases must follow the supported ladder clamp.
+    if (!isCodexReasoningEffort(boundary) || (isCodexReasoningEffort(mapped) && supported?.includes(mapped))) return mapped;
+  }
+
   const codexEffort = supported !== undefined ? clampToSupportedCodexEffort(boundary, supported) : requestToCodexEffort(boundary);
   if (!codexEffort) return undefined;
 

@@ -162,8 +162,9 @@ describe("GitHub Actions hardening", () => {
     const workflow = Bun.YAML.parse(await readText(".github/workflows/ci.yml")) as RunnerWorkflow;
     const job = workflow.jobs["desktop-clients"] as RunnerJob & {
       "timeout-minutes": number;
-      steps: Array<{ run?: string }>;
+      steps: Array<{ run?: string; uses?: string; with?: Record<string, unknown> }>;
     };
+    expect(job.steps.find(step => step.uses?.startsWith("actions/checkout@"))?.with?.["persist-credentials"]).toBe(false);
     expect(job["timeout-minutes"]).toBe(10);
     expectReadOnlyJob(workflow, job);
     const commands = job.steps.map(step => step.run ?? "").join("\n");

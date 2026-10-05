@@ -320,8 +320,8 @@ Cursor OAuth and live model discovery are enabled for the experimental Cursor ad
 
 ```bash
 ocx init                       # interactive setup
-ocx start [--port 10100]       # start the proxy; falls back to a free port if busy
-ocx stop                       # stop + restore native Codex
+ocx start [--port 10100] [--proxy-only]  # start; --proxy-only skips client integration
+ocx stop                       # stop; client-integrated mode restores native Codex
 ocx restore                    # restore without stopping (alias: ocx eject)
 ocx uninstall                  # remove service/shim/config and restore native Codex
 ocx ensure                     # start if needed + refresh Codex config/cache

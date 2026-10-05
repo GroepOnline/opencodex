@@ -56,6 +56,20 @@ describe("anthropic-flavor ModelInfo discovery entries (devlog 130 B4b)", () => 
     }
   });
 
+  test("conflicting Desktop aliases skip only that route in native and routed discovery", () => {
+    const aliasForRoute = (provider: string, modelId: string) => {
+      if (modelId === "conflict") throw new Error("Desktop discovery alias conflicts with the applied profile");
+      return `${provider}/${modelId}`;
+    };
+    const infos = buildAnthropicModelInfos(["conflict", "gpt-5.6-sol"], [
+      { provider: "mock", id: "conflict" },
+      { provider: "mock", id: "good" },
+    ], undefined, "desktop3p", aliasForRoute);
+    expect(infos.map(info => info.id)).toEqual(["native/gpt-5.6-sol", "mock/good"]);
+    expect(buildAnthropicModelInfos([], [{ provider: "mock", id: "conflict" }],
+      undefined, "readable", aliasForRoute)).toHaveLength(1);
+  });
+
   test("duplicate ids are deduplicated", () => {
     const infos = buildAnthropicModelInfos([], [
       { provider: "p", id: "m" },

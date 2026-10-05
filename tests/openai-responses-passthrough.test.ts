@@ -96,6 +96,21 @@ describe("Responses configured reasoning effort boundary", () => {
     }
   }
 
+  test("configured ladder clamps Codex tiers before applying vendor wire aliases", () => {
+    const adapter = createResponsesPassthroughAdapter({
+      adapter: "openai-responses", baseUrl: "https://provider.example/v1",
+      modelReasoningEfforts: { "gpt-test": ["low", "high"] },
+      modelReasoningEffortMap: { "gpt-test": { max: "extreme", high: "enabled", none: "disabled" } },
+    });
+    for (const [effort, expected] of [["max", "enabled"], ["none", "disabled"]]) {
+      const request = adapter.buildRequest({
+        modelId: "gpt-test", context: { messages: [] }, stream: false, options: {},
+        _rawBody: { model: "gpt-test", input: "ping", reasoning: { effort } },
+      });
+      expect(JSON.parse(request.body).reasoning.effort).toBe(expected);
+    }
+  });
+
   test("configured model ladders clamp effort without changing unrelated models", () => {
     const adapter = createResponsesPassthroughAdapter({
       adapter: "openai-responses", baseUrl: "https://provider.example/v1",

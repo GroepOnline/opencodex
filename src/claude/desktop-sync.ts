@@ -1,13 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import { execSync } from "node:child_process";
 import { chmodSync, closeSync, existsSync, ftruncateSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, truncateSync, unlinkSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { renameAtomicFile } from "../config";
 import { hardenSecretPath } from "../lib/windows-secret-acl";
 import { resolveDesktop3pConfigLibraryPath } from "./desktop-3p";
 import { resolveDataPlaneAdmissionToken } from "../lib/service-secrets";
-import { realAdmissionToken } from "./auth-detect";
+import { claudeConfigDir, realAdmissionToken } from "./auth-detect";
 
 const MAX_LIBRARY_BYTES = 4 * 1024 * 1024;
 const SAFE_ID = /^[A-Za-z0-9_-]{1,128}$/;
@@ -89,7 +88,7 @@ async function syncLibrary(options: DesktopSyncOptions): Promise<DesktopSyncResu
   if (options.automatic && !entries.some(entry => entry.name === "opencodex")) {
     return { status: "skipped", models: 0 };
   }
-  const settings = readObject(options.settingsPath ?? join(homedir(), ".claude", "settings.json"));
+  const settings = readObject(options.settingsPath ?? join(claudeConfigDir(env), "settings.json"));
   const settingsEnv = object(settings.env) ? settings.env : {};
   const rawBase = env.ANTHROPIC_BASE_URL ?? settingsEnv.ANTHROPIC_BASE_URL;
   if (typeof rawBase !== "string") {
