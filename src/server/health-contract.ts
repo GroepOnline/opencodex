@@ -1,7 +1,8 @@
 import { existsSync, statSync } from "node:fs";
 import { getConfigPath } from "../config";
+import { peekAuthStore } from "../oauth/store";
 import { usageLogPath } from "../usage/log";
-import type { OcxConfig } from "../types";
+import type { OcxConfig, OcxProviderConfig } from "../types";
 
 export type HealthComponentStatus = "ok" | "degraded" | "down" | "unknown";
 
@@ -83,10 +84,26 @@ function persistenceHealth(): HealthComponent {
   }
 }
 
+/**
+ * `authMode === "oauth"` only means the provider *can* use the store — not that a token exists.
+ * Missing auth.json or an empty account list must report degraded (CONTROL V11 / Lane F).
+ */
+function providerHasOAuthStoreCredential(providerName: string): boolean {
+  const set = peekAuthStore()[providerName];
+  if (!set?.accounts.length) return false;
+  return set.accounts.some(account => Boolean(account.credential?.access));
+}
+
+function providerHasCredential(name: string, provider: OcxProviderConfig): boolean {
+  if (Boolean(provider.apiKey) || provider.authMode === "forward") return true;
+  if (provider.authMode === "oauth") return providerHasOAuthStoreCredential(name);
+  return false;
+}
+
 function providerHealth(config: OcxConfig): ProviderHealthComponent[] {
   return Object.entries(config.providers ?? {}).map(([name, provider]) => {
     const disabled = provider.disabled === true;
-    const hasCredential = Boolean(provider.apiKey) || provider.authMode === "forward" || provider.authMode === "oauth";
+    const hasCredential = providerHasCredential(name, provider);
     let status: HealthComponentStatus = "ok";
     let message = "configured";
     if (disabled) {

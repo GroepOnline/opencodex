@@ -3,13 +3,14 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CONFIG_SCHEMA_VERSION, saveConfig } from "../src/config";
+import { saveCredential } from "../src/oauth/store";
 import { MANAGEMENT_CONTRACT_VERSION } from "../src/server/contract-version";
 import {
   resetBuildInfoCacheForTests,
   setBuildInfoForTests,
 } from "../src/server/build-provenance";
 import { startServer } from "../src/server";
-import type { OcxConfig } from "../src/types";
+import type { OcxConfig, OcxProviderConfig } from "../src/types";
 
 const previousHome = process.env.OPENCODEX_HOME;
 const previousDataToken = process.env.OPENCODEX_API_AUTH_TOKEN;
@@ -144,6 +145,86 @@ describe("GET /api/health", () => {
       });
       expect(body.components.deploy_runner.status).toBe("unknown");
       expect(Array.isArray(body.causality)).toBe(true);
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  test("oauth provider without auth.json is degraded, not configured", async () => {
+    const oauth: OcxProviderConfig = {
+      adapter: "openai-chat",
+      baseUrl: "https://example.test/v1",
+      authMode: "oauth",
+      models: ["gemini-test"],
+    };
+    saveConfig({
+      ...remoteConfig(),
+      providers: {
+        ...remoteConfig().providers,
+        "google-antigravity": oauth,
+        "github-copilot": { ...oauth, models: ["gpt-copilot"] },
+      },
+    });
+    const server = startServer(0);
+    try {
+      const res = await fetch(new URL("/api/health", server.url), {
+        headers: { "x-opencodex-api-key": "admin-secret" },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as {
+        components: { providers: Array<{ name: string; status: string; message: string }> };
+        causality: Array<{ component: string; reason: string }>;
+      };
+      for (const name of ["google-antigravity", "github-copilot"]) {
+        const provider = body.components.providers.find(row => row.name === name);
+        expect(provider).toMatchObject({
+          status: "degraded",
+          message: expect.stringMatching(/missing credentials/i),
+        });
+        expect(body.causality.some(entry =>
+          entry.component === `provider:${name}` && /missing credentials/i.test(entry.reason),
+        )).toBe(true);
+      }
+      expect(body.components.providers.find(row => row.name === "demo")).toMatchObject({
+        status: "ok",
+      });
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  test("oauth provider with a stored auth.json account can be ok", async () => {
+    saveConfig({
+      ...remoteConfig(),
+      defaultProvider: "google-antigravity",
+      providers: {
+        "google-antigravity": {
+          adapter: "openai-chat",
+          baseUrl: "https://example.test/v1",
+          authMode: "oauth",
+          models: ["gemini-test"],
+        },
+      },
+    });
+    await saveCredential("google-antigravity", {
+      access: "ya29.test-access",
+      refresh: "1//test-refresh",
+      expires: Date.now() + 3_600_000,
+      accountId: "acct-1",
+    });
+    const server = startServer(0);
+    try {
+      const res = await fetch(new URL("/api/health", server.url), {
+        headers: { "x-opencodex-api-key": "admin-secret" },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as {
+        components: { providers: Array<{ name: string; status: string; message: string }> };
+      };
+      expect(body.components.providers.find(row => row.name === "google-antigravity")).toMatchObject({
+        status: "ok",
+        message: "configured",
+      });
     } finally {
       await server.stop(true);
     }
