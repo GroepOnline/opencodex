@@ -6,11 +6,13 @@ import {
   buildProviderTableBlock,
   chooseCatalogPathForInjection,
   dominantEol,
+  setRootModelCatalogPath,
   setRootOpenaiBaseUrl,
   shouldInjectApiAuthHeader,
   stripInjectedOpenaiBaseUrl,
   stripOpencodexConfig,
   stripRootContextWindowOverrides,
+  stripRootModelCatalogPath,
 } from "../src/codex/inject";
 import {
   MANAGED_AGENTS_TABLE_MARKER,
@@ -297,6 +299,46 @@ describe("Codex config injection", () => {
     );
 
     expect(path).toBeNull();
+  });
+
+  test("managed routing replaces a pre-existing merged catalog with the canonical OCX catalog", () => {
+    const original = [
+      'model = "gpt-6.1-sol"',
+      'model_catalog_json = "/home/joep/.codex/model-catalogs/native-plus-ocx.json"',
+      "",
+      "[features]",
+      "fast_mode = true",
+      "",
+    ].join("\n");
+
+    const injected = setRootModelCatalogPath(
+      original,
+      "/home/joep/.codex/opencodex-catalog.json",
+    );
+
+    expect(injected).toContain(
+      'model_catalog_json = "/home/joep/.codex/opencodex-catalog.json"',
+    );
+    expect(injected).not.toContain("native-plus-ocx.json");
+    expect(injected.match(/model_catalog_json/g)?.length).toBe(1);
+    expect(injected).toContain('model = "gpt-6.1-sol"');
+  });
+
+  test("managed routing removes any root catalog override when the OCX catalog is unavailable", () => {
+    const original = [
+      'model = "gpt-6.1-sol"',
+      'model_catalog_json = "/home/joep/.codex/model-catalogs/native-plus-ocx.json"',
+      "",
+      "[profiles.work]",
+      'model_catalog_json = "/tmp/profile-only.json"',
+      "",
+    ].join("\n");
+
+    const injected = stripRootModelCatalogPath(original);
+
+    expect(injected).not.toContain("native-plus-ocx.json");
+    expect(injected).toContain('model_catalog_json = "/tmp/profile-only.json"');
+    expect(injected).toContain('model = "gpt-6.1-sol"');
   });
 
   test("strips injected TOML sections without swallowing later indented tables", () => {
