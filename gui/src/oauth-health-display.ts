@@ -7,6 +7,7 @@
 import type { TFn, TKey } from "./i18n";
 import { displayAccountId } from "./lib/privacy";
 import { statusBadgeClass, type OperationalStatus } from "./design-tokens";
+import { oauthAccountListState } from "./provider-workspace/catalog";
 
 export type OAuthHealthStatus = "healthy" | "cooldown" | "reauth_required" | "warning";
 
@@ -45,6 +46,35 @@ export function oauthHealthOperationalStatus(
   if (health.status === "reauth_required") return "auth-failed";
   if (health.status === "warning") return "degraded";
   return "unknown";
+}
+
+/**
+ * Provider-level OAuth readiness from a fetched account list.
+ * `authMode === "oauth"` is not enough — missing list or zero accounts is not ready
+ * (CONTROL V11). Does not invent per-account health; callers refine that separately.
+ */
+export type OAuthProviderReadiness = "ready" | "needs-setup" | "unknown";
+
+export function oauthProviderReadiness(
+  accounts: readonly unknown[] | undefined,
+): OAuthProviderReadiness {
+  const state = oauthAccountListState(accounts);
+  if (state === "present") return "ready";
+  if (state === "empty") return "needs-setup";
+  return "unknown";
+}
+
+export function oauthProviderOperationalStatus(
+  accounts: readonly unknown[] | undefined,
+): OperationalStatus {
+  switch (oauthProviderReadiness(accounts)) {
+    case "ready":
+      return "healthy";
+    case "needs-setup":
+      return "auth-failed";
+    default:
+      return "unknown";
+  }
 }
 
 export function oauthHealthBadgeClass(status: OAuthHealthStatus | undefined): string {

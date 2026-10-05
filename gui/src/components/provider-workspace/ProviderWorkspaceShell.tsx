@@ -13,6 +13,7 @@ import {
   hideRedundantChatGptForwardProviders,
   isFreeProvider,
   sortWorkspaceItems,
+  type OAuthAccountPresence,
   type ProviderSortMode,
   type WorkspaceItem,
   type WorkspaceProvider,
@@ -72,6 +73,7 @@ export default function ProviderWorkspaceShell({
   jsonSaving = false,
   modelsRefreshToken = 0,
   activeAccountNeedsReauth,
+  oauthAccountPresence,
   providerCooldowns,
   /** Stable key of active OAuth account ids — refetch overview quotas after account switch. */
   quotaRefreshKey = "",
@@ -91,6 +93,8 @@ export default function ProviderWorkspaceShell({
   /** Bump after login/config changes so /api/selected-models is refetched. */
   modelsRefreshToken?: number;
   activeAccountNeedsReauth?: Record<string, boolean>;
+  /** Fetched OAuth account lists — OAuth without accounts is needs-setup, not ready. */
+  oauthAccountPresence?: OAuthAccountPresence;
   /** Active weekly/inference-cap cooldowns from /api/config. */
   providerCooldowns?: Record<string, import("../../pages/providers-shared").ProviderCapCooldown>;
   /**
@@ -128,9 +132,12 @@ export default function ProviderWorkspaceShell({
   const filterWrapRef = useRef<HTMLDivElement>(null);
 
   const sections = useMemo(() => {
-    const base = buildProviderWorkspace(hideRedundantChatGptForwardProviders(providers));
+    const base = buildProviderWorkspace(
+      hideRedundantChatGptForwardProviders(providers),
+      oauthAccountPresence,
+    );
     return applyActiveAccountReauth(base, activeAccountNeedsReauth ?? {});
-  }, [providers, activeAccountNeedsReauth]);
+  }, [providers, oauthAccountPresence, activeAccountNeedsReauth]);
 
   const retryModels = useCallback(() => {
     setModelsLoadEpoch(epoch => epoch + 1);

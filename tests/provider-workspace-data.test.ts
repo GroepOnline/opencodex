@@ -54,12 +54,14 @@ function forwardProv(overrides: Partial<WorkspaceProvider> = {}): WorkspaceProvi
   });
 }
 
+const oauthAccounts = { anthropic: { accounts: [{ id: "acct_1" }] } };
+
 describe("applyActiveAccountReauth", () => {
   test("tags ready provider when active account needs reauth without moving sections", () => {
     const sections = buildProviderWorkspace({
       anthropic: prov({ authMode: "oauth" }),
       keyed: prov({ authMode: "key", hasApiKey: true }),
-    });
+    }, oauthAccounts);
     expect(sections.ready.map(p => p.name)).toContain("anthropic");
     const next = applyActiveAccountReauth(sections, { anthropic: true });
     expect(next.ready.map(p => p.name)).toContain("anthropic");
@@ -71,7 +73,7 @@ describe("applyActiveAccountReauth", () => {
   test("leaves provider ready when only inactive accounts would need reauth (map false/absent)", () => {
     const sections = buildProviderWorkspace({
       anthropic: prov({ authMode: "oauth" }),
-    });
+    }, oauthAccounts);
     const next = applyActiveAccountReauth(sections, { anthropic: false });
     expect(next.ready.map(p => p.name)).toContain("anthropic");
     expect(next.needsSetup.map(p => p.name)).not.toContain("anthropic");
@@ -90,12 +92,12 @@ describe("applyActiveAccountReauth", () => {
   test("tagged ready items keep section membership; binProviderStatus is needs-setup", () => {
     const sections = buildProviderWorkspace({
       anthropic: prov({ authMode: "oauth" }),
-    });
+    }, oauthAccounts);
     const next = applyActiveAccountReauth(sections, { anthropic: true });
     const tagged = next.ready.find(p => p.name === "anthropic");
     expect(tagged?.activeNeedsReauth).toBe(true);
     expect(binProviderStatus(tagged!)).toBe("needs-setup");
-    expect(binProviderStatus(prov({ authMode: "oauth" }))).toBe("ready");
+    expect(binProviderStatus({ ...prov({ authMode: "oauth" }), name: "anthropic", oauthAccountCount: 1 })).toBe("ready");
   });
 });
 
@@ -109,7 +111,7 @@ describe("catalog: section membership", () => {
     expect(sections.ready).toEqual([]);
   });
 
-  test("readiness rules: keyOptional/oauth/forward/local/loopback/hasApiKey are ready; bare key is needsSetup", () => {
+  test("readiness rules: keyOptional/oauth-with-accounts/forward/local/loopback/hasApiKey are ready; bare key and oauth-without-accounts are needsSetup", () => {
     const sections = buildProviderWorkspace({
       keyless: prov({ keyOptional: true }),
       oauth: prov({ authMode: "oauth" }),
@@ -119,14 +121,39 @@ describe("catalog: section membership", () => {
       loopback: prov({ baseUrl: "http://127.0.0.1:8000/v1" }),
       keyed: prov({ authMode: "key", hasApiKey: true }),
       missing: prov({ authMode: "key", hasApiKey: false }),
-    });
+    }, { oauth: { accounts: [{ id: "acct_oauth" }] } });
     expect(sections.ready.map(p => p.name)).toEqual(["keyless", "oauth", "forward", "local", "loopback", "keyed"]);
     expect(sections.needsSetup.map(p => p.name)).toEqual(["missing"]);
   });
 
+  test("CONTROL V11: oauth without accounts or missing account list is needsSetup, not ready", () => {
+    const bare = buildProviderWorkspace({
+      "google-antigravity": prov({ authMode: "oauth" }),
+      "github-copilot": prov({ authMode: "oauth" }),
+    });
+    expect(bare.ready.map(p => p.name)).toEqual([]);
+    expect(bare.needsSetup.map(p => p.name)).toEqual(["google-antigravity", "github-copilot"]);
+    expect(binProviderStatus(prov({ authMode: "oauth" }))).toBe("needs-setup");
+
+    const empty = buildProviderWorkspace({
+      "google-antigravity": prov({ authMode: "oauth" }),
+    }, { "google-antigravity": { accounts: [] } });
+    expect(empty.ready.map(p => p.name)).toEqual([]);
+    expect(empty.needsSetup.map(p => p.name)).toEqual(["google-antigravity"]);
+    expect(empty.needsSetup[0]?.oauthAccountCount).toBe(0);
+
+    const present = buildProviderWorkspace({
+      "google-antigravity": prov({ authMode: "oauth" }),
+    }, { "google-antigravity": { accounts: [{ id: "ga_1" }] } });
+    expect(present.ready.map(p => p.name)).toEqual(["google-antigravity"]);
+    expect(present.ready[0]?.oauthAccountCount).toBe(1);
+    expect(binProviderStatus(present.ready[0]!)).toBe("ready");
+  });
+
   test("binProviderStatus matches buildProviderWorkspace binning", () => {
     expect(binProviderStatus(prov({ disabled: true }))).toBe("disabled");
-    expect(binProviderStatus(prov({ authMode: "oauth" }))).toBe("ready");
+    expect(binProviderStatus(prov({ authMode: "oauth" }))).toBe("needs-setup");
+    expect(binProviderStatus({ ...prov({ authMode: "oauth" }), name: "xai", oauthAccountCount: 2 })).toBe("ready");
     expect(binProviderStatus(prov({ authMode: "key" }))).toBe("needs-setup");
   });
 
@@ -324,7 +351,7 @@ describe("usage: most-used and attention", () => {
       missing: prov({ authMode: "key" }),
       off: prov({ disabled: true }),
       silent: prov({ disabled: true }),
-    });
+    }, { healthy: { accounts: [{ id: "ok" }] } });
     const items = buildAttentionItems(sections, { missing: "Key was revoked", off: "Quota exhausted", healthy: "should never appear" });
     expect(items).toEqual([
       { name: "missing", reason: "Key was revoked" },
@@ -338,7 +365,7 @@ describe("usage: most-used and attention", () => {
     const base = buildProviderWorkspace({
       anthropic: prov({ authMode: "oauth" }),
       missing: prov({ authMode: "key" }),
-    });
+    }, { anthropic: { accounts: [{ id: "acct_1" }] } });
     const sections = applyActiveAccountReauth(base, { anthropic: true });
     const items = buildAttentionItems(sections, {});
     expect(items).toEqual([

@@ -118,8 +118,8 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
   );
   const recentTraffic = useMemo(() => logs.slice(0, 10), [logs]);
   const workspace = useMemo(
-    () => (config ? applyActiveAccountReauth(buildProviderWorkspace(config.providers), activeNeedsReauth) : null),
-    [config, activeNeedsReauth],
+    () => (config ? applyActiveAccountReauth(buildProviderWorkspace(config.providers, accountSets), activeNeedsReauth) : null),
+    [config, accountSets, activeNeedsReauth],
   );
   const degradedProviders = workspace
     ? workspace.needsSetup.length + workspace.ready.filter(p => p.activeNeedsReauth).length

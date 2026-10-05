@@ -1,6 +1,8 @@
 import type { OperationalStatus } from "../design-tokens";
 import {
   oauthHealthOperationalStatus,
+  oauthProviderOperationalStatus,
+  oauthProviderReadiness,
   type OAuthHealthView,
 } from "../oauth-health-display";
 import {
@@ -103,7 +105,7 @@ export function buildCapacityRows(
   activeNeedsReauth: Record<string, boolean>,
   limit = 3,
 ): CapacityRow[] {
-  const sections = applyActiveAccountReauth(buildProviderWorkspace(providers), activeNeedsReauth);
+  const sections = applyActiveAccountReauth(buildProviderWorkspace(providers, accountSets), activeNeedsReauth);
   const needsSetupNames = new Set(sections.needsSetup.map(p => p.name));
   const candidates = [...sections.ready, ...sections.needsSetup].slice(0, limit);
   const rows: CapacityRow[] = [];
@@ -113,14 +115,15 @@ export function buildCapacityRows(
       rows.push({ provider: item.name, status: "disabled", detailKey: "dash.overview.capDisabled" });
       continue;
     }
-    if (needsSetupNames.has(item.name)) {
-      rows.push({ provider: item.name, status: "auth-failed", detailKey: "dash.overview.capNeedsSetup" });
-      continue;
-    }
     const accounts = accountSets[item.name]?.accounts;
     if (item.authMode === "oauth") {
-      if (!accounts) {
-        rows.push({ provider: item.name, status: "unknown", detailKey: "dash.overview.capInsufficient" });
+      const readiness = oauthProviderReadiness(accounts);
+      if (readiness !== "ready") {
+        rows.push({
+          provider: item.name,
+          status: oauthProviderOperationalStatus(accounts),
+          detailKey: readiness === "unknown" ? "dash.overview.capInsufficient" : "dash.overview.capNeedsSetup",
+        });
         continue;
       }
       const counts = accountStatusCounts(accounts);
@@ -151,12 +154,20 @@ export function buildCapacityRows(
         });
         continue;
       }
+      if (counts.healthy === 0) {
+        rows.push({ provider: item.name, status: "auth-failed", detailKey: "dash.overview.capNeedsSetup" });
+        continue;
+      }
       rows.push({
         provider: item.name,
         status: "healthy",
         detailKey: "dash.overview.capReady",
         detailVars: { count: counts.healthy },
       });
+      continue;
+    }
+    if (needsSetupNames.has(item.name)) {
+      rows.push({ provider: item.name, status: "auth-failed", detailKey: "dash.overview.capNeedsSetup" });
       continue;
     }
     rows.push({ provider: item.name, status: "healthy", detailKey: "dash.overview.capKeyReady" });
@@ -171,7 +182,7 @@ export function buildOverviewIssues(
   activeNeedsReauth: Record<string, boolean>,
   cooldowns: Record<string, ProviderCapCooldown> | undefined,
 ): OverviewIssue[] {
-  const sections = applyActiveAccountReauth(buildProviderWorkspace(providers), activeNeedsReauth);
+  const sections = applyActiveAccountReauth(buildProviderWorkspace(providers, accountSets), activeNeedsReauth);
   const issues: OverviewIssue[] = [];
 
   for (const [provider, entry] of Object.entries(cooldowns ?? {})) {

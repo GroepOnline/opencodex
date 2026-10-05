@@ -8,7 +8,10 @@
  * Binning rules (applied in priority order):
  *  1. disabled === true              -> disabled
  *  2. keyOptional === true           -> ready  (key not required — not the same as free pricing)
- *  3. authMode === "oauth"           -> ready  (credentials managed externally)
+ *  3. authMode === "oauth"           -> ready only when a fetched account list
+ *     has ≥1 row. authMode alone means the provider *can* use the store
+ *     (CONTROL V11 / Lane G health-contract). Missing list or zero accounts
+ *     is needsSetup — never ready.
  *  4. authMode === "forward"         -> ready  (passes caller credentials through)
  *  5. authMode === "local"           -> ready  (local runtime, no key required)
  *  6. loopback base URL              -> ready  (local runtime, auth mode may be stripped)
@@ -65,6 +68,37 @@ export interface WorkspaceItem extends WorkspaceProvider {
   tier?: ProviderTier;
   /** Set by `applyActiveAccountReauth` when live auth health overrides config readiness. */
   activeNeedsReauth?: boolean;
+  /**
+   * Fetched OAuth account count when known. Undefined = list missing.
+   * `binProviderStatus` treats missing/zero as needs-setup (CONTROL V11).
+   */
+  oauthAccountCount?: number;
+}
+
+/** Fetched OAuth account lists keyed by provider id. Absent key = list missing. */
+export type OAuthAccountPresence = Readonly<Record<string, { accounts?: readonly unknown[] } | undefined>>;
+
+/** Missing list or zero rows — OAuth is not operationally ready. */
+export function oauthAccountListState(
+  accounts: readonly unknown[] | undefined,
+): "present" | "empty" | "missing" {
+  if (!accounts) return "missing";
+  return accounts.length > 0 ? "present" : "empty";
+}
+
+export function oauthAccountsMakeReady(accounts: readonly unknown[] | undefined): boolean {
+  return oauthAccountListState(accounts) === "present";
+}
+
+function oauthAccountCountFor(
+  name: string,
+  p: WorkspaceProvider,
+  presence?: OAuthAccountPresence,
+): number | undefined {
+  if (p.authMode !== "oauth") return undefined;
+  if (!presence || !Object.prototype.hasOwnProperty.call(presence, name)) return undefined;
+  const accounts = presence[name]?.accounts;
+  return Array.isArray(accounts) ? accounts.length : 0;
 }
 
 /** The three sections rendered in the Providers workspace. */
@@ -110,10 +144,16 @@ export function hasLoopbackBaseUrl(baseUrl: string): boolean {
   }
 }
 
-function isConfigurationReady(p: WorkspaceProvider): boolean {
-  return p.keyOptional === true ||
-    p.authMode === "oauth" ||
-    p.authMode === "forward" ||
+function isConfigurationReady(
+  name: string,
+  p: WorkspaceProvider,
+  presence?: OAuthAccountPresence,
+): boolean {
+  if (p.keyOptional === true) return true;
+  if (p.authMode === "oauth") {
+    return oauthAccountsMakeReady(presence?.[name]?.accounts);
+  }
+  return p.authMode === "forward" ||
     p.authMode === "local" ||
     hasLoopbackBaseUrl(p.baseUrl) ||
     p.hasApiKey === true;
@@ -202,20 +242,23 @@ export function sortWorkspaceItems(items: WorkspaceItem[], mode: ProviderSortMod
  */
 export function buildProviderWorkspace(
   providers: Record<string, WorkspaceProvider>,
+  oauthAccountPresence?: OAuthAccountPresence,
 ): WorkspaceSections {
   const ready: WorkspaceItem[] = [];
   const needsSetup: WorkspaceItem[] = [];
   const disabled: WorkspaceItem[] = [];
 
   for (const [name, p] of Object.entries(providers)) {
+    const oauthAccountCount = oauthAccountCountFor(name, p, oauthAccountPresence);
+    const stamped = oauthAccountCount !== undefined ? { oauthAccountCount } : {};
     if (p.disabled) {
-      disabled.push({ name, ...p });
+      disabled.push({ name, ...p, ...stamped });
       continue;
     }
-    if (isConfigurationReady(p)) {
-      ready.push({ name, ...p, tier: providerTier(name, p) });
+    if (isConfigurationReady(name, p, oauthAccountPresence)) {
+      ready.push({ name, ...p, tier: providerTier(name, p), ...stamped });
     } else {
-      needsSetup.push({ name, ...p });
+      needsSetup.push({ name, ...p, ...stamped });
     }
   }
 
@@ -260,7 +303,12 @@ export type ProviderStatus = "ready" | "needs-setup" | "disabled";
 export function binProviderStatus(p: WorkspaceProvider | WorkspaceItem): ProviderStatus {
   if (p.disabled) return "disabled";
   if ("activeNeedsReauth" in p && p.activeNeedsReauth) return "needs-setup";
-  if (isConfigurationReady(p)) return "ready";
+  if (p.authMode === "oauth") {
+    const count = "oauthAccountCount" in p ? p.oauthAccountCount : undefined;
+    return typeof count === "number" && count > 0 ? "ready" : "needs-setup";
+  }
+  const name = "name" in p ? p.name : "";
+  if (isConfigurationReady(name, p)) return "ready";
   return "needs-setup";
 }
 

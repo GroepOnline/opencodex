@@ -122,7 +122,7 @@ export default function ProviderAuthPanel({
     : deviceCodeOutcome === "unavailable"
       ? t("prov.linkCopyUnavailable")
       : t("prov.copyCode");
-  const loggedIn = accounts.length > 0 || oauth?.loggedIn === true;
+  const loggedIn = accounts.length > 0;
   const activeReauthAccount = accounts.find(a => a.active && a.needsReauth);
   const activeNeedsReauth = Boolean(activeReauthAccount);
 
@@ -360,7 +360,7 @@ export default function ProviderAuthPanel({
                 })}
               </ul>
             )}
-            {accountLoadState === "ready" && loggedIn && accounts.length === 0 && (
+            {accountLoadState === "ready" && accounts.length === 0 && (
               <div className="pwi-auth-state pwi-auth-state--empty">{t("pws.noAccounts")}</div>
             )}
             {loggedIn && (

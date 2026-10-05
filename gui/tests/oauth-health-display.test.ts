@@ -10,6 +10,8 @@ import {
   oauthHealthIsCooldown,
   oauthHealthShowsDoctor,
   oauthHealthShowsReauth,
+  oauthProviderOperationalStatus,
+  oauthProviderReadiness,
 } from "../src/oauth-health-display";
 import { displayAccountId, maskAccountId } from "../src/lib/privacy";
 import type { TFn } from "../src/i18n";
@@ -41,6 +43,15 @@ describe("oauth health badge helpers", () => {
     expect(oauthHealthShowsDoctor("cooldown")).toBe(false);
     expect(oauthHealthIsCooldown("cooldown")).toBe(true);
     expect(oauthHealthIsCooldown("healthy")).toBe(false);
+  });
+
+  test("oauth without accounts is not ready (CONTROL V11)", () => {
+    expect(oauthProviderReadiness(undefined)).toBe("unknown");
+    expect(oauthProviderReadiness([])).toBe("needs-setup");
+    expect(oauthProviderReadiness([{ id: "acct_1" }])).toBe("ready");
+    expect(oauthProviderOperationalStatus(undefined)).toBe("unknown");
+    expect(oauthProviderOperationalStatus([])).toBe("auth-failed");
+    expect(oauthProviderOperationalStatus([{ id: "acct_1" }])).toBe("healthy");
   });
 
   test("accountNeedsReauth combines legacy flag with health-only reauth", () => {
