@@ -28,9 +28,9 @@ canonical merged catalog at `$CODEX_HOME/opencodex-catalog.json`.
 Do not introduce alternate "native + OCX" catalog files or preserve a competing root
 `model_catalog_json` while OCX owns routing. Native bare OpenAI rows are authoritative live rows;
 preserve their capability fields unchanged so newly rolled-out models do not fall back to generic
-Codex metadata. When no managed catalog is available, remove the managed root catalog override and
-let native Codex metadata win. Restore/eject must recover the user's pre-OCX config through the
-journal.
+Codex metadata. When no managed catalog is available, or the selected bare native GPT/Codex slug is
+absent from it, remove the managed root catalog override and let native Codex metadata win.
+Restore/eject must recover the user's pre-OCX config through the journal.
 
 ## Tests and validation
 
