@@ -19,6 +19,19 @@ This file applies to `src/` and inherits the repository-wide rules in `/AGENTS.m
 - Adapter changes must preserve the internal event contract, streaming behavior, tool calls, cancellation, error mapping, and image handling relevant to that adapter.
 - Authentication, OAuth, token, credential, management API, and CORS changes are security-boundary changes.
 
+## Codex native coexistence
+
+For Codex integration work, the loopback path is additive: keep the built-in `openai` provider
+identity and ordinary ChatGPT/Codex auth, and let OCX own only the managed proxy transport plus the
+canonical merged catalog at `$CODEX_HOME/opencodex-catalog.json`.
+
+Do not introduce alternate "native + OCX" catalog files or preserve a competing root
+`model_catalog_json` while OCX owns routing. Native bare OpenAI rows are authoritative live rows;
+preserve their capability fields unchanged so newly rolled-out models do not fall back to generic
+Codex metadata. When no managed catalog is available, remove the managed root catalog override and
+let native Codex metadata win. Restore/eject must recover the user's pre-OCX config through the
+journal.
+
 ## Tests and validation
 
 - Place focused regression coverage near the existing tests for the affected subsystem.
