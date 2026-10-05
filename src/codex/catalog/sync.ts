@@ -140,7 +140,6 @@ export function finishUpstreamNativeEntry(clone: RawEntry, priority: number): Ra
 export function finishAuthoritativeNativeEntry(entry: RawEntry, priority: number): RawEntry {
   const clone = structuredClone(entry);
   if (priority !== 9) clone.priority = priority;
-  applyNativeOpenAiContextOverride(clone);
   return ensureStrictCatalogFields(normalizeServiceTiers(clone));
 }
 
