@@ -421,6 +421,9 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "theme.dark": "Donker",
   "theme.system": "Systeem",
   "lang.label": "Taal",
+  "telemetry.label": "Gebruiksanalyse",
+  "telemetry.stateOn": "Aan — privacyveilig, geen prompts",
+  "telemetry.stateOff": "Uit",
 
   // dashboard
   "dash.subtitle":
