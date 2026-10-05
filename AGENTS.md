@@ -95,8 +95,9 @@ authority for native model metadata.
   client/account and retain upstream capability metadata. In particular, do not drop or synthesize
   `context_window`, reasoning ladders, `supports_search_tool`, `tool_mode`, or
   `use_responses_lite` for newly rolled-out models.
-- If the OCX merged catalog cannot be materialized, prefer Codex's native catalog over a stale or
-  unrelated custom root `model_catalog_json`. The injection journal preserves the user's prior
+- If the OCX merged catalog cannot be materialized, or it does not contain the currently selected
+  bare native GPT/Codex model, prefer Codex's native catalog over generic fallback metadata or a
+  stale/custom root `model_catalog_json`. The injection journal preserves the user's prior
   config/catalog pointer and restores it on stop/eject.
 - A user-owned external `model_provider` or root `openai_base_url` remains an ownership boundary;
   OCX must not silently take it over.
