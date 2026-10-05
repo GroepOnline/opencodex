@@ -515,6 +515,15 @@ export async function injectCodexConfig(port: number, config?: OcxConfig, option
     };
   }
 
+  if (options.catalogPath && !isOpencodexCatalogPath(options.catalogPath)) {
+    return {
+      success: false,
+      message: `Codex config injection refused: OpenCodex owns the active merged catalog while routing is managed, `
+        + `but the requested catalog is not the canonical opencodex-catalog.json: ${options.catalogPath}. `
+        + `No files were changed; rebuild the catalog through 'ocx sync'.`,
+    };
+  }
+
   // Marker-owned native defaults are OpenCodex residue, never part of the
   // user's journal baseline. Clean them before either snapshotting or adding a
   // root routing key: inserting that key ahead of a marker-owned first table
@@ -556,14 +565,6 @@ export async function injectCodexConfig(port: number, config?: OcxConfig, option
   content = normalizeServiceTier(content);
   content = ensureFastModeFeature(content);
 
-  if (options.catalogPath && !isOpencodexCatalogPath(options.catalogPath)) {
-    return {
-      success: false,
-      message: `Codex config injection refused: OpenCodex owns the active merged catalog while routing is managed, `
-        + `but the requested catalog is not the canonical opencodex-catalog.json: ${options.catalogPath}. `
-        + `No files were changed; rebuild the catalog through 'ocx sync'.`,
-    };
-  }
   const catalogPath = chooseCatalogPathForInjection(content, options.catalogPath);
   // No OCX catalog means "native catalog", never "whatever custom root catalog happened to be there".
   // The original user value remains in the journal and is restored on stop/eject.
