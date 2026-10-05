@@ -280,4 +280,51 @@ describe("live native OpenAI catalog discovery", () => {
     expect(row?.tool_mode).toBe("code_mode_only");
     expect(row?.use_responses_lite).toBe(true);
   });
+
+  test("keeps authoritative live context metadata through the on-disk merge", () => {
+    const authoritativeKnownNative = {
+      ...liveNative,
+      slug: "gpt-5.6-sol",
+      display_name: "Live GPT-5.6 Sol",
+      context_window: 444_444,
+    };
+    const result = mergeCatalogEntriesForSync(
+      [authoritativeKnownNative],
+      [],
+      new Map(),
+      [],
+      false,
+      new Set(),
+      null,
+      new Set(),
+      new Set(),
+      "default",
+      new Set(),
+      false,
+      true,
+      new Set(["gpt-5.6-sol"]),
+    );
+
+    const row = result.find(entry => entry.slug === "gpt-5.6-sol");
+    expect(row?.context_window).toBe(444_444);
+  });
+
+  test("applies the native discovery deadline while resolving pool credentials", async () => {
+    const result = await discoverNativeOpenAiCatalog(config({
+      codexAccounts: [{ id: "pool-stuck", email: "stuck@example.test", isMain: false }],
+      activeCodexAccountId: "pool-stuck",
+    }), {
+      getEffectiveActiveCodexAccountId: () => "pool-stuck",
+      getMainAccountToken: () => null,
+      getValidCodexToken: async () => await new Promise(() => {}),
+      resolveClientVersion: () => "0.160.0",
+      timeoutMs: 25,
+      fetch: async () => {
+        throw new Error("fetch must not be reached when credential resolution exceeds the deadline");
+      },
+    });
+
+    expect(result.models).toEqual([]);
+  });
+
 });
