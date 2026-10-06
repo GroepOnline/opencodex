@@ -1,6 +1,5 @@
 import type { Rule } from "eslint";
-import type { Literal, Property } from "estree";
-import type { JSXAttribute } from "estree-jsx";
+import type { JSXAttribute, Literal, Property } from "estree";
 
 const HEX_IN_STRING = /#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/;
 const DEPAS_CLASS =
