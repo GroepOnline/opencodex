@@ -88,6 +88,23 @@ function deriveCodexRuntimeNotice(
   return { warning: null, fix: null };
 }
 
+async function loadStartupTray(
+  apiBase: string,
+  platform: string,
+  signal?: AbortSignal,
+) {
+  if (platform !== "win32") return { tray: null, error: false };
+  try {
+    const response = await fetch(`${apiBase}/api/windows-tray`, { signal });
+    if (!response.ok) throw new Error("tray status failed");
+    const tray: unknown = await response.json();
+    if (!isTrayStatusData(tray)) throw new Error("invalid tray status");
+    return { tray, error: false };
+  } catch {
+    return { tray: null, error: true };
+  }
+}
+
 export default function Startup({ apiBase }: { apiBase: string }) {
   const { t } = useI18n();
   const proxy = useKeyedClientResource<{ version: string; uptime: number }>(
@@ -174,18 +191,7 @@ export default function Startup({ apiBase }: { apiBase: string }) {
         setFailed(next.diagnosticStale);
         setLoading(false);
 
-        const trayPromise =
-          next.platform === "win32"
-            ? fetch(`${apiBase}/api/windows-tray`, { signal })
-                .then(async (trayRes) => {
-                  if (!trayRes.ok) throw new Error("tray status failed");
-                  const trayNext = (await trayRes.json()) as unknown;
-                  if (!isTrayStatusData(trayNext))
-                    throw new Error("invalid tray status");
-                  return { tray: trayNext, error: false as const };
-                })
-                .catch(() => ({ tray: null, error: true as const }))
-            : Promise.resolve({ tray: null, error: false as const });
+        const trayPromise = loadStartupTray(apiBase, next.platform, signal);
 
         const [settings, trayResult] = await Promise.all([
           settingsPromise,

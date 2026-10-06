@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import {
   accountOperationalStatus,
-  buildActiveNeedsReauthMap,
   buildCapacityRows,
   buildOverviewIssues,
   rollupAccounts,
@@ -28,7 +27,6 @@ test("cooldown and warnings are not reauthentication; legacy flag takes priority
     const sets = {
       fixture: { accounts: [{ id: "one", active: true, health }] },
     };
-    expect(buildActiveNeedsReauthMap(sets).fixture).toBe(false);
     expect(
       buildOverviewIssues({ fixture: provider }, sets).some(
         (row) => row.detailKey === "dash.overview.issueReauth",

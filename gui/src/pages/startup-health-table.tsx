@@ -48,6 +48,65 @@ function trayStatus(
   return "unknown";
 }
 
+const ROUTING_DETAILS: Record<StartupHealthData["routingKind"], TKey> = {
+  "opencodex-local": "health.detail.routingProxy",
+  native: "health.detail.routingNative",
+  "custom-local": "health.detail.routingCustomLocal",
+  "custom-remote": "health.detail.routingCustomRemote",
+  unknown: "health.detail.routingUnknown",
+};
+function serviceDetail(data: StartupHealthData): TKey {
+  if (!data.serviceSupported) return "health.detail.serviceUnsupported";
+  if (data.serviceViable) return "health.detail.serviceViable";
+  if (data.serviceConflict) return "health.detail.serviceConflict";
+  if (data.serviceStale) return "health.detail.serviceStale";
+  return data.serviceInstalled
+    ? "health.detail.serviceUnhealthy"
+    : "health.detail.serviceMissing";
+}
+function shimDetail(data: StartupHealthData): TKey {
+  if (!data.shimInstalled) return "health.detail.shimMissing";
+  if (!data.shimHealthy) return "health.detail.shimStale";
+  return data.autostartEnabled
+    ? "health.detail.shimHealthy"
+    : "health.detail.shimDisabled";
+}
+function trayDetail(
+  tray: TrayStatusData | null,
+  loading: boolean,
+  error: boolean,
+): TKey {
+  if (loading) return "health.detail.trayLoading";
+  if (error || !tray) return "health.detail.trayUnavailable";
+  if (tray.stale) return "health.detail.trayStale";
+  if (tray.running) return "health.detail.trayRunning";
+  return tray.installed
+    ? "health.detail.trayStopped"
+    : "health.detail.trayMissing";
+}
+function proxyRow(
+  online: boolean | null,
+  version: string | undefined,
+  uptime: number | undefined,
+  locale: string,
+): HealthRow {
+  const observed =
+    online === true && version !== undefined && uptime !== undefined;
+  return {
+    id: "proxy",
+    labelKey: "health.row.proxy",
+    status: online === null ? "unknown" : online ? "healthy" : "degraded",
+    detailKey: observed
+      ? "health.detail.proxyOnline"
+      : online === false
+        ? "health.detail.proxyOffline"
+        : "health.detail.pending",
+    detailVars: observed
+      ? { version, uptime: formatUptime(uptime, locale) }
+      : undefined,
+  };
+}
+
 export function StartupHealthTable({
   data,
   failed,
@@ -71,22 +130,7 @@ export function StartupHealthTable({
   const diagnosticUnavailable = failed || data.diagnosticStale;
 
   const rows: HealthRow[] = [
-    {
-      id: "proxy",
-      labelKey: "health.row.proxy",
-      status:
-        proxyOnline === null ? "unknown" : proxyOnline ? "healthy" : "degraded",
-      detailKey:
-        proxyOnline && proxyVersion
-          ? "health.detail.proxyOnline"
-          : proxyOnline === false
-            ? "health.detail.proxyOffline"
-            : "health.detail.pending",
-      detailVars:
-        proxyOnline && proxyVersion && typeof proxyUptime === "number"
-          ? { version: proxyVersion, uptime: formatUptime(proxyUptime, locale) }
-          : undefined,
-    },
+    proxyRow(proxyOnline, proxyVersion, proxyUptime, locale),
     {
       id: "mgmt",
       labelKey: "health.row.mgmtApi",
@@ -97,16 +141,7 @@ export function StartupHealthTable({
       id: "routing",
       labelKey: "health.row.routing",
       status: routingStatus(data, diagnosticUnavailable),
-      detailKey:
-        data.routingKind === "opencodex-local"
-          ? "health.detail.routingProxy"
-          : data.routingKind === "native"
-            ? "health.detail.routingNative"
-            : data.routingKind === "custom-local"
-              ? "health.detail.routingCustomLocal"
-              : data.routingKind === "custom-remote"
-                ? "health.detail.routingCustomRemote"
-                : "health.detail.routingUnknown",
+      detailKey: ROUTING_DETAILS[data.routingKind],
     },
     {
       id: "service",
@@ -114,17 +149,7 @@ export function StartupHealthTable({
       status: diagnosticUnavailable ? "unknown" : serviceStatus(data),
       detailKey: diagnosticUnavailable
         ? "health.detail.mgmtStale"
-        : !data.serviceSupported
-          ? "health.detail.serviceUnsupported"
-          : data.serviceViable
-            ? "health.detail.serviceViable"
-            : data.serviceConflict
-              ? "health.detail.serviceConflict"
-              : data.serviceStale
-                ? "health.detail.serviceStale"
-                : data.serviceInstalled
-                  ? "health.detail.serviceUnhealthy"
-                  : "health.detail.serviceMissing",
+        : serviceDetail(data),
     },
     {
       id: "shim",
@@ -132,13 +157,7 @@ export function StartupHealthTable({
       status: diagnosticUnavailable ? "unknown" : shimStatus(data),
       detailKey: diagnosticUnavailable
         ? "health.detail.mgmtStale"
-        : !data.shimInstalled
-          ? "health.detail.shimMissing"
-          : data.shimHealthy && data.autostartEnabled
-            ? "health.detail.shimHealthy"
-            : data.shimHealthy
-              ? "health.detail.shimDisabled"
-              : "health.detail.shimStale",
+        : shimDetail(data),
     },
   ];
 
@@ -147,17 +166,7 @@ export function StartupHealthTable({
       id: "tray",
       labelKey: "health.row.windowsTray",
       status: trayStatus(tray, trayLoading, trayError),
-      detailKey: trayLoading
-        ? "health.detail.trayLoading"
-        : trayError || !tray
-          ? "health.detail.trayUnavailable"
-          : tray.running && !tray.stale
-            ? "health.detail.trayRunning"
-            : tray.stale
-              ? "health.detail.trayStale"
-              : tray.installed
-                ? "health.detail.trayStopped"
-                : "health.detail.trayMissing",
+      detailKey: trayDetail(tray, trayLoading, trayError),
     });
   }
 

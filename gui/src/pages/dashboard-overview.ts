@@ -38,19 +38,6 @@ export function accountOperationalStatus(
   return oauthHealthOperationalStatus(account.health);
 }
 
-export function buildActiveNeedsReauthMap(
-  sets: AccountSets,
-): Record<string, boolean> {
-  return Object.fromEntries(
-    Object.entries(sets).map(([provider, set]) => {
-      const active =
-        set.accounts.find((a) => a.active) ??
-        set.accounts.find((a) => a.id === set.activeAccountId);
-      return [provider, accountNeedsReauth(active)];
-    }),
-  );
-}
-
 export function rollupAccounts(sets: AccountSets, names: readonly string[]) {
   let ready = 0;
   let degraded = 0;
@@ -64,6 +51,44 @@ export function rollupAccounts(sets: AccountSets, names: readonly string[]) {
     ready,
     degraded,
     loaded: names.every((name) => sets[name] !== undefined),
+  };
+}
+
+const STATUS_DETAIL_KEYS: Partial<Record<OperationalStatus, TKey>> = {
+  "rate-limited": "dash.overview.issueRateLimit",
+  cooldown: "dash.overview.issueCooldown",
+  "auth-failed": "dash.overview.issueReauth",
+  expired: "health.status.expired",
+  degraded: "dash.overview.issueDegraded",
+};
+function activeAccountStatus(set: AccountSets[string]): OperationalStatus {
+  const active =
+    set.accounts.find((account) => account.active) ??
+    set.accounts.find((account) => account.id === set.activeAccountId);
+  return active ? accountOperationalStatus(active) : "unknown";
+}
+function oauthIssue(
+  provider: string,
+  set: AccountSets[string] | undefined,
+): OverviewRow | undefined {
+  if (!set)
+    return {
+      provider,
+      status: "unknown",
+      detailKey: "dash.overview.capInsufficient",
+    };
+  if (!set.accounts.length)
+    return {
+      provider,
+      status: "auth-failed",
+      detailKey: "dash.overview.issueNeedsSetup",
+    };
+  const status = activeAccountStatus(set);
+  if (status === "healthy") return undefined;
+  return {
+    provider,
+    status,
+    detailKey: STATUS_DETAIL_KEYS[status] ?? "dash.overview.capInsufficient",
   };
 }
 
@@ -97,10 +122,7 @@ export function buildCapacityRows(
           status: "auth-failed",
           detailKey: "dash.overview.capNeedsSetup",
         };
-      const active =
-        set.accounts.find((a) => a.active) ??
-        set.accounts.find((a) => a.id === set.activeAccountId);
-      const status = active ? accountOperationalStatus(active) : "unknown";
+      const status = activeAccountStatus(set);
       const count = set.accounts.filter(
         (a) => accountOperationalStatus(a) === "healthy",
       ).length;
@@ -110,17 +132,7 @@ export function buildCapacityRows(
         detailKey:
           status === "healthy"
             ? "dash.overview.capReady"
-            : status === "rate-limited"
-              ? "dash.overview.issueRateLimit"
-              : status === "cooldown"
-                ? "dash.overview.issueCooldown"
-                : status === "auth-failed"
-                  ? "dash.overview.issueReauth"
-                  : status === "expired"
-                    ? "health.status.expired"
-                    : status === "degraded"
-                      ? "dash.overview.issueDegraded"
-                      : "dash.overview.capInsufficient",
+            : (STATUS_DETAIL_KEYS[status] ?? "dash.overview.capInsufficient"),
         detailVars: { count },
       };
     })
@@ -144,44 +156,8 @@ export function buildOverviewIssues(
         detailVars: { reason: cap.reason },
       });
     if (config.authMode === "oauth" && !config.keyOptional) {
-      const set = sets[provider];
-      if (!set) {
-        issues.push({
-          provider,
-          status: "unknown",
-          detailKey: "dash.overview.capInsufficient",
-        });
-        continue;
-      }
-      if (!set.accounts.length) {
-        issues.push({
-          provider,
-          status: "auth-failed",
-          detailKey: "dash.overview.issueNeedsSetup",
-        });
-        continue;
-      }
-      const active =
-        set.accounts.find((a) => a.active) ??
-        set.accounts.find((a) => a.id === set.activeAccountId);
-      const status = active ? accountOperationalStatus(active) : "unknown";
-      if (status !== "healthy")
-        issues.push({
-          provider,
-          status,
-          detailKey:
-            status === "auth-failed"
-              ? "dash.overview.issueReauth"
-              : status === "rate-limited"
-                ? "dash.overview.issueRateLimit"
-                : status === "cooldown"
-                  ? "dash.overview.issueCooldown"
-                  : status === "expired"
-                    ? "health.status.expired"
-                    : status === "degraded"
-                      ? "dash.overview.issueDegraded"
-                      : "dash.overview.capInsufficient",
-        });
+      const issue = oauthIssue(provider, sets[provider]);
+      if (issue) issues.push(issue);
     } else if (binProviderStatus(config) !== "ready")
       issues.push({
         provider,
