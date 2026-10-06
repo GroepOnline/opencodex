@@ -86,8 +86,8 @@ export function ProviderHealthOverview({ apiBase }: { apiBase: string }) {
     );
   const rows = (items: OverviewRow[]) => (
     <DataList>
-      {items.map((row, i) => (
-        <DataRow key={`${row.provider}/${i}`}>
+      {items.map((row) => (
+        <DataRow key={`${row.provider}/${row.detailKey}`}>
           <span>{formatProviderDisplayName(row.provider)}</span>
           <StatusBadge status={row.status}>
             {t(row.detailKey, row.detailVars)}
