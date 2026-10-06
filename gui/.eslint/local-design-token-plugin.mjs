@@ -1,6 +1,3 @@
-import type { Rule } from "eslint";
-import type { JSXAttribute, Literal, Property } from "estree";
-
 const HEX_IN_STRING = /#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/;
 const DEPAS_CLASS =
   /\bdepas-(?:view|app|nav|sheet|offline|main|topbar|brand|viewkop|viewsub)/;
@@ -8,12 +5,10 @@ const LEGACY_TOKEN = /--(?:wijn|gietijzer)(?:-[a-z0-9]+)*\b|\bsignaal-/i;
 const INLINE_FONT_SIZE = /^\d+(?:\.\d+)?px$/;
 const RAW_EASING =
   /cubic-bezier\(|(?<![\w-])ease(?:-in|-out|-in-out)?(?![\w-])/;
-
-function literalValue(node: Literal): string | null {
+function literalValue(node) {
   return typeof node.value === "string" ? node.value : null;
 }
-
-const noDepasDialect: Rule.RuleModule = {
+const noDepasDialect = {
   meta: {
     type: "problem",
     docs: {
@@ -29,7 +24,7 @@ const noDepasDialect: Rule.RuleModule = {
   },
   create(context) {
     return {
-      Literal(node: Literal) {
+      Literal(node) {
         const value = literalValue(node);
         if (!value) return;
         if (DEPAS_CLASS.test(value)) {
@@ -50,16 +45,10 @@ const noDepasDialect: Rule.RuleModule = {
     };
   },
 };
-
-function isStyleProp(attr: JSXAttribute): boolean {
+function isStyleProp(attr) {
   return attr.name.type === "JSXIdentifier" && attr.name.name === "style";
 }
-
-function walkStyleObject(
-  context: Rule.RuleContext,
-  node: Property,
-  messageId: "inlineHex" | "inlineFontSize" | "inlineEasing",
-) {
+function walkStyleObject(context, node, messageId) {
   const key =
     node.key.type === "Identifier"
       ? node.key.name
@@ -68,7 +57,6 @@ function walkStyleObject(
         : null;
   const value = node.value;
   if (value.type !== "Literal" || typeof value.value !== "string") return;
-
   if (messageId === "inlineHex" && HEX_IN_STRING.test(value.value)) {
     context.report({
       node: value,
@@ -98,8 +86,7 @@ function walkStyleObject(
     });
   }
 }
-
-const noInlineVisualValues: Rule.RuleModule = {
+const noInlineVisualValues = {
   meta: {
     type: "suggestion",
     docs: {
@@ -118,7 +105,7 @@ const noInlineVisualValues: Rule.RuleModule = {
   },
   create(context) {
     return {
-      JSXAttribute(node: JSXAttribute) {
+      JSXAttribute(node) {
         if (
           !isStyleProp(node) ||
           !node.value ||
@@ -137,7 +124,6 @@ const noInlineVisualValues: Rule.RuleModule = {
     };
   },
 };
-
 export default {
   rules: {
     "no-depas-dialect": noDepasDialect,

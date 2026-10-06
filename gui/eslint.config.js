@@ -6,7 +6,7 @@ import tseslint from "typescript-eslint";
 import { defineConfig, globalIgnores } from "eslint/config";
 import { I18N_DATA_FILES, I18N_UI_FILES } from "./.eslint/i18n-file-groups.ts";
 import localI18nPlugin from "./.eslint/local-i18n-plugin.ts";
-import localDesignTokenPlugin from "./.eslint/local-design-token-plugin.ts";
+import localDesignTokenPlugin from "./.eslint/local-design-token-plugin.mjs";
 
 export default defineConfig([
   globalIgnores([
