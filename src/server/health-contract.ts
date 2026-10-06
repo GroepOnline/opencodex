@@ -105,10 +105,10 @@ function providerHasCredential(
   name: string,
   provider: OcxProviderConfig,
 ): boolean {
-  if (Boolean(provider.apiKey) || provider.authMode === "forward") return true;
+  if (provider.authMode === "forward") return true;
   if (provider.authMode === "oauth")
     return providerHasOAuthStoreCredential(name);
-  return false;
+  return Boolean(provider.apiKey);
 }
 
 function providerHealth(config: OcxConfig): ProviderHealthComponent[] {

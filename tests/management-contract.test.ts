@@ -210,6 +210,54 @@ describe("GET /api/health", () => {
     }
   });
 
+  test("oauth mode ignores an API key when no stored account exists", async () => {
+    saveConfig({
+      ...remoteConfig(),
+      defaultProvider: "google-antigravity",
+      providers: {
+        "google-antigravity": {
+          adapter: "openai-chat",
+          baseUrl: "https://example.test/v1",
+          authMode: "oauth",
+          apiKey: "sk-test",
+          models: ["gemini-test"],
+        },
+      },
+    });
+    const server = startServer(0);
+    try {
+      const res = await fetch(new URL("/api/health", server.url), {
+        headers: { "x-opencodex-api-key": "admin-secret" },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        status: string;
+        components: {
+          providers: Array<{ name: string; status: string; message: string }>;
+        };
+        causality: Array<{ component: string; reason: string }>;
+      };
+      expect(body.status).toBe("degraded");
+      expect(
+        body.components.providers.find(
+          (row) => row.name === "google-antigravity",
+        ),
+      ).toMatchObject({
+        status: "degraded",
+        message: expect.stringMatching(/missing credentials/i),
+      });
+      expect(
+        body.causality.some(
+          (entry) =>
+            entry.component === "provider:google-antigravity" &&
+            /missing credentials/i.test(entry.reason),
+        ),
+      ).toBe(true);
+    } finally {
+      await server.stop(true);
+    }
+  });
+
   test("oauth provider with a stored auth.json account can be ok", async () => {
     saveConfig({
       ...remoteConfig(),
