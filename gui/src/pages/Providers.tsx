@@ -434,6 +434,7 @@ export default function Providers({ apiBase }: { apiBase: string }) {
         jsonSaving={jsonSaving}
         modelsRefreshToken={modelsRefreshToken}
         activeAccountNeedsReauth={activeAccountNeedsReauth}
+        oauthAccountPresence={accountSets}
         quotaRefreshKey={quotaRefreshKey}
         detail={(item, data) => {
           const loginStatus =

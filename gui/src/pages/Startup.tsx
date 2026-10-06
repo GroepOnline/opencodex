@@ -6,6 +6,8 @@ import {
   writeSessionListCache,
 } from "../session-list-cache";
 import MemoryObservabilityCard from "../components/MemoryObservabilityCard";
+import { StartupHealthTable } from "./startup-health-table";
+import { useKeyedClientResource } from "../client-resource";
 import { PageHeader } from "../components/primitives/page-header";
 import {
   Empty,
@@ -86,8 +88,35 @@ function deriveCodexRuntimeNotice(
   return { warning: null, fix: null };
 }
 
+async function loadStartupTray(
+  apiBase: string,
+  platform: string,
+  signal?: AbortSignal,
+) {
+  if (platform !== "win32") return { tray: null, error: false };
+  try {
+    const response = await fetch(`${apiBase}/api/windows-tray`, { signal });
+    if (!response.ok) throw new Error("tray status failed");
+    const tray: unknown = await response.json();
+    if (!isTrayStatusData(tray)) throw new Error("invalid tray status");
+    return { tray, error: false };
+  } catch {
+    return { tray: null, error: true };
+  }
+}
+
 export default function Startup({ apiBase }: { apiBase: string }) {
   const { t } = useI18n();
+  const proxy = useKeyedClientResource<{ version: string; uptime: number }>(
+    `startup-healthz:${apiBase}`,
+    [],
+    async (signal) => {
+      const res = await fetch(`${apiBase}/healthz`, { signal });
+      if (!res.ok) throw new Error(String(res.status));
+      return res.json();
+    },
+    { pollMs: 15_000 },
+  );
   const cacheKey = `${STARTUP_PAGE_CACHE_PREFIX}${apiBase}`;
   const cached = useMemo(
     () => readSessionListCache<StartupPageCache>(cacheKey),
@@ -162,18 +191,7 @@ export default function Startup({ apiBase }: { apiBase: string }) {
         setFailed(next.diagnosticStale);
         setLoading(false);
 
-        const trayPromise =
-          next.platform === "win32"
-            ? fetch(`${apiBase}/api/windows-tray`, { signal })
-                .then(async (trayRes) => {
-                  if (!trayRes.ok) throw new Error("tray status failed");
-                  const trayNext = (await trayRes.json()) as unknown;
-                  if (!isTrayStatusData(trayNext))
-                    throw new Error("invalid tray status");
-                  return { tray: trayNext, error: false as const };
-                })
-                .catch(() => ({ tray: null, error: true as const }))
-            : Promise.resolve({ tray: null, error: false as const });
+        const trayPromise = loadStartupTray(apiBase, next.platform, signal);
 
         const [settings, trayResult] = await Promise.all([
           settingsPromise,
@@ -418,6 +436,16 @@ export default function Startup({ apiBase }: { apiBase: string }) {
             </div>
           )}
           <StartupHeroSection failed={failed} data={data} />
+          <StartupHealthTable
+            data={data}
+            failed={failed}
+            proxyVersion={proxy.data?.version}
+            proxyUptime={proxy.data?.uptime}
+            proxyOnline={proxy.error ? false : proxy.data ? true : null}
+            tray={tray}
+            trayLoading={trayLoading}
+            trayError={trayError}
+          />
           <StartupDetailsSection
             data={data}
             failed={failed}

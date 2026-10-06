@@ -8,7 +8,7 @@
  * Binning rules (applied in priority order):
  *  1. disabled === true              -> disabled
  *  2. keyOptional === true           -> ready  (key not required — not the same as free pricing)
- *  3. authMode === "oauth"           -> ready  (credentials managed externally)
+ *  3. authMode === "oauth"           -> ready only with a fetched, non-empty account list
  *  4. authMode === "forward"         -> ready  (passes caller credentials through)
  *  5. authMode === "local"           -> ready  (local runtime, no key required)
  *  6. loopback base URL              -> ready  (local runtime, auth mode may be stripped)
@@ -67,6 +67,25 @@ export interface WorkspaceItem extends WorkspaceProvider {
   tier?: ProviderTier;
   /** Set by `applyActiveAccountReauth` when live auth health overrides config readiness. */
   activeNeedsReauth?: boolean;
+  /** Fetched account count; undefined means discovery is unavailable. */
+  oauthAccountCount?: number;
+}
+
+export type OAuthAccountPresence = Readonly<
+  Record<string, { accounts?: readonly unknown[] } | undefined>
+>;
+
+export function oauthAccountListState(
+  accounts: readonly unknown[] | undefined,
+): "present" | "empty" | "missing" {
+  if (!accounts) return "missing";
+  return accounts.length > 0 ? "present" : "empty";
+}
+
+export function oauthAccountsMakeReady(
+  accounts: readonly unknown[] | undefined,
+): boolean {
+  return oauthAccountListState(accounts) === "present";
 }
 
 /** The three sections rendered in the Providers workspace. */
@@ -94,7 +113,8 @@ const CANONICAL_FORWARD_PROVIDER = "openai";
 function normalizedBaseUrl(value: string): string | undefined {
   try {
     const url = new URL(value.trim());
-    if (url.username || url.password || url.search || url.hash) return undefined;
+    if (url.username || url.password || url.search || url.hash)
+      return undefined;
     const path = url.pathname.replace(/\/+$/, "");
     return `${url.origin}${path}`;
   } catch {
@@ -105,20 +125,30 @@ function normalizedBaseUrl(value: string): string | undefined {
 /** Loopback host check shared with the provider-kind classifier (WP080a). */
 export function hasLoopbackBaseUrl(baseUrl: string): boolean {
   try {
-    const hostname = new URL(baseUrl).hostname.replace(/^\[|\]$/g, "").toLowerCase();
-    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+    const hostname = new URL(baseUrl).hostname
+      .replace(/^\[|\]$/g, "")
+      .toLowerCase();
+    return (
+      hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
+    );
   } catch {
     return false;
   }
 }
 
-function isConfigurationReady(p: WorkspaceProvider): boolean {
-  return p.keyOptional === true ||
-    p.authMode === "oauth" ||
+function isConfigurationReady(
+  p: WorkspaceProvider,
+  oauthAccountCount?: number,
+): boolean {
+  if (p.keyOptional === true) return true;
+  if (p.authMode === "oauth")
+    return typeof oauthAccountCount === "number" && oauthAccountCount > 0;
+  return (
     p.authMode === "forward" ||
     p.authMode === "local" ||
     hasLoopbackBaseUrl(p.baseUrl) ||
-    p.hasApiKey === true;
+    p.hasApiKey === true
+  );
 }
 
 /**
@@ -127,9 +157,11 @@ function isConfigurationReady(p: WorkspaceProvider): boolean {
  * strict casing, no fallback.
  */
 function isCanonicalForwardShape(p: WorkspaceProvider): boolean {
-  return p.adapter === "openai-responses"
-    && p.authMode === "forward"
-    && normalizedBaseUrl(p.baseUrl) === CODEX_FORWARD_BASE_URL;
+  return (
+    p.adapter === "openai-responses" &&
+    p.authMode === "forward" &&
+    normalizedBaseUrl(p.baseUrl) === CODEX_FORWARD_BASE_URL
+  );
 }
 
 /**
@@ -146,10 +178,12 @@ export function isAccountProvider(name: string, p: WorkspaceProvider): boolean {
  * `binProviderStatus` for readiness.
  */
 export function isFreeProvider(p: WorkspaceProvider): boolean {
-  return p.freeTier === true
-    || p.keyOptional === true
-    || p.authMode === "local"
-    || hasLoopbackBaseUrl(p.baseUrl);
+  return (
+    p.freeTier === true ||
+    p.keyOptional === true ||
+    p.authMode === "local" ||
+    hasLoopbackBaseUrl(p.baseUrl)
+  );
 }
 
 /** Three-way tier: accounts wins over free; everything else is paid. */
@@ -160,13 +194,18 @@ export function providerTier(name: string, p: WorkspaceProvider): ProviderTier {
 }
 
 /** Rail / list sort modes for the providers workspace. */
-export type ProviderSortMode = "az" | "za" | "free-paid" | "paid-free" | "accounts-first";
+export type ProviderSortMode =
+  "az" | "za" | "free-paid" | "paid-free" | "accounts-first";
 
-export function sortWorkspaceItems(items: WorkspaceItem[], mode: ProviderSortMode): WorkspaceItem[] {
+export function sortWorkspaceItems(
+  items: WorkspaceItem[],
+  mode: ProviderSortMode,
+): WorkspaceItem[] {
   const copy = [...items];
   const byName = (a: WorkspaceItem, b: WorkspaceItem) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-  const tierOf = (i: WorkspaceItem): ProviderTier => i.tier ?? providerTier(i.name, i);
+  const tierOf = (i: WorkspaceItem): ProviderTier =>
+    i.tier ?? providerTier(i.name, i);
   switch (mode) {
     case "az":
       return copy.sort(byName);
@@ -204,20 +243,31 @@ export function sortWorkspaceItems(items: WorkspaceItem[], mode: ProviderSortMod
  */
 export function buildProviderWorkspace(
   providers: Record<string, WorkspaceProvider>,
+  oauthAccountPresence?: OAuthAccountPresence,
 ): WorkspaceSections {
   const ready: WorkspaceItem[] = [];
   const needsSetup: WorkspaceItem[] = [];
   const disabled: WorkspaceItem[] = [];
 
   for (const [name, p] of Object.entries(providers)) {
+    const accounts = oauthAccountPresence?.[name]?.accounts;
+    const oauthAccountCount =
+      p.authMode === "oauth" && Array.isArray(accounts)
+        ? accounts.length
+        : undefined;
+    const item = {
+      name,
+      ...p,
+      ...(oauthAccountCount === undefined ? {} : { oauthAccountCount }),
+    };
     if (p.disabled) {
-      disabled.push({ name, ...p });
+      disabled.push(item);
       continue;
     }
-    if (isConfigurationReady(p)) {
-      ready.push({ name, ...p, tier: providerTier(name, p) });
+    if (isConfigurationReady(p, oauthAccountCount)) {
+      ready.push({ ...item, tier: providerTier(name, p) });
     } else {
-      needsSetup.push({ name, ...p });
+      needsSetup.push(item);
     }
   }
 
@@ -229,9 +279,12 @@ export function providerAvailabilityLine(item: WorkspaceItem): {
   poolCount: number;
   hopProvider?: string;
 } {
-  const poolCount = typeof item.keyPoolCount === "number"
-    ? item.keyPoolCount
-    : (item.hasApiKey ? 1 : 0);
+  const poolCount =
+    typeof item.keyPoolCount === "number"
+      ? item.keyPoolCount
+      : item.hasApiKey
+        ? 1
+        : 0;
   const hop = item.fallback?.[0]?.provider?.trim();
   return hop ? { poolCount, hopProvider: hop } : { poolCount };
 }
@@ -254,7 +307,9 @@ export function applyActiveAccountReauth(
   if (demote.size === 0) return sections;
 
   const tag = (items: WorkspaceItem[]): WorkspaceItem[] =>
-    items.map(item => (demote.has(item.name) ? { ...item, activeNeedsReauth: true } : item));
+    items.map((item) =>
+      demote.has(item.name) ? { ...item, activeNeedsReauth: true } : item,
+    );
 
   return {
     ready: tag(sections.ready),
@@ -271,10 +326,18 @@ export type ProviderStatus = "ready" | "needs-setup" | "disabled";
  * Applies the same priority rules as buildProviderWorkspace, with an optional
  * live-auth overlay when `activeNeedsReauth` is set on a WorkspaceItem.
  */
-export function binProviderStatus(p: WorkspaceProvider | WorkspaceItem): ProviderStatus {
+export function binProviderStatus(
+  p: WorkspaceProvider | WorkspaceItem,
+): ProviderStatus {
   if (p.disabled) return "disabled";
   if ("activeNeedsReauth" in p && p.activeNeedsReauth) return "needs-setup";
-  if (isConfigurationReady(p)) return "ready";
+  if (
+    isConfigurationReady(
+      p,
+      "oauthAccountCount" in p ? p.oauthAccountCount : undefined,
+    )
+  )
+    return "ready";
   return "needs-setup";
 }
 
@@ -283,9 +346,9 @@ export function binProviderStatus(p: WorkspaceProvider | WorkspaceItem): Provide
  * ChatGPT passthrough. Backend may still keep both ids (OAuth scratch / images);
  * the workspace should show one row per passthrough surface.
  */
-export function hideRedundantChatGptForwardProviders<T extends WorkspaceProvider>(
-  providers: Record<string, T> | null | undefined,
-): Record<string, T> {
+export function hideRedundantChatGptForwardProviders<
+  T extends WorkspaceProvider,
+>(providers: Record<string, T> | null | undefined): Record<string, T> {
   if (!providers) return {};
   const openai = providers.openai;
   const chatgpt = providers.chatgpt;

@@ -241,3 +241,16 @@ Adding **Ollama Cloud** or another catalog provider from the dashboard copies it
 classification into the saved provider config, so the [vision sidecar](/guides/sidecars/)
 is gated correctly without manual classification.
 :::
+
+## Provider readiness and component health
+
+The Dashboard keeps persisted usage totals and recent traffic while adding provider capacity
+and attention panels. OAuth mode alone is not proof of readiness: a successfully fetched empty
+account list needs setup; unavailable account discovery is unknown. Cooldowns and rate limits
+remain distinct from reauthentication. An inactive account warning does not override a healthy
+active account, and expired accounts remain unavailable for selection.
+
+The Health page adds a component table alongside the existing startup diagnosis and recovery
+actions. It reports the proxy, management API, routing, restart protection, shim and Windows tray
+with a cause or check description. Persistence stays unknown when the API does not report it;
+publication does not imply a production deployment.

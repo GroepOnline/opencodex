@@ -15,6 +15,7 @@ import {
   sortWorkspaceItems,
   type ProviderSortMode,
   type WorkspaceItem,
+  type OAuthAccountPresence,
   type WorkspaceProvider,
   type WorkspaceSections,
 } from "../../provider-workspace/catalog";
@@ -80,6 +81,7 @@ export default function ProviderWorkspaceShell({
   jsonSaving = false,
   modelsRefreshToken = 0,
   activeAccountNeedsReauth,
+  oauthAccountPresence,
   providerCooldowns,
   availability,
   /** Stable key of active OAuth account ids — refetch overview quotas after account switch. */
@@ -100,6 +102,7 @@ export default function ProviderWorkspaceShell({
   /** Bump after login/config changes so /api/selected-models is refetched. */
   modelsRefreshToken?: number;
   activeAccountNeedsReauth?: Record<string, boolean>;
+  oauthAccountPresence?: OAuthAccountPresence;
   /** Active weekly/inference-cap cooldowns from /api/config. */
   providerCooldowns?: Record<string, import("../../pages/providers-shared").ProviderCapCooldown>;
   /** Live routing read-model from GET /api/availability. */
@@ -139,9 +142,9 @@ export default function ProviderWorkspaceShell({
   const filterWrapRef = useRef<HTMLDivElement>(null);
 
   const sections = useMemo(() => {
-    const base = buildProviderWorkspace(hideRedundantChatGptForwardProviders(providers));
+    const base = buildProviderWorkspace(hideRedundantChatGptForwardProviders(providers), oauthAccountPresence);
     return applyActiveAccountReauth(base, activeAccountNeedsReauth ?? {});
-  }, [providers, activeAccountNeedsReauth]);
+  }, [providers, oauthAccountPresence, activeAccountNeedsReauth]);
 
   const retryModels = useCallback(() => {
     setModelsLoadEpoch(epoch => epoch + 1);
@@ -245,7 +248,7 @@ export default function ProviderWorkspaceShell({
   // Per-provider quota fan-out (design-system opencodex brief): each card fetches
   // independently so a slow provider never blocks another. The controller owns race
   // protection, dedupe, bounded backoff, and the VERS/VEROUDERD stale ticker.
-  const providerNames = useMemo(() => allItems.map(i => i.name), [allItems]);
+  const providerNames = useMemo(() => Object.keys(hideRedundantChatGptForwardProviders(providers)).sort(), [providers]);
   const { cards: quotaCards, refresh: refreshQuota } = useProviderQuotas({
     apiBase,
     providers: providerNames,

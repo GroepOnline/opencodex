@@ -31,11 +31,13 @@ let descriptors: Map<string, PropertyDescriptor | undefined>;
 let testWindow: Window;
 let root: Root | undefined;
 let host: HTMLDivElement;
-let poll: (() => void) | undefined;
+let polls: Array<() => void>;
 let healthPoll: (() => void) | undefined;
 let usageReply: () => Promise<Response>;
 let logsReply: () => Promise<Response>;
 let healthReply: () => Promise<Response>;
+let configuredProviders: Record<string, unknown>;
+let accountReply: () => Promise<Response>;
 let Dashboard: typeof import("../src/pages/Dashboard").default;
 let sequence = 0;
 const labels = ["tokens (30d)", "requests (30d)", "requests today"];
@@ -94,25 +96,30 @@ beforeEach(async () => {
   }
   testWindow.localStorage.setItem("ocx-lang", "en");
   root = undefined;
-  poll = undefined;
+  polls = [];
   healthPoll = undefined;
   host = document.createElement("div");
   document.body.append(host);
   usageReply = async () => Response.json(usage());
   logsReply = async () => Response.json([]);
   healthReply = async () => Response.json(healthOk());
+  configuredProviders = {};
+  accountReply = async () => new Response(null, { status: 503 });
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.endsWith("/healthz")) return healthReply();
     if (url.endsWith("/api/usage?range=30d")) return usageReply();
     if (url.endsWith("/api/logs")) return logsReply();
+    if (url.endsWith("/api/config"))
+      return Response.json({ providers: configuredProviders });
+    if (url.includes("/api/oauth/accounts?")) return accountReply();
     throw new Error(`Unexpected dashboard request: ${url}`);
   }) as typeof fetch;
   const originalSetInterval = globalThis.setInterval;
   globalThis.setInterval = ((callback: () => void, delay?: number) => {
     // Exercise the real polling callback without waiting thirty seconds or
     // replacing timers globally with an accelerated fake clock.
-    if (delay === 30_000) poll = callback;
+    if (delay === 30_000) polls.push(callback);
     if (delay === 15_000) healthPoll = callback;
     return originalSetInterval(callback, delay);
   }) as typeof setInterval;
@@ -241,9 +248,9 @@ describe("Dashboard observed data states", () => {
       expect(host.textContent).toContain("known-model");
       usageReply = fail;
       logsReply = fail;
-      expect(poll).toBeDefined();
+      expect(polls.length).toBeGreaterThan(0);
       await act(async () => {
-        poll!();
+        for (const poll of polls) poll();
       });
       assertFailureNotices();
       expect(values()).toEqual(["321", "17", "1"]);
@@ -272,4 +279,50 @@ describe("Dashboard observed data states", () => {
     expect(host.textContent).toContain("Offline");
     expect(host.textContent).not.toContain("Online");
   });
+});
+
+test("persisted daily totals survive a bounded live-log tail", async () => {
+  usageReply = async () => Response.json(usage(5000, 10000, 5000));
+  logsReply = async () =>
+    Response.json([
+      {
+        timestamp: Date.now(),
+        provider: "fixture",
+        model: "one",
+        status: 200,
+        durationMs: 1,
+      },
+    ]);
+  await mount();
+  expect(values()[2]).toBe("5,000");
+});
+
+test("failed account discovery is unknown, recovers, and never claims no issues", async () => {
+  configuredProviders = { fixture: { authMode: "oauth", models: ["test"] } };
+  await mount();
+  expect(host.textContent).toContain("Account health unavailable");
+  expect(host.textContent).not.toContain("No issues");
+  accountReply = async () =>
+    Response.json({
+      activeAccountId: "active",
+      accounts: [{ id: "active", health: { status: "healthy", reason: "ok" } }],
+    });
+  await act(async () => {
+    for (const poll of polls) poll();
+  });
+  expect(host.textContent).not.toContain("Account health unavailable");
+  expect(host.textContent).toContain("1 accounts ready");
+  expect(host.textContent).toContain("No issues");
+  accountReply = async () => new Response(null, { status: 503 });
+  await act(async () => {
+    for (const poll of polls) poll();
+  });
+  expect(host.textContent).toContain("Account health unavailable");
+  expect(host.textContent).not.toContain("No issues");
+  accountReply = async () => Response.json({ accounts: [] });
+  await act(async () => {
+    for (const poll of polls) poll();
+  });
+  expect(host.textContent).not.toContain("Account health unavailable");
+  expect(host.textContent).not.toContain("No issues");
 });

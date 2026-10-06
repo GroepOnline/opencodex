@@ -186,6 +186,34 @@
   --toggle-off-bg: light-dark(#e0dedc, #3a3937);
   --toggle-on-bg: var(--accent-blue);
   --toggle-dot-color: #ffffff;
+  /* operational status semantics — accounts, providers, health rows, traffic cells */
+  --status-healthy-fg: var(--green);
+  --status-healthy-bg: var(--green-soft);
+  --status-degraded-fg: var(--amber);
+  --status-degraded-bg: var(--amber-soft);
+  --status-rate-limited-fg: light-dark(#9a4a08, #fbbf24);
+  --status-rate-limited-bg: light-dark(
+    rgba(154, 74, 8, 0.12),
+    rgba(251, 191, 36, 0.14)
+  );
+  --status-cooldown-fg: var(--muted);
+  --status-cooldown-bg: var(--raised);
+  --status-expired-fg: var(--red);
+  --status-expired-bg: var(--red-soft);
+  --status-auth-failed-fg: var(--red);
+  --status-auth-failed-bg: var(--red-soft);
+  --status-disabled-fg: var(--faint);
+  --status-disabled-bg: light-dark(
+    rgba(0, 0, 0, 0.04),
+    rgba(255, 255, 255, 0.05)
+  );
+  --status-unknown-fg: var(--muted);
+  --status-unknown-bg: var(--raised);
+
+  /* focus ring — single authority for keyboard affordance */
+  --focus-ring: var(--accent-ring);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
 }
 
 /* explicit user choice pins the scheme; "system" removes the attribute and falls back to the OS */
@@ -4614,4 +4642,55 @@ button.prov-account-row.active {
   .sheet-scrim {
     animation: none;
   }
+}
+
+.health-truth-table {
+  margin-bottom: var(--space-4);
+}
+
+.health-truth-table__wrap {
+  margin-top: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.health-truth-table__tbl td:last-child {
+  max-width: 28rem;
+}
+
+.badge-status-healthy {
+  background: var(--status-healthy-bg);
+  color: var(--status-healthy-fg);
+}
+.badge-status-degraded {
+  background: var(--status-degraded-bg);
+  color: var(--status-degraded-fg);
+}
+.badge-status-rate-limited {
+  background: var(--status-rate-limited-bg);
+  color: var(--status-rate-limited-fg);
+}
+.badge-status-cooldown {
+  background: var(--status-cooldown-bg);
+  color: var(--status-cooldown-fg);
+  border: 1px solid var(--border-soft);
+}
+.badge-status-expired {
+  background: var(--status-expired-bg);
+  color: var(--status-expired-fg);
+}
+.badge-status-auth-failed {
+  background: var(--status-auth-failed-bg);
+  color: var(--status-auth-failed-fg);
+}
+.badge-status-disabled {
+  background: var(--status-disabled-bg);
+  color: var(--status-disabled-fg);
+  border: 1px solid var(--border-soft);
+}
+.badge-status-unknown {
+  background: var(--status-unknown-bg);
+  color: var(--status-unknown-fg);
+  border: 1px solid var(--border);
 }
