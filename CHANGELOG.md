@@ -1,3 +1,13 @@
+## 1.5.3
+
+- Consolidate provider readiness, Dashboard capacity/issues and startup component health while preserving the current UI and lazy locale architecture.
+- Preserve persisted daily request totals during bounded live-log polling and distinguish unavailable account discovery from an empty account list.
+- Make OAuth health follow authMode and selectable stored credentials; preserve cooldown, reauthentication and expiry semantics.
+- Patch transitive proxy-addr and source-map-js security advisories within existing dependency ranges.
+- Carry the Desktop/native capability sync and opt-in trace improvements already landed on main.
+- Fix release registry probes to use the pinned npm binary and registry-only authentication configuration.
+- Recover non-destructively from the partially completed 1.5.2 publication; consumed npm versions are never republished. Runtime deployment remains separate from publication.
+
 ## 1.5.2
 
 - fix(errors): sanitize Cloudflare edge HTML in client-facing upstream errors (#279)
