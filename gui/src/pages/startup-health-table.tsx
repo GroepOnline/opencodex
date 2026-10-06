@@ -1,4 +1,4 @@
-import { useI18n, type TKey } from "../i18n/shared";
+import { useI18n, type TKey, type Locale } from "../i18n/shared";
 import { formatUptime } from "../formatUptime";
 import { StatusBadge } from "../ui";
 import type { OperationalStatus } from "../design-tokens";
@@ -88,7 +88,7 @@ function proxyRow(
   online: boolean | null,
   version: string | undefined,
   uptime: number | undefined,
-  locale: string,
+  locale: Locale,
 ): HealthRow {
   const observed =
     online === true && version !== undefined && uptime !== undefined;
