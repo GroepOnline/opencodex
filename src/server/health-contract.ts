@@ -1,7 +1,9 @@
 import { existsSync, statSync } from "node:fs";
 import { getConfigPath } from "../config";
+import { isProviderAccountSelectable } from "../oauth/account-expiry";
+import { peekAuthStore } from "../oauth/store";
 import { usageLogPath } from "../usage/log";
-import type { OcxConfig } from "../types";
+import type { OcxConfig, OcxProviderConfig } from "../types";
 
 export type HealthComponentStatus = "ok" | "degraded" | "down" | "unknown";
 
@@ -39,10 +41,12 @@ export interface HealthContract {
   causality: HealthCausalityEntry[];
 }
 
-function aggregateStatus(statuses: HealthComponentStatus[]): HealthComponentStatus {
-  if (statuses.some(s => s === "down")) return "down";
-  if (statuses.some(s => s === "degraded")) return "degraded";
-  if (statuses.every(s => s === "unknown")) return "unknown";
+function aggregateStatus(
+  statuses: HealthComponentStatus[],
+): HealthComponentStatus {
+  if (statuses.some((s) => s === "down")) return "down";
+  if (statuses.some((s) => s === "degraded")) return "degraded";
+  if (statuses.every((s) => s === "unknown")) return "unknown";
   return "ok";
 }
 
@@ -83,16 +87,44 @@ function persistenceHealth(): HealthComponent {
   }
 }
 
+/**
+ * `authMode === "oauth"` only means the provider *can* use the store — not that a token exists.
+ * Missing auth.json or an empty account list must report degraded (CONTROL V11 / Lane F).
+ */
+function providerHasOAuthStoreCredential(providerName: string): boolean {
+  const set = peekAuthStore()[providerName];
+  if (!set?.accounts.length) return false;
+  return set.accounts.some(
+    (account) =>
+      Boolean(account.credential?.access) &&
+      isProviderAccountSelectable(account),
+  );
+}
+
+function providerHasCredential(
+  name: string,
+  provider: OcxProviderConfig,
+): boolean {
+  if (provider.authMode === "forward") return true;
+  if (provider.authMode === "oauth")
+    return providerHasOAuthStoreCredential(name);
+  return Boolean(provider.apiKey);
+}
+
 function providerHealth(config: OcxConfig): ProviderHealthComponent[] {
   return Object.entries(config.providers ?? {}).map(([name, provider]) => {
     const disabled = provider.disabled === true;
-    const hasCredential = Boolean(provider.apiKey) || provider.authMode === "forward" || provider.authMode === "oauth";
+    const hasCredential = providerHasCredential(name, provider);
     let status: HealthComponentStatus = "ok";
     let message = "configured";
     if (disabled) {
       status = "degraded";
       message = "provider disabled";
-    } else if (provider.authMode !== "forward" && provider.liveModels !== false && !hasCredential) {
+    } else if (
+      provider.authMode !== "forward" &&
+      provider.liveModels !== false &&
+      !hasCredential
+    ) {
       status = "degraded";
       message = "missing credentials or API key";
     }
@@ -107,9 +139,15 @@ function providerHealth(config: OcxConfig): ProviderHealthComponent[] {
   });
 }
 
-function buildCausality(components: HealthContract["components"]): HealthCausalityEntry[] {
+function buildCausality(
+  components: HealthContract["components"],
+): HealthCausalityEntry[] {
   const entries: HealthCausalityEntry[] = [];
-  const push = (component: string, item: HealthComponent, dependsOn: string[] = []) => {
+  const push = (
+    component: string,
+    item: HealthComponent,
+    dependsOn: string[] = [],
+  ) => {
     if (item.status === "ok") return;
     entries.push({
       component,
@@ -145,17 +183,18 @@ export function buildHealthContract(
   const management: HealthComponent = opts.managementAuthAvailable
     ? { status: "ok", since: null, message: "management credential available" }
     : {
-      status: "down",
-      since: null,
-      message: "management credential unavailable — /api/* returns 503",
-      depends_on: ["persistence"],
-    };
+        status: "down",
+        since: null,
+        message: "management credential unavailable — /api/* returns 503",
+        depends_on: ["persistence"],
+      };
   const persistence = persistenceHealth();
   const providers = providerHealth(config);
   const deployRunner: HealthComponent = {
     status: "unknown",
     since: null,
-    message: "deploy runner liveness is out-of-process — probe ocx-deploy runner or workflow host",
+    message:
+      "deploy runner liveness is out-of-process — probe ocx-deploy runner or workflow host",
   };
   const proxy: HealthComponent = {
     status: "ok",
@@ -173,7 +212,7 @@ export function buildHealthContract(
     proxy.status,
     management.status,
     persistence.status,
-    ...providers.map(p => p.status),
+    ...providers.map((p) => p.status),
   ];
   return {
     status: aggregateStatus(statuses),
