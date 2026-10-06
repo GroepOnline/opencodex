@@ -653,6 +653,35 @@ describe("GitHub Actions hardening", () => {
     expect(rollout?.if).not.toContain("always()");
   });
 
+  test("release registry probes use pinned npm without inherited authentication", async () => {
+    const workflow = Bun.YAML.parse(
+      await readText(".github/workflows/release.yml"),
+    ) as {
+      jobs: { publish: { steps: Array<{ name?: string; run?: string }> } };
+    };
+    for (const name of [
+      "Preflight release metadata",
+      "Post-publish registry smoke",
+    ]) {
+      const script = workflow.jobs.publish.steps.find(
+        (step) => step.name === name,
+      )?.run;
+      expect(script).toBeDefined();
+      expect(script).toContain(
+        'npm_bin="${NPM_PUBLISH_BIN:?npm binary was not pinned before bun install}"',
+      );
+      expect(script).toContain("unset NODE_AUTH_TOKEN");
+      expect(script).toContain(
+        "printf 'registry=https://registry.npmjs.org/\\n' > \"$NPM_CONFIG_USERCONFIG\"",
+      );
+      expect(script).toContain('"$npm_bin" view');
+      expect(script).not.toMatch(/\bnpm (?:view|dist-tag)\b/);
+      expect(script!.indexOf("unset NODE_AUTH_TOKEN")).toBeLessThan(
+        script!.indexOf('"$npm_bin" view'),
+      );
+    }
+  });
+
   test("release workflow gates the exact SHA, channel, and service surface without injection", async () => {
     const workflow = await readText(".github/workflows/release.yml");
 

@@ -1,6 +1,6 @@
 {
   "name": "@groeponline/opencodex",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "Bun-native model gateway with OpenAI-compatible and Anthropic APIs, routing and a dashboard. Optional integrations for Claude Code, Claude Desktop, Codex and Grok Build.",
   "type": "module",
   "main": "./bin/package-main.mjs",

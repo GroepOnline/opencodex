@@ -254,6 +254,11 @@ jobs:
         run: |
           set -euo pipefail
 
+          npm_bin="${NPM_PUBLISH_BIN:?npm binary was not pinned before bun install}"
+          unset NODE_AUTH_TOKEN
+          if [ -n "${NPM_CONFIG_USERCONFIG:-}" ]; then
+            printf 'registry=https://registry.npmjs.org/\n' > "$NPM_CONFIG_USERCONFIG"
+          fi
           pkg_name="$(node -p "require('./package.json').name")"
           release_tag="v${RELEASE_VERSION}"
           dry_run="$DRY_RUN"
@@ -284,7 +289,7 @@ jobs:
             fi
           fi
 
-          if npm view "${pkg_name}@${RELEASE_VERSION}" version >/dev/null 2>&1; then
+          if "$npm_bin" view "${pkg_name}@${RELEASE_VERSION}" version >/dev/null 2>&1; then
             if [ "$dry_run" = "true" ]; then
               echo "::notice::${pkg_name}@${RELEASE_VERSION} already exists on npm; dry-run only"
             else
@@ -376,18 +381,24 @@ jobs:
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
+          set -euo pipefail
+          npm_bin="${NPM_PUBLISH_BIN:?npm binary was not pinned before bun install}"
+          unset NODE_AUTH_TOKEN
+          if [ -n "${NPM_CONFIG_USERCONFIG:-}" ]; then
+            printf 'registry=https://registry.npmjs.org/\n' > "$NPM_CONFIG_USERCONFIG"
+          fi
           for attempt in $(seq 1 30); do
-            if VERSION=$(npm view "@groeponline/opencodex@${RELEASE_VERSION}" version 2>/dev/null); then
+            if VERSION=$("$npm_bin" view "@groeponline/opencodex@${RELEASE_VERSION}" version 2>/dev/null); then
               echo "registry version=$VERSION"
               test "$VERSION" = "$RELEASE_VERSION"
-              npm dist-tag ls @groeponline/opencodex
+              "$npm_bin" dist-tag ls @groeponline/opencodex
               exit 0
             fi
             echo "::notice::@groeponline/opencodex@${RELEASE_VERSION} not visible in npm registry yet (attempt $attempt/30)"
             sleep 10
           done
           echo "::error::npm registry smoke failed after 30 attempts"
-          npm view @groeponline/opencodex versions dist-tags --json || true
+          "$npm_bin" view @groeponline/opencodex versions dist-tags --json || true
           exit 1
 
       - name: Create GitHub release
