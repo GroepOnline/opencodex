@@ -14,6 +14,22 @@ import { createPortal } from "react-dom";
 import { IconCheck, IconAlert } from "./icons";
 import { IconChevron } from "./icons";
 import { computeSelectMenuStyle } from "./select-position";
+import { statusBadgeClass, type OperationalStatus } from "./design-tokens";
+
+export function StatusBadge({
+  status,
+  children,
+  className,
+}: {
+  status: OperationalStatus;
+  children: ReactNode;
+  className?: string;
+}) {
+  const cls = className
+    ? `${statusBadgeClass(status)} ${className}`
+    : statusBadgeClass(status);
+  return <span className={cls}>{children}</span>;
+}
 
 export function Switch({
   on,

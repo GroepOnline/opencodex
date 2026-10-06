@@ -149,6 +149,8 @@ describe("workspace account integration seam", () => {
     expect(shell).toContain("activeAccountNeedsReauth");
     expect(page).toContain("activeAccountNeedsReauth");
     expect(page).toContain("activeAccountNeedsReauth={activeAccountNeedsReauth}");
+    expect(shell).toContain("oauthAccountPresence");
+    expect(page).toContain("oauthAccountPresence={accountSets}");
   });
 
   test("wires OAuth re-authenticate handlers into the workspace detail", async () => {

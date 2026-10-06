@@ -32,10 +32,19 @@ describe("provider rail status semantics", () => {
   });
 
   test("oauth config-ready with activeNeedsReauth shows amber needs-attention rail status", () => {
-    const reauth = item({ authMode: "oauth", activeNeedsReauth: true });
+    const reauth = item({ authMode: "oauth", oauthAccountCount: 1, activeNeedsReauth: true });
     expect(statusLabel(reauth, t)).toBe("Needs attention");
     expect(railStatusCls(reauth)).toContain("--warning");
     expect(railStatusCls(reauth)).not.toContain("--active");
+  });
+
+  test("oauth without accounts is needs-setup, not ready", () => {
+    const empty = item({ authMode: "oauth", hasApiKey: false, oauthAccountCount: 0 });
+    expect(statusLabel(empty, t)).toBe("Needs setup");
+    expect(railStatusCls(empty)).toContain("--warning");
+    expect(railStatusCls(empty)).not.toContain("--active");
+    const missing = item({ authMode: "oauth", hasApiKey: false });
+    expect(statusLabel(missing, t)).toBe("Needs setup");
   });
 });
 

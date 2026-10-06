@@ -6,6 +6,8 @@ import {
   writeSessionListCache,
 } from "../session-list-cache";
 import MemoryObservabilityCard from "../components/MemoryObservabilityCard";
+import { StartupHealthTable } from "./startup-health-table";
+import { useKeyedClientResource } from "../client-resource";
 import { PageHeader } from "../components/primitives/page-header";
 import {
   Empty,
@@ -88,6 +90,16 @@ function deriveCodexRuntimeNotice(
 
 export default function Startup({ apiBase }: { apiBase: string }) {
   const { t } = useI18n();
+  const proxy = useKeyedClientResource<{ version: string; uptime: number }>(
+    `startup-healthz:${apiBase}`,
+    [],
+    async (signal) => {
+      const res = await fetch(`${apiBase}/healthz`, { signal });
+      if (!res.ok) throw new Error(String(res.status));
+      return res.json();
+    },
+    { pollMs: 15_000 },
+  );
   const cacheKey = `${STARTUP_PAGE_CACHE_PREFIX}${apiBase}`;
   const cached = useMemo(
     () => readSessionListCache<StartupPageCache>(cacheKey),
@@ -418,6 +430,16 @@ export default function Startup({ apiBase }: { apiBase: string }) {
             </div>
           )}
           <StartupHeroSection failed={failed} data={data} />
+          <StartupHealthTable
+            data={data}
+            failed={failed}
+            proxyVersion={proxy.data?.version}
+            proxyUptime={proxy.data?.uptime}
+            proxyOnline={proxy.error ? false : proxy.data ? true : null}
+            tray={tray}
+            trayLoading={trayLoading}
+            trayError={trayError}
+          />
           <StartupDetailsSection
             data={data}
             failed={failed}

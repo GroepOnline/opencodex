@@ -6,6 +6,8 @@
 
 import type { TFn, TKey } from "./i18n";
 import { displayAccountId } from "./lib/privacy";
+import type { OperationalStatus } from "./design-tokens";
+import { oauthAccountListState } from "./provider-workspace/catalog";
 
 export type OAuthHealthStatus =
   "healthy" | "cooldown" | "reauth_required" | "warning" | "disabled";
@@ -26,6 +28,44 @@ export type OAuthHealthView = {
   reason?: OAuthHealthReason | string;
   until?: string;
 };
+
+export function oauthHealthOperationalStatus(
+  health: OAuthHealthView | undefined,
+): OperationalStatus {
+  if (!health) return "unknown";
+  if (health.status === "disabled" || health.reason === "expired")
+    return "expired";
+  if (health.status === "healthy") return "healthy";
+  if (health.status === "cooldown")
+    return health.reason === "rate_limit" ? "rate-limited" : "cooldown";
+  if (health.status === "reauth_required") return "auth-failed";
+  if (health.status === "warning") return "degraded";
+  return "unknown";
+}
+
+export type OAuthProviderReadiness = "ready" | "needs-setup" | "unknown";
+
+export function oauthProviderReadiness(
+  accounts: readonly unknown[] | undefined,
+): OAuthProviderReadiness {
+  const state = oauthAccountListState(accounts);
+  return state === "present"
+    ? "ready"
+    : state === "empty"
+      ? "needs-setup"
+      : "unknown";
+}
+
+export function oauthProviderOperationalStatus(
+  accounts: readonly unknown[] | undefined,
+): OperationalStatus {
+  const state = oauthProviderReadiness(accounts);
+  return state === "ready"
+    ? "healthy"
+    : state === "needs-setup"
+      ? "auth-failed"
+      : "unknown";
+}
 
 export type OAuthHealthBadgeTone = "ok" | "warn" | "muted" | "err";
 

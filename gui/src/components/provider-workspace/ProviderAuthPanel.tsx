@@ -613,13 +613,11 @@ export default function ProviderAuthPanel({
                 })}
               </ul>
             )}
-            {accountLoadState === "ready" &&
-              loggedIn &&
-              accounts.length === 0 && (
-                <div className="pwi-auth-state pwi-auth-state--empty">
-                  {t("pws.noAccounts")}
-                </div>
-              )}
+            {accountLoadState === "ready" && accounts.length === 0 && (
+              <div className="pwi-auth-state pwi-auth-state--empty">
+                {t("pws.noAccounts")}
+              </div>
+            )}
             {loggedIn && (
               <button
                 type="button"

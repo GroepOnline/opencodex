@@ -112,14 +112,14 @@ export function ResponseCachePanel({
 
   if (failed && !view) {
     return (
-      <p className="text-caption" style={{ color: "var(--wijn)" }}>
+      <p className="text-caption" style={{ color: "var(--red)" }}>
         {t("ops.cacheFailed")}
       </p>
     );
   }
   if (!view || !view.enabled) {
     return (
-      <p className="text-caption" style={{ color: "var(--gietijzer-60)" }}>
+      <p className="text-caption" style={{ color: "var(--muted)" }}>
         {t("ops.cacheOff")}
       </p>
     );
@@ -171,7 +171,7 @@ export function ResponseCachePanel({
         className="row"
         style={{ gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}
       >
-        <span className="text-caption" style={{ color: "var(--gietijzer-60)" }}>
+        <span className="text-caption" style={{ color: "var(--muted)" }}>
           {t("ops.cacheConfig", {
             ttl: String(Math.round((view.ttlMs ?? 0) / 1000)),
             max: String(view.maxEntries ?? 0),
@@ -260,7 +260,7 @@ export function KeyPoolHealthPanel({ apiBase }: { apiBase: string }) {
 
   if (failed && !providers) {
     return (
-      <p className="text-caption" style={{ color: "var(--wijn)" }}>
+      <p className="text-caption" style={{ color: "var(--red)" }}>
         {t("ops.poolFailed")}
       </p>
     );
@@ -288,7 +288,7 @@ export function KeyPoolHealthPanel({ apiBase }: { apiBase: string }) {
             return (
               <tr
                 key={p.name}
-                style={capped ? { color: "var(--wijn)" } : undefined}
+                style={capped ? { color: "var(--red)" } : undefined}
               >
                 <td className="mono">{p.name}</td>
                 <td className="num">{p.keyPoolCount.toLocaleString(locale)}</td>

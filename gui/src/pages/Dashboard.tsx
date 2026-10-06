@@ -3,6 +3,7 @@ import { useKeyedClientResource } from "../client-resource";
 import { formatTokens } from "../format-tokens";
 import { useI18n, useT } from "../i18n/shared";
 import { requestsTodayCount, type TrafficLogEntry } from "../traffic-shared";
+import { ProviderHealthOverview } from "../components/dashboard/provider-health-overview";
 import MetricList from "../components/MetricList";
 import {
   ProviderUsageList,
@@ -224,6 +225,8 @@ export default function Dashboard({ apiBase }: { apiBase: string }) {
           },
         ]}
       />
+
+      <ProviderHealthOverview apiBase={apiBase} />
 
       <div className="pws-dashboard-columns">
         <ProviderUsageList
