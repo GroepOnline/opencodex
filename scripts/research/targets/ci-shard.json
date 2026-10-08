@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "id": "ci-shard",
+  "status": "ready",
+  "description": "Longest simulated CI shard in seconds for scripts/ci-test-shard.ts, scored against held-out per-file timings. CI runs 2 shards per OS.",
+  "metric": { "name": "longestShardSeconds", "unit": "s", "direction": "lower" },
+  "measure": ["bun", "scripts/research/measure/ci-shard.ts", "--shards", "2"],
+  "runs": 3,
+  "minImprovementPct": 2,
+  "timeoutMs": 60000,
+  "mutable": ["scripts/ci-test-shard.ts", "scripts/ci-test-timings.json"],
+  "fixtures": [".tmp/research/fixtures/ci-timings.json"],
+  "forbiddenInMutable": [".tmp/research", "scripts/research"],
+  "guards": [["bun","run","typecheck"],["bun","run","test"],["bun","run","privacy:scan"]],
+  "notes": "The assignment function sees only paths and byte sizes, as in CI. Any timing estimates must come from a committed file in the mutable set derived from CI run history, never from the held-out fixture. Windows flake isolation is out of scope for this measurement."
+}
