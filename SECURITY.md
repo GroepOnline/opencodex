@@ -1,47 +1,71 @@
-# Security Policy
+# Security policy
 
-## Supported Versions
+OpenCodex is a proxy and client integration that can handle model-provider credentials,
+local Codex state, OAuth sessions, and management endpoints. Please report security
+issues privately so affected users have time to update before details become public.
 
-opencodex accepts security fixes on a best-effort basis for these lines:
+## Supported versions
 
-| Version | Supported |
+| Release line | Security fixes |
 | --- | --- |
-| `main` | ✅ |
-| Latest published npm release | ✅ |
-| Older releases | ❌ |
+| `main` (development) | Best-effort fixes for verified issues |
+| Latest stable `@groeponline/opencodex` release on npm | Best-effort fixes |
+| Current npm `preview` release | Evaluated case by case; update to the latest build |
+| Older releases | Not maintained |
 
-If you report an issue against an older release, maintainers may ask you to reproduce it on `main`
-or the latest published package before triage continues.
+A fix on `main` does not mean an npm package or running deployment has been
+updated. Check the published version and its release notes before assuming a
+remediation is installed.
 
-## Reporting a Vulnerability
+## Report a vulnerability privately
 
-Please avoid posting undisclosed vulnerabilities as public GitHub issues.
+Use [GitHub private vulnerability reporting](https://github.com/GroepOnline/opencodex/security/advisories/new).
+Do not post unpublished exploit details, access tokens, private hostnames, or
+reproduction data in a public issue, pull request, discussion, or log.
 
-Report privately through GitHub private vulnerability reporting, which is enabled on this
-repository:
+If GitHub's private reporting form cannot be accessed, open a public issue
+asking maintainers for a private coordination channel. Include **no**
+vulnerability details or sensitive attachments in that issue. This project
+does not advertise a separate private security email address.
 
-**<https://github.com/GroepOnline/opencodex/security/advisories/new>**
+Potentially relevant areas include authentication and authorization, session
+handling, secrets and provider keys, unintended exposure of local Codex
+state, management/API access, proxy request isolation, update/install paths,
+and build or release automation.
 
-The same form is reachable from the repository's **Security** tab under **Report a vulnerability**.
-It is private between you and the maintainers, and it is the only channel this project offers for
-undisclosed vulnerabilities — there is no dedicated private security email.
+## Useful information in a report
 
-Include affected versions, reproduction steps, impact, and any required configuration details.
+- Affected package version, commit, operating system, and deployment mode
+  (local CLI, dashboard, container, or remote proxy).
+- A minimal reproduction using synthetic credentials and non-production
+  endpoints, including expected behavior versus observed behavior.
+- A clear impact statement, preconditions, and whether an unauthenticated
+  or lower-privileged actor can trigger the behavior.
+- Relevant sanitized logs or requests. Remove access tokens, cookies,
+  authorization headers, personal data, and customer content.
 
-If the form is ever unreachable for you, open a minimal public issue that asks maintainers for a
-safe coordination path. Do not include exploit details, secrets, or live targets in that issue.
+Please do not scan, exploit, or extract data from a deployment that you do
+not own or have permission to test.
 
-## Response Expectations
+## Triage, fixes, and disclosure
 
-Maintainers will review reports on a best-effort basis. Triage usually starts with:
+Maintainers triage privately on a best-effort basis: confirm scope and
+reproduction, assess impact, prepare a fix or mitigation, and coordinate
+publication through a security advisory when appropriate. No fixed
+response or remediation SLA and no bug-bounty payment are promised.
 
-- confirming the affected version or commit,
-- reproducing the issue locally,
-- evaluating impact and safe remediation scope,
-- coordinating disclosure timing if a fix is needed.
+Security fixes require validation on the exact code revision. Publication
+to npm, GitHub Releases, container images, or a separately operated
+runtime are distinct actions; a merged fix does not prove deployment.
 
-## Operational Notes
+## Deployment responsibilities
 
-- Remove secrets, tokens, cookies, and personal data from screenshots and logs before sharing them.
-- For non-sensitive hardening ideas, public issues and pull requests are welcome after disclosure is
-  no longer sensitive.
+Operators should limit management interfaces to trusted networks or
+authenticated access, protect stored provider credentials, and keep
+runtime and dependencies updated. If a key or token has been exposed,
+revoke or rotate it through its issuing provider without sharing the
+credential in the report.
+
+For non-sensitive hardening proposals, use ordinary issues or pull
+requests. See [Contributing](./CONTRIBUTING.md) and
+[Maintainers](./MAINTAINERS.md) for the normal review process.

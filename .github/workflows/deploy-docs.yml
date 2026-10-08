@@ -10,8 +10,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -19,7 +17,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: [self-hosted, Linux, X64, jan]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -33,7 +31,11 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: [self-hosted, Linux, X64, jan]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     timeout-minutes: 10
     environment:
       name: github-pages

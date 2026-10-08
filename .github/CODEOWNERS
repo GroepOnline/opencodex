@@ -1,20 +1,21 @@
-# Default reviewers
-* @GroepOnline @Ingwannu @Wibias
+# Review routing: accounts below have repository write/admin access.
+# GitHub permissions are authoritative; recheck CODEOWNERS validation when they change.
+* @MisterWanted @ChefGroep
 
 # Repository automation and release security
-/.github/ @GroepOnline @Ingwannu
-/scripts/release.ts @GroepOnline @Ingwannu
-/package.json @GroepOnline @Ingwannu
-/bun.lock @GroepOnline @Ingwannu
+/.github/ @MisterWanted @ChefGroep
+/scripts/release.ts @MisterWanted @ChefGroep
+/package.json @MisterWanted @ChefGroep
+/bun.lock @MisterWanted @ChefGroep
 
 # Authentication, credentials, and management API
-/src/oauth/ @GroepOnline @Ingwannu
-/src/codex/auth-context.ts @GroepOnline @Ingwannu
-/src/server/auth-cors.ts @GroepOnline @Ingwannu
-/src/server/management-api.ts @GroepOnline @Ingwannu
+/src/oauth/ @MisterWanted @ChefGroep
+/src/codex/auth-context.ts @MisterWanted @ChefGroep
+/src/server/auth-cors.ts @MisterWanted @ChefGroep
+/src/server/management-api.ts @MisterWanted @ChefGroep
 
 # Governance and security policy
-/AGENTS.md @GroepOnline @Ingwannu
-**/AGENTS.md @GroepOnline @Ingwannu
-/MAINTAINERS.md @GroepOnline @Ingwannu
-/SECURITY.md @GroepOnline @Ingwannu
+/AGENTS.md @MisterWanted @ChefGroep
+**/AGENTS.md @MisterWanted @ChefGroep
+/MAINTAINERS.md @MisterWanted @ChefGroep
+/SECURITY.md @MisterWanted @ChefGroep

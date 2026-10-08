@@ -5,11 +5,16 @@ review and merge policy.
 
 ## Current maintainers
 
-| GitHub account                                 | Project role  | Responsibilities                                                                               |
-| ---------------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------- |
-| [@GroepOnline](https://github.com/GroepOnline) | Project owner | Project direction, releases, repository administration, and final governance decisions         |
-| [@Ingwannu](https://github.com/Ingwannu)       | Maintainer    | Issue and pull-request triage, `main` integration, security review, and repository maintenance |
-| [@Wibias](https://github.com/Wibias)           | Maintainer    | Issue and pull-request triage, `main` integration, and provider/CI maintenance                 |
+| GitHub account | Project role | Responsibilities |
+| --- | --- | --- |
+| [@GroepOnline](https://github.com/GroepOnline) | Organization owner | Project direction and governance |
+| [@MisterWanted](https://github.com/MisterWanted) | Maintainer / repository admin | Integration, release decisions, security triage |
+| [@ChefGroep](https://github.com/ChefGroep) | Maintainer / repository admin | Repository operations, review routing, releases |
+
+These are the current review contacts, not an exhaustive list of every
+account with repository access. CODEOWNERS can only route requests to
+GitHub users or teams with appropriate permissions; the organization
+handle alone is not a valid code owner.
 
 The table describes project responsibilities. Actual repository permissions remain controlled
 through GitHub repository settings.
@@ -100,6 +105,10 @@ Adding or removing a maintainer requires:
 
 ### Change log
 
+- 2026-10-08 — Synchronized the active maintainer roster and CODEOWNERS
+  with the repository's verified collaborators. This documentation change
+  does not grant or revoke GitHub access. GitHub settings remain authoritative.
+
 - 2026-07-27 — [@Wibias](https://github.com/Wibias) added as a maintainer.
   Requirement 1 (agreement from the project owner) is met: the owner requested
   the addition. **Requirement 2 (review by another current maintainer) was
@@ -107,18 +116,17 @@ Adding or removing a maintainer requires:
   carried the addition (`a2693c02`, `dc3a4ade`, `02bbd47a`) landed on `dev` as
   direct owner pushes with no associated pull request, so no second maintainer
   reviewed them. Requirement 3 is met by this file and `.github/CODEOWNERS`.
-  The addition is in effect regardless: @Wibias holds write access on the
-  repository and has been merging pull requests since 2026-07-26. This entry
-  records the gap rather than papering over it — a later maintainer change
-  should go through a reviewed pull request.
+  At the time of the original addition, this account had write access and
+  contributed to integration work. That is historical context, not a claim
+  of current repository access or an active CODEOWNERS assignment. A later
+  maintainer change should update both the roster and GitHub permissions.
 
   Scope covers issue and pull-request triage, `dev` integration, and
   provider/CI maintenance. (This entry originally also described carrying
   merged `dev` work onto `dev2-go`; that duty ended when the line was retired
   on 2026-07-30.) Security-boundary ownership in `.github/CODEOWNERS` is
-  deliberately unchanged: authentication, credential handling, GitHub Actions,
-  and release automation keep the two owners already listed for those paths, so
-  this addition does not widen the review surface for them.
+  remained limited to the then-current owners. The present review contacts
+  are recorded above and in the current CODEOWNERS file.
 
   This entry describes the policy at that time. The current review policy above
   makes external approval advisory while retaining technical and security checks.

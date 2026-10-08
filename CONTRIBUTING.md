@@ -10,10 +10,13 @@ Thanks for helping with opencodex.
 
 ## Branches
 
-- `main` — the only integration target for pull requests.
-- `dev` — leftover line. Same-repository `dev` → `main` promotion remains an
-  explicit exception in the target-branch check. Feature heads must target `main`.
-- `preview` — prerelease train.
+- `main` is the only integration branch and the default pull-request base.
+- Use a short-lived topic or prerelease-preparation branch based on the
+  current `main` head; send its pull request to `main`.
+- `dev` was retired and deleted on 2026-10-01. Do not target it.
+- `preview` is an npm prerelease **dist-tag** (see
+  [Versioning](./VERSIONING.md)), not a second integration branch.
+  Preparing a preview release does not itself publish a package.
 
 The `dev2-go` Go native-port line has been retired. Its history is archived at
 [GroepOnline/opencodex-go-archive](https://github.com/GroepOnline/opencodex-go-archive),

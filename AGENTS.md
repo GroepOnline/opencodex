@@ -153,7 +153,7 @@ sha / branch / detached / dirty only — never the diff.
   (#181) and the branch was deleted. The `dev` → `main` promotion exception
   and the `dev` CI lanes were removed with it; do not recreate `dev` as an
   integration or feature base.
-- `preview` — prerelease train (`x.y.z-preview.*` versions).
+- `preview` is an npm prerelease dist-tag, not a second integration branch. Use a short-lived topic branch for prerelease preparation and target `main`.
 
 Bun-native TypeScript on `main` is the only runtime line. If native code
 returns, the expectation is an incremental module (for example Rust via N-API)

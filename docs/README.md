@@ -1,8 +1,21 @@
-# Historical Notes
+# Historical technical notes
 
-This folder contains investigations and diagnostic notes. It is not the primary user manual and it
-is not the maintainer source of truth for current invariants.
+This directory collects design investigations, ADRs, diagnostics, and
+research notes. It is **not** the current user manual or the authority for
+release, security, or repository governance.
 
-- Public user workflows live in [`../docs-site/`](../docs-site).
-- Current maintainer invariants live in [`../structure/`](../structure).
-- Keep files here when the detail is useful for archaeology, debugging, or source research.
+- Public installation, operation, and contributing instructions:
+  [docs-site](../docs-site/) and the
+  [hosted documentation](https://opencodex.chefgroep.online/).
+- Maintained architecture and release invariants:
+  [structure](../structure/).
+- Vulnerability reporting and supported versions:
+  [SECURITY.md](../SECURITY.md).
+- Maintainers and review ownership:
+  [MAINTAINERS.md](../MAINTAINERS.md).
+- Build and release procedure:
+  [RELEASE_PROCESS.md](../RELEASE_PROCESS.md).
+
+Keep investigations here for reproducible history. When a conclusion
+becomes a supported contract, migrate the conclusion to the maintained
+documentation instead of treating these notes as live instructions.
