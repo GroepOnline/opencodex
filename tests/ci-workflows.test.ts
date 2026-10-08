@@ -609,7 +609,7 @@ describe("GitHub Actions hardening", () => {
       contents: "read",
       actions: "write",
     });
-    expect(rollout?.["timeout-minutes"]).toBe(10);
+    expect(rollout?.["timeout-minutes"]).toBe(35);
 
     const publishSteps = publish?.steps ?? [];
     expect(publishSteps[0]?.name).toBe("Reject retired runtime deploy request");
@@ -632,6 +632,13 @@ describe("GitHub Actions hardening", () => {
       'gh workflow run container.yml --ref "${release_tag}" -f "expected_sha=${RELEASE_SHA}"',
     );
     expect(image.run).not.toContain("--ref main");
+    // Dispatch alone is not success: wait for a *new* tag run and verify the
+    // published GHCR job, exact commit and tag before marking Release green.
+    expect(image.run).toContain('gh run watch "$image_run_id" --interval 10 --exit-status');
+    expect(image.run).toContain('if [ -z "$image_run_id" ]; then');
+    expect(image.run).toContain('[ "$verified_sha" != "$RELEASE_SHA" ]');
+    expect(image.run).toContain('[ "$verified_branch" != "$release_tag" ]');
+    expect(image.run).toContain('[ "$published" != "success" ]');
     // The retired route fails closed and is never dispatched.
     expect(deploy.env?.DEPLOY).toBe("${{ inputs.deploy }}");
     expect(deploy.run).toContain('if [ "$DEPLOY" != "true" ]');
@@ -3763,6 +3770,8 @@ describe("GitHub Actions hardening", () => {
     expect(publishMeta).toBeDefined();
     expect(imageSummary).toBeDefined();
     expect(publishSummary).toBeDefined();
+    expect(publishSummary?.run).toContain("GHCR publish returned no immutable sha256 digest");
+    expect(imageSummary?.run).not.toContain("GHCR publish returned no immutable sha256 digest");
     // Tag-ref dispatch is validated like a tag push: semver shape, and the
     // version tags are derived from the tag, never from a moving branch.
     expect(publishMeta!.run).toContain(

@@ -77,6 +77,11 @@ After a real publish the `rollout` job continues only the immutable artifact cha
 exact tag. The tag is pushed with `GITHUB_TOKEN`, and GitHub never starts `push` runs for refs
 created by that token, so `container.yml` is dispatched explicitly on `refs/tags/v<version>`.
 
+The rollout job waits for the GHCR workflow on the **same tag and commit** to finish.
+It verifies that the image-publish job succeeded and that the GHCR image has a
+sha256 digest; a mere workflow dispatch is not release success. The optional
+Homebrew tap bump never blocks container publication.
+
 Runtime cutover is intentionally not part of release publication. The former Azure deploy
 route is permanently retired; leave the `deploy` input at its default `false`. Deploying the
 private production service is a separate operation with its own immutable artifact, health and
