@@ -590,16 +590,20 @@ export function appendUsageEntry(entry: PersistedUsageEntry): void {
     durationMs: sanitizeUsageDurationMs(entry.durationMs, {
       uptimeMs: USAGE_DURATION_HARD_MAX_MS,
     }),
-    attempts: entry.attempts?.map((attempt) => ({
-      ...attempt,
-      ...(attempt.durationMs === undefined
-        ? {}
-        : {
-            durationMs: sanitizeUsageDurationMs(attempt.durationMs, {
-              uptimeMs: USAGE_DURATION_HARD_MAX_MS,
-            }),
-          }),
-    })),
+    attempts: Array.isArray(entry.attempts)
+      ? entry.attempts.map((attempt) =>
+          attempt &&
+          typeof attempt === "object" &&
+          typeof attempt.durationMs === "number"
+            ? {
+                ...attempt,
+                durationMs: sanitizeUsageDurationMs(attempt.durationMs, {
+                  uptimeMs: USAGE_DURATION_HARD_MAX_MS,
+                }),
+              }
+            : attempt,
+        )
+      : entry.attempts,
   });
   appendFileSync(path, `${JSON.stringify(normalized)}\n`, {
     encoding: "utf-8",

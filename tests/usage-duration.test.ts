@@ -35,6 +35,7 @@ describe("usage duration sanitizer", () => {
         durationMs: Date.now(),
         usageStatus: "unreported",
         attempts: [
+          null as never,
           {
             ordinal: 1,
             provider: "fixture",
