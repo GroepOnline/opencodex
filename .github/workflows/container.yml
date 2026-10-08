@@ -239,6 +239,10 @@ jobs:
           IMAGE: ${{ steps.meta.outputs.image }}
         run: |
           set -euo pipefail
+          if [ "$PUSH" = "true" ] && [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::GHCR publish returned no immutable sha256 digest"
+            exit 1
+          fi
           {
             echo "### OpenCodex image"
             echo ""

@@ -608,6 +608,8 @@ jobs:
             --notes-file "$notes_file" ${prerelease_flag:+$prerelease_flag}
 
       - name: Bump Homebrew tap (stable only)
+        # This optional distribution channel must not block the GHCR release artifact.
+        continue-on-error: true
         if: ${{ inputs.dry-run != true && inputs.tag == 'latest' }}
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
@@ -647,7 +649,7 @@ jobs:
     needs: publish
     if: github.event.inputs.dry-run != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 35
     permissions:
       contents: read
       actions: write # gh workflow run container.yml
@@ -667,8 +669,31 @@ jobs:
             echo "::error::${release_tag} points at ${tag_sha}, not the published commit ${RELEASE_SHA}; refusing to build an image for a different identity"
             exit 1
           fi
+          # A dispatch acknowledgement is not evidence that GHCR published.
+          previous_id="$(gh run list --workflow container.yml --commit "$RELEASE_SHA" --event workflow_dispatch --limit 10 --json databaseId --jq '.[0].databaseId // ""')"
           gh workflow run container.yml --ref "${release_tag}" -f "expected_sha=${RELEASE_SHA}"
-          echo "dispatched container.yml on refs/tags/${release_tag} (${RELEASE_SHA})"
+          image_run_id=""
+          for attempt in $(seq 1 60); do
+            current_id="$(gh run list --workflow container.yml --commit "$RELEASE_SHA" --event workflow_dispatch --limit 10 --json databaseId --jq '.[0].databaseId // ""')"
+            if [ -n "$current_id" ] && [ "$current_id" != "$previous_id" ]; then
+              image_run_id="$current_id"
+              break
+            fi
+            sleep 5
+          done
+          if [ -z "$image_run_id" ]; then
+            echo "::error::No new GHCR workflow run appeared for tag $release_tag at $RELEASE_SHA"
+            exit 1
+          fi
+          gh run watch "$image_run_id" --interval 10 --exit-status
+          verified_sha="$(gh run view "$image_run_id" --json headSha --jq '.headSha')"
+          verified_branch="$(gh run view "$image_run_id" --json headBranch --jq '.headBranch')"
+          published="$(gh run view "$image_run_id" --json jobs --jq '[.jobs[] | select(.name == "publish")][0].conclusion // ""')"
+          if [ "$verified_sha" != "$RELEASE_SHA" ] || [ "$verified_branch" != "$release_tag" ] || [ "$published" != "success" ]; then
+            echo "::error::GHCR workflow did not successfully publish tag $release_tag at the release commit"
+            exit 1
+          fi
+          echo "GHCR published by run $image_run_id for tag $release_tag at $RELEASE_SHA"
           {
             echo "### Rollout chain"
             echo ""
