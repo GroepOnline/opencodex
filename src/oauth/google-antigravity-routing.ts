@@ -223,6 +223,7 @@ export function getGoogleAntigravityPoolRetryAfterSeconds(
   return Math.max(1, Math.ceil((earliest - now) / 1_000));
 }
 
+/** Return the highest finite custom-window percentage, or undefined if none exists. */
 function customWindowPercent(
   quota: { customWindows?: Array<{ percent?: number }> } | null,
 ): number | undefined {
@@ -236,6 +237,10 @@ function customWindowPercent(
   return Math.max(...percents);
 }
 
+/**
+ * Score cached quota from 0 to 100, preferring finite five-hour usage over the
+ * highest finite custom window. Unknown usage scores 100; no quota is fetched.
+ */
 function usageScore(accountId: string): number {
   const quota = getCachedProviderAccountQuota(PROVIDER, accountId);
   const fiveHour =
@@ -249,6 +254,7 @@ function usageScore(accountId: string): number {
   return Math.max(0, Math.min(100, value));
 }
 
+/** Whether cached quota has a finite five-hour or custom-window percentage. */
 function hasKnownUsage(accountId: string): boolean {
   const quota = getCachedProviderAccountQuota(PROVIDER, accountId);
   if (

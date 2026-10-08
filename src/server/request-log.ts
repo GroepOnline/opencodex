@@ -1075,6 +1075,11 @@ export function httpStatusForRequestLogTerminal(
 /**
  * Finalizes and records a request log entry with status, diagnostics, usage, routing, and retry-attempt data.
  *
+ * Finalizes any active attempt and trace; invalid or over-cap elapsed durations
+ * become zero. Releases the request's account binding even if finalization or
+ * `addLog` throws. Such errors propagate; the default `addLog` catches usage
+ * persistence failures.
+ *
  * @param requestId - The request identifier
  * @param start - The request start timestamp in milliseconds
  * @param logCtx - Mutable metadata collected during the request
@@ -1384,6 +1389,12 @@ export function noteAttemptSend(
   }
 }
 
+/**
+ * Finalize and return the same mutable attempt with status, usage, and error code.
+ * `durationMs` is elapsed time, not a timestamp; invalid values or values above
+ * process uptime plus 1,000 ms or one hour become zero. Omitted usage reuses the
+ * attempt's usage, with any valid input-token estimate applied during finalization.
+ */
 export function finishRequestAttempt(
   attempt: PersistedUsageAttempt,
   status: number,

@@ -581,6 +581,16 @@ function notifyUsageAppendObservers(entry: PersistedUsageEntry): void {
   }
 }
 
+/**
+ * Synchronously append a normalized row to usage.jsonl, creating its directory
+ * as needed. Invalid request and numeric attempt durations, or durations above
+ * one hour, become zero; malformed attempts are omitted. Current process uptime does
+ * not limit persisted durations.
+ *
+ * Test-isolation violations throw before any write. Path-resolution, directory
+ * creation, and append errors propagate. Permission adjustments are best effort;
+ * observers run only after a successful append, and their errors are ignored.
+ */
 export function appendUsageEntry(entry: PersistedUsageEntry): void {
   const path = usageLogPath();
   assertUsageLogPathIsolatedForTests(path);

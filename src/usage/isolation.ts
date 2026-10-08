@@ -2,6 +2,11 @@ import { basename, dirname, join, resolve, sep } from "node:path";
 import { lstatSync, readlinkSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 
+/**
+ * Resolve symlinks while preserving missing path components, including targets
+ * of dangling links. `hops` counts recursive link resolutions; more than 40
+ * throws. Filesystem errors other than missing or non-directory paths propagate.
+ */
 function filesystemPath(path: string, hops = 0): string {
   if (hops > 40)
     throw new Error("usage.jsonl test isolation: too many symlinks");
@@ -28,6 +33,10 @@ function filesystemPath(path: string, hops = 0): string {
   }
 }
 
+/**
+ * Test equality or containment after resolving filesystem links in both paths.
+ * Path-resolution errors propagate.
+ */
 function isPathInside(path: string, root: string): boolean {
   const resolved = filesystemPath(path);
   const resolvedRoot = filesystemPath(root);
@@ -39,9 +48,11 @@ function isPathInside(path: string, root: string): boolean {
 /**
  * Refuse usage.jsonl writes that would land in the operator's live home.
  *
- * Tests historically called `appendUsageEntry` with `OPENCODEX_HOME` unset, so
- * `getConfigDir()` resolved to `~/.opencodex` and fixtures polluted production.
- * Active only when a test preload (or `BUN_TEST`) marked the process.
+ * Active only with a nonblank `OPENCODEX_TEST_HOME` or `BUN_TEST=1`.
+ * Resolve symlinks, including dangling file links, before checking containment.
+ * Throw if the destination is within the captured live or original configured
+ * home, or outside the system temporary directory. Path-resolution errors
+ * propagate; this check creates no files or directories.
  */
 export function assertUsageLogPathIsolatedForTests(path: string): void {
   const inTests =

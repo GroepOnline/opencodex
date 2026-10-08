@@ -19,10 +19,12 @@ export interface SanitizeUsageDurationOptions {
   warn?: (payload: UsageDurationWarning) => void;
 }
 
+/** Emit a duration rejection as a JSON warning. */
 function defaultWarn(payload: UsageDurationWarning): void {
   console.warn(JSON.stringify(payload));
 }
 
+/** Return process uptime in milliseconds, or zero if it is not finite and positive. */
 function processUptimeMs(): number {
   const uptime = process.uptime();
   return Number.isFinite(uptime) && uptime > 0 ? uptime * 1000 : 0;
@@ -31,9 +33,12 @@ function processUptimeMs(): number {
 /**
  * Reject a duration that is not a plausible elapsed time.
  *
- * A request cannot outlive the process (plus 1s of clock slack) or the 1-hour hard max.
- * Values the size of `Date.now()` fail both checks. Invalid values become `0`; the warning
- * carries only scalars — never request ids, paths, providers, or secrets.
+ * Return finite, nonnegative milliseconds unchanged up to the inclusive cap:
+ * the smaller of `maxMs` (default one hour) and nonnegative `uptimeMs` plus
+ * 1,000 ms of slack. Uptime defaults to the current process uptime.
+ * With default options, absolute timestamps such as `Date.now()` are rejected.
+ * Rejected values become `0`; the warning carries only scalars — never request
+ * ids, paths, providers, or secrets. Errors from `options.warn` propagate.
  */
 export function sanitizeUsageDurationMs(
   durationMs: number,
@@ -69,7 +74,9 @@ export function sanitizeUsageDurationMs(
 }
 
 /**
- * Elapsed milliseconds from `startedAt` to `now`. Never returns a wall-clock timestamp.
+ * Return elapsed milliseconds between wall-clock timestamps in milliseconds.
+ * `now` defaults to `Date.now()`. Non-finite timestamps, negative elapsed time,
+ * or durations exceeding process uptime plus 1,000 ms or one hour produce `0`.
  */
 export function elapsedUsageDurationMs(
   startedAt: number,
