@@ -59,9 +59,9 @@
     "setup:hooks": "bun scripts/setup-hooks.ts"
   },
   "dependencies": {
-    "@sentry/bun": "10.75.0",
     "@bufbuild/protobuf": "^2.14.1",
-    "@modelcontextprotocol/sdk": "^1",
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "@sentry/bun": "10.75.0",
     "bun": "1.4.2",
     "zod": "4.6.5"
   },

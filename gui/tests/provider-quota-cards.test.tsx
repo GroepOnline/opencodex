@@ -79,6 +79,17 @@ async function settle(ms = 0): Promise<void> {
   await microtaskFlush();
 }
 
+/** Wait for the asynchronous fetch/parse/React commit, without assuming a fixed
+ * number of microtasks is enough on Windows runners. Real sleep is outside act. */
+async function settleUntilStatus(readStatus: () => string, expected: string): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    await settle();
+    if (readStatus() === expected) return;
+    await realSleep(10);
+  }
+  expect(readStatus()).toBe(expected);
+}
+
 /** Assert a retry is scheduled ~= now + delay (real-clock slack for CI runners). */
 function expectRetryScheduled(nextRetryAt: number | undefined, delayMs: number): void {
   expect(nextRetryAt).toBeDefined();
@@ -231,16 +242,16 @@ describe("useProviderQuotas (per-provider fan-out)", () => {
   });
 
   test("a manual refresh recovers an errored card and clears the retry", async () => {
-    const { seen } = await mount(["xai"], { backoffMs: [10, 30, 60] });
+    // Longer backoff here isolates manual recovery from the automatic retry timer.
+    // The short timer ladder is exercised independently by the preceding test.
+    const { seen } = await mount(["xai"], { backoffMs: [2000, 4000, 8000] });
     resolveFor("xai", json({ generatedAt: Date.now(), reports: [], error: "quota-probe-failed" }));
-    await settle();
-    expect(seen.current!.cards.xai.status).toBe("error");
+    await settleUntilStatus(() => seen.current!.cards.xai.status, "error");
 
     await act(async () => { seen.current!.refresh("xai", { force: true }); });
     expect(seenUrls.length).toBe(2);
     resolveFor("xai", json(okReport("xai")));
-    await settle();
-    expect(seen.current!.cards.xai.status).toBe("ready");
+    await settleUntilStatus(() => seen.current!.cards.xai.status, "ready");
     expect(seen.current!.cards.xai.attempt).toBe(0);
   });
 

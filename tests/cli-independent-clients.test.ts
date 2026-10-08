@@ -141,8 +141,8 @@ test("sync rejects conflicting selectors before touching client state", async ()
   }
 });
 
-for (const orphan of [false, true]) {
-  test(`proxy-only restart preserves mode and client bytes (${orphan ? "missing" : "present"} pid file)`, async () => {
+for (const pidFileState of ["present", "missing", "stale"] as const) {
+  test(`proxy-only restart preserves mode and client bytes (${pidFileState} pid file)`, async () => {
     const f = fixture();
     f.env.CODEX_HOME = join(f.home, "missing-codex");
     const configPath = join(f.codex, "config.toml");
@@ -157,7 +157,8 @@ for (const orphan of [false, true]) {
     const output = Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
     try {
       const first = await waitForFixtureProxy(port);
-      if (orphan) unlinkSync(join(f.home, "ocx.pid"));
+      if (pidFileState === "missing") unlinkSync(join(f.home, "ocx.pid"));
+      if (pidFileState === "stale") writeFileSync(join(f.home, "ocx.pid"), "99999999\n");
       const restarted = await run(["restart"], f.env);
       if (restarted.status !== 0) throw new Error(`Fixture restart failed (${restarted.status}): ${restarted.stdout}\n${restarted.stderr}`);
       expect(restarted.status).toBe(0);

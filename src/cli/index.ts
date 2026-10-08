@@ -458,9 +458,12 @@ async function handleTrayProxyRestart(): Promise<void> {
   if (!ok) process.exitCode = 1;
 }
 
-async function handleStop() {
+async function handleStop(options: { verifiedProxyOnly?: boolean } = {}) {
   const runtime = readRuntimePort();
-  let proxyOnly = runtime?.proxyOnly === true && runtime.pid === readPid();
+  // restart already verified the live proxy's identity. Keep that snapshot even
+  // if Windows shutdown removes the PID/runtime files before this second lookup.
+  let proxyOnly = options.verifiedProxyOnly === true
+    || (runtime?.proxyOnly === true && runtime.pid === readPid());
   let stopFailed = false;
   let stoppedService = false;
   // An ownership mismatch means the service manager was never even contacted: the installed
@@ -1014,8 +1017,11 @@ switch (command) {
     // (ownership mismatch) we would rewrite shared config we just declined to touch.
     const runtime = readRuntimePort();
     const live = runtime?.proxyOnly === true ? await findLiveProxy() : null;
-    const proxyOnly = runtime?.proxyOnly === true && live?.pid === runtime.pid;
-    if (await handleStop()) {
+    // A healthy proxy OR its live PID record establishes the proxy-only mode.
+    // Do not re-derive this mode after stop starts tearing down runtime files.
+    const proxyOnly = runtime?.proxyOnly === true
+      && (live?.pid === runtime.pid || readPid() === runtime.pid);
+    if (await handleStop({ verifiedProxyOnly: proxyOnly })) {
       if (proxyOnly) {
         const child = spawn(process.execPath, startArgv(runtime?.port, true), {
           detached: true, stdio: "ignore", windowsHide: true, env: process.env,
