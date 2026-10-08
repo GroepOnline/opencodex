@@ -98,6 +98,159 @@ async function seedAccounts(count = 2): Promise<string[]> {
 }
 
 describe("Google Antigravity account pool", () => {
+  test.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "falls back from non-finite five-hour usage %s and ignores invalid windows",
+    async (fiveHourPercent) => {
+      const [activeId, otherId] = await seedAccounts();
+      setCachedProviderAccountQuotaForTests(PROVIDER, activeId!, {
+        fiveHourPercent,
+        customWindows: [{ label: "Cla", percent: 90 }],
+      });
+      setCachedProviderAccountQuotaForTests(PROVIDER, otherId!, {
+        customWindows: [
+          { label: "unknown" },
+          { label: "invalid", percent: Number.NaN },
+          { label: "overflow", percent: Number.POSITIVE_INFINITY },
+          { label: "underflow", percent: Number.NEGATIVE_INFINITY },
+          { label: "Gem", percent: 0 },
+        ],
+      });
+      expect(
+        resolveGoogleAntigravityAccountForSession(
+          "finite-fallback",
+          config(true),
+        ),
+      ).toEqual({ accountId: otherId, reason: "lowest-usage" });
+    },
+  );
+
+  test.each(["quota", "fill-first"] as const)(
+    "%s switches at the custom-window threshold, preserves affinity and honors zero threshold",
+    async (strategy) => {
+      const [activeId, otherId] = await seedAccounts();
+      const poolConfig = config(true, 80, { strategy });
+      setCachedProviderAccountQuotaForTests(PROVIDER, activeId!, {
+        customWindows: [{ label: "Gem", percent: 79.99 }],
+      });
+      setCachedProviderAccountQuotaForTests(PROVIDER, otherId!, {
+        customWindows: [{ label: "Gem", percent: 10 }],
+      });
+      expect(
+        resolveGoogleAntigravityAccountForSession(
+          "before-threshold",
+          poolConfig,
+        ).accountId,
+      ).toBe(activeId);
+      setCachedProviderAccountQuotaForTests(PROVIDER, activeId!, {
+        customWindows: [{ label: "Gem", percent: 80 }],
+      });
+      expect(
+        resolveGoogleAntigravityAccountForSession("at-threshold", poolConfig),
+      ).toEqual({
+        accountId: otherId,
+        reason: strategy === "quota" ? "lowest-usage" : "fill-first",
+      });
+      expect(
+        resolveGoogleAntigravityAccountForSession(
+          "before-threshold",
+          poolConfig,
+        ),
+      ).toEqual({ accountId: activeId, reason: "affinity" });
+      expect(
+        resolveGoogleAntigravityAccountForSession(
+          "disabled-threshold",
+          config(true, 0, { strategy }),
+        ).accountId,
+      ).toBe(activeId);
+    },
+  );
+
+  test("zero five-hour usage takes precedence over exhausted custom windows", async () => {
+    const [activeId, otherId] = await seedAccounts();
+    setCachedProviderAccountQuotaForTests(PROVIDER, activeId!, {
+      fiveHourPercent: 0,
+      customWindows: [{ label: "Cla", percent: 100 }],
+    });
+    setCachedProviderAccountQuotaForTests(PROVIDER, otherId!, {
+      customWindows: [{ label: "Gem", percent: 1 }],
+    });
+    expect(
+      resolveGoogleAntigravityAccountForSession("five-hour-zero", config(true)),
+    ).toEqual({ accountId: activeId, reason: "active" });
+  });
+
+  test.each([
+    { customWindows: undefined },
+    { customWindows: [] },
+    { customWindows: [{ label: "Gem" }] },
+  ])(
+    "keeps unknown active usage with windows %j even when another account has zero usage",
+    async ({ customWindows }) => {
+      const [activeId, otherId] = await seedAccounts();
+      setCachedProviderAccountQuotaForTests(PROVIDER, activeId!, {
+        customWindows,
+      });
+      setCachedProviderAccountQuotaForTests(PROVIDER, otherId!, {
+        customWindows: [{ label: "Gem", percent: 0 }],
+      });
+      expect(
+        resolveGoogleAntigravityAccountForSession(
+          "unknown-active",
+          config(true),
+        ),
+      ).toEqual({ accountId: activeId, reason: "active" });
+    },
+  );
+
+  test.each([
+    [0, -10],
+    [150, 100],
+  ])(
+    "clamps custom-window scores %s and %s before breaking a tie",
+    async (firstPercent, secondPercent) => {
+      const [activeId, firstId, secondId] = await seedAccounts(3);
+      setCachedProviderAccountQuotaForTests(PROVIDER, firstId!, {
+        customWindows: [{ label: "Gem", percent: firstPercent }],
+      });
+      setCachedProviderAccountQuotaForTests(PROVIDER, secondId!, {
+        customWindows: [{ label: "Gem", percent: secondPercent }],
+      });
+      // Exclude the active account through cooldown; tied scores use account order.
+      expect(
+        rotateGoogleAntigravityAccountOn429(
+          config(true),
+          activeId!,
+          "30",
+          "clamped-scores",
+        ),
+      ).toBe(firstId);
+    },
+  );
+
+  test("429 failover ranks remaining accounts by their hottest custom window", async () => {
+    const [activeId, hotId, coolId] = await seedAccounts(3);
+    setCachedProviderAccountQuotaForTests(PROVIDER, hotId!, {
+      customWindows: [
+        { label: "Gem", percent: 0 },
+        { label: "Cla", percent: 95 },
+      ],
+    });
+    setCachedProviderAccountQuotaForTests(PROVIDER, coolId!, {
+      customWindows: [
+        { label: "Gem", percent: 20 },
+        { label: "Cla", percent: 30 },
+      ],
+    });
+    expect(
+      rotateGoogleAntigravityAccountOn429(
+        config(true),
+        activeId!,
+        "30",
+        "window-failover",
+      ),
+    ).toBe(coolId);
+  });
+
   test("scores custom windows by the hottest known family", async () => {
     const [activeId, otherId] = await seedAccounts();
     setCachedProviderAccountQuotaForTests(PROVIDER, activeId!, {
