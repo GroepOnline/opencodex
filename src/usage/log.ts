@@ -777,11 +777,13 @@ export async function readUsageSnapshotForManagement(): Promise<{
     return { entries: shared.entries.slice(), revision: shared.revision };
   }
   const promise = readUsageEntriesFullCooperatively(path);
-  managementUsageReadInflight = { key, promise };
+  const inFlight = { key, promise };
+  managementUsageReadInflight = inFlight;
   try {
     return await promise;
   } finally {
-    if (managementUsageReadInflight?.promise === promise)
+    // Compare the request record, never await or overwrite a newer revision.
+    if (managementUsageReadInflight === inFlight)
       managementUsageReadInflight = null;
   }
 }

@@ -106,6 +106,29 @@ describe("usage log", () => {
     );
   });
 
+  test("an older reader cannot clear the newer revision's single-flight state", async () => {
+    writeFileSync(
+      usageLogPath(),
+      `${Array.from({ length: 2_100 }, (_, index) => persistedLine(`old-${index}`)).join("\n")}\n`,
+    );
+    const oldRead = readUsageSnapshotForManagement();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    writeFileSync(
+      usageLogPath(),
+      `${Array.from({ length: 5_100 }, (_, index) => persistedLine(`new-${index}`)).join("\n")}\n`,
+    );
+    const newRead = readUsageSnapshotForManagement();
+    await oldRead;
+    const sharedNewRead = readUsageSnapshotForManagement();
+    const [newSnapshot, sharedSnapshot] = await Promise.all([
+      newRead,
+      sharedNewRead,
+    ]);
+    expect(newSnapshot.entries).toHaveLength(5_100);
+    expect(sharedSnapshot.entries).toHaveLength(5_100);
+    expect(usageReadCacheStatsForTests().fullReads).toBe(2);
+  });
+
   test("persists conversationId for Logs session correlation", () => {
     appendUsageEntry({
       requestId: "ocx-conversation",
