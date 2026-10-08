@@ -41,7 +41,9 @@ A dry run builds + packs the tarball but does **not** publish. Re-run with `--pu
    - `version`: must equal `package.json` version
    - `tag`: `latest` for stable, `preview` for prerelease
    - `dry-run`: `true` first, then `false` for the real publish
-   - `expected-sha`: the release commit SHA (fail-fast if the branch moved)
+   - `expected-sha`: mandatory release commit SHA (fail-fast if the branch moved)
+
+**Do not push release tags manually.** The canonical `Release` workflow publishes npm first, creates the Git tag and GitHub Release, then dispatches GHCR publication. The older `publish-on-tag.yml` route is not the release entrypoint.
 
 ## Version selection
 
@@ -57,12 +59,19 @@ A dry run builds + packs the tarball but does **not** publish. Re-run with `--pu
 The Release workflow (manual dispatch, `concurrency: release`):
 
 - Verifies `GITHUB_SHA` equals `expected-sha` (when supplied).
-- Publishes to npm via **Trusted Publishing (OIDC)** — no `NPM_TOKEN` secret.
+- Publishes to npm via **Trusted Publishing (OIDC)** on a GitHub-hosted runner — no `NPM_TOKEN` secret.
 - Creates the `v<version>` Git tag and GitHub Release from the exact release commit, with a
   changelog body derived from `scripts/release-notes.ts` (PR/commit history since the prior
   release, including carried preview deltas).
 
 `prepublishOnly` runs typecheck + `build:gui` (bundled `gui/dist`) before the pack.
+
+The registry may still be processing a successful upload. Before creating any tag or GitHub
+Release, the workflow waits for public npm metadata, the expected Git commit, tarball integrity,
+both CLI bin entries, and the correct dist-tag. A timeout is **not** permission to retry npm
+publishing or create an unverified GitHub Release: first reconcile the npm version and its
+gitHead against the audited commit. This avoids repeating the partial 1.5.2 release.
+
 
 After a real publish the `rollout` job continues only the immutable artifact chain on the
 exact tag. The tag is pushed with `GITHUB_TOKEN`, and GitHub never starts `push` runs for refs
