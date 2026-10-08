@@ -10,7 +10,6 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
-  rmSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -36,6 +35,7 @@ import {
   resetStorageMutationCoordinatorForTests,
 } from "../src/storage/storage-mutation-coordinator";
 import { installIsolatedCodexHome, type IsolatedCodexHome } from "./helpers/isolated-codex-home";
+import { removeDirWithRetry } from "./helpers/remove-dir-with-retry";
 
 let testDir = "";
 let previousHome: string | undefined;
@@ -149,7 +149,7 @@ beforeEach(() => {
   resetStorageMutationCoordinatorForTests();
 });
 
-afterEach(() => {
+afterEach(async () => {
   resetRestoreTrashJobForTests();
   resetArchivedCleanupJobForTests();
   resetStorageCleanupPolicyJobForTests();
@@ -161,7 +161,7 @@ afterEach(() => {
   else process.env.OPENCODEX_HOME = previousHome;
   isolatedCodexHome?.restore();
   isolatedCodexHome = null;
-  if (testDir) rmSync(testDir, { recursive: true, force: true });
+  if (testDir) await removeDirWithRetry(testDir);
   testDir = "";
 });
 
