@@ -1,9 +1,36 @@
-import { join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
+import { lstatSync, readlinkSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 
+function filesystemPath(path: string, hops = 0): string {
+  if (hops > 40)
+    throw new Error("usage.jsonl test isolation: too many symlinks");
+  const absolute = resolve(path);
+  try {
+    return realpathSync(absolute);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
+    try {
+      if (lstatSync(absolute).isSymbolicLink()) {
+        return filesystemPath(
+          resolve(dirname(absolute), readlinkSync(absolute)),
+          hops + 1,
+        );
+      }
+    } catch (linkError) {
+      const code = (linkError as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT" && code !== "ENOTDIR") throw linkError;
+    }
+    const parent = dirname(absolute);
+    if (parent === absolute) throw error;
+    return join(filesystemPath(parent, hops), basename(absolute));
+  }
+}
+
 function isPathInside(path: string, root: string): boolean {
-  const resolved = resolve(path);
-  const resolvedRoot = resolve(root);
+  const resolved = filesystemPath(path);
+  const resolvedRoot = filesystemPath(root);
   return (
     resolved === resolvedRoot || resolved.startsWith(`${resolvedRoot}${sep}`)
   );
@@ -32,6 +59,12 @@ export function assertUsageLogPathIsolatedForTests(path: string): void {
     }
   }
 
+  const original = process.env.OPENCODEX_REAL_CONFIG_DIR?.trim();
+  if (original && isPathInside(path, original)) {
+    throw new Error(
+      "usage.jsonl write escaped test isolation: refused the original configured OPENCODEX home",
+    );
+  }
   if (!isPathInside(path, tmpdir())) {
     throw new Error(
       "usage.jsonl write escaped test isolation: destination is not under the system temp directory",

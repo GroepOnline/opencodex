@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, statSync } from "node:fs";
+import {
+  existsSync,
+  statSync,
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { assertUsageLogPathIsolatedForTests } from "../src/usage/isolation";
@@ -17,6 +24,64 @@ function liveMtime(): number | null {
 }
 
 describe("usage.jsonl test isolation", () => {
+  test("guard rejects the original configured home even below tmpdir", () => {
+    const home = mkdtempSync(join(tmpdir(), "ocx-original-home-"));
+    const previous = process.env.OPENCODEX_REAL_CONFIG_DIR;
+    process.env.OPENCODEX_REAL_CONFIG_DIR = home;
+    try {
+      expect(() =>
+        assertUsageLogPathIsolatedForTests(join(home, "usage.jsonl")),
+      ).toThrow(/original configured/);
+    } finally {
+      if (previous === undefined) delete process.env.OPENCODEX_REAL_CONFIG_DIR;
+      else process.env.OPENCODEX_REAL_CONFIG_DIR = previous;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("guard follows a directory link to a live home before the log exists", () => {
+    const root = mkdtempSync(join(tmpdir(), "ocx-linked-home-"));
+    const live = join(root, ".opencodex");
+    const link = join(root, "fixture-link");
+    const previous = process.env.OPENCODEX_REAL_HOME;
+    mkdirSync(live);
+    symlinkSync(live, link, process.platform === "win32" ? "junction" : "dir");
+    process.env.OPENCODEX_REAL_HOME = root;
+    try {
+      expect(() =>
+        assertUsageLogPathIsolatedForTests(join(link, "usage.jsonl")),
+      ).toThrow(/live OPENCODEX/);
+      expect(existsSync(join(live, "usage.jsonl"))).toBe(false);
+    } finally {
+      if (previous === undefined) delete process.env.OPENCODEX_REAL_HOME;
+      else process.env.OPENCODEX_REAL_HOME = previous;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "guard follows a dangling file symlink to the live log",
+    () => {
+      const root = mkdtempSync(join(tmpdir(), "ocx-linked-log-"));
+      const live = join(root, ".opencodex");
+      const link = join(root, "usage.jsonl");
+      const previous = process.env.OPENCODEX_REAL_HOME;
+      mkdirSync(live);
+      symlinkSync(join(live, "usage.jsonl"), link);
+      process.env.OPENCODEX_REAL_HOME = root;
+      try {
+        expect(() => assertUsageLogPathIsolatedForTests(link)).toThrow(
+          /live OPENCODEX/,
+        );
+        expect(existsSync(join(live, "usage.jsonl"))).toBe(false);
+      } finally {
+        if (previous === undefined) delete process.env.OPENCODEX_REAL_HOME;
+        else process.env.OPENCODEX_REAL_HOME = previous;
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
   test("a child test process owns and cleans up its temporary home", () => {
     const child = Bun.spawnSync(
       [

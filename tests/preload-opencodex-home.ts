@@ -9,6 +9,9 @@ const realHome =
   process.env.USERPROFILE?.trim() ||
   homedir();
 process.env.OPENCODEX_REAL_HOME = realHome;
+process.env.OPENCODEX_REAL_CONFIG_DIR ??= resolve(
+  process.env.OPENCODEX_HOME?.trim() || join(realHome, ".opencodex"),
+);
 
 // Bun's isolated module caches execute preloads again for each test file.
 // Reuse only this process's temporary home; a child process owns a fresh one.

@@ -34,8 +34,35 @@ describe("usage duration sanitizer", () => {
         status: 200,
         durationMs: Date.now(),
         usageStatus: "unreported",
+        attempts: [
+          {
+            ordinal: 1,
+            provider: "fixture",
+            model: "fixture",
+            adapter: "fixture",
+            status: 200,
+            durationMs: Date.now(),
+            sendCount: 1,
+            recoveryKinds: [],
+            usageStatus: "unreported",
+          },
+          {
+            ordinal: 2,
+            provider: "fixture",
+            model: "fixture",
+            adapter: "fixture",
+            status: 200,
+            durationMs: 42,
+            sendCount: 1,
+            recoveryKinds: [],
+            usageStatus: "unreported",
+          },
+        ],
       });
-      expect(readUsageEntries()[0]?.durationMs).toBe(0);
+      const persisted = readUsageEntries()[0];
+      expect(persisted?.durationMs).toBe(0);
+      expect(persisted?.attempts?.[0]?.durationMs).toBe(0);
+      expect(persisted?.attempts?.[1]?.durationMs).toBe(42);
       expect(warn).toHaveBeenCalled();
     } finally {
       warn.mockRestore();
