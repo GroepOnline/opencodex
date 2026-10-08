@@ -89,11 +89,12 @@ describe("Grok fence lifecycle wiring", () => {
     expect(stopFn).not.toContain("process.exit(1)");
 
     const restartCase = sliceFn(CLI_SOURCE, 'case "restart"', 'case "health"');
-    expect(restartCase).toContain("if (await handleStop()) {");
+    expect(restartCase).toContain("if (await handleStop({ verifiedProxyOnly: proxyOnly })) {");
+    expect(stopFn).toContain("options.verifiedProxyOnly === true");
     expect(restartCase).toContain("if (proxyOnly) {");
     expect(restartCase).toContain("startArgv(runtime?.port, true)");
     expect(restartCase).toContain("await handleEnsure();");
-    expect(restartCase.indexOf("if (await handleStop())")).toBeLessThan(restartCase.indexOf("await handleEnsure()"));
+    expect(restartCase.indexOf("if (await handleStop({ verifiedProxyOnly: proxyOnly }))")).toBeLessThan(restartCase.indexOf("await handleEnsure()"));
   });
 
   test("handleStop treats an incomplete native Codex restore as a stop failure", () => {
