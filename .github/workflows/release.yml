@@ -25,8 +25,8 @@ on:
         type: boolean
         default: true
       expected-sha:
-        description: "Immutable release commit this dispatch must publish (fail if the branch moved)"
-        required: false
+        description: "Immutable release commit this dispatch must publish (required; fail if the branch moved)"
+        required: true
         type: string
       deploy:
         description: "Legacy deploy.yml targets a permanently retired host and must remain false. Runtime cutover uses a separately verified private production deployment contract."
@@ -57,7 +57,7 @@ concurrency:
 
 jobs:
   publish:
-    runs-on: [self-hosted, Linux, X64, jan]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Reject retired runtime deploy request
@@ -80,7 +80,8 @@ jobs:
           EXPECTED_SHA: ${{ inputs.expected-sha }}
         run: |
           if [ -z "$EXPECTED_SHA" ]; then
-            echo "::warning::no expected-sha supplied; publishing whatever the branch currently points at"
+            echo "::error::expected-sha is mandatory; refusing to publish an unaudited branch head"
+            exit 1
           elif [ "$GITHUB_SHA" != "$EXPECTED_SHA" ]; then
             echo "::error::branch moved after the release audit (expected ${EXPECTED_SHA}, got ${GITHUB_SHA}) — refusing to publish an unaudited commit"
             exit 1
@@ -627,7 +628,7 @@ jobs:
   rollout:
     needs: publish
     if: github.event.inputs.dry-run != 'true'
-    runs-on: [self-hosted, Linux, X64, jan]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read

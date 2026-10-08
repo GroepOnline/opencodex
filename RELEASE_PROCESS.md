@@ -41,7 +41,9 @@ A dry run builds + packs the tarball but does **not** publish. Re-run with `--pu
    - `version`: must equal `package.json` version
    - `tag`: `latest` for stable, `preview` for prerelease
    - `dry-run`: `true` first, then `false` for the real publish
-   - `expected-sha`: the release commit SHA (fail-fast if the branch moved)
+   - `expected-sha`: mandatory release commit SHA (fail-fast if the branch moved)
+
+**Do not push release tags manually.** The canonical `Release` workflow publishes npm first, creates the Git tag and GitHub Release, then dispatches GHCR publication. The older `publish-on-tag.yml` route is not the release entrypoint.
 
 ## Version selection
 
@@ -57,7 +59,7 @@ A dry run builds + packs the tarball but does **not** publish. Re-run with `--pu
 The Release workflow (manual dispatch, `concurrency: release`):
 
 - Verifies `GITHUB_SHA` equals `expected-sha` (when supplied).
-- Publishes to npm via **Trusted Publishing (OIDC)** — no `NPM_TOKEN` secret.
+- Publishes to npm via **Trusted Publishing (OIDC)** on a GitHub-hosted runner — no `NPM_TOKEN` secret.
 - Creates the `v<version>` Git tag and GitHub Release from the exact release commit, with a
   changelog body derived from `scripts/release-notes.ts` (PR/commit history since the prior
   release, including carried preview deltas).

@@ -220,12 +220,7 @@ describe("GitHub Actions hardening", () => {
       );
       for (const [id, job] of scheduled) {
         if (id === "publish") {
-          expect(job["runs-on"]).toEqual([
-            "self-hosted",
-            "Linux",
-            "X64",
-            "jan",
-          ]);
+          expect(job["runs-on"]).toBe("ubuntu-latest");
           expect(job.permissions).toEqual({
             contents: "read",
             packages: "write",
@@ -584,6 +579,7 @@ describe("GitHub Actions hardening", () => {
           needs?: string | string[];
           if?: string;
           permissions?: Record<string, string>;
+          "runs-on"?: string;
           "timeout-minutes"?: number;
           steps?: Array<{
             name?: string;
@@ -601,6 +597,9 @@ describe("GitHub Actions hardening", () => {
     expect(Object.keys(workflow.jobs ?? {})).toEqual(["publish", "rollout"]);
     const publish = workflow.jobs?.publish;
     const rollout = workflow.jobs?.rollout;
+    // npm OIDC and GHCR dispatch must work on ephemeral, GitHub-hosted runners.
+    expect(publish?.["runs-on"]).toBe("ubuntu-latest");
+    expect(rollout?.["runs-on"]).toBe("ubuntu-latest");
     // Top-level and publish stay actions:read; only the rollout job may dispatch.
     expect(workflow.permissions?.actions).toBe("read");
     expect(publish?.permissions).toBeUndefined();
@@ -688,6 +687,7 @@ describe("GitHub Actions hardening", () => {
     // Least privilege + never cancel a publish mid-flight.
     expect(workflow).toContain("actions: read");
     expect(workflow).toContain("pull-requests: read");
+    expect(workflow).toContain("expected-sha is mandatory; refusing to publish an unaudited branch head");
     expect(workflow).toContain("id-token: write");
     expect(workflow).toContain("cancel-in-progress: false");
     expect(workflow).toContain("timeout-minutes: 15");
@@ -3654,12 +3654,7 @@ describe("GitHub Actions hardening", () => {
     const image = workflow.jobs?.image;
     const publish = workflow.jobs?.publish;
     expect(image?.["runs-on"]).toBe("ubuntu-latest");
-    expect(publish?.["runs-on"]).toEqual([
-      "self-hosted",
-      "Linux",
-      "X64",
-      "jan",
-    ]);
+    expect(publish?.["runs-on"]).toBe("ubuntu-latest");
     expect(image?.["timeout-minutes"]).toBe(20);
     expect(publish?.["timeout-minutes"]).toBe(20);
     expect(image?.permissions).toEqual({ contents: "read", packages: "none" });
