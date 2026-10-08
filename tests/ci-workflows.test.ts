@@ -652,6 +652,30 @@ describe("GitHub Actions hardening", () => {
     expect(rollout?.if).not.toContain("always()");
   });
 
+  test("post-publish smoke tolerates npm processing lag but verifies provenance and dist-tag", async () => {
+    const workflow = Bun.YAML.parse(await readText(".github/workflows/release.yml")) as {
+      jobs: { publish: { "timeout-minutes": number; steps: Array<{ name?: string; env?: Record<string, string>; run?: string }> } };
+    };
+    expect(workflow.jobs.publish["timeout-minutes"]).toBe(45);
+    const step = workflow.jobs.publish.steps.find(s => s.name === "Post-publish registry smoke");
+    expect(step).toBeDefined();
+    expect(step?.env?.NPM_DIST_TAG).toBe("${{ inputs.tag }}");
+    const script = step?.run ?? "";
+    for (const required of [
+      "seq 1 120",
+      "Cache-Control: no-cache",
+      "registry.npmjs.org/@groeponline%2Fopencodex/",
+      "registry.npmjs.org/-/package/@groeponline%2Fopencodex/dist-tags",
+      '.gitHead == $sha',
+      '.bin.ocx == "bin/ocx.mjs"',
+      '.bin.opencodex == "bin/ocx.mjs"',
+      '.[$channel] == $version',
+      'if [ "$attempt" -lt 120 ]; then sleep 10; fi',
+      "do not tag an unverified package",
+    ]) expect(script).toContain(required);
+    expect(script).not.toContain("seq 1 30");
+  });
+
   test("release registry probes use pinned npm without inherited authentication", async () => {
     const workflow = Bun.YAML.parse(
       await readText(".github/workflows/release.yml"),
@@ -690,7 +714,7 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toContain("expected-sha is mandatory; refusing to publish an unaudited branch head");
     expect(workflow).toContain("id-token: write");
     expect(workflow).toContain("cancel-in-progress: false");
-    expect(workflow).toContain("timeout-minutes: 15");
+    expect(workflow).toContain("timeout-minutes: 45");
 
     // Dry-run first by default; tokenless trusted publishing only.
     expect(workflow).toMatch(/dry-run:[\s\S]*?default: true/);

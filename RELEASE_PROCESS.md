@@ -66,6 +66,13 @@ The Release workflow (manual dispatch, `concurrency: release`):
 
 `prepublishOnly` runs typecheck + `build:gui` (bundled `gui/dist`) before the pack.
 
+The registry may still be processing a successful upload. Before creating any tag or GitHub
+Release, the workflow waits for public npm metadata, the expected Git commit, tarball integrity,
+both CLI bin entries, and the correct dist-tag. A timeout is **not** permission to retry npm
+publishing or create an unverified GitHub Release: first reconcile the npm version and its
+gitHead against the audited commit. This avoids repeating the partial 1.5.2 release.
+
+
 After a real publish the `rollout` job continues only the immutable artifact chain on the
 exact tag. The tag is pushed with `GITHUB_TOKEN`, and GitHub never starts `push` runs for refs
 created by that token, so `container.yml` is dispatched explicitly on `refs/tags/v<version>`.
