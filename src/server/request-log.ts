@@ -1,3 +1,7 @@
+import {
+  elapsedUsageDurationMs,
+  sanitizeUsageDurationMs,
+} from "../usage/duration";
 import { existsSync, readFileSync } from "node:fs";
 import type { ResponsesTerminalStatus } from "../bridge";
 import {
@@ -6,12 +10,19 @@ import {
   isClientClosedMessage,
 } from "../lib/errors";
 import { CODEX_CONFIG_PATH, readRootTomlString } from "../codex/paths";
-import { codexProviderAccountIdForUsage, fallbackCodexAccountLogLabel } from "../codex/account-label";
+import {
+  codexProviderAccountIdForUsage,
+  fallbackCodexAccountLogLabel,
+} from "../codex/account-label";
 import { readCodexCatalogPath } from "../codex/catalog";
 import type { OcxConfig, OcxUsage } from "../types";
 import type { AdapterRequest } from "../adapters/base";
 import { redactSecretString } from "../lib/redact";
-import { appendTraceResponse, finalizeTrace, type TraceCapture } from "../trace/capture";
+import {
+  appendTraceResponse,
+  finalizeTrace,
+  type TraceCapture,
+} from "../trace/capture";
 import type { UsageTraceMeta } from "../trace/types";
 import { providerAccountLabel, baseProviderLabel } from "../providers/label";
 import { getAccountSet } from "../oauth/store";
@@ -147,7 +158,12 @@ export interface RequestLogEntry {
   durationMs: number;
   errorCode?: string;
   terminalStatus?: ResponsesTerminalStatus;
-  closeReason?: "terminal" | "client_cancel" | "non_stream" | "body_stall" | "body_overflow";
+  closeReason?:
+    | "terminal"
+    | "client_cancel"
+    | "non_stream"
+    | "body_stall"
+    | "body_overflow";
   /** Secret-redacted upstream error reason, surfaced in /api/logs and the GUI detail modal. */
   upstreamError?: string;
   /** Pseudonymized account label when the provider display name carries a pool suffix. */
@@ -182,13 +198,23 @@ function resolveUsageProviderAccountId(
   logCtx: Pick<RequestLogContext, "providerAccountId" | "attempts">,
   provider: string,
 ): string | undefined {
-  if (typeof logCtx.providerAccountId === "string" && logCtx.providerAccountId.trim()) {
+  if (
+    typeof logCtx.providerAccountId === "string" &&
+    logCtx.providerAccountId.trim()
+  ) {
     return logCtx.providerAccountId.trim();
   }
-  const attemptId = [...(logCtx.attempts ?? [])].reverse().find(attempt => attempt.providerAccountId)?.providerAccountId;
-  if (typeof attemptId === "string" && attemptId.trim()) return attemptId.trim();
+  const attemptId = [...(logCtx.attempts ?? [])]
+    .reverse()
+    .find((attempt) => attempt.providerAccountId)?.providerAccountId;
+  if (typeof attemptId === "string" && attemptId.trim())
+    return attemptId.trim();
   const base = baseProviderLabel(provider);
-  if (base === "anthropic" || base === "cursor" || base === "google-antigravity") {
+  if (
+    base === "anthropic" ||
+    base === "cursor" ||
+    base === "google-antigravity"
+  ) {
     return getAccountSet(base)?.activeAccountId;
   }
   return undefined;
@@ -201,7 +227,8 @@ export function bindLogProviderAccount(
   accountId: string,
 ): void {
   bindRequestProviderAccount(logCtx, kind, provider, accountId);
-  if (logCtx.activeAttempt && accountId) logCtx.activeAttempt.providerAccountId = accountId;
+  if (logCtx.activeAttempt && accountId)
+    logCtx.activeAttempt.providerAccountId = accountId;
 }
 
 /** Bind usage attribution from the pre-request candidate pick. OAuth wins over key-pool. */
@@ -215,7 +242,12 @@ export function bindLogFromSelectCandidate(
   options?: { config?: OcxConfig },
 ): void {
   if (pick.oauthPool?.accountId) {
-    bindLogProviderAccount(logCtx, "oauth", pick.oauthPool.pool, pick.oauthPool.accountId);
+    bindLogProviderAccount(
+      logCtx,
+      "oauth",
+      pick.oauthPool.pool,
+      pick.oauthPool.accountId,
+    );
     return;
   }
   if (pick.authCtx?.accountId) {
@@ -226,7 +258,12 @@ export function bindLogFromSelectCandidate(
     return;
   }
   if (pick.keyPool?.accountId) {
-    bindLogProviderAccount(logCtx, "key-pool", pick.keyPool.provider, pick.keyPool.accountId);
+    bindLogProviderAccount(
+      logCtx,
+      "key-pool",
+      pick.keyPool.provider,
+      pick.keyPool.accountId,
+    );
   }
 }
 
@@ -238,19 +275,26 @@ export function bindLogFromSelectCandidate(
  */
 export function resolveRequestLogModel(logCtx: RequestLogContext): string {
   if (logCtx.model && logCtx.model !== UNKNOWN_LOG_LABEL) return logCtx.model;
-  if (typeof logCtx.requestedModel === "string" && logCtx.requestedModel.trim()) return logCtx.requestedModel.trim();
-  if (typeof logCtx.resolvedModel === "string" && logCtx.resolvedModel.trim()) return logCtx.resolvedModel.trim();
+  if (typeof logCtx.requestedModel === "string" && logCtx.requestedModel.trim())
+    return logCtx.requestedModel.trim();
+  if (typeof logCtx.resolvedModel === "string" && logCtx.resolvedModel.trim())
+    return logCtx.resolvedModel.trim();
   return logCtx.model;
 }
 
 /** Prefer the routed config key or attempt provider over the pre-route placeholder. */
 export function resolveRequestLogProvider(logCtx: RequestLogContext): string {
-  if (logCtx.provider && logCtx.provider !== UNKNOWN_LOG_LABEL) return logCtx.provider;
-  if (typeof logCtx.providerConfigKey === "string" && logCtx.providerConfigKey.trim()) {
+  if (logCtx.provider && logCtx.provider !== UNKNOWN_LOG_LABEL)
+    return logCtx.provider;
+  if (
+    typeof logCtx.providerConfigKey === "string" &&
+    logCtx.providerConfigKey.trim()
+  ) {
     return logCtx.providerConfigKey.trim();
   }
   const attemptProvider = logCtx.attempts?.at(-1)?.provider;
-  if (typeof attemptProvider === "string" && attemptProvider.trim()) return attemptProvider.trim();
+  if (typeof attemptProvider === "string" && attemptProvider.trim())
+    return attemptProvider.trim();
   return logCtx.provider;
 }
 
@@ -260,12 +304,17 @@ export function resolveRequestLogProvider(logCtx: RequestLogContext): string {
  * @param value - The terminal status label to validate
  * @returns The recognized terminal status, or `undefined` for unsupported values
  */
-function asTerminalStatus(value: string | undefined): ResponsesTerminalStatus | undefined {
-  if (value === "completed" || value === "failed" || value === "incomplete") return value;
+function asTerminalStatus(
+  value: string | undefined,
+): ResponsesTerminalStatus | undefined {
+  if (value === "completed" || value === "failed" || value === "incomplete")
+    return value;
   return undefined;
 }
 
-function asCloseReason(value: string | undefined): RequestLogEntry["closeReason"] | undefined {
+function asCloseReason(
+  value: string | undefined,
+): RequestLogEntry["closeReason"] | undefined {
   switch (value) {
     case "terminal":
     case "client_cancel":
@@ -284,7 +333,9 @@ function asCloseReason(value: string | undefined): RequestLogEntry["closeReason"
  * @param entry - The persisted usage record to convert
  * @returns The request log entry reconstructed from `entry`
  */
-export function requestLogEntryFromPersistedUsage(entry: PersistedUsageEntry): RequestLogEntry {
+export function requestLogEntryFromPersistedUsage(
+  entry: PersistedUsageEntry,
+): RequestLogEntry {
   const terminalStatus = asTerminalStatus(entry.terminalStatus);
   const closeReason = asCloseReason(entry.closeReason);
   return {
@@ -294,24 +345,46 @@ export function requestLogEntryFromPersistedUsage(entry: PersistedUsageEntry): R
     provider: entry.provider,
     ...(entry.adapter ? { adapter: entry.adapter } : {}),
     ...(entry.promptCache ? { promptCache: { ...entry.promptCache } } : {}),
-    ...(entry.firstOutputMs !== undefined ? { firstOutputMs: entry.firstOutputMs } : {}),
+    ...(entry.firstOutputMs !== undefined
+      ? { firstOutputMs: entry.firstOutputMs }
+      : {}),
     ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
     ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
     ...(entry.account ? { account: entry.account } : {}),
-    ...(entry.providerAccountId ? { providerAccountId: entry.providerAccountId } : {}),
+    ...(entry.providerAccountId
+      ? { providerAccountId: entry.providerAccountId }
+      : {}),
     ...(entry.requestedModel ? { requestedModel: entry.requestedModel } : {}),
-    ...(entry.requestedEffort ? { requestedEffort: entry.requestedEffort } : {}),
-    ...(entry.effectiveEffort ? { effectiveEffort: entry.effectiveEffort } : {}),
-    ...(entry.reasoningWireField ? { reasoningWireField: entry.reasoningWireField } : {}),
-    ...(entry.reasoningWireValue !== undefined ? { reasoningWireValue: entry.reasoningWireValue } : {}),
-    ...(entry.requestedServiceTier ? { requestedServiceTier: entry.requestedServiceTier } : {}),
-    ...(entry.requestedSpeedLabel ? { requestedSpeedLabel: entry.requestedSpeedLabel } : {}),
-    ...(entry.configuredServiceTier ? { configuredServiceTier: entry.configuredServiceTier } : {}),
-    ...(entry.configuredSpeedLabel ? { configuredSpeedLabel: entry.configuredSpeedLabel } : {}),
+    ...(entry.requestedEffort
+      ? { requestedEffort: entry.requestedEffort }
+      : {}),
+    ...(entry.effectiveEffort
+      ? { effectiveEffort: entry.effectiveEffort }
+      : {}),
+    ...(entry.reasoningWireField
+      ? { reasoningWireField: entry.reasoningWireField }
+      : {}),
+    ...(entry.reasoningWireValue !== undefined
+      ? { reasoningWireValue: entry.reasoningWireValue }
+      : {}),
+    ...(entry.requestedServiceTier
+      ? { requestedServiceTier: entry.requestedServiceTier }
+      : {}),
+    ...(entry.requestedSpeedLabel
+      ? { requestedSpeedLabel: entry.requestedSpeedLabel }
+      : {}),
+    ...(entry.configuredServiceTier
+      ? { configuredServiceTier: entry.configuredServiceTier }
+      : {}),
+    ...(entry.configuredSpeedLabel
+      ? { configuredSpeedLabel: entry.configuredSpeedLabel }
+      : {}),
     ...(entry.modelSupportsServiceTier !== undefined
       ? { modelSupportsServiceTier: entry.modelSupportsServiceTier }
       : {}),
-    ...(entry.responseServiceTier ? { responseServiceTier: entry.responseServiceTier } : {}),
+    ...(entry.responseServiceTier
+      ? { responseServiceTier: entry.responseServiceTier }
+      : {}),
     ...(entry.resolvedModel ? { resolvedModel: entry.resolvedModel } : {}),
     ...(entry.stream !== undefined ? { stream: entry.stream } : {}),
     status: entry.status,
@@ -322,7 +395,9 @@ export function requestLogEntryFromPersistedUsage(entry: PersistedUsageEntry): R
     ...(entry.upstreamError ? { upstreamError: entry.upstreamError } : {}),
     usageStatus: entry.usageStatus,
     ...(entry.usage ? { usage: entry.usage } : {}),
-    ...(entry.totalTokens !== undefined ? { totalTokens: entry.totalTokens } : {}),
+    ...(entry.totalTokens !== undefined
+      ? { totalTokens: entry.totalTokens }
+      : {}),
     ...(entry.attempts?.length ? { attempts: entry.attempts } : {}),
     ...(entry.traceId ? { traceId: entry.traceId } : {}),
     ...(entry.trace ? { trace: entry.trace } : {}),
@@ -335,7 +410,8 @@ export function requestLogEntryFromPersistedUsage(entry: PersistedUsageEntry): R
  * the buffer already has live entries. Read failures are non-fatal (same as /api/usage).
  */
 export function hydrateRequestLogsFromDisk(
-  reader: () => PersistedUsageEntry[] = () => readRecentUsageEntries(MAX_LOG_SIZE),
+  reader: () => PersistedUsageEntry[] = () =>
+    readRecentUsageEntries(MAX_LOG_SIZE),
 ): number {
   if (requestLogsHydratedFromDisk) return 0;
   if (requestLog.length > 0) {
@@ -346,10 +422,12 @@ export function hydrateRequestLogsFromDisk(
     const persisted = reader();
     requestLogsHydratedFromDisk = true;
     if (persisted.length === 0) return 0;
-    const slice = persisted.length > MAX_LOG_SIZE
-      ? persisted.slice(persisted.length - MAX_LOG_SIZE)
-      : persisted;
-    for (const entry of slice) requestLog.push(requestLogEntryFromPersistedUsage(entry));
+    const slice =
+      persisted.length > MAX_LOG_SIZE
+        ? persisted.slice(persisted.length - MAX_LOG_SIZE)
+        : persisted;
+    for (const entry of slice)
+      requestLog.push(requestLogEntryFromPersistedUsage(entry));
     return slice.length;
   } catch (err) {
     requestLogsHydratedFromDisk = true;
@@ -380,33 +458,51 @@ export function addRequestLog(entry: RequestLogEntry) {
     status: entry.status,
     durationMs: entry.durationMs,
     ...(entry.stream !== undefined ? { stream: entry.stream } : {}),
-    ...(entry.firstOutputMs !== undefined ? { firstOutputMs: entry.firstOutputMs } : {}),
+    ...(entry.firstOutputMs !== undefined
+      ? { firstOutputMs: entry.firstOutputMs }
+      : {}),
     ...(entry.errorCode ? { errorCode: entry.errorCode } : {}),
     usageStatus: entry.usageStatus,
     ...(entry.usage ? { usage: entry.usage } : {}),
-    ...(entry.attempts?.length ? { attempts: entry.attempts.map(attempt => ({
-      ordinal: attempt.ordinal,
-      provider: baseProviderLabel(attempt.provider),
-      model: attempt.model,
-      usageStatus: attempt.usageStatus,
-      ...(attempt.usage ? { usage: attempt.usage } : {}),
-    })) } : {}),
-    ...(entry.requestedServiceTier ? { requestedServiceTier: entry.requestedServiceTier } : {}),
-    ...(entry.configuredServiceTier ? { configuredServiceTier: entry.configuredServiceTier } : {}),
-    ...(entry.responseServiceTier ? { responseServiceTier: entry.responseServiceTier } : {}),
+    ...(entry.attempts?.length
+      ? {
+          attempts: entry.attempts.map((attempt) => ({
+            ordinal: attempt.ordinal,
+            provider: baseProviderLabel(attempt.provider),
+            model: attempt.model,
+            usageStatus: attempt.usageStatus,
+            ...(attempt.usage ? { usage: attempt.usage } : {}),
+          })),
+        }
+      : {}),
+    ...(entry.requestedServiceTier
+      ? { requestedServiceTier: entry.requestedServiceTier }
+      : {}),
+    ...(entry.configuredServiceTier
+      ? { configuredServiceTier: entry.configuredServiceTier }
+      : {}),
+    ...(entry.responseServiceTier
+      ? { responseServiceTier: entry.responseServiceTier }
+      : {}),
   });
   try {
     // Failure diagnostics survive the 200-entry ring buffer by riding the persisted
     // usage entry (devlog/_plan/260716_claudecode_hardening/030). Success rows stay
     // in their existing shape; the >=400 gate deliberately includes 499 client-cancels.
-    const failureDiagnostics = entry.status >= 400 || (entry.terminalStatus && entry.terminalStatus !== "completed")
-      ? {
-        ...(entry.errorCode ? { errorCode: entry.errorCode } : {}),
-        ...(entry.terminalStatus ? { terminalStatus: entry.terminalStatus } : {}),
-        ...(entry.closeReason ? { closeReason: entry.closeReason } : {}),
-        ...(entry.upstreamError ? { upstreamError: entry.upstreamError } : {}),
-      }
-      : {};
+    const failureDiagnostics =
+      entry.status >= 400 ||
+      (entry.terminalStatus && entry.terminalStatus !== "completed")
+        ? {
+            ...(entry.errorCode ? { errorCode: entry.errorCode } : {}),
+            ...(entry.terminalStatus
+              ? { terminalStatus: entry.terminalStatus }
+              : {}),
+            ...(entry.closeReason ? { closeReason: entry.closeReason } : {}),
+            ...(entry.upstreamError
+              ? { upstreamError: entry.upstreamError }
+              : {}),
+          }
+        : {};
     const account = providerAccountLabel(entry.provider);
     appendUsageEntry({
       requestId: entry.requestId,
@@ -418,28 +514,52 @@ export function addRequestLog(entry: RequestLogEntry) {
       ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
       ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
       ...(account ? { account } : {}),
-      ...(entry.providerAccountId ? { providerAccountId: entry.providerAccountId } : {}),
+      ...(entry.providerAccountId
+        ? { providerAccountId: entry.providerAccountId }
+        : {}),
       ...(entry.resolvedModel ? { resolvedModel: entry.resolvedModel } : {}),
       ...(entry.requestedModel ? { requestedModel: entry.requestedModel } : {}),
-      ...(entry.requestedEffort ? { requestedEffort: entry.requestedEffort } : {}),
-      ...(entry.effectiveEffort ? { effectiveEffort: entry.effectiveEffort } : {}),
-      ...(entry.reasoningWireField ? { reasoningWireField: entry.reasoningWireField } : {}),
-      ...(entry.reasoningWireValue !== undefined ? { reasoningWireValue: entry.reasoningWireValue } : {}),
-      ...(entry.requestedServiceTier ? { requestedServiceTier: entry.requestedServiceTier } : {}),
-      ...(entry.requestedSpeedLabel ? { requestedSpeedLabel: entry.requestedSpeedLabel } : {}),
-      ...(entry.configuredServiceTier ? { configuredServiceTier: entry.configuredServiceTier } : {}),
-      ...(entry.configuredSpeedLabel ? { configuredSpeedLabel: entry.configuredSpeedLabel } : {}),
+      ...(entry.requestedEffort
+        ? { requestedEffort: entry.requestedEffort }
+        : {}),
+      ...(entry.effectiveEffort
+        ? { effectiveEffort: entry.effectiveEffort }
+        : {}),
+      ...(entry.reasoningWireField
+        ? { reasoningWireField: entry.reasoningWireField }
+        : {}),
+      ...(entry.reasoningWireValue !== undefined
+        ? { reasoningWireValue: entry.reasoningWireValue }
+        : {}),
+      ...(entry.requestedServiceTier
+        ? { requestedServiceTier: entry.requestedServiceTier }
+        : {}),
+      ...(entry.requestedSpeedLabel
+        ? { requestedSpeedLabel: entry.requestedSpeedLabel }
+        : {}),
+      ...(entry.configuredServiceTier
+        ? { configuredServiceTier: entry.configuredServiceTier }
+        : {}),
+      ...(entry.configuredSpeedLabel
+        ? { configuredSpeedLabel: entry.configuredSpeedLabel }
+        : {}),
       ...(entry.modelSupportsServiceTier !== undefined
         ? { modelSupportsServiceTier: entry.modelSupportsServiceTier }
         : {}),
-      ...(entry.responseServiceTier ? { responseServiceTier: entry.responseServiceTier } : {}),
+      ...(entry.responseServiceTier
+        ? { responseServiceTier: entry.responseServiceTier }
+        : {}),
       ...(entry.stream !== undefined ? { stream: entry.stream } : {}),
       status: entry.status,
       durationMs: entry.durationMs,
-      ...(entry.firstOutputMs !== undefined ? { firstOutputMs: entry.firstOutputMs } : {}),
+      ...(entry.firstOutputMs !== undefined
+        ? { firstOutputMs: entry.firstOutputMs }
+        : {}),
       usageStatus: entry.usageStatus,
       ...(entry.usage ? { usage: entry.usage } : {}),
-      ...(entry.totalTokens !== undefined ? { totalTokens: entry.totalTokens } : {}),
+      ...(entry.totalTokens !== undefined
+        ? { totalTokens: entry.totalTokens }
+        : {}),
       ...(entry.attempts?.length ? { attempts: entry.attempts } : {}),
       ...failureDiagnostics,
       ...(entry.traceId ? { traceId: entry.traceId } : {}),
@@ -469,7 +589,10 @@ export function recordFirstOutput(
   if (!Number.isFinite(requestStartedAt) || !Number.isFinite(now)) return;
   const requestElapsed = Math.max(0, now - requestStartedAt);
   if (logCtx.firstOutputMs === undefined) logCtx.firstOutputMs = requestElapsed;
-  if (logCtx.activeAttempt && logCtx.activeAttempt.firstOutputMs === undefined) {
+  if (
+    logCtx.activeAttempt &&
+    logCtx.activeAttempt.firstOutputMs === undefined
+  ) {
     const attemptStartedAt = logCtx.activeAttemptStartedAt ?? requestStartedAt;
     logCtx.activeAttempt.firstOutputMs = Math.max(0, now - attemptStartedAt);
   }
@@ -482,7 +605,9 @@ export function recordAttemptRequestedEffort(logCtx: RequestLogContext): void {
   delete attempt.requestedEffort;
   try {
     if (typeof logCtx.requestedEffort === "string" && logCtx.requestedEffort) {
-      attempt.requestedEffort = redactSecretString(logCtx.requestedEffort).slice(0, 64);
+      attempt.requestedEffort = redactSecretString(
+        logCtx.requestedEffort,
+      ).slice(0, 64);
     }
   } catch {
     // Request logging is best-effort and must not affect request delivery.
@@ -512,21 +637,30 @@ function recordAdapterReasoning(
     const raw: unknown = request.reasoningLog;
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
     const reasoning = raw as Record<string, unknown>;
-    if (typeof reasoning.effectiveEffort !== "string" || !reasoning.effectiveEffort
-      || (reasoning.wireField !== "reasoning_effort"
-        && reasoning.wireField !== "thinking_budget"
-        && reasoning.wireField !== "thinking.type")
-      || (!(typeof reasoning.wireValue === "string" && reasoning.wireValue)
-        && !(typeof reasoning.wireValue === "number"
-          && Number.isFinite(reasoning.wireValue)
-          && reasoning.wireValue >= 0))) {
+    if (
+      typeof reasoning.effectiveEffort !== "string" ||
+      !reasoning.effectiveEffort ||
+      (reasoning.wireField !== "reasoning_effort" &&
+        reasoning.wireField !== "thinking_budget" &&
+        reasoning.wireField !== "thinking.type") ||
+      (!(typeof reasoning.wireValue === "string" && reasoning.wireValue) &&
+        !(
+          typeof reasoning.wireValue === "number" &&
+          Number.isFinite(reasoning.wireValue) &&
+          reasoning.wireValue >= 0
+        ))
+    ) {
       return;
     }
 
-    const effectiveEffort = redactSecretString(reasoning.effectiveEffort).slice(0, 64);
-    const wireValue = typeof reasoning.wireValue === "string"
-      ? redactSecretString(reasoning.wireValue).slice(0, 64)
-      : reasoning.wireValue;
+    const effectiveEffort = redactSecretString(reasoning.effectiveEffort).slice(
+      0,
+      64,
+    );
+    const wireValue =
+      typeof reasoning.wireValue === "string"
+        ? redactSecretString(reasoning.wireValue).slice(0, 64)
+        : reasoning.wireValue;
     logCtx.effectiveEffort = effectiveEffort;
     logCtx.reasoningWireField = reasoning.wireField;
     logCtx.reasoningWireValue = wireValue;
@@ -552,10 +686,18 @@ export function recordAdapterRequestMetadata(
   }
 }
 
-export function requestLogErrorCode(status: number, upstreamError?: string): string | undefined {
+export function requestLogErrorCode(
+  status: number,
+  upstreamError?: string,
+): string | undefined {
   if (status >= 200 && status < 400) return undefined;
   // Defense in depth: mid-stream web-search aborts used to land as 502 with this message.
-  if (status === 499 || (upstreamError?.trim() && classifyError(status, "upstream_error", upstreamError).code === "client_closed_request")) {
+  if (
+    status === 499 ||
+    (upstreamError?.trim() &&
+      classifyError(status, "upstream_error", upstreamError).code ===
+        "client_closed_request")
+  ) {
     return "client_closed_request";
   }
   if (status === 400 || status === 409) return "invalid_request_error";
@@ -575,7 +717,9 @@ export function requestLogErrorCode(status: number, upstreamError?: string): str
   return `http_${status}`;
 }
 
-export function requestLogSpeedLabel(serviceTier: string | undefined): string | undefined {
+export function requestLogSpeedLabel(
+  serviceTier: string | undefined,
+): string | undefined {
   const normalized = serviceTier?.trim().toLowerCase();
   if (normalized === "priority" || normalized === "fast") return "fast";
   return undefined;
@@ -584,70 +728,112 @@ export function requestLogSpeedLabel(serviceTier: string | undefined): string | 
 export function readConfiguredCodexServiceTier(): string | undefined {
   try {
     if (!existsSync(CODEX_CONFIG_PATH)) return undefined;
-    return readRootTomlString(readFileSync(CODEX_CONFIG_PATH, "utf-8"), "service_tier") ?? undefined;
+    return (
+      readRootTomlString(
+        readFileSync(CODEX_CONFIG_PATH, "utf-8"),
+        "service_tier",
+      ) ?? undefined
+    );
   } catch {
     return undefined;
   }
 }
 
-export function catalogModelSupportsServiceTier(modelId: string, serviceTier: string | undefined): boolean | undefined {
+export function catalogModelSupportsServiceTier(
+  modelId: string,
+  serviceTier: string | undefined,
+): boolean | undefined {
   if (!serviceTier) return undefined;
-  const requestTier = serviceTier.trim().toLowerCase() === "fast" ? "priority" : serviceTier.trim();
+  const requestTier =
+    serviceTier.trim().toLowerCase() === "fast"
+      ? "priority"
+      : serviceTier.trim();
   try {
     const catalogPath = readCodexCatalogPath();
     if (!existsSync(catalogPath)) return undefined;
-    const catalog = JSON.parse(readFileSync(catalogPath, "utf-8")) as { models?: unknown };
+    const catalog = JSON.parse(readFileSync(catalogPath, "utf-8")) as {
+      models?: unknown;
+    };
     const models = Array.isArray(catalog.models) ? catalog.models : [];
-    const entry = models.find(model => {
+    const entry = models.find((model) => {
       if (!model || typeof model !== "object") return false;
-      return (model as { slug?: unknown; id?: unknown }).slug === modelId
-        || (model as { slug?: unknown; id?: unknown }).id === modelId;
+      return (
+        (model as { slug?: unknown; id?: unknown }).slug === modelId ||
+        (model as { slug?: unknown; id?: unknown }).id === modelId
+      );
     });
     if (!entry || typeof entry !== "object") return undefined;
     const tiers = (entry as { service_tiers?: unknown }).service_tiers;
-    return Array.isArray(tiers) && tiers.some(tier => (
-      tier && typeof tier === "object" && (tier as { id?: unknown }).id === requestTier
-    ));
+    return (
+      Array.isArray(tiers) &&
+      tiers.some(
+        (tier) =>
+          tier &&
+          typeof tier === "object" &&
+          (tier as { id?: unknown }).id === requestTier,
+      )
+    );
   } catch {
     return undefined;
   }
 }
 
-export function applyResponseLogMetadata(logCtx: RequestLogContext, payload: unknown): void {
+export function applyResponseLogMetadata(
+  logCtx: RequestLogContext,
+  payload: unknown,
+): void {
   if (!payload || typeof payload !== "object") return;
-  const source = "response" in payload && typeof (payload as { response?: unknown }).response === "object"
-    ? (payload as { response?: unknown }).response
-    : payload;
+  const source =
+    "response" in payload &&
+    typeof (payload as { response?: unknown }).response === "object"
+      ? (payload as { response?: unknown }).response
+      : payload;
   if (!source || typeof source !== "object") return;
   const model = (source as { model?: unknown }).model;
   if (typeof model === "string" && model.trim()) logCtx.resolvedModel = model;
   const serviceTier = (source as { service_tier?: unknown }).service_tier;
-  if (typeof serviceTier === "string" && serviceTier.trim()) logCtx.responseServiceTier = serviceTier;
-  const usage = usageFromResponsesPayload((source as { usage?: unknown }).usage);
+  if (typeof serviceTier === "string" && serviceTier.trim())
+    logCtx.responseServiceTier = serviceTier;
+  const usage = usageFromResponsesPayload(
+    (source as { usage?: unknown }).usage,
+  );
   if (usage && !logCtx.usageFromBridge) {
     logCtx.usage = usage;
     if (logCtx.activeAttempt) logCtx.activeAttempt.usage = usage;
   }
 }
 
-export function usageFromResponsesPayload(usage: unknown): OcxUsage | undefined {
+export function usageFromResponsesPayload(
+  usage: unknown,
+): OcxUsage | undefined {
   if (!usage || typeof usage !== "object") return undefined;
   const raw = usage as {
     input_tokens?: unknown;
     output_tokens?: unknown;
-    input_tokens_details?: { cached_tokens?: unknown; cache_write_tokens?: unknown };
+    input_tokens_details?: {
+      cached_tokens?: unknown;
+      cache_write_tokens?: unknown;
+    };
     output_tokens_details?: { reasoning_tokens?: unknown };
     total_tokens?: unknown;
     prompt_tokens?: unknown;
     completion_tokens?: unknown;
-    prompt_tokens_details?: { cached_tokens?: unknown; cache_write_tokens?: unknown };
+    prompt_tokens_details?: {
+      cached_tokens?: unknown;
+      cache_write_tokens?: unknown;
+    };
     completion_tokens_details?: { reasoning_tokens?: unknown };
   };
-  if (typeof raw.input_tokens === "number" && typeof raw.output_tokens === "number") {
+  if (
+    typeof raw.input_tokens === "number" &&
+    typeof raw.output_tokens === "number"
+  ) {
     return {
       inputTokens: raw.input_tokens,
       outputTokens: raw.output_tokens,
-      ...(typeof raw.total_tokens === "number" ? { totalTokens: raw.total_tokens } : {}),
+      ...(typeof raw.total_tokens === "number"
+        ? { totalTokens: raw.total_tokens }
+        : {}),
       ...(typeof raw.input_tokens_details?.cached_tokens === "number"
         ? {
             cachedInputTokens: raw.input_tokens_details.cached_tokens,
@@ -655,18 +841,26 @@ export function usageFromResponsesPayload(usage: unknown): OcxUsage | undefined 
           }
         : {}),
       ...(typeof raw.input_tokens_details?.cache_write_tokens === "number"
-        ? { cacheCreationInputTokens: raw.input_tokens_details.cache_write_tokens }
+        ? {
+            cacheCreationInputTokens:
+              raw.input_tokens_details.cache_write_tokens,
+          }
         : {}),
       ...(typeof raw.output_tokens_details?.reasoning_tokens === "number"
         ? { reasoningOutputTokens: raw.output_tokens_details.reasoning_tokens }
         : {}),
     };
   }
-  if (typeof raw.prompt_tokens === "number" && typeof raw.completion_tokens === "number") {
+  if (
+    typeof raw.prompt_tokens === "number" &&
+    typeof raw.completion_tokens === "number"
+  ) {
     return {
       inputTokens: raw.prompt_tokens,
       outputTokens: raw.completion_tokens,
-      ...(typeof raw.total_tokens === "number" ? { totalTokens: raw.total_tokens } : {}),
+      ...(typeof raw.total_tokens === "number"
+        ? { totalTokens: raw.total_tokens }
+        : {}),
       ...(typeof raw.prompt_tokens_details?.cached_tokens === "number"
         ? {
             cachedInputTokens: raw.prompt_tokens_details.cached_tokens,
@@ -674,17 +868,26 @@ export function usageFromResponsesPayload(usage: unknown): OcxUsage | undefined 
           }
         : {}),
       ...(typeof raw.prompt_tokens_details?.cache_write_tokens === "number"
-        ? { cacheCreationInputTokens: raw.prompt_tokens_details.cache_write_tokens }
+        ? {
+            cacheCreationInputTokens:
+              raw.prompt_tokens_details.cache_write_tokens,
+          }
         : {}),
       ...(typeof raw.completion_tokens_details?.reasoning_tokens === "number"
-        ? { reasoningOutputTokens: raw.completion_tokens_details.reasoning_tokens }
+        ? {
+            reasoningOutputTokens:
+              raw.completion_tokens_details.reasoning_tokens,
+          }
         : {}),
     };
   }
   return undefined;
 }
 
-export function inspectResponseLogJson(logCtx: RequestLogContext, text: string): void {
+export function inspectResponseLogJson(
+  logCtx: RequestLogContext,
+  text: string,
+): void {
   try {
     applyResponseLogMetadata(logCtx, JSON.parse(text));
   } catch {
@@ -698,7 +901,10 @@ export function inspectResponseLogJson(logCtx: RequestLogContext, text: string):
   }
 }
 
-export function inspectResponseLogSsePayload(logCtx: RequestLogContext, payload: string | null): void {
+export function inspectResponseLogSsePayload(
+  logCtx: RequestLogContext,
+  payload: string | null,
+): void {
   if (!payload || payload.trim() === "[DONE]") return;
   const debugEnabled = isUsageDebugEnabled();
   const sseAlreadyMarked = logCtx.usageDebugBodyKind === "sse";
@@ -713,8 +919,10 @@ export function inspectResponseLogSsePayload(logCtx: RequestLogContext, payload:
     if (!sseAlreadyMarked) {
       logCtx.usageDebugBodyKind = "sse";
       logCtx.usageDebugBodySample = truncateForDebug(payload);
-    } else if (typeof logCtx.usageDebugBodySample === "string"
-      && logCtx.usageDebugBodySample.length < USAGE_DEBUG_BODY_SAMPLE_BYTES) {
+    } else if (
+      typeof logCtx.usageDebugBodySample === "string" &&
+      logCtx.usageDebugBodySample.length < USAGE_DEBUG_BODY_SAMPLE_BYTES
+    ) {
       const combined = `${logCtx.usageDebugBodySample}\n${payload}`;
       logCtx.usageDebugBodySample = truncateForDebug(combined);
     }
@@ -728,7 +936,10 @@ export function inspectResponseLogSsePayload(logCtx: RequestLogContext, payload:
  * a non-streaming JSON error body. We keep the FIRST non-empty reason (the original failure) and
  * run it through redactSecretString so secrets never reach /api/logs. Pure; safe on any text.
  */
-function captureUpstreamError(logCtx: RequestLogContext, text: string | null): void {
+function captureUpstreamError(
+  logCtx: RequestLogContext,
+  text: string | null,
+): void {
   if (!text) return;
   try {
     const json = JSON.parse(text) as {
@@ -742,16 +953,19 @@ function captureUpstreamError(logCtx: RequestLogContext, text: string | null): v
     };
     captureTerminalHttpStatus(logCtx, json);
     const reason = json?.response?.incomplete_details?.reason;
-    if (json.type === "response.incomplete"
-      && logCtx.terminalIncompleteReason === undefined
-      && typeof reason === "string"
-      && reason.trim()) {
+    if (
+      json.type === "response.incomplete" &&
+      logCtx.terminalIncompleteReason === undefined &&
+      typeof reason === "string" &&
+      reason.trim()
+    ) {
       logCtx.terminalIncompleteReason = reason.trim();
     }
     if (logCtx.upstreamError) return;
-    const message = json?.error?.message
-      ?? json?.last_error?.message
-      ?? json?.response?.error?.message;
+    const message =
+      json?.error?.message ??
+      json?.last_error?.message ??
+      json?.response?.error?.message;
     if (typeof message === "string" && message.trim()) {
       logCtx.upstreamError = redactSecretString(message).slice(0, 500);
       return;
@@ -761,7 +975,9 @@ function captureUpstreamError(logCtx: RequestLogContext, text: string | null): v
     // reader-facing label so a generic 502 in /api/logs explains WHY the turn ended, not just the
     // mapped HTTP code.
     if (typeof reason === "string" && reason.trim()) {
-      logCtx.upstreamError = redactSecretString(incompleteReasonLabel(reason.trim())).slice(0, 500);
+      logCtx.upstreamError = redactSecretString(
+        incompleteReasonLabel(reason.trim()),
+      ).slice(0, 500);
     }
   } catch {
     if (logCtx.upstreamError) return;
@@ -790,7 +1006,9 @@ function captureTerminalHttpStatus(
   logCtx: RequestLogContext,
   json: {
     type?: unknown;
-    response?: { error?: { type?: unknown; code?: unknown; message?: unknown } };
+    response?: {
+      error?: { type?: unknown; code?: unknown; message?: unknown };
+    };
   },
 ): void {
   if (logCtx.terminalHttpStatus !== undefined) return;
@@ -799,21 +1017,30 @@ function captureTerminalHttpStatus(
   if (!error || typeof error !== "object") return;
   logCtx.terminalHttpStatus = httpStatusFromTerminalError({
     type: typeof error.type === "string" ? error.type : undefined,
-    code: error.code === null || typeof error.code === "string" ? error.code : undefined,
+    code:
+      error.code === null || typeof error.code === "string"
+        ? error.code
+        : undefined,
     message: typeof error.message === "string" ? error.message : undefined,
   });
 }
 
 /** Map a terminal Responses error object to the HTTP status we record in /api/logs. */
-export function httpStatusFromTerminalError(error: {
-  type?: string;
-  code?: string | null;
-  message?: string;
-} | undefined): number {
+export function httpStatusFromTerminalError(
+  error:
+    | {
+        type?: string;
+        code?: string | null;
+        message?: string;
+      }
+    | undefined,
+): number {
   return httpStatusFromClassifiedTerminalError(error);
 }
 
-export function httpStatusForTerminalStatus(status: ResponsesTerminalStatus): number {
+export function httpStatusForTerminalStatus(
+  status: ResponsesTerminalStatus,
+): number {
   return status === "completed" ? 200 : 502;
 }
 
@@ -833,7 +1060,10 @@ export function httpStatusForRequestLogTerminal(
    * - 장점, 단점 및 영향: Logs stop reporting false upstream errors while retaining the
    *   incomplete terminal detail; native callers without a structured reason keep old behavior.
    */
-  if (status === "incomplete" && logCtx?.terminalIncompleteReason === "max_output_tokens") {
+  if (
+    status === "incomplete" &&
+    logCtx?.terminalIncompleteReason === "max_output_tokens"
+  ) {
     return 200;
   }
   if (status === "failed" && logCtx?.terminalHttpStatus !== undefined) {
@@ -863,20 +1093,25 @@ export function addFinalRequestLog(
   try {
     // Mid-stream web-search aborts used to emit response.failed and land as 502/upstream_server_error.
     // Prefer the client-close classification whenever the captured reason says so.
-    const effectiveStatus = status >= 500 && logCtx.upstreamError && isClientClosedMessage(logCtx.upstreamError)
-      ? 499
-      : status;
-    const errorCode = requestLogErrorCode(effectiveStatus, logCtx.upstreamError);
+    const effectiveStatus =
+      status >= 500 &&
+      logCtx.upstreamError &&
+      isClientClosedMessage(logCtx.upstreamError)
+        ? 499
+        : status;
+    const errorCode = requestLogErrorCode(
+      effectiveStatus,
+      logCtx.upstreamError,
+    );
     // A response.failed whose classified status is 499 is still a client cancel, not an upstream
     // terminal failure — keep /api/logs closeReason aligned with that.
-    const closeReason = effectiveStatus === 499
-      ? "client_cancel"
-      : meta?.closeReason;
+    const closeReason =
+      effectiveStatus === 499 ? "client_cancel" : meta?.closeReason;
     if (logCtx.activeAttempt) {
       finishRequestAttempt(
         logCtx.activeAttempt,
         effectiveStatus,
-        Date.now() - (logCtx.activeAttemptStartedAt ?? start),
+        elapsedUsageDurationMs(logCtx.activeAttemptStartedAt ?? start),
         logCtx.usage,
       );
     }
@@ -885,12 +1120,18 @@ export function addFinalRequestLog(
       logCtx.usage,
       logCtx.usageLogInputTokens,
     );
-    const isCombo = logCtx.comboId !== undefined && (logCtx.attempts?.length ?? 0) > 0;
+    const isCombo =
+      logCtx.comboId !== undefined && (logCtx.attempts?.length ?? 0) > 0;
     const provider = isCombo ? "combo" : resolveRequestLogProvider(logCtx);
-    const model = isCombo ? (logCtx.requestedModel ?? resolveRequestLogModel(logCtx)) : resolveRequestLogModel(logCtx);
+    const model = isCombo
+      ? (logCtx.requestedModel ?? resolveRequestLogModel(logCtx))
+      : resolveRequestLogModel(logCtx);
     const account = providerAccountLabel(provider);
     const winningProvider = isCombo ? (logCtx.provider ?? provider) : provider;
-    const providerAccountId = resolveUsageProviderAccountId(logCtx, winningProvider);
+    const providerAccountId = resolveUsageProviderAccountId(
+      logCtx,
+      winningProvider,
+    );
     if (providerAccountId) {
       for (const attempt of logCtx.attempts ?? []) {
         if (attempt.providerAccountId) continue;
@@ -899,27 +1140,29 @@ export function addFinalRequestLog(
         attempt.providerAccountId = providerAccountId;
       }
       if (
-        logCtx.activeAttempt
-        && !logCtx.activeAttempt.providerAccountId
-        && (!isCombo || logCtx.activeAttempt.provider === winningProvider)
+        logCtx.activeAttempt &&
+        !logCtx.activeAttempt.providerAccountId &&
+        (!isCombo || logCtx.activeAttempt.provider === winningProvider)
       ) {
         logCtx.activeAttempt.providerAccountId = providerAccountId;
       }
     }
-    const attempts = logCtx.attempts?.map(attempt => ({
+    const attempts = logCtx.attempts?.map((attempt) => ({
       ...attempt,
       recoveryKinds: [...attempt.recoveryKinds],
       ...(attempt.usage ? { usage: { ...attempt.usage } } : {}),
     }));
     const adapter = isCombo
-      ? attempts?.at(-1)?.adapter ?? logCtx.providerAdapter
+      ? (attempts?.at(-1)?.adapter ?? logCtx.providerAdapter)
       : logCtx.providerAdapter;
     const aggregate = isCombo ? aggregateAttemptUsage(attempts ?? []) : null;
     const loggedUsage = aggregate?.usage ?? existing.usage;
     const usageStatus = aggregate?.status ?? existing.status;
     const totalTokens = aggregate?.totalTokens ?? existing.totalTokens;
     const traced = finalizeTrace(requestId, logCtx, {
-      ...(logCtx.conversationId ? { conversationId: logCtx.conversationId } : {}),
+      ...(logCtx.conversationId
+        ? { conversationId: logCtx.conversationId }
+        : {}),
       provider,
       model,
       status: effectiveStatus,
@@ -935,23 +1178,49 @@ export function addFinalRequestLog(
       ...(account ? { account } : {}),
       ...(providerAccountId ? { providerAccountId } : {}),
       ...(logCtx.surface ? { surface: logCtx.surface } : {}),
-      ...(logCtx.conversationId ? { conversationId: logCtx.conversationId } : {}),
-      ...(logCtx.requestedModel ? { requestedModel: logCtx.requestedModel } : {}),
-      ...(logCtx.requestedEffort ? { requestedEffort: logCtx.requestedEffort } : {}),
-      ...(logCtx.effectiveEffort ? { effectiveEffort: logCtx.effectiveEffort } : {}),
-      ...(logCtx.reasoningWireField ? { reasoningWireField: logCtx.reasoningWireField } : {}),
-      ...(logCtx.reasoningWireValue !== undefined ? { reasoningWireValue: logCtx.reasoningWireValue } : {}),
-      ...(logCtx.requestedServiceTier ? { requestedServiceTier: logCtx.requestedServiceTier } : {}),
-      ...(logCtx.requestedSpeedLabel ? { requestedSpeedLabel: logCtx.requestedSpeedLabel } : {}),
-      ...(logCtx.configuredServiceTier ? { configuredServiceTier: logCtx.configuredServiceTier } : {}),
-      ...(logCtx.configuredSpeedLabel ? { configuredSpeedLabel: logCtx.configuredSpeedLabel } : {}),
-      ...(logCtx.modelSupportsServiceTier !== undefined ? { modelSupportsServiceTier: logCtx.modelSupportsServiceTier } : {}),
-      ...(logCtx.responseServiceTier ? { responseServiceTier: logCtx.responseServiceTier } : {}),
+      ...(logCtx.conversationId
+        ? { conversationId: logCtx.conversationId }
+        : {}),
+      ...(logCtx.requestedModel
+        ? { requestedModel: logCtx.requestedModel }
+        : {}),
+      ...(logCtx.requestedEffort
+        ? { requestedEffort: logCtx.requestedEffort }
+        : {}),
+      ...(logCtx.effectiveEffort
+        ? { effectiveEffort: logCtx.effectiveEffort }
+        : {}),
+      ...(logCtx.reasoningWireField
+        ? { reasoningWireField: logCtx.reasoningWireField }
+        : {}),
+      ...(logCtx.reasoningWireValue !== undefined
+        ? { reasoningWireValue: logCtx.reasoningWireValue }
+        : {}),
+      ...(logCtx.requestedServiceTier
+        ? { requestedServiceTier: logCtx.requestedServiceTier }
+        : {}),
+      ...(logCtx.requestedSpeedLabel
+        ? { requestedSpeedLabel: logCtx.requestedSpeedLabel }
+        : {}),
+      ...(logCtx.configuredServiceTier
+        ? { configuredServiceTier: logCtx.configuredServiceTier }
+        : {}),
+      ...(logCtx.configuredSpeedLabel
+        ? { configuredSpeedLabel: logCtx.configuredSpeedLabel }
+        : {}),
+      ...(logCtx.modelSupportsServiceTier !== undefined
+        ? { modelSupportsServiceTier: logCtx.modelSupportsServiceTier }
+        : {}),
+      ...(logCtx.responseServiceTier
+        ? { responseServiceTier: logCtx.responseServiceTier }
+        : {}),
       ...(logCtx.resolvedModel ? { resolvedModel: logCtx.resolvedModel } : {}),
       status: effectiveStatus,
-      durationMs: Date.now() - start,
+      durationMs: elapsedUsageDurationMs(start),
       ...(logCtx.stream !== undefined ? { stream: logCtx.stream } : {}),
-      ...(logCtx.firstOutputMs !== undefined ? { firstOutputMs: logCtx.firstOutputMs } : {}),
+      ...(logCtx.firstOutputMs !== undefined
+        ? { firstOutputMs: logCtx.firstOutputMs }
+        : {}),
       ...(errorCode ? { errorCode } : {}),
       ...(meta?.terminalStatus ? { terminalStatus: meta.terminalStatus } : {}),
       ...(closeReason ? { closeReason } : {}),
@@ -961,8 +1230,12 @@ export function addFinalRequestLog(
       ...(totalTokens !== undefined ? { totalTokens } : {}),
       ...(attempts?.length ? { attempts } : {}),
       ...(logCtx.affinity ? { affinity: logCtx.affinity } : {}),
-      ...(logCtx.transportPhase ? { transportPhase: logCtx.transportPhase } : {}),
-      ...(logCtx.terminalSource ? { terminalSource: logCtx.terminalSource } : {}),
+      ...(logCtx.transportPhase
+        ? { transportPhase: logCtx.transportPhase }
+        : {}),
+      ...(logCtx.terminalSource
+        ? { terminalSource: logCtx.terminalSource }
+        : {}),
       ...(traced.traceId ? { traceId: traced.traceId } : {}),
       ...(traced.trace ? { trace: traced.trace } : {}),
     });
@@ -984,27 +1257,39 @@ export function addFinalRequestLog(
   }
 }
 
-export function filterRequestLogs(logs: RequestLogEntry[], params: URLSearchParams): RequestLogEntry[] {
+export function filterRequestLogs(
+  logs: RequestLogEntry[],
+  params: URLSearchParams,
+): RequestLogEntry[] {
   let filtered = logs;
   const provider = params.get("provider")?.trim();
   if (provider) {
-    filtered = filtered.filter(entry => entry.provider === provider
-      || entry.attempts?.some(attempt => attempt.provider === provider));
+    filtered = filtered.filter(
+      (entry) =>
+        entry.provider === provider ||
+        entry.attempts?.some((attempt) => attempt.provider === provider),
+    );
   }
-  const conversationId = params.get("conversationId")?.trim() || params.get("conversation")?.trim();
+  const conversationId =
+    params.get("conversationId")?.trim() || params.get("conversation")?.trim();
   if (conversationId) {
-    filtered = filtered.filter(entry => matchesLogConversationId(entry.conversationId, conversationId));
+    filtered = filtered.filter((entry) =>
+      matchesLogConversationId(entry.conversationId, conversationId),
+    );
   }
   const status = params.get("status")?.trim().toLowerCase();
   if (status) {
     filtered = /^[1-5]xx$/.test(status)
-      ? filtered.filter(entry => Math.floor(entry.status / 100) === Number(status[0]))
-      : filtered.filter(entry => String(entry.status) === status);
+      ? filtered.filter(
+          (entry) => Math.floor(entry.status / 100) === Number(status[0]),
+        )
+      : filtered.filter((entry) => String(entry.status) === status);
   }
   const tailRaw = params.get("tail")?.trim();
   if (tailRaw) {
     const tail = Number.parseInt(tailRaw, 10);
-    if (Number.isFinite(tail) && tail > 0) filtered = filtered.slice(-Math.min(tail, MAX_LOG_SIZE));
+    if (Number.isFinite(tail) && tail > 0)
+      filtered = filtered.slice(-Math.min(tail, MAX_LOG_SIZE));
   }
   return filtered;
 }
@@ -1020,22 +1305,25 @@ function finalizedUsage(
   usage: OcxUsage | undefined,
   inputTokenEstimate: number | undefined,
 ): FinalizedUsageResult {
-  const estimate = typeof inputTokenEstimate === "number"
-    && Number.isFinite(inputTokenEstimate)
-    && inputTokenEstimate >= 0
-    ? inputTokenEstimate
-    : undefined;
+  const estimate =
+    typeof inputTokenEstimate === "number" &&
+    Number.isFinite(inputTokenEstimate) &&
+    inputTokenEstimate >= 0
+      ? inputTokenEstimate
+      : undefined;
   const finalUsage = usageForFinalLog(adapter, usage);
-  const usageFallback = !finalUsage && estimate !== undefined
-    ? { inputTokens: estimate, outputTokens: 0, estimated: true }
-    : undefined;
-  const loggedUsage = finalUsage && estimate !== undefined
-    ? {
-        ...finalUsage,
-        inputTokens: Math.max(finalUsage.inputTokens, estimate),
-        estimated: true,
-      }
-    : (finalUsage ?? usageFallback);
+  const usageFallback =
+    !finalUsage && estimate !== undefined
+      ? { inputTokens: estimate, outputTokens: 0, estimated: true }
+      : undefined;
+  const loggedUsage =
+    finalUsage && estimate !== undefined
+      ? {
+          ...finalUsage,
+          inputTokens: Math.max(finalUsage.inputTokens, estimate),
+          estimated: true,
+        }
+      : (finalUsage ?? usageFallback);
   const totalTokens = usageTotalTokens(loggedUsage);
   return {
     status: usageStatusForFinalLog(loggedUsage),
@@ -1084,9 +1372,11 @@ export function noteAttemptSend(
 ): void {
   if (!attempt) return;
   attempt.sendCount += 1;
-  if (typeof inputTokenEstimate === "number"
-    && Number.isFinite(inputTokenEstimate)
-    && inputTokenEstimate >= 0) {
+  if (
+    typeof inputTokenEstimate === "number" &&
+    Number.isFinite(inputTokenEstimate) &&
+    inputTokenEstimate >= 0
+  ) {
     attempt.inputTokenEstimate = inputTokenEstimate;
   }
   if (recovery && !attempt.recoveryKinds.includes(recovery)) {
@@ -1106,11 +1396,12 @@ export function finishRequestAttempt(
     attempt.inputTokenEstimate,
   );
   attempt.status = status;
-  attempt.durationMs = Math.max(0, durationMs);
+  attempt.durationMs = sanitizeUsageDurationMs(durationMs);
   attempt.usageStatus = finalized.status;
   if (finalized.usage) attempt.usage = finalized.usage;
   else delete attempt.usage;
-  if (finalized.totalTokens !== undefined) attempt.totalTokens = finalized.totalTokens;
+  if (finalized.totalTokens !== undefined)
+    attempt.totalTokens = finalized.totalTokens;
   else delete attempt.totalTokens;
   const errorCode = requestLogErrorCode(status);
   if (errorCode) attempt.errorCode = errorCode;
@@ -1121,30 +1412,40 @@ export function finishRequestAttempt(
 export function aggregateAttemptUsage(
   attempts: readonly PersistedUsageAttempt[],
 ): FinalizedUsageResult {
-  const status: UsageStatus = attempts.length > 0
-    && attempts.every(attempt => attempt.usageStatus === "unsupported")
-    ? "unsupported"
-    : attempts.some(attempt => (
-        attempt.usageStatus === "unreported" || attempt.usageStatus === "unsupported"
-      ))
-      ? "unreported"
-      : attempts.some(attempt => attempt.usageStatus === "estimated")
-        ? "estimated"
-        : attempts.length > 0
-          ? "reported"
-          : "unreported";
+  const status: UsageStatus =
+    attempts.length > 0 &&
+    attempts.every((attempt) => attempt.usageStatus === "unsupported")
+      ? "unsupported"
+      : attempts.some(
+            (attempt) =>
+              attempt.usageStatus === "unreported" ||
+              attempt.usageStatus === "unsupported",
+          )
+        ? "unreported"
+        : attempts.some((attempt) => attempt.usageStatus === "estimated")
+          ? "estimated"
+          : attempts.length > 0
+            ? "reported"
+            : "unreported";
 
-  const usages = attempts.flatMap(attempt => attempt.usage ? [attempt.usage] : []);
+  const usages = attempts.flatMap((attempt) =>
+    attempt.usage ? [attempt.usage] : [],
+  );
   if (usages.length === 0) return { status };
 
   const sumOptional = (
-    key: "cachedInputTokens" | "cacheReadInputTokens" | "cacheCreationInputTokens"
+    key:
+      | "cachedInputTokens"
+      | "cacheReadInputTokens"
+      | "cacheCreationInputTokens"
       | "reasoningOutputTokens",
   ): number | undefined => {
-    const present = usages.flatMap(usage => (
-      typeof usage[key] === "number" ? [usage[key] as number] : []
-    ));
-    return present.length > 0 ? present.reduce((sum, value) => sum + value, 0) : undefined;
+    const present = usages.flatMap((usage) =>
+      typeof usage[key] === "number" ? [usage[key] as number] : [],
+    );
+    return present.length > 0
+      ? present.reduce((sum, value) => sum + value, 0)
+      : undefined;
   };
   const cachedInputTokens = sumOptional("cachedInputTokens");
   const cacheReadInputTokens = sumOptional("cacheReadInputTokens");
@@ -1160,14 +1461,18 @@ export function aggregateAttemptUsage(
     totalTokens,
     ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
     ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
-    ...(cacheCreationInputTokens !== undefined ? { cacheCreationInputTokens } : {}),
+    ...(cacheCreationInputTokens !== undefined
+      ? { cacheCreationInputTokens }
+      : {}),
     ...(reasoningOutputTokens !== undefined ? { reasoningOutputTokens } : {}),
     ...(status === "estimated" ? { estimated: true } : {}),
   };
   return { usage: aggregate, status, totalTokens };
 }
 
-export function getRequestLogEntries(): RequestLogEntry[] { return requestLog; }
+export function getRequestLogEntries(): RequestLogEntry[] {
+  return requestLog;
+}
 
 /** Test-only process-state reset for isolated integration harnesses. */
 export function clearRequestLogsForTests(): void {

@@ -81,7 +81,17 @@ describe("backup-state", () => {
     writeJson(home, "codex-accounts.json", { accounts: [] });
     writeJson(home, "account-runtime.json", { needsReauth: [] });
 
+    const sourceBefore = Object.fromEntries(
+      BACKUP_STATE_FILES.map((name) => [
+        name,
+        readFileSync(join(home, name), "utf8"),
+      ]),
+    );
+
     const result = backupState({ home, dest });
+    for (const [name, before] of Object.entries(sourceBefore)) {
+      expect(readFileSync(join(home, name), "utf8")).toBe(before);
+    }
     expect(result.copied).toEqual([...BACKUP_STATE_FILES]);
     expect(result.absent).toEqual([]);
     expect(existsSync(join(dest, BACKUP_MANIFEST_NAME))).toBe(true);
@@ -130,7 +140,16 @@ describe("backup-state", () => {
     seedHome(home);
     expect(existsSync(join(home, "auth.json"))).toBe(false);
 
+    const sourceBefore = {
+      "config.json": readFileSync(join(home, "config.json"), "utf8"),
+      "usage.jsonl": readFileSync(join(home, "usage.jsonl"), "utf8"),
+    };
+
     const result = backupState({ home, dest });
+    for (const [name, before] of Object.entries(sourceBefore)) {
+      expect(readFileSync(join(home, name), "utf8")).toBe(before);
+    }
+    expect(existsSync(join(home, "auth.json"))).toBe(false);
     expect(result.copied).toEqual(["config.json", "usage.jsonl"]);
     expect(result.absent).toEqual([
       "auth.json",

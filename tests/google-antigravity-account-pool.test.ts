@@ -20,15 +20,16 @@ import {
   resetGoogleAntigravityRoutingForManualSelection,
   rotateGoogleAntigravityAccountOn429,
 } from "../src/oauth/google-antigravity-routing";
-import { getAccountSet, saveCredential, setActiveAccount } from "../src/oauth/store";
+import {
+  getAccountSet,
+  saveCredential,
+  setActiveAccount,
+} from "../src/oauth/store";
 import {
   clearAccountQuotaCache,
   setCachedProviderAccountQuotaForTests,
 } from "../src/providers/quota";
-import type {
-  OcxAccountPoolRotationStrategy,
-  OcxConfig,
-} from "../src/types";
+import type { OcxAccountPoolRotationStrategy, OcxConfig } from "../src/types";
 
 const PROVIDER = "google-antigravity";
 const originalHome = process.env.OPENCODEX_HOME;
@@ -91,12 +92,70 @@ async function seedAccounts(count = 2): Promise<string[]> {
     });
   }
   const set = getAccountSet(PROVIDER)!;
-  const ids = set.accounts.map(account => account.id);
+  const ids = set.accounts.map((account) => account.id);
   await setActiveAccount(PROVIDER, ids[0]!);
   return ids;
 }
 
 describe("Google Antigravity account pool", () => {
+  test("scores custom windows by the hottest known family", async () => {
+    const [activeId, otherId] = await seedAccounts();
+    setCachedProviderAccountQuotaForTests(PROVIDER, activeId!, {
+      customWindows: [
+        { label: "Gem", percent: 5 },
+        { label: "Cla", percent: 99 },
+      ],
+    });
+    setCachedProviderAccountQuotaForTests(PROVIDER, otherId!, {
+      customWindows: [
+        { label: "Gem", percent: 10 },
+        { label: "Cla", percent: 20 },
+      ],
+    });
+    expect(
+      resolveGoogleAntigravityAccountForSession("custom-windows", config(true)),
+    ).toEqual({ accountId: otherId, reason: "lowest-usage" });
+  });
+
+  test("ignores invalid custom windows and keeps the known five-hour score", async () => {
+    const [activeId, otherId] = await seedAccounts();
+    setCachedProviderAccountQuotaForTests(PROVIDER, activeId!, {
+      fiveHourPercent: 10,
+      customWindows: [{ label: "Gem", percent: 99 }],
+    });
+    setCachedProviderAccountQuotaForTests(PROVIDER, otherId!, {
+      customWindows: [
+        { label: "Gem", percent: Number.NaN },
+        { label: "Cla", percent: 90 },
+      ],
+    });
+    expect(
+      resolveGoogleAntigravityAccountForSession(
+        "five-hour-first",
+        config(true),
+      ),
+    ).toEqual({ accountId: activeId, reason: "active" });
+  });
+
+  test("invalid or empty custom windows leave quota unknown", async () => {
+    const [activeId, otherId] = await seedAccounts();
+    setCachedProviderAccountQuotaForTests(PROVIDER, activeId!, {
+      customWindows: [
+        { label: "Gem", percent: Number.NaN },
+        { label: "Cla", percent: Number.POSITIVE_INFINITY },
+      ],
+    });
+    setCachedProviderAccountQuotaForTests(PROVIDER, otherId!, {
+      customWindows: [],
+    });
+    expect(
+      resolveGoogleAntigravityAccountForSession(
+        "unknown-windows",
+        config(true),
+      ),
+    ).toEqual({ accountId: activeId, reason: "active" });
+  });
+
   test("is default-off and keeps the active account", async () => {
     const [activeId, otherId] = await seedAccounts();
     expect(isGoogleAntigravityAccountPoolEnabled(config(false))).toBe(false);
@@ -255,15 +314,18 @@ describe("Google Antigravity account pool", () => {
       poolConfig,
     ).accountId;
     expect(
-      resolveGoogleAntigravityAccountForSession("batch-2", poolConfig).accountId,
+      resolveGoogleAntigravityAccountForSession("batch-2", poolConfig)
+        .accountId,
     ).toBe(first);
     expect(
-      resolveGoogleAntigravityAccountForSession("batch-3", poolConfig).accountId,
+      resolveGoogleAntigravityAccountForSession("batch-3", poolConfig)
+        .accountId,
     ).toBe(first);
 
     notePoolRotationFailure(POOL_KEY_ANTIGRAVITY, first!);
     expect(
-      resolveGoogleAntigravityAccountForSession("batch-4", poolConfig).accountId,
+      resolveGoogleAntigravityAccountForSession("batch-4", poolConfig)
+        .accountId,
     ).not.toBe(first);
 
     resetGoogleAntigravityRoutingForManualSelection(ids[2]!);
@@ -274,11 +336,15 @@ describe("Google Antigravity account pool", () => {
 
   test("returns token and project from the same account", async () => {
     const [firstId, secondId] = await seedAccounts();
-    await expect(getGoogleAntigravityPoolCredential(firstId!)).resolves.toEqual({
-      accessToken: "access-a",
-      projectId: "project-a",
-    });
-    await expect(getGoogleAntigravityPoolCredential(secondId!)).resolves.toEqual({
+    await expect(getGoogleAntigravityPoolCredential(firstId!)).resolves.toEqual(
+      {
+        accessToken: "access-a",
+        projectId: "project-a",
+      },
+    );
+    await expect(
+      getGoogleAntigravityPoolCredential(secondId!),
+    ).resolves.toEqual({
       accessToken: "access-b",
       projectId: "project-b",
     });

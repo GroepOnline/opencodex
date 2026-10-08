@@ -1,7 +1,22 @@
-import { chmodSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, appendFileSync } from "node:fs";
+import {
+  chmodSync,
+  closeSync,
+  existsSync,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  appendFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { getConfigDir } from "../config";
 import { recordOwnedConfigPath } from "../lib/config-ownership";
+import {
+  sanitizeUsageDurationMs,
+  USAGE_DURATION_HARD_MAX_MS,
+} from "./duration";
+import { assertUsageLogPathIsolatedForTests } from "./isolation";
 import { usageDisplayTotalTokens } from "./totals";
 import type { OcxUsage } from "../types";
 import {
@@ -10,7 +25,8 @@ import {
 } from "../prompt-cache/observability";
 import { normalizeUsageTraceMeta, type UsageTraceMeta } from "../trace/types";
 
-export type UsageStatus = "reported" | "unreported" | "unsupported" | "estimated";
+export type UsageStatus =
+  "reported" | "unreported" | "unsupported" | "estimated";
 
 export type AttemptRecoveryKind =
   | "transient-5xx"
@@ -102,7 +118,12 @@ export interface PersistedUsageEntry {
   // status>=400 or non-completed terminals so incidents survive the in-memory ring buffer.
   errorCode?: string;
   terminalStatus?: string;
-  closeReason?: "terminal" | "client_cancel" | "non_stream" | "body_stall" | "body_overflow";
+  closeReason?:
+    | "terminal"
+    | "client_cancel"
+    | "non_stream"
+    | "body_stall"
+    | "body_overflow";
   /** Already redacted + capped at capture (request-log.ts redactSecretString().slice(0,500)). */
   upstreamError?: string;
   /** Key into trace.sqlite; present only when this request's bodies were stored there. */
@@ -111,12 +132,9 @@ export interface PersistedUsageEntry {
   trace?: UsageTraceMeta;
 }
 
-const KNOWN_USAGE_SURFACES = new Set<NonNullable<PersistedUsageEntry["surface"]>>([
-  "claude",
-  "claude-desktop",
-  "codex",
-  "grok",
-]);
+const KNOWN_USAGE_SURFACES = new Set<
+  NonNullable<PersistedUsageEntry["surface"]>
+>(["claude", "claude-desktop", "codex", "grok"]);
 
 /**
  * The serializer guard for `surface`. Two failure modes shaped this: a literal
@@ -125,15 +143,24 @@ const KNOWN_USAGE_SURFACES = new Set<NonNullable<PersistedUsageEntry["surface"]>
  * logs. Membership in this set is the middle path: adding a surface here is one edit,
  * and unknown values are still dropped.
  */
-export function isKnownUsageSurface(value: unknown): value is NonNullable<PersistedUsageEntry["surface"]> {
-  return typeof value === "string" && KNOWN_USAGE_SURFACES.has(value as NonNullable<PersistedUsageEntry["surface"]>);
+export function isKnownUsageSurface(
+  value: unknown,
+): value is NonNullable<PersistedUsageEntry["surface"]> {
+  return (
+    typeof value === "string" &&
+    KNOWN_USAGE_SURFACES.has(
+      value as NonNullable<PersistedUsageEntry["surface"]>,
+    )
+  );
 }
 
 export function usageLogPath(): string {
   return join(getConfigDir(), "usage.jsonl");
 }
 
-export function usageTotalTokens(usage: OcxUsage | undefined): number | undefined {
+export function usageTotalTokens(
+  usage: OcxUsage | undefined,
+): number | undefined {
   return usageDisplayTotalTokens(usage);
 }
 
@@ -143,22 +170,34 @@ export function usageTotalTokens(usage: OcxUsage | undefined): number | undefine
  * fallback for paths that only know the configured provider name (e.g. "cursor-mykey").
  */
 function isEstimatedUsageProvider(providerOrAdapter: string): boolean {
-  return providerOrAdapter === "kiro" || providerOrAdapter.startsWith("kiro-")
-    || providerOrAdapter === "cursor" || providerOrAdapter.startsWith("cursor-");
+  return (
+    providerOrAdapter === "kiro" ||
+    providerOrAdapter.startsWith("kiro-") ||
+    providerOrAdapter === "cursor" ||
+    providerOrAdapter.startsWith("cursor-")
+  );
 }
 
-export function usageForFinalLog(provider: string, usage: OcxUsage | undefined): OcxUsage | undefined {
+export function usageForFinalLog(
+  provider: string,
+  usage: OcxUsage | undefined,
+): OcxUsage | undefined {
   if (!usage) return undefined;
-  if (usage.estimated || isEstimatedUsageProvider(provider)) return { ...usage, estimated: true };
+  if (usage.estimated || isEstimatedUsageProvider(provider))
+    return { ...usage, estimated: true };
   return usage;
 }
 
-export function usageStatusForFinalLog(usage: OcxUsage | undefined): UsageStatus {
+export function usageStatusForFinalLog(
+  usage: OcxUsage | undefined,
+): UsageStatus {
   if (!usage) return "unreported";
   return usage.estimated ? "estimated" : "reported";
 }
 
-function normalizeUsageValue(usage: OcxUsage | undefined): OcxUsage | undefined {
+function normalizeUsageValue(
+  usage: OcxUsage | undefined,
+): OcxUsage | undefined {
   if (!usage) return undefined;
   return {
     inputTokens: usage.inputTokens,
@@ -169,12 +208,24 @@ function normalizeUsageValue(usage: OcxUsage | undefined): OcxUsage | undefined 
     // (usageFromBridge, request-log.ts). Omitting it here silently dropped Kiro's context
     // growth from every persisted row. It is deliberately NOT folded into totalTokens:
     // a checkpoint is not a per-request total and must never be summed across requests.
-    ...(typeof usage.contextTotalTokens === "number" ? { contextTotalTokens: usage.contextTotalTokens } : {}),
-    ...(typeof usage.totalTokens === "number" ? { totalTokens: usage.totalTokens } : {}),
-    ...(typeof usage.cachedInputTokens === "number" ? { cachedInputTokens: usage.cachedInputTokens } : {}),
-    ...(typeof usage.cacheReadInputTokens === "number" ? { cacheReadInputTokens: usage.cacheReadInputTokens } : {}),
-    ...(typeof usage.cacheCreationInputTokens === "number" ? { cacheCreationInputTokens: usage.cacheCreationInputTokens } : {}),
-    ...(typeof usage.reasoningOutputTokens === "number" ? { reasoningOutputTokens: usage.reasoningOutputTokens } : {}),
+    ...(typeof usage.contextTotalTokens === "number"
+      ? { contextTotalTokens: usage.contextTotalTokens }
+      : {}),
+    ...(typeof usage.totalTokens === "number"
+      ? { totalTokens: usage.totalTokens }
+      : {}),
+    ...(typeof usage.cachedInputTokens === "number"
+      ? { cachedInputTokens: usage.cachedInputTokens }
+      : {}),
+    ...(typeof usage.cacheReadInputTokens === "number"
+      ? { cacheReadInputTokens: usage.cacheReadInputTokens }
+      : {}),
+    ...(typeof usage.cacheCreationInputTokens === "number"
+      ? { cacheCreationInputTokens: usage.cacheCreationInputTokens }
+      : {}),
+    ...(typeof usage.reasoningOutputTokens === "number"
+      ? { reasoningOutputTokens: usage.reasoningOutputTokens }
+      : {}),
     ...(usage.estimated ? { estimated: true } : {}),
   };
 }
@@ -201,8 +252,11 @@ function isNonNegativeFiniteNumber(value: unknown): value is number {
 function normalizeAttemptUsage(raw: unknown): OcxUsage | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const usage = raw as Record<string, unknown>;
-  if (!isNonNegativeFiniteNumber(usage.inputTokens)
-    || !isNonNegativeFiniteNumber(usage.outputTokens)) return null;
+  if (
+    !isNonNegativeFiniteNumber(usage.inputTokens) ||
+    !isNonNegativeFiniteNumber(usage.outputTokens)
+  )
+    return null;
   for (const key of [
     "contextTotalTokens",
     "totalTokens",
@@ -220,34 +274,59 @@ function normalizeAttemptUsage(raw: unknown): OcxUsage | null {
 function normalizeUsageAttempt(raw: unknown): PersistedUsageAttempt | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const attempt = raw as Record<string, unknown>;
-  if (typeof attempt.ordinal !== "number" || !Number.isInteger(attempt.ordinal)
-    || attempt.ordinal < 1
-    || typeof attempt.provider !== "string" || !attempt.provider
-    || typeof attempt.model !== "string" || !attempt.model
-    || typeof attempt.adapter !== "string" || !attempt.adapter
-    || typeof attempt.status !== "number" || !Number.isInteger(attempt.status)
-    || attempt.status < 100 || attempt.status > 599
-    || typeof attempt.durationMs !== "number" || !Number.isFinite(attempt.durationMs)
-    || attempt.durationMs < 0
-    || typeof attempt.sendCount !== "number" || !Number.isInteger(attempt.sendCount)
-    || attempt.sendCount < 0
-    || typeof attempt.usageStatus !== "string"
-    || !USAGE_STATUSES.has(attempt.usageStatus as UsageStatus)) {
+  if (
+    typeof attempt.ordinal !== "number" ||
+    !Number.isInteger(attempt.ordinal) ||
+    attempt.ordinal < 1 ||
+    typeof attempt.provider !== "string" ||
+    !attempt.provider ||
+    typeof attempt.model !== "string" ||
+    !attempt.model ||
+    typeof attempt.adapter !== "string" ||
+    !attempt.adapter ||
+    typeof attempt.status !== "number" ||
+    !Number.isInteger(attempt.status) ||
+    attempt.status < 100 ||
+    attempt.status > 599 ||
+    typeof attempt.durationMs !== "number" ||
+    !Number.isFinite(attempt.durationMs) ||
+    attempt.durationMs < 0 ||
+    typeof attempt.sendCount !== "number" ||
+    !Number.isInteger(attempt.sendCount) ||
+    attempt.sendCount < 0 ||
+    typeof attempt.usageStatus !== "string" ||
+    !USAGE_STATUSES.has(attempt.usageStatus as UsageStatus)
+  ) {
     return null;
   }
-  if ("inputTokenEstimate" in attempt
-    && !isNonNegativeFiniteNumber(attempt.inputTokenEstimate)) return null;
-  if ("firstOutputMs" in attempt
-    && !isNonNegativeFiniteNumber(attempt.firstOutputMs)) return null;
-  if ("totalTokens" in attempt
-    && !isNonNegativeFiniteNumber(attempt.totalTokens)) return null;
-  const usage = "usage" in attempt ? normalizeAttemptUsage(attempt.usage) : undefined;
+  if (
+    "inputTokenEstimate" in attempt &&
+    !isNonNegativeFiniteNumber(attempt.inputTokenEstimate)
+  )
+    return null;
+  if (
+    "firstOutputMs" in attempt &&
+    !isNonNegativeFiniteNumber(attempt.firstOutputMs)
+  )
+    return null;
+  if (
+    "totalTokens" in attempt &&
+    !isNonNegativeFiniteNumber(attempt.totalTokens)
+  )
+    return null;
+  const usage =
+    "usage" in attempt ? normalizeAttemptUsage(attempt.usage) : undefined;
   if ("usage" in attempt && usage === null) return null;
   const recoveryKinds = Array.isArray(attempt.recoveryKinds)
-    ? [...new Set(attempt.recoveryKinds.filter(
-      (value): value is AttemptRecoveryKind => typeof value === "string"
-        && ATTEMPT_RECOVERY_KINDS.has(value as AttemptRecoveryKind),
-    ))]
+    ? [
+        ...new Set(
+          attempt.recoveryKinds.filter(
+            (value): value is AttemptRecoveryKind =>
+              typeof value === "string" &&
+              ATTEMPT_RECOVERY_KINDS.has(value as AttemptRecoveryKind),
+          ),
+        ),
+      ]
     : [];
   return {
     ordinal: attempt.ordinal as number,
@@ -269,9 +348,16 @@ function normalizeUsageAttempt(raw: unknown): PersistedUsageAttempt | null {
     ...(isNonNegativeFiniteNumber(attempt.totalTokens)
       ? { totalTokens: attempt.totalTokens }
       : {}),
-    ...(typeof attempt.errorCode === "string" ? { errorCode: attempt.errorCode } : {}),
-    ...(typeof attempt.providerAccountId === "string" && attempt.providerAccountId.trim()
-      ? { providerAccountId: capMetadataString(attempt.providerAccountId.trim()) }
+    ...(typeof attempt.errorCode === "string"
+      ? { errorCode: attempt.errorCode }
+      : {}),
+    ...(typeof attempt.providerAccountId === "string" &&
+    attempt.providerAccountId.trim()
+      ? {
+          providerAccountId: capMetadataString(
+            attempt.providerAccountId.trim(),
+          ),
+        }
       : {}),
     ...(typeof attempt.requestedEffort === "string" && attempt.requestedEffort
       ? { requestedEffort: capMetadataString(attempt.requestedEffort) }
@@ -279,10 +365,12 @@ function normalizeUsageAttempt(raw: unknown): PersistedUsageAttempt | null {
     ...(typeof attempt.effectiveEffort === "string" && attempt.effectiveEffort
       ? { effectiveEffort: capMetadataString(attempt.effectiveEffort) }
       : {}),
-    ...(typeof attempt.reasoningWireField === "string" && attempt.reasoningWireField
+    ...(typeof attempt.reasoningWireField === "string" &&
+    attempt.reasoningWireField
       ? { reasoningWireField: capMetadataString(attempt.reasoningWireField) }
       : {}),
-    ...(typeof attempt.reasoningWireValue === "string" && attempt.reasoningWireValue
+    ...(typeof attempt.reasoningWireValue === "string" &&
+    attempt.reasoningWireValue
       ? { reasoningWireValue: capMetadataString(attempt.reasoningWireValue) }
       : isNonNegativeFiniteNumber(attempt.reasoningWireValue)
         ? { reasoningWireValue: attempt.reasoningWireValue }
@@ -292,13 +380,16 @@ function normalizeUsageAttempt(raw: unknown): PersistedUsageAttempt | null {
 
 function normalizedAttempts(raw: unknown): PersistedUsageAttempt[] {
   if (!Array.isArray(raw)) return [];
-  return raw.map(normalizeUsageAttempt)
+  return raw
+    .map(normalizeUsageAttempt)
     .filter((attempt): attempt is PersistedUsageAttempt => attempt !== null);
 }
 
 const MAX_METADATA_STRING_LEN = 64;
 function capMetadataString(s: string): string {
-  return s.length > MAX_METADATA_STRING_LEN ? s.slice(0, MAX_METADATA_STRING_LEN) : s;
+  return s.length > MAX_METADATA_STRING_LEN
+    ? s.slice(0, MAX_METADATA_STRING_LEN)
+    : s;
 }
 
 /**
@@ -327,7 +418,8 @@ function normalizeUsageEntry(entry: PersistedUsageEntry): PersistedUsageEntry {
     ...(typeof entry.account === "string" && entry.account.trim()
       ? { account: capMetadataString(entry.account.trim()) }
       : {}),
-    ...(typeof entry.providerAccountId === "string" && entry.providerAccountId.trim()
+    ...(typeof entry.providerAccountId === "string" &&
+    entry.providerAccountId.trim()
       ? { providerAccountId: capMetadataString(entry.providerAccountId.trim()) }
       : {}),
     ...(entry.resolvedModel ? { resolvedModel: entry.resolvedModel } : {}),
@@ -346,22 +438,29 @@ function normalizeUsageEntry(entry: PersistedUsageEntry): PersistedUsageEntry {
       : isNonNegativeFiniteNumber(entry.reasoningWireValue)
         ? { reasoningWireValue: entry.reasoningWireValue }
         : {}),
-    ...(typeof entry.requestedServiceTier === "string" && entry.requestedServiceTier
+    ...(typeof entry.requestedServiceTier === "string" &&
+    entry.requestedServiceTier
       ? { requestedServiceTier: capMetadataString(entry.requestedServiceTier) }
       : {}),
-    ...(typeof entry.requestedSpeedLabel === "string" && entry.requestedSpeedLabel
+    ...(typeof entry.requestedSpeedLabel === "string" &&
+    entry.requestedSpeedLabel
       ? { requestedSpeedLabel: capMetadataString(entry.requestedSpeedLabel) }
       : {}),
-    ...(typeof entry.configuredServiceTier === "string" && entry.configuredServiceTier
-      ? { configuredServiceTier: capMetadataString(entry.configuredServiceTier) }
+    ...(typeof entry.configuredServiceTier === "string" &&
+    entry.configuredServiceTier
+      ? {
+          configuredServiceTier: capMetadataString(entry.configuredServiceTier),
+        }
       : {}),
-    ...(typeof entry.configuredSpeedLabel === "string" && entry.configuredSpeedLabel
+    ...(typeof entry.configuredSpeedLabel === "string" &&
+    entry.configuredSpeedLabel
       ? { configuredSpeedLabel: capMetadataString(entry.configuredSpeedLabel) }
       : {}),
     ...(typeof entry.modelSupportsServiceTier === "boolean"
       ? { modelSupportsServiceTier: entry.modelSupportsServiceTier }
       : {}),
-    ...(typeof entry.responseServiceTier === "string" && entry.responseServiceTier
+    ...(typeof entry.responseServiceTier === "string" &&
+    entry.responseServiceTier
       ? { responseServiceTier: capMetadataString(entry.responseServiceTier) }
       : {}),
     ...(typeof entry.stream === "boolean" ? { stream: entry.stream } : {}),
@@ -372,7 +471,9 @@ function normalizeUsageEntry(entry: PersistedUsageEntry): PersistedUsageEntry {
       : {}),
     usageStatus: entry.usageStatus,
     ...(entry.usage ? { usage: normalizeUsageValue(entry.usage) } : {}),
-    ...(typeof entry.totalTokens === "number" ? { totalTokens: entry.totalTokens } : {}),
+    ...(typeof entry.totalTokens === "number"
+      ? { totalTokens: entry.totalTokens }
+      : {}),
     ...(attempts.length > 0 ? { attempts } : {}),
     ...(entry.errorCode ? { errorCode: entry.errorCode } : {}),
     ...(entry.terminalStatus ? { terminalStatus: entry.terminalStatus } : {}),
@@ -381,7 +482,9 @@ function normalizeUsageEntry(entry: PersistedUsageEntry): PersistedUsageEntry {
     ...(typeof entry.traceId === "string" && entry.traceId
       ? { traceId: capMetadataString(entry.traceId) }
       : {}),
-    ...(normalizeUsageTraceMeta(entry.trace) ? { trace: normalizeUsageTraceMeta(entry.trace) } : {}),
+    ...(normalizeUsageTraceMeta(entry.trace)
+      ? { trace: normalizeUsageTraceMeta(entry.trace) }
+      : {}),
   };
 }
 
@@ -389,7 +492,11 @@ function ensureUsageLogDir(): void {
   const dir = getConfigDir();
   recordOwnedConfigPath(dir, usageLogPath());
   mkdirSync(dir, { recursive: true, mode: 0o700 });
-  try { chmodSync(dir, 0o700); } catch { /* best-effort on platforms that ignore chmod */ }
+  try {
+    chmodSync(dir, 0o700);
+  } catch {
+    /* best-effort on platforms that ignore chmod */
+  }
 }
 
 /**
@@ -423,9 +530,13 @@ const usageAppendObservers: UsageAppendObserver[] = [];
  * registration order, strictly AFTER the row is durably appended; a failed append
  * never notifies. Returns an idempotent unsubscribe function.
  */
-export function subscribeUsageAppends(observer: UsageAppendObserver): () => void {
+export function subscribeUsageAppends(
+  observer: UsageAppendObserver,
+): () => void {
   if (usageAppendObservers.length >= MAX_USAGE_APPEND_OBSERVERS) {
-    throw new RangeError(`usage append observer limit of ${MAX_USAGE_APPEND_OBSERVERS} exceeded`);
+    throw new RangeError(
+      `usage append observer limit of ${MAX_USAGE_APPEND_OBSERVERS} exceeded`,
+    );
   }
   usageAppendObservers.push(observer);
   let active = true;
@@ -437,7 +548,9 @@ export function subscribeUsageAppends(observer: UsageAppendObserver): () => void
   };
 }
 
-function usageAppendObservation(entry: PersistedUsageEntry): UsageAppendObservation {
+function usageAppendObservation(
+  entry: PersistedUsageEntry,
+): UsageAppendObservation {
   // `entry` is the already-normalized row that was appended. Copy only the bounded
   // structural fields; the usage object is cloned so no observer can mutate another
   // observer's payload or retained state.
@@ -445,10 +558,12 @@ function usageAppendObservation(entry: PersistedUsageEntry): UsageAppendObservat
     ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
     status: entry.status,
     durationMs: entry.durationMs,
-    ...(isNonNegativeFiniteNumber(entry.firstOutputMs) ? { firstOutputMs: entry.firstOutputMs } : {}),
-    ...(entry.terminalStatus === "completed"
-      || entry.terminalStatus === "incomplete"
-      || entry.terminalStatus === "failed"
+    ...(isNonNegativeFiniteNumber(entry.firstOutputMs)
+      ? { firstOutputMs: entry.firstOutputMs }
+      : {}),
+    ...(entry.terminalStatus === "completed" ||
+    entry.terminalStatus === "incomplete" ||
+    entry.terminalStatus === "failed"
       ? { terminalStatus: entry.terminalStatus }
       : {}),
     ...(entry.usage ? { usage: { ...entry.usage } } : {}),
@@ -467,11 +582,24 @@ function notifyUsageAppendObservers(entry: PersistedUsageEntry): void {
 }
 
 export function appendUsageEntry(entry: PersistedUsageEntry): void {
-  ensureUsageLogDir();
   const path = usageLogPath();
-  const normalized = normalizeUsageEntry(entry);
-  appendFileSync(path, `${JSON.stringify(normalized)}\n`, { encoding: "utf-8", mode: 0o600 });
-  try { chmodSync(path, 0o600); } catch { /* best-effort on platforms that ignore chmod */ }
+  assertUsageLogPathIsolatedForTests(path);
+  ensureUsageLogDir();
+  const normalized = normalizeUsageEntry({
+    ...entry,
+    durationMs: sanitizeUsageDurationMs(entry.durationMs, {
+      uptimeMs: USAGE_DURATION_HARD_MAX_MS,
+    }),
+  });
+  appendFileSync(path, `${JSON.stringify(normalized)}\n`, {
+    encoding: "utf-8",
+    mode: 0o600,
+  });
+  try {
+    chmodSync(path, 0o600);
+  } catch {
+    /* best-effort on platforms that ignore chmod */
+  }
   // Notify only after the exact normalized row was appended successfully; an append
   // failure throws above and emits nothing.
   notifyUsageAppendObservers(normalized);
@@ -490,11 +618,16 @@ export type UsageLogRevision = {
 let usageReadCacheStats = { fullReads: 0, tailReads: 0, parsedLines: 0 };
 let managementUsageReadInflight: {
   key: string;
-  promise: Promise<{ entries: PersistedUsageEntry[]; revision: UsageLogRevision }>;
+  promise: Promise<{
+    entries: PersistedUsageEntry[];
+    revision: UsageLogRevision;
+  }>;
 } | null = null;
 
 /** Test-only observability for proving that unchanged prefixes are not reparsed. */
-export function usageReadCacheStatsForTests(): Readonly<typeof usageReadCacheStats> {
+export function usageReadCacheStatsForTests(): Readonly<
+  typeof usageReadCacheStats
+> {
   return { ...usageReadCacheStats };
 }
 
@@ -503,18 +636,31 @@ export function resetUsageReadCacheForTests(): void {
   managementUsageReadInflight = null;
 }
 
-function readExactly(fd: number, length: number, position: number): Buffer | null {
+function readExactly(
+  fd: number,
+  length: number,
+  position: number,
+): Buffer | null {
   const output = Buffer.allocUnsafe(length);
   let offset = 0;
   while (offset < length) {
-    const read = readSync(fd, output, offset, length - offset, position + offset);
+    const read = readSync(
+      fd,
+      output,
+      offset,
+      length - offset,
+      position + offset,
+    );
     if (read === 0) return null;
     offset += read;
   }
   return output;
 }
 
-function usageLogRevision(path: string, stat: ReturnType<typeof fstatSync>): UsageLogRevision {
+function usageLogRevision(
+  path: string,
+  stat: ReturnType<typeof fstatSync>,
+): UsageLogRevision {
   if (!stat.isFile()) throw new Error("usage log is not a regular file");
   return {
     path,
@@ -552,9 +698,11 @@ export function currentUsageLogRevision(): UsageLogRevision | null {
   }
 }
 
-async function parseUsageTextCooperatively(text: string): Promise<PersistedUsageEntry[]> {
+async function parseUsageTextCooperatively(
+  text: string,
+): Promise<PersistedUsageEntry[]> {
   const lines = text.split(/\r?\n/);
-  usageReadCacheStats.parsedLines += lines.filter(line => line.trim()).length;
+  usageReadCacheStats.parsedLines += lines.filter((line) => line.trim()).length;
   const entries: PersistedUsageEntry[] = [];
   const batchSize = 1_000;
   for (let offset = 0; offset < lines.length; offset += batchSize) {
@@ -562,7 +710,7 @@ async function parseUsageTextCooperatively(text: string): Promise<PersistedUsage
     if (offset + batchSize < lines.length) {
       // JSON parsing dominates large-log startup. Yield between bounded batches so
       // Bun can continue serving health and settings requests on the same thread.
-      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
   }
   return entries;
@@ -577,7 +725,8 @@ async function readUsageEntriesFullCooperatively(
     const stat = fstatSync(fd);
     const size = Number(stat.size);
     const bytes = readExactly(fd, size, 0);
-    if (bytes === null) throw new Error("usage log changed while it was being read");
+    if (bytes === null)
+      throw new Error("usage log changed while it was being read");
     const entries = await parseUsageTextCooperatively(bytes.toString("utf-8"));
     usageReadCacheStats.fullReads += 1;
     return { entries, revision: usageLogRevision(path, stat) };
@@ -608,11 +757,14 @@ export async function readUsageSnapshotForManagement(): Promise<{
   try {
     return await promise;
   } finally {
-    if (managementUsageReadInflight?.promise === promise) managementUsageReadInflight = null;
+    if (managementUsageReadInflight?.promise === promise)
+      managementUsageReadInflight = null;
   }
 }
 
-export async function readUsageEntriesForManagement(): Promise<PersistedUsageEntry[]> {
+export async function readUsageEntriesForManagement(): Promise<
+  PersistedUsageEntry[]
+> {
   return (await readUsageSnapshotForManagement()).entries;
 }
 
@@ -625,7 +777,11 @@ export function readUsageEntries(): PersistedUsageEntry[] {
     if (!line.trim()) continue;
     try {
       const parsed = JSON.parse(line) as PersistedUsageEntry;
-      if (parsed && typeof parsed === "object" && typeof parsed.requestId === "string") {
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        typeof parsed.requestId === "string"
+      ) {
         entries.push(normalizeUsageEntry(parsed));
       }
     } catch {
@@ -641,7 +797,11 @@ function parseUsageLines(lines: string[]): PersistedUsageEntry[] {
     if (!line.trim()) continue;
     try {
       const parsed = JSON.parse(line) as PersistedUsageEntry;
-      if (parsed && typeof parsed === "object" && typeof parsed.requestId === "string") {
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        typeof parsed.requestId === "string"
+      ) {
         entries.push(normalizeUsageEntry(parsed));
       }
     } catch {
@@ -665,7 +825,10 @@ export function readRecentUsageEntries(limit: number): PersistedUsageEntry[] {
     const size = fstatSync(fd).size;
     if (size <= 0) return [];
     // ~4 KiB/row budget with a floor; expand once if the window yields too few lines.
-    let windowBytes = Math.min(size, Math.max(64 * 1024, Math.ceil(limit) * 4 * 1024));
+    let windowBytes = Math.min(
+      size,
+      Math.max(64 * 1024, Math.ceil(limit) * 4 * 1024),
+    );
     for (let attempt = 0; attempt < 2; attempt++) {
       const start = Math.max(0, size - windowBytes);
       const buf = Buffer.alloc(size - start);
@@ -680,12 +843,13 @@ export function readRecentUsageEntries(limit: number): PersistedUsageEntry[] {
         }
         text = text.slice(nl + 1);
       }
-      const lines = text.split(/\r?\n/).filter(line => line.trim());
+      const lines = text.split(/\r?\n/).filter((line) => line.trim());
       // Parse ALL lines first, then take the last N valid entries. This way corrupt
       // or partial lines are filtered out during parsing and we always return the
       // most recent N valid rows (not N physical lines minus corrupt ones).
       const entries = parseUsageLines(lines);
-      if (entries.length >= limit || start === 0 || windowBytes >= size) return entries.slice(-limit);
+      if (entries.length >= limit || start === 0 || windowBytes >= size)
+        return entries.slice(-limit);
       windowBytes = Math.min(size, windowBytes * 4);
     }
     return [];
@@ -693,7 +857,11 @@ export function readRecentUsageEntries(limit: number): PersistedUsageEntry[] {
     return [];
   } finally {
     if (fd !== undefined) {
-      try { closeSync(fd); } catch { /* ignore */ }
+      try {
+        closeSync(fd);
+      } catch {
+        /* ignore */
+      }
     }
   }
 }

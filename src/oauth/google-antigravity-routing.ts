@@ -85,17 +85,21 @@ export function googleAntigravityAccountPoolConfig(
   return raw;
 }
 
-export function isGoogleAntigravityAccountPoolEnabled(config: OcxConfig): boolean {
+export function isGoogleAntigravityAccountPoolEnabled(
+  config: OcxConfig,
+): boolean {
   return googleAntigravityAccountPoolConfig(config).enabled === true;
 }
 
-export function googleAntigravityAutoSwitchThreshold(config: OcxConfig): number {
+export function googleAntigravityAutoSwitchThreshold(
+  config: OcxConfig,
+): number {
   const value = googleAntigravityAccountPoolConfig(config).autoSwitchThreshold;
   if (
-    typeof value === "number"
-    && Number.isInteger(value)
-    && value >= 0
-    && value <= 100
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= 100
   ) {
     return value;
   }
@@ -103,7 +107,9 @@ export function googleAntigravityAutoSwitchThreshold(config: OcxConfig): number 
 }
 
 function poolStrategy(config: OcxConfig): OcxAccountPoolRotationStrategy {
-  return normalizeAccountPoolStrategy(googleAntigravityAccountPoolConfig(config).strategy);
+  return normalizeAccountPoolStrategy(
+    googleAntigravityAccountPoolConfig(config).strategy,
+  );
 }
 
 function stickyLimit(config: OcxConfig): number {
@@ -133,7 +139,10 @@ function parseRetryAfterMs(
 export function getGoogleAntigravityAccountHealthSnapshot(
   accountId: string,
   now = Date.now(),
-): { cooldownUntil?: number; cooldownSource?: AccountHealth["cooldownSource"] } | null {
+): {
+  cooldownUntil?: number;
+  cooldownSource?: AccountHealth["cooldownSource"];
+} | null {
   const entry = upstreamHealth.get(accountId);
   if (!entry) return null;
   if (entry.cooldownUntil <= now) {
@@ -146,16 +155,21 @@ export function getGoogleAntigravityAccountHealthSnapshot(
   };
 }
 
-export function getGoogleAntigravityAccountLastUsedAt(accountId: string): number | undefined {
+export function getGoogleAntigravityAccountLastUsedAt(
+  accountId: string,
+): number | undefined {
   let latest: number | undefined;
   for (const entry of sessionAffinity.values()) {
     if (entry.accountId !== accountId) continue;
-    if (latest === undefined || entry.lastUsedAt > latest) latest = entry.lastUsedAt;
+    if (latest === undefined || entry.lastUsedAt > latest)
+      latest = entry.lastUsedAt;
   }
   return latest;
 }
 
-export function clearGoogleAntigravityAccountCooldown(accountId: string): boolean {
+export function clearGoogleAntigravityAccountCooldown(
+  accountId: string,
+): boolean {
   return upstreamHealth.delete(accountId);
 }
 
@@ -172,18 +186,24 @@ function isCooled(accountId: string, now: number): boolean {
 function credentialIsUsable(accountId: string, now: number): boolean {
   const credential = getAccountCredential(PROVIDER, accountId);
   if (!credential?.projectId?.trim()) return false;
-  return Boolean(credential.refresh) || credential.expires > now + TOKEN_SKEW_MS;
+  return (
+    Boolean(credential.refresh) || credential.expires > now + TOKEN_SKEW_MS
+  );
 }
 
-export function getEligibleGoogleAntigravityAccounts(now = Date.now()): string[] {
+export function getEligibleGoogleAntigravityAccounts(
+  now = Date.now(),
+): string[] {
   const set = getAccountSet(PROVIDER);
   if (!set) return [];
   return set.accounts
-    .filter(account =>
-      isProviderAccountSelectable(account, now)
-      && !isCooled(account.id, now)
-      && credentialIsUsable(account.id, now))
-    .map(account => account.id);
+    .filter(
+      (account) =>
+        isProviderAccountSelectable(account, now) &&
+        !isCooled(account.id, now) &&
+        credentialIsUsable(account.id, now),
+    )
+    .map((account) => account.id);
 }
 
 export function getGoogleAntigravityPoolRetryAfterSeconds(
@@ -203,27 +223,49 @@ export function getGoogleAntigravityPoolRetryAfterSeconds(
   return Math.max(1, Math.ceil((earliest - now) / 1_000));
 }
 
+function customWindowPercent(
+  quota: { customWindows?: Array<{ percent?: number }> } | null,
+): number | undefined {
+  const percents = quota?.customWindows
+    ?.map((window) => window.percent)
+    .filter(
+      (value): value is number =>
+        typeof value === "number" && Number.isFinite(value),
+    );
+  if (!percents || percents.length === 0) return undefined;
+  return Math.max(...percents);
+}
+
 function usageScore(accountId: string): number {
   const quota = getCachedProviderAccountQuota(PROVIDER, accountId);
-  if (
-    !quota
-    || typeof quota.fiveHourPercent !== "number"
-    || !Number.isFinite(quota.fiveHourPercent)
-  ) {
-    return UNKNOWN_USAGE_SCORE;
-  }
-  return Math.max(0, Math.min(100, quota.fiveHourPercent));
+  const fiveHour =
+    typeof quota?.fiveHourPercent === "number" &&
+    Number.isFinite(quota.fiveHourPercent)
+      ? quota.fiveHourPercent
+      : undefined;
+  const fromWindows = customWindowPercent(quota);
+  const value = fiveHour ?? fromWindows;
+  if (value === undefined) return UNKNOWN_USAGE_SCORE;
+  return Math.max(0, Math.min(100, value));
 }
 
 function hasKnownUsage(accountId: string): boolean {
   const quota = getCachedProviderAccountQuota(PROVIDER, accountId);
-  return typeof quota?.fiveHourPercent === "number"
-    && Number.isFinite(quota.fiveHourPercent);
+  if (
+    typeof quota?.fiveHourPercent === "number" &&
+    Number.isFinite(quota.fiveHourPercent)
+  )
+    return true;
+  return customWindowPercent(quota) !== undefined;
 }
 
-function pickLowestUsage(excludeId: string | undefined, now: number): string | null {
-  const eligible = getEligibleGoogleAntigravityAccounts(now)
-    .filter(accountId => accountId !== excludeId);
+function pickLowestUsage(
+  excludeId: string | undefined,
+  now: number,
+): string | null {
+  const eligible = getEligibleGoogleAntigravityAccounts(now).filter(
+    (accountId) => accountId !== excludeId,
+  );
   if (eligible.length === 0) return null;
   let best = eligible[0]!;
   let bestScore = usageScore(best);
@@ -238,7 +280,10 @@ function pickLowestUsage(excludeId: string | undefined, now: number): string | n
   return best;
 }
 
-function isUnderFillFirstThreshold(config: OcxConfig, accountId: string): boolean {
+function isUnderFillFirstThreshold(
+  config: OcxConfig,
+  accountId: string,
+): boolean {
   const threshold = googleAntigravityAutoSwitchThreshold(config);
   if (threshold <= 0 || !hasKnownUsage(accountId)) return true;
   return usageScore(accountId) < threshold;
@@ -250,16 +295,24 @@ function pickNextFillFirstAccount(
   eligible: string[],
 ): string | null {
   if (eligible.length === 0) return null;
-  const ordered = [...eligible].sort((left, right) => left.localeCompare(right));
+  const ordered = [...eligible].sort((left, right) =>
+    left.localeCompare(right),
+  );
   const set = getAccountSet(PROVIDER);
   const stableAll = set
-    ? set.accounts.map(account => account.id).sort((left, right) => left.localeCompare(right))
+    ? set.accounts
+        .map((account) => account.id)
+        .sort((left, right) => left.localeCompare(right))
     : ordered;
   const startIndex = stableAll.indexOf(afterId);
   if (startIndex < 0) {
-    return ordered.find(accountId => isUnderFillFirstThreshold(config, accountId))
-      ?? ordered[0]
-      ?? null;
+    return (
+      ordered.find((accountId) =>
+        isUnderFillFirstThreshold(config, accountId),
+      ) ??
+      ordered[0] ??
+      null
+    );
   }
   let fallback: string | null = null;
   for (let step = 1; step <= stableAll.length; step++) {
@@ -276,14 +329,24 @@ function pickFillFirstAccount(config: OcxConfig, now: number): string | null {
   if (eligible.length === 0) return null;
   const set = getAccountSet(PROVIDER);
   const active = set?.activeAccountId;
-  if (active && eligible.includes(active) && isUnderFillFirstThreshold(config, active)) {
+  if (
+    active &&
+    eligible.includes(active) &&
+    isUnderFillFirstThreshold(config, active)
+  ) {
     return active;
   }
   if (!active) {
-    const ordered = [...eligible].sort((left, right) => left.localeCompare(right));
-    return ordered.find(accountId => isUnderFillFirstThreshold(config, accountId))
-      ?? ordered[0]
-      ?? null;
+    const ordered = [...eligible].sort((left, right) =>
+      left.localeCompare(right),
+    );
+    return (
+      ordered.find((accountId) =>
+        isUnderFillFirstThreshold(config, accountId),
+      ) ??
+      ordered[0] ??
+      null
+    );
   }
   return pickNextFillFirstAccount(config, active, eligible);
 }
@@ -293,11 +356,16 @@ function pickAlternateAccount(
   failedAccountId: string,
   now: number,
 ): string | null {
-  const eligible = getEligibleGoogleAntigravityAccounts(now)
-    .filter(accountId => accountId !== failedAccountId);
+  const eligible = getEligibleGoogleAntigravityAccounts(now).filter(
+    (accountId) => accountId !== failedAccountId,
+  );
   const strategy = poolStrategy(config);
   if (strategy === "round-robin") {
-    return pickRoundRobinAccount(POOL_KEY_ANTIGRAVITY, eligible, stickyLimit(config));
+    return pickRoundRobinAccount(
+      POOL_KEY_ANTIGRAVITY,
+      eligible,
+      stickyLimit(config),
+    );
   }
   if (strategy === "fill-first") {
     return pickNextFillFirstAccount(config, failedAccountId, eligible);
@@ -307,18 +375,24 @@ function pickAlternateAccount(
 
 function pruneExpiredAffinity(now: number): void {
   for (const [key, entry] of sessionAffinity) {
-    if (now - entry.lastUsedAt > AFFINITY_IDLE_TTL_MS) sessionAffinity.delete(key);
+    if (now - entry.lastUsedAt > AFFINITY_IDLE_TTL_MS)
+      sessionAffinity.delete(key);
   }
   if (sessionAffinity.size <= MAX_AFFINITY_ENTRIES) return;
-  const sorted = [...sessionAffinity.entries()]
-    .sort((left, right) => left[1].lastUsedAt - right[1].lastUsedAt);
+  const sorted = [...sessionAffinity.entries()].sort(
+    (left, right) => left[1].lastUsedAt - right[1].lastUsedAt,
+  );
   const drop = sessionAffinity.size - MAX_AFFINITY_ENTRIES;
   for (let index = 0; index < drop; index++) {
     sessionAffinity.delete(sorted[index]![0]);
   }
 }
 
-function bindAffinity(sessionKey: string, accountId: string, now: number): void {
+function bindAffinity(
+  sessionKey: string,
+  accountId: string,
+  now: number,
+): void {
   sessionAffinity.set(sessionKey, { accountId, lastUsedAt: now });
   pruneExpiredAffinity(now);
 }
@@ -352,7 +426,8 @@ export function releaseGoogleAntigravitySessionAffinity(
 ): void {
   const key = sessionKey?.trim();
   if (!key) return;
-  if (sessionAffinity.get(key)?.accountId === accountId) sessionAffinity.delete(key);
+  if (sessionAffinity.get(key)?.accountId === accountId)
+    sessionAffinity.delete(key);
 }
 
 export function googleAntigravitySessionKey(
@@ -368,7 +443,8 @@ export function resolveGoogleAntigravityAccountForSession(
 ): GoogleAntigravityAccountSelection {
   pruneExpiredAffinity(now);
   const set = getAccountSet(PROVIDER);
-  if (!set || set.accounts.length === 0) return { accountId: null, reason: "none" };
+  if (!set || set.accounts.length === 0)
+    return { accountId: null, reason: "none" };
   if (!isGoogleAntigravityAccountPoolEnabled(config)) {
     return { accountId: set.activeAccountId, reason: "pool-disabled" };
   }
@@ -399,7 +475,11 @@ export function resolveGoogleAntigravityAccountForSession(
       stickyLimit(config),
     );
     if (accountId) {
-      notePoolRotationSuccess(POOL_KEY_ANTIGRAVITY, accountId, stickyLimit(config));
+      notePoolRotationSuccess(
+        POOL_KEY_ANTIGRAVITY,
+        accountId,
+        stickyLimit(config),
+      );
       reason = "round-robin";
     }
   } else if (strategy === "fill-first") {
@@ -408,12 +488,10 @@ export function resolveGoogleAntigravityAccountForSession(
   } else {
     const threshold = googleAntigravityAutoSwitchThreshold(config);
     if (
-      activeIsEligible
-      && (
-        threshold <= 0
-        || !hasKnownUsage(set.activeAccountId)
-        || usageScore(set.activeAccountId) < threshold
-      )
+      activeIsEligible &&
+      (threshold <= 0 ||
+        !hasKnownUsage(set.activeAccountId) ||
+        usageScore(set.activeAccountId) < threshold)
     ) {
       accountId = set.activeAccountId;
       reason = "active";
@@ -429,7 +507,7 @@ export function resolveGoogleAntigravityAccountForSession(
   }
 
   if (!accountId) {
-    const anyCooled = set.accounts.some(account => isCooled(account.id, now));
+    const anyCooled = set.accounts.some((account) => isCooled(account.id, now));
     return { accountId: null, reason: anyCooled ? "all-cooled" : "none" };
   }
   if (key) bindAffinity(key, accountId, now);
@@ -458,7 +536,9 @@ export function rotateGoogleAntigravityAccountOn429(
 
   const next = pickAlternateAccount(config, failedAccountId, now);
   if (!next) {
-    console.warn("[google-antigravity-pool] all eligible accounts are in cooldown; returning 429");
+    console.warn(
+      "[google-antigravity-pool] all eligible accounts are in cooldown; returning 429",
+    );
     return null;
   }
   const key = sessionKey?.trim();
@@ -476,12 +556,16 @@ export function rotateGoogleAntigravityAccountOn429(
 export async function getGoogleAntigravityPoolCredential(
   accountId: string,
 ): Promise<GoogleAntigravityAccountCredential> {
-  const { getValidAccessTokenForAccount, OAuthLoginRequiredError } = await import("./index");
+  const { getValidAccessTokenForAccount, OAuthLoginRequiredError } =
+    await import("./index");
   if (!getAccountCredential(PROVIDER, accountId)) {
     throw new OAuthLoginRequiredError(PROVIDER);
   }
   const accessToken = await getValidAccessTokenForAccount(PROVIDER, accountId);
-  const projectId = getAccountCredential(PROVIDER, accountId)?.projectId?.trim();
+  const projectId = getAccountCredential(
+    PROVIDER,
+    accountId,
+  )?.projectId?.trim();
   if (!projectId) {
     throw new Error(
       "Antigravity account has no Cloud Code Assist project id; re-run `ocx login google-antigravity`",
@@ -491,7 +575,9 @@ export async function getGoogleAntigravityPoolCredential(
 }
 
 export function promoteGoogleAntigravityActiveAccount(accountId: string): void {
-  void setActiveAccount(PROVIDER, accountId).catch(() => { /* best-effort */ });
+  void setActiveAccount(PROVIDER, accountId).catch(() => {
+    /* best-effort */
+  });
 }
 
 export function resetGoogleAntigravityRoutingForManualSelection(
@@ -501,7 +587,9 @@ export function resetGoogleAntigravityRoutingForManualSelection(
   seedPoolRotationAccount(POOL_KEY_ANTIGRAVITY, accountId);
 }
 
-export function formatGoogleAntigravityAccountOrdinal(accountId: string): string {
+export function formatGoogleAntigravityAccountOrdinal(
+  accountId: string,
+): string {
   return fallbackCodexAccountLogLabel(accountId);
 }
 
