@@ -45,6 +45,11 @@ bun run build
 | `.github/workflows/deploy-docs.yml`       | `push` to `main` touching `docs-site/**` or the workflow, or manual dispatch                     | Build and publish the Astro/Starlight docs site to GitHub Pages.                                                                                                                                                                                                                                                                                                                                                                       |
 | `.github/workflows/service-lifecycle.yml` | `push` touching `src/service.ts`, `src/cli/index.ts`, or the workflow, or manual dispatch        | Linux systemd smoke test: install, verify, `ocx stop` stops the service, uninstall.                                                                                                                                                                                                                                                                                                                                                    |
 
+The npm `preview` dist-tag is not an alternate integration branch.
+Any temporary prerelease-preparation branch still targets `main`.
+The workflow may retain a `preview` push trigger for compatibility; a
+branch trigger does not create or authorize an integration branch.
+
 Docs-only changes intentionally route through the docs workflow instead of the runtime CI gate. If a
 docs change also edits runtime/package/release files, run the relevant local runtime checks before
 push and let `ci.yml` provide the Linux/Windows confirmation. Service-related changes
@@ -68,7 +73,8 @@ manual. When an investigation graduates into a maintained invariant, summarize i
 `.github/CODEOWNERS` declares default reviewers and repeats ownership for authentication, repository
 automation, release, and governance paths where an explicit security review is required. GitHub
 repository settings remain the source of truth for actual account permissions and protected-branch
-enforcement.
+enforcement. CODEOWNERS entries must name real GitHub users or teams with write access; validate
+that GitHub reports no unknown-owner errors after changing the roster.
 
 [Decision Log]
 

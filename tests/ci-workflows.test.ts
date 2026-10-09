@@ -3113,9 +3113,21 @@ describe("GitHub Actions hardening", () => {
   test("docs deployment is pinned, bounded, and scoped to Pages", async () => {
     const workflow = await readText(".github/workflows/deploy-docs.yml");
 
-    expect(workflow).toContain(
-      "permissions:\n  contents: read\n  pages: write\n  id-token: write",
-    );
+    const config = Bun.YAML.parse(workflow) as {
+      permissions?: Record<string, string>;
+      jobs?: Record<
+        string,
+        { "runs-on"?: string; permissions?: Record<string, string> }
+      >;
+    };
+    expect(config.permissions).toEqual({ contents: "read" });
+    expect(config.jobs?.build?.["runs-on"]).toBe("ubuntu-latest");
+    expect(config.jobs?.deploy?.["runs-on"]).toBe("ubuntu-latest");
+    expect(config.jobs?.deploy?.permissions).toEqual({
+      contents: "read",
+      pages: "write",
+      "id-token": "write",
+    });
     expect(workflow).toContain("cancel-in-progress: false");
     expect(workflow).toContain("timeout-minutes: 15");
     expect(workflow).toContain("timeout-minutes: 10");

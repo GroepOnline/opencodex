@@ -17,6 +17,7 @@ change requires explicit security review under `MAINTAINERS.md`.
 - Do not broaden triggers, write permissions, token exposure, release eligibility, or publish capability without an explicit task requirement.
 - Preserve cross-platform coverage where the workflow currently promises Linux, macOS, and Windows behavior.
 - Keep branch-enforcement text synchronized with `AGENTS.md`, `MAINTAINERS.md`, and the public contributing guide.
+- Keep `CODEOWNERS` users/teams resolvable with repository write access. Validate GitHub CODEOWNERS errors after changing reviewer routing; an organization name by itself is not a team.
 
 ## Validation
 

@@ -75,7 +75,7 @@ cd docs-site && bun install && bun dev
 
 ## Docs publishing
 
-The public docs publish to GitHub Pages at <https://github.com/OnlineChefGroep/opencodex/>. The
+The public docs publish to GitHub Pages at <https://opencodex.chefgroep.online/>. The
 `.github/workflows/deploy-docs.yml` workflow runs on `main` pushes that touch `docs-site/**` or the
 workflow itself, builds `docs-site`, and deploys the generated site. Before pushing docs changes,
 run:
@@ -109,10 +109,13 @@ bun run release:watch               # watch the newest Release workflow run
 
 ## Branches
 
-- `main` — the only integration target. Open your pull request here.
-- `dev` — leftover line. Same-repository `dev` → `main` promotion remains an
-  explicit exception in the target-branch check. Feature heads must target `main`.
-- `preview` — the prerelease train.
+- `main` is the single integration branch. Branch from its current
+  tip and target it in your pull request.
+- `dev` was retired on 2026-10-01. Do not target or recreate it.
+- `preview` is an npm prerelease **dist-tag**, not a standing
+  integration branch. Use an isolated topic branch for prerelease work;
+  merging it does not publish anything. See
+  [Versioning](https://github.com/GroepOnline/opencodex/blob/main/VERSIONING.md).
 
 The `dev2-go` line that carried the Go native port has been retired, and the
 dual-track carry policy with it. Its history is published read-only at
@@ -130,13 +133,19 @@ description.
   as the sole integration base.
 - Branch from the current **`main`** tip. The required **`enforce-target`** check rejects heads whose merge base sits on a stale tip while the branch is far behind the pull request base (the failure mode seen in #644).
 - Write a real description: a **Summary** of what changed and why, plus a **Test plan** (or equivalent substance). Empty bodies, placeholder-only text, and descriptions that use escaped `\n` instead of real line breaks fail the check.
-- Workflow changes in this repository use **`pull_request_target`**. Updated enforcement logic applies only after the workflow is promoted to the repository default branch — the same operational caveat documented in #631.
+- The PR target enforcer and labeler use **`pull_request_target`** with trusted default-branch scripts; other PR checks use their configured triggers. Changes to those default-branch policy workflows become active only after landing on `main`.
 
 ## Project maintainers
 
 The current maintainers, their responsibilities, and the review and merge policy are documented in
 [`MAINTAINERS.md`](https://github.com/GroepOnline/opencodex/blob/main/MAINTAINERS.md). GitHub review
 ownership for the repository and security-sensitive paths is declared in `.github/CODEOWNERS`.
+
+## Security reporting
+
+Do not disclose unpublished vulnerabilities or real credentials in a public issue.
+Use [private vulnerability reporting](https://github.com/GroepOnline/opencodex/security/advisories/new)
+and read the repository [security policy](https://github.com/GroepOnline/opencodex/blob/main/SECURITY.md).
 
 ## Conventions
 
