@@ -99,8 +99,8 @@ jobs:
 
   publish:
     if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
-    # Trusted release execution remains on the dedicated fleet runner.
-    runs-on: [self-hosted, Linux, X64, jan]
+    # Trusted release execution uses an ephemeral GitHub-hosted runner.
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
@@ -239,6 +239,10 @@ jobs:
           IMAGE: ${{ steps.meta.outputs.image }}
         run: |
           set -euo pipefail
+          if [ "$PUSH" = "true" ] && [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::GHCR publish returned no immutable sha256 digest"
+            exit 1
+          fi
           {
             echo "### OpenCodex image"
             echo ""

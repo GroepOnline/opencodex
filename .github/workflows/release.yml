@@ -25,8 +25,8 @@ on:
         type: boolean
         default: true
       expected-sha:
-        description: "Immutable release commit this dispatch must publish (fail if the branch moved)"
-        required: false
+        description: "Immutable release commit this dispatch must publish (required; fail if the branch moved)"
+        required: true
         type: string
       deploy:
         description: "Legacy deploy.yml targets a permanently retired host and must remain false. Runtime cutover uses a separately verified private production deployment contract."
@@ -57,8 +57,8 @@ concurrency:
 
 jobs:
   publish:
-    runs-on: [self-hosted, Linux, X64, jan]
-    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Reject retired runtime deploy request
         env:
@@ -80,7 +80,8 @@ jobs:
           EXPECTED_SHA: ${{ inputs.expected-sha }}
         run: |
           if [ -z "$EXPECTED_SHA" ]; then
-            echo "::warning::no expected-sha supplied; publishing whatever the branch currently points at"
+            echo "::error::expected-sha is mandatory; refusing to publish an unaudited branch head"
+            exit 1
           elif [ "$GITHUB_SHA" != "$EXPECTED_SHA" ]; then
             echo "::error::branch moved after the release audit (expected ${EXPECTED_SHA}, got ${GITHUB_SHA}) — refusing to publish an unaudited commit"
             exit 1
@@ -380,6 +381,7 @@ jobs:
         if: ${{ inputs.dry-run != true }}
         env:
           RELEASE_VERSION: ${{ inputs.version }}
+          NPM_DIST_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           npm_bin="${NPM_PUBLISH_BIN:?npm binary was not pinned before bun install}"
@@ -387,17 +389,34 @@ jobs:
           if [ -n "${NPM_CONFIG_USERCONFIG:-}" ]; then
             printf 'registry=https://registry.npmjs.org/\n' > "$NPM_CONFIG_USERCONFIG"
           fi
-          for attempt in $(seq 1 30); do
-            if VERSION=$("$npm_bin" view "@groeponline/opencodex@${RELEASE_VERSION}" version 2>/dev/null); then
-              echo "registry version=$VERSION"
-              test "$VERSION" = "$RELEASE_VERSION"
-              "$npm_bin" dist-tag ls @groeponline/opencodex
-              exit 0
+          # npm can acknowledge publication while still processing the package.
+          # v1.5.2 was accepted but invisible to registry readbacks for >5 minutes.
+          # Query the public registry without npm CLI caching, and fail closed on
+          # incorrect package identity or provenance.
+          version_url="https://registry.npmjs.org/@groeponline%2Fopencodex/$RELEASE_VERSION"
+          tags_url="https://registry.npmjs.org/-/package/@groeponline%2Fopencodex/dist-tags"
+          for attempt in $(seq 1 120); do
+            metadata="$(curl -fsS --max-time 8 -H 'Cache-Control: no-cache' "$version_url" 2>/dev/null || true)"
+            if [ -n "$metadata" ] && jq -e --arg version "$RELEASE_VERSION" '.version == $version' <<<"$metadata" >/dev/null 2>&1; then
+              if ! jq -e --arg sha "$GITHUB_SHA" '
+                .gitHead == $sha
+                and (.dist.integrity | type == "string")
+                and .bin.ocx == "bin/ocx.mjs"
+                and .bin.opencodex == "bin/ocx.mjs"
+              ' <<<"$metadata" >/dev/null; then
+                echo "::error::npm metadata is visible but gitHead, integrity, or CLI bins do not match release $GITHUB_SHA"
+                exit 1
+              fi
+              tags="$(curl -fsS --max-time 8 -H 'Cache-Control: no-cache' "$tags_url" 2>/dev/null || true)"
+              if jq -e --arg channel "$NPM_DIST_TAG" --arg version "$RELEASE_VERSION" '.[$channel] == $version' <<<"$tags" >/dev/null 2>&1; then
+                echo "Registry confirms @groeponline/opencodex@$RELEASE_VERSION, $NPM_DIST_TAG tag, $GITHUB_SHA and CLI bins"
+                exit 0
+              fi
             fi
-            echo "::notice::@groeponline/opencodex@${RELEASE_VERSION} not visible in npm registry yet (attempt $attempt/30)"
-            sleep 10
+            echo "::notice::npm registry is processing $RELEASE_VERSION or its dist-tag (attempt $attempt/120)"
+            if [ "$attempt" -lt 120 ]; then sleep 10; fi
           done
-          echo "::error::npm registry smoke failed after 30 attempts"
+          echo "::error::npm registry smoke failed after 120 bounded attempts; do not tag an unverified package"
           "$npm_bin" view @groeponline/opencodex versions dist-tags --json || true
           exit 1
 
@@ -589,6 +608,8 @@ jobs:
             --notes-file "$notes_file" ${prerelease_flag:+$prerelease_flag}
 
       - name: Bump Homebrew tap (stable only)
+        # This optional distribution channel must not block the GHCR release artifact.
+        continue-on-error: true
         if: ${{ inputs.dry-run != true && inputs.tag == 'latest' }}
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
@@ -627,8 +648,8 @@ jobs:
   rollout:
     needs: publish
     if: github.event.inputs.dry-run != 'true'
-    runs-on: [self-hosted, Linux, X64, jan]
-    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
     permissions:
       contents: read
       actions: write # gh workflow run container.yml
@@ -648,8 +669,31 @@ jobs:
             echo "::error::${release_tag} points at ${tag_sha}, not the published commit ${RELEASE_SHA}; refusing to build an image for a different identity"
             exit 1
           fi
+          # A dispatch acknowledgement is not evidence that GHCR published.
+          previous_id="$(gh run list --workflow container.yml --commit "$RELEASE_SHA" --event workflow_dispatch --limit 10 --json databaseId --jq '.[0].databaseId // ""')"
           gh workflow run container.yml --ref "${release_tag}" -f "expected_sha=${RELEASE_SHA}"
-          echo "dispatched container.yml on refs/tags/${release_tag} (${RELEASE_SHA})"
+          image_run_id=""
+          for attempt in $(seq 1 60); do
+            current_id="$(gh run list --workflow container.yml --commit "$RELEASE_SHA" --event workflow_dispatch --limit 10 --json databaseId --jq '.[0].databaseId // ""')"
+            if [ -n "$current_id" ] && [ "$current_id" != "$previous_id" ]; then
+              image_run_id="$current_id"
+              break
+            fi
+            sleep 5
+          done
+          if [ -z "$image_run_id" ]; then
+            echo "::error::No new GHCR workflow run appeared for tag $release_tag at $RELEASE_SHA"
+            exit 1
+          fi
+          gh run watch "$image_run_id" --interval 10 --exit-status
+          verified_sha="$(gh run view "$image_run_id" --json headSha --jq '.headSha')"
+          verified_branch="$(gh run view "$image_run_id" --json headBranch --jq '.headBranch')"
+          published="$(gh run view "$image_run_id" --json jobs --jq '[.jobs[] | select(.name == "publish")][0].conclusion // ""')"
+          if [ "$verified_sha" != "$RELEASE_SHA" ] || [ "$verified_branch" != "$release_tag" ] || [ "$published" != "success" ]; then
+            echo "::error::GHCR workflow did not successfully publish tag $release_tag at the release commit"
+            exit 1
+          fi
+          echo "GHCR published by run $image_run_id for tag $release_tag at $RELEASE_SHA"
           {
             echo "### Rollout chain"
             echo ""
