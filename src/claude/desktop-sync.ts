@@ -4,12 +4,12 @@ import { chmodSync, closeSync, existsSync, ftruncateSync, lstatSync, mkdirSync, 
 import { dirname, join, resolve } from "node:path";
 import { renameAtomicFile } from "../config";
 import { hardenSecretPath } from "../lib/windows-secret-acl";
-import { resolveDesktop3pConfigLibraryPath } from "./desktop-3p";
+import { DESKTOP_LIBRARY_ID, resolveDesktop3pConfigLibraryPath } from "./desktop-3p";
 import { resolveDataPlaneAdmissionToken } from "../lib/service-secrets";
 import { claudeConfigDir, realAdmissionToken } from "./auth-detect";
 
 const MAX_LIBRARY_BYTES = 4 * 1024 * 1024;
-const SAFE_ID = /^[A-Za-z0-9_-]{1,128}$/;
+const SAFE_ID = DESKTOP_LIBRARY_ID;
 class DesktopSyncError extends Error {}
 
 function assertLibraryDirectory(path: string): void {
@@ -45,6 +45,24 @@ export type DesktopSyncResult = { status: "synced" | "unchanged" | "skipped"; mo
 
 function object(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Key-order-insensitive JSON form, so formatting or ordering churn by Desktop is not a content change. */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (object(value)) {
+    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+function sameJsonContent(original: Buffer | string | null, next: unknown): boolean {
+  if (original === null) return false;
+  try {
+    return canonicalJson(JSON.parse(original.toString())) === canonicalJson(next);
+  } catch {
+    return false;
+  }
 }
 
 function assertRegularFile(path: string): void {
@@ -219,7 +237,7 @@ function writeLibrary(
   const metaText = JSON.stringify(meta, null, 2) + "\n";
   const models = Array.isArray(config.inferenceModels) ? config.inferenceModels.length : 0;
   const originalConfig = existsSync(configPath) ? readFileSync(configPath) : null;
-  if (originalConfig?.equals(Buffer.from(configText)) && originalMeta === metaText) {
+  if (sameJsonContent(originalConfig, config) && sameJsonContent(originalMeta, meta)) {
     return { status: "unchanged", models };
   }
   const harden = (path: string): void => {
@@ -242,7 +260,17 @@ function writeLibrary(
   }
   atomicWrite(configPath, configText);
   const writtenConfig = lstatSync(configPath);
-  try { atomicWrite(metaPath, metaText); } catch {
+  let metaConflict = false;
+  try {
+    // Re-check right before the commit: the backup and hardening I/O above leaves a window in which
+    // Desktop may have rewritten _meta.json. Never overwrite a concurrent change.
+    assertRegularFile(metaPath);
+    if ((existsSync(metaPath) ? readFileSync(metaPath, "utf8") : null) !== originalMeta) {
+      metaConflict = true;
+      throw new DesktopSyncError("Claude Desktop library changed during sync");
+    }
+    atomicWrite(metaPath, metaText);
+  } catch {
     try {
       assertRegularFile(configPath);
       const current = lstatSync(configPath);
@@ -253,7 +281,9 @@ function writeLibrary(
     } catch {
       throw new DesktopSyncError("Claude Desktop metadata update failed and configuration rollback failed; protected backups are available");
     }
-    throw new DesktopSyncError("Claude Desktop metadata update failed; configuration was rolled back");
+    throw new DesktopSyncError(metaConflict
+      ? "Claude Desktop library changed during sync; configuration was rolled back, retry without closing any client"
+      : "Claude Desktop metadata update failed; configuration was rolled back");
   }
   return { status: "synced", models };
 }

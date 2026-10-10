@@ -194,9 +194,15 @@ test("failure to fetch the applied library fails closed with no writes or altern
 });
 
 test("rejects traversal, conflicting profile ids and malformed envelopes before writes", async () => {
-  for (const kind of ["traversal", "conflict", "orphan-profile", "invalid-meta"] as const) {
+  for (const kind of ["traversal", "reserved-id", "conflict", "orphan-profile", "invalid-meta"] as const) {
     const f = fixture();
     if (kind === "traversal") f.payload.appliedId = "../outside";
+    if (kind === "reserved-id") {
+      // `_meta` would alias the library metadata file itself.
+      f.payload.appliedId = "_meta";
+      f.payload.meta.appliedId = "_meta";
+      f.payload.meta.entries[0]!.id = "_meta";
+    }
     if (kind === "conflict") {
       f.payload.appliedId = "user";
       f.payload.meta.appliedId = "user";
@@ -268,4 +274,32 @@ test("bounded response rejects oversize without committing the library", async (
     : new Response("", { headers: { "content-length": String(4 * 1024 * 1024 + 1) } })) as typeof fetch;
   await expect(syncClaudeDesktopLibrary(f.options)).rejects.toThrow("size limit");
   expect(existsSync(join(f.dir, "new.json"))).toBe(false);
+});
+
+test("formatting-only changes by Desktop count as unchanged: no rewrite and no new backup", async () => {
+  const f = fixture();
+  await syncClaudeDesktopLibrary({ ...f.options, automatic: true });
+  const backups = readdirSync(f.dir).filter(p => p.endsWith(".bak"));
+  const meta = JSON.parse(readFileSync(f.metaPath, "utf8"));
+  // Same content, different key order and compact formatting (as another writer might produce).
+  writeFileSync(f.metaPath, JSON.stringify(Object.fromEntries(Object.entries(meta).reverse())));
+  const compact = readFileSync(f.metaPath);
+  expect(await syncClaudeDesktopLibrary(f.options)).toEqual({ status: "unchanged", models: 1 });
+  expect(readFileSync(f.metaPath)).toEqual(compact);
+  expect(readdirSync(f.dir).filter(p => p.endsWith(".bak"))).toEqual(backups);
+});
+
+test("a metadata change made after the library check is never overwritten", async () => {
+  const f = fixture();
+  const concurrent = JSON.stringify({
+    entries: [{ id: "user", name: "My profile" }, { id: "old", name: "opencodex" }], appliedId: "user", other: "concurrent",
+  });
+  const newConfig = join(f.dir, "new.json");
+  await expect(syncClaudeDesktopLibrary({ ...f.options, fileIO: { atomicWrite: (target, content) => {
+    atomicWriteFile(target, typeof content === "string" ? content : content.toString("utf8"));
+    // Desktop rewrites _meta.json right after our configuration commit, before our metadata commit.
+    if (target === newConfig) writeFileSync(f.metaPath, concurrent);
+  } } })).rejects.toThrow("changed during sync");
+  expect(readFileSync(f.metaPath, "utf8")).toBe(concurrent);
+  expect(existsSync(newConfig)).toBe(false);
 });

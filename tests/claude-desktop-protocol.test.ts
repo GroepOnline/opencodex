@@ -4,7 +4,7 @@ import {
   chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync,
   rmSync, symlinkSync, unlinkSync, writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   assertClaudeDesktopProtocolUri,
@@ -488,5 +488,39 @@ linuxDescribe("Claude Desktop protocol CLI dispatch", () => {
       })).toBe(1);
       expect(syncs).toBe(1);
     } finally { error.mockRestore(); }
+  });
+});
+
+linuxDescribe("Claude Desktop protocol platform edge cases", () => {
+  test("an empty or relative XDG_DATA_HOME falls back to ~/.local/share instead of failing", () => {
+    const saved = { xdg: process.env.XDG_DATA_HOME, home: process.env.HOME };
+    const { dataHome: _ignored, ...withoutDataHome } = options;
+    try {
+      process.env.HOME = root;
+      for (const value of ["", "relative/share"]) {
+        process.env.XDG_DATA_HOME = value;
+        expect(getClaudeDesktopProtocolStatus(withoutDataHome).desktopPath)
+          .toBe(join(homedir(), ".local", "share", "applications", "ocx-desktop.desktop"));
+      }
+      process.env.XDG_DATA_HOME = join(root, "custom-share") + "/";
+      expect(getClaudeDesktopProtocolStatus(withoutDataHome).desktopPath)
+        .toBe(join(root, "custom-share", "applications", "ocx-desktop.desktop"));
+    } finally {
+      if (saved.xdg === undefined) delete process.env.XDG_DATA_HOME; else process.env.XDG_DATA_HOME = saved.xdg;
+      if (saved.home === undefined) delete process.env.HOME; else process.env.HOME = saved.home;
+    }
+  });
+
+  test("install falls back to an exclusive create where hard links are unsupported", () => {
+    const failure = spyOn(fs, "linkSync").mockImplementation(() => {
+      throw Object.assign(new Error("hard links unsupported"), { code: "EPERM" });
+    });
+    try {
+      expect(installClaudeDesktopProtocol(options).status).toBe("installed");
+    } finally { failure.mockRestore(); }
+    expect(fs.statSync(desktopPath).mode & 0o777).toBe(0o600);
+    expect(fs.readdirSync(join(desktopPath, ".."))).toEqual(["ocx-desktop.desktop"]);
+    expect(getClaudeDesktopProtocolStatus(options).status).toBe("installed");
+    expect(installClaudeDesktopProtocol(options).status).toBe("unchanged");
   });
 });
