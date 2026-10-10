@@ -562,8 +562,13 @@ export function writeDesktop3pConfig(
     }
     mkdirSync(libraryPath, { recursive: true, mode: 0o700 });
     const metadata = parseMetadata(metadataPath);
-    const existing = metadata.entries.find(entry => entry?.name === "opencodex" && typeof entry.id === "string");
-    if (existing && !DESKTOP_LIBRARY_ID.test(existing.id)) {
+    // Resolve by ownership name first: invalid IDs must not be silently skipped.
+    const ownedEntries = metadata.entries.filter(entry => entry?.name === "opencodex");
+    if (ownedEntries.length > 1) {
+      throw new Error("Claude Desktop 3P _meta.json has duplicate opencodex entries; refusing to write");
+    }
+    const existing = ownedEntries[0];
+    if (existing && (typeof existing.id !== "string" || !DESKTOP_LIBRARY_ID.test(existing.id))) {
       throw new Error("Claude Desktop 3P _meta.json has an opencodex entry with an unsafe id; refusing to write");
     }
     const id = existing?.id ?? randomUUID();
