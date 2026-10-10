@@ -28,6 +28,7 @@ import {
 import { clearableDeadline, idleDeadline } from "../lib/abort";
 import { estimateTokens } from "../lib/token-estimate";
 import { routeModel } from "../router";
+import { resolveComboId } from "../combos";
 import { resolveWireProtocolOverride } from "./adapter-resolve";
 import { isCanonicalOpenAiForwardProvider } from "../providers/openai-tiers";
 import type { OcxConfig } from "../types";
@@ -593,6 +594,48 @@ export async function handleClaudeMessages(
       }
     }
     refreshDesktop3pRegistry();
+    // Desktop date aliases are saved bindings, not native Claude slugs.
+    // A provider removed since apply must not fall through to OpenAI/Codex.
+    const desktopModel =
+      isRec(anthropicBody) && typeof anthropicBody.model === "string"
+        ? anthropicBody.model
+        : null;
+    const desktopRoute = desktopModel
+      ? resolveDesktop3pAlias(desktopModel)
+      : null;
+    // Retired dated Desktop aliases must not become bare OpenAI/Codex models.
+    if (
+      desktopModel &&
+      !desktopRoute &&
+      requestConfig.claudeCode?.desktopProfile &&
+      /^claude-opus-4-8-2026\d{4}$/.test(desktopModel) &&
+      resolveInboundModel(desktopModel, requestConfig.claudeCode) === desktopModel
+    ) {
+      throw new AnthropicRequestError(
+        "Claude Desktop model alias no longer present in the applied profile. Sync Desktop and select an available model.",
+      );
+    }
+    if (desktopRoute) {
+      logCtx.surface = "claude-desktop";
+      recordDesktopRequest();
+      const providerId = desktopRoute.split("/", 1)[0] ?? "";
+      const provider = Object.hasOwn(requestConfig.providers, providerId)
+        ? requestConfig.providers[providerId]
+        : undefined;
+      // Combo aliases may have an intentionally virtual provider prefix.
+      const comboId = resolveComboId(requestConfig, desktopRoute);
+      const isConfiguredCombo =
+        comboId !== null && Object.hasOwn(requestConfig.combos ?? {}, comboId);
+      if (
+        providerId !== "native" &&
+        !isConfiguredCombo &&
+        (!provider || provider.disabled === true)
+      ) {
+        throw new AnthropicRequestError(
+          `Claude Desktop model "${desktopModel}" has unavailable provider "${providerId}". Reapply the Desktop profile with an active provider.`,
+        );
+      }
+    }
     // Debug capture (opt-in allowlist scalars) BEFORE the passthrough branch so
     // native, routed, and disabled-alias paths are all observable (devlog 130 B1).
     captureClaudeInbound(
@@ -603,12 +646,6 @@ export async function handleClaudeMessages(
         : undefined,
       req.headers.get("anthropic-beta") ?? undefined,
     );
-    // Client surface discrimination: Desktop 3P aliases resolve through the
-    // desktop registry; Code uses readable aliases or direct model names.
-    if (isRec(anthropicBody) && typeof anthropicBody.model === "string" && resolveDesktop3pAlias(anthropicBody.model)) {
-      logCtx.surface = "claude-desktop";
-      recordDesktopRequest();
-    }
     // Correlate before native passthrough so Anthropic-credential turns still filter/total (#330 / #522).
     if (isRec(anthropicBody)) {
       const claudeConversationId = conversationIdFromClaudeMetadata(
