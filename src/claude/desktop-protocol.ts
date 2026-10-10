@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import * as fs from "node:fs";
 import {
-  closeSync, constants, fstatSync, linkSync, lstatSync, mkdirSync, openSync,
+  closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync,
   readlinkSync, readSync, renameSync, unlinkSync, writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
@@ -206,21 +207,22 @@ function desiredState(options: DesktopProtocolOptions, desktopPath: string): Pro
  */
 function createExclusive(temp: string, path: string, text: string): void {
   try {
-    linkSync(temp, path);
+    fs.linkSync(temp, path);
     return;
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code !== "EPERM" && code !== "ENOTSUP" && code !== "EOPNOTSUPP" && code !== "ENOSYS") throw error;
   }
   const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-  try {
-    writeFileSync(fd, text);
-  } catch (error) {
-    closeSync(fd);
-    try { unlinkSync(path); } catch { /* a partial owned file is caught by the fingerprint check */ }
-    throw error;
+  let failure: unknown = null;
+  try { writeFileSync(fd, text); } catch (error) { failure = error; }
+  // A close can surface a delayed filesystem write error. Never retry a failed close:
+  // it may already have released fd. Clean up this call's exclusive destination.
+  try { fs.closeSync(fd); } catch (error) { if (failure === null) failure = error; }
+  if (failure !== null) {
+    try { unlinkSync(path); } catch { /* leave any residual for the ownership check to reject */ }
+    throw failure;
   }
-  closeSync(fd);
 }
 
 function atomicWrite(path: string, text: string, previous: string | null): void {
