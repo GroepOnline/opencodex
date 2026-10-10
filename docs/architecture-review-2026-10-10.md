@@ -1,5 +1,11 @@
 # Architecture Review - October 2026
 
+> **Verification status (2026-10-10):** the recommendations below were checked against the code in
+> [`superpowers/plans/2026-10-10-repo-review-action-plan.md`](superpowers/plans/2026-10-10-repo-review-action-plan.md).
+> Do not merge `findLiveProxy` and `findReachableProxyForCli`, do not simplify `cursor/exec-policy.ts`, and do not
+> inline `gui/src/design-tokens.ts`; the reasons are in that plan. The CLI management and health candidates touch
+> security-boundary code and need the explicit security analysis required by `MAINTAINERS.md` before any move.
+
 **Date:** 2026-10-10  
 **Scope:** Recent hot spots from git log (health consolidation, GUI redesign, CLI management API)  
 **Focus:** Shallow modules, locality issues, and deepening opportunities  
