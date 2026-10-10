@@ -62,7 +62,7 @@ test("metadata failure removes a config this call created instead of restoring a
 });
 
 test("an opencodex entry with an unsafe id is refused before any write", () => {
-  for (const id of ["../escape", "_meta", "a/b", ""]) {
+  for (const id of ["../escape", "_meta", "a/b", "", null, 99]) {
     const meta = JSON.stringify({ entries: [{ id, name: "opencodex" }], appliedId: id });
     writeFileSync(join(library(), "_meta.json"), meta);
     const result = write();
@@ -71,6 +71,19 @@ test("an opencodex entry with an unsafe id is refused before any write", () => {
     expect(readFileSync(join(library(), "_meta.json"), "utf8")).toBe(meta);
     expect(existsSync(join(dir, "escape.json"))).toBe(false);
   }
+});
+
+test("duplicate opencodex metadata entries are refused without a write", () => {
+  const meta = JSON.stringify({ entries: [
+    { id: "first", name: "opencodex" }, { id: "second", name: "opencodex" },
+  ], appliedId: "first" });
+  writeFileSync(join(library(), "_meta.json"), meta);
+  const result = write();
+  expect(result.written).toBe(false);
+  expect(result.reason).toContain("duplicate");
+  expect(readFileSync(join(library(), "_meta.json"), "utf8")).toBe(meta);
+  expect(existsSync(join(library(), "first.json"))).toBe(false);
+  expect(existsSync(join(library(), "second.json"))).toBe(false);
 });
 
 test("an invalid gateway port is refused", () => {
