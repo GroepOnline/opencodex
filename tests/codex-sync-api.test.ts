@@ -339,6 +339,8 @@ describe("GUI/CLI Codex sync backend", () => {
         return { success: true, message: "external provider preserved" };
       },
       currentExternalCodexModelProvider: () => "custom",
+      // Avoid reading the host user's external OCX credentials or calling a live gateway.
+      syncExternalOcxCatalog: async () => ({ handled: false, catalogPath: null, models: 0, cacheSynced: false }),
       collectCodexHomeDiagnostic: () => mismatch,
     });
 
