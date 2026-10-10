@@ -117,6 +117,7 @@ function gatherFlightKey(config: OcxConfig): string {
       d: cm.displayName ?? null,
       cw: cm.contextWindow ?? null,
       im: cm.inputModalities ?? null,
+      re: cm.reasoningEfforts ?? null,
     })),
     caps: config.providerContextCaps ?? null,
   });
@@ -840,6 +841,7 @@ async function gatherRoutedModelsUncached(
       ...(cm.displayName ? { displayName: cm.displayName } : {}),
       ...(cm.contextWindow ? { contextWindow: cm.contextWindow } : {}),
       ...(cm.inputModalities ? { inputModalities: cm.inputModalities } : {}),
+      ...(cm.reasoningEfforts ? { reasoningEfforts: cm.reasoningEfforts } : {}),
       ...(typeof supportsReasoningSummaries === "boolean" ? { supportsReasoningSummaries } : {}),
     };
     // Vision-sidecar coverage ONLY: if the custom model is in the enriched provider's

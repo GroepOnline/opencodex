@@ -37,6 +37,7 @@ export interface ModelRow {
   contextWindow?: number;
   contextCap?: number;
   contextCapped?: boolean;
+  reasoningEfforts?: string[];
 }
 
 export interface ProviderContextCapsResponse {
