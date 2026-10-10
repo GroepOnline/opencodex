@@ -660,6 +660,8 @@ jobs:
           RELEASE_VERSION: ${{ inputs.version }}
           RELEASE_SHA: ${{ github.sha }}
           REPOSITORY: ${{ github.repository }}
+          # The rollout job has no checkout, so gh cannot infer the repo from a git remote.
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           release_tag="v${RELEASE_VERSION}"
