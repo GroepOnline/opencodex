@@ -39,10 +39,15 @@ test("only src/grok/inject.ts writes a grok config.toml", () => {
 });
 
 test("the management routes reach the writer only through syncGrokConfig", () => {
-  const routes = readFileSync(join(SRC, "server/management/agent-settings-routes.ts"), "utf8");
+  const parent = readFileSync(join(SRC, "server/management/agent-settings-routes.ts"), "utf8");
+  const routes = readFileSync(join(SRC, "server/management/grok-routes.ts"), "utf8");
+  expect(parent).toContain("await handleGrokRoutes(ctx)");
+  expect(parent).not.toContain("syncGrokConfig");
   expect(routes).toContain("syncGrokConfig");
-  // No direct write primitive in the route file at all — the HTTP surface can only
-  // ask the existing writer to run.
-  expect(routes).not.toContain("atomicWriteFile");
-  expect(routes).not.toContain("writeFileSync");
+  // No direct write primitive in either management route file: only the guarded
+  // Grok sync path can reach the TOML writer.
+  for (const content of [parent, routes]) {
+    expect(content).not.toContain("atomicWriteFile");
+    expect(content).not.toContain("writeFileSync");
+  }
 });
