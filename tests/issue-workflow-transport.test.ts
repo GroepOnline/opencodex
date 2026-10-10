@@ -14,10 +14,10 @@ function trustedCheckoutSteps(workflow: string): string[] {
 }
 
 describe("issue workflows: trusted checkout transport", () => {
-  test("all jan checkouts force HTTP/1.1 without loosening checkout controls", () => {
+  test("all portable issue checkouts preserve HTTP/1.1 and trusted checkout controls", () => {
     for (const [path, expectedCount] of workflows) {
       const source = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
-      expect(source).toContain("runs-on: [self-hosted, Linux, X64, jan]");
+      expect(source).toContain("runs-on: ubuntu-latest");
       const checkouts = trustedCheckoutSteps(source);
       expect(checkouts).toHaveLength(expectedCount);
       for (const checkout of checkouts) {
