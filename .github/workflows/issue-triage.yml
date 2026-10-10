@@ -21,6 +21,12 @@ jobs:
       matches: ${{ steps.parse.outputs.matches }}
     steps:
       - name: Checkout trusted triage scripts
+        # Avoid intermittent HTTP/2 framing errors during promisor-object fetches on jan.
+        # Scope this Git transport setting to the trusted checkout only.
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: http.version
+          GIT_CONFIG_VALUE_0: HTTP/1.1
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Issue events load this workflow from the default branch; keep scripts
