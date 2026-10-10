@@ -1823,6 +1823,48 @@ describe("OpenAI Responses forward-mode unsupported param stripping", () => {
     expect(body.model).toBe("gpt-5.6-sol");
   });
 
+  test("forward mode strips safety_identifier sent by Droid", () => {
+    const adapter = createResponsesPassthroughAdapter(provider);
+    const request = adapter.buildRequest(
+      {
+        modelId: "gpt-5.6-sol",
+        context: { messages: [] },
+        stream: true,
+        options: {},
+        _rawBody: { ...rawBody, safety_identifier: "0273e01a-47eb-4d7b-813c-6051ca353919" },
+      },
+      meta,
+    );
+    const body = JSON.parse(request.body) as Record<string, unknown>;
+
+    expect(body).not.toHaveProperty("safety_identifier");
+    expect(body).not.toHaveProperty("max_output_tokens");
+    expect(body).not.toHaveProperty("metadata");
+    expect(body.reasoning).toEqual({ effort: "low" });
+  });
+
+  test("key-auth mode preserves safety_identifier", () => {
+    const adapter = createResponsesPassthroughAdapter({
+      adapter: "openai-responses",
+      baseUrl: "https://api.openai.example/v1",
+      authMode: "key",
+      apiKey: "sk-test",
+    });
+    const request = adapter.buildRequest(
+      {
+        modelId: "gpt-5.6-sol",
+        context: { messages: [] },
+        stream: true,
+        options: {},
+        _rawBody: { ...rawBody, safety_identifier: "session-uuid" },
+      },
+      { headers: new Headers() },
+    );
+    const body = JSON.parse(request.body) as Record<string, unknown>;
+
+    expect(body.safety_identifier).toBe("session-uuid");
+  });
+
   test("forward mode is a no-op when neither field is present", () => {
     const adapter = createResponsesPassthroughAdapter(provider);
     const { max_output_tokens: _m, metadata: _d, ...codexBody } = rawBody;
