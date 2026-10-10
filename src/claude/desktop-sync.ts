@@ -237,13 +237,20 @@ function writeLibrary(
   const metaText = JSON.stringify(meta, null, 2) + "\n";
   const models = Array.isArray(config.inferenceModels) ? config.inferenceModels.length : 0;
   const originalConfig = existsSync(configPath) ? readFileSync(configPath) : null;
-  if (sameJsonContent(originalConfig, config) && sameJsonContent(originalMeta, meta)) {
-    return { status: "unchanged", models };
-  }
   const harden = (path: string): void => {
     const result = (fileIO?.harden ?? protectFile)(path);
     if (result && !result.ok) throw new DesktopSyncError("Claude Desktop sync could not protect a configuration file");
   };
+  if (sameJsonContent(originalConfig, config) && sameJsonContent(originalMeta, meta)) {
+    // JSON equivalence does not imply safe permissions: another writer may have
+    // recreated both files with world-readable modes. Avoid rewriting bytes or
+    // creating backups, but restore the confidentiality invariant before return.
+    assertRegularFile(configPath);
+    assertRegularFile(metaPath);
+    harden(configPath);
+    harden(metaPath);
+    return { status: "unchanged", models };
+  }
   const atomicWrite = fileIO?.atomicWrite ?? ((path, content) => writeProtectedAtomic(path, content, harden));
   mkdirSync(library, { recursive: true, mode: 0o700 });
   for (const [path, previous] of [[configPath, originalConfig], [metaPath, originalMeta === null ? null : Buffer.from(originalMeta)]] as const) {
