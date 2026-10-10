@@ -31,6 +31,8 @@ type ModelsModalsProps = {
   setCustomFormContextWindow: (value: string) => void;
   customFormModalities: string[];
   setCustomFormModalities: Dispatch<SetStateAction<string[]>>;
+  customFormReasoningEfforts: string[];
+  setCustomFormReasoningEfforts: Dispatch<SetStateAction<string[]>>;
   onSaveCustom: () => void;
 };
 
@@ -53,6 +55,8 @@ export function ModelsModals({
   setCustomFormContextWindow,
   customFormModalities,
   setCustomFormModalities,
+  customFormReasoningEfforts,
+  setCustomFormReasoningEfforts,
   onSaveCustom,
 }: ModelsModalsProps) {
   const t = useT();
@@ -241,6 +245,32 @@ export function ModelsModals({
                         disabled={customSaving}
                       />
                       <span className="text-control">{mod}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="text-label models-field">
+                {t("models.customFieldReasoningEfforts")}
+                <div className="text-label muted" style={{ fontSize: "0.85em", marginBottom: "0.5em" }}>
+                  {t("models.customFieldReasoningEffortsDesc")}
+                </div>
+                <div className="row models-field-row">
+                  {(["low", "medium", "high", "xhigh", "max", "ultra"] as const).map((effort) => (
+                    <label key={effort} className="row models-modality-option">
+                      <input
+                        type="checkbox"
+                        checked={customFormReasoningEfforts.includes(effort)}
+                        onChange={(e) => {
+                          setCustomFormReasoningEfforts((prev) =>
+                            e.target.checked
+                              ? [...prev, effort]
+                              : prev.filter((e) => e !== effort),
+                          );
+                        }}
+                        disabled={customSaving}
+                      />
+                      <span className="text-control">{effort}</span>
                     </label>
                   ))}
                 </div>

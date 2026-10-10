@@ -536,11 +536,11 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
     // Clear only the discovery cooldown/backoff so the click is not served from a 30s–15m backoff.
     // The cached rows are kept as the fallback when a live fetch fails.
     return serializeProviderRefresh(name, async () => {
-      clearProviderDiscoveryStatus(name);
-      const models = await fetchProviderModels(name, prov, 0, providerContextCap(config, name));
-      await refreshCodexCatalogBestEffort();
-      const ids = models.map(model => model.id);
+      // Providers with liveModels: false use only their static catalog; never attempt upstream /models.
       if (prov.liveModels === false) {
+        const models = await fetchProviderModels(name, prov, 0, providerContextCap(config, name));
+        await refreshCodexCatalogBestEffort();
+        const ids = models.map(model => model.id);
         return jsonResponse({
           ok: true,
           provider: name,
@@ -549,6 +549,10 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
           source: "static",
         });
       }
+      clearProviderDiscoveryStatus(name);
+      const models = await fetchProviderModels(name, prov, 0, providerContextCap(config, name));
+      await refreshCodexCatalogBestEffort();
+      const ids = models.map(model => model.id);
       const discovery = getProviderDiscoveryStatus(name);
       if (discovery?.status === "failed") {
         const error = discovery.reason === "http"

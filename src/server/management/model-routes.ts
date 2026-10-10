@@ -94,6 +94,7 @@ export async function handleModelRoutes(ctx: ManagementContext): Promise<Respons
         displayName: cm.displayName,
         ...(cm.contextWindow ? { contextWindow: cm.contextWindow } : {}),
         ...(cm.inputModalities ? { inputModalities: cm.inputModalities } : {}),
+        ...(cm.reasoningEfforts ? { reasoningEfforts: cm.reasoningEfforts } : {}),
       };
     });
     const publicModels = uniqueCatalogModelsForPublicList(models);
@@ -118,6 +119,7 @@ export async function handleModelRoutes(ctx: ManagementContext): Promise<Respons
           stored === namespaced || slugEquals(stored, m.provider, m.id)
         )),
         ...(contextCap !== undefined ? { contextCap, contextCapped: m.contextCapped === true } : {}),
+        ...(m.reasoningEfforts ? { reasoningEfforts: m.reasoningEfforts } : {}),
         // Admin always sees last-good rows; reason explains why clients may hide them.
         ...(hideReason ? {
           clientHideReason: hideReason,

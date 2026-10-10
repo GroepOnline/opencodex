@@ -163,6 +163,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
   const [customFormModalities, setCustomFormModalities] = useState<string[]>([
     "text",
   ]);
+  const [customFormReasoningEfforts, setCustomFormReasoningEfforts] = useState<string[]>([]);
   const [customSaving, setCustomSaving] = useState(false);
   const [customError, setCustomError] = useState("");
   const [selectedModelName, updateSelectedModelName] = useState<string | null>(
@@ -722,6 +723,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
     displayName?: string,
     contextWindow?: number,
     inputModalities?: string[],
+    reasoningEfforts?: string[],
   ) => {
     setCustomSaving(true);
     setCustomError("");
@@ -735,6 +737,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
           displayName,
           contextWindow,
           inputModalities,
+          reasoningEfforts,
         }),
       });
       try {
@@ -890,6 +893,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
         setCustomFormContextWindow("");
         setCustomFormShowCustomCtx(false);
         setCustomFormModalities(["text"]);
+        setCustomFormReasoningEfforts([]);
         setCustomError("");
         setCustomModalOpen(true);
       }}
@@ -976,6 +980,8 @@ export default function Models({ apiBase }: { apiBase: string }) {
       setCustomFormContextWindow={setCustomFormContextWindow}
       customFormModalities={customFormModalities}
       setCustomFormModalities={setCustomFormModalities}
+      customFormReasoningEfforts={customFormReasoningEfforts}
+      setCustomFormReasoningEfforts={setCustomFormReasoningEfforts}
       onSaveCustom={() => {
         const modelId = customFormModelId.trim();
         const displayName = customFormDisplayName.trim();
@@ -991,6 +997,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
             displayName || undefined,
             contextWindow,
             customFormModalities.length > 0 ? customFormModalities : undefined,
+            customFormReasoningEfforts.length > 0 ? customFormReasoningEfforts : undefined,
           );
         } else {
           void updateCustomModel(customModalId, {
@@ -998,6 +1005,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
             displayName,
             contextWindow: contextWindow ?? null,
             inputModalities: customFormModalities,
+            reasoningEfforts: customFormReasoningEfforts.length > 0 ? customFormReasoningEfforts : undefined,
           });
         }
       }}
@@ -1226,6 +1234,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
             );
             setCustomFormShowCustomCtx(false);
             setCustomFormModalities(selectedModel.inputModalities ?? ["text"]);
+            setCustomFormReasoningEfforts(selectedModel.reasoningEfforts ?? []);
             setCustomError("");
             setCustomModalOpen(true);
           }}
