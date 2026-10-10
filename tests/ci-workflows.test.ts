@@ -653,6 +653,8 @@ describe("GitHub Actions hardening", () => {
     for (const step of steps) {
       expect(step.run ?? "").not.toContain("${{");
     }
+    // The checkout-less rollout must give gh its explicit repository context.
+    expect(image.env?.GH_REPO).toBe("${{ github.repository }}");
     expect(image.env?.GH_TOKEN).toBe("${{ github.token }}");
     expect(deploy.env?.GH_TOKEN).toBeUndefined();
     // Dry runs never dispatch anything.
