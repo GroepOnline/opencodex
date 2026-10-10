@@ -603,6 +603,18 @@ export async function handleClaudeMessages(
     const desktopRoute = desktopModel
       ? resolveDesktop3pAlias(desktopModel)
       : null;
+    // Retired dated Desktop aliases must not become bare OpenAI/Codex models.
+    if (
+      desktopModel &&
+      !desktopRoute &&
+      requestConfig.claudeCode?.desktopProfile &&
+      /^claude-opus-4-8-2026\d{4}$/.test(desktopModel) &&
+      resolveInboundModel(desktopModel, requestConfig.claudeCode) === desktopModel
+    ) {
+      throw new AnthropicRequestError(
+        "Claude Desktop model alias no longer present in the applied profile. Sync Desktop and select an available model.",
+      );
+    }
     if (desktopRoute) {
       logCtx.surface = "claude-desktop";
       recordDesktopRequest();

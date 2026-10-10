@@ -205,3 +205,65 @@ test("Claude Desktop alias for configured virtual combo still reaches its select
     upstream.stop(true);
   }
 });
+
+
+test("retired dated Desktop alias cannot fall through after profile resync", async () => {
+  let upstreamCalls = 0;
+  const upstream = Bun.serve({
+    port: 0,
+    fetch() {
+      upstreamCalls += 1;
+      return Response.json({ error: { message: "wrong provider received retired alias" } }, { status: 400 });
+    },
+  });
+  const currentProfile: OcxClaudeDesktopProfile = {
+    version: 1,
+    assignments: {
+      "native/gpt-5.6-sol": { family: "opus", alias: "claude-opus-4-8-20261001" },
+    },
+    defaults: {
+      opus: "native/gpt-5.6-sol",
+      fable: null,
+      sonnet: null,
+      haiku: null,
+    },
+  };
+  saveConfig({
+    port: 0,
+    defaultProvider: "mock",
+    providers: {
+      mock: {
+        adapter: "openai-chat",
+        baseUrl: new URL("/v1", upstream.url).toString(),
+        apiKey: "fixture",
+        allowPrivateNetwork: true,
+      },
+    },
+    claudeCode: { enabled: true, authMode: "proxy", desktopProfile: currentProfile },
+  } as OcxConfig);
+  const server = startServer(0);
+  try {
+    buildDesktop3pRegistry(["gpt-5.6-sol"], [], currentProfile);
+    expect(resolveDesktop3pAlias(alias)).toBeNull();
+    const response = await managementFetch(new URL("/v1/messages", server.url), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": "placeholder",
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: alias,
+        max_tokens: 16,
+        messages: [{ role: "user", content: "Reply OK" }],
+      }),
+    });
+    const result = (await response.json()) as { error?: { message?: string } };
+    expect(response.status).toBe(400);
+    expect(result.error?.message).toContain("no longer present");
+    expect(upstreamCalls).toBe(0);
+  } finally {
+    server.stop(true);
+    upstream.stop(true);
+  }
+});
