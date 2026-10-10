@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -287,6 +287,24 @@ test("formatting-only changes by Desktop count as unchanged: no rewrite and no n
   expect(await syncClaudeDesktopLibrary(f.options)).toEqual({ status: "unchanged", models: 1 });
   expect(readFileSync(f.metaPath)).toEqual(compact);
   expect(readdirSync(f.dir).filter(p => p.endsWith(".bak"))).toEqual(backups);
+});
+
+test("unchanged JSON is hardened again after a permissive external rewrite", async () => {
+  if (process.platform === "win32") return;
+  const f = fixture();
+  expect(await syncClaudeDesktopLibrary(f.options)).toEqual({ status: "synced", models: 1 });
+  const configPath = join(f.dir, "new.json");
+  const beforeConfig = readFileSync(configPath);
+  const beforeMeta = readFileSync(f.metaPath);
+  const backups = readdirSync(f.dir).filter(path => path.endsWith(".bak"));
+  chmodSync(configPath, 0o644);
+  chmodSync(f.metaPath, 0o644);
+  expect(await syncClaudeDesktopLibrary(f.options)).toEqual({ status: "unchanged", models: 1 });
+  expect(statSync(configPath).mode & 0o777).toBe(0o600);
+  expect(statSync(f.metaPath).mode & 0o777).toBe(0o600);
+  expect(readFileSync(configPath)).toEqual(beforeConfig);
+  expect(readFileSync(f.metaPath)).toEqual(beforeMeta);
+  expect(readdirSync(f.dir).filter(path => path.endsWith(".bak"))).toEqual(backups);
 });
 
 test("a metadata change made after the library check is never overwritten", async () => {
