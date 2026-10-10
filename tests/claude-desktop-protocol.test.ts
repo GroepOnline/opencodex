@@ -511,12 +511,32 @@ linuxDescribe("Claude Desktop protocol platform edge cases", () => {
     }
   });
 
+  test("a delayed close error cleans up the exclusive Desktop entry", () => {
+    const originalClose = fs.closeSync;
+    const linkFailure = spyOn(fs, "linkSync").mockImplementation(() => {
+      throw Object.assign(new Error("fixture unsupported link"), { code: "EPERM" });
+    });
+    const closeFailure = spyOn(fs, "closeSync").mockImplementation((fd) => {
+      originalClose(fd);
+      throw Object.assign(new Error("fixture close failure"), { code: "EIO" });
+    });
+    try {
+      expect(() => installClaudeDesktopProtocol(options)).toThrow("fixture close failure");
+      expect(linkFailure).toHaveBeenCalled();
+      expect(closeFailure).toHaveBeenCalled();
+    } finally { closeFailure.mockRestore(); linkFailure.mockRestore(); }
+    expect(existsSync(desktopPath)).toBe(false);
+    expect(getClaudeDesktopProtocolStatus(options).status).toBe("absent");
+    expect(installClaudeDesktopProtocol(options).status).toBe("installed");
+  });
+
   test("install falls back to an exclusive create where hard links are unsupported", () => {
     const failure = spyOn(fs, "linkSync").mockImplementation(() => {
       throw Object.assign(new Error("hard links unsupported"), { code: "EPERM" });
     });
     try {
       expect(installClaudeDesktopProtocol(options).status).toBe("installed");
+      expect(failure).toHaveBeenCalled();
     } finally { failure.mockRestore(); }
     expect(fs.statSync(desktopPath).mode & 0o777).toBe(0o600);
     expect(fs.readdirSync(join(desktopPath, ".."))).toEqual(["ocx-desktop.desktop"]);
