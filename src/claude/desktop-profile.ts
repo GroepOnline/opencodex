@@ -6,6 +6,12 @@ import type {
 } from "../types";
 
 export const DESKTOP_FAMILIES = ["opus", "fable", "sonnet", "haiku"] as const;
+
+/**
+ * Single source of truth for Desktop's 1M-context capability assertion: only an authoritative routed
+ * contextWindow at or above this value may set supports1m. desktop-3p re-exports it for the DTO.
+ */
+export const DESKTOP_SUPPORTS_1M_THRESHOLD = 1_000_000;
 export type DesktopFamily = OcxClaudeDesktopFamily;
 export type DesktopProfile = OcxClaudeDesktopProfile;
 
@@ -32,6 +38,14 @@ export class DesktopProfileError extends Error {
   ) {
     super(`${path}: ${message}`);
     this.name = "DesktopProfileError";
+  }
+}
+
+/** Typed so callers never have to match on message text. */
+export class DesktopAliasSlotsExhaustedError extends DesktopProfileError {
+  constructor(path: string) {
+    super("all 365 encoded date slots are occupied", path);
+    this.name = "DesktopAliasSlotsExhaustedError";
   }
 }
 
@@ -246,10 +260,7 @@ function allocateAlias(route: string, used: Set<string>): string {
     const alias = dayOfYearAlias((start + offset) % DAY_COUNT_2026);
     if (!used.has(alias)) return alias;
   }
-  throw new DesktopProfileError(
-    "all 365 encoded date slots are occupied",
-    `profile.assignments.${route}.alias`,
-  );
+  throw new DesktopAliasSlotsExhaustedError(`profile.assignments.${route}.alias`);
 }
 
 export function reconcileDesktopProfile(
@@ -279,12 +290,7 @@ export function reconcileDesktopProfile(
       // Claude Desktop only has 365 dated opus-4-8 aliases for non-Anthropic
       // routes. A live catalog is larger than that; skip extras instead of
       // taking down GET /api/claude-desktop when someone adds e.g. Voxtral.
-      if (
-        error instanceof DesktopProfileError &&
-        error.message.includes("365 encoded date slots")
-      ) {
-        continue;
-      }
+      if (error instanceof DesktopAliasSlotsExhaustedError) continue;
       throw error;
     }
   }
@@ -450,7 +456,7 @@ export function renderDesktopProfile(
       isFamilyDefault: effectiveDefaults[assignment.family] === route,
       supports1m:
         typeof model.contextWindow === "number" &&
-        model.contextWindow >= 1_000_000,
+        model.contextWindow >= DESKTOP_SUPPORTS_1M_THRESHOLD,
     };
   });
 }

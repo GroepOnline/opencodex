@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import * as fs from "node:fs";
 import {
-  closeSync, constants, fstatSync, linkSync, lstatSync, mkdirSync, openSync,
+  closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync,
   readlinkSync, readSync, renameSync, unlinkSync, writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
@@ -51,6 +52,12 @@ export function assertClaudeDesktopProtocolUri(uri: string, options: DesktopProt
   }
 }
 
+/** XDG Base Directory: an unset, empty or relative XDG_DATA_HOME must be ignored, not rejected. */
+function defaultDataHome(): string {
+  const value = process.env.XDG_DATA_HOME;
+  return value && isAbsolute(value) ? resolve(value) : join(homedir(), ".local", "share");
+}
+
 function absolutePath(value: string): string {
   if (!isAbsolute(value) || value.length > 4096 || /[\x00-\x1f\x7f]/.test(value) || resolve(value) !== value) {
     throw new Error("Claude Desktop protocol requires normalized absolute paths without control characters");
@@ -84,7 +91,7 @@ function fingerprint(text: string): string {
 
 function paths(options: DesktopProtocolOptions): { desktopPath: string; statePath: string } {
   assertLinux(options);
-  const dataHome = absolutePath(options.dataHome ?? process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"));
+  const dataHome = absolutePath(options.dataHome ?? defaultDataHome());
   const configDir = absolutePath(options.configDir ?? getConfigDir());
   return {
     desktopPath: join(dataHome, "applications", DESKTOP_ID),
@@ -194,6 +201,30 @@ function desiredState(options: DesktopProtocolOptions, desktopPath: string): Pro
     fingerprint: fingerprint(desktopEntry(runtimePath, cliPath)) };
 }
 
+/**
+ * No-clobber create: a hard link of the fully written temp file. Filesystems without hard links
+ * (some FUSE/NFS/Termux setups) report EPERM/ENOTSUP, so fall back to an exclusive create.
+ */
+function createExclusive(temp: string, path: string, text: string): void {
+  try {
+    fs.linkSync(temp, path);
+    return;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "EPERM" && code !== "ENOTSUP" && code !== "EOPNOTSUPP" && code !== "ENOSYS") throw error;
+  }
+  const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+  let failure: unknown = null;
+  try { writeFileSync(fd, text); } catch (error) { failure = error; }
+  // A close can surface a delayed filesystem write error. Never retry a failed close:
+  // it may already have released fd. Clean up this call's exclusive destination.
+  try { fs.closeSync(fd); } catch (error) { if (failure === null) failure = error; }
+  if (failure !== null) {
+    try { unlinkSync(path); } catch { /* leave any residual for the ownership check to reject */ }
+    throw failure;
+  }
+}
+
 function atomicWrite(path: string, text: string, previous: string | null): void {
   assertDirectory(path);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -202,7 +233,7 @@ function atomicWrite(path: string, text: string, previous: string | null): void 
   writeFileSync(temp, text, { flag: "wx", mode: 0o600 });
   try {
     if (readRegular(path) !== previous) throw new Error("Claude Desktop protocol files changed during installation; retry after inspection");
-    if (previous === null) linkSync(temp, path);
+    if (previous === null) createExclusive(temp, path, text);
     else renameSync(temp, path);
   } finally {
     try { unlinkSync(temp); } catch (error) {

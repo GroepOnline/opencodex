@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { closeSync, constants, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, statSync } from "node:fs";
+import { closeSync, constants, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, statSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { atomicWriteFile, getConfigPath } from "../config";
 import type { OcxClaudeDesktopProfile } from "../types";
 import { claudeDesktopConfigLibraryDir, resolveConfigLibraryDir } from "./desktop-3p-paths";
 import {
+  DESKTOP_SUPPORTS_1M_THRESHOLD,
   parseDesktopProfile,
   reconcileDesktopProfile,
   renderDesktopProfile,
@@ -49,7 +50,7 @@ export interface Desktop3pRoutedModel {
  * the constant in this module avoids a cycle, since shared.ts already reads
  * claude/desktop-profile.
  */
-export const DESKTOP_SUPPORTS_1M_THRESHOLD = 1_000_000;
+export { DESKTOP_SUPPORTS_1M_THRESHOLD };
 
 export interface Desktop3pConfigLibraryOptions {
   env?: NodeJS.ProcessEnv;
@@ -81,7 +82,12 @@ export function resolveDesktop3pConfigLibraryPath(
 /** Laptop tunnel target for Claude Desktop sync. The helper copies the applied 3P library here. */
 export const LAPTOP_PROXY_GATEWAY = "http://127.0.0.1:10100";
 
-const APPLIED_DESKTOP_3P_ID = /^[A-Za-z0-9_-]+$/;
+/**
+ * Library ids become file names (`<id>.json`) next to `_meta.json`. A leading underscore is refused so
+ * an id can never alias `_meta`, and the length is bounded like the sync client's validator.
+ */
+export const DESKTOP_LIBRARY_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+const APPLIED_DESKTOP_3P_ID = DESKTOP_LIBRARY_ID;
 
 export type AppliedDesktop3pLibrary =
   | {
@@ -551,9 +557,20 @@ export function writeDesktop3pConfig(
   let configPath = libraryPath;
 
   try {
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new Error("Claude Desktop 3P gateway port must be an integer between 1 and 65535");
+    }
     mkdirSync(libraryPath, { recursive: true, mode: 0o700 });
     const metadata = parseMetadata(metadataPath);
-    const existing = metadata.entries.find(entry => entry?.name === "opencodex" && typeof entry.id === "string");
+    // Resolve by ownership name first: invalid IDs must not be silently skipped.
+    const ownedEntries = metadata.entries.filter(entry => entry?.name === "opencodex");
+    if (ownedEntries.length > 1) {
+      throw new Error("Claude Desktop 3P _meta.json has duplicate opencodex entries; refusing to write");
+    }
+    const existing = ownedEntries[0];
+    if (existing && (typeof existing.id !== "string" || !DESKTOP_LIBRARY_ID.test(existing.id))) {
+      throw new Error("Claude Desktop 3P _meta.json has an opencodex entry with an unsafe id; refusing to write");
+    }
     const id = existing?.id ?? randomUUID();
     configPath = join(libraryPath, `${id}.json`);
     const entry: Desktop3pMetadataEntry = existing ? { ...existing, id, name: "opencodex" } : { id, name: "opencodex" };
@@ -563,12 +580,16 @@ export function writeDesktop3pConfig(
 
     const configJson = JSON.stringify(generateDesktop3pConfig(port, nativeSlugs, routedModels, apiKey, mode, profile), null, 2) + "\n";
     const fingerprint = createHash("sha256").update(configJson).digest("hex").slice(0, 16);
-    const { backupPath } = atomicReplaceDesktopConfig(configPath, configJson);
+    const { backupPath, created } = atomicReplaceDesktopConfig(configPath, configJson);
     try {
       atomicWriteFile(metadataPath, JSON.stringify({ ...metadata, appliedId: id, entries }, null, 2) + "\n");
     } catch (metaError) {
-      // Rollback: restore the backed-up config if metadata write fails.
-      if (backupPath && existsSync(backupPath)) copyFileSync(backupPath, configPath);
+      // Roll back to the state before this call: restore the backup taken by this call, or remove a
+      // config this call created. A rollback failure must not mask the original metadata error.
+      try {
+        if (backupPath) copyFileSync(backupPath, configPath);
+        else if (created) unlinkSync(configPath);
+      } catch { /* the original metadata failure is the actionable error */ }
       throw metaError;
     }
     return { written: true, path: configPath, fingerprint };
@@ -578,14 +599,19 @@ export function writeDesktop3pConfig(
   }
 }
 
-/** Backup an existing owned config then atomically replace it. Exported for failure-path tests. */
+/**
+ * Backup an existing owned config then atomically replace it. Exported for failure-path tests.
+ * `backupPath` is returned only when this call took the backup (a stale `.bak` from an earlier run is
+ * never reported), and `created` tells the caller the file did not exist before this call.
+ */
 export function atomicReplaceDesktopConfig(
   path: string,
   content: string,
   writer: (path: string, content: string) => void = atomicWriteFile,
-): { backupPath?: string } {
+): { backupPath?: string; created: boolean } {
   const backupPath = `${path}.bak`;
-  if (existsSync(path)) copyFileSync(path, backupPath);
+  const existed = existsSync(path);
+  if (existed) copyFileSync(path, backupPath);
   writer(path, content);
-  return existsSync(backupPath) ? { backupPath } : {};
+  return existed ? { backupPath, created: false } : { created: true };
 }
