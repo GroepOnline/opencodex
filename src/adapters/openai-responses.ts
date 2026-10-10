@@ -513,15 +513,26 @@ function stripPreviousResponseId(body: unknown, strip: boolean): unknown {
  * with `{"detail":"Unsupported parameter: …"}` (strict allowlist). Codex CLI never
  * sends these — it controls output length via `reasoning.effort` — but third-party
  * Responses API clients (GJC, SDK wrappers) include `max_output_tokens` per the
- * public spec. `metadata` is likewise absent from the allowlist. No-op when the
- * body carries neither field, keeping the common Codex path allocation-free.
+ * public spec. `metadata` is likewise absent from the allowlist.
+ * `safety_identifier` is sent by Factory Droid as a per-session UUID and is
+ * rejected the same way, which fails the whole turn with an opaque 400. No-op
+ * when the body carries none of these fields, keeping the common Codex path
+ * allocation-free.
  */
+const UNSUPPORTED_FORWARD_PARAMS = ["max_output_tokens", "metadata", "safety_identifier"] as const;
+
 function stripUnsupportedForwardParams(body: unknown): unknown {
   if (!isPlainObject(body)) return body;
-  const hasMot = Object.prototype.hasOwnProperty.call(body, "max_output_tokens");
-  const hasMeta = Object.prototype.hasOwnProperty.call(body, "metadata");
-  if (!hasMot && !hasMeta) return body;
-  const { max_output_tokens: _mot, metadata: _meta, ...rest } = body;
+  let present = false;
+  for (const key of UNSUPPORTED_FORWARD_PARAMS) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      present = true;
+      break;
+    }
+  }
+  if (!present) return body;
+  const rest: Record<string, unknown> = { ...body };
+  for (const key of UNSUPPORTED_FORWARD_PARAMS) delete rest[key];
   return rest;
 }
 
