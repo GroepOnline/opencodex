@@ -1,3 +1,9 @@
+## 1.5.4
+
+- Restore Factory Droid compatibility with OpenAI Responses forward-mode models by stripping the unsupported `safety_identifier` field only for `authMode: forward` (#337). Keep key-auth provider semantics unchanged and preserve the no-copy fast path.
+- Repair the checkout-less release-to-GHCR dispatch context using explicit `GH_REPO`, without changing the retired host deployment boundary (#335).
+- Preserve native client authentication and OCX-only provider modes. Actual bc-scan-2 runtime deployment remains a separate guarded operation with existing-session drain, exact release SHA, health and rollback evidence.
+
 ## 1.5.3
 
 - Consolidate provider readiness, Dashboard capacity/issues and startup component health while preserving the current UI and lazy locale architecture.
