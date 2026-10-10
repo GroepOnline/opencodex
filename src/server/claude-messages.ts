@@ -9,8 +9,19 @@
 import { FORWARD_HEADERS } from "../adapters/openai-responses";
 import { enforceAnthropicImageLimits } from "../adapters/anthropic-image-guard";
 import { normalizeAnthropicImages } from "../adapters/anthropic-image-normalize";
-import { AnthropicRequestError, anthropicToResponsesTranslation, extractOcxEffortDirective, extractOcxRouteDirective, extractOcxRouteModeDirective, resolveInboundModel, type ClaudeCacheKeySource } from "../claude/inbound";
-import { refreshDesktop3pRegistry, resolveDesktop3pAlias } from "../claude/desktop-3p";
+import {
+  AnthropicRequestError,
+  anthropicToResponsesTranslation,
+  extractOcxEffortDirective,
+  extractOcxRouteDirective,
+  extractOcxRouteModeDirective,
+  resolveInboundModel,
+  type ClaudeCacheKeySource,
+} from "../claude/inbound";
+import {
+  refreshDesktop3pRegistry,
+  resolveDesktop3pAlias,
+} from "../claude/desktop-3p";
 import { buildClaudeDynamicAgentRoute } from "../claude/agent-routing";
 import { recordDesktopRequest } from "../claude/desktop-health";
 import { stripOneMillionMarker } from "../claude/context-windows";
@@ -28,11 +39,18 @@ import {
 import { clearableDeadline, idleDeadline } from "../lib/abort";
 import { estimateTokens } from "../lib/token-estimate";
 import { routeModel } from "../router";
+import { resolveComboId } from "../combos";
 import { resolveWireProtocolOverride } from "./adapter-resolve";
 import { isCanonicalOpenAiForwardProvider } from "../providers/openai-tiers";
 import type { OcxConfig } from "../types";
 import { readJsonRequestBody } from "./request-decompress";
-import { addFinalRequestLog, httpStatusForTerminalStatus, recordFirstOutput, type RequestLogContext, type RequestLogEntry } from "./request-log";
+import {
+  addFinalRequestLog,
+  httpStatusForTerminalStatus,
+  recordFirstOutput,
+  type RequestLogContext,
+  type RequestLogEntry,
+} from "./request-log";
 import { conversationIdFromClaudeMetadata } from "./request-log-conversation";
 import { responseWithDeferredRequestLog } from "./relay";
 import { handleResponses } from "./responses";
@@ -60,18 +78,27 @@ export function buildClaudeReplayConfig(config: OcxConfig): OcxConfig {
 
 function claudeInboundDisabled(config: OcxConfig): Response | null {
   if (config.claudeCode?.enabled === false) {
-    return anthropicErrorResponse(403, "Claude inbound is disabled (GUI: Claude ON toggle / config.claudeCode.enabled)", "permission_error");
+    return anthropicErrorResponse(
+      403,
+      "Claude inbound is disabled (GUI: Claude ON toggle / config.claudeCode.enabled)",
+      "permission_error",
+    );
   }
   return null;
 }
 
-function requireClaudeDynamicAgentRoute(config: OcxConfig): { config: OcxConfig; model: string } {
+function requireClaudeDynamicAgentRoute(config: OcxConfig): {
+  config: OcxConfig;
+  model: string;
+} {
   if (config.claudeCode?.agentRouting !== "dynamic") {
     throw new AnthropicRequestError("Dynamic OCX agent routing is not enabled");
   }
   const dynamic = buildClaudeDynamicAgentRoute(config);
   if (!dynamic) {
-    throw new AnthropicRequestError("Dynamic OCX agent routing has no usable featured models");
+    throw new AnthropicRequestError(
+      "Dynamic OCX agent routing has no usable featured models",
+    );
   }
   return dynamic;
 }
@@ -80,7 +107,9 @@ async function readAnthropicBody(req: Request): Promise<unknown> {
   try {
     return await readJsonRequestBody(req);
   } catch (err) {
-    throw new AnthropicRequestError(err instanceof Error && err.message ? err.message : "Invalid JSON body");
+    throw new AnthropicRequestError(
+      err instanceof Error && err.message ? err.message : "Invalid JSON body",
+    );
   }
 }
 
@@ -93,27 +122,48 @@ async function readAnthropicBody(req: Request): Promise<unknown> {
 // (Evidence: teamclaude --no-mitm + Vercel gateway docs, devlog 003/060.)
 
 const PASSTHROUGH_STRIP_HEADERS = new Set([
-  "connection", "keep-alive", "transfer-encoding", "upgrade", "te", "trailer",
-  "proxy-authenticate", "proxy-authorization", "host", "content-length",
-  "accept-encoding", "x-opencodex-api-key", "origin",
+  "connection",
+  "keep-alive",
+  "transfer-encoding",
+  "upgrade",
+  "te",
+  "trailer",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "host",
+  "content-length",
+  "accept-encoding",
+  "x-opencodex-api-key",
+  "origin",
 ]);
 
 function hasAnthropicNativeCredential(req: Request): boolean {
-  const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() ?? "";
+  const bearer =
+    req.headers
+      .get("authorization")
+      ?.replace(/^Bearer\s+/i, "")
+      .trim() ?? "";
   const apiKey = req.headers.get("x-api-key")?.trim() ?? "";
   return bearer.startsWith("sk-ant-") || apiKey.startsWith("sk-ant-");
 }
 
-function wantsNativePassthrough(req: Request, config: OcxConfig, model: unknown): model is string {
+function wantsNativePassthrough(
+  req: Request,
+  config: OcxConfig,
+  model: unknown,
+): model is string {
   if (config.claudeCode?.nativePassthrough === false) return false;
-  if (typeof model !== "string" || !/^(claude|anthropic)/i.test(model)) return false;
+  if (typeof model !== "string" || !/^(claude|anthropic)/i.test(model))
+    return false;
   if (!hasAnthropicNativeCredential(req)) return false;
   // An alias or modelMap hit means the user asked for a ROUTED model: translate instead.
   return resolveInboundModel(model, config.claudeCode) === model;
 }
 
 /** Replay a native 529 through handleResponses when Availability can hop. */
-export function shouldReplayNativePassthroughOverload(config: OcxConfig): boolean {
+export function shouldReplayNativePassthroughOverload(
+  config: OcxConfig,
+): boolean {
   return canHopNativeClaudePierce(config);
 }
 
@@ -125,16 +175,33 @@ function uuidFromHex(hex32: string): string {
 
 function estimateClaudeInputTokens(body: Rec, requestedModel: string): number {
   const parts: string[] = [];
-  if (body.system !== undefined) parts.push(typeof body.system === "string" ? body.system : JSON.stringify(body.system));
+  if (body.system !== undefined)
+    parts.push(
+      typeof body.system === "string"
+        ? body.system
+        : JSON.stringify(body.system),
+    );
   if (body.messages !== undefined) parts.push(JSON.stringify(body.messages));
   if (body.tools !== undefined) parts.push(JSON.stringify(body.tools));
   return Math.max(1, estimateTokens(parts.join("\n"), requestedModel));
 }
 
-function anthropicUsageToOcx(usage: Rec | undefined): { inputTokens: number; outputTokens: number; cachedInputTokens?: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number } | undefined {
+function anthropicUsageToOcx(
+  usage: Rec | undefined,
+):
+  | {
+      inputTokens: number;
+      outputTokens: number;
+      cachedInputTokens?: number;
+      cacheReadInputTokens?: number;
+      cacheCreationInputTokens?: number;
+    }
+  | undefined {
   if (!usage) return undefined;
-  const num = (v: unknown) => typeof v === "number" ? v : 0;
-  const hasCache = usage.cache_read_input_tokens !== undefined || usage.cache_creation_input_tokens !== undefined;
+  const num = (v: unknown) => (typeof v === "number" ? v : 0);
+  const hasCache =
+    usage.cache_read_input_tokens !== undefined ||
+    usage.cache_creation_input_tokens !== undefined;
   const read = num(usage.cache_read_input_tokens);
   const write = num(usage.cache_creation_input_tokens);
   // Anthropic input_tokens excludes cache read/write; normalize to the canonical
@@ -142,11 +209,13 @@ function anthropicUsageToOcx(usage: Rec | undefined): { inputTokens: number; out
   return {
     inputTokens: num(usage.input_tokens) + read + write,
     outputTokens: num(usage.output_tokens),
-    ...(hasCache ? {
-      cachedInputTokens: read,
-      cacheReadInputTokens: read,
-      cacheCreationInputTokens: write,
-    } : {}),
+    ...(hasCache
+      ? {
+          cachedInputTokens: read,
+          cacheReadInputTokens: read,
+          cacheCreationInputTokens: write,
+        }
+      : {}),
   };
 }
 
@@ -160,7 +229,8 @@ export interface PassthroughBodyGuard {
   reqSignal?: AbortSignal;
 }
 
-type PassthroughCloseReason = "terminal" | "client_cancel" | "body_stall" | "body_overflow";
+type PassthroughCloseReason =
+  "terminal" | "client_cancel" | "body_stall" | "body_overflow";
 
 /**
  * Tap an Anthropic-vocabulary SSE stream for the request log (usage + terminal),
@@ -174,7 +244,10 @@ type PassthroughCloseReason = "terminal" | "client_cancel" | "body_stall" | "bod
 export function tapAnthropicSseForLog(
   upstream: ReadableStream<Uint8Array>,
   logCtx: RequestLogContext,
-  finalize: (status: number, meta: { closeReason: PassthroughCloseReason }) => void,
+  finalize: (
+    status: number,
+    meta: { closeReason: PassthroughCloseReason },
+  ) => void,
   guard?: PassthroughBodyGuard,
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
@@ -187,12 +260,24 @@ export function tapAnthropicSseForLog(
     while ((sep = buffer.indexOf("\n\n")) !== -1) {
       const frame = buffer.slice(0, sep);
       buffer = buffer.slice(sep + 2);
-      const dataLine = frame.split("\n").filter(l => l.startsWith("data: ")).map(l => l.slice(6)).join("");
+      const dataLine = frame
+        .split("\n")
+        .filter((l) => l.startsWith("data: "))
+        .map((l) => l.slice(6))
+        .join("");
       if (!dataLine) continue;
       let data: unknown;
-      try { data = JSON.parse(dataLine); } catch { continue; }
+      try {
+        data = JSON.parse(dataLine);
+      } catch {
+        continue;
+      }
       if (!isRec(data)) continue;
-      if (data.type === "message_start" && isRec(data.message) && isRec(data.message.usage)) {
+      if (
+        data.type === "message_start" &&
+        isRec(data.message) &&
+        isRec(data.message.usage)
+      ) {
         usageAcc = { ...usageAcc, ...data.message.usage };
       } else if (data.type === "message_delta" && isRec(data.usage)) {
         usageAcc = { ...usageAcc, ...data.usage };
@@ -205,23 +290,43 @@ export function tapAnthropicSseForLog(
   let tapController: ReadableStreamDefaultController<Uint8Array> | undefined;
 
   const recordUsage = () => {
-    logCtx.usage = anthropicUsageToOcx(Object.keys(usageAcc).length > 0 ? usageAcc : undefined);
+    logCtx.usage = anthropicUsageToOcx(
+      Object.keys(usageAcc).length > 0 ? usageAcc : undefined,
+    );
   };
-  const failBody = (closeReason: "body_stall" | "body_overflow", errType: string, message: string) => {
+  const failBody = (
+    closeReason: "body_stall" | "body_overflow",
+    errType: string,
+    message: string,
+  ) => {
     if (settled) return;
     settled = true;
     idle.cancel();
     detachAbort();
     recordUsage();
     finalize(200, { closeReason });
-    const payload = JSON.stringify({ type: "error", error: { type: errType, message } });
+    const payload = JSON.stringify({
+      type: "error",
+      error: { type: errType, message },
+    });
     try {
       // Leading blank line terminates any partial SSE block so the frame parses cleanly
       // (relaySseWithFailedTail policy, Anthropic wire shape).
-      tapController?.enqueue(encoder.encode(`\n\nevent: error\ndata: ${payload}\n\n`));
+      tapController?.enqueue(
+        encoder.encode(`\n\nevent: error\ndata: ${payload}\n\n`),
+      );
       tapController?.close();
-    } catch { /* client already torn down */ }
-    reader.cancel(new DOMException(message, closeReason === "body_stall" ? "TimeoutError" : "QuotaExceededError")).catch(() => {});
+    } catch {
+      /* client already torn down */
+    }
+    reader
+      .cancel(
+        new DOMException(
+          message,
+          closeReason === "body_stall" ? "TimeoutError" : "QuotaExceededError",
+        ),
+      )
+      .catch(() => {});
   };
   const idle = idleDeadline(guard?.stallMs ?? 0, () => {
     failBody(
@@ -240,7 +345,11 @@ export function tapAnthropicSseForLog(
     idle.cancel();
     detachAbort();
     finalize(499, { closeReason: "client_cancel" });
-    try { tapController?.close(); } catch { /* downstream already torn down */ }
+    try {
+      tapController?.close();
+    } catch {
+      /* downstream already torn down */
+    }
     reader.cancel(guard?.reqSignal?.reason).catch(() => {});
   };
   const detachAbort = (() => {
@@ -294,7 +403,11 @@ export function tapAnthropicSseForLog(
         detachAbort();
         recordUsage();
         finalize(200, { closeReason: "terminal" });
-        try { controller.error(err); } catch { /* torn down */ }
+        try {
+          controller.error(err);
+        } catch {
+          /* torn down */
+        }
       }
     },
     cancel(reason) {
@@ -322,13 +435,18 @@ async function anthropicNativePassthrough(
   logCtx.provider = "anthropic-native";
   logCtx.requestedModel = model;
   let logged = false;
-  const finalize = (status: number, meta: { closeReason: PassthroughCloseReason | "non_stream" }) => {
+  const finalize = (
+    status: number,
+    meta: { closeReason: PassthroughCloseReason | "non_stream" },
+  ) => {
     if (!logIds || logged) return;
     logged = true;
     addFinalRequestLog(logIds.requestId, logIds.start, logCtx, status, meta);
   };
 
-  const base = (config.claudeCode?.anthropicBaseUrl ?? "https://api.anthropic.com").replace(/\/$/, "");
+  const base = (
+    config.claudeCode?.anthropicBaseUrl ?? "https://api.anthropic.com"
+  ).replace(/\/$/, "");
   const search = new URL(req.url).search;
   // Native passthrough bypasses the anthropic adapter, so the generous image pipeline
   // (devlog/260714_image_normalization_pipeline/040) must run here: tier-normalize then
@@ -341,7 +459,8 @@ async function anthropicNativePassthrough(
   }
   const headers = new Headers();
   req.headers.forEach((value, name) => {
-    if (!PASSTHROUGH_STRIP_HEADERS.has(name.toLowerCase())) headers.set(name, value);
+    if (!PASSTHROUGH_STRIP_HEADERS.has(name.toLowerCase()))
+      headers.set(name, value);
   });
   headers.set("content-type", "application/json");
 
@@ -353,63 +472,101 @@ async function anthropicNativePassthrough(
   );
   if (result.kind === "timeout") {
     finalize(504, { closeReason: "non_stream" });
-    return anthropicErrorResponse(504, "anthropic passthrough timed out waiting for response headers", "timeout_error");
+    return anthropicErrorResponse(
+      504,
+      "anthropic passthrough timed out waiting for response headers",
+      "timeout_error",
+    );
   }
   if (result.kind === "error") {
     const err = result.error;
     finalize(502, { closeReason: "non_stream" });
-    return anthropicErrorResponse(502, `anthropic passthrough failed: ${err instanceof Error ? err.message : String(err)}`, "api_error");
+    return anthropicErrorResponse(
+      502,
+      `anthropic passthrough failed: ${err instanceof Error ? err.message : String(err)}`,
+      "api_error",
+    );
   }
   const upstream = result.upstream;
   if (
-    pathname === "/v1/messages"
-    && classifyAttempt({ status: upstream.status, message: "" }) === "hop"
-    && upstream.status === 529
-    && canHopNativeClaudePierce(config)
+    pathname === "/v1/messages" &&
+    classifyAttempt({ status: upstream.status, message: "" }) === "hop" &&
+    upstream.status === 529 &&
+    canHopNativeClaudePierce(config)
   ) {
-    try { void upstream.body?.cancel().catch(() => {}); } catch { /* already closed */ }
+    try {
+      void upstream.body?.cancel().catch(() => {});
+    } catch {
+      /* already closed */
+    }
     return "replay-routed";
   }
 
-  const contentType = upstream.headers.get("content-type") ?? "application/json";
+  const contentType =
+    upstream.headers.get("content-type") ?? "application/json";
   const bodyGuard = resolvePassthroughBodyGuard(config, req.signal);
-  if (upstream.ok && contentType.includes("text/event-stream") && upstream.body) {
-    return new Response(tapAnthropicSseForLog(upstream.body, logCtx, finalize, bodyGuard), {
-      status: upstream.status,
-      headers: {
-        "Content-Type": contentType,
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
+  if (
+    upstream.ok &&
+    contentType.includes("text/event-stream") &&
+    upstream.body
+  ) {
+    return new Response(
+      tapAnthropicSseForLog(upstream.body, logCtx, finalize, bodyGuard),
+      {
+        status: upstream.status,
+        headers: {
+          "Content-Type": contentType,
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        },
       },
-    });
+    );
   }
   // Non-stream (count_tokens, errors, stream:false): relay verbatim under the same
   // idle/size bounds — headers are NOT yet sent here, so real statuses are available.
   const bodyResult = await readBoundedPassthroughBody(upstream, bodyGuard);
   if (bodyResult.kind === "client_cancel") {
     finalize(499, { closeReason: "client_cancel" });
-    return anthropicErrorResponse(499, "client closed request during anthropic passthrough", "api_error");
+    return anthropicErrorResponse(
+      499,
+      "client closed request during anthropic passthrough",
+      "api_error",
+    );
   }
   if (bodyResult.kind === "stall") {
     finalize(504, { closeReason: "body_stall" });
-    return anthropicErrorResponse(504, `anthropic passthrough body stalled: no upstream bytes for ${Math.round(bodyGuard.stallMs / 1000)}s`, "timeout_error");
+    return anthropicErrorResponse(
+      504,
+      `anthropic passthrough body stalled: no upstream bytes for ${Math.round(bodyGuard.stallMs / 1000)}s`,
+      "timeout_error",
+    );
   }
   if (bodyResult.kind === "overflow") {
     finalize(502, { closeReason: "body_overflow" });
-    return anthropicErrorResponse(502, `anthropic passthrough body exceeded ${bodyGuard.maxBytes} bytes`, "api_error");
+    return anthropicErrorResponse(
+      502,
+      `anthropic passthrough body exceeded ${bodyGuard.maxBytes} bytes`,
+      "api_error",
+    );
   }
   const text = bodyResult.text;
   if (upstream.ok) {
     try {
       const parsed = JSON.parse(text) as { usage?: Rec };
-      if (isRec(parsed?.usage)) logCtx.usage = anthropicUsageToOcx(parsed.usage);
-    } catch { /* count_tokens etc. */ }
+      if (isRec(parsed?.usage))
+        logCtx.usage = anthropicUsageToOcx(parsed.usage);
+    } catch {
+      /* count_tokens etc. */
+    }
   }
   finalize(upstream.status, { closeReason: "non_stream" });
   const retryAfter = upstream.headers.get("retry-after");
   return new Response(text, {
     status: upstream.status,
-    headers: { "Content-Type": contentType, ...(retryAfter ? { "Retry-After": retryAfter } : {}) },
+    headers: {
+      "Content-Type": contentType,
+      ...(retryAfter ? { "Retry-After": retryAfter } : {}),
+    },
   });
 }
 
@@ -421,20 +578,31 @@ const DEFAULT_BODY_MAX_BYTES = 64 * 1024 * 1024;
  * Policy: exactly 0 disables; finite positive values are honored (stall clamped to
  * min 1s); negative/non-finite/absent values fall back to the defaults.
  */
-export function resolvePassthroughBodyGuard(config: OcxConfig, reqSignal?: AbortSignal): PassthroughBodyGuard {
+export function resolvePassthroughBodyGuard(
+  config: OcxConfig,
+  reqSignal?: AbortSignal,
+): PassthroughBodyGuard {
   const rawSec = config.claudeCode?.bodyStallSec;
-  const stallSec = rawSec === 0
-    ? 0
-    : typeof rawSec === "number" && Number.isFinite(rawSec) && rawSec > 0
-      ? Math.max(1, rawSec)
-      : DEFAULT_BODY_STALL_SEC;
+  const stallSec =
+    rawSec === 0
+      ? 0
+      : typeof rawSec === "number" && Number.isFinite(rawSec) && rawSec > 0
+        ? Math.max(1, rawSec)
+        : DEFAULT_BODY_STALL_SEC;
   const rawBytes = config.claudeCode?.bodyMaxBytes;
-  const maxBytes = rawBytes === 0
-    ? 0
-    : typeof rawBytes === "number" && Number.isFinite(rawBytes) && rawBytes > 0
-      ? Math.floor(rawBytes)
-      : DEFAULT_BODY_MAX_BYTES;
-  return { stallMs: stallSec * 1000, maxBytes, ...(reqSignal ? { reqSignal } : {}) };
+  const maxBytes =
+    rawBytes === 0
+      ? 0
+      : typeof rawBytes === "number" &&
+          Number.isFinite(rawBytes) &&
+          rawBytes > 0
+        ? Math.floor(rawBytes)
+        : DEFAULT_BODY_MAX_BYTES;
+  return {
+    stallMs: stallSec * 1000,
+    maxBytes,
+    ...(reqSignal ? { reqSignal } : {}),
+  };
 }
 
 type BoundedPassthroughBody =
@@ -462,7 +630,11 @@ export async function readBoundedPassthroughBody(
   let aborted = false;
   const idle = idleDeadline(guard.stallMs, () => {
     stalled = true;
-    reader.cancel(new DOMException("anthropic passthrough body stalled", "TimeoutError")).catch(() => {});
+    reader
+      .cancel(
+        new DOMException("anthropic passthrough body stalled", "TimeoutError"),
+      )
+      .catch(() => {});
   });
   // Deterministic client-abort classification (audit round 4): Bun may surface the
   // abort as a read rejection OR a resolved done, so we cancel the reader ourselves
@@ -493,7 +665,14 @@ export async function readBoundedPassthroughBody(
       if (result.value.byteLength === 0) continue;
       bytes += result.value.byteLength;
       if (guard.maxBytes > 0 && bytes > guard.maxBytes) {
-        reader.cancel(new DOMException("anthropic passthrough body exceeded byte cap", "QuotaExceededError")).catch(() => {});
+        reader
+          .cancel(
+            new DOMException(
+              "anthropic passthrough body exceeded byte cap",
+              "QuotaExceededError",
+            ),
+          )
+          .catch(() => {});
         return { kind: "overflow" };
       }
       text += decoder.decode(result.value, { stream: true });
@@ -533,7 +712,10 @@ export async function fetchWithHeaderDeadline(
 ): Promise<HeaderDeadlineFetchResult> {
   const deadline = makeDeadline(timeoutMs, parent);
   try {
-    const upstream = await fetchImpl(input, { ...init, signal: deadline.signal });
+    const upstream = await fetchImpl(input, {
+      ...init,
+      signal: deadline.signal,
+    });
     return { kind: "response", upstream };
   } catch (error) {
     if (deadline.didExpire()) return { kind: "timeout" };
@@ -552,7 +734,10 @@ export async function handleClaudeMessages(
   logCtx.surface = "claude";
   const disabled = claudeInboundDisabled(config);
   if (disabled) {
-    if (logIds) addFinalRequestLog(logIds.requestId, logIds.start, logCtx, 403, { closeReason: "non_stream" });
+    if (logIds)
+      addFinalRequestLog(logIds.requestId, logIds.start, logCtx, 403, {
+        closeReason: "non_stream",
+      });
     return disabled;
   }
 
@@ -593,6 +778,36 @@ export async function handleClaudeMessages(
       }
     }
     refreshDesktop3pRegistry();
+    // Desktop date aliases are saved bindings, not native Claude slugs.
+    // A provider removed since apply must not fall through to OpenAI/Codex.
+    const desktopModel =
+      isRec(anthropicBody) && typeof anthropicBody.model === "string"
+        ? anthropicBody.model
+        : null;
+    const desktopRoute = desktopModel
+      ? resolveDesktop3pAlias(desktopModel)
+      : null;
+    if (desktopRoute) {
+      logCtx.surface = "claude-desktop";
+      recordDesktopRequest();
+      const providerId = desktopRoute.split("/", 1)[0] ?? "";
+      const provider = Object.hasOwn(requestConfig.providers, providerId)
+        ? requestConfig.providers[providerId]
+        : undefined;
+      // Combo aliases may have an intentionally virtual provider prefix.
+      const comboId = resolveComboId(requestConfig, desktopRoute);
+      const isConfiguredCombo =
+        comboId !== null && Object.hasOwn(requestConfig.combos ?? {}, comboId);
+      if (
+        providerId !== "native" &&
+        !isConfiguredCombo &&
+        (!provider || provider.disabled === true)
+      ) {
+        throw new AnthropicRequestError(
+          `Claude Desktop model "${desktopModel}" has unavailable provider "${providerId}". Reapply the Desktop profile with an active provider.`,
+        );
+      }
+    }
     // Debug capture (opt-in allowlist scalars) BEFORE the passthrough branch so
     // native, routed, and disabled-alias paths are all observable (devlog 130 B1).
     captureClaudeInbound(
@@ -603,12 +818,6 @@ export async function handleClaudeMessages(
         : undefined,
       req.headers.get("anthropic-beta") ?? undefined,
     );
-    // Client surface discrimination: Desktop 3P aliases resolve through the
-    // desktop registry; Code uses readable aliases or direct model names.
-    if (isRec(anthropicBody) && typeof anthropicBody.model === "string" && resolveDesktop3pAlias(anthropicBody.model)) {
-      logCtx.surface = "claude-desktop";
-      recordDesktopRequest();
-    }
     // Correlate before native passthrough so Anthropic-credential turns still filter/total (#330 / #522).
     if (isRec(anthropicBody)) {
       const claudeConversationId = conversationIdFromClaudeMetadata(
@@ -616,10 +825,23 @@ export async function handleClaudeMessages(
       );
       if (claudeConversationId) logCtx.conversationId = claudeConversationId;
     }
-    if (isRec(anthropicBody) && wantsNativePassthrough(req, config, anthropicBody.model)) {
-      const passthrough = await anthropicNativePassthrough(req, config, logCtx, logIds, anthropicBody, "/v1/messages");
+    if (
+      isRec(anthropicBody) &&
+      wantsNativePassthrough(req, config, anthropicBody.model)
+    ) {
+      const passthrough = await anthropicNativePassthrough(
+        req,
+        config,
+        logCtx,
+        logIds,
+        anthropicBody,
+        "/v1/messages",
+      );
       if (passthrough !== "replay-routed") return passthrough;
-      if (typeof anthropicBody.model === "string" && !anthropicBody.model.includes("/")) {
+      if (
+        typeof anthropicBody.model === "string" &&
+        !anthropicBody.model.includes("/")
+      ) {
         anthropicBody.model = `anthropic/${anthropicBody.model}`;
       }
     }
@@ -627,13 +849,22 @@ export async function handleClaudeMessages(
       anthropicBody.output_config = { effort: effortOverride };
       delete anthropicBody.thinking;
     }
-    const translation = anthropicToResponsesTranslation(anthropicBody, config.claudeCode);
+    const translation = anthropicToResponsesTranslation(
+      anthropicBody,
+      config.claudeCode,
+    );
     internalBody = translation.body;
     cacheKeySource = translation.cacheKeySource;
   } catch (err) {
     const status = err instanceof AnthropicRequestError ? 400 : 500;
-    if (logIds) addFinalRequestLog(logIds.requestId, logIds.start, logCtx, status, { closeReason: "non_stream" });
-    return anthropicErrorResponse(status, err instanceof Error ? err.message : String(err));
+    if (logIds)
+      addFinalRequestLog(logIds.requestId, logIds.start, logCtx, status, {
+        closeReason: "non_stream",
+      });
+    return anthropicErrorResponse(
+      status,
+      err instanceof Error ? err.message : String(err),
+    );
   }
 
   const requestedModel = (anthropicBody as Rec).model as string;
@@ -655,7 +886,11 @@ export async function handleClaudeMessages(
       const route = routeModel(requestConfig, internalBody.model as string);
       // Settle the wire once so the sampling decision below reads the effective
       // adapter rather than the provider-wide default (#404).
-      route.provider = resolveWireProtocolOverride(route.providerName, route.modelId, route.provider);
+      route.provider = resolveWireProtocolOverride(
+        route.providerName,
+        route.modelId,
+        route.provider,
+      );
       if (route.provider.adapter === "openai-responses") {
         nativeRoute = true;
         delete internalBody.max_output_tokens;
@@ -668,8 +903,14 @@ export async function handleClaudeMessages(
       // request-side estimate so the log's in:0 rows get a floor. NEVER set this for
       // accurate-usage adapters — the request-log merge is max(reported, estimate) and
       // would overwrite real usage (audit 133 R1#7).
-      if (route.provider.adapter === "cursor" || route.provider.adapter === "kiro") {
-        logCtx.usageLogInputTokens = estimateClaudeInputTokens(anthropicBody as Rec, requestedModel);
+      if (
+        route.provider.adapter === "cursor" ||
+        route.provider.adapter === "kiro"
+      ) {
+        logCtx.usageLogInputTokens = estimateClaudeInputTokens(
+          anthropicBody as Rec,
+          requestedModel,
+        );
       }
       // Effort safety valve (devlog 136 B6, audit 139 R2#2): opus-shaped aliases make
       // every routed model look like a reasoning model to Claude clients, so a forced
@@ -678,10 +919,16 @@ export async function handleClaudeMessages(
       // supportedLadderFor; unknown (undefined) passes through untouched.
       if (internalBody.reasoning !== undefined) {
         const { supportedLadderFor } = await import("./effort-policy");
-        const ladder = supportedLadderFor({ provider: route.provider, modelId: route.modelId });
-        if (ladder !== undefined && ladder.length === 0) delete internalBody.reasoning;
+        const ladder = supportedLadderFor({
+          provider: route.provider,
+          modelId: route.modelId,
+        });
+        if (ladder !== undefined && ladder.length === 0)
+          delete internalBody.reasoning;
       }
-    } catch { /* unknown model: let handleResponses shape the 404 */ }
+    } catch {
+      /* unknown model: let handleResponses shape the 404 */
+    }
   }
 
   const headers = new Headers({ "content-type": "application/json" });
@@ -717,7 +964,11 @@ export async function handleClaudeMessages(
     // but ONLY for a real per-session key (metadata.user_id). The system-hash fallback
     // key is shared across Desktop conversations, and a shared session_id's backend
     // semantics are unproven (audit 133 R2#3): body prompt_cache_key only there.
-    if (cacheKeySource === "metadata" && !headers.has("session_id") && typeof internalBody.prompt_cache_key === "string") {
+    if (
+      cacheKeySource === "metadata" &&
+      !headers.has("session_id") &&
+      typeof internalBody.prompt_cache_key === "string"
+    ) {
       headers.set("session_id", uuidFromHex(internalBody.prompt_cache_key));
     }
   }
@@ -732,37 +983,73 @@ export async function handleClaudeMessages(
   // BEFORE translation (the translated Anthropic stream has no response.completed
   // frame, so tapping it records a bogus 502 with no usage/cache detail).
   let nativeLogged = false;
-  const finalizeNativeLog = (status: number, meta: { terminalStatus?: RequestLogEntry["terminalStatus"]; closeReason: "terminal" | "client_cancel" }) => {
+  const finalizeNativeLog = (
+    status: number,
+    meta: {
+      terminalStatus?: RequestLogEntry["terminalStatus"];
+      closeReason: "terminal" | "client_cancel";
+    },
+  ) => {
     if (!logIds || nativeLogged) return;
     nativeLogged = true;
     addFinalRequestLog(logIds.requestId, logIds.start, logCtx, status, meta);
   };
-  const upstream = await handleResponses(internalReq, buildClaudeReplayConfig(requestConfig), logCtx, {
-    abortSignal: req.signal,
-    persistConfig: config,
-    promptCacheKeyIsSharedCohort: cacheKeySource === "system",
-    rotateComboOnPick: dynamicRoute,
-    ...(dynamicRoute ? {
-      onComboTargetSelected: (route, childHeaders) => {
-        if (route.provider.adapter === "cursor" || route.provider.adapter === "kiro") {
-          logCtx.usageLogInputTokens = estimateClaudeInputTokens(anthropicBody as Rec, requestedModel);
-        }
-        if (
-          isCanonicalOpenAiForwardProvider(route.provider)
-          && cacheKeySource === "metadata"
-          && !childHeaders.has("session_id")
-          && typeof internalBody.prompt_cache_key === "string"
-        ) {
-          childHeaders.set("session_id", uuidFromHex(internalBody.prompt_cache_key));
-        }
-      },
-    } : {}),
+  const upstream = await handleResponses(
+    internalReq,
+    buildClaudeReplayConfig(requestConfig),
+    logCtx,
+    {
+      abortSignal: req.signal,
+      persistConfig: config,
+      promptCacheKeyIsSharedCohort: cacheKeySource === "system",
+      rotateComboOnPick: dynamicRoute,
+      ...(dynamicRoute
+        ? {
+            onComboTargetSelected: (route, childHeaders) => {
+              if (
+                route.provider.adapter === "cursor" ||
+                route.provider.adapter === "kiro"
+              ) {
+                logCtx.usageLogInputTokens = estimateClaudeInputTokens(
+                  anthropicBody as Rec,
+                  requestedModel,
+                );
+              }
+              if (
+                isCanonicalOpenAiForwardProvider(route.provider) &&
+                cacheKeySource === "metadata" &&
+                !childHeaders.has("session_id") &&
+                typeof internalBody.prompt_cache_key === "string"
+              ) {
+                childHeaders.set(
+                  "session_id",
+                  uuidFromHex(internalBody.prompt_cache_key),
+                );
+              }
+            },
+          }
+        : {}),
 
-    ...(logIds ? { onFirstOutput: () => recordFirstOutput(logCtx, logIds.start) } : {}),
-    onNativePassthroughTerminal: status => finalizeNativeLog(httpStatusForTerminalStatus(status), { terminalStatus: status, closeReason: "terminal" }),
-    onNativePassthroughCancel: () => finalizeNativeLog(499, { closeReason: "client_cancel" }),
-  });
-  const response = logIds ? responseWithDeferredRequestLog(upstream, logIds.requestId, logIds.start, logCtx) : upstream;
+      ...(logIds
+        ? { onFirstOutput: () => recordFirstOutput(logCtx, logIds.start) }
+        : {}),
+      onNativePassthroughTerminal: (status) =>
+        finalizeNativeLog(httpStatusForTerminalStatus(status), {
+          terminalStatus: status,
+          closeReason: "terminal",
+        }),
+      onNativePassthroughCancel: () =>
+        finalizeNativeLog(499, { closeReason: "client_cancel" }),
+    },
+  );
+  const response = logIds
+    ? responseWithDeferredRequestLog(
+        upstream,
+        logIds.requestId,
+        logIds.start,
+        logCtx,
+      )
+    : upstream;
 
   if (!response.ok) {
     // Re-shape the OpenAI-style error envelope into the Anthropic one, preserving status.
@@ -770,23 +1057,39 @@ export async function handleClaudeMessages(
     try {
       const text = await response.text();
       try {
-        const parsed = JSON.parse(text) as { error?: { message?: string; type?: string } | string; message?: string };
-        const nested = typeof parsed?.error === "object" && parsed.error ? parsed.error.message : undefined;
-        const flat = typeof parsed?.error === "string" ? parsed.error : parsed?.message;
-        message = nested || flat || (text ? `upstream error (${response.status}): ${text.slice(0, 400)}` : message);
+        const parsed = JSON.parse(text) as {
+          error?: { message?: string; type?: string } | string;
+          message?: string;
+        };
+        const nested =
+          typeof parsed?.error === "object" && parsed.error
+            ? parsed.error.message
+            : undefined;
+        const flat =
+          typeof parsed?.error === "string" ? parsed.error : parsed?.message;
+        message =
+          nested ||
+          flat ||
+          (text
+            ? `upstream error (${response.status}): ${text.slice(0, 400)}`
+            : message);
       } catch {
-        if (text) message = `upstream error (${response.status}): ${text.slice(0, 400)}`;
+        if (text)
+          message = `upstream error (${response.status}): ${text.slice(0, 400)}`;
       }
-    } catch { /* keep fallback message */ }
+    } catch {
+      /* keep fallback message */
+    }
     const upstreamRetryAfter = response.headers.get("retry-after");
-    const retryAfter = resolveClientRetryAfter({
-      status: response.status,
-      message,
-      upstreamRetryAfter,
-    })
+    const retryAfter =
+      resolveClientRetryAfter({
+        status: response.status,
+        message,
+        upstreamRetryAfter,
+      }) ??
       // Instant-retry "0" is a valid client directive but rejected by cooldown parsers.
       // Preserve it so it still wins over the transient "2" fallback (claude-529 mapping).
-      ?? (upstreamRetryAfter?.trim() === "0" ? "0" : undefined);
+      (upstreamRetryAfter?.trim() === "0" ? "0" : undefined);
     // Transient upstream 5xx (already retried pre-stream, 010): reclassify as Anthropic
     // 529 overloaded_error so the Claude Code client applies its built-in backoff retry
     // instead of dying on a fatal api_error (260716 sol-builder incident). The request
@@ -796,26 +1099,36 @@ export async function handleClaudeMessages(
     // share a backoff hint when the upstream omitted the header.
     const transient = isTransientUpstreamStatus(response.status);
     const outStatus = transient ? 529 : response.status;
-    const out = new Response(JSON.stringify(anthropicErrorBody(outStatus, message)), {
-      status: outStatus,
-      headers: {
-        "Content-Type": "application/json",
-        ...(retryAfter ? { "Retry-After": retryAfter } : (transient ? { "Retry-After": "2" } : {})),
+    const out = new Response(
+      JSON.stringify(anthropicErrorBody(outStatus, message)),
+      {
+        status: outStatus,
+        headers: {
+          "Content-Type": "application/json",
+          ...(retryAfter
+            ? { "Retry-After": retryAfter }
+            : transient
+              ? { "Retry-After": "2" }
+              : {}),
+        },
       },
-    });
+    );
     return out;
   }
 
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("text/event-stream") && response.body) {
-    const anthropicSse = responsesSseToAnthropicSse(response.body, requestedModel);
+    const anthropicSse = responsesSseToAnthropicSse(
+      response.body,
+      requestedModel,
+    );
     if (stream) {
       return new Response(anthropicSse, {
         status: 200,
         headers: {
           "Content-Type": "text/event-stream; charset=utf-8",
           "Cache-Control": "no-cache",
-          "Connection": "keep-alive",
+          Connection: "keep-alive",
         },
       });
     }
@@ -832,12 +1145,20 @@ export async function handleClaudeMessages(
   try {
     json = await response.json();
   } catch {
-    return anthropicErrorResponse(502, "internal replay returned a non-JSON response", "api_error");
+    return anthropicErrorResponse(
+      502,
+      "internal replay returned a non-JSON response",
+      "api_error",
+    );
   }
   const status = (json as Rec)?.status;
   if (status === "failed") {
     const error = (json as { error?: { message?: string } }).error;
-    return anthropicErrorResponse(502, error?.message ?? "upstream request failed", "api_error");
+    return anthropicErrorResponse(
+      502,
+      error?.message ?? "upstream request failed",
+      "api_error",
+    );
   }
   const message = responsesJsonToAnthropicMessage(json, requestedModel);
   if ((message as Rec).type === "error") {
@@ -847,28 +1168,59 @@ export async function handleClaudeMessages(
     });
   }
   if (!stream) {
-    return new Response(JSON.stringify(message), { status: 200, headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify(message), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   }
   // Streaming client + JSON upstream: synthesize a minimal valid Anthropic stream.
   const encoder = new TextEncoder();
   const frames: string[] = [];
-  const emit = (name: string, data: Rec) => frames.push(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
-  emit("message_start", { type: "message_start", message: { ...message, content: [], stop_reason: null, usage: { input_tokens: 0, output_tokens: 0 } } });
-  const blocks = Array.isArray((message as Rec).content) ? (message as Rec).content as Rec[] : [];
+  const emit = (name: string, data: Rec) =>
+    frames.push(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
+  emit("message_start", {
+    type: "message_start",
+    message: {
+      ...message,
+      content: [],
+      stop_reason: null,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    },
+  });
+  const blocks = Array.isArray((message as Rec).content)
+    ? ((message as Rec).content as Rec[])
+    : [];
   blocks.forEach((block, index) => {
-    emit("content_block_start", { type: "content_block_start", index, content_block: block });
+    emit("content_block_start", {
+      type: "content_block_start",
+      index,
+      content_block: block,
+    });
     emit("content_block_stop", { type: "content_block_stop", index });
   });
-  emit("message_delta", { type: "message_delta", delta: { stop_reason: (message as Rec).stop_reason ?? "end_turn", stop_sequence: null }, usage: (message as Rec).usage ?? {} });
+  emit("message_delta", {
+    type: "message_delta",
+    delta: {
+      stop_reason: (message as Rec).stop_reason ?? "end_turn",
+      stop_sequence: null,
+    },
+    usage: (message as Rec).usage ?? {},
+  });
   emit("message_stop", { type: "message_stop" });
   return new Response(encoder.encode(frames.join("")), {
     status: 200,
-    headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache" },
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache",
+    },
   });
 }
 
 /** Documented approximation: serialize system+messages+tools, run the char estimator. */
-export async function handleClaudeCountTokens(req: Request, config: OcxConfig): Promise<Response> {
+export async function handleClaudeCountTokens(
+  req: Request,
+  config: OcxConfig,
+): Promise<Response> {
   const disabled = claudeInboundDisabled(config);
   if (disabled) return disabled;
 
@@ -876,8 +1228,12 @@ export async function handleClaudeCountTokens(req: Request, config: OcxConfig): 
   try {
     body = await readAnthropicBody(req);
   } catch (err) {
-    if (err instanceof AnthropicRequestError) return anthropicErrorResponse(400, err.message);
-    return anthropicErrorResponse(500, err instanceof Error ? err.message : String(err));
+    if (err instanceof AnthropicRequestError)
+      return anthropicErrorResponse(400, err.message);
+    return anthropicErrorResponse(
+      500,
+      err instanceof Error ? err.message : String(err),
+    );
   }
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return anthropicErrorResponse(400, "request body must be a JSON object");
@@ -903,7 +1259,8 @@ export async function handleClaudeCountTokens(req: Request, config: OcxConfig): 
     try {
       model = requireClaudeDynamicAgentRoute(config).model;
     } catch (err) {
-      if (err instanceof AnthropicRequestError) return anthropicErrorResponse(400, err.message);
+      if (err instanceof AnthropicRequestError)
+        return anthropicErrorResponse(400, err.message);
       throw err;
     }
   } else if (countRoute) {
@@ -911,16 +1268,35 @@ export async function handleClaudeCountTokens(req: Request, config: OcxConfig): 
   }
   raw.model = model;
   refreshDesktop3pRegistry();
-  captureClaudeInbound("count_tokens", raw, resolveInboundModel(model, config.claudeCode), req.headers.get("anthropic-beta") ?? undefined);
+  captureClaudeInbound(
+    "count_tokens",
+    raw,
+    resolveInboundModel(model, config.claudeCode),
+    req.headers.get("anthropic-beta") ?? undefined,
+  );
   if (wantsNativePassthrough(req, config, model)) {
-    const passthrough = await anthropicNativePassthrough(req, config, { model, provider: "anthropic-native", surface: "claude" }, undefined, raw, "/v1/messages/count_tokens");
+    const passthrough = await anthropicNativePassthrough(
+      req,
+      config,
+      { model, provider: "anthropic-native", surface: "claude" },
+      undefined,
+      raw,
+      "/v1/messages/count_tokens",
+    );
     if (passthrough === "replay-routed") {
-      return anthropicErrorResponse(529, "upstream overloaded", "overloaded_error");
+      return anthropicErrorResponse(
+        529,
+        "upstream overloaded",
+        "overloaded_error",
+      );
     }
     return passthrough;
   }
   const parts: string[] = [];
-  if (raw.system !== undefined) parts.push(typeof raw.system === "string" ? raw.system : JSON.stringify(raw.system));
+  if (raw.system !== undefined)
+    parts.push(
+      typeof raw.system === "string" ? raw.system : JSON.stringify(raw.system),
+    );
   if (raw.messages !== undefined) parts.push(JSON.stringify(raw.messages));
   if (raw.tools !== undefined) parts.push(JSON.stringify(raw.tools));
   const inputTokens = Math.max(1, estimateTokens(parts.join("\n"), model));
