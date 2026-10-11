@@ -233,11 +233,31 @@ test("malformed JSON and transport errors never expose secret-bearing details", 
   }
 });
 
-test("concurrent meta change is preserved and reported before config writes", async () => {
+test("a meta change made while the gateway is being contacted is merged, never overwritten", async () => {
+  // The snapshot is taken under the library lock, so a rewrite by Desktop during the network round
+  // trip is picked up instead of failing the sync with a stale-snapshot error.
   const f = fixture();
   f.options.runKeyHelper = () => {
     writeFileSync(f.metaPath, JSON.stringify({ entries: [{ id: "user", name: "Updated profile" }] }));
     return "fixture-admission";
+  };
+  await expect(syncClaudeDesktopLibrary(f.options)).resolves.toMatchObject({ status: "synced" });
+  const meta = JSON.parse(readFileSync(f.metaPath, "utf8"));
+  expect(meta.entries).toContainEqual({ id: "user", name: "Updated profile" });
+  expect(meta.entries.some((entry: { name: string }) => entry.name === "opencodex")).toBe(true);
+  expect(existsSync(join(f.dir, "new.json"))).toBe(true);
+});
+
+test("a meta change inside the locked write window is preserved and the config rolled back", async () => {
+  const f = fixture();
+  let writes = 0;
+  f.options.fileIO = {
+    harden: () => {},
+    atomicWrite: (path, content) => {
+      // The first replacement is the profile file; Desktop rewrites _meta.json right after it.
+      if (writes++ === 0) writeFileSync(f.metaPath, JSON.stringify({ entries: [{ id: "user", name: "Updated profile" }] }));
+      writeFileSync(path, content);
+    },
   };
   await expect(syncClaudeDesktopLibrary(f.options)).rejects.toThrow("changed during sync");
   expect(readFileSync(f.metaPath, "utf8")).toContain("Updated profile");

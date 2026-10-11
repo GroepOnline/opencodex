@@ -13,7 +13,7 @@ import {
 import {
   readAppliedDesktop3pLibrary,
   resolveDesktop3pConfigLibraryPath,
-  writeDesktop3pConfig,
+  writeDesktop3pConfigAsync,
   type Desktop3pConfigMode,
   parseDesktop3pModeArgs,
 } from "../claude/desktop-3p";
@@ -25,7 +25,7 @@ import {
   buildClaudeDesktopState,
   fetchAllModels,
 } from "../server/management-api";
-import { findLiveProxy } from "../server/proxy-liveness";
+import { findLiveProxy, probeHostname } from "../server/proxy-liveness";
 import {
   assertClaudeDesktopProtocolUri,
   claimClaudeDesktopProtocolDispatch,
@@ -42,10 +42,12 @@ export interface ClaudeDesktopCommandOptions {
   syncLibrary?: () => Promise<DesktopSyncResult>;
 }
 
+/** Narrow a CLI argument to one of the four Desktop model families. */
 function isFamily(value: string | undefined): value is DesktopFamily {
   return !!value && (DESKTOP_FAMILIES as readonly string[]).includes(value);
 }
 
+/** Print the `ocx claude desktop` usage summary. */
 function printDesktopHelp(): void {
   console.log(`Usage:
   ocx claude desktop [apply] [--static|--hybrid|--discovery-only]
@@ -61,6 +63,7 @@ function printDesktopHelp(): void {
   ocx claude desktop import <path> [--apply]`);
 }
 
+/** Run a Desktop library sync; `automatic` skips unconfigured installs instead of failing them. */
 async function runSync(options: ClaudeDesktopCommandOptions, automatic: boolean): Promise<number> {
   try {
     const { syncClaudeDesktopLibrary } = await import("../claude/desktop-sync");
@@ -73,79 +76,113 @@ async function runSync(options: ClaudeDesktopCommandOptions, automatic: boolean)
   }
 }
 
-interface DoctorCheck {
+/** One line of the `doctor` report. `fail` makes the command exit nonzero; `warn` is advisory. */
+export interface DoctorCheck {
   name: string;
   status: "ok" | "warn" | "fail";
   detail: string;
 }
 
-/** One-shot health report: applied library, profile drift, link handler and live gateway. */
-async function runDoctor(options: ClaudeDesktopCommandOptions, json: boolean): Promise<number> {
-  const checks: DoctorCheck[] = [];
-  const add = (name: string, status: DoctorCheck["status"], detail: string): void => {
-    checks.push({ name, status, detail });
-  };
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
-  let appliedAliases: Set<string> | null = null;
+/**
+ * Inspect the applied Desktop library. `aliases` is the set of applied model aliases, or null when
+ * the library is missing or malformed and a profile comparison would be meaningless.
+ */
+function checkAppliedLibrary(): { check: DoctorCheck; aliases: Set<string> | null } {
+  const fail = (detail: string) => ({ check: { name: "library", status: "fail" as const, detail }, aliases: null });
   try {
     const libraryPath = resolveDesktop3pConfigLibraryPath();
     const applied = readAppliedDesktop3pLibrary();
-    if (!applied.ok) {
-      add("library", "fail", `${applied.error} (${libraryPath}); run: ocx claude desktop apply`);
-    } else {
-      const config = (applied.config && typeof applied.config === "object" ? applied.config : {}) as Record<string, unknown>;
-      const models = (Array.isArray(config.inferenceModels) ? config.inferenceModels : [])
-        .filter((model): model is Record<string, unknown> => !!model && typeof model === "object");
-      appliedAliases = new Set(models.map(model => String(model.name)));
-      const mode = config.modelDiscoveryEnabled === false ? "static" : "hybrid/discovery";
-      const oneM = models.filter(model => model.supports1m === true).length;
-      add("library", "ok", `${models.length} models (${mode}${oneM ? `, ${oneM} with 1M` : ""}), id ${applied.appliedId}, fingerprint ${applied.fingerprint}`);
+    if (!applied.ok) return fail(`${applied.error} (${libraryPath}); run: ocx claude desktop apply`);
+    const config = (applied.config && typeof applied.config === "object" ? applied.config : {}) as Record<string, unknown>;
+    const entries = Array.isArray(config.inferenceModels) ? config.inferenceModels : [];
+    const models = entries.filter((model): model is Record<string, unknown> => !!model && typeof model === "object");
+    // A model without a usable name is corrupt library data, not something to hide from the report.
+    const unnamed = entries.length - models.filter(model => typeof model.name === "string" && model.name !== "").length;
+    if (unnamed > 0) {
+      return fail(`${unnamed} applied model(s) have no usable name (${libraryPath}); run: ocx claude desktop apply`);
     }
+    const mode = config.modelDiscoveryEnabled === false ? "static" : "hybrid/discovery";
+    const oneM = models.filter(model => model.supports1m === true).length;
+    return {
+      check: {
+        name: "library",
+        status: "ok",
+        detail: `${models.length} models (${mode}${oneM ? `, ${oneM} with 1M` : ""}), id ${applied.appliedId}, fingerprint ${applied.fingerprint}`,
+      },
+      aliases: new Set(models.map(model => model.name as string)),
+    };
   } catch (error) {
-    add("library", "fail", error instanceof Error ? error.message : String(error));
+    return fail(describeError(error));
   }
+}
 
-  if (appliedAliases) {
-    const aliases = appliedAliases;
-    try {
-      const state = await buildClaudeDesktopState(loadConfig());
-      const expected = state.models.filter(model => model.available).map(model => model.assignment.alias);
-      const missing = expected.filter(alias => !aliases.has(alias));
-      const stale = [...aliases].filter(alias => !expected.includes(alias));
-      if (missing.length === 0 && stale.length === 0) add("profile drift", "ok", "applied library matches the saved profile");
-      else add("profile drift", "warn", `${missing.length} route(s) missing and ${stale.length} stale alias(es) in the applied library; run: ocx claude desktop apply`);
-    } catch (error) {
-      add("profile drift", "warn", `could not compare profile: ${error instanceof Error ? error.message : String(error)}`);
+/** Compare the applied aliases with what the saved profile would produce right now. */
+async function checkProfileDrift(aliases: Set<string>): Promise<DoctorCheck> {
+  try {
+    const state = await buildClaudeDesktopState(loadConfig());
+    const expected = state.models.filter(model => model.available).map(model => model.assignment.alias);
+    const missing = expected.filter(alias => !aliases.has(alias));
+    const stale = [...aliases].filter(alias => !expected.includes(alias));
+    if (missing.length === 0 && stale.length === 0) {
+      return { name: "profile drift", status: "ok", detail: "applied library matches the saved profile" };
     }
+    return {
+      name: "profile drift",
+      status: "warn",
+      detail: `${missing.length} route(s) missing and ${stale.length} stale alias(es) in the applied library; run: ocx claude desktop apply`,
+    };
+  } catch (error) {
+    return { name: "profile drift", status: "warn", detail: `could not compare profile: ${describeError(error)}` };
   }
+}
 
-  if (process.platform === "linux") {
-    try {
-      const protocol = getClaudeDesktopProtocolStatus(options.protocolOptions);
-      if (protocol.status === "installed" && protocol.registered === false) {
-        add("sync link", "warn", "handler file installed but not the default for ocx-desktop://; run: ocx claude desktop protocol install");
-      } else if (protocol.status === "orphaned" || protocol.status === "missing") {
-        add("sync link", "warn", `${protocol.status}; run: ocx claude desktop protocol install`);
-      } else {
-        add("sync link", "ok", protocol.status === "absent" ? "not installed (optional)" : "installed");
-      }
-    } catch (error) {
-      add("sync link", "fail", error instanceof Error ? error.message : String(error));
+/** Linux only: is the optional `ocx-desktop://` handler installed and actually the default? */
+function checkSyncLink(options: ClaudeDesktopCommandOptions): DoctorCheck {
+  try {
+    const protocol = getClaudeDesktopProtocolStatus(options.protocolOptions);
+    if (protocol.status === "installed" && protocol.registered === false) {
+      return { name: "sync link", status: "warn", detail: "handler file installed but not the default for ocx-desktop://; run: ocx claude desktop protocol install" };
     }
+    if (protocol.status === "orphaned" || protocol.status === "missing") {
+      return { name: "sync link", status: "warn", detail: `${protocol.status}; run: ocx claude desktop protocol install` };
+    }
+    return { name: "sync link", status: "ok", detail: protocol.status === "absent" ? "not installed (optional)" : "installed" };
+  } catch (error) {
+    return { name: "sync link", status: "fail", detail: describeError(error) };
   }
+}
 
+/** Probe the live gateway on the host it actually answered on (wildcard and IPv6 aware). */
+async function checkGateway(): Promise<DoctorCheck> {
   try {
     const live = await findLiveProxy();
-    if (!live) {
-      add("gateway", "warn", "no running proxy; start it with: ocx start");
-    } else {
-      const response = await fetch(`http://127.0.0.1:${live.port}/healthz`, { redirect: "error", signal: AbortSignal.timeout(3000) });
-      add("gateway", response.ok ? "ok" : "fail", `http://127.0.0.1:${live.port} answered HTTP ${response.status}`);
-    }
+    if (!live) return { name: "gateway", status: "warn", detail: "no running proxy; start it with: ocx start" };
+    const origin = `http://${probeHostname(live.hostname)}:${live.port}`;
+    const response = await fetch(`${origin}/healthz`, { redirect: "error", signal: AbortSignal.timeout(3000) });
+    return { name: "gateway", status: response.ok ? "ok" : "fail", detail: `${origin} answered HTTP ${response.status}` };
   } catch (error) {
-    add("gateway", "fail", error instanceof Error ? error.message : String(error));
+    return { name: "gateway", status: "fail", detail: describeError(error) };
   }
+}
 
+/** Run every doctor check and return the results without printing, so each can be tested alone. */
+export async function collectClaudeDesktopDoctor(options: ClaudeDesktopCommandOptions = {}): Promise<DoctorCheck[]> {
+  const checks: DoctorCheck[] = [];
+  const library = checkAppliedLibrary();
+  checks.push(library.check);
+  if (library.aliases) checks.push(await checkProfileDrift(library.aliases));
+  if (process.platform === "linux") checks.push(checkSyncLink(options));
+  checks.push(await checkGateway());
+  return checks;
+}
+
+/** One-shot health report: applied library, profile drift, link handler and live gateway. */
+async function runDoctor(options: ClaudeDesktopCommandOptions, json: boolean): Promise<number> {
+  const checks = await collectClaudeDesktopDoctor(options);
   const failed = checks.some(check => check.status === "fail");
   if (json) {
     console.log(JSON.stringify({ ok: !failed, checks }));
@@ -156,6 +193,7 @@ async function runDoctor(options: ClaudeDesktopCommandOptions, json: boolean): P
   return failed ? 1 : 0;
 }
 
+/** Persist `profile`, then write the applied library to Desktop under the shared library lock. */
 async function applyProfile(
   profile: DesktopProfile,
   mode: Desktop3pConfigMode,
@@ -174,7 +212,7 @@ async function applyProfile(
     id: model.id,
     contextWindow: model.contextWindow,
   }));
-  const result = writeDesktop3pConfig(
+  const result = await writeDesktop3pConfigAsync(
     live?.port ?? config.port ?? 10100,
     [...visibleNativeSlugs(config)],
     routed,
