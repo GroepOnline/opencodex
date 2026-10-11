@@ -1,15 +1,18 @@
 import { createHash, randomUUID } from "node:crypto";
 import { execSync } from "node:child_process";
-import { chmodSync, closeSync, existsSync, ftruncateSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, truncateSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, ftruncateSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, truncateSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { renameAtomicFile } from "../config";
 import { hardenSecretPath } from "../lib/windows-secret-acl";
 import { DESKTOP_LIBRARY_ID, resolveDesktop3pConfigLibraryPath } from "./desktop-3p";
+import { withDesktopLibraryLock } from "./desktop-library-lock";
 import { resolveDataPlaneAdmissionToken } from "../lib/service-secrets";
 import { claudeConfigDir, realAdmissionToken } from "./auth-detect";
 
 const MAX_LIBRARY_BYTES = 4 * 1024 * 1024;
 const SAFE_ID = DESKTOP_LIBRARY_ID;
+/** Pre-sync snapshots hold gateway credentials: keep a short rollback window, not an archive. */
+const KEEP_SYNC_BACKUPS = 3;
 class DesktopSyncError extends Error {}
 
 function assertLibraryDirectory(path: string): void {
@@ -155,7 +158,12 @@ async function syncLibrary(options: DesktopSyncOptions): Promise<DesktopSyncResu
     || !payload.meta.entries.some(entry => object(entry) && entry.name === "opencodex" && entry.id === payload.appliedId)) {
     throw new DesktopSyncError("Claude Desktop library has an invalid applied profile");
   }
-  return writeLibrary(library, metaPath, localMeta, entries, originalMeta, payload.appliedId, payload.config, base.origin, options.fileIO);
+  const appliedId = payload.appliedId;
+  const remoteConfig = payload.config;
+  // Apply and sync share one lock so their _meta.json read-modify-write cycles cannot interleave.
+  return withDesktopLibraryLock(() => writeLibrary(
+    library, metaPath, localMeta, entries, originalMeta, appliedId, remoteConfig, base.origin, options.fileIO,
+  ));
 }
 
 async function readBoundedJson(response: Response, limit: number): Promise<unknown> {
@@ -212,6 +220,24 @@ function writeProtectedAtomic(path: string, content: string | Buffer, harden: (p
   }
 }
 
+/** Keep the newest KEEP_SYNC_BACKUPS snapshots of one file; scrub before unlinking since they hold secrets. */
+function pruneSyncBackups(path: string, keep: string): void {
+  try {
+    const dir = dirname(path);
+    const prefix = `${path.slice(dir.length + 1)}.before-sync-`;
+    const backups = readdirSync(dir)
+      .filter(name => name.startsWith(prefix) && name.endsWith(".bak"))
+      .map(name => ({ path: join(dir, name), stat: lstatSync(join(dir, name)) }))
+      .filter(item => item.stat.isFile() && !item.stat.isSymbolicLink())
+      .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
+    for (const old of backups.slice(KEEP_SYNC_BACKUPS)) {
+      if (old.path === keep) continue;
+      try { truncateSync(old.path, 0); } catch { /* best effort scrub */ }
+      try { unlinkSync(old.path); } catch { /* retention is best effort and must never fail a sync */ }
+    }
+  } catch { /* retention is best effort and must never fail a sync */ }
+}
+
 function writeLibrary(
   library: string, metaPath: string, localMeta: Record<string, unknown>,
   entries: Record<string, unknown>[], originalMeta: string | null,
@@ -264,6 +290,7 @@ function writeLibrary(
     } else {
       writeProtectedFile(backup, previous, harden);
     }
+    pruneSyncBackups(path, backup);
   }
   atomicWrite(configPath, configText);
   const writtenConfig = lstatSync(configPath);

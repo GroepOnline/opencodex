@@ -3,22 +3,33 @@ import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import {
   closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync,
-  readlinkSync, readSync, renameSync, unlinkSync, writeFileSync,
+  readFileSync, readlinkSync, readSync, renameSync, unlinkSync, writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getConfigDir } from "../config";
+import { recordOwnedConfigPath } from "../lib/config-ownership";
 
 const DESKTOP_ID = "ocx-desktop.desktop";
 const MIME_TYPE = "x-scheme-handler/ocx-desktop";
 const MAX_FILE_BYTES = 32 * 1024;
 const OWNER = "opencodex/claude-desktop-protocol";
+const MAX_MIMEAPPS_BYTES = 256 * 1024;
+const DISPATCH_MIN_INTERVAL_MS = 5_000;
+/**
+ * The exact shape this module generates. A Desktop entry that matches it but lost its ownership
+ * state (for example after `ocx uninstall` deleted the config directory on an older release) is
+ * provably ours, so it may be adopted or removed instead of wedging install and uninstall forever.
+ */
+const ORPHAN_ENTRY = /^\[Desktop Entry\]\nType=Application\nName=OCX Claude Desktop Sync\nNoDisplay=true\nTerminal=false\nExec=[^\n]+ %u\nMimeType=x-scheme-handler\/ocx-desktop;\nX-OCX-Protocol-Version=1\n$/;
 
 export interface DesktopProtocolOptions {
   platform?: NodeJS.Platform;
   configDir?: string;
   dataHome?: string;
+  /** Override for the XDG config home that holds mimeapps.list; defaults to the real one. */
+  configHome?: string;
   runtimePath?: string;
   cliPath?: string;
   execCommand?: (file: string, args: string[]) => string | void;
@@ -34,9 +45,13 @@ interface ProtocolState {
 }
 
 export interface DesktopProtocolResult {
-  status: "absent" | "installed" | "missing" | "unchanged" | "repaired" | "skipped" | "uninstalled";
+  status: "absent" | "installed" | "missing" | "orphaned" | "unchanged" | "repaired" | "skipped" | "uninstalled";
   desktopPath: string;
   statePath: string;
+  /** uninstall: a default-handler association was removed from a mimeapps.list. */
+  associationRemoved?: boolean;
+  /** status: whether xdg-mime reports this handler as the default for the scheme (undefined = unknown). */
+  registered?: boolean;
 }
 
 function assertLinux(options: DesktopProtocolOptions): void {
@@ -141,11 +156,14 @@ function readRegular(path: string): string | null {
   } finally { closeSync(fd); }
 }
 
-function inspect(options: DesktopProtocolOptions) {
+function inspect(options: DesktopProtocolOptions, adoptOrphan = false) {
   const locations = paths(options);
   const stateText = readRegular(locations.statePath);
   const desktopText = readRegular(locations.desktopPath);
   if (stateText === null) {
+    if (desktopText !== null && adoptOrphan && ORPHAN_ENTRY.test(desktopText)) {
+      return { ...locations, state: null, stateText, desktopText };
+    }
     if (desktopText !== null) {
       throw new Error("Claude Desktop protocol file has no ownership state; inspect it manually rather than migrating or overwriting it");
     }
@@ -272,19 +290,137 @@ function writeOwned(options: DesktopProtocolOptions, current: ReturnType<typeof 
   return true;
 }
 
+function defaultExec(file: string, args: string[]): string {
+  return execFileSync(file, args, {
+    encoding: "utf8", timeout: 5000, maxBuffer: 16 * 1024, stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+function defaultConfigHome(): string {
+  const value = process.env.XDG_CONFIG_HOME;
+  return value && isAbsolute(value) ? resolve(value) : join(homedir(), ".config");
+}
+
+/** Both locations `xdg-mime default` has used: $XDG_CONFIG_HOME and the legacy applications dir. */
+function mimeappsPaths(options: DesktopProtocolOptions): string[] {
+  const dataHome = absolutePath(options.dataHome ?? defaultDataHome());
+  // A caller that isolates dataHome (tests, sandboxes) must not reach into the real config home.
+  const configHome = options.configHome ?? (options.dataHome ? null : defaultConfigHome());
+  return [
+    ...(configHome ? [join(absolutePath(configHome), "mimeapps.list")] : []),
+    join(dataHome, "applications", "mimeapps.list"),
+  ];
+}
+
+/** Drop only this handler's association; every other line and handler is preserved verbatim. */
+export function stripClaudeDesktopAssociation(text: string): string {
+  const out: string[] = [];
+  for (const line of text.split("\n")) {
+    const eq = line.indexOf("=");
+    if (eq > 0 && line.slice(0, eq).trim() === MIME_TYPE) {
+      const kept = line.slice(eq + 1).split(";").map(item => item.trim()).filter(item => item && item !== DESKTOP_ID);
+      if (kept.length === 0) continue;
+      out.push(`${MIME_TYPE}=${kept.join(";")};`);
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join("\n");
+}
+
+function rewriteMimeapps(path: string): boolean {
+  try {
+    const stat = lstatSync(path);
+    // Dotfile setups symlink mimeapps.list; never write through a link or into someone else's file.
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_MIMEAPPS_BYTES
+      || (process.getuid && stat.uid !== process.getuid())) return false;
+    const text = readFileSync(path, "utf8");
+    const next = stripClaudeDesktopAssociation(text);
+    if (next === text) return false;
+    const temp = join(dirname(path), `.ocx-mimeapps-${randomUUID()}.tmp`);
+    try {
+      writeFileSync(temp, next, { flag: "wx", mode: stat.mode & 0o777 });
+      if (readFileSync(path, "utf8") !== text) return false;
+      renameSync(temp, path);
+      return true;
+    } finally {
+      try { unlinkSync(temp); } catch { /* already renamed or never created */ }
+    }
+  } catch {
+    return false;
+  }
+}
+
+function removeAssociation(options: DesktopProtocolOptions): boolean {
+  let removed = false;
+  for (const path of mimeappsPaths(options)) removed = rewriteMimeapps(path) || removed;
+  return removed;
+}
+
+/**
+ * Optional cache refresh. A caller-supplied `execCommand` owns every process this module may start
+ * (fixtures, dry runs), so the extra housekeeping calls only run against the real system.
+ */
+function refreshDesktopDatabase(options: DesktopProtocolOptions, desktopPath: string): void {
+  if (options.execCommand) return;
+  try { defaultExec("update-desktop-database", [dirname(desktopPath)]); }
+  catch { /* the entry works without the cache on modern desktops */ }
+}
+
+function queryRegistered(options: DesktopProtocolOptions): boolean | undefined {
+  if (options.execCommand) return undefined;
+  try {
+    return defaultExec("xdg-mime", ["query", "default", MIME_TYPE]).trim() === DESKTOP_ID;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Rate-limit link dispatches. Any web page can open ocx-desktop://sync, so a burst must collapse
+ * into one sync. Fails open: an unusable stamp never blocks a legitimate sync.
+ */
+export function claimClaudeDesktopProtocolDispatch(options: DesktopProtocolOptions = {}, now = Date.now()): boolean {
+  try {
+    const configDir = absolutePath(options.configDir ?? getConfigDir());
+    const stamp = join(configDir, "claude-desktop-protocol-dispatch.stamp");
+    try {
+      const stat = lstatSync(stamp);
+      if (stat.isSymbolicLink() || !stat.isFile()) return true;
+      const age = now - stat.mtimeMs;
+      if (age >= 0 && age < DISPATCH_MIN_INTERVAL_MS) return false;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return true;
+    }
+    mkdirSync(configDir, { recursive: true, mode: 0o700 });
+    writeFileSync(stamp, String(now), { mode: 0o600 });
+    recordOwnedConfigPath(configDir, stamp);
+    return true;
+  } catch {
+    return true;
+  }
+}
+
 export function getClaudeDesktopProtocolStatus(options: DesktopProtocolOptions = {}): DesktopProtocolResult {
-  const current = inspect(options);
-  return { status: !current.state ? "absent" : current.desktopText === null ? "missing" : "installed",
-    desktopPath: current.desktopPath, statePath: current.statePath };
+  const current = inspect(options, true);
+  if (!current.state) {
+    return { status: current.desktopText === null ? "absent" : "orphaned",
+      desktopPath: current.desktopPath, statePath: current.statePath };
+  }
+  if (current.desktopText === null) {
+    return { status: "missing", desktopPath: current.desktopPath, statePath: current.statePath };
+  }
+  const registered = queryRegistered(options);
+  return { status: "installed", desktopPath: current.desktopPath, statePath: current.statePath,
+    ...(registered === undefined ? {} : { registered }) };
 }
 
 export function installClaudeDesktopProtocol(options: DesktopProtocolOptions = {}): DesktopProtocolResult {
-  const current = inspect(options);
+  const current = inspect(options, true);
   const changed = writeOwned(options, current);
+  refreshDesktopDatabase(options, current.desktopPath);
   try {
-    (options.execCommand ?? ((file, args) => execFileSync(file, args, {
-      encoding: "utf8", timeout: 5000, maxBuffer: 16 * 1024, stdio: ["ignore", "pipe", "pipe"],
-    })))("xdg-mime", ["default", DESKTOP_ID, MIME_TYPE]);
+    (options.execCommand ?? defaultExec)("xdg-mime", ["default", DESKTOP_ID, MIME_TYPE]);
   } catch {
     throw new Error("Claude Desktop protocol files are owned, but XDG registration failed; retry ocx claude desktop protocol install");
   }
@@ -300,13 +436,30 @@ export function repairClaudeDesktopProtocol(options: DesktopProtocolOptions = {}
 }
 
 export function uninstallClaudeDesktopProtocol(options: DesktopProtocolOptions = {}): DesktopProtocolResult {
+  const locations = paths(options);
+  if (readRegular(locations.statePath) === null) {
+    // No ownership state. A generated-shape entry is a recoverable orphan; anything else is not ours.
+    const orphan = readRegular(locations.desktopPath);
+    if (orphan !== null && !ORPHAN_ENTRY.test(orphan)) {
+      throw new Error("Claude Desktop protocol file has no ownership state; inspect it manually rather than migrating or overwriting it");
+    }
+    if (orphan !== null) {
+      if (readRegular(locations.desktopPath) !== orphan) throw new Error("Claude Desktop protocol file changed during uninstall");
+      unlinkSync(locations.desktopPath);
+    }
+    const associationRemoved = removeAssociation(options);
+    if (orphan !== null) refreshDesktopDatabase(options, locations.desktopPath);
+    return { status: orphan !== null || associationRemoved ? "uninstalled" : "absent", ...locations, associationRemoved };
+  }
   const current = inspect(options);
-  if (!current.state) return { status: "absent", desktopPath: current.desktopPath, statePath: current.statePath };
   if (current.desktopText !== null) {
     if (readRegular(current.desktopPath) !== current.desktopText) throw new Error("Claude Desktop protocol file changed during uninstall");
     unlinkSync(current.desktopPath);
   }
   if (readRegular(current.statePath) !== current.stateText) throw new Error("Claude Desktop protocol ownership changed during uninstall");
   unlinkSync(current.statePath);
-  return { status: "uninstalled", desktopPath: current.desktopPath, statePath: current.statePath };
+  // `xdg-mime default` persisted a default-handler line; leaving it would dangle after removal.
+  const associationRemoved = removeAssociation(options);
+  refreshDesktopDatabase(options, current.desktopPath);
+  return { status: "uninstalled", desktopPath: current.desktopPath, statePath: current.statePath, associationRemoved };
 }

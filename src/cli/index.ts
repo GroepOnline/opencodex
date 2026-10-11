@@ -628,6 +628,21 @@ async function handleUninstall() {
     console.error(`⚠️  Codex autostart shim removed failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  if (process.platform === "linux") {
+    // The Desktop sync link handler lives outside ~/.opencodex. Remove it before the config directory
+    // (and its ownership state) goes away, or the orphaned .desktop entry outlives the install.
+    // A foreign file with our name is left alone and must not block the rest of the uninstall.
+    try {
+      const { uninstallClaudeDesktopProtocol } = await import("../claude/desktop-protocol");
+      const r = uninstallClaudeDesktopProtocol();
+      console.log(r.status === "uninstalled"
+        ? "✅ Claude Desktop sync link removed"
+        : "- Claude Desktop sync link removed: not installed");
+    } catch (err) {
+      console.error(`⚠️  Claude Desktop sync link left in place: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   if (failures.length === 0) {
     await runStep("opencodex config removed", () => {
       const result = removeOwnedConfigState(getConfigDir());
