@@ -20,6 +20,7 @@ const CLIENT_SECRET = process.env.GOOGLE_ANTIGRAVITY_CLIENT_SECRET
   || "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";
 const AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
+const USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v2/userinfo";
 const PROD_API = "https://cloudcode-pa.googleapis.com";
 const DAILY_API = "https://daily-cloudcode-pa.googleapis.com";
 const API_VERSION = "v1internal";
@@ -65,6 +66,31 @@ function emailFromToken(accessToken: string, idToken: string | undefined): strin
   return typeof email === "string" && email.length > 0 ? email.toLowerCase() : undefined;
 }
 
+/**
+ * Standard OAuth error codes that are safe to surface (RFC 6749 §5.2 + Google's). Only a value from
+ * this allowlist is ever copied out of an error body, so nothing else the body carries leaks.
+ * Surfacing `invalid_grant` is what lets the refresh path recognise a revoked/expired grant as
+ * terminal and flag the account for re-login instead of retrying forever.
+ */
+const SAFE_OAUTH_ERROR_CODES = new Set([
+  "invalid_grant",
+  "invalid_request",
+  "invalid_client",
+  "unauthorized_client",
+  "unsupported_grant_type",
+  "invalid_scope",
+  "access_denied",
+]);
+
+async function safeOAuthErrorCode(response: Response): Promise<string | undefined> {
+  try {
+    const parsed = JSON.parse((await response.text()).slice(0, 8192)) as { error?: unknown };
+    return typeof parsed.error === "string" && SAFE_OAUTH_ERROR_CODES.has(parsed.error) ? parsed.error : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function postToken(body: Record<string, string>, signal?: AbortSignal): Promise<GoogleTokenPayload> {
   const response = await fetch(TOKEN_ENDPOINT, {
     method: "POST",
@@ -73,10 +99,41 @@ async function postToken(body: Record<string, string>, signal?: AbortSignal): Pr
     signal: requestSignal(signal),
   });
   if (!response.ok) {
-    // Status only — the body can carry grant/account details.
-    throw new Error(`Antigravity token request failed: ${response.status}`);
+    // Status plus an allowlisted OAuth error code only — the body can carry grant/account details.
+    const code = await safeOAuthErrorCode(response);
+    throw new Error(`Antigravity token request failed: ${response.status}${code ? ` ${code}` : ""}`);
   }
-  return (await response.json()) as GoogleTokenPayload;
+  try {
+    return (await response.json()) as GoogleTokenPayload;
+  } catch {
+    throw new Error("Antigravity token response was not valid JSON");
+  }
+}
+
+/**
+ * Resolve the Google account identity for an access token. The requested scopes do not include
+ * `openid`, so no id_token is issued and the access token is opaque: without this call the
+ * credential has no email/accountId, and the auth store treats identity-less credentials as "replace
+ * the active account" — logging in a second Google account would silently overwrite the first.
+ * Best effort: a failure leaves the credential identity-less (previous behaviour), never fails login.
+ */
+export async function fetchAntigravityIdentity(
+  accessToken: string,
+  signal?: AbortSignal,
+): Promise<{ email?: string; accountId?: string }> {
+  try {
+    const response = await fetch(USERINFO_ENDPOINT, {
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+      signal: requestSignal(signal),
+    });
+    if (!response.ok) return {};
+    const data = (await response.json()) as { email?: unknown; id?: unknown };
+    const email = typeof data.email === "string" && data.email.length > 0 ? data.email.toLowerCase() : undefined;
+    const accountId = typeof data.id === "string" && data.id.length > 0 ? data.id : undefined;
+    return { ...(email ? { email } : {}), ...(accountId ? { accountId } : {}) };
+  } catch {
+    return {};
+  }
 }
 
 /** Pull a Cloud Code Assist project id out of a loadCodeAssist/onboardUser response shape. */
@@ -152,7 +209,7 @@ function credentialsFromPayload(payload: GoogleTokenPayload, refreshFallback = "
   };
 }
 
-class AntigravityOAuthFlow extends OAuthCallbackFlow {
+export class AntigravityOAuthFlow extends OAuthCallbackFlow {
   #verifier = "";
   #forceAccountSelect: boolean;
 
@@ -198,7 +255,13 @@ class AntigravityOAuthFlow extends OAuthCallbackFlow {
       redirect_uri: redirectUri,
       code_verifier: this.#verifier,
     }, this.ctrl.signal);
-    const creds = credentialsFromPayload(payload);
+    const base = credentialsFromPayload(payload);
+    const identity = await fetchAntigravityIdentity(base.access, this.ctrl.signal);
+    const creds: OAuthCredentials = {
+      ...base,
+      ...(base.email === undefined && identity.email ? { email: identity.email } : {}),
+      ...(identity.accountId ? { accountId: identity.accountId } : {}),
+    };
     this.ctrl.onProgress?.("Discovering Cloud Code Assist project");
     const projectId = await discoverAntigravityProject(creds.access, this.ctrl.signal);
     if (!projectId) {
