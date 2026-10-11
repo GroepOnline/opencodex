@@ -1,6 +1,8 @@
 /** Anthropic OAuth flow (Claude Pro/Max). Ported from jawcode oauth/anthropic.ts. */
 import { OAuthCallbackFlow } from "./callback-server";
+import { oauthErrorDetail } from "./http-errors";
 import { generatePKCE } from "./pkce";
+import { expiryWithSkew, optionalRefreshToken, requireAccessToken, requireExpiresInSeconds } from "./token-response";
 import type { LocalTokenImportMode, OAuthController, OAuthCredentials } from "./types";
 
 const CLIENT_ID = atob("OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl");
@@ -61,8 +63,10 @@ async function postJson(url: string, body: Record<string, string | number>): Pro
     } catch {
       // Best-effort only: malformed error bodies remain structured by HTTP status.
     }
+    // Never echo the raw upstream body: it is unbounded and may reflect request secrets.
+    const detail = oauthErrorDetail(responseBody);
     throw new AnthropicTokenError(
-      `Anthropic OAuth HTTP ${response.status}: ${responseBody}`,
+      `Anthropic OAuth HTTP ${response.status}${detail ? `: ${detail}` : ""}`,
       response.status,
       oauthError,
     );
@@ -71,20 +75,30 @@ async function postJson(url: string, body: Record<string, string | number>): Pro
 }
 
 function parseTokenResponse(responseBody: string): AnthropicTokenResponse {
+  let parsed: unknown;
   try {
-    return JSON.parse(responseBody) as AnthropicTokenResponse;
+    parsed = JSON.parse(responseBody);
   } catch {
-    throw new Error(`Anthropic OAuth returned invalid JSON: ${responseBody.slice(0, 200)}`);
+    // A truncated success body can contain the start of a live token; never include it.
+    throw new Error("Anthropic OAuth returned invalid JSON");
   }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Anthropic OAuth returned an unexpected response shape");
+  }
+  return parsed as AnthropicTokenResponse;
 }
 
+const REFRESH_SKEW_MS = 5 * 60 * 1000;
+
 function credsFrom(data: AnthropicTokenResponse, refreshFallback?: string): OAuthCredentials {
+  const access = requireAccessToken("Anthropic", data.access_token);
+  const expiresInSeconds = requireExpiresInSeconds("Anthropic", data.expires_in);
   const accountUuid = data.account?.uuid;
   const email = data.account?.email_address;
   return {
-    refresh: data.refresh_token || refreshFallback || "",
-    access: data.access_token,
-    expires: Date.now() + data.expires_in * 1000 - 5 * 60 * 1000,
+    refresh: optionalRefreshToken(data.refresh_token) ?? refreshFallback ?? "",
+    access,
+    expires: expiryWithSkew(Date.now(), expiresInSeconds, REFRESH_SKEW_MS),
     accountId: typeof accountUuid === "string" && accountUuid.length > 0 ? accountUuid : undefined,
     email: typeof email === "string" && email.length > 0 ? email : undefined,
   };

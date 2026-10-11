@@ -1,6 +1,8 @@
 import { OAuthCallbackFlow } from "./callback-server";
+import { readOAuthErrorDetail } from "./http-errors";
 import type { OAuthController, OAuthCredentials } from "./types";
 import { generatePKCE } from "./pkce";
+import { optionalRefreshToken, requireAccessToken, requireExpiresInSeconds } from "./token-response";
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const AUTH_URL = "https://auth.openai.com/oauth/authorize";
@@ -9,6 +11,7 @@ const SCOPE = "openid profile email offline_access api.connectors.read api.conne
 const CALLBACK_PORT = 1455;
 const CALLBACK_PATH = "/auth/callback";
 const ORIGINATOR = "opencodex";
+const TOKEN_REQUEST_TIMEOUT_MS = 30_000;
 
 export function decodeJwtPayload(token: string): Record<string, unknown> | undefined {
   const parts = token.split(".");
@@ -46,13 +49,18 @@ export function extractEmail(idToken?: string, accessToken?: string): string | u
   return undefined;
 }
 
-function credsFromToken(data: Record<string, unknown>): OAuthCredentials {
+function credsFromToken(data: Record<string, unknown>, refreshFallback?: string): OAuthCredentials {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("ChatGPT OAuth returned an unexpected response shape");
+  }
   const idToken = typeof data.id_token === "string" ? data.id_token : undefined;
-  const accessToken = data.access_token as string;
+  const accessToken = requireAccessToken("ChatGPT", data.access_token);
+  const expiresInSeconds = requireExpiresInSeconds("ChatGPT", data.expires_in, 3600);
   return {
     access: accessToken,
-    refresh: (data.refresh_token as string) ?? "",
-    expires: Date.now() + ((data.expires_in as number) ?? 3600) * 1000,
+    // A refresh response may omit refresh_token (RFC 6749 §6); keep the one we presented.
+    refresh: optionalRefreshToken(data.refresh_token) ?? refreshFallback ?? "",
+    expires: Date.now() + expiresInSeconds * 1000,
     accountId: extractAccountId(idToken, accessToken),
     email: extractEmail(idToken, accessToken),
   };
@@ -106,6 +114,7 @@ export class ChatGPTOAuthFlow extends OAuthCallbackFlow {
         redirect_uri: redirectUri,
         code_verifier: this.#verifier,
       }).toString(),
+      signal: AbortSignal.timeout(TOKEN_REQUEST_TIMEOUT_MS),
     });
     if (!resp.ok) {
       const errDesc = await safeErrorDescription(resp);
@@ -115,13 +124,8 @@ export class ChatGPTOAuthFlow extends OAuthCallbackFlow {
   }
 }
 
-function safeErrorDescription(resp: Response): Promise<string> {
-  return resp.text().catch(() => "").then(text => {
-    try {
-      const parsed = JSON.parse(text) as { error?: string; error_description?: string };
-      return [parsed.error, parsed.error_description].filter(Boolean).join(": ") || `HTTP ${resp.status}`;
-    } catch { return `HTTP ${resp.status}`; }
-  });
+async function safeErrorDescription(resp: Response): Promise<string> {
+  return (await readOAuthErrorDetail(resp)) || `HTTP ${resp.status}`;
 }
 
 export async function loginChatGPT(ctrl: OAuthController, opts?: { forceLogin?: boolean }): Promise<OAuthCredentials> {
@@ -141,10 +145,11 @@ export async function refreshChatGPTToken(refreshToken: string): Promise<OAuthCr
       client_id: CLIENT_ID,
       refresh_token: refreshToken,
     }).toString(),
+    signal: AbortSignal.timeout(TOKEN_REQUEST_TIMEOUT_MS),
   });
   if (!resp.ok) {
     const errDesc = await safeErrorDescription(resp);
     throw new Error(`ChatGPT refresh failed: ${resp.status} ${errDesc}`);
   }
-  return credsFromToken((await resp.json()) as Record<string, unknown>);
+  return credsFromToken((await resp.json()) as Record<string, unknown>, refreshToken);
 }

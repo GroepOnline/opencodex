@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { recordOwnedConfigPath } from "../lib/config-ownership";
 import { getConfigDir } from "../config";
+import { readOAuthErrorDetail } from "./http-errors";
+import { expiryWithSkew } from "./token-response";
 import type { OAuthController, OAuthCredentials } from "./types";
 
 const CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098";
@@ -13,6 +15,13 @@ const DEVICE_ID_FILENAME = "kimi-device-id";
 const DEFAULT_POLL_INTERVAL_MS = 5000;
 const DEFAULT_DEVICE_FLOW_TTL_MS = 15 * 60 * 1000;
 const OAUTH_EXPIRY_SKEW_MS = 5 * 60 * 1000;
+const REQUEST_TIMEOUT_MS = 30_000;
+
+/** Per-request timeout, additionally honouring the caller's cancellation signal. */
+function requestSignal(signal?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
 const KIMI_CLI_VERSION = "0.14.0";
 
 interface DeviceAuthorizationResponse {
@@ -133,9 +142,11 @@ async function requestDeviceAuthorization(): Promise<{
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", ...getKimiCommonHeaders() },
     body: new URLSearchParams({ client_id: CLIENT_ID }),
+    signal: requestSignal(),
   });
   if (!response.ok) {
-    throw new Error(`Kimi device authorization failed: ${response.status} ${await response.text()}`);
+    const detail = await readOAuthErrorDetail(response);
+    throw new Error(`Kimi device authorization failed: ${response.status}${detail ? ` ${detail}` : ""}`);
   }
   const payload = (await response.json()) as DeviceAuthorizationResponse;
   if (!payload.user_code || !payload.device_code || !payload.verification_uri) {
@@ -151,7 +162,7 @@ async function requestDeviceAuthorization(): Promise<{
 }
 
 function parseTokenPayload(payload: TokenResponse, refreshFallback?: string): OAuthCredentials {
-  if (!payload.access_token || typeof payload.expires_in !== "number") {
+  if (!payload.access_token || typeof payload.expires_in !== "number" || !Number.isFinite(payload.expires_in) || payload.expires_in <= 0) {
     throw new Error("Kimi token response missing required fields");
   }
   const refresh = payload.refresh_token ?? refreshFallback;
@@ -160,7 +171,7 @@ function parseTokenPayload(payload: TokenResponse, refreshFallback?: string): OA
   return {
     access: payload.access_token,
     refresh,
-    expires: Date.now() + payload.expires_in * 1000 - OAUTH_EXPIRY_SKEW_MS,
+    expires: expiryWithSkew(Date.now(), payload.expires_in, OAUTH_EXPIRY_SKEW_MS),
     ...identity,
   };
 }
@@ -174,8 +185,10 @@ async function pollForToken(deviceCode: string, intervalMs: number, expiresInMs:
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", ...getKimiCommonHeaders() },
       body: new URLSearchParams({ client_id: CLIENT_ID, device_code: deviceCode, grant_type: "urn:ietf:params:oauth:grant-type:device_code" }),
+      signal: requestSignal(signal),
     });
-    const payload = (await response.json()) as TokenResponse;
+    // A gateway error page (HTML/empty) must surface as a clear failure, not a SyntaxError.
+    const payload = (await response.json().catch(() => ({}))) as TokenResponse;
     if (response.ok && payload.access_token) return parseTokenPayload(payload);
     const error = payload.error;
     if (error === "authorization_pending") { await sleep(waitMs, signal); continue; }
@@ -204,6 +217,7 @@ export async function refreshKimiToken(refreshToken: string): Promise<OAuthCrede
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", ...getKimiCommonHeaders() },
     body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: CLIENT_ID }),
+    signal: requestSignal(),
   });
   if (!response.ok) {
     const payload = (await response.json().catch(() => undefined)) as TokenResponse | undefined;

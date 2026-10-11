@@ -1,5 +1,5 @@
 import type { KiroOAuthMetadata, OAuthController, OAuthCredentials } from "./types";
-import { parseCallbackInput } from "./callback-server";
+import { validateManualCallbackInput } from "./callback-server";
 import type { OcxConfig, OcxProviderConfig, RefreshPolicy } from "../types";
 import { loadConfig, resolveEnvValue, saveConfig } from "../config";
 import { maskEmail } from "../lib/privacy";
@@ -335,6 +335,8 @@ function authoritative(stored:OAuthCredentials,active:boolean,now:()=>number):OA
 function merged(fresh: OAuthCredentials, previous: OAuthCredentials): OAuthCredentials {
   return {
     ...fresh,
+    // RFC 6749 §6: a refresh response may omit refresh_token, in which case the previous one stays valid.
+    ...(!fresh.refresh && previous.refresh ? { refresh: previous.refresh } : {}),
     source: previous.source === "local-cli" ? "oauth" : fresh.source ?? previous.source ?? "oauth",
     ...(fresh.projectId === undefined && previous.projectId ? { projectId: previous.projectId } : {}),
     ...(fresh.apiBaseUrl === undefined && previous.apiBaseUrl ? { apiBaseUrl: previous.apiBaseUrl } : {}),
@@ -921,12 +923,8 @@ export function submitManualLoginCode(provider: string, input: string): { ok: tr
   // once the flow has registered its expected state. Raw codes stay in-session-PKCE
   // protected. Early posts (flow not yet waiting, no expectedState) are stashed and
   // re-validated by the callback loop.
-  const parsed = parseCallbackInput(trimmed);
-  if (!parsed.code) return { ok: false, error: "no authorization code found in input" };
-  if (parsed.kind !== "raw" && slot.expectedState !== undefined) {
-    if (parsed.state === undefined) return { ok: false, error: "redirect URL is missing the state parameter" };
-    if (parsed.state !== slot.expectedState) return { ok: false, error: "state mismatch — paste the redirect URL from THIS login attempt" };
-  }
+  const validated = validateManualCallbackInput(trimmed, slot.expectedState);
+  if (!validated.ok) return { ok: false, error: validated.error };
   if (slot.resolve) {
     const resolve = slot.resolve;
     slot.resolve = undefined;
