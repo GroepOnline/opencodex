@@ -21,6 +21,8 @@ on:
       - ".github/workflows/enforce-pr-target.yml"
       - ".github/workflows/pr-labeler.yml"
       - ".github/workflows/issue-triage.yml"
+      - ".github/workflows/stale-needs-info.yml"
+      - ".github/scripts/issue-workflow-runner.test.cjs"
       - ".github/workflows/issue-quality-tests.yml"
   push:
     paths:
@@ -42,6 +44,8 @@ on:
       - ".github/workflows/enforce-pr-target.yml"
       - ".github/workflows/pr-labeler.yml"
       - ".github/workflows/issue-triage.yml"
+      - ".github/workflows/stale-needs-info.yml"
+      - ".github/scripts/issue-workflow-runner.test.cjs"
       - ".github/workflows/issue-quality-tests.yml"
 
 permissions:
@@ -66,6 +70,7 @@ jobs:
           node --test .github/scripts/enforce-pr-target.test.cjs
           node --test .github/scripts/issue-translation.test.cjs
           node --test .github/scripts/issue-triage.test.cjs
+          node --test .github/scripts/issue-workflow-runner.test.cjs
           node --test .github/scripts/parse-issue-translation-response.test.cjs
 
       - name: Validate issue-form YAML

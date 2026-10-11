@@ -29,7 +29,7 @@ jobs:
   translate:
     name: Translate non-English issues
     if: github.event_name == 'issues' || github.event_name == 'workflow_dispatch'
-    runs-on: [self-hosted, Linux, X64, jan]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     # Serialize per-issue control-state RMW; workflow concurrency still cancels
     # superseded runs, but this queue avoids interleaved comment upserts.
@@ -45,7 +45,7 @@ jobs:
       models: read
     steps:
       - name: Checkout trusted workflow code
-        # Avoid intermittent HTTP/2 framing errors during promisor-object fetches on jan.
+        # Keep HTTP/1.1 scoped to this trusted checkout; do not affect other jobs.
         # Scope this Git transport setting to the trusted checkout only.
         env:
           GIT_CONFIG_COUNT: "1"
@@ -416,7 +416,7 @@ jobs:
   translate-comment:
     name: Translate non-English issue comments
     if: github.event_name == 'issue_comment'
-    runs-on: [self-hosted, Linux, X64, jan]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
       # Shares the per-issue queue with the `translate` job: both jobs RMW the
@@ -432,7 +432,7 @@ jobs:
       models: read
     steps:
       - name: Checkout trusted workflow code
-        # Avoid intermittent HTTP/2 framing errors during promisor-object fetches on jan.
+        # Keep HTTP/1.1 scoped to this trusted checkout; do not affect other jobs.
         # Scope this Git transport setting to the trusted checkout only.
         env:
           GIT_CONFIG_COUNT: "1"
@@ -701,7 +701,7 @@ jobs:
 
   validate:
     if: github.event_name == 'issues' || github.event_name == 'workflow_dispatch'
-    runs-on: [self-hosted, Linux, X64, jan]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
@@ -710,7 +710,7 @@ jobs:
 
     steps:
       - name: Checkout trusted workflow code
-        # Avoid intermittent HTTP/2 framing errors during promisor-object fetches on jan.
+        # Keep HTTP/1.1 scoped to this trusted checkout; do not affect other jobs.
         # Scope this Git transport setting to the trusted checkout only.
         env:
           GIT_CONFIG_COUNT: "1"
