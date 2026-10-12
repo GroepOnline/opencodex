@@ -20,6 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../config";
 import { commandInvocation } from "../lib/win-exec";
+import { configuredAdminToken } from "../lib/admin-secrets";
 import { findLiveProxy } from "../server/proxy-liveness";
 import type { OcxConfig } from "../types";
 
@@ -112,7 +113,11 @@ export async function fetchDroidModels(
   timeoutMs = 4_000,
 ): Promise<DroidRoutedModel[]> {
   try {
+    const headers = new Headers();
+    const token = configuredAdminToken();
+    if (token) headers.set("x-opencodex-api-key", token);
     const res = await fetch(`http://127.0.0.1:${port}/api/models`, {
+      headers,
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) return [];
