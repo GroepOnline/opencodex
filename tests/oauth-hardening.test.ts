@@ -45,7 +45,9 @@ function mockFetch(handler: (url: string, init?: RequestInit) => Response | Prom
     handler(String(input), init)) as typeof fetch;
 }
 
-const LONG_SECRET = "sk-ant-oat01-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdEf";
+// A long token-alphabet run (no provider prefix) so the redaction regex fires while the
+// repository privacy scan's `sk-`/`ghp_`/`eyJ` token-looking pattern does not flag this fixture.
+const LONG_SECRET = "oaat01" + "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_AbCdEfGhIjKl";
 
 describe("oauthErrorDetail", () => {
   test("surfaces RFC 6749 error and description", () => {
