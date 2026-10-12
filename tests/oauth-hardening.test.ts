@@ -72,6 +72,7 @@ describe("oauthErrorDetail", () => {
   test("caps each field and strips control characters", () => {
     const detail = oauthErrorDetail(JSON.stringify({ error: "x", error_description: `a\nb\u0000${"word ".repeat(200)}` }));
     expect(detail.length).toBeLessThan(260);
+    // eslint-disable-next-line no-control-regex -- asserting control chars are stripped
     expect(detail).not.toMatch(/[\u0000-\u001f]/);
   });
 
@@ -189,7 +190,6 @@ function randomPort(): number {
 
 describe("OAuth callback server", () => {
   test("callback responses are uncacheable, unframeable and leak no referrer", async () => {
-    let flow!: RecordingFlow;
     const ctrl: OAuthController = {
       onAuth: () => {
         void (async () => {
@@ -204,14 +204,13 @@ describe("OAuth callback server", () => {
         })();
       },
     };
-    flow = new RecordingFlow(ctrl, randomPort(), "/callback");
+    const flow = new RecordingFlow(ctrl, randomPort(), "/callback");
     await flow.login();
     expect(flow.exchanged).toHaveLength(1);
     expect(flow.exchanged[0]?.code).toBe("the-code");
   });
 
   test("404 and mismatched-state responses carry the same protective headers and do not consume the flow", async () => {
-    let flow!: RecordingFlow;
     const seen: Array<{ status: number; cacheControl: string | null }> = [];
     const ctrl: OAuthController = {
       onAuth: () => {
@@ -225,7 +224,7 @@ describe("OAuth callback server", () => {
         })();
       },
     };
-    flow = new RecordingFlow(ctrl, randomPort(), "/callback");
+    const flow = new RecordingFlow(ctrl, randomPort(), "/callback");
     await flow.login();
     expect(seen).toEqual([
       { status: 404, cacheControl: "no-store" },
@@ -235,7 +234,6 @@ describe("OAuth callback server", () => {
   });
 
   test("manual paste with a foreign code#state is ignored and the matching paste wins", async () => {
-    let flow!: RecordingFlow;
     let pastes = 0;
     const ctrl: OAuthController = {
       onManualCodeInput: async (expectedState?: string) => {
@@ -244,7 +242,7 @@ describe("OAuth callback server", () => {
         return `fresh-code#${expectedState}`;
       },
     };
-    flow = new RecordingFlow(ctrl, randomPort(), "/callback");
+    const flow = new RecordingFlow(ctrl, randomPort(), "/callback");
     await flow.login();
     expect(pastes).toBe(2);
     expect(flow.exchanged).toHaveLength(1);
