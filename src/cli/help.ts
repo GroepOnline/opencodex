@@ -2,9 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = dirname(
-  fileURLToPath(new URL("../../package.json", import.meta.url)),
-);
+const repoRoot = dirname(fileURLToPath(new URL("../../package.json", import.meta.url)));
 
 type HelpEntry = {
   usage: string;
@@ -13,37 +11,22 @@ type HelpEntry = {
 };
 
 const helpEntries: Record<string, HelpEntry> = {
-  init: {
-    usage: "ocx init",
-    summary: "Interactive setup for providers and Codex config injection.",
-  },
-  setup: {
-    usage: "ocx setup",
-    summary:
-      "Interactive setup for providers and Codex config injection (alias of init).",
-  },
+  init: { usage: "ocx init", summary: "Interactive setup for providers and Codex config injection." },
+  setup: { usage: "ocx setup", summary: "Interactive setup for providers and Codex config injection (alias of init)." },
   start: {
     usage: "ocx start [--port <port>] [--proxy-only]",
     summary: "Start the provider proxy; Codex is optional.",
-    details: [
-      "--proxy-only skips client config, shell-hook, Codex journal/history, and launcher changes.",
-      "Without it, existing client integrations are synchronized; an absent Codex config is skipped.",
-    ],
+    details: ["--proxy-only skips client config, shell-hook, Codex journal/history, and launcher changes.",
+      "Without it, existing client integrations are synchronized; an absent Codex config is skipped."],
   },
-  stop: {
-    usage: "ocx stop",
-    summary:
-      "Stop the proxy; proxy-only mode leaves client configuration unchanged.",
-  },
+  stop: { usage: "ocx stop", summary: "Stop the proxy; proxy-only mode leaves client configuration unchanged." },
   restore: {
     usage: "ocx restore [back]",
-    summary:
-      "Restore native Codex config without stopping the proxy; `restore back` re-points codex at the running proxy.",
+    summary: "Restore native Codex config without stopping the proxy; `restore back` re-points codex at the running proxy.",
   },
   eject: {
     usage: "ocx eject [back]",
-    summary:
-      "Restore native Codex config without stopping the proxy; `eject back` re-points codex at the running proxy.",
+    summary: "Restore native Codex config without stopping the proxy; `eject back` re-points codex at the running proxy.",
   },
   "recover-history": {
     usage: "ocx recover-history --legacy-openai",
@@ -79,8 +62,7 @@ const helpEntries: Record<string, HelpEntry> = {
     details: ["Use `remove` as an alias for `uninstall`."],
   },
   tray: {
-    usage:
-      "ocx tray <install|start|stop|status|uninstall|remove> [--json] [--no-start]",
+    usage: "ocx tray <install|start|stop|status|uninstall|remove> [--json] [--no-start]",
     summary: "Install and control the Windows status tray icon.",
     details: [
       "The tray starts at Windows login and provides one-click proxy controls.",
@@ -88,14 +70,10 @@ const helpEntries: Record<string, HelpEntry> = {
       "--no-start (install only) installs the tray without launching it immediately.",
     ],
   },
-  ensure: {
-    usage: "ocx ensure",
-    summary: "Ensure the proxy is running and Codex config/cache are current.",
-  },
+  ensure: { usage: "ocx ensure", summary: "Ensure the proxy is running and Codex config/cache are current." },
   sync: {
     usage: "ocx sync [--desktop-only | --codex-only] [--restart-codex]",
-    summary:
-      "Synchronize configured clients independently; no restart is required.",
+    summary: "Synchronize configured clients independently; no restart is required.",
     details: [
       "Default: sync an existing OCX Desktop library and configured Codex; absent Codex is skipped.",
       "--desktop-only explicitly syncs Desktop without touching Codex; --codex-only targets Codex.",
@@ -112,39 +90,25 @@ const helpEntries: Record<string, HelpEntry> = {
     ],
   },
   status: { usage: "ocx status", summary: "Check proxy server status." },
-  doctor: {
-    usage: "ocx doctor",
-    summary:
-      "Diagnose environment/network issues (paths, WSL /mnt, proxy env, ChatGPT reachability).",
-  },
+  doctor: { usage: "ocx doctor", summary: "Diagnose environment/network issues (paths, WSL /mnt, proxy env, ChatGPT reachability)." },
   debug: {
-    usage:
-      "ocx debug <provider|usage|injection|claude> <on|off|status|reset|logs [-f]>",
-    summary:
-      "Show or toggle runtime provider, usage, injection, and Claude debug capture.",
+    usage: "ocx debug <provider|usage|injection|claude> <on|off|status|reset|logs [-f]>",
+    summary: "Show or toggle runtime provider, usage, injection, and Claude debug capture.",
     details: [
       "Provider: ocx debug provider on | off | status | reset | logs [-f]",
       "Usage JSONL: ocx debug usage on | off | status | reset | logs [-f]",
       "Env default: OCX_DEBUG=1 (legacy OCX_DEBUG_FRAMES still works)",
     ],
   },
-  login: {
-    usage: "ocx login <provider>",
-    summary: "OAuth or API-key login for a provider.",
-  },
-  logout: {
-    usage: "ocx logout <provider>",
-    summary: "Remove a stored provider login.",
-  },
+  login: { usage: "ocx login <provider>", summary: "OAuth or API-key login for a provider." },
+  logout: { usage: "ocx logout <provider>", summary: "Remove a stored provider login." },
   gui: { usage: "ocx gui", summary: "Open the opencodex dashboard." },
   update: {
     usage: "ocx update [--tag latest|preview]",
-    summary:
-      "Update opencodex. Preview installs stay on the preview tag unless overridden.",
+    summary: "Update opencodex. Preview installs stay on the preview tag unless overridden.",
   },
   provider: {
-    usage:
-      "ocx provider <list|add|edit|test|remove|show|set-default|selected|quota|presets|account-mode>",
+    usage: "ocx provider <list|add|edit|test|remove|show|set-default|selected|quota|presets|account-mode>",
     summary: "Non-interactive provider management.",
     details: [
       "Subcommands: list, add/edit/test/remove/show, set-default, selected, quota, presets, account-mode",
@@ -153,10 +117,8 @@ const helpEntries: Record<string, HelpEntry> = {
     ],
   },
   account: {
-    usage:
-      "ocx account <list|current|use|refresh|auto-switch|login|reauth|code|cancel|remove|add-key|reset-credits> ...",
-    summary:
-      "List and switch provider accounts and API-key pools (GUI parity).",
+    usage: "ocx account <list|current|use|refresh|auto-switch|login|reauth|code|cancel|remove|add-key|reset-credits> ...",
+    summary: "List and switch provider accounts and API-key pools (GUI parity).",
     details: [
       "list [provider]     Codex account pool, OAuth accounts and API keys (identifiers shown masked as the API returns them).",
       "current <provider>  Show the active account or key.",
@@ -171,8 +133,7 @@ const helpEntries: Record<string, HelpEntry> = {
     ],
   },
   models: {
-    usage:
-      "ocx models <list|live|add|edit|remove|enable|disable|provider|selected|context|shadow> ...",
+    usage: "ocx models <list|live|add|edit|remove|enable|disable|provider|selected|context|shadow> ...",
     summary: "List models and manage custom (manually registered) models.",
     details: [
       "List available models from static config with no subcommand (liveModels may add more at runtime).",
@@ -192,91 +153,53 @@ const helpEntries: Record<string, HelpEntry> = {
   combo: {
     usage: "ocx combo <list|show|set|remove> ...",
     summary: "Manage combo failover and round-robin virtual models.",
-    details: [
-      "Alias hierarchy: ocx route combo ...",
-      "Use --targets provider/model[:weight],provider/model[:weight].",
-    ],
+    details: ["Alias hierarchy: ocx route combo ...", "Use --targets provider/model[:weight],provider/model[:weight]."],
   },
   route: {
     usage: "ocx route combo <list|show|set|remove> ...",
-    summary:
-      "Manage routing features; combo is currently the supported routing resource.",
+    summary: "Manage routing features; combo is currently the supported routing resource.",
   },
   agent: {
     usage: "ocx agent <status|injection|effort|subagents|fallback|sidecar> ...",
-    summary:
-      "Manage headless multi-agent, roster, effort, injection, and sidecar settings.",
+    summary: "Manage headless multi-agent, roster, effort, injection, and sidecar settings.",
   },
   observe: {
-    usage:
-      "ocx observe <logs|usage|storage|memory|cache|debug|claude-inbound|injection> ...",
-    summary:
-      "Inspect proxy requests, usage, storage, memory, response cache, and debug data.",
+    usage: "ocx observe <logs|usage|storage|memory|cache|debug|claude-inbound|injection> ...",
+    summary: "Inspect proxy requests, usage, storage, memory, response cache, and debug data.",
   },
   trace: {
     usage: "ocx trace <list|show> ...",
-    summary:
-      "Inspect locally stored request traces without exposing payloads by default.",
+    summary: "Inspect locally stored request traces without exposing payloads by default.",
     details: [
       "list [--conversation <id>] [--limit <n>] [--json]",
       "show <trace-id> [--body] [--json]",
       "Bodies are never printed unless --body is provided; --json alone remains metadata-only.",
     ],
   },
-  logs: {
-    usage: "ocx logs [filters] [--follow] [--json|--jsonl]",
-    summary: "Alias of ocx observe logs.",
-  },
-  usage: {
-    usage:
-      "ocx usage [--range <7d|30d|all>] [--surface <all|codex|claude|grok>] [--json]",
-    summary: "Alias of ocx observe usage.",
-  },
-  storage: {
-    usage: "ocx storage [--json]",
-    summary: "Alias of ocx observe storage.",
-  },
-  memory: {
-    usage: "ocx memory [--json]",
-    summary: "Alias of ocx observe memory.",
-  },
-  cache: {
-    usage: "ocx cache [--json]",
-    summary: "Alias of ocx observe cache. Clear with: ocx cache clear --yes",
-  },
+  logs: { usage: "ocx logs [filters] [--follow] [--json|--jsonl]", summary: "Alias of ocx observe logs." },
+  usage: { usage: "ocx usage [--range <7d|30d|all>] [--surface <all|codex|claude|grok>] [--json]", summary: "Alias of ocx observe usage." },
+  storage: { usage: "ocx storage [--json]", summary: "Alias of ocx observe storage." },
+  memory: { usage: "ocx memory [--json]", summary: "Alias of ocx observe memory." },
+  cache: { usage: "ocx cache [--json]", summary: "Alias of ocx observe cache. Clear with: ocx cache clear --yes" },
   access: {
     usage: "ocx access <key|endpoints|models|test> ...",
-    summary:
-      "Manage OpenCodex admission API keys and inspect external endpoints.",
+    summary: "Manage OpenCodex admission API keys and inspect external endpoints.",
   },
-  "api-key": {
-    usage: "ocx api-key <list|create|remove> ...",
-    summary: "Alias of ocx access key.",
-  },
-  grok: {
-    usage: "ocx grok <status|exclude|include|set|clear|apply> ...",
-    summary: "Manage and apply the Grok Build model fence.",
-  },
-  integration: {
-    usage: "ocx integration <claude|grok> ...",
-    summary: "Manage supported client integrations.",
-  },
+  "api-key": { usage: "ocx api-key <list|create|remove> ...", summary: "Alias of ocx access key." },
+  grok: { usage: "ocx grok <status|exclude|include|set|clear|apply> ...", summary: "Manage and apply the Grok Build model fence." },
+  integration: { usage: "ocx integration <claude|grok> ...", summary: "Manage supported client integrations." },
   system: {
     usage: "ocx system <status|settings|startup|diagnostics|sync|update> ...",
-    summary:
-      "Manage headless runtime settings, startup, sync, diagnostics, and updates.",
+    summary: "Manage headless runtime settings, startup, sync, diagnostics, and updates.",
   },
   config: {
     usage: "ocx config <show|get|set|unset|validate|export|import> ...",
     summary: "Inspect and safely modify validated OpenCodex configuration.",
-    details: [
-      "Secrets are masked by show/get. Import requires --yes and validates before writing.",
-    ],
+    details: ["Secrets are masked by show/get. Import requires --yes and validates before writing."],
   },
   claude: {
     usage: "ocx claude [claude args...]",
-    summary:
-      "Launch Claude Code wired to the proxy (env injection + gateway model discovery).",
+    summary: "Launch Claude Code wired to the proxy (env injection + gateway model discovery).",
     details: [
       "Ensures the proxy is running, then execs `claude` with ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN,",
       "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1 and model slots from config.claudeCode.",
@@ -316,8 +239,7 @@ const helpEntries: Record<string, HelpEntry> = {
   },
   droid: {
     usage: "ocx droid [droid args...]",
-    summary:
-      "Launch Factory Droid wired to the proxy (OCX-first BYOK, non-destructive).",
+    summary: "Launch Factory Droid wired to the proxy (OCX-first BYOK, non-destructive).",
     details: [
       "Ensures the proxy is running, then execs `droid` with an isolated `--settings` overlay",
       "carrying the OCX endpoint and its client-visible model table. `~/.factory/settings.json`",
@@ -330,8 +252,7 @@ const helpEntries: Record<string, HelpEntry> = {
   },
   restart: {
     usage: "ocx restart",
-    summary:
-      "Stop and restart the proxy in the background, preserving proxy-only mode.",
+    summary: "Stop and restart the proxy in the background, preserving proxy-only mode.",
   },
   v2: {
     usage: "ocx v2 <status|on|off|mode <v1|default|v2>|threads <n>>",
@@ -419,9 +340,7 @@ Examples:
 }
 
 export function hasHelpFlag(values: string[]): boolean {
-  return values.some(
-    (value) => value === "--help" || value === "-h" || value === "help",
-  );
+  return values.some(value => value === "--help" || value === "-h" || value === "help");
 }
 
 export function printSubcommandUsage(name: string | undefined): void {
