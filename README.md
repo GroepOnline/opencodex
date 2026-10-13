@@ -174,7 +174,7 @@ See [management API](./docs-site/src/content/docs/reference/management-api.md), 
 
 ## Development and releases
 
-Developing from source requires Bun on your PATH:
+Source development requires the `bun` CLI on your `PATH`. This is separate from the published npm package's bundled Bun runtime, which is used only by installed `ocx` commands.
 
 ```bash
 git clone https://github.com/GroepOnline/opencodex.git
