@@ -8,6 +8,7 @@
  * Handles: port allocation (preferred → random fallback), callback server, CSRF state,
  * manual-input race, 300s timeout. Providers implement generateAuthUrl() + exchangeToken().
  */
+import { timingSafeEqual } from "node:crypto";
 import { isAddrInUse } from "../server/ports";
 import type { OAuthController, OAuthCredentials } from "./types";
 
@@ -20,6 +21,25 @@ const SUCCESS_HTML =
   "<!doctype html><html><head><meta charset='utf-8'><title>opencodex</title></head>" +
   "<body style='font-family:system-ui,sans-serif;text-align:center;padding:4rem;color:#111'>" +
   "<h2>&#9989; Login complete</h2><p>You can close this tab and return to opencodex.</p></body></html>";
+
+/**
+ * The callback URL carries the authorization code in its query string. The response must not be
+ * cached, must not leak that URL through Referer, and must not be sniffed, framed or load anything.
+ */
+const CALLBACK_RESPONSE_HEADERS = {
+  "Cache-Control": "no-store",
+  "Referrer-Policy": "no-referrer",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
+} as const;
+
+/** Constant-time comparison for CSRF state values. */
+function stateEquals(actual: string, expected: string): boolean {
+  const left = Buffer.from(actual);
+  const right = Buffer.from(expected);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
@@ -171,7 +191,10 @@ export abstract class OAuthCallbackFlow {
   #handleCallback(req: Request, expectedState: string): Response {
     const url = new URL(req.url);
     if (url.pathname !== this.callbackPath) {
-      return new Response("Not Found", { status: 404 });
+      return new Response("Not Found", {
+        status: 404,
+        headers: { ...CALLBACK_RESPONSE_HEADERS, "Content-Type": "text/plain; charset=utf-8" },
+      });
     }
 
     const code = url.searchParams.get("code");
@@ -182,7 +205,7 @@ export abstract class OAuthCallbackFlow {
     let ok = false;
     let consumeFlow = false;
     let errMessage = "";
-    const stateMatches = !expectedState || state === expectedState;
+    const stateMatches = !expectedState || stateEquals(state, expectedState);
     if (error) {
       errMessage = `Authorization failed: ${errorDescription}`;
       consumeFlow = stateMatches;
@@ -210,7 +233,7 @@ export abstract class OAuthCallbackFlow {
 
     return new Response(ok ? SUCCESS_HTML : errorHtml(errMessage), {
       status: ok ? 200 : consumeFlow ? 500 : 400,
-      headers: { "Content-Type": "text/html" },
+      headers: { ...CALLBACK_RESPONSE_HEADERS, "Content-Type": "text/html; charset=utf-8" },
     });
   }
 
@@ -237,14 +260,9 @@ export abstract class OAuthCallbackFlow {
             callbackPromise,
             requestManualInput(expectedState)
               .then((input): CallbackResult | null => {
-                const parsed = parseCallbackInput(input);
-                if (!parsed.code) return null;
-                // Kind-aware state enforcement: url/query-shaped input is an authorization
-                // RESPONSE and must carry a matching state — missing state is rejected, not
-                // downgraded to raw. Only a syntactically raw code (same PKCE session) is
-                // exempt, so the CLI/GUI paste fallback still works.
-                if (parsed.kind !== "raw" && expectedState && parsed.state !== expectedState) return null;
-                return { code: parsed.code, state: parsed.state ?? expectedState };
+                const validated = validateManualCallbackInput(input, expectedState);
+                if (!validated.ok) return null;
+                return { code: validated.code, state: validated.state ?? expectedState };
               })
               .catch((): CallbackResult | null => null),
           ]);
@@ -291,4 +309,37 @@ export function parseCallbackInput(input: string): { kind: "url" | "query" | "ra
   // Assume raw code, possibly with state after #
   const [code, state] = value.split("#", 2);
   return { kind: "raw", code, state };
+}
+
+export type ManualCallbackValidation =
+  | { ok: true; code: string; state?: string }
+  | { ok: false; error: string };
+
+/**
+ * Validate a pasted redirect URL / query string / raw code against this login attempt's CSRF
+ * state. Shared by the CLI/GUI paste fallback and the GUI submit endpoint so they cannot drift.
+ *
+ * - url/query input is an authorization RESPONSE and must carry a matching state; a missing state
+ *   is rejected, not downgraded to raw.
+ * - A raw code with an explicit `code#state` suffix (the format Claude's manual page displays)
+ *   states which attempt it belongs to, so a non-matching suffix is rejected too.
+ * - A raw code with no state stays accepted: it is still bound to this attempt by PKCE.
+ *
+ * When `expectedState` is unknown (an early paste before the flow registered it) state checks are
+ * skipped here and re-run once the flow is waiting.
+ */
+export function validateManualCallbackInput(input: string, expectedState?: string): ManualCallbackValidation {
+  const parsed = parseCallbackInput(input);
+  if (!parsed.code) return { ok: false, error: "no authorization code found in input" };
+  if (expectedState) {
+    if (parsed.kind !== "raw") {
+      if (parsed.state === undefined) return { ok: false, error: "redirect URL is missing the state parameter" };
+      if (!stateEquals(parsed.state, expectedState)) {
+        return { ok: false, error: "state mismatch — paste the redirect URL from THIS login attempt" };
+      }
+    } else if (parsed.state && !stateEquals(parsed.state, expectedState)) {
+      return { ok: false, error: "state mismatch — paste the redirect URL from THIS login attempt" };
+    }
+  }
+  return { ok: true, code: parsed.code, ...(parsed.state ? { state: parsed.state } : {}) };
 }

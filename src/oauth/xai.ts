@@ -1,5 +1,6 @@
 /** xAI OAuth flow (Grok account login). Ported from jawcode oauth/xai.ts. */
 import { OAuthCallbackFlow, type OAuthCallbackFlowOptions } from "./callback-server";
+import { readOAuthErrorDetail } from "./http-errors";
 import { generatePKCE } from "./pkce";
 import type { LocalTokenImportMode, OAuthController, OAuthCredentials } from "./types";
 
@@ -59,7 +60,8 @@ export async function discoverXaiOAuthEndpoints(signal?: AbortSignal): Promise<X
     signal: requestSignal(signal),
   });
   if (!response.ok) {
-    throw new Error(`xAI OAuth discovery failed: ${response.status} ${await response.text()}`);
+    const detail = await readOAuthErrorDetail(response);
+    throw new Error(`xAI OAuth discovery failed: ${response.status}${detail ? ` ${detail}` : ""}`);
   }
 
   const payload = (await response.json()) as XaiDiscoveryPayload;
