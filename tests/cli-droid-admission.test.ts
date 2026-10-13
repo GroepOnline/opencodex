@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildDroidSettingsOverlay,
   droidAdmissionEnvironment,
+  droidByokCompatibleModels,
 } from "../src/cli/droid";
 import type { OcxConfig } from "../src/types";
 
@@ -95,5 +96,61 @@ describe("ocx droid secret-free data-plane admission", () => {
     );
     expect(admission.apiKeyRef).toBe("${OCX_ADMISSION_TOKEN}");
     expect(original).not.toHaveProperty("OCX_ADMISSION_TOKEN");
+  });
+});
+
+describe("ocx droid Codex Direct credential boundary", () => {
+  const routed = [
+    { provider: "openai", id: "openai/gpt-6-astra" },
+    { provider: "zai", id: "zai/glm-5.3-flash" },
+    { provider: "openai-apikey", id: "openai-apikey/gpt-6-api" },
+  ];
+
+  const openaiDirectConfig = {
+    ...config,
+    providers: {
+      ...config.providers,
+      openai: {
+        ...config.providers.openai,
+        codexAccountMode: "direct",
+      },
+    },
+  } as OcxConfig;
+
+  test("hides only Direct OpenAI routes instead of forwarding OCX admission as caller OAuth", () => {
+    const before = structuredClone(routed);
+    expect(droidByokCompatibleModels(openaiDirectConfig, routed)).toEqual([
+      routed[1],
+      routed[2],
+    ]);
+    expect(routed).toEqual(before);
+  });
+
+  test("does not offer a Direct-only catalog to Factory BYOK", () => {
+    expect(
+      droidByokCompatibleModels(openaiDirectConfig, [routed[0]!]),
+    ).toEqual([]);
+  });
+
+  test("retains OpenAI pool routes and other providers", () => {
+    const pool = {
+      ...openaiDirectConfig,
+      providers: {
+        ...openaiDirectConfig.providers,
+        openai: {
+          ...openaiDirectConfig.providers.openai,
+          codexAccountMode: "pool",
+        },
+      },
+    } as OcxConfig;
+    expect(droidByokCompatibleModels(pool, routed)).toEqual(routed);
+  });
+
+  test("does not classify an explicitly disabled Codex pool subsystem as Direct", () => {
+    const standalone = {
+      ...openaiDirectConfig,
+      codexAccountPools: false,
+    } as OcxConfig;
+    expect(droidByokCompatibleModels(standalone, routed)).toEqual(routed);
   });
 });

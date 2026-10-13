@@ -22,6 +22,7 @@ import { join } from "node:path";
 import { loadConfig } from "../config";
 import { commandInvocation } from "../lib/win-exec";
 import { configuredAdminToken } from "../lib/admin-secrets";
+import { providerCodexAccountMode } from "../providers/registry";
 import { findLiveProxy } from "../server/proxy-liveness";
 import type { OcxConfig } from "../types";
 
@@ -49,6 +50,24 @@ export interface DroidRoutedModel {
   id: string;
   displayName?: string;
   inputModalities?: string[];
+}
+
+/**
+ * A Factory BYOK API key is an OCX data-plane admission token, not the
+ * caller's ChatGPT OAuth bearer required by Codex Direct. Keep these
+ * different credential classes separate: skip Direct OpenAI routes instead
+ * of ever forwarding the proxy admission token to upstream Codex.
+ */
+export function droidByokCompatibleModels(
+  config: OcxConfig,
+  models: readonly DroidRoutedModel[],
+): DroidRoutedModel[] {
+  const usesDirectOpenAi =
+    providerCodexAccountMode("openai", config.providers.openai, config) ===
+    "direct";
+  return models.filter(
+    (model) => !(usesDirectOpenAi && model.provider === "openai"),
+  );
 }
 
 /**
@@ -238,10 +257,18 @@ export async function cmdDroid(args: string[]): Promise<number> {
     console.error("❌ Proxy did not become healthy after starting.");
     return 1;
   }
-  const models = await fetchDroidModels(port);
+  const discovered = await fetchDroidModels(port);
+  const models = droidByokCompatibleModels(config, discovered);
+  if (models.length !== discovered.length) {
+    console.error(
+      `⚠️ Skipped ${discovered.length - models.length} Codex Direct model(s): Factory BYOK cannot supply the required caller ChatGPT credential.`,
+    );
+  }
   if (models.length === 0) {
     console.error(
-      "❌ No OCX-routed models available; refusing to launch Droid with an empty catalog.",
+      discovered.length > 0
+        ? "❌ No Droid-compatible OCX models available; select a pool or non-Direct provider."
+        : "❌ No OCX-routed models available; refusing to launch Droid with an empty catalog.",
     );
     return 1;
   }
