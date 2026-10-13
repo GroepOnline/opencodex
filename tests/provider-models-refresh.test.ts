@@ -6,7 +6,10 @@ import { handleManagementAPI } from "../src/server/management-api";
 import { saveConfig } from "../src/config";
 import {
   clearModelCache,
+  getProviderDiscoveryStatus,
+  isModelsFetchCoolingDown,
   markModelsFetchFailure,
+  markProviderDiscoveryFailed,
   setCached,
 } from "../src/codex/model-cache";
 import type { OcxConfig, OcxProviderConfig } from "../src/types";
@@ -187,7 +190,14 @@ describe("POST /api/providers/models/refresh", () => {
     const config = baseConfig({
       frozen: liveChat({ liveModels: false, models: ["only-configured"] }),
     });
+    // Static reads must not change an earlier discovery status or its cooldown.
+    markProviderDiscoveryFailed("frozen", { reason: "network" });
+    markModelsFetchFailure("frozen");
+    const discoveryBefore = getProviderDiscoveryStatus("frozen");
+    expect(isModelsFetchCoolingDown("frozen")).toBe(true);
     const { body, catalogRefreshCount } = await refresh(config, "frozen");
+    expect(getProviderDiscoveryStatus("frozen")).toEqual(discoveryBefore);
+    expect(isModelsFetchCoolingDown("frozen")).toBe(true);
     expect(body.ok).toBe(true);
     expect(body.source).toBe("static");
     expect(body.models).toEqual(["only-configured"]);

@@ -484,7 +484,7 @@ export async function fetchProviderModels(name: string, prov: OcxProviderConfig,
   );
   if (prov.adapter === "cursor") {
     if (prov.liveModels === false) {
-      clearProviderDiscoveryStatus(name);
+      // Static catalog reads must not erase live-discovery state or backoff.
       return configured;
     }
     if (!apiKey) return configured;
@@ -522,7 +522,8 @@ export async function fetchProviderModels(name: string, prov: OcxProviderConfig,
     return configured;
   }
   if (prov.liveModels === false) {
-    clearProviderDiscoveryStatus(name);
+    // The explicit provider-config update already clears stale state when switching modes.
+    // A static refresh is read-only with respect to the live discovery status and backoff.
     return configured;
   }
   const fresh = getFreshCached(name, ttlMs);
