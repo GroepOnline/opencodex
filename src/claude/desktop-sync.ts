@@ -101,11 +101,7 @@ async function syncLibrary(options: DesktopSyncOptions): Promise<DesktopSyncResu
   const library = options.libraryPath ?? resolveDesktop3pConfigLibraryPath();
   assertLibraryDirectory(library);
   const metaPath = join(library, "_meta.json");
-  assertRegularFile(metaPath);
-  const originalMeta = existsSync(metaPath) ? readFileSync(metaPath, "utf8") : null;
-  const localMeta: unknown = originalMeta === null ? {} : JSON.parse(originalMeta);
-  if (!object(localMeta)) throw new DesktopSyncError("Claude Desktop sync configuration has an invalid shape");
-  const entries = Array.isArray(localMeta.entries) ? localMeta.entries.filter(object) : [];
+  const { entries } = readLocalMeta(metaPath);
   if (options.automatic && !entries.some(entry => entry.name === "opencodex")) {
     return { status: "skipped", models: 0 };
   }
@@ -161,9 +157,28 @@ async function syncLibrary(options: DesktopSyncOptions): Promise<DesktopSyncResu
   const appliedId = payload.appliedId;
   const remoteConfig = payload.config;
   // Apply and sync share one lock so their _meta.json read-modify-write cycles cannot interleave.
-  return withDesktopLibraryLock(() => writeLibrary(
-    library, metaPath, localMeta, entries, originalMeta, appliedId, remoteConfig, base.origin, options.fileIO,
-  ));
+  // Re-read inside the lock: the snapshot taken above predates the network round-trips, so a concurrent
+  // apply or sync may have rewritten _meta.json since. Passing the stale snapshot would only trip
+  // writeLibrary's changed-during-sync guard after the lock was already held.
+  return withDesktopLibraryLock(() => {
+    const current = readLocalMeta(metaPath);
+    return writeLibrary(
+      library, metaPath, current.localMeta, current.entries, current.originalMeta, appliedId, remoteConfig, base.origin, options.fileIO,
+    );
+  });
+}
+
+function readLocalMeta(metaPath: string): {
+  originalMeta: string | null;
+  localMeta: Record<string, unknown>;
+  entries: Record<string, unknown>[];
+} {
+  assertRegularFile(metaPath);
+  const originalMeta = existsSync(metaPath) ? readFileSync(metaPath, "utf8") : null;
+  const parsed: unknown = originalMeta === null ? {} : JSON.parse(originalMeta);
+  if (!object(parsed)) throw new DesktopSyncError("Claude Desktop sync configuration has an invalid shape");
+  const entries = Array.isArray(parsed.entries) ? parsed.entries.filter(object) : [];
+  return { originalMeta, localMeta: parsed, entries };
 }
 
 async function readBoundedJson(response: Response, limit: number): Promise<unknown> {
