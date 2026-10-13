@@ -9,7 +9,7 @@ import { routedSlug } from "../providers/slug-codec";
 import { findLiveProxy } from "../server/proxy-liveness";
 import type { OcxConfig, OcxCustomModel } from "../types";
 
-const ADD_USAGE = "Usage: ocx models add <provider> <modelId> [--display-name <name>] [--context-window <tokens>] [--modalities text,image,audio]";
+const ADD_USAGE = "Usage: ocx models add <provider> <modelId> [--display-name <name>] [--context-window <tokens>] [--modalities text,image,audio] [--reasoning-efforts low,medium,high,xhigh,max,ultra]";
 const REMOVE_USAGE = "Usage: ocx models remove <customId|provider/modelId> [--yes]";
 const LIST_CUSTOM_USAGE = "Usage: ocx models list-custom [--json]";
 const ALLOWED_MODALITIES = new Set(["text", "image", "audio"]);
@@ -114,6 +114,7 @@ async function handleCustomAdd(args: string[]): Promise<void> {
   const displayNameValue = consumeFlagValue(rest, "--display-name");
   const contextWindowValue = consumeFlagValue(rest, "--context-window");
   const modalitiesValue = consumeFlagValue(rest, "--modalities");
+  const reasoningEffortsValue = consumeFlagValue(rest, "--reasoning-efforts");
   rejectUnexpectedArgs(rest, ADD_USAGE);
 
   if (!provider || !modelId) fail("provider and modelId are required", ADD_USAGE);
@@ -146,6 +147,17 @@ async function handleCustomAdd(args: string[]): Promise<void> {
     inputModalities = [...new Set(inputModalities)];
   }
 
+  let reasoningEfforts: string[] | undefined;
+  if (reasoningEffortsValue !== undefined) {
+    reasoningEfforts = reasoningEffortsValue.split(",").map(value => value.trim());
+    const validEfforts = new Set(["low", "medium", "high", "xhigh", "max", "ultra"]);
+    const invalid = reasoningEfforts.filter(value => !validEfforts.has(value));
+    if (invalid.length > 0) {
+      fail(`invalid reasoning efforts: ${invalid.join(", ")}. Valid: low,medium,high,xhigh,max,ultra`);
+    }
+    reasoningEfforts = [...new Set(reasoningEfforts)];
+  }
+
   const existing = config.customModels ?? [];
   const slug = routedSlug(provider, modelId);
   if (existing.some(model => routedSlug(model.provider, model.modelId) === slug)) {
@@ -159,6 +171,7 @@ async function handleCustomAdd(args: string[]): Promise<void> {
     ...(displayName ? { displayName } : {}),
     ...(contextWindow ? { contextWindow } : {}),
     ...(inputModalities ? { inputModalities } : {}),
+    ...(reasoningEfforts ? { reasoningEfforts } : {}),
     addedAt: new Date().toISOString(),
   };
   config.customModels = [...existing, entry];

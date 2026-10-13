@@ -557,6 +557,8 @@ export interface OcxCustomModel {
   contextWindow?: number;
   /** 입력 모달리티 (선택, 기본 ["text"]) */
   inputModalities?: string[];
+  /** Codex-visible reasoning effort ladder for this model (low..ultra). Empty array = no effort control. */
+  reasoningEfforts?: string[];
   /** 추가 시각 (ISO 8601) */
   addedAt?: string;
 }

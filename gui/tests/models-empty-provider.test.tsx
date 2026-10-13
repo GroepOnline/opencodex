@@ -641,7 +641,7 @@ test("successful discovery clears every prior failure reason", async () => {
   expect(await providerDto(provider)).not.toHaveProperty("discovery");
 });
 
-test("static catalog paths clear stale discovery failures and omit them from the API", async () => {
+test("static catalog reads preserve discovery diagnostics without exposing them in the API", async () => {
   for (const adapter of ["openai-chat", "cursor"] as const) {
     const provider = `static-${adapter}`;
     markProviderDiscoveryFailed(provider, { reason: "http", httpStatus: 401 });
@@ -665,7 +665,7 @@ test("static catalog paths clear stale discovery failures and omit them from the
     });
 
     expect(models.map((model) => model.id)).toEqual(["configured-fallback"]);
-    expect(getProviderDiscoveryStatus(provider)).toBeUndefined();
+    expect(getProviderDiscoveryStatus(provider)).toEqual({ status: "failed", reason: "http", httpStatus: 401 });
     expect(await providerDto(provider, adapter, false)).not.toHaveProperty(
       "discovery",
     );

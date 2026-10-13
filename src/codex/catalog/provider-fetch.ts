@@ -6,7 +6,6 @@ import { atomicWriteFile, expandUserPath, getConfigDir, websocketsEnabled } from
 import { CODEX_CONFIG_PATH, CODEX_MODELS_CACHE_PATH, DEFAULT_CATALOG_PATH, readRootTomlString, resolveCodexConfigPath } from "../paths";
 import {
   clearModelCache,
-  clearProviderDiscoveryStatus,
   DEFAULT_MODEL_CACHE_TTL_MS,
   getFreshCached,
   getStaleCached,
@@ -117,6 +116,7 @@ function gatherFlightKey(config: OcxConfig): string {
       d: cm.displayName ?? null,
       cw: cm.contextWindow ?? null,
       im: cm.inputModalities ?? null,
+      re: cm.reasoningEfforts ?? null,
     })),
     caps: config.providerContextCaps ?? null,
   });
@@ -483,7 +483,7 @@ export async function fetchProviderModels(name: string, prov: OcxProviderConfig,
   );
   if (prov.adapter === "cursor") {
     if (prov.liveModels === false) {
-      clearProviderDiscoveryStatus(name);
+      // Static catalog reads must not erase live-discovery state or backoff.
       return configured;
     }
     if (!apiKey) return configured;
@@ -521,7 +521,8 @@ export async function fetchProviderModels(name: string, prov: OcxProviderConfig,
     return configured;
   }
   if (prov.liveModels === false) {
-    clearProviderDiscoveryStatus(name);
+    // The explicit provider-config update already clears stale state when switching modes.
+    // A static refresh is read-only with respect to the live discovery status and backoff.
     return configured;
   }
   const fresh = getFreshCached(name, ttlMs);
@@ -840,6 +841,7 @@ async function gatherRoutedModelsUncached(
       ...(cm.displayName ? { displayName: cm.displayName } : {}),
       ...(cm.contextWindow ? { contextWindow: cm.contextWindow } : {}),
       ...(cm.inputModalities ? { inputModalities: cm.inputModalities } : {}),
+      ...(cm.reasoningEfforts ? { reasoningEfforts: cm.reasoningEfforts } : {}),
       ...(typeof supportsReasoningSummaries === "boolean" ? { supportsReasoningSummaries } : {}),
     };
     // Vision-sidecar coverage ONLY: if the custom model is in the enriched provider's

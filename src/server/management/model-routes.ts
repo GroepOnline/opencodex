@@ -65,6 +65,7 @@ import { applySystemEnvToggle } from "../system-env";
 import { isPlainRecord, parseDebugLogQuery, tokPerSecondResult, unavailableCostReason, costResult, requestLogDto, stripRegistryOnlyStaticHeaders, fetchAllModels } from "./shared";
 import type { MetricUnavailableReason, TokPerSecondResult, CostEstimateReason, CostResult, MetricSource } from "./shared";
 import type { ManagementContext } from "./context";
+import { normalizeReasoningEfforts } from "./reasoning-efforts";
 
 export async function handleModelRoutes(ctx: ManagementContext): Promise<Response | null> {
   const { req, url, config, deps, refreshCodexCatalogBestEffort, syncClaudeAgentDefsBestEffort } = ctx;
@@ -94,6 +95,7 @@ export async function handleModelRoutes(ctx: ManagementContext): Promise<Respons
         displayName: cm.displayName,
         ...(cm.contextWindow ? { contextWindow: cm.contextWindow } : {}),
         ...(cm.inputModalities ? { inputModalities: cm.inputModalities } : {}),
+        ...(cm.reasoningEfforts ? { reasoningEfforts: cm.reasoningEfforts } : {}),
       };
     });
     const publicModels = uniqueCatalogModelsForPublicList(models);
@@ -118,6 +120,7 @@ export async function handleModelRoutes(ctx: ManagementContext): Promise<Respons
           stored === namespaced || slugEquals(stored, m.provider, m.id)
         )),
         ...(contextCap !== undefined ? { contextCap, contextCapped: m.contextCapped === true } : {}),
+        ...(m.reasoningEfforts ? { reasoningEfforts: m.reasoningEfforts } : {}),
         // Admin always sees last-good rows; reason explains why clients may hide them.
         ...(hideReason ? {
           clientHideReason: hideReason,
@@ -246,7 +249,7 @@ export async function handleModelRoutes(ctx: ManagementContext): Promise<Respons
   }
 
   if (url.pathname === "/api/custom-models" && req.method === "POST") {
-    let body: { provider?: unknown; modelId?: unknown; displayName?: unknown; contextWindow?: unknown; inputModalities?: unknown };
+    let body: { provider?: unknown; modelId?: unknown; displayName?: unknown; contextWindow?: unknown; inputModalities?: unknown; reasoningEfforts?: unknown };
     try { body = await req.json(); } catch { return jsonResponse({ error: "invalid JSON body" }, 400); }
     const provider = typeof body.provider === "string" ? body.provider.trim() : "";
     const modelId = typeof body.modelId === "string" ? body.modelId.trim() : "";
@@ -258,6 +261,8 @@ export async function handleModelRoutes(ctx: ManagementContext): Promise<Respons
     if (displayName?.includes("/")) return jsonResponse({ error: "displayName must not contain /" }, 400);
     const contextWindow = typeof body.contextWindow === "number" && body.contextWindow > 0 ? Math.floor(body.contextWindow) : undefined;
     const inputModalities = Array.isArray(body.inputModalities) ? body.inputModalities.filter((m): m is string => typeof m === "string") : undefined;
+    const reasoningEfforts = normalizeReasoningEfforts(body.reasoningEfforts);
+    if (body.reasoningEfforts !== undefined && !Array.isArray(body.reasoningEfforts)) return jsonResponse({ error: "invalid reasoningEfforts" }, 400);
     const existing = config.customModels ?? [];
     const newSlug = routedSlug(provider, modelId);
     if (existing.some(cm => routedSlug(cm.provider, cm.modelId) === newSlug)) {
@@ -270,6 +275,7 @@ export async function handleModelRoutes(ctx: ManagementContext): Promise<Respons
       ...(displayName ? { displayName } : {}),
       ...(contextWindow ? { contextWindow } : {}),
       ...(inputModalities && inputModalities.length > 0 ? { inputModalities } : {}),
+      ...(reasoningEfforts && reasoningEfforts.length > 0 ? { reasoningEfforts } : {}),
       addedAt: new Date().toISOString(),
     };
     config.customModels = [...existing, entry];
@@ -283,7 +289,7 @@ export async function handleModelRoutes(ctx: ManagementContext): Promise<Respons
   if (customPutMatch && req.method === "PUT") {
     let id: string;
     try { id = decodeURIComponent(customPutMatch[1]); } catch { return jsonResponse({ error: "invalid id encoding" }, 400); }
-    let body: { displayName?: unknown; contextWindow?: unknown; inputModalities?: unknown; modelId?: unknown };
+    let body: { displayName?: unknown; contextWindow?: unknown; inputModalities?: unknown; reasoningEfforts?: unknown; modelId?: unknown };
     try { body = await req.json(); } catch { return jsonResponse({ error: "invalid JSON body" }, 400); }
     const list = config.customModels ?? [];
     const idx = list.findIndex(cm => cm.id === id);
@@ -303,6 +309,11 @@ export async function handleModelRoutes(ctx: ManagementContext): Promise<Respons
     }
     if (body.inputModalities !== undefined) {
       cm.inputModalities = Array.isArray(body.inputModalities) ? body.inputModalities.filter((m): m is string => typeof m === "string") : undefined;
+    }
+    if (body.reasoningEfforts !== undefined) {
+      if (body.reasoningEfforts !== null && !Array.isArray(body.reasoningEfforts)) return jsonResponse({ error: "invalid reasoningEfforts" }, 400);
+      const efforts = normalizeReasoningEfforts(body.reasoningEfforts);
+      cm.reasoningEfforts = efforts?.length ? efforts : undefined;
     }
     const updatedSlug = routedSlug(cm.provider, cm.modelId);
     if (list.some((other, i) => i !== idx && routedSlug(other.provider, other.modelId) === updatedSlug)) {
