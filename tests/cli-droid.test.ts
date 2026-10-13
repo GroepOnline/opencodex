@@ -29,17 +29,17 @@ const MODELS: DroidRoutedModel[] = [
   },
 ];
 
-describe("ocx droid model id reduction", () => {
-  test("strips the OCX routing namespace, keeps the model portion", () => {
-    expect(droidModelId("openai/gpt-6-astra")).toBe("gpt-6-astra");
-    expect(droidModelId("zai/glm-5.3-flash")).toBe("glm-5.3-flash");
+describe("ocx droid routed model selectors", () => {
+  test("preserves provider namespaces for correct proxy routing", () => {
+    expect(droidModelId("openai/gpt-6-astra")).toBe("openai/gpt-6-astra");
+    expect(droidModelId("zai/glm-5.3-flash")).toBe("zai/glm-5.3-flash");
   });
   test("passes through a bare model id unchanged", () => {
     expect(droidModelId("gpt-5.5")).toBe("gpt-5.5");
   });
-  test("reduces from the LAST slash so nested namespaces survive", () => {
+  test("preserves nested routing selectors", () => {
     expect(droidModelId("cline-pass/anthropic/claude-haiku-5.5")).toBe(
-      "claude-haiku-5.5",
+      "cline-pass/anthropic/claude-haiku-5.5",
     );
   });
 });
@@ -60,8 +60,8 @@ describe("ocx droid settings overlay (non-destructive BYOK)", () => {
     const overlay = buildDroidSettingsOverlay(cfg(), 10123, MODELS);
     expect(overlay.customModels).toHaveLength(2);
     expect(overlay.customModels.map((row) => row.model)).toEqual([
-      "gpt-6-astra",
-      "glm-5.3-flash",
+      "openai/gpt-6-astra",
+      "zai/glm-5.3-flash",
     ]);
     expect(
       overlay.customModels.every(
@@ -84,7 +84,7 @@ describe("ocx droid settings overlay (non-destructive BYOK)", () => {
       10123,
       MODELS,
     );
-    expect(overlay.model).toBe("glm-5.3-flash");
+    expect(overlay.model).toBe("zai/glm-5.3-flash");
   });
 
   test("falls back to the first row when injectionModel is not in the catalog", () => {
@@ -93,7 +93,7 @@ describe("ocx droid settings overlay (non-destructive BYOK)", () => {
       10123,
       MODELS,
     );
-    expect(overlay.model).toBe("gpt-6-astra");
+    expect(overlay.model).toBe("openai/gpt-6-astra");
   });
 
   test("drops empty ids and synthesizes a display name when none is given", () => {
@@ -102,7 +102,7 @@ describe("ocx droid settings overlay (non-destructive BYOK)", () => {
       { provider: "openai", id: "openai/gpt-6-luna" },
     ]);
     expect(overlay.customModels).toHaveLength(1);
-    expect(overlay.customModels[0].displayName).toBe("OCX / gpt-6-luna");
+    expect(overlay.customModels[0].displayName).toBe("OCX / openai/gpt-6-luna");
   });
 
   test("an empty catalog yields an empty table without throwing (preserves user file)", () => {

@@ -48,13 +48,11 @@ export interface DroidRoutedModel {
 }
 
 /**
- * Reduce a routed proxy model id to the bare model id Droid must send upstream.
- * OCX's canonical selector is `<provider>/<model>`; the proxy strips the routing
- * namespace at its own boundary, so Factory is given the model portion only.
+ * Preserve the full routed selector. The OCX proxy requires the provider prefix
+ * to distinguish models that share an id across different providers.
  */
 export function droidModelId(routed: string): string {
-  const slash = routed.lastIndexOf("/");
-  return slash >= 0 ? routed.slice(slash + 1) : routed;
+  return routed;
 }
 
 /**
@@ -158,6 +156,9 @@ async function ensureProxyForDroid(): Promise<number | null> {
       env: { ...process.env, OCX_SERVICE: "1" },
     },
   );
+  child.on("error", () => {
+    // A failed detached start is handled by the bounded proxy health poll.
+  });
   child.unref();
   const deadline = Date.now() + 8_000;
   while (Date.now() < deadline) {
@@ -211,7 +212,13 @@ export async function cmdDroid(args: string[]): Promise<number> {
         );
         resolve(1);
       });
-      child.on("exit", (code, signal) => resolve(signal ? 1 : (code ?? 0)));
+      child.on("exit", (code, signal) => {
+        if (process.platform === "win32" && code === 9009 && !signal) {
+          console.error(DROID_INSTALL_HINT);
+          return resolve(1);
+        }
+        resolve(signal ? 1 : (code ?? 0));
+      });
     });
   } finally {
     // The overlay holds the model table, never a secret value; still, remove it.
