@@ -16,7 +16,7 @@ const DEFAULT_DEPS: CodexShimAutoRestoreCliDeps = {
 };
 
 export function skipsCodexShimAutoRestore(command: string | undefined, args: string[]): boolean {
-  if (command === "uninstall" || command === "remove") return true;
+  if (command === "uninstall" || command === "remove" || command === "droid") return true;
   if (command === "start" && args.includes("--proxy-only")) return true;
   if (command === "sync" && args.includes("--desktop-only")) return true;
   if (command === "claude-desktop" || (command === "claude" && args[1] === "desktop")) return true;

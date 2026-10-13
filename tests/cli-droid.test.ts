@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildDroidSettingsOverlay,
   droidBaseUrl,
+  droidCustomModelId,
   droidModelId,
   droidProxyStartArgs,
   fetchDroidModels,
@@ -92,9 +93,11 @@ describe("ocx droid model discovery", () => {
 });
 
 describe("ocx droid settings overlay (non-destructive BYOK)", () => {
-  test("emits one OpenAI-row per routed proxy model with the reduced model id", () => {
+  test("emits stable Factory IDs for each routed proxy model", () => {
     const overlay = buildDroidSettingsOverlay(cfg(), 10123, MODELS);
     expect(overlay.customModels).toHaveLength(2);
+    expect(overlay.customModels.map((row) => row.id)).toEqual(MODELS.map((row) => droidCustomModelId(row.id)));
+    expect(overlay.customModels.map((row) => row.index)).toEqual([0, 1]);
     expect(overlay.customModels.map((row) => row.model)).toEqual([
       "openai/gpt-6-astra",
       "zai/glm-5.3-flash",
@@ -136,7 +139,7 @@ describe("ocx droid settings overlay (non-destructive BYOK)", () => {
       10123,
       MODELS,
     );
-    expect(overlay.model).toBe("zai/glm-5.3-flash");
+    expect(overlay.model).toBe(droidCustomModelId("zai/glm-5.3-flash"));
   });
 
   test("falls back to the first row when injectionModel is not in the catalog", () => {
@@ -145,7 +148,7 @@ describe("ocx droid settings overlay (non-destructive BYOK)", () => {
       10123,
       MODELS,
     );
-    expect(overlay.model).toBe("openai/gpt-6-astra");
+    expect(overlay.model).toBe(droidCustomModelId("openai/gpt-6-astra"));
   });
 
   test("drops empty ids and synthesizes a display name when none is given", () => {

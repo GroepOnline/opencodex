@@ -15,6 +15,7 @@
  * when a keyless/env reference can carry it, mirroring the opencode launcher.
  */
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,6 +27,8 @@ import type { OcxConfig } from "../types";
 
 /** One custom-model row in Factory's `customModels` schema (BYOK reference). */
 export interface DroidCustomModel {
+  id: string;
+  index: number;
   model: string;
   displayName: string;
   baseUrl: string;
@@ -56,6 +59,11 @@ export function droidModelId(routed: string): string {
   return routed;
 }
 
+/** Stable Factory BYOK ID: independent of display names and catalog ordering. */
+export function droidCustomModelId(routed: string): string {
+  return `custom:ocx-${createHash("sha256").update(routed).digest("hex").slice(0, 24)}`;
+}
+
 /**
  * OCX serves the OpenAI Responses wire on `/v1`, which Factory reaches through
  * `provider: "openai"`. When the proxy is not a loopback origin the admission
@@ -84,9 +92,20 @@ export function buildDroidSettingsOverlay(
 ): DroidSettingsOverlay {
   const baseUrl = droidBaseUrl(port, options.origin);
   const apiKey = options.apiKeyRef;
-  const rows: DroidCustomModel[] = models
-    .filter((model) => typeof model.id === "string" && model.id.length > 0)
-    .map((model) => ({
+  const uniqueModels = new Map<string, DroidRoutedModel>();
+  for (const model of models) {
+    if (
+      typeof model.id === "string" &&
+      model.id.length > 0 &&
+      !uniqueModels.has(model.id)
+    ) {
+      uniqueModels.set(model.id, model);
+    }
+  }
+  const rows: DroidCustomModel[] = [...uniqueModels.values()].map(
+    (model, index) => ({
+      id: droidCustomModelId(model.id),
+      index,
       model: droidModelId(model.id),
       displayName:
         model.displayName && model.displayName.length > 0
@@ -97,13 +116,12 @@ export function buildDroidSettingsOverlay(
       ...(apiKey ? { apiKey } : {}),
       maxOutputTokens: 128_000,
       noImageSupport: !model.inputModalities?.includes("image"),
-    }));
-  const preferred =
-    config.injectionModel &&
-    rows.some((row) => row.model === droidModelId(config.injectionModel!))
-      ? droidModelId(config.injectionModel)
-      : (rows[0]?.model ?? "");
-  return { model: preferred, customModels: rows };
+    }),
+  );
+  const preferred = config.injectionModel
+    ? rows.find((row) => row.model === droidModelId(config.injectionModel!))
+    : undefined;
+  return { model: (preferred ?? rows[0])?.id ?? "", customModels: rows };
 }
 
 export function droidProxyStartArgs(port: number): string[] {
@@ -136,13 +154,21 @@ export async function fetchDroidModels(
     if (!Array.isArray(rows)) return [];
     return rows
       .filter(
-        (row) => row && row.disabled !== true && row.native !== true && typeof row.id === "string",
+        (row) =>
+          row &&
+          row.disabled !== true &&
+          row.native !== true &&
+          typeof row.id === "string",
       )
       .map((row) => ({
         provider: row.provider ?? "openai",
         id: row.namespaced ?? row.id!,
         displayName: row.displayName,
-        inputModalities: Array.isArray(row.inputModalities) ? row.inputModalities.filter((v): v is string => typeof v === "string") : undefined,
+        inputModalities: Array.isArray(row.inputModalities)
+          ? row.inputModalities.filter(
+              (v): v is string => typeof v === "string",
+            )
+          : undefined,
       }));
   } catch {
     return [];
@@ -189,7 +215,9 @@ export async function cmdDroid(args: string[]): Promise<number> {
   }
   const models = await fetchDroidModels(port);
   if (models.length === 0) {
-    console.error("❌ No OCX-routed models available; refusing to launch Droid with an empty catalog.");
+    console.error(
+      "❌ No OCX-routed models available; refusing to launch Droid with an empty catalog.",
+    );
     return 1;
   }
   const overlay = buildDroidSettingsOverlay(config, port, models, {
