@@ -1,5 +1,6 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // Windows CI runners spawn Node/Bun child processes slowly ("Slow filesystem detected");
@@ -42,10 +43,22 @@ describe("install scripts", () => {
       "bun scripts/prepare-package.ts",
     );
     expect(pkg.scripts?.prepack).toBe("bun run prepare:package");
-    expect(pkg.files).toContain("assets/banner.png");
-    expect(pkg.files).toContain("assets/architecture.png");
-    expect(pkg.files).toContain("assets/claude-code-models.gif");
-    expect(pkg.files).toContain("assets/codex-app-picker.png");
+    expect(pkg.files?.some((entry) => entry.startsWith("assets/"))).toBe(false);
+  });
+
+  test("README local links and CLI launchers are in sync", async () => {
+    const readme = await readText("README.md");
+    const localLinks = [...readme.matchAll(/\]\(\.\/([^\s)#]+)(?:#[^)]*)?\)/g)];
+    expect(localLinks.length).toBeGreaterThan(5);
+    for (const match of localLinks) {
+      expect(existsSync(fileURLToPath(new URL("../" + match[1], import.meta.url)))).toBe(true);
+    }
+    expect(readme).not.toMatch(/assets\/[^\s)]+\.(png|gif|jpe?g|webp)/i);
+    const cliHelp = await readText("src/cli/help.ts");
+    for (const command of ["ocx droid", "ocx opencode", "ocx trace", "ocx claude"]) {
+      expect(readme).toContain(command);
+      expect(cliHelp).toContain(command);
+    }
   });
 
   test("Freebuff preview runs the proxy and dashboard as one integrated process", async () => {

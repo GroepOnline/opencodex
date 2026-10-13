@@ -19,10 +19,6 @@
     "bin",
     "src",
     "gui/dist",
-    "assets/banner.png",
-    "assets/architecture.png",
-    "assets/claude-code-models.gif",
-    "assets/codex-app-picker.png",
     "README.md",
     "LICENSE"
   ],
