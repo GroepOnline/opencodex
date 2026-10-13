@@ -6,7 +6,6 @@ import { atomicWriteFile, expandUserPath, getConfigDir, websocketsEnabled } from
 import { CODEX_CONFIG_PATH, CODEX_MODELS_CACHE_PATH, DEFAULT_CATALOG_PATH, readRootTomlString, resolveCodexConfigPath } from "../paths";
 import {
   clearModelCache,
-  clearProviderDiscoveryStatus,
   DEFAULT_MODEL_CACHE_TTL_MS,
   getFreshCached,
   getStaleCached,
