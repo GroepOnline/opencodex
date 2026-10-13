@@ -237,6 +237,19 @@ const helpEntries: Record<string, HelpEntry> = {
       "Stop using `ocx opencode` and plain `opencode` behaves exactly as before.",
     ],
   },
+  droid: {
+    usage: "ocx droid [droid args...]",
+    summary: "Launch Factory Droid wired to the proxy (OCX-first BYOK, non-destructive).",
+    details: [
+      "Ensures the proxy is running, then execs `droid` with an isolated `--settings` overlay",
+      "carrying the OCX endpoint and its client-visible model table. `~/.factory/settings.json`",
+      "is NEVER rewritten, so the user's existing customModels array and Factory defaults survive",
+      "untouched; a later plain `droid` behaves exactly as before.",
+      "Models appear in the Droid model selector under their OCX display names.",
+      "OCX-only does not require a paid Factory model subscription; a free Factory login may",
+      "still be needed to start the app. The overlay contains no secret value.",
+    ],
+  },
   restart: {
     usage: "ocx restart",
     summary: "Stop and restart the proxy in the background, preserving proxy-only mode.",
@@ -314,6 +327,7 @@ Usage:
   ocx claude [args...]        Launch Claude Code wired to the proxy (model discovery on)
   ocx claude desktop [sub]    Manage and apply Claude Desktop's four-family profile
   ocx opencode [args...]      Launch opencode wired to the proxy (runtime provider config)
+  ocx droid [args...]         Launch Factory Droid wired to the proxy (OCX-first BYOK)
   ocx help [command]          Show help
   ocx --version | -v          Print version
 
