@@ -3,6 +3,8 @@ import {
   buildDroidSettingsOverlay,
   droidBaseUrl,
   droidModelId,
+  droidProxyStartArgs,
+  fetchDroidModels,
   type DroidRoutedModel,
 } from "../src/cli/droid";
 import type { OcxConfig } from "../src/types";
@@ -55,6 +57,40 @@ describe("ocx droid base url", () => {
   });
 });
 
+describe("ocx droid model discovery", () => {
+  test("starts a proxy without mutating client integrations", () => {
+    expect(droidProxyStartArgs(10123)).toEqual(["start", "--port", "10123", "--proxy-only"]);
+  });
+
+  test("skips native and disabled models while passing image metadata", async () => {
+    const oldFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () => Response.json([
+        { provider: "openai", id: "gpt-native", namespaced: "gpt-native", native: true },
+        { provider: "zai", id: "glm", namespaced: "zai/glm", inputModalities: ["text", "image"] },
+        { provider: "zai", id: "disabled", disabled: true },
+      ])) as typeof fetch;
+      expect(await fetchDroidModels(10123)).toEqual([
+        { provider: "zai", id: "zai/glm", displayName: undefined, inputModalities: ["text", "image"] },
+      ]);
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
+  });
+
+  test("a native-only response has no eligible OCX models", async () => {
+    const oldFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () => Response.json([
+        { provider: "openai", id: "gpt-native", native: true },
+      ])) as typeof fetch;
+      expect(await fetchDroidModels(10123)).toEqual([]);
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
+  });
+});
+
 describe("ocx droid settings overlay (non-destructive BYOK)", () => {
   test("emits one OpenAI-row per routed proxy model with the reduced model id", () => {
     const overlay = buildDroidSettingsOverlay(cfg(), 10123, MODELS);
@@ -73,9 +109,25 @@ describe("ocx droid settings overlay (non-destructive BYOK)", () => {
     );
   });
 
-  test("never embeds a literal secret: default key is an env reference", () => {
+  test("omits apiKey for a keyless loopback endpoint", () => {
     const overlay = buildDroidSettingsOverlay(cfg(), 10123, MODELS);
+    expect(Object.hasOwn(overlay.customModels[0], "apiKey")).toBe(false);
+  });
+
+  test("uses an environment reference when configured", () => {
+    const overlay = buildDroidSettingsOverlay(cfg(), 10123, MODELS, {
+      apiKeyRef: "${OCX_ADMISSION_TOKEN}",
+    });
     expect(overlay.customModels[0].apiKey).toBe("${OCX_ADMISSION_TOKEN}");
+  });
+
+  test("propagates image input support", () => {
+    const overlay = buildDroidSettingsOverlay(cfg(), 10123, [
+      { provider: "vision", id: "vision/model", inputModalities: ["text", "image"] },
+      { provider: "text", id: "text/model", inputModalities: ["text"] },
+      { provider: "unknown", id: "unknown/model" },
+    ]);
+    expect(overlay.customModels.map(row => row.noImageSupport)).toEqual([false, true, true]);
   });
 
   test("prefers config.injectionModel when it is present in the catalog", () => {

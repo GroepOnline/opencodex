@@ -30,7 +30,7 @@ export interface DroidCustomModel {
   displayName: string;
   baseUrl: string;
   provider: "openai" | "anthropic" | "generic-chat-completion-api";
-  apiKey: string;
+  apiKey?: string;
   maxOutputTokens: number;
   noImageSupport: boolean;
 }
@@ -45,6 +45,7 @@ export interface DroidRoutedModel {
   provider: string;
   id: string;
   displayName?: string;
+  inputModalities?: string[];
 }
 
 /**
@@ -82,7 +83,7 @@ export function buildDroidSettingsOverlay(
   options: { origin?: string; apiKeyRef?: string } = {},
 ): DroidSettingsOverlay {
   const baseUrl = droidBaseUrl(port, options.origin);
-  const apiKey = options.apiKeyRef ?? "${OCX_ADMISSION_TOKEN}";
+  const apiKey = options.apiKeyRef;
   const rows: DroidCustomModel[] = models
     .filter((model) => typeof model.id === "string" && model.id.length > 0)
     .map((model) => ({
@@ -93,9 +94,9 @@ export function buildDroidSettingsOverlay(
           : `OCX / ${droidModelId(model.id)}`,
       baseUrl,
       provider: "openai" as const,
-      apiKey,
+      ...(apiKey ? { apiKey } : {}),
       maxOutputTokens: 128_000,
-      noImageSupport: true,
+      noImageSupport: !model.inputModalities?.includes("image"),
     }));
   const preferred =
     config.injectionModel &&
@@ -103,6 +104,10 @@ export function buildDroidSettingsOverlay(
       ? droidModelId(config.injectionModel)
       : (rows[0]?.model ?? "");
   return { model: preferred, customModels: rows };
+}
+
+export function droidProxyStartArgs(port: number): string[] {
+  return ["start", "--port", String(port), "--proxy-only"];
 }
 
 /** Read the running proxy's client-visible model rows (authenticated GET /api/models). */
@@ -125,16 +130,19 @@ export async function fetchDroidModels(
       namespaced?: string;
       disabled?: boolean;
       displayName?: string;
+      native?: boolean;
+      inputModalities?: string[];
     }>;
     if (!Array.isArray(rows)) return [];
     return rows
       .filter(
-        (row) => row && row.disabled !== true && typeof row.id === "string",
+        (row) => row && row.disabled !== true && row.native !== true && typeof row.id === "string",
       )
       .map((row) => ({
         provider: row.provider ?? "openai",
         id: row.namespaced ?? row.id!,
         displayName: row.displayName,
+        inputModalities: Array.isArray(row.inputModalities) ? row.inputModalities.filter((v): v is string => typeof v === "string") : undefined,
       }));
   } catch {
     return [];
@@ -148,7 +156,7 @@ async function ensureProxyForDroid(): Promise<number | null> {
   const pinPort = typeof cfgPort === "number" && cfgPort > 0 ? cfgPort : 10100;
   const child = spawn(
     process.execPath,
-    [process.argv[1], "start", "--port", String(pinPort)],
+    [process.argv[1], ...droidProxyStartArgs(pinPort)],
     {
       detached: true,
       stdio: "ignore",
@@ -181,9 +189,8 @@ export async function cmdDroid(args: string[]): Promise<number> {
   }
   const models = await fetchDroidModels(port);
   if (models.length === 0) {
-    console.error(
-      "⚠ No OCX models were returned by the proxy; launching with an empty overlay.",
-    );
+    console.error("❌ No OCX-routed models available; refusing to launch Droid with an empty catalog.");
+    return 1;
   }
   const overlay = buildDroidSettingsOverlay(config, port, models, {
     apiKeyRef: process.env.OCX_ADMISSION_TOKEN
