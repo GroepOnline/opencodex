@@ -79,7 +79,7 @@ describe("Factory 117-model compatibility fixture", () => {
       ).toBe(original.id);
     }
     expect(first.model).toBe(droidCustomModelId(routed[0]!.id));
-    expect(first.customModels[0]!.id).toStartWith("custom:ocx-");
+    expect(first.customModels[0]!.id).toBe("custom:ocx-5553b7ca5f3e748a4828c525");
     expect(droidCustomModelId("provider/a.b")).not.toBe(
       droidCustomModelId("provider/a-b"),
     );
