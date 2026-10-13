@@ -146,6 +146,93 @@ describe("ocx droid Codex Direct credential boundary", () => {
     expect(droidByokCompatibleModels(pool, routed)).toEqual(routed);
   });
 
+  test("excludes any combo that can fail over or rotate to Codex Direct", () => {
+    const mixed = {
+      ...openaiDirectConfig,
+      combos: {
+        fallback: {
+          strategy: "failover",
+          targets: [
+            { provider: "zai", model: "glm-5.3-flash" },
+            { provider: "openai", model: "gpt-6-astra" },
+          ],
+        },
+        balanced: {
+          strategy: "round-robin",
+          targets: [
+            { provider: "openai", model: "gpt-6-astra", weight: 1 },
+            { provider: "zai", model: "glm-5.3-flash", weight: 2 },
+          ],
+        },
+        safe: {
+          strategy: "round-robin",
+          targets: [
+            { provider: "zai", model: "glm-5.3-flash" },
+            { provider: "openai-apikey", model: "gpt-api" },
+          ],
+        },
+      },
+    } as OcxConfig;
+    const rows = [
+      ...routed,
+      { provider: "combo", id: "combo/fallback" },
+      { provider: "combo", id: "combo/balanced" },
+      { provider: "combo", id: "combo/safe" },
+    ];
+    const before = structuredClone(rows);
+    expect(droidByokCompatibleModels(mixed, rows)).toEqual([
+      routed[1],
+      routed[2],
+      rows[5],
+    ]);
+    expect(rows).toEqual(before);
+  });
+
+  test("rejects a Direct-target combo reached by a public alias", () => {
+    const aliased = {
+      ...openaiDirectConfig,
+      combos: {
+        hybrid: {
+          alias: "fallback/assistant",
+          targets: [
+            { provider: "zai", model: "glm-5.3-flash" },
+            { provider: "openai", model: "gpt-6-astra" },
+          ],
+        },
+      },
+    } as OcxConfig;
+    expect(
+      droidByokCompatibleModels(aliased, [
+        { provider: "combo", id: "fallback/assistant" },
+        { provider: "zai", id: "zai/glm-5.3-flash" },
+      ]),
+    ).toEqual([{ provider: "zai", id: "zai/glm-5.3-flash" }]);
+  });
+
+  test("fails closed on an unknown dynamic combo without removing ordinary providers", () => {
+    expect(
+      droidByokCompatibleModels(openaiDirectConfig, [
+        { provider: "combo", id: "combo/stale" },
+        routed[1]!,
+      ]),
+    ).toEqual([routed[1]]);
+  });
+
+  test("keeps a physical provider named combo when no dynamic combos are configured", () => {
+    const physical = {
+      ...openaiDirectConfig,
+      providers: {
+        ...openaiDirectConfig.providers,
+        combo: { adapter: "openai-chat", baseUrl: "http://127.0.0.1:9999/v1" },
+      },
+      combos: {},
+    } as OcxConfig;
+    const physicalRow = { provider: "combo", id: "combo/model" };
+    expect(droidByokCompatibleModels(physical, [physicalRow])).toEqual([
+      physicalRow,
+    ]);
+  });
+
   test("does not classify an explicitly disabled Codex pool subsystem as Direct", () => {
     const standalone = {
       ...openaiDirectConfig,

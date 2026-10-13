@@ -22,6 +22,7 @@ import { join } from "node:path";
 import { loadConfig } from "../config";
 import { commandInvocation } from "../lib/win-exec";
 import { configuredAdminToken } from "../lib/admin-secrets";
+import { preservesPhysicalComboProvider, resolveComboId } from "../combos/types";
 import { providerCodexAccountMode } from "../providers/registry";
 import { findLiveProxy } from "../server/proxy-liveness";
 import type { OcxConfig } from "../types";
@@ -65,9 +66,22 @@ export function droidByokCompatibleModels(
   const usesDirectOpenAi =
     providerCodexAccountMode("openai", config.providers.openai, config) ===
     "direct";
-  return models.filter(
-    (model) => !(usesDirectOpenAi && model.provider === "openai"),
-  );
+  if (!usesDirectOpenAi) return [...models];
+  const physicalComboProvider = preservesPhysicalComboProvider(config);
+  return models.filter((model) => {
+    // The OpenAI data-plane key cannot stand in for a caller's Codex OAuth token.
+    if (model.provider === "openai") return false;
+    // A physical provider named "combo" is not a dynamic configured combo.
+    if (physicalComboProvider) return true;
+    // Resolve the public combo alias as well as the canonical combo/<id>.
+    // A failover or round-robin combo can select any configured target later.
+    const comboId = resolveComboId(config, model.id);
+    if (!comboId) return model.provider !== "combo";
+    const targets = config.combos?.[comboId]?.targets;
+    // Unknown/stale combo metadata is not enough evidence to offer BYOK.
+    if (!targets?.length) return false;
+    return targets.every((target) => target.provider !== "openai");
+  });
 }
 
 /**
