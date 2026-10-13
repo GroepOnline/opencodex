@@ -39,9 +39,10 @@ export function oauthErrorDetail(body: string): string {
       record.error && typeof record.error === "object" && !Array.isArray(record.error)
         ? (record.error as Record<string, unknown>)
         : undefined;
-    const code = cleanField(nested ? nested.type : record.error);
+    const type = cleanField(nested ? nested.type : record.error);
+    const code = cleanField(nested ? nested.code : record.code);
     const description = cleanField(nested ? nested.message : (record.error_description ?? record.message));
-    return [code, description].filter((part): part is string => !!part).join(": ");
+    return [type, code, description].filter((part): part is string => !!part).join(": ");
   } catch {
     return "";
   }
