@@ -1005,7 +1005,7 @@ export default function Models({ apiBase }: { apiBase: string }) {
             displayName,
             contextWindow: contextWindow ?? null,
             inputModalities: customFormModalities,
-            reasoningEfforts: customFormReasoningEfforts.length > 0 ? customFormReasoningEfforts : undefined,
+            reasoningEfforts: customFormReasoningEfforts,
           });
         }
       }}

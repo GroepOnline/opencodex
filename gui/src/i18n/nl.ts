@@ -297,7 +297,7 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "models.customFieldContext": "Context-venster",
   "models.customFieldModalities": "Input-modaliteiten",
   "models.customFieldReasoningEfforts": "Reasoning-niveaus",
-  "models.customFieldReasoningEffortsDesc": "Codex-visible effort ladder (low..ultra). Leeg = geen controle.",
+  "models.customFieldReasoningEffortsDesc": "Kies welke denkniveaus Codex voor dit model toont (low tot ultra). Laat leeg om geen lijst op te geven.",
   "models.workspace.description":
     "Zoek een model, bekijk de configuratie en kies wat je client toont.",
   "models.workspace.manageProviders": "Leveranciers beheren",

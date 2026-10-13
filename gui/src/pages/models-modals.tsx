@@ -250,8 +250,8 @@ export function ModelsModals({
                 </div>
               </div>
 
-              <div className="text-label models-field">
-                {t("models.customFieldReasoningEfforts")}
+              <fieldset className="models-field" style={{ border: 0, padding: 0, minWidth: 0 }}>
+                <legend className="text-label">{t("models.customFieldReasoningEfforts")}</legend>
                 <div className="text-label muted" style={{ fontSize: "0.85em", marginBottom: "0.5em" }}>
                   {t("models.customFieldReasoningEffortsDesc")}
                 </div>
@@ -274,7 +274,7 @@ export function ModelsModals({
                     </label>
                   ))}
                 </div>
-              </div>
+              </fieldset>
             </div>
 
             <ModalActions>
