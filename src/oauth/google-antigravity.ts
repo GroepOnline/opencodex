@@ -11,6 +11,7 @@
  */
 import { OAuthCallbackFlow, type OAuthCallbackFlowOptions } from "./callback-server";
 import { generatePKCE } from "./pkce";
+import { readBoundedOAuthErrorBody } from "./http-errors";
 import type { OAuthController, OAuthCredentials } from "./types";
 import { antigravityUserAgent, ANTIGRAVITY_GOOG_API_CLIENT_UA } from "../adapters/client-fingerprint";
 
@@ -84,7 +85,7 @@ const SAFE_OAUTH_ERROR_CODES = new Set([
 
 async function safeOAuthErrorCode(response: Response): Promise<string | undefined> {
   try {
-    const parsed = JSON.parse((await response.text()).slice(0, 8192)) as { error?: unknown };
+    const parsed = JSON.parse(await readBoundedOAuthErrorBody(response)) as { error?: unknown };
     return typeof parsed.error === "string" && SAFE_OAUTH_ERROR_CODES.has(parsed.error) ? parsed.error : undefined;
   } catch {
     return undefined;
@@ -115,7 +116,7 @@ async function postToken(body: Record<string, string>, signal?: AbortSignal): Pr
  * `openid`, so no id_token is issued and the access token is opaque: without this call the
  * credential has no email/accountId, and the auth store treats identity-less credentials as "replace
  * the active account" — logging in a second Google account would silently overwrite the first.
- * Best effort: a failure leaves the credential identity-less (previous behaviour), never fails login.
+ * If identity remains unknown, the login fails before an existing account can be overwritten.
  */
 export async function fetchAntigravityIdentity(
   accessToken: string,
@@ -262,6 +263,9 @@ export class AntigravityOAuthFlow extends OAuthCallbackFlow {
       ...(base.email === undefined && identity.email ? { email: identity.email } : {}),
       ...(identity.accountId ? { accountId: identity.accountId } : {}),
     };
+    if (!creds.accountId && !creds.email) {
+      throw new Error("Antigravity login could not verify the Google account identity. Retry when Google userinfo is available; existing accounts were preserved.");
+    }
     this.ctrl.onProgress?.("Discovering Cloud Code Assist project");
     const projectId = await discoverAntigravityProject(creds.access, this.ctrl.signal);
     if (!projectId) {

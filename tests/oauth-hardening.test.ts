@@ -6,7 +6,7 @@ import { getValidAccessTokenForAccount, OAUTH_PROVIDERS } from "../src/oauth";
 import { AnthropicTokenError, refreshAnthropicToken } from "../src/oauth/anthropic";
 import { OAuthCallbackFlow, validateManualCallbackInput } from "../src/oauth/callback-server";
 import { refreshChatGPTToken } from "../src/oauth/chatgpt";
-import { oauthErrorDetail } from "../src/oauth/http-errors";
+import { oauthErrorDetail, readBoundedOAuthErrorBody } from "../src/oauth/http-errors";
 import { getAccountCredential, getAccountSet, saveCredential } from "../src/oauth/store";
 import {
   expiryWithSkew,
@@ -60,6 +60,18 @@ describe("oauthErrorDetail", () => {
     expect(oauthErrorDetail(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "bad code" } }))).toBe(
       "invalid_request_error: bad code",
     );
+  });
+
+  test("retains nested terminal error codes for refresh-token reuse detection", () => {
+    expect(oauthErrorDetail(JSON.stringify({
+      error: { type: "invalid_grant", code: "refresh_token_reused", message: "invalid refresh token" },
+    }))).toContain("refresh_token_reused");
+  });
+
+  test("bounds an upstream response body before decoding", async () => {
+    const body = new Response("x".repeat(32_768));
+    expect((await readBoundedOAuthErrorBody(body)).length).toBe(8192);
+    expect(body.bodyUsed).toBe(true);
   });
 
   test("redacts token-shaped runs reflected in an error description", () => {
@@ -190,9 +202,10 @@ function randomPort(): number {
 
 describe("OAuth callback server", () => {
   test("callback responses are uncacheable, unframeable and leak no referrer", async () => {
+    let callbackAssertions: Promise<void> | undefined;
     const ctrl: OAuthController = {
       onAuth: () => {
-        void (async () => {
+        callbackAssertions = (async () => {
           const response = await fetch(`${flow.authRedirect}?code=the-code&state=${flow.authState}`);
           expect(response.status).toBe(200);
           expect(response.headers.get("cache-control")).toBe("no-store");
@@ -206,6 +219,8 @@ describe("OAuth callback server", () => {
     };
     const flow = new RecordingFlow(ctrl, randomPort(), "/callback");
     await flow.login();
+    expect(callbackAssertions).toBeDefined();
+    await callbackAssertions;
     expect(flow.exchanged).toHaveLength(1);
     expect(flow.exchanged[0]?.code).toBe("the-code");
   });

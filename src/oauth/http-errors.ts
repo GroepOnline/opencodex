@@ -48,8 +48,32 @@ export function oauthErrorDetail(body: string): string {
   }
 }
 
+/** Consume at most 8 KiB, rather than buffering an untrusted upstream error. */
+export async function readBoundedOAuthErrorBody(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) return "";
+  const decoder = new TextDecoder();
+  let remaining = MAX_BODY_CHARS;
+  let text = "";
+  try {
+    while (remaining > 0) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = value.subarray(0, remaining);
+      text += decoder.decode(chunk, { stream: true });
+      remaining -= chunk.byteLength;
+    }
+    text += decoder.decode();
+    return text;
+  } catch {
+    return "";
+  } finally {
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+}
+
 /** Read an upstream error response and return its safe detail (empty when unavailable). */
 export async function readOAuthErrorDetail(response: Response): Promise<string> {
-  const text = await response.text().catch(() => "");
-  return oauthErrorDetail(text);
+  return oauthErrorDetail(await readBoundedOAuthErrorBody(response));
 }

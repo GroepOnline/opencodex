@@ -83,7 +83,7 @@ describe("Antigravity identity lookup", () => {
     expect(set.accounts.map((a) => a.credential.email).sort()).toEqual(["first@example.com", "second@example.com"]);
   });
 
-  test("login still succeeds (identity-less) when userinfo is unavailable", async () => {
+  test("login fails closed when userinfo is unavailable, preserving identified accounts", async () => {
     mockFetch((url) => {
       if (url.includes("oauth2.googleapis.com/token")) {
         return Response.json({ access_token: "ya29.x", refresh_token: "rt", expires_in: 3599 });
@@ -94,14 +94,38 @@ describe("Antigravity identity lookup", () => {
     });
     const flow = new AntigravityOAuthFlow({});
     await flow.generateAuthUrl("state", "http://127.0.0.1:51121/callback");
-    const creds = await flow.exchangeToken("code", "state", "http://127.0.0.1:51121/callback");
-    expect(creds.email).toBeUndefined();
-    expect(creds.accountId).toBeUndefined();
-    expect(creds.projectId).toBe("proj");
+    await expect(flow.exchangeToken("code", "state", "http://127.0.0.1:51121/callback"))
+      .rejects.toThrow("could not verify the Google account identity");
   });
 });
 
 describe("Antigravity refresh failure classification", () => {
+  test("refresh preserves stored Google identity through the shared merge path", async () => {
+    await saveCredential("google-antigravity", {
+      access: "old-access",
+      refresh: "old-refresh",
+      expires: Date.now() - 60_000,
+      email: "saved@example.com",
+      accountId: "google-saved",
+      projectId: "project-saved",
+    });
+    const accountId = getAccountSet("google-antigravity")!.activeAccountId;
+    mockFetch((url) => {
+      if (url.includes("oauth2.googleapis.com/token")) {
+        return Response.json({ access_token: "new-access", expires_in: 3599 });
+      }
+      if (url.includes(":loadCodeAssist")) {
+        return Response.json({ cloudaicompanionProject: "project-saved" });
+      }
+      return new Response("unavailable", { status: 503 });
+    });
+    expect(await getValidAccessTokenForAccount("google-antigravity", accountId)).toBe("new-access");
+    const stored = getAccountSet("google-antigravity")!.accounts.find(a => a.id === accountId)!.credential;
+    expect(stored.email).toBe("saved@example.com");
+    expect(stored.accountId).toBe("google-saved");
+    expect(stored.projectId).toBe("project-saved");
+  });
+
   test("surfaces only an allowlisted OAuth error code, never the description", async () => {
     mockFetch(
       () =>

@@ -2,7 +2,7 @@ import { OAuthCallbackFlow } from "./callback-server";
 import { readOAuthErrorDetail } from "./http-errors";
 import type { OAuthController, OAuthCredentials } from "./types";
 import { generatePKCE } from "./pkce";
-import { optionalRefreshToken, requireAccessToken, requireExpiresInSeconds } from "./token-response";
+import { expiryWithSkew, optionalRefreshToken, requireAccessToken, requireExpiresInSeconds } from "./token-response";
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const AUTH_URL = "https://auth.openai.com/oauth/authorize";
@@ -60,7 +60,7 @@ function credsFromToken(data: Record<string, unknown>, refreshFallback?: string)
     access: accessToken,
     // A refresh response may omit refresh_token (RFC 6749 §6); keep the one we presented.
     refresh: optionalRefreshToken(data.refresh_token) ?? refreshFallback ?? "",
-    expires: Date.now() + expiresInSeconds * 1000,
+    expires: expiryWithSkew(Date.now(), expiresInSeconds, 5 * 60 * 1000),
     accountId: extractAccountId(idToken, accessToken),
     email: extractEmail(idToken, accessToken),
   };

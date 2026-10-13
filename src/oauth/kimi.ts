@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { recordOwnedConfigPath } from "../lib/config-ownership";
 import { getConfigDir } from "../config";
-import { readOAuthErrorDetail } from "./http-errors";
+import { oauthErrorDetail, readOAuthErrorDetail } from "./http-errors";
 import { expiryWithSkew } from "./token-response";
 import type { OAuthController, OAuthCredentials } from "./types";
 
@@ -201,7 +201,11 @@ async function pollForToken(deviceCode: string, intervalMs: number, expiresInMs:
     }
     if (error === "expired_token") throw new Error("Kimi device authorization expired");
     if (error === "access_denied") throw new Error("Kimi device authorization denied");
-    throw new Error(`Kimi device flow failed: ${error ?? response.status}${payload.error_description ? `: ${payload.error_description}` : ""}`);
+    const detail = oauthErrorDetail(JSON.stringify({
+      error: typeof error === "string" ? error : undefined,
+      error_description: payload.error_description,
+    }));
+    throw new Error(`Kimi device flow failed: ${detail || response.status}`);
   }
   throw new Error("Kimi device flow timed out");
 }
@@ -220,8 +224,8 @@ export async function refreshKimiToken(refreshToken: string): Promise<OAuthCrede
     signal: requestSignal(),
   });
   if (!response.ok) {
-    const payload = (await response.json().catch(() => undefined)) as TokenResponse | undefined;
-    throw new Error(`Kimi token refresh failed: ${response.status}${payload?.error_description ? `: ${payload.error_description}` : ""}`);
+    const detail = await readOAuthErrorDetail(response);
+    throw new Error(`Kimi token refresh failed: ${response.status}${detail ? `: ${detail}` : ""}`);
   }
   return parseTokenPayload((await response.json()) as TokenResponse, refreshToken);
 }
