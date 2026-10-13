@@ -32,6 +32,7 @@ describe("ocx droid secret-free data-plane admission", () => {
     expect(admission.env.OCX_ADMISSION_TOKEN).toBe(
       original.OCX_ADMISSION_TOKEN,
     );
+    expect(admission.env.OPENCODEX_ADMIN_AUTH_TOKEN).toBeUndefined();
     expect(original).toEqual(before);
     expect(JSON.stringify(overlay)).toContain("${OCX_ADMISSION_TOKEN}");
     expect(JSON.stringify(overlay)).not.toContain(
@@ -60,9 +61,26 @@ describe("ocx droid secret-free data-plane admission", () => {
     const admission = droidAdmissionEnvironment(config, adminOnly);
     expect(admission.apiKeyRef).toBeUndefined();
     expect(admission.env.OCX_ADMISSION_TOKEN).toBeUndefined();
+    expect(admission.env.OPENCODEX_ADMIN_AUTH_TOKEN).toBeUndefined();
+    expect(admission.env).toEqual({});
     expect(adminOnly).toEqual({
       OPENCODEX_ADMIN_AUTH_TOKEN: "management-only",
     });
+  });
+
+  test("retains ordinary launch environment without exporting management auth", () => {
+    const original = {
+      OPENCODEX_ADMIN_AUTH_TOKEN: "admin-must-stay-private",
+      PATH: "/fixture/bin",
+      HOME: "/fixture/home",
+    };
+    const snapshot = { ...original };
+    const admission = droidAdmissionEnvironment(config, original);
+    expect(admission.env).toEqual({
+      PATH: "/fixture/bin",
+      HOME: "/fixture/home",
+    });
+    expect(original).toEqual(snapshot);
   });
 
   test("accepts a configured data-plane API key without mutating config or parent env", () => {

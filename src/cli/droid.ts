@@ -138,10 +138,13 @@ export function droidAdmissionEnvironment(
     config.apiKeys
       ?.find((entry) => typeof entry.key === "string" && entry.key.trim())
       ?.key.trim();
+  // Keep normal launch settings, but never expose the OCX management key
+  // to the independent Factory CLI child process.
+  const childEnv = { ...parentEnv };
+  delete childEnv.OPENCODEX_ADMIN_AUTH_TOKEN;
+  if (token) childEnv.OCX_ADMISSION_TOKEN = token;
   return {
-    env: token
-      ? { ...parentEnv, OCX_ADMISSION_TOKEN: token }
-      : { ...parentEnv },
+    env: childEnv,
     ...(token ? { apiKeyRef: "${OCX_ADMISSION_TOKEN}" } : {}),
   };
 }
