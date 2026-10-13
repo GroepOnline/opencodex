@@ -51,7 +51,6 @@ COPY --from=build --chown=bun:bun /app/package.json /app/bun.lock ./
 COPY --from=build --chown=bun:bun /app/bin ./bin
 COPY --from=build --chown=bun:bun /app/src ./src
 COPY --from=build --chown=bun:bun /app/gui/dist ./gui/dist
-COPY --from=build --chown=bun:bun /app/assets ./assets
 COPY --from=build --chown=bun:bun /app/scripts/container-health.ts ./scripts/container-health.ts
 COPY --from=build --chown=bun:bun --chmod=0555 /app/scripts/container-entrypoint.sh ./scripts/container-entrypoint.sh
 

@@ -59,6 +59,8 @@ describe("container image", () => {
       'ENTRYPOINT ["/usr/bin/tini", "--", "/app/scripts/container-entrypoint.sh"]',
     );
     expect(dockerfile).toContain("OPENCODEX_GIT_SHA=${VCS_REF}");
+    // README-only media is not shipped in the runtime image.
+    expect(dockerfile).not.toContain("/app/assets ./assets");
     const workflow = await Bun.file(
       join(repoRoot, ".github/workflows/container.yml"),
     ).text();
