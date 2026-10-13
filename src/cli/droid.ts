@@ -124,6 +124,28 @@ export function buildDroidSettingsOverlay(
   return { model: (preferred ?? rows[0])?.id ?? "", customModels: rows };
 }
 
+/** Factory resolves env references at launch; the key stays in the child env.
+ * Never substitute a management/admin token for a data-plane credential.
+ * A non-loopback-bound OCX proxy may require auth even via 127.0.0.1.
+ */
+export function droidAdmissionEnvironment(
+  config: OcxConfig,
+  parentEnv: NodeJS.ProcessEnv = process.env,
+): { env: NodeJS.ProcessEnv; apiKeyRef?: string } {
+  const token =
+    parentEnv.OCX_ADMISSION_TOKEN?.trim() ||
+    parentEnv.OPENCODEX_API_AUTH_TOKEN?.trim() ||
+    config.apiKeys
+      ?.find((entry) => typeof entry.key === "string" && entry.key.trim())
+      ?.key.trim();
+  return {
+    env: token
+      ? { ...parentEnv, OCX_ADMISSION_TOKEN: token }
+      : { ...parentEnv },
+    ...(token ? { apiKeyRef: "${OCX_ADMISSION_TOKEN}" } : {}),
+  };
+}
+
 export function droidProxyStartArgs(port: number): string[] {
   return ["start", "--port", String(port), "--proxy-only"];
 }
@@ -220,10 +242,9 @@ export async function cmdDroid(args: string[]): Promise<number> {
     );
     return 1;
   }
+  const admission = droidAdmissionEnvironment(config);
   const overlay = buildDroidSettingsOverlay(config, port, models, {
-    apiKeyRef: process.env.OCX_ADMISSION_TOKEN
-      ? "${OCX_ADMISSION_TOKEN}"
-      : undefined,
+    apiKeyRef: admission.apiKeyRef,
   });
   const dir = mkdtempSync(join(tmpdir(), "ocx-droid-"));
   const settingsPath = join(dir, "settings.json");
@@ -236,7 +257,7 @@ export async function cmdDroid(args: string[]): Promise<number> {
       const inv = commandInvocation("droid", childArgs, process.platform);
       const child = spawn(inv.file, inv.args, {
         stdio: "inherit",
-        env: process.env,
+        env: admission.env,
         ...inv.options,
       });
       child.on("error", (err: NodeJS.ErrnoException) => {
