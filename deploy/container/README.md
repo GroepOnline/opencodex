@@ -57,5 +57,9 @@ host placement, private addresses, release paths, credentials, current version
 and rollback evidence belong to the operator's private deployment repository or
 configuration system.
 
+The gated GHCR image publication supports `linux/amd64` and `linux/arm64`. The
+pull-request image check remains a single-platform `linux/amd64` build and does
+not publish an image.
+
 The public repository intentionally fails closed instead of carrying a live
 ChefGroep deployment target.

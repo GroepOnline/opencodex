@@ -58,6 +58,18 @@ describe("container image", () => {
     expect(dockerfile).toContain(
       'ENTRYPOINT ["/usr/bin/tini", "--", "/app/scripts/container-entrypoint.sh"]',
     );
+    expect(dockerfile).toContain(
+      "FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION}-slim AS root-deps",
+    );
+    expect(dockerfile).toContain(
+      "FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION}-slim AS gui-deps",
+    );
+    expect(dockerfile).toContain(
+      "FROM oven/bun:${BUN_VERSION}-slim AS prod-deps",
+    );
+    expect(dockerfile).toContain(
+      "FROM oven/bun:${BUN_VERSION}-slim AS runtime",
+    );
     expect(dockerfile).toContain("OPENCODEX_GIT_SHA=${VCS_REF}");
     // README-only media is not shipped in the runtime image.
     expect(dockerfile).not.toContain("/app/assets ./assets");
