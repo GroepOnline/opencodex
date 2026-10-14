@@ -12,8 +12,10 @@ test("landing returns before dashboard health polling is ever mounted", async ()
   expect(landingBlock).toContain("<Suspense");
   expect(landingBlock).not.toContain("useKeyedClientResource");
   expect(app).not.toContain("useKeyedClientResource");
-  expect(shell).toContain("const healthPoll = useKeyedClientResource");
-  expect(shell).toContain("const identityPoll = useKeyedClientResource");
+  const status = await Bun.file(new URL("../src/app/use-shell-status.ts", import.meta.url)).text();
+  expect(shell).toContain("useShellStatus()");
+  expect(status).toContain("const healthPoll = useKeyedClientResource");
+  expect(status).toContain("const identityPoll = useKeyedClientResource");
 });
 
 test("landing terminal binds its version to the build-time package version", async () => {

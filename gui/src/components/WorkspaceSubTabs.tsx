@@ -2,6 +2,7 @@ import { LayoutGroup, m, useReducedMotion } from "motion/react";
 import { useId, useState } from "react";
 import type { TKey } from "../i18n/shared";
 import { useT } from "../i18n/shared";
+import { selectionTransition } from "../shared/motion/selection-transition";
 
 export interface WorkspaceSubTab {
   sub: string | null;
@@ -46,11 +47,7 @@ export default function WorkspaceSubTabs({
                 <m.span
                   className="sub-tab-indicator"
                   layoutId="sub-tab-selection"
-                  transition={
-                    reduceMotion !== false || keyboardNavigation
-                      ? { duration: 0 }
-                      : { type: "spring", visualDuration: 0.22, bounce: 0 }
-                  }
+                  transition={selectionTransition(reduceMotion, keyboardNavigation, 0.22)}
                   aria-hidden
                 />
               )}

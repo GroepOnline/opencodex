@@ -3,6 +3,7 @@ import { useId, useState, type ComponentType } from "react";
 import type { View } from "../app-routing";
 import { useT, type TKey } from "../i18n/shared";
 import { Button } from "./primitives/button";
+import { selectionTransition } from "../shared/motion/selection-transition";
 
 export interface WorkspaceDestination {
   view: View;
@@ -42,11 +43,7 @@ export default function WorkspaceNavigation({
               <m.span
                 className="workspace-selection"
                 layoutId="selection"
-                transition={
-                  reduceMotion || keyboardNavigation
-                    ? { duration: 0 }
-                    : { type: "spring", visualDuration: 0.18, bounce: 0 }
-                }
+                transition={selectionTransition(reduceMotion, keyboardNavigation, 0.18)}
                 aria-hidden
               />
             )}
