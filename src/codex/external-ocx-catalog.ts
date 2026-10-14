@@ -5,7 +5,7 @@ import { configuredAdminToken } from "../lib/admin-secrets";
 import { isLoopbackHostname } from "../server/auth-cors";
 import { providerTableString, rootTomlString } from "./injected-marker";
 import { setRootModelCatalogPath } from "./inject";
-import { CODEX_CONFIG_PATH, CODEX_MODELS_CACHE_PATH, DEFAULT_CATALOG_PATH } from "./paths";
+import { CODEX_CONFIG_PATH, DEFAULT_CATALOG_PATH } from "./paths";
 import {
   buildCatalogEntries,
   catalogModelSlug,
@@ -13,7 +13,7 @@ import {
   type CatalogModel,
 } from "./catalog";
 import { loadCatalogForSync } from "./catalog/bundled";
-import { findNativeTemplate, type RawEntry } from "./catalog/parsing";
+import { activeCodexModelsCachePath, findNativeTemplate, type RawEntry } from "./catalog/parsing";
 
 type RemoteModelRow = CatalogModel & {
   namespaced?: string;
@@ -201,7 +201,7 @@ export async function syncExternalOcxCatalog(
   // differ from the central OCX catalog, regardless of its fetched_at timestamp.
   let cacheMatches = false;
   try {
-    const cache = JSON.parse(readFileSync(deps.cachePath ?? CODEX_MODELS_CACHE_PATH, "utf8")) as { models?: unknown };
+    const cache = JSON.parse(readFileSync(deps.cachePath ?? activeCodexModelsCachePath(), "utf8")) as { models?: unknown };
     cacheMatches = isDeepStrictEqual(cache.models, models);
   } catch {
     // Missing or unreadable cache is repaired through the normal invalidator.

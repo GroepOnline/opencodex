@@ -249,11 +249,13 @@ name.
 
 ### External provider managers
 
-If `config.toml` already selects a provider other than `openai` or `opencodex`, OpenCodex leaves the
-file unchanged and skips profile writes, catalog/cache refresh, and both immediate and background
-Codex history migration. Tools that manage a custom provider often tag existing sessions with that
-provider id; replacing the active id can make those intact sessions disappear from Codex's history
-view. The same protection applies to an external provider selected by a legacy root profile.
+If `config.toml` already selects a provider other than `openai` or `opencodex`, OpenCodex preserves
+its provider identity, skips native routing/profile injection and does not migrate Codex history.
+A foreign, non-OCX provider is left alone. For a health-verified loopback OCX provider, client-only
+sync can update the managed `model_catalog_json` pointer, catalog and cache without taking ownership
+of user-defined provider transport or changing session identities. Tools that manage a custom
+provider often tag existing sessions with that provider id; replacing the active id can make those
+intact sessions disappear from Codex's history view. The same protection applies to legacy profiles.
 
 Keep one tool as the owner of Codex provider configuration. To use OpenCodex behind an existing
 provider manager, point that provider at `http://127.0.0.1:10100/v1` with Responses passthrough
@@ -287,10 +289,11 @@ If a model is missing from Codex, or the catalog order/visibility looks wrong, c
    `GetUsableModels` RPC, not `/models`, so a Cursor-side change can alter which ids are visible
    independently of other providers.
 6. **Cache and `ocx sync`** — live catalogs are cached for about five minutes (`modelCacheTtlMs`,
-   default `300000`). Run `ocx sync` to force a fresh fetch and rewrite the catalog immediately.
+   default `300000`). Run `ocx sync` to fetch current model state. A verified external OCX
+   provider updates catalog/cache only if the model data changed or the cache drifted.
 7. **Running Codex `app-server`** — rewriting the on-disk catalog is not enough while a long-lived
    Codex `app-server` (Desktop / CLI background host) keeps the previous list in memory. `ocx sync`
-   and `ocx sync-cache` warn when those processes are detected. Restart them with
+   warns only if a catalog/cache write occurred; `ocx sync-cache` warns when it rewrites the cache. Restart them with
    `ocx sync --restart-codex` (or stop the matching `app-server` processes yourself), then let Codex
    recreate them so the new list appears.
 8. **`hideUnavailableModels`** — when enabled, a provider that is dead (all accounts need reauth, or
