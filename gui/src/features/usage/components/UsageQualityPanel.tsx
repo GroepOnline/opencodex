@@ -35,15 +35,15 @@ export default function UsageQualityPanel({
         />
         <Stat
           label={t("usage.quality.cacheReadRatio")}
-          value={formatPct(summary.cacheReadRatio ?? 0)}
+          value={summary.cacheReadRatio === undefined ? "—" : formatPct(summary.cacheReadRatio)}
         />
         <Stat
           label={t("usage.quality.ratio429")}
-          value={formatPct(summary.ratio429 ?? 0)}
+          value={summary.ratio429 === undefined ? "—" : formatPct(summary.ratio429)}
         />
         <Stat
           label={t("usage.quality.ratio502")}
-          value={formatPct(summary.ratio502 ?? 0)}
+          value={summary.ratio502 === undefined ? "—" : formatPct(summary.ratio502)}
         />
       </StatGroup>
       <p className="muted text-control" style={{ marginTop: 12 }}>
