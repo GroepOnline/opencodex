@@ -46,6 +46,26 @@ function snapshot(path: string) {
   };
 }
 
+function debugCatalogDrift(first: string, second: string): void {
+  const before = JSON.parse(first) as { models?: Record<string, unknown>[] };
+  const after = JSON.parse(second) as { models?: Record<string, unknown>[] };
+  const baseline = new Map((before.models ?? []).map(row => [String(row.slug), row]));
+  const regenerated = new Map((after.models ?? []).map(row => [String(row.slug), row]));
+  const changed: string[] = [];
+  for (const slug of new Set([...baseline.keys(), ...regenerated.keys()])) {
+    const a = baseline.get(slug);
+    const b = regenerated.get(slug);
+    if (!a || !b) { changed.push(slug + ": " + (a ? "removed" : "added")); continue; }
+    for (const field of new Set([...Object.keys(a), ...Object.keys(b)])) {
+      if (JSON.stringify(a[field]) !== JSON.stringify(b[field])) changed.push(slug + "." + field);
+    }
+  }
+  const changedTop = [...new Set([...Object.keys(before), ...Object.keys(after)].filter(
+    key => key !== "models" && JSON.stringify((before as Record<string, unknown>)[key]) !== JSON.stringify((after as Record<string, unknown>)[key]),
+  ))];
+  console.error("[DEBUG-OCX360] catalog drift fields", JSON.stringify({ changedTop, changed: changed.slice(0, 50), totalChanges: changed.length }));
+}
+
 afterEach(() => {
   if (saved.codex === undefined) delete process.env.CODEX_HOME;
   else process.env.CODEX_HOME = saved.codex;
@@ -63,11 +83,13 @@ describe("built-in Codex catalog idempotence (#360)", () => {
     const first = await refreshCodexModelCatalog(config, undefined, { catalogPath: home.catalogPath });
     expect(first.catalogWritten).toBe(true);
     expect(existsSync(home.cachePath)).toBe(true);
+    const firstCatalogBytes = readFileSync(home.catalogPath, "utf8");
     const catalog = snapshot(home.catalogPath);
     const cache = snapshot(home.cachePath);
     const history = snapshot(session);
 
     const second = await refreshCodexModelCatalog(config, undefined, { catalogPath: home.catalogPath });
+    if (second.catalogWritten) debugCatalogDrift(firstCatalogBytes, readFileSync(home.catalogPath, "utf8"));
     expect(second.catalogExists).toBe(true);
     expect(second.catalogWritten).toBe(false);
     expect(second.cacheSynced).toBe(false);
