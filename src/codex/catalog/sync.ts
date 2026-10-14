@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import {
   copyFileSync,
   existsSync,
@@ -559,9 +560,7 @@ export function mergeCatalogEntriesForSync(
               ? rank.get(slug)!
               : featured.length > 0
                 ? Math.max(
-                    typeof upstream.priority === "number"
-                      ? upstream.priority
-                      : 9,
+                    typeof upstream.priority === "number" ? upstream.priority : 9,
                     featured.length + 100,
                   )
                 : typeof upstream.priority === "number"
@@ -723,6 +722,8 @@ export async function syncCatalogModels(
   added: number;
   path: string;
   catalogWritten: boolean;
+  /** True only when this invocation validated the final managed catalog content. */
+  catalogValidated?: boolean;
   comboOmissions: ComboCatalogOmission[];
 }> {
   const catalogPath = options.catalogPath ?? readCodexCatalogPath();
@@ -735,7 +736,30 @@ export async function syncCatalogModels(
       comboOmissions: [],
     };
 
-  const template = findNativeTemplate(catalog);
+  // Count only newly introduced routed identities, not all currently available models.
+  // This must happen before the existing catalog is mutated by the merge.
+  // The source may be Codex's pristine bundled catalog, whereas the actual
+  // managed catalog already contains routed models from previous synchronizations.
+  // Compare identities against the on-disk state the user has, not the template.
+  const previousCatalog = readCatalog(catalogPath);
+  const existingSlugs = new Set(
+    (previousCatalog?.models ?? catalog.models ?? []).flatMap((entry) =>
+      typeof entry.slug === "string" ? [entry.slug] : [],
+    ),
+  );
+  const rawTemplate = findNativeTemplate(catalog);
+  // A fallback-quality native row is upgraded to the pinned upstream snapshot below.
+  // Use that SAME upgraded native template for new routed rows on the first run,
+  // otherwise they inherit fallback fields only on the first run and force a
+  // second catalog rewrite after the native template itself was upgraded.
+  const template = rawTemplate && shouldUpgradeToUpstreamEntry(rawTemplate)
+    ? (() => {
+        const upstream = upstreamNativeEntry(rawTemplate.slug as string);
+        // The persisted second-run template has already passed the full native
+        // normalization step; clone that same normalized form on the first run.
+        return upstream ? finishUpstreamNativeEntry(upstream, 9) : rawTemplate;
+      })()
+    : rawTemplate;
 
   const comboOmissions: ComboCatalogOmission[] = [];
   const goModels = await gatherRoutedModels(config, { comboOmissions });
@@ -779,6 +803,17 @@ export async function syncCatalogModels(
   // routed providers as namespaced slugs. Cursor and other adopted providers can expose model ids
   // like `gpt-5.5`; those must not delete the native OpenAI/Codex base row.
   const baseline = readNativeBaseline(catalogPath);
+  // Keep the native priority contract for fallback-quality old catalog rows:
+  // initial upgrade takes upstream.priority, so subsequent syncs must use that
+  // same priority instead of reverting to the old synthetic fallback priority.
+  // Genuine upstream entries retain their pristine priority from the backup.
+  for (const entry of readCatalogBackup(catalogPath)?.models ?? []) {
+    if (!shouldUpgradeToUpstreamEntry(entry)) continue;
+    const upstream = upstreamNativeEntry(entry.slug as string);
+    if (upstream && typeof upstream.priority === "number") {
+      baseline.set(entry.slug as string, upstream.priority);
+    }
+  }
   const goIds = new Set(enabledGo.map((m) => m.id));
   const gatheredProviderNames = new Set(
     Object.entries(config.providers ?? {})
@@ -829,11 +864,24 @@ export async function syncCatalogModels(
   );
   clampCatalogModelsToCodexSupport(catalog.models);
 
-  atomicWriteFile(catalogPath, JSON.stringify(catalog, null, 2) + "\n");
+  const serialized = JSON.stringify(catalog, null, 2) + "\n";
+  let catalogWritten = true;
+  try {
+    catalogWritten = readFileSync(catalogPath, "utf8") !== serialized;
+  } catch {
+    // Missing/unreadable files still require an atomic materialization attempt.
+  }
+  if (catalogWritten) atomicWriteFile(catalogPath, serialized);
+  const added = goEntries.filter(
+    (entry) => typeof entry.slug === "string" && !existingSlugs.has(entry.slug),
+  ).length;
   return {
-    added: goEntries.length,
+    added: catalogWritten ? added : 0,
     path: catalogPath,
-    catalogWritten: true,
+    catalogWritten,
+    // A matching catalog was verified against the desired bytes by this sync.
+    // This is not an existence-only trust signal for user-owned files.
+    catalogValidated: true,
     comboOmissions,
   };
 }
@@ -879,7 +927,10 @@ export function restoreCodexCatalog(
   return { removed, kept: native.length, path: catalogPath };
 }
 
-/** Force Codex's models_cache stale from the on-disk catalog. Returns whether a cache write occurred. */
+/** Repair Codex's models cache only when missing, invalid, or out of sync with catalog models.
+ * A valid cache with fresh client metadata is preserved even if its wrapper differs.
+ * Returns true only when an actual disk write occurred.
+ */
 export function invalidateCodexModelsCache(
   catalogPath: string = readCodexCatalogPath(),
 ): boolean {
@@ -887,15 +938,39 @@ export function invalidateCodexModelsCache(
     if (!existsSync(catalogPath)) return false;
     const catalog = JSON.parse(readFileSync(catalogPath, "utf8"));
     const models = catalog.models ?? catalog;
+    if (!Array.isArray(models)) return false;
+    const cachePath = activeCodexModelsCachePath();
+    try {
+      const cache = JSON.parse(readFileSync(cachePath, "utf8")) as {
+        fetched_at?: unknown;
+        client_version?: unknown;
+        models?: unknown;
+      };
+      if (
+        cache &&
+        typeof cache.fetched_at === "string" &&
+        Number.isFinite(Date.parse(cache.fetched_at)) &&
+        typeof cache.client_version === "string" &&
+        Array.isArray(cache.models) &&
+        isDeepStrictEqual(cache.models, models)
+      ) {
+        return false;
+      }
+    } catch {
+      // Unreadable or corrupt cache is repaired below.
+    }
     const wrapper = {
       fetched_at: "2000-01-01T00:00:00Z",
       client_version: "0.0.0",
       models,
     };
-    atomicWriteFile(
-      activeCodexModelsCachePath(),
-      JSON.stringify(wrapper, null, 2) + "\n",
-    );
+    const serialized = JSON.stringify(wrapper, null, 2) + "\n";
+    try {
+      if (readFileSync(cachePath, "utf8") === serialized) return false;
+    } catch {
+      // Cache does not exist or is unreadable.
+    }
+    atomicWriteFile(cachePath, serialized);
     return true;
   } catch {
     return false;
