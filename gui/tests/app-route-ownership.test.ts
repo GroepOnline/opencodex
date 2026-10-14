@@ -20,5 +20,7 @@ test("route outlet contains only route composition, never global health or auth 
   expect(source).not.toContain('import("./pages/');
   expect(source).not.toContain("useKeyedClientResource");
   expect(source).not.toContain("installApiAuthFetch");
-  expect(app).toContain("<RouteOutlet route={route} />");
+  const shell = await Bun.file(new URL("../src/app/DashboardShell.tsx", import.meta.url)).text();
+  expect(app).toContain("<DashboardShell");
+  expect(shell).toContain("<RouteOutlet route={route} />");
 });
