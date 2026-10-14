@@ -34,10 +34,20 @@ test("missing optional quality metrics remain unknown, never display fabricated 
 test("actual zero ratios and latency are still shown as measured zero", () => {
   expect(qualityValues({
     ...summary,
+    latencySampleCount: 1,
+    ttftSampleCount: 1,
     p95LatencyMs: 0,
     p95TtftMs: 0,
     cacheReadRatio: 0,
     ratio429: 0,
     ratio502: 0,
   })).toEqual(["0ms", "0ms", "0%", "0%", "0%"]);
+});
+
+test("unmeasured TTFT and latency are unknown despite backend zero placeholders", () => {
+  expect(qualityValues({ ...summary, latencySampleCount: 0, ttftSampleCount: 0, p95LatencyMs: 0, p95TtftMs: 0 })).toEqual(["—", "—", "—", "—", "—"]);
+});
+
+test("no input denominator makes cache ratio unknown without hiding real HTTP zeros", () => {
+  expect(qualityValues({ ...summary, inputTokens: 0, latencySampleCount: 1, ttftSampleCount: 1, p95LatencyMs: 0, p95TtftMs: 0, cacheReadRatio: 0, ratio429: 0, ratio502: 0 })).toEqual(["0ms", "0ms", "—", "0%", "0%"]);
 });
