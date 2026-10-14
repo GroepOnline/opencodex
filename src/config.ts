@@ -1754,9 +1754,9 @@ export function codexAccountPoolsEnabled(config: Pick<OcxConfig, "codexAccountPo
 /**
  * Expand a config string that is an environment reference.
  *
- * systemd `EnvironmentFile=` (production: `/etc/chef/opencodex/service.env`) already
- * injects keys into `process.env` — this function does not read that file. Prefer
- * `$VAR` / `${VAR}` in config.json over inline plaintext secrets.
+ * The service manager's `EnvironmentFile=` setting injects keys into `process.env` —
+ * this function does not read that file. Prefer `$VAR` / `${VAR}` in config.json over
+ * inline plaintext secrets.
  */
 export function resolveEnvValue(value: unknown): string | undefined {
   if (typeof value !== "string" || !value) return undefined;

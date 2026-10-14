@@ -249,7 +249,8 @@ management API is `/api/providers/keys` and returns masked keys only, including 
 when Availability is cooling that key. `GET /api/availability` is the dashboard read-model:
 pool size, first hop, cooling-key count, and cap window, with no secrets. Two or more keys rotate on
 429/529 without disabling the provider: a weekly inference cap cools that key until reset and the
-next key keeps serving. One key on Meta and one key on Zen are still two providers; hop across them
+next key keeps serving. Rotation selection state persists across proxy restarts. One key on Meta
+and one key on Zen are still two providers; hop across them
 with `fallback` or a combo, not `apiKeyPool`.
 
 ### Switching accounts from the terminal
