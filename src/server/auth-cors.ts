@@ -14,6 +14,10 @@ import {
 import { providerDestinationConfigError } from "../lib/destination-policy";
 import { stringifyHttpJson } from "../lib/http-json";
 import {
+  classifyProviderCredentialSource,
+  listInlinePlaintextProviders,
+} from "../providers/credential-source";
+import {
   getProviderRegistryEntry,
   providerCodexAccountMode,
   providerMatchesRegistryTransport,
@@ -640,12 +644,14 @@ export function copyIfDefined<K extends keyof OcxProviderConfig>(
 export function safeConfigDTO(config: OcxConfig): unknown {
   const providers: Record<string, Record<string, unknown>> = {};
   for (const [name, provider] of Object.entries(config.providers)) {
+    const credentialSource = classifyProviderCredentialSource(provider);
     const dto: Record<string, unknown> = {
       adapter: provider.adapter,
       baseUrl: publicProviderBaseUrl(provider.baseUrl),
       hasApiKey: !!provider.apiKey || !!provider.credentialRef,
       hasHeaders:
         !!provider.headers && Object.keys(provider.headers).length > 0,
+      ...(credentialSource ? { credentialSource } : {}),
     };
     const poolCount = configuredKeyCount(provider);
     if (poolCount > 0) dto.keyPoolCount = poolCount;
@@ -697,6 +703,8 @@ export function safeConfigDTO(config: OcxConfig): unknown {
     codexAutoStart: codexAutoStartEnabled(config),
     websockets: config.websockets,
     providers,
+    // Names only — leftover plaintext apiKeys are a V14 defect, never echoed.
+    inlineProviderSecrets: listInlinePlaintextProviders(config),
     ...(Object.keys(activeCooldowns).length > 0
       ? { providerCooldowns: activeCooldowns }
       : {}),

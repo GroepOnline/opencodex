@@ -52,6 +52,7 @@ import { readUsageEntries } from "../../usage/log";
 import { getUsageDebugLogEntries } from "../../usage/debug";
 import { parseRange, parseUsageSurface, summarizeUsage } from "../../usage/summary";
 import { stripCodexRuntimeProviderFields } from "../../codex/auth-context";
+import { classifyProviderCredentialSource } from "../../providers/credential-source";
 import { getProviderRegistryEntry } from "../../providers/registry";
 import { getDebugLogEntries } from "../../lib/debug-log-buffer";
 import { getInjectionDebugLogEntries } from "../../lib/injection-debug-log";
@@ -130,6 +131,7 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
       return {
         name, adapter: view.adapter, baseUrl: publicProviderBaseUrl(view.baseUrl), defaultModel: view.defaultModel,
         hasApiKey: !!p.apiKey,
+        credentialSource: classifyProviderCredentialSource(p),
         allowPrivateNetwork: view.allowPrivateNetwork === true,
         liveModels: view.liveModels !== false,
         models: view.models ?? [],
@@ -406,6 +408,7 @@ export async function handleProviderRoutes(ctx: ManagementContext): Promise<Resp
       name,
       disabled: config.providers[name]!.disabled === true,
       hasApiKey: !!config.providers[name]!.apiKey,
+      credentialSource: classifyProviderCredentialSource(config.providers[name]!),
     });
   }
 

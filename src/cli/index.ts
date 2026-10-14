@@ -31,7 +31,8 @@ import { findAvailablePort, isAddrInUse, PortUnavailableError, shouldPersistSele
 import { findLiveProxy, probeHostname, type LiveProxy } from "../server/proxy-liveness";
 import { stopProxy } from "../lib/process-control";
 import { loadServiceTokenFromFile } from "../lib/service-secrets";
-import { diagnoseService, isServiceOwnershipError, serviceCommand, serviceEnvironmentOwnedHere, serviceStartableFromTray, stopServiceIfInstalled, uninstallServiceIfInstalled } from "../service";
+import { warnInlineProviderSecrets } from "../providers/credential-source";
+import { diagnoseService, isServiceOwnershipError, serviceCommand, serviceEnvironmentOwnedHere, serviceStartableFromTray, serviceStatusSummary, stopServiceIfInstalled, uninstallServiceIfInstalled } from "../service";
 import { startupHealthSummary } from "../codex/autostart-health";
 import { drainAndShutdown, isRecyclingForExit, startServer } from "../server";
 import { injectSystemEnv, revertSystemEnv } from "../server/system-env";
@@ -225,6 +226,9 @@ async function handleStart(options: { block?: boolean } = {}) {
   writePid(process.pid);
 
   const config = loadConfig();
+  // V14: leftover plaintext provider keys are a service defect and a CLI warning.
+  // Never refuse — no OCX_SERVICE_STRICT flag exists. Names only; keys stay out of logs.
+  warnInlineProviderSecrets(config);
   writeRuntimePort({ pid: process.pid, port, hostname: config.hostname, ...(proxyOnly ? { proxyOnly: true } : {}) });
   // No pre-emptive snapshot here. `injectCodexConfig` journals the exact bytes it
   // is about to transform; snapshotting earlier only captured a baseline that could

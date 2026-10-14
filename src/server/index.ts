@@ -612,6 +612,8 @@ export function startServer(port?: number) {
       }
 
       if (url.pathname === "/healthz" && req.method === "GET") {
+        // Identity only. Per-provider credentialSource / leftover inline-secret names
+        // live on authenticated GET /api/providers and GET /api/config — never here.
         // service/pid/port let CLI liveness reject foreign 200s and verify pid identity.
         const cooldowns = activeProviderCooldowns(config);
         return jsonResponse(
