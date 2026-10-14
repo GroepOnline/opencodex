@@ -367,6 +367,7 @@ function loadPoolRotationStateFromDisk(): void {
     if (
       !parsed ||
       typeof parsed !== "object" ||
+      parsed.version !== 1 ||
       typeof parsed.pools !== "object"
     )
       return;

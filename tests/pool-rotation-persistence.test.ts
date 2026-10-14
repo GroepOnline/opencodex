@@ -335,6 +335,7 @@ test.each([
   '{"version":1}',
   '{"version":1,"pools":null}',
   '{"version":1,"pools":"invalid"}',
+  '{"version":2,"pools":{"codex":{"activeKey":"saved","successes":0,"currentWeights":{}}}}',
 ])("ignores unusable snapshot %s", (raw) => {
   writeFileSync(statePath, raw);
   expect(() => installPoolRotationPersistence(statePath)).not.toThrow();

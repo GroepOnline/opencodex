@@ -18,19 +18,27 @@ export type ProviderCredentialView = Pick<
   "authMode" | "credentialRef" | "apiKey" | "apiKeyPool"
 >;
 
-/** Collect configured string keys from apiKey and apiKeyPool, including empty values. */
-function configuredKeyMaterial(provider: ProviderCredentialView): string[] {
+/** Collect string keys while tolerating malformed values from passthrough config fields. */
+function configuredPoolKeyMaterial(provider: ProviderCredentialView): string[] {
+  if (!Array.isArray(provider.apiKeyPool)) return [];
   const keys: string[] = [];
-  if (typeof provider.apiKey === "string") keys.push(provider.apiKey);
-  for (const entry of provider.apiKeyPool ?? []) {
+  for (const entry of provider.apiKeyPool) {
+    if (!entry || typeof entry !== "object") continue;
     if (typeof entry.key === "string") keys.push(entry.key);
   }
   return keys;
 }
 
+/** Collect configured string keys from apiKey and apiKeyPool, including empty values. */
+function configuredKeyMaterial(provider: ProviderCredentialView): string[] {
+  const keys: string[] = [];
+  if (typeof provider.apiKey === "string") keys.push(provider.apiKey);
+  return [...keys, ...configuredPoolKeyMaterial(provider)];
+}
+
 /** Identify a non-empty configured key that does not start with `$`; whitespace is not trimmed. */
-export function isInlinePlaintextApiKey(value: string | undefined): boolean {
-  if (!value) return false;
+export function isInlinePlaintextApiKey(value: unknown): boolean {
+  if (typeof value !== "string" || !value) return false;
   return !isEnvValueRef(value);
 }
 
@@ -45,12 +53,19 @@ export function classifyProviderCredentialSource(
 ): ProviderCredentialSource | undefined {
   if (provider.authMode === "oauth") return "oauth";
   if (provider.authMode === "forward") return "forward";
-  if (provider.credentialRef?.trim()) return "vault";
-  if (isEnvValueRef(provider.apiKey)) return "env";
+  if (
+    typeof provider.credentialRef === "string" &&
+    provider.credentialRef.trim()
+  ) {
+    return "vault";
+  }
+  if (typeof provider.apiKey === "string" && isEnvValueRef(provider.apiKey)) {
+    return "env";
+  }
   if (isInlinePlaintextApiKey(provider.apiKey)) return "inline";
-  const pool = provider.apiKeyPool ?? [];
-  if (pool.some((entry) => isEnvValueRef(entry.key))) return "env";
-  if (pool.some((entry) => isInlinePlaintextApiKey(entry.key))) return "inline";
+  const pool = configuredPoolKeyMaterial(provider);
+  if (pool.some(isEnvValueRef)) return "env";
+  if (pool.some(isInlinePlaintextApiKey)) return "inline";
   return undefined;
 }
 

@@ -40,6 +40,12 @@ function makeConfig(
 
 const emptyEnv: NodeJS.ProcessEnv = {};
 
+function malformedProvider(
+  extra: Record<string, unknown>,
+): ProviderCredentialView {
+  return { authMode: "key", ...extra } as unknown as ProviderCredentialView;
+}
+
 describe("credential-source", () => {
   it("classifies env refs as env (both $VAR and ${VAR})", () => {
     expect(classifyProviderCredentialSource(base({ apiKey: "$API_KEY" }))).toBe(
@@ -93,6 +99,27 @@ describe("credential-source", () => {
     const provider = base({
       apiKeyPool: [{ id: "a", key: "plaintext" }],
     });
+    expect(classifyProviderCredentialSource(provider)).toBe("inline");
+    expect(providerHasInlinePlaintextSecret(provider)).toBe(true);
+  });
+
+  it("treats malformed credential fields as absent instead of throwing", () => {
+    const invalidApiKey = malformedProvider({ apiKey: 123 });
+    expect(() => classifyProviderCredentialSource(invalidApiKey)).not.toThrow();
+    expect(classifyProviderCredentialSource(invalidApiKey)).toBeUndefined();
+    expect(providerHasInlinePlaintextSecret(invalidApiKey)).toBe(false);
+
+    const invalidPool = malformedProvider({ apiKeyPool: { key: "ignored" } });
+    expect(() => classifyProviderCredentialSource(invalidPool)).not.toThrow();
+    expect(classifyProviderCredentialSource(invalidPool)).toBeUndefined();
+    expect(providerHasInlinePlaintextSecret(invalidPool)).toBe(false);
+  });
+
+  it("skips null and non-object pool entries but still classifies valid string keys", () => {
+    const provider = malformedProvider({
+      apiKeyPool: [null, 7, { key: 42 }, { key: "fixture-inline-key" }],
+    });
+    expect(() => classifyProviderCredentialSource(provider)).not.toThrow();
     expect(classifyProviderCredentialSource(provider)).toBe("inline");
     expect(providerHasInlinePlaintextSecret(provider)).toBe(true);
   });
