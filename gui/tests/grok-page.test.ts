@@ -28,13 +28,14 @@ test("the Grok page covers loading, absent and error states", async () => {
 
 test("the Grok page is routable and present in the nav", async () => {
   const routing = await read("../src/app-routing.ts");
-  const app = await read("../src/App.tsx");
+  const app = await read("../src/app/RouteOutlet.tsx");
+  const navigation = await read("../src/app/navigation.ts");
   // New IA: Grok lives as a Leveranciers sub-view; the bare #grok hash is a legacy redirect.
   expect(routing).toContain('grok: "leveranciers/grok"');
   expect(app).toMatch(
     /route\.view === "leveranciers" && route\.sub === "grok" && \(\s*<Grok apiBase=\{API_BASE\} \/>\s*\)/,
   );
-  expect(app).toContain('{ sub: "grok", tkey: "nav.grok" }');
+  expect(navigation).toContain('{ sub: "grok", tkey: "nav.grok" }');
 });
 
 test("every locale carries the Grok keys", () => {

@@ -15,17 +15,22 @@
  * when a keyless/env reference can carry it, mirroring the opencode launcher.
  */
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../config";
 import { commandInvocation } from "../lib/win-exec";
 import { configuredAdminToken } from "../lib/admin-secrets";
+import { preservesPhysicalComboProvider, resolveComboId } from "../combos/types";
+import { providerCodexAccountMode } from "../providers/registry";
 import { findLiveProxy } from "../server/proxy-liveness";
 import type { OcxConfig } from "../types";
 
 /** One custom-model row in Factory's `customModels` schema (BYOK reference). */
 export interface DroidCustomModel {
+  id: string;
+  index: number;
   model: string;
   displayName: string;
   baseUrl: string;
@@ -49,11 +54,47 @@ export interface DroidRoutedModel {
 }
 
 /**
+ * A Factory BYOK API key is an OCX data-plane admission token, not the
+ * caller's ChatGPT OAuth bearer required by Codex Direct. Keep these
+ * different credential classes separate: skip Direct OpenAI routes instead
+ * of ever forwarding the proxy admission token to upstream Codex.
+ */
+export function droidByokCompatibleModels(
+  config: OcxConfig,
+  models: readonly DroidRoutedModel[],
+): DroidRoutedModel[] {
+  const usesDirectOpenAi =
+    providerCodexAccountMode("openai", config.providers.openai, config) ===
+    "direct";
+  if (!usesDirectOpenAi) return [...models];
+  const physicalComboProvider = preservesPhysicalComboProvider(config);
+  return models.filter((model) => {
+    // The OpenAI data-plane key cannot stand in for a caller's Codex OAuth token.
+    if (model.provider === "openai") return false;
+    // A physical provider named "combo" is not a dynamic configured combo.
+    if (physicalComboProvider) return true;
+    // Resolve the public combo alias as well as the canonical combo/<id>.
+    // A failover or round-robin combo can select any configured target later.
+    const comboId = resolveComboId(config, model.id);
+    if (!comboId) return model.provider !== "combo";
+    const targets = config.combos?.[comboId]?.targets;
+    // Unknown/stale combo metadata is not enough evidence to offer BYOK.
+    if (!targets?.length) return false;
+    return targets.every((target) => target.provider !== "openai");
+  });
+}
+
+/**
  * Preserve the full routed selector. The OCX proxy requires the provider prefix
  * to distinguish models that share an id across different providers.
  */
 export function droidModelId(routed: string): string {
   return routed;
+}
+
+/** Stable Factory BYOK ID: independent of display names and catalog ordering. */
+export function droidCustomModelId(routed: string): string {
+  return `custom:ocx-${createHash("sha256").update(routed).digest("hex").slice(0, 24)}`;
 }
 
 /**
@@ -84,9 +125,20 @@ export function buildDroidSettingsOverlay(
 ): DroidSettingsOverlay {
   const baseUrl = droidBaseUrl(port, options.origin);
   const apiKey = options.apiKeyRef;
-  const rows: DroidCustomModel[] = models
-    .filter((model) => typeof model.id === "string" && model.id.length > 0)
-    .map((model) => ({
+  const uniqueModels = new Map<string, DroidRoutedModel>();
+  for (const model of models) {
+    if (
+      typeof model.id === "string" &&
+      model.id.length > 0 &&
+      !uniqueModels.has(model.id)
+    ) {
+      uniqueModels.set(model.id, model);
+    }
+  }
+  const rows: DroidCustomModel[] = [...uniqueModels.values()].map(
+    (model, index) => ({
+      id: droidCustomModelId(model.id),
+      index,
       model: droidModelId(model.id),
       displayName:
         model.displayName && model.displayName.length > 0
@@ -97,13 +149,37 @@ export function buildDroidSettingsOverlay(
       ...(apiKey ? { apiKey } : {}),
       maxOutputTokens: 128_000,
       noImageSupport: !model.inputModalities?.includes("image"),
-    }));
-  const preferred =
-    config.injectionModel &&
-    rows.some((row) => row.model === droidModelId(config.injectionModel!))
-      ? droidModelId(config.injectionModel)
-      : (rows[0]?.model ?? "");
-  return { model: preferred, customModels: rows };
+    }),
+  );
+  const preferred = config.injectionModel
+    ? rows.find((row) => row.model === droidModelId(config.injectionModel!))
+    : undefined;
+  return { model: (preferred ?? rows[0])?.id ?? "", customModels: rows };
+}
+
+/** Factory resolves env references at launch; the key stays in the child env.
+ * Never substitute a management/admin token for a data-plane credential.
+ * A non-loopback-bound OCX proxy may require auth even via 127.0.0.1.
+ */
+export function droidAdmissionEnvironment(
+  config: OcxConfig,
+  parentEnv: NodeJS.ProcessEnv = process.env,
+): { env: NodeJS.ProcessEnv; apiKeyRef?: string } {
+  const token =
+    parentEnv.OCX_ADMISSION_TOKEN?.trim() ||
+    parentEnv.OPENCODEX_API_AUTH_TOKEN?.trim() ||
+    config.apiKeys
+      ?.find((entry) => typeof entry.key === "string" && entry.key.trim())
+      ?.key.trim();
+  // Keep normal launch settings, but never expose the OCX management key
+  // to the independent Factory CLI child process.
+  const childEnv = { ...parentEnv };
+  delete childEnv.OPENCODEX_ADMIN_AUTH_TOKEN;
+  if (token) childEnv.OCX_ADMISSION_TOKEN = token;
+  return {
+    env: childEnv,
+    ...(token ? { apiKeyRef: "${OCX_ADMISSION_TOKEN}" } : {}),
+  };
 }
 
 export function droidProxyStartArgs(port: number): string[] {
@@ -111,6 +187,13 @@ export function droidProxyStartArgs(port: number): string[] {
 }
 
 /** Read the running proxy's client-visible model rows (authenticated GET /api/models). */
+export class DroidModelDiscoveryError extends Error {
+  constructor(reason: string) {
+    super(`OCX model discovery failed: ${reason}`);
+    this.name = "DroidModelDiscoveryError";
+  }
+}
+
 export async function fetchDroidModels(
   port: number,
   timeoutMs = 4_000,
@@ -123,8 +206,25 @@ export async function fetchDroidModels(
       headers,
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) return [];
-    const rows = (await res.json()) as Array<{
+    if (!res.ok) {
+      // Do not mistake a 401/403 (or a proxy failure) for an empty catalog.
+      // Never include response bodies or credentials in the diagnostic.
+      throw new DroidModelDiscoveryError(
+        res.status === 401 || res.status === 403
+          ? `access denied (HTTP ${res.status})`
+          : `proxy returned HTTP ${res.status}`,
+      );
+    }
+    let parsed: unknown;
+    try {
+      parsed = await res.json();
+    } catch {
+      throw new DroidModelDiscoveryError("invalid JSON catalog");
+    }
+    if (!Array.isArray(parsed)) {
+      throw new DroidModelDiscoveryError("invalid model catalog response");
+    }
+    const rows = parsed as Array<{
       provider?: string;
       id?: string;
       namespaced?: string;
@@ -133,19 +233,28 @@ export async function fetchDroidModels(
       native?: boolean;
       inputModalities?: string[];
     }>;
-    if (!Array.isArray(rows)) return [];
     return rows
       .filter(
-        (row) => row && row.disabled !== true && row.native !== true && typeof row.id === "string",
+        (row) =>
+          row &&
+          row.disabled !== true &&
+          row.native !== true &&
+          typeof row.id === "string",
       )
       .map((row) => ({
         provider: row.provider ?? "openai",
         id: row.namespaced ?? row.id!,
         displayName: row.displayName,
-        inputModalities: Array.isArray(row.inputModalities) ? row.inputModalities.filter((v): v is string => typeof v === "string") : undefined,
+        inputModalities: Array.isArray(row.inputModalities)
+          ? row.inputModalities.filter(
+              (v): v is string => typeof v === "string",
+            )
+          : undefined,
       }));
-  } catch {
-    return [];
+  } catch (error) {
+    if (error instanceof DroidModelDiscoveryError) throw error;
+    // Fetch errors can contain provider-specific details. Do not echo them.
+    throw new DroidModelDiscoveryError("proxy unreachable or request timed out");
   }
 }
 
@@ -187,15 +296,32 @@ export async function cmdDroid(args: string[]): Promise<number> {
     console.error("❌ Proxy did not become healthy after starting.");
     return 1;
   }
-  const models = await fetchDroidModels(port);
-  if (models.length === 0) {
-    console.error("❌ No OCX-routed models available; refusing to launch Droid with an empty catalog.");
+  let discovered: DroidRoutedModel[];
+  try {
+    discovered = await fetchDroidModels(port);
+  } catch (error) {
+    console.error(
+      `❌ ${error instanceof DroidModelDiscoveryError ? error.message : "OCX model discovery failed"}`,
+    );
     return 1;
   }
+  const models = droidByokCompatibleModels(config, discovered);
+  if (models.length !== discovered.length) {
+    console.error(
+      `⚠️ Skipped ${discovered.length - models.length} Codex Direct model(s): Factory BYOK cannot supply the required caller ChatGPT credential.`,
+    );
+  }
+  if (models.length === 0) {
+    console.error(
+      discovered.length > 0
+        ? "❌ No Droid-compatible OCX models available; select a pool or non-Direct provider."
+        : "❌ No OCX-routed models available; refusing to launch Droid with an empty catalog.",
+    );
+    return 1;
+  }
+  const admission = droidAdmissionEnvironment(config);
   const overlay = buildDroidSettingsOverlay(config, port, models, {
-    apiKeyRef: process.env.OCX_ADMISSION_TOKEN
-      ? "${OCX_ADMISSION_TOKEN}"
-      : undefined,
+    apiKeyRef: admission.apiKeyRef,
   });
   const dir = mkdtempSync(join(tmpdir(), "ocx-droid-"));
   const settingsPath = join(dir, "settings.json");
@@ -208,7 +334,7 @@ export async function cmdDroid(args: string[]): Promise<number> {
       const inv = commandInvocation("droid", childArgs, process.platform);
       const child = spawn(inv.file, inv.args, {
         stdio: "inherit",
-        env: process.env,
+        env: admission.env,
         ...inv.options,
       });
       child.on("error", (err: NodeJS.ErrnoException) => {

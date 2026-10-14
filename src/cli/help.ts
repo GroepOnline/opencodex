@@ -210,6 +210,7 @@ const helpEntries: Record<string, HelpEntry> = {
       "Claude Desktop profile (alias: ocx claude-desktop <sub>):",
       "  ocx claude desktop [apply]                         Save and apply the four-family profile",
       "  ocx claude desktop sync                            Copy applied library through the local gateway",
+      "  ocx claude desktop doctor [--json]                 Check library, profile drift, sync link and gateway",
       "  ocx claude desktop protocol <install|status|uninstall>  Manage the Linux sync link handler",
       "  ocx claude desktop show [--json]                   Show routes, families, and defaults",
       "  ocx claude desktop move <route> <family> [--default]",

@@ -60,3 +60,13 @@ bun install                      # installs Husky hooks via prepare
 | **React Doctor** (`bun run doctor`) | Gating React health check pinned to react-doctor 0.9.2 (`blocking: warning`). Pre-push runs it only if `gui/` changed and fails the push on findings. The CI workflow fails the job on any finding |
 
 Fix ESLint errors first. Use `doctor` / `doctor:full` for deeper React triage.
+
+## Official shadcn registry & MCP (Signaal component work)
+
+The repository root [`.mcp.json`](../.mcp.json) starts the **official** shadcn MCP server through `gui/scripts/shadcn-mcp.sh`. The wrapper switches to `gui/` before starting `shadcn@4.21.4 mcp`. This matters because `components.json` lives under `gui/`; the registry MCP resolves configuration from the process working directory. No separate registry server or production dependency is introduced.
+
+Claude Code can load the shared root `.mcp.json` when the repository is the project root. Restart the client and verify a connected `shadcn` tool via `/mcp`; the committed files alone are **not** proof that a client is connected. Other clients, including Codex/OCX and OpenCode, require their own MCP configuration. Do **not** overwrite `~/.codex/config.toml`, existing `model_provider=\"ocx\"` routing or other client settings to activate this server. For Codex, use an additive `[mcp_servers.shadcn]` entry pointing at the absolute path of `gui/scripts/shadcn-mcp.sh` after checking for an existing shadcn MCP entry.
+
+Registry operations are source-code reviews, not theme generators. Keep `base-nova`, Base UI and `src/components/primitives` as the canonical primitive owners. Before adopting a component, review `npx shadcn@4.21.4 info`, `docs COMPONENT`, `add COMPONENT --dry-run` and `add COMPONENT --diff` **from gui/**, inspect licenses/transitive packages, and make isolated commits. Do not run `init`, `apply` or `--overwrite` against our Signaal tokens or existing authored controls. The official registry needs no custom registry URL. Update the pinned CLI only with an explicit review and CI after upstream versions change.
+
+References: [shadcn MCP](https://ui.shadcn.com/docs/mcp), [shadcn CLI](https://ui.shadcn.com/docs/cli), [OpenCodex GUI vNext RFC](https://app.notion.com/p/3f87107ffb2381eaac24cfd72c05cdc5).

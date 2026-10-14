@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { closeSync, constants, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, statSync, unlinkSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, statSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { atomicWriteFile, getConfigPath } from "../config";
@@ -14,6 +14,7 @@ import {
 } from "./desktop-profile";
 import { nativeOpenAiContextWindow } from "../codex/catalog";
 import { assertDesktop3pModelsValid } from "./desktop-3p-guard";
+import { withDesktopLibraryLock, withDesktopLibraryLockAsync } from "./desktop-library-lock";
 
 export interface Desktop3pModelEntry {
   name: string;
@@ -423,7 +424,8 @@ function collectDesktop3pModels(
       models.push({
         name: alias,
         labelOverride: `${displayModelId(id)} (${provider})`,
-        anthropicFamilyTier: "opus",
+        // Real Anthropic ids keep their real family; only routed aliases are pinned to the Opus slot.
+        anthropicFamilyTier: realAnthropicFamily(id),
         ...supports1m,
       ...(supports1m.supports1m ? { prefer1m: true as const } : {}),
       });
@@ -543,7 +545,22 @@ function parseMetadata(path: string): Desktop3pMetadata {
   return { ...parsed, entries: parsed.entries };
 }
 
-/** Write and apply the opencodex config in Claude Desktop 3P's config library. */
+type Desktop3pWriteResult = { written: boolean; path: string; reason?: string; fingerprint?: string };
+
+/** Result for a write that could not even start (for example the library lock stayed busy). */
+function failedDesktop3pWrite(error: unknown): Desktop3pWriteResult {
+  return {
+    written: false,
+    path: resolveDesktop3pConfigLibraryPath(),
+    reason: error instanceof Error ? error.message : String(error),
+  };
+}
+
+/**
+ * Write and apply the opencodex config in Claude Desktop 3P's config library.
+ * Blocks the thread while another process holds the library lock; HTTP handlers and other async
+ * callers should use {@link writeDesktop3pConfigAsync} instead.
+ */
 export function writeDesktop3pConfig(
   port: number,
   nativeSlugs: string[],
@@ -551,6 +568,50 @@ export function writeDesktop3pConfig(
   apiKey?: string,
   mode: Desktop3pConfigMode = "static",
   profile?: OcxClaudeDesktopProfile,
+): Desktop3pWriteResult {
+  // Serialize with `ocx claude desktop sync`: both rewrite the same _meta.json + profile pair.
+  try {
+    return withDesktopLibraryLock(() => writeDesktop3pConfigLocked(port, nativeSlugs, routedModels, apiKey, mode, profile));
+  } catch (error) {
+    return failedDesktop3pWrite(error);
+  }
+}
+
+/**
+ * Same contract as {@link writeDesktop3pConfig}, but waits for a busy library lock without blocking
+ * the event loop, so a concurrent `ocx claude desktop sync` cannot stall the proxy's other requests.
+ */
+export async function writeDesktop3pConfigAsync(
+  port: number,
+  nativeSlugs: string[],
+  routedModels: Array<Desktop3pRoutedModel>,
+  apiKey?: string,
+  mode: Desktop3pConfigMode = "static",
+  profile?: OcxClaudeDesktopProfile,
+): Promise<Desktop3pWriteResult> {
+  try {
+    return await withDesktopLibraryLockAsync(() => writeDesktop3pConfigLocked(port, nativeSlugs, routedModels, apiKey, mode, profile));
+  } catch (error) {
+    return failedDesktop3pWrite(error);
+  }
+}
+
+/** Family tier of a real Anthropic model id; unknown or Opus-class ids stay in the Opus slot. */
+function realAnthropicFamily(modelId: string): Desktop3pModelEntry["anthropicFamilyTier"] {
+  const id = modelId.toLowerCase();
+  if (id.includes("haiku")) return "haiku";
+  if (id.includes("sonnet")) return "sonnet";
+  if (id.includes("fable")) return "fable";
+  return "opus";
+}
+
+function writeDesktop3pConfigLocked(
+  port: number,
+  nativeSlugs: string[],
+  routedModels: Array<Desktop3pRoutedModel>,
+  apiKey: string | undefined,
+  mode: Desktop3pConfigMode,
+  profile: OcxClaudeDesktopProfile | undefined,
 ): { written: boolean; path: string; reason?: string; fingerprint?: string } {
   const libraryPath = resolveDesktop3pConfigLibraryPath();
   const metadataPath = join(libraryPath, "_meta.json");
@@ -587,7 +648,7 @@ export function writeDesktop3pConfig(
       // Roll back to the state before this call: restore the backup taken by this call, or remove a
       // config this call created. A rollback failure must not mask the original metadata error.
       try {
-        if (backupPath) copyFileSync(backupPath, configPath);
+        if (backupPath) atomicWriteFile(configPath, readFileSync(backupPath, "utf8"));
         else if (created) unlinkSync(configPath);
       } catch { /* the original metadata failure is the actionable error */ }
       throw metaError;
@@ -611,7 +672,9 @@ export function atomicReplaceDesktopConfig(
 ): { backupPath?: string; created: boolean } {
   const backupPath = `${path}.bak`;
   const existed = existsSync(path);
-  if (existed) copyFileSync(path, backupPath);
+  // The config can carry inferenceGatewayApiKey: take the backup through the same 0600 + ACL-hardened
+  // atomic writer as the config itself instead of a default-umask, non-atomic copy.
+  if (existed) atomicWriteFile(backupPath, readFileSync(path, "utf8"));
   writer(path, content);
   return existed ? { backupPath, created: false } : { created: true };
 }

@@ -50,6 +50,7 @@ describe("Codex shim CLI auto-restore policy", () => {
       ["sync", ["sync", "--desktop-only"]],
       ["claude", ["claude", "desktop", "sync"]],
       ["claude-desktop", ["claude-desktop", "sync"]],
+      ["droid", ["droid", "exec", "--model", "custom:ocx-test"]],
     ] as const) {
       const restore = () => { throw new Error("Codex launcher must not be touched"); };
       const { deps, warnings, readConfigCalls } = cliDeps({ status: "healthy" }, { restore });

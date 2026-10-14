@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "shadcn": {
+      "command": "sh",
+      "args": [
+        "gui/scripts/shadcn-mcp.sh"
+      ]
+    }
+  }
+}

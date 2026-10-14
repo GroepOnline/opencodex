@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildDroidSettingsOverlay,
   droidBaseUrl,
+  droidCustomModelId,
   droidModelId,
   droidProxyStartArgs,
   fetchDroidModels,
@@ -78,6 +79,74 @@ describe("ocx droid model discovery", () => {
     }
   });
 
+  test("does not disguise management authentication failure as an empty model catalog", async () => {
+    const oldFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () =>
+        new Response("secret-diagnostic-must-not-leak", { status: 401 })) as typeof fetch;
+      await expect(fetchDroidModels(10123)).rejects.toThrow(
+        "OCX model discovery failed: access denied (HTTP 401)",
+      );
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
+  });
+
+  test("surfaces unexpected proxy HTTP failures without exposing response bodies", async () => {
+    const oldFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () =>
+        new Response("confidential-upstream-diagnostic", { status: 503 })) as typeof fetch;
+      try {
+        await fetchDroidModels(10123);
+        throw new Error("expected proxy failure");
+      } catch (error) {
+        expect((error as Error).message).toBe(
+          "OCX model discovery failed: proxy returned HTTP 503",
+        );
+        expect((error as Error).message).not.toContain("confidential-upstream");
+      }
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
+  });
+
+  test("rejects malformed catalog responses rather than pretending no models exist", async () => {
+    const oldFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () => Response.json({ error: "not an array" })) as typeof fetch;
+      await expect(fetchDroidModels(10123)).rejects.toThrow(
+        "OCX model discovery failed: invalid model catalog response",
+      );
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
+  });
+
+  test("sanitizes transport failures without leaking the underlying exception", async () => {
+    const oldFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () => {
+        throw new Error("sensitive-network-diagnostic");
+      }) as typeof fetch;
+      await expect(fetchDroidModels(10123)).rejects.toThrow(
+        "OCX model discovery failed: proxy unreachable or request timed out",
+      );
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
+  });
+
+  test("keeps a successful empty catalog distinct from a failed discovery", async () => {
+    const oldFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () => Response.json([])) as typeof fetch;
+      expect(await fetchDroidModels(10123)).toEqual([]);
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
+  });
+
   test("a native-only response has no eligible OCX models", async () => {
     const oldFetch = globalThis.fetch;
     try {
@@ -92,9 +161,11 @@ describe("ocx droid model discovery", () => {
 });
 
 describe("ocx droid settings overlay (non-destructive BYOK)", () => {
-  test("emits one OpenAI-row per routed proxy model with the reduced model id", () => {
+  test("emits stable Factory IDs for each routed proxy model", () => {
     const overlay = buildDroidSettingsOverlay(cfg(), 10123, MODELS);
     expect(overlay.customModels).toHaveLength(2);
+    expect(overlay.customModels.map((row) => row.id)).toEqual(MODELS.map((row) => droidCustomModelId(row.id)));
+    expect(overlay.customModels.map((row) => row.index)).toEqual([0, 1]);
     expect(overlay.customModels.map((row) => row.model)).toEqual([
       "openai/gpt-6-astra",
       "zai/glm-5.3-flash",
@@ -136,7 +207,7 @@ describe("ocx droid settings overlay (non-destructive BYOK)", () => {
       10123,
       MODELS,
     );
-    expect(overlay.model).toBe("zai/glm-5.3-flash");
+    expect(overlay.model).toBe(droidCustomModelId("zai/glm-5.3-flash"));
   });
 
   test("falls back to the first row when injectionModel is not in the catalog", () => {
@@ -145,7 +216,7 @@ describe("ocx droid settings overlay (non-destructive BYOK)", () => {
       10123,
       MODELS,
     );
-    expect(overlay.model).toBe("openai/gpt-6-astra");
+    expect(overlay.model).toBe(droidCustomModelId("openai/gpt-6-astra"));
   });
 
   test("drops empty ids and synthesizes a display name when none is given", () => {
