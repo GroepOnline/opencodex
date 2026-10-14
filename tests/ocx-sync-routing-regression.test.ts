@@ -70,7 +70,7 @@ test("ocx sync is idempotent and repairs cache drift without rewriting unchanged
         }],
       }),
       adminToken: () => "test-credential-not-sent-to-unknown-service",
-      writeConfig: (_content: string) => {},
+      writeConfig: () => {},
       writeCatalog: (path: string, content: string) => {
         catalogWrites++;
         writeFileSync(path, content);
