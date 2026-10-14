@@ -28,6 +28,9 @@ export interface UsageSummaryTotals {
   pricedRequests?: number;
   unpricedRequests?: number;
   unmeteredRequests?: number;
+  /** Missing in older API responses; zero means no valid measurement samples. */
+  latencySampleCount?: number;
+  ttftSampleCount?: number;
   p95LatencyMs?: number;
   p95TtftMs?: number;
   cacheReadRatio?: number;
