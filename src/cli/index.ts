@@ -33,7 +33,7 @@ import { stopProxy } from "../lib/process-control";
 import { loadServiceTokenFromFile } from "../lib/service-secrets";
 import { diagnoseService, isServiceOwnershipError, serviceCommand, serviceEnvironmentOwnedHere, serviceStartableFromTray, stopServiceIfInstalled, uninstallServiceIfInstalled } from "../service";
 import { startupHealthSummary } from "../codex/autostart-health";
-import { drainAndShutdown, isRecyclingForExit, startServer } from "../server";
+import { drainAndShutdown, effectiveBindHostname, isRecyclingForExit, startServer } from "../server";
 import { injectSystemEnv, revertSystemEnv } from "../server/system-env";
 import { buildDesktop3pRegistry } from "../claude/desktop-3p";
 import { installShellHook, uninstallShellHook } from "../server/system-env";
@@ -126,6 +126,7 @@ function startArgv(port?: number, proxyOnly = false): string[] {
 
 async function chooseListenPort(requestedPort?: number): Promise<number> {
   const config = loadConfig();
+  const hostname = effectiveBindHostname(config) ?? "127.0.0.1";
   const preferred = requestedPort ?? config.port ?? 10100;
   const hardPin = requestedPort !== undefined && requestedPort > 0;
   // Soft start: brief prefer-retry then ephemeral hop.
@@ -133,7 +134,7 @@ async function chooseListenPort(requestedPort?: number): Promise<number> {
   // to free without killing any listener (healthy ocx / foreign). Never hop.
   if (hardPin && preferred > 0) {
     const { reclaimListenPort } = await import("../server/port-reclaim");
-    await reclaimListenPort(preferred, config.hostname ?? "127.0.0.1", {
+    await reclaimListenPort(preferred, hostname, {
       timeoutMs: 30_000,
       intervalMs: 100,
       scanIntervalMs: 500,
@@ -142,7 +143,7 @@ async function chooseListenPort(requestedPort?: number): Promise<number> {
     });
   }
   try {
-    const selected = await findAvailablePort(preferred, config.hostname ?? "127.0.0.1", {
+    const selected = await findAvailablePort(preferred, hostname, {
       preferRetryMs: hardPin ? 0 : 750,
       preferRetryIntervalMs: 50,
       allowEphemeralFallback: !hardPin,
@@ -207,7 +208,7 @@ async function handleStart(options: { block?: boolean } = {}) {
       if (!isAddrInUse(err) || attempt >= 2) throw err;
       if (requestedPort !== undefined) {
         console.log(`⚠️  Port ${port} was taken while starting; waiting to retry the same port...`);
-        const hostname = loadConfig().hostname ?? "127.0.0.1";
+        const hostname = effectiveBindHostname(loadConfig()) ?? "127.0.0.1";
         const freed = await waitForPortAvailable(port, hostname, { timeoutMs: 3_000, intervalMs: 50 });
         if (!freed) {
           console.error(`❌ Port ${port} stayed busy; refusing to hop to an ephemeral port.`);

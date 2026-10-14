@@ -22,6 +22,8 @@ Start the proxy server (preferred port `10100`). Without `--port`, if that port 
 opencodex selects and records another available port. An explicit `--port` stays pinned and
 fails if it remains busy; it never silently switches ports. Temporary availability probes close
 incoming discovery connections immediately so a scanner cannot keep startup waiting.
+`OPENCODEX_BIND_HOST` overrides the saved hostname for both availability probes and the
+listener. Containers can use `0.0.0.0` without rewriting a host-specific saved configuration.
 It writes PID/runtime-port state and refuses to start a second live
 instance. Codex is optional: ordinary startup skips its integration when no Codex config exists.
 `--proxy-only` starts the API and dashboard without client config, shell-hook, launcher or Codex
