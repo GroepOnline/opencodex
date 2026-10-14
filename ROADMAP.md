@@ -1,51 +1,39 @@
-# Roadmap
+# OpenCodex roadmap
 
-**Independent GroepOnline fork** of upstream opencodex
-([lidge-jun/opencodex](https://github.com/lidge-jun/opencodex) as historical source;
-canonical product work lives in [GroepOnline/opencodex](https://github.com/GroepOnline/opencodex)).
+Status: updated 2026-10-14 against `GroepOnline/opencodex/main` at `52bc938f2c5e`. This file tracks **merged source**, **published artifacts**, and **live acceptance** separately. Historical August 2026 plans are in [structure/09_x10-terminal-plan.md](structure/09_x10-terminal-plan.md); `main` is the sole integration branch since 2026-10-01.
 
-For the full audit + phased execution plan, see
-[`structure/09_x10-terminal-plan.md`](structure/09_x10-terminal-plan.md).
+## Product direction
 
-## Vision
+One independent, local-first model gateway with explicit provider/account boundaries, optional client integrations and an accessible, component-driven operator GUI. The goal is reliable, low-friction setup and diagnosis, not a provider-count marketing metric. Native third-party clients and provider entitlements remain independent.
 
-A fully self-sufficient fork with our own release cadence, feature set, and quality bar —
-not dependent on upstream decisions or timelines, while retaining a deliberate intake path for
-relevant security and compatibility fixes. The operator “terminal” (CLI + GUI + proxy) should
-feel 10× less frictional than stock upstream for ChefGroep kitchens.
+## Verified milestones
 
-## Short term (done)
+- [x] **Release v1.5.5**: [GitHub Release](https://github.com/GroepOnline/opencodex/releases/tag/v1.5.5) published 2026-10-14 01:33:49 UTC from tag commit `fb7d3a130257b9542b5adc10b740baf4c1a78c8a`. The release notes report npm `@groeponline/opencodex@1.5.5` with dist-tag `latest`. The published release includes the first `ocx droid` launcher (#354), custom reasoning efforts (#347), external Codex sync truthfulness (#357), and README correction (#356).
+- [x] **Main-only Factory hardening (#355)**: merged 2026-10-14 01:56:30 UTC, commit `3ddbd9a33240cea90964f917a3ba073c71f69353`. Source-level tests cover stable custom-model identities, preservation of existing custom models, data-plane admission isolation, and explicit discovery failures. **Not part of v1.5.5**, and not a real installed-Factory acceptance test.
+- [x] **Main-only Claude Desktop hardening (#349)**: merged 2026-10-14 02:09:41 UTC, commit `52bc938f2c5eddda5cee44f16c4f542009d034b9`. Provides `ocx claude desktop doctor [--json]`, scoped protocol cleanup, private bounded backups and cross-process library locking. **Not part of v1.5.5**.
+- [x] **Retired `dev` branch**: all new work targets `main`, through normal branch/PR/CI/review controls. Source merge, package publication, docs deployment, and running machines are four different evidence boundaries.
+- [x] **Cross-platform CI and source release contracts** exist. Green source-level CI does not by itself demonstrate provider credentials, vendor-client compatibility, end-to-end inference, or deploy parity.
 
-- [x] **Fork repository + branch model** — GroepOnline remote; `main` is the sole integration line; the former `dev` branch was retired on 2026-10-01
-- [x] **Inherited product work reconciled** — Dutch/ChefGroep GUI language, Claude Desktop, combos/aliases, Cursor fixes, and the component-driven GUI slices are on `main`
-- [x] **Cross-platform package smoke in CI** — Linux/macOS/Windows package smoke job
-- [x] **Infrastructure lanes landed** — plugins contract (#40), Prometheus metrics (#42), admission rate-limit (#44/#45), ChefVault provider-security (#38)
+## Active work — not shipped or accepted
 
-## Near term (next) — Phase 0–1 of x10 plan
+- [ ] **GUI vNext, real components and structure**: [#358](https://github.com/GroepOnline/opencodex/pull/358) (draft typed navigation and route outlet) and [#359](https://github.com/GroepOnline/opencodex/pull/359) (draft feature-scoped Usage components) are independent implementation slices. Continue feature ownership and reusable shadcn/Base UI primitives; avoid page-sized monolithic TSX and decorative abstraction. Neither draft is a shipped redesign.
+- [ ] **Whole-product i18n**: typed locale keys, no hardcoded new user-facing strings, CI i18n lint on migrated folders, keyboard/screen-reader parity and no untranslated fallback drift. Current route-based tests and NL/EN coverage do not prove every surface is internationalized.
+- [ ] **Motion and visual quality**: intentional page/element transitions with reduced-motion, performance, touch and mobile testing; no one-shot reskin or AI-template look. Require screenshot/browser parity before claiming completion.
+- [ ] **Factory Droid real acceptance**: run against an installed vendor CLI with existing `customModels`, merged settings, environment-based admission, model selection and a real routed turn; capture exact version, health, secret-safety, cleanup and rollback-free failure behavior. Tests in [#355](https://github.com/GroepOnline/opencodex/pull/355) model vendor merge behavior but do not replace this runtime gate.
+- [ ] **Claude Desktop real acceptance**: prove profile apply/sync, a concurrent writer, XDG default recognition, `doctor --json`, uninstall ownership and reload on supported hosts. Unit tests from #349 prove source invariants, not live desktop adoption.
+- [ ] **Public docs reachability**: verify an unauthenticated request to `opencodex.chefgroep.online` and the intended Cloudflare Access policy. An earlier 403 was observed; no fresh edge result is asserted by this roadmap.
+- [ ] **Autoresearch harness (#334)**: draft and isolated; the benchmark guard cannot convert noisy measurements into correctness evidence without repeated samples, frozen fixtures and all required CI.
+- [ ] **Release follow-through**: tag/npm/GHCR artifacts, immutable provenance, exact-head CI and production health are independent gates. Never advertise post-tag commits as capabilities of v1.5.5.
 
-- [x] **Merge open train** — #51 CI shards → #53 Claude recursive OCX → #52 rate-limit metrics; all open PRs (#51–#61) merged to `dev` on 2026-08-03
-- [x] **Reconcile `dev` ↔ `main`** — Codex pacer ported via #55; non-ports documented in [`structure/10_dev-main-reconcile.md`](structure/10_dev-main-reconcile.md) (De Pas stubs stay until Phase 3)
-- [x] **CI hardening** — `.github/dependabot.yml`, Security audit job (both lockfiles), pinned actionlint job on `dev` (#60)
-- [x] **Release docs scaffolding** — `VERSIONING.md`, `RELEASE_PROCESS.md`, and `CHANGELOG.md` are live and the release workflow is contract-tested
-- [x] **Publish fork releases** — the original preview milestone was superseded; stable `v1.5.1` is published to npm, GitHub Releases, GHCR, and Homebrew with artifact provenance pinned to `f7341fac`
-- [x] **Canonical npm ownership** — `@groeponline/opencodex` is the canonical published package; npm `latest` is `1.5.1` and release/install automation targets the GroepOnline scope
-- [ ] **Docs Pages public edge** — the GitHub Pages deploy workflow is green and the ChefGroep hostname is configured, but an unauthenticated probe of `opencodex.chefgroep.online` currently returns Cloudflare `403`; resolve the intended public/Access policy before calling the docs surface complete
-- [ ] **Upstream intake policy** — security/protocol/client-compat only; no release dependence
-- [x] **ROADMAP/docs truth pass** — refreshed against `main` on 2026-10-03; release/distribution state above reflects the verified `v1.5.1` artifact and the retired `dev` line
+## Later priorities
 
-## Medium term — Phase 2–4
+- [ ] Guided `init`, diagnostic `doctor` recovery, observable startup and clear account/capacity errors; validate without another parallel configuration validator.
+- [ ] De Pas fleet/management UX with explicit authorization and security boundaries; improve dashboard visibility without broadening credential access.
+- [ ] First-party OnlineChef provider preset, ChefVault outage clarity and portable provider bridge contracts.
+- [ ] Deterministic proxy+fixture e2e smoke CI, latency/cold-start/CI-shard baselines and performance regression gates.
+- [ ] Multi-host fleet coordination and macOS/Linux/Windows service parity.
+- [ ] Dynamic plugin execution only after a documented trust model and isolation review. The existing observational plugin contract is not an arbitrary filesystem plugin loader.
 
-- [ ] **Terminal UX 10x** — guided `ocx init`, `doctor --fix`, observe cockpit, help IA
-- [ ] **De Pas / control-plane GUI** — wire fleet shell under ChefGroep skins; metrics + rate-limit visibility
-- [ ] **Custom provider: OnlineChef AI gateway** — first-party registry preset
-- [ ] **ChefVault operator UX** — degraded-mode clarity when vault tunnel is down
-- [ ] **Smoke test suite** — start proxy + fixture provider requests in CI
-- [ ] **Benchmark harness** — latency/artifact lane after APIs stabilize
-- [ ] **Config diagnostics** — enhance `ocx config validate` (no second validator)
+## Evidence and learning
 
-## Long term — Phase 5
-
-- [ ] **Multi-host fleet management** — centralized config / status across machines
-- [ ] **Service mode improvements** — systemd/launchd/WinSW parity
-- [ ] **Plugin system (beyond observational contract)** — only with explicit security model; no arbitrary FS loaders by default
-- [ ] **Performance regression gates** — p95 TTFT / proxy overhead in CI after baselines
+See [docs/adr/0008-client-integration-evidence-2026-10-14.md](docs/adr/0008-client-integration-evidence-2026-10-14.md) for root causes, regression tests, reviewbot handling and release-boundary lessons. Keep historical findings in `docs/`; update `docs-site/` for actual user-facing behavior, `structure/` for maintained invariants, and this roadmap for current delivery state.

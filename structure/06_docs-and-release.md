@@ -1,5 +1,9 @@
 # Docs And Release SOT
 
+## Verified checkpoint (2026-10-14)
+
+GitHub Release [v1.5.5](https://github.com/GroepOnline/opencodex/releases/tag/v1.5.5) was published 2026-10-14 01:33:49 UTC from tag `fb7d3a130257b9542b5adc10b740baf4c1a78c8a`; release notes report npm `@groeponline/opencodex@1.5.5` as `latest`. Later merges [#355](https://github.com/GroepOnline/opencodex/pull/355) and [#349](https://github.com/GroepOnline/opencodex/pull/349) exist on `main`, **not** in that published tag. Do not conflate current source, npm metadata, a deployed GUI, an installed third-party client, and an end-to-end model request. The [roadmap](../ROADMAP.md) owns changing delivery status; this document owns stable release and docs invariants.
+
 ## Public docs
 
 The public documentation site lives in `docs-site/` and is built with Astro + Starlight. English is

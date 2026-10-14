@@ -16,6 +16,9 @@ release, security, or repository governance.
 - Build and release procedure:
   [RELEASE_PROCESS.md](../RELEASE_PROCESS.md).
 
+- Verified client-integration defects and regression contracts (2026-10-14):
+  [ADR 0008](adr/0008-client-integration-evidence-2026-10-14.md).
+
 Keep investigations here for reproducible history. When a conclusion
 becomes a supported contract, migrate the conclusion to the maintained
 documentation instead of treating these notes as live instructions.
