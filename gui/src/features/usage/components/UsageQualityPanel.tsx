@@ -18,7 +18,7 @@ export default function UsageQualityPanel({
         <Stat
           label={t("usage.quality.p95Latency")}
           value={
-            summary.p95LatencyMs !== undefined
+            summary.p95LatencyMs !== undefined && summary.latencySampleCount !== 0
               ? `${summary.p95LatencyMs}ms`
               : "\u2014"
           }
@@ -27,7 +27,7 @@ export default function UsageQualityPanel({
         <Stat
           label={t("usage.quality.p95Ttft")}
           value={
-            summary.p95TtftMs !== undefined
+            summary.p95TtftMs !== undefined && summary.ttftSampleCount !== 0
               ? `${summary.p95TtftMs}ms`
               : "\u2014"
           }
@@ -35,7 +35,7 @@ export default function UsageQualityPanel({
         />
         <Stat
           label={t("usage.quality.cacheReadRatio")}
-          value={summary.cacheReadRatio === undefined ? "—" : formatPct(summary.cacheReadRatio)}
+          value={summary.cacheReadRatio === undefined || summary.inputTokens === 0 ? "—" : formatPct(summary.cacheReadRatio)}
         />
         <Stat
           label={t("usage.quality.ratio429")}
