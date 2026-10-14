@@ -9,13 +9,22 @@ import {
   warnInlineProviderSecrets,
   type ProviderCredentialView,
 } from "../src/providers/credential-source";
+import type { OcxConfig, OcxProviderConfig } from "../src/types";
 
-function base(extra: Partial<Omit<ProviderCredentialView, never>> = {}): ProviderCredentialView {
+function base(extra: Partial<ProviderCredentialView> = {}): ProviderCredentialView {
   return {
     authMode: "key",
     ...extra,
-  } as ProviderCredentialView;
+  };
 }
+
+function makeConfig(
+  providers: Record<string, OcxProviderConfig>,
+): Pick<OcxConfig, "providers"> {
+  return { providers };
+}
+
+const emptyEnv: NodeJS.ProcessEnv = {};
 
 describe("credential-source", () => {
   it("classifies env refs as env (both $VAR and ${VAR})", () => {
@@ -52,41 +61,41 @@ describe("credential-source", () => {
   });
 
   it("lists and sorts inline providers", () => {
-    const names = listInlinePlaintextProviders({
-      providers: {
-        zed: { authMode: "key", apiKey: "secret" } as any,
-        ok: { authMode: "key", apiKey: "$ENV" } as any,
-        alpha: { authMode: "key", apiKey: "also-secret" } as any,
-      },
-    } as any);
+    const names = listInlinePlaintextProviders(
+      makeConfig({
+        zed: { authMode: "key", apiKey: "secret" },
+        ok: { authMode: "key", apiKey: "$ENV" },
+        alpha: { authMode: "key", apiKey: "also-secret" },
+      }),
+    );
     expect(names).toEqual(["alpha", "zed"]);
   });
 
   it("isServiceMode honours 1/true", () => {
-    expect(isServiceMode({ OCX_SERVICE: "1" } as any)).toBe(true);
-    expect(isServiceMode({ OCX_SERVICE: "true" } as any)).toBe(true);
-    expect(isServiceMode({ OCX_SERVICE: "0" } as any)).toBe(false);
-    expect(isServiceMode({} as any)).toBe(false);
+    expect(isServiceMode({ OCX_SERVICE: "1" })).toBe(true);
+    expect(isServiceMode({ OCX_SERVICE: "true" })).toBe(true);
+    expect(isServiceMode({ OCX_SERVICE: "0" })).toBe(false);
+    expect(isServiceMode(emptyEnv)).toBe(false);
   });
 
   it("warnInlineProviderSecrets never echoes secret values", () => {
     const messages: string[] = [];
     const names = warnInlineProviderSecrets(
-      { providers: { p: { authMode: "key", apiKey: "super-secret-value" } as any } } as any,
-      { warn: (m) => messages.push(m), env: {} },
+      makeConfig({ p: { authMode: "key", apiKey: "super-secret-value" } }),
+      { warn: (m) => messages.push(m), env: emptyEnv },
     );
     expect(names).toEqual(["p"]);
     expect(messages.join("\n")).not.toContain("super-secret-value");
   });
 
   it("doctor checks levels", () => {
-    const clean = collectInlineSecretDoctorChecks({
-      providers: { p: { authMode: "key", apiKey: "$K" } as any },
-    } as any);
+    const clean = collectInlineSecretDoctorChecks(
+      makeConfig({ p: { authMode: "key", apiKey: "$K" } }),
+    );
     expect(clean[0].level).toBe("OK");
-    const dirty = collectInlineSecretDoctorChecks({
-      providers: { p: { authMode: "key", apiKey: "super-secret-value" } as any },
-    } as any);
+    const dirty = collectInlineSecretDoctorChecks(
+      makeConfig({ p: { authMode: "key", apiKey: "super-secret-value" } }),
+    );
     expect(dirty[0].level).toBe("WARN");
     expect(dirty[0].message).not.toContain("super-secret-value");
   });
