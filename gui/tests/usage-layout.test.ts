@@ -5,7 +5,7 @@ test("Verkeer (usage) renders the single stacked layout (no layout toggle, no wo
   const page = await Bun.file(
     new URL("../src/pages/Usage.tsx", import.meta.url),
   ).text();
-  const app = await Bun.file(new URL("../src/App.tsx", import.meta.url)).text();
+  const app = await Bun.file(new URL("../src/app/RouteOutlet.tsx", import.meta.url)).text();
   const css = await Bun.file(
     new URL("../src/styles.css", import.meta.url),
   ).text();
