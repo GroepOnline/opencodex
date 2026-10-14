@@ -12,17 +12,15 @@ import {
 } from "./icons";
 import { useT } from "./i18n/shared";
 import { installApiAuthFetch } from "./api";
-import { canonicalHashFor, type View } from "./app-routing";
+import { canonicalHashFor } from "./app-routing";
+import { VIEW_TABS, SUB_TABS, routeTitleKey } from "./app/navigation";
+import RouteOutlet from "./app/RouteOutlet";
 import { useAppRouteState } from "./use-app-route-state";
 import { requestProxyStop } from "./stop-proxy";
 import { loadSessionIdentity, type SessionIdentity } from "./session-identity";
 import { domMax, LazyMotion, MotionConfig } from "motion/react";
-import WorkspaceNavigation, {
-  type WorkspaceDestination,
-} from "./components/WorkspaceNavigation";
-import WorkspaceSubTabs, {
-  type WorkspaceSubTab,
-} from "./components/WorkspaceSubTabs";
+import WorkspaceNavigation from "./components/WorkspaceNavigation";
+import WorkspaceSubTabs from "./components/WorkspaceSubTabs";
 import {
   Modal,
   ModalActions,
@@ -30,28 +28,6 @@ import {
   ModalDesc,
   ModalHead,
 } from "./components/primitives/modal";
-import {
-  IconActivity,
-  IconBoxes,
-  IconGrid,
-  IconList,
-  IconMonitor,
-  IconServer,
-} from "./icons";
-
-const Providers = lazy(() => import("./pages/Providers"));
-const Models = lazy(() => import("./pages/Models"));
-const Combos = lazy(() => import("./pages/Combos"));
-const Subagents = lazy(() => import("./pages/Subagents"));
-const Verkeer = lazy(() => import("./pages/Verkeer"));
-const Debug = lazy(() => import("./pages/Debug"));
-const Usage = lazy(() => import("./pages/Usage"));
-const Storage = lazy(() => import("./pages/Storage"));
-const ApiKeys = lazy(() => import("./pages/ApiKeys"));
-const Claude = lazy(() => import("./pages/Claude"));
-const Grok = lazy(() => import("./pages/Grok"));
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const Startup = lazy(() => import("./pages/Startup"));
 const Landing = lazy(() => import("./landing/Landing"));
 
 installApiAuthFetch();
@@ -60,41 +36,6 @@ type Theme = "light" | "dark" | "system";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 const THEME_KEY = "ocx-theme";
-
-const VIEW_TABS: WorkspaceDestination[] = [
-  { view: "dashboard", tkey: "nav.dashboard", icon: IconGrid },
-  { view: "leveranciers", tkey: "nav.providers", icon: IconServer },
-  { view: "modellen", tkey: "nav.models", icon: IconBoxes },
-  { view: "verkeer", tkey: "nav.verkeer", icon: IconList },
-  { view: "verbruik", tkey: "nav.usage", icon: IconActivity },
-  { view: "systeem", tkey: "nav.systeem", icon: IconMonitor },
-];
-
-/** Sub-tabs per view; `null` is the view's home target. */
-const SUB_TABS: Record<View, WorkspaceSubTab[]> = {
-  landing: [{ sub: null, tkey: "nav.dashboard" }],
-  dashboard: [{ sub: null, tkey: "nav.dashboard" }],
-  leveranciers: [
-    { sub: null, tkey: "sub.overview" },
-    { sub: "claude", tkey: "nav.claude" },
-    { sub: "grok", tkey: "nav.grok" },
-  ],
-  modellen: [
-    { sub: null, tkey: "nav.models" },
-    { sub: "combos", tkey: "nav.combos" },
-    { sub: "subagents", tkey: "nav.subagents" },
-  ],
-  verkeer: [
-    { sub: null, tkey: "sub.logs" },
-    { sub: "debug", tkey: "sub.debug" },
-  ],
-  verbruik: [{ sub: null, tkey: "nav.usage" }],
-  systeem: [
-    { sub: null, tkey: "sub.status" },
-    { sub: "storage", tkey: "nav.storage" },
-    { sub: "api", tkey: "nav.api" },
-  ],
-};
 
 function readStoredTheme(): Theme {
   try {
@@ -117,14 +58,8 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(readStoredTheme);
   const t = useT();
   useEffect(() => {
-    const title =
-      route.sub === null
-        ? VIEW_TABS.find((entry) => entry.view === route.view)?.tkey
-        : SUB_TABS[route.view].find((entry) => entry.sub === route.sub)?.tkey;
-    document.title =
-      title && route.view !== "landing"
-        ? t("app.pageTitle", { page: t(title) })
-        : "opencodex";
+    const title = routeTitleKey(route);
+    document.title = title ? t("app.pageTitle", { page: t(title) }) : "opencodex";
   }, [route, t]);
   useEffect(() => {
     const el = document.documentElement;
@@ -323,42 +258,7 @@ function DashboardShell({
                       </div>
                     }
                   >
-                    {route.view === "dashboard" && (
-                      <Dashboard apiBase={API_BASE} />
-                    )}
-                    {route.view === "leveranciers" && route.sub === null && (
-                      <Providers apiBase={API_BASE} />
-                    )}
-                    {route.view === "leveranciers" &&
-                      route.sub === "claude" && <Claude apiBase={API_BASE} />}
-                    {route.view === "leveranciers" && route.sub === "grok" && (
-                      <Grok apiBase={API_BASE} />
-                    )}
-                    {route.view === "modellen" && route.sub === null && (
-                      <Models apiBase={API_BASE} />
-                    )}
-                    {route.view === "modellen" && route.sub === "combos" && (
-                      <Combos key={API_BASE} apiBase={API_BASE} />
-                    )}
-                    {route.view === "modellen" && route.sub === "subagents" && (
-                      <Subagents key={API_BASE} apiBase={API_BASE} />
-                    )}
-                    {route.view === "verkeer" && route.sub === "debug" && (
-                      <Debug apiBase={API_BASE} />
-                    )}
-                    {route.view === "verkeer" && route.sub !== "debug" && (
-                      <Verkeer apiBase={API_BASE} />
-                    )}
-                    {route.view === "verbruik" && <Usage apiBase={API_BASE} />}
-                    {route.view === "systeem" && route.sub === null && (
-                      <Startup apiBase={API_BASE} />
-                    )}
-                    {route.view === "systeem" && route.sub === "storage" && (
-                      <Storage apiBase={API_BASE} />
-                    )}
-                    {route.view === "systeem" && route.sub === "api" && (
-                      <ApiKeys apiBase={API_BASE} />
-                    )}
+                    <RouteOutlet route={route} />
                   </Suspense>
                 </ErrorBoundary>
               </div>
