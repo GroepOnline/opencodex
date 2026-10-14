@@ -24,8 +24,10 @@ bun run dev:gui
 ## Stale dashboard tabs
 
 If a tab was left open across a deployment and a page chunk is no longer available, the dashboard
-checks the running proxy's public build identity. It reloads once only when that identity proves the
-tab came from a different checkout. If the proxy is unreachable or the chunk is missing from the
+checks the running proxy's public build identity. It automatically reloads once for each distinct
+40-character checkout SHA that differs from the tab's build. The attempted SHA is kept for the tab's
+session, so a reload that still serves the stale GUI does not loop; a later deployment with a new SHA
+can trigger another recovery reload. If the proxy is unreachable or the chunk is missing from the
 current build, the error screen stays available and its **Reload** button reloads the page.
 
 ## Sign-in

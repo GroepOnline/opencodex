@@ -1,5 +1,6 @@
 const AUTO_RELOAD_KEY = "opencodex:chunk-reload-attempted";
 const API_BASE = import.meta.env.VITE_API_BASE || "";
+const FULL_GIT_SHA = /^[a-f0-9]{40}$/i;
 
 export interface ChunkRecoveryOptions {
   clientSha: string | null;
@@ -21,14 +22,15 @@ export function isChunkLoadError(error: unknown): boolean {
 function readGitSha(data: unknown): string | null {
   if (!data || typeof data !== "object" || !("gitSha" in data)) return null;
   const value = (data as { gitSha?: unknown }).gitSha;
-  return typeof value === "string" && /^[a-f0-9]{7,64}$/i.test(value.trim())
+  return typeof value === "string" && FULL_GIT_SHA.test(value.trim())
     ? value.trim()
     : null;
 }
 
 /**
  * Reload only after public runtime provenance proves the loaded GUI is from another checkout.
- * A per-tab session guard survives the reload and prevents a missing current chunk from looping.
+ * Store the target SHA in session storage so each distinct deployment can recover once without
+ * looping when a reload still serves a stale GUI bundle.
  */
 export function recoverStaleChunk(
   error: unknown,
@@ -37,13 +39,8 @@ export function recoverStaleChunk(
   if (
     !isChunkLoadError(error) ||
     !options.clientSha ||
-    !/^[a-f0-9]{7,64}$/i.test(options.clientSha)
+    !FULL_GIT_SHA.test(options.clientSha)
   ) {
-    return Promise.resolve(false);
-  }
-  try {
-    if (options.storage.getItem(AUTO_RELOAD_KEY)) return Promise.resolve(false);
-  } catch {
     return Promise.resolve(false);
   }
   if (currentAttempt) return currentAttempt;
@@ -55,8 +52,16 @@ export function recoverStaleChunk(
       });
       if (!response.ok) return false;
       const runtimeSha = readGitSha(await response.json());
-      if (!runtimeSha || runtimeSha === options.clientSha) return false;
-      options.storage.setItem(AUTO_RELOAD_KEY, "1");
+      if (
+        !runtimeSha ||
+        runtimeSha.toLowerCase() === options.clientSha.toLowerCase()
+      ) {
+        return false;
+      }
+      const attemptedSha = options.storage.getItem(AUTO_RELOAD_KEY);
+      if (attemptedSha?.toLowerCase() === runtimeSha.toLowerCase())
+        return false;
+      options.storage.setItem(AUTO_RELOAD_KEY, runtimeSha);
       options.reload();
       return true;
     } catch {

@@ -19,7 +19,7 @@ try {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
   }).trim();
-  if (/^[a-f0-9]{7,64}$/i.test(value)) gitSha = value;
+  if (/^[a-f0-9]{40}$/i.test(value)) gitSha = value;
 } catch {
   // Source archives and non-Git build environments have no trustworthy checkout identity.
 }

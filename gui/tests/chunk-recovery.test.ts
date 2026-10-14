@@ -3,6 +3,7 @@ import { recoverStaleChunk } from "../src/app/chunk-recovery";
 
 const OLD_SHA = "0123456789abcdef0123456789abcdef01234567";
 const NEW_SHA = "abcdef0123456789abcdef0123456789abcdef01";
+const NEXT_SHA = "9876543210abcdef9876543210abcdef98765432";
 
 function setup(response: () => Promise<Response>) {
   const values = new Map<string, string>();
@@ -33,15 +34,27 @@ function setup(response: () => Promise<Response>) {
   };
 }
 
-test("a stale tab reloads once when public provenance proves a new checkout", async () => {
-  const state = setup(async () => Response.json({ gitSha: NEW_SHA }));
+test("each changed release reloads once without looping on the same target", async () => {
+  let runtimeSha = NEW_SHA;
+  const state = setup(async () => Response.json({ gitSha: runtimeSha }));
   const chunkError = new TypeError(
     "Failed to fetch dynamically imported module",
   );
+
   expect(await recoverStaleChunk(chunkError, state.options)).toBe(true);
-  expect(await recoverStaleChunk(chunkError, state.options)).toBe(false);
-  expect(state.calls).toEqual(["/healthz"]);
   expect(state.reloads).toBe(1);
+
+  // A reload that still serves the old GUI must not loop for the same deployment.
+  expect(await recoverStaleChunk(chunkError, state.options)).toBe(false);
+  expect(state.reloads).toBe(1);
+
+  // A later deployment has a distinct target SHA and gets its own recovery attempt.
+  runtimeSha = NEXT_SHA;
+  expect(await recoverStaleChunk(chunkError, state.options)).toBe(true);
+  expect(state.reloads).toBe(2);
+  expect(await recoverStaleChunk(chunkError, state.options)).toBe(false);
+  expect(state.calls).toEqual(["/healthz", "/healthz", "/healthz", "/healthz"]);
+  expect(state.reloads).toBe(2);
 });
 
 test("same-release missing chunks stay actionable without an automatic reload", async () => {
@@ -77,17 +90,23 @@ test("ordinary page errors do not probe release identity", async () => {
   expect(state.reloads).toBe(0);
 });
 
-test("unknown build identity fails closed", async () => {
-  const state = setup(async () => Response.json({ gitSha: NEW_SHA }));
+test("only full 40-character checkout identities can trigger recovery", async () => {
+  const state = setup(async () =>
+    Response.json({ gitSha: NEW_SHA.slice(0, 7) }),
+  );
+  const chunkError = new TypeError(
+    "Failed to fetch dynamically imported module",
+  );
+
   expect(
-    await recoverStaleChunk(
-      new TypeError("Failed to fetch dynamically imported module"),
-      {
-        ...state.options,
-        clientSha: null,
-      },
-    ),
+    await recoverStaleChunk(chunkError, {
+      ...state.options,
+      clientSha: OLD_SHA.slice(0, 7),
+    }),
   ).toBe(false);
   expect(state.calls).toEqual([]);
+
+  expect(await recoverStaleChunk(chunkError, state.options)).toBe(false);
+  expect(state.calls).toEqual(["/healthz"]);
   expect(state.reloads).toBe(0);
 });
