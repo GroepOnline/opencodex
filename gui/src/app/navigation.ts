@@ -1,7 +1,6 @@
 import type { Route, View } from "../app-routing";
 import type { TKey } from "../i18n/shared";
-import type { WorkspaceDestination } from "../components/WorkspaceNavigation";
-import type { WorkspaceSubTab } from "../components/WorkspaceSubTabs";
+import type { WorkspaceDestination, WorkspaceSubTab } from "./navigation-contracts";
 import { IconActivity, IconBoxes, IconGrid, IconList, IconMonitor, IconServer } from "../icons";
 
 /** One canonical view/sub-view catalog; URL compatibility stays in app-routing. */
