@@ -556,20 +556,11 @@ export function mergeCatalogEntriesForSync(
           // genuine catalog entry (real display name) is preserved untouched.
           if (shouldUpgradeToUpstreamEntry(m)) {
             const upstream = upstreamNativeEntry(slug)!;
-            const upgradePriority = rank.has(slug)
-              ? rank.get(slug)!
-              : featured.length > 0
-                ? Math.max(
-                    typeof upstream.priority === "number"
-                      ? upstream.priority
-                      : 9,
-                    featured.length + 100,
-                  )
-                : typeof upstream.priority === "number"
-                  ? upstream.priority
-                  : priority;
             const finished = finishUpstreamNativeEntry(upstream, 9);
-            finished.priority = upgradePriority;
+            // Preserve the pristine native priority on the upgrade pass too.
+            // Using upstream.priority here but baselinePriority on later passes
+            // caused a second no-op sync to rewrite just this model's priority.
+            finished.priority = priority;
             return finished;
           }
           const preserved = normalizeServiceTiers({ ...m, priority });
@@ -740,8 +731,12 @@ export async function syncCatalogModels(
 
   // Count only newly introduced routed identities, not all currently available models.
   // This must happen before the existing catalog is mutated by the merge.
+  // The source may be Codex's pristine bundled catalog, whereas the actual
+  // managed catalog already contains routed models from previous synchronizations.
+  // Compare identities against the on-disk state the user has, not the template.
+  const previousCatalog = readCatalog(catalogPath);
   const existingSlugs = new Set(
-    (catalog.models ?? []).flatMap((entry) =>
+    (previousCatalog?.models ?? catalog.models ?? []).flatMap((entry) =>
       typeof entry.slug === "string" ? [entry.slug] : [],
     ),
   );

@@ -46,26 +46,6 @@ function snapshot(path: string) {
   };
 }
 
-function debugCatalogDrift(first: string, second: string): void {
-  const before = JSON.parse(first) as { models?: Record<string, unknown>[] };
-  const after = JSON.parse(second) as { models?: Record<string, unknown>[] };
-  const baseline = new Map((before.models ?? []).map(row => [String(row.slug), row]));
-  const regenerated = new Map((after.models ?? []).map(row => [String(row.slug), row]));
-  const changed: string[] = [];
-  for (const slug of new Set([...baseline.keys(), ...regenerated.keys()])) {
-    const a = baseline.get(slug);
-    const b = regenerated.get(slug);
-    if (!a || !b) { changed.push(slug + ": " + (a ? "removed" : "added")); continue; }
-    for (const field of new Set([...Object.keys(a), ...Object.keys(b)])) {
-      if (JSON.stringify(a[field]) !== JSON.stringify(b[field])) changed.push(slug + "." + field);
-    }
-  }
-  const changedTop = [...new Set([...Object.keys(before), ...Object.keys(after)].filter(
-    key => key !== "models" && JSON.stringify((before as Record<string, unknown>)[key]) !== JSON.stringify((after as Record<string, unknown>)[key]),
-  ))];
-  console.error("[DEBUG-OCX360] catalog drift fields", JSON.stringify({ changedTop, changed: changed.slice(0, 50), totalChanges: changed.length }));
-}
-
 afterEach(() => {
   if (saved.codex === undefined) delete process.env.CODEX_HOME;
   else process.env.CODEX_HOME = saved.codex;
@@ -83,13 +63,11 @@ describe("built-in Codex catalog idempotence (#360)", () => {
     const first = await refreshCodexModelCatalog(config, undefined, { catalogPath: home.catalogPath });
     expect(first.catalogWritten).toBe(true);
     expect(existsSync(home.cachePath)).toBe(true);
-    const firstCatalogBytes = readFileSync(home.catalogPath, "utf8");
     const catalog = snapshot(home.catalogPath);
     const cache = snapshot(home.cachePath);
     const history = snapshot(session);
 
     const second = await refreshCodexModelCatalog(config, undefined, { catalogPath: home.catalogPath });
-    if (second.catalogWritten) debugCatalogDrift(firstCatalogBytes, readFileSync(home.catalogPath, "utf8"));
     expect(second.catalogExists).toBe(true);
     expect(second.catalogWritten).toBe(false);
     expect(second.cacheSynced).toBe(false);
@@ -127,6 +105,73 @@ describe("built-in Codex catalog idempotence (#360)", () => {
     const stable = await refreshCodexModelCatalog(config, undefined, { catalogPath: home.catalogPath });
     expect(stable.cacheSynced).toBe(false);
     expect(snapshot(home.cachePath)).toEqual(final);
+  });
+
+  test("reports actual newly added routed models and edits existing model metadata without false additions", async () => {
+    const home = testHome();
+    const withOne = {
+      ...config,
+      customModels: [{ provider: "fixture", modelId: "model-one", displayName: "First" }],
+    } as OcxConfig;
+    const first = await refreshCodexModelCatalog(withOne, undefined, { catalogPath: home.catalogPath });
+    expect(first.catalogWritten).toBe(true);
+    expect(first.added).toBe(1);
+    const initialModels = JSON.parse(readFileSync(home.catalogPath, "utf8")).models as Array<{slug: string; display_name: string}>;
+    expect(initialModels.some(m => m.slug === "fixture/model-one")).toBe(true);
+    expect(initialModels.some(m => m.slug === "gpt-5.6-sol")).toBe(true);
+
+    const stable = await refreshCodexModelCatalog(withOne, undefined, { catalogPath: home.catalogPath });
+    expect(stable.added).toBe(0);
+    expect(stable.catalogWritten).toBe(false);
+    expect(stable.cacheSynced).toBe(false);
+
+    const withTwo = {
+      ...config,
+      customModels: [
+        { provider: "fixture", modelId: "model-one", displayName: "First" },
+        { provider: "fixture", modelId: "model-two", displayName: "Second" },
+      ],
+    } as OcxConfig;
+    const changed = await refreshCodexModelCatalog(withTwo, undefined, { catalogPath: home.catalogPath });
+    expect(changed.catalogWritten).toBe(true);
+    expect(changed.cacheSynced).toBe(true);
+    expect(changed.added).toBe(1);
+    const slugs = (JSON.parse(readFileSync(home.catalogPath, "utf8")).models as Array<{slug: string}>).map(m => m.slug);
+    expect(slugs).toContain("gpt-5.6-sol");
+    expect(slugs).toContain("fixture/model-one");
+    expect(slugs).toContain("fixture/model-two");
+
+    const renamed = await refreshCodexModelCatalog({
+      ...config,
+      customModels: [
+        { provider: "fixture", modelId: "model-one", displayName: "Renamed" },
+        { provider: "fixture", modelId: "model-two", displayName: "Second" },
+      ],
+    } as OcxConfig, undefined, { catalogPath: home.catalogPath });
+    expect(renamed.catalogWritten).toBe(true);
+    expect(renamed.added).toBe(0);
+    const settled = await refreshCodexModelCatalog({
+      ...config,
+      customModels: [
+        { provider: "fixture", modelId: "model-one", displayName: "Renamed" },
+        { provider: "fixture", modelId: "model-two", displayName: "Second" },
+      ],
+    } as OcxConfig, undefined, { catalogPath: home.catalogPath });
+    expect(settled.catalogWritten).toBe(false);
+    expect(settled.cacheSynced).toBe(false);
+    expect(settled.added).toBe(0);
+  });
+
+  test("repairs deleted cache independently without rewriting an unchanged native catalog", async () => {
+    const home = testHome();
+    await refreshCodexModelCatalog(config, undefined, { catalogPath: home.catalogPath });
+    const catalog = snapshot(home.catalogPath);
+    rmSync(home.cachePath);
+    const result = await refreshCodexModelCatalog(config, undefined, { catalogPath: home.catalogPath });
+    expect(result.catalogWritten).toBe(false);
+    expect(result.cacheSynced).toBe(true);
+    expect(result.added).toBe(0);
+    expect(snapshot(home.catalogPath)).toEqual(catalog);
   });
 
   test("validated no-op managed catalog stays injected without false warning; unmanaged catalog remains blocked", async () => {
