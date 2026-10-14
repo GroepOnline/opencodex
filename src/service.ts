@@ -1849,29 +1849,82 @@ export function isMaskedSystemdUnit(path: string): boolean {
   }
 }
 
-/** Fleet/proxy hosts often run a system unit instead of the per-user one `ocx service install` writes. */
-function diagnoseSystemSystemdUnit(): {
+type SystemSystemdUnitDiagnosis = {
   installed: boolean;
-  enabled: boolean;
-  running: boolean;
-} | null {
-  const path = `/etc/systemd/system/${TASK}.service`;
-  if (!existsSync(path) || isMaskedSystemdUnit(path)) return null;
+  enabled: boolean | null;
+  running: boolean | null;
+};
+
+/** Fleet/proxy hosts often run a system unit instead of the per-user one `ocx service install` writes. */
+function diagnoseSystemSystemdUnit(
+  run: (command: string) => string = sh,
+  installed: () => boolean = () => {
+    const path = `/etc/systemd/system/${TASK}.service`;
+    return existsSync(path) && !isMaskedSystemdUnit(path);
+  },
+): SystemSystemdUnitDiagnosis | null {
+  if (!installed()) return null;
   const enabled = (() => {
     try {
-      return sh(`systemctl is-enabled ${TASK}.service`) === "enabled";
+      const status = run(`systemctl is-enabled ${TASK}.service`);
+      return status === "enabled" ? true : status === "disabled" ? false : null;
     } catch {
-      return false;
+      return null;
     }
   })();
   const running = (() => {
     try {
-      return sh(`systemctl is-active ${TASK}.service`) === "active";
+      const status = run(`systemctl is-active ${TASK}.service`);
+      return status === "active" ? true : status === "inactive" ? false : null;
     } catch {
-      return false;
+      return null;
     }
   })();
   return { installed: true, enabled, running };
+}
+
+/**
+ * A leftover system-level unit must not shadow an active per-user unit.
+ * If the system manager is enabled or still running, keep the conservative
+ * unmanaged-system diagnosis; only an inert unit may be ignored.
+ */
+export function shouldDeferToSystemSystemdUnit(
+  unit: SystemSystemdUnitDiagnosis | null,
+): boolean {
+  return (
+    unit?.installed === true &&
+    !(unit.enabled === false && unit.running === false)
+  );
+}
+
+type SystemdUserUnitDiagnosis = {
+  installed: boolean;
+  enabled: boolean;
+  running: boolean;
+};
+
+/** Read the per-user unit state used when no system-level unit owns diagnosis. */
+function diagnoseSystemdUserUnit(): SystemdUserUnitDiagnosis {
+  const installed = existsSync(unitPath()) && !isMaskedSystemdUnit(unitPath());
+  const enabled =
+    installed &&
+    (() => {
+      try {
+        return sh(`systemctl --user is-enabled ${TASK}`) === "enabled";
+      } catch {
+        return false;
+      }
+    })();
+  const running =
+    installed &&
+    (() => {
+      try {
+        return sh(`systemctl --user is-active ${TASK}`) === "active";
+      } catch {
+        return false;
+      }
+    })();
+  return { installed, enabled, running };
 }
 
 export function buildUnit(): string {
@@ -2338,9 +2391,19 @@ export function deriveWindowsServiceDiagnostic(
  * managers, stale baked paths, disabled registrations, and unknown/stopped
  * native managers cannot claim that Codex will reconnect after a reboot.
  */
-export function diagnoseService(): ServiceDiagnostic {
+export function diagnoseService(
+  probes: {
+    platform?: string;
+    inDocker?: () => boolean;
+    systemctl?: (command: string) => string;
+    systemUnitInstalled?: () => boolean;
+    isSystemd?: () => boolean;
+    userUnit?: () => SystemdUserUnitDiagnosis;
+  } = {},
+): ServiceDiagnostic {
   const diagnostics = serviceDiagnosticsSummary();
-  if (process.platform === "darwin") {
+  const platform = probes.platform ?? process.platform;
+  if (platform === "darwin") {
     const installed = existsSync(plistPath());
     const running = installed && Boolean(statusLaunchd());
     const stale = installed && bakedServicePathsDiagnostic() !== null;
@@ -2365,7 +2428,7 @@ export function diagnoseService(): ServiceDiagnostic {
       summary,
     };
   }
-  if (process.platform === "win32") {
+  if (platform === "win32") {
     const schedulerXml = statusWindowsXml();
     const schedulerAssetsPresent = [
       windowsServiceScriptPath(),
@@ -2389,8 +2452,8 @@ export function diagnoseService(): ServiceDiagnostic {
       diagnostics,
     });
   }
-  if (process.platform === "linux") {
-    if (existsSync("/.dockerenv"))
+  if (platform === "linux") {
+    if ((probes.inDocker ?? (() => existsSync("/.dockerenv")))())
       return {
         supported: false,
         installed: false,
@@ -2403,25 +2466,35 @@ export function diagnoseService(): ServiceDiagnostic {
         backend: null,
         summary: "unsupported in Docker",
       };
-    const systemUnit = diagnoseSystemSystemdUnit();
-    if (systemUnit?.installed) {
+    const systemUnit = diagnoseSystemSystemdUnit(
+      probes.systemctl,
+      probes.systemUnitInstalled,
+    );
+    if (systemUnit && shouldDeferToSystemSystemdUnit(systemUnit)) {
+      const state =
+        systemUnit.enabled === null || systemUnit.running === null
+          ? "status unknown"
+          : systemUnit.enabled && systemUnit.running
+            ? "running"
+            : !systemUnit.enabled && !systemUnit.running
+              ? "disabled and stopped"
+              : !systemUnit.enabled
+                ? "disabled but running"
+                : "enabled but not running";
       return {
         supported: true,
         installed: false,
-        enabled: systemUnit.enabled,
-        running: systemUnit.running,
+        enabled: systemUnit.enabled === true,
+        running: systemUnit.running === true,
         viable: false,
         startable: false,
         stale: false,
         conflict: false,
         backend: "systemd",
-        summary:
-          systemUnit.enabled && systemUnit.running
-            ? `systemd system unit running, unmanaged (${diagnostics})`
-            : `systemd system unit present but ${!systemUnit.enabled ? "disabled" : "not running"}, unmanaged (${diagnostics})`,
+        summary: `systemd system unit ${state}, unmanaged (${diagnostics})`,
       };
     }
-    if (!isSystemd())
+    if (!(probes.isSystemd ?? isSystemd)())
       return {
         supported: false,
         installed: false,
@@ -2434,26 +2507,9 @@ export function diagnoseService(): ServiceDiagnostic {
         backend: null,
         summary: `unsupported: systemd not found (${diagnostics})`,
       };
-    const installed =
-      existsSync(unitPath()) && !isMaskedSystemdUnit(unitPath());
-    const enabled =
-      installed &&
-      (() => {
-        try {
-          return sh(`systemctl --user is-enabled ${TASK}`) === "enabled";
-        } catch {
-          return false;
-        }
-      })();
-    const running =
-      installed &&
-      (() => {
-        try {
-          return sh(`systemctl --user is-active ${TASK}`) === "active";
-        } catch {
-          return false;
-        }
-      })();
+    const { installed, enabled, running } = (
+      probes.userUnit ?? diagnoseSystemdUserUnit
+    )();
     const stale = installed && bakedServicePathsDiagnostic() !== null;
     const viable = installed && enabled && running && !stale;
     const summary = !installed
@@ -2486,7 +2542,7 @@ export function diagnoseService(): ServiceDiagnostic {
     stale: false,
     conflict: false,
     backend: null,
-    summary: `unsupported on ${process.platform} (${diagnostics})`,
+    summary: `unsupported on ${platform} (${diagnostics})`,
   };
 }
 

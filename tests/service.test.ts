@@ -19,6 +19,7 @@ import {
   buildWindowsSchtasksCreateArgs,
   buildWindowsServiceScript,
   buildWindowsTaskXml,
+  diagnoseService,
   deriveWindowsServiceDiagnostic,
   isMaskedSystemdUnit,
   normalizeServiceSubcommand,
@@ -29,6 +30,7 @@ import {
   serviceLogPath,
   serviceStartableFromTray,
   serviceStatusSummary,
+  shouldDeferToSystemSystemdUnit,
   windowsTaskRegistrationHealthy,
 } from "../src/service";
 import { serviceApiTokenFilePath } from "../src/lib/service-secrets";
@@ -1197,17 +1199,125 @@ describe("service diagnostics", () => {
     expect(statusCase).toContain("serviceDiagnosticsSummary()");
   });
 
-  test("reports stopped system units as diagnose-only without hardcoding running", async () => {
-    const service = await readText("src/service.ts");
-    const branch = service.slice(
-      service.indexOf("const systemUnit = diagnoseSystemSystemdUnit();"),
-      service.indexOf("if (!isSystemd())"),
-    );
-    expect(branch).toContain("if (systemUnit?.installed)");
-    expect(branch).toContain("installed: false");
-    expect(branch).toContain("startable: false");
-    expect(branch).toContain("running: systemUnit.running");
-    expect(branch).not.toContain("running: true");
+  test("does not shadow a live per-user service with a disabled, stopped system unit", () => {
+    expect(shouldDeferToSystemSystemdUnit(null)).toBe(false);
+    expect(
+      shouldDeferToSystemSystemdUnit({
+        installed: false,
+        enabled: false,
+        running: false,
+      }),
+    ).toBe(false);
+    // Reproduces bc-scan-2: an abandoned system unit and a healthy user unit.
+    expect(
+      shouldDeferToSystemSystemdUnit({
+        installed: true,
+        enabled: false,
+        running: false,
+      }),
+    ).toBe(false);
+    // Conservatively keep system-level ownership whenever a system unit
+    // is enabled or running; do not claim the user unit owns the lifecycle.
+    expect(
+      shouldDeferToSystemSystemdUnit({
+        installed: true,
+        enabled: true,
+        running: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldDeferToSystemSystemdUnit({
+        installed: true,
+        enabled: false,
+        running: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldDeferToSystemSystemdUnit({
+        installed: true,
+        enabled: true,
+        running: true,
+      }),
+    ).toBe(true);
+    // A failed or unfamiliar systemctl response is unknown, not evidence that
+    // the system unit is safe to ignore.
+    expect(
+      shouldDeferToSystemSystemdUnit({
+        installed: true,
+        enabled: null,
+        running: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldDeferToSystemSystemdUnit({
+        installed: true,
+        enabled: false,
+        running: null,
+      }),
+    ).toBe(true);
+    expect(
+      shouldDeferToSystemSystemdUnit({
+        installed: true,
+        enabled: null,
+        running: null,
+      }),
+    ).toBe(true);
+  });
+
+  test("unknown system-unit status stays unmanaged instead of falling through", () => {
+    process.env.OPENCODEX_HOME = join(TEST_DIR, "ocx-home");
+    let userUnitRead = false;
+    const diagnostic = diagnoseService({
+      platform: "linux",
+      inDocker: () => false,
+      systemUnitInstalled: () => true,
+      systemctl: (command) => {
+        if (command.includes("is-enabled"))
+          throw new Error("permission denied");
+        return "inactive";
+      },
+      isSystemd: () => true,
+      userUnit: () => {
+        userUnitRead = true;
+        return { installed: true, enabled: true, running: true };
+      },
+    });
+
+    expect(diagnostic).toMatchObject({
+      supported: true,
+      installed: false,
+      enabled: false,
+      running: false,
+      viable: false,
+      startable: false,
+      backend: "systemd",
+      summary: expect.stringContaining("status unknown"),
+    });
+    expect(userUnitRead).toBe(false);
+  });
+
+  test("diagnoses the user unit when the system unit is confirmed disabled and stopped", () => {
+    process.env.OPENCODEX_HOME = join(TEST_DIR, "ocx-home");
+    const diagnostic = diagnoseService({
+      platform: "linux",
+      inDocker: () => false,
+      systemUnitInstalled: () => true,
+      systemctl: (command) =>
+        command.includes("is-enabled") ? "disabled" : "inactive",
+      isSystemd: () => true,
+      userUnit: () => ({ installed: true, enabled: true, running: true }),
+    });
+
+    expect(diagnostic).toMatchObject({
+      supported: true,
+      installed: true,
+      enabled: true,
+      running: true,
+      viable: true,
+      startable: true,
+      backend: "systemd",
+      summary: expect.stringContaining("installed, enabled and running"),
+    });
   });
 });
 
