@@ -1,13 +1,9 @@
 import { LayoutGroup, m, useReducedMotion } from "motion/react";
 import { useId, useState } from "react";
-import type { TKey } from "../i18n/shared";
 import { useT } from "../i18n/shared";
+import type { WorkspaceSubTab } from "../app/navigation-contracts";
+export type { WorkspaceSubTab } from "../app/navigation-contracts";
 import { selectionTransition } from "../shared/motion/selection-transition";
-
-export interface WorkspaceSubTab {
-  sub: string | null;
-  tkey: TKey;
-}
 
 /** Second-level navigation under the topbar: a segmented rail whose selection
  *  pill travels between destinations with a shared-layout spring. Pointer
