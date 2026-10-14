@@ -83,6 +83,21 @@ test("a selection mutates and writes version 1 state", () => {
   expect(existsSync(`${statePath}.tmp`)).toBe(false);
 });
 
+test("late persistence installation flushes existing sticky account exactly once", () => {
+  seedPoolRotationAccount("codex", "live");
+  installPoolRotationPersistence(statePath);
+  const write = spyOn(fs, "writeFileSync");
+  try {
+    expect(pickRoundRobinAccount("codex", ["other", "live"], 3)).toBe("live");
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(readSnapshot().pools.codex.activeKey).toBe("live");
+    expect(pickRoundRobinAccount("codex", ["other", "live"], 3)).toBe("live");
+    expect(write).toHaveBeenCalledTimes(1);
+  } finally {
+    write.mockRestore();
+  }
+});
+
 test("empty eligible lists never write snapshots for new or established pools", () => {
   installPoolRotationPersistence(statePath);
   expect(pickRoundRobinAccount("codex", ["a", "b"], 3)).toBe("a");

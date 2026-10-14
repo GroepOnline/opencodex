@@ -161,6 +161,10 @@ export function pickRoundRobinAccount(
   if (eligibleIds.length === 0) return null;
   const state = getOrCreateState(poolKey);
   if (state.activeKey && eligibleIds.includes(state.activeKey)) {
+    // A late or repeated persistence installation must first publish the
+    // in-memory active account (and canonicalize a restored snapshot).
+    // Subsequent identical sticky picks need no disk write.
+    if (pendingSnapshotFlush) flushPoolRotationState();
     return state.activeKey;
   }
   const picked = pickRoundRobinFromState(eligibleIds, stickyLimit, state, true);
@@ -276,6 +280,9 @@ interface SerializedRotationState {
 }
 
 let persistedRotationPath: string | null = null;
+// A restored snapshot may need canonicalization; a new path may not yet contain
+// the in-memory sticky state. Clear only after a successful atomic write.
+let pendingSnapshotFlush = false;
 
 /**
  * Attempt an atomic snapshot write with 0o600 permissions when persistence is installed.
@@ -289,6 +296,7 @@ function flushPoolRotationState(): void {
     if (selectionState.size === 0) {
       rmSync(path, { force: true });
       rmSync(tmpPath, { force: true });
+      pendingSnapshotFlush = false;
       return;
     }
     const pools: Record<string, SerializedSelectionState> = {};
@@ -310,6 +318,7 @@ function flushPoolRotationState(): void {
       /* platform may ignore chmod */
     }
     renameSync(tmpPath, path);
+    pendingSnapshotFlush = false;
   } catch {
     /* persistence is best-effort and must never break rotation */
     try {
@@ -396,6 +405,7 @@ function loadPoolRotationStateFromDisk(): void {
  */
 export function installPoolRotationPersistence(filePath: string): void {
   persistedRotationPath = filePath;
+  pendingSnapshotFlush = true;
   if (selectionState.size === 0) {
     loadPoolRotationStateFromDisk();
   }
@@ -404,4 +414,5 @@ export function installPoolRotationPersistence(filePath: string): void {
 /** Detach disk persistence without clearing memory or deleting the snapshot. Mostly for isolated tests. */
 export function uninstallPoolRotationPersistence(): void {
   persistedRotationPath = null;
+  pendingSnapshotFlush = false;
 }
