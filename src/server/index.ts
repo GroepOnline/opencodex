@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { markActivity } from "../lib/sidecar-tracker";
 import {
   appendTraceResponse,
@@ -28,6 +29,10 @@ import {
 } from "../config";
 import { reconcileOAuthProviders } from "../oauth";
 import { invalidateCodexModelsCache } from "../codex/catalog";
+import {
+  installPoolRotationPersistence,
+  POOL_ROTATION_STATE_FILENAME,
+} from "../codex/pool-rotation";
 import { startMemoryWatchdog } from "./memory-watchdog";
 import { setStorageCleanupPolicyLiveSink } from "../storage/policy";
 import { setStorageCleanupPolicyJobLiveApply } from "../storage/policy-job";
@@ -358,6 +363,14 @@ function attachLiveSidebandUpstream(ws: ServerWebSocket<WsData>): void {
 // trackSseForRequestLog(
 // export function relaySseWithHeartbeat
 
+/**
+ * Start the configured proxy, management API, and dashboard; return the Bun server.
+ * port overrides the configured port (default 10100); 0 requests an available port.
+ * Applies startup migrations, initializes shared runtime state and background jobs,
+ * and installs pool rotation persistence under getConfigDir().
+ * Startup errors propagate, including a non-loopback bind without a data-plane
+ * credential and listener binding failures; snapshot I/O failures are ignored.
+ */
 export function startServer(port?: number) {
   initServerSentry();
   const config = runAlibabaRegionStartupMigration(
@@ -377,6 +390,11 @@ export function startServer(port?: number) {
   setCodexAccountPoolsEnabled(codexAccountPoolsEnabled(config));
   // Fase D: install the per-provider/model KV response cache (no-op unless config.responseCache.enabled).
   void installResponseCache(config, getConfigDir());
+  // Pool rotation survives process restarts. The in-memory ring stays authoritative for the
+  // process; this loads the snapshot once at startup and the rotation helpers flush later.
+  installPoolRotationPersistence(
+    join(getConfigDir(), POOL_ROTATION_STATE_FILENAME),
+  );
   // Fase E: wire the auto-router's latency input to the usage log (p50 per provider/model).
   // Cheap: the reader caches aggregates for a minute and only reads the recent tail of usage.jsonl.
   installAutoRouterLatencyHistory({
@@ -594,6 +612,8 @@ export function startServer(port?: number) {
       }
 
       if (url.pathname === "/healthz" && req.method === "GET") {
+        // Identity only. Per-provider credentialSource / leftover inline-secret names
+        // live on authenticated GET /api/providers and GET /api/config — never here.
         // service/pid/port let CLI liveness reject foreign 200s and verify pid identity.
         const cooldowns = activeProviderCooldowns(config);
         return jsonResponse(
@@ -1001,9 +1021,8 @@ export function startServer(port?: number) {
         await beginTrace(logCtx, req);
         let response: Response;
         try {
-          response = await runWithTrace(
-            logCtx,
-            () => handleResponsesCompact(req, config, logCtx),
+          response = await runWithTrace(logCtx, () =>
+            handleResponsesCompact(req, config, logCtx),
           );
         } catch {
           response = formatErrorResponse(
@@ -1013,7 +1032,10 @@ export function startServer(port?: number) {
           );
         }
         if (logCtx.trace) {
-          const tracedBody = await response.clone().text().catch(() => "");
+          const tracedBody = await response
+            .clone()
+            .text()
+            .catch(() => "");
           if (tracedBody) appendTraceResponse(logCtx.trace, tracedBody);
         }
         addFinalRequestLog(
@@ -1215,7 +1237,10 @@ export function startServer(port?: number) {
         const responsesWorkReq = responsesCacheProbe?.request ?? req;
         const start = Date.now();
         const requestId = nextRequestLogId(start);
-        const logCtx: RequestLogContext = { model: "unknown", provider: "unknown" };
+        const logCtx: RequestLogContext = {
+          model: "unknown",
+          provider: "unknown",
+        };
         await beginTrace(logCtx, responsesWorkReq);
         let logged = false;
         const finalizeNativePassthroughLog = (
@@ -1229,11 +1254,8 @@ export function startServer(port?: number) {
           logged = true;
           addFinalRequestLog(requestId, start, logCtx, status, meta);
         };
-        const response = await runWithTrace(logCtx, () => handleResponses(
-          responsesWorkReq,
-          config,
-          logCtx,
-          {
+        const response = await runWithTrace(logCtx, () =>
+          handleResponses(responsesWorkReq, config, logCtx, {
             abortSignal: req.signal,
             onFirstOutput: () => recordFirstOutput(logCtx, start),
             onNativePassthroughTerminal: (status) => {
@@ -1250,8 +1272,8 @@ export function startServer(port?: number) {
                 closeReason: "client_cancel",
               });
             },
-          },
-        ));
+          }),
+        );
         responsesCacheProbe?.store(response, requestId);
         return withCors(
           responseWithDeferredRequestLog(response, requestId, start, logCtx),
@@ -1363,12 +1385,12 @@ export function startServer(port?: number) {
         // Logging is finalized inside handleClaudeMessages (Responses-vocab tap on the
         // pre-translation stream + native passthrough callbacks) — do not re-wrap the
         // translated Anthropic stream here.
-        const response = await runWithTrace(logCtx, () => handleClaudeMessages(
-          messagesWorkReq,
-          config,
-          logCtx,
-          { requestId, start },
-        ));
+        const response = await runWithTrace(logCtx, () =>
+          handleClaudeMessages(messagesWorkReq, config, logCtx, {
+            requestId,
+            start,
+          }),
+        );
         messagesCacheProbe?.store(response, requestId);
         return withCors(response, req, config);
       }
@@ -1416,12 +1438,12 @@ export function startServer(port?: number) {
           provider: "unknown",
         };
         await beginTrace(logCtx, chatWorkReq);
-        const response = await runWithTrace(logCtx, () => handleChatCompletions(
-          chatWorkReq,
-          config,
-          logCtx,
-          { requestId, start },
-        ));
+        const response = await runWithTrace(logCtx, () =>
+          handleChatCompletions(chatWorkReq, config, logCtx, {
+            requestId,
+            start,
+          }),
+        );
         chatCacheProbe?.store(response, requestId);
         return withCors(response, req, config);
       }

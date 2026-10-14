@@ -518,6 +518,8 @@ The **OAuth reliability** section reports whether credential storage is writable
 single-flight / lock files can be created under `OPENCODEX_HOME`, non-healthy OAuth or Codex pool
 accounts (redacted ids) with a recovery `Action:`, and a static OK that the Codex forward path does
 not fabricate official-client metadata. Doctor never mutates credentials or applies repairs.
+Provider credentials configured as inline `apiKey` values produce a warning with provider names
+and remediation guidance; the warning does not include key values or prevent local startup.
 
 ### `ocx debug [provider|usage …]`
 

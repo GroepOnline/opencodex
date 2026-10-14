@@ -31,6 +31,7 @@ export interface WorkspaceProvider {
   adapter: string;
   baseUrl: string;
   hasApiKey?: boolean;
+  credentialSource?: "inline" | "env" | "oauth" | "forward" | "vault";
   hasHeaders?: boolean;
   defaultModel?: string;
   apiKeyTransport?: "x-api-key" | "bearer";
