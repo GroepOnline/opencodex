@@ -33,6 +33,10 @@ export interface UsageSummaryTotals {
   unpricedRequests: number;
   /** Requests whose usage itself is missing/unsupported, so no cost can be computed. */
   unmeteredRequests: number;
+  /** Number of valid duration samples, so 0ms is not mistaken for missing data. */
+  latencySampleCount: number;
+  /** Number of valid first-output samples; independent from request count. */
+  ttftSampleCount: number;
   /** p95 of request durationMs in the filtered window (0 when empty). */
   p95LatencyMs: number;
   /** p95 of firstOutputMs when recorded (0 when no TTFT samples). */
@@ -155,6 +159,8 @@ function blankTotals(): UsageSummaryTotals {
     pricedRequests: 0,
     unpricedRequests: 0,
     unmeteredRequests: 0,
+    latencySampleCount: 0,
+    ttftSampleCount: 0,
     p95LatencyMs: 0,
     p95TtftMs: 0,
     cacheReadRatio: 0,
@@ -300,6 +306,8 @@ function finalizeQualityMetrics(
     if (entry.status === 429) status429 += 1;
     else if (entry.status === 502) status502 += 1;
   }
+  totals.latencySampleCount = durations.length;
+  totals.ttftSampleCount = ttfts.length;
   totals.p95LatencyMs = computeLatencyStats(durations).p95;
   totals.p95TtftMs = computeLatencyStats(ttfts).p95;
   totals.cacheReadRatio = totals.inputTokens === 0

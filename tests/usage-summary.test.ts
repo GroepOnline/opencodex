@@ -720,6 +720,8 @@ describe("summarizeUsage", () => {
     const sum = summarizeUsage(entries, "30d", FIXED_NOW);
     expect(sum.summary.requests).toBe(5);
     // durations 50,100,200,300,400 → p95 via shared helper
+    expect(sum.summary.latencySampleCount).toBe(5);
+    expect(sum.summary.ttftSampleCount).toBe(3);
     expect(sum.summary.p95LatencyMs).toBe(computeLatencyStats([50, 100, 200, 300, 400]).p95);
     expect(sum.summary.p95TtftMs).toBe(computeLatencyStats([10, 20, 40]).p95);
     // cache reads 40+60+0 over inputs 100+100+100
@@ -728,9 +730,21 @@ describe("summarizeUsage", () => {
     expect(sum.summary.ratio502).toBeCloseTo(1 / 5, 9);
   });
 
+  test("duration and TTFT sample evidence remain independent of requests", () => {
+    const sum = summarizeUsage([
+      entry({ ts: FIXED_NOW - 1000, requestId: "duration-only", durationMs: 0, usageStatus: "unreported" }),
+    ], "30d", FIXED_NOW);
+    expect(sum.summary.requests).toBe(1);
+    expect(sum.summary.latencySampleCount).toBe(1);
+    expect(sum.summary.ttftSampleCount).toBe(0);
+    expect(sum.summary.p95LatencyMs).toBe(0);
+    expect(sum.summary.p95TtftMs).toBe(0);
+  });
   test("quality metrics are zeroed for an empty window", () => {
     const sum = summarizeUsage([], "30d", FIXED_NOW);
     expect(sum.summary).toMatchObject({
+      latencySampleCount: 0,
+      ttftSampleCount: 0,
       p95LatencyMs: 0,
       p95TtftMs: 0,
       cacheReadRatio: 0,

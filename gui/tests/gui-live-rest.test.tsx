@@ -28,12 +28,16 @@ test("Providers quota mutations bump the live workspace refresh key", async () =
   expect(fetchHook).not.toContain("/api/provider-quotas");
 });
 
-test("Usage polls the management API while the tab is visible", async () => {
-  const src = await Bun.file(new URL("../src/pages/Usage.tsx", import.meta.url)).text();
-  expect(src).toContain("window.setInterval");
-  expect(src).toContain("30_000");
-  expect(src).toContain('document.visibilityState === "hidden"');
-  expect(src).toContain("/api/usage?range=");
+test("Usage polling remains isolated to the feature data hook while the tab is visible", async () => {
+  const page = await Bun.file(new URL("../src/pages/Usage.tsx", import.meta.url)).text();
+  const hook = await Bun.file(new URL("../src/features/usage/hooks/useUsageData.ts", import.meta.url)).text();
+  expect(page).toContain("useUsageData({");
+  expect(page).not.toContain("window.setInterval");
+  expect(hook).toContain("window.setInterval");
+  expect(hook).toContain("30_000");
+  expect(hook).toContain('document.visibilityState === "hidden"');
+  expect(hook).toContain("/api/usage?range=");
+  expect(hook).toContain("controller.abort()");
 });
 
 test("dead page-level use-provider-quotas hook stays deleted", async () => {
