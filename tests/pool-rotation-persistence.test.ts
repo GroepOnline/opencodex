@@ -109,6 +109,19 @@ test("a corrupt state file is ignored, not fatal", () => {
   expect(readSnapshot().version).toBe(1);
 });
 
+test("an unsupported snapshot version is ignored, not loaded", () => {
+  writeFileSync(
+    statePath,
+    JSON.stringify({
+      version: 2,
+      pools: { codex: { successes: 0, currentWeights: { a: 5 } } },
+    }),
+    { mode: 0o600 },
+  );
+  installPoolRotationPersistence(statePath);
+  expect(peekRoundRobinAccount("codex", ["a", "b"], 1)).toBe("a");
+});
+
 test("round-robin weights continue across repeated restarts without a sticky account", () => {
   installPoolRotationPersistence(statePath);
   const ids = ["a", "b", "c"];

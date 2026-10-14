@@ -32,7 +32,7 @@ import { findLiveProxy, probeHostname, type LiveProxy } from "../server/proxy-li
 import { stopProxy } from "../lib/process-control";
 import { loadServiceTokenFromFile } from "../lib/service-secrets";
 import { warnInlineProviderSecrets } from "../providers/credential-source";
-import { diagnoseService, isServiceOwnershipError, serviceCommand, serviceEnvironmentOwnedHere, serviceStartableFromTray, serviceStatusSummary, stopServiceIfInstalled, uninstallServiceIfInstalled } from "../service";
+import { diagnoseService, isServiceOwnershipError, serviceCommand, serviceEnvironmentOwnedHere, serviceStartableFromTray, stopServiceIfInstalled, uninstallServiceIfInstalled } from "../service";
 import { startupHealthSummary } from "../codex/autostart-health";
 import { drainAndShutdown, isRecyclingForExit, startServer } from "../server";
 import { injectSystemEnv, revertSystemEnv } from "../server/system-env";

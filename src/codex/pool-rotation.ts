@@ -195,6 +195,8 @@ export function notePoolRotationSuccess(
   const limit = normalizeAccountPoolStickyLimit(stickyLimit);
   const state = selectionState.get(poolKey);
   if (!state) return;
+  const prevActive = state.activeKey;
+  const prevSuccesses = state.successes;
   if (state.activeKey !== accountId) {
     state.activeKey = accountId;
     state.successes = 0;
@@ -203,6 +205,7 @@ export function notePoolRotationSuccess(
   if (state.successes >= limit) {
     delete state.activeKey;
     state.successes = 0;
+    if (state.activeKey === prevActive && state.successes === prevSuccesses) return;
     flushPoolRotationState();
   }
 }
@@ -352,9 +355,9 @@ function parseSerializedSelectionState(raw: unknown): SelectionState | null {
 }
 
 /**
- * Load valid pool entries from the installed snapshot without checking its version.
- * Missing files are ignored; read, parse, and conversion errors are caught, retaining
- * any entries already loaded.
+ * Load valid pool entries from a version-1 snapshot.
+ * Missing files, unsupported versions, and read, parse, and conversion errors are
+ * ignored, retaining any entries already loaded.
  */
 function loadPoolRotationStateFromDisk(): void {
   if (!persistedRotationPath) return;
@@ -368,6 +371,7 @@ function loadPoolRotationStateFromDisk(): void {
       !parsed ||
       typeof parsed !== "object" ||
       parsed.version !== 1 ||
+      !parsed.pools ||
       typeof parsed.pools !== "object"
     )
       return;

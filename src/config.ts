@@ -1758,8 +1758,8 @@ export function codexAccountPoolsEnabled(config: Pick<OcxConfig, "codexAccountPo
  * injects keys into `process.env` — this function does not read that file. Prefer
  * `$VAR` / `${VAR}` in config.json over inline plaintext secrets.
  */
-export function resolveEnvValue(value: string | undefined): string | undefined {
-  if (!value) return undefined;
+export function resolveEnvValue(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value) return undefined;
   const match = value.match(/^\$\{(\w+)\}$/);
   if (match) return process.env[match[1]];
   if (value.startsWith("$")) return process.env[value.slice(1)];
@@ -1767,8 +1767,8 @@ export function resolveEnvValue(value: string | undefined): string | undefined {
 }
 
 /** True when `resolveEnvValue` would treat the string as an env lookup, not a literal secret. */
-export function isEnvValueRef(value: string | undefined): boolean {
-  if (!value) return false;
+export function isEnvValueRef(value: unknown): boolean {
+  if (typeof value !== "string" || !value) return false;
   return /^\$\{\w+\}$/.test(value) || value.startsWith("$");
 }
 

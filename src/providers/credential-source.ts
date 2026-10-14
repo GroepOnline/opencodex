@@ -134,6 +134,7 @@ export function warnInlineProviderSecrets(
 /** Return one doctor check: WARN with affected provider names, or OK when no inline keys exist. */
 export function collectInlineSecretDoctorChecks(
   config: Pick<OcxConfig, "providers">,
+  env: NodeJS.ProcessEnv = process.env,
 ): Array<{ level: "OK" | "WARN"; message: string }> {
   const names = listInlinePlaintextProviders(config);
   if (names.length === 0) {
@@ -145,12 +146,15 @@ export function collectInlineSecretDoctorChecks(
       },
     ];
   }
+  const service = isServiceMode(env);
   return [
     {
       level: "WARN",
       message:
         `Provider(s) ${names.join(", ")} have a plaintext apiKey in config.json. ` +
-        "Action: move each secret into the unit EnvironmentFile and set apiKey to $VAR or ${VAR}.",
+        (service
+          ? "Action: move each secret into the unit EnvironmentFile and set apiKey to $VAR or ${VAR}."
+          : "Action: set each secret as an environment variable and set apiKey to $VAR or ${VAR}. Local ocx start still accepts inline keys."),
     },
   ];
 }

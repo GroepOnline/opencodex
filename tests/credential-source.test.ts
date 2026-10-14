@@ -159,9 +159,32 @@ describe("credential-source", () => {
     expect(clean[0].level).toBe("OK");
     const dirty = collectInlineSecretDoctorChecks(
       makeConfig({ p: { authMode: "key", apiKey: "super-secret-value" } }),
+      { OCX_SERVICE: "1" },
     );
     expect(dirty[0].level).toBe("WARN");
     expect(dirty[0].message).not.toContain("super-secret-value");
+    expect(dirty[0].message).toContain("EnvironmentFile");
+    const localDirty = collectInlineSecretDoctorChecks(
+      makeConfig({ p: { authMode: "key", apiKey: "super-secret-value" } }),
+      emptyEnv,
+    );
+    expect(localDirty[0].level).toBe("WARN");
+    expect(localDirty[0].message).toContain("$VAR");
+  });
+
+  it("ignores non-string keys and malformed pools without throwing", () => {
+    const bad = base({
+      apiKey: 123 as unknown as string,
+      apiKeyPool: [{ id: "a", key: 456 } as unknown as { id: string; key: string }],
+    });
+    expect(() => classifyProviderCredentialSource(bad)).not.toThrow();
+    expect(() => providerHasInlinePlaintextSecret(bad)).not.toThrow();
+    expect(classifyProviderCredentialSource(bad)).toBeUndefined();
+    const malformed = base({
+      apiKeyPool: { a: 1 } as unknown as [],
+    });
+    expect(() => classifyProviderCredentialSource(malformed)).not.toThrow();
+    expect(classifyProviderCredentialSource(malformed)).toBeUndefined();
   });
 
   describe("missing credentials and precedence", () => {
@@ -411,7 +434,7 @@ describe("credential-source", () => {
       ).toEqual(["alpha", "zed"]);
       expect(messages).toHaveLength(1);
       expect(messages[0]).toContain("alpha, zed");
-      const checks = collectInlineSecretDoctorChecks(config);
+      const checks = collectInlineSecretDoctorChecks(config, { OCX_SERVICE: "1" });
       expect(checks).toEqual([
         expect.objectContaining({
           level: "WARN",
@@ -419,6 +442,9 @@ describe("credential-source", () => {
         }),
       ]);
       expect(checks[0].message).toContain("EnvironmentFile");
+      const localChecks = collectInlineSecretDoctorChecks(config, emptyEnv);
+      expect(localChecks[0].level).toBe("WARN");
+      expect(localChecks[0].message).toContain("$VAR");
       const diagnostics = JSON.stringify({ messages, checks });
       for (const value of [
         ...secrets,
