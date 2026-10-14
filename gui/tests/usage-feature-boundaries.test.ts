@@ -32,8 +32,13 @@ test("usage page composes named feature components while owning API polling", as
     expect(index).toBeGreaterThan(previous);
     previous = index;
   }
-  expect(page).toContain("controller.abort()");
-  expect(page).toContain("generation === loadGenerationRef.current");
+  const hook = await Bun.file(new URL("../src/features/usage/hooks/useUsageData.ts", import.meta.url)).text();
+  expect(page).toContain("useUsageData({");
+  expect(page).not.toContain("fetch(");
+  expect(page).not.toContain("setInterval(");
+  expect(hook).toContain("controller.abort()");
+  expect(hook).toContain("generation === loadGenerationRef.current");
+  expect(hook).toContain("lastGoodKeyRef.current !== requestKey");
   expect(page).not.toContain("function UsageSummaryCards");
   expect(page).not.toContain("function UsageQualityPanel");
   expect(page).not.toContain("function UsageModelsTable");
