@@ -8,7 +8,7 @@ import { resolveAppHashChange } from "../src/app-routing";
  */
 
 test("the view tabs expose one provider-independent account destination", async () => {
-  const src = await Bun.file(new URL("../src/App.tsx", import.meta.url)).text();
+  const src = await Bun.file(new URL("../src/app/navigation.ts", import.meta.url)).text();
 
   expect(
     src.match(

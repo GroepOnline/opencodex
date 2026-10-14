@@ -10,7 +10,7 @@ async function apiKeysSources(): Promise<string> {
 
 test("ApiKeys uses workspace shell (no classic layout toggle)", async () => {
   const page = await Bun.file(new URL("../src/pages/ApiKeys.tsx", import.meta.url)).text();
-  const app = await Bun.file(new URL("../src/App.tsx", import.meta.url)).text();
+  const app = await Bun.file(new URL("../src/app/RouteOutlet.tsx", import.meta.url)).text();
   const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
 
   expect(page).toContain("ApiKeysWorkspace");

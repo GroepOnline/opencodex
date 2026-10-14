@@ -11,7 +11,7 @@ This file applies to `gui/` and inherits the repository-wide rules in `/AGENTS.m
 
 ## Text and i18n
 
-- **No hardcoded visible UI text** in `src/pages`, `src/components`, `src/App.tsx`, or `src/ui.tsx`.
+- **No hardcoded visible UI text** in `src/pages`, `src/components`, `src/app`, `src/features`, `src/App.tsx`, or `src/ui.tsx`.
 - Every new user-facing string goes into **all** locale files:
   - `src/i18n/en.ts` — source of truth / `TKey`
   - plus every other `src/i18n/{locale}.ts` module (discovered automatically by `bun run lint:i18n`; when adding a language, add `{locale}.ts`, register it in the `DICTS` map in `src/i18n/dicts.ts`, and list it in `LOCALES` in `src/i18n/shared.ts`)
@@ -63,3 +63,12 @@ Use the package test script, including its existing `--isolate` option. DOM and
 server-rendering tests need separate module caches: Base UI chooses its layout
 effect implementation at import time. Do not remove isolation or mock that
 behavior to make shared-cache test runs pass.
+
+## Signaal components and registry discipline
+
+- The shadcn/Base UI component registry lives under `gui/components.json`. Do not initialize a second library or invent another palette.
+- Use the official pinned shadcn MCP entry in repo-root `.mcp.json` for registry inspection; client activation must be verified separately.
+- Before changing a primitive, compare upstream source with `shadcn add COMPONENT --dry-run` and `--diff` in `gui/`. Never blindly overwrite authored primitives.
+- Compose meaningful visual and interactive units as feature-owned components; keep data-fetching and mutations in hooks/services, not primitive JSX.
+- New Motion belongs to a single interaction owner, settles quickly, never loops as ambient decoration and must retain reduced-motion, keyboard and focus behavior.
+- Preserve runtime Signaal tokens and avoid new gradients, glows, glass, nested cards and fake metrics. Do not render absent readings as zero.
