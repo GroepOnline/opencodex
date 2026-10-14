@@ -179,7 +179,7 @@ describe("WorkspaceSubTabs", () => {
 
   test("the app shell loads layout-capable motion features so layoutId pills travel", async () => {
     const app = await Bun.file(
-      new URL("../src/App.tsx", import.meta.url),
+      new URL("../src/app/DashboardShell.tsx", import.meta.url),
     ).text();
     // domAnimation silently drops layout/layoutId; the shared-layout pill needs domMax.
     expect(app).toContain("features={domMax}");

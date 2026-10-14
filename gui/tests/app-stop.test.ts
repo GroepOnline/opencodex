@@ -54,7 +54,7 @@ describe("App proxy stop", () => {
   });
 
   test("the danger-zone stop clears stopping state and alerts for every rejected outcome", async () => {
-    const app = await Bun.file(new URL("../src/App.tsx", import.meta.url)).text();
+    const app = await Bun.file(new URL("../src/features/system/components/DangerZone.tsx", import.meta.url)).text();
     const handleStopIdx = app.indexOf("const handleStop");
     expect(handleStopIdx).toBeGreaterThanOrEqual(0);
     // Find the closing brace of handleStop by scanning for the function end
