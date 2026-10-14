@@ -163,8 +163,10 @@ export async function syncModelsToCodex(
     catalogExists = cat.catalogExists;
     catalogWritten = cat.catalogWritten;
     cacheSynced = cat.cacheSynced;
-    // Existence alone is not authority. Only advertise a catalog materialized by this sync.
-    catalogPathForInjection = cat.catalogExists && cat.catalogWritten ? cat.path : null;
+    // Existence alone is not authority. A sync that validated identical desired
+    // bytes is trusted too; arbitrary pre-existing user catalogs are not.
+    const managedCatalogReady = cat.catalogExists && (cat.catalogWritten || cat.catalogValidated === true);
+    catalogPathForInjection = managedCatalogReady ? cat.path : null;
     catalogPath = catalogPathForInjection;
     comboOmissions = cat.comboOmissions ?? [];
     if (cat.added > 0 && cat.catalogWritten) {
@@ -172,7 +174,7 @@ export async function syncModelsToCodex(
     } else if (!cat.catalogExists) {
       warning = "catalog sync skipped: no Codex catalog source found; keeping Codex's native catalog.";
       log?.error(warning);
-    } else if (!cat.catalogWritten) {
+    } else if (!managedCatalogReady) {
       warning = "catalog sync did not materialize the managed OCX catalog; keeping Codex's native catalog.";
       log?.error(warning);
     }

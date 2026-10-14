@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import {
   copyFileSync,
   existsSync,
@@ -723,6 +724,8 @@ export async function syncCatalogModels(
   added: number;
   path: string;
   catalogWritten: boolean;
+  /** True only when this invocation validated the final managed catalog content. */
+  catalogValidated?: boolean;
   comboOmissions: ComboCatalogOmission[];
 }> {
   const catalogPath = options.catalogPath ?? readCodexCatalogPath();
@@ -735,6 +738,13 @@ export async function syncCatalogModels(
       comboOmissions: [],
     };
 
+  // Count only newly introduced routed identities, not all currently available models.
+  // This must happen before the existing catalog is mutated by the merge.
+  const existingSlugs = new Set(
+    (catalog.models ?? []).flatMap((entry) =>
+      typeof entry.slug === "string" ? [entry.slug] : [],
+    ),
+  );
   const template = findNativeTemplate(catalog);
 
   const comboOmissions: ComboCatalogOmission[] = [];
@@ -829,11 +839,24 @@ export async function syncCatalogModels(
   );
   clampCatalogModelsToCodexSupport(catalog.models);
 
-  atomicWriteFile(catalogPath, JSON.stringify(catalog, null, 2) + "\n");
+  const serialized = JSON.stringify(catalog, null, 2) + "\n";
+  let catalogWritten = true;
+  try {
+    catalogWritten = readFileSync(catalogPath, "utf8") !== serialized;
+  } catch {
+    // Missing/unreadable files still require an atomic materialization attempt.
+  }
+  if (catalogWritten) atomicWriteFile(catalogPath, serialized);
+  const added = goEntries.filter(
+    (entry) => typeof entry.slug === "string" && !existingSlugs.has(entry.slug),
+  ).length;
   return {
-    added: goEntries.length,
+    added: catalogWritten ? added : 0,
     path: catalogPath,
-    catalogWritten: true,
+    catalogWritten,
+    // A matching catalog was verified against the desired bytes by this sync.
+    // This is not an existence-only trust signal for user-owned files.
+    catalogValidated: true,
     comboOmissions,
   };
 }
@@ -879,7 +902,10 @@ export function restoreCodexCatalog(
   return { removed, kept: native.length, path: catalogPath };
 }
 
-/** Force Codex's models_cache stale from the on-disk catalog. Returns whether a cache write occurred. */
+/** Repair Codex's models cache only when missing, invalid, or out of sync with catalog models.
+ * A valid cache with fresh client metadata is preserved even if its wrapper differs.
+ * Returns true only when an actual disk write occurred.
+ */
 export function invalidateCodexModelsCache(
   catalogPath: string = readCodexCatalogPath(),
 ): boolean {
@@ -887,15 +913,39 @@ export function invalidateCodexModelsCache(
     if (!existsSync(catalogPath)) return false;
     const catalog = JSON.parse(readFileSync(catalogPath, "utf8"));
     const models = catalog.models ?? catalog;
+    if (!Array.isArray(models)) return false;
+    const cachePath = activeCodexModelsCachePath();
+    try {
+      const cache = JSON.parse(readFileSync(cachePath, "utf8")) as {
+        fetched_at?: unknown;
+        client_version?: unknown;
+        models?: unknown;
+      };
+      if (
+        cache &&
+        typeof cache.fetched_at === "string" &&
+        Number.isFinite(Date.parse(cache.fetched_at)) &&
+        typeof cache.client_version === "string" &&
+        Array.isArray(cache.models) &&
+        isDeepStrictEqual(cache.models, models)
+      ) {
+        return false;
+      }
+    } catch {
+      // Unreadable or corrupt cache is repaired below.
+    }
     const wrapper = {
       fetched_at: "2000-01-01T00:00:00Z",
       client_version: "0.0.0",
       models,
     };
-    atomicWriteFile(
-      activeCodexModelsCachePath(),
-      JSON.stringify(wrapper, null, 2) + "\n",
-    );
+    const serialized = JSON.stringify(wrapper, null, 2) + "\n";
+    try {
+      if (readFileSync(cachePath, "utf8") === serialized) return false;
+    } catch {
+      // Cache does not exist or is unreadable.
+    }
+    atomicWriteFile(cachePath, serialized);
     return true;
   } catch {
     return false;
