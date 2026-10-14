@@ -753,7 +753,12 @@ export async function syncCatalogModels(
   // otherwise they inherit fallback fields only on the first run and force a
   // second catalog rewrite after the native template itself was upgraded.
   const template = rawTemplate && shouldUpgradeToUpstreamEntry(rawTemplate)
-    ? upstreamNativeEntry(rawTemplate.slug as string) ?? rawTemplate
+    ? (() => {
+        const upstream = upstreamNativeEntry(rawTemplate.slug as string);
+        // The persisted second-run template has already passed the full native
+        // normalization step; clone that same normalized form on the first run.
+        return upstream ? finishUpstreamNativeEntry(upstream, 9) : rawTemplate;
+      })()
     : rawTemplate;
 
   const comboOmissions: ComboCatalogOmission[] = [];
