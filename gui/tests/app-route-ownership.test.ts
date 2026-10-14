@@ -38,3 +38,9 @@ test("navigation metadata depends on app contracts, never UI component modules",
   expect(primary).toContain('from "../app/navigation-contracts"');
   expect(secondary).toContain('from "../app/navigation-contracts"');
 });
+
+test("i18n lint covers moved application and feature UI source", async () => {
+  const { I18N_UI_FILES } = await import("../.eslint/i18n-file-groups");
+  expect(I18N_UI_FILES).toContain("src/app/**/*.{ts,tsx}");
+  expect(I18N_UI_FILES).toContain("src/features/**/*.{ts,tsx}");
+});
