@@ -1,10 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
+import { isDeepStrictEqual } from "node:util";
 import { atomicWriteFile } from "../config";
 import { configuredAdminToken } from "../lib/admin-secrets";
 import { isLoopbackHostname } from "../server/auth-cors";
 import { providerTableString, rootTomlString } from "./injected-marker";
 import { setRootModelCatalogPath } from "./inject";
-import { CODEX_CONFIG_PATH, DEFAULT_CATALOG_PATH } from "./paths";
+import { CODEX_CONFIG_PATH, CODEX_MODELS_CACHE_PATH, DEFAULT_CATALOG_PATH } from "./paths";
 import {
   buildCatalogEntries,
   catalogModelSlug,
@@ -24,6 +25,7 @@ export type ExternalOcxCatalogSyncResult = {
   handled: boolean;
   catalogPath: string | null;
   models: number;
+  catalogWritten: boolean;
   cacheSynced: boolean;
 };
 export interface ExternalOcxCatalogDeps {
@@ -34,6 +36,8 @@ export interface ExternalOcxCatalogDeps {
   invalidateCache?: typeof invalidateCodexModelsCache;
   writeConfig?: (content: string) => void;
   catalogPath?: string;
+  /** Override the Codex cache path only for an isolated client/test fixture. */
+  cachePath?: string;
   writeCatalog?: (path: string, content: string) => void;
 }
 
@@ -124,11 +128,11 @@ export async function syncExternalOcxCatalog(
   deps: ExternalOcxCatalogDeps = {},
 ): Promise<ExternalOcxCatalogSyncResult> {
   if (!existsSync(CODEX_CONFIG_PATH) && !deps.readConfig) {
-    return { handled: false, catalogPath: null, models: 0, cacheSynced: false };
+    return { handled: false, catalogPath: null, models: 0, catalogWritten: false, cacheSynced: false };
   }
   const content = (deps.readConfig ?? (() => readFileSync(CODEX_CONFIG_PATH, "utf8")))();
   const origin = externalOcxManagementOrigin(content);
-  if (!origin) return { handled: false, catalogPath: null, models: 0, cacheSynced: false };
+  if (!origin) return { handled: false, catalogPath: null, models: 0, catalogWritten: false, cacheSynced: false };
 
   const fetchImpl = deps.fetchImpl ?? fetch;
   const health = await jsonOrThrow<{ status?: unknown; service?: unknown }>(
@@ -188,9 +192,22 @@ export async function syncExternalOcxCatalog(
   if (models.length === 0) throw new Error("OCX catalog conversion produced no Codex models");
 
   const catalogContent = JSON.stringify({ ...base, models }, null, 2) + "\n";
-  (deps.writeCatalog ?? atomicWriteFile)(catalogPath, catalogContent);
-  const cacheSynced = (deps.invalidateCache ?? invalidateCodexModelsCache)();
-  if (!cacheSynced) throw new Error("Codex models cache could not be synchronized");
+  // A no-op sync must not rewrite the catalog or flag live app-servers as stale.
+  // Preserve the existing file (and mtime) when its exact bytes are unchanged.
+  const catalogWritten = !existsSync(catalogPath) || readFileSync(catalogPath, "utf8") !== catalogContent;
+  if (catalogWritten) (deps.writeCatalog ?? atomicWriteFile)(catalogPath, catalogContent);
+
+  // Codex can replace models_cache.json itself. Rebuild only if its model rows
+  // differ from the central OCX catalog, regardless of its fetched_at timestamp.
+  let cacheMatches = false;
+  try {
+    const cache = JSON.parse(readFileSync(deps.cachePath ?? CODEX_MODELS_CACHE_PATH, "utf8")) as { models?: unknown };
+    cacheMatches = isDeepStrictEqual(cache.models, models);
+  } catch {
+    // Missing or unreadable cache is repaired through the normal invalidator.
+  }
+  const cacheSynced = cacheMatches ? false : (deps.invalidateCache ?? invalidateCodexModelsCache)();
+  if (!cacheMatches && !cacheSynced) throw new Error("Codex models cache could not be synchronized");
 
   const nextConfig = setRootModelCatalogPath(content, catalogPath);
   if (nextConfig !== content) {
@@ -200,6 +217,7 @@ export async function syncExternalOcxCatalog(
     handled: true,
     catalogPath,
     models: models.length,
+    catalogWritten,
     cacheSynced,
   };
 }
