@@ -556,11 +556,18 @@ export function mergeCatalogEntriesForSync(
           // genuine catalog entry (real display name) is preserved untouched.
           if (shouldUpgradeToUpstreamEntry(m)) {
             const upstream = upstreamNativeEntry(slug)!;
+            const upgradePriority = rank.has(slug)
+              ? rank.get(slug)!
+              : featured.length > 0
+                ? Math.max(
+                    typeof upstream.priority === "number" ? upstream.priority : 9,
+                    featured.length + 100,
+                  )
+                : typeof upstream.priority === "number"
+                  ? upstream.priority
+                  : priority;
             const finished = finishUpstreamNativeEntry(upstream, 9);
-            // Preserve the pristine native priority on the upgrade pass too.
-            // Using upstream.priority here but baselinePriority on later passes
-            // caused a second no-op sync to rewrite just this model's priority.
-            finished.priority = priority;
+            finished.priority = upgradePriority;
             return finished;
           }
           const preserved = normalizeServiceTiers({ ...m, priority });
@@ -740,7 +747,14 @@ export async function syncCatalogModels(
       typeof entry.slug === "string" ? [entry.slug] : [],
     ),
   );
-  const template = findNativeTemplate(catalog);
+  const rawTemplate = findNativeTemplate(catalog);
+  // A fallback-quality native row is upgraded to the pinned upstream snapshot below.
+  // Use that SAME upgraded native template for new routed rows on the first run,
+  // otherwise they inherit fallback fields only on the first run and force a
+  // second catalog rewrite after the native template itself was upgraded.
+  const template = rawTemplate && shouldUpgradeToUpstreamEntry(rawTemplate)
+    ? upstreamNativeEntry(rawTemplate.slug as string) ?? rawTemplate
+    : rawTemplate;
 
   const comboOmissions: ComboCatalogOmission[] = [];
   const goModels = await gatherRoutedModels(config, { comboOmissions });
@@ -784,6 +798,17 @@ export async function syncCatalogModels(
   // routed providers as namespaced slugs. Cursor and other adopted providers can expose model ids
   // like `gpt-5.5`; those must not delete the native OpenAI/Codex base row.
   const baseline = readNativeBaseline(catalogPath);
+  // Keep the native priority contract for fallback-quality old catalog rows:
+  // initial upgrade takes upstream.priority, so subsequent syncs must use that
+  // same priority instead of reverting to the old synthetic fallback priority.
+  // Genuine upstream entries retain their pristine priority from the backup.
+  for (const entry of readCatalogBackup(catalogPath)?.models ?? []) {
+    if (!shouldUpgradeToUpstreamEntry(entry)) continue;
+    const upstream = upstreamNativeEntry(entry.slug as string);
+    if (upstream && typeof upstream.priority === "number") {
+      baseline.set(entry.slug as string, upstream.priority);
+    }
+  }
   const goIds = new Set(enabledGo.map((m) => m.id));
   const gatheredProviderNames = new Set(
     Object.entries(config.providers ?? {})
