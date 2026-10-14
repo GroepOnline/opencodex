@@ -110,3 +110,27 @@ test("only full 40-character checkout identities can trigger recovery", async ()
   expect(state.calls).toEqual(["/healthz"]);
   expect(state.reloads).toBe(0);
 });
+
+test("container build identity reaches the Vite client bundle", async () => {
+  const dockerfile = await Bun.file(
+    new URL("../../Dockerfile", import.meta.url),
+  ).text();
+  const builder = dockerfile.split("FROM root-deps AS build\\n")[1]?.split(
+    "\\nFROM oven/bun:",
+  )[0];
+  expect(builder).toContain("ARG VCS_REF=unknown");
+  expect(builder).toContain("ENV OPENCODEX_GIT_SHA=${VCS_REF}");
+
+  // Simulate the build stage: .git is absent, but GitHub supplied a full VCS_REF.
+  const imageSha = "f".repeat(40);
+  const original = process.env.OPENCODEX_GIT_SHA;
+  try {
+    process.env.OPENCODEX_GIT_SHA = imageSha;
+    const { default: config } = await import("../vite.config.ts?image-sha-test");
+    const define = (config as { define?: Record<string, string> }).define;
+    expect(define?.__APP_GIT_SHA__).toBe(JSON.stringify(imageSha));
+  } finally {
+    if (original === undefined) delete process.env.OPENCODEX_GIT_SHA;
+    else process.env.OPENCODEX_GIT_SHA = original;
+  }
+});

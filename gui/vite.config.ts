@@ -12,16 +12,24 @@ const version = JSON.parse(
 ).version;
 // Embed the checkout identity used by the server's existing build provenance. A package
 // version alone cannot distinguish two builds of the same release.
-let gitSha: string | null = null;
-try {
-  const value = execFileSync("git", ["rev-parse", "--verify", "HEAD"], {
-    cwd: new URL("..", import.meta.url),
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  }).trim();
-  if (/^[a-f0-9]{40}$/i.test(value)) gitSha = value;
-} catch {
-  // Source archives and non-Git build environments have no trustworthy checkout identity.
+// Container builds exclude .git. Their trusted VCS_REF must be available during the
+// GUI build, not only in the final runtime image; validate before embedding it.
+const suppliedSha = process.env.OPENCODEX_GIT_SHA;
+let gitSha: string | null =
+  suppliedSha && /^[a-f0-9]{40}$/i.test(suppliedSha)
+    ? suppliedSha.toLowerCase()
+    : null;
+if (!gitSha) {
+  try {
+    const value = execFileSync("git", ["rev-parse", "--verify", "HEAD"], {
+      cwd: new URL("..", import.meta.url),
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (/^[a-f0-9]{40}$/i.test(value)) gitSha = value.toLowerCase();
+  } catch {
+    // Source archives without a valid image build reference have no checkout identity.
+  }
 }
 const proxyTarget = process.env.OPENCODEX_PROXY_TARGET;
 const previewPort =
