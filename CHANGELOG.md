@@ -2,7 +2,16 @@
 
 Source changes and published artifacts are distinct. The canonical [release](https://github.com/GroepOnline/opencodex/releases) and tag commit determine what is actually packaged.
 
-## Main after v1.5.5 — not yet released (2026-10-14)
+## 1.5.6 — 2026-10-14
+
+The matching GitHub tag and npm package establish publication; runtime deployment requires separate verification.
+
+- Refactor the Storage and Usage workspaces into focused components; improve accessible controls, navigation labels and missing-metric reporting (#353, #358, #359).
+- Report provider credential sources without exposing secrets, warn about inline keys without blocking local startup, and preserve pool rotation across process restarts (#363).
+- Respect the effective listener bind override during CLI port selection, enabling container starts with an existing host-bound configuration (#368).
+- Publish gated container images for both AMD64 and ARM64 while retaining secret-free pull-request builds (#369).
+- Keep repeated Codex catalog sync byte-idempotent and avoid invalidating an unchanged, verified catalog (#366).
+- Preserve unknown service-manager states during diagnosis and distinguish an inactive disabled system unit from an active ownership conflict (#364).
 
 - #355: preserve Factory Droid custom-model identities and existing settings in modeled merge fixtures; keep OCX data-plane admission isolated from Codex Direct/management auth, and surface discovery HTTP/network errors without leaking response bodies. Merged as `3ddbd9a3` at 01:56:30 UTC, **after** the release. Installed Factory CLI merge and inference remain unverified.
 - #349: repair Claude Desktop protocol uninstall, private bounded backups, cross-process library locking, concurrent metadata preservation and `ocx claude desktop doctor [--json]`. Merged as `52bc938f` at 02:09:41 UTC, **after** the release. Real Desktop registration and sync acceptance remain unverified.
