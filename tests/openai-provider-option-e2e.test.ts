@@ -373,15 +373,6 @@ describe("OpenAI provider-option integration spine", () => {
       expect(wsTrace?.outboundHash).toMatch(/^[0-9a-f]{32}$/);
       expect(wsTrace?.responseHash).toMatch(/^[0-9a-f]{32}$/);
       expect(websocketRegistry.getTrackedCodexWebSocketCountForAccount("fixture-pool")).toBe(1);
-      const wsTrace = requestLog.getRequestLogEntries().at(-1)?.trace;
-      expect(wsTrace).toMatchObject({
-        mode: "metadata",
-        stored: false,
-        responseBytes: expect.any(Number),
-      });
-      expect(wsTrace?.requestHash).toMatch(/^[0-9a-f]{32}$/);
-      expect(wsTrace?.outboundHash).toMatch(/^[0-9a-f]{32}$/);
-      expect(wsTrace?.responseHash).toMatch(/^[0-9a-f]{32}$/);
 
       const directPatch = await patchMode("direct");
       expect(directPatch.status).toBe(200);
