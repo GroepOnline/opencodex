@@ -36,11 +36,8 @@ export function recoverStaleChunk(
   error: unknown,
   options: ChunkRecoveryOptions,
 ): Promise<boolean> {
-  if (
-    !isChunkLoadError(error) ||
-    !options.clientSha ||
-    !FULL_GIT_SHA.test(options.clientSha)
-  ) {
+  const clientSha = options.clientSha;
+  if (!isChunkLoadError(error) || !clientSha || !FULL_GIT_SHA.test(clientSha)) {
     return Promise.resolve(false);
   }
   if (currentAttempt) return currentAttempt;
@@ -52,10 +49,7 @@ export function recoverStaleChunk(
       });
       if (!response.ok) return false;
       const runtimeSha = readGitSha(await response.json());
-      if (
-        !runtimeSha ||
-        runtimeSha.toLowerCase() === options.clientSha.toLowerCase()
-      ) {
+      if (!runtimeSha || runtimeSha.toLowerCase() === clientSha.toLowerCase()) {
         return false;
       }
       const attemptedSha = options.storage.getItem(AUTO_RELOAD_KEY);
