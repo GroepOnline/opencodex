@@ -1,15 +1,11 @@
 import { LayoutGroup, m, useReducedMotion } from "motion/react";
-import { useId, useState, type ComponentType } from "react";
+import { useId, useState } from "react";
 import type { View } from "../app-routing";
-import { useT, type TKey } from "../i18n/shared";
+import { useT } from "../i18n/shared";
+import type { WorkspaceDestination } from "../app/navigation-contracts";
+export type { WorkspaceDestination } from "../app/navigation-contracts";
 import { Button } from "./primitives/button";
 import { selectionTransition } from "../shared/motion/selection-transition";
-
-export interface WorkspaceDestination {
-  view: View;
-  tkey: TKey;
-  icon: ComponentType<{ size?: 13 | 15 | 18 | 24; "aria-hidden"?: boolean }>;
-}
 
 export default function WorkspaceNavigation({
   destinations,
