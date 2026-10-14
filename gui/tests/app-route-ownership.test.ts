@@ -24,3 +24,17 @@ test("route outlet contains only route composition, never global health or auth 
   expect(app).toContain("<DashboardShell");
   expect(shell).toContain("<RouteOutlet route={route} />");
 });
+
+test("navigation metadata depends on app contracts, never UI component modules", async () => {
+  const nav = await Bun.file(new URL("../src/app/navigation.ts", import.meta.url)).text();
+  const contracts = await Bun.file(new URL("../src/app/navigation-contracts.ts", import.meta.url)).text();
+  const primary = await Bun.file(new URL("../src/components/WorkspaceNavigation.tsx", import.meta.url)).text();
+  const secondary = await Bun.file(new URL("../src/components/WorkspaceSubTabs.tsx", import.meta.url)).text();
+  expect(nav).toContain('from "./navigation-contracts"');
+  expect(nav).not.toContain('from "../components/WorkspaceNavigation"');
+  expect(nav).not.toContain('from "../components/WorkspaceSubTabs"');
+  expect(contracts).toContain("export interface WorkspaceDestination");
+  expect(contracts).toContain("export interface WorkspaceSubTab");
+  expect(primary).toContain('from "../app/navigation-contracts"');
+  expect(secondary).toContain('from "../app/navigation-contracts"');
+});
