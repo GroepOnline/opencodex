@@ -31,5 +31,8 @@ test("seven-day bars expose a focusable button for each date and its actual tota
   expect(html).toContain('role="group"');
   expect(html).not.toContain('role="img"');
   expect((html.match(/type="button"/g) ?? []).length).toBe(7);
+  // The chart stylesheet scales from --daybar-scale (its fallback is 0).
+  expect(html).toContain("--daybar-scale:1");
+  expect(html).toContain("--daybar-scale:0");
   expect(html).toContain(`aria-label="${date}: usage.heatmap.tooltipTokens:120, usage.heatmap.tooltipRequests:2"`);
 });
