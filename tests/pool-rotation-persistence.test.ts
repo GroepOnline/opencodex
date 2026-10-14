@@ -83,6 +83,56 @@ test("a selection mutates and writes version 1 state", () => {
   expect(existsSync(`${statePath}.tmp`)).toBe(false);
 });
 
+test("empty eligible lists never write snapshots for new or established pools", () => {
+  installPoolRotationPersistence(statePath);
+  expect(pickRoundRobinAccount("codex", ["a", "b"], 3)).toBe("a");
+  const original = readFileSync(statePath, "utf8");
+  const write = spyOn(fs, "writeFileSync");
+  try {
+    expect(pickRoundRobinAccount("codex", [], 3)).toBeNull();
+    expect(pickRoundRobinAccount("unused", [], 1)).toBeNull();
+    expect(write).not.toHaveBeenCalled();
+    expect(readFileSync(statePath, "utf8")).toBe(original);
+  } finally {
+    write.mockRestore();
+  }
+});
+
+test("repeated sticky selections do not rewrite snapshots but release still persists", () => {
+  installPoolRotationPersistence(statePath);
+  expect(pickRoundRobinAccount("codex", ["a", "b"], 3)).toBe("a");
+  const original = readFileSync(statePath, "utf8");
+  const write = spyOn(fs, "writeFileSync");
+  try {
+    for (let i = 0; i < 5; i++) {
+      expect(pickRoundRobinAccount("codex", ["a", "b"], 3)).toBe("a");
+    }
+    notePoolRotationSuccess("codex", "a", 3);
+    notePoolRotationSuccess("codex", "a", 3);
+    expect(write).not.toHaveBeenCalled();
+    expect(readFileSync(statePath, "utf8")).toBe(original);
+    notePoolRotationSuccess("codex", "a", 3);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(pickRoundRobinAccount("codex", ["a", "b"], 3)).toBe("b");
+    expect(write).toHaveBeenCalledTimes(2);
+  } finally {
+    write.mockRestore();
+  }
+});
+
+test("sticky limit one records the pick but not a duplicate success snapshot", () => {
+  installPoolRotationPersistence(statePath);
+  const write = spyOn(fs, "writeFileSync");
+  try {
+    expect(pickRoundRobinAccount("codex", ["a", "b"], 1)).toBe("a");
+    expect(write).toHaveBeenCalledTimes(1);
+    notePoolRotationSuccess("codex", "a", 1);
+    expect(write).toHaveBeenCalledTimes(1);
+  } finally {
+    write.mockRestore();
+  }
+});
+
 test("a seeded account survives clearing memory and reinstalling from disk", () => {
   installPoolRotationPersistence(statePath);
   seedPoolRotationAccount("codex", "seeded");

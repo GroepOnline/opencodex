@@ -156,13 +156,16 @@ export function pickRoundRobinAccount(
   eligibleIds: string[],
   stickyLimit: number,
 ): string | null {
-  const picked = pickRoundRobinFromState(
-    eligibleIds,
-    stickyLimit,
-    getOrCreateState(poolKey),
-    true,
-  );
-  flushPoolRotationState();
+  // Empty eligibility changes no selection state and must not create an empty
+  // snapshot. A retained sticky account changes neither weights nor counters.
+  if (eligibleIds.length === 0) return null;
+  const state = getOrCreateState(poolKey);
+  if (state.activeKey && eligibleIds.includes(state.activeKey)) {
+    return state.activeKey;
+  }
+  const picked = pickRoundRobinFromState(eligibleIds, stickyLimit, state, true);
+  // A new weighted selection or invalidated sticky account updates the ring.
+  if (picked !== null) flushPoolRotationState();
   return picked;
 }
 
