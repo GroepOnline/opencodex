@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import type { Locale, TFn } from "../../../i18n/shared";
 import { formatTokens } from "../../../format-tokens";
 import { modelLabel } from "../../../model-display";
@@ -38,7 +38,7 @@ export default function WeekDayBars({
             <div className="daybar-track">
               <div
                 className="daybar-stack"
-                style={{ height: `${percentage}%` }}
+                style={{ "--daybar-scale": percentage / 100 } as CSSProperties}
               >
                 {day.models.map((model) => (
                   <div
