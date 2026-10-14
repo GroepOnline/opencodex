@@ -187,6 +187,13 @@ export function droidProxyStartArgs(port: number): string[] {
 }
 
 /** Read the running proxy's client-visible model rows (authenticated GET /api/models). */
+export class DroidModelDiscoveryError extends Error {
+  constructor(reason: string) {
+    super(`OCX model discovery failed: ${reason}`);
+    this.name = "DroidModelDiscoveryError";
+  }
+}
+
 export async function fetchDroidModels(
   port: number,
   timeoutMs = 4_000,
@@ -199,8 +206,25 @@ export async function fetchDroidModels(
       headers,
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) return [];
-    const rows = (await res.json()) as Array<{
+    if (!res.ok) {
+      // Do not mistake a 401/403 (or a proxy failure) for an empty catalog.
+      // Never include response bodies or credentials in the diagnostic.
+      throw new DroidModelDiscoveryError(
+        res.status === 401 || res.status === 403
+          ? `access denied (HTTP ${res.status})`
+          : `proxy returned HTTP ${res.status}`,
+      );
+    }
+    let parsed: unknown;
+    try {
+      parsed = await res.json();
+    } catch {
+      throw new DroidModelDiscoveryError("invalid JSON catalog");
+    }
+    if (!Array.isArray(parsed)) {
+      throw new DroidModelDiscoveryError("invalid model catalog response");
+    }
+    const rows = parsed as Array<{
       provider?: string;
       id?: string;
       namespaced?: string;
@@ -209,7 +233,6 @@ export async function fetchDroidModels(
       native?: boolean;
       inputModalities?: string[];
     }>;
-    if (!Array.isArray(rows)) return [];
     return rows
       .filter(
         (row) =>
@@ -228,8 +251,10 @@ export async function fetchDroidModels(
             )
           : undefined,
       }));
-  } catch {
-    return [];
+  } catch (error) {
+    if (error instanceof DroidModelDiscoveryError) throw error;
+    // Fetch errors can contain provider-specific details. Do not echo them.
+    throw new DroidModelDiscoveryError("proxy unreachable or request timed out");
   }
 }
 
@@ -271,7 +296,15 @@ export async function cmdDroid(args: string[]): Promise<number> {
     console.error("❌ Proxy did not become healthy after starting.");
     return 1;
   }
-  const discovered = await fetchDroidModels(port);
+  let discovered: DroidRoutedModel[];
+  try {
+    discovered = await fetchDroidModels(port);
+  } catch (error) {
+    console.error(
+      `❌ ${error instanceof DroidModelDiscoveryError ? error.message : "OCX model discovery failed"}`,
+    );
+    return 1;
+  }
   const models = droidByokCompatibleModels(config, discovered);
   if (models.length !== discovered.length) {
     console.error(

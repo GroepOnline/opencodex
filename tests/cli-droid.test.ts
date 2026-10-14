@@ -79,6 +79,74 @@ describe("ocx droid model discovery", () => {
     }
   });
 
+  test("does not disguise management authentication failure as an empty model catalog", async () => {
+    const oldFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () =>
+        new Response("secret-diagnostic-must-not-leak", { status: 401 })) as typeof fetch;
+      await expect(fetchDroidModels(10123)).rejects.toThrow(
+        "OCX model discovery failed: access denied (HTTP 401)",
+      );
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
+  });
+
+  test("surfaces unexpected proxy HTTP failures without exposing response bodies", async () => {
+    const oldFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () =>
+        new Response("confidential-upstream-diagnostic", { status: 503 })) as typeof fetch;
+      try {
+        await fetchDroidModels(10123);
+        throw new Error("expected proxy failure");
+      } catch (error) {
+        expect((error as Error).message).toBe(
+          "OCX model discovery failed: proxy returned HTTP 503",
+        );
+        expect((error as Error).message).not.toContain("confidential-upstream");
+      }
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
+  });
+
+  test("rejects malformed catalog responses rather than pretending no models exist", async () => {
+    const oldFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () => Response.json({ error: "not an array" })) as typeof fetch;
+      await expect(fetchDroidModels(10123)).rejects.toThrow(
+        "OCX model discovery failed: invalid model catalog response",
+      );
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
+  });
+
+  test("sanitizes transport failures without leaking the underlying exception", async () => {
+    const oldFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () => {
+        throw new Error("sensitive-network-diagnostic");
+      }) as typeof fetch;
+      await expect(fetchDroidModels(10123)).rejects.toThrow(
+        "OCX model discovery failed: proxy unreachable or request timed out",
+      );
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
+  });
+
+  test("keeps a successful empty catalog distinct from a failed discovery", async () => {
+    const oldFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () => Response.json([])) as typeof fetch;
+      expect(await fetchDroidModels(10123)).toEqual([]);
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
+  });
+
   test("a native-only response has no eligible OCX models", async () => {
     const oldFetch = globalThis.fetch;
     try {
