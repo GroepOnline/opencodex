@@ -1,33 +1,44 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { Window } from "happy-dom";
 import { act, lazy, Suspense } from "react";
 import type { Root } from "react-dom/client";
 import ErrorBoundary from "../src/components/ErrorBoundary";
 
-const globals = ["document", "window", "navigator", "IS_REACT_ACT_ENVIRONMENT"] as const;
+const globals = [
+  "document",
+  "window",
+  "navigator",
+  "IS_REACT_ACT_ENVIRONMENT",
+] as const;
 let previousGlobals: Record<(typeof globals)[number], unknown>;
 let testWindow: Window;
 
 beforeEach(() => {
-  previousGlobals = Object.fromEntries(globals.map((key) => [key, Reflect.get(globalThis, key)])) as typeof previousGlobals;
+  previousGlobals = Object.fromEntries(
+    globals.map((key) => [key, Reflect.get(globalThis, key)]),
+  ) as typeof previousGlobals;
   testWindow = new Window({ url: "http://localhost/" });
   Object.defineProperties(globalThis, {
     document: { configurable: true, value: testWindow.document },
     window: { configurable: true, value: testWindow },
     navigator: { configurable: true, value: testWindow.navigator },
   });
-  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
-    .IS_REACT_ACT_ENVIRONMENT = true;
+  (
+    globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT = true;
 });
 
 afterEach(() => {
   testWindow.close();
   for (const key of globals) {
-    Object.defineProperty(globalThis, key, { configurable: true, value: previousGlobals[key] });
+    Object.defineProperty(globalThis, key, {
+      configurable: true,
+      value: previousGlobals[key],
+    });
   }
 });
 
-test("shows the failed page and recovers when Reload resets the boundary", async () => {
+test("shows the failed page and Reload reloads the document", async () => {
   const { createRoot } = await import("react-dom/client");
   const container = document.createElement("div");
   document.body.append(container);
@@ -57,19 +68,21 @@ test("shows the failed page and recovers when Reload resets the boundary", async
   expect(container.textContent).toContain("Providers: Page failed to load");
   expect(container.textContent).toContain("render exploded");
 
-  shouldThrow = false;
+  const reload = spyOn(testWindow.location, "reload").mockImplementation(
+    () => {},
+  );
   await act(async () => {
     container.querySelector<HTMLButtonElement>("button")!.click();
   });
 
-  expect(container.textContent).toContain("Recovered page");
-  expect(container.textContent).not.toContain("render exploded");
+  expect(reload).toHaveBeenCalledTimes(1);
+  expect(container.textContent).toContain("render exploded");
+  reload.mockRestore();
 
   await act(async () => {
     root.unmount();
   });
 });
-
 
 test("catches a rejected lazy import outside Suspense", async () => {
   const { createRoot } = await import("react-dom/client");

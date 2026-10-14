@@ -54,7 +54,9 @@ export default function DashboardShell({
           />
 
           {proxyOnline === false && (
-            <OfflineBanner onOpenSystem={() => navigateTo({ view: "systeem", sub: null })} />
+            <OfflineBanner
+              onOpenSystem={() => navigateTo({ view: "systeem", sub: null })}
+            />
           )}
 
           <main id="main-content" className="main" tabIndex={-1}>
@@ -76,6 +78,7 @@ export default function DashboardShell({
                   message={t("errorBoundary.message")}
                   detailsLabel={t("errorBoundary.details")}
                   reloadLabel={t("errorBoundary.reload")}
+                  clientSha={__APP_GIT_SHA__}
                 >
                   <Suspense
                     fallback={
@@ -105,4 +108,3 @@ export default function DashboardShell({
     </MotionConfig>
   );
 }
-

@@ -21,6 +21,13 @@ ocx start
 bun run dev:gui
 ```
 
+## Stale dashboard tabs
+
+If a tab was left open across a deployment and a page chunk is no longer available, the dashboard
+checks the running proxy's public build identity. It reloads once only when that identity proves the
+tab came from a different checkout. If the proxy is unreachable or the chunk is missing from the
+current build, the error screen stays available and its **Reload** button reloads the page.
+
 ## Sign-in
 
 On the default loopback bind (`localhost` / `127.0.0.1`) the dashboard never asks for a token:

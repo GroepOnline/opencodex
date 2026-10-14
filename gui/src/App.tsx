@@ -16,7 +16,9 @@ export default function App() {
   const t = useT();
   useEffect(() => {
     const title = routeTitleKey(route);
-    document.title = title ? t("app.pageTitle", { page: t(title) }) : "opencodex";
+    document.title = title
+      ? t("app.pageTitle", { page: t(title) })
+      : "opencodex";
   }, [route, t]);
   // The public landing page renders outside the dashboard shell: no topbar,
   // no view tabs, no health polling UI. Everything below it is the app.
@@ -28,6 +30,7 @@ export default function App() {
         message={t("errorBoundary.message")}
         detailsLabel={t("errorBoundary.details")}
         reloadLabel={t("errorBoundary.reload")}
+        clientSha={__APP_GIT_SHA__}
       >
         <Suspense
           fallback={
