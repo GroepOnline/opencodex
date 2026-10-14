@@ -46,11 +46,11 @@ export default function UsageHeatmapPanel({
       {range === "7d" ? (
         <WeekDayBars weekBars={weekBars} locale={locale} t={t} />
       ) : (
+        <>
         <div
           className="heatmap"
           ref={heatmapRef}
-          role="img"
-          aria-labelledby="usage-heatmap-title"
+          aria-hidden="true"
         >
           <div
             className="heatmap-months"
@@ -155,6 +155,33 @@ export default function UsageHeatmapPanel({
             <span>{t("usage.heatmap.more")}</span>
           </div>
         </div>
+        <details className="usage-heatmap-data" style={{ marginTop: 12 }}>
+          <summary className="text-control" style={{ cursor: "pointer", padding: "12px 0", minHeight: 44 }}>
+            {t("usage.section.heatmap")} — {t("usage.col.requests")} / {t("usage.col.tokens")}
+          </summary>
+          <div className="tbl-wrap usage-scroll">
+            <table className="tbl">
+              <caption className="sr-only">{t("usage.section.heatmap")}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">{t("logs.col.time")}</th>
+                  <th scope="col" className="num">{t("usage.col.requests")}</th>
+                  <th scope="col" className="num">{t("usage.col.tokens")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {heatmap.weeks.flat().filter((cell) => cell.date).map((cell) => (
+                  <tr key={cell.date}>
+                    <th scope="row"><time dateTime={cell.date}>{cell.date}</time></th>
+                    <td className="num">{cell.requests}</td>
+                    <td className="num mono">{formatTokens(cell.totalTokens, locale)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+        </>
       )}
     </Panel>
   );
