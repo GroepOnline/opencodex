@@ -8,7 +8,7 @@ through one bearer key, with auto-fallback across upstream providers.
 OmniRoute speaks the OpenAI Chat Completions wire format, so opencodex reuses the built-in
 `openai-chat` adapter. There is no separate adapter to install.
 
-Fleet rule: clients (including joep) reach OmniRoute **only via sofie OCX**. Do not publish
+Fleet rule: clients (including joep) reach OmniRoute **only via the central OCX proxy** (currently bc-scan-2; sofie retired 2026-08-04). Do not publish
 OmniRoute on a LAN/Tailscale address or open a direct joep→OmniRoute tunnel.
 
 ## 1. Get an OmniRoute key
