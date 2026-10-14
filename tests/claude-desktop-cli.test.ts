@@ -83,3 +83,21 @@ test("no-arg and legacy mode flags apply Desktop config", async () => {
     error.mockRestore();
   }
 });
+
+
+test("doctor does not invent profile drift for a discovery-only Desktop library", async () => {
+  const log = spyOn(console, "log").mockImplementation(() => {});
+  const error = spyOn(console, "error").mockImplementation(() => {});
+  try {
+    expect(await handleClaudeDesktopCommand(["--discovery-only"])).toBe(0);
+    await handleClaudeDesktopCommand(["doctor", "--json"]);
+    const report = JSON.parse(String(log.mock.calls.at(-1)?.[0])) as {
+      checks: Array<{ name: string; status: string; detail: string }>;
+    };
+    expect(report.checks.find(check => check.name === "library")?.status).toBe("ok");
+    expect(report.checks.find(check => check.name === "profile drift")).toBeUndefined();
+  } finally {
+    log.mockRestore();
+    error.mockRestore();
+  }
+});

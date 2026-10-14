@@ -1,15 +1,18 @@
 import { createHash, randomUUID } from "node:crypto";
 import { execSync } from "node:child_process";
-import { chmodSync, closeSync, existsSync, ftruncateSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, truncateSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, ftruncateSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, truncateSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { renameAtomicFile } from "../config";
 import { hardenSecretPath } from "../lib/windows-secret-acl";
 import { DESKTOP_LIBRARY_ID, resolveDesktop3pConfigLibraryPath } from "./desktop-3p";
+import { withDesktopLibraryLockAsync, type DesktopLibraryLockOptions } from "./desktop-library-lock";
 import { resolveDataPlaneAdmissionToken } from "../lib/service-secrets";
 import { claudeConfigDir, realAdmissionToken } from "./auth-detect";
 
 const MAX_LIBRARY_BYTES = 4 * 1024 * 1024;
 const SAFE_ID = DESKTOP_LIBRARY_ID;
+/** Pre-sync snapshots hold gateway credentials: keep a short rollback window, not an archive. */
+const KEEP_SYNC_BACKUPS = 3;
 class DesktopSyncError extends Error {}
 
 function assertLibraryDirectory(path: string): void {
@@ -30,6 +33,8 @@ function assertLibraryDirectory(path: string): void {
 
 export interface DesktopSyncOptions {
   automatic?: boolean;
+  /** Override where the cross-process library lock lives (tests and sandboxes). */
+  lockOptions?: DesktopLibraryLockOptions;
   libraryPath?: string;
   settingsPath?: string;
   fetchImpl?: typeof fetch;
@@ -93,17 +98,32 @@ export async function syncClaudeDesktopLibrary(options: DesktopSyncOptions = {})
   }
 }
 
-async function syncLibrary(options: DesktopSyncOptions): Promise<DesktopSyncResult> {
-  const env = options.env ?? process.env;
-  const library = options.libraryPath ?? resolveDesktop3pConfigLibraryPath();
-  assertLibraryDirectory(library);
-  const metaPath = join(library, "_meta.json");
+interface LocalDesktopMeta {
+  /** Raw `_meta.json` text, or null when the file does not exist yet. */
+  originalMeta: string | null;
+  localMeta: Record<string, unknown>;
+  entries: Record<string, unknown>[];
+}
+
+/** Read and shape-check the library's `_meta.json`; a missing file is an empty library. */
+function readLocalMeta(metaPath: string): LocalDesktopMeta {
   assertRegularFile(metaPath);
   const originalMeta = existsSync(metaPath) ? readFileSync(metaPath, "utf8") : null;
   const localMeta: unknown = originalMeta === null ? {} : JSON.parse(originalMeta);
   if (!object(localMeta)) throw new DesktopSyncError("Claude Desktop sync configuration has an invalid shape");
   const entries = Array.isArray(localMeta.entries) ? localMeta.entries.filter(object) : [];
-  if (options.automatic && !entries.some(entry => entry.name === "opencodex")) {
+  return { originalMeta, localMeta, entries };
+}
+
+async function syncLibrary(options: DesktopSyncOptions): Promise<DesktopSyncResult> {
+  const env = options.env ?? process.env;
+  const library = options.libraryPath ?? resolveDesktop3pConfigLibraryPath();
+  assertLibraryDirectory(library);
+  const metaPath = join(library, "_meta.json");
+  // A first read rejects a malformed library and lets an automatic sync stop before any network
+  // traffic. The authoritative read happens again under the library lock, right before the write.
+  const early = readLocalMeta(metaPath);
+  if (options.automatic && !early.entries.some(entry => entry.name === "opencodex")) {
     return { status: "skipped", models: 0 };
   }
   const settings = readObject(options.settingsPath ?? join(claudeConfigDir(env), "settings.json"));
@@ -155,7 +175,20 @@ async function syncLibrary(options: DesktopSyncOptions): Promise<DesktopSyncResu
     || !payload.meta.entries.some(entry => object(entry) && entry.name === "opencodex" && entry.id === payload.appliedId)) {
     throw new DesktopSyncError("Claude Desktop library has an invalid applied profile");
   }
-  return writeLibrary(library, metaPath, localMeta, entries, originalMeta, payload.appliedId, payload.config, base.origin, options.fileIO);
+  const appliedId = payload.appliedId;
+  const remoteConfig = payload.config;
+  // Apply and sync share one lock so their _meta.json read-modify-write cycles cannot interleave.
+  // The metadata snapshot is taken inside the lock: a snapshot from before the network round trip
+  // could already be stale, which would turn a harmless wait into a "changed during sync" failure.
+  return withDesktopLibraryLockAsync(() => {
+    const fresh = readLocalMeta(metaPath);
+    if (options.automatic && !fresh.entries.some(entry => entry.name === "opencodex")) {
+      return { status: "skipped" as const, models: 0 };
+    }
+    return writeLibrary(
+      library, metaPath, fresh.localMeta, fresh.entries, fresh.originalMeta, appliedId, remoteConfig, base.origin, options.fileIO,
+    );
+  }, options.lockOptions);
 }
 
 async function readBoundedJson(response: Response, limit: number): Promise<unknown> {
@@ -212,6 +245,24 @@ function writeProtectedAtomic(path: string, content: string | Buffer, harden: (p
   }
 }
 
+/** Keep the newest KEEP_SYNC_BACKUPS snapshots of one file; scrub before unlinking since they hold secrets. */
+function pruneSyncBackups(path: string, keep: string): void {
+  try {
+    const dir = dirname(path);
+    const prefix = `${path.slice(dir.length + 1)}.before-sync-`;
+    const backups = readdirSync(dir)
+      .filter(name => name.startsWith(prefix) && name.endsWith(".bak"))
+      .map(name => ({ path: join(dir, name), stat: lstatSync(join(dir, name)) }))
+      .filter(item => item.stat.isFile() && !item.stat.isSymbolicLink())
+      .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
+    for (const old of backups.slice(KEEP_SYNC_BACKUPS)) {
+      if (old.path === keep) continue;
+      try { truncateSync(old.path, 0); } catch { /* best effort scrub */ }
+      try { unlinkSync(old.path); } catch { /* retention is best effort and must never fail a sync */ }
+    }
+  } catch { /* retention is best effort and must never fail a sync */ }
+}
+
 function writeLibrary(
   library: string, metaPath: string, localMeta: Record<string, unknown>,
   entries: Record<string, unknown>[], originalMeta: string | null,
@@ -264,6 +315,7 @@ function writeLibrary(
     } else {
       writeProtectedFile(backup, previous, harden);
     }
+    pruneSyncBackups(path, backup);
   }
   atomicWrite(configPath, configText);
   const writtenConfig = lstatSync(configPath);

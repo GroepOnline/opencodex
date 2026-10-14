@@ -82,7 +82,7 @@ export async function handleClaudeDesktopRoutes(
         desktopProfile: state.profile,
       };
       saveConfigPreservingClaudeCode(config);
-      const { writeDesktop3pConfig } = await import("../../claude/desktop-3p");
+      const { writeDesktop3pConfigAsync } = await import("../../claude/desktop-3p");
       const { visibleNativeSlugs } = await import("../../codex/catalog");
       const routed = state.models
         .filter(
@@ -96,7 +96,7 @@ export async function handleClaudeDesktopRoutes(
             contextWindow: model.contextWindow,
           };
         });
-      const result = writeDesktop3pConfig(
+      const result = await writeDesktop3pConfigAsync(
         Number(url.port) || config.port,
         [...visibleNativeSlugs(config)],
         routed,
