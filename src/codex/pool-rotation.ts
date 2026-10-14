@@ -1,9 +1,13 @@
+import { dirname } from "node:path";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, chmodSync } from "node:fs";
 import type { OcxAccountPoolRotationStrategy } from "../types";
 
 export const POOL_KEY_CODEX = "codex";
 export const POOL_KEY_ANTHROPIC = "anthropic";
 export const POOL_KEY_ANTIGRAVITY = "google-antigravity";
 export const POOL_KEY_CURSOR = "cursor";
+/** Filename for the process-restart rotation snapshot under the OCX home directory. */
+export const POOL_ROTATION_STATE_FILENAME = "pool-rotation-state.json";
 
 interface SelectionState {
   activeKey?: string;
@@ -121,7 +125,9 @@ export function pickRoundRobinAccount(
   eligibleIds: string[],
   stickyLimit: number,
 ): string | null {
-  return pickRoundRobinFromState(eligibleIds, stickyLimit, getOrCreateState(poolKey), true);
+  const picked = pickRoundRobinFromState(eligibleIds, stickyLimit, getOrCreateState(poolKey), true);
+  flushPoolRotationState();
+  return picked;
 }
 
 /**
@@ -156,6 +162,7 @@ export function notePoolRotationSuccess(
   if (state.successes >= limit) {
     delete state.activeKey;
     state.successes = 0;
+    flushPoolRotationState();
   }
 }
 
@@ -164,6 +171,7 @@ export function notePoolRotationFailure(poolKey: string, accountId: string): voi
   if (state?.activeKey === accountId) {
     delete state.activeKey;
     state.successes = 0;
+    flushPoolRotationState();
   }
 }
 
@@ -177,12 +185,134 @@ export function seedPoolRotationAccount(poolKey: string, accountId: string): voi
   state.activeKey = accountId;
   state.successes = 0;
   state.currentWeights.clear();
+  flushPoolRotationState();
 }
 
 export function clearPoolRotationState(poolKey?: string): void {
   if (poolKey === undefined) {
     selectionState.clear();
+    flushPoolRotationState();
     return;
   }
   selectionState.delete(poolKey);
+  flushPoolRotationState();
+}
+
+/* -------------------------------------------------------------------------- */
+/* Persistence — rework of the historical per-pool `rrCursor` file contract.     */
+/* The state still lives in memory for the running process; persistence is an     */
+/* explicit, opt-in install so tests never touch disk and the server owns the    */
+/* file layout.                                                                  */
+/* -------------------------------------------------------------------------- */
+
+interface SerializedSelectionState {
+  activeKey?: string;
+  successes: number;
+  currentWeights: Record<string, number>;
+}
+
+interface SerializedRotationState {
+  version: 1;
+  pools: Record<string, SerializedSelectionState>;
+}
+
+let persistedRotationPath: string | null = null;
+
+/** Rotate state onto disk atomically (0o600). Empty state removes the file. */
+function flushPoolRotationState(): void {
+  if (!persistedRotationPath) return;
+  const path = persistedRotationPath;
+  const tmpPath = `${path}.tmp`;
+  try {
+    if (selectionState.size === 0) {
+      rmSync(path, { force: true });
+      rmSync(tmpPath, { force: true });
+      return;
+    }
+    const pools: Record<string, SerializedSelectionState> = {};
+    for (const [poolKey, state] of selectionState) {
+      pools[poolKey] = {
+        ...(state.activeKey !== undefined ? { activeKey: state.activeKey } : {}),
+        successes: state.successes,
+        currentWeights: Object.fromEntries(state.currentWeights.entries()),
+      };
+    }
+    const payload: SerializedRotationState = { version: 1, pools };
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+    writeFileSync(tmpPath, JSON.stringify(payload), { mode: 0o600 });
+    try {
+      chmodSync(tmpPath, 0o600);
+    } catch {
+      /* platform may ignore chmod */
+    }
+    renameSync(tmpPath, path);
+  } catch {
+    /* persistence is best-effort and must never break rotation */
+    try {
+      rmSync(tmpPath, { force: true });
+    } catch {
+      /* ignored */
+    }
+  }
+}
+
+function parseSerializedSelectionState(raw: unknown): SelectionState | null {
+  if (!raw || typeof raw !== "object") return null;
+  const candidate = raw as {
+    activeKey?: unknown;
+    successes?: unknown;
+    currentWeights?: unknown;
+  };
+  const activeKey =
+    candidate.activeKey === undefined ? undefined : candidate.activeKey;
+  if (activeKey !== undefined && typeof activeKey !== "string") return null;
+  const successes = Number(candidate.successes ?? 0);
+  if (!Number.isFinite(successes) || successes < 0) return null;
+  const currentWeights = new Map<string, number>();
+  if (candidate.currentWeights && typeof candidate.currentWeights === "object") {
+    for (const [id, value] of Object.entries(candidate.currentWeights as Record<string, unknown>)) {
+      const weight = Number(value);
+      if (!Number.isFinite(weight)) continue;
+      currentWeights.set(id, weight);
+    }
+  }
+  return {
+    ...(activeKey !== undefined ? { activeKey } : {}),
+    successes,
+    currentWeights,
+  };
+}
+
+function loadPoolRotationStateFromDisk(): void {
+  if (!persistedRotationPath) return;
+  const path = persistedRotationPath;
+  if (!existsSync(path)) return;
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf-8")) as SerializedRotationState;
+    if (!parsed || typeof parsed !== "object" || typeof parsed.pools !== "object") return;
+    for (const [poolKey, rawState] of Object.entries(parsed.pools)) {
+      const state = parseSerializedSelectionState(rawState);
+      if (state) selectionState.set(poolKey, state);
+    }
+  } catch {
+    /* a corrupt file is treated as absent: rotation stays in-process from scratch */
+  }
+}
+
+/**
+ * Install disk persistence for all pool rotation state. Intended to be called once by
+ * `startServer()` with a path under `getConfigDir()`. Only loads from disk when the process
+ * has no in-memory state yet (a fresh server start): a process that already resolved a pick
+ * keeps its live ring and merely gains flushing.
+ */
+export function installPoolRotationPersistence(filePath: string): void {
+  persistedRotationPath = filePath;
+  if (selectionState.size === 0) {
+    loadPoolRotationStateFromDisk();
+  }
+}
+
+/** Detach disk persistence. Mostly for isolated tests. */
+export function uninstallPoolRotationPersistence(): void {
+  persistedRotationPath = null;
 }

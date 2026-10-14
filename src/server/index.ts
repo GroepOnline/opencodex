@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { markActivity } from "../lib/sidecar-tracker";
 import {
   appendTraceResponse,
@@ -28,6 +29,10 @@ import {
 } from "../config";
 import { reconcileOAuthProviders } from "../oauth";
 import { invalidateCodexModelsCache } from "../codex/catalog";
+import {
+  installPoolRotationPersistence,
+  POOL_ROTATION_STATE_FILENAME,
+} from "../codex/pool-rotation";
 import { startMemoryWatchdog } from "./memory-watchdog";
 import { setStorageCleanupPolicyLiveSink } from "../storage/policy";
 import { setStorageCleanupPolicyJobLiveApply } from "../storage/policy-job";
@@ -377,6 +382,9 @@ export function startServer(port?: number) {
   setCodexAccountPoolsEnabled(codexAccountPoolsEnabled(config));
   // Fase D: install the per-provider/model KV response cache (no-op unless config.responseCache.enabled).
   void installResponseCache(config, getConfigDir());
+  // Pool rotation survives process restarts. The in-memory ring stays authoritative for the
+  // process; this loads the snapshot once at startup and the rotation helpers flush later.
+  installPoolRotationPersistence(join(getConfigDir(), POOL_ROTATION_STATE_FILENAME));
   // Fase E: wire the auto-router's latency input to the usage log (p50 per provider/model).
   // Cheap: the reader caches aggregates for a minute and only reads the recent tail of usage.jsonl.
   installAutoRouterLatencyHistory({
