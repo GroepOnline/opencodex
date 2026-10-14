@@ -84,6 +84,7 @@ describe("syncExternalOcxCatalog", () => {
       handled: true,
       catalogPath: "/tmp/client/opencodex-catalog.json",
       models: 4,
+      catalogWritten: true,
       cacheSynced: true,
     });
     expect(requests[0]).toEqual({ url: "http://127.0.0.1:10100/healthz", key: null });

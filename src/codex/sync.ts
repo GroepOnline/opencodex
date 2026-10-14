@@ -75,18 +75,25 @@ export async function syncModelsToCodex(
     try {
       const remoteCatalog = await (deps.syncExternalOcxCatalog ?? syncExternalOcxCatalog)();
       if (remoteCatalog.handled) {
+        // This provider already routes to a health-verified OCX proxy. The inject guard
+        // deliberately preserves it, but its generic "NOT injected" warning is misleading
+        // after a successful client catalog sync.
         const result = await deps.injectCodexConfig(p, config, {});
-        log?.log(`   + ${remoteCatalog.models} models mirrored from the central OCX catalog (${remoteCatalog.catalogPath})`);
-        log?.log(result.message);
+        const message = result.success
+          ? `External OCX provider ${JSON.stringify(externalProvider)} verified; existing Codex routing preserved.`
+          : result.message;
+        const change = remoteCatalog.catalogWritten || remoteCatalog.cacheSynced ? "updated" : "unchanged";
+        log?.log(`   ${remoteCatalog.models} models available from the central OCX catalog (${remoteCatalog.catalogPath}; ${change})`);
+        log?.log(message);
         reportCodexHomeTarget(log, deps.collectCodexHomeDiagnostic ?? collectOrcaCodexHomeDiagnostic);
         return {
           ok: result.success,
           added: remoteCatalog.models,
           catalogPath: remoteCatalog.catalogPath,
           catalogExists: true,
-          catalogWritten: true,
+          catalogWritten: remoteCatalog.catalogWritten,
           cacheSynced: remoteCatalog.cacheSynced,
-          message: result.message,
+          message,
           ...(result.nativeSubagentDefaultsWarning ? { nativeSubagentDefaultsWarning: result.nativeSubagentDefaultsWarning } : {}),
         };
       }

@@ -159,11 +159,17 @@ skipped by default, but an explicitly invalid `CODEX_HOME` remains an error and 
 writes to `~/.codex`. Help, version, Desktop-only sync and proxy-only startup do not require a
 valid Codex home.
 `--desktop-only` explicitly syncs Desktop without touching Codex; `--codex-only` explicitly targets
-Codex. These flags are mutually exclusive. No client restart is required.
+Codex. These flags are mutually exclusive. No client is restarted automatically.
+
+When an existing external Codex provider points at a verified loopback OCX Responses endpoint,
+`ocx sync` preserves its provider identity and session history. It mirrors the central models
+without replacing user-owned routing. Unchanged catalog/cache models are not rewritten, and a
+drifted cache is repaired. Sync reports that the external provider is verified, rather than
+misleadingly reporting that routing injection failed.
 
 If long-lived Codex `app-server` processes are still running, `ocx sync` warns that they may keep
-serving the previous in-memory model list even though `opencodex-catalog.json` / `models_cache.json`
-were updated. Pass `--restart-codex` to send `SIGTERM` only to matching `codex … app-server` and
+serving the previous in-memory model list **only after** `opencodex-catalog.json` or
+`models_cache.json` was actually updated. Pass `--restart-codex` to send `SIGTERM` only to matching `codex … app-server` and
 `codex-code-mode-host` processes owned by the current user (active turns may be interrupted). Broad
 `pkill -f codex` matching is intentionally avoided.
 
