@@ -1874,6 +1874,17 @@ function diagnoseSystemSystemdUnit(): {
   return { installed: true, enabled, running };
 }
 
+/**
+ * A leftover system-level unit must not shadow an active per-user unit.
+ * If the system manager is enabled or still running, keep the conservative
+ * unmanaged-system diagnosis; only an inert unit may be ignored.
+ */
+export function shouldDeferToSystemSystemdUnit(
+  unit: { installed: boolean; enabled: boolean; running: boolean } | null,
+): boolean {
+  return unit?.installed === true && (unit.enabled || unit.running);
+}
+
 export function buildUnit(): string {
   const { bun, cli } = cliEntry();
   const log = logPath();
@@ -2404,7 +2415,7 @@ export function diagnoseService(): ServiceDiagnostic {
         summary: "unsupported in Docker",
       };
     const systemUnit = diagnoseSystemSystemdUnit();
-    if (systemUnit?.installed) {
+    if (shouldDeferToSystemSystemdUnit(systemUnit)) {
       return {
         supported: true,
         installed: false,

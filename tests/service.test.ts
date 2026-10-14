@@ -29,6 +29,7 @@ import {
   serviceLogPath,
   serviceStartableFromTray,
   serviceStatusSummary,
+  shouldDeferToSystemSystemdUnit,
   windowsTaskRegistrationHealthy,
 } from "../src/service";
 import { serviceApiTokenFilePath } from "../src/lib/service-secrets";
@@ -1197,13 +1198,35 @@ describe("service diagnostics", () => {
     expect(statusCase).toContain("serviceDiagnosticsSummary()");
   });
 
-  test("reports stopped system units as diagnose-only without hardcoding running", async () => {
+  test("does not shadow a live per-user service with a disabled, stopped system unit", () => {
+    expect(shouldDeferToSystemSystemdUnit(null)).toBe(false);
+    expect(shouldDeferToSystemSystemdUnit({
+      installed: false, enabled: false, running: false,
+    })).toBe(false);
+    // Reproduces bc-scan-2: an abandoned system unit and a healthy user unit.
+    expect(shouldDeferToSystemSystemdUnit({
+      installed: true, enabled: false, running: false,
+    })).toBe(false);
+    // Conservatively keep system-level ownership whenever a system unit
+    // is enabled or running; do not claim the user unit owns the lifecycle.
+    expect(shouldDeferToSystemSystemdUnit({
+      installed: true, enabled: true, running: false,
+    })).toBe(true);
+    expect(shouldDeferToSystemSystemdUnit({
+      installed: true, enabled: false, running: true,
+    })).toBe(true);
+    expect(shouldDeferToSystemSystemdUnit({
+      installed: true, enabled: true, running: true,
+    })).toBe(true);
+  });
+
+  test("reports managed system units as diagnose-only without hardcoding running", async () => {
     const service = await readText("src/service.ts");
     const branch = service.slice(
       service.indexOf("const systemUnit = diagnoseSystemSystemdUnit();"),
       service.indexOf("if (!isSystemd())"),
     );
-    expect(branch).toContain("if (systemUnit?.installed)");
+    expect(branch).toContain("if (shouldDeferToSystemSystemdUnit(systemUnit))");
     expect(branch).toContain("installed: false");
     expect(branch).toContain("startable: false");
     expect(branch).toContain("running: systemUnit.running");
