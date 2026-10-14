@@ -7,6 +7,7 @@
  *
  * Never include secret values in messages or DTO fields.
  */
+import { isEnvValueRef } from "../config";
 import type { OcxConfig, OcxProviderConfig } from "../types";
 
 export type ProviderCredentialSource =
@@ -16,12 +17,6 @@ export type ProviderCredentialView = Pick<
   OcxProviderConfig,
   "authMode" | "credentialRef" | "apiKey" | "apiKeyPool"
 >;
-
-/** Recognize any value starting with `$` as an environment reference without resolving it. */
-function isEnvValueRef(value: string | undefined): boolean {
-  if (!value) return false;
-  return /^\$\{\w+\}$/.test(value) || value.startsWith("$");
-}
 
 /** Collect configured string keys from apiKey and apiKeyPool, including empty values. */
 function configuredKeyMaterial(provider: ProviderCredentialView): string[] {
