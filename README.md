@@ -89,10 +89,11 @@ The launcher starts an installed Claude Code executable with the gateway environ
 ocx claude desktop show
 ocx claude desktop               # save and apply the configured profile
 ocx claude desktop sync
+ocx claude desktop doctor --json    # diagnostic only; does not apply a profile
 ocx sync --desktop-only          # do not touch Codex
 ```
 
-The OCX profile organizes routes into Opus, Fable, Sonnet and Haiku families, with JSON import/export and explicit application. An already-running Desktop conversation may keep an in-memory model selection until reloaded. This integration does not guarantee parity with every native Claude feature. See the [Desktop integration guide](./docs-site/src/content/docs/guides/claude-desktop-sync.md).
+The OCX profile organizes routes into Opus, Fable, Sonnet and Haiku families, with JSON import/export and explicit application. A running Desktop conversation may keep an in-memory model selection until reloaded. Since the main-only hardening in #349, apply/sync use a shared cross-process library lock and keep at most three protected pre-sync backups; `ocx claude desktop doctor --json` reports local diagnostics, not proof that Desktop reloaded or that a vendor inference succeeded. This integration does not guarantee parity with every native Claude feature. See the [Desktop integration guide](./docs-site/src/content/docs/guides/claude-desktop-sync.md).
 
 ### OpenCode and Factory Droid
 
@@ -103,7 +104,7 @@ ocx droid                       # requires the Factory droid CLI
 
 The OpenCode launcher injects a `provider.opencodex` block through the runtime config layer. It does not overwrite on-disk global or project configuration. Droid receives a temporary `--settings` overlay; the launcher does not rewrite `~/.factory/settings.json`.
 
-**Droid integration boundary:** the source tests cover the generated overlay and model identifiers, not a full vendor-CLI test of merging the overlay with pre-existing `customModels` or end-to-end authentication. Do not assume an existing Factory custom-model selection is preserved in a live launch until verified with the Factory version you use. The temporary file is removed after the launched process exits.
+**Droid integration boundary:** the main-only #355 regressions cover stable model identities, a 117-model existing-settings fixture, explicit data-plane admission without management-token leakage, and differentiated HTTP discovery errors. These simulate the vendor merge contract; they do **not** prove an installed Factory CLI actually merges the overlay, preserves a live selection, or completes authenticated inference. Do not assume an existing Factory custom-model selection is preserved in a live launch until verified with the Factory version you use. The temporary file is removed after the launched process exits.
 
 Read the [OpenCode guide](./docs-site/src/content/docs/guides/opencode.md), [Grok Build guide](./docs-site/src/content/docs/guides/grok-build.md) and [Codex integration guide](./docs-site/src/content/docs/guides/codex-integration.md) for client-specific setup.
 

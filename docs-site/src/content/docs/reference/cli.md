@@ -500,6 +500,10 @@ lightweight, on-demand startup without a daemon — the proxy starts only when `
 
 ## Diagnostics
 
+### `ocx claude desktop doctor [--json]`
+
+Read-only checks for an applied Claude Desktop library, profile state, local sync prerequisites and owned protocol registration. JSON status may be a warning when an OS-level XDG default cannot be independently verified; it must not be interpreted as a healthy registered handler. Added to `main` in #349 after the v1.5.5 release; see the [Desktop sync guide](/guides/claude-desktop-sync/).
+
 ### `ocx doctor`
 
 Run read-only environment and connectivity diagnostics: state paths and filesystem type, WSL dual

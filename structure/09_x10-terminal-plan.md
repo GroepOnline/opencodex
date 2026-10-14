@@ -1,8 +1,6 @@
 # 09 — Full Audit + x10 Terminal Plan (GroepOnline)
 
-Status: living execution plan for the GroepOnline fork of opencodex (`ocx`).
-Authored from a full-repo audit on 2026-08-02. Targets `dev` as the integration
-branch unless a step is explicitly a `main` promotion.
+Status: **historical audit and design backlog**, written 2026-08-02. Its `dev` branch references, PR states, release assumptions and immediate commands describe the old snapshot only. Since 2026-10-01, `main` is the sole integration branch. Do not use this file as an operational work queue. For verified current delivery, published artifacts and remaining acceptance gates, use [ROADMAP.md](../ROADMAP.md), [RELEASE_PROCESS.md](../RELEASE_PROCESS.md) and the [2026-10-14 integration evidence ADR](../docs/adr/0008-client-integration-evidence-2026-10-14.md).
 
 ## What “terminal x10” means here
 
@@ -209,7 +207,7 @@ Each phase opens as a stacked PR series against `dev`.
 
 ---
 
-## G. Immediate next commands (operators)
+## G. Historical operator commands (2026-08-02; validate before reuse)
 
 The #51/#53/#52 merge commands and the Phase 0 reconcile branch that used to
 live here are done (train merged 2026-08-03; reconcile landed via #55). Current
