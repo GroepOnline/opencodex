@@ -89,7 +89,7 @@ function describeError(error: unknown): string {
 
 /**
  * Inspect the applied Desktop library. `aliases` is the set of applied model aliases, or null when
- * the library is missing or malformed and a profile comparison would be meaningless.
+ * the library is missing, malformed, or discovery-only (without a static model list).
  */
 function checkAppliedLibrary(): { check: DoctorCheck; aliases: Set<string> | null } {
   const fail = (detail: string) => ({ check: { name: "library", status: "fail" as const, detail }, aliases: null });
@@ -98,7 +98,8 @@ function checkAppliedLibrary(): { check: DoctorCheck; aliases: Set<string> | nul
     const applied = readAppliedDesktop3pLibrary();
     if (!applied.ok) return fail(`${applied.error} (${libraryPath}); run: ocx claude desktop apply`);
     const config = (applied.config && typeof applied.config === "object" ? applied.config : {}) as Record<string, unknown>;
-    const entries = Array.isArray(config.inferenceModels) ? config.inferenceModels : [];
+    const hasStaticAliases = Array.isArray(config.inferenceModels);
+    const entries = hasStaticAliases ? config.inferenceModels as unknown[] : [];
     const models = entries.filter((model): model is Record<string, unknown> => !!model && typeof model === "object");
     // A model without a usable name is corrupt library data, not something to hide from the report.
     const unnamed = entries.length - models.filter(model => typeof model.name === "string" && model.name !== "").length;
@@ -113,7 +114,9 @@ function checkAppliedLibrary(): { check: DoctorCheck; aliases: Set<string> | nul
         status: "ok",
         detail: `${models.length} models (${mode}${oneM ? `, ${oneM} with 1M` : ""}), id ${applied.appliedId}, fingerprint ${applied.fingerprint}`,
       },
-      aliases: new Set(models.map(model => model.name as string)),
+      // Discovery-only libraries intentionally omit inferenceModels. Their model set comes from
+      // the gateway; an empty alias set must not be mistaken for saved-profile drift.
+      aliases: hasStaticAliases ? new Set(models.map(model => model.name as string)) : null,
     };
   } catch (error) {
     return fail(describeError(error));
@@ -146,6 +149,9 @@ function checkSyncLink(options: ClaudeDesktopCommandOptions): DoctorCheck {
     const protocol = getClaudeDesktopProtocolStatus(options.protocolOptions);
     if (protocol.status === "installed" && protocol.registered === false) {
       return { name: "sync link", status: "warn", detail: "handler file installed but not the default for ocx-desktop://; run: ocx claude desktop protocol install" };
+    }
+    if (protocol.status === "installed" && protocol.registered === undefined) {
+      return { name: "sync link", status: "warn", detail: "handler installed, but default registration could not be verified; check: ocx claude desktop protocol status" };
     }
     if (protocol.status === "orphaned" || protocol.status === "missing") {
       return { name: "sync link", status: "warn", detail: `${protocol.status}; run: ocx claude desktop protocol install` };

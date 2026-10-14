@@ -544,3 +544,25 @@ linuxDescribe("Claude Desktop protocol platform edge cases", () => {
     expect(installClaudeDesktopProtocol(options).status).toBe("unchanged");
   });
 });
+
+
+linuxDescribe("Claude Desktop doctor registration verification", () => {
+  test("an installed handler with unknown XDG default is a warning, not verified healthy", async () => {
+    // Injected XDG fixture deliberately cannot prove the OS default handler.
+    installClaudeDesktopProtocol(options);
+    const log = spyOn(console, "log").mockImplementation(() => {});
+    const error = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await handleClaudeDesktopCommand(["doctor", "--json"], { protocolOptions: options });
+      const report = JSON.parse(String(log.mock.calls.at(-1)?.[0])) as {
+        checks: Array<{ name: string; status: string; detail: string }>;
+      };
+      const link = report.checks.find(check => check.name === "sync link");
+      expect(link?.status).toBe("warn");
+      expect(link?.detail).toContain("could not be verified");
+    } finally {
+      log.mockRestore();
+      error.mockRestore();
+    }
+  });
+});
