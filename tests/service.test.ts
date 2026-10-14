@@ -1226,7 +1226,7 @@ describe("service diagnostics", () => {
       service.indexOf("const systemUnit = diagnoseSystemSystemdUnit();"),
       service.indexOf("if (!isSystemd())"),
     );
-    expect(branch).toContain("if (shouldDeferToSystemSystemdUnit(systemUnit))");
+    expect(branch).toContain("if (systemUnit && shouldDeferToSystemSystemdUnit(systemUnit))");
     expect(branch).toContain("installed: false");
     expect(branch).toContain("startable: false");
     expect(branch).toContain("running: systemUnit.running");

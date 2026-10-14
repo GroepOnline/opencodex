@@ -2415,7 +2415,7 @@ export function diagnoseService(): ServiceDiagnostic {
         summary: "unsupported in Docker",
       };
     const systemUnit = diagnoseSystemSystemdUnit();
-    if (shouldDeferToSystemSystemdUnit(systemUnit)) {
+    if (systemUnit && shouldDeferToSystemSystemdUnit(systemUnit)) {
       return {
         supported: true,
         installed: false,
