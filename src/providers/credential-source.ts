@@ -9,18 +9,21 @@
  */
 import type { OcxConfig, OcxProviderConfig } from "../types";
 
-export type ProviderCredentialSource = "inline" | "env" | "oauth" | "forward" | "vault";
+export type ProviderCredentialSource =
+  "inline" | "env" | "oauth" | "forward" | "vault";
 
 export type ProviderCredentialView = Pick<
   OcxProviderConfig,
   "authMode" | "credentialRef" | "apiKey" | "apiKeyPool"
 >;
 
+/** Recognize any value starting with `$` as an environment reference without resolving it. */
 function isEnvValueRef(value: string | undefined): boolean {
   if (!value) return false;
   return /^\$\{\w+\}$/.test(value) || value.startsWith("$");
 }
 
+/** Collect configured string keys from apiKey and apiKeyPool, including empty values. */
 function configuredKeyMaterial(provider: ProviderCredentialView): string[] {
   const keys: string[] = [];
   if (typeof provider.apiKey === "string") keys.push(provider.apiKey);
@@ -30,12 +33,18 @@ function configuredKeyMaterial(provider: ProviderCredentialView): string[] {
   return keys;
 }
 
-/** Non-empty configured key that is not an `$ENV` / `${ENV}` reference. */
+/** Identify a non-empty configured key that does not start with `$`; whitespace is not trimmed. */
 export function isInlinePlaintextApiKey(value: string | undefined): boolean {
   if (!value) return false;
   return !isEnvValueRef(value);
 }
 
+/**
+ * Classify configured credentials without resolving or validating them. OAuth and forward
+ * auth modes take precedence, then any nonblank credentialRef (vault), then apiKey,
+ * then apiKeyPool. Within the pool, an environment reference takes precedence over
+ * an inline key. Return undefined when none of these sources is configured.
+ */
 export function classifyProviderCredentialSource(
   provider: ProviderCredentialView,
 ): ProviderCredentialSource | undefined {
@@ -50,23 +59,34 @@ export function classifyProviderCredentialSource(
   return undefined;
 }
 
-export function providerHasInlinePlaintextSecret(provider: ProviderCredentialView): boolean {
+/** Detect inline keys in apiKey or apiKeyPool regardless of authMode or credentialRef. */
+export function providerHasInlinePlaintextSecret(
+  provider: ProviderCredentialView,
+): boolean {
   return configuredKeyMaterial(provider).some(isInlinePlaintextApiKey);
 }
 
-export function listInlinePlaintextProviders(config: Pick<OcxConfig, "providers">): string[] {
+/** Return sorted provider names with inline keys, including disabled providers. */
+export function listInlinePlaintextProviders(
+  config: Pick<OcxConfig, "providers">,
+): string[] {
   return Object.entries(config.providers)
     .filter(([, provider]) => providerHasInlinePlaintextSecret(provider))
     .map(([name]) => name)
     .sort();
 }
 
+/** Detect service mode only when trimmed OCX_SERVICE is exactly `1` or `true`. */
 export function isServiceMode(env: NodeJS.ProcessEnv = process.env): boolean {
   const raw = env.OCX_SERVICE?.trim();
   return raw === "1" || raw === "true";
 }
 
-export function formatInlineProviderSecretWarning(names: string[], serviceMode: boolean): string {
+/** Format a warning from provider names with service or local environment guidance. */
+export function formatInlineProviderSecretWarning(
+  names: string[],
+  serviceMode: boolean,
+): string {
   const listed = names.join(", ");
   if (serviceMode) {
     return (
@@ -80,6 +100,11 @@ export function formatInlineProviderSecretWarning(names: string[], serviceMode: 
   );
 }
 
+/**
+ * Return sorted provider names with inline keys and emit one warning if any exist.
+ * Defaults to console.warn and process.env; messages include names, not key values.
+ * Errors thrown by io.warn propagate to the caller.
+ */
 export function warnInlineProviderSecrets(
   config: Pick<OcxConfig, "providers">,
   io: { warn?: (message: string) => void; env?: NodeJS.ProcessEnv } = {},
@@ -87,24 +112,35 @@ export function warnInlineProviderSecrets(
   const names = listInlinePlaintextProviders(config);
   if (names.length === 0) return names;
   const warn = io.warn ?? ((message: string) => console.warn(message));
-  warn(formatInlineProviderSecretWarning(names, isServiceMode(io.env ?? process.env)));
+  warn(
+    formatInlineProviderSecretWarning(
+      names,
+      isServiceMode(io.env ?? process.env),
+    ),
+  );
   return names;
 }
 
+/** Return one doctor check: WARN with affected provider names, or OK when no inline keys exist. */
 export function collectInlineSecretDoctorChecks(
   config: Pick<OcxConfig, "providers">,
 ): Array<{ level: "OK" | "WARN"; message: string }> {
   const names = listInlinePlaintextProviders(config);
   if (names.length === 0) {
-    return [{
-      level: "OK",
-      message: "No plaintext provider apiKey values in config.json; keys are env refs, oauth, forward, or vault.",
-    }];
+    return [
+      {
+        level: "OK",
+        message:
+          "No plaintext provider apiKey values in config.json; keys are env refs, oauth, forward, or vault.",
+      },
+    ];
   }
-  return [{
-    level: "WARN",
-    message:
-      `Provider(s) ${names.join(", ")} have a plaintext apiKey in config.json. ` +
-      "Action: move each secret into the unit EnvironmentFile and set apiKey to $VAR or ${VAR}.",
-  }];
+  return [
+    {
+      level: "WARN",
+      message:
+        `Provider(s) ${names.join(", ")} have a plaintext apiKey in config.json. ` +
+        "Action: move each secret into the unit EnvironmentFile and set apiKey to $VAR or ${VAR}.",
+    },
+  ];
 }

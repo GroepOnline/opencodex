@@ -1,5 +1,13 @@
 import { dirname } from "node:path";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+  chmodSync,
+} from "node:fs";
 import type { OcxAccountPoolRotationStrategy } from "../types";
 
 export const POOL_KEY_CODEX = "codex";
@@ -21,11 +29,20 @@ const DEFAULT_STICKY_LIMIT = 1;
 const MIN_STICKY_LIMIT = 1;
 const MAX_STICKY_LIMIT = 100;
 const DEFAULT_STRATEGY: OcxAccountPoolRotationStrategy = "quota";
-const VALID_STRATEGIES = new Set<OcxAccountPoolRotationStrategy>(["quota", "round-robin", "fill-first"]);
+const VALID_STRATEGIES = new Set<OcxAccountPoolRotationStrategy>([
+  "quota",
+  "round-robin",
+  "fill-first",
+]);
 
 /** Strict parse for management APIs — returns null instead of defaulting. */
-export function parseAccountPoolStrategy(raw: unknown): OcxAccountPoolRotationStrategy | null {
-  if (typeof raw === "string" && VALID_STRATEGIES.has(raw as OcxAccountPoolRotationStrategy)) {
+export function parseAccountPoolStrategy(
+  raw: unknown,
+): OcxAccountPoolRotationStrategy | null {
+  if (
+    typeof raw === "string" &&
+    VALID_STRATEGIES.has(raw as OcxAccountPoolRotationStrategy)
+  ) {
     return raw as OcxAccountPoolRotationStrategy;
   }
   return null;
@@ -33,13 +50,20 @@ export function parseAccountPoolStrategy(raw: unknown): OcxAccountPoolRotationSt
 
 /** Strict parse for management APIs — returns null instead of defaulting. */
 export function parseAccountPoolStickyLimit(raw: unknown): number | null {
-  if (typeof raw === "number" && Number.isInteger(raw) && raw >= MIN_STICKY_LIMIT && raw <= MAX_STICKY_LIMIT) {
+  if (
+    typeof raw === "number" &&
+    Number.isInteger(raw) &&
+    raw >= MIN_STICKY_LIMIT &&
+    raw <= MAX_STICKY_LIMIT
+  ) {
     return raw;
   }
   return null;
 }
 
-export function normalizeAccountPoolStrategy(raw: unknown): OcxAccountPoolRotationStrategy {
+export function normalizeAccountPoolStrategy(
+  raw: unknown,
+): OcxAccountPoolRotationStrategy {
   return parseAccountPoolStrategy(raw) ?? DEFAULT_STRATEGY;
 }
 
@@ -120,12 +144,24 @@ function pickRoundRobinFromState(
   return picked;
 }
 
+/**
+ * Pick an eligible account using the pool's round-robin state, or return null for an
+ * empty list. Reuse an eligible sticky account; new picks are held until stickyLimit
+ * successes are noted when the limit exceeds 1. Invalid limits default to 1
+ * (valid range: integers 1–100). Attempt to persist state when persistence is installed;
+ * persistence failures are ignored.
+ */
 export function pickRoundRobinAccount(
   poolKey: string,
   eligibleIds: string[],
   stickyLimit: number,
 ): string | null {
-  const picked = pickRoundRobinFromState(eligibleIds, stickyLimit, getOrCreateState(poolKey), true);
+  const picked = pickRoundRobinFromState(
+    eligibleIds,
+    stickyLimit,
+    getOrCreateState(poolKey),
+    true,
+  );
   flushPoolRotationState();
   return picked;
 }
@@ -146,6 +182,11 @@ export function peekRoundRobinAccount(
   return pickRoundRobinFromState(eligibleIds, stickyLimit, scratch, false);
 }
 
+/**
+ * Count a success in an existing pool, resetting the count when accountId changes.
+ * Release the sticky account at stickyLimit successes (integers 1–100; otherwise 1)
+ * and attempt persistence only on release. Do nothing if the pool has no state.
+ */
 export function notePoolRotationSuccess(
   poolKey: string,
   accountId: string,
@@ -166,7 +207,11 @@ export function notePoolRotationSuccess(
   }
 }
 
-export function notePoolRotationFailure(poolKey: string, accountId: string): void {
+/** Clear stickiness and attempt persistence only if accountId is the pool's active account. */
+export function notePoolRotationFailure(
+  poolKey: string,
+  accountId: string,
+): void {
   const state = selectionState.get(poolKey);
   if (state?.activeKey === accountId) {
     delete state.activeKey;
@@ -179,8 +224,12 @@ export function notePoolRotationFailure(poolKey: string, accountId: string): voi
  * Force the next sticky/RR pick onto `accountId` (manual dashboard selection).
  * Clears sticky success counters and ring weights so the seeded account is held
  * for the next new-session pick before ordinary rotation resumes.
+ * The seeded account must be eligible at pick time. Attempts persistence if installed.
  */
-export function seedPoolRotationAccount(poolKey: string, accountId: string): void {
+export function seedPoolRotationAccount(
+  poolKey: string,
+  accountId: string,
+): void {
   const state = getOrCreateState(poolKey);
   state.activeKey = accountId;
   state.successes = 0;
@@ -188,6 +237,10 @@ export function seedPoolRotationAccount(poolKey: string, accountId: string): voi
   flushPoolRotationState();
 }
 
+/**
+ * Forget one pool's rotation state, or all pools when poolKey is omitted.
+ * Attempt to persist the remaining state, removing the snapshot when no pools remain.
+ */
 export function clearPoolRotationState(poolKey?: string): void {
   if (poolKey === undefined) {
     selectionState.clear();
@@ -218,7 +271,10 @@ interface SerializedRotationState {
 
 let persistedRotationPath: string | null = null;
 
-/** Rotate state onto disk atomically (0o600). Empty state removes the file. */
+/**
+ * Attempt an atomic snapshot write with 0o600 permissions when persistence is installed.
+ * Empty state removes the snapshot and temporary file. I/O failures are swallowed.
+ */
 function flushPoolRotationState(): void {
   if (!persistedRotationPath) return;
   const path = persistedRotationPath;
@@ -232,7 +288,9 @@ function flushPoolRotationState(): void {
     const pools: Record<string, SerializedSelectionState> = {};
     for (const [poolKey, state] of selectionState) {
       pools[poolKey] = {
-        ...(state.activeKey !== undefined ? { activeKey: state.activeKey } : {}),
+        ...(state.activeKey !== undefined
+          ? { activeKey: state.activeKey }
+          : {}),
         successes: state.successes,
         currentWeights: Object.fromEntries(state.currentWeights.entries()),
       };
@@ -256,6 +314,11 @@ function flushPoolRotationState(): void {
   }
 }
 
+/**
+ * Restore one pool entry, coercing successes and weights to numbers. Missing successes
+ * default to zero; invalid active keys or nonfinite/negative successes return null,
+ * and nonfinite weights are skipped. Numeric coercion errors propagate to the loader.
+ */
 function parseSerializedSelectionState(raw: unknown): SelectionState | null {
   if (!raw || typeof raw !== "object") return null;
   const candidate = raw as {
@@ -269,8 +332,13 @@ function parseSerializedSelectionState(raw: unknown): SelectionState | null {
   const successes = Number(candidate.successes ?? 0);
   if (!Number.isFinite(successes) || successes < 0) return null;
   const currentWeights = new Map<string, number>();
-  if (candidate.currentWeights && typeof candidate.currentWeights === "object") {
-    for (const [id, value] of Object.entries(candidate.currentWeights as Record<string, unknown>)) {
+  if (
+    candidate.currentWeights &&
+    typeof candidate.currentWeights === "object"
+  ) {
+    for (const [id, value] of Object.entries(
+      candidate.currentWeights as Record<string, unknown>,
+    )) {
       const weight = Number(value);
       if (!Number.isFinite(weight)) continue;
       currentWeights.set(id, weight);
@@ -283,13 +351,25 @@ function parseSerializedSelectionState(raw: unknown): SelectionState | null {
   };
 }
 
+/**
+ * Load valid pool entries from the installed snapshot without checking its version.
+ * Missing files are ignored; read, parse, and conversion errors are caught, retaining
+ * any entries already loaded.
+ */
 function loadPoolRotationStateFromDisk(): void {
   if (!persistedRotationPath) return;
   const path = persistedRotationPath;
   if (!existsSync(path)) return;
   try {
-    const parsed = JSON.parse(readFileSync(path, "utf-8")) as SerializedRotationState;
-    if (!parsed || typeof parsed !== "object" || typeof parsed.pools !== "object") return;
+    const parsed = JSON.parse(
+      readFileSync(path, "utf-8"),
+    ) as SerializedRotationState;
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      typeof parsed.pools !== "object"
+    )
+      return;
     for (const [poolKey, rawState] of Object.entries(parsed.pools)) {
       const state = parseSerializedSelectionState(rawState);
       if (state) selectionState.set(poolKey, state);
@@ -304,6 +384,7 @@ function loadPoolRotationStateFromDisk(): void {
  * `startServer()` with a path under `getConfigDir()`. Only loads from disk when the process
  * has no in-memory state yet (a fresh server start): a process that already resolved a pick
  * keeps its live ring and merely gains flushing.
+ * Does not write a snapshot on install; snapshot read and parse failures are ignored.
  */
 export function installPoolRotationPersistence(filePath: string): void {
   persistedRotationPath = filePath;
@@ -312,7 +393,7 @@ export function installPoolRotationPersistence(filePath: string): void {
   }
 }
 
-/** Detach disk persistence. Mostly for isolated tests. */
+/** Detach disk persistence without clearing memory or deleting the snapshot. Mostly for isolated tests. */
 export function uninstallPoolRotationPersistence(): void {
   persistedRotationPath = null;
 }
