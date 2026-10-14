@@ -16,14 +16,20 @@ export default function WeekDayBars({
   const max = Math.max(1, ...weekBars.map((day) => day.totalTokens));
 
   return (
-    <div className="daybars" role="img" aria-label={t("usage.section.heatmap")}>
+    <div className="daybars" role="group" aria-label={t("usage.section.heatmap")}>
       {weekBars.map((day) => {
         const percentage = Math.round((day.totalTokens / max) * 100);
         const label = day.date.slice(5);
         return (
-          <div
+          <button
+            type="button"
             key={day.date}
             className="daybar"
+            style={{ border: 0, padding: 0, background: "transparent", color: "inherit", font: "inherit", cursor: "pointer" }}
+            aria-label={`${day.date}: ${t("usage.heatmap.tooltipTokens", { tokens: formatTokens(day.totalTokens, locale) })}, ${t("usage.heatmap.tooltipRequests", { requests: day.requests })}`}
+            onFocus={() => setHoverDay(day.date)}
+            onBlur={() => setHoverDay((current) => (current === day.date ? null : current))}
+            onClick={() => setHoverDay(day.date)}
             onMouseEnter={() => setHoverDay(day.date)}
             onMouseLeave={() =>
               setHoverDay((current) => (current === day.date ? null : current))
@@ -80,7 +86,7 @@ export default function WeekDayBars({
               {formatTokens(day.totalTokens, locale)}
             </span>
             <span className="daybar-label muted">{label}</span>
-          </div>
+          </button>
         );
       })}
     </div>
