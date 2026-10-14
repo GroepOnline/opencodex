@@ -115,8 +115,8 @@ test("container build identity reaches the Vite client bundle", async () => {
   const dockerfile = await Bun.file(
     new URL("../../Dockerfile", import.meta.url),
   ).text();
-  const builder = dockerfile.split("FROM root-deps AS build\\n")[1]?.split(
-    "\\nFROM oven/bun:",
+  const builder = dockerfile.split("FROM root-deps AS build\n")[1]?.split(
+    "\nFROM oven/bun:",
   )[0];
   expect(builder).toContain("ARG VCS_REF=unknown");
   expect(builder).toContain("ENV OPENCODEX_GIT_SHA=${VCS_REF}");
