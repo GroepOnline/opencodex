@@ -16,7 +16,8 @@ test("every canonical view and subview has one navigation owner", () => {
 test("route outlet contains only route composition, never global health or auth polling", async () => {
   const source = await Bun.file(new URL("../src/app/RouteOutlet.tsx", import.meta.url)).text();
   const app = await Bun.file(new URL("../src/App.tsx", import.meta.url)).text();
-  expect(source).toContain("lazy(() => import");
+  expect(source).toContain('lazy(() => import("../pages/');
+  expect(source).not.toContain('import("./pages/');
   expect(source).not.toContain("useKeyedClientResource");
   expect(source).not.toContain("installApiAuthFetch");
   expect(app).toContain("<RouteOutlet route={route} />");
