@@ -3743,6 +3743,12 @@ describe("GitHub Actions hardening", () => {
     expect(text).toContain(
       "docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0",
     );
+    expect(text).toContain(
+      "docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0",
+    );
+    expect(text).toContain(
+      "docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1",
+    );
 
     const imageSteps = image?.steps ?? [];
     const publishSteps = publish?.steps ?? [];
@@ -3807,8 +3813,37 @@ describe("GitHub Actions hardening", () => {
     );
     expect(imageBuild!.with?.push).toBe(false);
     expect(imageBuild!.with?.load).toBe(true);
+    expect(imageBuild!.with?.platforms).toBe("linux/amd64");
+    expect(
+      imageSteps.some((step) =>
+        [step.uses, step.name].some(
+          (value) =>
+            value?.includes("setup-qemu-action") ||
+            value?.includes("setup-buildx-action"),
+        ),
+      ),
+    ).toBe(false);
     expect(publishBuild!.with?.push).toBe(true);
     expect(publishBuild!.with?.load).toBe(false);
+    expect(publishBuild!.with?.platforms).toBe("linux/amd64,linux/arm64");
+    const qemu = publishSteps.find((step) => step.name === "Set up QEMU");
+    const buildx = publishSteps.find((step) => step.name === "Set up Buildx");
+    expect(qemu?.uses).toBe(
+      "docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1",
+    );
+    expect(qemu?.with?.platforms).toBe("arm64");
+    expect(buildx?.uses).toBe(
+      "docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069",
+    );
+    expect(publishSteps.indexOf(qemu!)).toBeLessThan(
+      publishSteps.indexOf(buildx!),
+    );
+    expect(publishSteps.indexOf(buildx!)).toBeLessThan(
+      publishSteps.indexOf(login!),
+    );
+    expect(publishSteps.indexOf(buildx!)).toBeLessThan(
+      publishSteps.indexOf(publishBuild!),
+    );
     expect(imageBuild!.with?.provenance).toBe(false);
     expect(publishBuild!.with?.provenance).toBe(false);
     expect(imageBuild!.with?.sbom).toBe(false);

@@ -2,12 +2,12 @@
 
 ARG BUN_VERSION=1.4.2
 
-FROM oven/bun:${BUN_VERSION}-slim AS root-deps
+FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION}-slim AS root-deps
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
-FROM oven/bun:${BUN_VERSION}-slim AS gui-deps
+FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION}-slim AS gui-deps
 WORKDIR /app/gui
 COPY gui/package.json gui/bun.lock ./
 RUN bun install --frozen-lockfile
