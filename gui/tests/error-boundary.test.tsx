@@ -43,7 +43,7 @@ test("shows the failed page and Reload reloads the document", async () => {
   const container = document.createElement("div");
   document.body.append(container);
   let root: Root;
-  let shouldThrow = true;
+  const shouldThrow = true;
 
   function Page() {
     if (shouldThrow) throw new Error("render exploded");
