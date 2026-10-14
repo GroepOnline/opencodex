@@ -137,7 +137,7 @@ export async function handleAgentSettingsRoutes(
     try {
       if (config.claudeCode?.desktopAutoApply === false) return;
       if (!config.claudeCode?.desktopProfile) return;
-      const { writeDesktop3pConfig } = await import("../../claude/desktop-3p");
+      const { writeDesktop3pConfigAsync } = await import("../../claude/desktop-3p");
       const { visibleNativeSlugs, filterCatalogVisibleModels } =
         await import("../../codex/catalog");
       const allModels = await fetchAllModels(config);
@@ -146,7 +146,7 @@ export async function handleAgentSettingsRoutes(
         id: m.id,
         contextWindow: m.contextWindow,
       }));
-      const result = writeDesktop3pConfig(
+      const result = await writeDesktop3pConfigAsync(
         config.port ?? 10100,
         [...visibleNativeSlugs(config)],
         routed,

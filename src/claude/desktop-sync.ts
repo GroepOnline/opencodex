@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { renameAtomicFile } from "../config";
 import { hardenSecretPath } from "../lib/windows-secret-acl";
 import { DESKTOP_LIBRARY_ID, resolveDesktop3pConfigLibraryPath } from "./desktop-3p";
-import { withDesktopLibraryLock } from "./desktop-library-lock";
+import { withDesktopLibraryLockAsync, type DesktopLibraryLockOptions } from "./desktop-library-lock";
 import { resolveDataPlaneAdmissionToken } from "../lib/service-secrets";
 import { claudeConfigDir, realAdmissionToken } from "./auth-detect";
 
@@ -33,6 +33,8 @@ function assertLibraryDirectory(path: string): void {
 
 export interface DesktopSyncOptions {
   automatic?: boolean;
+  /** Override where the cross-process library lock lives (tests and sandboxes). */
+  lockOptions?: DesktopLibraryLockOptions;
   libraryPath?: string;
   settingsPath?: string;
   fetchImpl?: typeof fetch;
@@ -96,17 +98,32 @@ export async function syncClaudeDesktopLibrary(options: DesktopSyncOptions = {})
   }
 }
 
-async function syncLibrary(options: DesktopSyncOptions): Promise<DesktopSyncResult> {
-  const env = options.env ?? process.env;
-  const library = options.libraryPath ?? resolveDesktop3pConfigLibraryPath();
-  assertLibraryDirectory(library);
-  const metaPath = join(library, "_meta.json");
+interface LocalDesktopMeta {
+  /** Raw `_meta.json` text, or null when the file does not exist yet. */
+  originalMeta: string | null;
+  localMeta: Record<string, unknown>;
+  entries: Record<string, unknown>[];
+}
+
+/** Read and shape-check the library's `_meta.json`; a missing file is an empty library. */
+function readLocalMeta(metaPath: string): LocalDesktopMeta {
   assertRegularFile(metaPath);
   const originalMeta = existsSync(metaPath) ? readFileSync(metaPath, "utf8") : null;
   const localMeta: unknown = originalMeta === null ? {} : JSON.parse(originalMeta);
   if (!object(localMeta)) throw new DesktopSyncError("Claude Desktop sync configuration has an invalid shape");
   const entries = Array.isArray(localMeta.entries) ? localMeta.entries.filter(object) : [];
-  if (options.automatic && !entries.some(entry => entry.name === "opencodex")) {
+  return { originalMeta, localMeta, entries };
+}
+
+async function syncLibrary(options: DesktopSyncOptions): Promise<DesktopSyncResult> {
+  const env = options.env ?? process.env;
+  const library = options.libraryPath ?? resolveDesktop3pConfigLibraryPath();
+  assertLibraryDirectory(library);
+  const metaPath = join(library, "_meta.json");
+  // A first read rejects a malformed library and lets an automatic sync stop before any network
+  // traffic. The authoritative read happens again under the library lock, right before the write.
+  const early = readLocalMeta(metaPath);
+  if (options.automatic && !early.entries.some(entry => entry.name === "opencodex")) {
     return { status: "skipped", models: 0 };
   }
   const settings = readObject(options.settingsPath ?? join(claudeConfigDir(env), "settings.json"));
@@ -161,9 +178,17 @@ async function syncLibrary(options: DesktopSyncOptions): Promise<DesktopSyncResu
   const appliedId = payload.appliedId;
   const remoteConfig = payload.config;
   // Apply and sync share one lock so their _meta.json read-modify-write cycles cannot interleave.
-  return withDesktopLibraryLock(() => writeLibrary(
-    library, metaPath, localMeta, entries, originalMeta, appliedId, remoteConfig, base.origin, options.fileIO,
-  ));
+  // The metadata snapshot is taken inside the lock: a snapshot from before the network round trip
+  // could already be stale, which would turn a harmless wait into a "changed during sync" failure.
+  return withDesktopLibraryLockAsync(() => {
+    const fresh = readLocalMeta(metaPath);
+    if (options.automatic && !fresh.entries.some(entry => entry.name === "opencodex")) {
+      return { status: "skipped" as const, models: 0 };
+    }
+    return writeLibrary(
+      library, metaPath, fresh.localMeta, fresh.entries, fresh.originalMeta, appliedId, remoteConfig, base.origin, options.fileIO,
+    );
+  }, options.lockOptions);
 }
 
 async function readBoundedJson(response: Response, limit: number): Promise<unknown> {

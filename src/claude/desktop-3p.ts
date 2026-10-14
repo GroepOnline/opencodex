@@ -14,7 +14,7 @@ import {
 } from "./desktop-profile";
 import { nativeOpenAiContextWindow } from "../codex/catalog";
 import { assertDesktop3pModelsValid } from "./desktop-3p-guard";
-import { withDesktopLibraryLock } from "./desktop-library-lock";
+import { withDesktopLibraryLock, withDesktopLibraryLockAsync } from "./desktop-library-lock";
 
 export interface Desktop3pModelEntry {
   name: string;
@@ -545,7 +545,22 @@ function parseMetadata(path: string): Desktop3pMetadata {
   return { ...parsed, entries: parsed.entries };
 }
 
-/** Write and apply the opencodex config in Claude Desktop 3P's config library. */
+type Desktop3pWriteResult = { written: boolean; path: string; reason?: string; fingerprint?: string };
+
+/** Result for a write that could not even start (for example the library lock stayed busy). */
+function failedDesktop3pWrite(error: unknown): Desktop3pWriteResult {
+  return {
+    written: false,
+    path: resolveDesktop3pConfigLibraryPath(),
+    reason: error instanceof Error ? error.message : String(error),
+  };
+}
+
+/**
+ * Write and apply the opencodex config in Claude Desktop 3P's config library.
+ * Blocks the thread while another process holds the library lock; HTTP handlers and other async
+ * callers should use {@link writeDesktop3pConfigAsync} instead.
+ */
 export function writeDesktop3pConfig(
   port: number,
   nativeSlugs: string[],
@@ -553,16 +568,31 @@ export function writeDesktop3pConfig(
   apiKey?: string,
   mode: Desktop3pConfigMode = "static",
   profile?: OcxClaudeDesktopProfile,
-): { written: boolean; path: string; reason?: string; fingerprint?: string } {
+): Desktop3pWriteResult {
   // Serialize with `ocx claude desktop sync`: both rewrite the same _meta.json + profile pair.
   try {
     return withDesktopLibraryLock(() => writeDesktop3pConfigLocked(port, nativeSlugs, routedModels, apiKey, mode, profile));
   } catch (error) {
-    return {
-      written: false,
-      path: resolveDesktop3pConfigLibraryPath(),
-      reason: error instanceof Error ? error.message : String(error),
-    };
+    return failedDesktop3pWrite(error);
+  }
+}
+
+/**
+ * Same contract as {@link writeDesktop3pConfig}, but waits for a busy library lock without blocking
+ * the event loop, so a concurrent `ocx claude desktop sync` cannot stall the proxy's other requests.
+ */
+export async function writeDesktop3pConfigAsync(
+  port: number,
+  nativeSlugs: string[],
+  routedModels: Array<Desktop3pRoutedModel>,
+  apiKey?: string,
+  mode: Desktop3pConfigMode = "static",
+  profile?: OcxClaudeDesktopProfile,
+): Promise<Desktop3pWriteResult> {
+  try {
+    return await withDesktopLibraryLockAsync(() => writeDesktop3pConfigLocked(port, nativeSlugs, routedModels, apiKey, mode, profile));
+  } catch (error) {
+    return failedDesktop3pWrite(error);
   }
 }
 

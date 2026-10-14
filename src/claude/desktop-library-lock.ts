@@ -9,20 +9,63 @@ import { recordOwnedConfigPath } from "../lib/config-ownership";
  * "Save and apply" and `ocx claude desktop sync` all rewrite the same `_meta.json` + profile pair;
  * without a shared lock a concurrent pair can interleave and leave a profile that no longer matches
  * its metadata. The lock lives in the OCX config dir, never in Desktop's own library directory.
+ *
+ * Two flavours share one lock file and one acquisition protocol:
+ * - `withDesktopLibraryLock` blocks the thread while it waits. Use it only from synchronous CLI paths.
+ * - `withDesktopLibraryLockAsync` yields the event loop between attempts. Use it from the proxy's
+ *   HTTP handlers and from async CLI paths, where a blocking wait would stall every other request.
  */
 export interface DesktopLibraryLockOptions {
+  /** Absolute lock file path. Defaults to `<config dir>/claude-desktop-library.lock`. */
   path?: string;
+  /** How long to wait for a busy lock before failing. */
   waitMs?: number;
+  /** A holder older than this, or whose process is gone, may be taken over. */
   staleMs?: number;
+  /** Record the lock file in the config ownership manifest. Defaults to true for the default path. */
+  recordOwned?: boolean;
+}
+
+/** Raised when the lock stayed busy for the whole wait window. */
+export class DesktopLibraryLockTimeoutError extends Error {
+  constructor() {
+    super("Claude Desktop library is being updated by another opencodex process; retry in a moment");
+    this.name = "DesktopLibraryLockTimeoutError";
+  }
 }
 
 const DEFAULT_WAIT_MS = 10_000;
 const DEFAULT_STALE_MS = 60_000;
+const POLL_MS = 50;
 
+interface ResolvedLock {
+  configDir: string;
+  path: string;
+  waitMs: number;
+  staleMs: number;
+  record: boolean;
+  token: string;
+}
+
+/** Fold caller options and defaults into one immutable description of the lock being taken. */
+function resolveLock(options: DesktopLibraryLockOptions): ResolvedLock {
+  const configDir = options.path ? dirname(options.path) : getConfigDir();
+  return {
+    configDir,
+    path: options.path ?? join(configDir, "claude-desktop-library.lock"),
+    waitMs: options.waitMs ?? DEFAULT_WAIT_MS,
+    staleMs: options.staleMs ?? DEFAULT_STALE_MS,
+    record: options.recordOwned ?? !options.path,
+    token: randomUUID(),
+  };
+}
+
+/** Blocking sleep; only the synchronous lock flavour may use it. */
 function pause(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+/** True when `pid` names a live process (EPERM means it exists but belongs to someone else). */
 function pidAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -32,6 +75,7 @@ function pidAlive(pid: number): boolean {
   }
 }
 
+/** Read a lock file only when it is a small regular file; a link or oversized file is never trusted. */
 function readHolder(path: string): string | null {
   try {
     const stat = lstatSync(path);
@@ -61,40 +105,78 @@ function staleHolder(path: string, staleMs: number): string | null {
   return null;
 }
 
-export function withDesktopLibraryLock<T>(fn: () => T, options: DesktopLibraryLockOptions = {}): T {
-  const configDir = options.path ? dirname(options.path) : getConfigDir();
-  const path = options.path ?? join(configDir, "claude-desktop-library.lock");
-  const waitMs = options.waitMs ?? DEFAULT_WAIT_MS;
-  const staleMs = options.staleMs ?? DEFAULT_STALE_MS;
-  const token = randomUUID();
-  const deadline = Date.now() + waitMs;
-  mkdirSync(configDir, { recursive: true, mode: 0o700 });
+/**
+ * One acquisition attempt. Returns true when this caller now holds the lock; false when it is busy.
+ * A stale holder is removed and the attempt retried immediately.
+ */
+function tryAcquire(lock: ResolvedLock): boolean {
   for (;;) {
     try {
-      const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600);
-      try { writeSync(fd, JSON.stringify({ pid: process.pid, token, at: Date.now() })); } finally { closeSync(fd); }
-      if (!options.path) recordOwnedConfigPath(configDir, path);
-      break;
+      const fd = openSync(lock.path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600);
+      try { writeSync(fd, JSON.stringify({ pid: process.pid, token: lock.token, at: Date.now() })); } finally { closeSync(fd); }
+      if (lock.record) {
+        // Ownership bookkeeping only matters for crash residue; it must never fail a held lock.
+        try { recordOwnedConfigPath(lock.configDir, lock.path); } catch { /* best effort */ }
+      }
+      return true;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
-    const stale = staleHolder(path, staleMs);
+    const stale = staleHolder(lock.path, lock.staleMs);
     // Re-read before stealing so a holder that just replaced the stale lock is never removed.
-    if (stale !== null && readHolder(path) === stale) {
-      try { unlinkSync(path); } catch { /* another process stole it first */ }
+    if (stale !== null && readHolder(lock.path) === stale) {
+      try { unlinkSync(lock.path); } catch { /* another process stole it first */ }
       continue;
     }
-    if (Date.now() >= deadline) {
-      throw new Error("Claude Desktop library is being updated by another opencodex process; retry in a moment");
-    }
-    pause(50);
+    return false;
+  }
+}
+
+/** Remove the lock only when it still carries this caller's token. */
+function release(lock: ResolvedLock): void {
+  const holder = readHolder(lock.path);
+  try {
+    if (holder !== null && (JSON.parse(holder) as { token?: unknown }).token === lock.token) unlinkSync(lock.path);
+  } catch { /* a lock we no longer own must not be removed */ }
+}
+
+/**
+ * Run `fn` while holding the Desktop library lock, blocking the thread while the lock is busy.
+ * Prefer {@link withDesktopLibraryLockAsync} anywhere the event loop must stay responsive.
+ */
+export function withDesktopLibraryLock<T>(fn: () => T, options: DesktopLibraryLockOptions = {}): T {
+  const lock = resolveLock(options);
+  const deadline = Date.now() + lock.waitMs;
+  mkdirSync(lock.configDir, { recursive: true, mode: 0o700 });
+  while (!tryAcquire(lock)) {
+    if (Date.now() >= deadline) throw new DesktopLibraryLockTimeoutError();
+    pause(POLL_MS);
   }
   try {
     return fn();
   } finally {
-    const holder = readHolder(path);
-    try {
-      if (holder !== null && (JSON.parse(holder) as { token?: unknown }).token === token) unlinkSync(path);
-    } catch { /* a lock we no longer own must not be removed */ }
+    release(lock);
+  }
+}
+
+/**
+ * Run `fn` while holding the Desktop library lock, waiting for a busy lock without blocking the
+ * event loop. Safe to call from HTTP handlers; the critical section itself still runs to completion.
+ */
+export async function withDesktopLibraryLockAsync<T>(
+  fn: () => T | Promise<T>,
+  options: DesktopLibraryLockOptions = {},
+): Promise<T> {
+  const lock = resolveLock(options);
+  const deadline = Date.now() + lock.waitMs;
+  mkdirSync(lock.configDir, { recursive: true, mode: 0o700 });
+  while (!tryAcquire(lock)) {
+    if (Date.now() >= deadline) throw new DesktopLibraryLockTimeoutError();
+    await new Promise<void>(resolve => setTimeout(resolve, POLL_MS));
+  }
+  try {
+    return await fn();
+  } finally {
+    release(lock);
   }
 }
