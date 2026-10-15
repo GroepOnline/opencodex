@@ -92,6 +92,16 @@ ocx status
 ocx status --json
 ```
 
+If Codex uses a user-owned local gateway (such as a localhost SSH tunnel to a
+remote OCX container), startup health conservatively reports **AT RISK** until
+that external lifecycle is independently verified. It cannot credit an OCX
+service or shim for a gateway it does not own. Check the tunnel's socket or
+service activation, the upstream container's restart policy, and actual
+reachability after reboot. OCX intentionally does not suggest `ocx restore` or
+`ocx service install` as automatic repairs for an externally managed gateway;
+those commands cannot restart the outside service. The startup dashboard shows
+this external-lifecycle guidance instead of local OCX recovery commands.
+
 Abbreviated example shape:
 
 ```json
@@ -590,10 +600,14 @@ enumerates rows whose bodies were actually persisted in `trace.sqlite`.
 ### `ocx update`
 
 Self-update opencodex from npm. Stable installs use `@latest`; preview installs stay on `@preview`
-unless you pass `--tag latest|preview`. It detects a source checkout and tells you to
-`git pull && bun install` instead, and is a no-op if you're already on the newest version for that
-tag. A running proxy is stopped before files are replaced; an installed service is rebuilt and
-started automatically, while a foreground installation prints `ocx start` as the next step.
+unless you pass `--tag latest|preview`. Source checkouts are not self-updated: a checkout on
+a branch displays `git pull && bun install`, while a detached Git checkout or linked worktree
+explicitly reports that its immutable pin must be updated through the owning deployment or
+replaced by a published npm/Bun installation. Source-only `ocx update` exits nonzero so automation
+cannot mistake guidance for a successful update. An installed package already at the latest tag
+is a no-op. A running local proxy is stopped before files are replaced; an installed service is
+rebuilt and started automatically, while a foreground installation prints `ocx start` as the next
+step.
 
 ```bash
 ocx update

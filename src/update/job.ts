@@ -16,6 +16,7 @@ import {
   defaultUpdateTag,
   detectInstall,
   latestVersion,
+  isDetachedSourceCheckout,
   updateCommand,
   updateCommandStr,
 } from "./index";
@@ -77,6 +78,7 @@ export interface UpdateCheckDeps {
   currentVersion: () => string;
   detectInstall: () => Installer;
   latestVersion: (tag: Channel) => string | null;
+  isDetachedSourceCheckout?: () => boolean;
 }
 
 interface UpdateWorkerProcess {
@@ -111,8 +113,10 @@ function formatCommand(bin: string, args: string[]): string {
   return `${bin} ${args.join(" ")}`;
 }
 
-function manualSourceCommand(): string {
-  return "git pull && bun install && bun run build:gui";
+function manualSourceCommand(detached = isDetachedSourceCheckout()): string {
+  return detached
+    ? "Roll forward this pinned detached Git worktree through its owning deployment, or migrate to a published npm/Bun installation."
+    : "git pull && bun install && bun run build:gui";
 }
 
 export function normalizeUpdateChannel(raw: string | null | undefined, current = currentVersion()): Channel {
@@ -175,7 +179,8 @@ export function updateExecutionCommand(
     const { args } = command;
     return { bin, args, display: updateCommandStr(installer, channel, resolvedVersion) };
   }
-  return { bin: "sh", args: ["-lc", manualSourceCommand()], display: manualSourceCommand() };
+  // Source updates are manual-only. Do not accidentally execute Git commands from a worker.
+  return { bin: "sh", args: ["-lc", "exit 1"], display: manualSourceCommand() };
 }
 
 export function restartCommand(
@@ -216,11 +221,13 @@ export function checkForUpdate(
   const latest = installer === "source" ? null : deps.latestVersion(channel);
   const updateAvailable = !!latest && isNewer(latest, current, channel);
   let reason: string | undefined;
-  let command = installer === "source" ? manualSourceCommand() : updateExecutionCommand(installer, channel).display;
+  const manualCommand = installer === "source"
+    ? manualSourceCommand(deps.isDetachedSourceCheckout?.() ?? isDetachedSourceCheckout())
+    : "";
+  const command = installer === "source" ? manualCommand : updateExecutionCommand(installer, channel).display;
 
   if (installer === "source") {
     reason = "source_checkout";
-    command = manualSourceCommand();
   } else if (!latest) {
     reason = "latest_unavailable";
   } else if (!updateAvailable) {

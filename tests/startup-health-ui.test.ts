@@ -6,6 +6,7 @@ import {
   seedStartupHealthFromSettings,
   settingsPollMayCommit,
   startupRiskDetailKey,
+  recommendedStartupCommand,
 } from "../gui/src/startup-health-ui";
 
 describe("startup health UI decisions", () => {
@@ -16,6 +17,21 @@ describe("startup health UI decisions", () => {
       .toBe("startup.riskDetailWindowsShim");
     expect(startupRiskDetailKey({ routingKind: "unknown", shimCoverage: "none" }))
       .toBe("startup.riskDetail");
+  });
+
+  test("does not suggest an OCX-managed command for externally owned gateways", () => {
+    expect(recommendedStartupCommand({
+      status: "at-risk", routingKind: "custom-local", recommendedCommand: "ocx restore",
+    })).toBeNull();
+    expect(recommendedStartupCommand({
+      status: "at-risk", routingKind: "custom-local", recommendedCommand: null,
+    })).toBeNull();
+    expect(recommendedStartupCommand({
+      status: "at-risk", routingKind: "opencodex-local", recommendedCommand: "ocx service install",
+    })).toBe("ocx service install");
+    expect(recommendedStartupCommand({
+      status: "protected", routingKind: "opencodex-local", recommendedCommand: "ocx service install",
+    })).toBeNull();
   });
 
   test("rejects stale or mutation-racing settings polls", () => {
