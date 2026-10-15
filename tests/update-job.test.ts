@@ -17,33 +17,18 @@ import {
   updateJobPath,
   type UpdateJobState,
 } from "../src/update/job";
-import {
-  checkUpdatePackageIntegrity,
-  updateCommand,
-  updateCommandStr,
-} from "../src/update/index";
+import { checkUpdatePackageIntegrity, updateCommand, updateCommandStr } from "../src/update/index";
 
 type SpawnResult = { status: number | null; stdout: string };
-function fakeSpawn(
-  result: SpawnResult,
-): typeof import("node:child_process").spawnSync {
-  return (() => ({
-    ...result,
-    stderr: "",
-    pid: 1,
-    output: [],
-    signal: null,
-  })) as never;
+function fakeSpawn(result: SpawnResult): typeof import("node:child_process").spawnSync {
+  return (() => ({ ...result, stderr: "", pid: 1, output: [], signal: null })) as never;
 }
 
 const prevHome = process.env.OPENCODEX_HOME;
 let dir: string;
 
 beforeEach(() => {
-  dir = join(
-    tmpdir(),
-    `ocx-update-job-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  );
+  dir = join(tmpdir(), `ocx-update-job-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
   process.env.OPENCODEX_HOME = dir;
 });
@@ -126,12 +111,7 @@ describe("GUI update execution decisions", () => {
   test("npm worker uses the Node launcher update path", () => {
     const cmd = updateExecutionCommand("npm", "preview", "/pkg/bin/ocx.mjs");
     expect(cmd.bin).toMatch(/^node/);
-    expect(cmd.args).toEqual([
-      "/pkg/bin/ocx.mjs",
-      "update",
-      "--tag",
-      "preview",
-    ]);
+    expect(cmd.args).toEqual(["/pkg/bin/ocx.mjs", "update", "--tag", "preview"]);
   });
 
   test("restart command separates service and direct proxy modes", () => {
@@ -148,38 +128,27 @@ describe("GUI update execution decisions", () => {
   test("proxy restart pins --port so post-update start does not hop to an ephemeral port", () => {
     const proxy = restartCommand(false, "npm", "/pkg/bin/ocx.mjs", 10100);
     expect(proxy.mode).toBe("proxy");
-    expect(proxy.args).toEqual([
-      "/pkg/bin/ocx.mjs",
-      "start",
-      "--port",
-      "10100",
-    ]);
+    expect(proxy.args).toEqual(["/pkg/bin/ocx.mjs", "start", "--port", "10100"]);
     expect(proxy.display).toContain("start --port 10100");
     // Service reinstall stays install-only at the argv level; wrappers bake --port via OCX_BAKE_PORT.
-    expect(restartCommand(true, "npm", "/pkg/bin/ocx.mjs", 10100).args).toEqual(
-      ["/pkg/bin/ocx.mjs", "service", "install"],
-    );
+    expect(restartCommand(true, "npm", "/pkg/bin/ocx.mjs", 10100).args).toEqual([
+      "/pkg/bin/ocx.mjs", "service", "install",
+    ]);
   });
 
   test("proxy-only update restart preserves its mode without changing service commands", () => {
-    expect(
-      restartCommand(false, "npm", "/pkg/bin/ocx.mjs", 10100, undefined, true)
-        .args,
-    ).toEqual(["/pkg/bin/ocx.mjs", "start", "--port", "10100", "--proxy-only"]);
-    expect(
-      restartCommand(true, "npm", "/pkg/bin/ocx.mjs", 10100, undefined, true)
-        .args,
-    ).toEqual(["/pkg/bin/ocx.mjs", "service", "install"]);
+    expect(restartCommand(false, "npm", "/pkg/bin/ocx.mjs", 10100, undefined, true).args).toEqual([
+      "/pkg/bin/ocx.mjs", "start", "--port", "10100", "--proxy-only",
+    ]);
+    expect(restartCommand(true, "npm", "/pkg/bin/ocx.mjs", 10100, undefined, true).args).toEqual([
+      "/pkg/bin/ocx.mjs", "service", "install",
+    ]);
   });
 
   test("restart waits on the captured pre-update port unconditionally and pins the spawn to it", async () => {
     // The stop-first update flow clears pid/runtime state before restartAfterUpdate runs,
     // so the wait must fire even with no readable pid — driven here via the io seam.
-    const waited: Array<{
-      port: number;
-      hostname: string;
-      opts?: { killOcxHolders?: boolean; onlyKillPids?: number[] };
-    }> = [];
+    const waited: Array<{ port: number; hostname: string; opts?: { killOcxHolders?: boolean; onlyKillPids?: number[] } }> = [];
     const spawned: Array<{ port?: number; proxyOnly?: boolean }> = [];
     const job: UpdateJobState = {
       id: "restart-io",
@@ -195,42 +164,33 @@ describe("GUI update execution decisions", () => {
       log: [],
     };
     writeFileSync(updateJobPath(job.id), JSON.stringify(job));
-    await restartAfterUpdateForTests(
-      job,
-      { port: 12345, hostname: "127.0.0.1", proxyOnly: true },
-      {
-        serviceInstalledFn: () => false, // drive the proxy-mode branch regardless of host state
-        waitForPort: async (port, hostname, opts) => {
-          waited.push({
-            port,
-            hostname: hostname ?? "",
-            opts: {
-              killOcxHolders: opts?.killOcxHolders,
-              onlyKillPids: opts?.onlyKillPids,
-            },
-          });
-          return true;
-        },
-        spawnStart: (_job, _installer, port, proxyOnly) => {
-          spawned.push({ port, proxyOnly });
-        },
+    await restartAfterUpdateForTests(job, { port: 12345, hostname: "127.0.0.1", proxyOnly: true }, {
+      serviceInstalledFn: () => false, // drive the proxy-mode branch regardless of host state
+      waitForPort: async (port, hostname, opts) => {
+        waited.push({
+          port,
+          hostname: hostname ?? "",
+          opts: {
+            killOcxHolders: opts?.killOcxHolders,
+            onlyKillPids: opts?.onlyKillPids,
+          },
+        });
+        return true;
       },
-    );
-    expect(waited).toEqual([
-      {
-        port: 12345,
-        hostname: "127.0.0.1",
-        opts: { killOcxHolders: false, onlyKillPids: [] },
+      spawnStart: (_job, _installer, port, proxyOnly) => {
+        spawned.push({ port, proxyOnly });
       },
-    ]);
+    });
+    expect(waited).toEqual([{
+      port: 12345,
+      hostname: "127.0.0.1",
+      opts: { killOcxHolders: false, onlyKillPids: [] },
+    }]);
     expect(spawned).toEqual([{ port: 12345, proxyOnly: true }]);
   });
 
   test("restart reclaim allowlists only the trusted oldPid", async () => {
-    const optsSeen: Array<{
-      killOcxHolders?: boolean;
-      onlyKillPids?: number[];
-    }> = [];
+    const optsSeen: Array<{ killOcxHolders?: boolean; onlyKillPids?: number[] }> = [];
     const job: UpdateJobState = {
       id: "restart-oldpid",
       status: "restarting",
@@ -245,21 +205,17 @@ describe("GUI update execution decisions", () => {
       log: [],
     };
     writeFileSync(updateJobPath(job.id), JSON.stringify(job));
-    await restartAfterUpdateForTests(
-      job,
-      { port: 10100, hostname: "127.0.0.1", oldPid: 4242 },
-      {
-        serviceInstalledFn: () => false,
-        waitForPort: async (_port, _hostname, opts) => {
-          optsSeen.push({
-            killOcxHolders: opts?.killOcxHolders,
-            onlyKillPids: opts?.onlyKillPids,
-          });
-          return true;
-        },
-        spawnStart: () => {},
+    await restartAfterUpdateForTests(job, { port: 10100, hostname: "127.0.0.1", oldPid: 4242 }, {
+      serviceInstalledFn: () => false,
+      waitForPort: async (_port, _hostname, opts) => {
+        optsSeen.push({
+          killOcxHolders: opts?.killOcxHolders,
+          onlyKillPids: opts?.onlyKillPids,
+        });
+        return true;
       },
-    );
+      spawnStart: () => {},
+    });
     expect(optsSeen).toEqual([{ killOcxHolders: true, onlyKillPids: [4242] }]);
   });
 
@@ -279,31 +235,17 @@ describe("GUI update execution decisions", () => {
       log: [],
     };
     writeFileSync(updateJobPath(job.id), JSON.stringify(job));
-    await restartAfterUpdateForTests(
-      job,
-      { port: 10100, hostname: "127.0.0.1", proxyOnly: true },
-      {
-        serviceInstalledFn: () => false,
-        waitForPort: async () => false,
-        spawnStart: (_job, _installer, port) => {
-          spawned.push({ port });
-        },
+    await restartAfterUpdateForTests(job, { port: 10100, hostname: "127.0.0.1", proxyOnly: true }, {
+      serviceInstalledFn: () => false,
+      waitForPort: async () => false,
+      spawnStart: (_job, _installer, port) => {
+        spawned.push({ port });
       },
-    );
+    });
     expect(spawned).toEqual([]);
     const saved = readUpdateJob(job.id);
-    expect(
-      saved?.log.some(
-        (line) =>
-          line.includes("still busy") &&
-          line.includes("not starting on another port"),
-      ),
-    ).toBe(true);
-    expect(
-      saved?.log.some((line) =>
-        line.includes("ocx start --port 10100 --proxy-only"),
-      ),
-    ).toBe(true);
+    expect(saved?.log.some(line => line.includes("still busy") && line.includes("not starting on another port"))).toBe(true);
+    expect(saved?.log.some(line => line.includes("ocx start --port 10100 --proxy-only"))).toBe(true);
   });
 
   test("service restart waits on the captured port and clears OCX_BAKE_PORT after install", async () => {
@@ -326,22 +268,18 @@ describe("GUI update execution decisions", () => {
     const prev = process.env.OCX_BAKE_PORT;
     delete process.env.OCX_BAKE_PORT;
     try {
-      await restartAfterUpdateForTests(
-        job,
-        { port: 18765, hostname: "127.0.0.1" },
-        {
-          serviceInstalledFn: () => true,
-          waitForPort: async (port, hostname) => {
-            waited.push({ port, hostname: hostname ?? "" });
-            expect(process.env.OCX_BAKE_PORT).toBeUndefined();
-            return true;
-          },
-          runService: () => {
-            bakeDuringInstall.push(process.env.OCX_BAKE_PORT ?? "");
-            return { status: 0 };
-          },
+      await restartAfterUpdateForTests(job, { port: 18765, hostname: "127.0.0.1" }, {
+        serviceInstalledFn: () => true,
+        waitForPort: async (port, hostname) => {
+          waited.push({ port, hostname: hostname ?? "" });
+          expect(process.env.OCX_BAKE_PORT).toBeUndefined();
+          return true;
         },
-      );
+        runService: () => {
+          bakeDuringInstall.push(process.env.OCX_BAKE_PORT ?? "");
+          return { status: 0 };
+        },
+      });
       expect(waited).toEqual([{ port: 18765, hostname: "127.0.0.1" }]);
       expect(bakeDuringInstall).toEqual(["18765"]);
       expect(process.env.OCX_BAKE_PORT).toBeUndefined();
@@ -367,18 +305,14 @@ describe("GUI update execution decisions", () => {
       log: [],
     };
     writeFileSync(updateJobPath(job.id), JSON.stringify(job));
-    await restartAfterUpdateForTests(
-      job,
-      { port: 19999, hostname: "127.0.0.1" },
-      {
-        serviceInstalledFn: () => true,
-        waitForPort: async () => true,
-        runService: () => ({ status: 1 }),
-        spawnStart: (_job, _installer, port) => {
-          spawned.push({ port: port ?? 0 });
-        },
+    await restartAfterUpdateForTests(job, { port: 19999, hostname: "127.0.0.1" }, {
+      serviceInstalledFn: () => true,
+      waitForPort: async () => true,
+      runService: () => ({ status: 1 }),
+      spawnStart: (_job, _installer, port) => {
+        spawned.push({ port: port ?? 0 });
       },
-    );
+    });
     // The fallback must fire: direct proxy start instead of throwing.
     expect(spawned).toEqual([{ port: 19999 }]);
   });
@@ -399,28 +333,18 @@ describe("GUI update execution decisions", () => {
       log: [],
     };
     writeFileSync(updateJobPath(job.id), JSON.stringify(job));
-    const ok = await confirmRestartAfterUpdateForTests(
-      job,
-      { port: 10100, hostname: "127.0.0.1", proxyOnly: true },
-      {
-        probeProxy: async () => false,
-        now: () => now,
-        sleepMs: async (ms) => {
-          now += ms;
-        },
-      },
-    );
+    const ok = await confirmRestartAfterUpdateForTests(job, { port: 10100, hostname: "127.0.0.1", proxyOnly: true }, {
+      probeProxy: async () => false,
+      now: () => now,
+      sleepMs: async (ms) => { now += ms; },
+    });
     expect(ok).toBe(false);
     expect(readUpdateJob(job.id)).toMatchObject({
       status: "failed",
       restarted: false,
       error: "proxy restart never became healthy on 127.0.0.1:10100",
     });
-    expect(
-      readUpdateJob(job.id)?.log.some((line) =>
-        line.includes("ocx start --port 10100 --proxy-only"),
-      ),
-    ).toBe(true);
+    expect(readUpdateJob(job.id)?.log.some(line => line.includes("ocx start --port 10100 --proxy-only"))).toBe(true);
   });
 
   test("restart confirmation fails when the proxy dies during the stability window", async () => {
@@ -439,17 +363,11 @@ describe("GUI update execution decisions", () => {
       log: [],
     };
     writeFileSync(updateJobPath(job.id), JSON.stringify(job));
-    const ok = await confirmRestartAfterUpdateForTests(
-      job,
-      { port: 10100, hostname: "127.0.0.1" },
-      {
-        probeProxy: async () => now < 12_000,
-        now: () => now,
-        sleepMs: async (ms) => {
-          now += ms;
-        },
-      },
-    );
+    const ok = await confirmRestartAfterUpdateForTests(job, { port: 10100, hostname: "127.0.0.1" }, {
+      probeProxy: async () => now < 12_000,
+      now: () => now,
+      sleepMs: async (ms) => { now += ms; },
+    });
     expect(ok).toBe(false);
     expect(readUpdateJob(job.id)).toMatchObject({
       status: "failed",
@@ -475,23 +393,13 @@ describe("GUI update execution decisions", () => {
       log: [],
     };
     writeFileSync(updateJobPath(job.id), JSON.stringify(job));
-    const ok = await confirmRestartAfterUpdateForTests(
-      job,
-      { port: 10100, hostname: "127.0.0.1" },
-      {
-        probeProxy: async () => now >= 1_000,
-        now: () => now,
-        sleepMs: async (ms) => {
-          now += ms;
-        },
-      },
-    );
+    const ok = await confirmRestartAfterUpdateForTests(job, { port: 10100, hostname: "127.0.0.1" }, {
+      probeProxy: async () => now >= 1_000,
+      now: () => now,
+      sleepMs: async (ms) => { now += ms; },
+    });
     expect(ok).toBe(true);
-    expect(
-      readUpdateJob(job.id)?.log.some((line) =>
-        line.includes("stayed healthy for 15s after restart"),
-      ),
-    ).toBe(true);
+    expect(readUpdateJob(job.id)?.log.some(line => line.includes("stayed healthy for 15s after restart"))).toBe(true);
   });
 
   test("restart confirmation makes a final health probe at the arrival deadline", async () => {
@@ -518,9 +426,7 @@ describe("GUI update execution decisions", () => {
       {
         probeProxy: async () => now >= 30_000,
         now: () => now,
-        sleepMs: async (ms) => {
-          now += ms;
-        },
+        sleepMs: async (ms) => { now += ms; },
       },
     );
 
@@ -554,33 +460,24 @@ describe("GUI update execution decisions", () => {
       {
         serviceInstalledFn: () => true,
         probeProxy: async () => now >= 15_250,
-        probeProxyIdentity: async () =>
-          now >= 15_250 ? { pid: 222, version: "2.7.43" } : null,
+        probeProxyIdentity: async () => (
+          now >= 15_250 ? { pid: 222, version: "2.7.43" } : null
+        ),
         now: () => now,
-        sleepMs: async (ms) => {
-          now += ms;
-        },
-        restartAfterUpdateFn: async () => {
-          restartCalls += 1;
-        },
+        sleepMs: async (ms) => { now += ms; },
+        restartAfterUpdateFn: async () => { restartCalls += 1; },
       },
     );
 
     expect(ok).toBe(true);
     expect(restartCalls).toBe(0);
     expect(now).toBe(30_250);
-    expect(
-      readUpdateJob(job.id)?.log.some((line) =>
-        line.includes("stayed healthy for 15s after restart"),
-      ),
-    ).toBe(true);
-    expect(
-      readUpdateJob(job.id)?.log.some(
-        (line) =>
-          line.includes("skipping redundant restart") &&
-          line.includes("pid changed"),
-      ),
-    ).toBe(true);
+    expect(readUpdateJob(job.id)?.log.some(line =>
+      line.includes("stayed healthy for 15s after restart"),
+    )).toBe(true);
+    expect(readUpdateJob(job.id)?.log.some(line =>
+      line.includes("skipping redundant restart") && line.includes("pid changed"),
+    )).toBe(true);
   });
 
   test("npm finish skips redundant restart when service self-update left a replaced healthy proxy", async () => {
@@ -610,24 +507,15 @@ describe("GUI update execution decisions", () => {
         probeProxy: async () => true,
         probeProxyIdentity: async () => ({ pid: 222, version: "2.7.41" }),
         now: () => now,
-        sleepMs: async (ms) => {
-          now += ms;
-        },
-        restartAfterUpdateFn: async () => {
-          restartCalls += 1;
-        },
+        sleepMs: async (ms) => { now += ms; },
+        restartAfterUpdateFn: async () => { restartCalls += 1; },
       },
     );
     expect(ok).toBe(true);
     expect(restartCalls).toBe(0);
-    expect(
-      readUpdateJob(job.id)?.log.some(
-        (line) =>
-          line.includes("skipping redundant restart") &&
-          line.includes("10100") &&
-          line.includes("pid changed"),
-      ),
-    ).toBe(true);
+    expect(readUpdateJob(job.id)?.log.some(line =>
+      line.includes("skipping redundant restart") && line.includes("10100") && line.includes("pid changed"),
+    )).toBe(true);
   });
 
   test("npm finish fails when stale PID survives a no-op explicit restart", async () => {
@@ -658,9 +546,7 @@ describe("GUI update execution decisions", () => {
         probeProxy: async () => true,
         probeProxyIdentity: async () => ({ pid: 111, version: "2.7.40" }),
         now: () => now,
-        sleepMs: async (ms) => {
-          now += ms;
-        },
+        sleepMs: async (ms) => { now += ms; },
         restartAfterUpdateFn: async () => {
           restartCalls += 1;
           now = 0;
@@ -674,13 +560,9 @@ describe("GUI update execution decisions", () => {
       restarted: false,
     });
     expect(readUpdateJob(job.id)?.error).toContain("still the pre-update PID");
-    expect(
-      readUpdateJob(job.id)?.log.some(
-        (line) =>
-          line.includes("still the pre-update PID") &&
-          line.includes("performing explicit restart"),
-      ),
-    ).toBe(true);
+    expect(readUpdateJob(job.id)?.log.some(line =>
+      line.includes("still the pre-update PID") && line.includes("performing explicit restart"),
+    )).toBe(true);
   });
 
   test("npm finish succeeds when explicit restart yields a new PID at the target version", async () => {
@@ -710,14 +592,9 @@ describe("GUI update execution decisions", () => {
       {
         serviceInstalledFn: () => true,
         probeProxy: async () => true,
-        probeProxyIdentity: async () => ({
-          pid: livePid,
-          version: liveVersion,
-        }),
+        probeProxyIdentity: async () => ({ pid: livePid, version: liveVersion }),
         now: () => now,
-        sleepMs: async (ms) => {
-          now += ms;
-        },
+        sleepMs: async (ms) => { now += ms; },
         restartAfterUpdateFn: async () => {
           restartCalls += 1;
           livePid = 222;
@@ -729,13 +606,9 @@ describe("GUI update execution decisions", () => {
     expect(ok).toBe(true);
     expect(restartCalls).toBe(1);
     expect(readUpdateJob(job.id)?.status).not.toBe("failed");
-    expect(
-      readUpdateJob(job.id)?.log.some(
-        (line) =>
-          line.includes("Proxy restart confirmed") &&
-          line.includes("pid changed"),
-      ),
-    ).toBe(true);
+    expect(readUpdateJob(job.id)?.log.some(line =>
+      line.includes("Proxy restart confirmed") && line.includes("pid changed"),
+    )).toBe(true);
   });
 
   test("npm finish fails when port reclaim leaves the pre-update proxy healthy", async () => {
@@ -769,9 +642,7 @@ describe("GUI update execution decisions", () => {
         probeProxy: async () => true,
         probeProxyIdentity: async () => ({ pid: 111, version: "2.7.40" }),
         now: () => now,
-        sleepMs: async (ms) => {
-          now += ms;
-        },
+        sleepMs: async (ms) => { now += ms; },
       },
     );
     expect(ok).toBe(false);
@@ -780,13 +651,9 @@ describe("GUI update execution decisions", () => {
       restarted: false,
     });
     expect(readUpdateJob(job.id)?.error).toContain("still the pre-update PID");
-    expect(
-      readUpdateJob(job.id)?.log.some(
-        (line) =>
-          line.includes("still busy") &&
-          line.includes("not starting on another port"),
-      ),
-    ).toBe(true);
+    expect(readUpdateJob(job.id)?.log.some(line =>
+      line.includes("still busy") && line.includes("not starting on another port"),
+    )).toBe(true);
   });
 
   test("npm finish skips the soft probe for direct installs and restarts immediately", async () => {
@@ -808,43 +675,29 @@ describe("GUI update execution decisions", () => {
       log: [],
     };
     writeFileSync(updateJobPath(job.id), JSON.stringify(job));
-    const ok = await finishGuiUpdateRestart(
-      job,
-      { port: 10100, hostname: "127.0.0.1" },
-      "npm",
-      {
-        serviceInstalledFn: () => false,
-        probeProxy: async () => {
-          // Only becomes healthy after the explicit restart (launcher printed `ocx start` only).
-          return restartCalls > 0;
-        },
-        probeProxyIdentity: async () =>
-          restartCalls > 0 ? { pid: 333, version: "2.7.41" } : null,
-        now: () => now,
-        sleepMs: async (ms) => {
-          now += ms;
-        },
-        restartAfterUpdateFn: async () => {
-          nowBeforeRestart = now;
-          restartCalls += 1;
-          now = 0;
-        },
+    const ok = await finishGuiUpdateRestart(job, { port: 10100, hostname: "127.0.0.1" }, "npm", {
+      serviceInstalledFn: () => false,
+      probeProxy: async () => {
+        // Only becomes healthy after the explicit restart (launcher printed `ocx start` only).
+        return restartCalls > 0;
       },
-    );
+      probeProxyIdentity: async () => (
+        restartCalls > 0 ? { pid: 333, version: "2.7.41" } : null
+      ),
+      now: () => now,
+      sleepMs: async (ms) => { now += ms; },
+      restartAfterUpdateFn: async () => {
+        nowBeforeRestart = now;
+        restartCalls += 1;
+        now = 0;
+      },
+    });
     expect(ok).toBe(true);
     expect(restartCalls).toBe(1);
     // Soft probe-first must not run — otherwise the clock would advance before restart.
     expect(nowBeforeRestart).toBe(0);
-    expect(
-      readUpdateJob(job.id)?.log.some((line) =>
-        line.includes("skipping redundant restart"),
-      ),
-    ).toBe(false);
-    expect(
-      readUpdateJob(job.id)?.log.some((line) =>
-        line.includes("npm self-update did not leave"),
-      ),
-    ).toBe(false);
+    expect(readUpdateJob(job.id)?.log.some(line => line.includes("skipping redundant restart"))).toBe(false);
+    expect(readUpdateJob(job.id)?.log.some(line => line.includes("npm self-update did not leave"))).toBe(false);
   });
 
   test("npm finish falls back to explicit restart when self-update left the proxy down", async () => {
@@ -865,33 +718,25 @@ describe("GUI update execution decisions", () => {
       log: [],
     };
     writeFileSync(updateJobPath(job.id), JSON.stringify(job));
-    const ok = await finishGuiUpdateRestart(
-      job,
-      { port: 10100, hostname: "127.0.0.1" },
-      "npm",
-      {
-        serviceInstalledFn: () => true,
-        // Soft probe times out (proxy down after npm update); confirm after explicit restart succeeds.
-        probeProxy: async () => restartCalls > 0,
-        probeProxyIdentity: async () =>
-          restartCalls > 0 ? { pid: 444, version: "2.7.41" } : null,
-        now: () => now,
-        sleepMs: async (ms) => {
-          now += ms;
-        },
-        restartAfterUpdateFn: async () => {
-          restartCalls += 1;
-          now = 0; // reset clock so post-restart health wait has a fresh window
-        },
+    const ok = await finishGuiUpdateRestart(job, { port: 10100, hostname: "127.0.0.1" }, "npm", {
+      serviceInstalledFn: () => true,
+      // Soft probe times out (proxy down after npm update); confirm after explicit restart succeeds.
+      probeProxy: async () => restartCalls > 0,
+      probeProxyIdentity: async () => (
+        restartCalls > 0 ? { pid: 444, version: "2.7.41" } : null
+      ),
+      now: () => now,
+      sleepMs: async (ms) => { now += ms; },
+      restartAfterUpdateFn: async () => {
+        restartCalls += 1;
+        now = 0; // reset clock so post-restart health wait has a fresh window
       },
-    );
+    });
     expect(ok).toBe(true);
     expect(restartCalls).toBe(1);
-    expect(
-      readUpdateJob(job.id)?.log.some((line) =>
-        line.includes("performing explicit restart"),
-      ),
-    ).toBe(true);
+    expect(readUpdateJob(job.id)?.log.some(line =>
+      line.includes("performing explicit restart"),
+    )).toBe(true);
   });
 
   test("bun finish always runs explicit restart even if a proxy is already healthy", async () => {
@@ -912,62 +757,41 @@ describe("GUI update execution decisions", () => {
       log: [],
     };
     writeFileSync(updateJobPath(job.id), JSON.stringify(job));
-    const ok = await finishGuiUpdateRestart(
-      job,
-      { port: 10100, hostname: "127.0.0.1" },
-      "bun",
-      {
-        probeProxy: async () => true,
-        now: () => now,
-        sleepMs: async (ms) => {
-          now += ms;
-        },
-        restartAfterUpdateFn: async () => {
-          restartCalls += 1;
-        },
-      },
-    );
+    const ok = await finishGuiUpdateRestart(job, { port: 10100, hostname: "127.0.0.1" }, "bun", {
+      probeProxy: async () => true,
+      now: () => now,
+      sleepMs: async (ms) => { now += ms; },
+      restartAfterUpdateFn: async () => { restartCalls += 1; },
+    });
     expect(ok).toBe(true);
     expect(restartCalls).toBe(1);
-    expect(
-      readUpdateJob(job.id)?.log.some((line) =>
-        line.includes("skipping redundant restart"),
-      ),
-    ).toBe(false);
+    expect(readUpdateJob(job.id)?.log.some(line => line.includes("skipping redundant restart"))).toBe(false);
   });
 
   test("npmSelfUpdateRestartEvidence requires a PID change or target version", () => {
-    expect(
-      npmSelfUpdateRestartEvidence(
-        { latestVersion: "2.7.41" },
-        { oldPid: 111 },
-        { pid: 111, version: "2.7.41" },
-      ),
-    ).toMatchObject({ ok: false, reason: "still the pre-update PID" });
+    expect(npmSelfUpdateRestartEvidence(
+      { latestVersion: "2.7.41" },
+      { oldPid: 111 },
+      { pid: 111, version: "2.7.41" },
+    )).toMatchObject({ ok: false, reason: "still the pre-update PID" });
 
-    expect(
-      npmSelfUpdateRestartEvidence(
-        { latestVersion: "2.7.41" },
-        { oldPid: 111 },
-        { pid: 222, version: "2.7.41" },
-      ),
-    ).toMatchObject({ ok: true });
+    expect(npmSelfUpdateRestartEvidence(
+      { latestVersion: "2.7.41" },
+      { oldPid: 111 },
+      { pid: 222, version: "2.7.41" },
+    )).toMatchObject({ ok: true });
 
-    expect(
-      npmSelfUpdateRestartEvidence(
-        { latestVersion: "2.7.41" },
-        {},
-        { pid: null, version: "2.7.41" },
-      ),
-    ).toMatchObject({ ok: true });
+    expect(npmSelfUpdateRestartEvidence(
+      { latestVersion: "2.7.41" },
+      {},
+      { pid: null, version: "2.7.41" },
+    )).toMatchObject({ ok: true });
 
-    expect(
-      npmSelfUpdateRestartEvidence(
-        { latestVersion: "2.7.41" },
-        {},
-        { pid: 222, version: "2.7.40" },
-      ),
-    ).toMatchObject({ ok: false });
+    expect(npmSelfUpdateRestartEvidence(
+      { latestVersion: "2.7.41" },
+      {},
+      { pid: 222, version: "2.7.40" },
+    )).toMatchObject({ ok: false });
   });
 
   test("a running job prevents a second update job", () => {
@@ -983,8 +807,7 @@ describe("GUI update execution decisions", () => {
       installer: "npm",
       restart: true,
       command: "node /pkg/bin/ocx.mjs update --tag latest",
-      releaseNotesUrl:
-        "https://github.com/GroepOnline/opencodex/releases/latest",
+      releaseNotesUrl: "https://github.com/GroepOnline/opencodex/releases/latest",
       log: [],
     };
     writeFileSync(updateJobPath(), `${JSON.stringify(job)}\n`);
@@ -994,35 +817,17 @@ describe("GUI update execution decisions", () => {
 
   test("stale detection trusts a live PID and recovers dead or legacy workers", () => {
     const now = Date.now();
-    const active = {
-      status: "running" as const,
-      pid: 321,
-      updatedAt: new Date(0).toISOString(),
-    };
+    const active = { status: "running" as const, pid: 321, updatedAt: new Date(0).toISOString() };
     expect(staleActiveUpdateJobReason(active, now, () => true)).toBeNull();
-    expect(staleActiveUpdateJobReason(active, now, () => false)).toContain(
-      "PID 321",
-    );
-    expect(
-      staleActiveUpdateJobReason(
-        {
-          status: "restarting",
-          updatedAt: new Date(now - UPDATE_JOB_LEGACY_STALE_MS).toISOString(),
-        },
-        now,
-      ),
-    ).toContain("no worker PID");
-    expect(
-      staleActiveUpdateJobReason(
-        {
-          status: "running",
-          updatedAt: new Date(
-            now - UPDATE_JOB_LEGACY_STALE_MS + 1,
-          ).toISOString(),
-        },
-        now,
-      ),
-    ).toBeNull();
+    expect(staleActiveUpdateJobReason(active, now, () => false)).toContain("PID 321");
+    expect(staleActiveUpdateJobReason({
+      status: "restarting",
+      updatedAt: new Date(now - UPDATE_JOB_LEGACY_STALE_MS).toISOString(),
+    }, now)).toContain("no worker PID");
+    expect(staleActiveUpdateJobReason({
+      status: "running",
+      updatedAt: new Date(now - UPDATE_JOB_LEGACY_STALE_MS + 1).toISOString(),
+    }, now)).toBeNull();
   });
 
   test("recovers a dead worker and persists the replacement worker PID", () => {
@@ -1038,8 +843,7 @@ describe("GUI update execution decisions", () => {
       installer: "bun",
       restart: true,
       command: "bun add -g @groeponline/opencodex@2.7.41",
-      releaseNotesUrl:
-        "https://github.com/GroepOnline/opencodex/releases/latest",
+      releaseNotesUrl: "https://github.com/GroepOnline/opencodex/releases/latest",
       log: [],
       pid: 777,
     };
@@ -1057,14 +861,11 @@ describe("GUI update execution decisions", () => {
         updateAvailable: true,
         canUpdate: true,
         command: "bun add -g @groeponline/opencodex@2.7.41",
-        releaseNotesUrl:
-          "https://github.com/GroepOnline/opencodex/releases/latest",
+        releaseNotesUrl: "https://github.com/GroepOnline/opencodex/releases/latest",
       }),
       spawnWorkerFn: () => ({
         pid: 888,
-        unref: () => {
-          unrefCalled = true;
-        },
+        unref: () => { unrefCalled = true; },
         once: () => undefined,
       }),
     });
@@ -1076,24 +877,19 @@ describe("GUI update execution decisions", () => {
   });
 
   test("records a failed job when spawning the worker throws", () => {
-    expect(() =>
-      startUpdateJob("latest", false, {
-        checkForUpdateFn: () => ({
-          currentVersion: "2.7.40",
-          latestVersion: "2.7.41",
-          channel: "latest",
-          installer: "bun",
-          updateAvailable: true,
-          canUpdate: true,
-          command: "bun add -g @groeponline/opencodex@2.7.41",
-          releaseNotesUrl:
-            "https://github.com/GroepOnline/opencodex/releases/latest",
-        }),
-        spawnWorkerFn: () => {
-          throw new Error("spawn denied");
-        },
+    expect(() => startUpdateJob("latest", false, {
+      checkForUpdateFn: () => ({
+        currentVersion: "2.7.40",
+        latestVersion: "2.7.41",
+        channel: "latest",
+        installer: "bun",
+        updateAvailable: true,
+        canUpdate: true,
+        command: "bun add -g @groeponline/opencodex@2.7.41",
+        releaseNotesUrl: "https://github.com/GroepOnline/opencodex/releases/latest",
       }),
-    ).toThrow("Could not start update worker");
+      spawnWorkerFn: () => { throw new Error("spawn denied"); },
+    })).toThrow("Could not start update worker");
     expect(readUpdateJob()?.status).toBe("failed");
     expect(readUpdateJob()?.error).toContain("spawn denied");
   });
@@ -1101,60 +897,29 @@ describe("GUI update execution decisions", () => {
 
 describe("immutable update target (WP160)", () => {
   test("a resolved version pins the install target instead of the movable tag", () => {
-    expect(updateCommand("bun", "latest", "2.7.24").args).toEqual([
-      "add",
-      "-g",
-      "@groeponline/opencodex@2.7.24",
-    ]);
-    expect(updateCommand("npm", "latest", "2.7.24").args).toEqual([
-      "install",
-      "-g",
-      "@groeponline/opencodex@2.7.24",
-    ]);
-    expect(updateCommandStr("bun", "latest", "2.7.24")).toContain(
-      "@groeponline/opencodex@2.7.24",
-    );
+    expect(updateCommand("bun", "latest", "2.7.24").args).toEqual(["add", "-g", "@groeponline/opencodex@2.7.24"]);
+    expect(updateCommand("npm", "latest", "2.7.24").args).toEqual(["install", "-g", "@groeponline/opencodex@2.7.24"]);
+    expect(updateCommandStr("bun", "latest", "2.7.24")).toContain("@groeponline/opencodex@2.7.24");
     // Unknown version falls back to the tag (best-effort lane).
-    expect(updateCommand("bun", "latest").args).toEqual([
-      "add",
-      "-g",
-      "@groeponline/opencodex@latest",
-    ]);
-    expect(updateCommand("bun", "latest", null).args).toEqual([
-      "add",
-      "-g",
-      "@groeponline/opencodex@latest",
-    ]);
+    expect(updateCommand("bun", "latest").args).toEqual(["add", "-g", "@groeponline/opencodex@latest"]);
+    expect(updateCommand("bun", "latest", null).args).toEqual(["add", "-g", "@groeponline/opencodex@latest"]);
   });
 
   test("bun worker execution pins the resolved version through updateExecutionCommand", () => {
-    const cmd = updateExecutionCommand(
-      "bun",
-      "latest",
-      "/pkg/bin/ocx.mjs",
-      "2.7.24",
-    );
-    expect(cmd.bin).toBe(
-      process.platform === "win32" ? process.execPath : "bun",
-    );
+    const cmd = updateExecutionCommand("bun", "latest", "/pkg/bin/ocx.mjs", "2.7.24");
+    expect(cmd.bin).toBe(process.platform === "win32" ? process.execPath : "bun");
     expect(cmd.args).toEqual(["add", "-g", "@groeponline/opencodex@2.7.24"]);
     expect(cmd.display).toContain("@2.7.24");
   });
 
   test("integrity pre-flight passes on a valid sha512 SRI and on multi-token metadata", () => {
-    const single = checkUpdatePackageIntegrity(
-      "2.7.24",
-      fakeSpawn({ status: 0, stdout: "sha512-AbC123+/=\n" }),
-    );
+    const single = checkUpdatePackageIntegrity("2.7.24", fakeSpawn({ status: 0, stdout: "sha512-AbC123+/=\n" }));
     expect(single).toEqual({ ok: true, integrity: "sha512-AbC123+/=" });
 
-    const multi = checkUpdatePackageIntegrity(
-      "2.7.24",
-      fakeSpawn({
-        status: 0,
-        stdout: '"sha1-old sha512-GoodToken+/= sha256-other"\n',
-      }),
-    );
+    const multi = checkUpdatePackageIntegrity("2.7.24", fakeSpawn({
+      status: 0,
+      stdout: '"sha1-old sha512-GoodToken+/= sha256-other"\n',
+    }));
     expect(multi).toEqual({ ok: true, integrity: "sha512-GoodToken+/=" });
   });
 
@@ -1163,54 +928,21 @@ describe("immutable update target (WP160)", () => {
     expect(checkUpdatePackageIntegrity(null).ok).toBe("skipped");
 
     // Nonzero exit and timeout (status null) are transient — skip, never abort.
-    expect(
-      checkUpdatePackageIntegrity(
-        "2.7.24",
-        fakeSpawn({ status: 1, stdout: "" }),
-      ).ok,
-    ).toBe("skipped");
-    expect(
-      checkUpdatePackageIntegrity(
-        "2.7.24",
-        fakeSpawn({ status: null, stdout: "" }),
-      ).ok,
-    ).toBe("skipped");
+    expect(checkUpdatePackageIntegrity("2.7.24", fakeSpawn({ status: 1, stdout: "" })).ok).toBe("skipped");
+    expect(checkUpdatePackageIntegrity("2.7.24", fakeSpawn({ status: null, stdout: "" })).ok).toBe("skipped");
 
     // Successful query with missing or non-sha512 metadata is the fail-closed lane.
-    expect(
-      checkUpdatePackageIntegrity(
-        "2.7.24",
-        fakeSpawn({ status: 0, stdout: "" }),
-      ).ok,
-    ).toBe(false);
-    expect(
-      checkUpdatePackageIntegrity(
-        "2.7.24",
-        fakeSpawn({ status: 0, stdout: "sha1-only" }),
-      ).ok,
-    ).toBe(false);
-    expect(
-      checkUpdatePackageIntegrity(
-        "2.7.24",
-        fakeSpawn({ status: 0, stdout: "garbage!!" }),
-      ).ok,
-    ).toBe(false);
+    expect(checkUpdatePackageIntegrity("2.7.24", fakeSpawn({ status: 0, stdout: "" })).ok).toBe(false);
+    expect(checkUpdatePackageIntegrity("2.7.24", fakeSpawn({ status: 0, stdout: "sha1-only" })).ok).toBe(false);
+    expect(checkUpdatePackageIntegrity("2.7.24", fakeSpawn({ status: 0, stdout: "garbage!!" })).ok).toBe(false);
   });
 
   test("GUI worker gates integrity before spawning and fails the job on anomalous metadata", async () => {
-    const source = await Bun.file(
-      new URL("../src/update/job.ts", import.meta.url),
-    ).text();
+    const source = await Bun.file(new URL("../src/update/job.ts", import.meta.url)).text();
 
-    const gateAt = source.indexOf(
-      "const integrity = checkUpdatePackageIntegrity(check.latestVersion);",
-    );
-    const failAt = source.indexOf(
-      'updateJob(job, { status: "failed", error: integrity.reason });',
-    );
-    const spawnAt = source.indexOf(
-      "const result = runLoggedCommand(job, cmd.bin, cmd.args, UPDATE_TIMEOUT_MS);",
-    );
+    const gateAt = source.indexOf("const integrity = checkUpdatePackageIntegrity(check.latestVersion);");
+    const failAt = source.indexOf('updateJob(job, { status: "failed", error: integrity.reason });');
+    const spawnAt = source.indexOf("const result = runLoggedCommand(job, cmd.bin, cmd.args, UPDATE_TIMEOUT_MS);");
     expect(gateAt).toBeGreaterThan(-1);
     expect(failAt).toBeGreaterThan(-1);
     expect(spawnAt).toBeGreaterThan(-1);
@@ -1218,13 +950,9 @@ describe("immutable update target (WP160)", () => {
     expect(gateAt).toBeLessThan(spawnAt);
     expect(failAt).toBeLessThan(spawnAt);
     // The job log records the verified-or-skipped integrity line at handoff.
-    expect(source).toContain(
-      "integrity metadata ${integrity.integrity.slice(0, 24)}",
-    );
+    expect(source).toContain("integrity metadata ${integrity.integrity.slice(0, 24)}");
     expect(source).toContain("Integrity pre-flight skipped");
     // The bun lane pins the resolved version through updateExecutionCommand.
-    expect(source).toContain(
-      "updateExecutionCommand(check.installer, channel, undefined, check.latestVersion)",
-    );
+    expect(source).toContain("updateExecutionCommand(check.installer, channel, undefined, check.latestVersion)");
   });
 });
