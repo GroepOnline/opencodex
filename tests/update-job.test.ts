@@ -52,16 +52,30 @@ describe("GUI update check", () => {
     expect(result.command).toContain("ocx.mjs update --tag latest");
   });
 
-  test("reports source checkouts as manual-only", () => {
+  test("reports branch source checkouts as manual-only", () => {
     const result = checkForUpdate("latest", {
       currentVersion: () => "2.6.17",
       detectInstall: () => "source",
       latestVersion: () => "2.6.18",
+      isDetachedSourceCheckout: () => false,
     });
 
     expect(result.canUpdate).toBe(false);
     expect(result.reason).toBe("source_checkout");
     expect(result.command).toBe("git pull && bun install && bun run build:gui");
+  });
+
+  test("does not suggest pulling a pinned detached worktree in the dashboard", () => {
+    const result = checkForUpdate("latest", {
+      currentVersion: () => "1.5.4",
+      detectInstall: () => "source",
+      latestVersion: () => "1.5.6",
+      isDetachedSourceCheckout: () => true,
+    });
+
+    expect(result.canUpdate).toBe(false);
+    expect(result.command).toContain("owning deployment");
+    expect(result.command).not.toContain("git pull");
   });
 
   test("handles registry lookup failures without claiming an update", () => {
@@ -88,6 +102,12 @@ describe("GUI update check", () => {
 });
 
 describe("GUI update execution decisions", () => {
+  test("source worker is fail-closed and never executes Git from a background update job", () => {
+    const command = updateExecutionCommand("source", "latest");
+    expect(command.bin).toBe("sh");
+    expect(command.args).toEqual(["-lc", "exit 1"]);
+  });
+
   test("npm worker uses the Node launcher update path", () => {
     const cmd = updateExecutionCommand("npm", "preview", "/pkg/bin/ocx.mjs");
     expect(cmd.bin).toMatch(/^node/);

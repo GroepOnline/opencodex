@@ -590,10 +590,14 @@ enumerates rows whose bodies were actually persisted in `trace.sqlite`.
 ### `ocx update`
 
 Self-update opencodex from npm. Stable installs use `@latest`; preview installs stay on `@preview`
-unless you pass `--tag latest|preview`. It detects a source checkout and tells you to
-`git pull && bun install` instead, and is a no-op if you're already on the newest version for that
-tag. A running proxy is stopped before files are replaced; an installed service is rebuilt and
-started automatically, while a foreground installation prints `ocx start` as the next step.
+unless you pass `--tag latest|preview`. Source checkouts are not self-updated: a checkout on
+a branch displays `git pull && bun install`, while a detached Git checkout or linked worktree
+explicitly reports that its immutable pin must be updated through the owning deployment or
+replaced by a published npm/Bun installation. Source-only `ocx update` exits nonzero so automation
+cannot mistake guidance for a successful update. An installed package already at the latest tag
+is a no-op. A running local proxy is stopped before files are replaced; an installed service is
+rebuilt and started automatically, while a foreground installation prints `ocx start` as the next
+step.
 
 ```bash
 ocx update
