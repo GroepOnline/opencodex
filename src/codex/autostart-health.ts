@@ -88,11 +88,13 @@ export function deriveStartupHealth(inputs: StartupHealthInputs): StartupHealth 
       : "at-risk";
   const recommendedCommand = status !== "at-risk"
     ? null
-    : inputs.routingKind === "custom-local" || inputs.routingKind === "unknown"
-      ? COMMANDS.restoreNative
-    : inputs.serviceSupported
-      ? COMMANDS.installService
-      : COMMANDS.restoreNative;
+    : inputs.routingKind === "custom-local"
+      ? null // Only the external service owner can repair this lifecycle.
+      : inputs.routingKind === "unknown"
+        ? COMMANDS.restoreNative
+        : inputs.serviceSupported
+          ? COMMANDS.installService
+          : COMMANDS.restoreNative;
   return {
     ...inputs,
     diagnosticStale: inputs.diagnosticStale ?? false,
@@ -146,7 +148,7 @@ export function startupHealthSummary(health: StartupHealth): string {
   if (health.protection === "service") return "protected by background service";
   const command = health.recommendedCommand ?? health.commands.restoreNative;
   if (health.routingKind === "unknown") return `AT RISK after restart (Codex routing could not be verified; run '${command}')`;
-  if (health.routingKind === "custom-local") return `AT RISK after restart (custom local gateway lifecycle is not managed by opencodex; run '${command}')`;
+  if (health.routingKind === "custom-local") return "AT RISK after restart (externally managed local gateway; verify its own startup service and upstream availability)";
   if (health.shimCoverage === "cli-only") return `AT RISK for Codex Desktop after restart (launcher shim covers CLI scripts only; run '${command}')`;
   if (health.serviceConflict) return `AT RISK after restart (background service managers conflict; run '${command}')`;
   if (health.serviceStale) return `AT RISK after restart (background service files are stale; run '${command}')`;

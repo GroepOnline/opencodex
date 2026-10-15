@@ -92,6 +92,16 @@ ocx status
 ocx status --json
 ```
 
+If Codex uses a user-owned local gateway (such as a localhost SSH tunnel to a
+remote OCX container), startup health conservatively reports **AT RISK** until
+that external lifecycle is independently verified. It cannot credit an OCX
+service or shim for a gateway it does not own. Check the tunnel's socket or
+service activation, the upstream container's restart policy, and actual
+reachability after reboot. OCX intentionally does not suggest `ocx restore` or
+`ocx service install` as automatic repairs for an externally managed gateway;
+those commands cannot restart the outside service. The startup dashboard shows
+this external-lifecycle guidance instead of local OCX recovery commands.
+
 Abbreviated example shape:
 
 ```json

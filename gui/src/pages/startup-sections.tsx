@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { useI18n, type TKey } from "../i18n/shared";
-import { startupRiskDetailKey } from "../startup-health-ui";
+import { recommendedStartupCommand, startupRiskDetailKey } from "../startup-health-ui";
 import { IconAlert, IconCheck, IconChevron, IconPower } from "../icons";
 import { Panel, PanelHeader } from "../components/primitives/panel";
 import {
@@ -424,6 +424,7 @@ export function StartupRecoverySection({
   const { t } = useI18n();
   const [open, setOpen] = useState(true);
   const recoveryTitleId = "startup-recovery-title";
+  const recommended = recommendedStartupCommand(data);
 
   return (
     <CollapsibleGroup
@@ -445,8 +446,11 @@ export function StartupRecoverySection({
       {open ? (
         <div id="startup-recovery-body" className="ocx-group-body">
           <Panel className="panel startup-actions" titleId="startup-recovery-panel">
-            <p className="muted">{t("startup.recoveryHint")}</p>
-            <div className="startup-command-list">
+            <p className="muted">
+              {t(data.routingKind === "custom-local" ? "startup.riskDetailCustomLocal" : "startup.recoveryHint")}
+            </p>
+            {data.routingKind !== "custom-local" && (
+              <div className="startup-command-list">
               {data.serviceSupported && (
                 <div className="startup-command-row">
                   <div>
@@ -494,13 +498,12 @@ export function StartupRecoverySection({
                     : t("startup.copy")}
                 </button>
               </div>
-            </div>
-            {data.status === "at-risk" && (
+              </div>
+            )}
+            {recommended && (
               <div className="notice notice-warn startup-action-notice" role="alert">
                 <IconPower />{" "}
-                {t("startup.recommended", {
-                  cmd: data.recommendedCommand ?? data.commands.installService,
-                })}
+                {t("startup.recommended", { cmd: recommended })}
               </div>
             )}
           </Panel>

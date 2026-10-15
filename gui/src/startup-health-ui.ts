@@ -11,6 +11,16 @@ export function startupRiskDetailKey(health: StartupRiskDetail): TKey {
   return "startup.riskDetail";
 }
 
+/** A custom local gateway is not controlled by the OCX service or restore commands. */
+export function recommendedStartupCommand(data: {
+  status: "native" | "protected" | "at-risk";
+  routingKind: StartupRiskDetail["routingKind"];
+  recommendedCommand: string | null;
+}): string | null {
+  if (data.status !== "at-risk" || data.routingKind === "custom-local") return null;
+  return data.recommendedCommand;
+}
+
 export interface SettingsPollEpoch {
   request: number;
   mutation: number;

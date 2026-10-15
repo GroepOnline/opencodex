@@ -383,6 +383,8 @@ export const nlOverrides: Partial<Record<TKey, string>> = {
   "startup.summary.atRisk": "Na reboot kan Codex zijn modellen kwijtraken",
   "startup.riskDetail":
     "Codex is op de lokale proxy gezet, maar er is geen duurzame service die hem weer start.",
+  "startup.riskDetailCustomLocal":
+    "Codex gebruikt een extern beheerde lokale gateway. Controleer de eigen service en upstream na een reboot; een OpenCodex-service of restore repareert die externe lifecycle niet.",
   "startup.safeDetail":
     "Routing en startmechanisme kloppen. Geen handmatige ocx start nodig na reboot.",
   "startup.routing": "Codex-routing",

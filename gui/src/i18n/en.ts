@@ -97,7 +97,7 @@ export const en = {
   "startup.riskDetail":
     "Codex is pinned to the local proxy, but no persistent service or healthy launcher shim will start it again.",
   "startup.riskDetailCustomLocal":
-    "Codex points to a custom local gateway. opencodex cannot manage or verify that gateway's restart lifecycle.",
+    "Codex uses an externally managed local gateway. Check its own service and upstream startup after reboot; OpenCodex service installation or restore cannot repair that external lifecycle.",
   "startup.riskDetailWindowsShim":
     "The launcher shim protects supported CLI scripts, but Codex Desktop and direct codex.exe launches can bypass it on Windows.",
   "startup.safeDetail":

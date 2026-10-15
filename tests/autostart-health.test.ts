@@ -62,6 +62,16 @@ describe("Codex startup health", () => {
     expect(deriveStartupHealth({ ...base, autostartEnabled: false, shimInstalled: true, shimHealthy: true }).status).toBe("at-risk");
   });
 
+  test("does not recommend restoring user-owned external gateways", () => {
+    const custom = deriveStartupHealth({ ...base, routingKind: "custom-local" });
+    expect(custom.status).toBe("at-risk"); // Without external lifecycle evidence, remain conservative.
+    expect(custom.rebootSafe).toBe(false);
+    expect(custom.recommendedCommand).toBeNull();
+    expect(startupHealthSummary(custom)).toContain("verify");
+    expect(startupHealthSummary(custom)).not.toContain("ocx restore");
+    expect(markStartupHealthDiagnosticStale(custom).recommendedCommand).toBeNull();
+  });
+
   test("native routing has no opencodex restart dependency", () => {
     const health = deriveStartupHealth({ ...base, routingKind: "native" });
     expect(health).toMatchObject({ status: "native", rebootSafe: true, protection: "none" });
@@ -126,13 +136,13 @@ describe("Codex startup health", () => {
       routingInjected: false,
       localRoutingDependency: true,
       protection: "none",
-      recommendedCommand: "ocx restore",
+      recommendedCommand: null,
     });
     expect(deriveStartupHealth({ ...base, routingKind: "custom-local", serviceInstalled: true, serviceViable: true, serviceEnabled: true, serviceRunning: true })).toMatchObject({
       status: "at-risk",
       rebootSafe: false,
       protection: "none",
-      recommendedCommand: "ocx restore",
+      recommendedCommand: null,
     });
     expect(deriveStartupHealth({ ...base, routingKind: "custom-remote" })).toMatchObject({
       status: "native",
@@ -145,7 +155,8 @@ describe("Codex startup health", () => {
       recommendedCommand: "ocx restore",
     });
     const custom = deriveStartupHealth({ ...base, routingKind: "custom-local" });
-    expect(startupHealthSummary(custom)).toContain("run 'ocx restore'");
+    expect(startupHealthSummary(custom)).toContain("verify");
+    expect(startupHealthSummary(custom)).not.toContain("ocx restore");
     expect(startupHealthSummary(custom)).not.toContain("ocx service install");
   });
 
