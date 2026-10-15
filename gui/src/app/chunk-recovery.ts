@@ -11,7 +11,10 @@ export interface ChunkRecoveryOptions {
 
 let currentAttempt: Promise<boolean> | null = null;
 
-/** Browser-specific dynamic-import failures; ordinary render errors never trigger a probe. */
+/**
+ * Match known browser chunk-load failure messages using Error.message or String(error).
+ * Errors from reading or converting the message propagate to the caller.
+ */
 export function isChunkLoadError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return /failed to fetch dynamically imported module|error loading dynamically imported module|importing a module script failed|unable to preload css|chunkloaderror|loading chunk [\w.-]+ failed/i.test(
@@ -19,6 +22,7 @@ export function isChunkLoadError(error: unknown): boolean {
   );
 }
 
+/** Return a trimmed, full 40-character hexadecimal gitSha, or null if absent or invalid. */
 function readGitSha(data: unknown): string | null {
   if (!data || typeof data !== "object" || !("gitSha" in data)) return null;
   const value = (data as { gitSha?: unknown }).gitSha;
@@ -28,9 +32,17 @@ function readGitSha(data: unknown): string | null {
 }
 
 /**
- * Reload only after public runtime provenance proves the loaded GUI is from another checkout.
- * Store the target SHA in session storage so each distinct deployment can recover once without
- * looping when a reload still serves a stale GUI bundle.
+ * Reload for a chunk-load failure only when /healthz reports a different full checkout SHA.
+ * clientSha must be the GUI build's full 40-character hexadecimal SHA; comparisons ignore case.
+ * Eligible concurrent calls share the pending attempt and its original options.
+ *
+ * Store the target SHA in the supplied storage before calling reload, suppressing another
+ * attempt for that same target while its marker remains. Use session storage to retain the
+ * marker across document reloads; a thrown reload leaves it set.
+ *
+ * Resolve true when reload returns normally, or false when recovery is ineligible, already
+ * attempted, or a fetch, JSON, storage, or reload operation fails. Errors while extracting
+ * the error message propagate synchronously before recovery starts.
  */
 export function recoverStaleChunk(
   error: unknown,

@@ -10,6 +10,7 @@ import DashboardShell from "./app/DashboardShell";
 const Landing = lazy(() => import("./landing/Landing"));
 installApiAuthFetch();
 
+/** Render the landing page or dashboard for the current route and update the page title. */
 export default function App() {
   const { route, navigateTo } = useAppRouteState();
   const { theme, setTheme } = useAppTheme();

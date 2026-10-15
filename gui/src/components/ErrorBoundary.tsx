@@ -27,10 +27,12 @@ export default class ErrorBoundary extends Component<
     };
   }
 
+  /** Reload the document when the user requests recovery. */
   private reload = () => {
     window.location.reload();
   };
 
+  /** Attempt stale-chunk recovery using the GUI build SHA and this tab's session storage. */
   componentDidCatch(error: Error) {
     void recoverStaleChunk(error, {
       clientSha: this.props.clientSha ?? null,
@@ -43,6 +45,7 @@ export default class ErrorBoundary extends Component<
     });
   }
 
+  /** Show children until an error is captured, then show its message and a reload action. */
   render() {
     if (!this.state.error) return this.props.children;
 

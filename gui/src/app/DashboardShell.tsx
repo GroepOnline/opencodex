@@ -14,6 +14,7 @@ import RouteOutlet from "./RouteOutlet";
 import DangerZone from "../features/system/components/DangerZone";
 import type { Theme } from "./use-app-theme";
 
+/** Render dashboard navigation and status polling with a page error boundary reset per route. */
 export default function DashboardShell({
   route,
   navigateTo,
