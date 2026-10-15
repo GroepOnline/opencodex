@@ -167,7 +167,12 @@ async function syncLibrary(options: DesktopSyncOptions): Promise<DesktopSyncResu
     headers: { authorization: `Bearer ${token.trim()}`, accept: "application/json" },
     redirect: "error", signal: AbortSignal.timeout(20_000),
   });
-  if (!response.ok) throw new DesktopSyncError(`Claude Desktop library returned HTTP ${response.status}`);
+  if (!response.ok) {
+    const reason = response.status === 404
+      ? "; apply the Claude Desktop profile on the OCX gateway first"
+      : "";
+    throw new DesktopSyncError(`Claude Desktop library returned HTTP ${response.status}${reason}`);
+  }
   const payload = await readBoundedJson(response, MAX_LIBRARY_BYTES);
   if (!object(payload) || payload.ok !== true || typeof payload.appliedId !== "string"
     || !SAFE_ID.test(payload.appliedId) || !object(payload.config) || !object(payload.meta)

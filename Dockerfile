@@ -56,6 +56,7 @@ COPY --from=build --chown=bun:bun --chmod=0555 /app/scripts/container-entrypoint
 
 ENV NODE_ENV=production \
     OPENCODEX_HOME=/var/lib/opencodex \
+    OPENCODEX_CLAUDE_DESKTOP_CONFIG_DIR=/var/lib/opencodex/claude-desktop \
     OPENCODEX_BIND_HOST=0.0.0.0 \
     OPENCODEX_HEALTH_HOST=127.0.0.1 \
     OPENCODEX_HEALTH_PORT=10100 \
