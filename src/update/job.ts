@@ -2,10 +2,21 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { atomicWriteFile, getConfigDir, loadConfig, readPid, readRuntimePort } from "../config";
+import {
+  atomicWriteFile,
+  getConfigDir,
+  loadConfig,
+  readPid,
+  readRuntimePort,
+} from "../config";
 import { isProcessAlive, killProxy } from "../lib/process-control";
 import { reclaimListenPort } from "../server/port-reclaim";
-import { isOpencodexHealthz, probeHostname, proxyIdentityAt, type HealthzIdentity } from "../server/proxy-liveness";
+import {
+  isOpencodexHealthz,
+  probeHostname,
+  proxyIdentityAt,
+  type HealthzIdentity,
+} from "../server/proxy-liveness";
 import { isServiceInstalled } from "../service";
 import {
   type Channel,
@@ -16,13 +27,18 @@ import {
   defaultUpdateTag,
   detectInstall,
   latestVersion,
+  isDetachedSourceCheckout,
   updateCommand,
   updateCommandStr,
 } from "./index";
 import { isNewer } from "./notify";
-import { handoffWindowsTrayForUpdate, planWindowsTrayUpdate } from "./tray-update-plan.mjs";
+import {
+  handoffWindowsTrayForUpdate,
+  planWindowsTrayUpdate,
+} from "./tray-update-plan.mjs";
 
-const RELEASE_NOTES_URL = "https://github.com/GroepOnline/opencodex/releases/latest";
+const RELEASE_NOTES_URL =
+  "https://github.com/GroepOnline/opencodex/releases/latest";
 const UPDATE_JOB_FILENAME = "update-job.json";
 const UPDATE_TIMEOUT_MS = 180_000;
 const RESTART_TIMEOUT_MS = 60_000;
@@ -68,7 +84,11 @@ export interface UpdateJobState {
 }
 
 export class UpdateJobError extends Error {
-  constructor(message: string, readonly status = 400, readonly code = "update_error") {
+  constructor(
+    message: string,
+    readonly status = 400,
+    readonly code = "update_error",
+  ) {
     super(message);
   }
 }
@@ -77,6 +97,7 @@ export interface UpdateCheckDeps {
   currentVersion: () => string;
   detectInstall: () => Installer;
   latestVersion: (tag: Channel) => string | null;
+  isDetachedSourceCheckout?: () => boolean;
 }
 
 interface UpdateWorkerProcess {
@@ -87,7 +108,11 @@ interface UpdateWorkerProcess {
 
 export interface StartUpdateJobDeps {
   checkForUpdateFn: (channel: Channel) => UpdateCheckResult;
-  spawnWorkerFn: (jobId: string, channel: Channel, restart: boolean) => UpdateWorkerProcess;
+  spawnWorkerFn: (
+    jobId: string,
+    channel: Channel,
+    restart: boolean,
+  ) => UpdateWorkerProcess;
   isProcessAliveFn: (pid: number) => boolean;
   nowMs: () => number;
 }
@@ -104,19 +129,32 @@ function nodeBin(): string {
 
 function packageLauncherPath(): string {
   // This module lives at src/update/job.ts — the launcher is <pkg-root>/bin/ocx.mjs.
-  return join(dirname(fileURLToPath(import.meta.url)), "..", "..", "bin", "ocx.mjs");
+  return join(
+    dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "..",
+    "bin",
+    "ocx.mjs",
+  );
 }
 
 function formatCommand(bin: string, args: string[]): string {
   return `${bin} ${args.join(" ")}`;
 }
 
-function manualSourceCommand(): string {
-  return "git pull && bun install && bun run build:gui";
+function manualSourceCommand(detached = isDetachedSourceCheckout()): string {
+  return detached
+    ? "Roll forward this pinned detached Git worktree through its owning deployment, or migrate to a published npm/Bun installation."
+    : "git pull && bun install && bun run build:gui";
 }
 
-export function normalizeUpdateChannel(raw: string | null | undefined, current = currentVersion()): Channel {
-  return raw === "latest" || raw === "preview" ? raw : defaultUpdateTag(current);
+export function normalizeUpdateChannel(
+  raw: string | null | undefined,
+  current = currentVersion(),
+): Channel {
+  return raw === "latest" || raw === "preview"
+    ? raw
+    : defaultUpdateTag(current);
 }
 
 export function updateJobPath(): string {
@@ -135,16 +173,27 @@ function writeJob(job: UpdateJobState): void {
 
 export function readUpdateJob(jobId?: string | null): UpdateJobState | null {
   try {
-    const parsed = JSON.parse(readFileSync(updateJobPath(), "utf8")) as UpdateJobState;
+    const parsed = JSON.parse(
+      readFileSync(updateJobPath(), "utf8"),
+    ) as UpdateJobState;
     if (jobId && parsed.id !== jobId) return null;
-    if (!parsed || typeof parsed.id !== "string" || typeof parsed.status !== "string") return null;
+    if (
+      !parsed ||
+      typeof parsed.id !== "string" ||
+      typeof parsed.status !== "string"
+    )
+      return null;
     return parsed;
   } catch {
     return null;
   }
 }
 
-function updateJob(job: UpdateJobState, patch: Partial<UpdateJobState>, logLine?: string): UpdateJobState {
+function updateJob(
+  job: UpdateJobState,
+  patch: Partial<UpdateJobState>,
+  logLine?: string,
+): UpdateJobState {
   const current = readUpdateJob(job.id) ?? job;
   const next = {
     ...current,
@@ -173,9 +222,14 @@ export function updateExecutionCommand(
     const command = updateCommand(installer, channel, resolvedVersion);
     const bin = process.platform === "win32" ? process.execPath : command.bin;
     const { args } = command;
-    return { bin, args, display: updateCommandStr(installer, channel, resolvedVersion) };
+    return {
+      bin,
+      args,
+      display: updateCommandStr(installer, channel, resolvedVersion),
+    };
   }
-  return { bin: "sh", args: ["-lc", manualSourceCommand()], display: manualSourceCommand() };
+  // Source updates are manual-only. Do not accidentally execute Git commands from a worker.
+  return { bin: "sh", args: ["-lc", "exit 1"], display: manualSourceCommand() };
 }
 
 export function restartCommand(
@@ -187,12 +241,18 @@ export function restartCommand(
   proxyOnly = false,
 ): { mode: "service" | "proxy"; bin: string; args: string[]; display: string } {
   const mode = serviceInstalled ? "service" : "proxy";
-  const pinPort = !serviceInstalled && typeof port === "number" && Number.isFinite(port) && port > 0;
+  const pinPort =
+    !serviceInstalled &&
+    typeof port === "number" &&
+    Number.isFinite(port) &&
+    port > 0;
   const startArgs = pinPort
     ? [launcher, "start", "--port", String(Math.trunc(port))]
     : [launcher, "start"];
   if (!serviceInstalled && proxyOnly) startArgs.push("--proxy-only");
-  const svcArgs = serviceInstalled ? [launcher, ...(serviceArgs ?? ["service", "install"])] : startArgs;
+  const svcArgs = serviceInstalled
+    ? [launcher, ...(serviceArgs ?? ["service", "install"])]
+    : startArgs;
   if (installer === "npm") {
     const bin = nodeBin();
     const args = svcArgs;
@@ -216,11 +276,19 @@ export function checkForUpdate(
   const latest = installer === "source" ? null : deps.latestVersion(channel);
   const updateAvailable = !!latest && isNewer(latest, current, channel);
   let reason: string | undefined;
-  let command = installer === "source" ? manualSourceCommand() : updateExecutionCommand(installer, channel).display;
+  const manualCommand =
+    installer === "source"
+      ? manualSourceCommand(
+          deps.isDetachedSourceCheckout?.() ?? isDetachedSourceCheckout(),
+        )
+      : "";
+  const command =
+    installer === "source"
+      ? manualCommand
+      : updateExecutionCommand(installer, channel).display;
 
   if (installer === "source") {
     reason = "source_checkout";
-    command = manualSourceCommand();
   } else if (!latest) {
     reason = "latest_unavailable";
   } else if (!updateAvailable) {
@@ -259,28 +327,44 @@ export function staleActiveUpdateJobReason(
   isAlive: (pid: number) => boolean = isProcessAlive,
 ): string | null {
   if (job.status !== "running" && job.status !== "restarting") return null;
-  if (typeof job.pid === "number" && Number.isSafeInteger(job.pid) && job.pid > 0) {
-    return isAlive(job.pid) ? null : `update worker PID ${job.pid} is no longer running`;
+  if (
+    typeof job.pid === "number" &&
+    Number.isSafeInteger(job.pid) &&
+    job.pid > 0
+  ) {
+    return isAlive(job.pid)
+      ? null
+      : `update worker PID ${job.pid} is no longer running`;
   }
   const updatedAt = Date.parse(job.updatedAt);
-  if (Number.isFinite(updatedAt) && now - updatedAt >= UPDATE_JOB_LEGACY_STALE_MS) {
+  if (
+    Number.isFinite(updatedAt) &&
+    now - updatedAt >= UPDATE_JOB_LEGACY_STALE_MS
+  ) {
     return "legacy active update record has no worker PID and exceeded the stale window";
   }
   return null;
 }
 
 const defaultStartUpdateJobDeps: StartUpdateJobDeps = {
-  checkForUpdateFn: channel => checkForUpdate(channel),
-  spawnWorkerFn: (jobId, channel, restart) => spawn(
-    process.execPath,
-    [process.argv[1], "__gui-update-worker", jobId, channel, restart ? "restart" : "no-restart"],
-    {
-      detached: true,
-      stdio: "ignore",
-      windowsHide: true,
-      env: { ...process.env, OCX_SERVICE: "1" },
-    },
-  ),
+  checkForUpdateFn: (channel) => checkForUpdate(channel),
+  spawnWorkerFn: (jobId, channel, restart) =>
+    spawn(
+      process.execPath,
+      [
+        process.argv[1],
+        "__gui-update-worker",
+        jobId,
+        channel,
+        restart ? "restart" : "no-restart",
+      ],
+      {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+        env: { ...process.env, OCX_SERVICE: "1" },
+      },
+    ),
   isProcessAliveFn: isProcessAlive,
   nowMs: Date.now,
 };
@@ -299,18 +383,30 @@ export function startUpdateJob(
       resolvedDeps.isProcessAliveFn,
     );
     if (!staleReason) {
-      throw new UpdateJobError("An update job is already running", 409, "update_already_running");
+      throw new UpdateJobError(
+        "An update job is already running",
+        409,
+        "update_already_running",
+      );
     }
     updateJob(
       running,
-      { status: "failed", error: `Recovered stale update job: ${staleReason}.`, exitCode: null },
+      {
+        status: "failed",
+        error: `Recovered stale update job: ${staleReason}.`,
+        exitCode: null,
+      },
       `Recovered stale update job: ${staleReason}.`,
     );
   }
 
   const check = resolvedDeps.checkForUpdateFn(channel);
   if (!check.canUpdate) {
-    throw new UpdateJobError(check.reason ?? "No update is available", 409, check.reason ?? "update_unavailable");
+    throw new UpdateJobError(
+      check.reason ?? "No update is available",
+      409,
+      check.reason ?? "update_unavailable",
+    );
   }
 
   const id = newJobId();
@@ -327,7 +423,9 @@ export function startUpdateJob(
     restart,
     command: check.command,
     releaseNotesUrl: check.releaseNotesUrl,
-    log: [`Update job queued for ${check.currentVersion} -> ${check.latestVersion}.`],
+    log: [
+      `Update job queued for ${check.currentVersion} -> ${check.latestVersion}.`,
+    ],
   };
   writeJob(job);
 
@@ -336,20 +434,55 @@ export function startUpdateJob(
     child = resolvedDeps.spawnWorkerFn(id, channel, restart);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    updateJob(job, { status: "failed", error: `Could not start update worker: ${message}` }, "Update worker failed to start.");
-    throw new UpdateJobError("Could not start update worker", 500, "update_worker_start_failed");
+    updateJob(
+      job,
+      { status: "failed", error: `Could not start update worker: ${message}` },
+      "Update worker failed to start.",
+    );
+    throw new UpdateJobError(
+      "Could not start update worker",
+      500,
+      "update_worker_start_failed",
+    );
   }
-  if (typeof child.pid !== "number" || !Number.isSafeInteger(child.pid) || child.pid <= 0) {
-    updateJob(job, { status: "failed", error: "Could not start update worker: no worker PID was returned." }, "Update worker failed to start.");
-    throw new UpdateJobError("Could not start update worker", 500, "update_worker_start_failed");
+  if (
+    typeof child.pid !== "number" ||
+    !Number.isSafeInteger(child.pid) ||
+    child.pid <= 0
+  ) {
+    updateJob(
+      job,
+      {
+        status: "failed",
+        error: "Could not start update worker: no worker PID was returned.",
+      },
+      "Update worker failed to start.",
+    );
+    throw new UpdateJobError(
+      "Could not start update worker",
+      500,
+      "update_worker_start_failed",
+    );
   }
-  const startedJob = updateJob(job, { pid: child.pid }, `Update worker started as PID ${child.pid}.`);
-  child.once("error", error => {
+  const startedJob = updateJob(
+    job,
+    { pid: child.pid },
+    `Update worker started as PID ${child.pid}.`,
+  );
+  child.once("error", (error) => {
     const current = readUpdateJob(id);
-    if (!current || current.pid !== child.pid || (current.status !== "running" && current.status !== "restarting")) return;
+    if (
+      !current ||
+      current.pid !== child.pid ||
+      (current.status !== "running" && current.status !== "restarting")
+    )
+      return;
     updateJob(
       current,
-      { status: "failed", error: `Update worker failed to start: ${error.message}` },
+      {
+        status: "failed",
+        error: `Update worker failed to start: ${error.message}`,
+      },
       "Update worker emitted a startup error.",
     );
   });
@@ -357,7 +490,12 @@ export function startUpdateJob(
   return startedJob;
 }
 
-function runLoggedCommand(job: UpdateJobState, bin: string, args: string[], timeout: number): { status: number | null; signal: NodeJS.Signals | null } {
+function runLoggedCommand(
+  job: UpdateJobState,
+  bin: string,
+  args: string[],
+  timeout: number,
+): { status: number | null; signal: NodeJS.Signals | null } {
   job = updateJob(job, {}, `$ ${formatCommand(bin, args)}`);
   const result = spawnSync(bin, args, {
     encoding: "utf8",
@@ -371,8 +509,20 @@ function runLoggedCommand(job: UpdateJobState, bin: string, args: string[], time
   return { status: result.status, signal: result.signal };
 }
 
-function spawnDetachedStart(job: UpdateJobState, installer: Installer, port?: number, proxyOnly = false): void {
-  const cmd = restartCommand(false, installer, packageLauncherPath(), port, undefined, proxyOnly);
+function spawnDetachedStart(
+  job: UpdateJobState,
+  installer: Installer,
+  port?: number,
+  proxyOnly = false,
+): void {
+  const cmd = restartCommand(
+    false,
+    installer,
+    packageLauncherPath(),
+    port,
+    undefined,
+    proxyOnly,
+  );
   const env = { ...process.env };
   delete env.OCX_SERVICE;
   updateJob(job, {}, `$ ${cmd.display}`);
@@ -394,11 +544,19 @@ export interface RestartProxyIdentity {
 /** Test seam: the wait/spawn pair is injectable so the restart path is verifiable. */
 export interface RestartIo {
   waitForPort?: typeof reclaimListenPort;
-  spawnStart?: (job: UpdateJobState, installer: Installer, port?: number, proxyOnly?: boolean) => void;
+  spawnStart?: (
+    job: UpdateJobState,
+    installer: Installer,
+    port?: number,
+    proxyOnly?: boolean,
+  ) => void;
   serviceInstalledFn?: () => boolean;
   probeProxy?: (port: number, hostname?: string) => Promise<boolean>;
   /** Richer /healthz read for update-correlated restart evidence (pid + version). */
-  probeProxyIdentity?: (port: number, hostname?: string) => Promise<RestartProxyIdentity | null>;
+  probeProxyIdentity?: (
+    port: number,
+    hostname?: string,
+  ) => Promise<RestartProxyIdentity | null>;
   sleepMs?: (ms: number) => Promise<void>;
   now?: () => number;
   /** Service-mode install/reinstall command (defaults to spawnSync via runLoggedCommand). */
@@ -410,14 +568,24 @@ export interface RestartIo {
   /** Override the explicit restart path (used by finishGuiUpdateRestart tests). */
   restartAfterUpdateFn?: (
     job: UpdateJobState,
-    captured?: { port: number; hostname: string; oldPid?: number; proxyOnly?: boolean },
+    captured?: {
+      port: number;
+      hostname: string;
+      oldPid?: number;
+      proxyOnly?: boolean;
+    },
     io?: RestartIo,
   ) => Promise<void>;
 }
 
 async function restartAfterUpdate(
   job: UpdateJobState,
-  captured?: { port: number; hostname: string; oldPid?: number; proxyOnly?: boolean },
+  captured?: {
+    port: number;
+    hostname: string;
+    oldPid?: number;
+    proxyOnly?: boolean;
+  },
   io: RestartIo = {},
 ): Promise<void> {
   const serviceInstalled = (io.serviceInstalledFn ?? isServiceInstalled)();
@@ -427,17 +595,26 @@ async function restartAfterUpdate(
   // port to wait on; config is only the cold-start fallback.
   const port = captured?.port ?? config.port ?? 10100;
   const hostname = captured?.hostname ?? config.hostname ?? "127.0.0.1";
-  const oldPid = typeof captured?.oldPid === "number" && captured.oldPid > 0
-    ? captured.oldPid
-    : undefined;
+  const oldPid =
+    typeof captured?.oldPid === "number" && captured.oldPid > 0
+      ? captured.oldPid
+      : undefined;
   let svcArgs: string[] | undefined;
   if (serviceInstalled) {
     try {
       const { serviceReinstallArgs } = await import("../service");
       svcArgs = serviceReinstallArgs();
-    } catch { /* fallback to default service install */ }
+    } catch {
+      /* fallback to default service install */
+    }
   }
-  const cmd = restartCommand(serviceInstalled, job.installer, packageLauncherPath(), port, svcArgs);
+  const cmd = restartCommand(
+    serviceInstalled,
+    job.installer,
+    packageLauncherPath(),
+    port,
+    svcArgs,
+  );
   const waitFn = io.waitForPort ?? reclaimListenPort;
   const reclaimOpts = {
     timeoutMs: RESTART_PORT_RECLAIM_MS,
@@ -452,13 +629,19 @@ async function restartAfterUpdate(
     // captured old PID when trusted), then reinstall wrappers that bake `--port`.
     const freed = await waitFn(port, hostname, reclaimOpts);
     if (!freed) {
-      updateJob(job, {}, `Port ${port} still busy after ${Math.trunc(RESTART_PORT_RECLAIM_MS / 1000)}s; refusing to hop — reinstall may fail until the port is free.`);
+      updateJob(
+        job,
+        {},
+        `Port ${port} still busy after ${Math.trunc(RESTART_PORT_RECLAIM_MS / 1000)}s; refusing to hop — reinstall may fail until the port is free.`,
+      );
     }
     const prevBake = process.env.OCX_BAKE_PORT;
     process.env.OCX_BAKE_PORT = String(Math.trunc(port));
     let serviceOk = false;
     try {
-      const run = io.runService ?? ((j, bin, args) => runLoggedCommand(j, bin, args, RESTART_TIMEOUT_MS));
+      const run =
+        io.runService ??
+        ((j, bin, args) => runLoggedCommand(j, bin, args, RESTART_TIMEOUT_MS));
       const result = run(job, cmd.bin, cmd.args);
       serviceOk = result.status === 0;
       if (!serviceOk) {
@@ -468,7 +651,11 @@ async function restartAfterUpdate(
         // Falling back to a direct proxy start keeps the update from leaving the proxy
         // stopped; the stale service manager can be refreshed later with an admin
         // `ocx service install`.
-        updateJob(job, {}, `Service reinstall failed (exit ${result.status ?? "?"}); falling back to a direct proxy start. Run 'ocx service install' as administrator to refresh the background service manager.`);
+        updateJob(
+          job,
+          {},
+          `Service reinstall failed (exit ${result.status ?? "?"}); falling back to a direct proxy start. Run 'ocx service install' as administrator to refresh the background service manager.`,
+        );
       }
     } finally {
       if (prevBake === undefined) delete process.env.OCX_BAKE_PORT;
@@ -489,31 +676,46 @@ async function restartAfterUpdate(
   // Only the trusted pre-update PID may be killed; never an arbitrary ocx listener.
   const freed = await waitFn(port, hostname, reclaimOpts);
   if (!freed) {
-    updateJob(job, {}, `Port ${port} still busy after ${Math.trunc(RESTART_PORT_RECLAIM_MS / 1000)}s (reclaim could not free the socket); not starting on another port. Retry 'ocx start --port ${port}${captured?.proxyOnly ? " --proxy-only" : ""}'.`);
+    updateJob(
+      job,
+      {},
+      `Port ${port} still busy after ${Math.trunc(RESTART_PORT_RECLAIM_MS / 1000)}s (reclaim could not free the socket); not starting on another port. Retry 'ocx start --port ${port}${captured?.proxyOnly ? " --proxy-only" : ""}'.`,
+    );
     return;
   }
-  (io.spawnStart ?? spawnDetachedStart)(job, job.installer, port, captured?.proxyOnly === true);
+  (io.spawnStart ?? spawnDetachedStart)(
+    job,
+    job.installer,
+    port,
+    captured?.proxyOnly === true,
+  );
 }
 
 /** Exposed for tests: drives the non-service restart path with injected io. */
 export function restartAfterUpdateForTests(
   job: UpdateJobState,
-  captured: { port: number; hostname: string; oldPid?: number; proxyOnly?: boolean },
+  captured: {
+    port: number;
+    hostname: string;
+    oldPid?: number;
+    proxyOnly?: boolean;
+  },
   io: RestartIo,
 ): Promise<void> {
   return restartAfterUpdate(job, captured, io);
 }
 
 function restartFailureHint(port: number, proxyOnly = false): string {
-  return `Update installed, but the restarted proxy did not stay healthy on port ${port}. `
-    + `Try 'ocx start --port ${port}${proxyOnly ? " --proxy-only" : ""}'. `
-    + "If the update log shows bun postinstall or EPERM warnings, "
-    + "reinstall with 'npm install -g --allow-scripts=bun @groeponline/opencodex'.";
+  return (
+    `Update installed, but the restarted proxy did not stay healthy on port ${port}. ` +
+    `Try 'ocx start --port ${port}${proxyOnly ? " --proxy-only" : ""}'. ` +
+    "If the update log shows bun postinstall or EPERM warnings, " +
+    "reinstall with 'npm install -g --allow-scripts=bun @groeponline/opencodex'."
+  );
 }
 
 type AwaitHealthyResult =
-  | { ok: true }
-  | { ok: false; reason: "timeout" | "flapped" };
+  { ok: true } | { ok: false; reason: "timeout" | "flapped" };
 
 /**
  * Wait for an identity-checked /healthz on the captured listen target, then require a short
@@ -524,12 +726,15 @@ async function awaitRestartedProxyHealthy(
   captured: { port: number; hostname: string },
   io: RestartIo = {},
 ): Promise<AwaitHealthyResult> {
-  const probe = io.probeProxy ?? (async (port: number, hostname?: string) => (
-    !!(await proxyIdentityAt(port, { hostname }))
-  ));
-  const sleep = io.sleepMs ?? (async (ms: number) => {
-    await new Promise(resolve => setTimeout(resolve, ms));
-  });
+  const probe =
+    io.probeProxy ??
+    (async (port: number, hostname?: string) =>
+      !!(await proxyIdentityAt(port, { hostname })));
+  const sleep =
+    io.sleepMs ??
+    (async (ms: number) => {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+    });
   const now = io.now ?? (() => Date.now());
   const port = captured.port;
   const hostname = captured.hostname;
@@ -540,16 +745,28 @@ async function awaitRestartedProxyHealthy(
     // becoming healthy on the final tick must not be mistaken for a timeout.
     const finalProbe = now() >= startDeadline;
     if (await probe(port, hostname)) {
-      updateJob(job, {}, `Proxy reported healthy on ${hostname}:${port}; confirming it stays up...`);
+      updateJob(
+        job,
+        {},
+        `Proxy reported healthy on ${hostname}:${port}; confirming it stays up...`,
+      );
       const stableUntil = now() + RESTART_STABILITY_WINDOW_MS;
       while (now() < stableUntil) {
         if (!(await probe(port, hostname))) {
-          updateJob(job, {}, `Proxy became unhealthy on ${hostname}:${port} during the stability window.`);
+          updateJob(
+            job,
+            {},
+            `Proxy became unhealthy on ${hostname}:${port} during the stability window.`,
+          );
           return { ok: false, reason: "flapped" };
         }
         await sleep(500);
       }
-      updateJob(job, {}, `Proxy stayed healthy for ${Math.trunc(RESTART_STABILITY_WINDOW_MS / 1000)}s after restart.`);
+      updateJob(
+        job,
+        {},
+        `Proxy stayed healthy for ${Math.trunc(RESTART_STABILITY_WINDOW_MS / 1000)}s after restart.`,
+      );
       return { ok: true };
     }
     if (finalProbe) break;
@@ -582,14 +799,19 @@ async function confirmRestartedProxy(
   if (result.ok) return true;
   const port = captured.port;
   const hostname = captured.hostname;
-  const error = result.reason === "flapped"
-    ? `proxy restart became unhealthy on ${hostname}:${port}`
-    : `proxy restart never became healthy on ${hostname}:${port}`;
-  updateJob(job, {
-    status: "failed",
-    restarted: false,
-    error,
-  }, restartFailureHint(port, captured.proxyOnly));
+  const error =
+    result.reason === "flapped"
+      ? `proxy restart became unhealthy on ${hostname}:${port}`
+      : `proxy restart never became healthy on ${hostname}:${port}`;
+  updateJob(
+    job,
+    {
+      status: "failed",
+      restarted: false,
+      error,
+    },
+    restartFailureHint(port, captured.proxyOnly),
+  );
   return false;
 }
 
@@ -606,9 +828,12 @@ async function defaultProbeProxyIdentity(
   hostname?: string,
 ): Promise<RestartProxyIdentity | null> {
   try {
-    const res = await fetch(`http://${probeHostname(hostname)}:${port}/healthz`, {
-      signal: AbortSignal.timeout(750),
-    });
+    const res = await fetch(
+      `http://${probeHostname(hostname)}:${port}/healthz`,
+      {
+        signal: AbortSignal.timeout(750),
+      },
+    );
     if (!res.ok) return null;
     const body = (await res.json().catch(() => null)) as HealthzIdentity | null;
     if (!isOpencodexHealthz(body)) return null;
@@ -634,13 +859,16 @@ export function npmSelfUpdateRestartEvidence(
 ): { ok: true; detail: string } | { ok: false; reason: string } {
   if (!identity) return { ok: false, reason: "could not read proxy identity" };
 
-  const oldPid = typeof captured.oldPid === "number" && captured.oldPid > 0
-    ? captured.oldPid
-    : undefined;
-  const livePid = typeof identity.pid === "number" && identity.pid > 0 ? identity.pid : null;
-  const expected = typeof job.latestVersion === "string" && job.latestVersion.length > 0
-    ? job.latestVersion
-    : null;
+  const oldPid =
+    typeof captured.oldPid === "number" && captured.oldPid > 0
+      ? captured.oldPid
+      : undefined;
+  const livePid =
+    typeof identity.pid === "number" && identity.pid > 0 ? identity.pid : null;
+  const expected =
+    typeof job.latestVersion === "string" && job.latestVersion.length > 0
+      ? job.latestVersion
+      : null;
   const versionMatches = expected !== null && identity.version === expected;
 
   if (oldPid !== undefined) {
@@ -648,21 +876,39 @@ export function npmSelfUpdateRestartEvidence(
       return { ok: false, reason: "still the pre-update PID" };
     }
     if (livePid !== null) {
-      if (expected !== null && identity.version && identity.version !== expected) {
-        return { ok: false, reason: `new pid but version ${identity.version} !== expected ${expected}` };
+      if (
+        expected !== null &&
+        identity.version &&
+        identity.version !== expected
+      ) {
+        return {
+          ok: false,
+          reason: `new pid but version ${identity.version} !== expected ${expected}`,
+        };
       }
       return { ok: true, detail: `pid changed ${oldPid}→${livePid}` };
     }
     // Pre-update PID known but healthz omitted pid — only accept matching target version.
-    if (versionMatches) return { ok: true, detail: `version ${identity.version}` };
-    return { ok: false, reason: "no PID in healthz and version did not match the update target" };
+    if (versionMatches)
+      return { ok: true, detail: `version ${identity.version}` };
+    return {
+      ok: false,
+      reason: "no PID in healthz and version did not match the update target",
+    };
   }
 
-  if (versionMatches) return { ok: true, detail: `version ${identity.version}` };
+  if (versionMatches)
+    return { ok: true, detail: `version ${identity.version}` };
   if (expected !== null && identity.version && identity.version !== expected) {
-    return { ok: false, reason: `version ${identity.version} !== expected ${expected}` };
+    return {
+      ok: false,
+      reason: `version ${identity.version} !== expected ${expected}`,
+    };
   }
-  return { ok: false, reason: "no pre-update PID capture and no expected-version match" };
+  return {
+    ok: false,
+    reason: "no pre-update PID capture and no expected-version match",
+  };
 }
 
 /**
@@ -684,7 +930,12 @@ export function npmSelfUpdateRestartEvidence(
  */
 export async function finishGuiUpdateRestart(
   job: UpdateJobState,
-  captured: { port: number; hostname: string; oldPid?: number; proxyOnly?: boolean },
+  captured: {
+    port: number;
+    hostname: string;
+    oldPid?: number;
+    proxyOnly?: boolean;
+  },
   installer: Installer,
   io: RestartIo = {},
 ): Promise<boolean> {
@@ -693,10 +944,9 @@ export async function finishGuiUpdateRestart(
     if (serviceInstalled) {
       const already = await awaitRestartedProxyHealthy(job, captured, io);
       if (already.ok) {
-        const identity = await (io.probeProxyIdentity ?? defaultProbeProxyIdentity)(
-          captured.port,
-          captured.hostname,
-        );
+        const identity = await (
+          io.probeProxyIdentity ?? defaultProbeProxyIdentity
+        )(captured.port, captured.hostname);
         const evidence = npmSelfUpdateRestartEvidence(job, captured, identity);
         if (evidence.ok) {
           updateJob(
@@ -712,7 +962,11 @@ export async function finishGuiUpdateRestart(
           `npm self-update left a healthy proxy but ${evidence.reason}; performing explicit restart...`,
         );
       } else {
-        updateJob(job, {}, "npm self-update did not leave a healthy proxy; performing explicit restart...");
+        updateJob(
+          job,
+          {},
+          "npm self-update did not leave a healthy proxy; performing explicit restart...",
+        );
       }
     }
   }
@@ -733,21 +987,31 @@ export async function finishGuiUpdateRestart(
  */
 async function confirmNpmExplicitRestart(
   job: UpdateJobState,
-  captured: { port: number; hostname: string; oldPid?: number; proxyOnly?: boolean },
+  captured: {
+    port: number;
+    hostname: string;
+    oldPid?: number;
+    proxyOnly?: boolean;
+  },
   io: RestartIo = {},
 ): Promise<boolean> {
   const healthy = await awaitRestartedProxyHealthy(job, captured, io);
   if (!healthy.ok) {
     const port = captured.port;
     const hostname = captured.hostname;
-    const error = healthy.reason === "flapped"
-      ? `proxy restart became unhealthy on ${hostname}:${port}`
-      : `proxy restart never became healthy on ${hostname}:${port}`;
-    updateJob(job, {
-      status: "failed",
-      restarted: false,
-      error,
-    }, restartFailureHint(port, captured.proxyOnly));
+    const error =
+      healthy.reason === "flapped"
+        ? `proxy restart became unhealthy on ${hostname}:${port}`
+        : `proxy restart never became healthy on ${hostname}:${port}`;
+    updateJob(
+      job,
+      {
+        status: "failed",
+        restarted: false,
+        error,
+      },
+      restartFailureHint(port, captured.proxyOnly),
+    );
     return false;
   }
 
@@ -757,11 +1021,15 @@ async function confirmNpmExplicitRestart(
   );
   const evidence = npmSelfUpdateRestartEvidence(job, captured, identity);
   if (!evidence.ok) {
-    updateJob(job, {
-      status: "failed",
-      restarted: false,
-      error: `proxy restart did not show update-correlated identity (${evidence.reason})`,
-    }, restartFailureHint(captured.port, captured.proxyOnly));
+    updateJob(
+      job,
+      {
+        status: "failed",
+        restarted: false,
+        error: `proxy restart did not show update-correlated identity (${evidence.reason})`,
+      },
+      restartFailureHint(captured.port, captured.proxyOnly),
+    );
     return false;
   }
 
@@ -773,7 +1041,11 @@ async function confirmNpmExplicitRestart(
   return true;
 }
 
-export async function runGuiUpdateWorker(jobId: string, channel: Channel, restart: boolean): Promise<void> {
+export async function runGuiUpdateWorker(
+  jobId: string,
+  channel: Channel,
+  restart: boolean,
+): Promise<void> {
   let job = readUpdateJob(jobId);
   const check = checkForUpdate(channel);
   const now = new Date().toISOString();
@@ -784,12 +1056,16 @@ export async function runGuiUpdateWorker(jobId: string, channel: Channel, restar
   const livePid = readPid();
   const preUpdateConfig = loadConfig();
   const runtimeTrusted = !!(rt && livePid && rt.pid === livePid);
-  const configPort = typeof preUpdateConfig.port === "number" && preUpdateConfig.port > 0
-    ? preUpdateConfig.port
-    : 10100;
+  const configPort =
+    typeof preUpdateConfig.port === "number" && preUpdateConfig.port > 0
+      ? preUpdateConfig.port
+      : 10100;
   const captured = {
     port: runtimeTrusted ? rt.port : configPort,
-    hostname: (runtimeTrusted ? rt.hostname : undefined) ?? preUpdateConfig.hostname ?? "127.0.0.1",
+    hostname:
+      (runtimeTrusted ? rt.hostname : undefined) ??
+      preUpdateConfig.hostname ??
+      "127.0.0.1",
     ...(runtimeTrusted && livePid ? { oldPid: livePid } : {}),
     ...(runtimeTrusted && rt?.proxyOnly === true ? { proxyOnly: true } : {}),
   };
@@ -826,21 +1102,32 @@ export async function runGuiUpdateWorker(jobId: string, channel: Channel, restar
       updateJob(job, { status: "failed", error: integrity.reason });
       return;
     }
-    const integrityLine = integrity.ok === "skipped"
-      ? `Integrity pre-flight skipped: ${integrity.reason}. Proceeding best-effort.`
-      : `Verified ${PKG}@${check.latestVersion} integrity metadata ${integrity.integrity.slice(0, 24)}…`;
+    const integrityLine =
+      integrity.ok === "skipped"
+        ? `Integrity pre-flight skipped: ${integrity.reason}. Proceeding best-effort.`
+        : `Verified ${PKG}@${check.latestVersion} integrity metadata ${integrity.integrity.slice(0, 24)}…`;
 
-    const cmd = updateExecutionCommand(check.installer, channel, undefined, check.latestVersion);
-    job = updateJob(job, {
-      currentVersion: check.currentVersion,
-      latestVersion: check.latestVersion,
-      installer: check.installer,
-      command: cmd.display,
-    }, integrityLine);
+    const cmd = updateExecutionCommand(
+      check.installer,
+      channel,
+      undefined,
+      check.latestVersion,
+    );
+    job = updateJob(
+      job,
+      {
+        currentVersion: check.currentVersion,
+        latestVersion: check.latestVersion,
+        installer: check.installer,
+        command: cmd.display,
+      },
+      integrityLine,
+    );
 
     if (process.platform === "win32") {
       try {
-        const { getWindowsTrayStatus, startWindowsTray, stopWindowsTray } = await import("../tray/windows");
+        const { getWindowsTrayStatus, startWindowsTray, stopWindowsTray } =
+          await import("../tray/windows");
         const tray = getWindowsTrayStatus();
         const trayPlan = handoffWindowsTrayForUpdate(tray, {
           stop: () => {
@@ -871,7 +1158,9 @@ export async function runGuiUpdateWorker(jobId: string, channel: Channel, restar
         try {
           const { startWindowsTray } = await import("../tray/windows");
           startWindowsTray();
-        } catch { /* retain the primary update failure */ }
+        } catch {
+          /* retain the primary update failure */
+        }
       }
       updateJob(job, {
         status: "failed",
@@ -883,28 +1172,59 @@ export async function runGuiUpdateWorker(jobId: string, channel: Channel, restar
     }
 
     if (trayWasInstalled) {
-      const trayArgs = [process.argv[1], ...planWindowsTrayUpdate({ installed: trayWasInstalled, running: trayWasRunning }).installArgs];
+      const trayArgs = [
+        process.argv[1],
+        ...planWindowsTrayUpdate({
+          installed: trayWasInstalled,
+          running: trayWasRunning,
+        }).installArgs,
+      ];
       const tray = runLoggedCommand(job, process.execPath, trayArgs, 20_000);
       if (tray.status !== 0) {
-        updateJob(job, {}, "Windows tray refresh failed; run 'ocx tray install'.");
-        if (trayWasRunning) runLoggedCommand(job, process.execPath, [process.argv[1], "tray", "start"], 15_000);
+        updateJob(
+          job,
+          {},
+          "Windows tray refresh failed; run 'ocx tray install'.",
+        );
+        if (trayWasRunning)
+          runLoggedCommand(
+            job,
+            process.execPath,
+            [process.argv[1], "tray", "start"],
+            15_000,
+          );
       }
     }
 
     if (restart) {
-      job = updateJob(job, { status: "restarting" }, "Update installed. Restarting proxy...");
-      if (!(await finishGuiUpdateRestart(job, captured, check.installer))) return;
-      updateJob(job, { status: "succeeded", restarted: true }, "Restart requested and proxy is healthy.");
+      job = updateJob(
+        job,
+        { status: "restarting" },
+        "Update installed. Restarting proxy...",
+      );
+      if (!(await finishGuiUpdateRestart(job, captured, check.installer)))
+        return;
+      updateJob(
+        job,
+        { status: "succeeded", restarted: true },
+        "Restart requested and proxy is healthy.",
+      );
       return;
     }
 
-    updateJob(job, { status: "succeeded", restarted: false }, "Update installed. Restart the proxy to use the new version.");
+    updateJob(
+      job,
+      { status: "succeeded", restarted: false },
+      "Update installed. Restart the proxy to use the new version.",
+    );
   } catch (err) {
     if (trayWasRunning) {
       try {
         const { startWindowsTray } = await import("../tray/windows");
         startWindowsTray();
-      } catch { /* retain the primary worker failure */ }
+      } catch {
+        /* retain the primary worker failure */
+      }
     }
     updateJob(job, {
       status: "failed",

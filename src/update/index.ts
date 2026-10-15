@@ -1,10 +1,13 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { getConfigDir, loadConfig, readPid, readRuntimePort } from "../config";
 import { npmInvocation } from "./npm-invocation.mjs";
-import { handoffWindowsTrayForUpdate, planWindowsTrayUpdate } from "./tray-update-plan.mjs";
+import {
+  handoffWindowsTrayForUpdate,
+  planWindowsTrayUpdate,
+} from "./tray-update-plan.mjs";
 
 /**
  * A `codex-history-backup-*.json` surviving a stop means the native-history restore was
@@ -13,7 +16,8 @@ import { handoffWindowsTrayForUpdate, planWindowsTrayUpdate } from "./tray-updat
 export function historyRestoreIncomplete(configDir = getConfigDir()): boolean {
   try {
     return readdirSync(configDir).some(
-      name => name.startsWith("codex-history-backup-") && name.endsWith(".json"),
+      (name) =>
+        name.startsWith("codex-history-backup-") && name.endsWith(".json"),
     );
   } catch {
     return false;
@@ -32,9 +36,48 @@ export function detectInstall(): Installer {
   return HERE.includes(".bun") ? "bun" : "npm";
 }
 
+/** A detached HEAD is an immutable source pin, not a checkout that can be pulled. */
+export function isDetachedSourceCheckout(
+  packageRoot = join(HERE, "..", ".."),
+): boolean {
+  const markerPath = join(packageRoot, ".git");
+  let gitDir = markerPath;
+  try {
+    const marker = readFileSync(markerPath, "utf8").trim();
+    if (marker.startsWith("gitdir:")) {
+      gitDir = resolve(packageRoot, marker.slice("gitdir:".length).trim());
+    }
+  } catch {
+    // Ordinary checkouts use a .git directory rather than a linked-worktree pointer.
+  }
+  try {
+    return /^[0-9a-f]{40}$/i.test(
+      readFileSync(join(gitDir, "HEAD"), "utf8").trim(),
+    );
+  } catch {
+    return false; // Source archives can have no Git metadata.
+  }
+}
+
+/** Manual update guidance must not suggest a pull in an immutable detached worktree. */
+export function sourceUpdateGuidance(
+  packageRoot = join(HERE, "..", ".."),
+): string {
+  if (isDetachedSourceCheckout(packageRoot)) {
+    return (
+      "Running from a detached Git worktree or checkout: this pinned CLI cannot self-update.\n" +
+      "Roll forward through its owning deployment, or migrate the CLI to a published npm/Bun installation."
+    );
+  }
+  return "Running from a source checkout - update with:  git pull && bun install";
+}
+
 export function currentVersion(): string {
   try {
-    return (JSON.parse(readFileSync(join(HERE, "..", "..", "package.json"), "utf8")).version as string) ?? "?";
+    return (
+      (JSON.parse(readFileSync(join(HERE, "..", "..", "package.json"), "utf8"))
+        .version as string) ?? "?"
+    );
   } catch {
     return "?";
   }
@@ -51,13 +94,30 @@ export function updateTag(current: string): Channel {
   return defaultUpdateTag(current);
 }
 
-function npmSpawnTarget(args: readonly string[]): { bin: string; args: string[]; options: { windowsVerbatimArguments?: boolean } } | null {
+function npmSpawnTarget(
+  args: readonly string[],
+): {
+  bin: string;
+  args: string[];
+  options: { windowsVerbatimArguments?: boolean };
+} | null {
   const invocation = npmInvocation(args);
   if (!invocation) return null;
-  return { bin: invocation.file, args: invocation.args, options: invocation.options };
+  return {
+    bin: invocation.file,
+    args: invocation.args,
+    options: invocation.options,
+  };
 }
 
-function updateSpawnTarget(bin: string, args: readonly string[]): { bin: string; args: string[]; options: { windowsVerbatimArguments?: boolean } } | null {
+function updateSpawnTarget(
+  bin: string,
+  args: readonly string[],
+): {
+  bin: string;
+  args: string[];
+  options: { windowsVerbatimArguments?: boolean };
+} | null {
   if (bin === "npm") return npmSpawnTarget(args);
   if (process.platform === "win32" && bin === "bun") {
     return { bin: process.execPath, args: [...args], options: {} };
@@ -72,15 +132,25 @@ function updateSpawnTarget(bin: string, args: readonly string[]): { bin: string;
  */
 function updateChildStdio(): "inherit" | "pipe" {
   if (process.env.OCX_SERVICE === "1") return "pipe";
-  if (typeof process.stdout.isTTY === "boolean" && !process.stdout.isTTY) return "pipe";
+  if (typeof process.stdout.isTTY === "boolean" && !process.stdout.isTTY)
+    return "pipe";
   return "inherit";
 }
 
-function logSpawnOutput(label: string, result: { stdout?: string | Buffer | null; stderr?: string | Buffer | null }): void {
+function logSpawnOutput(
+  label: string,
+  result: { stdout?: string | Buffer | null; stderr?: string | Buffer | null },
+): void {
   const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
   const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
-  if (stdout) console.log(stdout.length > 4000 ? `${label}${stdout.slice(-4000)}` : stdout);
-  if (stderr) console.error(stderr.length > 4000 ? `${label}${stderr.slice(-4000)}` : stderr);
+  if (stdout)
+    console.log(
+      stdout.length > 4000 ? `${label}${stdout.slice(-4000)}` : stdout,
+    );
+  if (stderr)
+    console.error(
+      stderr.length > 4000 ? `${label}${stderr.slice(-4000)}` : stderr,
+    );
 }
 
 /** Latest published version from the registry (best-effort; null if npm isn't available). */
@@ -93,23 +163,32 @@ export function latestVersion(tag: string): string | null {
     windowsHide: true,
     ...npm.options,
   });
-  return r.status === 0 ? (r.stdout.trim() || null) : null;
+  return r.status === 0 ? r.stdout.trim() || null : null;
 }
 
 /** The global-install command opencodex would run to update on this channel. */
-export function updateCommand(installer: Installer, tag: Channel, resolvedVersion?: string | null): { bin: string; args: string[] } {
+export function updateCommand(
+  installer: Installer,
+  tag: Channel,
+  resolvedVersion?: string | null,
+): { bin: string; args: string[] } {
   const bin = installer === "bun" ? "bun" : "npm";
   // Immutable target: when the registry resolved a concrete version, install exactly
   // that version — the dist-tag can move between resolution and install (TOCTOU).
   const target = resolvedVersion || tag;
-  const args = installer === "bun"
-    ? ["add", "-g", `${PKG}@${target}`]
-    : ["install", "-g", `${PKG}@${target}`];
+  const args =
+    installer === "bun"
+      ? ["add", "-g", `${PKG}@${target}`]
+      : ["install", "-g", `${PKG}@${target}`];
   return { bin, args };
 }
 
 /** Human-readable form of {@link updateCommand}, used in the update prompt label. */
-export function updateCommandStr(installer: Installer, tag: Channel, resolvedVersion?: string | null): string {
+export function updateCommandStr(
+  installer: Installer,
+  tag: Channel,
+  resolvedVersion?: string | null,
+): string {
   const { bin, args } = updateCommand(installer, tag, resolvedVersion);
   return `${bin} ${args.join(" ")}`;
 }
@@ -126,20 +205,44 @@ export function updateCommandStr(installer: Installer, tag: Channel, resolvedVer
 export function checkUpdatePackageIntegrity(
   version: string | null,
   spawn: typeof spawnSync = spawnSync,
-): { ok: true; integrity: string } | { ok: false; reason: string } | { ok: "skipped"; reason: string } {
-  if (!version) return { ok: "skipped", reason: "no resolved version (registry unavailable)" };
+):
+  | { ok: true; integrity: string }
+  | { ok: false; reason: string }
+  | { ok: "skipped"; reason: string } {
+  if (!version)
+    return {
+      ok: "skipped",
+      reason: "no resolved version (registry unavailable)",
+    };
   const npm = npmSpawnTarget(["view", `${PKG}@${version}`, "dist.integrity"]);
-  if (!npm) return { ok: "skipped", reason: "npm executable was not found on a trusted PATH entry" };
-  const r = spawn(
-    npm.bin,
-    npm.args,
-    { encoding: "utf8", timeout: 12000, windowsHide: true, ...npm.options },
-  );
+  if (!npm)
+    return {
+      ok: "skipped",
+      reason: "npm executable was not found on a trusted PATH entry",
+    };
+  const r = spawn(npm.bin, npm.args, {
+    encoding: "utf8",
+    timeout: 12000,
+    windowsHide: true,
+    ...npm.options,
+  });
   // status !== 0 covers nonzero exits AND timeouts (status === null).
-  if (r.status !== 0) return { ok: "skipped", reason: `registry integrity query failed (status ${r.status ?? "timeout"})` };
-  const tokens = (r.stdout ?? "").replace(/["']/g, "").trim().split(/\s+/).filter(Boolean);
-  const match = tokens.find(token => /^sha512-[A-Za-z0-9+/=]+$/.test(token));
-  if (!match) return { ok: false, reason: `registry returned no sha512 integrity for ${PKG}@${version}` };
+  if (r.status !== 0)
+    return {
+      ok: "skipped",
+      reason: `registry integrity query failed (status ${r.status ?? "timeout"})`,
+    };
+  const tokens = (r.stdout ?? "")
+    .replace(/["']/g, "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const match = tokens.find((token) => /^sha512-[A-Za-z0-9+/=]+$/.test(token));
+  if (!match)
+    return {
+      ok: false,
+      reason: `registry returned no sha512 integrity for ${PKG}@${version}`,
+    };
   return { ok: true, integrity: match };
 }
 
@@ -154,7 +257,8 @@ export async function runUpdate(): Promise<void> {
   console.log(`opencodex v${current} (installed via ${installer}, tag ${tag})`);
 
   if (installer === "source") {
-    console.log("Running from a source checkout — update with:  git pull && bun install");
+    console.error(sourceUpdateGuidance());
+    process.exitCode = 1; // An instruction-only path is not a completed update.
     return;
   }
 
@@ -168,19 +272,27 @@ export async function runUpdate(): Promise<void> {
   // anomalous registry entry aborts without unloading the running service.
   const integrity = checkUpdatePackageIntegrity(latest);
   if (integrity.ok === false) {
-    console.error(`⚠️  ${integrity.reason} — aborting the update before stopping the proxy.`);
+    console.error(
+      `⚠️  ${integrity.reason} — aborting the update before stopping the proxy.`,
+    );
     process.exit(1);
   }
   if (integrity.ok === "skipped") {
-    console.warn(`⚠️  Integrity pre-flight skipped: ${integrity.reason}. Proceeding best-effort.`);
+    console.warn(
+      `⚠️  Integrity pre-flight skipped: ${integrity.reason}. Proceeding best-effort.`,
+    );
   } else {
-    console.log(`Verified ${PKG}@${latest} integrity metadata ${integrity.integrity.slice(0, 24)}…`);
+    console.log(
+      `Verified ${PKG}@${latest} integrity metadata ${integrity.integrity.slice(0, 24)}…`,
+    );
   }
 
   const { bin, args: cmdArgs } = updateCommand(installer, tag, latest);
   const target = updateSpawnTarget(bin, cmdArgs);
   if (!target) {
-    console.error("⚠️  Could not resolve npm from a trusted absolute PATH entry; aborting before stopping the proxy.");
+    console.error(
+      "⚠️  Could not resolve npm from a trusted absolute PATH entry; aborting before stopping the proxy.",
+    );
     process.exit(1);
   }
 
@@ -190,12 +302,15 @@ export async function runUpdate(): Promise<void> {
   try {
     const { isServiceInstalled } = await import("../service");
     serviceWasInstalled = isServiceInstalled();
-  } catch { /* best-effort */ }
+  } catch {
+    /* best-effort */
+  }
   let trayWasInstalled = false;
   let trayWasRunning = false;
   if (process.platform === "win32") {
     try {
-      const { getWindowsTrayStatus, startWindowsTray, stopWindowsTray } = await import("../tray/windows");
+      const { getWindowsTrayStatus, startWindowsTray, stopWindowsTray } =
+        await import("../tray/windows");
       const tray = getWindowsTrayStatus();
       const trayPlan = handoffWindowsTrayForUpdate(tray, {
         stop: () => {
@@ -207,7 +322,9 @@ export async function runUpdate(): Promise<void> {
       trayWasInstalled = trayPlan.refreshAfterReplacement;
       trayWasRunning = trayPlan.restoreOnFailure;
     } catch (error) {
-      console.error(`⚠️  Could not stop the Windows tray; aborting before package replacement: ${error instanceof Error ? error.message : String(error)}`);
+      console.error(
+        `⚠️  Could not stop the Windows tray; aborting before package replacement: ${error instanceof Error ? error.message : String(error)}`,
+      );
       process.exit(1);
     }
   }
@@ -217,13 +334,21 @@ export async function runUpdate(): Promise<void> {
   const preUpdateConfig = loadConfig();
   const preUpdateRt = readRuntimePort();
   const livePid = readPid();
-  const runtimeTrusted = !!(preUpdateRt && livePid && preUpdateRt.pid === livePid);
-  const configPort = typeof preUpdateConfig.port === "number" && preUpdateConfig.port > 0
-    ? preUpdateConfig.port
-    : 10100;
+  const runtimeTrusted = !!(
+    preUpdateRt &&
+    livePid &&
+    preUpdateRt.pid === livePid
+  );
+  const configPort =
+    typeof preUpdateConfig.port === "number" && preUpdateConfig.port > 0
+      ? preUpdateConfig.port
+      : 10100;
   const capturedListen = {
     port: runtimeTrusted ? preUpdateRt.port : configPort,
-    hostname: (runtimeTrusted ? preUpdateRt.hostname : undefined) ?? preUpdateConfig.hostname ?? "127.0.0.1",
+    hostname:
+      (runtimeTrusted ? preUpdateRt.hostname : undefined) ??
+      preUpdateConfig.hostname ??
+      "127.0.0.1",
     ...(runtimeTrusted && livePid ? { oldPid: livePid } : {}),
     proxyOnly: runtimeTrusted && preUpdateRt.proxyOnly === true,
   };
@@ -247,21 +372,27 @@ export async function runUpdate(): Promise<void> {
         try {
           const { startWindowsTray } = await import("../tray/windows");
           startWindowsTray();
-        } catch { /* preserve the proxy stop failure */ }
+        } catch {
+          /* preserve the proxy stop failure */
+        }
       }
-      console.error("⚠️  Could not stop the running proxy; aborting the update. Run 'ocx stop' and retry.");
+      console.error(
+        "⚠️  Could not stop the running proxy; aborting the update. Run 'ocx stop' and retry.",
+      );
       process.exit(1);
     }
     if (historyRestoreIncomplete()) {
       console.warn(
         "⚠️  Codex resume history was NOT restored (history DB locked — Codex app/IDE open?).\n" +
-        "    Your routed threads stay hidden in the native Codex app until restored.\n" +
-        "    After the update: close the Codex app, then run 'ocx stop' once to restore.",
+          "    Your routed threads stay hidden in the native Codex app until restored.\n" +
+          "    After the update: close the Codex app, then run 'ocx stop' once to restore.",
       );
     }
   }
 
-  console.log(`Updating${latest ? ` to v${latest}` : ""}…\n$ ${bin} ${cmdArgs.join(" ")}`);
+  console.log(
+    `Updating${latest ? ` to v${latest}` : ""}…\n$ ${bin} ${cmdArgs.join(" ")}`,
+  );
 
   const installStdio = updateChildStdio();
   const r = spawnSync(target.bin, target.args, {
@@ -277,56 +408,98 @@ export async function runUpdate(): Promise<void> {
     // Re-bake the bundled Bun path into the Codex autostart shim on every
     // platform when one is installed (refresh-only; never installs fresh).
     try {
-      const { isCodexShimInstalled, installCodexShim } = await import("../codex/shim");
+      const { isCodexShimInstalled, installCodexShim } =
+        await import("../codex/shim");
       if (!capturedListen.proxyOnly && isCodexShimInstalled()) {
         const result = installCodexShim();
         if (result.installed) console.log(`🔧 ${result.message}`);
       }
     } catch (e) {
-      console.warn(`⚠️  Shim repair skipped: ${e instanceof Error ? e.message : e}`);
+      console.warn(
+        `⚠️  Shim repair skipped: ${e instanceof Error ? e.message : e}`,
+      );
     }
-    if (process.platform === "linux" && existsSync(join(getConfigDir(), "claude-desktop-protocol.json"))) {
-      const repair = spawnSync(process.execPath, [process.argv[1], "claude", "desktop", "protocol", "__repair"], {
-        stdio: "inherit", windowsHide: true,
-      });
-      if (repair.status !== 0) console.warn("Claude Desktop protocol repair failed. Check: ocx claude desktop protocol status");
+    if (
+      process.platform === "linux" &&
+      existsSync(join(getConfigDir(), "claude-desktop-protocol.json"))
+    ) {
+      const repair = spawnSync(
+        process.execPath,
+        [process.argv[1], "claude", "desktop", "protocol", "__repair"],
+        {
+          stdio: "inherit",
+          windowsHide: true,
+        },
+      );
+      if (repair.status !== 0)
+        console.warn(
+          "Claude Desktop protocol repair failed. Check: ocx claude desktop protocol status",
+        );
     }
     if (trayWasInstalled) {
-      const trayArgs = [process.argv[1], ...planWindowsTrayUpdate({ installed: trayWasInstalled, running: trayWasRunning }).installArgs];
-      const tray = spawnSync(process.execPath, trayArgs, { stdio: "inherit", windowsHide: true });
+      const trayArgs = [
+        process.argv[1],
+        ...planWindowsTrayUpdate({
+          installed: trayWasInstalled,
+          running: trayWasRunning,
+        }).installArgs,
+      ];
+      const tray = spawnSync(process.execPath, trayArgs, {
+        stdio: "inherit",
+        windowsHide: true,
+      });
       if (tray.status === 0) {
         console.log("🔧 Refreshed Windows tray startup paths.");
       } else {
-        console.warn("⚠️  Windows tray refresh failed. Run 'ocx tray install'.");
-        if (trayWasRunning) spawnSync(process.execPath, [process.argv[1], "tray", "start"], { stdio: "ignore", windowsHide: true });
+        console.warn(
+          "⚠️  Windows tray refresh failed. Run 'ocx tray install'.",
+        );
+        if (trayWasRunning)
+          spawnSync(process.execPath, [process.argv[1], "tray", "start"], {
+            stdio: "ignore",
+            windowsHide: true,
+          });
       }
     }
     // The stop above unloaded any managed service; reinstall it with the NEW files
     // (spawn the fresh cli.ts so updated code writes the baked paths) so a
     // launchd/schtasks/systemd user isn't left with the background proxy down.
     if (serviceWasInstalled) {
-      console.log("🔁 Reinstalling the background service with the updated files...");
+      console.log(
+        "🔁 Reinstalling the background service with the updated files...",
+      );
       const { serviceReinstallArgs } = await import("../service");
       const { reclaimListenPort } = await import("../server/port-reclaim");
-      const freed = await reclaimListenPort(capturedListen.port, capturedListen.hostname, {
-        timeoutMs: 30_000,
-        intervalMs: 100,
-        scanIntervalMs: 500,
-        killOcxHolders: capturedListen.oldPid != null,
-        onlyKillPids: capturedListen.oldPid != null ? [capturedListen.oldPid] : [],
-      });
+      const freed = await reclaimListenPort(
+        capturedListen.port,
+        capturedListen.hostname,
+        {
+          timeoutMs: 30_000,
+          intervalMs: 100,
+          scanIntervalMs: 500,
+          killOcxHolders: capturedListen.oldPid != null,
+          onlyKillPids:
+            capturedListen.oldPid != null ? [capturedListen.oldPid] : [],
+        },
+      );
       if (!freed) {
-        console.warn(`⚠️  Port ${capturedListen.port} still busy after 30s; reinstalling service with pinned --port ${capturedListen.port} anyway (refusing to hop).`);
+        console.warn(
+          `⚠️  Port ${capturedListen.port} still busy after 30s; reinstalling service with pinned --port ${capturedListen.port} anyway (refusing to hop).`,
+        );
       }
       const prevBake = process.env.OCX_BAKE_PORT;
       process.env.OCX_BAKE_PORT = String(capturedListen.port);
       try {
         const svcStdio = updateChildStdio();
-        const svc = spawnSync(process.execPath, [process.argv[1], ...serviceReinstallArgs()], {
-          stdio: svcStdio,
-          encoding: svcStdio === "pipe" ? "utf8" : undefined,
-          windowsHide: true,
-        });
+        const svc = spawnSync(
+          process.execPath,
+          [process.argv[1], ...serviceReinstallArgs()],
+          {
+            stdio: svcStdio,
+            encoding: svcStdio === "pipe" ? "utf8" : undefined,
+            windowsHide: true,
+          },
+        );
         if (svcStdio === "pipe") logSpawnOutput("", svc);
         if (svc.status !== 0) {
           // On Windows, schtasks /create requires elevation. The CLI inherits the
@@ -334,19 +507,37 @@ export async function runUpdate(): Promise<void> {
           // denied. Fall back to a direct detached proxy start so the update never
           // leaves the user without a running proxy — but only when the port is free.
           if (!freed) {
-            console.warn("⚠️  Service refresh failed and the captured port is still busy; not starting on another port.");
-            console.warn(`   Run 'ocx service install' as administrator, then 'ocx start --port ${capturedListen.port}'.`);
+            console.warn(
+              "⚠️  Service refresh failed and the captured port is still busy; not starting on another port.",
+            );
+            console.warn(
+              `   Run 'ocx service install' as administrator, then 'ocx start --port ${capturedListen.port}'.`,
+            );
           } else {
-            console.warn("⚠️  Service refresh failed — starting the proxy directly instead.");
-            console.warn("   Run 'ocx service install' as administrator to refresh the background service.");
+            console.warn(
+              "⚠️  Service refresh failed — starting the proxy directly instead.",
+            );
+            console.warn(
+              "   Run 'ocx service install' as administrator to refresh the background service.",
+            );
             const env = { ...process.env };
             delete env.OCX_SERVICE;
-            const child = spawn(process.execPath, [process.argv[1], "start", "--port", String(capturedListen.port), ...(capturedListen.proxyOnly ? ["--proxy-only"] : [])], {
-              detached: true,
-              stdio: "ignore",
-              windowsHide: true,
-              env,
-            });
+            const child = spawn(
+              process.execPath,
+              [
+                process.argv[1],
+                "start",
+                "--port",
+                String(capturedListen.port),
+                ...(capturedListen.proxyOnly ? ["--proxy-only"] : []),
+              ],
+              {
+                detached: true,
+                stdio: "ignore",
+                windowsHide: true,
+                env,
+              },
+            );
             child.unref();
             console.log(`✅ Proxy starting on port ${capturedListen.port}.`);
           }
@@ -356,16 +547,22 @@ export async function runUpdate(): Promise<void> {
         else process.env.OCX_BAKE_PORT = prevBake;
       }
     } else {
-      console.log(`Restart the proxy:  ocx start --port ${capturedListen.port}${capturedListen.proxyOnly ? " --proxy-only" : ""}`);
+      console.log(
+        `Restart the proxy:  ocx start --port ${capturedListen.port}${capturedListen.proxyOnly ? " --proxy-only" : ""}`,
+      );
     }
   } else {
     if (trayWasRunning) {
       try {
         const { startWindowsTray } = await import("../tray/windows");
         startWindowsTray();
-      } catch { /* keep the primary update failure */ }
+      } catch {
+        /* keep the primary update failure */
+      }
     }
-    console.error(`\n⚠️  Update failed (${bin} exit ${r.status ?? "?"}). Try manually:  ${bin} ${cmdArgs.join(" ")}`);
+    console.error(
+      `\n⚠️  Update failed (${bin} exit ${r.status ?? "?"}). Try manually:  ${bin} ${cmdArgs.join(" ")}`,
+    );
     process.exit(1);
   }
 }
