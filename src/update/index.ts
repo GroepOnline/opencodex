@@ -385,7 +385,8 @@ export async function runUpdate(): Promise<void> {
         else process.env.OCX_BAKE_PORT = prevBake;
       }
     } else {
-      console.log(`Restart the proxy:  ocx start --port ${capturedListen.port}${capturedListen.proxyOnly ? " --proxy-only" : ""}`);
+      console.log(`If this machine owns the local proxy, restart it:  ocx start --port ${capturedListen.port}${capturedListen.proxyOnly ? " --proxy-only" : ""}`);
+      console.log("For an externally managed gateway or tunnel, keep the existing listener; do not start a second proxy.");
     }
   } else {
     if (trayWasRunning) {
