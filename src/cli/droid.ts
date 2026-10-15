@@ -22,7 +22,10 @@ import { join } from "node:path";
 import { loadConfig } from "../config";
 import { commandInvocation } from "../lib/win-exec";
 import { configuredAdminToken } from "../lib/admin-secrets";
-import { preservesPhysicalComboProvider, resolveComboId } from "../combos/types";
+import {
+  preservesPhysicalComboProvider,
+  resolveComboId,
+} from "../combos/types";
 import { providerCodexAccountMode } from "../providers/registry";
 import { findLiveProxy } from "../server/proxy-liveness";
 import type { OcxConfig } from "../types";
@@ -186,7 +189,15 @@ export function droidProxyStartArgs(port: number): string[] {
   return ["start", "--port", String(port), "--proxy-only"];
 }
 
-/** Read the running proxy's client-visible model rows (authenticated GET /api/models). */
+/**
+ * Read the running proxy's model rows (authenticated GET /api/models?view=client).
+ * The client view applies the same visibility pipeline as the data-plane
+ * /v1/models catalog that feeds `ocx claude` model discovery: the user's
+ * per-provider `selectedModels` allowlist, the `disabledModels` blocklist, and
+ * provider-death hiding when `hideUnavailableModels` is enabled. The Droid
+ * overlay therefore carries only user-selected models, never the full admin
+ * catalog.
+ */
 export class DroidModelDiscoveryError extends Error {
   constructor(reason: string) {
     super(`OCX model discovery failed: ${reason}`);
@@ -202,7 +213,7 @@ export async function fetchDroidModels(
     const headers = new Headers();
     const token = configuredAdminToken();
     if (token) headers.set("x-opencodex-api-key", token);
-    const res = await fetch(`http://127.0.0.1:${port}/api/models`, {
+    const res = await fetch(`http://127.0.0.1:${port}/api/models?view=client`, {
       headers,
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -254,7 +265,9 @@ export async function fetchDroidModels(
   } catch (error) {
     if (error instanceof DroidModelDiscoveryError) throw error;
     // Fetch errors can contain provider-specific details. Do not echo them.
-    throw new DroidModelDiscoveryError("proxy unreachable or request timed out");
+    throw new DroidModelDiscoveryError(
+      "proxy unreachable or request timed out",
+    );
   }
 }
 
