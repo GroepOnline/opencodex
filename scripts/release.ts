@@ -504,7 +504,12 @@ await assertUnusedReleaseVersion(packageName, version);
 console.log("→ typecheck");
 await $`bun x tsc --noEmit`;
 console.log("→ test suite");
-await $`bun test --isolate tests`;
+// Use the canonical `bun run test` (scripts/test.ts): it isolates HOME/OPENCODEX_HOME/
+// CODEX_HOME so the preflight cannot touch the operator's live proxy/codex state, and it
+// hard-kills a wedged isolate after 7 minutes and retries once. A raw `bun test --isolate`
+// has no kill boundary, so one known-flaky wedge (codex-shim lock handshake, live-checkout
+// git probe) hangs the release preflight forever at ~100% CPU.
+await $`bun run test`;
 console.log("→ privacy scan");
 await $`bun run privacy:scan`;
 
