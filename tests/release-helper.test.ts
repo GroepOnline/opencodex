@@ -84,7 +84,7 @@ appendFileSync(process.env.FAKE_RELEASE_LOG, JSON.stringify({ name: "bun", args 
 
 const exitCode =
   args[0] === "x" && args[1] === "tsc" ? Number(process.env.FAKE_BUN_TSC_EXIT_CODE ?? "0")
-  : args[0] === "test" && args[1] === "--isolate" && args[2] === "tests" ? Number(process.env.FAKE_BUN_TEST_EXIT_CODE ?? "0")
+  : args[0] === "run" && args[1] === "test" ? Number(process.env.FAKE_BUN_TEST_EXIT_CODE ?? "0")
   : args[0] === "run" && args[1] === "privacy:scan" ? Number(process.env.FAKE_BUN_PRIVACY_EXIT_CODE ?? "0")
   : 0;
 
@@ -321,7 +321,7 @@ describe("release helper", () => {
     const testIndex = findCallIndex(
       calls,
       "bun",
-      (call) => call.args.join(" ") === "test --isolate tests",
+      (call) => call.args.join(" ") === "run test",
     );
     const privacyIndex = findCallIndex(
       calls,
