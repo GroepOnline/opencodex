@@ -1,5 +1,6 @@
 import type { AdapterRateLimitInfo, IncomingMeta, ProviderAdapter } from "./base";
 import { parseAnthropicRateLimit } from "../availability/rate-limit-parse";
+import { readCappedResponseJson } from "../lib/bounded-body";
 import { debugDroppedFrame } from "../lib/debug";
 import type {
   AdapterEvent,
@@ -854,7 +855,7 @@ export function createAnthropicAdapter(provider: OcxProviderConfig, cacheRetenti
     },
 
     async parseResponse(response: Response): Promise<AdapterEvent[]> {
-      const json = await response.json() as Record<string, unknown>;
+      const json = await readCappedResponseJson<Record<string, unknown>>(response);
       const events: AdapterEvent[] = [];
       const content = json.content as { type: string; text?: string; id?: string; name?: string; input?: unknown; thinking?: string; reasoning?: string; signature?: string; data?: string }[] | undefined;
       if (content) {

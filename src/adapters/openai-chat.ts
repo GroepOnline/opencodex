@@ -5,6 +5,7 @@ import { isAllowedToolChoice, modelInList, namespacedToolName, resolveToolChoice
 import { mapReasoningEffort, modelRecordValue } from "../reasoning-effort";
 import { debugProviderDiagnostic } from "../lib/debug";
 import { isDebugEnabled } from "../lib/debug-settings";
+import { readCappedResponseJson } from "../lib/bounded-body";
 import { isCyberPolicyCode } from "../lib/errors";
 import { redactSecretString } from "../lib/redact";
 import { contentPartsToText } from "./image";
@@ -946,7 +947,7 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
     },
 
     async parseResponse(response: Response): Promise<AdapterEvent[]> {
-      const json = await response.json() as Record<string, unknown>;
+      const json = await readCappedResponseJson<Record<string, unknown>>(response);
       if (json.error) {
         const upstreamError = json.error as { message?: unknown; code?: unknown; type?: unknown; status?: unknown };
         const message = typeof upstreamError.message === "string" ? upstreamError.message : "upstream error";

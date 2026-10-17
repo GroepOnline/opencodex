@@ -18,6 +18,7 @@ import {
 } from "../codex/auth-context";
 import { formatCodexProviderForLog } from "../codex/routing";
 import { signalWithTimeout } from "../lib/abort";
+import { readCappedResponseArrayBuffer, UpstreamBodyTooLargeError } from "../lib/bounded-body";
 import { sidecarEnter } from "../lib/sidecar-tracker";
 import type { OcxConfig } from "../types";
 import { listOpenAiForwardSidecarCandidates, resolveFirstUsableOpenAiSidecar } from "../providers/openai-sidecar";
@@ -106,9 +107,15 @@ export async function handleSearch(
       body: JSON.stringify(body),
       signal: linkedSignal.signal,
     });
-    const payload = await upstreamResponse.arrayBuffer();
-    if (payload.byteLength > SEARCH_RESPONSE_MAX_BYTES) {
-      return formatErrorResponse(502, "upstream_error", `search response too large (${payload.byteLength} bytes)`);
+    let payload: ArrayBuffer;
+    try {
+      payload = await readCappedResponseArrayBuffer(upstreamResponse, {
+        signal: linkedSignal.signal,
+        maxBytes: SEARCH_RESPONSE_MAX_BYTES,
+      });
+    } catch (error) {
+      if (!(error instanceof UpstreamBodyTooLargeError)) throw error;
+      return formatErrorResponse(502, "upstream_error", `search response too large (over ${SEARCH_RESPONSE_MAX_BYTES} bytes)`);
     }
     upstream.recordOutcome?.(upstreamResponse.status);
     const relayHeaders: Record<string, string> = {};
