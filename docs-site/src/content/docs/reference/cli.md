@@ -609,6 +609,10 @@ is a no-op. A running local proxy is stopped before files are replaced; an insta
 rebuilt and started automatically, while a foreground installation prints `ocx start` as the next
 step.
 
+The restart hint applies only when this machine owns the foreground proxy. Clients
+using a systemd socket, SSH forward, or other externally managed gateway must
+keep their existing listener and must not start a second local proxy on its port.
+
 ```bash
 ocx update
 ocx update --tag preview
