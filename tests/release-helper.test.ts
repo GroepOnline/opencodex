@@ -84,7 +84,7 @@ appendFileSync(process.env.FAKE_RELEASE_LOG, JSON.stringify({ name: "bun", args 
 
 const exitCode =
   args[0] === "x" && args[1] === "tsc" ? Number(process.env.FAKE_BUN_TSC_EXIT_CODE ?? "0")
-  : args[0] === "run" && args[1] === "test" ? Number(process.env.FAKE_BUN_TEST_EXIT_CODE ?? "0")
+  : args.length === 2 && args[0] === "run" && args[1] === "test" ? Number(process.env.FAKE_BUN_TEST_EXIT_CODE ?? "0")
   : args[0] === "run" && args[1] === "privacy:scan" ? Number(process.env.FAKE_BUN_PRIVACY_EXIT_CODE ?? "0")
   : 0;
 
@@ -389,6 +389,18 @@ describe("release helper", () => {
     const jsonFields =
       calls[listIndex]!.args[calls[listIndex]!.args.indexOf("--json") + 1];
     expect(jsonFields?.split(",")).toContain("event");
+  });
+
+  test("a failed canonical test-runner preflight aborts before privacy scan or release mutations", () => {
+    const { calls, result } = runRelease("9.9.9", { testExitCode: 1 });
+    expect(result.status).not.toBe(0);
+    expect(calls.filter(call => call.name === "bun" && call.args[0] === "run")).toEqual([
+      { name: "bun", args: ["run", "test"] },
+    ]);
+    expect(findCallIndex(calls, "npm", call => call.args[0] === "version")).toBe(-1);
+    for (const command of ["add", "commit", "push"]) {
+      expect(findCallIndex(calls, "git", call => call.args[0] === command)).toBe(-1);
+    }
   });
 
   test("failed privacy scan aborts before version bump, commit, and push", () => {
