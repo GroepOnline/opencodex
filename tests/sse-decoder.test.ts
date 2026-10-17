@@ -175,6 +175,19 @@ describe("text/event-stream decoder", () => {
     expect((await next).done).toBe(true);
   });
 
+  test("dispatchCompleteJsonData emits complete JSON data lines without waiting for a blank line", () => {
+    const parser = createServerSentEventParser({ dispatchCompleteJsonData: true });
+    const encoder = new TextEncoder();
+    expect(parser.push(encoder.encode('event: delta\ndata: {"a":1}\n'))).toEqual([{ event: "delta", data: '{"a":1}' }]);
+    // A multi-line JSON value keeps accumulating until it parses, then dispatches immediately.
+    expect(parser.push(encoder.encode('data: {"b":\n'))).toEqual([]);
+    expect(parser.push(encoder.encode("data: 2}\n"))).toEqual([{ data: '{"b":\n2}' }]);
+    // Non-JSON text keeps spec framing.
+    expect(parser.push(encoder.encode("data: plain\n"))).toEqual([]);
+    expect(parser.push(encoder.encode("\ndata: [DONE]\n"))).toEqual([{ data: "plain" }, { data: "[DONE]" }]);
+    expect(parser.end()).toEqual([]);
+  });
+
   test("jsonDataPayloads splits only when the joined data is not one JSON value", () => {
     expect(jsonDataPayloads('{"a":1}')).toEqual(['{"a":1}']);
     expect(jsonDataPayloads('{"a":\n1}')).toEqual(['{"a":\n1}']);

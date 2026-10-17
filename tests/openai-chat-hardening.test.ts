@@ -143,6 +143,24 @@ describe("openai-chat stream response hardening", () => {
     expect(events.at(-1)?.type).toBe("done");
   });
 
+  test("streams newline-only framed data frames before the upstream closes", async () => {
+    const encoder = new TextEncoder();
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const adapter = createOpenAIChatAdapter(provider());
+    const response = new Response(new ReadableStream<Uint8Array>({ start(c) { controller = c; } }));
+    const stream = adapter.parseStream(response);
+
+    controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"a"}}]}\n'));
+    expect((await stream.next()).value).toEqual({ type: "text_delta", text: "a" });
+
+    controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"b"},"finish_reason":"stop"}]}\ndata: [DONE]\n'));
+    controller.close();
+    const rest: AdapterEvent[] = [];
+    for await (const event of stream) rest.push(event);
+    expect(rest[0]).toEqual({ type: "text_delta", text: "b" });
+    expect(rest.at(-1)?.type).toBe("done");
+  });
+
   test("debug-logs malformed frames by length only", async () => {
     resetDebugLogBufferForTests();
     setDebugSettings({ debug: true });

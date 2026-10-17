@@ -277,6 +277,12 @@ function artifactMarkdownUrl(filePath: string): string {
   return artifactHttpUrl(filePath).replace(/[\\()]/g, "\\$&");
 }
 
+type GooglePart = {
+  text?: string;
+  inlineData?: { mimeType?: string; data?: string };
+  functionCall?: { name: string; args: unknown };
+};
+
 export function createGoogleAdapter(provider: OcxProviderConfig): ProviderAdapter {
   // Per-request closure: resolveAdapter builds a fresh adapter per request (server.ts), so buildRequest
   // can stash the CCA model/session for parseStream's reasoning-replay observation.
@@ -441,6 +447,9 @@ export function createGoogleAdapter(provider: OcxProviderConfig): ProviderAdapte
       const parser = createServerSentEventParser({
         includeComments: true,
         maxFrameLength: MAX_SSE_FRAME_BYTES,
+        // Gemini streams JSON per `data:` line; emit each as soon as it completes even when the
+        // upstream omits the blank line between events.
+        dispatchCompleteJsonData: true,
         onUnknownLine: line => {
           if (!line.trim()) return;
           if (atEof) residualGarbage = true;
@@ -453,6 +462,53 @@ export function createGoogleAdapter(provider: OcxProviderConfig): ProviderAdapte
       let sawAnyFrame = false;
       let sawTerminalSignal = false;
 
+      // Inline provider error inside a 200 stream: terminal error (see openai-chat.ts).
+      const inlineErrorEvent = (error: unknown): AdapterEvent => {
+        const err = error as { message?: string } | undefined;
+        // Clear-on-invalid: a signature rejection means our replayed thoughtSignatures are stale.
+        // Drop the cache entry so the next turn starts clean instead of re-injecting a bad sig.
+        if (provider.googleMode === "cloud-code-assist" && antigravityModel && antigravitySession
+          && /signature|invalid_argument|invalid argument/i.test(err?.message ?? "")) {
+          clearAntigravityReplay(antigravityModel, antigravitySession);
+        }
+        return { type: "error", message: err?.message ?? "upstream error" };
+      };
+      // Inline images are materialized to artifacts; per-image size is capped before decoding.
+      const emitInlineImage = async function* (data: string): AsyncGenerator<AdapterEvent, boolean> {
+        if (data.length > MAX_ENCODED_BYTES_PER_IMAGE) {
+          yield { type: "error", message: "inline image exceeds per-image size cap" };
+          return false;
+        }
+        let escapedPath: string;
+        try {
+          escapedPath = artifactMarkdownUrl(await materializeInlineImage(data, imageBudget));
+        } catch {
+          yield { type: "error", message: "failed to materialize inline image" };
+          return false;
+        }
+        yield { type: "text_delta", text: `\n![image](${escapedPath})\n` };
+        return true;
+      };
+      // Emits the events for one candidate part; returns whether any content event was emitted.
+      const emitPart = async function* (part: GooglePart): AsyncGenerator<AdapterEvent, boolean> {
+        let emitted = false;
+        if (part.text) {
+          emitted = true;
+          yield { type: "text_delta", text: part.text };
+        }
+        const inline = part.inlineData;
+        if (inline && typeof inline.data === "string" && (yield* emitInlineImage(inline.data))) emitted = true;
+        if (part.functionCall) {
+          const id = `call_${crypto.randomUUID().slice(0, 8)}`;
+          toolCallsStarted++;
+          emitted = true;
+          yield { type: "tool_call_start", id, name: restoreGoogleToolName(part.functionCall.name) };
+          yield { type: "tool_call_delta", arguments: JSON.stringify(part.functionCall.args ?? {}) };
+          yield { type: "tool_call_end" };
+        }
+        return emitted;
+      };
+
       const handleDataPayload = async function* (data: string): AsyncGenerator<AdapterEvent, "continue" | "content" | "terminate"> {
         const payload = data.trim();
         if (!payload) return "continue";
@@ -460,8 +516,6 @@ export function createGoogleAdapter(provider: OcxProviderConfig): ProviderAdapte
           yield { type: "error", message: `upstream SSE data frame exceeds ${MAX_SSE_FRAME_BYTES} bytes` };
           return "terminate";
         }
-        let emittedContentEvent = false;
-
         let chunk: Record<string, unknown>;
         try {
           chunk = JSON.parse(payload);
@@ -474,14 +528,7 @@ export function createGoogleAdapter(provider: OcxProviderConfig): ProviderAdapte
 
         // Inline provider error inside a 200 stream → terminal error (see openai-chat.ts).
         if (chunk.error) {
-          const err = chunk.error as { message?: string } | undefined;
-          // Clear-on-invalid: a signature rejection means our replayed thoughtSignatures are stale.
-          // Drop the cache entry so the next turn starts clean instead of re-injecting a bad sig.
-          if (provider.googleMode === "cloud-code-assist" && antigravityModel && antigravitySession
-            && /signature|invalid_argument|invalid argument/i.test(err?.message ?? "")) {
-            clearAntigravityReplay(antigravityModel, antigravitySession);
-          }
-          yield { type: "error", message: err?.message ?? "upstream error" };
+          yield inlineErrorEvent(chunk.error);
           return "terminate";
         }
 
@@ -512,41 +559,15 @@ export function createGoogleAdapter(provider: OcxProviderConfig): ProviderAdapte
           sawTerminalSignal = true;
         }
 
-        const parts = candidates[0].content?.parts as { text?: string; functionCall?: { name: string; args: unknown } }[] | undefined;
+        const parts = candidates[0].content?.parts as GooglePart[] | undefined;
+        if (!parts) return "continue";
         // Antigravity reasoning-replay: record thoughtSignatures from the model parts for the next turn.
-        if (provider.googleMode === "cloud-code-assist" && parts && antigravityModel && antigravitySession) {
+        if (provider.googleMode === "cloud-code-assist" && antigravityModel && antigravitySession) {
           observeAntigravityReplay(antigravityModel, antigravitySession, parts as unknown[]);
         }
-        if (parts) {
-          for (const part of parts) {
-            if (part.text) {
-              emittedContentEvent = true;
-              yield { type: "text_delta", text: part.text };
-            }
-            const inline = (part as { inlineData?: { mimeType?: string; data?: string } }).inlineData;
-            if (inline && typeof inline.data === "string") {
-              if (inline.data.length > MAX_ENCODED_BYTES_PER_IMAGE) {
-                yield { type: "error", message: "inline image exceeds per-image size cap" };
-              } else {
-                try {
-                  const filePath = await materializeInlineImage(inline.data, imageBudget);
-                  const escapedPath = artifactMarkdownUrl(filePath);
-                  emittedContentEvent = true;
-                  yield { type: "text_delta", text: `\n![image](${escapedPath})\n` };
-                } catch {
-                  yield { type: "error", message: "failed to materialize inline image" };
-                }
-              }
-            }
-            if (part.functionCall) {
-              const id = `call_${crypto.randomUUID().slice(0, 8)}`;
-              toolCallsStarted++;
-              emittedContentEvent = true;
-              yield { type: "tool_call_start", id, name: restoreGoogleToolName(part.functionCall.name) };
-              yield { type: "tool_call_delta", arguments: JSON.stringify(part.functionCall.args ?? {}) };
-              yield { type: "tool_call_end" };
-            }
-          }
+        let emittedContentEvent = false;
+        for (const part of parts) {
+          if (yield* emitPart(part)) emittedContentEvent = true;
         }
         return emittedContentEvent ? "content" : "continue";
       };

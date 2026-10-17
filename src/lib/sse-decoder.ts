@@ -35,6 +35,30 @@ export interface SseDecoderOptions {
   maxFrameLength?: number;
   /** Observes lines whose field is not part of the SSE grammar; they are otherwise ignored. */
   onUnknownLine?: (line: string) => void;
+  /**
+   * Dispatch an event as soon as its accumulated data is one complete JSON value (or the
+   * `[DONE]` sentinel) instead of waiting for the blank delimiter line. For JSON-per-event
+   * upstreams that separate `data:` lines with a single newline: without it those events would
+   * only surface at EOF. Multi-line data that is not yet complete JSON keeps spec framing.
+   */
+  dispatchCompleteJsonData?: boolean;
+}
+
+function isCompleteJsonData(data: string): boolean {
+  const text = data.trim();
+  if (text === "[DONE]") return true;
+  const first = text.charCodeAt(0);
+  const last = text.charCodeAt(text.length - 1);
+  // Cheap pre-filter: only object/array payloads ending in their closing bracket can be complete.
+  const object = first === 123 && last === 125;
+  const array = first === 91 && last === 93;
+  if (!object && !array) return false;
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Push-based decoder for callers that must keep their own reader loop (taps, read-batch logic). */
@@ -66,6 +90,7 @@ export function createServerSentEventParser(
   const includeComments = options.includeComments === true;
   const maxFrameLength = options.maxFrameLength ?? Number.POSITIVE_INFINITY;
   const onUnknownLine = options.onUnknownLine;
+  const dispatchCompleteJsonData = options.dispatchCompleteJsonData === true;
   const lineBreak = /[\r\n]/g;
   let buffer = "";
   // Unterminated tail, kept as parts so a long pending line is not re-concatenated and rescanned
@@ -112,6 +137,9 @@ export function createServerSentEventParser(
     else if (field === "data") {
       dataLines.push(value);
       dataLength += value.length + 1;
+      if (dispatchCompleteJsonData && isCompleteJsonData(dataLines.length === 1 ? value : dataLines.join("\n"))) {
+        return dispatch();
+      }
     } else if (field !== "id" && field !== "retry") onUnknownLine?.(line);
     return undefined;
   };
