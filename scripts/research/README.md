@@ -6,20 +6,20 @@ Offline autoresearch harness for OpenCodex. `AGENTS.md` in this directory holds 
 
 - `run.ts` - CLI: `list`, `measure`, `baseline`, `run`. One JSON object on stdout, progress on stderr.
 - `lib.ts` - shared helpers: process spawning without a shell, timing statistics, verdicts, atomic JSON writes, git change guards, fixture hashing, shard partition checks.
-- `targets/*.json` - one config per target: metric, measurement command, run count, mutable paths, fixtures, guards.
+- `targets/*.json` - one config per available target (a target shows up here once its config lands): metric, measurement command, run count, mutable paths, fixtures, guards.
 - `measure/*.ts` - one measurement script per target. Each prints a single JSON object `{ "value": number, "details": {...} }` as its last stdout line.
 
 Run state is written to `.tmp/research/`, which is already gitignored.
 
 ## Exit codes of `run`
 
-| Code | Meaning |
-| --- | --- |
-| 0 | `improved` (also the code for `list`, `measure`, `baseline`) |
-| 1 | harness error |
-| 2 | `no-change` |
-| 3 | `regressed` |
-| 4 | `guard-failed` (boundary, forbidden reference, fixture change, or a failing guard command) |
+| Code | Meaning                                                                                    |
+| ---- | ------------------------------------------------------------------------------------------ |
+| 0    | `improved` (also the code for `list`, `measure`, `baseline`)                               |
+| 1    | harness error                                                                              |
+| 2    | `no-change`                                                                                |
+| 3    | `regressed`                                                                                |
+| 4    | `guard-failed` (boundary, forbidden reference, fixture change, or a failing guard command) |
 
 ## Targets in practice
 
