@@ -14,6 +14,7 @@ import RouteOutlet from "./RouteOutlet";
 import DangerZone from "../features/system/components/DangerZone";
 import type { Theme } from "./use-app-theme";
 
+/** Render dashboard navigation and status polling with a page error boundary reset per route. */
 export default function DashboardShell({
   route,
   navigateTo,
@@ -54,7 +55,9 @@ export default function DashboardShell({
           />
 
           {proxyOnline === false && (
-            <OfflineBanner onOpenSystem={() => navigateTo({ view: "systeem", sub: null })} />
+            <OfflineBanner
+              onOpenSystem={() => navigateTo({ view: "systeem", sub: null })}
+            />
           )}
 
           <main id="main-content" className="main" tabIndex={-1}>
@@ -76,6 +79,7 @@ export default function DashboardShell({
                   message={t("errorBoundary.message")}
                   detailsLabel={t("errorBoundary.details")}
                   reloadLabel={t("errorBoundary.reload")}
+                  clientSha={__APP_GIT_SHA__}
                 >
                   <Suspense
                     fallback={
@@ -105,4 +109,3 @@ export default function DashboardShell({
     </MotionConfig>
   );
 }
-

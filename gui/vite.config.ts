@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
@@ -9,6 +10,27 @@ import tailwindcss from "@tailwindcss/vite";
 const version = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ).version;
+// Embed the checkout identity used by the server's existing build provenance. A package
+// version alone cannot distinguish two builds of the same release.
+// Container builds exclude .git. Their trusted VCS_REF must be available during the
+// GUI build, not only in the final runtime image; validate before embedding it.
+const suppliedSha = process.env.OPENCODEX_GIT_SHA;
+let gitSha: string | null =
+  suppliedSha && /^[a-f0-9]{40}$/i.test(suppliedSha)
+    ? suppliedSha.toLowerCase()
+    : null;
+if (!gitSha) {
+  try {
+    const value = execFileSync("git", ["rev-parse", "--verify", "HEAD"], {
+      cwd: new URL("..", import.meta.url),
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (/^[a-f0-9]{40}$/i.test(value)) gitSha = value.toLowerCase();
+  } catch {
+    // Source archives without a valid image build reference have no checkout identity.
+  }
+}
 const proxyTarget = process.env.OPENCODEX_PROXY_TARGET;
 const previewPort =
   process.env.PORT && /^\d+$/.test(process.env.PORT)
@@ -69,7 +91,10 @@ function guiSessionPlugin(target: string | undefined) {
 export default defineConfig({
   plugins: [react(), tailwindcss(), guiSessionPlugin(proxyTarget)],
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
-  define: { __APP_VERSION__: JSON.stringify(version) },
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+    __APP_GIT_SHA__: JSON.stringify(gitSha),
+  },
   build: {
     rollupOptions: {
       output: {

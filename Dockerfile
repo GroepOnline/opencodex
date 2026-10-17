@@ -13,6 +13,8 @@ COPY gui/package.json gui/bun.lock ./
 RUN bun install --frozen-lockfile
 
 FROM root-deps AS build
+ARG VCS_REF=unknown
+ENV OPENCODEX_GIT_SHA=${VCS_REF}
 WORKDIR /app
 COPY --from=gui-deps /app/gui/node_modules ./gui/node_modules
 COPY . .

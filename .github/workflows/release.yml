@@ -643,18 +643,23 @@ jobs:
   # The release tag above is pushed with GITHUB_TOKEN. GitHub never starts `push`
   # runs for refs created by that token, so container.yml (GHCR image) would
   # otherwise wait for a human dispatch. This job dispatches it explicitly on the
-  # exact tag. Runtime cutover is intentionally absent.
+  # exact tag, then verifies its run-scoped digest artifact. Stable latest releases
+  # dispatch the private production workflow in a separate environment-scoped job.
   # Job-scoped actions:write; the publish job keeps actions:read.
   rollout:
     needs: publish
     if: github.event.inputs.dry-run != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    outputs:
+      image_run_id: ${{ steps.confirm-image.outputs.image_run_id }}
+      image_digest: ${{ steps.verify-image.outputs.image_digest }}
     permissions:
       contents: read
       actions: write # gh workflow run container.yml
     steps:
       - name: Dispatch GHCR image publish on the release tag
+        id: confirm-image
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ inputs.version }}
@@ -675,7 +680,7 @@ jobs:
           previous_id="$(gh run list --workflow container.yml --commit "$RELEASE_SHA" --event workflow_dispatch --limit 10 --json databaseId --jq '.[0].databaseId // ""')"
           gh workflow run container.yml --ref "${release_tag}" -f "expected_sha=${RELEASE_SHA}"
           image_run_id=""
-          for attempt in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             current_id="$(gh run list --workflow container.yml --commit "$RELEASE_SHA" --event workflow_dispatch --limit 10 --json databaseId --jq '.[0].databaseId // ""')"
             if [ -n "$current_id" ] && [ "$current_id" != "$previous_id" ]; then
               image_run_id="$current_id"
@@ -695,6 +700,7 @@ jobs:
             echo "::error::GHCR workflow did not successfully publish tag $release_tag at the release commit"
             exit 1
           fi
+          echo "image_run_id=${image_run_id}" >> "$GITHUB_OUTPUT"
           echo "GHCR published by run $image_run_id for tag $release_tag at $RELEASE_SHA"
           {
             echo "### Rollout chain"
@@ -703,16 +709,113 @@ jobs:
             echo "- GHCR image: container.yml dispatched on \`refs/tags/${release_tag}\` (tags: sha, ${release_tag}, ${RELEASE_VERSION})"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Download exact GHCR run identity
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-image
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.confirm-image.outputs.image_run_id }}
+          github-token: ${{ github.token }}
+          path: release-image
+
+      - name: Verify release image identity
+        id: verify-image
+        env:
+          RELEASE_TAG: v${{ inputs.version }}
+          SOURCE_SHA: ${{ github.sha }}
+          IMAGE_RUN_ID: ${{ steps.confirm-image.outputs.image_run_id }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYJSON'
+          import json, os, re, sys
+          with open("release-image/release-image.json", encoding="utf-8") as artifact:
+              record = json.load(artifact)
+          expected = {
+              "schemaVersion": 1,
+              "releaseTag": os.environ["RELEASE_TAG"],
+              "sourceSha": os.environ["SOURCE_SHA"],
+              "imageRunId": os.environ["IMAGE_RUN_ID"],
+          }
+          for key, value in expected.items():
+              if record.get(key) != value:
+                  sys.exit(f"::error::release-image {key} mismatch; refusing deployment dispatch")
+          digest = record.get("imageDigest", "")
+          if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+              sys.exit("::error::release-image digest is missing or invalid")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"image_digest={digest}\n")
+          PYJSON
+
       - name: Refuse retired live deploy (opt-in)
         env:
           DEPLOY: ${{ inputs.deploy }}
         run: |
           set -euo pipefail
           if [ "$DEPLOY" != "true" ]; then
-            echo "::notice::deploy=false — runtime cutover is not part of this release."
-            echo "- runtime cutover: not dispatched; legacy Azure deployment is retired" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::deploy=false — retired Azure deployment is disabled; the stable OCX dispatch has a separate gated job."
+            echo "- legacy Azure deployment: not dispatched; stable OCX production dispatch is reported separately" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           echo "::error::deploy=true is disabled because deploy.yml targets retired production host."
           echo "::error::Use the separately verified private production deployment contract."
           exit 1
+
+  production-dispatch:
+    needs: rollout
+    if: github.event.inputs.dry-run != 'true' && inputs.tag == 'latest' && !contains(inputs.version, '-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ocx-production-dispatch
+    permissions:
+      contents: read
+    steps:
+      - name: Require deployment app credentials
+        env:
+          APP_ID: ${{ secrets.OCX_DEPLOY_APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.OCX_DEPLOY_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$APP_ID" ] || [ -z "$APP_PRIVATE_KEY" ]; then
+            echo "::error::ocx-production-dispatch requires OCX_DEPLOY_APP_ID and OCX_DEPLOY_APP_PRIVATE_KEY"
+            exit 1
+          fi
+
+      - name: Create repository-scoped deployment token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.OCX_DEPLOY_APP_ID }}
+          private-key: ${{ secrets.OCX_DEPLOY_APP_PRIVATE_KEY }}
+          owner: GroepOnline
+          repositories: ChefFactory
+          permission-actions: write
+          permission-contents: read
+
+      - name: Dispatch private production deployment
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASE_TAG: v${{ inputs.version }}
+          SOURCE_SHA: ${{ github.sha }}
+          IMAGE_DIGEST: ${{ needs.rollout.outputs.image_digest }}
+          NPM_RUN_ID: ${{ github.run_id }}
+          IMAGE_RUN_ID: ${{ needs.rollout.outputs.image_run_id }}
+        run: |
+          set -euo pipefail
+          gh workflow run ocx-container-deploy.yml \
+            --repo GroepOnline/ChefFactory \
+            --ref main \
+            -f "release_tag=${RELEASE_TAG}" \
+            -f "source_sha=${SOURCE_SHA}" \
+            -f "image_digest=${IMAGE_DIGEST}" \
+            -f "npm_run_id=${NPM_RUN_ID}" \
+            -f "image_run_id=${IMAGE_RUN_ID}"
+          {
+            echo "### Production dispatch acknowledgement"
+            echo ""
+            echo "- status: accepted by GroepOnline/ChefFactory Actions; deployment is not proven by this acknowledgement"
+            echo "- release tag: \`${RELEASE_TAG}\`"
+            echo "- source SHA: \`${SOURCE_SHA}\`"
+            echo "- image digest: \`${IMAGE_DIGEST}\`"
+            echo "- npm run: \`${NPM_RUN_ID}\`"
+            echo "- image run: \`${IMAGE_RUN_ID}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

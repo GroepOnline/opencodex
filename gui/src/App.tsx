@@ -10,13 +10,16 @@ import DashboardShell from "./app/DashboardShell";
 const Landing = lazy(() => import("./landing/Landing"));
 installApiAuthFetch();
 
+/** Render the landing page or dashboard for the current route and update the page title. */
 export default function App() {
   const { route, navigateTo } = useAppRouteState();
   const { theme, setTheme } = useAppTheme();
   const t = useT();
   useEffect(() => {
     const title = routeTitleKey(route);
-    document.title = title ? t("app.pageTitle", { page: t(title) }) : "opencodex";
+    document.title = title
+      ? t("app.pageTitle", { page: t(title) })
+      : "opencodex";
   }, [route, t]);
   // The public landing page renders outside the dashboard shell: no topbar,
   // no view tabs, no health polling UI. Everything below it is the app.
@@ -28,6 +31,7 @@ export default function App() {
         message={t("errorBoundary.message")}
         detailsLabel={t("errorBoundary.details")}
         reloadLabel={t("errorBoundary.reload")}
+        clientSha={__APP_GIT_SHA__}
       >
         <Suspense
           fallback={

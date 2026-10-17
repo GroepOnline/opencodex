@@ -12,6 +12,7 @@ interface ImportMeta {
 
 // Injected at build time by vite.config.ts `define` as the UI version fallback.
 declare const __APP_VERSION__: string;
+declare const __APP_GIT_SHA__: string | null;
 
 interface ImportMetaEnv {
   readonly VITE_API_BASE?: string;
