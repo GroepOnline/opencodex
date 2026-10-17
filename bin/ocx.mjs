@@ -16,6 +16,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { npmInvocation } from "../src/update/npm-invocation.mjs";
 import { handoffWindowsTrayForUpdate, planWindowsTrayUpdate } from "../src/update/tray-update-plan.mjs";
+import { foregroundRestartAdvice } from "../src/update/restart-advice.mjs";
 
 const PKG = "@groeponline/opencodex";
 const require = createRequire(import.meta.url);
@@ -286,8 +287,9 @@ function runNpmSelfUpdate() {
         else process.env.OCX_BAKE_PORT = prevBake;
       }
     } else {
-      console.log(`If this machine owns the local proxy, restart it:  ocx start --port ${bakePort}${proxyOnly ? " --proxy-only" : ""}`);
-      console.log("For an externally managed gateway or tunnel, keep the existing listener; do not start a second proxy.");
+      for (const line of foregroundRestartAdvice({ stoppedLocalProxy: hasRuntimeState, port: bakePort, proxyOnly })) {
+        console.log(line);
+      }
     }
     process.exit(0);
   }

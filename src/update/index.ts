@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { getConfigDir, loadConfig, readPid, readRuntimePort } from "../config";
 import { npmInvocation } from "./npm-invocation.mjs";
 import { handoffWindowsTrayForUpdate, planWindowsTrayUpdate } from "./tray-update-plan.mjs";
+import { foregroundRestartAdvice } from "./restart-advice.mjs";
 
 /**
  * A `codex-history-backup-*.json` surviving a stop means the native-history restore was
@@ -257,6 +258,10 @@ export async function runUpdate(): Promise<void> {
     proxyOnly: runtimeTrusted && preUpdateRt.proxyOnly === true,
   };
 
+  // Foreground runtime state proves this machine owns a proxy; without it the port may
+  // belong to an externally managed gateway or tunnel (see restart-advice.mjs).
+  const stoppedLocalProxy = Boolean(readPid() || readRuntimePort());
+
   // Never replace package files under a live proxy: the running server dynamic-imports
   // modules after startup, so an in-place update leaves it executing mixed old/new code.
   // Gate on the service and the runtime-port record too, not just the pid file — a
@@ -385,8 +390,13 @@ export async function runUpdate(): Promise<void> {
         else process.env.OCX_BAKE_PORT = prevBake;
       }
     } else {
-      console.log(`If this machine owns the local proxy, restart it:  ocx start --port ${capturedListen.port}${capturedListen.proxyOnly ? " --proxy-only" : ""}`);
-      console.log("For an externally managed gateway or tunnel, keep the existing listener; do not start a second proxy.");
+      for (const line of foregroundRestartAdvice({
+        stoppedLocalProxy,
+        port: capturedListen.port,
+        proxyOnly: capturedListen.proxyOnly,
+      })) {
+        console.log(line);
+      }
     }
   } else {
     if (trayWasRunning) {
