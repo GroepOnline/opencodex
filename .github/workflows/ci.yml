@@ -4,6 +4,7 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - ".bun-version"
       - "src/**"
       - "bin/**"
       - "tests/**"
@@ -24,6 +25,7 @@ on:
   push:
     branches: [main, preview]
     paths:
+      - ".bun-version"
       - "src/**"
       - "bin/**"
       - "tests/**"
@@ -69,7 +71,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
           no-cache: false
 
       - name: Cache GUI node_modules
@@ -187,7 +189,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
 
       - name: Install root dependencies
         run: bun install --frozen-lockfile
@@ -247,7 +249,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
 
       - name: Install dependencies
         run: bun install --frozen-lockfile

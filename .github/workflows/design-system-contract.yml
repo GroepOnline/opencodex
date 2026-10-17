@@ -2,18 +2,25 @@ name: Design-system contract
 on:
   push:
     paths:
+      - ".bun-version"
       - ".github/design-system.json"
       - ".github/design-system.yml"
       - ".github/workflows/design-system-contract.yml"
       - "gui/**"
   pull_request:
     paths:
+      - ".bun-version"
       - ".github/design-system.json"
       - ".github/design-system.yml"
       - ".github/workflows/design-system-contract.yml"
       - "gui/**"
 permissions:
   contents: read
+
+concurrency:
+  group: design-system-contract-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -31,7 +38,7 @@ jobs:
         run: python3 .design-system-validator/scripts/validate-consumer-contract.py .github/design-system.json
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: "1.4.2"
+          bun-version-file: .bun-version
       - name: Design token drift gate
         run: |
           cd gui
