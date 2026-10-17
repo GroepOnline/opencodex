@@ -99,6 +99,9 @@ describe("local/dev complete path", () => {
     expect(compose).toContain(
       "OPENCODEX_API_AUTH_TOKEN_FILE: /run/secrets/opencodex_api_token",
     );
+    expect(compose).toContain(
+      "OPENCODEX_CLAUDE_DESKTOP_CONFIG_DIR: /var/lib/opencodex/claude-desktop",
+    );
     expect(compose).not.toMatch(/OPENCODEX_BIND_IP/);
     expect(compose).not.toMatch(/^(\s*)OPENCODEX_API_AUTH_TOKEN:/m);
     expect(compose).not.toMatch(/^(\s*)OIDC_CLIENT_SECRET:/m);
@@ -123,6 +126,9 @@ describe("local/dev complete path", () => {
       "OIDC_CLIENT_SECRET_FILE: ${OIDC_CLIENT_SECRET_FILE:-}",
     );
     expect(compose).toContain("OIDC_ALLOWED_HOSTS: ${OIDC_ALLOWED_HOSTS:-}");
+    expect(compose).toContain(
+      "OPENCODEX_CLAUDE_DESKTOP_CONFIG_DIR: /var/lib/opencodex/claude-desktop",
+    );
     expect(compose).not.toMatch(/\bOIDC_CLIENT_SECRET:/);
     expect(compose).not.toContain("OIDC_CLIENT_SECRET_FILE:?");
   });

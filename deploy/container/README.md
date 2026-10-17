@@ -40,6 +40,16 @@ Use `OPENCODEX_SMOKE_EXPECT_SHA` and
 `OPENCODEX_SMOKE_EXPECT_VERSION` when a deployment gate must bind an exact
 artifact.
 
+## Persistent Claude Desktop library
+
+The container stores its applied Claude Desktop 3P library under
+`/var/lib/opencodex/claude-desktop`, inside the existing persistent
+`OPENCODEX_STATE_DIR` mount. Keep
+`OPENCODEX_CLAUDE_DESKTOP_CONFIG_DIR=/var/lib/opencodex/claude-desktop` in
+container deployments. Otherwise a profile applied through the management API
+is lost or hidden when the container is recreated, and remote Desktop clients
+receive `404` from `/v1/claude-desktop-3p-library`.
+
 ## Authentication
 
 Remote data-plane binds must use a generated client admission key or the
