@@ -170,7 +170,7 @@ describe.skipIf(!bash || !python)("release image scripts", () => {
     // Writing to GITHUB_OUTPUT must append rather than erase earlier step outputs.
     writeFileSync(output, "previous_output=preserved\n");
     expect(run(verifyIdentity).status).toBe(0);
-    expect(readFileSync(output, "utf8")).toBe(
+    // Git Bash can append CRLF to GITHUB_OUTPUT on Windows; compare logical output lines.\n    expect(readFileSync(output, "utf8").replace(/\r\n/g, "\n")).toBe(
       `previous_output=preserved\nimage_digest=${imageDigest}\n`,
     );
   });
