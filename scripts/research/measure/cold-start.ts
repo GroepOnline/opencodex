@@ -64,6 +64,48 @@ interface Health {
   port?: number;
 }
 
+async function probeHealthz(port: number): Promise<{ pid: number | null } | null> {
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/healthz`, { signal: AbortSignal.timeout(500) });
+    if (!response.ok) return null;
+    const body = (await response.json()) as Health;
+    if (body.status !== "ok" || body.service !== "opencodex" || body.port !== port) return null;
+    return { pid: typeof body.pid === "number" && body.pid > 1 ? body.pid : null };
+  } catch {
+    return null;
+  }
+}
+
+function startupError(stderrPath: string, exitCode: number): Error {
+  let reason = "";
+  try {
+    reason = readFileSync(stderrPath, "utf8").trim().split("\n").slice(-3).join(" | ");
+  } catch {
+    // The stderr file might not exist yet after a fast crash.
+  }
+  return new Error(`server exited with code ${exitCode} before /healthz answered: ${reason}`);
+}
+
+async function waitForHealthyServer(
+  port: number,
+  started: number,
+  stderrPath: string,
+  exitCode: () => number | null,
+): Promise<{ startupMs: number; servedPid: number | null }> {
+  for (;;) {
+    const elapsed = performance.now() - started;
+    const code = exitCode();
+    // Exit 0 may mean that the CLI handed off to a detached server.
+    if (code !== null && code !== 0) throw startupError(stderrPath, code);
+    if (elapsed > STARTUP_TIMEOUT_MS) throw new Error(`/healthz did not answer within ${STARTUP_TIMEOUT_MS} ms`);
+    const healthy = await probeHealthz(port);
+    if (healthy) {
+      return { startupMs: Math.round((performance.now() - started) * 10) / 10, servedPid: healthy.pid };
+    }
+    await sleep(POLL_INTERVAL_MS);
+  }
+}
+
 async function measureStartup(): Promise<{ startupMs: number; rssBytes: number | null }> {
   const isolated = createIsolatedTestEnvironment();
   const port = await freePort();
@@ -75,30 +117,9 @@ async function measureStartup(): Promise<{ startupMs: number; rssBytes: number |
   );
   let servedPid: number | null = null;
   try {
-    for (;;) {
-      const elapsed = performance.now() - started;
-      // A non-zero exit is a crash. Exit 0 means the CLI handed off to a detached server; keep polling.
-      if (child.exitCode !== null && child.exitCode !== 0) {
-        let reason = "";
-        try { reason = readFileSync(stderrPath, "utf8").trim().split("\n").slice(-3).join(" | "); } catch {}
-        throw new Error(`server exited with code ${child.exitCode} before /healthz answered: ${reason}`);
-      }
-      if (elapsed > STARTUP_TIMEOUT_MS) throw new Error(`/healthz did not answer within ${STARTUP_TIMEOUT_MS} ms`);
-      try {
-        const response = await fetch(`http://127.0.0.1:${port}/healthz`, { signal: AbortSignal.timeout(500) });
-        if (response.ok) {
-          const body = (await response.json()) as Health;
-          if (body.status === "ok" && body.service === "opencodex" && body.port === port) {
-            const startupMs = performance.now() - started;
-            servedPid = typeof body.pid === "number" && body.pid > 1 ? body.pid : null;
-            return { startupMs: Math.round(startupMs * 10) / 10, rssBytes: servedPid ? rssBytesOf(servedPid) : null };
-          }
-        }
-      } catch {
-        // not listening yet
-      }
-      await sleep(POLL_INTERVAL_MS);
-    }
+    const ready = await waitForHealthyServer(port, started, stderrPath, () => child.exitCode);
+    servedPid = ready.servedPid;
+    return { startupMs: ready.startupMs, rssBytes: servedPid ? rssBytesOf(servedPid) : null };
   } finally {
     child.kill();
     if (servedPid !== null && servedPid !== child.pid) {

@@ -208,65 +208,100 @@ export function parseMeasurement(stdout: string): Measurement {
   };
 }
 
-export function parseTargetConfig(raw: unknown, expectedId?: string): TargetConfig {
-  const fail = (message: string): never => {
-    throw new Error(`invalid target config: ${message}`);
-  };
-  if (typeof raw !== "object" || raw === null) return fail("not an object");
-  const c = raw as Record<string, unknown>;
-  const strings = (key: string): string[] => {
-    const v = c[key];
-    if (!Array.isArray(v) || v.some((item) => typeof item !== "string")) {
-      return fail(`${key} must be an array of strings`);
-    }
-    return v as string[];
-  };
-  if (c.schema !== 1) fail("schema must be 1");
-  if (typeof c.id !== "string" || !TARGET_ID.test(c.id)) fail("id must match [a-z0-9-]+");
-  if (expectedId !== undefined && c.id !== expectedId) fail(`id ${String(c.id)} does not match file ${expectedId}`);
-  if (c.status !== "ready" && c.status !== "analysis-only" && c.status !== "blocked") {
-    fail("status must be ready, analysis-only, or blocked");
+function targetConfigError(message: string): never {
+  throw new Error("invalid target config: " + message);
+}
+
+function targetStrings(config: Record<string, unknown>, key: string): string[] {
+  const value = config[key];
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    return targetConfigError(key + " must be an array of strings");
   }
-  if (typeof c.description !== "string" || c.description.length === 0) fail("description is required");
-  const metric = c.metric as Record<string, unknown> | undefined;
+  return value as string[];
+}
+
+function targetMetric(config: Record<string, unknown>): TargetConfig["metric"] {
+  const metric = config.metric as Record<string, unknown> | undefined;
   if (
     !metric ||
     typeof metric.name !== "string" ||
     typeof metric.unit !== "string" ||
     (metric.direction !== "lower" && metric.direction !== "higher")
   ) {
-    fail("metric needs name, unit, and direction (lower|higher)");
+    targetConfigError("metric needs name, unit, and direction (lower|higher)");
   }
-  const measure = strings("measure");
-  if (measure.length === 0) fail("measure must not be empty");
-  if (!Number.isInteger(c.runs) || (c.runs as number) < 1 || (c.runs as number) > 25) fail("runs must be an integer 1..25");
-  if (typeof c.minImprovementPct !== "number" || !(c.minImprovementPct > 0)) fail("minImprovementPct must be > 0");
-  if (!Number.isInteger(c.timeoutMs) || (c.timeoutMs as number) < 1000) fail("timeoutMs must be an integer >= 1000");
-  const mutable = strings("mutable");
+  return metric as TargetConfig["metric"];
+}
+
+function targetMutablePaths(config: Record<string, unknown>): string[] {
+  const mutable = targetStrings(config, "mutable");
   for (const entry of mutable) {
     if (ALWAYS_FROZEN.some((frozen) => pathMatches(entry, frozen) || pathMatches(frozen, entry))) {
-      fail(`mutable path ${entry} overlaps the always-frozen set`);
+      targetConfigError("mutable path " + entry + " overlaps the always-frozen set");
     }
   }
-  const guards = c.guards;
+  return mutable;
+}
+
+function targetGuards(config: Record<string, unknown>): string[][] {
+  const guards = config.guards;
   if (!Array.isArray(guards) || guards.some((g) => !Array.isArray(g) || g.length === 0 || g.some((s) => typeof s !== "string"))) {
-    fail("guards must be an array of non-empty argv arrays");
+    targetConfigError("guards must be an array of non-empty argv arrays");
   }
+  return guards as string[][];
+}
+
+function validateTargetHeader(config: Record<string, unknown>, expectedId?: string): void {
+  if (config.schema !== 1) targetConfigError("schema must be 1");
+  if (typeof config.id !== "string" || !TARGET_ID.test(config.id)) targetConfigError("id must match [a-z0-9-]+");
+  if (expectedId !== undefined && config.id !== expectedId) {
+    targetConfigError("id " + String(config.id) + " does not match file " + expectedId);
+  }
+  if (config.status !== "ready" && config.status !== "analysis-only" && config.status !== "blocked") {
+    targetConfigError("status must be ready, analysis-only, or blocked");
+  }
+  if (typeof config.description !== "string" || config.description.length === 0) {
+    targetConfigError("description is required");
+  }
+}
+
+function validateTargetLimits(config: Record<string, unknown>): void {
+  if (!Number.isInteger(config.runs) || (config.runs as number) < 1 || (config.runs as number) > 25) {
+    targetConfigError("runs must be an integer 1..25");
+  }
+  if (typeof config.minImprovementPct !== "number" || !(config.minImprovementPct > 0)) {
+    targetConfigError("minImprovementPct must be > 0");
+  }
+  if (!Number.isInteger(config.timeoutMs) || (config.timeoutMs as number) < 1000) {
+    targetConfigError("timeoutMs must be an integer >= 1000");
+  }
+}
+
+export function parseTargetConfig(raw: unknown, expectedId?: string): TargetConfig {
+  if (typeof raw !== "object" || raw === null) targetConfigError("not an object");
+  const config = raw as Record<string, unknown>;
+  validateTargetHeader(config, expectedId);
+  const metric = targetMetric(config);
+  const measure = targetStrings(config, "measure");
+  if (measure.length === 0) targetConfigError("measure must not be empty");
+  validateTargetLimits(config);
+  const mutable = targetMutablePaths(config);
+  const guards = targetGuards(config);
   return {
     schema: 1,
-    id: c.id as string,
-    status: c.status as TargetStatus,
-    description: c.description as string,
-    metric: metric as TargetConfig["metric"],
+    id: config.id as string,
+    status: config.status as TargetStatus,
+    description: config.description as string,
+    metric,
     measure,
-    runs: c.runs as number,
-    minImprovementPct: c.minImprovementPct as number,
-    timeoutMs: c.timeoutMs as number,
+    runs: config.runs as number,
+    minImprovementPct: config.minImprovementPct as number,
+    timeoutMs: config.timeoutMs as number,
     mutable,
-    fixtures: strings("fixtures"),
-    forbiddenInMutable: strings("forbiddenInMutable"),
-    guards: guards as string[][],
-    notes: typeof c.notes === "string" ? c.notes : undefined,
+    fixtures: targetStrings(config, "fixtures"),
+    forbiddenInMutable: targetStrings(config, "forbiddenInMutable"),
+    guards,
+    notes: typeof config.notes === "string" ? config.notes : undefined,
   };
 }
 
