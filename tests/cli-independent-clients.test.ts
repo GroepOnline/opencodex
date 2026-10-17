@@ -128,7 +128,7 @@ for (const kind of ["missing", "file"] as const) {
     expect(existsSync(join(f.home, "runtime-port.json"))).toBe(false);
     if (kind === "file") expect(readFileSync(invalid, "utf8")).toBe("not a directory\n");
     else expect(existsSync(invalid)).toBe(false);
-  });
+  }, 30_000); // Five CLI subprocesses on contended Windows CI exceed Bun's 5s default.
 }
 
 test("sync rejects conflicting selectors before touching client state", async () => {
