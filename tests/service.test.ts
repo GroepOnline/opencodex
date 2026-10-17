@@ -29,7 +29,9 @@ import {
   resolveServiceListenPort,
   serviceLogPath,
   serviceStartableFromTray,
+  serviceManagerOpsForTests,
   serviceStatusSummary,
+  setServiceCommandExecForTests,
   shouldDeferToSystemSystemdUnit,
   windowsTaskRegistrationHealthy,
 } from "../src/service";
@@ -208,7 +210,7 @@ describe("systemd service unit", () => {
     );
 
     const unitCheckAt = startSystemd.indexOf("existsSync(unitPath())");
-    const startAt = startSystemd.indexOf("systemctl --user start");
+    const startAt = startSystemd.indexOf('"--user", "start"');
     expect(unitCheckAt).toBeGreaterThan(-1);
     expect(startAt).toBeGreaterThan(-1);
     expect(unitCheckAt).toBeLessThan(startAt);
@@ -218,9 +220,9 @@ describe("systemd service unit", () => {
     const writeAt = installSystemd.indexOf(
       'writeFileSync(unitPath(), buildUnit(), "utf8")',
     );
-    const reloadAt = installSystemd.indexOf("systemctl --user daemon-reload");
-    const enableAt = installSystemd.indexOf("systemctl --user enable");
-    const restartAt = installSystemd.indexOf("systemctl --user restart");
+    const reloadAt = installSystemd.indexOf('"--user", "daemon-reload"');
+    const enableAt = installSystemd.indexOf('"--user", "enable"');
+    const restartAt = installSystemd.indexOf('"--user", "restart"');
     expect(writeAt).toBeGreaterThan(-1);
     expect(writeAt).toBeLessThan(reloadAt);
     expect(reloadAt).toBeLessThan(enableAt);
@@ -1444,5 +1446,81 @@ describe("isMaskedSystemdUnit", () => {
     writeFileSync(path, "[Unit]\n");
     expect(isMaskedSystemdUnit(path)).toBe(false);
     expect(isMaskedSystemdUnit(join(TEST_DIR, "missing.service"))).toBe(false);
+  });
+});
+
+describe("service manager commands run without a shell", () => {
+  const hostilePlist = join(
+    TEST_DIR,
+    `o'brien "home" $(touch marker) \`id\`; x`,
+    "com.opencodex.proxy.plist",
+  );
+  let calls: Array<[string, string[]]> = [];
+
+  function recordExec(output = "", fail = false): void {
+    setServiceCommandExecForTests((file, args) => {
+      calls.push([file, [...args]]);
+      if (fail) throw new Error("command exited 1");
+      return output;
+    });
+  }
+
+  afterEach(() => {
+    setServiceCommandExecForTests(null);
+    calls = [];
+  });
+
+  test("launchctl receives a plist path with shell metacharacters as one argv element", () => {
+    recordExec();
+    serviceManagerOpsForTests.startLaunchd(hostilePlist);
+    serviceManagerOpsForTests.stopLaunchd(hostilePlist);
+    serviceManagerOpsForTests.uninstallLaunchd(hostilePlist);
+    expect(calls).toEqual([
+      ["launchctl", ["load", "-w", hostilePlist]],
+      ["launchctl", ["unload", hostilePlist]],
+      ["launchctl", ["unload", hostilePlist]],
+    ]);
+  });
+
+  test("start propagates failures while stop, uninstall, and status stay best-effort", () => {
+    recordExec("", true);
+    const ops = serviceManagerOpsForTests;
+    expect(() => ops.startLaunchd(hostilePlist)).toThrow("command exited 1");
+    expect(() => ops.stopLaunchd(hostilePlist)).not.toThrow();
+    expect(() => ops.uninstallLaunchd(hostilePlist)).not.toThrow();
+    expect(ops.statusLaunchd()).toBe("");
+    expect(() => ops.stopSystemd()).not.toThrow();
+    expect(ops.statusSystemd()).toBe("");
+  });
+
+  test("launchd status filters launchctl list output in-process", () => {
+    recordExec(
+      "PID\tStatus\tLabel\n123\t0\tcom.apple.example\n456\t0\tcom.opencodex.proxy\n",
+    );
+    expect(serviceManagerOpsForTests.statusLaunchd()).toBe(
+      "456\t0\tcom.opencodex.proxy",
+    );
+    expect(calls).toEqual([["launchctl", ["list"]]]);
+
+    recordExec("PID\tStatus\tLabel\n123\t0\tcom.apple.example\n");
+    expect(serviceManagerOpsForTests.statusLaunchd()).toBe("");
+  });
+
+  test("systemctl receives the unit name as a discrete argument", () => {
+    recordExec("opencodex-proxy.service - OpenCodex Proxy Server\n");
+    expect(serviceManagerOpsForTests.statusSystemd()).toBe(
+      "opencodex-proxy.service - OpenCodex Proxy Server",
+    );
+    serviceManagerOpsForTests.stopSystemd();
+    expect(calls).toEqual([
+      ["systemctl", ["--user", "status", "opencodex-proxy"]],
+      ["systemctl", ["--user", "stop", "opencodex-proxy"]],
+    ]);
+  });
+
+  test("service.ts no longer builds shell command strings", async () => {
+    const service = await readText("src/service.ts");
+    expect(service).not.toMatch(/\bexecSync\b/);
+    expect(service).not.toMatch(/\bsh\(/);
   });
 });
