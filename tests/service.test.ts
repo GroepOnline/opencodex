@@ -1273,9 +1273,8 @@ describe("service diagnostics", () => {
       platform: "linux",
       inDocker: () => false,
       systemUnitInstalled: () => true,
-      systemctl: (command) => {
-        if (command.includes("is-enabled"))
-          throw new Error("permission denied");
+      systemctl: (args) => {
+        if (args.includes("is-enabled")) throw new Error("permission denied");
         return "inactive";
       },
       isSystemd: () => true,
@@ -1304,8 +1303,8 @@ describe("service diagnostics", () => {
       platform: "linux",
       inDocker: () => false,
       systemUnitInstalled: () => true,
-      systemctl: (command) =>
-        command.includes("is-enabled") ? "disabled" : "inactive",
+      systemctl: (args) =>
+        args.includes("is-enabled") ? "disabled" : "inactive",
       isSystemd: () => true,
       userUnit: () => ({ installed: true, enabled: true, running: true }),
     });
@@ -1518,9 +1517,30 @@ describe("service manager commands run without a shell", () => {
     ]);
   });
 
+  test("default system-unit probe runs systemctl with discrete argv", () => {
+    process.env.OPENCODEX_HOME = join(TEST_DIR, "ocx-home");
+    setServiceCommandExecForTests((file, args) => {
+      calls.push([file, [...args]]);
+      return args.includes("is-enabled") ? "enabled" : "active";
+    });
+    const diagnostic = diagnoseService({
+      platform: "linux",
+      inDocker: () => false,
+      systemUnitInstalled: () => true,
+      isSystemd: () => true,
+      userUnit: () => ({ installed: false, enabled: false, running: false }),
+    });
+    expect(diagnostic).toMatchObject({ backend: "systemd", running: true });
+    expect(calls).toEqual([
+      ["systemctl", ["is-enabled", "opencodex-proxy.service"]],
+      ["systemctl", ["is-active", "opencodex-proxy.service"]],
+    ]);
+  });
+
   test("service.ts no longer builds shell command strings", async () => {
     const service = await readText("src/service.ts");
     expect(service).not.toMatch(/\bexecSync\b/);
     expect(service).not.toMatch(/\bsh\(/);
+    expect(service).not.toMatch(/\bfunction sh\b|=\s*sh\s*[,)]/);
   });
 });

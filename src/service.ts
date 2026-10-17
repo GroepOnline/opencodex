@@ -1880,7 +1880,8 @@ type SystemSystemdUnitDiagnosis = {
 
 /** Fleet/proxy hosts often run a system unit instead of the per-user one `ocx service install` writes. */
 function diagnoseSystemSystemdUnit(
-  run: (command: string) => string = sh,
+  run: (args: string[]) => string = (args) =>
+    runServiceCommand("systemctl", args),
   installed: () => boolean = () => {
     const path = `/etc/systemd/system/${TASK}.service`;
     return existsSync(path) && !isMaskedSystemdUnit(path);
@@ -1889,7 +1890,7 @@ function diagnoseSystemSystemdUnit(
   if (!installed()) return null;
   const enabled = (() => {
     try {
-      const status = run(`systemctl is-enabled ${TASK}.service`);
+      const status = run(["is-enabled", `${TASK}.service`]);
       return status === "enabled" ? true : status === "disabled" ? false : null;
     } catch {
       return null;
@@ -1897,7 +1898,7 @@ function diagnoseSystemSystemdUnit(
   })();
   const running = (() => {
     try {
-      const status = run(`systemctl is-active ${TASK}.service`);
+      const status = run(["is-active", `${TASK}.service`]);
       return status === "active" ? true : status === "inactive" ? false : null;
     } catch {
       return null;
@@ -2431,7 +2432,8 @@ export function diagnoseService(
   probes: {
     platform?: string;
     inDocker?: () => boolean;
-    systemctl?: (command: string) => string;
+    /** Runs `systemctl` with discrete argv (no shell). */
+    systemctl?: (args: string[]) => string;
     systemUnitInstalled?: () => boolean;
     isSystemd?: () => boolean;
     userUnit?: () => SystemdUserUnitDiagnosis;
