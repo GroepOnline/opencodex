@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import {
@@ -1057,57 +1058,107 @@ describe("GitHub Actions hardening", () => {
     expect(notesBlock).toMatch(/\n {10}else\n/);
   });
 
-  test("publish-on-tag verifies the tagged commit is reachable from origin/main before publishing", async () => {
-    const text = await readText(".github/workflows/publish-on-tag.yml");
-    const workflow = Bun.YAML.parse(text) as {
-      jobs?: Record<
-        string,
-        {
-          steps?: Array<{
-            name?: string;
-            uses?: string;
-            run?: string;
-            with?: Record<string, unknown>;
-          }>;
-        }
-      >;
+  test("npm publication has one entrypoint and the long-lived npm token stays confined to it", async () => {
+    // publish-on-tag.yml was a second, tag-triggered publish route that ran on
+    // a persistent self-hosted runner with the org NPM_TOKEN in its env. The
+    // Release workflow is the only release entrypoint (RELEASE_PROCESS.md), so
+    // the legacy route was deleted. Scan every workflow so neither a publish
+    // path nor the token can quietly reappear outside release.yml.
+    expect(
+      await Bun.file(
+        new URL(".github/workflows/publish-on-tag.yml", root),
+      ).exists(),
+    ).toBe(false);
+
+    type Step = {
+      name?: string;
+      uses?: string;
+      run?: string;
+      env?: Record<string, unknown>;
     };
+    type Job = Record<string, unknown> & {
+      "runs-on"?: unknown;
+      steps?: Step[];
+    };
+    type Workflow = Record<string, unknown> & { jobs?: Record<string, Job> };
 
-    const steps = workflow.jobs?.publish?.steps ?? [];
-    const stepNames = steps.map((step) => step.name);
+    const files = readdirSync(
+      fileURLToPath(new URL(".github/workflows/", root)),
+    )
+      .filter((file) => /\.ya?ml$/.test(file))
+      .sort();
+    expect(files).toContain("release.yml");
 
-    // The gate has to run immediately after checkout and before version
-    // resolution or any publish step, or a tag pushed on a stray branch could
-    // slip past to npm before the check has a chance to fail the job.
-    expect(stepNames.slice(0, 3)).toEqual([
-      "Checkout",
-      "Verify tag commit is on main",
-      "Resolve version from tag",
+    const npmTokenSecret =
+      /\bsecrets\s*(?:\.\s*NPM_TOKEN\b|\[\s*['"]NPM_TOKEN['"]\s*\])/;
+    const publishCommand =
+      /(?:^|[\s;&|(])(?:npm|bun|pnpm|yarn|"?\$\{?npm_bin\}?"?)\s+publish\b/;
+    const authAssignment = /\bNODE_AUTH_TOKEN=|\bexport\s+NODE_AUTH_TOKEN\b/;
+    // Shell comments and echo messages may name the token; commands may not.
+    const commandLines = (run: string | undefined) =>
+      (run ?? "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(
+          (line) => line && !line.startsWith("#") && !line.startsWith("echo "),
+        );
+
+    const publishSteps: string[] = [];
+    const tokenSteps: string[] = [];
+    const authAssignmentSteps: string[] = [];
+    const authMentionFiles = new Set<string>();
+    for (const file of files) {
+      const workflow = Bun.YAML.parse(
+        await readText(`.github/workflows/${file}`),
+      ) as Workflow;
+      const workflowLevel = JSON.stringify({ ...workflow, jobs: undefined });
+      expect(workflowLevel).not.toMatch(npmTokenSecret);
+      expect(workflowLevel).not.toContain("NODE_AUTH_TOKEN");
+      for (const [jobId, job] of Object.entries(workflow.jobs ?? {})) {
+        const jobLevel = JSON.stringify({ ...job, steps: undefined });
+        expect(jobLevel).not.toMatch(npmTokenSecret);
+        expect(jobLevel).not.toContain("NODE_AUTH_TOKEN");
+        for (const step of job.steps ?? []) {
+          const id = `${file}:${jobId}:${step.name ?? step.uses ?? "<unnamed>"}`;
+          const serialized = JSON.stringify(step);
+          const lines = commandLines(step.run);
+          if (npmTokenSecret.test(serialized)) tokenSteps.push(id);
+          if (serialized.includes("NODE_AUTH_TOKEN"))
+            authMentionFiles.add(file);
+          if (
+            Object.hasOwn(step.env ?? {}, "NODE_AUTH_TOKEN") ||
+            lines.some((line) => authAssignment.test(line))
+          ) {
+            authAssignmentSteps.push(id);
+          }
+          const publishLines = lines.filter((line) =>
+            publishCommand.test(line),
+          );
+          if (publishLines.length === 0) continue;
+          publishSteps.push(id);
+          // Publishing runs on an ephemeral GitHub-hosted runner, never on a
+          // persistent self-hosted one, and never runs package lifecycle scripts.
+          expect(JSON.stringify(job["runs-on"])).not.toContain("self-hosted");
+          for (const line of publishLines) {
+            expect(line).toContain("--ignore-scripts");
+          }
+        }
+      }
+    }
+
+    expect(publishSteps).toEqual([
+      "release.yml:publish:Publish (or dry-run)",
+      "release.yml:publish:Publish token fallback",
     ]);
-
-    // `git branch -r --contains` needs full ref history; a shallow checkout
-    // would make the tagged commit look unreachable from every branch and
-    // hard-fail every release regardless of where the tag actually sits.
-    const checkout = steps[0]!;
-    expect(checkout.with?.["fetch-depth"]).toBe(0);
-
-    const verify = steps[1]!;
-    const verifyScript = String(verify.run ?? "");
-    expect(verifyScript).toContain("git fetch origin main");
-    expect(verifyScript).toContain('git branch -r --contains "$GITHUB_SHA"');
-    // Exact-line match against the two-space `git branch -r` list prefix, not
-    // a substring match — otherwise a differently-named remote branch such as
-    // `origin/main-2` or `origin/mainline` would also satisfy the check.
-    expect(verifyScript).toContain('grep -qx "  origin/main"');
-    expect(verifyScript).toContain("exit 1");
-    expect(verifyScript).toContain(
-      "::error::Tagged commit ${GITHUB_SHA} is not on origin/main — release tags must sit on main",
-    );
-    // GITHUB_SHA is the runner-provided default env var, not a workflow
-    // input; the script must never widen this to a raw `${{ ... }}`
-    // interpolation, which would reopen the shell-injection surface the
-    // release workflow's `runBlocks` check (above) guards against.
-    expect(verifyScript).not.toContain("${{");
+    // Trusted Publishing (OIDC) is always attempted first. Until npm accepts it
+    // for release.yml, the isolated fallback step is the only place the
+    // long-lived token may appear. Once that fallback is removed, these become
+    // empty and the org NPM_TOKEN secret can be revoked.
+    expect(tokenSteps).toEqual(["release.yml:publish:Publish token fallback"]);
+    expect(authAssignmentSteps).toEqual([
+      "release.yml:publish:Publish token fallback",
+    ]);
+    expect([...authMentionFiles]).toEqual(["release.yml"]);
   });
 
   /**
@@ -3411,53 +3462,6 @@ describe("GitHub Actions hardening", () => {
     expect([...(workflow.on?.push?.paths ?? [])].sort()).toEqual(
       [...(workflow.on?.pull_request?.paths ?? [])].sort(),
     );
-  });
-
-  test("publish-on-tag publishes without any runtime deploy path", async () => {
-    const text = await readText(".github/workflows/publish-on-tag.yml");
-    const workflow = Bun.YAML.parse(text) as {
-      jobs?: Record<string, { steps?: Array<{ name?: string; run?: string }> }>;
-    };
-
-    // The SSH-based `deploy` job (and its DEPLOY_HOST/DEPLOY_SSH_KEY secrets)
-    // must stay gone; publication has no runtime side effect.
-    expect(Object.keys(workflow.jobs ?? {})).toEqual(["publish"]);
-    expect(text).not.toContain("DEPLOY_SSH_KEY");
-    expect(text).not.toContain("DEPLOY_HOST");
-    expect(text).not.toContain("ssh -i");
-    expect(text).not.toContain("StrictHostKeyChecking=no");
-
-    const steps = workflow.jobs?.publish?.steps ?? [];
-    const createRelease = steps.find(
-      (step) => step.name === "Create GitHub Release",
-    );
-    expect(createRelease).toBeDefined();
-    const releaseScript = createRelease!.run ?? "";
-
-    // A pre-existing release for the same tag must short-circuit before
-    // `gh release create` is attempted (a re-run would otherwise fail on a
-    // duplicate release).
-    const viewIndex = releaseScript.indexOf("gh release view");
-    const skipIndex = releaseScript.indexOf("exit 0");
-    const createIndex = releaseScript.indexOf("gh release create");
-    expect(viewIndex).toBeGreaterThan(-1);
-    expect(createIndex).toBeGreaterThan(-1);
-    expect(viewIndex).toBeLessThan(skipIndex);
-    expect(skipIndex).toBeLessThan(createIndex);
-    expect(releaseScript).toContain("publication does not deploy a runtime");
-    expect(releaseScript).toContain(
-      "Runtime cutover is a separately verified operation.",
-    );
-
-    // The retirement is documented in-line so the release path cannot silently
-    // regain the old Azure side effect as the workflows evolve independently.
-    expect(text).toContain(
-      "former production deploy route is permanently retired",
-    );
-    expect(text).toContain(
-      "Publication intentionally has no runtime side effect",
-    );
-    expect(text).toContain("private production deployment contract");
   });
 
   test("service-lifecycle workflow file has no trailing blank line", async () => {
