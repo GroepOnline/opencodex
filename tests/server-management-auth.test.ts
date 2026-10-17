@@ -6,7 +6,7 @@ import { saveConfig } from "../src/config";
 import { startServer } from "../src/server";
 import type { OcxConfig } from "../src/types";
 import { serveGuiFile } from "../src/server/gui-static";
-import { isProxyAdmissionSecret } from "../src/server/auth-cors";
+import { isManagementAdmissionSecret, isProxyAdmissionSecret } from "../src/server/auth-cors";
 import {
   initializeManagementAuthState,
   issueGuiSession,
@@ -101,6 +101,35 @@ afterEach(() => {
 });
 
 describe("management and data-plane credential separation", () => {
+  test("management admission helpers preserve exact UTF-8 and empty-token behavior", () => {
+    process.env.OPENCODEX_ADMIN_AUTH_TOKEN = "clé-秘密";
+    expect(isManagementAdmissionSecret("clé-秘密")).toBe(true);
+    expect(isManagementAdmissionSecret(" clé-秘密 ")).toBe(true);
+    for (const actual of ["clé-秘蜜", "clé-秘密x", "clé-秘", "", "   "]) {
+      expect(isManagementAdmissionSecret(actual)).toBe(false);
+    }
+    delete process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
+    expect(isManagementAdmissionSecret("nonempty")).toBe(false);
+    process.env.OPENCODEX_ADMIN_AUTH_TOKEN = "";
+    expect(isManagementAdmissionSecret("")).toBe(false);
+    expect(isManagementAdmissionSecret("nonempty")).toBe(false);
+  });
+
+  test("management auth accepts matching credentials and rejects mismatches and empty values", async () => {
+    const state = initializeManagementAuthState(remoteConfig());
+    for (const header of ["x-opencodex-api-key", "authorization"]) {
+      for (const actual of ["admin-secret", "admin-secrex", "admin-secretx", "admin-secre", "", "   "]) {
+        const request = new Request("http://localhost:10100/api/config", {
+          headers: { [header]: header === "authorization" ? `Bearer ${actual}` : actual },
+        });
+        const response = await requireManagementAuth(request, state);
+        if (actual === "admin-secret") expect(response).toBeNull();
+        else expect(response?.status).toBe(401);
+      }
+    }
+    expect((await requireManagementAuth(new Request("http://localhost:10100/api/config"), state))?.status).toBe(401);
+  });
+
   test("data and management environment tokens authorize only their own planes", async () => {
     saveConfig(remoteConfig());
     const server = startServer(0);
@@ -367,6 +396,22 @@ describe("management and data-plane credential separation", () => {
     expect(
       (await requireManagementAuth(mutationWithoutCsrf, state, config))?.status,
     ).toBe(401);
+
+    if (!session) throw new Error("GUI session was not issued");
+    const wrongSameLengthCsrf = `${session.csrfToken[0] === "a" ? "b" : "a"}${session.csrfToken.slice(1)}`;
+    for (const csrf of [wrongSameLengthCsrf, `${session.csrfToken}x`, session.csrfToken.slice(1), ""]) {
+      const mutationWithWrongCsrf = new Request("http://localhost:10100/api/config", {
+        method: "POST",
+        headers: {
+          Host: "localhost:10100",
+          Origin: "http://localhost:10100",
+          "x-opencodex-api-key": session.token,
+          "x-opencodex-gui-origin": "http://localhost:10100",
+          "x-opencodex-csrf-token": csrf,
+        },
+      });
+      expect((await requireManagementAuth(mutationWithWrongCsrf, state, config))?.status).toBe(401);
+    }
 
     const mutationWithCsrf = new Request("http://localhost:10100/api/config", {
       method: "POST",
