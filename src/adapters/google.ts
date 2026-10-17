@@ -1,5 +1,6 @@
 import type { AdapterFetchContext, AdapterRequest, ProviderAdapter } from "./base";
 import { debugDroppedFrame } from "../lib/debug";
+import { createServerSentEventParser, jsonDataPayloads, SseFrameTooLargeError } from "../lib/sse-decoder";
 import { createHash } from "node:crypto";
 import { createImageBudget, materializeInlineImage, MAX_ENCODED_BYTES_PER_IMAGE, artifactHttpUrl } from "../images/artifacts";
 import type {
@@ -433,16 +434,27 @@ export function createGoogleAdapter(provider: OcxProviderConfig): ProviderAdapte
       // materializeInlineImage is called (see the inline.data check below).
 
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
+      // Lines outside the SSE grammar stay debug-dropped mid-stream; at EOF a residual one means
+      // the upstream cut a frame short (or left partial UTF-8), which must fail closed.
+      let atEof = false;
+      let residualGarbage = false;
+      const parser = createServerSentEventParser({
+        includeComments: true,
+        maxFrameLength: MAX_SSE_FRAME_BYTES,
+        onUnknownLine: line => {
+          if (!line.trim()) return;
+          if (atEof) residualGarbage = true;
+          else debugDroppedFrame("google", line);
+        },
+      });
       let pendingUsage: OcxUsage | undefined;
       let toolCallsStarted = 0;
       let lastFinishReason: string | undefined;
       let sawAnyFrame = false;
       let sawTerminalSignal = false;
 
-      const handleDataLine = async function* (line: string): AsyncGenerator<AdapterEvent, "continue" | "content" | "terminate"> {
-        const payload = line.slice(5).trim();
+      const handleDataPayload = async function* (data: string): AsyncGenerator<AdapterEvent, "continue" | "content" | "terminate"> {
+        const payload = data.trim();
         if (!payload) return "continue";
         if (payload.length > MAX_SSE_FRAME_BYTES) {
           yield { type: "error", message: `upstream SSE data frame exceeds ${MAX_SSE_FRAME_BYTES} bytes` };
@@ -454,6 +466,7 @@ export function createGoogleAdapter(provider: OcxProviderConfig): ProviderAdapte
         try {
           chunk = JSON.parse(payload);
         } catch {
+          debugDroppedFrame("google", payload);
           yield { type: "error", message: "malformed upstream SSE data frame" };
           return "terminate";
         }
@@ -537,48 +550,55 @@ export function createGoogleAdapter(provider: OcxProviderConfig): ProviderAdapte
         }
         return emittedContentEvent ? "content" : "continue";
       };
+      const handleEventData = async function* (data: string): AsyncGenerator<AdapterEvent, "continue" | "content" | "terminate"> {
+        let result: "continue" | "content" = "continue";
+        for (const payload of jsonDataPayloads(data)) {
+          const payloadResult = yield* handleDataPayload(payload);
+          if (payloadResult === "terminate") return payloadResult;
+          if (payloadResult === "content") result = "content";
+        }
+        return result;
+      };
       const imageBudget = createImageBudget();
 
       try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          // Cap incomplete frames before waiting for a newline — otherwise a single
-          // unterminated data: payload can grow without bound.
-          if (buffer.length > MAX_SSE_FRAME_BYTES) {
-            yield { type: "error", message: `upstream SSE data frame exceeds ${MAX_SSE_FRAME_BYTES} bytes` };
-            try { await reader.cancel(); } catch { /* ignore */ }
-            return;
-          }
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const records = parser.push(value);
 
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-
-          let sawLiveness = false;
-          let sawContentEvent = false;
-          for (const line of lines) {
-            if (line.startsWith("data:")) {
-              const result = yield* handleDataLine(line);
+            let sawContentEvent = false;
+            for (const record of records) {
+              if (record.kind === "comment") continue;
+              const result = yield* handleEventData(record.data);
               if (result === "terminate") return;
               if (result === "content") sawContentEvent = true;
+            }
+            // Any completed line (comment, blank, frame delimiter) is upstream liveness; emit at
+            // most one heartbeat per read batch, and none when the batch already emitted content.
+            const sawLineBreak = value.includes(10) || value.includes(13);
+            if (sawLineBreak && !sawContentEvent) yield { type: "heartbeat" };
+          }
+          atEof = true;
+          for (const record of parser.end()) {
+            if (record.kind === "comment") {
+              yield { type: "heartbeat" };
               continue;
             }
-            sawLiveness = true;
-            if (line.startsWith(":") || !line.trim()) continue;
-            debugDroppedFrame("google", line);
+            if ((yield* handleEventData(record.data)) === "terminate") return;
           }
-          if (sawLiveness && !sawContentEvent) yield { type: "heartbeat" };
+        } catch (err) {
+          // Cap incomplete frames before waiting for a line break; otherwise a single
+          // unterminated data: payload can grow without bound.
+          if (!(err instanceof SseFrameTooLargeError)) throw err;
+          yield { type: "error", message: `upstream SSE data frame exceeds ${MAX_SSE_FRAME_BYTES} bytes` };
+          try { await reader.cancel(); } catch { /* ignore */ }
+          return;
         }
-        buffer += decoder.decode();
-        if (buffer.trim().length > 0) {
-          const residual = buffer.trim();
-          if (residual.startsWith(":")) {
-            yield { type: "heartbeat" };
-          } else if (!residual.startsWith("data:")) {
-            yield { type: "error", message: "upstream stream ended with an incomplete SSE frame — possible truncation" };
-            return;
-          } else if ((yield* handleDataLine(residual)) === "terminate") return;
+        if (residualGarbage) {
+          yield { type: "error", message: "upstream stream ended with an incomplete SSE frame — possible truncation" };
+          return;
         }
         // Fail-closed: a turn cut off mid tool call (MAX_TOKENS / MALFORMED_FUNCTION_CALL) surfaces
         // an error instead of a silently-incomplete done. Mirrors kiro-truncation.

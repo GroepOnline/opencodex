@@ -26,6 +26,8 @@ import {
   responsesSseToAnthropicSse,
 } from "../claude/outbound";
 import { clearableDeadline, idleDeadline } from "../lib/abort";
+import { debugDroppedFrame, debugProviderDiagnostic } from "../lib/debug";
+import { createServerSentEventParser, MAX_SSE_FRAME_LENGTH, SseFrameTooLargeError } from "../lib/sse-decoder";
 import { estimateTokens } from "../lib/token-estimate";
 import { routeModel } from "../router";
 import { resolveComboId } from "../combos";
@@ -178,26 +180,38 @@ export function tapAnthropicSseForLog(
   finalize: (status: number, meta: { closeReason: PassthroughCloseReason }) => void,
   guard?: PassthroughBodyGuard,
 ): ReadableStream<Uint8Array> {
-  const decoder = new TextDecoder();
   const encoder = new TextEncoder();
-  let buffer = "";
+  const parser = createServerSentEventParser({ maxFrameLength: MAX_SSE_FRAME_LENGTH });
+  // The tap only observes; a decode failure disables inspection but never touches the relay.
+  let inspecting = true;
+  let malformedFrames = 0;
   let usageAcc: Rec = {};
-  const inspect = (chunk: Uint8Array) => {
-    buffer += decoder.decode(chunk, { stream: true });
-    let sep: number;
-    while ((sep = buffer.indexOf("\n\n")) !== -1) {
-      const frame = buffer.slice(0, sep);
-      buffer = buffer.slice(sep + 2);
-      const dataLine = frame.split("\n").filter(l => l.startsWith("data: ")).map(l => l.slice(6)).join("");
-      if (!dataLine) continue;
-      let data: unknown;
-      try { data = JSON.parse(dataLine); } catch { continue; }
-      if (!isRec(data)) continue;
-      if (data.type === "message_start" && isRec(data.message) && isRec(data.message.usage)) {
-        usageAcc = { ...usageAcc, ...data.message.usage };
-      } else if (data.type === "message_delta" && isRec(data.usage)) {
-        usageAcc = { ...usageAcc, ...data.usage };
-      }
+  const inspectEvent = (payload: string) => {
+    if (!payload) return;
+    let data: unknown;
+    try {
+      data = JSON.parse(payload);
+    } catch {
+      malformedFrames++;
+      debugDroppedFrame("anthropic-native", payload);
+      return;
+    }
+    if (!isRec(data)) return;
+    if (data.type === "message_start" && isRec(data.message) && isRec(data.message.usage)) {
+      usageAcc = { ...usageAcc, ...data.message.usage };
+    } else if (data.type === "message_delta" && isRec(data.usage)) {
+      usageAcc = { ...usageAcc, ...data.usage };
+    }
+  };
+  const inspect = (read: () => { data: string }[]) => {
+    if (!inspecting) return;
+    try {
+      for (const event of read()) inspectEvent(event.data);
+    } catch (err) {
+      inspecting = false;
+      debugProviderDiagnostic("anthropic-native", "log-tap-disabled", {
+        reason: err instanceof SseFrameTooLargeError ? "frame_too_large" : "decode_error",
+      });
     }
   };
   const reader = upstream.getReader();
@@ -206,6 +220,7 @@ export function tapAnthropicSseForLog(
   let tapController: ReadableStreamDefaultController<Uint8Array> | undefined;
 
   const recordUsage = () => {
+    if (malformedFrames > 0) debugProviderDiagnostic("anthropic-native", "malformed-frames", { count: malformedFrames });
     logCtx.usage = anthropicUsageToOcx(Object.keys(usageAcc).length > 0 ? usageAcc : undefined);
   };
   const failBody = (closeReason: "body_stall" | "body_overflow", errType: string, message: string) => {
@@ -270,6 +285,7 @@ export function tapAnthropicSseForLog(
           settled = true;
           idle.cancel();
           detachAbort();
+          inspect(() => parser.end());
           recordUsage();
           finalize(200, { closeReason: "terminal" });
           controller.close();
@@ -286,7 +302,7 @@ export function tapAnthropicSseForLog(
             return;
           }
         }
-        inspect(value);
+        inspect(() => parser.push(value));
         controller.enqueue(value);
       } catch (err) {
         if (settled) return;

@@ -3,6 +3,8 @@ import { createResponsesPassthroughAdapter } from "../src/adapters/openai-respon
 import { sanitizeEncryptedContentInPlace } from "../src/server/responses";
 import { observeOpenAiResponsesPromptCache } from "../src/prompt-cache/observability";
 import { configuredReasoningEfforts } from "../src/reasoning-effort";
+import { getDebugLogEntries, resetDebugLogBufferForTests } from "../src/lib/debug-log-buffer";
+import { resetDebugSettingsForTests, setDebugSettings } from "../src/lib/debug-settings";
 
 const provider = {
   adapter: "openai-responses",
@@ -1955,4 +1957,28 @@ test("cache diagnostics describe sanitized Spark tools and input, leaving the ca
     observeOpenAiResponsesPromptCache(rawBody)?.toolsFingerprint,
   );
   expect(JSON.stringify(rawBody)).toBe(original);
+});
+
+test("routed parseStream counts malformed frames and logs them by length only", async () => {
+  resetDebugLogBufferForTests();
+  setDebugSettings({ debug: true });
+  try {
+    const adapter = createResponsesPassthroughAdapter(provider);
+    const events = [];
+    for await (const event of adapter.parseStream(new Response([
+      "data: {private-frame-body\n\n",
+      'data: {"type":"response.output_text.delta","delta":"ok"}\n\n',
+      'data: {"type":"response.completed","response":{}}\n\n',
+    ].join("")))) events.push(event);
+
+    expect(events).toContainEqual({ type: "text_delta", text: "ok" });
+    expect(events.at(-1)?.type).toBe("done");
+    const lines = getDebugLogEntries().map(entry => entry.line);
+    expect(lines.some(line => line.includes("[ocx:frame-drop] openai-responses") && line.includes("bytes=19"))).toBe(true);
+    expect(lines.some(line => line.includes("[ocx:openai-responses:malformed-frames]") && line.includes('"count":1'))).toBe(true);
+    expect(lines.some(line => line.includes("private-frame-body"))).toBe(false);
+  } finally {
+    resetDebugSettingsForTests();
+    resetDebugLogBufferForTests();
+  }
 });

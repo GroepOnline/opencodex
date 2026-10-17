@@ -3,10 +3,11 @@ import { parseOpenAIRateLimit } from "../availability/rate-limit-parse";
 import type { AdapterEvent, OcxAssistantMessage, OcxContentPart, OcxMessage, OcxParsedRequest, OcxProviderConfig, OcxTextContent, OcxThinkingContent, OcxToolCall, OcxUsage } from "../types";
 import { isAllowedToolChoice, modelInList, namespacedToolName, resolveToolChoiceWireName, toolAllowedByChoice } from "../types";
 import { mapReasoningEffort, modelRecordValue } from "../reasoning-effort";
-import { debugProviderDiagnostic } from "../lib/debug";
+import { debugDroppedFrame, debugProviderDiagnostic } from "../lib/debug";
 import { isDebugEnabled } from "../lib/debug-settings";
 import { isCyberPolicyCode } from "../lib/errors";
 import { redactSecretString } from "../lib/redact";
+import { createServerSentEventParser, jsonDataPayloads, MAX_SSE_FRAME_LENGTH, SseFrameTooLargeError } from "../lib/sse-decoder";
 import { contentPartsToText } from "./image";
 import { neutralizeIdentity } from "./identity";
 import { buildNonOpenAIToolCatalogNudgeForTools, shouldInjectNonOpenAIToolCatalogNudge } from "./tool-catalog-nudge";
@@ -765,8 +766,7 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
       }
 
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
+      const parser = createServerSentEventParser({ maxFrameLength: MAX_SSE_FRAME_LENGTH });
       // Streamed tool calls are BUFFERED until a terminal signal, then flushed as atomic
       // start/delta/end sequences. The bridge treats text/reasoning deltas as barriers that
       // close an open tool-call item (bridge.ts closeCurrentToolCall on text_delta), so
@@ -794,13 +794,14 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
       // OpenAI-compatible providers omit `[DONE]` but do send finish_reason).
       let finishReason: string | undefined;
 
-      // Single per-line handler shared by the streaming loop and the EOF residual-frame flush, so
-      // a final frame is parsed identically wherever it lands (no duplicated, drift-prone parsing).
-      // Yields adapter events and returns "terminate" for a terminal frame ([DONE] / error) that
-      // must end the stream, or "continue" otherwise. Mutates the closure's terminal-signal state.
-      const handleDataLine = function* (line: string): Generator<AdapterEvent, "continue" | "terminate"> {
-        if (!line.startsWith("data: ")) return "continue";
-        const payload = line.slice(6).trim();
+      // Single per-payload handler shared by the streaming loop and the EOF residual-frame flush,
+      // so a final frame is parsed identically wherever it lands (no duplicated, drift-prone
+      // parsing). Yields adapter events and returns "terminate" for a terminal frame ([DONE] /
+      // error) that must end the stream, or "continue" otherwise. Mutates the closure's
+      // terminal-signal state.
+      const handleDataPayload = function* (data: string): Generator<AdapterEvent, "continue" | "terminate"> {
+        const payload = data.trim();
+        if (!payload) return "continue";
         if (payload === "[DONE]") {
           yield* flushToolCalls();
           const stopReason = finishReason === "length"
@@ -816,6 +817,7 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
         try {
           chunk = JSON.parse(payload) as Record<string, unknown>;
         } catch {
+          debugDroppedFrame("openai-chat", payload);
           yield { type: "error", message: "malformed upstream SSE data frame" };
           return "terminate";
         }
@@ -896,28 +898,36 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
         }
         return "continue";
       };
+      const handleEventData = function* (data: string): Generator<AdapterEvent, "continue" | "terminate"> {
+        for (const payload of jsonDataPayloads(data)) {
+          if ((yield* handleDataPayload(payload)) === "terminate") return "terminate";
+        }
+        return "continue";
+      };
 
       try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-
-          for (const line of lines) {
-            if ((yield* handleDataLine(line)) === "terminate") return;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            for (const event of parser.push(value)) {
+              if ((yield* handleEventData(event.data)) === "terminate") return;
+            }
           }
-        }
 
-        // Some providers send the terminal `data:` frame (carrying the final delta, finish_reason,
-        // and/or usage) WITHOUT a trailing newline before closing the socket, so it never crosses
-        // the split("\n") boundary and stays in `buffer`. Run it through the SAME handler so its
-        // content/tool-calls are emitted and its terminal signal observed — otherwise a genuinely
-        // complete stream loses its last frame and may be falsely failed below.
-        if (buffer.length > 0) {
-          if ((yield* handleDataLine(buffer)) === "terminate") return;
+          // Some providers send the terminal `data:` frame (carrying the final delta,
+          // finish_reason, and/or usage) WITHOUT a trailing newline or blank line before closing
+          // the socket. parser.end() dispatches it through the SAME handler so its
+          // content/tool-calls are emitted and its terminal signal observed; otherwise a genuinely
+          // complete stream loses its last frame and may be falsely failed below.
+          for (const event of parser.end()) {
+            if ((yield* handleEventData(event.data)) === "terminate") return;
+          }
+        } catch (err) {
+          if (!(err instanceof SseFrameTooLargeError)) throw err;
+          yield { type: "error", message: err.message };
+          try { await reader.cancel(); } catch { /* already closed */ }
+          return;
         }
         yield* flushToolCalls();
         // Reader EOF. A graceful close shows at least one terminal signal: `[DONE]` (returns above),

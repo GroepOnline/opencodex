@@ -5,6 +5,7 @@ import { namespacedToolName, type AdapterEvent, type OcxParsedRequest, type OcxP
 import { catalogModelSupportsReasoningSummaries } from "../codex/catalog";
 import { COMPACT_PROMPT, decodeCompactionSummary, SUMMARY_PREFIX } from "../responses/compaction";
 import { collectResponsesToolGroups } from "../responses/tool-groups";
+import { debugDroppedFrame, debugProviderDiagnostic } from "../lib/debug";
 import { decodeServerSentEvents } from "../lib/sse-decoder";
 import { supportsNativeRemoteCompactionV2 } from "../providers/openai-tiers";
 import { OCX_REASONING_PREFIX } from "../responses/reasoning-envelope";
@@ -1001,9 +1002,16 @@ export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): 
       let doneText = "";
       let snapshot = "";
       let usage: OcxUsage | undefined;
+      let malformedFrames = 0;
       for await (const event of decodeServerSentEvents(response.body)) {
         let payload: unknown;
-        try { payload = JSON.parse(event.data); } catch { continue; }
+        try {
+          payload = JSON.parse(event.data);
+        } catch {
+          malformedFrames++;
+          debugDroppedFrame("openai-responses", event.data);
+          continue;
+        }
         if (!isPlainObject(payload)) continue;
         switch (payload.type) {
           case "response.output_text.delta":
@@ -1025,6 +1033,7 @@ export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): 
             break;
         }
       }
+      if (malformedFrames > 0) debugProviderDiagnostic("openai-responses", "malformed-frames", { count: malformedFrames });
       // Gateways differ in which of these they emit; prefer the authoritative
       // completed snapshot so text is never double-counted.
       const text = snapshot || doneText || deltas;
