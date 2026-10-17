@@ -193,18 +193,20 @@ test("failure to fetch the applied library fails closed with no writes or altern
   expect(existsSync(join(f.dir, "new.json"))).toBe(false);
 });
 
-test("missing gateway library explains how to initialize it without exposing the response body", async () => {
-  const f = fixture();
-  const before = readFileSync(f.metaPath, "utf8");
-  f.options.fetchImpl = (async (input: string | URL | Request) => String(input).endsWith("/healthz")
-    ? Response.json({ status: "ok", service: "opencodex" })
-    : new Response("fixture-sensitive-body", { status: 404 })) as typeof fetch;
-  let message = "";
-  try { await syncClaudeDesktopLibrary(f.options); } catch (error) { message = (error as Error).message; }
-  expect(message).toContain("HTTP 404; apply the Claude Desktop profile on the OCX gateway first");
-  expect(message).not.toContain("fixture-sensitive-body");
-  expect(readFileSync(f.metaPath, "utf8")).toBe(before);
-  expect(existsSync(join(f.dir, "new.json"))).toBe(false);
+test("HTTP 404 is neutral and body-free for missing profiles, routes and library state", async () => {
+  for (const responseBody of ["profile not applied", "unknown route", "corrupt library: fixture-sensitive-body"]) {
+    const f = fixture();
+    const before = readFileSync(f.metaPath, "utf8");
+    f.options.fetchImpl = (async (input: string | URL | Request) => String(input).endsWith("/healthz")
+      ? Response.json({ status: "ok", service: "opencodex" })
+      : new Response(responseBody, { status: 404 })) as typeof fetch;
+    let message = "";
+    try { await syncClaudeDesktopLibrary(f.options); } catch (error) { message = (error as Error).message; }
+    expect(message).toBe("Claude Desktop library returned HTTP 404");
+    expect(message).not.toContain(responseBody);
+    expect(readFileSync(f.metaPath, "utf8")).toBe(before);
+    expect(existsSync(join(f.dir, "new.json"))).toBe(false);
+  }
 });
 
 test("rejects traversal, conflicting profile ids and malformed envelopes before writes", async () => {
