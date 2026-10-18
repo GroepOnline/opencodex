@@ -20,7 +20,8 @@
  *           bun scripts/release.ts 0.1.0 --publish  # explicit version, actually publish 0.1.0
  *           bun scripts/release.ts 1.0.1 --linear GRO-994 # link release evidence to Linear
  *
- * Requires: gh CLI (authed). Publishing is tokenless via Trusted Publishing (OIDC) — no NPM_TOKEN.
+ * Requires: gh CLI (authed). Publishing runs through the Release workflow (Trusted
+ *           Publishing with an NPM_TOKEN fallback and a provenance caveat; see RELEASE_PROCESS.md).
  */
 import { $ } from "bun";
 
