@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "id": "prompt-cache",
+  "status": "analysis-only",
+  "description": "Aggregate cacheReadRatio and weakest cohorts from a local anonymized usage log (scripts/analyze-prompt-cache-usage.ts).",
+  "metric": { "name": "cacheReadRatio", "unit": "ratio", "direction": "higher" },
+  "measure": ["bun", "scripts/research/measure/prompt-cache.ts"],
+  "runs": 1,
+  "minImprovementPct": 1,
+  "timeoutMs": 120000,
+  "mutable": ["src/prompt-cache/"],
+  "fixtures": [".tmp/research/fixtures/usage.jsonl"],
+  "forbiddenInMutable": [".tmp/research", "scripts/research"],
+  "guards": [["bun","run","typecheck"],["bun","run","test"],["bun","run","privacy:scan"]],
+  "notes": "Analysis only. Replaying a recorded log cannot score a change to the request builder; this needs a prefix-cache simulator over recorded request shapes before it can be a loop target. Payloads must stay semantically identical and user content is never rewritten."
+}
