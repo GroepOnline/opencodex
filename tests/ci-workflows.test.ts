@@ -3479,10 +3479,10 @@ describe("GitHub Actions hardening", () => {
     ) as {
       "self-hosted-runner"?: { labels?: string[] };
     };
-    // actionlint fails closed on unknown self-hosted labels. These are retained
-    // for the workflows that still need the dedicated publication runner; the
-    // retired deploy refusal deliberately uses a hosted runner instead.
-    expect(config["self-hosted-runner"]?.labels).toEqual(["jan", "opencodex"]);
+    // actionlint fails closed on unknown self-hosted labels. Only the labels
+    // still referenced by an available runner are declared; `jan` is deleted
+    // with the tag-publish workflow that was its last consumer.
+    expect(config["self-hosted-runner"]?.labels).toEqual(["opencodex"]);
   });
 
   test("cross-platform CI caches bun and GUI node_modules and lints YAML with the shared config", async () => {
