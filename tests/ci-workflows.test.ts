@@ -23,6 +23,10 @@ function lastEnforcerCommentBody(result: HarnessResult): string {
 }
 
 const root = new URL("../", import.meta.url);
+const workflowPaths = readdirSync(new URL(".github/workflows/", root))
+  .filter((name) => /\.ya?ml$/.test(name))
+  .sort()
+  .map((name) => `.github/workflows/${name}`);
 const doctorGuiIfChangedScript = fileURLToPath(
   new URL("../scripts/doctor-gui-if-changed.ts", import.meta.url),
 );
@@ -97,6 +101,67 @@ function expectReadOnlyJob(workflow: RunnerWorkflow, job: RunnerJob): void {
 }
 
 describe("GitHub Actions hardening", () => {
+  test.each(workflowPaths)(
+    "%s declares explicit top-level permissions",
+    async (path) => {
+      const workflow = Bun.YAML.parse(await readText(path)) as {
+        permissions?: unknown;
+      };
+      expect(Object.hasOwn(workflow, "permissions")).toBe(true);
+      expect(workflow.permissions).not.toBeNull();
+      expect(typeof workflow.permissions).toBe("object");
+      expect(Array.isArray(workflow.permissions)).toBe(false);
+      for (const level of Object.values(
+        workflow.permissions as Record<string, unknown>,
+      )) {
+        expect(["none", "read", "write"]).toContain(level);
+      }
+    },
+  );
+
+  test("issue automation denies permissions by default and grants only each job's scopes", async () => {
+    for (const [name, expected] of [
+      [
+        "enforce-issue-quality",
+        {
+          translate: { contents: "read", issues: "write", models: "read" },
+          "translate-comment": { contents: "read", issues: "write", models: "read" },
+          validate: { contents: "read", issues: "write" },
+        },
+      ],
+      [
+        "issue-triage",
+        {
+          "find-duplicates": { contents: "read", issues: "read", models: "read" },
+          "post-duplicates": { issues: "write" },
+        },
+      ],
+    ] as const) {
+      const workflow = Bun.YAML.parse(
+        await readText(`.github/workflows/${name}.yml`),
+      ) as RunnerWorkflow;
+      expect(workflow.permissions).toEqual({});
+      expect(
+        Object.fromEntries(
+          Object.entries(workflow.jobs).map(([id, job]) => [id, job.permissions]),
+        ),
+      ).toEqual(expected);
+    }
+  });
+
+  test.each(["issue-quality-tests", "design-system-contract"])(
+    "%s cancels superseded checks only on the same ref",
+    async (name) => {
+      const workflow = Bun.YAML.parse(
+        await readText(`.github/workflows/${name}.yml`),
+      ) as { concurrency?: unknown };
+      expect(workflow.concurrency).toEqual({
+        group: `${name}-` + "${{ github.ref }}",
+        "cancel-in-progress": true,
+      });
+    },
+  );
+
   test("workflow expression evaluation rejects unknown GitHub context properties", () => {
     expect(() =>
       evaluateRunnerExpression(
@@ -250,12 +315,15 @@ describe("GitHub Actions hardening", () => {
     }
   });
 
-  test("CI and release verify with the Bun runtime actually shipped in the package", async () => {
+  test("workflows share the Bun runtime actually shipped in the package", async () => {
     const pkg = JSON.parse(await readText("package.json"));
-    const workflows = await Promise.all([
-      readText(".github/workflows/ci.yml"),
-      readText(".github/workflows/release.yml"),
-    ]);
+    expect((await readText(".bun-version")).trim()).toBe(pkg.dependencies.bun);
+    // The legacy tag publisher is being removed separately. Leave it unchanged.
+    const workflows = await Promise.all(
+      workflowPaths
+        .filter((path) => path !== ".github/workflows/publish-on-tag.yml")
+        .map(readText),
+    );
     const setups = workflows.flatMap((text) => {
       const workflow = Bun.YAML.parse(text) as {
         jobs: Record<
@@ -268,11 +336,28 @@ describe("GitHub Actions hardening", () => {
         .filter((step) => step.uses?.startsWith("oven-sh/setup-bun@"));
     });
     expect(setups.length).toBeGreaterThan(0);
-    for (const step of setups)
-      expect(step.with?.["bun-version"]).toBe(pkg.dependencies.bun);
+    for (const step of setups) {
+      expect(step.with?.["bun-version-file"]).toBe(".bun-version");
+      expect(step.with).not.toHaveProperty("bun-version");
+      expect(step.with).not.toHaveProperty("bun-download-url");
+      expect(step.with).not.toHaveProperty("cache");
+      expect(step.with).not.toHaveProperty("cache-bin");
+    }
     const dockerfile = await readText("Dockerfile");
     expect(dockerfile).toContain(`ARG BUN_VERSION=${pkg.dependencies.bun}\n`);
   });
+
+  test.each(["ci", "security-audit", "service-lifecycle", "design-system-contract"])(
+    "%s checks changes to the shared Bun version on push and PR",
+    async (name) => {
+      const workflow = Bun.YAML.parse(
+        await readText(`.github/workflows/${name}.yml`),
+      ) as { on: Record<string, { paths?: string[] }> };
+      for (const event of ["push", "pull_request"]) {
+        expect(workflow.on[event]?.paths).toContain(".bun-version");
+      }
+    },
+  );
 
   test("release and GHCR publication require all platforms before release artifacts", async () => {
     const ci = await readText(".github/workflows/ci.yml");
@@ -462,6 +547,7 @@ describe("GitHub Actions hardening", () => {
     // three dependabot action bumps merged a commit that broke this very file
     // without any check firing. A glob cannot drift the same way.
     const ciPaths = [
+      ".bun-version",
       ".gitattributes",
       ".github/workflows/**",
       ".npmignore",
@@ -3281,10 +3367,19 @@ describe("GitHub Actions hardening", () => {
     const workflow = await readText(".github/workflows/deploy-docs.yml");
 
     const config = Bun.YAML.parse(workflow) as {
+      on?: { push?: { paths?: string[] } };
       permissions?: Record<string, string>;
       jobs?: Record<
         string,
-        { "runs-on"?: string; permissions?: Record<string, string> }
+        {
+          "runs-on"?: string;
+          permissions?: Record<string, string>;
+          steps?: Array<{
+            id?: string;
+            uses?: string;
+            with?: Record<string, unknown>;
+          }>;
+        }
       >;
     };
     expect(config.permissions).toEqual({ contents: "read" });
@@ -3309,13 +3404,20 @@ describe("GitHub Actions hardening", () => {
     );
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
 
-    // The Astro action's own `package-manager` input is a mutable version
-    // spec, not a SHA the checkout-pin regex above can see — `bun@latest`
-    // would silently pull whatever Bun ships on a given day into a
-    // supply-chain-sensitive docs build. Pin it exactly, matching the bun
-    // version pinned everywhere else in the workflows (e.g. setup-bun's
-    // `bun-version: 1.3.14`).
-    expect(workflow).toContain("package-manager: bun@1.3.14");
+    // Astro installs Bun internally too. Forward the exact version resolved
+    // from the shared file instead of maintaining a second package-manager pin.
+    const steps = config.jobs?.build?.steps ?? [];
+    const setup = steps.find((step) => step.id === "bun");
+    expect(setup?.uses).toBe(
+      "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
+    );
+    expect(setup?.with?.["bun-version-file"]).toBe(".bun-version");
+    const astro = steps.find((step) => step.uses?.startsWith("withastro/action@"));
+    expect(astro?.with?.["package-manager"]).toBe(
+      "bun@${{ steps.bun.outputs.bun-version }}",
+    );
+    expect(steps.indexOf(setup!)).toBeLessThan(steps.indexOf(astro!));
+    expect(config.on?.push?.paths).toContain(".bun-version");
     expect(workflow).not.toContain("bun@latest");
   });
 
@@ -3436,7 +3538,7 @@ describe("GitHub Actions hardening", () => {
 
     expect(workflow.on?.push).toBeUndefined();
     expect(workflow.on?.workflow_dispatch).toBeNull();
-    expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(workflow.permissions).toEqual({});
     expect(workflow.jobs?.retired?.["timeout-minutes"]).toBe(5);
     expect(workflow.jobs?.retired?.["runs-on"]).toBe("ubuntu-latest");
   });
@@ -3448,6 +3550,7 @@ describe("GitHub Actions hardening", () => {
     };
 
     const expectedPaths = [
+      ".bun-version",
       ".github/design-system.json",
       ".github/design-system.yml",
       ".github/workflows/design-system-contract.yml",
@@ -3594,8 +3697,8 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toMatch(
       /jobs:\s*\n\s*translate:[\s\S]*?validate:[\s\S]*?permissions:\s*\n\s*contents: read\s*\n\s*#.*\n\s*issues: write/,
     );
-    const beforeJobs = workflow.split(/jobs:\s*\n/)[0]!;
-    expect(beforeJobs).not.toMatch(/^\s*permissions:/m);
+    const parsed = Bun.YAML.parse(workflow) as RunnerWorkflow;
+    expect(parsed.permissions).toEqual({});
 
     // Non-cancelling per-issue concurrency at workflow and translate-job scope.
     expect(workflow).toContain(

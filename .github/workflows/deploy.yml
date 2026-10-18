@@ -11,8 +11,12 @@ name: Legacy deploy route retired
 on:
   workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: {}
+
+# This refusal-only queue must not share a group with live deployments.
+concurrency:
+  group: retired-deploy
+  cancel-in-progress: false
 
 jobs:
   retired:

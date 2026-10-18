@@ -91,7 +91,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
 
       # node + npm perform the actual publish. registry-url points npm at the public registry.
       - name: Setup Node
@@ -223,7 +223,7 @@ jobs:
 
           # Keep in sync with the service-lifecycle.yml trigger paths. src/cli.ts is
           # the pre-restructure compat stub that durable launchers still execute.
-          if printf '%s\n' "$changed_files" | grep -Eq '^(src/service\.ts|src/cli\.ts|src/cli/index\.ts|src/lib/bun-runtime\.ts|package\.json|bun\.lock|\.github/workflows/service-lifecycle\.yml)$'; then
+          if printf '%s\n' "$changed_files" | grep -Eq '^(src/service\.ts|src/cli\.ts|src/cli/index\.ts|src/lib/bun-runtime\.ts|package\.json|bun\.lock|\.bun-version|\.github/workflows/service-lifecycle\.yml)$'; then
             service_url="$(
               gh run list \
                 --workflow service-lifecycle.yml \

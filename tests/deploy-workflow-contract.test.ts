@@ -45,9 +45,11 @@ describe("retired deploy workflow contract", () => {
     expect(workflow.on?.push).toBeUndefined();
     expect(workflow.on?.workflow_dispatch?.inputs).toBeUndefined();
 
-    // The old concurrency group belongs to a live cutover. Keeping it here
-    // would imply that an accidental refusal run can still serialize a deploy.
-    expect(workflow.concurrency).toBeUndefined();
+    // Keep refusal runs separate from all live deployment queues.
+    expect(workflow.concurrency).toEqual({
+      group: "retired-deploy",
+      "cancel-in-progress": false,
+    });
   });
 
   test("fails closed with a bounded refusal and no deployment side effects", async () => {
@@ -83,7 +85,7 @@ describe("retired deploy workflow contract", () => {
     const text = await deployText();
     const workflow = await deployWorkflow();
 
-    expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(workflow.permissions).toEqual({});
     expect(workflow.permissions).not.toHaveProperty("packages");
     expect(workflow.permissions).not.toHaveProperty("actions");
     expect(workflow.permissions).not.toHaveProperty("id-token");
