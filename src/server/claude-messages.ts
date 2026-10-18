@@ -28,6 +28,7 @@ import {
 import { clearableDeadline, idleDeadline } from "../lib/abort";
 import { debugDroppedFrame, debugProviderDiagnostic } from "../lib/debug";
 import { createServerSentEventParser, MAX_SSE_FRAME_LENGTH, SseFrameTooLargeError } from "../lib/sse-decoder";
+import { readBoundedErrorText, readCappedResponseJson, UpstreamBodyTooLargeError } from "../lib/bounded-body";
 import { estimateTokens } from "../lib/token-estimate";
 import { routeModel } from "../router";
 import { resolveComboId } from "../combos";
@@ -821,7 +822,7 @@ export async function handleClaudeMessages(
     // Re-shape the OpenAI-style error envelope into the Anthropic one, preserving status.
     let message = `upstream error (${response.status})`;
     try {
-      const text = await response.text();
+      const text = await readBoundedErrorText(response, req.signal) ?? "";
       try {
         const parsed = JSON.parse(text) as { error?: { message?: string; type?: string } | string; message?: string };
         const nested = typeof parsed?.error === "object" && parsed.error ? parsed.error.message : undefined;
@@ -883,8 +884,9 @@ export async function handleClaudeMessages(
   // Defensive: some passthrough paths may answer JSON despite stream:true.
   let json: unknown;
   try {
-    json = await response.json();
-  } catch {
+    json = await readCappedResponseJson(response, { signal: req.signal });
+  } catch (error) {
+    if (error instanceof UpstreamBodyTooLargeError) return anthropicErrorResponse(error.status, error.message, "api_error");
     return anthropicErrorResponse(502, "internal replay returned a non-JSON response", "api_error");
   }
   const status = (json as Rec)?.status;

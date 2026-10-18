@@ -6,6 +6,7 @@ import { catalogModelSupportsReasoningSummaries } from "../codex/catalog";
 import { COMPACT_PROMPT, decodeCompactionSummary, SUMMARY_PREFIX } from "../responses/compaction";
 import { collectResponsesToolGroups } from "../responses/tool-groups";
 import { debugDroppedFrame, debugProviderDiagnostic } from "../lib/debug";
+import { readCappedResponseJson, UpstreamBodyTooLargeError } from "../lib/bounded-body";
 import { decodeServerSentEvents } from "../lib/sse-decoder";
 import { supportsNativeRemoteCompactionV2 } from "../providers/openai-tiers";
 import { OCX_REASONING_PREFIX } from "../responses/reasoning-envelope";
@@ -1043,7 +1044,8 @@ export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): 
 
     async parseResponse(response: Response): Promise<AdapterEvent[]> {
       let payload: unknown;
-      try { payload = await response.json(); } catch {
+      try { payload = await readCappedResponseJson(response); } catch (error) {
+        if (error instanceof UpstreamBodyTooLargeError) throw error;
         return [{ type: "error", message: "malformed upstream compaction response" }];
       }
       if (!isPlainObject(payload)) {

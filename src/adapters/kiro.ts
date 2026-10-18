@@ -1,3 +1,4 @@
+import { readBoundedErrorText } from "../lib/bounded-body";
 import { decodeEventStream } from "../lib/eventstream-decoder";
 import { estimateTokens } from "../lib/token-estimate";
 import { debugProviderDiagnostic } from "../lib/debug";
@@ -1393,7 +1394,7 @@ export async function* parseKiroStream(
     return;
   }
   if (!fallback.response.ok) {
-    const payload = await fallback.response.text().catch(() => "");
+    const payload = await readBoundedErrorText(fallback.response) ?? "";
     const failure = classifyKiroHttpError(fallback.response.status, fallback.response.headers, payload);
     yield {
       type: "error",
