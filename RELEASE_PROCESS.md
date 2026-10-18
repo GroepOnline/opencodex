@@ -13,6 +13,9 @@ helper automates the whole path but every step below is also executable by hand.
 ## Automated main release train (npm + GHCR)
 
 Releasable merges on `main` trigger `.github/workflows/release-train.yml`.
+The baseline is the latest **published GitHub Release** rather than the highest git
+tag, because this repository retains historic upstream v2.x tags unrelated to the
+current published v1.x package.
 An hourly reconciliation catches missed events. The train is serialized and
 restricted to `main`, and skips docs-only changes.
 Unpublished release candidates can resume at their exact commit with

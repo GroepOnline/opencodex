@@ -50,6 +50,10 @@ describe("OpenCodex automated release train", () => {
   test("skips superseded commits and documentation-only changes", async () => {
     const text = await read(".github/workflows/release-train.yml");
     expect(text).toContain('if [ "$current_sha" != "$remote_sha" ]; then');
+    // Inherited upstream v2.x git tags must never outrank our v1.x GH Releases.
+    expect(text).toContain("gh release view --json tagName --jq .tagName");
+    expect(text).toContain('git merge-base --is-ancestor "$latest_tag" "$current_sha"');
+    expect(text).not.toContain("git tag --merged HEAD --list");
     expect(text).toContain("git diff --name-only");
     expect(text).toContain("No releasable changes");
     expect(text).toContain("mode=resume");

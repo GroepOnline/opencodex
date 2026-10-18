@@ -58,6 +58,8 @@ jobs:
 
       - name: Select unused release candidate
         id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -70,9 +72,16 @@ jobs:
             exit 0
           fi
 
-          latest_tag="$(git tag --merged HEAD --list 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)"
-          if [ -z "$latest_tag" ]; then
-            echo "::error::No stable baseline tag; refusing to invent a release"
+          # This repository contains inherited upstream v2.x git tags. Those are
+          # NOT published OpenCodex releases. Anchor only on the actual latest
+          # published stable GitHub Release (also the npm release channel).
+          latest_tag="$(gh release view --json tagName --jq .tagName)"
+          if ! [[ "$latest_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::No published stable GitHub Release baseline (got $latest_tag)"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$latest_tag" "$current_sha"; then
+            echo "::error::Published release tag $latest_tag is not an ancestor of main"
             exit 1
           fi
           changes="$(git diff --name-only "$latest_tag" HEAD)"
