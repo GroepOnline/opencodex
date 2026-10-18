@@ -5,7 +5,7 @@
  * Codex on a service-managed restart (the restarted instance re-injects); explicit stop/uninstall
  * restore it via the command.
  */
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -439,12 +439,32 @@ function systemdOutputTarget(value: string): string {
   return value.replace(/%/g, "%%").replace(/\n/g, "\\n");
 }
 
-function sh(cmd: string): string {
-  return execSync(cmd, {
+type ServiceCommandExec = (file: string, args: string[]) => string;
+
+function execServiceCommand(file: string, args: string[]): string {
+  return execFileSync(file, args, {
     encoding: "utf8",
     stdio: ["pipe", "pipe", "pipe"],
     timeout: 15_000,
-  }).trim();
+  });
+}
+
+let serviceCommandExecForTests: ServiceCommandExec | null = null;
+
+/**
+ * Run a launchctl/systemctl command without a shell. Each argument reaches the
+ * program verbatim, so paths derived from the home directory are never parsed
+ * by a shell. Throws on non-zero exit; best-effort callers catch.
+ */
+function runServiceCommand(file: string, args: string[]): string {
+  return (serviceCommandExecForTests ?? execServiceCommand)(file, args).trim();
+}
+
+/** Test-only seam for the launchctl/systemctl command runner. */
+export function setServiceCommandExecForTests(
+  next: ServiceCommandExec | null,
+): void {
+  serviceCommandExecForTests = next;
 }
 
 /**
@@ -1519,34 +1539,37 @@ function installLaunchd(): void {
   const p = plistPath();
   writeFileSync(p, buildPlist(), "utf8");
   try {
-    sh(`launchctl unload "${p}" 2>/dev/null`);
+    runServiceCommand("launchctl", ["unload", p]);
   } catch {
     /* not loaded */
   }
-  sh(`launchctl load -w "${p}"`);
+  runServiceCommand("launchctl", ["load", "-w", p]);
   writeServiceInstallState();
 }
-function startLaunchd(): void {
-  sh(`launchctl load -w "${plistPath()}"`);
+function startLaunchd(p = plistPath()): void {
+  runServiceCommand("launchctl", ["load", "-w", p]);
 }
-function stopLaunchd(): void {
+function stopLaunchd(p = plistPath()): void {
   try {
-    sh(`launchctl unload "${plistPath()}"`);
+    runServiceCommand("launchctl", ["unload", p]);
   } catch {
     /* not loaded */
   }
 }
 function statusLaunchd(): string {
   try {
-    return sh(`launchctl list | grep ${LABEL} || true`);
+    return runServiceCommand("launchctl", ["list"])
+      .split("\n")
+      .filter((line) => line.includes(LABEL))
+      .join("\n")
+      .trim();
   } catch {
     return "";
   }
 }
-function uninstallLaunchd(): void {
-  const p = plistPath();
+function uninstallLaunchd(p = plistPath()): void {
   try {
-    sh(`launchctl unload "${p}" 2>/dev/null`);
+    runServiceCommand("launchctl", ["unload", p]);
   } catch {
     /* not loaded */
   }
@@ -1857,7 +1880,8 @@ type SystemSystemdUnitDiagnosis = {
 
 /** Fleet/proxy hosts often run a system unit instead of the per-user one `ocx service install` writes. */
 function diagnoseSystemSystemdUnit(
-  run: (command: string) => string = sh,
+  run: (args: string[]) => string = (args) =>
+    runServiceCommand("systemctl", args),
   installed: () => boolean = () => {
     const path = `/etc/systemd/system/${TASK}.service`;
     return existsSync(path) && !isMaskedSystemdUnit(path);
@@ -1866,7 +1890,7 @@ function diagnoseSystemSystemdUnit(
   if (!installed()) return null;
   const enabled = (() => {
     try {
-      const status = run(`systemctl is-enabled ${TASK}.service`);
+      const status = run(["is-enabled", `${TASK}.service`]);
       return status === "enabled" ? true : status === "disabled" ? false : null;
     } catch {
       return null;
@@ -1874,7 +1898,7 @@ function diagnoseSystemSystemdUnit(
   })();
   const running = (() => {
     try {
-      const status = run(`systemctl is-active ${TASK}.service`);
+      const status = run(["is-active", `${TASK}.service`]);
       return status === "active" ? true : status === "inactive" ? false : null;
     } catch {
       return null;
@@ -1910,7 +1934,10 @@ function diagnoseSystemdUserUnit(): SystemdUserUnitDiagnosis {
     installed &&
     (() => {
       try {
-        return sh(`systemctl --user is-enabled ${TASK}`) === "enabled";
+        return (
+          runServiceCommand("systemctl", ["--user", "is-enabled", TASK]) ===
+          "enabled"
+        );
       } catch {
         return false;
       }
@@ -1919,7 +1946,10 @@ function diagnoseSystemdUserUnit(): SystemdUserUnitDiagnosis {
     installed &&
     (() => {
       try {
-        return sh(`systemctl --user is-active ${TASK}`) === "active";
+        return (
+          runServiceCommand("systemctl", ["--user", "is-active", TASK]) ===
+          "active"
+        );
       } catch {
         return false;
       }
@@ -1991,7 +2021,7 @@ function ensureUserBusEnv(): void {
 
 function isSystemd(): boolean {
   try {
-    execSync("systemctl --version", { stdio: "pipe", timeout: 15_000 });
+    runServiceCommand("systemctl", ["--version"]);
   } catch {
     return false;
   }
@@ -2000,10 +2030,7 @@ function isSystemd(): boolean {
   // is present (F9). Fall back to the per-user runtime dir existing — a strong signal the user
   // systemd instance is available — so a first-time `ocx service install` isn't wrongly refused.
   try {
-    execSync("systemctl --user show-environment", {
-      stdio: "pipe",
-      timeout: 15_000,
-    });
+    runServiceCommand("systemctl", ["--user", "show-environment"]);
     return true;
   } catch {
     /* no user bus in this session */
@@ -2020,9 +2047,9 @@ function installSystemd(): void {
     mkdirSync(getConfigDir(), { recursive: true });
   writeServiceApiTokenFile();
   writeFileSync(unitPath(), buildUnit(), "utf8");
-  sh("systemctl --user daemon-reload");
-  sh(`systemctl --user enable ${TASK}`);
-  sh(`systemctl --user restart ${TASK}`);
+  runServiceCommand("systemctl", ["--user", "daemon-reload"]);
+  runServiceCommand("systemctl", ["--user", "enable", TASK]);
+  runServiceCommand("systemctl", ["--user", "restart", TASK]);
   writeServiceInstallState();
 }
 function startSystemd(): void {
@@ -2034,35 +2061,45 @@ function startSystemd(): void {
     );
     process.exit(1);
   }
-  sh(`systemctl --user start ${TASK}`);
+  runServiceCommand("systemctl", ["--user", "start", TASK]);
 }
 function stopSystemd(): void {
   try {
-    sh(`systemctl --user stop ${TASK}`);
+    runServiceCommand("systemctl", ["--user", "stop", TASK]);
   } catch {
     /* not running */
   }
 }
 function statusSystemd(): string {
   try {
-    return sh(`systemctl --user status ${TASK}`);
+    return runServiceCommand("systemctl", ["--user", "status", TASK]);
   } catch {
     return "";
   }
 }
 function uninstallSystemd(): void {
   try {
-    sh(`systemctl --user disable --now ${TASK}`);
+    runServiceCommand("systemctl", ["--user", "disable", "--now", TASK]);
   } catch {
     /* absent */
   }
   if (existsSync(unitPath())) unlinkSync(unitPath());
   try {
-    sh("systemctl --user daemon-reload");
+    runServiceCommand("systemctl", ["--user", "daemon-reload"]);
   } catch {
     /* best-effort */
   }
 }
+
+/** Test-only access to the launchd/systemd ops, paired with setServiceCommandExecForTests. */
+export const serviceManagerOpsForTests = {
+  startLaunchd,
+  stopLaunchd,
+  statusLaunchd,
+  uninstallLaunchd,
+  stopSystemd,
+  statusSystemd,
+};
 
 type ServiceOps = {
   install: () => void | Promise<void>;
@@ -2395,7 +2432,8 @@ export function diagnoseService(
   probes: {
     platform?: string;
     inDocker?: () => boolean;
-    systemctl?: (command: string) => string;
+    /** Runs `systemctl` with discrete argv (no shell). */
+    systemctl?: (args: string[]) => string;
     systemUnitInstalled?: () => boolean;
     isSystemd?: () => boolean;
     userUnit?: () => SystemdUserUnitDiagnosis;
