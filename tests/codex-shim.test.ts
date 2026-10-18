@@ -483,8 +483,14 @@ describe("Codex autostart shim", () => {
       expect(heldLock.token).toBeString();
 
       writeFileSync(releasePath, "release", "utf8");
-      expect(await first.exited).toBe(0);
-      const firstStdout = await new Response(first.stdout).text();
+      const firstExit = await first.exited;
+      const [firstStdout, firstStderr] = await Promise.all([
+        new Response(first.stdout).text(),
+        new Response(first.stderr).text(),
+      ]);
+      if (firstExit !== 0) {
+        throw new Error(`restore-owner child exited ${firstExit}: ${firstStderr}\nstdout: ${firstStdout}`);
+      }
       expect(JSON.parse(firstStdout.trim()).status).toBe("restored");
       expect(readFileSync(wrapper, "utf8")).toContain(SHIM_MARKER);
       expect(readFileSync(backup, "utf8")).toBe(replacement);
