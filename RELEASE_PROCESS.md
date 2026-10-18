@@ -10,6 +10,24 @@ helper automates the whole path but every step below is also executable by hand.
 - No earlier version with the same number on npm, on the `v<version>` Git tag, or on GitHub
   Releases — the helper refuses to proceed if any of the three already exists.
 
+## Automated main release train (npm + GHCR)
+
+Releasable merges on `main` trigger `.github/workflows/release-train.yml`.
+An hourly reconciliation catches missed events. The train is serialized and
+restricted to `main`, and skips docs-only changes.
+Unpublished release candidates can resume at their exact commit with
+`bun scripts/release.ts --resume --publish` without another version bump.
+
+The release requires typecheck, isolated tests, privacy scan, manual full-platform CI
+and Service lifecycle, then `release.yml` with an exact SHA. It publishes npm,
+the GitHub Release and both linux/amd64 and linux/arm64 GHCR image variants.
+The train validates the tag's immutable image digest artifact. npm alone is
+never sufficient for a successful release.
+
+GITHUB_TOKEN-authored version commits do not trigger push workflows, so the
+train dispatches full CI and service checks explicitly. The separate
+private production deployment remains gated.
+
 ## Quick start (recommended)
 
 ```bash
