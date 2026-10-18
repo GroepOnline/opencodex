@@ -8,7 +8,7 @@
  * Handles: port allocation (preferred → random fallback), callback server, CSRF state,
  * manual-input race, 300s timeout. Providers implement generateAuthUrl() + exchangeToken().
  */
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { isAddrInUse } from "../server/ports";
 import type { OAuthController, OAuthCredentials } from "./types";
 
@@ -36,9 +36,13 @@ const CALLBACK_RESPONSE_HEADERS = {
 
 /** Constant-time comparison for CSRF state values. */
 function stateEquals(actual: string, expected: string): boolean {
-  const left = Buffer.from(actual);
-  const right = Buffer.from(expected);
-  return left.length === right.length && timingSafeEqual(left, right);
+  // Hash both inputs to fixed-size digests before comparing: the raw
+  // early-return on a longer value splits timing on length, which an
+  // attacker-controlled `state` can probe. Same pattern as the digest compare
+  // in src/server/management-auth.ts.
+  const actualDigest = createHash("sha256").update(actual, "utf8").digest();
+  const expectedDigest = createHash("sha256").update(expected, "utf8").digest();
+  return timingSafeEqual(actualDigest, expectedDigest);
 }
 
 function escapeHtml(s: string): string {
