@@ -2,7 +2,9 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import * as z from "zod/v4";
 import { atomicWriteFile, getConfigDir, loadConfig, readPid, readRuntimePort } from "../config";
+import { withFileLock } from "../lib/file-lock";
 import { isProcessAlive, killProxy } from "../lib/process-control";
 import { reclaimListenPort } from "../server/port-reclaim";
 import { isOpencodexHealthz, probeHostname, proxyIdentityAt, type HealthzIdentity } from "../server/proxy-liveness";
@@ -25,6 +27,10 @@ import { handoffWindowsTrayForUpdate, planWindowsTrayUpdate } from "./tray-updat
 
 const RELEASE_NOTES_URL = "https://github.com/GroepOnline/opencodex/releases/latest";
 const UPDATE_JOB_FILENAME = "update-job.json";
+const UPDATE_JOB_LOCK_FILENAME = "update-job.lock";
+/** The critical section is one read plus one atomic write; a longer wait means a wedged holder. */
+const UPDATE_JOB_LOCK_WAIT_MS = 10_000;
+const UPDATE_JOB_LOCK_STALE_MS = 30_000;
 const UPDATE_TIMEOUT_MS = 180_000;
 const RESTART_TIMEOUT_MS = 60_000;
 const RESTART_HEALTH_TIMEOUT_MS = 30_000;
@@ -127,37 +133,106 @@ export function updateJobPath(): string {
   return join(getConfigDir(), UPDATE_JOB_FILENAME);
 }
 
+/**
+ * Persisted job state is shared by the API process and the detached worker, and may be left
+ * truncated or written by another version. Only `id` and `status` gate control flow, so they are
+ * required; every other field falls back to a safe default instead of failing the whole read.
+ */
+const UpdateJobStateSchema = z.object({
+  id: z.string().min(1),
+  status: z.enum(["running", "restarting", "succeeded", "failed"]),
+  startedAt: z.string().catch(""),
+  updatedAt: z.string().catch(""),
+  currentVersion: z.string().catch(""),
+  latestVersion: z.string().nullable().catch(null),
+  channel: z.enum(["latest", "preview"]).catch("latest"),
+  installer: z.enum(["npm", "bun", "source"]).catch("source"),
+  restart: z.boolean().catch(false),
+  command: z.string().catch(""),
+  releaseNotesUrl: z.string().catch(RELEASE_NOTES_URL),
+  log: z.array(z.unknown())
+    .transform(lines => lines.filter((line): line is string => typeof line === "string"))
+    .catch([]),
+  pid: z.number().int().positive().optional().catch(undefined),
+  error: z.string().optional().catch(undefined),
+  exitCode: z.number().nullable().optional().catch(undefined),
+  signal: z.string().nullable().optional().catch(undefined),
+  restarted: z.boolean().optional().catch(undefined),
+});
+
+class UpdateJobLockTimeoutError extends Error {
+  constructor() {
+    super("Update job state is locked by another opencodex process");
+    this.name = "UpdateJobLockTimeoutError";
+  }
+}
+
 function ensureJobDir(): void {
   const dir = getConfigDir();
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
 }
 
-function writeJob(job: UpdateJobState): void {
+/**
+ * Serialize read-modify-write of update-job.json across the API process and the detached worker.
+ * Not reentrant: callers inside the critical section use writeJobUnlocked.
+ */
+function withUpdateJobLock<T>(fn: () => T): T {
+  ensureJobDir();
+  try {
+    return withFileLock(fn, {
+      path: join(getConfigDir(), UPDATE_JOB_LOCK_FILENAME),
+      waitMs: UPDATE_JOB_LOCK_WAIT_MS,
+      staleMs: UPDATE_JOB_LOCK_STALE_MS,
+      recordOwned: true,
+      timeoutError: () => new UpdateJobLockTimeoutError(),
+    });
+  } catch (error) {
+    if (!(error instanceof UpdateJobLockTimeoutError)) throw error;
+    // A wedged holder must not strand the job status: degrade to the previous unlocked update.
+    return fn();
+  }
+}
+
+function writeJobUnlocked(job: UpdateJobState): void {
   ensureJobDir();
   atomicWriteFile(updateJobPath(), `${JSON.stringify(job, null, 2)}\n`);
 }
 
+function writeJob(job: UpdateJobState): void {
+  withUpdateJobLock(() => writeJobUnlocked(job));
+}
+
 export function readUpdateJob(jobId?: string | null): UpdateJobState | null {
+  let raw: unknown;
   try {
-    const parsed = JSON.parse(readFileSync(updateJobPath(), "utf8")) as UpdateJobState;
-    if (jobId && parsed.id !== jobId) return null;
-    if (!parsed || typeof parsed.id !== "string" || typeof parsed.status !== "string") return null;
-    return parsed;
+    raw = JSON.parse(readFileSync(updateJobPath(), "utf8"));
   } catch {
     return null;
   }
+  const parsed = UpdateJobStateSchema.safeParse(raw);
+  if (!parsed.success) return null;
+  const job: UpdateJobState = parsed.data;
+  if (jobId && job.id !== jobId) return null;
+  return job;
 }
 
 function updateJob(job: UpdateJobState, patch: Partial<UpdateJobState>, logLine?: string): UpdateJobState {
-  const current = readUpdateJob(job.id) ?? job;
-  const next = {
-    ...current,
-    ...patch,
-    updatedAt: new Date().toISOString(),
-    log: logLine ? [...current.log, logLine] : current.log,
-  };
-  writeJob(next);
-  return next;
+  return withUpdateJobLock(() => {
+    const current = readUpdateJob(job.id) ?? job;
+    const next = {
+      ...current,
+      ...patch,
+      updatedAt: new Date().toISOString(),
+      log: logLine ? [...current.log, logLine] : current.log,
+    };
+    writeJobUnlocked(next);
+    return next;
+  });
+}
+
+/** Exposed for tests: the locked read-modify-write the API and the detached worker share. */
+export function updateJobForTests(job: UpdateJobState, patch: Partial<UpdateJobState>, logLine?: string): UpdateJobState {
+  return updateJob(job, patch, logLine);
 }
 
 export function updateExecutionCommand(

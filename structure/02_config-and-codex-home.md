@@ -37,6 +37,10 @@ the recorded service ownership.
 `atomicWriteFile` uses a temp file named `{path}.ocx.{pid}.{seq}.tmp` (process ID + incrementing
 sequence number) to avoid collisions when concurrent writers (e.g. `ocx stop` and the proxy's own
 shutdown handler) both restore Codex config simultaneously. The temp is renamed atomically into place.
+Non-secret executables reuse the same helper through `executableAtomicWriteIO(mode)`: the Codex
+launcher shim on PATH is written to that temp sibling, given its executable mode, then renamed over
+the old launcher (`renameAtomicFile` retries transient Windows locks), so PATH never holds a
+truncated shim. `codex-shim.json` uses the default 0600 `atomicWriteFile` path.
 
 Response-state loading performs a bounded recovery pass for interrupted snapshot writes. It only
 matches regular files named `responses-state.json.ocx.<pid>.<sequence>.tmp`, waits at least 15

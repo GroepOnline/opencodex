@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, writeFileSync, readFileSync, existsSync, readdirSync, rmSync, statSync, symlinkSync, utimesSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import { atomicWriteFile, executableAtomicWriteIO } from "../src/config";
 import { autoRestoreCodexShim, buildUnixCodexShim, buildWindowsCodexShim, buildWindowsPowerShellCodexShim, diagnoseCodexShim, findCodexOnPath, installCodexShim, isWindowsInteropDir, lastCodexDiscoveryError, uninstallCodexShim } from "../src/codex/shim";
 
 const SHIM_MARKER = "opencodex codex autostart shim";
@@ -680,6 +681,73 @@ describe("Codex autostart shim", () => {
       if (oldHome === undefined) delete process.env.OPENCODEX_HOME;
       else process.env.OPENCODEX_HOME = oldHome;
       rmSync(home, { recursive: true, force: true });
+      rmSync(binDir, { recursive: true, force: true });
+    }
+  });
+
+  test("refreshing an installed shim replaces it through a temp sibling, never in place", () => {
+    withInstalledShim(({ binDir, wrappers, backups, statePath }) => {
+      const wrapper = wrappers[0];
+      const before = readFileSync(wrapper, "utf8");
+      const beforeIno = statSync(wrapper).ino;
+      // A Codex update dropped a fresh launcher next to the tracked shim: the refresh backs it up
+      // and rewrites the existing shim, which used to be truncated and rewritten in place.
+      const updatedLauncher = join(binDir, process.platform === "win32" ? "codex-updated.cmd" : "codex-updated");
+      writeFileSync(updatedLauncher, "updated launcher\n", "utf8");
+      const state = JSON.parse(readFileSync(statePath, "utf8")) as { wrappers: Array<{ originalPath: string }> };
+      state.wrappers[0].originalPath = updatedLauncher;
+      writeFileSync(statePath, JSON.stringify(state), "utf8");
+
+      expect(installCodexShim().installed).toBe(true);
+
+      expect(readFileSync(wrapper, "utf8")).toBe(before);
+      expect(readFileSync(backups[0], "utf8")).toBe("updated launcher\n");
+      expect(readdirSync(binDir).filter(name => name.endsWith(".tmp"))).toEqual([]);
+      if (process.platform !== "win32") {
+        expect(statSync(wrapper).ino).not.toBe(beforeIno);
+        expect(statSync(wrapper).mode & 0o777).toBe(0o755);
+        expect(statSync(statePath).mode & 0o777).toBe(0o600);
+      }
+    });
+  });
+
+  test("launcher writes publish only complete executable content and keep the old launcher on failure", () => {
+    const binDir = mkdtempSync(join(tmpdir(), "ocx-shim-atomic-"));
+    try {
+      const launcher = join(binDir, "codex");
+      const original = "#!/bin/sh\necho original launcher\n";
+      const next = `#!/bin/sh\n# ${SHIM_MARKER}\n${"echo next\n".repeat(2048)}`;
+      writeFileSync(launcher, original, "utf8");
+      const io = executableAtomicWriteIO(0o755);
+      const observed: string[] = [];
+
+      atomicWriteFile(launcher, next, {
+        ...io,
+        write: (target, value) => {
+          expect(target).not.toBe(launcher);
+          expect(dirname(target)).toBe(binDir);
+          io.write(target, value);
+          observed.push(readFileSync(launcher, "utf8"));
+        },
+        rename: (source, destination) => {
+          expect(readFileSync(source, "utf8")).toBe(next);
+          if (process.platform !== "win32") expect(statSync(source).mode & 0o777).toBe(0o755);
+          observed.push(readFileSync(destination, "utf8"));
+          io.rename(source, destination);
+        },
+      });
+      expect(observed).toEqual([original, original]);
+      expect(readFileSync(launcher, "utf8")).toBe(next);
+      if (process.platform !== "win32") expect(statSync(launcher).mode & 0o777).toBe(0o755);
+
+      // A destination held open by antivirus keeps failing the rename: the old launcher survives.
+      expect(() => atomicWriteFile(launcher, "#!/bin/sh\necho never published\n", {
+        ...io,
+        rename: () => { throw Object.assign(new Error("destination locked"), { code: "EPERM" }); },
+      })).toThrow("destination locked");
+      expect(readFileSync(launcher, "utf8")).toBe(next);
+      expect(readdirSync(binDir)).toEqual(["codex"]);
+    } finally {
       rmSync(binDir, { recursive: true, force: true });
     }
   });

@@ -130,6 +130,13 @@ distinguish a live installer from a worker that crashed. Records created by olde
 have a PID, so they remain exclusive for a conservative ten-minute window before automatic
 recovery; operators no longer need to delete `update-job.json` after a dead worker.
 
+`update-job.json` is parsed through a zod schema: a truncated or unrecognized record reads as no
+job, and malformed optional fields (including a missing `log`) fall back to safe defaults. Every
+read-modify-write holds `update-job.lock` (`src/lib/file-lock.ts`, the same protocol as the Claude
+Desktop library lock), so the API process and the detached worker cannot drop each other's log lines
+or status. A holder wedged past the 10 s wait degrades to the previous unlocked write rather than
+stranding the job status.
+
 ```text
 [Decision Log]
 - 목적과 의도: Prevent a crashed dashboard update worker from permanently blocking every later update.
