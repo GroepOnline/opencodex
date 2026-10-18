@@ -16,7 +16,8 @@ import {
 
 const VERSION_FILENAME = "version.json";
 const REFRESH_INTERVAL_MS = 20 * 60 * 60 * 1000; // 20h, matching codex-rs
-const RELEASE_NOTES_URL = "https://github.com/GroepOnline/opencodex/releases/latest";
+const RELEASE_NOTES_URL =
+  "https://github.com/GroepOnline/opencodex/releases/latest";
 
 export interface VersionCache {
   latest_version: string;
@@ -39,12 +40,19 @@ export function readVersionCache(channel: Channel): VersionCache | null {
   try {
     const raw = readFileSync(versionFilePath(), "utf8");
     const parsed = JSON.parse(raw) as Partial<VersionCache>;
-    if (typeof parsed.latest_version !== "string" || typeof parsed.last_checked_at !== "string") return null;
+    if (
+      typeof parsed.latest_version !== "string" ||
+      typeof parsed.last_checked_at !== "string"
+    )
+      return null;
     if (parsed.tag !== channel) return null;
     return {
       latest_version: parsed.latest_version,
       last_checked_at: parsed.last_checked_at,
-      dismissed_version: typeof parsed.dismissed_version === "string" ? parsed.dismissed_version : undefined,
+      dismissed_version:
+        typeof parsed.dismissed_version === "string"
+          ? parsed.dismissed_version
+          : undefined,
       tag: parsed.tag,
     };
   } catch {
@@ -89,7 +97,11 @@ function gt(a: number[], b: number[]): boolean {
  *   stable release with a strictly higher base counts as newer (O3), while a
  *   stable release with the same base as the current preview does not.
  */
-export function isNewer(latest: string, current: string, channel: Channel): boolean {
+export function isNewer(
+  latest: string,
+  current: string,
+  channel: Channel,
+): boolean {
   if (channel === "latest") {
     const l = parseStable(latest);
     const c = parseStable(current);
@@ -118,7 +130,11 @@ export function isSourceBuildVersion(v: string): boolean {
 
 /** The interactive/TTY + install-method gate shared with the star prompt. */
 function interactiveGuardOk(): boolean {
-  return !(process.env.OCX_SERVICE || !process.stdin.isTTY || !process.stdout.isTTY);
+  return !(
+    process.env.OCX_SERVICE ||
+    !process.stdin.isTTY ||
+    !process.stdout.isTTY
+  );
 }
 
 /**
@@ -159,17 +175,24 @@ function cacheIsStale(cache: VersionCache | null): boolean {
  * If the cache is missing or older than 20h, kick off a detached helper to
  * refresh it without blocking this (soon-to-be daemon) process. Fire-and-forget.
  */
-export function triggerBackgroundRefreshIfStale(channel: Channel, cache: VersionCache | null): void {
+export function triggerBackgroundRefreshIfStale(
+  channel: Channel,
+  cache: VersionCache | null,
+): void {
   if (!cacheIsStale(cache)) return;
   try {
     const entry = process.argv[1];
     if (!entry || !existsSync(entry)) return;
-    const child = spawn(process.execPath, [entry, "__refresh-version", channel], {
-      detached: true,
-      stdio: "ignore",
-      windowsHide: true,
-      env: { ...process.env, OCX_SERVICE: "1" }, // never let the helper prompt
-    });
+    const child = spawn(
+      process.execPath,
+      [entry, "__refresh-version", channel],
+      {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+        env: { ...process.env, OCX_SERVICE: "1" }, // never let the helper prompt
+      },
+    );
     child.unref();
   } catch {
     /* best-effort */
@@ -200,7 +223,11 @@ function dismissVersion(channel: Channel, version: string): void {
   writeVersionCache({ ...cache, dismissed_version: version });
 }
 
-function renderPrompt(current: string, latest: string, channel: Channel): string {
+function renderPrompt(
+  current: string,
+  latest: string,
+  channel: Channel,
+): string {
   const command = updateCommandStr(detectInstall(), channel);
   return [
     "",
@@ -234,18 +261,26 @@ export async function maybeShowUpdatePrompt(): Promise<void> {
     const latest = getUpgradeVersionForPopup(cache, current, channel);
     if (!latest) return;
 
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const rl = createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
     let answer = "";
     try {
-      answer = (await rl.question(renderPrompt(current, latest, channel))).trim();
+      answer = (
+        await rl.question(renderPrompt(current, latest, channel))
+      ).trim();
     } finally {
       rl.close();
     }
 
     const choice = answer === "" ? "1" : answer;
     if (choice === "1") {
+      // runUpdate() prints the restart guidance itself, and it is the only place that knows
+      // whether a local proxy was stopped or the port belongs to an externally managed
+      // tunnel. Appending an unconditional `ocx start` here would reintroduce exactly the
+      // misleading instruction this prompt must not give to tunnel clients.
       await runUpdate();
-      console.log("\nRestart the proxy:  ocx start");
       process.exit(0);
     } else if (choice === "3") {
       dismissVersion(channel, latest);

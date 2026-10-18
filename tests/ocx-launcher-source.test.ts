@@ -6,37 +6,63 @@ import { join } from "node:path";
  * bin/ocx.mjs is the Node bin launcher — it executes top-level logic on import, so it
  * cannot be imported by tests. Guard its Windows-critical invariants at the source level.
  */
-const source = readFileSync(join(import.meta.dir, "..", "bin", "ocx.mjs"), "utf8");
+const source = readFileSync(
+  join(import.meta.dir, "..", "bin", "ocx.mjs"),
+  "utf8",
+);
 
 describe("ocx.mjs npm launcher (source invariants)", () => {
   test("Windows npm spawns use the trusted absolute invocation without shell lookup", () => {
     expect(source).toContain("const latestInvocation = npmInvocation(");
     expect(source).toContain("const installInvocation = npmInvocation(");
-    expect(source).toContain("spawnSync(latestInvocation.file, latestInvocation.args");
-    expect(source).toContain("spawnSync(installInvocation.file, installInvocation.args");
+    expect(source).toContain(
+      "spawnSync(latestInvocation.file, latestInvocation.args",
+    );
+    expect(source).toContain(
+      "spawnSync(installInvocation.file, installInvocation.args",
+    );
     expect(source).not.toContain("shell: true");
     expect(source).not.toContain('"npm.cmd"');
   });
 
   test("--tag is allowlisted before reaching package-manager arguments", () => {
-    expect(source).toContain('if (explicit === "preview" || explicit === "latest") return explicit;');
-    expect(source).not.toMatch(/if \(tagIndex !== -1 && process\.argv\[tagIndex \+ 1\]\) return process\.argv/);
+    expect(source).toContain(
+      'if (explicit === "preview" || explicit === "latest") return explicit;',
+    );
+    expect(source).not.toMatch(
+      /if \(tagIndex !== -1 && process\.argv\[tagIndex \+ 1\]\) return process\.argv/,
+    );
   });
 
   test("Linux protocol repair uses fresh CLI and never opts an absent handler in", () => {
-    expect(source).toContain('process.platform !== "linux" || !existsSync(join(configDir(), "claude-desktop-protocol.json"))');
-    expect(source).toContain('[launcher, "claude", "desktop", "protocol", "__repair"]');
-    expect(source.indexOf("repairClaudeDesktopProtocolIfNeeded();")).toBeGreaterThan(
-      source.indexOf("spawnSync(installInvocation.file, installInvocation.args"),
+    expect(source).toContain(
+      'process.platform !== "linux" || !existsSync(join(configDir(), "claude-desktop-protocol.json"))',
     );
-    expect(source).not.toContain('[launcher, "claude", "desktop", "protocol", "install"]');
+    expect(source).toContain(
+      '[launcher, "claude", "desktop", "protocol", "__repair"]',
+    );
+    expect(
+      source.indexOf("repairClaudeDesktopProtocolIfNeeded();"),
+    ).toBeGreaterThan(
+      source.indexOf(
+        "spawnSync(installInvocation.file, installInvocation.args",
+      ),
+    );
+    expect(source).not.toContain(
+      '[launcher, "claude", "desktop", "protocol", "install"]',
+    );
   });
 
   test("self-update preserves live proxy-only mode in fallback and restart instructions", () => {
     expect(source).toContain("proxyOnly = rt.proxyOnly === true;");
     expect(source).toContain('...(proxyOnly ? ["--proxy-only"] : [])');
-    expect(source).toContain('if (!proxyOnly) repairCodexShimIfNeeded();');
-    expect(source).toContain('${proxyOnly ? " --proxy-only" : ""}');
+    expect(source).toContain("if (!proxyOnly) repairCodexShimIfNeeded();");
+    // The proxy-only restart suffix now lives in src/update/restart-advice.mjs (asserted by
+    // tests/update-external-restart-advice.test.ts); the launcher must pass the live runtime
+    // state and the proxy-only flag through to the shared helper.
+    expect(source).toContain(
+      "foregroundRestartAdvice({ stoppedLocalProxy: hasRuntimeState, port: bakePort, proxyOnly })",
+    );
   });
 
   // #701: the launcher is the only place that still knows whether an Anthropic credential
@@ -45,9 +71,15 @@ describe("ocx.mjs npm launcher (source invariants)", () => {
   // proxy to billing a subscriber's API key from an ambient file, and the runtime half in
   // src/cli/claude.ts would keep passing its own unit tests while doing nothing.
   test("the Bun child receives the pre-Bun Anthropic provenance marker", () => {
-    expect(source).toContain("const preBunAnthropicSlots = [\"ANTHROPIC_API_KEY\", \"ANTHROPIC_AUTH_TOKEN\"]");
-    expect(source).toContain("OCX_PRE_BUN_ANTHROPIC_ENV: preBunAnthropicSlots.join(\",\")");
+    expect(source).toContain(
+      'const preBunAnthropicSlots = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"]',
+    );
+    expect(source).toContain(
+      'OCX_PRE_BUN_ANTHROPIC_ENV: preBunAnthropicSlots.join(",")',
+    );
     // The marker must be computed from the launcher's OWN env, before Bun's dotenv load.
-    expect(source).toContain("typeof process.env[name] === \"string\" && process.env[name] !== \"\"");
+    expect(source).toContain(
+      'typeof process.env[name] === "string" && process.env[name] !== ""',
+    );
   });
 });
