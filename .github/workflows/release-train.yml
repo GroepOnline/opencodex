@@ -38,6 +38,7 @@ jobs:
     permissions:
       contents: write
       actions: write
+      packages: read # registry manifest verification
     steps:
       - name: Checkout trusted main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -120,6 +121,18 @@ jobs:
             bun scripts/release.ts --publish
           fi
 
+      - name: Setup registry manifest inspector
+        if: steps.candidate.outputs.ship == 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Authenticate GHCR for digest verification
+        if: steps.candidate.outputs.ship == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
       - name: Verify exact GHCR digest for the published release
         if: steps.candidate.outputs.ship == 'true'
         env:
@@ -145,6 +158,8 @@ jobs:
             .imageRunId == $run and (.imageDigest | test("^sha256:[0-9a-f]{64}$"))
           ' "$image_dir/release-image.json"
           digest="$(jq -r .imageDigest "$image_dir/release-image.json")"
+          docker buildx imagetools inspect --raw "ghcr.io/groeponline/opencodex@$digest" > "$image_dir/manifest.json"
+          jq -e '[(.manifests // [])[] | select(.platform.os == "linux") | .platform.architecture] | (index("amd64") != null and index("arm64") != null)' "$image_dir/manifest.json"
           {
             echo "### Verified npm + multi-platform GHCR publication"
             echo ""
@@ -154,5 +169,5 @@ jobs:
             echo "- immutable image: \`ghcr.io/groeponline/opencodex@$digest\`"
             echo "- image run: $image_run"
             echo "- commit: \`$sha\`"
-            echo "- platforms specified in container.yml: linux/amd64, linux/arm64"
+            echo "- verified OCI manifest platforms: linux/amd64, linux/arm64"
           } >> "$GITHUB_STEP_SUMMARY"

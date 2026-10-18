@@ -21,7 +21,8 @@ Unpublished release candidates can resume at their exact commit with
 The release requires typecheck, isolated tests, privacy scan, manual full-platform CI
 and Service lifecycle, then `release.yml` with an exact SHA. It publishes npm,
 the GitHub Release and both linux/amd64 and linux/arm64 GHCR image variants.
-The train validates the tag's immutable image digest artifact. npm alone is
+The train validates the tag's immutable image digest artifact and independently
+inspects the OCI manifest for both `linux/amd64` and `linux/arm64`. npm alone is
 never sufficient for a successful release.
 
 GITHUB_TOKEN-authored version commits do not trigger push workflows, so the

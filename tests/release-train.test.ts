@@ -23,7 +23,7 @@ describe("OpenCodex automated release train", () => {
     const job = workflow.jobs.publish!;
     expect(job.if).toBe("github.repository == 'GroepOnline/opencodex' && github.ref == 'refs/heads/main'");
     expect(job["timeout-minutes"]).toBe(180);
-    expect(job.permissions).toEqual({ contents: "write", actions: "write" });
+    expect(job.permissions).toEqual({ contents: "write", actions: "write", packages: "read" });
     expect(text).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
   });
 
@@ -38,6 +38,8 @@ describe("OpenCodex automated release train", () => {
     expect(script).toContain("await assertUnusedReleaseVersion(packageName, version)");
     expect(script).toContain("await watchRun(releaseRun.databaseId)");
     expect(workflow).toContain("gh run download");
+    expect(workflow).toContain("docker buildx imagetools inspect --raw");
+    expect(workflow).toContain('index("amd64") != null and index("arm64") != null');
     expect(workflow).toContain(".imageRunId == $run");
     expect(workflow).toContain(".sourceSha == $sha");
     expect(workflow).toContain('test("^sha256:[0-9a-f]{64}$")');
