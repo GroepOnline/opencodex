@@ -29,8 +29,8 @@ describe("install scripts", () => {
     expect(pkg.main).toBe("./bin/package-main.mjs");
     expect(pkg.exports?.["."]?.bun).toBe("./src/index.ts");
     expect(pkg.exports?.["."]?.default).toBe("./bin/package-main.mjs");
-    expect(pkg.dependencies?.zod).toBe("4.6.5");
-    expect(pkg.dependencies?.bun).toBe("1.4.2");
+    expect(pkg.dependencies?.zod).toBe("4.6.7");
+    expect(pkg.dependencies?.bun).toBe("1.4.3");
     expect(pkg.devDependencies?.typescript).toBe("5.9.3");
     expect(pkg.devDependencies?.["@types/bun"]).toBe(pkg.dependencies?.bun);
     expect(pkg.scripts?.dev).toBe("bun run src/cli/index.ts start");
@@ -51,11 +51,18 @@ describe("install scripts", () => {
     const localLinks = [...readme.matchAll(/\]\(\.\/([^\s)#]+)(?:#[^)]*)?\)/g)];
     expect(localLinks.length).toBeGreaterThan(5);
     for (const match of localLinks) {
-      expect(existsSync(fileURLToPath(new URL("../" + match[1], import.meta.url)))).toBe(true);
+      expect(
+        existsSync(fileURLToPath(new URL("../" + match[1], import.meta.url))),
+      ).toBe(true);
     }
     expect(readme).not.toMatch(/assets\/[^\s)]+\.(png|gif|jpe?g|webp)/i);
     const cliHelp = await readText("src/cli/help.ts");
-    for (const command of ["ocx droid", "ocx opencode", "ocx trace", "ocx claude"]) {
+    for (const command of [
+      "ocx droid",
+      "ocx opencode",
+      "ocx trace",
+      "ocx claude",
+    ]) {
       expect(readme).toContain(command);
       expect(cliHelp).toContain(command);
     }

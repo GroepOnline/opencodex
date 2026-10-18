@@ -1,6 +1,6 @@
 FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04
 
-ARG BUN_VERSION=1.4.0
+ARG BUN_VERSION=1.4.3
 
 USER vscode
 ENV BUN_INSTALL=/home/vscode/.bun

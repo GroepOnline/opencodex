@@ -206,7 +206,7 @@ describe("local/dev complete path", () => {
     expect(operatorNotes).not.toMatch(/\/home\/[A-Za-z0-9_-]+\//);
   });
 
-  test("devcontainer forwards :10100 and bootstraps Bun 1.4.0", async () => {
+  test("devcontainer forwards :10100 and uses the shared Bun version", async () => {
     const config = JSON.parse(
       await readRepo(".devcontainer/devcontainer.json"),
     ) as {
@@ -217,8 +217,12 @@ describe("local/dev complete path", () => {
     expect(config.name).toBe("opencodex");
     expect(config.forwardPorts).toContain(10100);
     expect(config.build.dockerfile).toBe("Dockerfile");
+    const bunVersion = (await readRepo(".bun-version")).trim();
     expect(await readRepo(".devcontainer/Dockerfile")).toContain(
-      "BUN_VERSION=1.4.0",
+      `BUN_VERSION=${bunVersion}`,
+    );
+    expect(await readRepo(".cursor/environment.json")).toContain(
+      `bun-v${bunVersion}`,
     );
     expect(await readRepo(".devcontainer/post-create.sh")).toContain(
       "bun install --frozen-lockfile",
