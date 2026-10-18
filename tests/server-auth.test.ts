@@ -2060,7 +2060,15 @@ describe("server local API auth", () => {
     const body = `${unsupportedModelBody()}${"x".repeat(65_536)}`;
     const harness = await startPoolRetryHarness(() => rejectionResponse(body));
     try {
-      await expectOriginal400(await harness.request(), body);
+      // The passthrough error read is bounded: an oversized body is never relayed
+      // (or buffered) in full; the client gets the status-only 400 envelope.
+      const response = await harness.request();
+      expect(response.status).toBe(400);
+      expect(response.headers.get("x-pool-retry-test")).toBeNull();
+      const text = await response.text();
+      expect(text.length).toBeLessThan(65_536);
+      expect(text).not.toContain("not supported when using Codex");
+      expect((JSON.parse(text) as { error?: { message?: string } }).error?.message).toContain("400");
       expect(harness.dispatches).toEqual(["acct-pool-a"]);
       expect(getCodexUpstreamHealth("pool-a")).toBeNull();
       expect(getCodexUpstreamHealth("pool-b")).toBeNull();

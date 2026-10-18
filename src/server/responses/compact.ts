@@ -68,7 +68,12 @@ import { resolveProviderTransport } from "../../providers/xai-transport";
 import type { WsData } from "../ws-bridge";
 import { registerTurn, trackStreamLifetime, unregisterTurn } from "../lifecycle";
 import { redactSecretString } from "../../lib/redact";
-import { readBoundedResponseBody } from "../../lib/bounded-body";
+import {
+  readBoundedErrorText,
+  readBoundedResponseBody,
+  readCappedResponseJson,
+  UpstreamBodyTooLargeError,
+} from "../../lib/bounded-body";
 import { supportedLadderFor } from "../effort-policy";
 import {
   beginRequestAttempt,
@@ -165,7 +170,7 @@ function supportsSyntheticCompactFallback(
 async function nativeCompactEndpointUnsupported(response: Response): Promise<boolean> {
   if (response.status === 405) return true;
   if (response.status !== 404) return false;
-  const text = (await response.clone().text().catch(() => "")).toLowerCase();
+  const text = (await readBoundedErrorText(response.clone()) ?? "").toLowerCase();
   return text.includes("/responses/compact")
     || text.includes("compact endpoint");
 }
@@ -245,8 +250,12 @@ async function runSyntheticCompact(
   if (!response.ok) return response;
   let json: { output?: unknown[]; status?: unknown; error?: unknown };
   try {
-    json = await response.json() as { output?: unknown[]; status?: unknown; error?: unknown };
-  } catch {
+    json = await readCappedResponseJson<{ output?: unknown[]; status?: unknown; error?: unknown }>(
+      response,
+      { signal: req.signal },
+    );
+  } catch (error) {
+    if (error instanceof UpstreamBodyTooLargeError) return formatErrorResponse(error.status, "upstream_error", error.message);
     return formatErrorResponse(502, "server_error", "compaction turn returned a non-JSON response");
   }
   return syntheticCompactOutput(json, inputItems);

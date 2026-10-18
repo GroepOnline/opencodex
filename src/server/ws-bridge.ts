@@ -4,6 +4,7 @@ import type { CodexAuthContext } from "../codex/auth-context";
 import { headersForCodexAuthContext } from "../codex/auth-context";
 import type { ResponsesTerminalStatus } from "../bridge";
 import { createServerSentEventParser, MAX_SSE_FRAME_LENGTH, SseFrameTooLargeError } from "../lib/sse-decoder";
+import { readBoundedErrorText, readCappedResponseText } from "../lib/bounded-body";
 
 const OPEN = 1;
 type ResponsesTerminalReporter = (status: ResponsesTerminalStatus) => void;
@@ -307,7 +308,7 @@ export async function sendResponseToWebSocket(
   }
 
   if (!response.ok) {
-    const text = await response.text().catch(() => "");
+    const text = await readBoundedErrorText(response) ?? "";
     if (!isCurrent()) return;
     sendJsonFrame(ws, buildWsErrorFrame(response.status, errorPayloadFromText(text), response.headers));
     return;
@@ -334,7 +335,7 @@ export async function sendResponseToWebSocket(
   }
 
   if (contentType.includes("application/json")) {
-    const text = await response.text();
+    const text = await readCappedResponseText(response);
     if (!isCurrent()) return;
     const json = JSON.parse(text) as Record<string, unknown>;
     sendResponsesJsonAsEvents(ws, json, options.onTerminal, options.onSsePayload);
@@ -355,7 +356,7 @@ export async function sendResponseToWebSocket(
     return;
   }
 
-  const text = await new Response(stream).text();
+  const text = await readCappedResponseText(new Response(stream));
   if (!isCurrent()) return;
   const trimmed = text.trim();
   if (trimmed.startsWith("{")) {

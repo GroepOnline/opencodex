@@ -14,6 +14,7 @@ import {
   responsesJsonToChatCompletion,
   responsesSseToChatCompletionsSse,
 } from "../chat/outbound";
+import { readBoundedErrorText, readCappedResponseJson, UpstreamBodyTooLargeError } from "../lib/bounded-body";
 import { classifyError, CYBER_POLICY_ERROR_CODE, isCyberPolicyCode } from "../lib/errors";
 import { redactSecretString } from "../lib/redact";
 import { resolveClientRetryAfter } from "../lib/retry-after";
@@ -162,7 +163,7 @@ export async function handleChatCompletions(
     let upstreamCode: string | null | undefined;
     let upstreamType: string | undefined;
     try {
-      const text = await upstream.text();
+      const text = await readBoundedErrorText(upstream, req.signal) ?? "";
       try {
         const parsed = JSON.parse(text) as {
           error?: { message?: string; type?: string; code?: string | null } | string;
@@ -266,8 +267,9 @@ export async function handleChatCompletions(
   // Defensive: JSON despite stream:true.
   let json: unknown;
   try {
-    json = await response.json();
-  } catch {
+    json = await readCappedResponseJson(response, { signal: req.signal });
+  } catch (error) {
+    if (error instanceof UpstreamBodyTooLargeError) return chatCompletionsErrorResponse(error.status, error.message, "server_error");
     return chatCompletionsErrorResponse(502, "internal replay returned a non-JSON response", "server_error");
   }
   const status = (json as Rec)?.status;
