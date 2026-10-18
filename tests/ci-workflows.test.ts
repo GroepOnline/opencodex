@@ -401,6 +401,43 @@ describe("GitHub Actions hardening", () => {
     }
   });
 
+  test("coverage is informational, runs only on Ubuntu shard 1, and uploads lcov", async () => {
+    const workflow = Bun.YAML.parse(await readText(".github/workflows/ci.yml")) as {
+      jobs: {
+        test: {
+          steps: Array<{
+            name: string;
+            id?: string;
+            if?: string;
+            "continue-on-error"?: boolean;
+            env?: Record<string, string>;
+            run?: string;
+            uses?: string;
+            with?: Record<string, unknown>;
+          }>;
+        };
+      };
+    };
+    const steps = workflow.jobs.test.steps;
+    const coverage = steps.find(step => step.id === "test-coverage");
+    const upload = steps.find(step => step.name === "Upload test coverage");
+    expect(coverage).toBeDefined();
+    expect(coverage?.if).toBe("${{ matrix.os == 'ubuntu-latest' && matrix.shard_index == 0 && matrix.run_tests }}");
+    expect(coverage?.["continue-on-error"]).toBe(true);
+    expect(coverage?.env).toEqual({ OCX_TEST_COVERAGE: "1" });
+    expect(coverage?.run).toBe("bun run scripts/test.ts");
+    expect(steps.find(step => step.name === "Test")?.["continue-on-error"]).not.toBe(true);
+    expect(upload?.if).toBe("${{ !cancelled() && matrix.os == 'ubuntu-latest' && matrix.shard_index == 0 && steps.test-coverage.outcome != 'skipped' }}");
+    expect(upload?.["continue-on-error"]).toBe(true);
+    expect(upload?.uses).toBe("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02");
+    expect(upload?.with).toEqual({
+      name: "test-coverage-ubuntu-shard-1",
+      path: "coverage/lcov.info",
+      "if-no-files-found": "warn",
+      "retention-days": 7,
+    });
+  });
+
   test("cross-platform CI keeps bounded jobs and immutable action references", async () => {
     const workflow = await readText(".github/workflows/ci.yml");
 

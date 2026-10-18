@@ -172,6 +172,25 @@ jobs:
         if: ${{ matrix.run_quality }}
         run: bun run src/cli/index.ts help
 
+      - name: Test coverage (informational)
+        id: test-coverage
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.shard_index == 0 && matrix.run_tests }}
+        continue-on-error: true
+        env:
+          OCX_TEST_COVERAGE: "1"
+        # Run once through the canonical runner, not batches that overwrite lcov.info.
+        run: bun run scripts/test.ts
+
+      - name: Upload test coverage
+        if: ${{ !cancelled() && matrix.os == 'ubuntu-latest' && matrix.shard_index == 0 && steps.test-coverage.outcome != 'skipped' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: test-coverage-ubuntu-shard-1
+          path: coverage/lcov.info
+          if-no-files-found: warn
+          retention-days: 7
+
   desktop-clients:
     name: Desktop clients ${{ matrix.platform }}
     runs-on: ${{ fromJSON(matrix.runner) }}

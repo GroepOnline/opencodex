@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -32,6 +32,82 @@ export function createIsolatedTestEnvironment(
   };
 }
 
+export function buildTestSuiteArgs(
+  requestedTests: string[] = [],
+  env: Record<string, string | undefined> = process.env,
+): string[] {
+  return [
+    process.execPath,
+    "test",
+    "--isolate",
+    ...(env.OCX_TEST_COVERAGE === "1"
+      ? ["--coverage", "--coverage-reporter=lcov"]
+      : []),
+    ...(requestedTests.length > 0 ? requestedTests : ["./tests/"]),
+  ];
+}
+
+export function formatTestHangAnnotation(message: string): string {
+  const escaped = message.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+  return `::warning title=Test suite hang::${escaped}`;
+}
+
+export function reportTestSuiteHang(
+  message: string,
+  env: Record<string, string | undefined> = process.env,
+): void {
+  console.error(`[test] ${message}`);
+  if (env.GITHUB_ACTIONS) console.log(formatTestHangAnnotation(message));
+  if (env.GITHUB_STEP_SUMMARY) {
+    try {
+      appendFileSync(env.GITHUB_STEP_SUMMARY, `- Test suite hang: ${message}\n`, "utf8");
+    } catch {
+      console.error("[test] could not append hang report to GITHUB_STEP_SUMMARY");
+    }
+  }
+}
+
+export async function runTestSuite(
+  suiteArgs: string[],
+  env: Record<string, string | undefined>,
+): Promise<number> {
+  const killAfterMs = 7 * 60_000;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const startedAt = Date.now();
+    const child = Bun.spawn(suiteArgs, {
+      env,
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    let killedForHang = false;
+    const duration = () => `${Math.round((Date.now() - startedAt) / 1000)}s`;
+    const killer = setTimeout(() => {
+      killedForHang = true;
+      reportTestSuiteHang(
+        `attempt ${attempt}/2 exceeded ${Math.round(killAfterMs / 1000)}s; killing after ${duration()} (wedged isolate suspected).`,
+        env,
+      );
+      child.kill(9);
+    }, killAfterMs);
+    let exitCode: number;
+    try {
+      exitCode = await child.exited;
+    } finally {
+      clearTimeout(killer);
+    }
+    if (!killedForHang) {
+      if (attempt === 2 && exitCode === 0) {
+        reportTestSuiteHang(`attempt 2/2 passed after ${duration()}; recovered from attempt 1/2 hang-kill (exit 0).`, env);
+      }
+      return exitCode;
+    }
+    if (attempt === 2) return exitCode || 1;
+    reportTestSuiteHang(`attempt 1/2 ended after ${duration()}; retrying once as attempt 2/2 after hang-kill.`, env);
+  }
+  return 1;
+}
+
 /**
  * Other `bun test` runners already on this machine.
  *
@@ -40,10 +116,11 @@ export function createIsolatedTestEnvironment(
  * left behind, and neither process said anything, so the slowdown read as a hang
  * in this suite. Bun's own timeouts cannot see the contention, so name it here.
  *
- * `pgrep` is absent on Windows and may exit non-zero for "no matches"; both cases
- * mean "nothing to warn about" rather than an error worth failing a test run over.
+ * Windows skips this advisory probe because `pgrep` and `ps` are not available.
+ * A missing POSIX tool or a non-zero "no matches" result is also harmless.
  */
-function findCompetingTestRunners(selfPid: number): number[] {
+export function findCompetingTestRunners(selfPid: number): number[] {
+  if (process.platform === "win32") return [];
   try {
     const found = Bun.spawnSync(["pgrep", "-f", "bun.*test --isolate"], {
       stdout: "pipe",
@@ -103,29 +180,8 @@ if (import.meta.main) {
     // name the wedge, and retry ONCE: two observed wedges (codex-shim lock handshake,
     // live-checkout git probe) were load-ordering flukes, not deterministic failures, and the
     // retry keeps one wedge from failing an otherwise-green 6600-test run.
-    const SUITE_KILL_AFTER_MS = 7 * 60_000;
-    const suiteArgs = [process.execPath, "test", "--isolate", ...(requestedTests.length > 0 ? requestedTests : ["./tests/"])];
-    let exitCode: number | null = null;
-    let killedForHang = false;
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      const child = Bun.spawn(suiteArgs, {
-        env: isolated.env,
-        stdin: "inherit",
-        stdout: "inherit",
-        stderr: "inherit",
-      });
-      killedForHang = false;
-      const killer = setTimeout(() => {
-        killedForHang = true;
-        console.error(`[test] suite exceeded ${Math.round(SUITE_KILL_AFTER_MS / 60_000)}m — killing (wedged isolate suspected).`);
-        child.kill(9);
-      }, SUITE_KILL_AFTER_MS);
-      exitCode = await child.exited;
-      clearTimeout(killer);
-      if (!killedForHang) break;
-      if (attempt === 1) console.error("[test] retrying once after hang-kill");
-    }
-    if (killedForHang && exitCode === 0) exitCode = 1;
+    const suiteArgs = buildTestSuiteArgs(requestedTests, isolated.env);
+    const exitCode = await runTestSuite(suiteArgs, isolated.env);
     const elapsedMs = Date.now() - startedAt;
     const elapsedSeconds = Math.round(elapsedMs / 1000);
     if (requestedTests.length === 0 && elapsedMs > 600_000) {
@@ -134,7 +190,7 @@ if (import.meta.main) {
         + "Check for another test runner, a busy CPU, or a test that started polling something real.",
       );
     }
-    process.exitCode = exitCode ?? 1;
+    process.exitCode = exitCode;
   } finally {
     isolated.cleanup();
   }

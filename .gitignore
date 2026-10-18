@@ -36,6 +36,7 @@ devlog/
 .cursor/hooks/state/
 
 # Test-generated artifacts
+coverage/
 tests/.tmp-*/
 .claude/
 *.html
