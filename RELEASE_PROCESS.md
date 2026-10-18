@@ -43,7 +43,7 @@ A dry run builds + packs the tarball but does **not** publish. Re-run with `--pu
    - `dry-run`: `true` first, then `false` for the real publish
    - `expected-sha`: mandatory release commit SHA (fail-fast if the branch moved)
 
-**Do not push release tags manually.** The canonical `Release` workflow publishes npm first, creates the Git tag and GitHub Release, then dispatches GHCR publication. The older `publish-on-tag.yml` route is not the release entrypoint.
+**Do not push release tags manually.** The canonical `Release` workflow publishes npm first, creates the Git tag and GitHub Release, then dispatches GHCR publication. The former tag-triggered npm publish workflow was removed: pushing a `v*` tag never publishes to npm, and `Release` is the only npm publish path.
 
 ## Version selection
 
@@ -59,7 +59,12 @@ A dry run builds + packs the tarball but does **not** publish. Re-run with `--pu
 The Release workflow (manual dispatch, `concurrency: release`):
 
 - Verifies `GITHUB_SHA` equals `expected-sha` (when supplied).
-- Publishes to npm via **Trusted Publishing (OIDC)** on a GitHub-hosted runner — no `NPM_TOKEN` secret.
+- Publishes to npm via **Trusted Publishing (OIDC)** on a GitHub-hosted runner. If the OIDC
+  `npm publish` exits non-zero for any reason (an OIDC rejection, but also a transient network or
+  registry error), an isolated `Publish token fallback` step retries with the `NPM_TOKEN` secret
+  and `--ignore-scripts`. The one-time `first-publish` dispatch input skips OIDC entirely and
+  publishes only through that token step. No other workflow may reference that secret (enforced by
+  `tests/ci-workflows.test.ts`); revoke it once OIDC succeeds and the fallback step is removed.
 - Creates the `v<version>` Git tag and GitHub Release from the exact release commit, with a
   changelog body derived from `scripts/release-notes.ts` (PR/commit history since the prior
   release, including carried preview deltas).

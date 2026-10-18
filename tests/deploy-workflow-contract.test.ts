@@ -119,9 +119,6 @@ describe("retired deploy workflow contract", () => {
     const containerReadme = await Bun.file(
       new URL("deploy/container/README.md", root),
     ).text();
-    const publishOnTag = await Bun.file(
-      new URL(".github/workflows/publish-on-tag.yml", root),
-    ).text();
 
     expect(releaseProcess).toContain(
       "leave the `deploy` input at its default `false`",
@@ -130,16 +127,11 @@ describe("retired deploy workflow contract", () => {
       "Runtime cutover is intentionally not part of release publication",
     );
     expect(releaseProcess).not.toContain("gh workflow run deploy.yml");
+    // The tag-triggered publish route is retired; Release is the only entrypoint.
+    expect(releaseProcess).not.toContain("publish-on-tag.yml");
 
     expect(containerReadme).toContain("intentionally fails closed");
     expect(containerReadme).toContain("private deployment repository");
     expect(containerReadme).not.toContain("OPENCODEX_IMAGE");
-
-    expect(publishOnTag).toContain("Publication does not deploy a runtime");
-    expect(publishOnTag).toContain(
-      "Runtime cutover is a separately verified operation",
-    );
-    expect(publishOnTag).not.toContain("DEPLOY_HOST");
-    expect(publishOnTag).not.toContain("DEPLOY_SSH_KEY");
   });
 });
