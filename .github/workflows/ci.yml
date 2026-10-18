@@ -178,6 +178,10 @@ jobs:
         continue-on-error: true
         env:
           OCX_TEST_COVERAGE: "1"
+          # Instrumented, unsharded runs essentially double the suite wall-clock,
+          # so the canonical runner's wedge-kill boundary is raised here instead
+          # of risking a false 7-minute kill.
+          OCX_TEST_KILL_AFTER_MS: "900000"
         # Run once through the canonical runner, not batches that overwrite lcov.info.
         run: bun run scripts/test.ts
 

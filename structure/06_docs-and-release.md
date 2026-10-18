@@ -176,7 +176,9 @@ Ubuntu shard 1 also runs an informational coverage pass through `scripts/test.ts
 `OCX_TEST_COVERAGE=1`, which adds `--coverage --coverage-reporter=lcov` and uploads
 `coverage/lcov.info`. Coverage collection and upload are non-blocking; ordinary test failures
 still block CI. The canonical runner reports hang-kills, retries, and successful recovery with
-attempt durations in Actions warnings and the step summary. Remote Ubuntu/RDP smoke tests
+attempt durations in Actions warnings and the step summary. The coverage pass raises the runner's
+hang-kill boundary through `OCX_TEST_KILL_AFTER_MS` because instrumented, unsharded runs are
+roughly twice as slow as the default boundary was calibrated for. Remote Ubuntu/RDP smoke tests
 stay outside the default gate.
 
 The Release workflow remains manual and publish-focused. Before any dry-run or publish step, it

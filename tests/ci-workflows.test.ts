@@ -424,7 +424,7 @@ describe("GitHub Actions hardening", () => {
     expect(coverage).toBeDefined();
     expect(coverage?.if).toBe("${{ matrix.os == 'ubuntu-latest' && matrix.shard_index == 0 && matrix.run_tests }}");
     expect(coverage?.["continue-on-error"]).toBe(true);
-    expect(coverage?.env).toEqual({ OCX_TEST_COVERAGE: "1" });
+    expect(coverage?.env).toEqual({ OCX_TEST_COVERAGE: "1", OCX_TEST_KILL_AFTER_MS: "900000" });
     expect(coverage?.run).toBe("bun run scripts/test.ts");
     expect(steps.find(step => step.name === "Test")?.["continue-on-error"]).not.toBe(true);
     expect(upload?.if).toBe("${{ !cancelled() && matrix.os == 'ubuntu-latest' && matrix.shard_index == 0 && steps.test-coverage.outcome != 'skipped' }}");
