@@ -764,11 +764,42 @@ describe("provider registry parity", () => {
     ]);
   });
 
-  test("Cloudflare Workers AI GLM 5.2 stays on the host 262k cap", () => {
+  test("Cloudflare Workers AI keeps host context caps (llama 24k, glm-5.3-flash 1M)", () => {
     const cf = PROVIDER_REGISTRY.find(
       (entry) => entry.id === "cloudflare-workers-ai",
     );
-    expect(cf?.modelContextWindows?.["@cf/zai-org/glm-5.2"]).toBe(262_144);
+    expect(
+      cf?.modelContextWindows?.["@cf/meta/llama-3.3-70b-instruct-fp8-fast"],
+    ).toBe(24_000);
+    expect(cf?.modelContextWindows?.["@cf/zai-org/glm-5.3-flash"]).toBe(
+      1_048_576,
+    );
+  });
+
+  test("Cloudflare Workers AI marks reasoning ladders and effort-stripped models", () => {
+    const cf = PROVIDER_REGISTRY.find(
+      (entry) => entry.id === "cloudflare-workers-ai",
+    );
+    expect(cf?.modelReasoningEfforts?.["@cf/openai/gpt-oss-120b"]).toEqual([
+      "low",
+      "medium",
+      "high",
+    ]);
+    expect(cf?.modelDefaultReasoningEfforts?.["@cf/zai-org/glm-5.3"]).toBe(
+      "max",
+    );
+    expect(cf?.modelReasoningEffortMap?.["@cf/zai-org/glm-5.3"]?.medium).toBe(
+      "max",
+    );
+    expect(cf?.noReasoningModels).toContain("@cf/qwen/qwq-32b");
+    // Retired models must stay out of the seed.
+    expect(cf?.models).not.toContain("@cf/zai-org/glm-5.2");
+    expect(cf?.models).not.toContain(
+      "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+    );
+    expect(cf?.models).not.toContain(
+      "@cf/mistralai/mistral-small-3.1-24b-instruct",
+    );
   });
 
   test("zhipu-bigmodel keeps liveModels false until GET /models is verified", () => {
