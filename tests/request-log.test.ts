@@ -1,4 +1,5 @@
-import { describe, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import * as fs from "node:fs";
 import * as capCooldown from "../src/providers/cap-cooldown";
 import * as posthogTelemetry from "../src/telemetry/posthog-server";
 import {
@@ -16,6 +17,8 @@ import {
   aggregateAttemptUsage,
   beginRequestAttempt,
   clearRequestLogsForTests,
+  catalogModelSupportsServiceTier,
+  readConfiguredCodexServiceTier,
   finishRequestAttempt,
   getRequestLogEntries,
   hydrateRequestLogsFromDisk,
@@ -48,6 +51,192 @@ import {
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CODEX_CONFIG_PATH } from "../src/codex/paths";
+import { installIsolatedCodexHome, type IsolatedCodexHome } from "./helpers/isolated-codex-home";
+
+describe("request-log service-tier metadata cache", () => {
+  let home: IsolatedCodexHome;
+  let catalogPath: string;
+  let now: number;
+  let clock: ReturnType<typeof spyOn>;
+
+  beforeEach(() => {
+    home = installIsolatedCodexHome("ocx-request-log-catalog-");
+    catalogPath = join(fs.realpathSync.native(home.path), "opencodex-catalog.json");
+    now = Date.now();
+    clock = spyOn(Date, "now").mockImplementation(() => now);
+  });
+
+  afterEach(() => {
+    clock.mockRestore();
+    home.restore();
+  });
+
+  function writeModels(models: unknown[], path = catalogPath): void {
+    fs.writeFileSync(path, JSON.stringify({ models }));
+  }
+
+  test("avoids filesystem calls within the TTL and reuses unchanged parsed catalogs after it", () => {
+    writeModels([{ slug: "model", service_tiers: [{ id: "priority" }] }]);
+    const reads = spyOn(fs, "readFileSync");
+    const stats = spyOn(fs, "statSync");
+    const exists = spyOn(fs, "existsSync");
+    try {
+      expect(catalogModelSupportsServiceTier("model", "fast")).toBe(true);
+      const initialReads = reads.mock.calls.length;
+      const initialStats = stats.mock.calls.length;
+      const initialExists = exists.mock.calls.length;
+      expect(initialReads).toBeGreaterThan(0);
+      expect(initialStats).toBeGreaterThan(0);
+      expect(catalogModelSupportsServiceTier("model", "priority")).toBe(true);
+      expect(catalogModelSupportsServiceTier("missing", "priority")).toBeUndefined();
+      expect(reads.mock.calls.length).toBe(initialReads);
+      expect(stats.mock.calls.length).toBe(initialStats);
+      expect(exists.mock.calls.length).toBe(initialExists);
+
+      now += 1_001;
+      expect(catalogModelSupportsServiceTier("model", "priority")).toBe(true);
+      expect(reads.mock.calls.filter(call => call[0] === catalogPath)).toHaveLength(1);
+      expect(stats.mock.calls.length).toBeGreaterThan(initialStats);
+    } finally {
+      reads.mockRestore();
+      stats.mockRestore();
+      exists.mockRestore();
+    }
+  });
+
+  test("reloads same-size changes by mtime and size changes with an unchanged mtime", () => {
+    writeModels([{ slug: "model", service_tiers: [{ id: "priority" }] }]);
+    expect(catalogModelSupportsServiceTier("model", "priority")).toBe(true);
+    const firstStat = fs.statSync(catalogPath);
+    writeModels([{ slug: "model", service_tiers: [{ id: "standard" }] }]);
+    expect(fs.statSync(catalogPath).size).toBe(firstStat.size);
+    const changedTime = new Date(firstStat.mtimeMs + 5_000);
+    fs.utimesSync(catalogPath, changedTime, changedTime);
+    now += 1_001;
+    expect(catalogModelSupportsServiceTier("model", "priority")).toBe(false);
+    expect(catalogModelSupportsServiceTier("model", "standard")).toBe(true);
+
+    const previousTime = fs.statSync(catalogPath).mtime;
+    writeModels([{ slug: "model", service_tiers: [{ id: "priority" }, { id: "standard" }] }]);
+    fs.utimesSync(catalogPath, previousTime, previousTime);
+    now += 1_001;
+    expect(catalogModelSupportsServiceTier("model", "priority")).toBe(true);
+  });
+
+  test("reloads an atomic catalog replacement with the same size and mtime", () => {
+    const timestamp = new Date("2026-01-01T00:00:00Z");
+    writeModels([{ slug: "model", service_tiers: [{ id: "priority" }] }]);
+    fs.utimesSync(catalogPath, timestamp, timestamp);
+    expect(catalogModelSupportsServiceTier("model", "priority")).toBe(true);
+    const previous = fs.statSync(catalogPath);
+    const replacement = join(home.path, "replacement.json");
+    writeModels([{ slug: "model", service_tiers: [{ id: "standard" }] }], replacement);
+    fs.utimesSync(replacement, timestamp, timestamp);
+    fs.renameSync(replacement, catalogPath);
+    expect(fs.statSync(catalogPath).mtimeMs).toBe(previous.mtimeMs);
+    expect(fs.statSync(catalogPath).size).toBe(previous.size);
+    now += 1_001;
+    expect(catalogModelSupportsServiceTier("model", "priority")).toBe(false);
+  });
+
+  test("follows catalog path changes even when file metadata matches", () => {
+    writeModels([{ slug: "model", service_tiers: [{ id: "priority" }] }]);
+    const timestamp = new Date("2026-01-01T00:00:00Z");
+    fs.utimesSync(catalogPath, timestamp, timestamp);
+    expect(catalogModelSupportsServiceTier("model", "priority")).toBe(true);
+    const otherPath = join(home.path, "other.json");
+    writeModels([{ slug: "model", service_tiers: [{ id: "standard" }] }], otherPath);
+    fs.utimesSync(otherPath, timestamp, timestamp);
+    expect(fs.statSync(otherPath).size).toBe(fs.statSync(catalogPath).size);
+    fs.writeFileSync(join(home.path, "config.toml"), 'model_catalog_json = "other.json"\n');
+    now += 1_001;
+    expect(catalogModelSupportsServiceTier("model", "priority")).toBe(false);
+  });
+
+  test("keeps first-match slug/id and tier normalization semantics", () => {
+    writeModels([
+      null,
+      "ignored",
+      { slug: "first", id: "shared", service_tiers: [{ id: "priority" }, null, { id: 7 }] },
+      { slug: "shared", id: "second", service_tiers: [{ id: "standard" }] },
+      { slug: "unsupported", service_tiers: {} },
+    ]);
+    expect(catalogModelSupportsServiceTier("first", " FaSt ")).toBe(true);
+    expect(catalogModelSupportsServiceTier("shared", "priority")).toBe(true);
+    expect(catalogModelSupportsServiceTier("shared", "standard")).toBe(false);
+    expect(catalogModelSupportsServiceTier("second", "standard")).toBe(true);
+    expect(catalogModelSupportsServiceTier("first", "PRIORITY")).toBe(false);
+    expect(catalogModelSupportsServiceTier("unsupported", "priority")).toBe(false);
+    expect(catalogModelSupportsServiceTier("missing", "priority")).toBeUndefined();
+    expect(catalogModelSupportsServiceTier("first", undefined)).toBeUndefined();
+    expect(catalogModelSupportsServiceTier("first", "")).toBeUndefined();
+  });
+
+  test("returns unknown for missing or unparsable files and recovers after repair", () => {
+    expect(catalogModelSupportsServiceTier("model", "priority")).toBeUndefined();
+    writeModels([{ slug: "model", service_tiers: [{ id: "priority" }] }]);
+    now += 1_001;
+    expect(catalogModelSupportsServiceTier("model", "priority")).toBe(true);
+    fs.writeFileSync(catalogPath, "not json");
+    now += 1_001;
+    expect(catalogModelSupportsServiceTier("model", "priority")).toBeUndefined();
+    writeModels([{ slug: "model" }]);
+    now += 1_001;
+    expect(catalogModelSupportsServiceTier("model", "priority")).toBe(false);
+    fs.unlinkSync(catalogPath);
+    now += 1_001;
+    expect(catalogModelSupportsServiceTier("model", "priority")).toBeUndefined();
+    for (const raw of ["null", "{}", '{"models":{}}']) {
+      fs.writeFileSync(catalogPath, raw);
+      now += 1_001;
+      expect(catalogModelSupportsServiceTier("model", "priority")).toBeUndefined();
+    }
+  });
+
+  test("caches the configured tier and reloads it when file metadata changes", () => {
+    // The config-tier helper intentionally keeps its existing import-time config path.
+    let source = 'service_tier = "fast"\n';
+    let mtimeMs = 1;
+    let ino = 1;
+    const reads = spyOn(fs, "readFileSync").mockImplementation((() => source) as typeof fs.readFileSync);
+    const stats = spyOn(fs, "statSync").mockImplementation((() => (
+      { mtimeMs, size: source.length, ino }
+    )) as typeof fs.statSync);
+    try {
+      expect(readConfiguredCodexServiceTier()).toBe("fast");
+      expect(readConfiguredCodexServiceTier()).toBe("fast");
+      expect(reads.mock.calls.filter(call => call[0] === CODEX_CONFIG_PATH)).toHaveLength(1);
+      now += 1_001;
+      expect(readConfiguredCodexServiceTier()).toBe("fast");
+      expect(reads.mock.calls.filter(call => call[0] === CODEX_CONFIG_PATH)).toHaveLength(1);
+      source = 'service_tier = "auto"\n';
+      mtimeMs += 1;
+      now += 1_001;
+      expect(readConfiguredCodexServiceTier()).toBe("auto");
+      source = 'service_tier = "fast"\n';
+      ino += 1;
+      now += 1_001;
+      expect(readConfiguredCodexServiceTier()).toBe("fast");
+      source = 'service_tier = ""\n';
+      now += 1_001;
+      expect(readConfiguredCodexServiceTier()).toBe("");
+      source = "service_tier = [invalid\n";
+      now += 1_001;
+      expect(readConfiguredCodexServiceTier()).toBeUndefined();
+      stats.mockImplementation(() => { throw new Error("missing config"); });
+      now += 1_001;
+      expect(readConfiguredCodexServiceTier()).toBeUndefined();
+      stats.mockImplementation((() => ({ mtimeMs: 3, size: source.length })) as typeof fs.statSync);
+      reads.mockImplementation(() => { throw new Error("unreadable config"); });
+      now += 1_001;
+      expect(readConfiguredCodexServiceTier()).toBeUndefined();
+    } finally {
+      reads.mockRestore();
+      stats.mockRestore();
+    }
+  });
+});
 
 async function* replayAdapterEvents(
   events: AdapterEvent[],

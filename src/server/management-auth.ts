@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   chmodSync,
   closeSync,
@@ -183,10 +183,9 @@ export function initializeManagementAuthState(
 }
 
 function equalSecret(actual: string, expected: string): boolean {
-  const encoder = new TextEncoder();
-  const left = encoder.encode(actual);
-  const right = encoder.encode(expected);
-  return left.length === right.length && timingSafeEqual(left, right);
+  const actualDigest = createHash("sha256").update(actual, "utf8").digest();
+  const expectedDigest = createHash("sha256").update(expected, "utf8").digest();
+  return timingSafeEqual(actualDigest, expectedDigest);
 }
 
 function removeExpiredSessions(

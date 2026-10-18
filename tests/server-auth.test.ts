@@ -30,6 +30,7 @@ import {
   startServer,
 } from "../src/server";
 import { handleManagementAPI } from "../src/server/management-api";
+import { isDataPlaneAdmissionSecret } from "../src/server/auth-cors";
 import type { OcxConfig } from "../src/types";
 import { fakeChatGptJwt } from "./helpers/fake-chatgpt-jwt";
 import { installIsolatedCodexHome, type IsolatedCodexHome } from "./helpers/isolated-codex-home";
@@ -413,6 +414,33 @@ describe("server local API auth", () => {
     expect(hasValidApiAuth(new Request("http://localhost/api/config", {
       headers: { "x-opencodex-api-key": "local-secret" },
     }), cfg)).toBe(true);
+  });
+
+  test("data admission preserves exact UTF-8 matching and rejects empty credentials", () => {
+    const cfg = config("0.0.0.0");
+    for (const expected of ["local-secret", "clé-秘密"]) {
+      process.env.OPENCODEX_API_AUTH_TOKEN = expected;
+      for (const actual of [expected, ` ${expected} `]) {
+        expect(isDataPlaneAdmissionSecret(actual, cfg)).toBe(true);
+      }
+      for (const actual of ["", "   ", `${expected.slice(0, -1)}x`, `${expected}x`, expected.slice(1)]) {
+        expect(isDataPlaneAdmissionSecret(actual, cfg)).toBe(false);
+      }
+
+      delete process.env.OPENCODEX_API_AUTH_TOKEN;
+      cfg.apiKeys = [{ id: "test", name: "Test", key: expected, createdAt: "2026-07-28T00:00:00.000Z" }];
+      expect(isDataPlaneAdmissionSecret(expected, cfg)).toBe(true);
+      expect(isDataPlaneAdmissionSecret(`${expected}x`, cfg)).toBe(false);
+      cfg.apiKeys = [];
+    }
+
+    for (const expected of [undefined, ""]) {
+      if (expected === undefined) delete process.env.OPENCODEX_API_AUTH_TOKEN;
+      else process.env.OPENCODEX_API_AUTH_TOKEN = expected;
+      cfg.apiKeys = [{ id: "empty", name: "Empty", key: "", createdAt: "2026-07-28T00:00:00.000Z" }];
+      expect(isDataPlaneAdmissionSecret("", cfg)).toBe(false);
+      expect(isDataPlaneAdmissionSecret("nonempty", cfg)).toBe(false);
+    }
   });
 
   test("loopback remains allowed even when env token exists", () => {

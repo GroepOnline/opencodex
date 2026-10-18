@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import type { ResponsesTerminalStatus } from "../bridge";
 import {
   classifyError,
@@ -581,34 +581,94 @@ export function requestLogSpeedLabel(serviceTier: string | undefined): string | 
   return undefined;
 }
 
-export function readConfiguredCodexServiceTier(): string | undefined {
+const SERVICE_TIER_CACHE_TTL_MS = 1_000;
+
+interface ServiceTierFileCache<T> {
+  path: string;
+  checkedAt: number;
+  revision?: string;
+  value?: T;
+}
+
+let configuredServiceTierCache: ServiceTierFileCache<string> | undefined;
+let catalogServiceTierCache: ServiceTierFileCache<Map<string, Set<string>>> | undefined;
+let catalogServiceTierHome: string | undefined;
+
+function serviceTierCacheIsFresh(cache: ServiceTierFileCache<unknown> | undefined, now: number): boolean {
+  return !!cache && now >= cache.checkedAt && now - cache.checkedAt < SERVICE_TIER_CACHE_TTL_MS;
+}
+
+function readServiceTierFile<T>(
+  cache: ServiceTierFileCache<T> | undefined,
+  path: string,
+  now: number,
+  parse: (raw: string) => T | undefined,
+): ServiceTierFileCache<T> {
+  if (cache?.path === path && serviceTierCacheIsFresh(cache, now)) return cache;
+  const next: ServiceTierFileCache<T> = { path, checkedAt: now };
   try {
-    if (!existsSync(CODEX_CONFIG_PATH)) return undefined;
-    return readRootTomlString(readFileSync(CODEX_CONFIG_PATH, "utf-8"), "service_tier") ?? undefined;
+    const { mtimeMs, size, ctimeMs, dev, ino } = statSync(path);
+    next.revision = `${mtimeMs}:${size}:${ctimeMs}:${dev}:${ino}`;
+    next.value = cache?.path === path && cache.revision === next.revision
+      ? cache.value
+      : parse(readFileSync(path, "utf-8"));
   } catch {
-    return undefined;
+    // Retry failures after the TTL, including files repaired without changing their metadata.
+    delete next.revision;
   }
+  return next;
+}
+
+export function readConfiguredCodexServiceTier(): string | undefined {
+  configuredServiceTierCache = readServiceTierFile(
+    configuredServiceTierCache,
+    CODEX_CONFIG_PATH,
+    Date.now(),
+    raw => readRootTomlString(raw, "service_tier") ?? undefined,
+  );
+  return configuredServiceTierCache.value;
+}
+
+function indexCatalogServiceTiers(raw: string): Map<string, Set<string>> {
+  const catalog = JSON.parse(raw) as { models?: unknown };
+  const models = Array.isArray(catalog.models) ? catalog.models : [];
+  const index = new Map<string, Set<string>>();
+  for (const model of models) {
+    if (!model || typeof model !== "object") continue;
+    const { slug, id, service_tiers } = model as { slug?: unknown; id?: unknown; service_tiers?: unknown };
+    const tiers = new Set<string>();
+    if (Array.isArray(service_tiers)) {
+      for (const tier of service_tiers) {
+        if (tier && typeof tier === "object" && typeof tier.id === "string") tiers.add(tier.id);
+      }
+    }
+    // Preserve Array.find's first-match behavior across both slug and id collisions.
+    for (const key of [slug, id]) {
+      if (typeof key === "string" && !index.has(key)) index.set(key, tiers);
+    }
+  }
+  return index;
 }
 
 export function catalogModelSupportsServiceTier(modelId: string, serviceTier: string | undefined): boolean | undefined {
   if (!serviceTier) return undefined;
   const requestTier = serviceTier.trim().toLowerCase() === "fast" ? "priority" : serviceTier.trim();
   try {
-    const catalogPath = readCodexCatalogPath();
-    if (!existsSync(catalogPath)) return undefined;
-    const catalog = JSON.parse(readFileSync(catalogPath, "utf-8")) as { models?: unknown };
-    const models = Array.isArray(catalog.models) ? catalog.models : [];
-    const entry = models.find(model => {
-      if (!model || typeof model !== "object") return false;
-      return (model as { slug?: unknown; id?: unknown }).slug === modelId
-        || (model as { slug?: unknown; id?: unknown }).id === modelId;
-    });
-    if (!entry || typeof entry !== "object") return undefined;
-    const tiers = (entry as { service_tiers?: unknown }).service_tiers;
-    return Array.isArray(tiers) && tiers.some(tier => (
-      tier && typeof tier === "object" && (tier as { id?: unknown }).id === requestTier
-    ));
+    const now = Date.now();
+    const home = process.env.CODEX_HOME;
+    // Catalog sync has no in-process write notification. Bound path resolution and stat calls too.
+    if (home !== catalogServiceTierHome || !serviceTierCacheIsFresh(catalogServiceTierCache, now)) {
+      catalogServiceTierCache = readServiceTierFile(
+        home === catalogServiceTierHome ? catalogServiceTierCache : undefined,
+        readCodexCatalogPath(),
+        now,
+        indexCatalogServiceTiers,
+      );
+      catalogServiceTierHome = home;
+    }
+    return catalogServiceTierCache?.value?.get(modelId)?.has(requestTier);
   } catch {
+    catalogServiceTierCache = undefined;
     return undefined;
   }
 }

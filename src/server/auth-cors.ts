@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { formatErrorResponse } from "../bridge";
 import {
   apiKeyTransportConfigError,
@@ -339,13 +339,9 @@ export function assertServerAuthConfig(config: OcxConfig): void {
 
 function secretEquals(actual: string, expected: string | undefined): boolean {
   if (!expected) return false;
-  const enc = new TextEncoder();
-  const actualBytes = enc.encode(actual);
-  const expectedBytes = enc.encode(expected);
-  return (
-    expectedBytes.length === actualBytes.length &&
-    timingSafeEqual(actualBytes, expectedBytes)
-  );
+  const actualDigest = createHash("sha256").update(actual, "utf8").digest();
+  const expectedDigest = createHash("sha256").update(expected, "utf8").digest();
+  return timingSafeEqual(actualDigest, expectedDigest);
 }
 
 /** Whether `token` is a data-plane admission secret. */
