@@ -114,6 +114,11 @@ jobs:
         if: steps.candidate.outputs.ship == 'true'
         run: bun install --frozen-lockfile
 
+      - name: Install GUI release dependencies
+        if: steps.candidate.outputs.ship == 'true'
+        working-directory: gui
+        run: bun install --frozen-lockfile
+
       - name: Publish npm, GitHub Release and GHCR image
         if: steps.candidate.outputs.ship == 'true'
         env:

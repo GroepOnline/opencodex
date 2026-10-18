@@ -60,4 +60,37 @@ describe("OpenCodex automated release train", () => {
     expect(text).toContain("mode=next");
     expect(text).toContain("ship=false");
   });
+
+  test("frozen GUI dependencies are installed before the release preflight can publish", async () => {
+    const release = Bun.YAML.parse(await read(".github/workflows/release-train.yml")) as {
+      jobs: { publish: { steps: Array<{
+        name: string;
+        if?: string;
+        "working-directory"?: string;
+        run?: string;
+        env?: Record<string, string>;
+      }> } };
+    };
+    const steps = release.jobs.publish.steps;
+    const rootIndex = steps.findIndex(step => step.name === "Install release dependencies");
+    const guiIndex = steps.findIndex(step => step.name === "Install GUI release dependencies");
+    const publishIndex = steps.findIndex(step => step.name === "Publish npm, GitHub Release and GHCR image");
+
+    expect(rootIndex).toBeGreaterThan(-1);
+    expect(guiIndex).toBeGreaterThan(rootIndex);
+    expect(publishIndex).toBeGreaterThan(guiIndex);
+    for (const index of [rootIndex, guiIndex]) {
+      expect(steps[index]?.if).toBe("steps.candidate.outputs.ship == 'true'");
+      expect(steps[index]?.run).toBe("bun install --frozen-lockfile");
+    }
+    expect(steps[guiIndex]?.["working-directory"]).toBe("gui");
+    expect(steps[guiIndex]?.env).toBeUndefined();
+
+    const ci = Bun.YAML.parse(await read(".github/workflows/ci.yml")) as {
+      jobs: { test: { steps: Array<{ name: string; run?: string }> } };
+    };
+    expect(ci.jobs.test.steps.find(step => step.name === "Install GUI dependencies")?.run)
+      .toContain("bun install --frozen-lockfile");
+  });
+
 });
