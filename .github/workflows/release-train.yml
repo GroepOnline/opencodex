@@ -1,0 +1,158 @@
+name: Release train (npm + multi-arch image)
+
+# Only merge/push to trusted main may enter the release authority.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/release-train.yml"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/container.yml"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/service-lifecycle.yml"
+      - ".bun-version"
+      - "Dockerfile"
+      - "compose.yml"
+      - "package.json"
+      - "bun.lock"
+      - "src/**"
+      - "bin/**"
+      - "gui/**"
+      - "scripts/**"
+  # Reconcile missed main events and bot-authored bump commits.
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ocx-release-train-main
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'GroepOnline/opencodex' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+
+      - name: Select unused release candidate
+        id: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin main
+          current_sha="$(git rev-parse HEAD)"
+          remote_sha="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+          if [ "$current_sha" != "$remote_sha" ]; then
+            echo "::notice::main moved; the next push/hourly run will reconcile it"
+            echo "ship=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          latest_tag="$(git tag --merged HEAD --list 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)"
+          if [ -z "$latest_tag" ]; then
+            echo "::error::No stable baseline tag; refusing to invent a release"
+            exit 1
+          fi
+          changes="$(git diff --name-only "$latest_tag" HEAD)"
+          if ! grep -Eq '^(src/|bin/|gui/|scripts/|Dockerfile$|compose.yml$|package.json$|bun.lock$|.bun-version$|.github/workflows/(release-train|release|container|ci|service-lifecycle).yml$)' <<<"$changes"; then
+            echo "::notice::No releasable changes since $latest_tag"
+            echo "ship=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          current_version="$(node -p "require('./package.json').version")"
+          last_version="$(printf '%s' "$latest_tag" | cut -c2-)"
+          if ! [[ "$current_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release train handles stable semver only"
+            exit 1
+          fi
+          if [ "$current_version" = "$last_version" ]; then
+            mode=next
+          elif [ "$(printf '%s\n' "$last_version" "$current_version" | sort -V | tail -n 1)" = "$current_version" ]; then
+            mode=resume
+          else
+            echo "::error::package.json $current_version is behind released $last_version"
+            exit 1
+          fi
+
+          echo "ship=true" >> "$GITHUB_OUTPUT"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "Release candidate mode=$mode, baseline=$latest_tag, SHA=$current_sha" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install release dependencies
+        if: steps.candidate.outputs.ship == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Publish npm, GitHub Release and GHCR image
+        if: steps.candidate.outputs.ship == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_MODE: ${{ steps.candidate.outputs.mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ "$RELEASE_MODE" = "resume" ]; then
+            bun scripts/release.ts --resume --publish
+          else
+            bun scripts/release.ts --publish
+          fi
+
+      - name: Verify exact GHCR digest for the published release
+        if: steps.candidate.outputs.ship == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          sha="$(git rev-parse HEAD)"
+          tag="v$version"
+          gh release view "$tag" --json isDraft,isPrerelease --jq '(.isDraft == false) and (.isPrerelease == false)' | grep -qx true
+
+          image_run="$(gh run list --workflow container.yml --commit "$sha" --event workflow_dispatch --limit 30 --json databaseId,headBranch,conclusion |
+            jq -r --arg tag "$tag" '[.[] | select(.headBranch == $tag and .conclusion == "success") | .databaseId][0] // empty')"
+          if [ -z "$image_run" ]; then
+            echo "::error::No successful exact-tag GHCR image run exists for $sha"
+            exit 1
+          fi
+          image_dir="$RUNNER_TEMP/ocx-release-image"
+          gh run download "$image_run" --name release-image --dir "$image_dir"
+          jq -e --arg tag "$tag" --arg sha "$sha" --arg run "$image_run" '
+            .schemaVersion == 1 and .releaseTag == $tag and .sourceSha == $sha and
+            .imageRunId == $run and (.imageDigest | test("^sha256:[0-9a-f]{64}$"))
+          ' "$image_dir/release-image.json"
+          digest="$(jq -r .imageDigest "$image_dir/release-image.json")"
+          {
+            echo "### Verified npm + multi-platform GHCR publication"
+            echo ""
+            echo "- npm: \`@groeponline/opencodex@$version\`"
+            echo "- GitHub release: \`$tag\`"
+            echo "- GHCR: \`ghcr.io/groeponline/opencodex:$tag\`"
+            echo "- immutable image: \`ghcr.io/groeponline/opencodex@$digest\`"
+            echo "- image run: $image_run"
+            echo "- commit: \`$sha\`"
+            echo "- platforms specified in container.yml: linux/amd64, linux/arm64"
+          } >> "$GITHUB_STEP_SUMMARY"
