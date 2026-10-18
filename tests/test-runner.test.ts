@@ -2,11 +2,13 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  DEFAULT_TEST_KILL_AFTER_MS,
   buildTestSuiteArgs,
   createIsolatedTestEnvironment,
   findCompetingTestRunners,
   formatTestHangAnnotation,
   reportTestSuiteHang,
+  resolveTestKillAfterMs,
   runTestSuite,
 } from "../scripts/test";
 
@@ -48,6 +50,27 @@ describe("test runner arguments", () => {
     expect(buildTestSuiteArgs(["./tests/test-runner.test.ts"], {})).toEqual([
       process.execPath, "test", "--isolate", "./tests/test-runner.test.ts",
     ]);
+  });
+});
+
+describe("test runner hang boundary", () => {
+  test("defaults to the 7-minute wedge boundary", () => {
+    expect(resolveTestKillAfterMs(undefined)).toBe(DEFAULT_TEST_KILL_AFTER_MS);
+    expect(resolveTestKillAfterMs("")).toBe(DEFAULT_TEST_KILL_AFTER_MS);
+    expect(resolveTestKillAfterMs("   ")).toBe(DEFAULT_TEST_KILL_AFTER_MS);
+  });
+
+  test("honors an explicit OCX_TEST_KILL_AFTER_MS override", () => {
+    expect(resolveTestKillAfterMs("60000")).toBe(60_000);
+    expect(resolveTestKillAfterMs("900000")).toBe(900_000);
+    expect(resolveTestKillAfterMs("3600000")).toBe(3_600_000);
+  });
+
+  test("rejects values that would disable the wedge protection", () => {
+    expect(() => resolveTestKillAfterMs("59999")).toThrow(/between 60000 and 3600000/);
+    expect(() => resolveTestKillAfterMs("3600001")).toThrow(/between 60000 and 3600000/);
+    expect(() => resolveTestKillAfterMs("not-a-number")).toThrow(/between 60000 and 3600000/);
+    expect(() => resolveTestKillAfterMs("true")).toThrow(/between 60000 and 3600000/);
   });
 });
 

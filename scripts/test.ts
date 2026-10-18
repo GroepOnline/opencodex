@@ -67,11 +67,35 @@ export function reportTestSuiteHang(
   }
 }
 
+/**
+ * The attempt-1 wedge boundary: how long the runner waits before it kills the
+ * suite and retries once. Calls that are legitimately slower than the default
+ * (e.g. the coverage pass, where instrumentation roughly doubles the suite's
+ * wall-clock) raise it through `OCX_TEST_KILL_AFTER_MS`.
+ */
+export const DEFAULT_TEST_KILL_AFTER_MS = 7 * 60_000;
+
+/**
+ * Parse `OCX_TEST_KILL_AFTER_MS`. Values outside [60s, 60m] are hard errors so
+ * a bad value cannot quietly disable the wedge protection or hide behind a
+ * typo; the canonical CI contract sets whole minutes for the coverage pass.
+ */
+export function resolveTestKillAfterMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_TEST_KILL_AFTER_MS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isInteger(parsed) || parsed < 60_000 || parsed > 3_600_000) {
+    throw new Error(
+      `[test] OCX_TEST_KILL_AFTER_MS must be an integer between 60000 and 3600000 (got ${JSON.stringify(raw)}).`,
+    );
+  }
+  return parsed;
+}
+
 export async function runTestSuite(
   suiteArgs: string[],
   env: Record<string, string | undefined>,
 ): Promise<number> {
-  const killAfterMs = 7 * 60_000;
+  const killAfterMs = resolveTestKillAfterMs(env.OCX_TEST_KILL_AFTER_MS);
   for (let attempt = 1; attempt <= 2; attempt++) {
     const startedAt = Date.now();
     const child = Bun.spawn(suiteArgs, {
