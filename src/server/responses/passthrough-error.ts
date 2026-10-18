@@ -88,3 +88,45 @@ export function formatPassthroughUpstreamError(
   if (resolved !== undefined) headers.set("Retry-After", resolved);
   return new Response(response.body, { status: response.status, headers });
 }
+
+/**
+ * Relay a passthrough upstream error whose body could not be captured safely
+ * (oversized, stalled, or unreadable) without buffering it in the proxy.
+ *
+ * The bytes, status, and headers reach the client as they arrive — the same
+ * contract as the non-empty branch of {@link formatPassthroughUpstreamError} —
+ * so an oversized upstream error still tells the truth (#452, pool-retry
+ * diagnostics) instead of collapsing into the empty-body envelope. Only the
+ * Cloudflare-page rewrite is skipped, because the payload was never captured.
+ *
+ * Retry-After handling stays independent of the body path: malformed or
+ * expired upstream values are dropped, valid ones are preserved.
+ */
+export function relayUnreadPassthroughUpstreamError(
+  status: number,
+  statusText: string | undefined,
+  body: ReadableStream<Uint8Array>,
+  options?: {
+    headers?: Headers;
+    now?: number;
+  },
+): Response {
+  const headers = options?.headers
+    ? new Headers(options.headers)
+    : new Headers({ "Content-Type": "application/json" });
+  const upstreamRetryAfter = headers.get("retry-after")?.trim() || undefined;
+  if (
+    upstreamRetryAfter !== undefined &&
+    validateClientRetryAfterHeader(
+      upstreamRetryAfter,
+      options?.now ?? Date.now(),
+    ) === undefined
+  ) {
+    headers.delete("Retry-After");
+  }
+  return new Response(body, {
+    status,
+    ...(statusText ? { statusText } : {}),
+    headers,
+  });
+}

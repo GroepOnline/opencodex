@@ -1,7 +1,8 @@
 /**
- * Request-path upstream body reads are bounded: a huge passthrough error body is
- * cut off at the error-body cap, and an oversized non-streaming success JSON
- * becomes a defined 502 instead of being buffered without limit.
+ * Request-path upstream body reads are bounded: only the passthrough error-body
+ * *inspection* is capped (the body itself is streamed to the client), and an
+ * oversized non-streaming success JSON becomes a defined 502 instead of being
+ * buffered without limit.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
@@ -10,7 +11,7 @@ import { saveCodexAccountCredential } from "../src/codex/account-store";
 import { clearAccountNeedsReauth, clearAccountQuota, updateAccountQuota } from "../src/codex/auth-api";
 import { clearCodexUpstreamHealth, clearThreadAccountMap } from "../src/codex/routing";
 import { saveConfig } from "../src/config";
-import { BOUNDED_BODY_MAX_BYTES, UPSTREAM_SUCCESS_BODY_MAX_BYTES } from "../src/lib/bounded-body";
+import { UPSTREAM_SUCCESS_BODY_MAX_BYTES } from "../src/lib/bounded-body";
 import { startServer } from "../src/server";
 import type { OcxConfig } from "../src/types";
 import { installIsolatedCodexHome, type IsolatedCodexHome } from "./helpers/isolated-codex-home";
@@ -126,29 +127,29 @@ async function postResponses(serverUrl: string): Promise<Response> {
 }
 
 describe("bounded upstream body reads on the passthrough path", () => {
-  test("an error body larger than the cap is cut off, not buffered in full", async () => {
+  test("an oversized error body is relayed verbatim instead of the empty-body envelope", async () => {
     const counter = { pulls: 0 };
     const chunk = new Uint8Array(16 * 1024).fill(0x61);
     const totalChunks = 256; // 4 MiB logical error body
     await withPoolPassthrough(
       () => new Response(countingUpstreamBody(chunk, totalChunks, counter), {
         status: 400,
-        headers: { "content-type": "text/plain" },
+        headers: { "content-type": "text/plain", "x-upstream-error": "verbatim" },
       }),
       async (serverUrl) => {
         const response = await postResponses(serverUrl);
         expect(response.status).toBe(400);
-        expect(response.headers.get("content-type")).toContain("application/json");
+        // The upstream bytes and headers reach the client, not a 400 envelope.
+        expect(response.headers.get("x-upstream-error")).toBe("verbatim");
+        expect(response.headers.get("content-type")).toContain("text/plain");
         const text = await response.text();
-        expect(text.length).toBeLessThan(BOUNDED_BODY_MAX_BYTES);
-        const json = JSON.parse(text) as { error?: { message?: string } };
-        expect(json.error?.message).toContain("400");
+        expect(text.length).toBe(chunk.byteLength * totalChunks);
+        expect(text.startsWith("aaaa")).toBe(true);
       },
     );
-    // The proxy stops near the 64 KiB error cap (plus small peek/read-ahead),
-    // far short of the full body.
-    expect(counter.pulls).toBeGreaterThan(0);
-    expect(counter.pulls).toBeLessThanOrEqual(16);
+    // The inspection read stays near the 64 KiB error cap while the relay
+    // branch streams the rest, so every chunk is forwarded exactly once.
+    expect(counter.pulls).toBe(totalChunks);
   });
 
   test("an oversized non-streaming success JSON becomes a 502 upstream error", async () => {

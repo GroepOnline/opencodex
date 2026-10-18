@@ -1,6 +1,6 @@
 import type { Server } from "bun";
 import { bridgeToResponsesSSE, buildResponseJSON, formatErrorResponse, type ResponsesTerminalStatus } from "../../bridge";
-import { formatPassthroughUpstreamError } from "./passthrough-error";
+import { formatPassthroughUpstreamError, relayUnreadPassthroughUpstreamError } from "./passthrough-error";
 import { describeUpstreamConnectFailure } from "./upstream-error";
 import {
   multiAgentGuidanceEnabled,
@@ -1870,15 +1870,40 @@ export async function handleResponses(
     // Codex renders that as the opaque "Unknown error" (#452). Combo attempts
     // keep their typed failure envelope. Non-empty bodies are relayed verbatim
     // (headers included) so pool-retry Activation B/D and client diagnostics stay intact.
-    // The read is bounded: an oversized or stalled error body takes the empty-body path.
+    // Only the *inspection* read is bounded: the body is probed through a tee
+    // branch up to the error cap, and a body that cannot be captured inside the
+    // cap (oversized, stalled, or undecodable) is streamed to the client instead
+    // of being buffered in full or being replaced by the empty-body envelope.
     if (!upstreamResponse.ok) {
       if (options.comboAttempt) {
         const failure = await consumeComboFailure(upstreamResponse, options.abortSignal);
         options.onConsumedComboFailure?.(failure);
         return failure.response;
       }
-      const errorText = await readBoundedErrorText(upstreamResponse, upstream.signal) ?? "";
-      return formatPassthroughUpstreamError(upstreamResponse.status, errorText, {
+      let relayBody: ReadableStream<Uint8Array> | null = null;
+      let inspection = upstreamResponse;
+      if (upstreamResponse.body) {
+        const [probe, relay] = upstreamResponse.body.tee();
+        relayBody = relay;
+        inspection = new Response(probe, {
+          status: upstreamResponse.status,
+          statusText: upstreamResponse.statusText,
+          headers,
+        });
+      }
+      const errorText = await readBoundedErrorText(inspection, upstream.signal);
+      if (errorText === undefined && relayBody) {
+        return relayUnreadPassthroughUpstreamError(
+          upstreamResponse.status,
+          upstreamResponse.statusText,
+          relayBody,
+          { headers },
+        );
+      }
+      // The full body was captured for inspection; drop the leftover tee branch
+      // so the remaining chunks do not buffer behind it.
+      void relayBody?.cancel().catch(() => {});
+      return formatPassthroughUpstreamError(upstreamResponse.status, errorText ?? "", {
         statusText: upstreamResponse.statusText,
         headers,
       });
