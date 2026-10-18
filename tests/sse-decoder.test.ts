@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { decodeServerSentEvents } from "../src/lib/sse-decoder";
+import {
+  createServerSentEventParser,
+  decodeServerSentEvents,
+  jsonDataPayloads,
+  SseFrameTooLargeError,
+} from "../src/lib/sse-decoder";
 
 function chunkedStream(chunks: string[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
@@ -72,5 +77,120 @@ describe("text/event-stream decoder", () => {
 
     expect(records).toEqual([{ event: "custom", data: "payload" }]);
     expect("kind" in records[0]).toBe(false);
+  });
+
+  test("accepts bare CR line endings", async () => {
+    expect(await collect([
+      "event: custom\rdata: first\rdata: second\r\r",
+      "data: next\r\r",
+    ])).toEqual([
+      { event: "custom", data: "first\nsecond" },
+      { data: "next" },
+    ]);
+  });
+
+  test("treats a CRLF split across chunks as a single line terminator", async () => {
+    expect(await collect([
+      "data: one\r",
+      "\ndata: two\r",
+      "\n\r",
+      "\n",
+    ])).toEqual([{ data: "one\ntwo" }]);
+  });
+
+  test("reassembles fields and multi-byte characters split across chunk boundaries", async () => {
+    const bytes = new TextEncoder().encode('data: {"text":"caf\u00e9 \u2603"}\n\n');
+    const split = bytes.indexOf(0xe2) + 1;
+    const records = [];
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes.slice(0, 3));
+        controller.enqueue(bytes.slice(3, split));
+        controller.enqueue(bytes.slice(split));
+        controller.close();
+      },
+    });
+    for await (const record of decodeServerSentEvents(stream)) records.push(record);
+    expect(records).toEqual([{ data: '{"text":"caf\u00e9 \u2603"}' }]);
+  });
+
+  test("accepts data without a space after the colon and strips only one space", async () => {
+    expect(await collect([
+      "data:{\"a\":1}\n\n",
+      "data:  padded\n\n",
+      "data\n\n",
+    ])).toEqual([
+      { data: '{"a":1}' },
+      { data: " padded" },
+      { data: "" },
+    ]);
+  });
+
+  test("ignores id and retry fields and reports unknown fields to the observer", () => {
+    const unknown: string[] = [];
+    const parser = createServerSentEventParser({ onUnknownLine: line => unknown.push(line) });
+    const encoder = new TextEncoder();
+    expect(parser.push(encoder.encode("id: 7\nretry: 100\ngarbage\ndata: x\n\n"))).toEqual([{ data: "x" }]);
+    expect(parser.end()).toEqual([]);
+    expect(unknown).toEqual(["garbage"]);
+  });
+
+  test("rejects an oversized unterminated line", () => {
+    const parser = createServerSentEventParser({ maxFrameLength: 16 });
+    const encoder = new TextEncoder();
+    expect(parser.push(encoder.encode("data: short\n\n"))).toEqual([{ data: "short" }]);
+    expect(() => parser.push(encoder.encode(`data: ${"x".repeat(32)}`))).toThrow(SseFrameTooLargeError);
+  });
+
+  test("rejects a frame whose accumulated data lines exceed the cap", () => {
+    const parser = createServerSentEventParser({ maxFrameLength: 16 });
+    const encoder = new TextEncoder();
+    expect(parser.push(encoder.encode("data: 0123456\n"))).toEqual([]);
+    expect(() => parser.push(encoder.encode("data: 0123456\n"))).toThrow(SseFrameTooLargeError);
+  });
+
+  test("oversized frames reject the async decoder and cancel the source", async () => {
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(`data: ${"x".repeat(64)}`));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const drain = async () => {
+      for await (const _record of decodeServerSentEvents(stream, { maxFrameLength: 32 })) { /* drain */ }
+    };
+    await expect(drain()).rejects.toBeInstanceOf(SseFrameTooLargeError);
+    expect(cancelled).toBe(true);
+  });
+
+  test("abort signal settles a pending read", async () => {
+    const controller = new AbortController();
+    const stream = new ReadableStream<Uint8Array>({ start() { /* never enqueues */ } });
+    const iterator = decodeServerSentEvents(stream, { signal: controller.signal });
+    const next = iterator.next();
+    controller.abort(new DOMException("stop", "AbortError"));
+    expect((await next).done).toBe(true);
+  });
+
+  test("dispatchCompleteJsonData emits complete JSON data lines without waiting for a blank line", () => {
+    const parser = createServerSentEventParser({ dispatchCompleteJsonData: true });
+    const encoder = new TextEncoder();
+    expect(parser.push(encoder.encode('event: delta\ndata: {"a":1}\n'))).toEqual([{ event: "delta", data: '{"a":1}' }]);
+    // A multi-line JSON value keeps accumulating until it parses, then dispatches immediately.
+    expect(parser.push(encoder.encode('data: {"b":\n'))).toEqual([]);
+    expect(parser.push(encoder.encode("data: 2}\n"))).toEqual([{ data: '{"b":\n2}' }]);
+    // Non-JSON text keeps spec framing.
+    expect(parser.push(encoder.encode("data: plain\n"))).toEqual([]);
+    expect(parser.push(encoder.encode("\ndata: [DONE]\n"))).toEqual([{ data: "plain" }, { data: "[DONE]" }]);
+    expect(parser.end()).toEqual([]);
+  });
+
+  test("jsonDataPayloads splits only when the joined data is not one JSON value", () => {
+    expect(jsonDataPayloads('{"a":1}')).toEqual(['{"a":1}']);
+    expect(jsonDataPayloads('{"a":\n1}')).toEqual(['{"a":\n1}']);
+    expect(jsonDataPayloads('{"a":1}\n{"b":2}')).toEqual(['{"a":1}', '{"b":2}']);
   });
 });

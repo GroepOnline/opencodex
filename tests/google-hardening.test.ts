@@ -345,3 +345,46 @@ describe("google provider hardening", () => {
     expect(google?.modelInputModalities?.["gemini-3.5-flash-lite"]).toEqual(["text", "image"]);
   });
 });
+
+describe("google SSE framing via the shared decoder", () => {
+  test("CRLF frames split across reads parse and complete without garbage drops", async () => {
+    resetDebugLogBufferForTests();
+    setDebugSettings({ debug: true });
+    try {
+      const encoder = new TextEncoder();
+      const events = await collect(createGoogleAdapter(provider()).parseStream(
+        byteStreamResponse([
+          encoder.encode('data: {"candidates":[{"content":{"parts":[{"text":"he"}]}}]}\r'),
+          encoder.encode('\n\r\ndata:{"candidates":[{"content":{"parts":[{"text":"llo"}]},"finishReason":"STOP"}]}\r\n'),
+          encoder.encode("\r\n"),
+        ]),
+      ));
+
+      expect(events.filter(event => event.type === "text_delta")).toEqual([
+        { type: "text_delta", text: "he" },
+        { type: "text_delta", text: "llo" },
+      ]);
+      expect(events.at(-1)?.type).toBe("done");
+      expect(getDebugLogEntries().some(entry => entry.line.includes("[ocx:frame-drop] google"))).toBe(false);
+    } finally {
+      resetDebugSettingsForTests();
+      resetDebugLogBufferForTests();
+    }
+  });
+
+  test("data lines without blank-line delimiters still parse one frame per line", async () => {
+    const events = await collect(createGoogleAdapter(provider()).parseStream(
+      new Response([
+        'data: {"candidates":[{"content":{"parts":[{"text":"a"}]}}]}',
+        'data: {"candidates":[{"content":{"parts":[{"text":"b"}]},"finishReason":"STOP"}]}',
+        "",
+      ].join("\n"), { headers: { "content-type": "text/event-stream" } }),
+    ));
+
+    expect(events.filter(event => event.type === "text_delta")).toEqual([
+      { type: "text_delta", text: "a" },
+      { type: "text_delta", text: "b" },
+    ]);
+    expect(events.at(-1)?.type).toBe("done");
+  });
+});

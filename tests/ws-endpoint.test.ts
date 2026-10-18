@@ -193,6 +193,26 @@ describe("WS endpoint re-framer (120/132)", () => {
     expect(JSON.parse(sent[1]).type).toBe("response.completed");
   });
 
+  test("supports bare CR framing and a CRLF terminator split across reads", async () => {
+    const { ws, sent } = mockWs();
+    const terminals: string[] = [];
+    await pumpResponsesSseToWebSocket(
+      ws,
+      sseStream([
+        'event: response.created\rdata:{"type":"response.created"}\r',
+        '\rdata: {"type":"response.output_text.delta","delta":"hi"}\r',
+        '\n\r\ndata: {"type":"response.completed","response":{"id":"r1"}}\r\r',
+      ]),
+      { onTerminal: (status) => terminals.push(status) },
+    );
+    expect(sent.map((f) => JSON.parse(f).type)).toEqual([
+      "response.created",
+      "response.output_text.delta",
+      "response.completed",
+    ]);
+    expect(terminals).toEqual(["completed"]);
+  });
+
   test("emits standalone transport error when EOF arrives before a terminal event", async () => {
     const { ws, sent } = mockWs();
     await pumpResponsesSseToWebSocket(

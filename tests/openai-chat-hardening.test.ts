@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createOpenAIChatAdapter } from "../src/adapters/openai-chat";
+import { getDebugLogEntries, resetDebugLogBufferForTests } from "../src/lib/debug-log-buffer";
+import { resetDebugSettingsForTests, setDebugSettings } from "../src/lib/debug-settings";
 import { routeModel } from "../src/router";
 import type { AdapterEvent, OcxConfig, OcxParsedRequest, OcxProviderConfig } from "../src/types";
 
@@ -86,6 +88,94 @@ describe("openai-chat stream response hardening", () => {
 
     expect(events.at(-1)).toEqual({ type: "error", message: "malformed upstream SSE data frame" });
     expect(events.some(event => event.type === "done")).toBe(false);
+  });
+
+  test("accepts data frames without a space after the colon", async () => {
+    const adapter = createOpenAIChatAdapter(provider());
+    const response = new Response([
+      'data:{"choices":[{"delta":{"content":"hi"}}]}\n\n',
+      "data:[DONE]\n\n",
+    ].join(""));
+
+    const events = await collect(adapter.parseStream(response));
+
+    expect(events).toContainEqual({ type: "text_delta", text: "hi" });
+    expect(events.at(-1)?.type).toBe("done");
+    expect(events.some(event => event.type === "error")).toBe(false);
+  });
+
+  test("parses CRLF and bare CR framing split across reads", async () => {
+    const encoder = new TextEncoder();
+    const adapter = createOpenAIChatAdapter(provider());
+    const response = new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"a"}}]}\r'));
+        controller.enqueue(encoder.encode('\n\r\ndata: {"choices":[{"delta":{"content":"b"}}]}\r\r'));
+        controller.enqueue(encoder.encode("data: [DONE]\r\n\r\n"));
+        controller.close();
+      },
+    }));
+
+    const events = await collect(adapter.parseStream(response));
+
+    expect(events.filter(event => event.type === "text_delta")).toEqual([
+      { type: "text_delta", text: "a" },
+      { type: "text_delta", text: "b" },
+    ]);
+    expect(events.at(-1)?.type).toBe("done");
+  });
+
+  test("still parses upstreams that omit the blank line between data frames", async () => {
+    const adapter = createOpenAIChatAdapter(provider());
+    const response = new Response([
+      'data: {"choices":[{"delta":{"content":"a"}}]}',
+      'data: {"choices":[{"delta":{"content":"b"},"finish_reason":"stop"}]}',
+      "data: [DONE]",
+      "",
+    ].join("\n"));
+
+    const events = await collect(adapter.parseStream(response));
+
+    expect(events.filter(event => event.type === "text_delta")).toEqual([
+      { type: "text_delta", text: "a" },
+      { type: "text_delta", text: "b" },
+    ]);
+    expect(events.at(-1)?.type).toBe("done");
+  });
+
+  test("streams newline-only framed data frames before the upstream closes", async () => {
+    const encoder = new TextEncoder();
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const adapter = createOpenAIChatAdapter(provider());
+    const response = new Response(new ReadableStream<Uint8Array>({ start(c) { controller = c; } }));
+    const stream = adapter.parseStream(response);
+
+    controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"a"}}]}\n'));
+    expect((await stream.next()).value).toEqual({ type: "text_delta", text: "a" });
+
+    controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"b"},"finish_reason":"stop"}]}\ndata: [DONE]\n'));
+    controller.close();
+    const rest: AdapterEvent[] = [];
+    for await (const event of stream) rest.push(event);
+    expect(rest[0]).toEqual({ type: "text_delta", text: "b" });
+    expect(rest.at(-1)?.type).toBe("done");
+  });
+
+  test("debug-logs malformed frames by length only", async () => {
+    resetDebugLogBufferForTests();
+    setDebugSettings({ debug: true });
+    try {
+      const adapter = createOpenAIChatAdapter(provider());
+      await collect(adapter.parseStream(new Response("data: {private-frame-body\n\n")));
+
+      const dropped = getDebugLogEntries().filter(entry => entry.line.includes("[ocx:frame-drop] openai-chat"));
+      expect(dropped).toHaveLength(1);
+      expect(dropped[0]?.line).toContain("bytes=19");
+      expect(dropped[0]?.line).not.toContain("private-frame-body");
+    } finally {
+      resetDebugSettingsForTests();
+      resetDebugLogBufferForTests();
+    }
   });
 });
 

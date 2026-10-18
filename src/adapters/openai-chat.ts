@@ -3,10 +3,11 @@ import { parseOpenAIRateLimit } from "../availability/rate-limit-parse";
 import type { AdapterEvent, OcxAssistantMessage, OcxContentPart, OcxMessage, OcxParsedRequest, OcxProviderConfig, OcxTextContent, OcxThinkingContent, OcxToolCall, OcxUsage } from "../types";
 import { isAllowedToolChoice, modelInList, namespacedToolName, resolveToolChoiceWireName, toolAllowedByChoice } from "../types";
 import { mapReasoningEffort, modelRecordValue } from "../reasoning-effort";
-import { debugProviderDiagnostic } from "../lib/debug";
+import { debugDroppedFrame, debugProviderDiagnostic } from "../lib/debug";
 import { isDebugEnabled } from "../lib/debug-settings";
 import { isCyberPolicyCode } from "../lib/errors";
 import { redactSecretString } from "../lib/redact";
+import { createServerSentEventParser, jsonDataPayloads, MAX_SSE_FRAME_LENGTH, SseFrameTooLargeError } from "../lib/sse-decoder";
 import { contentPartsToText } from "./image";
 import { neutralizeIdentity } from "./identity";
 import { buildNonOpenAIToolCatalogNudgeForTools, shouldInjectNonOpenAIToolCatalogNudge } from "./tool-catalog-nudge";
@@ -613,6 +614,77 @@ function applyCompatThinkingFormat(
   }
 }
 
+/** Terminal `done` event for a chat-completions stream, mapping finish_reason to a stop reason. */
+function chatDoneEvent(usage: OcxUsage | undefined, finishReason: string | undefined): AdapterEvent {
+  const stopReason = finishReason === "length"
+    ? "max_tokens"
+    : finishReason === "content_filter"
+      ? "content_filter"
+      : undefined;
+  return { type: "done", usage, ...(stopReason ? { stopReason } : {}) };
+}
+
+/** Classified terminal error for an inline provider error envelope inside a 200 stream. */
+function chatStreamErrorEvent(error: unknown): AdapterEvent {
+  const err = error as { message?: string; code?: string; type?: string; status?: number } | undefined;
+  const message = err?.message ?? "upstream error";
+  debugProviderDiagnostic("openai-chat", "stream-error", { message });
+  const status = isCyberPolicyCode(err?.code)
+    ? 400
+    : typeof err?.status === "number" && Number.isInteger(err.status)
+      ? err.status
+      : undefined;
+  return {
+    type: "error",
+    message,
+    ...(typeof err?.code === "string" ? { code: err.code } : {}),
+    ...(typeof err?.type === "string" ? { errorType: err.type } : {}),
+    ...(status !== undefined ? { status } : {}),
+  };
+}
+
+/** Text and reasoning deltas carried by one chat-completions choice delta. */
+function chatDeltaContentEvents(delta: Record<string, unknown>): AdapterEvent[] {
+  const events: AdapterEvent[] = [];
+  if (typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0) {
+    events.push({ type: "reasoning_raw_delta", text: delta.reasoning_content });
+  }
+  if (typeof delta.content === "string" && delta.content.length > 0) {
+    events.push({ type: "text_delta", text: delta.content });
+  }
+  return events;
+}
+
+interface PendingChatToolCall { key: string; id: string; name: string; args: string }
+type ChatToolCallDelta = { index?: number; id?: string; function?: { name?: string; arguments?: string } };
+
+/**
+ * Merge streamed tool-call deltas into the pending calls. Keyed by `index` (OpenAI wire
+ * standard), falling back to `id`, falling back to the last-seen call for providers that omit
+ * both on continuation chunks.
+ */
+function accumulateChatToolCalls(pending: PendingChatToolCall[], toolCalls: ChatToolCallDelta[]): void {
+  for (const tc of toolCalls) {
+    const key = typeof tc.index === "number"
+      ? `i:${tc.index}`
+      : tc.id
+      ? `id:${tc.id}`
+      : pending[pending.length - 1]?.key;
+    let call = key !== undefined ? pending.find(c => c.key === key) : undefined;
+    // Mixed keying rescue: a call opened under an index key must still absorb an id-only
+    // continuation for the same provider id (and vice versa) instead of splitting into two
+    // calls that share one call_id downstream.
+    if (!call && tc.id) call = pending.find(c => c.id === tc.id);
+    if (!call) {
+      call = { key: key ?? `seq:${pending.length}`, id: "", name: "", args: "" };
+      pending.push(call);
+    }
+    if (tc.id && !call.id) call.id = tc.id;
+    if (tc.function?.name && !call.name) call.name = tc.function.name;
+    if (tc.function?.arguments) call.args += tc.function.arguments;
+  }
+}
+
 export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAdapter {
   // resolveAdapter creates one adapter per request, as for Google/Kiro codecs.
   let restoreToolName = (name: string): string => name;
@@ -765,18 +837,16 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
       }
 
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
+      // Upstreams that omit the blank line between `data:` events still stream in real time:
+      // each complete JSON payload dispatches as soon as its line ends.
+      const parser = createServerSentEventParser({ maxFrameLength: MAX_SSE_FRAME_LENGTH, dispatchCompleteJsonData: true });
       // Streamed tool calls are BUFFERED until a terminal signal, then flushed as atomic
       // start/delta/end sequences. The bridge treats text/reasoning deltas as barriers that
       // close an open tool-call item (bridge.ts closeCurrentToolCall on text_delta), so
       // emitting calls incrementally would orphan later argument deltas whenever a provider
       // interleaves content — and parallel tool calls (multiple ids, index-keyed continuation
       // chunks, whole-chunk calls) cannot be represented live without overlapping sequences.
-      // Keyed by `index` (OpenAI wire standard), falling back to `id`, falling back to the
-      // last-seen call for providers that omit both on continuation chunks.
-      interface PendingToolCall { key: string; id: string; name: string; args: string }
-      const pendingToolCalls: PendingToolCall[] = [];
+      const pendingToolCalls: PendingChatToolCall[] = [];
       let toolCallSeq = 0;
       const flushToolCalls = function* (): Generator<AdapterEvent> {
         for (const call of pendingToolCalls) {
@@ -794,21 +864,17 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
       // OpenAI-compatible providers omit `[DONE]` but do send finish_reason).
       let finishReason: string | undefined;
 
-      // Single per-line handler shared by the streaming loop and the EOF residual-frame flush, so
-      // a final frame is parsed identically wherever it lands (no duplicated, drift-prone parsing).
-      // Yields adapter events and returns "terminate" for a terminal frame ([DONE] / error) that
-      // must end the stream, or "continue" otherwise. Mutates the closure's terminal-signal state.
-      const handleDataLine = function* (line: string): Generator<AdapterEvent, "continue" | "terminate"> {
-        if (!line.startsWith("data: ")) return "continue";
-        const payload = line.slice(6).trim();
+      // Single per-payload handler shared by the streaming loop and the EOF residual-frame flush,
+      // so a final frame is parsed identically wherever it lands (no duplicated, drift-prone
+      // parsing). Yields adapter events and returns "terminate" for a terminal frame ([DONE] /
+      // error) that must end the stream, or "continue" otherwise. Mutates the closure's
+      // terminal-signal state.
+      const handleDataPayload = function* (data: string): Generator<AdapterEvent, "continue" | "terminate"> {
+        const payload = data.trim();
+        if (!payload) return "continue";
         if (payload === "[DONE]") {
           yield* flushToolCalls();
-          const stopReason = finishReason === "length"
-            ? "max_tokens"
-            : finishReason === "content_filter"
-              ? "content_filter"
-              : undefined;
-          yield { type: "done", usage: pendingUsage, ...(stopReason ? { stopReason } : {}) };
+          yield chatDoneEvent(pendingUsage, finishReason);
           return "terminate";
         }
 
@@ -816,6 +882,7 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
         try {
           chunk = JSON.parse(payload) as Record<string, unknown>;
         } catch {
+          debugDroppedFrame("openai-chat", payload);
           yield { type: "error", message: "malformed upstream SSE data frame" };
           return "terminate";
         }
@@ -824,21 +891,9 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
         // instead of a clean [DONE]. Surface it as a terminal error so the bridge emits a
         // classified response.failed (bridge case "error") — never a truncated completion.
         if (chunk.error) {
-          const err = chunk.error as { message?: string; code?: string; type?: string; status?: number } | undefined;
-          const message = err?.message ?? "upstream error";
-          debugProviderDiagnostic("openai-chat", "stream-error", { message });
+          const errorEvent = chatStreamErrorEvent(chunk.error);
           yield* flushToolCalls();
-          yield {
-            type: "error",
-            message,
-            ...(typeof err?.code === "string" ? { code: err.code } : {}),
-            ...(typeof err?.type === "string" ? { errorType: err.type } : {}),
-            ...(isCyberPolicyCode(err?.code)
-              ? { status: 400 }
-              : typeof err?.status === "number" && Number.isInteger(err.status)
-                ? { status: err.status }
-                : {}),
-          };
+          yield errorEvent;
           return "terminate";
         }
 
@@ -850,96 +905,67 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
         }
 
         const choices = chunk.choices as { delta?: Record<string, unknown>; finish_reason?: string }[] | undefined;
-        if (!choices || choices.length === 0) return "continue";
+        const choice = choices?.[0];
+        if (!choice) return "continue";
         // Observe the terminator BEFORE the delta guard: a finish-only chunk (finish_reason set,
         // no delta) is a graceful close and must record finishReason even though we skip it below.
-        if (typeof choices[0].finish_reason === "string" && choices[0].finish_reason) {
-          finishReason = choices[0].finish_reason;
-        }
-        const delta = choices[0].delta;
-        if (delta) {
-          if (typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0) {
-            yield { type: "reasoning_raw_delta", text: delta.reasoning_content };
-          }
-          if (typeof delta.content === "string" && delta.content.length > 0) {
-            yield { type: "text_delta", text: delta.content };
-          }
-
-          const toolCalls = delta.tool_calls as { index?: number; id?: string; function?: { name?: string; arguments?: string } }[] | undefined;
-          if (toolCalls) {
-            for (const tc of toolCalls) {
-              const key = typeof tc.index === "number"
-                ? `i:${tc.index}`
-                : tc.id
-                ? `id:${tc.id}`
-                : pendingToolCalls[pendingToolCalls.length - 1]?.key;
-              let call = key !== undefined ? pendingToolCalls.find(c => c.key === key) : undefined;
-              // Mixed keying rescue: a call opened under an index key must still absorb an
-              // id-only continuation for the same provider id (and vice versa) instead of
-              // splitting into two calls that share one call_id downstream.
-              if (!call && tc.id) call = pendingToolCalls.find(c => c.id === tc.id);
-              if (!call) {
-                call = { key: key ?? `seq:${pendingToolCalls.length}`, id: "", name: "", args: "" };
-                pendingToolCalls.push(call);
-              }
-              if (tc.id && !call.id) call.id = tc.id;
-              if (tc.function?.name && !call.name) call.name = tc.function.name;
-              if (tc.function?.arguments) call.args += tc.function.arguments;
-            }
-          }
+        const choiceFinished = typeof choice.finish_reason === "string" && choice.finish_reason !== "";
+        if (choiceFinished) finishReason = choice.finish_reason;
+        if (choice.delta) {
+          yield* chatDeltaContentEvents(choice.delta);
+          const toolCalls = choice.delta.tool_calls as ChatToolCallDelta[] | undefined;
+          if (toolCalls) accumulateChatToolCalls(pendingToolCalls, toolCalls);
         }
 
         // Any non-empty finish_reason ends the generation: flush assembled tool calls as
         // atomic sequences (covers "tool_calls" AND providers that close tool turns with "stop").
-        if (typeof choices[0].finish_reason === "string" && choices[0].finish_reason) {
-          yield* flushToolCalls();
+        if (choiceFinished) yield* flushToolCalls();
+        return "continue";
+      };
+      const handleEvents = function* (events: { data: string }[]): Generator<AdapterEvent, "continue" | "terminate"> {
+        for (const event of events) {
+          for (const payload of jsonDataPayloads(event.data)) {
+            if ((yield* handleDataPayload(payload)) === "terminate") return "terminate";
+          }
         }
         return "continue";
       };
 
       try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-
-          for (const line of lines) {
-            if ((yield* handleDataLine(line)) === "terminate") return;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if ((yield* handleEvents(parser.push(value))) === "terminate") return;
           }
-        }
 
-        // Some providers send the terminal `data:` frame (carrying the final delta, finish_reason,
-        // and/or usage) WITHOUT a trailing newline before closing the socket, so it never crosses
-        // the split("\n") boundary and stays in `buffer`. Run it through the SAME handler so its
-        // content/tool-calls are emitted and its terminal signal observed — otherwise a genuinely
-        // complete stream loses its last frame and may be falsely failed below.
-        if (buffer.length > 0) {
-          if ((yield* handleDataLine(buffer)) === "terminate") return;
+          // Some providers send the terminal `data:` frame (carrying the final delta,
+          // finish_reason, and/or usage) WITHOUT a trailing newline or blank line before closing
+          // the socket. parser.end() dispatches it through the SAME handler so its
+          // content/tool-calls are emitted and its terminal signal observed; otherwise a genuinely
+          // complete stream loses its last frame and may be falsely failed below.
+          if ((yield* handleEvents(parser.end())) === "terminate") return;
+        } catch (err) {
+          if (!(err instanceof SseFrameTooLargeError)) throw err;
+          yield { type: "error", message: err.message };
+          try { await reader.cancel(); } catch { /* already closed */ }
+          return;
         }
         yield* flushToolCalls();
         // Reader EOF. A graceful close shows at least one terminal signal: `[DONE]` (returns above),
-        // a non-null finish_reason (sawFinish), or a trailing usage chunk (providers emit usage only
-        // at end-of-generation). If NONE of those were seen, the stream was cut mid-flight — fail
+        // a non-null finish_reason, or a trailing usage chunk (providers emit usage only at
+        // end-of-generation). If NONE of those were seen, the stream was cut mid-flight; fail
         // closed so the bridge emits a classified response.failed rather than a silent truncation.
-        const sawFinish = finishReason !== undefined;
-        if (!sawFinish && pendingUsage === undefined) {
+        if (finishReason === undefined && pendingUsage === undefined) {
           debugProviderDiagnostic("openai-chat", "stream-truncated", {
-            finishReason: finishReason ?? null,
+            finishReason: null,
             hadUsage: false,
           });
           yield { type: "error", message: "upstream stream ended without a terminal signal ([DONE] or finish_reason) — possible truncation" };
           return;
         }
         // Graceful close that omitted [DONE] but delivered finish_reason and/or final usage.
-        const stopReason = finishReason === "length"
-          ? "max_tokens"
-          : finishReason === "content_filter"
-            ? "content_filter"
-            : undefined;
-        yield { type: "done", usage: pendingUsage, ...(stopReason ? { stopReason } : {}) };
+        yield chatDoneEvent(pendingUsage, finishReason);
       } finally {
         reader.releaseLock();
       }

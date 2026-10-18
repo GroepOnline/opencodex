@@ -3,6 +3,7 @@ import { FORWARD_HEADERS } from "../adapters/openai-responses";
 import type { CodexAuthContext } from "../codex/auth-context";
 import { headersForCodexAuthContext } from "../codex/auth-context";
 import type { ResponsesTerminalStatus } from "../bridge";
+import { createServerSentEventParser, MAX_SSE_FRAME_LENGTH, SseFrameTooLargeError } from "../lib/sse-decoder";
 
 const OPEN = 1;
 type ResponsesTerminalReporter = (status: ResponsesTerminalStatus) => void;
@@ -122,26 +123,6 @@ export function buildWsErrorFrame(
   };
 }
 
-function parseSseBlock(block: string): string | null {
-  const data: string[] = [];
-  for (const line of block.split(/\r?\n/)) {
-    if (line.startsWith("data:")) {
-      const value = line.slice(5);
-      data.push(value.startsWith(" ") ? value.slice(1) : value);
-    }
-  }
-  return data.length > 0 ? data.join("\n") : null;
-}
-
-function nextSseBlock(buffer: string): { block: string; rest: string } | null {
-  const match = buffer.match(/\r?\n\r?\n/);
-  if (!match || match.index === undefined) return null;
-  return {
-    block: buffer.slice(0, match.index),
-    rest: buffer.slice(match.index + match[0].length),
-  };
-}
-
 function payloadType(payload: string): string | null {
   try {
     const json = JSON.parse(payload) as { type?: unknown };
@@ -200,8 +181,7 @@ export async function pumpResponsesSseToWebSocket(
   };
   ws.data.cancel = cancel;
 
-  const decoder = new TextDecoder();
-  let buffer = "";
+  const parser = createServerSentEventParser({ maxFrameLength: MAX_SSE_FRAME_LENGTH });
   let terminalSeen = false;
 
   const handlePayload = (payload: string): boolean => {
@@ -236,24 +216,21 @@ export async function pumpResponsesSseToWebSocket(
     while (!terminalSeen) {
       const { done, value } = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let next: { block: string; rest: string } | null;
-      while ((next = nextSseBlock(buffer))) {
-        buffer = next.rest;
-        const payload = parseSseBlock(next.block);
-        if (payload && handlePayload(payload)) break;
+      for (const event of parser.push(value)) {
+        if (event.data && handlePayload(event.data)) break;
       }
     }
-    buffer += decoder.decode();
-    if (!terminalSeen && buffer.trim()) {
-      const payload = parseSseBlock(buffer);
-      if (payload) handlePayload(payload);
+    if (!terminalSeen) {
+      for (const event of parser.end()) {
+        if (event.data && handlePayload(event.data)) break;
+      }
     }
     if (!terminalSeen && isCurrent() && !clientCancelled) {
       reportTerminal("incomplete");
       sendProtocolError(ws, 502, "Upstream stream ended before response terminal event");
     }
   } catch (err) {
+    if (err instanceof SseFrameTooLargeError) void reader.cancel().catch(() => {});
     if (!terminalSeen && isCurrent() && ws.readyState === OPEN) {
       if (!(err instanceof WsSendDroppedError)) reportTerminal("incomplete");
       sendProtocolError(ws, 502, err instanceof Error ? err.message : String(err));

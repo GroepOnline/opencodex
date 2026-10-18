@@ -54,6 +54,19 @@ describe("codex warmup", () => {
       .rejects.toMatchObject({ name: "CodexWarmupError", code: "stream_error" });
   });
 
+  test("accepts CRLF framing split across reads and data without a space", async () => {
+    const encoder = new TextEncoder();
+    globalThis.fetch = (async () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('event: response.created\r\ndata:{"type":"response.created"}\r'));
+        controller.enqueue(encoder.encode('\n\r\nevent: response.completed\r\ndata:{"type":"response.completed"}\r\n\r\n'));
+        controller.close();
+      },
+    }), { status: 200, headers: { "Content-Type": "text/event-stream" } })) as typeof fetch;
+
+    await expect(warmCodexAccount({ accessToken: "a", chatgptAccountId: "c" })).resolves.toBeUndefined();
+  });
+
   test("rejects malformed SSE JSON", async () => {
     globalThis.fetch = (async () => sseResponse("event: response.completed\ndata: {not-json}\n\n")) as typeof fetch;
     await expect(warmCodexAccount({ accessToken: "a", chatgptAccountId: "c" }))
