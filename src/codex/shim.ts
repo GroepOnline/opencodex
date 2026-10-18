@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { delimiter, dirname, extname, join, posix } from "node:path";
 import {
-  chmodSync,
   closeSync,
   existsSync,
   fstatSync,
@@ -18,11 +17,10 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { getConfigDir } from "../config";
+import { atomicWriteFile, executableAtomicWriteIO, getConfigDir } from "../config";
 import { durableBunPath } from "../lib/bun-runtime";
 import { isProcessAlive } from "../lib/process-control";
 import { serviceApiTokenFilePath } from "../lib/service-secrets";
-import { recordOwnedConfigPath } from "../lib/config-ownership";
 import { windowsEnvIndirectBatchValue } from "../lib/win-paths";
 import { isWslRuntime, wslAutomountRoot } from "./home";
 
@@ -583,10 +581,8 @@ function statePath(): string {
 }
 
 function writeState(state: ShimState): void {
-  const path = statePath();
-  recordOwnedConfigPath(getConfigDir(), path);
-  if (!existsSync(getConfigDir())) mkdirSync(getConfigDir(), { recursive: true });
-  writeFileSync(path, JSON.stringify(state, null, 2) + "\n", "utf8");
+  if (!existsSync(getConfigDir())) mkdirSync(getConfigDir(), { recursive: true, mode: 0o700 });
+  atomicWriteFile(statePath(), JSON.stringify(state, null, 2) + "\n");
 }
 
 /** Git-Bash accepts `C:/...` but not backslashed paths inside sh scripts. */
@@ -594,28 +590,29 @@ function gitBashPath(path: string): string {
   return path.replace(/\\/g, "/");
 }
 
+/**
+ * Replace the launcher through a temp sibling + rename so a crash, full disk, or Windows AV lock
+ * mid-write leaves the previous launcher intact instead of a truncated one on PATH.
+ */
 function writeShim(wrapperPath: string, realCodexPath: string): void {
   const { bun, cli } = cliEntry();
+  let content: string;
   if (process.platform === "win32") {
     const lower = wrapperPath.toLowerCase();
     if (lower.endsWith(".ps1")) {
       // UTF-8 BOM: Windows PowerShell 5.1 decodes BOM-less .ps1 files in the ANSI
       // codepage, which mangles non-ASCII paths embedded in the shim.
-      writeFileSync(wrapperPath, `\uFEFF${buildWindowsPowerShellCodexShim(realCodexPath, bun, cli)}`, "utf8");
+      content = `\uFEFF${buildWindowsPowerShellCodexShim(realCodexPath, bun, cli)}`;
     } else if (lower.endsWith(".cmd") || lower.endsWith(".bat")) {
-      writeFileSync(wrapperPath, buildWindowsCodexShim(realCodexPath, bun, cli), "utf8");
+      content = buildWindowsCodexShim(realCodexPath, bun, cli);
     } else {
       // Extensionless Git-Bash sh launcher: sh shim with forward-slash paths.
-      writeFileSync(
-        wrapperPath,
-        buildUnixCodexShim(gitBashPath(realCodexPath), gitBashPath(bun), gitBashPath(cli), gitBashPath(serviceApiTokenFilePath())),
-        "utf8",
-      );
+      content = buildUnixCodexShim(gitBashPath(realCodexPath), gitBashPath(bun), gitBashPath(cli), gitBashPath(serviceApiTokenFilePath()));
     }
   } else {
-    writeFileSync(wrapperPath, buildUnixCodexShim(realCodexPath, bun, cli), "utf8");
-    chmodSync(wrapperPath, 0o755);
+    content = buildUnixCodexShim(realCodexPath, bun, cli);
   }
+  atomicWriteFile(wrapperPath, content, executableAtomicWriteIO(0o755));
 }
 
 function stateFiles(state: ShimState): ShimFileState[] {

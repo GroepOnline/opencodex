@@ -1,10 +1,11 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { getConfigDir, loadConfig, readPid, readRuntimePort } from "../config";
 import { npmInvocation } from "./npm-invocation.mjs";
 import { handoffWindowsTrayForUpdate, planWindowsTrayUpdate } from "./tray-update-plan.mjs";
+import { foregroundRestartAdvice } from "./restart-advice.mjs";
 
 /**
  * A `codex-history-backup-*.json` surviving a stop means the native-history restore was
@@ -30,6 +31,34 @@ export type Channel = "latest" | "preview";
 export function detectInstall(): Installer {
   if (!HERE.includes("node_modules")) return "source"; // a git checkout, not a global install
   return HERE.includes(".bun") ? "bun" : "npm";
+}
+
+/** A detached HEAD is an immutable source pin, not a checkout that can be pulled. */
+export function isDetachedSourceCheckout(packageRoot = join(HERE, "..", "..")): boolean {
+  const markerPath = join(packageRoot, ".git");
+  let gitDir = markerPath;
+  try {
+    const marker = readFileSync(markerPath, "utf8").trim();
+    if (marker.startsWith("gitdir:")) {
+      gitDir = resolve(packageRoot, marker.slice("gitdir:".length).trim());
+    }
+  } catch {
+    // Ordinary checkouts use a .git directory rather than a linked-worktree pointer.
+  }
+  try {
+    return /^[0-9a-f]{40}$/i.test(readFileSync(join(gitDir, "HEAD"), "utf8").trim());
+  } catch {
+    return false; // Source archives can have no Git metadata.
+  }
+}
+
+/** Manual update guidance must not suggest a pull in an immutable detached worktree. */
+export function sourceUpdateGuidance(packageRoot = join(HERE, "..", "..")): string {
+  if (isDetachedSourceCheckout(packageRoot)) {
+    return "Running from a detached Git worktree or checkout: this pinned CLI cannot self-update.\n"
+      + "Roll forward through its owning deployment, or migrate the CLI to a published npm/Bun installation.";
+  }
+  return "Running from a source checkout - update with:  git pull && bun install";
 }
 
 export function currentVersion(): string {
@@ -154,7 +183,8 @@ export async function runUpdate(): Promise<void> {
   console.log(`opencodex v${current} (installed via ${installer}, tag ${tag})`);
 
   if (installer === "source") {
-    console.log("Running from a source checkout — update with:  git pull && bun install");
+    console.error(sourceUpdateGuidance());
+    process.exitCode = 1; // An instruction-only path is not a completed update.
     return;
   }
 
@@ -227,6 +257,10 @@ export async function runUpdate(): Promise<void> {
     ...(runtimeTrusted && livePid ? { oldPid: livePid } : {}),
     proxyOnly: runtimeTrusted && preUpdateRt.proxyOnly === true,
   };
+
+  // Foreground runtime state proves this machine owns a proxy; without it the port may
+  // belong to an externally managed gateway or tunnel (see restart-advice.mjs).
+  const stoppedLocalProxy = Boolean(readPid() || readRuntimePort());
 
   // Never replace package files under a live proxy: the running server dynamic-imports
   // modules after startup, so an in-place update leaves it executing mixed old/new code.
@@ -356,7 +390,13 @@ export async function runUpdate(): Promise<void> {
         else process.env.OCX_BAKE_PORT = prevBake;
       }
     } else {
-      console.log(`Restart the proxy:  ocx start --port ${capturedListen.port}${capturedListen.proxyOnly ? " --proxy-only" : ""}`);
+      for (const line of foregroundRestartAdvice({
+        stoppedLocalProxy,
+        port: capturedListen.port,
+        proxyOnly: capturedListen.proxyOnly,
+      })) {
+        console.log(line);
+      }
     }
   } else {
     if (trayWasRunning) {

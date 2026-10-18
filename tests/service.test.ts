@@ -19,6 +19,7 @@ import {
   buildWindowsSchtasksCreateArgs,
   buildWindowsServiceScript,
   buildWindowsTaskXml,
+  diagnoseService,
   deriveWindowsServiceDiagnostic,
   isMaskedSystemdUnit,
   normalizeServiceSubcommand,
@@ -28,7 +29,10 @@ import {
   resolveServiceListenPort,
   serviceLogPath,
   serviceStartableFromTray,
+  serviceManagerOpsForTests,
   serviceStatusSummary,
+  setServiceCommandExecForTests,
+  shouldDeferToSystemSystemdUnit,
   windowsTaskRegistrationHealthy,
 } from "../src/service";
 import { serviceApiTokenFilePath } from "../src/lib/service-secrets";
@@ -206,7 +210,7 @@ describe("systemd service unit", () => {
     );
 
     const unitCheckAt = startSystemd.indexOf("existsSync(unitPath())");
-    const startAt = startSystemd.indexOf("systemctl --user start");
+    const startAt = startSystemd.indexOf('"--user", "start"');
     expect(unitCheckAt).toBeGreaterThan(-1);
     expect(startAt).toBeGreaterThan(-1);
     expect(unitCheckAt).toBeLessThan(startAt);
@@ -216,9 +220,9 @@ describe("systemd service unit", () => {
     const writeAt = installSystemd.indexOf(
       'writeFileSync(unitPath(), buildUnit(), "utf8")',
     );
-    const reloadAt = installSystemd.indexOf("systemctl --user daemon-reload");
-    const enableAt = installSystemd.indexOf("systemctl --user enable");
-    const restartAt = installSystemd.indexOf("systemctl --user restart");
+    const reloadAt = installSystemd.indexOf('"--user", "daemon-reload"');
+    const enableAt = installSystemd.indexOf('"--user", "enable"');
+    const restartAt = installSystemd.indexOf('"--user", "restart"');
     expect(writeAt).toBeGreaterThan(-1);
     expect(writeAt).toBeLessThan(reloadAt);
     expect(reloadAt).toBeLessThan(enableAt);
@@ -1197,17 +1201,124 @@ describe("service diagnostics", () => {
     expect(statusCase).toContain("serviceDiagnosticsSummary()");
   });
 
-  test("reports stopped system units as diagnose-only without hardcoding running", async () => {
-    const service = await readText("src/service.ts");
-    const branch = service.slice(
-      service.indexOf("const systemUnit = diagnoseSystemSystemdUnit();"),
-      service.indexOf("if (!isSystemd())"),
-    );
-    expect(branch).toContain("if (systemUnit?.installed)");
-    expect(branch).toContain("installed: false");
-    expect(branch).toContain("startable: false");
-    expect(branch).toContain("running: systemUnit.running");
-    expect(branch).not.toContain("running: true");
+  test("does not shadow a live per-user service with a disabled, stopped system unit", () => {
+    expect(shouldDeferToSystemSystemdUnit(null)).toBe(false);
+    expect(
+      shouldDeferToSystemSystemdUnit({
+        installed: false,
+        enabled: false,
+        running: false,
+      }),
+    ).toBe(false);
+    // Reproduces bc-scan-2: an abandoned system unit and a healthy user unit.
+    expect(
+      shouldDeferToSystemSystemdUnit({
+        installed: true,
+        enabled: false,
+        running: false,
+      }),
+    ).toBe(false);
+    // Conservatively keep system-level ownership whenever a system unit
+    // is enabled or running; do not claim the user unit owns the lifecycle.
+    expect(
+      shouldDeferToSystemSystemdUnit({
+        installed: true,
+        enabled: true,
+        running: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldDeferToSystemSystemdUnit({
+        installed: true,
+        enabled: false,
+        running: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldDeferToSystemSystemdUnit({
+        installed: true,
+        enabled: true,
+        running: true,
+      }),
+    ).toBe(true);
+    // A failed or unfamiliar systemctl response is unknown, not evidence that
+    // the system unit is safe to ignore.
+    expect(
+      shouldDeferToSystemSystemdUnit({
+        installed: true,
+        enabled: null,
+        running: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldDeferToSystemSystemdUnit({
+        installed: true,
+        enabled: false,
+        running: null,
+      }),
+    ).toBe(true);
+    expect(
+      shouldDeferToSystemSystemdUnit({
+        installed: true,
+        enabled: null,
+        running: null,
+      }),
+    ).toBe(true);
+  });
+
+  test("unknown system-unit status stays unmanaged instead of falling through", () => {
+    process.env.OPENCODEX_HOME = join(TEST_DIR, "ocx-home");
+    let userUnitRead = false;
+    const diagnostic = diagnoseService({
+      platform: "linux",
+      inDocker: () => false,
+      systemUnitInstalled: () => true,
+      systemctl: (args) => {
+        if (args.includes("is-enabled")) throw new Error("permission denied");
+        return "inactive";
+      },
+      isSystemd: () => true,
+      userUnit: () => {
+        userUnitRead = true;
+        return { installed: true, enabled: true, running: true };
+      },
+    });
+
+    expect(diagnostic).toMatchObject({
+      supported: true,
+      installed: false,
+      enabled: false,
+      running: false,
+      viable: false,
+      startable: false,
+      backend: "systemd",
+      summary: expect.stringContaining("status unknown"),
+    });
+    expect(userUnitRead).toBe(false);
+  });
+
+  test("diagnoses the user unit when the system unit is confirmed disabled and stopped", () => {
+    process.env.OPENCODEX_HOME = join(TEST_DIR, "ocx-home");
+    const diagnostic = diagnoseService({
+      platform: "linux",
+      inDocker: () => false,
+      systemUnitInstalled: () => true,
+      systemctl: (args) =>
+        args.includes("is-enabled") ? "disabled" : "inactive",
+      isSystemd: () => true,
+      userUnit: () => ({ installed: true, enabled: true, running: true }),
+    });
+
+    expect(diagnostic).toMatchObject({
+      supported: true,
+      installed: true,
+      enabled: true,
+      running: true,
+      viable: true,
+      startable: true,
+      backend: "systemd",
+      summary: expect.stringContaining("installed, enabled and running"),
+    });
   });
 });
 
@@ -1334,5 +1445,102 @@ describe("isMaskedSystemdUnit", () => {
     writeFileSync(path, "[Unit]\n");
     expect(isMaskedSystemdUnit(path)).toBe(false);
     expect(isMaskedSystemdUnit(join(TEST_DIR, "missing.service"))).toBe(false);
+  });
+});
+
+describe("service manager commands run without a shell", () => {
+  const hostilePlist = join(
+    TEST_DIR,
+    `o'brien "home" $(touch marker) \`id\`; x`,
+    "com.opencodex.proxy.plist",
+  );
+  let calls: Array<[string, string[]]> = [];
+
+  function recordExec(output = "", fail = false): void {
+    setServiceCommandExecForTests((file, args) => {
+      calls.push([file, [...args]]);
+      if (fail) throw new Error("command exited 1");
+      return output;
+    });
+  }
+
+  afterEach(() => {
+    setServiceCommandExecForTests(null);
+    calls = [];
+  });
+
+  test("launchctl receives a plist path with shell metacharacters as one argv element", () => {
+    recordExec();
+    serviceManagerOpsForTests.startLaunchd(hostilePlist);
+    serviceManagerOpsForTests.stopLaunchd(hostilePlist);
+    serviceManagerOpsForTests.uninstallLaunchd(hostilePlist);
+    expect(calls).toEqual([
+      ["launchctl", ["load", "-w", hostilePlist]],
+      ["launchctl", ["unload", hostilePlist]],
+      ["launchctl", ["unload", hostilePlist]],
+    ]);
+  });
+
+  test("start propagates failures while stop, uninstall, and status stay best-effort", () => {
+    recordExec("", true);
+    const ops = serviceManagerOpsForTests;
+    expect(() => ops.startLaunchd(hostilePlist)).toThrow("command exited 1");
+    expect(() => ops.stopLaunchd(hostilePlist)).not.toThrow();
+    expect(() => ops.uninstallLaunchd(hostilePlist)).not.toThrow();
+    expect(ops.statusLaunchd()).toBe("");
+    expect(() => ops.stopSystemd()).not.toThrow();
+    expect(ops.statusSystemd()).toBe("");
+  });
+
+  test("launchd status filters launchctl list output in-process", () => {
+    recordExec(
+      "PID\tStatus\tLabel\n123\t0\tcom.apple.example\n456\t0\tcom.opencodex.proxy\n",
+    );
+    expect(serviceManagerOpsForTests.statusLaunchd()).toBe(
+      "456\t0\tcom.opencodex.proxy",
+    );
+    expect(calls).toEqual([["launchctl", ["list"]]]);
+
+    recordExec("PID\tStatus\tLabel\n123\t0\tcom.apple.example\n");
+    expect(serviceManagerOpsForTests.statusLaunchd()).toBe("");
+  });
+
+  test("systemctl receives the unit name as a discrete argument", () => {
+    recordExec("opencodex-proxy.service - OpenCodex Proxy Server\n");
+    expect(serviceManagerOpsForTests.statusSystemd()).toBe(
+      "opencodex-proxy.service - OpenCodex Proxy Server",
+    );
+    serviceManagerOpsForTests.stopSystemd();
+    expect(calls).toEqual([
+      ["systemctl", ["--user", "status", "opencodex-proxy"]],
+      ["systemctl", ["--user", "stop", "opencodex-proxy"]],
+    ]);
+  });
+
+  test("default system-unit probe runs systemctl with discrete argv", () => {
+    process.env.OPENCODEX_HOME = join(TEST_DIR, "ocx-home");
+    setServiceCommandExecForTests((file, args) => {
+      calls.push([file, [...args]]);
+      return args.includes("is-enabled") ? "enabled" : "active";
+    });
+    const diagnostic = diagnoseService({
+      platform: "linux",
+      inDocker: () => false,
+      systemUnitInstalled: () => true,
+      isSystemd: () => true,
+      userUnit: () => ({ installed: false, enabled: false, running: false }),
+    });
+    expect(diagnostic).toMatchObject({ backend: "systemd", running: true });
+    expect(calls).toEqual([
+      ["systemctl", ["is-enabled", "opencodex-proxy.service"]],
+      ["systemctl", ["is-active", "opencodex-proxy.service"]],
+    ]);
+  });
+
+  test("service.ts no longer builds shell command strings", async () => {
+    const service = await readText("src/service.ts");
+    expect(service).not.toMatch(/\bexecSync\b/);
+    expect(service).not.toMatch(/\bsh\(/);
+    expect(service).not.toMatch(/\bfunction sh\b|=\s*sh\s*[,)]/);
   });
 });

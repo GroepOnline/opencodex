@@ -7,15 +7,21 @@ const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 const cli = join(import.meta.dir, "../src/cli/index.ts");
 async function waitForFixtureProxy(port: number, previousPid?: number): Promise<{ pid: number }> {
-  for (let attempt = 0; attempt < 120; attempt++) {
+  // Process startup and port reclaim can take several seconds on hosted Windows.
+  // Keep a finite deadline so a genuinely failed proxy still fails closed.
+  const budgetMs = process.platform === "win32" ? 20_000 : 3_000;
+  const deadline = Date.now() + budgetMs;
+  while (Date.now() < deadline) {
     try {
-      const response = await fetch(`http://127.0.0.1:${port}/healthz`);
+      const response = await fetch(`http://127.0.0.1:${port}/healthz`, {
+        signal: AbortSignal.timeout(1_000),
+      });
       const body = await response.json() as { service: string; status: string; pid: number };
       if (response.ok && body.service === "opencodex" && body.status === "ok" && body.pid !== previousPid) return body;
-    } catch { /* only the isolated test process may still be binding */ }
-    await Bun.sleep(25);
+    } catch { /* the isolated proxy may still be binding its socket */ }
+    await Bun.sleep(50);
   }
-  throw new Error("Isolated proxy did not become healthy");
+  throw new Error(`Isolated proxy did not become healthy within ${budgetMs}ms on port ${port}`);
 }
 
 function fixture() {
@@ -128,7 +134,7 @@ for (const kind of ["missing", "file"] as const) {
     expect(existsSync(join(f.home, "runtime-port.json"))).toBe(false);
     if (kind === "file") expect(readFileSync(invalid, "utf8")).toBe("not a directory\n");
     else expect(existsSync(invalid)).toBe(false);
-  });
+  }, 30_000); // Five CLI subprocesses on contended Windows CI exceed Bun's 5s default.
 }
 
 test("sync rejects conflicting selectors before touching client state", async () => {
@@ -177,7 +183,7 @@ for (const pidFileState of ["present", "missing", "stale"] as const) {
       await child.exited;
       await output;
     }
-  }, 15000);
+  }, process.platform === "win32" ? 60_000 : 15_000);
 }
 
 for (const kind of ["valid", "missing", "file"] as const) {
@@ -200,16 +206,7 @@ test(`proxy-only serves health and API without changing client files (${kind} CO
   const stdout = new Response(child.stdout).text();
   const stderr = new Response(child.stderr).text();
   try {
-    let healthy = false;
-    for (let attempt = 0; attempt < 100; attempt++) {
-      try {
-        const response = await fetch(`http://127.0.0.1:${port}/healthz`);
-        const body = await response.json() as { service: string; status: string };
-        if (response.ok && body.service === "opencodex" && body.status === "ok") { healthy = true; break; }
-      } catch { /* only this isolated test child may still be binding */ }
-      await Bun.sleep(25);
-    }
-    expect(healthy).toBe(true);
+    await waitForFixtureProxy(port);
     const response = await fetch(`http://127.0.0.1:${port}/v1/models`);
     expect(response.status).toBe(200);
     expect(Array.isArray((await response.json() as { data: unknown[] }).data)).toBe(true);
@@ -228,5 +225,5 @@ test(`proxy-only serves health and API without changing client files (${kind} CO
   expect(readdirSync(f.codex)).toEqual(["config.toml"]);
   expect(readFileSync(join(f.home, ".zshrc"), "utf8")).toBe("# existing shell config\n");
   expect(existsSync(join(f.home, ".codex"))).toBe(false);
-});
+}, process.platform === "win32" ? 45_000 : 10_000);
 }

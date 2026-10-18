@@ -5,6 +5,7 @@ export interface ProvidersConfig {
     adapter: string;
     baseUrl: string;
     hasApiKey?: boolean;
+    credentialSource?: "inline" | "env" | "oauth" | "forward" | "vault";
     hasHeaders?: boolean;
     defaultModel?: string;
     models?: string[];

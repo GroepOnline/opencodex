@@ -8,6 +8,11 @@
  *
  * The resolved secret is returned for the lifetime of the current request only. It is never
  * written back into the persisted config — callers apply it to a per-request provider copy.
+ *
+ * V14: env-backed `$VAR` / `${VAR}` (from systemd EnvironmentFile / process.env) is the
+ * service happy path. Leftover plaintext apiKeys are classified in `credential-source.ts`
+ * and treated as a defect on management/doctor surfaces — this resolver still expands them
+ * so local `ocx start` keeps working.
  */
 import { resolveEnvValue } from "../config";
 import {

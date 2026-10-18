@@ -19,8 +19,11 @@ detached hidden CLI worker, and the worker performs the install command and opti
 
 For npm installs, the worker runs the Node launcher path (`node bin/ocx.mjs update --tag <tag>`) so
 the existing npm self-update guard is reused. For Bun global installs, it runs the existing Bun
-global update command. Source checkouts remain manual-only and show `git pull && bun install &&
-bun run build:gui`.
+global update command. Source checkouts remain manual-only. A checkout on a branch can use
+`git pull && bun install && bun run build:gui`, but a detached worktree must move its pinned
+revision through the owning deployment. The GUI displays the correct manual guidance and its
+background worker refuses to execute a source-control update. `ocx update` must never report
+guidance as a successful update.
 
 After an update requests a restart, the worker now waits for an identity-checked `/healthz` to
 return and remain healthy for a short stability window before marking the job successful. This

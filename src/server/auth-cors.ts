@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { formatErrorResponse } from "../bridge";
 import {
   apiKeyTransportConfigError,
@@ -13,6 +13,10 @@ import {
 } from "../config";
 import { providerDestinationConfigError } from "../lib/destination-policy";
 import { stringifyHttpJson } from "../lib/http-json";
+import {
+  classifyProviderCredentialSource,
+  listInlinePlaintextProviders,
+} from "../providers/credential-source";
 import {
   getProviderRegistryEntry,
   providerCodexAccountMode,
@@ -335,13 +339,9 @@ export function assertServerAuthConfig(config: OcxConfig): void {
 
 function secretEquals(actual: string, expected: string | undefined): boolean {
   if (!expected) return false;
-  const enc = new TextEncoder();
-  const actualBytes = enc.encode(actual);
-  const expectedBytes = enc.encode(expected);
-  return (
-    expectedBytes.length === actualBytes.length &&
-    timingSafeEqual(actualBytes, expectedBytes)
-  );
+  const actualDigest = createHash("sha256").update(actual, "utf8").digest();
+  const expectedDigest = createHash("sha256").update(expected, "utf8").digest();
+  return timingSafeEqual(actualDigest, expectedDigest);
 }
 
 /** Whether `token` is a data-plane admission secret. */
@@ -640,12 +640,14 @@ export function copyIfDefined<K extends keyof OcxProviderConfig>(
 export function safeConfigDTO(config: OcxConfig): unknown {
   const providers: Record<string, Record<string, unknown>> = {};
   for (const [name, provider] of Object.entries(config.providers)) {
+    const credentialSource = classifyProviderCredentialSource(provider);
     const dto: Record<string, unknown> = {
       adapter: provider.adapter,
       baseUrl: publicProviderBaseUrl(provider.baseUrl),
       hasApiKey: !!provider.apiKey || !!provider.credentialRef,
       hasHeaders:
         !!provider.headers && Object.keys(provider.headers).length > 0,
+      ...(credentialSource ? { credentialSource } : {}),
     };
     const poolCount = configuredKeyCount(provider);
     if (poolCount > 0) dto.keyPoolCount = poolCount;
@@ -697,6 +699,8 @@ export function safeConfigDTO(config: OcxConfig): unknown {
     codexAutoStart: codexAutoStartEnabled(config),
     websockets: config.websockets,
     providers,
+    // Names only — leftover plaintext apiKeys are a V14 defect, never echoed.
+    inlineProviderSecrets: listInlinePlaintextProviders(config),
     ...(Object.keys(activeCooldowns).length > 0
       ? { providerCooldowns: activeCooldowns }
       : {}),

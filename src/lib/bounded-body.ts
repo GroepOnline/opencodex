@@ -200,3 +200,148 @@ export async function readBoundedResponseBody(
 		}
 	}
 }
+
+/**
+ * Error-body convenience over {@link readBoundedResponseBody}.
+ *
+ * Returns the bounded text when it is display-safe, and `undefined` when the
+ * body was oversized, timed out, failed, or the read was aborted. It never
+ * throws, so callers keep their existing status-only fallback; an abort of
+ * `signal` still stops the read (and cancels the body) immediately.
+ */
+export async function readBoundedErrorText(
+	response: Response,
+	signal?: AbortSignal,
+): Promise<string | undefined> {
+	try {
+		const body = await readBoundedResponseBody(response, { signal });
+		return body.displaySafe ? body.text : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Upper bound for buffering a complete, non-streaming upstream success body.
+ *
+ * Non-streaming model responses can legitimately be large (long completions,
+ * inline base64 media, big tool-call arguments), so this is deliberately far
+ * above {@link BOUNDED_BODY_MAX_BYTES}. It is not a product limit; it only stops
+ * a misbehaving upstream from making the proxy buffer an unbounded body.
+ */
+export const UPSTREAM_SUCCESS_BODY_MAX_BYTES = 64 * 1024 * 1024;
+
+/** Raised when an upstream body exceeds its byte cap. Callers surface `status`. */
+export class UpstreamBodyTooLargeError extends Error {
+	/** The upstream misbehaved, not the client: report it as a bad gateway. */
+	readonly status = 502;
+	readonly maxBytes: number;
+
+	constructor(maxBytes: number) {
+		super(`upstream response body exceeded the ${maxBytes}-byte limit`);
+		this.name = "UpstreamBodyTooLargeError";
+		this.maxBytes = maxBytes;
+	}
+}
+
+export interface CappedBodyOptions {
+	/** Abort the read with this signal. Its reason is rethrown by identity. */
+	signal?: AbortSignal;
+	/** Byte cap. Defaults to {@link UPSTREAM_SUCCESS_BODY_MAX_BYTES}. */
+	maxBytes?: number;
+}
+
+async function readCappedChunks(
+	response: Response,
+	options: CappedBodyOptions,
+): Promise<{ chunks: Uint8Array[]; byteLength: number }> {
+	const signal = options.signal;
+	const maxBytes = options.maxBytes ?? UPSTREAM_SUCCESS_BODY_MAX_BYTES;
+	if (signal?.aborted) throw signal.reason;
+
+	const body = response.body;
+	if (!body) return { chunks: [], byteLength: 0 };
+
+	const reader = body.getReader();
+	const chunks: Uint8Array[] = [];
+	let byteLength = 0;
+
+	let rejectForAbort: ((reason: unknown) => void) | undefined;
+	const aborted = new Promise<never>((_resolve, reject) => {
+		rejectForAbort = reject;
+	});
+	void aborted.catch(() => undefined);
+	const onAbort = () => rejectForAbort?.(signal?.reason);
+	signal?.addEventListener("abort", onAbort, { once: true });
+	if (signal?.aborted) onAbort();
+
+	try {
+		// A declared length over the cap fails fast without reading. The streamed
+		// count below stays authoritative: the header may be absent or wrong.
+		const declared = Number(response.headers.get("content-length"));
+		if (Number.isFinite(declared) && declared > maxBytes) throw new UpstreamBodyTooLargeError(maxBytes);
+
+		while (true) {
+			const read = reader.read();
+			void read.catch(() => undefined);
+			const outcome = await Promise.race([read, aborted]);
+			if (signal?.aborted) throw signal.reason;
+			if (outcome.done) return { chunks, byteLength };
+			const value = outcome.value;
+			if (!value || value.byteLength === 0) continue;
+			if (value.byteLength > maxBytes - byteLength) throw new UpstreamBodyTooLargeError(maxBytes);
+			chunks.push(value);
+			byteLength += value.byteLength;
+		}
+	} catch (error) {
+		chunks.length = 0;
+		cancelWithoutWaiting(reader, error);
+		throw error;
+	} finally {
+		signal?.removeEventListener("abort", onAbort);
+		try {
+			reader.releaseLock();
+		} catch {
+			// A pending read can keep the lock briefly while cancel settles.
+		}
+	}
+}
+
+/**
+ * Capped replacement for `response.arrayBuffer()` on a non-streaming upstream
+ * success body. Rejects with {@link UpstreamBodyTooLargeError} once the body is
+ * known to exceed the cap, cancelling it instead of buffering the remainder.
+ */
+export async function readCappedResponseArrayBuffer(
+	response: Response,
+	options: CappedBodyOptions = {},
+): Promise<ArrayBuffer> {
+	const { chunks, byteLength } = await readCappedChunks(response, options);
+	const out = new Uint8Array(byteLength);
+	let offset = 0;
+	for (const chunk of chunks) {
+		out.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return out.buffer;
+}
+
+/** Capped replacement for `response.text()`; see {@link readCappedResponseArrayBuffer}. */
+export async function readCappedResponseText(
+	response: Response,
+	options: CappedBodyOptions = {},
+): Promise<string> {
+	const { chunks } = await readCappedChunks(response, options);
+	return decodeUtf8(chunks);
+}
+
+/**
+ * Capped replacement for `response.json()`. A malformed body still rejects with
+ * the `SyntaxError` from `JSON.parse`, matching `response.json()`.
+ */
+export async function readCappedResponseJson<T = unknown>(
+	response: Response,
+	options: CappedBodyOptions = {},
+): Promise<T> {
+	return JSON.parse(await readCappedResponseText(response, options)) as T;
+}

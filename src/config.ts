@@ -143,6 +143,25 @@ export function atomicWriteFile(path: string, content: string, io: AtomicWriteIO
   }
 }
 
+/**
+ * atomicWriteFile I/O for non-secret executables such as the Codex launcher shim on PATH. The
+ * temp sibling gets the requested mode before the rename publishes it, so the destination is only
+ * ever the old launcher or the complete new one. Windows keeps the inherited directory ACL (no
+ * secret hardening) and relies on renameAtomicFile for replace-existing plus transient lock retries.
+ */
+export function executableAtomicWriteIO(mode = 0o755): AtomicWriteIO {
+  return {
+    write: (target, value) => writeFileSync(target, value, { encoding: "utf-8", mode, flag: "wx" }),
+    harden: target => {
+      if (process.platform !== "win32") chmodSync(target, mode);
+    },
+    rename: renameAtomicFile,
+    // Launcher bytes are not secret: nothing to scrub before the temp sibling is unlinked.
+    truncate: () => {},
+    unlink: unlinkSync,
+  };
+}
+
 /** Async atomic-write I/O: harden may await icacls without blocking the event loop (#612). */
 export interface AtomicWriteAsyncIO {
   write: (path: string, content: string) => void | Promise<void>;
@@ -1751,12 +1770,25 @@ export function codexAccountPoolsEnabled(config: Pick<OcxConfig, "codexAccountPo
   return config.codexAccountPools !== false;
 }
 
-export function resolveEnvValue(value: string | undefined): string | undefined {
-  if (!value) return undefined;
+/**
+ * Expand a config string that is an environment reference.
+ *
+ * The service manager's `EnvironmentFile=` setting injects keys into `process.env` —
+ * this function does not read that file. Prefer `$VAR` / `${VAR}` in config.json over
+ * inline plaintext secrets.
+ */
+export function resolveEnvValue(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value) return undefined;
   const match = value.match(/^\$\{(\w+)\}$/);
   if (match) return process.env[match[1]];
   if (value.startsWith("$")) return process.env[value.slice(1)];
   return value;
+}
+
+/** True when `resolveEnvValue` would treat the string as an env lookup, not a literal secret. */
+export function isEnvValueRef(value: unknown): boolean {
+  if (typeof value !== "string" || !value) return false;
+  return /^\$\{\w+\}$/.test(value) || value.startsWith("$");
 }
 
 /**

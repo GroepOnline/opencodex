@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import {
@@ -22,6 +23,10 @@ function lastEnforcerCommentBody(result: HarnessResult): string {
 }
 
 const root = new URL("../", import.meta.url);
+const workflowPaths = readdirSync(new URL(".github/workflows/", root))
+  .filter((name) => /\.ya?ml$/.test(name))
+  .sort()
+  .map((name) => `.github/workflows/${name}`);
 const doctorGuiIfChangedScript = fileURLToPath(
   new URL("../scripts/doctor-gui-if-changed.ts", import.meta.url),
 );
@@ -96,6 +101,67 @@ function expectReadOnlyJob(workflow: RunnerWorkflow, job: RunnerJob): void {
 }
 
 describe("GitHub Actions hardening", () => {
+  test.each(workflowPaths)(
+    "%s declares explicit top-level permissions",
+    async (path) => {
+      const workflow = Bun.YAML.parse(await readText(path)) as {
+        permissions?: unknown;
+      };
+      expect(Object.hasOwn(workflow, "permissions")).toBe(true);
+      expect(workflow.permissions).not.toBeNull();
+      expect(typeof workflow.permissions).toBe("object");
+      expect(Array.isArray(workflow.permissions)).toBe(false);
+      for (const level of Object.values(
+        workflow.permissions as Record<string, unknown>,
+      )) {
+        expect(["none", "read", "write"]).toContain(level);
+      }
+    },
+  );
+
+  test("issue automation denies permissions by default and grants only each job's scopes", async () => {
+    for (const [name, expected] of [
+      [
+        "enforce-issue-quality",
+        {
+          translate: { contents: "read", issues: "write", models: "read" },
+          "translate-comment": { contents: "read", issues: "write", models: "read" },
+          validate: { contents: "read", issues: "write" },
+        },
+      ],
+      [
+        "issue-triage",
+        {
+          "find-duplicates": { contents: "read", issues: "read", models: "read" },
+          "post-duplicates": { issues: "write" },
+        },
+      ],
+    ] as const) {
+      const workflow = Bun.YAML.parse(
+        await readText(`.github/workflows/${name}.yml`),
+      ) as RunnerWorkflow;
+      expect(workflow.permissions).toEqual({});
+      expect(
+        Object.fromEntries(
+          Object.entries(workflow.jobs).map(([id, job]) => [id, job.permissions]),
+        ),
+      ).toEqual(expected);
+    }
+  });
+
+  test.each(["issue-quality-tests", "design-system-contract"])(
+    "%s cancels superseded checks only on the same ref",
+    async (name) => {
+      const workflow = Bun.YAML.parse(
+        await readText(`.github/workflows/${name}.yml`),
+      ) as { concurrency?: unknown };
+      expect(workflow.concurrency).toEqual({
+        group: `${name}-` + "${{ github.ref }}",
+        "cancel-in-progress": true,
+      });
+    },
+  );
+
   test("workflow expression evaluation rejects unknown GitHub context properties", () => {
     expect(() =>
       evaluateRunnerExpression(
@@ -135,11 +201,12 @@ describe("GitHub Actions hardening", () => {
             ref,
           ) as Array<{ name?: string; platform?: string; runner: string }>;
           const labels = rows.map((row) => JSON.parse(row.runner));
-          const expectedLabels = id === "desktop-clients"
-            ? ["windows-latest", "macos-latest"]
-            : id === "test"
-              ? ["ubuntu-latest", "ubuntu-latest"]
-              : ["ubuntu-latest"];
+          const expectedLabels =
+            id === "desktop-clients"
+              ? ["windows-latest", "macos-latest"]
+              : id === "test"
+                ? ["ubuntu-latest", "ubuntu-latest"]
+                : ["ubuntu-latest"];
           if (fullMatrix && id !== "desktop-clients")
             expectedLabels.push(
               ...(id === "test"
@@ -159,18 +226,31 @@ describe("GitHub Actions hardening", () => {
   });
 
   test("Desktop client regression job covers native Windows and macOS without live integrations", async () => {
-    const workflow = Bun.YAML.parse(await readText(".github/workflows/ci.yml")) as RunnerWorkflow;
+    const workflow = Bun.YAML.parse(
+      await readText(".github/workflows/ci.yml"),
+    ) as RunnerWorkflow;
     const job = workflow.jobs["desktop-clients"] as RunnerJob & {
       "timeout-minutes": number;
-      steps: Array<{ run?: string; uses?: string; with?: Record<string, unknown> }>;
+      steps: Array<{
+        run?: string;
+        uses?: string;
+        with?: Record<string, unknown>;
+      }>;
     };
-    expect(job.steps.find(step => step.uses?.startsWith("actions/checkout@"))?.with?.["persist-credentials"]).toBe(false);
+    expect(
+      job.steps.find((step) => step.uses?.startsWith("actions/checkout@"))
+        ?.with?.["persist-credentials"],
+    ).toBe(false);
     expect(job["timeout-minutes"]).toBe(10);
     expectReadOnlyJob(workflow, job);
-    const commands = job.steps.map(step => step.run ?? "").join("\n");
+    const commands = job.steps.map((step) => step.run ?? "").join("\n");
     expect(commands).toContain("bun install --frozen-lockfile");
-    expect(commands).toContain("bun test tests/claude-desktop-sync.test.ts tests/codex-paths.test.ts tests/claude-context-windows.test.ts");
-    expect(commands).not.toMatch(/ocx (?:start|sync|claude desktop protocol install)|claude-desktop-protocol\.test/);
+    expect(commands).toContain(
+      "bun test tests/claude-desktop-sync.test.ts tests/codex-paths.test.ts tests/claude-context-windows.test.ts",
+    );
+    expect(commands).not.toMatch(
+      /ocx (?:start|sync|claude desktop protocol install)|claude-desktop-protocol\.test/,
+    );
   });
 
   test.each([
@@ -235,12 +315,15 @@ describe("GitHub Actions hardening", () => {
     }
   });
 
-  test("CI and release verify with the Bun runtime actually shipped in the package", async () => {
+  test("workflows share the Bun runtime actually shipped in the package", async () => {
     const pkg = JSON.parse(await readText("package.json"));
-    const workflows = await Promise.all([
-      readText(".github/workflows/ci.yml"),
-      readText(".github/workflows/release.yml"),
-    ]);
+    expect((await readText(".bun-version")).trim()).toBe(pkg.dependencies.bun);
+    // The legacy tag publisher is being removed separately. Leave it unchanged.
+    const workflows = await Promise.all(
+      workflowPaths
+        .filter((path) => path !== ".github/workflows/publish-on-tag.yml")
+        .map(readText),
+    );
     const setups = workflows.flatMap((text) => {
       const workflow = Bun.YAML.parse(text) as {
         jobs: Record<
@@ -253,11 +336,28 @@ describe("GitHub Actions hardening", () => {
         .filter((step) => step.uses?.startsWith("oven-sh/setup-bun@"));
     });
     expect(setups.length).toBeGreaterThan(0);
-    for (const step of setups)
-      expect(step.with?.["bun-version"]).toBe(pkg.dependencies.bun);
+    for (const step of setups) {
+      expect(step.with?.["bun-version-file"]).toBe(".bun-version");
+      expect(step.with).not.toHaveProperty("bun-version");
+      expect(step.with).not.toHaveProperty("bun-download-url");
+      expect(step.with).not.toHaveProperty("cache");
+      expect(step.with).not.toHaveProperty("cache-bin");
+    }
     const dockerfile = await readText("Dockerfile");
     expect(dockerfile).toContain(`ARG BUN_VERSION=${pkg.dependencies.bun}\n`);
   });
+
+  test.each(["ci", "security-audit", "service-lifecycle", "design-system-contract"])(
+    "%s checks changes to the shared Bun version on push and PR",
+    async (name) => {
+      const workflow = Bun.YAML.parse(
+        await readText(`.github/workflows/${name}.yml`),
+      ) as { on: Record<string, { paths?: string[] }> };
+      for (const event of ["push", "pull_request"]) {
+        expect(workflow.on[event]?.paths).toContain(".bun-version");
+      }
+    },
+  );
 
   test("release and GHCR publication require all platforms before release artifacts", async () => {
     const ci = await readText(".github/workflows/ci.yml");
@@ -299,6 +399,43 @@ describe("GitHub Actions hardening", () => {
       expect(release).toContain(JSON.stringify(job));
       expect(container).toContain(JSON.stringify(job));
     }
+  });
+
+  test("coverage is informational, runs only on Ubuntu shard 1, and uploads lcov", async () => {
+    const workflow = Bun.YAML.parse(await readText(".github/workflows/ci.yml")) as {
+      jobs: {
+        test: {
+          steps: Array<{
+            name: string;
+            id?: string;
+            if?: string;
+            "continue-on-error"?: boolean;
+            env?: Record<string, string>;
+            run?: string;
+            uses?: string;
+            with?: Record<string, unknown>;
+          }>;
+        };
+      };
+    };
+    const steps = workflow.jobs.test.steps;
+    const coverage = steps.find(step => step.id === "test-coverage");
+    const upload = steps.find(step => step.name === "Upload test coverage");
+    expect(coverage).toBeDefined();
+    expect(coverage?.if).toBe("${{ matrix.os == 'ubuntu-latest' && matrix.shard_index == 0 && matrix.run_tests }}");
+    expect(coverage?.["continue-on-error"]).toBe(true);
+    expect(coverage?.env).toEqual({ OCX_TEST_COVERAGE: "1", OCX_TEST_KILL_AFTER_MS: "900000" });
+    expect(coverage?.run).toBe("bun run scripts/test.ts");
+    expect(steps.find(step => step.name === "Test")?.["continue-on-error"]).not.toBe(true);
+    expect(upload?.if).toBe("${{ !cancelled() && matrix.os == 'ubuntu-latest' && matrix.shard_index == 0 && steps.test-coverage.outcome != 'skipped' }}");
+    expect(upload?.["continue-on-error"]).toBe(true);
+    expect(upload?.uses).toBe("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02");
+    expect(upload?.with).toEqual({
+      name: "test-coverage-ubuntu-shard-1",
+      path: "coverage/lcov.info",
+      "if-no-files-found": "warn",
+      "retention-days": 7,
+    });
   });
 
   test("cross-platform CI keeps bounded jobs and immutable action references", async () => {
@@ -447,6 +584,7 @@ describe("GitHub Actions hardening", () => {
     // three dependabot action bumps merged a commit that broke this very file
     // without any check firing. A glob cannot drift the same way.
     const ciPaths = [
+      ".bun-version",
       ".gitattributes",
       ".github/workflows/**",
       ".npmignore",
@@ -476,7 +614,9 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toContain("- name: GUI build");
     expect(workflow).toContain("bun run build");
     expect(workflow).toContain("- name: Docs build");
-    expect(workflow).toContain("cd docs-site\n          bun install --frozen-lockfile\n          bun run build");
+    expect(workflow).toContain(
+      "cd docs-site\n          bun install --frozen-lockfile\n          bun run build",
+    );
   });
 
   test("stale needs-info workflow is schedule-only and least-privilege", async () => {
@@ -581,8 +721,14 @@ describe("GitHub Actions hardening", () => {
           permissions?: Record<string, string>;
           "runs-on"?: string;
           "timeout-minutes"?: number;
+          environment?: string;
+          outputs?: Record<string, string>;
           steps?: Array<{
             name?: string;
+            id?: string;
+            uses?: string;
+            if?: string;
+            with?: Record<string, unknown>;
             env?: Record<string, string>;
             run?: string;
           }>;
@@ -594,9 +740,14 @@ describe("GitHub Actions hardening", () => {
     expect(deployInput?.type).toBe("boolean");
     expect(deployInput?.default).toBe(false);
 
-    expect(Object.keys(workflow.jobs ?? {})).toEqual(["publish", "rollout"]);
+    expect(Object.keys(workflow.jobs ?? {})).toEqual([
+      "publish",
+      "rollout",
+      "production-dispatch",
+    ]);
     const publish = workflow.jobs?.publish;
     const rollout = workflow.jobs?.rollout;
+    const production = workflow.jobs?.["production-dispatch"];
     // npm OIDC and GHCR dispatch must work on ephemeral, GitHub-hosted runners.
     expect(publish?.["runs-on"]).toBe("ubuntu-latest");
     expect(rollout?.["runs-on"]).toBe("ubuntu-latest");
@@ -620,10 +771,14 @@ describe("GitHub Actions hardening", () => {
     const steps = rollout?.steps ?? [];
     expect(steps.map((step) => step.name)).toEqual([
       "Dispatch GHCR image publish on the release tag",
+      "Download exact GHCR run identity",
+      "Verify release image identity",
       "Refuse retired live deploy (opt-in)",
     ]);
     const image = steps[0]!;
-    const deploy = steps[1]!;
+    const download = steps[1]!;
+    const verifyImage = steps[2]!;
+    const deploy = steps[3]!;
     // Tag identity is re-read from the API and compared to the published SHA
     // before any image is built for it.
     expect(image.run).toContain("git/ref/tags/${release_tag}");
@@ -634,11 +789,33 @@ describe("GitHub Actions hardening", () => {
     expect(image.run).not.toContain("--ref main");
     // Dispatch alone is not success: wait for a *new* tag run and verify the
     // published GHCR job, exact commit and tag before marking Release green.
-    expect(image.run).toContain('gh run watch "$image_run_id" --interval 10 --exit-status');
+    expect(image.run).toContain(
+      'gh run watch "$image_run_id" --interval 10 --exit-status',
+    );
     expect(image.run).toContain('if [ -z "$image_run_id" ]; then');
     expect(image.run).toContain('[ "$verified_sha" != "$RELEASE_SHA" ]');
     expect(image.run).toContain('[ "$verified_branch" != "$release_tag" ]');
     expect(image.run).toContain('[ "$published" != "success" ]');
+    expect(image.run).toContain(
+      'echo "image_run_id=${image_run_id}" >> "$GITHUB_OUTPUT"',
+    );
+    expect(download.uses).toBe(
+      "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+    );
+    expect(download.with?.name).toBe("release-image");
+    expect(download.with?.repository).toBe("${{ github.repository }}");
+    expect(download.with?.["run-id"]).toBe(
+      "${{ steps.confirm-image.outputs.image_run_id }}",
+    );
+    expect(verifyImage.run).toContain('"schemaVersion": 1');
+    expect(verifyImage.run).toContain(
+      '"releaseTag": os.environ["RELEASE_TAG"]',
+    );
+    expect(verifyImage.run).toContain('"sourceSha": os.environ["SOURCE_SHA"]');
+    expect(verifyImage.run).toContain(
+      '"imageRunId": os.environ["IMAGE_RUN_ID"]',
+    );
+    expect(verifyImage.run).toContain('re.fullmatch(r"sha256:[0-9a-f]{64}"');
     // The retired route fails closed and is never dispatched.
     expect(deploy.env?.DEPLOY).toBe("${{ inputs.deploy }}");
     expect(deploy.run).toContain('if [ "$DEPLOY" != "true" ]');
@@ -657,16 +834,74 @@ describe("GitHub Actions hardening", () => {
     expect(image.env?.GH_REPO).toBe("${{ github.repository }}");
     expect(image.env?.GH_TOKEN).toBe("${{ github.token }}");
     expect(deploy.env?.GH_TOKEN).toBeUndefined();
+    // Only a completed, stable latest release can access the isolated environment
+    // and its ChefFactory-scoped app credentials.
+    expect(production?.needs).toBe("rollout");
+    expect(production?.if).toBe(
+      "github.event.inputs.dry-run != 'true' && inputs.tag == 'latest' && !contains(inputs.version, '-')",
+    );
+    expect(production?.environment).toBe("ocx-production-dispatch");
+    expect(production?.permissions).toEqual({ contents: "read" });
+    const productionSteps = production?.steps ?? [];
+    expect(productionSteps.map((step) => step.name)).toEqual([
+      "Require deployment app credentials",
+      "Create repository-scoped deployment token",
+      "Dispatch private production deployment",
+    ]);
+    expect(productionSteps[0]?.env?.APP_ID).toBe(
+      "${{ secrets.OCX_DEPLOY_APP_ID }}",
+    );
+    expect(productionSteps[0]?.env?.APP_PRIVATE_KEY).toBe(
+      "${{ secrets.OCX_DEPLOY_APP_PRIVATE_KEY }}",
+    );
+    expect(productionSteps[0]?.run).toContain('if [ -z "$APP_ID" ]');
+    const appToken = productionSteps[1]!;
+    expect(appToken.uses).toBe(
+      "actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349",
+    );
+    expect(appToken.with).toMatchObject({
+      owner: "GroepOnline",
+      repositories: "ChefFactory",
+      "permission-actions": "write",
+      "permission-contents": "read",
+    });
+    const dispatch = productionSteps[2]!;
+    expect(dispatch.run).toContain("ocx-container-deploy.yml");
+    for (const field of [
+      "release_tag",
+      "source_sha",
+      "image_digest",
+      "npm_run_id",
+      "image_run_id",
+    ]) {
+      expect(dispatch.run).toContain(`-f "${field}=`);
+    }
+    expect(dispatch.run).toContain(
+      "deployment is not proven by this acknowledgement",
+    );
     // Dry runs never dispatch anything.
     expect(rollout?.if).not.toContain("always()");
   });
 
   test("post-publish smoke tolerates npm processing lag but verifies provenance and dist-tag", async () => {
-    const workflow = Bun.YAML.parse(await readText(".github/workflows/release.yml")) as {
-      jobs: { publish: { "timeout-minutes": number; steps: Array<{ name?: string; env?: Record<string, string>; run?: string }> } };
+    const workflow = Bun.YAML.parse(
+      await readText(".github/workflows/release.yml"),
+    ) as {
+      jobs: {
+        publish: {
+          "timeout-minutes": number;
+          steps: Array<{
+            name?: string;
+            env?: Record<string, string>;
+            run?: string;
+          }>;
+        };
+      };
     };
     expect(workflow.jobs.publish["timeout-minutes"]).toBe(45);
-    const step = workflow.jobs.publish.steps.find(s => s.name === "Post-publish registry smoke");
+    const step = workflow.jobs.publish.steps.find(
+      (s) => s.name === "Post-publish registry smoke",
+    );
     expect(step).toBeDefined();
     expect(step?.env?.NPM_DIST_TAG).toBe("${{ inputs.tag }}");
     const script = step?.run ?? "";
@@ -675,13 +910,14 @@ describe("GitHub Actions hardening", () => {
       "Cache-Control: no-cache",
       "registry.npmjs.org/@groeponline%2Fopencodex/",
       "registry.npmjs.org/-/package/@groeponline%2Fopencodex/dist-tags",
-      '.gitHead == $sha',
+      ".gitHead == $sha",
       '.bin.ocx == "bin/ocx.mjs"',
       '.bin.opencodex == "bin/ocx.mjs"',
-      '.[$channel] == $version',
+      ".[$channel] == $version",
       'if [ "$attempt" -lt 120 ]; then sleep 10; fi',
       "do not tag an unverified package",
-    ]) expect(script).toContain(required);
+    ])
+      expect(script).toContain(required);
     expect(script).not.toContain("seq 1 30");
   });
 
@@ -720,7 +956,9 @@ describe("GitHub Actions hardening", () => {
     // Least privilege + never cancel a publish mid-flight.
     expect(workflow).toContain("actions: read");
     expect(workflow).toContain("pull-requests: read");
-    expect(workflow).toContain("expected-sha is mandatory; refusing to publish an unaudited branch head");
+    expect(workflow).toContain(
+      "expected-sha is mandatory; refusing to publish an unaudited branch head",
+    );
     expect(workflow).toContain("id-token: write");
     expect(workflow).toContain("cancel-in-progress: false");
     expect(workflow).toContain("timeout-minutes: 45");
@@ -943,57 +1181,107 @@ describe("GitHub Actions hardening", () => {
     expect(notesBlock).toMatch(/\n {10}else\n/);
   });
 
-  test("publish-on-tag verifies the tagged commit is reachable from origin/main before publishing", async () => {
-    const text = await readText(".github/workflows/publish-on-tag.yml");
-    const workflow = Bun.YAML.parse(text) as {
-      jobs?: Record<
-        string,
-        {
-          steps?: Array<{
-            name?: string;
-            uses?: string;
-            run?: string;
-            with?: Record<string, unknown>;
-          }>;
-        }
-      >;
+  test("npm publication has one entrypoint and the long-lived npm token stays confined to it", async () => {
+    // publish-on-tag.yml was a second, tag-triggered publish route that ran on
+    // a persistent self-hosted runner with the org NPM_TOKEN in its env. The
+    // Release workflow is the only release entrypoint (RELEASE_PROCESS.md), so
+    // the legacy route was deleted. Scan every workflow so neither a publish
+    // path nor the token can quietly reappear outside release.yml.
+    expect(
+      await Bun.file(
+        new URL(".github/workflows/publish-on-tag.yml", root),
+      ).exists(),
+    ).toBe(false);
+
+    type Step = {
+      name?: string;
+      uses?: string;
+      run?: string;
+      env?: Record<string, unknown>;
     };
+    type Job = Record<string, unknown> & {
+      "runs-on"?: unknown;
+      steps?: Step[];
+    };
+    type Workflow = Record<string, unknown> & { jobs?: Record<string, Job> };
 
-    const steps = workflow.jobs?.publish?.steps ?? [];
-    const stepNames = steps.map((step) => step.name);
+    const files = readdirSync(
+      fileURLToPath(new URL(".github/workflows/", root)),
+    )
+      .filter((file) => /\.ya?ml$/.test(file))
+      .sort();
+    expect(files).toContain("release.yml");
 
-    // The gate has to run immediately after checkout and before version
-    // resolution or any publish step, or a tag pushed on a stray branch could
-    // slip past to npm before the check has a chance to fail the job.
-    expect(stepNames.slice(0, 3)).toEqual([
-      "Checkout",
-      "Verify tag commit is on main",
-      "Resolve version from tag",
+    const npmTokenSecret =
+      /\bsecrets\s*(?:\.\s*NPM_TOKEN\b|\[\s*['"]NPM_TOKEN['"]\s*\])/;
+    const publishCommand =
+      /(?:^|[\s;&|(])(?:npm|bun|pnpm|yarn|"?\$\{?npm_bin\}?"?)\s+publish\b/;
+    const authAssignment = /\bNODE_AUTH_TOKEN=|\bexport\s+NODE_AUTH_TOKEN\b/;
+    // Shell comments and echo messages may name the token; commands may not.
+    const commandLines = (run: string | undefined) =>
+      (run ?? "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(
+          (line) => line && !line.startsWith("#") && !line.startsWith("echo "),
+        );
+
+    const publishSteps: string[] = [];
+    const tokenSteps: string[] = [];
+    const authAssignmentSteps: string[] = [];
+    const authMentionFiles = new Set<string>();
+    for (const file of files) {
+      const workflow = Bun.YAML.parse(
+        await readText(`.github/workflows/${file}`),
+      ) as Workflow;
+      const workflowLevel = JSON.stringify({ ...workflow, jobs: undefined });
+      expect(workflowLevel).not.toMatch(npmTokenSecret);
+      expect(workflowLevel).not.toContain("NODE_AUTH_TOKEN");
+      for (const [jobId, job] of Object.entries(workflow.jobs ?? {})) {
+        const jobLevel = JSON.stringify({ ...job, steps: undefined });
+        expect(jobLevel).not.toMatch(npmTokenSecret);
+        expect(jobLevel).not.toContain("NODE_AUTH_TOKEN");
+        for (const step of job.steps ?? []) {
+          const id = `${file}:${jobId}:${step.name ?? step.uses ?? "<unnamed>"}`;
+          const serialized = JSON.stringify(step);
+          const lines = commandLines(step.run);
+          if (npmTokenSecret.test(serialized)) tokenSteps.push(id);
+          if (serialized.includes("NODE_AUTH_TOKEN"))
+            authMentionFiles.add(file);
+          if (
+            Object.hasOwn(step.env ?? {}, "NODE_AUTH_TOKEN") ||
+            lines.some((line) => authAssignment.test(line))
+          ) {
+            authAssignmentSteps.push(id);
+          }
+          const publishLines = lines.filter((line) =>
+            publishCommand.test(line),
+          );
+          if (publishLines.length === 0) continue;
+          publishSteps.push(id);
+          // Publishing runs on an ephemeral GitHub-hosted runner, never on a
+          // persistent self-hosted one, and never runs package lifecycle scripts.
+          expect(JSON.stringify(job["runs-on"])).not.toContain("self-hosted");
+          for (const line of publishLines) {
+            expect(line).toContain("--ignore-scripts");
+          }
+        }
+      }
+    }
+
+    expect(publishSteps).toEqual([
+      "release.yml:publish:Publish (or dry-run)",
+      "release.yml:publish:Publish token fallback",
     ]);
-
-    // `git branch -r --contains` needs full ref history; a shallow checkout
-    // would make the tagged commit look unreachable from every branch and
-    // hard-fail every release regardless of where the tag actually sits.
-    const checkout = steps[0]!;
-    expect(checkout.with?.["fetch-depth"]).toBe(0);
-
-    const verify = steps[1]!;
-    const verifyScript = String(verify.run ?? "");
-    expect(verifyScript).toContain("git fetch origin main");
-    expect(verifyScript).toContain('git branch -r --contains "$GITHUB_SHA"');
-    // Exact-line match against the two-space `git branch -r` list prefix, not
-    // a substring match — otherwise a differently-named remote branch such as
-    // `origin/main-2` or `origin/mainline` would also satisfy the check.
-    expect(verifyScript).toContain('grep -qx "  origin/main"');
-    expect(verifyScript).toContain("exit 1");
-    expect(verifyScript).toContain(
-      "::error::Tagged commit ${GITHUB_SHA} is not on origin/main — release tags must sit on main",
-    );
-    // GITHUB_SHA is the runner-provided default env var, not a workflow
-    // input; the script must never widen this to a raw `${{ ... }}`
-    // interpolation, which would reopen the shell-injection surface the
-    // release workflow's `runBlocks` check (above) guards against.
-    expect(verifyScript).not.toContain("${{");
+    // Trusted Publishing (OIDC) is always attempted first. Until npm accepts it
+    // for release.yml, the isolated fallback step is the only place the
+    // long-lived token may appear. Once that fallback is removed, these become
+    // empty and the org NPM_TOKEN secret can be revoked.
+    expect(tokenSteps).toEqual(["release.yml:publish:Publish token fallback"]);
+    expect(authAssignmentSteps).toEqual([
+      "release.yml:publish:Publish token fallback",
+    ]);
+    expect([...authMentionFiles]).toEqual(["release.yml"]);
   });
 
   /**
@@ -3116,10 +3404,19 @@ describe("GitHub Actions hardening", () => {
     const workflow = await readText(".github/workflows/deploy-docs.yml");
 
     const config = Bun.YAML.parse(workflow) as {
+      on?: { push?: { paths?: string[] } };
       permissions?: Record<string, string>;
       jobs?: Record<
         string,
-        { "runs-on"?: string; permissions?: Record<string, string> }
+        {
+          "runs-on"?: string;
+          permissions?: Record<string, string>;
+          steps?: Array<{
+            id?: string;
+            uses?: string;
+            with?: Record<string, unknown>;
+          }>;
+        }
       >;
     };
     expect(config.permissions).toEqual({ contents: "read" });
@@ -3144,13 +3441,20 @@ describe("GitHub Actions hardening", () => {
     );
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
 
-    // The Astro action's own `package-manager` input is a mutable version
-    // spec, not a SHA the checkout-pin regex above can see — `bun@latest`
-    // would silently pull whatever Bun ships on a given day into a
-    // supply-chain-sensitive docs build. Pin it exactly, matching the bun
-    // version pinned everywhere else in the workflows (e.g. setup-bun's
-    // `bun-version: 1.3.14`).
-    expect(workflow).toContain("package-manager: bun@1.3.14");
+    // Astro installs Bun internally too. Forward the exact version resolved
+    // from the shared file instead of maintaining a second package-manager pin.
+    const steps = config.jobs?.build?.steps ?? [];
+    const setup = steps.find((step) => step.id === "bun");
+    expect(setup?.uses).toBe(
+      "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
+    );
+    expect(setup?.with?.["bun-version-file"]).toBe(".bun-version");
+    const astro = steps.find((step) => step.uses?.startsWith("withastro/action@"));
+    expect(astro?.with?.["package-manager"]).toBe(
+      "bun@${{ steps.bun.outputs.bun-version }}",
+    );
+    expect(steps.indexOf(setup!)).toBeLessThan(steps.indexOf(astro!));
+    expect(config.on?.push?.paths).toContain(".bun-version");
     expect(workflow).not.toContain("bun@latest");
   });
 
@@ -3175,10 +3479,10 @@ describe("GitHub Actions hardening", () => {
     ) as {
       "self-hosted-runner"?: { labels?: string[] };
     };
-    // actionlint fails closed on unknown self-hosted labels. These are retained
-    // for the workflows that still need the dedicated publication runner; the
-    // retired deploy refusal deliberately uses a hosted runner instead.
-    expect(config["self-hosted-runner"]?.labels).toEqual(["jan", "opencodex"]);
+    // actionlint fails closed on unknown self-hosted labels. Only the labels
+    // still referenced by an available runner are declared; `jan` is deleted
+    // with the tag-publish workflow that was its last consumer.
+    expect(config["self-hosted-runner"]?.labels).toEqual(["opencodex"]);
   });
 
   test("cross-platform CI caches bun and GUI node_modules and lints YAML with the shared config", async () => {
@@ -3271,7 +3575,7 @@ describe("GitHub Actions hardening", () => {
 
     expect(workflow.on?.push).toBeUndefined();
     expect(workflow.on?.workflow_dispatch).toBeNull();
-    expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(workflow.permissions).toEqual({});
     expect(workflow.jobs?.retired?.["timeout-minutes"]).toBe(5);
     expect(workflow.jobs?.retired?.["runs-on"]).toBe("ubuntu-latest");
   });
@@ -3283,6 +3587,7 @@ describe("GitHub Actions hardening", () => {
     };
 
     const expectedPaths = [
+      ".bun-version",
       ".github/design-system.json",
       ".github/design-system.yml",
       ".github/workflows/design-system-contract.yml",
@@ -3297,53 +3602,6 @@ describe("GitHub Actions hardening", () => {
     expect([...(workflow.on?.push?.paths ?? [])].sort()).toEqual(
       [...(workflow.on?.pull_request?.paths ?? [])].sort(),
     );
-  });
-
-  test("publish-on-tag publishes without any runtime deploy path", async () => {
-    const text = await readText(".github/workflows/publish-on-tag.yml");
-    const workflow = Bun.YAML.parse(text) as {
-      jobs?: Record<string, { steps?: Array<{ name?: string; run?: string }> }>;
-    };
-
-    // The SSH-based `deploy` job (and its DEPLOY_HOST/DEPLOY_SSH_KEY secrets)
-    // must stay gone; publication has no runtime side effect.
-    expect(Object.keys(workflow.jobs ?? {})).toEqual(["publish"]);
-    expect(text).not.toContain("DEPLOY_SSH_KEY");
-    expect(text).not.toContain("DEPLOY_HOST");
-    expect(text).not.toContain("ssh -i");
-    expect(text).not.toContain("StrictHostKeyChecking=no");
-
-    const steps = workflow.jobs?.publish?.steps ?? [];
-    const createRelease = steps.find(
-      (step) => step.name === "Create GitHub Release",
-    );
-    expect(createRelease).toBeDefined();
-    const releaseScript = createRelease!.run ?? "";
-
-    // A pre-existing release for the same tag must short-circuit before
-    // `gh release create` is attempted (a re-run would otherwise fail on a
-    // duplicate release).
-    const viewIndex = releaseScript.indexOf("gh release view");
-    const skipIndex = releaseScript.indexOf("exit 0");
-    const createIndex = releaseScript.indexOf("gh release create");
-    expect(viewIndex).toBeGreaterThan(-1);
-    expect(createIndex).toBeGreaterThan(-1);
-    expect(viewIndex).toBeLessThan(skipIndex);
-    expect(skipIndex).toBeLessThan(createIndex);
-    expect(releaseScript).toContain("publication does not deploy a runtime");
-    expect(releaseScript).toContain(
-      "Runtime cutover is a separately verified operation.",
-    );
-
-    // The retirement is documented in-line so the release path cannot silently
-    // regain the old Azure side effect as the workflows evolve independently.
-    expect(text).toContain(
-      "former production deploy route is permanently retired",
-    );
-    expect(text).toContain(
-      "Publication intentionally has no runtime side effect",
-    );
-    expect(text).toContain("private production deployment contract");
   });
 
   test("service-lifecycle workflow file has no trailing blank line", async () => {
@@ -3476,8 +3734,8 @@ describe("GitHub Actions hardening", () => {
     expect(workflow).toMatch(
       /jobs:\s*\n\s*translate:[\s\S]*?validate:[\s\S]*?permissions:\s*\n\s*contents: read\s*\n\s*#.*\n\s*issues: write/,
     );
-    const beforeJobs = workflow.split(/jobs:\s*\n/)[0]!;
-    expect(beforeJobs).not.toMatch(/^\s*permissions:/m);
+    const parsed = Bun.YAML.parse(workflow) as RunnerWorkflow;
+    expect(parsed.permissions).toEqual({});
 
     // Non-cancelling per-issue concurrency at workflow and translate-job scope.
     expect(workflow).toContain(
@@ -3674,6 +3932,7 @@ describe("GitHub Actions hardening", () => {
             uses?: string;
             if?: string;
             with?: Record<string, unknown>;
+            env?: Record<string, string>;
             run?: string;
           }>;
         }
@@ -3743,6 +4002,12 @@ describe("GitHub Actions hardening", () => {
     expect(text).toContain(
       "docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0",
     );
+    expect(text).toContain(
+      "docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0",
+    );
+    expect(text).toContain(
+      "docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1",
+    );
 
     const imageSteps = image?.steps ?? [];
     const publishSteps = publish?.steps ?? [];
@@ -3784,8 +4049,31 @@ describe("GitHub Actions hardening", () => {
     expect(publishMeta).toBeDefined();
     expect(imageSummary).toBeDefined();
     expect(publishSummary).toBeDefined();
-    expect(publishSummary?.run).toContain("GHCR publish returned no immutable sha256 digest");
-    expect(imageSummary?.run).not.toContain("GHCR publish returned no immutable sha256 digest");
+    expect(publishSummary?.run).toContain(
+      "GHCR publish returned no immutable sha256 digest",
+    );
+    expect(imageSummary?.run).not.toContain(
+      "GHCR publish returned no immutable sha256 digest",
+    );
+    expect(publishSummary?.env?.DIGEST).toBe(
+      "${{ steps.build.outputs.digest }}",
+    );
+    expect(publishSummary?.run).toContain('"schemaVersion": 1');
+    expect(publishSummary?.run).toContain(
+      '"imageDigest": os.environ["DIGEST"]',
+    );
+    const upload = publishSteps.find(
+      (step) => step.name === "Upload immutable release image identity",
+    );
+    expect(upload?.uses).toBe(
+      "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+    );
+    expect(upload?.if).toBe("startsWith(github.ref, 'refs/tags/v')");
+    expect(upload?.with).toMatchObject({
+      name: "release-image",
+      path: "release-image.json",
+      "if-no-files-found": "error",
+    });
     // Tag-ref dispatch is validated like a tag push: semver shape, and the
     // version tags are derived from the tag, never from a moving branch.
     expect(publishMeta!.run).toContain(
@@ -3807,8 +4095,37 @@ describe("GitHub Actions hardening", () => {
     );
     expect(imageBuild!.with?.push).toBe(false);
     expect(imageBuild!.with?.load).toBe(true);
+    expect(imageBuild!.with?.platforms).toBe("linux/amd64");
+    expect(
+      imageSteps.some((step) =>
+        [step.uses, step.name].some(
+          (value) =>
+            value?.includes("setup-qemu-action") ||
+            value?.includes("setup-buildx-action"),
+        ),
+      ),
+    ).toBe(false);
     expect(publishBuild!.with?.push).toBe(true);
     expect(publishBuild!.with?.load).toBe(false);
+    expect(publishBuild!.with?.platforms).toBe("linux/amd64,linux/arm64");
+    const qemu = publishSteps.find((step) => step.name === "Set up QEMU");
+    const buildx = publishSteps.find((step) => step.name === "Set up Buildx");
+    expect(qemu?.uses).toBe(
+      "docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1",
+    );
+    expect(qemu?.with?.platforms).toBe("arm64");
+    expect(buildx?.uses).toBe(
+      "docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069",
+    );
+    expect(publishSteps.indexOf(qemu!)).toBeLessThan(
+      publishSteps.indexOf(buildx!),
+    );
+    expect(publishSteps.indexOf(buildx!)).toBeLessThan(
+      publishSteps.indexOf(login!),
+    );
+    expect(publishSteps.indexOf(buildx!)).toBeLessThan(
+      publishSteps.indexOf(publishBuild!),
+    );
     expect(imageBuild!.with?.provenance).toBe(false);
     expect(publishBuild!.with?.provenance).toBe(false);
     expect(imageBuild!.with?.sbom).toBe(false);

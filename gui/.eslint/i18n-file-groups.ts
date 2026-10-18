@@ -5,6 +5,8 @@ export const I18N_UI_FILES = [
   "src/ui.tsx",
   "src/pages/**/*.{ts,tsx}",
   "src/components/**/*.{ts,tsx}",
+  "src/app/**/*.{ts,tsx}",
+  "src/features/**/*.{ts,tsx}",
 ];
 
 /** Data/helpers that expose user-facing labels via object fields. */

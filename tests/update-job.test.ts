@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -14,6 +14,7 @@ import {
   startUpdateJob,
   UPDATE_JOB_LEGACY_STALE_MS,
   updateExecutionCommand,
+  updateJobForTests,
   updateJobPath,
   type UpdateJobState,
 } from "../src/update/job";
@@ -52,16 +53,30 @@ describe("GUI update check", () => {
     expect(result.command).toContain("ocx.mjs update --tag latest");
   });
 
-  test("reports source checkouts as manual-only", () => {
+  test("reports branch source checkouts as manual-only", () => {
     const result = checkForUpdate("latest", {
       currentVersion: () => "2.6.17",
       detectInstall: () => "source",
       latestVersion: () => "2.6.18",
+      isDetachedSourceCheckout: () => false,
     });
 
     expect(result.canUpdate).toBe(false);
     expect(result.reason).toBe("source_checkout");
     expect(result.command).toBe("git pull && bun install && bun run build:gui");
+  });
+
+  test("does not suggest pulling a pinned detached worktree in the dashboard", () => {
+    const result = checkForUpdate("latest", {
+      currentVersion: () => "1.5.4",
+      detectInstall: () => "source",
+      latestVersion: () => "1.5.6",
+      isDetachedSourceCheckout: () => true,
+    });
+
+    expect(result.canUpdate).toBe(false);
+    expect(result.command).toContain("owning deployment");
+    expect(result.command).not.toContain("git pull");
   });
 
   test("handles registry lookup failures without claiming an update", () => {
@@ -88,6 +103,12 @@ describe("GUI update check", () => {
 });
 
 describe("GUI update execution decisions", () => {
+  test("source worker is fail-closed and never executes Git from a background update job", () => {
+    const command = updateExecutionCommand("source", "latest");
+    expect(command.bin).toBe("sh");
+    expect(command.args).toEqual(["-lc", "exit 1"]);
+  });
+
   test("npm worker uses the Node launcher update path", () => {
     const cmd = updateExecutionCommand("npm", "preview", "/pkg/bin/ocx.mjs");
     expect(cmd.bin).toMatch(/^node/);
@@ -935,4 +956,131 @@ describe("immutable update target (WP160)", () => {
     // The bun lane pins the resolved version through updateExecutionCommand.
     expect(source).toContain("updateExecutionCommand(check.installer, channel, undefined, check.latestVersion)");
   });
+});
+
+describe("update job persistence", () => {
+  function baseJob(id: string): UpdateJobState {
+    const now = new Date().toISOString();
+    return {
+      id,
+      status: "running",
+      startedAt: now,
+      updatedAt: now,
+      currentVersion: "2.7.40",
+      latestVersion: "2.7.41",
+      channel: "latest",
+      installer: "npm",
+      restart: false,
+      command: "node /pkg/bin/ocx.mjs update --tag latest",
+      releaseNotesUrl: "https://github.com/GroepOnline/opencodex/releases/latest",
+      log: [],
+    };
+  }
+
+  test("a truncated, non-object, or unknown-status job file reads as no job", () => {
+    const full = JSON.stringify(baseJob("partial"));
+    writeFileSync(updateJobPath(), full.slice(0, Math.floor(full.length / 2)));
+    expect(readUpdateJob()).toBeNull();
+    expect(readUpdateJob("partial")).toBeNull();
+
+    writeFileSync(updateJobPath(), "null\n");
+    expect(readUpdateJob("partial")).toBeNull();
+
+    writeFileSync(updateJobPath(), `${JSON.stringify({ ...baseJob("odd"), status: "paused" })}\n`);
+    expect(readUpdateJob()).toBeNull();
+  });
+
+  test("a job file missing its log or carrying malformed fields gets safe defaults", () => {
+    writeFileSync(updateJobPath(), `${JSON.stringify({
+      id: "legacy",
+      status: "failed",
+      installer: "pip",
+      pid: "not-a-pid",
+      log: ["kept", 42, null, "also kept"],
+    })}\n`);
+    expect(readUpdateJob("legacy")).toMatchObject({
+      id: "legacy",
+      status: "failed",
+      installer: "source",
+      latestVersion: null,
+      restart: false,
+      log: ["kept", "also kept"],
+    });
+    expect(readUpdateJob("legacy")?.pid).toBeUndefined();
+
+    writeFileSync(updateJobPath(), `${JSON.stringify({ id: "no-log", status: "running" })}\n`);
+    const updated = updateJobForTests(baseJob("no-log"), {}, "first line");
+    expect(updated.log).toEqual(["first line"]);
+    expect(readUpdateJob("no-log")?.log).toEqual(["first line"]);
+  });
+
+  test("a corrupt job file does not block starting a new update", () => {
+    writeFileSync(updateJobPath(), '{"id":"broken","status":"runn');
+    const started = startUpdateJob("latest", false, {
+      checkForUpdateFn: () => ({
+        currentVersion: "2.7.40",
+        latestVersion: "2.7.41",
+        channel: "latest",
+        installer: "bun",
+        updateAvailable: true,
+        canUpdate: true,
+        command: "bun add -g @groeponline/opencodex@2.7.41",
+        releaseNotesUrl: "https://github.com/GroepOnline/opencodex/releases/latest",
+      }),
+      spawnWorkerFn: () => ({ pid: 4242, unref: () => undefined, once: () => undefined }),
+    });
+    expect(readUpdateJob(started.id)?.pid).toBe(4242);
+  });
+
+  test("concurrent updateJob calls from separate processes never lose log lines", async () => {
+    writeFileSync(updateJobPath(), `${JSON.stringify(baseJob("concurrent"))}\n`);
+    const goPath = join(dir, "go");
+    const jobModule = join(import.meta.dir, "..", "src", "update", "job.ts");
+    const workers = 3;
+    const linesPerWorker = 10;
+    const readyPath = (tag: string) => join(dir, `ready-${tag}`);
+    const script = (tag: string) => `
+      import { existsSync, writeFileSync } from "node:fs";
+      const { readUpdateJob, updateJobForTests } = await import(${JSON.stringify(jobModule)});
+      writeFileSync(${JSON.stringify(readyPath(tag))}, "ready");
+      const deadline = Date.now() + 20_000;
+      while (!existsSync(${JSON.stringify(goPath)}) && Date.now() < deadline) Bun.sleepSync(2);
+      for (let i = 0; i < ${linesPerWorker}; i += 1) {
+        const job = readUpdateJob("concurrent");
+        if (!job) throw new Error("job state disappeared");
+        updateJobForTests(job, {}, "${tag}-" + i);
+        // Yield between appends so every writer keeps contending instead of draining in turn.
+        Bun.sleepSync(2);
+      }
+    `;
+    const tags = Array.from({ length: workers }, (_, index) => `w${index}`);
+    const children = tags.map(tag => Bun.spawn(
+      [process.execPath, "-e", script(tag)],
+      {
+        cwd: join(import.meta.dir, ".."),
+        env: { ...process.env, OPENCODEX_HOME: dir },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    ));
+    // Release every writer at once so their read-modify-write cycles overlap.
+    const readyDeadline = Date.now() + 30_000;
+    while (!tags.every(tag => existsSync(readyPath(tag))) && Date.now() < readyDeadline) await Bun.sleep(5);
+    writeFileSync(goPath, "go");
+    const exits = await Promise.race([
+      Promise.all(children.map(child => child.exited)),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("update job writers hung")), 50_000)),
+    ]);
+    for (const [index, code] of exits.entries()) {
+      if (code !== 0) throw new Error(`writer ${index} exited ${code}: ${await new Response(children[index].stderr).text()}`);
+    }
+
+    const log = readUpdateJob("concurrent")?.log ?? [];
+    expect(log).toHaveLength(workers * linesPerWorker);
+    for (let worker = 0; worker < workers; worker += 1) {
+      for (let line = 0; line < linesPerWorker; line += 1) expect(log).toContain(`w${worker}-${line}`);
+    }
+    expect(existsSync(join(dir, "update-job.lock"))).toBe(false);
+    expect(readdirSync(dir).filter(name => name.endsWith(".tmp"))).toEqual([]);
+  }, 60_000);
 });

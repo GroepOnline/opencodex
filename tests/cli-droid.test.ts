@@ -60,19 +60,59 @@ describe("ocx droid base url", () => {
 
 describe("ocx droid model discovery", () => {
   test("starts a proxy without mutating client integrations", () => {
-    expect(droidProxyStartArgs(10123)).toEqual(["start", "--port", "10123", "--proxy-only"]);
+    expect(droidProxyStartArgs(10123)).toEqual([
+      "start",
+      "--port",
+      "10123",
+      "--proxy-only",
+    ]);
+  });
+
+  test("discovers models through the client-visible catalog view", async () => {
+    const oldFetch = globalThis.fetch;
+    let requestedUrl = "";
+    try {
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        requestedUrl = String(input instanceof Request ? input.url : input);
+        return Response.json([]);
+      }) as typeof fetch;
+      expect(await fetchDroidModels(10123)).toEqual([]);
+      const url = new URL(requestedUrl);
+      // The overlay must carry only user-selected models: the same visibility
+      // pipeline /v1/models applies for `ocx claude` model discovery.
+      expect(url.pathname).toBe("/api/models");
+      expect(url.searchParams.get("view")).toBe("client");
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
   });
 
   test("skips native and disabled models while passing image metadata", async () => {
     const oldFetch = globalThis.fetch;
     try {
-      globalThis.fetch = (async () => Response.json([
-        { provider: "openai", id: "gpt-native", namespaced: "gpt-native", native: true },
-        { provider: "zai", id: "glm", namespaced: "zai/glm", inputModalities: ["text", "image"] },
-        { provider: "zai", id: "disabled", disabled: true },
-      ])) as typeof fetch;
+      globalThis.fetch = (async () =>
+        Response.json([
+          {
+            provider: "openai",
+            id: "gpt-native",
+            namespaced: "gpt-native",
+            native: true,
+          },
+          {
+            provider: "zai",
+            id: "glm",
+            namespaced: "zai/glm",
+            inputModalities: ["text", "image"],
+          },
+          { provider: "zai", id: "disabled", disabled: true },
+        ])) as typeof fetch;
       expect(await fetchDroidModels(10123)).toEqual([
-        { provider: "zai", id: "zai/glm", displayName: undefined, inputModalities: ["text", "image"] },
+        {
+          provider: "zai",
+          id: "zai/glm",
+          displayName: undefined,
+          inputModalities: ["text", "image"],
+        },
       ]);
     } finally {
       globalThis.fetch = oldFetch;
@@ -83,7 +123,9 @@ describe("ocx droid model discovery", () => {
     const oldFetch = globalThis.fetch;
     try {
       globalThis.fetch = (async () =>
-        new Response("secret-diagnostic-must-not-leak", { status: 401 })) as typeof fetch;
+        new Response("secret-diagnostic-must-not-leak", {
+          status: 401,
+        })) as typeof fetch;
       await expect(fetchDroidModels(10123)).rejects.toThrow(
         "OCX model discovery failed: access denied (HTTP 401)",
       );
@@ -96,7 +138,9 @@ describe("ocx droid model discovery", () => {
     const oldFetch = globalThis.fetch;
     try {
       globalThis.fetch = (async () =>
-        new Response("confidential-upstream-diagnostic", { status: 503 })) as typeof fetch;
+        new Response("confidential-upstream-diagnostic", {
+          status: 503,
+        })) as typeof fetch;
       try {
         await fetchDroidModels(10123);
         throw new Error("expected proxy failure");
@@ -114,7 +158,8 @@ describe("ocx droid model discovery", () => {
   test("rejects malformed catalog responses rather than pretending no models exist", async () => {
     const oldFetch = globalThis.fetch;
     try {
-      globalThis.fetch = (async () => Response.json({ error: "not an array" })) as typeof fetch;
+      globalThis.fetch = (async () =>
+        Response.json({ error: "not an array" })) as typeof fetch;
       await expect(fetchDroidModels(10123)).rejects.toThrow(
         "OCX model discovery failed: invalid model catalog response",
       );
@@ -150,9 +195,10 @@ describe("ocx droid model discovery", () => {
   test("a native-only response has no eligible OCX models", async () => {
     const oldFetch = globalThis.fetch;
     try {
-      globalThis.fetch = (async () => Response.json([
-        { provider: "openai", id: "gpt-native", native: true },
-      ])) as typeof fetch;
+      globalThis.fetch = (async () =>
+        Response.json([
+          { provider: "openai", id: "gpt-native", native: true },
+        ])) as typeof fetch;
       expect(await fetchDroidModels(10123)).toEqual([]);
     } finally {
       globalThis.fetch = oldFetch;
@@ -164,7 +210,9 @@ describe("ocx droid settings overlay (non-destructive BYOK)", () => {
   test("emits stable Factory IDs for each routed proxy model", () => {
     const overlay = buildDroidSettingsOverlay(cfg(), 10123, MODELS);
     expect(overlay.customModels).toHaveLength(2);
-    expect(overlay.customModels.map((row) => row.id)).toEqual(MODELS.map((row) => droidCustomModelId(row.id)));
+    expect(overlay.customModels.map((row) => row.id)).toEqual(
+      MODELS.map((row) => droidCustomModelId(row.id)),
+    );
     expect(overlay.customModels.map((row) => row.index)).toEqual([0, 1]);
     expect(overlay.customModels.map((row) => row.model)).toEqual([
       "openai/gpt-6-astra",
@@ -194,11 +242,19 @@ describe("ocx droid settings overlay (non-destructive BYOK)", () => {
 
   test("propagates image input support", () => {
     const overlay = buildDroidSettingsOverlay(cfg(), 10123, [
-      { provider: "vision", id: "vision/model", inputModalities: ["text", "image"] },
+      {
+        provider: "vision",
+        id: "vision/model",
+        inputModalities: ["text", "image"],
+      },
       { provider: "text", id: "text/model", inputModalities: ["text"] },
       { provider: "unknown", id: "unknown/model" },
     ]);
-    expect(overlay.customModels.map(row => row.noImageSupport)).toEqual([false, true, true]);
+    expect(overlay.customModels.map((row) => row.noImageSupport)).toEqual([
+      false,
+      true,
+      true,
+    ]);
   });
 
   test("prefers config.injectionModel when it is present in the catalog", () => {

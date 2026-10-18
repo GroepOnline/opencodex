@@ -22,6 +22,8 @@ Start the proxy server (preferred port `10100`). Without `--port`, if that port 
 opencodex selects and records another available port. An explicit `--port` stays pinned and
 fails if it remains busy; it never silently switches ports. Temporary availability probes close
 incoming discovery connections immediately so a scanner cannot keep startup waiting.
+`OPENCODEX_BIND_HOST` overrides the saved hostname for both availability probes and the
+listener. Containers can use `0.0.0.0` without rewriting a host-specific saved configuration.
 It writes PID/runtime-port state and refuses to start a second live
 instance. Codex is optional: ordinary startup skips its integration when no Codex config exists.
 `--proxy-only` starts the API and dashboard without client config, shell-hook, launcher or Codex
@@ -89,6 +91,16 @@ Use `--json` for a machine-readable, read-only diagnostics contract:
 ocx status
 ocx status --json
 ```
+
+If Codex uses a user-owned local gateway (such as a localhost SSH tunnel to a
+remote OCX container), startup health conservatively reports **AT RISK** until
+that external lifecycle is independently verified. It cannot credit an OCX
+service or shim for a gateway it does not own. Check the tunnel's socket or
+service activation, the upstream container's restart policy, and actual
+reachability after reboot. OCX intentionally does not suggest `ocx restore` or
+`ocx service install` as automatic repairs for an externally managed gateway;
+those commands cannot restart the outside service. The startup dashboard shows
+this external-lifecycle guidance instead of local OCX recovery commands.
 
 Abbreviated example shape:
 
@@ -516,6 +528,8 @@ The **OAuth reliability** section reports whether credential storage is writable
 single-flight / lock files can be created under `OPENCODEX_HOME`, non-healthy OAuth or Codex pool
 accounts (redacted ids) with a recovery `Action:`, and a static OK that the Codex forward path does
 not fabricate official-client metadata. Doctor never mutates credentials or applies repairs.
+Provider credentials configured as inline `apiKey` values produce a warning with provider names
+and remediation guidance; the warning does not include key values or prevent local startup.
 
 ### `ocx debug [provider|usage …]`
 
@@ -556,7 +570,7 @@ Tracing is **off by default** and is configured by environment variable at proxy
 - `full` stores bodies verbatim. Use it deliberately and briefly.
 
 Outbound capture covers adapters that send through the shared upstream fetch helper; inbound request and
-response capture covers `/v1/responses`, `/v1/messages`, `/v1/chat/completions`, and live call-create HTTP
+response capture covers `/v1/responses`, `/v1/responses/compact`, `/v1/messages`, `/v1/chat/completions`, and live call-create HTTP
 (`/v1/live` and `/v1/realtime/calls`). Live call-create also records the rewritten provider wire body before
 its bounded upstream POST. Responses WebSocket `response.create` turns are traced as separate logical
 requests: the inbound hash covers the client WS frame, while the outbound hash covers the final provider
@@ -564,7 +578,6 @@ wire body. Voice/realtime live-sideband WebSockets remain outside this trace lan
 long-lived bidirectional sessions rather than request/response turns.
 Proxy response-cache hits are traced without duplicating the cached response body: the usage trace records
 `cacheHit`, a response hash/byte count, and the request id that originally populated the cache when known.
-WebSocket/live/realtime traffic is not yet covered.
 
 Stored traces can be inspected directly from the local SQLite store; the proxy does not need to be running:
 
@@ -587,10 +600,21 @@ enumerates rows whose bodies were actually persisted in `trace.sqlite`.
 ### `ocx update`
 
 Self-update opencodex from npm. Stable installs use `@latest`; preview installs stay on `@preview`
-unless you pass `--tag latest|preview`. It detects a source checkout and tells you to
-`git pull && bun install` instead, and is a no-op if you're already on the newest version for that
-tag. A running proxy is stopped before files are replaced; an installed service is rebuilt and
-started automatically, while a foreground installation prints `ocx start` as the next step.
+unless you pass `--tag latest|preview`. Source checkouts are not self-updated: a checkout on
+a branch displays `git pull && bun install`, while a detached Git checkout or linked worktree
+explicitly reports that its immutable pin must be updated through the owning deployment or
+replaced by a published npm/Bun installation. Source-only `ocx update` exits nonzero so automation
+cannot mistake guidance for a successful update. An installed package already at the latest tag
+is a no-op. A running local proxy is stopped before files are replaced; an installed service is
+rebuilt and started automatically, while a foreground installation prints `ocx start` as the next
+step.
+
+The restart hint applies only when this machine owns the foreground proxy. When
+`ocx update` stopped a local proxy (its pid or runtime-port record was present), it
+prints a plain `ocx start` command to bring it back. Without that local runtime state
+it prints the command only as a conditional. Clients using a systemd socket, SSH
+forward, or other externally managed gateway must keep their existing listener and
+must not start a second local proxy on its port.
 
 ```bash
 ocx update

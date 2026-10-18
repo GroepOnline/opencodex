@@ -21,6 +21,8 @@ on:
         required: true
         type: number
 
+permissions: {}
+
 concurrency:
   group: issue-quality-${{ github.event.issue.number || inputs.issue_number }}
   cancel-in-progress: false

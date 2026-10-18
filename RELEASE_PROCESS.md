@@ -10,6 +10,28 @@ helper automates the whole path but every step below is also executable by hand.
 - No earlier version with the same number on npm, on the `v<version>` Git tag, or on GitHub
   Releases — the helper refuses to proceed if any of the three already exists.
 
+## Automated main release train (npm + GHCR)
+
+Releasable merges on `main` trigger `.github/workflows/release-train.yml`.
+The baseline is the latest **published GitHub Release** rather than the highest git
+tag, because this repository retains historic upstream v2.x tags unrelated to the
+current published v1.x package.
+An hourly reconciliation catches missed events. The train is serialized and
+restricted to `main`, and skips docs-only changes.
+Unpublished release candidates can resume at their exact commit with
+`bun scripts/release.ts --resume --publish` without another version bump.
+
+The release requires typecheck, isolated tests, privacy scan, manual full-platform CI
+and Service lifecycle, then `release.yml` with an exact SHA. It publishes npm,
+the GitHub Release and both linux/amd64 and linux/arm64 GHCR image variants.
+The train validates the tag's immutable image digest artifact and independently
+inspects the OCI manifest for both `linux/amd64` and `linux/arm64`. npm alone is
+never sufficient for a successful release.
+
+GITHUB_TOKEN-authored version commits do not trigger push workflows, so the
+train dispatches full CI and service checks explicitly. The separate
+private production deployment remains gated.
+
 ## Quick start (recommended)
 
 ```bash
@@ -43,7 +65,7 @@ A dry run builds + packs the tarball but does **not** publish. Re-run with `--pu
    - `dry-run`: `true` first, then `false` for the real publish
    - `expected-sha`: mandatory release commit SHA (fail-fast if the branch moved)
 
-**Do not push release tags manually.** The canonical `Release` workflow publishes npm first, creates the Git tag and GitHub Release, then dispatches GHCR publication. The older `publish-on-tag.yml` route is not the release entrypoint.
+**Do not push release tags manually.** The canonical `Release` workflow publishes npm first, creates the Git tag and GitHub Release, then dispatches GHCR publication. The former tag-triggered npm publish workflow was removed: pushing a `v*` tag never publishes to npm, and `Release` is the only npm publish path.
 
 ## Version selection
 
@@ -59,7 +81,14 @@ A dry run builds + packs the tarball but does **not** publish. Re-run with `--pu
 The Release workflow (manual dispatch, `concurrency: release`):
 
 - Verifies `GITHUB_SHA` equals `expected-sha` (when supplied).
-- Publishes to npm via **Trusted Publishing (OIDC)** on a GitHub-hosted runner — no `NPM_TOKEN` secret.
+- Publishes to npm via **Trusted Publishing (OIDC)** on a GitHub-hosted runner. If the OIDC
+  `npm publish` exits non-zero for any reason (an OIDC rejection, but also a transient network or
+  registry error), an isolated `Publish token fallback` step retries with the `NPM_TOKEN` secret
+  and `--ignore-scripts`. Neither that fallback nor the `first-publish` path generates a
+  provenance attestation, so re-running OIDC is always preferable to shipping a fallback publish.
+  The one-time `first-publish` dispatch input skips OIDC entirely and
+  publishes only through that token step. No other workflow may reference that secret (enforced by
+  `tests/ci-workflows.test.ts`); revoke it once OIDC succeeds and the fallback step is removed.
 - Creates the `v<version>` Git tag and GitHub Release from the exact release commit, with a
   changelog body derived from `scripts/release-notes.ts` (PR/commit history since the prior
   release, including carried preview deltas).

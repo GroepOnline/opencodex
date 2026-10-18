@@ -57,6 +57,7 @@ import {
   MASKED_ACCOUNT_FALLBACK,
   type OAuthHealthEntry,
 } from "../oauth/health";
+import { collectInlineSecretDoctorChecks } from "../providers/credential-source";
 import { collectProviderSecurityDoctorChecks } from "../provider-security/status";
 import { getAuthRefreshIntentLockPath, getAuthStorePath } from "../oauth/store";
 export { resolveCodexHomeDir } from "../codex/home";
@@ -1097,6 +1098,11 @@ export async function runDoctor(args: string[] = []): Promise<void> {
   // OAuth reliability: observe-only (no mutations / auto-repair).
   console.log("\nOAuth reliability");
   for (const check of await collectOAuthDoctorChecks()) {
+    console.log(`  [${check.level}] ${check.message}`);
+  }
+
+  console.log("\nProvider secrets");
+  for (const check of collectInlineSecretDoctorChecks(doctorConfig)) {
     console.log(`  [${check.level}] ${check.message}`);
   }
 

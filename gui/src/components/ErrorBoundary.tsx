@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from "react";
+import { recoverStaleChunk } from "../app/chunk-recovery";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -7,13 +8,17 @@ interface ErrorBoundaryProps {
   message: string;
   detailsLabel: string;
   reloadLabel: string;
+  clientSha?: string | null;
 }
 
 interface ErrorBoundaryState {
   error: Error | null;
 }
 
-export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+export default class ErrorBoundary extends Component<
+  ErrorBoundaryProps,
+  ErrorBoundaryState
+> {
   state: ErrorBoundaryState = { error: null };
 
   static getDerivedStateFromError(error: unknown): ErrorBoundaryState {
@@ -22,10 +27,25 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
     };
   }
 
+  /** Reload the document when the user requests recovery. */
   private reload = () => {
-    this.setState({ error: null });
+    window.location.reload();
   };
 
+  /** Attempt stale-chunk recovery using the GUI build SHA and this tab's session storage. */
+  componentDidCatch(error: Error) {
+    void recoverStaleChunk(error, {
+      clientSha: this.props.clientSha ?? null,
+      fetcher: (input, init) => fetch(input, init),
+      storage: {
+        getItem: (key) => window.sessionStorage.getItem(key),
+        setItem: (key, value) => window.sessionStorage.setItem(key, value),
+      },
+      reload: () => window.location.reload(),
+    });
+  }
+
+  /** Show children until an error is captured, then show its message and a reload action. */
   render() {
     if (!this.state.error) return this.props.children;
 
@@ -35,7 +55,12 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
         role="alert"
         style={{ maxWidth: 720, padding: "var(--space-6)" }}
       >
-        <h2 style={{ margin: "0 0 var(--space-2)", fontSize: "var(--text-title)" }}>
+        <h2
+          style={{
+            margin: "0 0 var(--space-2)",
+            fontSize: "var(--text-title)",
+          }}
+        >
           {this.props.pageName}: {this.props.title}
         </h2>
         <p className="muted" style={{ margin: "0 0 var(--space-4)" }}>

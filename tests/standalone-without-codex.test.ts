@@ -96,7 +96,7 @@ describe("standalone HTTP core without Codex CLI", () => {
         healthBody.gitSha === null || typeof healthBody.gitSha === "string",
       ).toBe(true);
       expect(typeof healthBody.gitSha).toBe("string");
-      expect(healthBody.gitSha).toMatch(/^[0-9a-f]{7,40}$/i);
+      expect(healthBody.gitSha).toMatch(/^[0-9a-f]{40}$/i);
 
       const models = await fetch(new URL("/v1/models", server.url));
       expect(models.status).toBe(200);

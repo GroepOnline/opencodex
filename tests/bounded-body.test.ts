@@ -1,8 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import {
 	BOUNDED_BODY_MAX_BYTES,
+	readBoundedErrorText,
 	readBoundedResponseBody,
+	readCappedResponseArrayBuffer,
+	readCappedResponseJson,
+	readCappedResponseText,
+	UPSTREAM_SUCCESS_BODY_MAX_BYTES,
+	UpstreamBodyTooLargeError,
 } from "../src/lib/bounded-body";
+import { createOpenAIChatAdapter } from "../src/adapters/openai-chat";
 
 const encoder = new TextEncoder();
 
@@ -176,5 +183,136 @@ describe("readBoundedResponseBody", () => {
 		expect(result.text).toBe("original");
 		expect(response.bodyUsed).toBe(true);
 		expect(cloneCalls).toBe(0);
+	});
+});
+
+/**
+ * Pull-driven body that re-enqueues one shared chunk `count` times, so a large
+ * logical body costs one chunk of memory. `pulls` shows how much was consumed.
+ */
+function countingBody(chunk: Uint8Array, count: number) {
+	const state = { pulls: 0, cancelled: false };
+	const stream = new ReadableStream<Uint8Array>({
+		pull(controller) {
+			if (state.pulls >= count) {
+				controller.close();
+				return;
+			}
+			state.pulls++;
+			controller.enqueue(chunk);
+		},
+		cancel() {
+			state.cancelled = true;
+		},
+	}, { highWaterMark: 0 });
+	return { stream, state };
+}
+
+describe("readBoundedErrorText", () => {
+	test("returns display-safe error text", async () => {
+		expect(await readBoundedErrorText(responseFromChunks(encoder.encode('{"error":"x"}')))).toBe('{"error":"x"}');
+	});
+
+	test("an error body larger than the cap is cut off without reading it all", async () => {
+		const chunk = new Uint8Array(16 * 1024).fill(0x61);
+		const totalChunks = 256; // 4 MiB logical body
+		const { stream, state } = countingBody(chunk, totalChunks);
+
+		expect(await readBoundedErrorText(new Response(stream))).toBeUndefined();
+		// Four chunks fill the cap and the fifth crosses it. Allow one read-ahead.
+		expect(state.pulls).toBeLessThanOrEqual(BOUNDED_BODY_MAX_BYTES / chunk.byteLength + 2);
+		expect(state.pulls).toBeLessThan(totalChunks);
+		expect(state.cancelled).toBe(true);
+	});
+
+	test("an aborted read resolves to undefined instead of throwing", async () => {
+		const controller = new AbortController();
+		const reading = readBoundedErrorText(new Response(new ReadableStream<Uint8Array>({})), controller.signal);
+		controller.abort(new Error("client gone"));
+		expect(await reading).toBeUndefined();
+	});
+});
+
+describe("capped upstream success bodies", () => {
+	test("the default cap is 64 MiB", () => {
+		expect(UPSTREAM_SUCCESS_BODY_MAX_BYTES).toBe(64 * 1024 * 1024);
+	});
+
+	test("reads text and JSON at exactly the cap", async () => {
+		const json = JSON.stringify({ ok: "한글" });
+		const bytes = encoder.encode(json);
+		expect(await readCappedResponseText(responseFromChunks(bytes.subarray(0, 9), bytes.subarray(9)), { maxBytes: bytes.byteLength })).toBe(json);
+		expect(await readCappedResponseJson(responseFromChunks(bytes), { maxBytes: bytes.byteLength })).toEqual({ ok: "한글" });
+		const buffer = await readCappedResponseArrayBuffer(responseFromChunks(bytes.subarray(0, 3), bytes.subarray(3)), { maxBytes: bytes.byteLength });
+		expect(new Uint8Array(buffer)).toEqual(bytes);
+	});
+
+	test("malformed JSON still rejects with SyntaxError", async () => {
+		await expect(readCappedResponseJson(responseFromChunks(encoder.encode("not json")))).rejects.toBeInstanceOf(SyntaxError);
+	});
+
+	test("an oversized streamed body fails with a 502 error and cancels the stream", async () => {
+		const chunk = new Uint8Array(512).fill(0x61);
+		const { stream, state } = countingBody(chunk, 100);
+		let caught: unknown;
+		try {
+			await readCappedResponseText(new Response(stream), { maxBytes: 1024 });
+		} catch (error) {
+			caught = error;
+		}
+		expect(caught).toBeInstanceOf(UpstreamBodyTooLargeError);
+		expect((caught as UpstreamBodyTooLargeError).status).toBe(502);
+		expect((caught as UpstreamBodyTooLargeError).maxBytes).toBe(1024);
+		// Two 512-byte chunks fit; the third crosses the cap. Allow one read-ahead.
+		expect(state.pulls).toBeLessThanOrEqual(4);
+		expect(state.cancelled).toBe(true);
+	});
+
+	test("a declared Content-Length over the cap fails before reading", async () => {
+		const { stream, state } = countingBody(new Uint8Array(8), 10);
+		const response = {
+			headers: new Headers({ "content-length": "2048" }),
+			body: stream,
+		} as unknown as Response;
+		await expect(readCappedResponseJson(response, { maxBytes: 1024 })).rejects.toBeInstanceOf(UpstreamBodyTooLargeError);
+		expect(state.pulls).toBe(0);
+		expect(state.cancelled).toBe(true);
+	});
+
+	test("parent abort rejects with the exact reason object and cancels the body", async () => {
+		const controller = new AbortController();
+		const reason = { code: "client-closed" };
+		let cancelled = false;
+		const response = new Response(new ReadableStream<Uint8Array>({
+			cancel() { cancelled = true; },
+		}));
+		const reading = readCappedResponseText(response, { signal: controller.signal });
+		controller.abort(reason);
+		let caught: unknown;
+		try {
+			await reading;
+		} catch (error) {
+			caught = error;
+		}
+		expect(caught).toBe(reason);
+		expect(cancelled).toBe(true);
+	});
+
+	test("adapter parseResponse surfaces an oversized success JSON as UpstreamBodyTooLargeError", async () => {
+		const adapter = createOpenAIChatAdapter({
+			adapter: "openai-chat",
+			baseUrl: "https://provider.example/v1",
+			apiKey: "sk-test",
+		});
+		const { stream, state } = countingBody(new Uint8Array(8), 10);
+		const response = {
+			headers: new Headers({
+				"content-type": "application/json",
+				"content-length": String(UPSTREAM_SUCCESS_BODY_MAX_BYTES + 1),
+			}),
+			body: stream,
+		} as unknown as Response;
+		await expect(adapter.parseResponse!(response)).rejects.toBeInstanceOf(UpstreamBodyTooLargeError);
+		expect(state.pulls).toBe(0);
 	});
 });

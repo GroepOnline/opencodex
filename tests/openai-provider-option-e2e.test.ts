@@ -363,7 +363,6 @@ describe("OpenAI provider-option integration spine", () => {
         accountId: "fixture-pool-account",
         body: { model: "gpt-5.6-sol" },
       });
-      expect(websocketRegistry.getTrackedCodexWebSocketCountForAccount("fixture-pool")).toBe(1);
       const wsTrace = requestLog.getRequestLogEntries().at(-1)?.trace;
       expect(wsTrace).toMatchObject({
         mode: "metadata",
@@ -373,6 +372,7 @@ describe("OpenAI provider-option integration spine", () => {
       expect(wsTrace?.requestHash).toMatch(/^[0-9a-f]{32}$/);
       expect(wsTrace?.outboundHash).toMatch(/^[0-9a-f]{32}$/);
       expect(wsTrace?.responseHash).toMatch(/^[0-9a-f]{32}$/);
+      expect(websocketRegistry.getTrackedCodexWebSocketCountForAccount("fixture-pool")).toBe(1);
 
       const directPatch = await patchMode("direct");
       expect(directPatch.status).toBe(200);

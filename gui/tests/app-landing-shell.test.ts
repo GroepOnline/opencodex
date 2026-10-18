@@ -1,29 +1,21 @@
 import { expect, test } from "bun:test";
 
-test("landing returns before the dashboard health resource is mounted", async () => {
-  const source = await Bun.file(
-    new URL("../src/App.tsx", import.meta.url),
-  ).text();
-  const landingGuard = source.indexOf('if (route.view === "landing")');
-  const shellCall = source.indexOf("<DashboardShell");
-  const shell = source.indexOf("function DashboardShell");
-  const healthResource = source.indexOf(
-    "const healthPoll = useKeyedClientResource",
-    shell,
-  );
-
+test("landing returns before dashboard health polling is ever mounted", async () => {
+  const app = await Bun.file(new URL("../src/App.tsx", import.meta.url)).text();
+  const shell = await Bun.file(new URL("../src/app/DashboardShell.tsx", import.meta.url)).text();
+  const landingGuard = app.indexOf('if (route.view === "landing")');
+  const shellCall = app.indexOf("<DashboardShell");
   expect(landingGuard).toBeGreaterThan(-1);
   expect(shellCall).toBeGreaterThan(landingGuard);
-  expect(shell).toBeGreaterThan(shellCall);
-  expect(healthResource).toBeGreaterThan(shell);
-
-  const landingBlock = source.slice(landingGuard, shellCall);
+  const landingBlock = app.slice(landingGuard, shellCall);
   expect(landingBlock).toContain("<ErrorBoundary");
   expect(landingBlock).toContain("<Suspense");
-  expect(landingBlock.indexOf("<ErrorBoundary")).toBeLessThan(
-    landingBlock.indexOf("<Suspense"),
-  );
   expect(landingBlock).not.toContain("useKeyedClientResource");
+  expect(app).not.toContain("useKeyedClientResource");
+  const status = await Bun.file(new URL("../src/app/use-shell-status.ts", import.meta.url)).text();
+  expect(shell).toContain("useShellStatus()");
+  expect(status).toContain("const healthPoll = useKeyedClientResource");
+  expect(status).toContain("const identityPoll = useKeyedClientResource");
 });
 
 test("landing terminal binds its version to the build-time package version", async () => {

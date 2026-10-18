@@ -2,17 +2,19 @@
 
 ARG BUN_VERSION=1.4.2
 
-FROM oven/bun:${BUN_VERSION}-slim AS root-deps
+FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION}-slim AS root-deps
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
-FROM oven/bun:${BUN_VERSION}-slim AS gui-deps
+FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION}-slim AS gui-deps
 WORKDIR /app/gui
 COPY gui/package.json gui/bun.lock ./
 RUN bun install --frozen-lockfile
 
 FROM root-deps AS build
+ARG VCS_REF=unknown
+ENV OPENCODEX_GIT_SHA=${VCS_REF}
 WORKDIR /app
 COPY --from=gui-deps /app/gui/node_modules ./gui/node_modules
 COPY . .
@@ -56,6 +58,7 @@ COPY --from=build --chown=bun:bun --chmod=0555 /app/scripts/container-entrypoint
 
 ENV NODE_ENV=production \
     OPENCODEX_HOME=/var/lib/opencodex \
+    OPENCODEX_CLAUDE_DESKTOP_CONFIG_DIR=/var/lib/opencodex/claude-desktop \
     OPENCODEX_BIND_HOST=0.0.0.0 \
     OPENCODEX_HEALTH_HOST=127.0.0.1 \
     OPENCODEX_HEALTH_PORT=10100 \

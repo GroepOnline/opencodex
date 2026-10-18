@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -87,17 +87,28 @@ describe("injectCodexConfig integration (Design B)", () => {
     expect(config.match(/Auto-injected by opencodex/g)?.length).toBe(1);
   });
 
-  test("re-inject over a Design B config is idempotent", () => {
+  test("re-inject over a Design B config is idempotent without rewriting config, profile, or journal", () => {
     writeFileSync(join(codexHome, "config.toml"), 'model = "gpt-5.5"\n', "utf8");
 
     expect(runInject(codexHome, ocxHome).status).toBe(0);
     const first = readFileSync(join(codexHome, "config.toml"), "utf8");
+    const paths = ["config.toml", "opencodex.config.toml", "opencodex-journal.json"]
+      .map(name => join(codexHome, name));
+    const before = paths.map(path => ({
+      content: readFileSync(path, "utf8"),
+      mtimeMs: statSync(path).mtimeMs,
+    }));
+
     expect(runInject(codexHome, ocxHome).status).toBe(0);
     const second = readFileSync(join(codexHome, "config.toml"), "utf8");
 
     expect(second.match(/openai_base_url/g)?.length).toBe(1);
     expect(second.match(/Auto-injected by opencodex/g)?.length).toBe(1);
     expect(second).toBe(first);
+    expect(paths.map(path => ({
+      content: readFileSync(path, "utf8"),
+      mtimeMs: statSync(path).mtimeMs,
+    }))).toEqual(before);
   });
 
   test("opt-in injects native subagent defaults, removes them when disabled, and restores the native config", () => {

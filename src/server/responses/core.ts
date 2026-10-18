@@ -1,6 +1,6 @@
 import type { Server } from "bun";
 import { bridgeToResponsesSSE, buildResponseJSON, formatErrorResponse, type ResponsesTerminalStatus } from "../../bridge";
-import { formatPassthroughUpstreamError } from "./passthrough-error";
+import { formatPassthroughUpstreamError, relayUnreadPassthroughUpstreamError } from "./passthrough-error";
 import { describeUpstreamConnectFailure } from "./upstream-error";
 import {
   multiAgentGuidanceEnabled,
@@ -132,7 +132,12 @@ import { resolveProviderTransport } from "../../providers/xai-transport";
 import type { WsData } from "../ws-bridge";
 import { registerTurn, trackStreamLifetime, unregisterTurn } from "../lifecycle";
 import { redactSecretString } from "../../lib/redact";
-import { readBoundedResponseBody } from "../../lib/bounded-body";
+import {
+  readBoundedErrorText,
+  readBoundedResponseBody,
+  readCappedResponseText,
+  UpstreamBodyTooLargeError,
+} from "../../lib/bounded-body";
 import { supportedLadderFor } from "../effort-policy";
 import { isThreadSpawnRequest } from "../effort-policy";
 import {
@@ -1865,14 +1870,40 @@ export async function handleResponses(
     // Codex renders that as the opaque "Unknown error" (#452). Combo attempts
     // keep their typed failure envelope. Non-empty bodies are relayed verbatim
     // (headers included) so pool-retry Activation B/D and client diagnostics stay intact.
+    // Only the *inspection* read is bounded: the body is probed through a tee
+    // branch up to the error cap, and a body that cannot be captured inside the
+    // cap (oversized, stalled, or undecodable) is streamed to the client instead
+    // of being buffered in full or being replaced by the empty-body envelope.
     if (!upstreamResponse.ok) {
       if (options.comboAttempt) {
         const failure = await consumeComboFailure(upstreamResponse, options.abortSignal);
         options.onConsumedComboFailure?.(failure);
         return failure.response;
       }
-      const errorText = await upstreamResponse.text().catch(() => "");
-      return formatPassthroughUpstreamError(upstreamResponse.status, errorText, {
+      let relayBody: ReadableStream<Uint8Array> | null = null;
+      let inspection = upstreamResponse;
+      if (upstreamResponse.body) {
+        const [probe, relay] = upstreamResponse.body.tee();
+        relayBody = relay;
+        inspection = new Response(probe, {
+          status: upstreamResponse.status,
+          statusText: upstreamResponse.statusText,
+          headers,
+        });
+      }
+      const errorText = await readBoundedErrorText(inspection, upstream.signal);
+      if (errorText === undefined && relayBody) {
+        return relayUnreadPassthroughUpstreamError(
+          upstreamResponse.status,
+          upstreamResponse.statusText,
+          relayBody,
+          { headers },
+        );
+      }
+      // The full body was captured for inspection; drop the leftover tee branch
+      // so the remaining chunks do not buffer behind it.
+      void relayBody?.cancel().catch(() => {});
+      return formatPassthroughUpstreamError(upstreamResponse.status, errorText ?? "", {
         statusText: upstreamResponse.statusText,
         headers,
       });
@@ -2023,7 +2054,13 @@ export async function handleResponses(
       }));
     }
     if (headers.get("content-type")?.toLowerCase().includes("application/json")) {
-      const text = await upstreamResponse.text();
+      let text: string;
+      try {
+        text = await readCappedResponseText(upstreamResponse, { signal: upstream.signal });
+      } catch (error) {
+        if (!(error instanceof UpstreamBodyTooLargeError)) throw error;
+        return formatErrorResponse(error.status, "upstream_error", error.message);
+      }
       inspectResponseLogJson(logCtx, text);
       if (rememberPassthroughResponse) {
         try {
@@ -2837,7 +2874,7 @@ export async function handleResponses(
         options.onConsumedComboFailure?.(failure);
         return failure.response;
       }
-      const errorText = await upstreamResponse.text().catch(() => "unknown error");
+      const errorText = await readBoundedErrorText(upstreamResponse, upstream.signal) ?? "unknown error";
       // Cloudflare edge HTML must not become the first 500 chars of a
       // client-facing "Provider error N: …" message.
       const safeUpstreamText = redactSecretString(
@@ -3036,7 +3073,7 @@ export async function handleResponses(
     }
 
     if (!response.ok) {
-      const errorText = await response.text().catch(() => "unknown error");
+      const errorText = await readBoundedErrorText(response, upstream.signal) ?? "unknown error";
       yield {
         type: "error",
         status: response.status,
@@ -3208,6 +3245,9 @@ export async function handleResponses(
       } else {
         events = initialEvents;
       }
+    } catch (error) {
+      if (!(error instanceof UpstreamBodyTooLargeError)) throw error;
+      return formatErrorResponse(error.status, "upstream_error", error.message);
     } finally {
       cleanupUpstreamAbort();
     }

@@ -20,7 +20,8 @@
  *           bun scripts/release.ts 0.1.0 --publish  # explicit version, actually publish 0.1.0
  *           bun scripts/release.ts 1.0.1 --linear GRO-994 # link release evidence to Linear
  *
- * Requires: gh CLI (authed). Publishing is tokenless via Trusted Publishing (OIDC) — no NPM_TOKEN.
+ * Requires: gh CLI (authed). Publishing runs through the Release workflow (Trusted
+ *           Publishing with an NPM_TOKEN fallback and a provenance caveat; see RELEASE_PROCESS.md).
  */
 import { $ } from "bun";
 
@@ -43,7 +44,7 @@ interface CommandResult {
 
 const CI_WORKFLOW = "ci.yml";
 const SERVICE_WORKFLOW = "service-lifecycle.yml";
-const CI_WAIT_TIMEOUT_MS = 20 * 60 * 1000;
+const CI_WAIT_TIMEOUT_MS = 45 * 60 * 1000;
 const CI_POLL_MS = 10 * 1000;
 
 async function runQuiet(command: string[]): Promise<CommandResult> {
@@ -438,6 +439,11 @@ if (explicitVersion && !/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(explicitVersion)) {
 }
 let version = explicitVersion;
 const dryRun = !args.includes("--publish");
+const resume = args.includes("--resume");
+if (resume && (args.includes("--minor") || args.includes("--major"))) {
+  console.error("--resume cannot be combined with --minor or --major.");
+  process.exit(1);
+}
 
 if (!version) {
   const bump = args.includes("--minor")
@@ -446,12 +452,14 @@ if (!version) {
       ? "major"
       : "patch";
   const current = await readPackageVersion();
-  version = bumpVersion(current, bump);
-  console.log(`→ no explicit version: bumping ${bump} → ${version}`);
+  version = resume ? current : bumpVersion(current, bump);
+  console.log(resume
+    ? `→ resuming release candidate ${version} on the current main SHA`
+    : `→ no explicit version: bumping ${bump} → ${version}`);
 }
 if (!/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(version)) {
   console.error(
-    "Usage: bun scripts/release.ts [<version>|--minor|--major] [--linear GRO-123] [--tag latest|preview] [--publish]\n       bun scripts/release.ts watch",
+    "Usage: bun scripts/release.ts [<version>|--minor|--major] [--resume] [--linear GRO-123] [--tag latest|preview] [--publish]\n       bun scripts/release.ts watch",
   );
   process.exit(1);
 }
@@ -501,33 +509,45 @@ if ((await $`git status --porcelain`.text()).trim()) {
 const packageName = await readPackageName();
 console.log(`→ release metadata preflight (${packageName}@${version})`);
 await assertUnusedReleaseVersion(packageName, version);
+if (resume && (await readPackageVersion()) !== version) {
+  console.error(`✗ --resume requires package.json to match ${version}`);
+  process.exit(1);
+}
 console.log("→ typecheck");
 await $`bun x tsc --noEmit`;
 console.log("→ test suite");
-await $`bun test --isolate tests`;
+// Use the canonical `bun run test` (scripts/test.ts): it isolates HOME/OPENCODEX_HOME/
+// CODEX_HOME so the preflight cannot touch the operator's live proxy/codex state, and it
+// hard-kills a wedged isolate after 7 minutes and retries once. A raw `bun test --isolate`
+// has no kill boundary, so one known-flaky wedge (codex-shim lock handshake, live-checkout
+// git probe) hangs the release preflight forever at ~100% CPU.
+await $`bun run test`;
 console.log("→ privacy scan");
 await $`bun run privacy:scan`;
 
-// 2. Bump package.json only; the workflow creates the version tag after npm publish.
-console.log(`→ bump package.json → ${version}`);
-await $`npm version ${version} --no-git-tag-version`;
-
-// 3. Commit + push the version bump.
-await $`git add package.json`;
-const releaseCommitMessage = `release: v${version}${linearIssue ? ` (${linearIssue})` : ""}`;
-await $`git commit -m ${releaseCommitMessage}`;
-const releaseSha = (await $`git rev-parse HEAD`.text()).trim();
-console.log(`→ push origin ${branch}`);
-await $`git push origin ${branch}`;
-
+// 2/3. Bump and push a new release; --resume uses the current SHA.
+let releaseSha: string;
+if (resume) {
+  releaseSha = (await $`git rev-parse HEAD`.text()).trim();
+  console.log(`→ resuming ${version} at ${releaseSha} (no version bump)`);
+} else {
+  console.log(`→ bump package.json → ${version}`);
+  await $`npm version ${version} --no-git-tag-version`;
+  await $`git add package.json`;
+  const releaseCommitMessage = `release: v${version}${linearIssue ? ` (${linearIssue})` : ""}`;
+  await $`git commit -m ${releaseCommitMessage}`;
+  releaseSha = (await $`git rev-parse HEAD`.text()).trim();
+  console.log(`→ push origin ${branch}`);
+  await $`git push origin ${branch}`;
+}
 // 4. Manual CI covers every OS; push CI is intentionally Linux-only.
 await $`gh workflow run ${CI_WORKFLOW} --ref ${branch}`;
 console.log(`→ wait for Cross-platform CI (${releaseSha})`);
 await waitForSuccessfulCi(releaseSha);
 
-// The release bump always touches package.json, which is a service-lifecycle trigger path —
-// and release.yml's service gate requires an already-successful Service lifecycle run for
-// the release SHA. Wait for it too, or the dispatch races the still-running workflow.
+// Token-authored version bumps cannot start push-triggered workflows.
+// Dispatch service CI explicitly on the exact release SHA.
+await $`gh workflow run ${SERVICE_WORKFLOW} --ref ${branch}`;
 console.log(`→ wait for Service lifecycle (${releaseSha})`);
 await waitForSuccessfulCi(releaseSha, SERVICE_WORKFLOW, "Service lifecycle");
 

@@ -5,7 +5,7 @@ test("Verkeer (usage) renders the single stacked layout (no layout toggle, no wo
   const page = await Bun.file(
     new URL("../src/pages/Usage.tsx", import.meta.url),
   ).text();
-  const app = await Bun.file(new URL("../src/App.tsx", import.meta.url)).text();
+  const app = await Bun.file(new URL("../src/app/RouteOutlet.tsx", import.meta.url)).text();
   const css = await Bun.file(
     new URL("../src/styles.css", import.meta.url),
   ).text();
@@ -45,19 +45,32 @@ test("Usage stacked layout mounts every report panel in order", async () => {
     cursor = at;
   }
 
-  // Classic panels keep their section landmarks and headings via Panel/PanelHeader.
-  expect(src).toContain("<Panel");
-  expect(src).toContain("<PanelHeader");
-  expect(src).toContain('t("usage.section.proxyUsage")');
-  expect(src).toContain('t("usage.section.quality")');
+  const panelFiles = [
+    "UsageSummaryCards.tsx",
+    "UsageQualityPanel.tsx",
+    "UsageHeatmapPanel.tsx",
+    "UsageModelsTable.tsx",
+    "UsageProvidersTable.tsx",
+    "UsageCoveragePanel.tsx",
+  ];
+  const panels = await Promise.all(
+    panelFiles.map((file) =>
+      Bun.file(new URL(`../src/features/usage/components/${file}`, import.meta.url)).text(),
+    ),
+  );
+  const panelSource = panels.join("\n");
+  expect(panelSource).toContain("<Panel");
+  expect(panelSource).toContain("<PanelHeader");
+  expect(panelSource).toContain('t("usage.section.proxyUsage")');
+  expect(panelSource).toContain('t("usage.section.quality")');
 
   const titleIds: string[] = [];
   const panelBlocks = [
-    ...src.matchAll(
-      /function Usage\w+[\s\S]*?(?=function Usage|\nexport default)/g,
+    ...panelSource.matchAll(
+      /function Usage\w+[\s\S]*?(?=function Usage|$)/g,
     ),
   ];
-  expect(panelBlocks.length).toBeGreaterThanOrEqual(6);
+  expect(panelBlocks.length).toBe(6);
   for (const [block] of panelBlocks) {
     if (!block.includes("<Panel")) continue;
     const declared = block.match(/const titleId = "([^"]+)"/);

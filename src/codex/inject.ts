@@ -694,8 +694,13 @@ export async function injectCodexConfig(port: number, config?: OcxConfig, option
 
   const profileContent = buildProfileFile(port, catalogPath, websocketsEnabled(config ?? {}), legacyMode, config?.hostname);
   content = applyEol(content, eol);
-  atomicWriteFile(CODEX_CONFIG_PATH, content);
-  atomicWriteFile(CODEX_PROFILE_PATH, profileContent);
+  // A repeat sync is not a configuration edit. Keep both files and their
+  // mtimes stable unless their desired bytes actually differ.
+  if (content !== rawContent) atomicWriteFile(CODEX_CONFIG_PATH, content);
+  let profileMatches = false;
+  try { profileMatches = readFileSync(CODEX_PROFILE_PATH, "utf8") === profileContent; }
+  catch { /* missing/unreadable profile still requires materialization */ }
+  if (!profileMatches) atomicWriteFile(CODEX_PROFILE_PATH, profileContent);
   markJournalInjectedState(content, profileContent);
   // Legacy mode still forward-tags history so re-tagged threads stay listable. Design B needs
   // the opposite: a one-time migration of previously re-tagged threads BACK to openai (restore
