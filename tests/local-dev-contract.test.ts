@@ -218,11 +218,14 @@ describe("local/dev complete path", () => {
     expect(config.forwardPorts).toContain(10100);
     expect(config.build.dockerfile).toBe("Dockerfile");
     const bunVersion = (await readRepo(".bun-version")).trim();
-    expect(await readRepo(".devcontainer/Dockerfile")).toContain(
-      `BUN_VERSION=${bunVersion}`,
+    // Anchor on a non-digit so `1.4.3` cannot pass against `1.4.30`.
+    const pinnedVersion = (prefix: string) =>
+      new RegExp(`${prefix}${bunVersion.replaceAll(".", "\\.")}(?![0-9])`);
+    expect(await readRepo(".devcontainer/Dockerfile")).toMatch(
+      pinnedVersion("BUN_VERSION="),
     );
-    expect(await readRepo(".cursor/environment.json")).toContain(
-      `bun-v${bunVersion}`,
+    expect(await readRepo(".cursor/environment.json")).toMatch(
+      pinnedVersion("bun-v"),
     );
     expect(await readRepo(".devcontainer/post-create.sh")).toContain(
       "bun install --frozen-lockfile",
