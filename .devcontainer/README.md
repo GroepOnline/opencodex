@@ -5,8 +5,8 @@ identity-checked `GET /healthz`.
 
 ## What this is
 
-- **This folder** installs Bun 1.4.0 and runs `bun install` so you can hack on
-  `src/` and `gui/` (`bun run start`, `bun run test`).
+- **This folder** installs the Bun version pinned in `.bun-version` and runs
+  `bun install` so you can hack on `src/` and `gui/` (`bun run start`, `bun run test`).
 - **Repo-root `compose.yml`** is the local stand-in for
   `deploy/container/compose.example.yml` + `opencodex-proxy.service`. It builds
   the first-party image and publishes `127.0.0.1:10100`.
