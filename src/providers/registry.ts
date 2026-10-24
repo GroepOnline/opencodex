@@ -2141,7 +2141,10 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
   {
     // Cloudflare Workers AI: OpenAI-compatible endpoint. The base URL contains {account_id}
     // which must be resolved by the user at setup time. Model IDs use the @cf/ prefix.
-    // Live-verified 2026-07-21 against https://developers.cloudflare.com/workers-ai/models/
+    // Live-verified 2026-10-18 against the ai/models/search catalog and
+    // developers.cloudflare.com/workers-ai/models/*. Retired in this pass: glm-5.2
+    // (superseded by glm-5.3/5.3-flash), deepseek-r1-distill-qwen-32b and
+    // mistral-small-3.1-24b-instruct (old generation; catalog refresh 2026-05-08).
     id: "cloudflare-workers-ai",
     label: "Cloudflare Workers AI",
     baseUrl: "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1",
@@ -2154,23 +2157,59 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     defaultModel: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
     models: [
       "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-      "@cf/qwen/qwq-32b",
-      "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+      "@cf/openai/gpt-oss-120b",
+      "@cf/openai/gpt-oss-20b",
+      "@cf/zai-org/glm-5.3-flash",
+      "@cf/zai-org/glm-5.3",
+      "@cf/deepseek-ai/deepseek-v4-pro-0813",
       "@cf/moonshotai/kimi-k2.7-code",
-      "@cf/zai-org/glm-5.2",
-      "@cf/mistralai/mistral-small-3.1-24b-instruct",
+      "@cf/qwen/qwq-32b",
     ],
-    // Live-verified 2026-08-18 against developers.cloudflare.com/workers-ai/models/*.
-    // These are host caps (llama-3.3-70b is 24k on Workers AI, not Meta's 128k).
+    // Live-verified 2026-10-18 against developers.cloudflare.com/workers-ai/models/*.
+    // These are host caps (llama-3.3-70b and qwq-32b are 24k on Workers AI).
     modelContextWindows: {
       "@cf/meta/llama-3.3-70b-instruct-fp8-fast": 24_000,
-      "@cf/qwen/qwq-32b": 24_000,
-      "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b": 80_000,
+      "@cf/openai/gpt-oss-120b": 128_000,
+      "@cf/openai/gpt-oss-20b": 128_000,
+      "@cf/zai-org/glm-5.3-flash": 1_048_576,
+      "@cf/zai-org/glm-5.3": 1_048_576,
+      "@cf/deepseek-ai/deepseek-v4-pro-0813": 1_048_576,
       "@cf/moonshotai/kimi-k2.7-code": 262_144,
-      "@cf/zai-org/glm-5.2": 262_144,
-      "@cf/mistralai/mistral-small-3.1-24b-instruct": 128_000,
+      "@cf/qwen/qwq-32b": 24_000,
     },
-    note: "Workers AI · Free tier included · Account ID required in base URL",
+    // Reasoning ladders from the per-model docs pages (2026-10-18):
+    // gpt-oss: reasoning_effort low|medium(default)|high. glm-5.3: max|high|low,
+    // default max, cannot be disabled; upstream aliases none/minimal/medium/xhigh -> max.
+    // qwq-32b and deepseek-v4-pro reason always-on with no documented effort control;
+    // kimi-k2.7-code and llama-3.3-fast take no reasoning input — all four strip effort.
+    modelReasoningEfforts: {
+      "@cf/openai/gpt-oss-120b": ["low", "medium", "high"],
+      "@cf/openai/gpt-oss-20b": ["low", "medium", "high"],
+      "@cf/zai-org/glm-5.3": ["low", "high", "max"],
+    },
+    modelDefaultReasoningEfforts: {
+      "@cf/openai/gpt-oss-120b": "medium",
+      "@cf/openai/gpt-oss-20b": "medium",
+      "@cf/zai-org/glm-5.3": "max",
+    },
+    modelReasoningEffortMap: {
+      "@cf/zai-org/glm-5.3": {
+        none: "max",
+        minimal: "max",
+        low: "low",
+        medium: "max",
+        high: "high",
+        xhigh: "max",
+        max: "max",
+      },
+    },
+    noReasoningModels: [
+      "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      "@cf/moonshotai/kimi-k2.7-code",
+      "@cf/qwen/qwq-32b",
+      "@cf/deepseek-ai/deepseek-v4-pro-0813",
+    ],
+    note: "Workers AI · Free tier included · Account ID required in base URL · glm-5.3 needs Workers Paid",
   },
   // FREEZE 2026-07-10: /models was auth-gated under key login. OAuth device-flow + copilot_internal
   // exchange (issue #151) unlocks live discovery; static seed is a cold-start fallback only.
