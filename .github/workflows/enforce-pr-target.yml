@@ -23,7 +23,9 @@ concurrency:
 
 jobs:
   enforce-target:
-    runs-on: ubuntu-latest
+    runs-on:
+      group: chefgroep-ci-ephemeral
+      labels: chefgroep-ci-oci
 
     steps:
       - name: Checkout trusted PR-quality scripts

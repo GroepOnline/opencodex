@@ -13,7 +13,9 @@ concurrency:
 jobs:
   find-duplicates:
     name: Find similar issues
-    runs-on: ubuntu-latest
+    runs-on:
+      group: chefgroep-ci-ephemeral
+      labels: chefgroep-ci-oci
     timeout-minutes: 10
     permissions:
       contents: read
@@ -144,7 +146,9 @@ jobs:
     name: Post duplicate comment
     needs: find-duplicates
     if: needs.find-duplicates.outputs.matches
-    runs-on: ubuntu-latest
+    runs-on:
+      group: chefgroep-ci-ephemeral
+      labels: chefgroep-ci-oci
     timeout-minutes: 10
     permissions:
       issues: write

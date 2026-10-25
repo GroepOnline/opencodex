@@ -52,7 +52,9 @@ concurrency:
 jobs:
   audit:
     name: Audit
-    runs-on: ubuntu-latest
+    runs-on:
+      group: chefgroep-ci-ephemeral
+      labels: chefgroep-ci-oci
     timeout-minutes: 10
     steps:
       - name: Checkout
