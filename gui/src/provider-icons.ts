@@ -45,7 +45,7 @@ const PROVIDER_ICON_ALIASES: Record<string, string> = {
   "xiaomi-token-plan": "xiaomimimo-mono.svg",
   entrim: "entrim-symbol.svg",
   gmicloud: "gmicloud-mono.svg",
-  upstage: "upstage-symbol.svg",
+  upstage: "upstage-color.svg",
   tokenrouter: "tokenrouter-symbol.svg",
   "token-router": "tokenrouter-symbol.svg",
   zai: "zai-mono.svg",

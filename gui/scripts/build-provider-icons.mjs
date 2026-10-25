@@ -9,6 +9,7 @@ export const SOURCE_REVISIONS = {
   "simpleicons": "90646e4bf7f3b89df6c37e65baf3e7bc759a517c"
 };
 export const BRAND_SOURCES = [
+  ["upstage-color.svg", "lobehub", "upstage-color.svg", "Upstage"],
   [
     "workersai-color.svg",
     "lobehub",
@@ -99,11 +100,6 @@ export const ORIGINAL_SYMBOLS = [
     "entrim-symbol.svg",
     "Entrim",
     "<g fill=\"none\" stroke=\"#818CF8\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 5H6v14h12\"/><path d=\"M6 12h9\"/></g>"
-  ],
-  [
-    "upstage-symbol.svg",
-    "Upstage",
-    "<g fill=\"none\" stroke=\"#FF874B\" stroke-width=\"2.3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 5v9a7 7 0 0 0 14 0V5\"/><path d=\"m13 5 3-3 3 3\"/></g>"
   ],
   [
     "tokenrouter-symbol.svg",

@@ -121,5 +121,5 @@ respective owners. Used strictly to identify provider integrations.
 
 ## Original OpenCodex provider pictograms
 
-Entrim, Upstage, TokenRouter, UnlooseAI, Parallel and LM7 pictograms were
+Entrim, TokenRouter, UnlooseAI, Parallel and LM7 pictograms were
 created for this UI and are not official company logos.

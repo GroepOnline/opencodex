@@ -38,6 +38,7 @@ describe("provider rail SVG coverage", () => {
     expect(providerIconSrc("google")).toBe("/provider-icons/google-color.svg");
     expect(providerIconSrc("google-vertex")).toBe("/provider-icons/googlecloud-color.svg");
     expect(providerIconSrc("cloudflare-workers-ai")).toBe("/provider-icons/workersai-color.svg");
+    expect(providerIconSrc("upstage")).toBe("/provider-icons/upstage-color.svg");
     expect(providerIconSrc("cloudflare-ai-gateway")).not.toBe(providerIconSrc("cloudflare-workers-ai"));
   });
 

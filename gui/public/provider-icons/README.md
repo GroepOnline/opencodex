@@ -18,7 +18,7 @@ The generator pins immutable source revisions to keep all assets consistent.
   commit e371fcc0b6d5498b189a3fb935f0eb8ca4c33b74 (MIT)
 - Simple Icons: https://github.com/simple-icons/simple-icons
   commit 90646e4bf7f3b89df6c37e65baf3e7bc759a517c (CC0 repository)
-- Original OpenCodex symbols, NOT official vendor logos: entrim, upstage,
+- Original OpenCodex symbols, NOT official vendor logos: entrim,
   tokenrouter, unlooseai, parallel, lm7.
 
 Branded color marks retain their colors. Monochrome marks are rendered
