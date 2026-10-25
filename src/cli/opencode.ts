@@ -23,9 +23,17 @@ import { loadConfig } from "../config";
 import { visibleNativeSlugs } from "../codex/catalog";
 import { shouldInjectApiAuthHeader } from "../codex/inject";
 import { commandInvocation } from "../lib/win-exec";
-import { loadServiceTokenFromFile, serviceApiTokenFilePath } from "../lib/service-secrets";
+import { configuredAdminToken } from "../lib/admin-secrets";
+import {
+  loadServiceTokenFromFile,
+  serviceApiTokenFilePath,
+} from "../lib/service-secrets";
 import { providerCodexAccountMode } from "../providers/registry";
-import { findLiveProxy, probeHostname, type LiveProxy } from "../server/proxy-liveness";
+import {
+  findLiveProxy,
+  probeHostname,
+  type LiveProxy,
+} from "../server/proxy-liveness";
 import type { OcxConfig } from "../types";
 
 export interface OpencodeLaunchEnv {
@@ -129,7 +137,9 @@ export const OPENCODE_PROVIDER_BLOCK_DEFAULT_CONFIG: OcxConfig = {
   port: 10100,
   hostname: "127.0.0.1",
   defaultProvider: "mock",
-  providers: { mock: { adapter: "openai-chat", baseUrl: "http://127.0.0.1/v1" } },
+  providers: {
+    mock: { adapter: "openai-chat", baseUrl: "http://127.0.0.1/v1" },
+  },
 } as OcxConfig;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -158,22 +168,40 @@ function stripJsonComments(text: string): string {
     if (inBlock) {
       // Newlines are preserved so JSON.parse error positions stay meaningful.
       if (ch === "\n") out += ch;
-      else if (ch === "*" && next === "/") { inBlock = false; i++; }
+      else if (ch === "*" && next === "/") {
+        inBlock = false;
+        i++;
+      }
       continue;
     }
     if (inString) {
       out += ch;
       if (ch === "\\") {
         const escaped = text[i + 1];
-        if (escaped !== undefined) { out += escaped; i++; }
+        if (escaped !== undefined) {
+          out += escaped;
+          i++;
+        }
         continue;
       }
-      if (ch === "\"") inString = false;
+      if (ch === '"') inString = false;
       continue;
     }
-    if (ch === "\"") { inString = true; out += ch; continue; }
-    if (ch === "/" && next === "/") { inLine = true; i++; continue; }
-    if (ch === "/" && next === "*") { inBlock = true; i++; continue; }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      inLine = true;
+      i++;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlock = true;
+      i++;
+      continue;
+    }
     out += ch;
   }
   return out;
@@ -189,13 +217,20 @@ function stripTrailingCommas(text: string): string {
       out += ch;
       if (ch === "\\") {
         const escaped = text[i + 1];
-        if (escaped !== undefined) { out += escaped; i++; }
+        if (escaped !== undefined) {
+          out += escaped;
+          i++;
+        }
         continue;
       }
-      if (ch === "\"") inString = false;
+      if (ch === '"') inString = false;
       continue;
     }
-    if (ch === "\"") { inString = true; out += ch; continue; }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+      continue;
+    }
     if (ch === ",") {
       let j = i + 1;
       while (j < text.length && /\s/.test(text[j]!)) j++;
@@ -227,7 +262,10 @@ export function opencodeGlobalConfigPath(
   env: OpencodeLaunchEnv = process.env,
   home: string = homedir(),
 ): string {
-  const xdg = env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME.length > 0 ? env.XDG_CONFIG_HOME : join(home, ".config");
+  const xdg =
+    env.XDG_CONFIG_HOME && env.XDG_CONFIG_HOME.length > 0
+      ? env.XDG_CONFIG_HOME
+      : join(home, ".config");
   return join(xdg, "opencode", "opencode.json");
 }
 
@@ -249,11 +287,15 @@ export const OPENCODE_API_KEY_ENV_REF = `{env:${OPENCODE_API_KEY_ENV}}`;
  * chat-completions require the caller's real ChatGPT OAuth bearer, not proxy admission.
  */
 export function opencodeLaunchNativeSlugs(config: OcxConfig): string[] {
-  if (providerCodexAccountMode("openai", config.providers?.openai) === "direct") return [];
+  if (providerCodexAccountMode("openai", config.providers?.openai) === "direct")
+    return [];
   return [...visibleNativeSlugs(config)];
 }
 
-function opencodeProviderOptions(baseURL: string, config: OcxConfig): OpencodeProviderBlock["options"] {
+function opencodeProviderOptions(
+  baseURL: string,
+  config: OcxConfig,
+): OpencodeProviderBlock["options"] {
   const options: OpencodeProviderBlock["options"] = { baseURL };
   // Non-loopback binds accept proxy admission only via x-opencodex-api-key so Authorization
   // stays free for Codex Direct upstream credentials when applicable.
@@ -295,16 +337,26 @@ export function buildOpencodeProviderBlockFromCatalog(
     if (models[key]) continue; // first entry wins; native rows lead /api/models
     const entry: OpencodeModelEntry = { name: opencodeModelEntryLabel(model) };
     const { contextWindow } = model;
-    if (typeof contextWindow === "number" && Number.isFinite(contextWindow) && contextWindow > 0) {
+    if (
+      typeof contextWindow === "number" &&
+      Number.isFinite(contextWindow) &&
+      contextWindow > 0
+    ) {
       const context = Math.floor(contextWindow);
-      entry.limit = { context, output: Math.min(SCHEMA_REQUIRED_OUTPUT_BUDGET, context) };
+      entry.limit = {
+        context,
+        output: Math.min(SCHEMA_REQUIRED_OUTPUT_BUDGET, context),
+      };
     }
     models[key] = entry;
   }
   return {
     npm: OPENCODE_PROVIDER_NPM,
     name: "OpenCodex",
-    options: opencodeProviderOptions(opencodeProxyBaseUrl(port, hostname), config),
+    options: opencodeProviderOptions(
+      opencodeProxyBaseUrl(port, hostname),
+      config,
+    ),
     models,
   };
 }
@@ -319,14 +371,14 @@ export function buildOpencodeProviderBlock(
   config: OcxConfig = OPENCODE_PROVIDER_BLOCK_DEFAULT_CONFIG,
 ): OpencodeProviderBlock {
   const catalog: OpencodeCatalogModel[] = [
-    ...nativeSlugs.map(id => ({
+    ...nativeSlugs.map((id) => ({
       namespaced: id,
       native: true,
       provider: "openai",
       id,
       contextWindow: nativeContextWindow(id),
     })),
-    ...routedModels.map(model => ({
+    ...routedModels.map((model) => ({
       namespaced: opencodeModelKey(model.provider, model.id),
       native: false,
       provider: model.provider,
@@ -350,21 +402,29 @@ export async function fetchOpencodeProxyModels(
   const baseUrl = `http://${probeHostname(live.hostname)}:${live.port}`;
   const fetchImpl = deps.fetchImpl ?? fetch;
   const headers = new Headers({ Accept: "application/json" });
-  const token = apiKey.trim();
+  // /api/models is a management route: it requires the admin token, never the
+  // data-plane key (which is 401 there). Fall back to the caller's key so
+  // custom deployments that map it to an admin credential keep working.
+  const token = configuredAdminToken()?.trim() || apiKey.trim();
   if (token) headers.set("X-OpenCodex-API-Key", token);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), deps.timeoutMs ?? OPENCODE_PROXY_MODELS_TIMEOUT_MS);
-  const abortIfTimedOut = (): Promise<never> => new Promise((_, reject) => {
-    if (controller.signal.aborted) {
-      reject(new DOMException("The operation was aborted.", "AbortError"));
-      return;
-    }
-    controller.signal.addEventListener(
-      "abort",
-      () => reject(new DOMException("The operation was aborted.", "AbortError")),
-      { once: true },
-    );
-  });
+  const timeout = setTimeout(
+    () => controller.abort(),
+    deps.timeoutMs ?? OPENCODE_PROXY_MODELS_TIMEOUT_MS,
+  );
+  const abortIfTimedOut = (): Promise<never> =>
+    new Promise((_, reject) => {
+      if (controller.signal.aborted) {
+        reject(new DOMException("The operation was aborted.", "AbortError"));
+        return;
+      }
+      controller.signal.addEventListener(
+        "abort",
+        () =>
+          reject(new DOMException("The operation was aborted.", "AbortError")),
+        { once: true },
+      );
+    });
 
   let response: Response;
   let text: string;
@@ -389,17 +449,25 @@ export async function fetchOpencodeProxyModels(
   }
   let body: unknown = null;
   if (text) {
-    try { body = JSON.parse(text); }
-    catch { body = text; }
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
   }
   if (!response.ok) {
-    const message = body && typeof body === "object" && typeof (body as Record<string, unknown>).error === "string"
-      ? (body as Record<string, string>).error
-      : `Management request failed (${response.status})`;
+    const message =
+      body &&
+      typeof body === "object" &&
+      typeof (body as Record<string, unknown>).error === "string"
+        ? (body as Record<string, string>).error
+        : `Management request failed (${response.status})`;
     throw new Error(message);
   }
   if (!Array.isArray(body)) {
-    throw new Error("Management API returned an unexpected /api/models payload.");
+    throw new Error(
+      "Management API returned an unexpected /api/models payload.",
+    );
   }
   return body as OpencodeProxyModelRow[];
 }
@@ -412,7 +480,8 @@ export function opencodeCatalogFromProxyRows(
   rows: readonly OpencodeProxyModelRow[],
   config: OcxConfig,
 ): OpencodeCatalogModel[] {
-  const omitNative = providerCodexAccountMode("openai", config.providers?.openai) === "direct";
+  const omitNative =
+    providerCodexAccountMode("openai", config.providers?.openai) === "direct";
   const seen = new Set<string>();
   const catalog: OpencodeCatalogModel[] = [];
   for (const row of rows) {
@@ -467,11 +536,17 @@ export function mergeOpencodeRuntimeConfig(
   }
   const existingProvider = parsed.provider;
   if (existingProvider !== undefined && !isRecord(existingProvider)) {
-    return { error: "OPENCODE_CONFIG_CONTENT provider must be a JSON object when present." };
+    return {
+      error:
+        "OPENCODE_CONFIG_CONTENT provider must be a JSON object when present.",
+    };
   }
   return {
     ...parsed,
-    $schema: typeof parsed.$schema === "string" ? parsed.$schema : OPENCODE_CONFIG_SCHEMA,
+    $schema:
+      typeof parsed.$schema === "string"
+        ? parsed.$schema
+        : OPENCODE_CONFIG_SCHEMA,
     provider: {
       ...(isRecord(existingProvider) ? existingProvider : {}),
       [OPENCODE_PROVIDER_ID]: providerBlock,
@@ -490,7 +565,14 @@ export function buildOpencodeConfig(
 ): OpencodeGeneratedConfig {
   const merged = mergeOpencodeRuntimeConfig(
     undefined,
-    buildOpencodeProviderBlock(port, nativeSlugs, routedModels, nativeContextWindow, hostname, config),
+    buildOpencodeProviderBlock(
+      port,
+      nativeSlugs,
+      routedModels,
+      nativeContextWindow,
+      hostname,
+      config,
+    ),
   );
   if (isOpencodeRuntimeConfigError(merged)) {
     throw new Error(merged.error);
@@ -499,7 +581,9 @@ export function buildOpencodeConfig(
 }
 
 /** Serialize the inline runtime config OpenCode merges on launch. */
-export function serializeOpencodeRuntimeConfig(config: OpencodeGeneratedConfig): string {
+export function serializeOpencodeRuntimeConfig(
+  config: OpencodeGeneratedConfig,
+): string {
   return JSON.stringify(config);
 }
 
@@ -517,7 +601,11 @@ function configFileDefinesProvider(path: string): boolean {
   if (!existsSync(path)) return false;
   try {
     const parsed = parseJsonc(readFileSync(path, "utf8"));
-    return isRecord(parsed) && isRecord(parsed.provider) && OPENCODE_PROVIDER_ID in parsed.provider;
+    return (
+      isRecord(parsed) &&
+      isRecord(parsed.provider) &&
+      OPENCODE_PROVIDER_ID in parsed.provider
+    );
   } catch {
     return false;
   }
@@ -565,7 +653,9 @@ function serviceTokenLookupEnv(env: OpencodeLaunchEnv): OpencodeLaunchEnv {
  * not already in the environment, pass through an existing `OCX_API_TOKEN_FILE` or the
  * default hardened service token path so `handleStart` can load it before bind.
  */
-export function opencodeProxyStartEnv(base: OpencodeLaunchEnv = process.env): OpencodeLaunchEnv {
+export function opencodeProxyStartEnv(
+  base: OpencodeLaunchEnv = process.env,
+): OpencodeLaunchEnv {
   const withTokenFile = base.OPENCODEX_API_AUTH_TOKEN?.trim()
     ? base
     : serviceTokenLookupEnv(base);
@@ -582,11 +672,15 @@ export function buildOpencodeEnv(
   apiKey: string,
   base: OpencodeLaunchEnv,
 ): OpencodeLaunchEnv | OpencodeRuntimeConfigError {
-  const runtimeConfig = mergeOpencodeRuntimeConfig(base[OPENCODE_CONFIG_CONTENT_ENV], providerBlock);
+  const runtimeConfig = mergeOpencodeRuntimeConfig(
+    base[OPENCODE_CONFIG_CONTENT_ENV],
+    providerBlock,
+  );
   if (isOpencodeRuntimeConfigError(runtimeConfig)) return runtimeConfig;
   return {
     ...base,
-    [OPENCODE_CONFIG_CONTENT_ENV]: serializeOpencodeRuntimeConfig(runtimeConfig),
+    [OPENCODE_CONFIG_CONTENT_ENV]:
+      serializeOpencodeRuntimeConfig(runtimeConfig),
     [OPENCODE_API_KEY_ENV]: apiKey,
   };
 }
@@ -595,7 +689,10 @@ export function buildOpencodeEnv(
  * Admission key for the proxy: env token, hardened service token file, configured API
  * key, then the open-loopback placeholder. Never serialized into runtime config.
  */
-export function opencodeApiKey(config: OcxConfig, env: OpencodeLaunchEnv = process.env): string {
+export function opencodeApiKey(
+  config: OcxConfig,
+  env: OpencodeLaunchEnv = process.env,
+): string {
   const envToken = env.OPENCODEX_API_AUTH_TOKEN?.trim();
   if (envToken) return envToken;
   const serviceToken = loadServiceTokenFromFile(serviceTokenLookupEnv(env));
@@ -603,31 +700,40 @@ export function opencodeApiKey(config: OcxConfig, env: OpencodeLaunchEnv = proce
   return config.apiKeys?.[0]?.key || "ocx";
 }
 
-async function ensureProxyForOpencode(config: OcxConfig): Promise<LiveProxy | null> {
+async function ensureProxyForOpencode(
+  config: OcxConfig,
+): Promise<LiveProxy | null> {
   const live = await findLiveProxy();
   if (live) return live;
   const cfgPort = config.port;
   const pinPort = typeof cfgPort === "number" && cfgPort > 0 ? cfgPort : 10100;
-  const child = spawn(process.execPath, [process.argv[1], "start", "--port", String(pinPort)], {
-    detached: true,
-    stdio: "ignore",
-    windowsHide: true,
-    env: opencodeProxyStartEnv(process.env) as NodeJS.ProcessEnv,
-  });
+  const child = spawn(
+    process.execPath,
+    [process.argv[1], "start", "--port", String(pinPort)],
+    {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+      env: opencodeProxyStartEnv(process.env) as NodeJS.ProcessEnv,
+    },
+  );
   // Without a listener an 'error' (bad argv[1], EMFILE, AV denial) throws synchronously
   // and kills this process; the health poll below already reports the failure properly.
-  child.on("error", () => { /* handled by the deadline loop returning null */ });
+  child.on("error", () => {
+    /* handled by the deadline loop returning null */
+  });
   child.unref();
   const deadline = Date.now() + 8_000;
   while (Date.now() < deadline) {
     const started = await findLiveProxy();
     if (started) return started;
-    await new Promise(resolve => setTimeout(resolve, 250));
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
   return null;
 }
 
-const OPENCODE_INSTALL_HINT = "❌ `opencode` CLI not found. Install it first: npm install -g opencode-ai";
+const OPENCODE_INSTALL_HINT =
+  "❌ `opencode` CLI not found. Install it first: npm install -g opencode-ai";
 
 /**
  * cmd.exe reports command-not-found as exit 9009 (the win32 launcher routes `.cmd`
@@ -639,7 +745,9 @@ export function opencodeNotFoundHint(
   signal: NodeJS.Signals | null,
   platform: NodeJS.Platform = process.platform,
 ): string | null {
-  return platform === "win32" && code === 9009 && !signal ? OPENCODE_INSTALL_HINT : null;
+  return platform === "win32" && code === 9009 && !signal
+    ? OPENCODE_INSTALL_HINT
+    : null;
 }
 
 export async function cmdOpencode(args: string[]): Promise<number> {
@@ -656,7 +764,9 @@ export async function cmdOpencode(args: string[]): Promise<number> {
     proxyModels = await fetchOpencodeProxyModels(live, apiKey);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    console.error(`❌ Could not fetch the model catalog from the proxy: ${reason}`);
+    console.error(
+      `❌ Could not fetch the model catalog from the proxy: ${reason}`,
+    );
     return 1;
   }
   const catalog = opencodeCatalogFromProxyRows(proxyModels, config);
@@ -668,11 +778,17 @@ export async function cmdOpencode(args: string[]): Promise<number> {
   );
   const baseUrl = providerBlock.options.baseURL;
   const modelCount = catalog.length;
-  console.error(`✅ opencode wired to ${baseUrl} — ${modelCount} model(s) under provider \`${OPENCODE_PROVIDER_ID}\`.`);
-  console.error("   Your existing opencode config files are left untouched; only the runtime provider block is injected.");
+  console.error(
+    `✅ opencode wired to ${baseUrl} — ${modelCount} model(s) under provider \`${OPENCODE_PROVIDER_ID}\`.`,
+  );
+  console.error(
+    "   Your existing opencode config files are left untouched; only the runtime provider block is injected.",
+  );
   const providerOverride = opencodeProviderOverridePath(process.cwd());
   if (providerOverride) {
-    console.error(`ℹ ${providerOverride} also defines provider.${OPENCODE_PROVIDER_ID}; the runtime layer from ocx opencode overrides it for this launch.`);
+    console.error(
+      `ℹ ${providerOverride} also defines provider.${OPENCODE_PROVIDER_ID}; the runtime layer from ocx opencode overrides it for this launch.`,
+    );
   }
 
   const builtEnv = buildOpencodeEnv(providerBlock, apiKey, process.env);
@@ -681,9 +797,13 @@ export async function cmdOpencode(args: string[]): Promise<number> {
     return 1;
   }
   const env = builtEnv;
-  return await new Promise<number>(resolve => {
+  return await new Promise<number>((resolve) => {
     const inv = commandInvocation("opencode", args);
-    const child = spawn(inv.file, inv.args, { stdio: "inherit", env: env as NodeJS.ProcessEnv, ...inv.options });
+    const child = spawn(inv.file, inv.args, {
+      stdio: "inherit",
+      env: env as NodeJS.ProcessEnv,
+      ...inv.options,
+    });
     child.on("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "ENOENT") {
         console.error(OPENCODE_INSTALL_HINT);
@@ -695,7 +815,7 @@ export async function cmdOpencode(args: string[]): Promise<number> {
     child.on("exit", (code, signal) => {
       const hint = opencodeNotFoundHint(code, signal);
       if (hint) console.error(hint);
-      resolve(signal ? 1 : code ?? 0);
+      resolve(signal ? 1 : (code ?? 0));
     });
   });
 }
