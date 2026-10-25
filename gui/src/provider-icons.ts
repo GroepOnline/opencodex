@@ -4,7 +4,7 @@ const PROVIDER_ICON_ALIASES: Record<string, string> = {
   "azure-openai": "openai.svg",
   chatgpt: "openai.svg",
  "cloudflare-ai-gateway": "cloudflare-ai-gateway-color.svg",
-  "cloudflare-workers-ai": "cloudflare-ai-gateway-color.svg",
+  "cloudflare-workers-ai": "workersai-color.svg",
   cursor: "cursor-color.svg",
   deepseek: "deepseek-color.svg",
   firepass: "firepass-color.svg",
@@ -12,9 +12,9 @@ const PROVIDER_ICON_ALIASES: Record<string, string> = {
   github: "github-copilot-color.svg",
   "github-copilot": "copilot-color.svg",
   "gitlab-duo": "gitlab-duo-color.svg",
-  google: "gemini-color.svg",
+  google: "google-color.svg",
   "google-antigravity": "antigravity-color.svg",
-  "google-vertex": "gemini-color.svg",
+  "google-vertex": "googlecloud-color.svg",
   groq: "groq-color.svg",
   huggingface: "huggingface-color.svg",
   kimi: "kimi-color.svg",
@@ -40,9 +40,29 @@ const PROVIDER_ICON_ALIASES: Record<string, string> = {
   "vercel-ai-gateway": "vercel-ai-gateway-color.svg",
   vllm: "vllm-color.svg",
   xai: "grok-color.svg",
-  "mimo-free": "xiaomi-color.svg",
-  xiaomi: "xiaomi-color.svg",
-  "xiaomi-token-plan": "xiaomi-color.svg",
+  "mimo-free": "xiaomimimo-mono.svg",
+  xiaomi: "xiaomimimo-mono.svg",
+  "xiaomi-token-plan": "xiaomimimo-mono.svg",
+  entrim: "entrim-symbol.svg",
+  gmicloud: "gmicloud-mono.svg",
+  upstage: "upstage-symbol.svg",
+  tokenrouter: "tokenrouter-symbol.svg",
+  "token-router": "tokenrouter-symbol.svg",
+  zai: "zai-mono.svg",
+  zhipu: "zai-mono.svg",
+  meta: "meta-color.svg",
+  cohere: "cohere-color.svg",
+  vultr: "vultr-mono.svg",
+  venice: "venice-color.svg",
+  unlooseai: "unlooseai-symbol.svg",
+  cerebras: "cerebras-color.svg",
+  parallel: "parallel-symbol.svg",
+  "parallel-ai": "parallel-symbol.svg",
+  neon: "neon-mono.svg",
+  lm7: "lm7-symbol.svg",
+  modal: "modal-mono.svg",
+  ovhcloud: "ovhcloud-mono.svg",
+  "ovh-cloud": "ovhcloud-mono.svg",
 };
 
 /**
@@ -92,6 +112,26 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   "vercel-ai-gateway": "Vercel AI Gateway",
   vllm: "vLLM",
   litellm: "LiteLLM",
+  entrim: "Entrim",
+  gmicloud: "GMI Cloud",
+  upstage: "Upstage",
+  tokenrouter: "TokenRouter",
+  "token-router": "TokenRouter",
+  zai: "Z.ai",
+  zhipu: "Z.ai",
+  meta: "Meta",
+  cohere: "Cohere",
+  vultr: "Vultr",
+  venice: "Venice",
+  unlooseai: "UnlooseAI",
+  cerebras: "Cerebras",
+  parallel: "Parallel",
+  "parallel-ai": "Parallel",
+  neon: "Neon",
+  lm7: "LM7",
+  modal: "Modal",
+  ovhcloud: "OVHcloud",
+  "ovh-cloud": "OVHcloud",
 };
 
 type ProviderIconHints = {
@@ -101,6 +141,21 @@ type ProviderIconHints = {
 
 function providerIconAlias(provider: string): string | undefined {
   return PROVIDER_ICON_ALIASES[provider.toLowerCase()];
+}
+
+/**
+ * Earlier single-ink assets use currentColor and disappear against dark surfaces
+ * when loaded through img. Render them as CSS masks using the current text color.
+ */
+const LEGACY_MONO_ICONS = new Set([
+  "openai.svg", "groq-color.svg", "grok-color.svg", "firepass-color.svg",
+  "fireworks-color.svg", "copilot-color.svg", "github-copilot-color.svg",
+  "vercel-ai-gateway-color.svg", "vllm-color.svg",
+]);
+
+export function isMonochromeProviderIcon(provider: string): boolean {
+  const file = providerIconAlias(provider);
+  return !!file && (file.endsWith("-mono.svg") || LEGACY_MONO_ICONS.has(file));
 }
 
 /** Optional hints kept for call-site compatibility; resolution is name-based for now. */

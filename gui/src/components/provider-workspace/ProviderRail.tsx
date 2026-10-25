@@ -14,7 +14,7 @@ import {
   type WorkspaceProvider,
 } from "../../provider-workspace/catalog";
 import { isLocalProvider } from "../../provider-workspace/kind";
-import { formatProviderDisplayName, providerIconSrc } from "../../provider-icons";
+import { formatProviderDisplayName, isMonochromeProviderIcon, providerIconSrc } from "../../provider-icons";
 
 export function statusLabel(p: WorkspaceProvider, t: TFn): string {
   const s = binProviderStatus(p);
@@ -61,7 +61,13 @@ export function ProviderIcon({ name, adapter, baseUrl, cls }: {
   const src = providerIconSrc(name, { adapter, baseUrl });
   return (
     <span className={cls}>
-      {src ? (
+      {src && isMonochromeProviderIcon(name) ? (
+        <span
+          className="provider-icon-mask"
+          style={{ maskImage: `url("${src}")`, WebkitMaskImage: `url("${src}")` }}
+          aria-hidden="true"
+        />
+      ) : src ? (
         <img src={src} alt="" aria-hidden="true" />
       ) : (
         <IconServer aria-hidden="true" />

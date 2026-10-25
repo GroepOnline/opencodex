@@ -127,19 +127,19 @@ export const ORIGINAL_SYMBOLS = [
   ]
 ];
 export function frameSvg(raw,title){
- const input=raw.trim(), opening=input.match(/^<svg\\b[^>]*>/i);
+ const input=raw.trim(), opening=input.match(/^<svg\b[^>]*>/i);
  if(!opening)throw Error("Missing SVG root: "+title);
- const vb=opening[0].match(/\\bviewBox="([^"]+)"/);
+ const vb=opening[0].match(/\bviewBox="([^"]+)"/);
  if(!vb)throw Error("Missing SVG viewBox: "+title);
- const inner=input.slice(opening[0].length,input.lastIndexOf("</svg>")).replace(/<title\\b[^>]*>[\\s\\S]*?<\\/title>/g,"").trim();
- if(/<(?:script|image|foreignObject|iframe|use|style|text)\\b|<!(?:DOCTYPE|ENTITY)|\\bon[a-z]+\\s*=|\\b(?:href|src)\\s*=|data:/i.test(inner))throw Error("Unsafe or non-vector icon "+title);
- return '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" role="img">\\n  <title>'+title.replaceAll("&","&amp;")+'</title>\\n  <svg x="1" y="1" width="22" height="22" viewBox="'+vb[1]+'" preserveAspectRatio="xMidYMid meet">\\n    '+inner+'\\n  </svg>\\n</svg>\\n';
+ const inner=input.slice(opening[0].length,input.lastIndexOf("</svg>")).replace(/<title\b[^>]*>[\s\S]*?<\/title>/g,"").trim();
+ if(/<(?:script|image|foreignObject|iframe|use|style|text)\b|<!(?:DOCTYPE|ENTITY)|\bon[a-z]+\s*=|\b(?:href|src)\s*=|data:/i.test(inner))throw Error("Unsafe or non-vector icon "+title);
+ return '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" role="img">\n  <title>'+title.replaceAll("&","&amp;")+'</title>\n  <svg x="1" y="1" width="22" height="22" viewBox="'+vb[1]+'" preserveAspectRatio="xMidYMid meet">\n    '+inner+'\n  </svg>\n</svg>\n';
 }
 export function checkAsset(svg,file){
  if(!svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" role="img">'))throw Error("Invalid icon frame "+file);
  if(!svg.includes('<svg x="1" y="1" width="22" height="22"'))throw Error("Missing safe area "+file);
  if(!svg.includes("<title>")||!svg.trimEnd().endsWith("</svg>"))throw Error("Invalid SVG markup "+file);
- if(/<(?:script|image|foreignObject|iframe|use|style|text)\\b|<!(?:DOCTYPE|ENTITY)|\\bon[a-z]+\\s*=|\\b(?:href|src)\\s*=/i.test(svg))throw Error("Unsafe icon content "+file);
+ if(/<(?:script|image|foreignObject|iframe|use|style|text)\b|<!(?:DOCTYPE|ENTITY)|\bon[a-z]+\s*=|\b(?:href|src)\s*=/i.test(svg))throw Error("Unsafe icon content "+file);
 }
 async function run(){
  const write=process.argv.includes("--write"),verify=process.argv.includes("--verify");
