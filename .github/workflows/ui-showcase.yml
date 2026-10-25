@@ -9,4 +9,4 @@ permissions:
 
 jobs:
   ui-showcase:
-    uses: GroepOnline/.github/.github/workflows/ui-showcase-reusable.yml@master
+    uses: GroepOnline/design-system/.github/workflows/ui-showcase-reusable.yml@44c33ac2a48eee0bd8ed9ea472cd0e95b6dbb311
