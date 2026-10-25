@@ -155,6 +155,8 @@ export interface LogEntry {
   provider: string;
   surface?: LogSurface;
   conversationId?: string;
+  clientAddress?: string;
+  clientUserAgent?: string;
   requestedEffort?: string;
   effectiveEffort?: string;
   reasoningWireField?: string;
@@ -1188,6 +1190,16 @@ function LogDetailDialog({
             </span>
             <span className="muted">{t("logs.col.provider")}</span>
             <span>{detail.provider}</span>
+            {(detail.clientAddress || detail.clientUserAgent) && (
+              <>
+                <span className="muted">{t("logs.detail.client")}</span>
+                <span className="mono log-detail-break">
+                  {[detail.clientAddress, detail.clientUserAgent]
+                    .filter(Boolean)
+                    .join(" \u00b7 ")}
+                </span>
+              </>
+            )}
             {(detail.requestedEffort || detail.effectiveEffort) && (
               <>
                 <span className="muted">{t("logs.col.effort")}</span>

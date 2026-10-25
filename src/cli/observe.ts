@@ -46,7 +46,8 @@ function formatLog(row: LogEntry): string {
   const route = [row.provider, row.model].filter(Boolean).join("/");
   const status = row.status ?? row.statusCode ?? "?";
   const duration = row.durationMs !== undefined ? `${String(row.durationMs)}ms` : "";
-  return [time, String(status), route, duration].filter(Boolean).join("  ");
+  const client = [row.clientAddress, row.clientUserAgent].filter(Boolean).join(" ");
+  return [time, String(status), route, duration, client && `[${client}]`].filter(Boolean).join("  ");
 }
 
 async function logs(argv: string[], deps: RuntimeApiDeps): Promise<void> {

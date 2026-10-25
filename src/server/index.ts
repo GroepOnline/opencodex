@@ -101,6 +101,7 @@ export {
 } from "./lifecycle";
 import {
   addFinalRequestLog,
+  captureClientAttribution,
   hydrateRequestLogsFromDisk,
   httpStatusForRequestLogTerminal,
   httpStatusForTerminalStatus,
@@ -237,6 +238,7 @@ async function logCacheHitRequest(hit: CacheHit): Promise<void> {
   const logCtx: RequestLogContext = {
     model: hit.model || "unknown",
     provider: hit.provider || "unknown",
+    ...captureClientAttribution(hit.request),
   };
   await beginTrace(logCtx, hit.request);
   noteTraceCacheHit(logCtx.trace, hit.responseBody, hit.sourceTraceId);
@@ -1017,6 +1019,7 @@ export function startServer(port?: number) {
         const logCtx: RequestLogContext = {
           model: "unknown",
           provider: "unknown",
+          ...captureClientAttribution(req, requestServer)
         };
         await beginTrace(logCtx, req);
         let response: Response;
@@ -1082,6 +1085,7 @@ export function startServer(port?: number) {
         const logCtx: RequestLogContext = {
           model: "image_gen",
           provider: "unknown",
+          ...captureClientAttribution(req, requestServer)
         };
         const endpoint = url.pathname.endsWith("/edits")
           ? ("edits" as const)
@@ -1182,6 +1186,7 @@ export function startServer(port?: number) {
         const logCtx: RequestLogContext = {
           model: "web_search",
           provider: "unknown",
+          ...captureClientAttribution(req, requestServer)
         };
         const response = await handleSearch(req, config, logCtx);
         addFinalRequestLog(
@@ -1240,6 +1245,7 @@ export function startServer(port?: number) {
         const logCtx: RequestLogContext = {
           model: "unknown",
           provider: "unknown",
+          ...captureClientAttribution(req, requestServer)
         };
         await beginTrace(logCtx, responsesWorkReq);
         let logged = false;
@@ -1380,6 +1386,7 @@ export function startServer(port?: number) {
         const logCtx: RequestLogContext = {
           model: "unknown",
           provider: "unknown",
+          ...captureClientAttribution(req, requestServer)
         };
         await beginTrace(logCtx, messagesWorkReq);
         // Logging is finalized inside handleClaudeMessages (Responses-vocab tap on the
@@ -1436,6 +1443,7 @@ export function startServer(port?: number) {
         const logCtx: RequestLogContext = {
           model: "unknown",
           provider: "unknown",
+          ...captureClientAttribution(req, requestServer)
         };
         await beginTrace(logCtx, chatWorkReq);
         const response = await runWithTrace(logCtx, () =>
@@ -1482,6 +1490,7 @@ export function startServer(port?: number) {
         const logCtx: RequestLogContext = {
           model: "gpt-live",
           provider: "unknown",
+          ...captureClientAttribution(req, requestServer)
         };
         await beginTrace(logCtx, req);
         const response = await runWithTrace(logCtx, () =>
@@ -1536,6 +1545,7 @@ export function startServer(port?: number) {
         const logCtx: RequestLogContext = {
           model: "gpt-live",
           provider: "unknown",
+          ...captureClientAttribution(req, requestServer)
         };
         const resolved = await resolveLiveSidebandUpgrade(
           req,
@@ -1741,6 +1751,7 @@ export function startServer(port?: number) {
           const logCtx: RequestLogContext = {
             model: "unknown",
             provider: "unknown",
+            ...captureClientAttribution(ws.data.headers ?? new Headers())
           };
           let logged = false;
           const finalizeLog = (

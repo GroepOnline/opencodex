@@ -1036,6 +1036,8 @@ export async function handleComboResponses(
       provider: pick.target.provider,
       ...(logCtx.conversationId ? { conversationId: logCtx.conversationId } : {}),
       ...(logCtx.surface ? { surface: logCtx.surface } : {}),
+      ...(logCtx.clientAddress ? { clientAddress: logCtx.clientAddress } : {}),
+      ...(logCtx.clientUserAgent ? { clientUserAgent: logCtx.clientUserAgent } : {}),
     };
     const targetRoute = routeModel(config, `${pick.target.provider}/${pick.target.model}`);
     const childBody = concreteComboRequestBody(

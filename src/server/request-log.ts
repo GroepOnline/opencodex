@@ -59,6 +59,9 @@ export interface RequestLogContext {
   /** Best-effort chat/session correlation for Logs grouping (#330). Opaque; omit when unknown. */
   conversationId?: string;
   surface?: "claude" | "claude-desktop" | "codex" | "grok";
+  /** Inbound client attribution: socket peer address and User-Agent, captured at the fetch boundary. */
+  clientAddress?: string;
+  clientUserAgent?: string;
   requestedModel?: string;
   /** Internal structural combo identity; omitted from RequestLogEntry/JSONL. */
   comboId?: string;
@@ -129,6 +132,9 @@ export interface RequestLogEntry {
   /** TTFT: ms from request start to the first non-empty model output delta; unset for non-streaming/tool-only. */
   firstOutputMs?: number;
   surface?: "claude" | "claude-desktop" | "codex" | "grok";
+  /** Inbound client attribution: socket peer address and User-Agent at the fetch boundary. */
+  clientAddress?: string;
+  clientUserAgent?: string;
   /** Best-effort chat/session correlation for Logs grouping (#330). */
   conversationId?: string;
   requestedModel?: string;
@@ -168,6 +174,41 @@ export interface RequestLogEntry {
   traceId?: string;
   /** Payload-free trace summary (sizes, counts, hashes). */
   trace?: UsageTraceMeta;
+}
+
+/** Minimal structural view of Bun's `Server.requestIP`; keeps this module runtime-typed. */
+interface ClientIpSampler {
+  requestIP(req: Request): { address: string } | null;
+}
+
+const CLIENT_ADDRESS_MAX_LEN = 64;
+const CLIENT_USER_AGENT_MAX_LEN = 200;
+
+/**
+ * Capture inbound client identity for the request log: the peer socket address (when the
+ * runtime can resolve it) and the verbatim User-Agent header. Best-effort — synthetic or
+ * rebuilt requests expose no socket and requestIP may throw on non-server Request objects;
+ * both degrade to an absent field rather than failing the request.
+ */
+export function captureClientAttribution(
+  req: Request | Headers,
+  server?: Pick<ClientIpSampler, "requestIP"> | null,
+): Pick<RequestLogContext, "clientAddress" | "clientUserAgent"> {
+  let clientAddress: string | undefined;
+  if (server && req instanceof Request) {
+    try {
+      const resolved = server.requestIP(req)?.address?.trim();
+      if (resolved) clientAddress = resolved.slice(0, CLIENT_ADDRESS_MAX_LEN);
+    } catch {
+      /* rebuilt requests expose no peer address */
+    }
+  }
+  const headers = req instanceof Request ? req.headers : req;
+  const userAgent = headers.get("user-agent")?.trim();
+  return {
+    ...(clientAddress ? { clientAddress } : {}),
+    ...(userAgent ? { clientUserAgent: userAgent.slice(0, CLIENT_USER_AGENT_MAX_LEN) } : {}),
+  };
 }
 
 const requestLog: RequestLogEntry[] = [];
@@ -296,6 +337,8 @@ export function requestLogEntryFromPersistedUsage(entry: PersistedUsageEntry): R
     ...(entry.promptCache ? { promptCache: { ...entry.promptCache } } : {}),
     ...(entry.firstOutputMs !== undefined ? { firstOutputMs: entry.firstOutputMs } : {}),
     ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
+    ...(entry.clientAddress ? { clientAddress: entry.clientAddress } : {}),
+    ...(entry.clientUserAgent ? { clientUserAgent: entry.clientUserAgent } : {}),
     ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
     ...(entry.account ? { account: entry.account } : {}),
     ...(entry.providerAccountId ? { providerAccountId: entry.providerAccountId } : {}),
@@ -416,6 +459,8 @@ export function addRequestLog(entry: RequestLogEntry) {
       ...(entry.adapter ? { adapter: entry.adapter } : {}),
       ...(entry.promptCache ? { promptCache: { ...entry.promptCache } } : {}),
       ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
+      ...(entry.clientAddress ? { clientAddress: entry.clientAddress } : {}),
+      ...(entry.clientUserAgent ? { clientUserAgent: entry.clientUserAgent } : {}),
       ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
       ...(account ? { account } : {}),
       ...(entry.providerAccountId ? { providerAccountId: entry.providerAccountId } : {}),
@@ -995,6 +1040,8 @@ export function addFinalRequestLog(
       ...(account ? { account } : {}),
       ...(providerAccountId ? { providerAccountId } : {}),
       ...(logCtx.surface ? { surface: logCtx.surface } : {}),
+      ...(logCtx.clientAddress ? { clientAddress: logCtx.clientAddress } : {}),
+      ...(logCtx.clientUserAgent ? { clientUserAgent: logCtx.clientUserAgent } : {}),
       ...(logCtx.conversationId ? { conversationId: logCtx.conversationId } : {}),
       ...(logCtx.requestedModel ? { requestedModel: logCtx.requestedModel } : {}),
       ...(logCtx.requestedEffort ? { requestedEffort: logCtx.requestedEffort } : {}),
