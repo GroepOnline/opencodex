@@ -46,6 +46,15 @@ describe("GET /api/logs display metrics", () => {
     expect(Object.hasOwn(getRequestLogEntries()[0]!, "displayMetrics")).toBe(false);
   });
 
+  test("does not expose injected credentials in GET /api/logs", async () => {
+    const secret = "sk-fixture-never-expose-123456789";
+    addRequestLog(baseEntry({ clientUserAgent: `unknown-cli/7.4.2 Bearer ${secret}` }));
+    const [dto] = await readLogs();
+    expect(dto?.clientUserAgent).toBe("unknown-cli/7.4.2");
+    expect(JSON.stringify(dto)).not.toContain(secret);
+    expect(getRequestLogEntries()[0]?.clientUserAgent).toBe("unknown-cli/7.4.2");
+  });
+
   test("estimated positive output marks tok/s estimated and keeps cost value", async () => {
     addRequestLog(baseEntry({
       usageStatus: "estimated",

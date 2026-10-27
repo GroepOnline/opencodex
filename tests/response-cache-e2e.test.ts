@@ -8,12 +8,13 @@
  * Also covers the new management endpoints GET /api/response-cache + POST .../clear.
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { saveConfig } from "../src/config";
 import { startServer } from "../src/server";
 import { clearRequestLogsForTests, getRequestLogEntries } from "../src/server/request-log";
+import { usageLogPath } from "../src/usage/log";
 import type { OcxConfig } from "../src/types";
 import { installIsolatedCodexHome, type IsolatedCodexHome } from "./helpers/isolated-codex-home";
 import { managementFetch } from "./helpers/management-auth";
@@ -93,7 +94,7 @@ test("identical non-streaming request hits the cache on the second call", async 
     });
     const post = () => fetch(new URL("/v1/chat/completions", server.url), {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: "Bearer caller" },
+      headers: { "content-type": "application/json", authorization: "Bearer caller", "user-agent": "mystery-cli/9.9 token=fixture-secret-never-log" },
       body,
     });
 
@@ -112,6 +113,14 @@ test("identical non-streaming request hits the cache on the second call", async 
     expect(hitLog?.trace?.cacheHit).toBe(true);
     expect(hitLog?.trace?.cacheSourceTraceId).toMatch(/^ocx-[A-Za-z0-9-]+$/);
     expect(hitLog?.trace?.cacheSourceTraceId).not.toBe(hitLog?.requestId);
+    expect(hitLog?.clientAddress).toBeTruthy();
+    expect(hitLog?.clientUserAgent).toBe("mystery-cli/9.9");
+    expect(getRequestLogEntries().at(-2)?.clientAddress).toBeTruthy();
+    const apiLogs = await (await managementFetch(new URL("/api/logs", server.url))).json() as Array<{ clientAddress?: string; clientUserAgent?: string }>;
+    expect(apiLogs.at(-1)?.clientAddress).toBeTruthy();
+    expect(apiLogs.at(-1)?.clientUserAgent).toBe("mystery-cli/9.9");
+    expect(JSON.stringify(apiLogs)).not.toContain("fixture-secret-never-log");
+    expect(readFileSync(usageLogPath(), "utf8")).not.toContain("fixture-secret-never-log");
     const replayed = await second.json() as { object: string; choices: Array<{ message: { content: string } }> };
     expect(replayed.object).toBe("chat.completion");
     expect(replayed.choices[0]?.message.content).toBe("pong");

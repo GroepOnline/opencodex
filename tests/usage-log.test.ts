@@ -57,6 +57,25 @@ describe("usage log", () => {
       totalTokens: 2,
     });
 
+  test("sanitizes User-Agent during direct writes and legacy reads", async () => {
+    const secret = "fixture-sensitive-marker-12345";
+    const row = JSON.parse(persistedLine("ua-privacy")) as Parameters<typeof appendUsageEntry>[0];
+    appendUsageEntry({ ...row, clientUserAgent: `unknown-cli/2.4.6 Bearer ${secret}` });
+    expect(readFileSync(usageLogPath(), "utf8")).not.toContain(secret);
+    expect(readUsageEntries()[0]?.clientUserAgent).toBe("unknown-cli/2.4.6");
+
+    // Records written by an older version must not leak through the usage APIs.
+    writeFileSync(usageLogPath(), JSON.stringify({
+      ...row,
+      requestId: "legacy-ua",
+      clientUserAgent: `unknown-cli/2.4.6 token=${secret}`,
+    }) + "\n");
+    expect(readRecentUsageEntries(1)[0]?.clientUserAgent).toBe("unknown-cli/2.4.6");
+    const [management] = await readUsageEntriesForManagement();
+    expect(management?.clientUserAgent).toBe("unknown-cli/2.4.6");
+    expect(JSON.stringify(management)).not.toContain(secret);
+  });
+
   test("file revisions change after append and in-place rewrite", () => {
     writeFileSync(
       usageLogPath(),
