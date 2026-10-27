@@ -601,6 +601,10 @@ describe("request log metadata", () => {
     expect(JSON.stringify(captured)).not.toContain("other-fixture");
     expect(captureClientAttribution(new Headers({ "user-agent": `Bearer ${secret}` }))).toEqual({});
     expect(captureClientAttribution(new Headers({ "user-agent": "unversioned-private-metadata" }))).toEqual({});
+    const fakeProductKey = ["sk", "fixture", "somecredential", "1234567"].join("-");
+    const fakeGithubKey = ["ghp", "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456"].join("_");
+    expect(captureClientAttribution(new Headers({ "user-agent": `${fakeProductKey}/1.2` }))).toEqual({});
+    expect(captureClientAttribution(new Headers({ "user-agent": `${fakeGithubKey}/1.2` }))).toEqual({});
     expect(captureClientAttribution(new Headers({ "user-agent": "codex_cli_rs/0.74.0 token=fixture" }))).toEqual({ clientUserAgent: "codex_cli_rs/0.74.0" });
     expect(captureClientAttribution(new Headers({ "user-agent": "@anthropic-ai/sdk/0.74.0; token=fixture" }))).toEqual({ clientUserAgent: "@anthropic-ai/sdk/0.74.0" });
     expect(captureClientAttribution(new Headers())).toEqual({});

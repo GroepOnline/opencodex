@@ -1,3 +1,5 @@
+import { redactSecretString } from "./redact";
+
 /**
  * Persistence-safe, deliberately lossy User-Agent identity.
  *
@@ -13,5 +15,8 @@ export function sanitizeClientUserAgent(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const match = CLIENT_PRODUCT_VERSION.exec(value.trim());
   if (!match || SENSITIVE_PRODUCT.test(match[1]!)) return undefined;
-  return `${match[1]}/${match[2]}`;
+  const identity = `${match[1]}/${match[2]}`;
+  // An attacker can put a credential in the product slot itself (e.g. key/1.0).
+  // Do not retain even conventional-looking identifiers with known token shapes.
+  return redactSecretString(identity) === identity ? identity : undefined;
 }
