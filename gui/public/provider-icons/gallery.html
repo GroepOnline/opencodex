@@ -1,0 +1,67 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OpenCodex provider icons</title>
+<style>
+:root{font:14px system-ui,sans-serif;font-synthesis:none;background:#f6f7f9;color:#15171b}
+body{max-width:1360px;margin:0 auto;padding:28px}
+h1{font-size:24px;letter-spacing:-.03em;margin:0 0 8px}
+p{color:#627183;margin:0 0 28px;line-height:1.5}
+.columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.column{padding:22px;border:1px solid #d4d7de;border-radius:14px;--ink:#18202d;background:#fff;color:#18202d}
+.column.dark{background:#121417;color:#e7e9ef;--ink:#e7e9ef;border-color:#343840}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;opacity:.75;margin:0 0 15px}
+.icons{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
+.item{min-width:0;display:flex;align-items:center;gap:11px;padding:9px 6px;border-radius:8px}
+.item:hover{background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.mark{width:28px;height:28px;flex:none;display:flex;align-items:center;justify-content:center}
+.mark img,.mark .mask{width:24px;height:24px;display:block}
+.mask{background-color:var(--ink);mask:var(--mask) center/contain no-repeat;-webkit-mask:var(--mask) center/contain no-repeat}
+.name{font-size:12px;line-height:1.35;overflow-wrap:anywhere}
+@media(max-width:760px){.columns{grid-template-columns:1fr}}
+</style>
+<h1>Provider icon design system</h1><p>24x24 SVG, 1px safe area, uniform optical proportions. Official source-based marks or original pictograms.</p>
+<div class="columns"><section class="column"><h2>Light theme</h2><div class="icons"><div class="item"><span class="mark"><span class="mask" style="--mask:url(./groq-color.svg)" role="img" aria-label="Groq"></span></span><span class="name">Groq</span></div>
+<div class="item"><span class="mark"><span class="mask" style="--mask:url(./openai.svg)" role="img" aria-label="OpenAI (Codex login)"></span></span><span class="name">OpenAI (Codex login)</span></div>
+<div class="item"><span class="mark"><img src="./workersai-color.svg" alt="Cloudflare Workers AI"></span><span class="name">Cloudflare Workers AI</span></div>
+<div class="item"><span class="mark"><img src="./entrim-symbol.svg" alt="Entrim"></span><span class="name">Entrim</span></div>
+<div class="item"><span class="mark"><span class="mask" style="--mask:url(./gmicloud-mono.svg)" role="img" aria-label="GMI Cloud"></span></span><span class="name">GMI Cloud</span></div>
+<div class="item"><span class="mark"><img src="./upstage-color.svg" alt="Upstage"></span><span class="name">Upstage</span></div>
+<div class="item"><span class="mark"><img src="./tokenrouter-symbol.svg" alt="TokenRouter"></span><span class="name">TokenRouter</span></div>
+<div class="item"><span class="mark"><span class="mask" style="--mask:url(./zai-mono.svg)" role="img" aria-label="Z.ai"></span></span><span class="name">Z.ai</span></div>
+<div class="item"><span class="mark"><img src="./meta-color.svg" alt="Meta"></span><span class="name">Meta</span></div>
+<div class="item"><span class="mark"><img src="./cohere-color.svg" alt="Cohere"></span><span class="name">Cohere</span></div>
+<div class="item"><span class="mark"><img src="./google-color.svg" alt="Google"></span><span class="name">Google</span></div>
+<div class="item"><span class="mark"><img src="./antigravity-color.svg" alt="Google Antigravity"></span><span class="name">Google Antigravity</span></div>
+<div class="item"><span class="mark"><span class="mask" style="--mask:url(./xiaomimimo-mono.svg)" role="img" aria-label="Xiaomi MiMo"></span></span><span class="name">Xiaomi MiMo</span></div>
+<div class="item"><span class="mark"><span class="mask" style="--mask:url(./vultr-mono.svg)" role="img" aria-label="Vultr"></span></span><span class="name">Vultr</span></div>
+<div class="item"><span class="mark"><img src="./venice-color.svg" alt="Venice"></span><span class="name">Venice</span></div>
+<div class="item"><span class="mark"><img src="./unlooseai-symbol.svg" alt="UnlooseAI"></span><span class="name">UnlooseAI</span></div>
+<div class="item"><span class="mark"><img src="./huggingface-color.svg" alt="Hugging Face"></span><span class="name">Hugging Face</span></div>
+<div class="item"><span class="mark"><img src="./cerebras-color.svg" alt="Cerebras"></span><span class="name">Cerebras</span></div>
+<div class="item"><span class="mark"><img src="./parallel-symbol.svg" alt="Parallel"></span><span class="name">Parallel</span></div>
+<div class="item"><span class="mark"><span class="mask" style="--mask:url(./neon-mono.svg)" role="img" aria-label="Neon"></span></span><span class="name">Neon</span></div>
+<div class="item"><span class="mark"><img src="./lm7-symbol.svg" alt="LM7"></span><span class="name">LM7</span></div>
+<div class="item"><span class="mark"><span class="mask" style="--mask:url(./modal-mono.svg)" role="img" aria-label="Modal"></span></span><span class="name">Modal</span></div>
+<div class="item"><span class="mark"><span class="mask" style="--mask:url(./ovhcloud-mono.svg)" role="img" aria-label="OVHcloud"></span></span><span class="name">OVHcloud</span></div></div></section>
+<section class="column dark"><h2>Dark theme</h2><div class="icons"><div class="item"><span class="mark"><span class="mask" style="--mask:url(./groq-color.svg)" role="img" aria-label="Groq"></span></span><span class="name">Groq</span></div>
+<div class="item"><span class="mark"><span class="mask" style="--mask:url(./openai.svg)" role="img" aria-label="OpenAI (Codex login)"></span></span><span class="name">OpenAI (Codex login)</span></div>
+<div class="item"><span class="mark"><img src="./workersai-color.svg" alt="Cloudflare Workers AI"></span><span class="name">Cloudflare Workers AI</span></div>
+<div class="item"><span class="mark"><img src="./entrim-symbol.svg" alt="Entrim"></span><span class="name">Entrim</span></div>
+<div class="item"><span class="mark"><span class="mask" style="--mask:url(./gmicloud-mono.svg)" role="img" aria-label="GMI Cloud"></span></span><span class="name">GMI Cloud</span></div>
+<div class="item"><span class="mark"><img src="./upstage-color.svg" alt="Upstage"></span><span class="name">Upstage</span></div>
+<div class="item"><span class="mark"><img src="./tokenrouter-symbol.svg" alt="TokenRouter"></span><span class="name">TokenRouter</span></div>
+<div class="item"><span class="mark"><span class="mask" style="--mask:url(./zai-mono.svg)" role="img" aria-label="Z.ai"></span></span><span class="name">Z.ai</span></div>
+<div class="item"><span class="mark"><img src="./meta-color.svg" alt="Meta"></span><span class="name">Meta</span></div>
+<div class="item"><span class="mark"><img src="./cohere-color.svg" alt="Cohere"></span><span class="name">Cohere</span></div>
+<div class="item"><span class="mark"><img src="./google-color.svg" alt="Google"></span><span class="name">Google</span></div>
+<div class="item"><span class="mark"><img src="./antigravity-color.svg" alt="Google Antigravity"></span><span class="name">Google Antigravity</span></div>
+<div class="item"><span class="mark"><span class="mask" style="--mask:url(./xiaomimimo-mono.svg)" role="img" aria-label="Xiaomi MiMo"></span></span><span class="name">Xiaomi MiMo</span></div>
+<div class="item"><span class="mark"><span class="mask" style="--mask:url(./vultr-mono.svg)" role="img" aria-label="Vultr"></span></span><span class="name">Vultr</span></div>
+<div class="item"><span class="mark"><img src="./venice-color.svg" alt="Venice"></span><span class="name">Venice</span></div>
+<div class="item"><span class="mark"><img src="./unlooseai-symbol.svg" alt="UnlooseAI"></span><span class="name">UnlooseAI</span></div>
+<div class="item"><span class="mark"><img src="./huggingface-color.svg" alt="Hugging Face"></span><span class="name">Hugging Face</span></div>
+<div class="item"><span class="mark"><img src="./cerebras-color.svg" alt="Cerebras"></span><span class="name">Cerebras</span></div>
+<div class="item"><span class="mark"><img src="./parallel-symbol.svg" alt="Parallel"></span><span class="name">Parallel</span></div>
+<div class="item"><span class="mark"><span class="mask" style="--mask:url(./neon-mono.svg)" role="img" aria-label="Neon"></span></span><span class="name">Neon</span></div>
+<div class="item"><span class="mark"><img src="./lm7-symbol.svg" alt="LM7"></span><span class="name">LM7</span></div>
+<div class="item"><span class="mark"><span class="mask" style="--mask:url(./modal-mono.svg)" role="img" aria-label="Modal"></span></span><span class="name">Modal</span></div>
+<div class="item"><span class="mark"><span class="mask" style="--mask:url(./ovhcloud-mono.svg)" role="img" aria-label="OVHcloud"></span></span><span class="name">OVHcloud</span></div></div></section></div>
+<p style="padding-top:22px;font-size:12px">See README.md for asset provenance and reproduction. Original pictograms are not official vendor logos.</p></html>

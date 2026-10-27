@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" role="img">
+  <title>TokenRouter</title>
+  <svg x="1" y="1" width="22" height="22" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet">
+    <g fill="none" stroke="#51C7AE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 7 6 5 6-5M12 12v7"/><circle cx="6" cy="6" r="2.2" fill="#51C7AE" stroke="none"/><circle cx="18" cy="6" r="2.2" fill="#51C7AE" stroke="none"/><circle cx="12" cy="20" r="2.2" fill="#51C7AE" stroke="none"/><circle cx="12" cy="12" r="2.3" fill="#133D35" stroke="#51C7AE"/></g>
+  </svg>
+</svg>
