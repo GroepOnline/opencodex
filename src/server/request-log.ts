@@ -11,6 +11,7 @@ import { readCodexCatalogPath } from "../codex/catalog";
 import type { OcxConfig, OcxUsage } from "../types";
 import type { AdapterRequest } from "../adapters/base";
 import { redactSecretString } from "../lib/redact";
+import { sanitizeClientUserAgent } from "../lib/client-user-agent";
 import { appendTraceResponse, finalizeTrace, type TraceCapture } from "../trace/capture";
 import type { UsageTraceMeta } from "../trace/types";
 import { providerAccountLabel, baseProviderLabel } from "../providers/label";
@@ -182,11 +183,10 @@ interface ClientIpSampler {
 }
 
 const CLIENT_ADDRESS_MAX_LEN = 64;
-const CLIENT_USER_AGENT_MAX_LEN = 200;
 
 /**
  * Capture inbound client identity for the request log: the peer socket address (when the
- * runtime can resolve it) and the verbatim User-Agent header. Best-effort — synthetic or
+ * runtime can resolve it) and a restricted product/version User-Agent. Best-effort — synthetic or
  * rebuilt requests expose no socket and requestIP may throw on non-server Request objects;
  * both degrade to an absent field rather than failing the request.
  */
@@ -203,11 +203,16 @@ export function captureClientAttribution(
       /* rebuilt requests expose no peer address */
     }
   }
-  const headers = req instanceof Request ? req.headers : req;
-  const userAgent = headers.get("user-agent")?.trim();
+  let clientUserAgent: string | undefined;
+  try {
+    const headers = req instanceof Request ? req.headers : req;
+    clientUserAgent = sanitizeClientUserAgent(headers.get("user-agent"));
+  } catch {
+    /* unavailable or malformed headers never interrupt a request */
+  }
   return {
     ...(clientAddress ? { clientAddress } : {}),
-    ...(userAgent ? { clientUserAgent: userAgent.slice(0, CLIENT_USER_AGENT_MAX_LEN) } : {}),
+    ...(clientUserAgent ? { clientUserAgent } : {}),
   };
 }
 
@@ -338,7 +343,9 @@ export function requestLogEntryFromPersistedUsage(entry: PersistedUsageEntry): R
     ...(entry.firstOutputMs !== undefined ? { firstOutputMs: entry.firstOutputMs } : {}),
     ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
     ...(entry.clientAddress ? { clientAddress: entry.clientAddress } : {}),
-    ...(entry.clientUserAgent ? { clientUserAgent: entry.clientUserAgent } : {}),
+    ...(sanitizeClientUserAgent(entry.clientUserAgent)
+      ? { clientUserAgent: sanitizeClientUserAgent(entry.clientUserAgent) }
+      : {}),
     ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
     ...(entry.account ? { account: entry.account } : {}),
     ...(entry.providerAccountId ? { providerAccountId: entry.providerAccountId } : {}),
@@ -411,6 +418,10 @@ export function hydrateRequestLogsFromDisk(
  * @param entry - The request log entry to record
  */
 export function addRequestLog(entry: RequestLogEntry) {
+  // Protect ring-buffer/API callers even when an entry bypasses the fetch boundary.
+  const safeUserAgent = sanitizeClientUserAgent(entry.clientUserAgent);
+  entry = { ...entry, clientUserAgent: safeUserAgent };
+  if (!safeUserAgent) delete entry.clientUserAgent;
   requestLog.push(entry);
   if (requestLog.length > MAX_LOG_SIZE) requestLog.shift();
   captureRequestTelemetry({
@@ -460,7 +471,9 @@ export function addRequestLog(entry: RequestLogEntry) {
       ...(entry.promptCache ? { promptCache: { ...entry.promptCache } } : {}),
       ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
       ...(entry.clientAddress ? { clientAddress: entry.clientAddress } : {}),
-      ...(entry.clientUserAgent ? { clientUserAgent: entry.clientUserAgent } : {}),
+      ...(sanitizeClientUserAgent(entry.clientUserAgent)
+      ? { clientUserAgent: sanitizeClientUserAgent(entry.clientUserAgent) }
+      : {}),
       ...(entry.conversationId ? { conversationId: entry.conversationId } : {}),
       ...(account ? { account } : {}),
       ...(entry.providerAccountId ? { providerAccountId: entry.providerAccountId } : {}),
@@ -1041,7 +1054,9 @@ export function addFinalRequestLog(
       ...(providerAccountId ? { providerAccountId } : {}),
       ...(logCtx.surface ? { surface: logCtx.surface } : {}),
       ...(logCtx.clientAddress ? { clientAddress: logCtx.clientAddress } : {}),
-      ...(logCtx.clientUserAgent ? { clientUserAgent: logCtx.clientUserAgent } : {}),
+      ...(sanitizeClientUserAgent(logCtx.clientUserAgent)
+        ? { clientUserAgent: sanitizeClientUserAgent(logCtx.clientUserAgent) }
+        : {}),
       ...(logCtx.conversationId ? { conversationId: logCtx.conversationId } : {}),
       ...(logCtx.requestedModel ? { requestedModel: logCtx.requestedModel } : {}),
       ...(logCtx.requestedEffort ? { requestedEffort: logCtx.requestedEffort } : {}),

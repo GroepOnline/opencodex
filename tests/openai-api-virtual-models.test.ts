@@ -490,10 +490,13 @@ describe("OpenAI API Pro transport identities", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ model, input: "hello", stream, reasoning: { effort: "high" } }),
     });
+    const wsFixtureSecret = ["sk", "fixture", "never", "retain", "123456"].join("-");
     const wsTurn = (model: string) => {
       const url = new URL("/v1/responses", server.url);
       url.protocol = "ws:";
-      const ws = new WebSocket(url);
+      const ws = new WebSocket(url, {
+        headers: { "user-agent": `mystery-ws-cli/7.6.1 Bearer ${wsFixtureSecret}` },
+      } as unknown as string[]);
       return new Promise<string>((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error("OpenAI API Pro websocket timeout")), 2000);
         ws.addEventListener("open", () => {
@@ -539,6 +542,14 @@ describe("OpenAI API Pro transport identities", () => {
         expect(wsText).toContain(`\"model\":\"${base}\"`);
         expect(wsText).not.toContain(`\"model\":\"${virtual}\"`);
         await expectOnePersisted(beforeWsLogs, beforeWsUsage, selected, virtual, base);
+        const wsLog = (await readLogs()).at(-1);
+        const wsUsage = readUsage().at(-1);
+        expect(wsLog?.clientAddress).toBeTruthy();
+        expect(wsLog?.clientUserAgent).toBe("mystery-ws-cli/7.6.1");
+        expect(wsUsage?.clientAddress).toBeTruthy();
+        expect(wsUsage?.clientUserAgent).toBe("mystery-ws-cli/7.6.1");
+        expect(JSON.stringify(wsLog)).not.toContain(wsFixtureSecret);
+        expect(JSON.stringify(wsUsage)).not.toContain(wsFixtureSecret);
 
         for (const capture of captures.slice(-3)) {
           expect(capture.body).toMatchObject({ model: base, reasoning: { effort: "high", mode: "pro" } });

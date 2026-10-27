@@ -576,7 +576,7 @@ describe("request log metadata", () => {
 
   test("captureClientAttribution degrades on synthetic requests and caps field lengths", () => {
     const req = new Request("http://localhost/v1/chat/completions", {
-      headers: { "user-agent": `u/${"x".repeat(400)}` },
+      headers: { "user-agent": `u/1.2.3 ${"x".repeat(400)}` },
     });
     const throwing = {
       requestIP: (): { address: string } | null => {
@@ -585,9 +585,29 @@ describe("request log metadata", () => {
     };
     const captured = captureClientAttribution(req, throwing);
     expect(captured.clientAddress).toBeUndefined();
-    expect(captured.clientUserAgent).toBe(`u/${"x".repeat(198)}`);
+    expect(captured.clientUserAgent).toBe("u/1.2.3");
     const bare = new Request("http://localhost/v1/chat/completions");
     expect(captureClientAttribution(bare, null)).toEqual({});
+  });
+
+  test("captureClientAttribution keeps only a safe CLI fingerprint", () => {
+    const secret = ["sk", "fixture", "value", "1234567890"].join("-");
+    const tokenBearing = new Headers({
+      "user-agent": `mystery-cli/9.9 Bearer ${secret}; token=other-fixture`,
+    });
+    const captured = captureClientAttribution(tokenBearing);
+    expect(captured).toEqual({ clientUserAgent: "mystery-cli/9.9" });
+    expect(JSON.stringify(captured)).not.toContain(secret);
+    expect(JSON.stringify(captured)).not.toContain("other-fixture");
+    expect(captureClientAttribution(new Headers({ "user-agent": `Bearer ${secret}` }))).toEqual({});
+    expect(captureClientAttribution(new Headers({ "user-agent": "unversioned-private-metadata" }))).toEqual({});
+    const fakeProductKey = ["sk", "fixture", "somecredential", "1234567"].join("-");
+    const fakeGithubKey = ["ghp", "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456"].join("_");
+    expect(captureClientAttribution(new Headers({ "user-agent": `${fakeProductKey}/1.2` }))).toEqual({});
+    expect(captureClientAttribution(new Headers({ "user-agent": `${fakeGithubKey}/1.2` }))).toEqual({});
+    expect(captureClientAttribution(new Headers({ "user-agent": "codex_cli_rs/0.74.0 token=fixture" }))).toEqual({ clientUserAgent: "codex_cli_rs/0.74.0" });
+    expect(captureClientAttribution(new Headers({ "user-agent": "@anthropic-ai/sdk/0.74.0; token=fixture" }))).toEqual({ clientUserAgent: "@anthropic-ai/sdk/0.74.0" });
+    expect(captureClientAttribution(new Headers())).toEqual({});
   });
 
   test("addFinalRequestLog persists client attribution and hydrates it back", () => {
@@ -597,22 +617,44 @@ describe("request log metadata", () => {
     clearRequestLogsForTests();
     resetUsageReadCacheForTests();
     try {
+      const secret = "fixture-credential-not-for-storage";
+      const rawUserAgent = `droid/1.2.3 token=${secret}`;
       const logCtx: RequestLogContext = {
         model: "deepseek-v4-1-flash",
         provider: "neon",
         clientAddress: "100.65.83.86",
-        clientUserAgent: "droid/1.2.3",
+        clientUserAgent: rawUserAgent,
       };
       addFinalRequestLog("ocx-client", 1, logCtx, 200);
       const [logged] = getRequestLogEntries();
       expect(logged?.clientAddress).toBe("100.65.83.86");
       expect(logged?.clientUserAgent).toBe("droid/1.2.3");
       const [persisted] = readUsageEntries();
+      expect(readFileSync(usageLogPath(), "utf8")).not.toContain(secret);
       expect(persisted?.clientAddress).toBe("100.65.83.86");
       expect(persisted?.clientUserAgent).toBe("droid/1.2.3");
       const roundTripped = requestLogEntryFromPersistedUsage(persisted!);
       expect(roundTripped.clientAddress).toBe("100.65.83.86");
       expect(roundTripped.clientUserAgent).toBe("droid/1.2.3");
+      const legacy = requestLogEntryFromPersistedUsage({ ...persisted!, clientUserAgent: rawUserAgent });
+      expect(legacy.clientUserAgent).toBe("droid/1.2.3");
+      expect(JSON.stringify(legacy)).not.toContain(secret);
+
+      // A credential disguised as a conventional product/version name must never
+      // survive even if a caller bypasses the capture boundary with a raw logCtx.
+      for (const credentialProduct of [
+        ["sk", "abcDEF1234567890"].join("-"),
+        ["ghp", "AbcDEF123456789012345"].join("_"),
+      ]) {
+        addFinalRequestLog(`ocx-credential-product-${credentialProduct.length}`, 3, {
+          model: "m",
+          provider: "p",
+          clientUserAgent: `${credentialProduct}/1.0`,
+        }, 200);
+        expect(getRequestLogEntries().at(-1)?.clientUserAgent).toBeUndefined();
+        expect(readUsageEntries().at(-1)?.clientUserAgent).toBeUndefined();
+        expect(readFileSync(usageLogPath(), "utf8")).not.toContain(credentialProduct);
+      }
     } finally {
       if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
       else process.env.OPENCODEX_HOME = previousHome;
