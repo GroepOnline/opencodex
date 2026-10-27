@@ -6,7 +6,7 @@
  * product/version prefix is retained, never the free-form suffix. Unknown
  * formats are omitted rather than risk retaining credentials.
  */
-const CLIENT_PRODUCT_VERSION = /^([A-Za-z][A-Za-z0-9._+-]{0,47})\/(v?\d{1,6}(?:\.\d{1,6}){0,5})(?=$|[\s;(),:?&=+\-])/i;
+const CLIENT_PRODUCT_VERSION = /^((?:@[A-Za-z0-9._-]{1,32}\/)?[A-Za-z_][A-Za-z0-9._+-]{0,47})\/(v?\d{1,6}(?:\.\d{1,6}){0,5})(?=$|[\s;(),:?&=+\-])/i;
 const SENSITIVE_PRODUCT = /(?:auth|bearer|cookie|credential|key|password|secret|session|token|jwt)/i;
 
 export function sanitizeClientUserAgent(value: unknown): string | undefined {
