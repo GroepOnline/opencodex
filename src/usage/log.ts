@@ -1,5 +1,6 @@
 import { chmodSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
+import { sanitizeClientUserAgent } from "../lib/client-user-agent";
 import { getConfigDir } from "../config";
 import { recordOwnedConfigPath } from "../lib/config-ownership";
 import { usageDisplayTotalTokens } from "./totals";
@@ -314,6 +315,7 @@ function capMetadataString(s: string): string {
 function normalizeUsageEntry(entry: PersistedUsageEntry): PersistedUsageEntry {
   const attempts = normalizedAttempts(entry.attempts);
   const promptCache = normalizePromptCacheRequestObservation(entry.promptCache);
+  const clientUserAgent = sanitizeClientUserAgent(entry.clientUserAgent);
   return {
     requestId: entry.requestId,
     timestamp: entry.timestamp,
@@ -327,9 +329,7 @@ function normalizeUsageEntry(entry: PersistedUsageEntry): PersistedUsageEntry {
     ...(typeof entry.clientAddress === "string" && entry.clientAddress.trim()
       ? { clientAddress: capMetadataString(entry.clientAddress.trim()) }
       : {}),
-    ...(typeof entry.clientUserAgent === "string" && entry.clientUserAgent.trim()
-      ? { clientUserAgent: entry.clientUserAgent.trim().slice(0, 200) }
-      : {}),
+    ...(clientUserAgent ? { clientUserAgent } : {}),
     ...(typeof entry.conversationId === "string" && entry.conversationId.trim()
       ? { conversationId: entry.conversationId.trim().slice(0, 128) }
       : {}),

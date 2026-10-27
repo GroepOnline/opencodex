@@ -21,6 +21,8 @@ const SAFE_RESPONSE_HEADER_EXACT = new Set([
 
 export interface WsData {
   headers?: Headers; // base inbound forward headers only; per-turn auth refresh injects current pool tokens
+  /** Sanitized handshake identity; never forward or recompute from rebuilt turn requests. */
+  clientAttribution?: { clientAddress?: string; clientUserAgent?: string };
   authContext?: CodexAuthContext; // last resolved account decision for observability/registry cleanup
   cancel?: () => void; // cancels the in-flight stream reader/fetch
   turnId?: number; // monotonically increasing per socket; prevents stale frames after replacement turns

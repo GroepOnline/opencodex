@@ -232,13 +232,16 @@ const LIVE_SIDEBAND_PENDING_MAX = 32;
  * and addFinalRequestLog omits the usage/totalTokens fields when it is absent. The response itself
  * already carries `x-cache: HIT`; this is purely the request-count / observability entry.
  */
-async function logCacheHitRequest(hit: CacheHit): Promise<void> {
+async function logCacheHitRequest(
+  hit: CacheHit,
+  clientAttribution: Pick<RequestLogContext, "clientAddress" | "clientUserAgent">,
+): Promise<void> {
   const start = Date.now();
   const requestId = nextRequestLogId(start);
   const logCtx: RequestLogContext = {
     model: hit.model || "unknown",
     provider: hit.provider || "unknown",
-    ...captureClientAttribution(hit.request),
+    ...clientAttribution,
   };
   await beginTrace(logCtx, hit.request);
   noteTraceCacheHit(logCtx.trace, hit.responseBody, hit.sourceTraceId);
@@ -596,6 +599,7 @@ export function startServer(port?: number) {
           server.upgrade(req, {
             data: {
               headers: selectForwardHeaders(req.headers),
+              clientAttribution: captureClientAttribution(req, requestServer),
               rateLimitRelease: wsReservation.release,
             },
           })
@@ -1236,7 +1240,7 @@ export function startServer(port?: number) {
           "responses",
         );
         if (responsesCacheProbe && "hit" in responsesCacheProbe) {
-          await logCacheHitRequest(responsesCacheProbe);
+          await logCacheHitRequest(responsesCacheProbe, captureClientAttribution(req, requestServer));
           return withCors(responsesCacheProbe.hit, req, config);
         }
         const responsesWorkReq = responsesCacheProbe?.request ?? req;
@@ -1377,7 +1381,7 @@ export function startServer(port?: number) {
           "messages",
         );
         if (messagesCacheProbe && "hit" in messagesCacheProbe) {
-          await logCacheHitRequest(messagesCacheProbe);
+          await logCacheHitRequest(messagesCacheProbe, captureClientAttribution(req, requestServer));
           return withCors(messagesCacheProbe.hit, req, config);
         }
         const messagesWorkReq = messagesCacheProbe?.request ?? req;
@@ -1434,7 +1438,7 @@ export function startServer(port?: number) {
           "chat-completions",
         );
         if (chatCacheProbe && "hit" in chatCacheProbe) {
-          await logCacheHitRequest(chatCacheProbe);
+          await logCacheHitRequest(chatCacheProbe, captureClientAttribution(req, requestServer));
           return withCors(chatCacheProbe.hit, req, config);
         }
         const chatWorkReq = chatCacheProbe?.request ?? req;
@@ -1751,7 +1755,7 @@ export function startServer(port?: number) {
           const logCtx: RequestLogContext = {
             model: "unknown",
             provider: "unknown",
-            ...captureClientAttribution(ws.data.headers ?? new Headers())
+            ...(ws.data.clientAttribution ?? {})
           };
           let logged = false;
           const finalizeLog = (
