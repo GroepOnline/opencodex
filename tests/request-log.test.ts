@@ -16,6 +16,7 @@ import {
   addRequestLog,
   aggregateAttemptUsage,
   beginRequestAttempt,
+  captureClientAttribution,
   clearRequestLogsForTests,
   catalogModelSupportsServiceTier,
   readConfiguredCodexServiceTier,
@@ -560,6 +561,65 @@ describe("request log metadata", () => {
       (entry) => captured2.push(entry),
     );
     expect(captured2[0]).not.toHaveProperty("firstOutputMs");
+  });
+
+  test("captureClientAttribution captures peer address and user-agent", () => {
+    const req = new Request("http://localhost/v1/chat/completions", {
+      headers: { "user-agent": "droid/1.2.3" },
+    });
+    const server = { requestIP: () => ({ address: " 100.65.83.86 " }) };
+    expect(captureClientAttribution(req, server)).toEqual({
+      clientAddress: "100.65.83.86",
+      clientUserAgent: "droid/1.2.3",
+    });
+  });
+
+  test("captureClientAttribution degrades on synthetic requests and caps field lengths", () => {
+    const req = new Request("http://localhost/v1/chat/completions", {
+      headers: { "user-agent": `u/${"x".repeat(400)}` },
+    });
+    const throwing = {
+      requestIP: (): { address: string } | null => {
+        throw new Error("no socket");
+      },
+    };
+    const captured = captureClientAttribution(req, throwing);
+    expect(captured.clientAddress).toBeUndefined();
+    expect(captured.clientUserAgent).toBe(`u/${"x".repeat(198)}`);
+    const bare = new Request("http://localhost/v1/chat/completions");
+    expect(captureClientAttribution(bare, null)).toEqual({});
+  });
+
+  test("addFinalRequestLog persists client attribution and hydrates it back", () => {
+    const home = mkdtempSync(join(tmpdir(), "ocx-req-log-client-"));
+    const previousHome = process.env.OPENCODEX_HOME;
+    process.env.OPENCODEX_HOME = home;
+    clearRequestLogsForTests();
+    resetUsageReadCacheForTests();
+    try {
+      const logCtx: RequestLogContext = {
+        model: "deepseek-v4-1-flash",
+        provider: "neon",
+        clientAddress: "100.65.83.86",
+        clientUserAgent: "droid/1.2.3",
+      };
+      addFinalRequestLog("ocx-client", 1, logCtx, 200);
+      const [logged] = getRequestLogEntries();
+      expect(logged?.clientAddress).toBe("100.65.83.86");
+      expect(logged?.clientUserAgent).toBe("droid/1.2.3");
+      const [persisted] = readUsageEntries();
+      expect(persisted?.clientAddress).toBe("100.65.83.86");
+      expect(persisted?.clientUserAgent).toBe("droid/1.2.3");
+      const roundTripped = requestLogEntryFromPersistedUsage(persisted!);
+      expect(roundTripped.clientAddress).toBe("100.65.83.86");
+      expect(roundTripped.clientUserAgent).toBe("droid/1.2.3");
+    } finally {
+      if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
+      else process.env.OPENCODEX_HOME = previousHome;
+      resetUsageReadCacheForTests();
+      clearRequestLogsForTests();
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   test("records ordered attempts with sealed identity, fresh estimates, and deduplicated recoveries", () => {

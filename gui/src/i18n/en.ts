@@ -755,6 +755,7 @@ export const en = {
   "logs.conversation.excluded":
     "({unpriced} unpriced, {unmetered} unmetered excluded from ~$)",
   "logs.detail.conversation": "Conversation",
+  "logs.detail.client": "Client",
   "logs.badge.claude": "Claude",
   "logs.badge.grok": "Grok",
   "logs.col.time": "Time",

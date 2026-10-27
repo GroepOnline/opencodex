@@ -60,6 +60,9 @@ export interface PersistedUsageEntry {
   /** Structural prompt-cache metadata from the final outbound request. */
   promptCache?: PromptCacheRequestObservation;
   surface?: "claude" | "claude-desktop" | "codex" | "grok";
+  /** Inbound client attribution captured at the fetch boundary (peer address / User-Agent). */
+  clientAddress?: string;
+  clientUserAgent?: string;
   /** Best-effort chat/session correlation for Logs grouping (#330). */
   conversationId?: string;
   /**
@@ -321,6 +324,12 @@ function normalizeUsageEntry(entry: PersistedUsageEntry): PersistedUsageEntry {
       : {}),
     ...(promptCache ? { promptCache } : {}),
     ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
+    ...(typeof entry.clientAddress === "string" && entry.clientAddress.trim()
+      ? { clientAddress: capMetadataString(entry.clientAddress.trim()) }
+      : {}),
+    ...(typeof entry.clientUserAgent === "string" && entry.clientUserAgent.trim()
+      ? { clientUserAgent: entry.clientUserAgent.trim().slice(0, 200) }
+      : {}),
     ...(typeof entry.conversationId === "string" && entry.conversationId.trim()
       ? { conversationId: entry.conversationId.trim().slice(0, 128) }
       : {}),
