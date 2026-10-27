@@ -639,6 +639,22 @@ describe("request log metadata", () => {
       const legacy = requestLogEntryFromPersistedUsage({ ...persisted!, clientUserAgent: rawUserAgent });
       expect(legacy.clientUserAgent).toBe("droid/1.2.3");
       expect(JSON.stringify(legacy)).not.toContain(secret);
+
+      // A credential disguised as a conventional product/version name must never
+      // survive even if a caller bypasses the capture boundary with a raw logCtx.
+      for (const credentialProduct of [
+        ["sk", "abcDEF1234567890"].join("-"),
+        ["ghp", "AbcDEF123456789012345"].join("_"),
+      ]) {
+        addFinalRequestLog(`ocx-credential-product-${credentialProduct.length}`, 3, {
+          model: "m",
+          provider: "p",
+          clientUserAgent: `${credentialProduct}/1.0`,
+        }, 200);
+        expect(getRequestLogEntries().at(-1)?.clientUserAgent).toBeUndefined();
+        expect(readUsageEntries().at(-1)?.clientUserAgent).toBeUndefined();
+        expect(readFileSync(usageLogPath(), "utf8")).not.toContain(credentialProduct);
+      }
     } finally {
       if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
       else process.env.OPENCODEX_HOME = previousHome;
