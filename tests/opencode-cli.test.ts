@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { clearModelCache } from "../src/codex/model-cache";
@@ -221,6 +221,13 @@ describe("ocx opencode proxy model catalog", () => {
   const PROVIDER = "proxyenv";
 
   test("uses /api/models namespaced selectors and resolves env-backed provider keys only in the proxy", async () => {
+    // This test verifies apiKey fallback, not a different test\x27s persisted admin token.
+    // A preceding server test can create admin-api-token in the shared CI home.
+    const previousHome = process.env.OPENCODEX_HOME;
+    const previousAdminToken = process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
+    const isolatedHome = mkdtempSync(join(tmpdir(), "ocx-opencode-catalog-"));
+    process.env.OPENCODEX_HOME = isolatedHome;
+    delete process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
     const originalFetch = globalThis.fetch;
     let requestedAuth: string | undefined;
     globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
@@ -307,6 +314,11 @@ describe("ocx opencode proxy model catalog", () => {
       clearModelCache(PROVIDER);
       if (previous === undefined) delete process.env[ENV_KEY];
       else process.env[ENV_KEY] = previous;
+      if (previousAdminToken === undefined) delete process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
+      else process.env.OPENCODEX_ADMIN_AUTH_TOKEN = previousAdminToken;
+      if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
+      else process.env.OPENCODEX_HOME = previousHome;
+      rmSync(isolatedHome, { recursive: true, force: true });
     }
   });
 
