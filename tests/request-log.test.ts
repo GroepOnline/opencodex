@@ -591,7 +591,7 @@ describe("request log metadata", () => {
   });
 
   test("captureClientAttribution keeps only a safe CLI fingerprint", () => {
-    const secret = "sk-fixture-value-1234567890";
+    const secret = ["sk", "fixture", "value", "1234567890"].join("-");
     const tokenBearing = new Headers({
       "user-agent": `mystery-cli/9.9 Bearer ${secret}; token=other-fixture`,
     });

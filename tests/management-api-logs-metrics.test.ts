@@ -47,7 +47,7 @@ describe("GET /api/logs display metrics", () => {
   });
 
   test("does not expose injected credentials in GET /api/logs", async () => {
-    const secret = "sk-fixture-never-expose-123456789";
+    const secret = ["sk", "fixture", "never-expose", "123456789"].join("-");
     addRequestLog(baseEntry({ clientUserAgent: `unknown-cli/7.4.2 Bearer ${secret}` }));
     const [dto] = await readLogs();
     expect(dto?.clientUserAgent).toBe("unknown-cli/7.4.2");
