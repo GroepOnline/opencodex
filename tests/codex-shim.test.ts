@@ -176,7 +176,7 @@ describe("Codex autostart shim", () => {
     );
 
     expect(source).toContain(
-      "`\\uFEFF${buildWindowsPowerShellCodexShim(realCodexPath, bun, cli)}`",
+      `\`\\uFEFF\${buildWindowsPowerShellCodexShim(realCodexPath, bun, cli)}\``,
     );
   });
 
