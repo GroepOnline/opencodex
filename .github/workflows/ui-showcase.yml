@@ -1,0 +1,12 @@
+name: UI showcase evidence
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  ui-showcase:
+    uses: GroepOnline/design-system/.github/workflows/ui-showcase-reusable.yml@01dd0e594ff23772806eea79c68166897c8de9ff
