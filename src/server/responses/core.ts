@@ -125,7 +125,7 @@ import {
 import { slugsEquivalent } from "../../providers/slug-codec";
 import { applyOpenAiVirtualModel, resolveOpenAiCompactModel } from "../../providers/openai-virtual-models";
 import { isUsageDebugEnabled } from "../../usage/debug";
-import { readJsonRequestBody, DecompressedBodyTooLargeError, UnsupportedContentEncodingError } from "../request-decompress";
+import { readJsonRequestBody, CompressedBodyTooLargeError, DecompressedBodyTooLargeError, UnsupportedContentEncodingError } from "../request-decompress";
 import { resolveAdapter, resolveWireProtocolOverride } from "../adapter-resolve";
 import { shouldAttemptImageTierRetry } from "../image-retry";
 import { resolveProviderTransport } from "../../providers/xai-transport";
@@ -495,7 +495,7 @@ export function decodeRequestErrorResponse(err: unknown, label: string): Respons
   if (err instanceof UnsupportedContentEncodingError) {
     return formatErrorResponse(415, "invalid_request_error", err.message);
   }
-  if (err instanceof DecompressedBodyTooLargeError) {
+  if (err instanceof DecompressedBodyTooLargeError || err instanceof CompressedBodyTooLargeError) {
     return formatErrorResponse(413, "invalid_request_error", err.message);
   }
   console.warn(`[${label}] request body decode/parse failed: ${err instanceof Error ? `${err.name}: ${err.message}` : String(err)}`);

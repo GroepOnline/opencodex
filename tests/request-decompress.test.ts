@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  CompressedBodyTooLargeError,
   DecompressedBodyTooLargeError,
   decodeRequestBody,
+  MAX_COMPRESSED_BODY_BYTES,
   MAX_DECOMPRESSED_BODY_BYTES,
   readJsonRequestBody,
   UnsupportedContentEncodingError,
@@ -173,5 +175,55 @@ describe("readJsonRequestBody", () => {
       body: Bun.zstdCompressSync(new TextEncoder().encode("{\"model\":")),
     });
     await expect(readJsonRequestBody(req)).rejects.toBeInstanceOf(SyntaxError);
+  });
+
+  test("rejects an oversized declared content-length before reading the body", async () => {
+    // The wire body is bounded too: a declared over-cap length must fail fast without
+    // buffering anything, not after req.arrayBuffer() already paid the allocation.
+    const req = new Request("http://localhost/v1/responses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "content-encoding": "zstd",
+        "content-length": String(MAX_COMPRESSED_BODY_BYTES + 1),
+      },
+      body: PAYLOAD_BYTES,
+    });
+    await expect(readJsonRequestBody(req)).rejects.toBeInstanceOf(CompressedBodyTooLargeError);
+  });
+
+  test("rejects a streamed wire body that crosses the compressed cap", async () => {
+    // No declared length still trips the cap mid-stream (the header is not authoritative),
+    // and the reader aborts rather than buffering the remainder. Chunks are produced lazily
+    // so the test never materializes the full over-cap body.
+    let produced = 0;
+    const CHUNK = 4 * 1024 * 1024;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        produced += CHUNK;
+        controller.enqueue(new Uint8Array(CHUNK));
+      },
+    });
+    const req = new Request("http://localhost/v1/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: stream,
+      // Bun Request requires duplex for streamed bodies.
+      duplex: "half",
+    } as RequestInit & { duplex: "half" });
+    await expect(readJsonRequestBody(req)).rejects.toBeInstanceOf(CompressedBodyTooLargeError);
+    // Cancellation must stop the producer well short of an unbounded body.
+    expect(produced).toBeLessThanOrEqual(MAX_COMPRESSED_BODY_BYTES + CHUNK * 4);
+  });
+
+  test("wire body at the compressed cap still reaches the decoder", async () => {
+    const compressed = Bun.zstdCompressSync(PAYLOAD_BYTES);
+    expect(compressed.byteLength).toBeLessThanOrEqual(MAX_COMPRESSED_BODY_BYTES);
+    const req = new Request("http://localhost/v1/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json", "content-encoding": "zstd" },
+      body: compressed,
+    });
+    expect(await readJsonRequestBody(req)).toEqual(PAYLOAD);
   });
 });
