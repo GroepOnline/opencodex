@@ -776,7 +776,7 @@ export function createOpenAIChatAdapter(provider: OcxProviderConfig): ProviderAd
         body.prompt_cache_key = parsed.options.promptCacheKey;
       }
 
-      if (tools) {
+      if (tools && provider.omitParallelToolCalls !== true) {
         // Default-ON for chat-completions providers (user decision 260709): the buffered
         // parser assembles multi-call streams safely, so `parallelToolCalls: false` is the
         // only per-provider opt-out; Codex's request bit can still force false per request.

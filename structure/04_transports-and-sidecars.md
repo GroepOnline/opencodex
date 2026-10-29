@@ -1,5 +1,14 @@
 # Transports And Sidecars SOT
 
+## Strict Chat Completions tool compatibility
+
+The OpenAI Chat adapter sends `parallel_tool_calls` with tool-bearing requests by default.
+For upstream gateways that reject the **presence** of this field (including `false`),
+set `providers.<id>.omitParallelToolCalls: true` in the OCX provider config.
+This removes only that upstream request property; tool definitions and tool-call bridging remain enabled.
+The explicit omission overrides both the provider `parallelToolCalls` setting and per-request preferences.
+Do not use `parallelToolCalls: false` as a substitute: it still sends the field.
+
 ## Provider diagnostic outbound safety
 
 Provider connection tests and live model discovery share the GET-only provider outbound wrapper.
