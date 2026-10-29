@@ -61,8 +61,34 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
       - name: Build
         id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Dockerfile
+          # Multi-arch like publish so arm64 regressions surface on the PR, not at
+          # tag time. A manifest list cannot load into docker, so nothing is loaded.
+          platforms: linux/amd64,linux/arm64
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          provenance: false
+          sbom: false
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ steps.meta.outputs.version }}
+            BUILD_DATE=${{ steps.meta.outputs.build_date }}
+
+      - name: Build amd64 image for smoke
+        id: smoke-build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
@@ -77,6 +103,26 @@ jobs:
             VCS_REF=${{ github.sha }}
             VERSION=${{ steps.meta.outputs.version }}
             BUILD_DATE=${{ steps.meta.outputs.build_date }}
+
+      - name: Smoke test image
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          EXPECT_SHA: ${{ github.sha }}
+          EXPECT_VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Bare docker run must provide a token: BIND_HOST=0.0.0.0 fails closed without one.
+          docker run -d --name ocx-smoke \
+            -e OPENCODEX_API_AUTH_TOKEN=ci-smoke-token \
+            -p 127.0.0.1:10100:10100 "$IMAGE"
+          trap 'docker logs ocx-smoke || true; docker rm -f ocx-smoke || true' EXIT
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:10100/healthz >/dev/null 2>&1 && break
+            sleep 1
+          done
+          OPENCODEX_SMOKE_EXPECT_SHA="$EXPECT_SHA" \
+          OPENCODEX_SMOKE_EXPECT_VERSION="$EXPECT_VERSION" \
+            bash scripts/healthz-smoke.sh
 
       - name: Record digest
         if: steps.build.outcome == 'success'
@@ -232,8 +278,8 @@ jobs:
           push: true
           load: false
           tags: ${{ steps.meta.outputs.tags }}
-          provenance: false
-          sbom: false
+          provenance: mode=max
+          sbom: true
           build-args: |
             VCS_REF=${{ github.sha }}
             VERSION=${{ steps.meta.outputs.version }}
