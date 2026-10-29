@@ -59,18 +59,20 @@ describe("container image", () => {
       'ENTRYPOINT ["/usr/bin/tini", "--", "/app/scripts/container-entrypoint.sh"]',
     );
     expect(dockerfile).toContain(
-      "FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION}-slim AS root-deps",
+      "FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION}-slim@${BUN_IMAGE_DIGEST} AS root-deps",
     );
     expect(dockerfile).toContain(
-      "FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION}-slim AS gui-deps",
+      "FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION}-slim@${BUN_IMAGE_DIGEST} AS gui-deps",
     );
     expect(dockerfile).toContain(
-      "FROM oven/bun:${BUN_VERSION}-slim AS prod-deps",
+      "FROM oven/bun:${BUN_VERSION}-slim@${BUN_IMAGE_DIGEST} AS prod-deps",
     );
     expect(dockerfile).toContain(
-      "FROM oven/bun:${BUN_VERSION}-slim AS runtime",
+      "FROM oven/bun:${BUN_VERSION}-slim@${BUN_IMAGE_DIGEST} AS runtime",
     );
     expect(dockerfile).toContain("OPENCODEX_GIT_SHA=${VCS_REF}");
+    // The base image is digest-pinned; the pin must stay a full sha256 manifest-list digest.
+    expect(dockerfile).toMatch(/ARG BUN_IMAGE_DIGEST=sha256:[0-9a-f]{64}\n/);
     // README-only media is not shipped in the runtime image.
     expect(dockerfile).not.toContain("/app/assets ./assets");
     const workflow = await Bun.file(
