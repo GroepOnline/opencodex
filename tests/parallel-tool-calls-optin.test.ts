@@ -42,6 +42,18 @@ describe("parallel tool calls provider opt-in (request body)", () => {
     const body = JSON.parse(adapter.buildRequest(parsedRequest({ parallelToolCalls: true })).body) as Record<string, unknown>;
     expect(body.parallel_tool_calls).toBe(false);
   });
+  test("strict upstream omits parallel_tool_calls entirely when opted out", () => {
+    const adapter = createOpenAIChatAdapter({
+      adapter: "openai-chat", baseUrl: "https://api.neon.example/v1", apiKey: "k",
+      omitParallelToolCalls: true,
+    });
+    for (const options of [{}, { parallelToolCalls: true }, { parallelToolCalls: false }]) {
+      const body = JSON.parse(adapter.buildRequest(parsedRequest(options)).body) as Record<string, unknown>;
+      expect("parallel_tool_calls" in body).toBe(false);
+      expect(Array.isArray(body.tools)).toBe(true);
+    }
+  });
+
 });
 
 describe("stale persisted config backfill (router)", () => {
@@ -61,6 +73,27 @@ describe("stale persisted config backfill (router)", () => {
     };
     const route = routeModel(config, "xai/grok-4.5");
     expect(route.provider.parallelToolCalls).toBe(true);
+  });
+
+  test("persisted strict gateway flag reaches routed provider", () => {
+    const config: OcxConfig = {
+      port: 10100,
+      defaultProvider: "neon",
+      providers: {
+        neon: {
+          adapter: "openai-chat",
+          baseUrl: "https://api.neon.example/v1",
+          apiKey: "k",
+          defaultModel: "claude-opus-5-5",
+          models: ["claude-opus-5-5"],
+          omitParallelToolCalls: true,
+        },
+      },
+    };
+    const route = routeModel(config, "neon/claude-opus-5-5");
+    expect(route.provider.omitParallelToolCalls).toBe(true);
+    const body = JSON.parse(createOpenAIChatAdapter(route.provider).buildRequest(parsedRequest()).body) as Record<string, unknown>;
+    expect("parallel_tool_calls" in body).toBe(false);
   });
 
   test("user-persisted explicit false overrides the registry opt-in", () => {

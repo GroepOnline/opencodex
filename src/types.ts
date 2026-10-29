@@ -1256,6 +1256,12 @@ export interface OcxProviderConfig {
    */
   parallelToolCalls?: boolean;
   /**
+   * Strict chat-completions backends may reject the parallel_tool_calls property entirely,
+   * including false. Omit it from tool requests when true; takes precedence over
+   * parallelToolCalls and client request options.
+   */
+  omitParallelToolCalls?: boolean;
+  /**
    * Opt-in: forward `prompt_cache_key` to the upstream `/chat/completions` body.
    * OpenAI-specific extension; strict backends (Groq, Cerebras, etc.) reject unknown
    * fields. Default off; only enable for providers that document this parameter.
