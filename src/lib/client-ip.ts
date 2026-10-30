@@ -59,13 +59,18 @@ function expandIpv6(input: string): string[] | null {
   }
   const sides = address.split("::");
   if (sides.length > 2) return null;
-  const parse = (side: string): string[] | null => {
-    if (!side) return [];
-    const groups = side.split(":");
-    return groups.every((group) => HEXTET.test(group)) ? groups : null;
-  };
-  const left = parse(sides[0] ?? "");
-  const right = parse(sides.length === 2 ? (sides[1] ?? "") : "");
+  return expandHextets(sides);
+}
+
+function parseHextetSide(side: string): string[] | null {
+  if (!side) return [];
+  const groups = side.split(":");
+  return groups.every((group) => HEXTET.test(group)) ? groups : null;
+}
+
+function expandHextets(sides: string[]): string[] | null {
+  const left = parseHextetSide(sides[0] ?? "");
+  const right = parseHextetSide(sides.length === 2 ? (sides[1] ?? "") : "");
   if (left === null || right === null) return null;
   if (sides.length === 1) {
     // No compression: exactly eight groups (dotted tail already counted as two).
@@ -74,8 +79,7 @@ function expandIpv6(input: string): string[] | null {
   const missing = 8 - left.length - right.length;
   // "::" alone (missing === 8) is the unspecified address; reject the
   // "x::y" form that fills nothing ("1:2:3:4:5:6:7:8::" is already full).
-  if (missing < 0 || (sides.length === 2 && left.length + right.length === 8))
-    return null;
+  if (missing < 0 || left.length + right.length === 8) return null;
   return [...left, ...Array<string>(missing).fill("0"), ...right];
 }
 
