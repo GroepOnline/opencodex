@@ -221,6 +221,10 @@ typecheck` / `bun run test`.
 
 ## Agent skills
 
+### pstack
+
+Project-local pstack skills (upstream pstack 0.15.36, MIT) live in `.cursor/skills/`. The Xcode skill is not included. Running `setup-pstack` writes `~/.cursor/rules/pstack-models.mdc` only after a reasoning budget is chosen.
+
 ### Issue tracker
 
 Issues are tracked in Linear through the MCP workflow; GitHub Issues are not used. See `docs/agents/issue-tracker.md`.
