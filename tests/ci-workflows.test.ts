@@ -125,14 +125,22 @@ describe("GitHub Actions hardening", () => {
         "enforce-issue-quality",
         {
           translate: { contents: "read", issues: "write", models: "read" },
-          "translate-comment": { contents: "read", issues: "write", models: "read" },
+          "translate-comment": {
+            contents: "read",
+            issues: "write",
+            models: "read",
+          },
           validate: { contents: "read", issues: "write" },
         },
       ],
       [
         "issue-triage",
         {
-          "find-duplicates": { contents: "read", issues: "read", models: "read" },
+          "find-duplicates": {
+            contents: "read",
+            issues: "read",
+            models: "read",
+          },
           "post-duplicates": { issues: "write" },
         },
       ],
@@ -143,7 +151,10 @@ describe("GitHub Actions hardening", () => {
       expect(workflow.permissions).toEqual({});
       expect(
         Object.fromEntries(
-          Object.entries(workflow.jobs).map(([id, job]) => [id, job.permissions]),
+          Object.entries(workflow.jobs).map(([id, job]) => [
+            id,
+            job.permissions,
+          ]),
         ),
       ).toEqual(expected);
     }
@@ -347,7 +358,12 @@ describe("GitHub Actions hardening", () => {
     expect(dockerfile).toContain(`ARG BUN_VERSION=${pkg.dependencies.bun}\n`);
   });
 
-  test.each(["ci", "security-audit", "service-lifecycle", "design-system-contract"])(
+  test.each([
+    "ci",
+    "security-audit",
+    "service-lifecycle",
+    "design-system-contract",
+  ])(
     "%s checks changes to the shared Bun version on push and PR",
     async (name) => {
       const workflow = Bun.YAML.parse(
@@ -402,7 +418,9 @@ describe("GitHub Actions hardening", () => {
   });
 
   test("coverage is informational, runs only on Ubuntu shard 1, and uploads lcov", async () => {
-    const workflow = Bun.YAML.parse(await readText(".github/workflows/ci.yml")) as {
+    const workflow = Bun.YAML.parse(
+      await readText(".github/workflows/ci.yml"),
+    ) as {
       jobs: {
         test: {
           steps: Array<{
@@ -419,17 +437,28 @@ describe("GitHub Actions hardening", () => {
       };
     };
     const steps = workflow.jobs.test.steps;
-    const coverage = steps.find(step => step.id === "test-coverage");
-    const upload = steps.find(step => step.name === "Upload test coverage");
+    const coverage = steps.find((step) => step.id === "test-coverage");
+    const upload = steps.find((step) => step.name === "Upload test coverage");
     expect(coverage).toBeDefined();
-    expect(coverage?.if).toBe("${{ matrix.os == 'ubuntu-latest' && matrix.shard_index == 0 && matrix.run_tests }}");
+    expect(coverage?.if).toBe(
+      "${{ matrix.os == 'ubuntu-latest' && matrix.shard_index == 0 && matrix.run_tests }}",
+    );
     expect(coverage?.["continue-on-error"]).toBe(true);
-    expect(coverage?.env).toEqual({ OCX_TEST_COVERAGE: "1", OCX_TEST_KILL_AFTER_MS: "900000" });
+    expect(coverage?.env).toEqual({
+      OCX_TEST_COVERAGE: "1",
+      OCX_TEST_KILL_AFTER_MS: "900000",
+    });
     expect(coverage?.run).toBe("bun run scripts/test.ts");
-    expect(steps.find(step => step.name === "Test")?.["continue-on-error"]).not.toBe(true);
-    expect(upload?.if).toBe("${{ !cancelled() && matrix.os == 'ubuntu-latest' && matrix.shard_index == 0 && steps.test-coverage.outcome != 'skipped' }}");
+    expect(
+      steps.find((step) => step.name === "Test")?.["continue-on-error"],
+    ).not.toBe(true);
+    expect(upload?.if).toBe(
+      "${{ !cancelled() && matrix.os == 'ubuntu-latest' && matrix.shard_index == 0 && steps.test-coverage.outcome != 'skipped' }}",
+    );
     expect(upload?.["continue-on-error"]).toBe(true);
-    expect(upload?.uses).toBe("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02");
+    expect(upload?.uses).toBe(
+      "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+    );
     expect(upload?.with).toEqual({
       name: "test-coverage-ubuntu-shard-1",
       path: "coverage/lcov.info",
@@ -3449,7 +3478,9 @@ describe("GitHub Actions hardening", () => {
       "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
     );
     expect(setup?.with?.["bun-version-file"]).toBe(".bun-version");
-    const astro = steps.find((step) => step.uses?.startsWith("withastro/action@"));
+    const astro = steps.find((step) =>
+      step.uses?.startsWith("withastro/action@"),
+    );
     expect(astro?.with?.["package-manager"]).toBe(
       "bun@${{ steps.bun.outputs.bun-version }}",
     );
@@ -4066,7 +4097,7 @@ describe("GitHub Actions hardening", () => {
       (step) => step.name === "Upload immutable release image identity",
     );
     expect(upload?.uses).toBe(
-      "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+      "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
     );
     expect(upload?.if).toBe("startsWith(github.ref, 'refs/tags/v')");
     expect(upload?.with).toMatchObject({
