@@ -565,7 +565,11 @@ export function startServer(port?: number) {
           return withCors(wsGate.preAuthDeny, req, config);
         const apiAuthError = requireResponsesApiAuth(req, config);
         if (apiAuthError)
-          return withCors(wsGate.authFailed() ?? apiAuthError, req, config);
+          return withCors(
+            wsGate.authFailed(apiAuthError) ?? apiAuthError,
+            req,
+            config,
+          );
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
             formatErrorResponse(
@@ -675,7 +679,7 @@ export function startServer(port?: number) {
         );
         if (apiAuthError)
           return withManagementCors(
-            metricsGate.authFailed() ?? apiAuthError,
+            metricsGate.authFailed(apiAuthError) ?? apiAuthError,
             req,
             config,
           );
@@ -743,7 +747,9 @@ export function startServer(port?: number) {
           config,
         );
         if (apiAuthError)
-          return wrapManagement(mgmtGate.authFailed() ?? apiAuthError);
+          return wrapManagement(
+            mgmtGate.authFailed(apiAuthError) ?? apiAuthError,
+          );
         // Origin precedence: handleManagementAPI enforces the same guard, but only after this
         // block would have charged the limiter. Reject cross-origin here (same payload shape as
         // management-api.ts) so a 403 can never consume the caller's admission budget.
@@ -793,7 +799,11 @@ export function startServer(port?: number) {
         // remote OpenAI-style bearer clients and Claude gateway discovery (anthropic-version).
         const apiAuthError = requireApiAuth(req, config);
         if (apiAuthError)
-          return withCors(modelsGate.authFailed() ?? apiAuthError, req, config);
+          return withCors(
+            modelsGate.authFailed(apiAuthError) ?? apiAuthError,
+            req,
+            config,
+          );
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
             formatErrorResponse(
@@ -968,7 +978,9 @@ export function startServer(port?: number) {
         if (modelsGate.preAuthDeny) return noStoreCors(modelsGate.preAuthDeny);
         const apiAuthError = requireDataPlaneAdmissionAuth(req, config);
         if (apiAuthError)
-          return noStoreCors(modelsGate.authFailed() ?? apiAuthError);
+          return noStoreCors(
+            modelsGate.authFailed(apiAuthError) ?? apiAuthError,
+          );
         if (!isAllowedRequestOrigin(req, config)) {
           return noStoreCors(
             formatErrorResponse(
@@ -1019,7 +1031,7 @@ export function startServer(port?: number) {
         const apiAuthError = requireResponsesApiAuth(req, config);
         if (apiAuthError)
           return withCors(
-            compactGate.authFailed() ?? apiAuthError,
+            compactGate.authFailed(apiAuthError) ?? apiAuthError,
             req,
             config,
           );
@@ -1089,7 +1101,11 @@ export function startServer(port?: number) {
           return withCors(imagesGate.preAuthDeny, req, config);
         const apiAuthError = requireApiAuth(req, config);
         if (apiAuthError)
-          return withCors(imagesGate.authFailed() ?? apiAuthError, req, config);
+          return withCors(
+            imagesGate.authFailed(apiAuthError) ?? apiAuthError,
+            req,
+            config,
+          );
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
             formatErrorResponse(
@@ -1136,7 +1152,7 @@ export function startServer(port?: number) {
         const apiAuthError = requireApiAuth(req, config);
         if (apiAuthError)
           return withCors(
-            artifactsGate.authFailed() ?? apiAuthError,
+            artifactsGate.authFailed(apiAuthError) ?? apiAuthError,
             req,
             config,
           );
@@ -1199,7 +1215,11 @@ export function startServer(port?: number) {
           return withCors(searchGate.preAuthDeny, req, config);
         const apiAuthError = requireApiAuth(req, config);
         if (apiAuthError)
-          return withCors(searchGate.authFailed() ?? apiAuthError, req, config);
+          return withCors(
+            searchGate.authFailed(apiAuthError) ?? apiAuthError,
+            req,
+            config,
+          );
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
             formatErrorResponse(
@@ -1248,7 +1268,7 @@ export function startServer(port?: number) {
         const apiAuthError = requireResponsesApiAuth(req, config);
         if (apiAuthError)
           return withCors(
-            responsesGate.authFailed() ?? apiAuthError,
+            responsesGate.authFailed(apiAuthError) ?? apiAuthError,
             req,
             config,
           );
@@ -1345,13 +1365,13 @@ export function startServer(port?: number) {
         if (countTokensGate.preAuthDeny)
           return withCors(countTokensGate.preAuthDeny, req, config);
         if (!hasValidApiAuth(req, config)) {
+          const authError = anthropicErrorResponse(
+            401,
+            "opencodex API key required",
+            "authentication_error",
+          );
           return withCors(
-            countTokensGate.authFailed() ??
-              anthropicErrorResponse(
-                401,
-                "opencodex API key required",
-                "authentication_error",
-              ),
+            countTokensGate.authFailed(authError) ?? authError,
             req,
             config,
           );
@@ -1387,13 +1407,13 @@ export function startServer(port?: number) {
         if (messagesGate.preAuthDeny)
           return withCors(messagesGate.preAuthDeny, req, config);
         if (!hasValidApiAuth(req, config)) {
+          const authError = anthropicErrorResponse(
+            401,
+            "opencodex API key required",
+            "authentication_error",
+          );
           return withCors(
-            messagesGate.authFailed() ??
-              anthropicErrorResponse(
-                401,
-                "opencodex API key required",
-                "authentication_error",
-              ),
+            messagesGate.authFailed(authError) ?? authError,
             req,
             config,
           );
@@ -1458,7 +1478,11 @@ export function startServer(port?: number) {
           return withCors(chatGate.preAuthDeny, req, config);
         const apiAuthError = requireResponsesApiAuth(req, config);
         if (apiAuthError)
-          return withCors(chatGate.authFailed() ?? apiAuthError, req, config);
+          return withCors(
+            chatGate.authFailed(apiAuthError) ?? apiAuthError,
+            req,
+            config,
+          );
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
             formatErrorResponse(
@@ -1521,7 +1545,11 @@ export function startServer(port?: number) {
           return withCors(liveGate.preAuthDeny, req, config);
         const apiAuthError = requireApiAuth(req, config);
         if (apiAuthError)
-          return withCors(liveGate.authFailed() ?? apiAuthError, req, config);
+          return withCors(
+            liveGate.authFailed(apiAuthError) ?? apiAuthError,
+            req,
+            config,
+          );
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
             formatErrorResponse(
@@ -1578,7 +1606,7 @@ export function startServer(port?: number) {
         const apiAuthError = requireApiAuth(req, config);
         if (apiAuthError)
           return withCors(
-            sidebandGate.authFailed() ?? apiAuthError,
+            sidebandGate.authFailed(apiAuthError) ?? apiAuthError,
             req,
             config,
           );

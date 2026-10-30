@@ -376,18 +376,58 @@ describe("admission rate limiting end to end", () => {
       expect(
         Number.isInteger(Number(throttled.headers.get("RateLimit-Limit"))),
       ).toBe(true);
-      // The failed-auth bucket is credential-agnostic: a validated key still gets full
-      // post-auth access — its own surface budget was never touched.
+      // Once the failed-auth budget is exhausted the gate denies BEFORE credential
+      // validation — an exhausted source can no longer force full auth work per
+      // request, so even a valid key from that address gets 429 until refill.
       expect(
         (
           await fetch(new URL("/v1/models", server.url), {
             headers: { "x-opencodex-api-key": KEY_A },
           })
         ).status,
-      ).toBe(200);
+      ).toBe(429);
     } finally {
       await server.stop(true);
     }
+  });
+
+  test("failed-auth gate pre-denies before auth and never charges 503 availability failures", () => {
+    const config = remoteConfig({
+      enabled: true,
+      surfaces: { "failed-auth": { requestsPerMinute: 1, burst: 1 } },
+    });
+    const managementAuth = initializeManagementAuthState(config);
+    const admission = createServerAdmissionControl(config, managementAuth);
+    const requestServer = fakeRequestServer("203.0.113.9");
+    const req = () =>
+      new Request("http://example.test/api/config", {
+        headers: { "x-opencodex-api-key": "wrong-admin-token" },
+      });
+    const unauthorized = () =>
+      Response.json(
+        { error: "opencodex admin token required" },
+        { status: 401 },
+      );
+    const unavailable = () =>
+      Response.json({ error: "management API unavailable" }, { status: 503 });
+
+    // No state is allocated or consumed before the first real credential failure.
+    expect(
+      admission.gate("management", req(), requestServer).preAuthDeny,
+    ).toBeNull();
+    const availability = admission.gate("management", req(), requestServer);
+    expect(availability.authFailed(unavailable())).toBeNull();
+    // The 503 above did not consume the single-token budget: a real 401 still fits.
+    const first = admission.gate("management", req(), requestServer);
+    expect(first.authFailed(unauthorized())).toBeNull();
+    // Budget exhausted: the NEXT gate pre-denies before any credential validation.
+    const denied = admission.gate(
+      "management",
+      req(),
+      requestServer,
+    ).preAuthDeny;
+    expect(denied instanceof Response).toBe(true);
+    if (denied instanceof Response) expect(denied.status).toBe(429);
   });
 
   test("validated principals keep 403 origin precedence over post-auth rate limiting", async () => {

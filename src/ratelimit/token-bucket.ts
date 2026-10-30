@@ -138,6 +138,57 @@ export class TokenBucketLimiter {
     this.nowSource = options.now ?? (() => performance.now());
   }
 
+  /**
+   * Read-only admission check: reports what consume() would decide for an existing
+   * bucket without creating state, consuming tokens, or recording stats. A missing
+   * bucket is always allowed.
+   */
+  peek(
+    surface: RateLimitSurface,
+    principal: RateLimitPrincipal,
+    policyInput: RateLimitPolicy,
+    cost = 1,
+  ): RateLimitDecision {
+    const policy = validateRateLimitPolicy(policyInput);
+    const normalizedCost = validatePositiveFinite(cost, "cost");
+    if (normalizedCost > policy.burst) {
+      throw new RangeError("cost must not exceed burst");
+    }
+    const now = this.monotonicNow();
+    const state = this.buckets.get(bucketKey(surface, principal));
+    if (!state) {
+      return {
+        allowed: true,
+        surface,
+        source: "principal",
+        limit: policy.burst,
+        remaining: policy.burst,
+        retryAfterSeconds: 0,
+        resetAfterSeconds: 0,
+        reason: "allowed",
+      };
+    }
+    this.applyPolicy(state, policy, now);
+    const allowed = state.tokens >= normalizedCost;
+    const refillPerMs = policy.requestsPerMinute / 60_000;
+    const deficit = Math.max(0, normalizedCost - state.tokens);
+    return {
+      allowed,
+      surface,
+      source: "principal",
+      limit: policy.burst,
+      remaining: Math.max(0, Math.floor(state.tokens)),
+      retryAfterSeconds: allowed
+        ? 0
+        : Math.max(1, Math.ceil(deficit / refillPerMs / 1000)),
+      resetAfterSeconds: Math.max(
+        0,
+        Math.ceil((policy.burst - state.tokens) / refillPerMs / 1000),
+      ),
+      reason: allowed ? "allowed" : "rate_limited",
+    };
+  }
+
   consume(
     surface: RateLimitSurface,
     principal: RateLimitPrincipal,

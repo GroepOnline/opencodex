@@ -65,23 +65,27 @@ export interface RateLimitAggregateSnapshot {
  * Per-request admission gate for one surface.
  *
  * Authentication and Origin checks always retain their existing precedence. `gate()` allocates
- * no limiter state and `preAuthDeny` is kept only as a compatibility seam for the current router;
- * it is always null. `commit()` resolves the already-validated credential domain and consumes one
- * request token only after the caller's existing auth/origin checks passed.
+ * no limiter state for the request surface. `preAuthDeny` is a read-only peek at the shared
+ * failed-auth bucket: when that budget is already exhausted the router can reject with 429 BEFORE
+ * running credential validation, so an exhausted guesser can no longer force full auth work per
+ * request. `commit()` resolves the already-validated credential domain and consumes one request
+ * token only after the caller's existing auth/origin checks passed.
  */
 export interface AdmissionGate {
-  /** Compatibility seam for current router call sites; auth-first admission never pre-denies. */
-  readonly preAuthDeny: null;
+  /** Pre-auth 429 when the shared failed-auth bucket is exhausted. Never allocates or consumes. */
+  readonly preAuthDeny: Response | null;
   /** Charge the authenticated principal after auth+origin pass. Null = admitted. Idempotent. */
   commit(): Response | null;
   /**
    * Charge one token from the shared failed-auth bucket keyed on the trusted socket address
    * (separate `failed-auth` surface, never the caller's credential budget). Call exactly once
-   * when the request's credential check REJECTED; the returned 429 replaces the auth error
-   * once the budget is exhausted, bounding pre-auth credential guessing. Successful and
-   * credential-free requests never touch this bucket. Idempotent per gate.
+   * when the request's credential check REJECTED; pass the rejection response so only true
+   * credential failures (HTTP 401) consume — availability errors such as 503 never do.
+   * The returned 429 replaces the auth error once the budget is exhausted, bounding pre-auth
+   * credential guessing. Successful and credential-free requests never touch this bucket.
+   * Idempotent per gate.
    */
-  authFailed(): Response | null;
+  authFailed(authError?: Response): Response | null;
   /**
    * Reserve a WebSocket concurrency slot BEFORE the handshake completes. The caller must release
    * on upgrade failure and store the idempotent release handle on socket data for every close path.
@@ -294,19 +298,29 @@ export function createServerAdmissionControl(
 
       const policy = settings.policies[surface];
       const failedAuthPolicy = settings.policies["failed-auth"];
+      // Failed auth means no validated credential exists yet: the bucket keys on the
+      // trusted socket address (or one shared anonymous bucket), so a caller rotating
+      // made-up keys still hits a single bounded budget.
+      const failedAuthPrincipal = address?.trim()
+        ? rateLimitFingerprinter.remoteAddress(address.trim())
+        : rateLimitFingerprinter.anonymous();
+      const failedAuthPeek = tokenLimiter.peek(
+        "failed-auth",
+        failedAuthPrincipal,
+        failedAuthPolicy,
+      );
       let charged = false;
       let authFailureCharged = false;
       return {
-        preAuthDeny: null,
-        authFailed: () => {
+        preAuthDeny: failedAuthPeek.allowed
+          ? null
+          : rateLimitedResponse(surface, failedAuthPeek),
+        authFailed: (authError?: Response) => {
+          // Only true credential rejections (401) consume the shared budget.
+          // Availability failures (503 management-unavailable) must not drain it.
+          if (authError && authError.status !== 401) return null;
           if (authFailureCharged) return null;
           authFailureCharged = true;
-          // Failed auth means no validated credential exists yet: the bucket keys on the
-          // trusted socket address (or one shared anonymous bucket), so a caller rotating
-          // made-up keys still hits a single bounded budget.
-          const failedAuthPrincipal = address?.trim()
-            ? rateLimitFingerprinter.remoteAddress(address.trim())
-            : rateLimitFingerprinter.anonymous();
           const decision = tokenLimiter.consume(
             "failed-auth",
             failedAuthPrincipal,
