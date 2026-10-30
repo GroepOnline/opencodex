@@ -27,20 +27,35 @@
  */
 
 import { createHash } from "node:crypto";
-import { ResponseCache, normalizeRequestBody, requestOptsOutOfCache, responseCacheFromConfig } from "./kv-cache";
+import {
+  ResponseCache,
+  normalizeRequestBody,
+  requestOptsOutOfCache,
+  responseCacheFromConfig,
+} from "./kv-cache";
 import { routeModel } from "../router";
 import { isApiAuthRequired } from "../server/auth-cors";
+import {
+  readTextBodyCapped,
+  RequestBodyTooLargeError,
+} from "../lib/request-body";
+import { MAX_COMPRESSED_BODY_BYTES } from "../server/request-decompress";
 import type { OcxConfig } from "../types";
 
 let activeCache: ResponseCache | null = null;
 
 /** Install the cache instance for the running server (called once at startServer). */
-export async function installResponseCache(config: OcxConfig, configDir?: string): Promise<ResponseCache | null> {
+export async function installResponseCache(
+  config: OcxConfig,
+  configDir?: string,
+): Promise<ResponseCache | null> {
   const cache = responseCacheFromConfig(config, configDir);
   activeCache = cache;
   if (cache.enabled) {
     cache.startSweep();
-    console.warn(`[kv-cache] response cache ENABLED (ttl=${cache.ttlMs}ms, max=${cache.maxEntries}, persist=${cache.persistEnabled})`);
+    console.warn(
+      `[kv-cache] response cache ENABLED (ttl=${cache.ttlMs}ms, max=${cache.maxEntries}, persist=${cache.persistEnabled})`,
+    );
   }
   return cache.enabled ? cache : null;
 }
@@ -125,8 +140,17 @@ export async function probeResponseCache(
 
   let raw: string;
   try {
-    raw = await req.text();
-  } catch {
+    // Bounded read (bounded-runtime follow-up): an uncapped req.text() here let a
+    // cache-enabled deployment buffer arbitrary data-plane bodies ahead of the
+    // streamed caps the JSON reader enforces downstream.
+    raw = await readTextBodyCapped(req, MAX_COMPRESSED_BODY_BYTES);
+  } catch (err) {
+    if (err instanceof RequestBodyTooLargeError && !req.bodyUsed) {
+      // A declared over-cap length failed fast without touching the stream, so
+      // the original request is still intact: pass it through and let the
+      // downstream body reader surface its own streamed-cap error.
+      return disabledProbe();
+    }
     return noStoreMiss(rebuild(req, ""), null, null, "", endpoint);
   }
 
@@ -150,10 +174,18 @@ export async function probeResponseCache(
   } catch {
     return noStoreMiss(rebuild(req, raw), null, modelId, "", endpoint);
   }
-  if (!route?.providerName) return noStoreMiss(rebuild(req, raw), null, modelId, "", endpoint);
+  if (!route?.providerName)
+    return noStoreMiss(rebuild(req, raw), null, modelId, "", endpoint);
 
   const normalized = normalizeRequestBody(parsed);
-  if (normalized === null) return noStoreMiss(rebuild(req, raw), route.providerName, route.modelId, "", endpoint);
+  if (normalized === null)
+    return noStoreMiss(
+      rebuild(req, raw),
+      route.providerName,
+      route.modelId,
+      "",
+      endpoint,
+    );
 
   // Scope cache entries by authenticated identity/session material. Identity-less requests are
   // only pooled on loopback, where admission intentionally treats local traffic as one principal.
@@ -161,13 +193,24 @@ export async function probeResponseCache(
   let callerScope = cacheCallerScope(req.headers);
   if (callerScope === null) {
     if (isApiAuthRequired(config)) {
-      return noStoreMiss(rebuild(req, raw), route.providerName, route.modelId, normalized, endpoint);
+      return noStoreMiss(
+        rebuild(req, raw),
+        route.providerName,
+        route.modelId,
+        normalized,
+        endpoint,
+      );
     }
     callerScope = "loopback-anonymous";
   }
 
   const scopedNormalized = `${callerScope}\0${normalized}`;
-  const hit = cache.get(route.providerName, route.modelId, scopedNormalized, endpoint);
+  const hit = cache.get(
+    route.providerName,
+    route.modelId,
+    scopedNormalized,
+    endpoint,
+  );
   if (hit) {
     const headers = new Headers({
       "content-type": hit.contentType,
@@ -240,9 +283,9 @@ const CACHE_SCOPE_HEADERS = [
 
 /** Hash identity/affinity inputs so two authenticated principals or sessions never cross-hit. */
 function cacheCallerScope(headers: Headers): string | null {
-  const material = CACHE_SCOPE_HEADERS
-    .map((name) => [name, headers.get(name)?.trim() ?? ""] as const)
-    .filter(([, value]) => value.length > 0);
+  const material = CACHE_SCOPE_HEADERS.map(
+    (name) => [name, headers.get(name)?.trim() ?? ""] as const,
+  ).filter(([, value]) => value.length > 0);
   if (material.length === 0) return null;
   return createHash("sha256").update(JSON.stringify(material)).digest("hex");
 }
@@ -259,11 +302,18 @@ function rebuild(req: Request, raw: string): Request {
   });
 }
 
-function extractModelId(parsed: unknown, endpoint: "responses" | "messages" | "chat-completions"): string | null {
+function extractModelId(
+  parsed: unknown,
+  endpoint: "responses" | "messages" | "chat-completions",
+): string | null {
   if (!parsed || typeof parsed !== "object") return null;
   const obj = parsed as Record<string, unknown>;
   if (typeof obj.model === "string") return obj.model;
-  if (endpoint === "responses" && typeof obj.model === "object" && obj.model !== null) {
+  if (
+    endpoint === "responses" &&
+    typeof obj.model === "object" &&
+    obj.model !== null
+  ) {
     const m = (obj.model as Record<string, unknown>).id;
     if (typeof m === "string") return m;
   }
