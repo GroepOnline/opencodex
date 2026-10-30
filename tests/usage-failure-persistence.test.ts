@@ -8,7 +8,11 @@ import {
   resetUsageLogMetricsObserverForTests,
 } from "../src/observability/usage-log-metrics";
 import { addRequestLog } from "../src/server/request-log";
-import { subscribeUsageAppends, usageLogPath } from "../src/usage/log";
+import {
+  flushUsageLog,
+  subscribeUsageAppends,
+  usageLogPath,
+} from "../src/usage/log";
 
 let testDir = "";
 let previousHome: string | undefined;
@@ -29,6 +33,7 @@ afterEach(() => {
 });
 
 function lastPersistedLine(): Record<string, unknown> {
+  flushUsageLog();
   const lines = readFileSync(usageLogPath(), "utf-8").trim().split("\n");
   return JSON.parse(lines.at(-1)!) as Record<string, unknown>;
 }
@@ -45,7 +50,8 @@ test("5xx entry persists failure diagnostics to usage.jsonl (survives the ring b
     errorCode: "upstream_server_error",
     terminalStatus: "failed",
     closeReason: "terminal",
-    upstreamError: "An error occurred while processing your request. request ID test-42",
+    upstreamError:
+      "An error occurred while processing your request. request ID test-42",
   });
   const row = lastPersistedLine();
   expect(row.status).toBe(502);
@@ -71,6 +77,8 @@ test("a normal add records exactly one runtime-metrics observation", () => {
     closeReason: "terminal",
     usage: { inputTokens: 10, outputTokens: 2 },
   });
+  // The metrics observer fires when the buffered row is durably appended.
+  flushUsageLog();
 
   const snapshot = runtimeMetrics.snapshot();
   // Successful rows persist without diagnostic terminalStatus, so the bounded
@@ -78,7 +86,11 @@ test("a normal add records exactly one runtime-metrics observation", () => {
   expect(snapshot.requests).toEqual([
     { surface: "codex", statusClass: "2xx", terminalStatus: "none", count: 1 },
   ]);
-  expect(snapshot.tokens).toContainEqual({ surface: "codex", type: "input", count: 10 });
+  expect(snapshot.tokens).toContainEqual({
+    surface: "codex",
+    type: "input",
+    count: 10,
+  });
   expect(runtimeMetrics.prometheus()).not.toContain("secret");
 });
 
@@ -87,16 +99,18 @@ test("a throwing metrics recorder does not prevent usage persistence", () => {
     throw new Error("recorder defect");
   });
   try {
-    expect(() => addRequestLog({
-      requestId: "ocx-test-recorder-throw",
-      timestamp: Date.now(),
-      model: "gpt-test",
-      provider: "openai",
-      status: 200,
-      durationMs: 1234,
-      usageStatus: "reported",
-      usage: { inputTokens: 5, outputTokens: 1 },
-    })).not.toThrow();
+    expect(() =>
+      addRequestLog({
+        requestId: "ocx-test-recorder-throw",
+        timestamp: Date.now(),
+        model: "gpt-test",
+        provider: "openai",
+        status: 200,
+        durationMs: 1234,
+        usageStatus: "reported",
+        usage: { inputTokens: 5, outputTokens: 1 },
+      }),
+    ).not.toThrow();
     const row = lastPersistedLine();
     expect(row.requestId).toBe("ocx-test-recorder-throw");
     expect(row.status).toBe(200);

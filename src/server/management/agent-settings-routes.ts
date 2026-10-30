@@ -71,11 +71,7 @@ import {
   setDebugSettings,
   type DebugFlag,
 } from "../../lib/debug-settings";
-import type {
-  OcxConfig,
-  OcxCustomModel,
-  OcxProviderConfig,
-} from "../../types";
+import type { OcxConfig, OcxCustomModel, OcxProviderConfig } from "../../types";
 import { drainAndShutdown } from "../lifecycle";
 import {
   filterRequestLogs,
@@ -96,6 +92,10 @@ import {
   publicProviderBaseUrl,
   safeConfigDTO,
 } from "../auth-cors";
+import {
+  readJsonBodyCapped,
+  RequestBodyTooLargeError,
+} from "../../lib/request-body";
 
 import {
   isPlainRecord,
@@ -137,7 +137,8 @@ export async function handleAgentSettingsRoutes(
     try {
       if (config.claudeCode?.desktopAutoApply === false) return;
       if (!config.claudeCode?.desktopProfile) return;
-      const { writeDesktop3pConfigAsync } = await import("../../claude/desktop-3p");
+      const { writeDesktop3pConfigAsync } =
+        await import("../../claude/desktop-3p");
       const { visibleNativeSlugs, filterCatalogVisibleModels } =
         await import("../../codex/catalog");
       const allModels = await fetchAllModels(config);
@@ -193,8 +194,9 @@ export async function handleAgentSettingsRoutes(
       multiAgentMode?: unknown;
     };
     try {
-      body = await req.json();
-    } catch {
+      body = await readJsonBodyCapped(req);
+    } catch (err) {
+      if (err instanceof RequestBodyTooLargeError) throw err;
       return jsonResponse({ error: "invalid JSON body" }, 400);
     }
     const wantsFlag = body.enabled !== undefined;
@@ -346,8 +348,9 @@ export async function handleAgentSettingsRoutes(
   if (url.pathname === "/api/injection-model" && req.method === "PUT") {
     let parsedBody: unknown;
     try {
-      parsedBody = await req.json();
-    } catch {
+      parsedBody = await readJsonBodyCapped(req);
+    } catch (err) {
+      if (err instanceof RequestBodyTooLargeError) throw err;
       return jsonResponse({ error: "invalid JSON body" }, 400);
     }
     if (
@@ -484,8 +487,9 @@ export async function handleAgentSettingsRoutes(
   if (url.pathname === "/api/effort-caps" && req.method === "PUT") {
     let body: { effortCap?: unknown; subagentEffortCap?: unknown };
     try {
-      body = await req.json();
-    } catch {
+      body = await readJsonBodyCapped(req);
+    } catch (err) {
+      if (err instanceof RequestBodyTooLargeError) throw err;
       return jsonResponse({ error: "invalid JSON body" }, 400);
     }
     const { isCodexReasoningEffort } = await import("../../reasoning-effort");
@@ -543,8 +547,9 @@ export async function handleAgentSettingsRoutes(
   if (url.pathname === "/api/subagent-models" && req.method === "PUT") {
     let body: { models?: unknown };
     try {
-      body = await req.json();
-    } catch {
+      body = await readJsonBodyCapped(req);
+    } catch (err) {
+      if (err instanceof RequestBodyTooLargeError) throw err;
       return jsonResponse({ error: "invalid JSON body" }, 400);
     }
     const chosen = Array.isArray(body.models)
@@ -594,8 +599,9 @@ export async function handleAgentSettingsRoutes(
   if (url.pathname === "/api/subagent-model-fallback" && req.method === "PUT") {
     let body: { models?: unknown; pollMs?: unknown };
     try {
-      body = await req.json();
-    } catch {
+      body = await readJsonBodyCapped(req);
+    } catch (err) {
+      if (err instanceof RequestBodyTooLargeError) throw err;
       return jsonResponse({ error: "invalid JSON body" }, 400);
     }
     if (!body || typeof body !== "object" || Array.isArray(body)) {

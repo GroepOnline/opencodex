@@ -44,6 +44,7 @@ import { bridgeToResponsesSSE } from "../src/bridge";
 import type { AdapterEvent, OcxUsage } from "../src/types";
 import {
   appendUsageEntry,
+  flushUsageLog,
   readUsageEntries,
   resetUsageReadCacheForTests,
   usageLogPath,
@@ -1648,6 +1649,7 @@ describe("request log metadata", () => {
         getProviderAccountOccupancy("key-pool", "openai", "k2b3c4d5").inFlight,
       ).toBe(0);
       expect(logCtx.providerAccountId).toBeUndefined();
+      flushUsageLog();
       const raw = readFileSync(usageLogPath(), "utf-8");
       expect(raw).not.toContain(secret);
       expect(raw).not.toContain("sk-test-000111");

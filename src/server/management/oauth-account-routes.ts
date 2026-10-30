@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { CatalogModel } from "../../codex/catalog";
-import { catalogModelSlug, invalidateCodexModelsCache, nativeModelRows, uniqueCatalogModelsForPublicList } from "../../codex/catalog";
+import {
+  catalogModelSlug,
+  invalidateCodexModelsCache,
+  nativeModelRows,
+  uniqueCatalogModelsForPublicList,
+} from "../../codex/catalog";
 import {
   DEFAULT_SUBAGENT_MODELS,
   codexAutoStartEnabled,
@@ -24,11 +29,19 @@ import {
 } from "../../oauth";
 import { removeCredential } from "../../oauth/store";
 import { providerDestinationResolvedError } from "../../lib/destination-policy";
-import { enrichProviderFromCatalog, listKeyLoginProviders } from "../../oauth/key-providers";
+import {
+  enrichProviderFromCatalog,
+  listKeyLoginProviders,
+} from "../../oauth/key-providers";
 import { deriveProviderPresets } from "../../providers/derive";
 import { providerCodexAccountMode } from "../../providers/registry";
 import { routedSlug, slugEquals } from "../../providers/slug-codec";
-import { clearProviderQuotaCache, fetchProviderAccountQuotas, fetchProviderQuotaReports, supportsPerAccountQuota } from "../../providers/quota";
+import {
+  clearProviderQuotaCache,
+  fetchProviderAccountQuotas,
+  fetchProviderQuotaReports,
+  supportsPerAccountQuota,
+} from "../../providers/quota";
 import { isCanonicalOpenAiForwardProvider } from "../../providers/openai-tiers";
 import { clearThreadAccountMap } from "../../codex/routing";
 import {
@@ -38,11 +51,23 @@ import {
   parseAccountPoolStrategy,
 } from "../../codex/pool-rotation";
 import { primeCodexPoolQuotas } from "../../codex/auth-api";
-import { DEFAULT_PROVIDER_CONTEXT_CAP, globalContextCapValue, providerContextCap, providerContextCaps, setAllProviderContextCaps, setGlobalContextCapValue, setProviderContextCap } from "../../providers/context-cap";
+import {
+  DEFAULT_PROVIDER_CONTEXT_CAP,
+  globalContextCapValue,
+  providerContextCap,
+  providerContextCaps,
+  setAllProviderContextCaps,
+  setGlobalContextCapValue,
+  setProviderContextCap,
+} from "../../providers/context-cap";
 import { resolveCodexHomeDir } from "../../codex/home";
 import { readUsageEntries } from "../../usage/log";
 import { getUsageDebugLogEntries } from "../../usage/debug";
-import { parseRange, parseUsageSurface, summarizeUsage } from "../../usage/summary";
+import {
+  parseRange,
+  parseUsageSurface,
+  summarizeUsage,
+} from "../../usage/summary";
 import { stripCodexRuntimeProviderFields } from "../../codex/auth-context";
 import { getProviderRegistryEntry } from "../../providers/registry";
 import { getDebugLogEntries } from "../../lib/debug-log-buffer";
@@ -54,22 +79,70 @@ import {
   setDebugSettings,
   type DebugFlag,
 } from "../../lib/debug-settings";
-import type { OcxClaudeCodeConfig, OcxConfig, OcxCustomModel, OcxProviderConfig } from "../../types";
+import type {
+  OcxClaudeCodeConfig,
+  OcxConfig,
+  OcxCustomModel,
+  OcxProviderConfig,
+} from "../../types";
 import { drainAndShutdown } from "../lifecycle";
-import { filterRequestLogs, getRequestLogEntries, type RequestLogEntry } from "../request-log";
-import { estimateComboCost, estimateRequestCost, normalizeCostTokens, tokensPerSecond } from "../../usage/cost";
+import {
+  filterRequestLogs,
+  getRequestLogEntries,
+  type RequestLogEntry,
+} from "../request-log";
+import {
+  estimateComboCost,
+  estimateRequestCost,
+  normalizeCostTokens,
+  tokensPerSecond,
+} from "../../usage/cost";
 import type { PersistedUsageAttempt } from "../../usage/log";
-import { isAllowedRequestOrigin, jsonResponse, providerManagementConfigError, publicProviderBaseUrl, safeConfigDTO } from "../auth-cors";
+import {
+  isAllowedRequestOrigin,
+  jsonResponse,
+  providerManagementConfigError,
+  publicProviderBaseUrl,
+  safeConfigDTO,
+} from "../auth-cors";
+import {
+  readJsonBodyCapped,
+  readJsonBodyCappedOr,
+} from "../../lib/request-body";
 import { applySystemEnvToggle } from "../system-env";
 import { buildApiAccessEndpoints } from "./api-access";
 
-import { isPlainRecord, parseDebugLogQuery, tokPerSecondResult, unavailableCostReason, costResult, requestLogDto, stripRegistryOnlyStaticHeaders, fetchAllModels } from "./shared";
-import type { MetricUnavailableReason, TokPerSecondResult, CostEstimateReason, CostResult, MetricSource } from "./shared";
+import {
+  isPlainRecord,
+  parseDebugLogQuery,
+  tokPerSecondResult,
+  unavailableCostReason,
+  costResult,
+  requestLogDto,
+  stripRegistryOnlyStaticHeaders,
+  fetchAllModels,
+} from "./shared";
+import type {
+  MetricUnavailableReason,
+  TokPerSecondResult,
+  CostEstimateReason,
+  CostResult,
+  MetricSource,
+} from "./shared";
 import type { ManagementContext } from "./context";
 import { codexAccountNamespaceProviderCollisionError } from "../../codex/account-namespace-match";
 
-export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<Response | null> {
-  const { req, url, config, deps, refreshCodexCatalogBestEffort, syncClaudeAgentDefsBestEffort } = ctx;
+export async function handleOauthAccountRoutes(
+  ctx: ManagementContext,
+): Promise<Response | null> {
+  const {
+    req,
+    url,
+    config,
+    deps,
+    refreshCodexCatalogBestEffort,
+    syncClaudeAgentDefsBestEffort,
+  } = ctx;
 
   // Which providers support real OAuth login (drives the GUI's "Log in with …" buttons).
   if (url.pathname === "/api/oauth/providers" && req.method === "GET") {
@@ -85,18 +158,28 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
   // the provider's loopback callback server (inside this process) captures the redirect in the
   // background, then the credential is persisted. The GUI opens the URL and polls /api/oauth/status.
   if (url.pathname === "/api/oauth/login" && req.method === "POST") {
-    const body = await req.json().catch(() => ({})) as { provider?: string; addAccount?: boolean; accountId?: string; reauth?: boolean };
+    const body = (await readJsonBodyCappedOr(req, {})) as {
+      provider?: string;
+      addAccount?: boolean;
+      accountId?: string;
+      reauth?: boolean;
+    };
     const provider = (body.provider ?? "").trim().toLowerCase();
-    if (!isPublicOAuthProvider(provider)) return jsonResponse({ error: "unknown oauth provider" }, 400);
-    const namespaceCollision = codexAccountNamespaceProviderCollisionError(config.codexAccountNamespaces, provider);
-    if (namespaceCollision) return jsonResponse({ error: namespaceCollision }, 409);
+    if (!isPublicOAuthProvider(provider))
+      return jsonResponse({ error: "unknown oauth provider" }, 400);
+    const namespaceCollision = codexAccountNamespaceProviderCollisionError(
+      config.codexAccountNamespaces,
+      provider,
+    );
+    if (namespaceCollision)
+      return jsonResponse({ error: namespaceCollision }, 409);
     const accountId = body.accountId?.trim();
     const reauth = body.reauth === true || Boolean(accountId);
     try {
       if (accountId) {
         const { getAccountSet } = await import("../../oauth/store");
         const set = getAccountSet(provider);
-        if (!set?.accounts.some(a => a.id === accountId)) {
+        if (!set?.accounts.some((a) => a.id === accountId)) {
           return jsonResponse({ error: "Unknown account for reauth" }, 404);
         }
       }
@@ -104,15 +187,24 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
       // request may already have mutated live config and yielded before its save.
       const persistedBaseline = readConfigDiagnostics().config;
       // addAccount / reauth forces a fresh browser identity (skips local-CLI token import).
-      const { url: authUrl, instructions, deviceCode } = await startLoginFlow(provider, {
-        forceLogin: body.addAccount === true || reauth,
-        ...(accountId ? { reauthAccountId: accountId } : {}),
-      }, {
-        // startLoginFlow returns the authorization URL before background persistence completes.
-        // Three-way reconcile settled disk changes so a failed login cannot leave a provider
-        // live-only and an in-flight management mutation cannot be erased before it saves.
-        onSettled: () => reconcileLiveConfigFromDisk(config, persistedBaseline),
-      });
+      const {
+        url: authUrl,
+        instructions,
+        deviceCode,
+      } = await startLoginFlow(
+        provider,
+        {
+          forceLogin: body.addAccount === true || reauth,
+          ...(accountId ? { reauthAccountId: accountId } : {}),
+        },
+        {
+          // startLoginFlow returns the authorization URL before background persistence completes.
+          // Three-way reconcile settled disk changes so a failed login cannot leave a provider
+          // live-only and an in-flight management mutation cannot be erased before it saves.
+          onSettled: () =>
+            reconcileLiveConfigFromDisk(config, persistedBaseline),
+        },
+      );
       if (authUrl && !deviceCode) {
         // Open the browser server-side (the proxy runs on the user's machine) — the GUI's
         // window.open is popup-blocked because it runs after an await, not a direct click.
@@ -121,16 +213,20 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
       }
       return jsonResponse({ url: authUrl, instructions, deviceCode });
     } catch (err) {
-      return jsonResponse({ error: err instanceof Error ? err.message : String(err) }, 409);
+      return jsonResponse(
+        { error: err instanceof Error ? err.message : String(err) },
+        409,
+      );
     }
   }
 
   // Cancel an in-progress browser/device OAuth login (GUI "Cancel" / modal close). Guarded by
   // the same public predicate as /api/oauth/login — only publicly startable flows are cancellable.
   if (url.pathname === "/api/oauth/login/cancel" && req.method === "POST") {
-    const body = await req.json().catch(() => ({})) as { provider?: string };
+    const body = (await readJsonBodyCappedOr(req, {})) as { provider?: string };
     const provider = (body.provider ?? "").trim().toLowerCase();
-    if (!isPublicOAuthProvider(provider)) return jsonResponse({ error: "unknown oauth provider" }, 400);
+    if (!isPublicOAuthProvider(provider))
+      return jsonResponse({ error: "unknown oauth provider" }, 400);
     const { cancelLoginFlow } = await import("../../oauth");
     const cancelled = cancelLoginFlow(provider);
     return jsonResponse({ ok: true, cancelled });
@@ -139,31 +235,49 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
   // Manual fallback for browser OAuth: paste the final redirect URL (or authorization code)
   // when the browser cannot reach the loopback callback (remote/SSH/blocked localhost).
   if (url.pathname === "/api/oauth/login/code" && req.method === "POST") {
-    const body = await req.json().catch(() => ({})) as { provider?: string; input?: string; code?: string };
+    const body = (await readJsonBodyCappedOr(req, {})) as {
+      provider?: string;
+      input?: string;
+      code?: string;
+    };
     const provider = (body.provider ?? "").trim().toLowerCase();
-    if (!isPublicOAuthProvider(provider)) return jsonResponse({ error: "unknown oauth provider" }, 400);
-    const input = typeof body.input === "string" ? body.input : typeof body.code === "string" ? body.code : "";
+    if (!isPublicOAuthProvider(provider))
+      return jsonResponse({ error: "unknown oauth provider" }, 400);
+    const input =
+      typeof body.input === "string"
+        ? body.input
+        : typeof body.code === "string"
+          ? body.code
+          : "";
     // Authorization responses are measured in hundreds of bytes; never accept the
     // generic management-body allowance here.
-    if (input.length > 4096) return jsonResponse({ error: "input too long" }, 400);
+    if (input.length > 4096)
+      return jsonResponse({ error: "input too long" }, 400);
     const result = submitManualLoginCode(provider, input);
     if (!result.ok) return jsonResponse({ error: result.error }, 409);
     return jsonResponse({ ok: true });
   }
 
   if (url.pathname === "/api/oauth/status" && req.method === "GET") {
-    const provider = (url.searchParams.get("provider") ?? "").trim().toLowerCase();
-    if (!isPublicOAuthProvider(provider)) return jsonResponse({ error: "unknown oauth provider" }, 400);
+    const provider = (url.searchParams.get("provider") ?? "")
+      .trim()
+      .toLowerCase();
+    if (!isPublicOAuthProvider(provider))
+      return jsonResponse({ error: "unknown oauth provider" }, 400);
     return jsonResponse(getLoginStatus(provider));
   }
 
   if (url.pathname === "/api/oauth/logout" && req.method === "POST") {
-    const provider = (url.searchParams.get("provider") ?? "").trim().toLowerCase();
-    if (!isPublicOAuthProvider(provider)) return jsonResponse({ error: "unknown oauth provider" }, 400);
+    const provider = (url.searchParams.get("provider") ?? "")
+      .trim()
+      .toLowerCase();
+    if (!isPublicOAuthProvider(provider))
+      return jsonResponse({ error: "unknown oauth provider" }, 400);
     await removeCredential(provider);
     clearLoginState(provider);
     // Drop cached/last-good quota rows tied to the removed credential.
-    const { clearProviderQuotaCache, clearAccountQuotaCache } = await import("../../providers/quota");
+    const { clearProviderQuotaCache, clearAccountQuotaCache } =
+      await import("../../providers/quota");
     clearProviderQuotaCache();
     clearAccountQuotaCache(provider);
     return jsonResponse({ success: true });
@@ -172,29 +286,37 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
   // Multiauth account management: list a provider's logged-in accounts, switch the active
   // one, or remove one. Emails are masked; tokens never leave the store.
   if (url.pathname === "/api/oauth/accounts" && req.method === "GET") {
-    const provider = (url.searchParams.get("provider") ?? "").trim().toLowerCase();
-    if (!isPublicOAuthProvider(provider)) return jsonResponse({ error: "unknown oauth provider" }, 400);
-    const { getAccountSet, applyExpiredAccountDisables } = await import("../../oauth/store");
+    const provider = (url.searchParams.get("provider") ?? "")
+      .trim()
+      .toLowerCase();
+    if (!isPublicOAuthProvider(provider))
+      return jsonResponse({ error: "unknown oauth provider" }, 400);
+    const { getAccountSet, applyExpiredAccountDisables } =
+      await import("../../oauth/store");
     await applyExpiredAccountDisables();
     const {
       oauthAccountHealthFields,
       projectOAuthAccountHealth,
       projectStoredOAuthAccountHealth,
     } = await import("../../oauth/health");
-    const { oauthAccountRuntimeFields } = await import("../../providers/account-runtime");
+    const { oauthAccountRuntimeFields } =
+      await import("../../providers/account-runtime");
     const projectAccounts = () => {
       const set = getAccountSet(provider);
       const current = getLoginStatus(provider);
       return {
         activeAccountId: current.activeAccountId ?? null,
-        accounts: (current.accounts ?? []).map(summary => {
-          const full = set?.accounts.find(account => account.id === summary.id);
+        accounts: (current.accounts ?? []).map((summary) => {
+          const full = set?.accounts.find(
+            (account) => account.id === summary.id,
+          );
           const health = full
             ? projectStoredOAuthAccountHealth(provider, full)
             : projectOAuthAccountHealth({
-              needsReauth: summary.needsReauth === true,
-              reauthReason: summary.needsReauth === true ? "refresh_failed" : undefined,
-            });
+                needsReauth: summary.needsReauth === true,
+                reauthReason:
+                  summary.needsReauth === true ? "refresh_failed" : undefined,
+              });
           const runtime = oauthAccountRuntimeFields(provider, summary.id);
           return {
             ...summary,
@@ -209,20 +331,24 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
     // (not just the active one). Opt-in via ?quota=1 so the plain account list
     // stays a cheap local read; ?refresh=1 bypasses the TTL (still joins inflight
     // + writes cache).
-    const wantQuota = url.searchParams.get("quota") === "1" && supportsPerAccountQuota(provider);
+    const wantQuota =
+      url.searchParams.get("quota") === "1" &&
+      supportsPerAccountQuota(provider);
     if (!wantQuota) return jsonResponse(projectAccounts());
     const forceRefresh = url.searchParams.get("refresh") === "1";
     // Probing may refresh the active credential and mark needsReauth — project health
     // from the post-probe store so the response is not stale.
-    const providerConfig = Object.hasOwn(config.providers, provider) ? config.providers[provider] : undefined;
+    const providerConfig = Object.hasOwn(config.providers, provider)
+      ? config.providers[provider]
+      : undefined;
     const rows = await fetchProviderAccountQuotas(provider, forceRefresh, {
       ...(providerConfig?.baseUrl ? { baseUrl: providerConfig.baseUrl } : {}),
     });
-    const byId = new Map(rows.map(row => [row.accountId, row]));
+    const byId = new Map(rows.map((row) => [row.accountId, row]));
     const projected = projectAccounts();
     return jsonResponse({
       activeAccountId: projected.activeAccountId,
-      accounts: projected.accounts.map(account => {
+      accounts: projected.accounts.map((account) => {
         const row = byId.get(account.id);
         if (!row) return account;
         return {
@@ -234,49 +360,81 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
     });
   }
   if (url.pathname === "/api/oauth/accounts/active" && req.method === "PUT") {
-    const body = await req.json().catch(() => ({})) as { provider?: string; accountId?: string };
+    const body = (await readJsonBodyCappedOr(req, {})) as {
+      provider?: string;
+      accountId?: string;
+    };
     const provider = (body.provider ?? "").trim().toLowerCase();
-    if (!isPublicOAuthProvider(provider)) return jsonResponse({ error: "unknown oauth provider" }, 400);
-    if (!body.accountId) return jsonResponse({ error: "missing accountId" }, 400);
+    if (!isPublicOAuthProvider(provider))
+      return jsonResponse({ error: "unknown oauth provider" }, 400);
+    if (!body.accountId)
+      return jsonResponse({ error: "missing accountId" }, 400);
     const { setActiveAccount } = await import("../../oauth/store");
-    if (!(await setActiveAccount(provider, body.accountId))) return jsonResponse({ error: "account not found" }, 404);
+    if (!(await setActiveAccount(provider, body.accountId)))
+      return jsonResponse({ error: "account not found" }, 404);
     if (provider === "anthropic") {
-      const { resetAnthropicRoutingForManualSelection } = await import("../../oauth/anthropic-routing");
+      const { resetAnthropicRoutingForManualSelection } =
+        await import("../../oauth/anthropic-routing");
       resetAnthropicRoutingForManualSelection(body.accountId);
     } else if (provider === "google-antigravity") {
-      const { resetGoogleAntigravityRoutingForManualSelection } = await import("../../oauth/google-antigravity-routing");
+      const { resetGoogleAntigravityRoutingForManualSelection } =
+        await import("../../oauth/google-antigravity-routing");
       resetGoogleAntigravityRoutingForManualSelection(body.accountId);
     } else if (provider === "cursor") {
-      const { resetCursorRoutingForManualSelection } = await import("../../oauth/cursor-routing");
+      const { resetCursorRoutingForManualSelection } =
+        await import("../../oauth/cursor-routing");
       resetCursorRoutingForManualSelection(body.accountId);
     }
     const { clearProviderQuotaCache } = await import("../../providers/quota");
     clearProviderQuotaCache();
-    return jsonResponse({ ok: true, provider, activeAccountId: body.accountId });
+    return jsonResponse({
+      ok: true,
+      provider,
+      activeAccountId: body.accountId,
+    });
   }
 
   // Opt-in OAuth account pools: enable/threshold/strategy + clear cooldown.
   if (url.pathname === "/api/oauth/accounts/pool" && req.method === "GET") {
-    const provider = (url.searchParams.get("provider") ?? "").trim().toLowerCase();
-    if (provider !== "anthropic" && provider !== "google-antigravity" && provider !== "cursor") {
-      return jsonResponse({ error: "pool config is only supported for anthropic, google-antigravity, and cursor" }, 400);
+    const provider = (url.searchParams.get("provider") ?? "")
+      .trim()
+      .toLowerCase();
+    if (
+      provider !== "anthropic" &&
+      provider !== "google-antigravity" &&
+      provider !== "cursor"
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "pool config is only supported for anthropic, google-antigravity, and cursor",
+        },
+        400,
+      );
     }
-    const pool = provider === "anthropic"
-      ? config.anthropicAccountPool ?? {}
-      : provider === "google-antigravity"
-        ? config.googleAntigravityAccountPool ?? {}
-        : config.cursorAccountPool ?? {};
+    const pool =
+      provider === "anthropic"
+        ? (config.anthropicAccountPool ?? {})
+        : provider === "google-antigravity"
+          ? (config.googleAntigravityAccountPool ?? {})
+          : (config.cursorAccountPool ?? {});
     return jsonResponse({
       provider,
       enabled: pool.enabled === true,
-      autoSwitchThreshold: typeof pool.autoSwitchThreshold === "number" ? pool.autoSwitchThreshold : 80,
+      autoSwitchThreshold:
+        typeof pool.autoSwitchThreshold === "number"
+          ? pool.autoSwitchThreshold
+          : 80,
       strategy: normalizeAccountPoolStrategy(pool.strategy),
       stickyLimit: normalizeAccountPoolStickyLimit(pool.stickyLimit),
       experimental: true,
     });
   }
-  if (url.pathname === "/api/oauth/accounts/pool" && (req.method === "PUT" || req.method === "PATCH")) {
-    const parsedBody = await req.json().catch(() => ({}));
+  if (
+    url.pathname === "/api/oauth/accounts/pool" &&
+    (req.method === "PUT" || req.method === "PATCH")
+  ) {
+    const parsedBody = await readJsonBodyCappedOr(req, {});
     if (!isPlainRecord(parsedBody)) {
       return jsonResponse({ error: "body must be an object" }, 400);
     }
@@ -287,29 +445,47 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
       strategy?: unknown;
       stickyLimit?: unknown;
     };
-    const provider = typeof body.provider === "string" ? body.provider.trim().toLowerCase() : "";
-    if (provider !== "anthropic" && provider !== "google-antigravity" && provider !== "cursor") {
-      return jsonResponse({ error: "pool config is only supported for anthropic, google-antigravity, and cursor" }, 400);
+    const provider =
+      typeof body.provider === "string"
+        ? body.provider.trim().toLowerCase()
+        : "";
+    if (
+      provider !== "anthropic" &&
+      provider !== "google-antigravity" &&
+      provider !== "cursor"
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "pool config is only supported for anthropic, google-antigravity, and cursor",
+        },
+        400,
+      );
     }
-    const currentPool = provider === "anthropic"
-      ? config.anthropicAccountPool
-      : provider === "google-antigravity"
-        ? config.googleAntigravityAccountPool
-        : config.cursorAccountPool;
+    const currentPool =
+      provider === "anthropic"
+        ? config.anthropicAccountPool
+        : provider === "google-antigravity"
+          ? config.googleAntigravityAccountPool
+          : config.cursorAccountPool;
     let enabled = currentPool?.enabled === true;
     if (body.enabled !== undefined) {
-      if (typeof body.enabled !== "boolean") return jsonResponse({ error: "enabled must be a boolean" }, 400);
+      if (typeof body.enabled !== "boolean")
+        return jsonResponse({ error: "enabled must be a boolean" }, 400);
       enabled = body.enabled;
     }
     let threshold = currentPool?.autoSwitchThreshold ?? 80;
     if (body.autoSwitchThreshold !== undefined) {
       if (
-        typeof body.autoSwitchThreshold !== "number"
-        || !Number.isInteger(body.autoSwitchThreshold)
-        || body.autoSwitchThreshold < 0
-        || body.autoSwitchThreshold > 100
+        typeof body.autoSwitchThreshold !== "number" ||
+        !Number.isInteger(body.autoSwitchThreshold) ||
+        body.autoSwitchThreshold < 0 ||
+        body.autoSwitchThreshold > 100
       ) {
-        return jsonResponse({ error: "autoSwitchThreshold must be an integer 0-100" }, 400);
+        return jsonResponse(
+          { error: "autoSwitchThreshold must be an integer 0-100" },
+          400,
+        );
       }
       threshold = body.autoSwitchThreshold;
     }
@@ -317,7 +493,10 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
     if (body.strategy !== undefined) {
       const parsed = parseAccountPoolStrategy(body.strategy);
       if (parsed === null) {
-        return jsonResponse({ error: "strategy must be one of: quota, round-robin, fill-first" }, 400);
+        return jsonResponse(
+          { error: "strategy must be one of: quota, round-robin, fill-first" },
+          400,
+        );
       }
       strategy = parsed;
     }
@@ -325,7 +504,10 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
     if (body.stickyLimit !== undefined) {
       const parsed = parseAccountPoolStickyLimit(body.stickyLimit);
       if (parsed === null) {
-        return jsonResponse({ error: "stickyLimit must be an integer 1-100" }, 400);
+        return jsonResponse(
+          { error: "stickyLimit must be an integer 1-100" },
+          400,
+        );
       }
       stickyLimit = parsed;
     }
@@ -336,7 +518,8 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
       ...(stickyLimit !== undefined ? { stickyLimit } : {}),
     };
     if (provider === "anthropic") config.anthropicAccountPool = nextPool;
-    else if (provider === "google-antigravity") config.googleAntigravityAccountPool = nextPool;
+    else if (provider === "google-antigravity")
+      config.googleAntigravityAccountPool = nextPool;
     else config.cursorAccountPool = nextPool;
     saveConfigPreservingClaudeCode(config);
     return jsonResponse({
@@ -349,41 +532,68 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
       experimental: true,
     });
   }
-  if (url.pathname === "/api/oauth/accounts/import-key" && req.method === "POST") {
-    const raw = await req.json().catch(() => null);
-    if (!isPlainRecord(raw)) return jsonResponse({ error: "body must be an object" }, 400);
-    const provider = typeof raw.provider === "string" ? raw.provider.trim().toLowerCase() : "";
+  if (
+    url.pathname === "/api/oauth/accounts/import-key" &&
+    req.method === "POST"
+  ) {
+    const raw = await readJsonBodyCappedOr<unknown>(req, null);
+    if (!isPlainRecord(raw))
+      return jsonResponse({ error: "body must be an object" }, 400);
+    const provider =
+      typeof raw.provider === "string" ? raw.provider.trim().toLowerCase() : "";
     if (provider !== "cursor") {
-      return jsonResponse({ error: "import-key is only supported for cursor" }, 400);
+      return jsonResponse(
+        { error: "import-key is only supported for cursor" },
+        400,
+      );
     }
     const apiKey = typeof raw.apiKey === "string" ? raw.apiKey.trim() : "";
     if (!apiKey) return jsonResponse({ error: "missing apiKey" }, 400);
-    if (apiKey.length > 8192) return jsonResponse({ error: "apiKey too long" }, 400);
+    if (apiKey.length > 8192)
+      return jsonResponse({ error: "apiKey too long" }, 400);
     const { credentialsFromCursorTokens } = await import("../../oauth/cursor");
     const cred = credentialsFromCursorTokens(apiKey, apiKey);
     if (!cred.accountId) {
-      return jsonResponse({ error: "Cursor API key must be a JWT with a sub claim" }, 400);
+      return jsonResponse(
+        { error: "Cursor API key must be a JWT with a sub claim" },
+        400,
+      );
     }
     const { saveCredential, getAccountSet } = await import("../../oauth/store");
     const { upsertOAuthProvider } = await import("../../oauth");
-    const { autoEnableOAuthAccountPoolOnSecondAccount } = await import("../../oauth/auto-enable-pool");
-    const accountCountBeforeWrite = getAccountSet("cursor")?.accounts.length ?? 0;
+    const { autoEnableOAuthAccountPoolOnSecondAccount } =
+      await import("../../oauth/auto-enable-pool");
+    const accountCountBeforeWrite =
+      getAccountSet("cursor")?.accounts.length ?? 0;
     try {
       // Run collision validation before persisting the imported credential.
       upsertOAuthProvider(config, "cursor");
     } catch (err) {
-      return jsonResponse({ error: err instanceof Error ? err.message : String(err) }, 409);
+      return jsonResponse(
+        { error: err instanceof Error ? err.message : String(err) },
+        409,
+      );
     }
     try {
       await saveCredential("cursor", cred);
     } catch (err) {
-      return jsonResponse({ error: err instanceof Error ? err.message : String(err) }, 500);
+      return jsonResponse(
+        { error: err instanceof Error ? err.message : String(err) },
+        500,
+      );
     }
-    autoEnableOAuthAccountPoolOnSecondAccount(config, "cursor", accountCountBeforeWrite);
+    autoEnableOAuthAccountPoolOnSecondAccount(
+      config,
+      "cursor",
+      accountCountBeforeWrite,
+    );
     try {
       upsertOAuthProvider(config, "cursor");
     } catch (err) {
-      return jsonResponse({ error: err instanceof Error ? err.message : String(err) }, 409);
+      return jsonResponse(
+        { error: err instanceof Error ? err.message : String(err) },
+        409,
+      );
     }
     saveConfigPreservingClaudeCode(config);
     const { clearAccountQuotaCache } = await import("../../providers/quota");
@@ -397,67 +607,144 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
       poolEnabled: config.cursorAccountPool?.enabled === true,
     });
   }
-  if (url.pathname === "/api/oauth/accounts/clear-cooldown" && req.method === "POST") {
-    const body = await req.json().catch(() => ({})) as { provider?: unknown; accountId?: unknown };
-    const provider = typeof body.provider === "string" ? body.provider.trim().toLowerCase() : "";
-    const accountId = typeof body.accountId === "string" ? body.accountId.trim() : "";
-    if (provider !== "anthropic" && provider !== "google-antigravity" && provider !== "cursor") {
-      return jsonResponse({ error: "clear-cooldown is only supported for anthropic, google-antigravity, and cursor" }, 400);
+  if (
+    url.pathname === "/api/oauth/accounts/clear-cooldown" &&
+    req.method === "POST"
+  ) {
+    const body = (await readJsonBodyCappedOr(req, {})) as {
+      provider?: unknown;
+      accountId?: unknown;
+    };
+    const provider =
+      typeof body.provider === "string"
+        ? body.provider.trim().toLowerCase()
+        : "";
+    const accountId =
+      typeof body.accountId === "string" ? body.accountId.trim() : "";
+    if (
+      provider !== "anthropic" &&
+      provider !== "google-antigravity" &&
+      provider !== "cursor"
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "clear-cooldown is only supported for anthropic, google-antigravity, and cursor",
+        },
+        400,
+      );
     }
     if (!accountId) return jsonResponse({ error: "missing accountId" }, 400);
-    const cleared = provider === "anthropic"
-      ? (await import("../../oauth/anthropic-routing")).clearAnthropicAccountCooldown(accountId)
-      : provider === "google-antigravity"
-        ? (await import("../../oauth/google-antigravity-routing")).clearGoogleAntigravityAccountCooldown(accountId)
-        : (await import("../../oauth/cursor-routing")).clearCursorAccountCooldown(accountId);
+    const cleared =
+      provider === "anthropic"
+        ? (
+            await import("../../oauth/anthropic-routing")
+          ).clearAnthropicAccountCooldown(accountId)
+        : provider === "google-antigravity"
+          ? (
+              await import("../../oauth/google-antigravity-routing")
+            ).clearGoogleAntigravityAccountCooldown(accountId)
+          : (
+              await import("../../oauth/cursor-routing")
+            ).clearCursorAccountCooldown(accountId);
     return jsonResponse({ ok: true, cleared });
   }
 
   if (url.pathname === "/api/oauth/accounts/alias" && req.method === "PUT") {
-    const body = await req.json().catch(() => ({})) as { provider?: unknown; accountId?: unknown; alias?: unknown };
-    const provider = typeof body.provider === "string" ? body.provider.trim().toLowerCase() : "";
-    const accountId = typeof body.accountId === "string" ? body.accountId.trim() : "";
+    const body = (await readJsonBodyCappedOr(req, {})) as {
+      provider?: unknown;
+      accountId?: unknown;
+      alias?: unknown;
+    };
+    const provider =
+      typeof body.provider === "string"
+        ? body.provider.trim().toLowerCase()
+        : "";
+    const accountId =
+      typeof body.accountId === "string" ? body.accountId.trim() : "";
     const alias = typeof body.alias === "string" ? body.alias.trim() : "";
-    if (!isPublicOAuthProvider(provider)) return jsonResponse({ error: "unknown oauth provider" }, 400);
+    if (!isPublicOAuthProvider(provider))
+      return jsonResponse({ error: "unknown oauth provider" }, 400);
     if (!accountId) return jsonResponse({ error: "missing accountId" }, 400);
-    if (typeof body.alias !== "string" || alias.length > 80 || /[\x00-\x1f\x7f]/.test(alias)) {
-      return jsonResponse({ error: "alias must be at most 80 printable characters" }, 400);
+    if (
+      typeof body.alias !== "string" ||
+      alias.length > 80 ||
+      /[\x00-\x1f\x7f]/.test(alias)
+    ) {
+      return jsonResponse(
+        { error: "alias must be at most 80 printable characters" },
+        400,
+      );
     }
     const { setAccountAlias } = await import("../../oauth/store");
-    if (!(await setAccountAlias(provider, accountId, alias || undefined))) return jsonResponse({ error: "account not found" }, 404);
-    return jsonResponse({ ok: true, provider, accountId, alias: alias || null });
+    if (!(await setAccountAlias(provider, accountId, alias || undefined)))
+      return jsonResponse({ error: "account not found" }, 404);
+    return jsonResponse({
+      ok: true,
+      provider,
+      accountId,
+      alias: alias || null,
+    });
   }
   if (url.pathname === "/api/oauth/accounts/expiry" && req.method === "PUT") {
-    const body = await req.json().catch(() => ({})) as {
+    const body = (await readJsonBodyCappedOr(req, {})) as {
       provider?: unknown;
       accountId?: unknown;
       accountExpiresAt?: unknown;
       autoDisableOnExpiry?: unknown;
     };
-    const provider = typeof body.provider === "string" ? body.provider.trim().toLowerCase() : "";
-    const accountId = typeof body.accountId === "string" ? body.accountId.trim() : "";
-    if (!isPublicOAuthProvider(provider)) return jsonResponse({ error: "unknown oauth provider" }, 400);
+    const provider =
+      typeof body.provider === "string"
+        ? body.provider.trim().toLowerCase()
+        : "";
+    const accountId =
+      typeof body.accountId === "string" ? body.accountId.trim() : "";
+    if (!isPublicOAuthProvider(provider))
+      return jsonResponse({ error: "unknown oauth provider" }, 400);
     if (!accountId) return jsonResponse({ error: "missing accountId" }, 400);
-    const patch: { accountExpiresAt?: number | null; autoDisableOnExpiry?: boolean | null } = {};
+    const patch: {
+      accountExpiresAt?: number | null;
+      autoDisableOnExpiry?: boolean | null;
+    } = {};
     if (body.accountExpiresAt === null) patch.accountExpiresAt = null;
-    else if (typeof body.accountExpiresAt === "number" && Number.isFinite(body.accountExpiresAt)) {
+    else if (
+      typeof body.accountExpiresAt === "number" &&
+      Number.isFinite(body.accountExpiresAt)
+    ) {
       patch.accountExpiresAt = body.accountExpiresAt;
     } else if (body.accountExpiresAt !== undefined) {
-      return jsonResponse({ error: "accountExpiresAt must be a finite epoch ms or null" }, 400);
+      return jsonResponse(
+        { error: "accountExpiresAt must be a finite epoch ms or null" },
+        400,
+      );
     }
-    if (body.autoDisableOnExpiry === null || body.autoDisableOnExpiry === false) patch.autoDisableOnExpiry = false;
-    else if (body.autoDisableOnExpiry === true) patch.autoDisableOnExpiry = true;
+    if (body.autoDisableOnExpiry === null || body.autoDisableOnExpiry === false)
+      patch.autoDisableOnExpiry = false;
+    else if (body.autoDisableOnExpiry === true)
+      patch.autoDisableOnExpiry = true;
     else if (body.autoDisableOnExpiry !== undefined) {
-      return jsonResponse({ error: "autoDisableOnExpiry must be a boolean or null" }, 400);
+      return jsonResponse(
+        { error: "autoDisableOnExpiry must be a boolean or null" },
+        400,
+      );
     }
-    if (patch.accountExpiresAt === undefined && patch.autoDisableOnExpiry === undefined) {
-      return jsonResponse({ error: "missing accountExpiresAt or autoDisableOnExpiry" }, 400);
+    if (
+      patch.accountExpiresAt === undefined &&
+      patch.autoDisableOnExpiry === undefined
+    ) {
+      return jsonResponse(
+        { error: "missing accountExpiresAt or autoDisableOnExpiry" },
+        400,
+      );
     }
-    const { setAccountExpiryPolicy, getAccountSet } = await import("../../oauth/store");
+    const { setAccountExpiryPolicy, getAccountSet } =
+      await import("../../oauth/store");
     if (!(await setAccountExpiryPolicy(provider, accountId, patch))) {
       return jsonResponse({ error: "account not found" }, 404);
     }
-    const account = getAccountSet(provider)?.accounts.find(row => row.id === accountId);
+    const account = getAccountSet(provider)?.accounts.find(
+      (row) => row.id === accountId,
+    );
     return jsonResponse({
       ok: true,
       provider,
@@ -468,14 +755,21 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
     });
   }
   if (url.pathname === "/api/oauth/accounts" && req.method === "DELETE") {
-    const provider = (url.searchParams.get("provider") ?? "").trim().toLowerCase();
+    const provider = (url.searchParams.get("provider") ?? "")
+      .trim()
+      .toLowerCase();
     const id = url.searchParams.get("id") ?? "";
-    if (!isPublicOAuthProvider(provider)) return jsonResponse({ error: "unknown oauth provider" }, 400);
+    if (!isPublicOAuthProvider(provider))
+      return jsonResponse({ error: "unknown oauth provider" }, 400);
     if (!id) return jsonResponse({ error: "missing id" }, 400);
     const { removeAccount, getAccountSet } = await import("../../oauth/store");
-    if (!(await removeAccount(provider, id))) return jsonResponse({ error: "account not found" }, 404);
+    if (!(await removeAccount(provider, id)))
+      return jsonResponse({ error: "account not found" }, 404);
     if (provider === "anthropic") {
-      const { clearAnthropicAccountCooldown, clearAnthropicSessionAffinityForAccount } = await import("../../oauth/anthropic-routing");
+      const {
+        clearAnthropicAccountCooldown,
+        clearAnthropicSessionAffinityForAccount,
+      } = await import("../../oauth/anthropic-routing");
       clearAnthropicAccountCooldown(id);
       clearAnthropicSessionAffinityForAccount(id);
     } else if (provider === "google-antigravity") {
@@ -494,7 +788,8 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
       clearCursorSessionAffinityForAccount(id);
     }
     if (!getAccountSet(provider)) clearLoginState(provider);
-    const { clearProviderQuotaCache, clearAccountQuotaCache } = await import("../../providers/quota");
+    const { clearProviderQuotaCache, clearAccountQuotaCache } =
+      await import("../../providers/quota");
     clearProviderQuotaCache();
     clearAccountQuotaCache(provider);
     return jsonResponse({ ok: true });
@@ -505,15 +800,30 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
   // mirrors the active entry so routing is untouched.
   if (url.pathname === "/api/providers/keys" && req.method === "GET") {
     const name = (url.searchParams.get("name") ?? "").trim();
-    if (!name || !isValidProviderName(name) || !hasOwnProvider(config.providers, name)) return jsonResponse({ error: "unknown provider" }, 404);
+    if (
+      !name ||
+      !isValidProviderName(name) ||
+      !hasOwnProvider(config.providers, name)
+    )
+      return jsonResponse({ error: "unknown provider" }, 404);
     const { inspectKeyPool } = await import("../../availability/management");
     return jsonResponse(inspectKeyPool(config, name));
   }
   if (url.pathname === "/api/providers/keys" && req.method === "POST") {
-    const body = await req.json().catch(() => ({})) as { name?: string; key?: string; label?: string };
+    const body = (await readJsonBodyCappedOr(req, {})) as {
+      name?: string;
+      key?: string;
+      label?: string;
+    };
     const name = (body.name ?? "").trim();
-    if (!name || !isValidProviderName(name) || !hasOwnProvider(config.providers, name)) return jsonResponse({ error: "unknown provider" }, 404);
-    if (typeof body.key !== "string" || !body.key.trim()) return jsonResponse({ error: "key is required" }, 400);
+    if (
+      !name ||
+      !isValidProviderName(name) ||
+      !hasOwnProvider(config.providers, name)
+    )
+      return jsonResponse({ error: "unknown provider" }, 404);
+    if (typeof body.key !== "string" || !body.key.trim())
+      return jsonResponse({ error: "key is required" }, 400);
     const { addProviderApiKey } = await import("../../providers/api-keys");
     const result = addProviderApiKey(config, name, body.key, body.label);
     if ("error" in result) return jsonResponse({ error: result.error }, 400);
@@ -521,51 +831,87 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
     clearModelCache(name);
     const { clearProviderQuotaCache } = await import("../../providers/quota");
     clearProviderQuotaCache();
-    const { clearKeyPoolCooldowns } = await import("../../availability/management");
+    const { clearKeyPoolCooldowns } =
+      await import("../../availability/management");
     clearKeyPoolCooldowns(name, config);
     return jsonResponse({ ok: true, id: result.id }, 201);
   }
   if (url.pathname === "/api/providers/keys/active" && req.method === "PUT") {
-    const body = await req.json().catch(() => ({})) as { name?: string; id?: string };
+    const body = (await readJsonBodyCappedOr(req, {})) as {
+      name?: string;
+      id?: string;
+    };
     const name = (body.name ?? "").trim();
-    if (!name || !isValidProviderName(name) || !hasOwnProvider(config.providers, name)) return jsonResponse({ error: "unknown provider" }, 404);
+    if (
+      !name ||
+      !isValidProviderName(name) ||
+      !hasOwnProvider(config.providers, name)
+    )
+      return jsonResponse({ error: "unknown provider" }, 404);
     if (!body.id) return jsonResponse({ error: "missing id" }, 400);
-    const { setActiveProviderApiKey } = await import("../../providers/api-keys");
-    if (!setActiveProviderApiKey(config, name, body.id)) return jsonResponse({ error: "key not found" }, 404);
+    const { setActiveProviderApiKey } =
+      await import("../../providers/api-keys");
+    if (!setActiveProviderApiKey(config, name, body.id))
+      return jsonResponse({ error: "key not found" }, 404);
     const { clearModelCache } = await import("../../codex/model-cache");
     clearModelCache(name);
     const { clearProviderQuotaCache } = await import("../../providers/quota");
     clearProviderQuotaCache();
-    const { clearKeyPoolCooldowns } = await import("../../availability/management");
+    const { clearKeyPoolCooldowns } =
+      await import("../../availability/management");
     clearKeyPoolCooldowns(name, config);
     return jsonResponse({ ok: true, name, activeId: body.id });
   }
   if (url.pathname === "/api/providers/keys/alias" && req.method === "PUT") {
-    const body = await req.json().catch(() => ({})) as { name?: unknown; id?: unknown; alias?: unknown };
+    const body = (await readJsonBodyCappedOr(req, {})) as {
+      name?: unknown;
+      id?: unknown;
+      alias?: unknown;
+    };
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const id = typeof body.id === "string" ? body.id.trim() : "";
     const alias = typeof body.alias === "string" ? body.alias.trim() : "";
-    if (!name || !isValidProviderName(name) || !hasOwnProvider(config.providers, name)) return jsonResponse({ error: "unknown provider" }, 404);
+    if (
+      !name ||
+      !isValidProviderName(name) ||
+      !hasOwnProvider(config.providers, name)
+    )
+      return jsonResponse({ error: "unknown provider" }, 404);
     if (!id) return jsonResponse({ error: "missing id" }, 400);
-    if (typeof body.alias !== "string" || alias.length > 80 || /[\x00-\x1f\x7f]/.test(alias)) {
-      return jsonResponse({ error: "alias must be at most 80 printable characters" }, 400);
+    if (
+      typeof body.alias !== "string" ||
+      alias.length > 80 ||
+      /[\x00-\x1f\x7f]/.test(alias)
+    ) {
+      return jsonResponse(
+        { error: "alias must be at most 80 printable characters" },
+        400,
+      );
     }
     const { setProviderApiKeyLabel } = await import("../../providers/api-keys");
-    if (!setProviderApiKeyLabel(config, name, id, alias || undefined)) return jsonResponse({ error: "key not found" }, 404);
+    if (!setProviderApiKeyLabel(config, name, id, alias || undefined))
+      return jsonResponse({ error: "key not found" }, 404);
     return jsonResponse({ ok: true, name, id, alias: alias || null });
   }
   if (url.pathname === "/api/providers/keys" && req.method === "DELETE") {
     const name = (url.searchParams.get("name") ?? "").trim();
     const id = url.searchParams.get("id") ?? "";
-    if (!name || !isValidProviderName(name) || !hasOwnProvider(config.providers, name)) return jsonResponse({ error: "unknown provider" }, 404);
+    if (
+      !name ||
+      !isValidProviderName(name) ||
+      !hasOwnProvider(config.providers, name)
+    )
+      return jsonResponse({ error: "unknown provider" }, 404);
     if (!id) return jsonResponse({ error: "missing id" }, 400);
     const { removeProviderApiKey } = await import("../../providers/api-keys");
-    if (!removeProviderApiKey(config, name, id)) return jsonResponse({ error: "key not found" }, 404);
+    if (!removeProviderApiKey(config, name, id))
+      return jsonResponse({ error: "key not found" }, 404);
     const { clearModelCache } = await import("../../codex/model-cache");
     clearModelCache(name);
     const { clearProviderQuotaCache } = await import("../../providers/quota");
     clearProviderQuotaCache();
-    const { clearKeyPoolCooldowns } = await import("../../availability/management");
+    const { clearKeyPoolCooldowns } =
+      await import("../../availability/management");
     clearKeyPoolCooldowns(name, config);
     return jsonResponse({ ok: true });
   }
@@ -580,31 +926,60 @@ export async function handleOauthAccountRoutes(ctx: ManagementContext): Promise<
       requestHost: req.headers.get("host"),
       requestOrigin: req.headers.get("origin"),
     });
-    return jsonResponse({
-      keys: keys.map(k => ({ id: k.id, name: k.name, prefix: k.key.slice(0, 8) + "...", createdAt: k.createdAt })),
-      ...endpoints,
-    }, 200, req, config);
+    return jsonResponse(
+      {
+        keys: keys.map((k) => ({
+          id: k.id,
+          name: k.name,
+          prefix: k.key.slice(0, 8) + "...",
+          createdAt: k.createdAt,
+        })),
+        ...endpoints,
+      },
+      200,
+      req,
+      config,
+    );
   }
 
   if (url.pathname === "/api/keys" && req.method === "POST") {
-    const body = await req.json() as { name?: string };
+    const body = (await readJsonBodyCapped(req)) as { name?: string };
     const name = (body.name ?? "").trim() || "default";
     // Generate key from provider keys hash + random salt
-    const providerKeys = Object.values(config.providers).map(p => p.apiKey ?? "").filter(Boolean).join("|");
+    const providerKeys = Object.values(config.providers)
+      .map((p) => p.apiKey ?? "")
+      .filter(Boolean)
+      .join("|");
     const salt = crypto.randomUUID();
     const hashInput = `${providerKeys}|${salt}|${Date.now()}`;
     const hashBuf = new Bun.CryptoHasher("sha256").update(hashInput).digest();
     const key = "ocx_data_" + Buffer.from(hashBuf).toString("hex").slice(0, 40);
-    const entry = { id: crypto.randomUUID(), name, key, createdAt: new Date().toISOString() };
+    const entry = {
+      id: crypto.randomUUID(),
+      name,
+      key,
+      createdAt: new Date().toISOString(),
+    };
     config.apiKeys = [...(config.apiKeys ?? []), entry];
     saveConfigPreservingClaudeCode(config);
-    return jsonResponse({ id: entry.id, name: entry.name, key: entry.key, createdAt: entry.createdAt }, 201, req, config);
+    return jsonResponse(
+      {
+        id: entry.id,
+        name: entry.name,
+        key: entry.key,
+        createdAt: entry.createdAt,
+      },
+      201,
+      req,
+      config,
+    );
   }
 
   if (url.pathname === "/api/keys" && req.method === "DELETE") {
-    const body = await req.json() as { id?: string };
-    if (!body.id) return jsonResponse({ error: "id required" }, 400, req, config);
-    config.apiKeys = (config.apiKeys ?? []).filter(k => k.id !== body.id);
+    const body = (await readJsonBodyCapped(req)) as { id?: string };
+    if (!body.id)
+      return jsonResponse({ error: "id required" }, 400, req, config);
+    config.apiKeys = (config.apiKeys ?? []).filter((k) => k.id !== body.id);
     saveConfigPreservingClaudeCode(config);
     return jsonResponse({ success: true }, 200, req, config);
   }

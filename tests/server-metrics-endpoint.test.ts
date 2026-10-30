@@ -9,6 +9,7 @@ import { startServer } from "../src/server";
 import type { OcxConfig } from "../src/types";
 import {
   appendUsageEntry,
+  flushUsageLog,
   subscribeUsageAppends,
   usageLogPath,
   type PersistedUsageEntry,
@@ -47,9 +48,11 @@ afterEach(() => {
   runtimeMetrics.reset();
   if (previousHome === undefined) delete process.env.OPENCODEX_HOME;
   else process.env.OPENCODEX_HOME = previousHome;
-  if (previousDataToken === undefined) delete process.env.OPENCODEX_API_AUTH_TOKEN;
+  if (previousDataToken === undefined)
+    delete process.env.OPENCODEX_API_AUTH_TOKEN;
   else process.env.OPENCODEX_API_AUTH_TOKEN = previousDataToken;
-  if (previousAdminToken === undefined) delete process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
+  if (previousAdminToken === undefined)
+    delete process.env.OPENCODEX_ADMIN_AUTH_TOKEN;
   else process.env.OPENCODEX_ADMIN_AUTH_TOKEN = previousAdminToken;
   if (testHome) rmSync(testHome, { recursive: true, force: true });
   testHome = "";
@@ -72,7 +75,9 @@ describe("GET /metrics management boundary", () => {
         headers: { "x-opencodex-api-key": "admin-secret" },
       });
       expect(withAdminToken.status).toBe(200);
-      expect(withAdminToken.headers.get("content-type")).toBe("text/plain; version=0.0.4; charset=utf-8");
+      expect(withAdminToken.headers.get("content-type")).toBe(
+        "text/plain; version=0.0.4; charset=utf-8",
+      );
       expect(withAdminToken.headers.get("cache-control")).toBe("no-store");
       const body = await withAdminToken.text();
       expect(body).toContain("# TYPE opencodex_requests_total counter");
@@ -109,6 +114,8 @@ describe("GET /metrics management boundary", () => {
     const unsubscribeSpy = subscribeUsageAppends(() => observedAppends.push(1));
     try {
       appendUsageEntry(entry);
+      // Observers fire when the buffered row is durably appended.
+      flushUsageLog();
       expect(observedAppends).toHaveLength(1);
 
       const scrape = async (): Promise<string> => {
@@ -119,28 +126,44 @@ describe("GET /metrics management boundary", () => {
         return await response.text();
       };
 
-      const requestSeries = 'opencodex_requests_total{surface="codex",status_class="2xx",terminal_status="completed"} 1';
+      const requestSeries =
+        'opencodex_requests_total{surface="codex",status_class="2xx",terminal_status="completed"} 1';
       const body = await scrape();
       expect(body).toContain(requestSeries);
-      expect(body).toContain('opencodex_tokens_total{surface="codex",type="input"} 10');
+      expect(body).toContain(
+        'opencodex_tokens_total{surface="codex",type="input"} 10',
+      );
       expect(body).not.toContain("secret");
 
       // Rewrite the entire usage.jsonl on disk (rotation/copytruncate stand-in). The
       // scrape and the JSON snapshot must not change: metrics observe the append
       // boundary and perform zero usage-log filesystem I/O at scrape time.
-      writeFileSync(usageLogPath(), Array.from({ length: 50 }, (_, index) => JSON.stringify({
-        ...entry,
-        requestId: `rewritten-${index}`,
-      })).join("\n"), "utf8");
+      writeFileSync(
+        usageLogPath(),
+        Array.from({ length: 50 }, (_, index) =>
+          JSON.stringify({
+            ...entry,
+            requestId: `rewritten-${index}`,
+          }),
+        ).join("\n"),
+        "utf8",
+      );
       expect(await scrape()).toContain(requestSeries);
 
       const json = await fetch(new URL("/api/metrics/json", server.url), {
         headers: { "x-opencodex-api-key": "admin-secret" },
       });
       expect(json.status).toBe(200);
-      const snapshot = await json.json() as { requests: Array<{ count: number }> };
+      const snapshot = (await json.json()) as {
+        requests: Array<{ count: number }>;
+      };
       expect(snapshot.requests).toEqual([
-        { surface: "codex", statusClass: "2xx", terminalStatus: "completed", count: 1 },
+        {
+          surface: "codex",
+          statusClass: "2xx",
+          terminalStatus: "completed",
+          count: 1,
+        },
       ]);
 
       // Both Prometheus scrapes and the JSON snapshot ran; the recorder never fired again.
@@ -157,11 +180,16 @@ describe("GET /metrics management boundary", () => {
     saveConfig({ ...remoteConfig(), rateLimit: { enabled: true } });
     const enabledServer = startServer(0);
     try {
-      const charged = await fetch(new URL("/api/metrics/json", enabledServer.url), {
-        headers: { "x-opencodex-api-key": "admin-secret" },
-      });
+      const charged = await fetch(
+        new URL("/api/metrics/json", enabledServer.url),
+        {
+          headers: { "x-opencodex-api-key": "admin-secret" },
+        },
+      );
       expect(charged.status).toBe(200);
-      expect(await charged.json() as Record<string, unknown>).toHaveProperty("rateLimit");
+      expect((await charged.json()) as Record<string, unknown>).toHaveProperty(
+        "rateLimit",
+      );
     } finally {
       await enabledServer.stop(true);
     }
@@ -185,7 +213,7 @@ describe("GET /metrics management boundary", () => {
         headers: { "x-opencodex-api-key": "admin-secret" },
       });
       expect(json.status).toBe(200);
-      const snapshot = await json.json() as Record<string, unknown>;
+      const snapshot = (await json.json()) as Record<string, unknown>;
       expect(snapshot).toHaveProperty("process");
       expect("rateLimit" in snapshot).toBe(false);
     } finally {
@@ -203,16 +231,24 @@ describe("GET /metrics management boundary", () => {
         headers: { "x-opencodex-api-key": "admin-secret" },
       });
       expect(json.status).toBe(200);
-      const snapshot = await json.json() as {
+      const snapshot = (await json.json()) as {
         rateLimit?: {
           enabled: boolean;
-          requests: Array<{ surface: string; source: string; result: string; count: number }>;
+          requests: Array<{
+            surface: string;
+            source: string;
+            result: string;
+            count: number;
+          }>;
         };
       };
       expect(snapshot.rateLimit?.enabled).toBe(true);
-      const managementRow = snapshot.rateLimit?.requests.find(row => row.surface === "management"
-        && row.source === "principal"
-        && row.result === "allowed");
+      const managementRow = snapshot.rateLimit?.requests.find(
+        (row) =>
+          row.surface === "management" &&
+          row.source === "principal" &&
+          row.result === "allowed",
+      );
       expect(managementRow?.count).toBeGreaterThanOrEqual(1);
       expect(JSON.stringify(snapshot.rateLimit)).not.toMatch(
         /fingerprint|credential|authorization|origin|address|provider|model|account|requestId|request_id|conversation|prompt|error/i,
@@ -223,18 +259,27 @@ describe("GET /metrics management boundary", () => {
       });
       expect(scrape.status).toBe(200);
       const body = await scrape.text();
-      expect(body).toMatch(/opencodex_rate_limit_requests_total\{surface="management",source="principal",result="allowed"\} [1-9]/);
-      expect(body).toContain("# TYPE opencodex_rate_limit_websocket_connections gauge");
+      expect(body).toMatch(
+        /opencodex_rate_limit_requests_total\{surface="management",source="principal",result="allowed"\} [1-9]/,
+      );
+      expect(body).toContain(
+        "# TYPE opencodex_rate_limit_websocket_connections gauge",
+      );
       expect(body).not.toContain('principal="');
-      expect(body).not.toMatch(/fingerprint|credential|authorization|origin|address|provider=|model=|account|request_id|conversation|prompt/i);
+      expect(body).not.toMatch(
+        /fingerprint|credential|authorization|origin|address|provider=|model=|account|request_id|conversation|prompt/i,
+      );
 
       // Two direct render calls bypass HTTP admission entirely: identical rate-limit output
       // proves rendering never consumes tokens, mints buckets, or mutates limiter state.
-      const rateLimitLines = (text: string) => text.split("\n").filter(line => line.includes("rate_limit"));
+      const rateLimitLines = (text: string) =>
+        text.split("\n").filter((line) => line.includes("rate_limit"));
       const firstRender = runtimeMetrics.prometheus();
       const secondRender = runtimeMetrics.prometheus();
       expect(rateLimitLines(secondRender)).toEqual(rateLimitLines(firstRender));
-      expect(runtimeMetrics.snapshot().rateLimit).toEqual(runtimeMetrics.snapshot().rateLimit);
+      expect(runtimeMetrics.snapshot().rateLimit).toEqual(
+        runtimeMetrics.snapshot().rateLimit,
+      );
     } finally {
       await server.stop(true);
     }
@@ -244,20 +289,30 @@ describe("GET /metrics management boundary", () => {
     saveConfig(remoteConfig());
     const server = startServer(0);
     try {
-      const unauthenticated = await fetch(new URL("/api/metrics/json", server.url));
+      const unauthenticated = await fetch(
+        new URL("/api/metrics/json", server.url),
+      );
       expect(unauthenticated.status).toBe(401);
 
-      const withDataToken = await fetch(new URL("/api/metrics/json", server.url), {
-        headers: { "x-opencodex-api-key": "data-secret" },
-      });
+      const withDataToken = await fetch(
+        new URL("/api/metrics/json", server.url),
+        {
+          headers: { "x-opencodex-api-key": "data-secret" },
+        },
+      );
       expect(withDataToken.status).toBe(401);
 
-      const withAdminToken = await fetch(new URL("/api/metrics/json", server.url), {
-        headers: { "x-opencodex-api-key": "admin-secret" },
-      });
+      const withAdminToken = await fetch(
+        new URL("/api/metrics/json", server.url),
+        {
+          headers: { "x-opencodex-api-key": "admin-secret" },
+        },
+      );
       expect(withAdminToken.status).toBe(200);
-      expect(withAdminToken.headers.get("content-type") ?? "").toContain("application/json");
-      const snapshot = await withAdminToken.json() as Record<string, unknown>;
+      expect(withAdminToken.headers.get("content-type") ?? "").toContain(
+        "application/json",
+      );
+      const snapshot = (await withAdminToken.json()) as Record<string, unknown>;
       expect(snapshot).toHaveProperty("process");
     } finally {
       await server.stop(true);
