@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { CatalogModel } from "../codex/catalog";
-import { catalogModelSlug, invalidateCodexModelsCache, nativeModelRows, uniqueCatalogModelsForPublicList } from "../codex/catalog";
+import {
+  catalogModelSlug,
+  invalidateCodexModelsCache,
+  nativeModelRows,
+  uniqueCatalogModelsForPublicList,
+} from "../codex/catalog";
 import {
   DEFAULT_SUBAGENT_MODELS,
   codexAutoStartEnabled,
@@ -23,19 +28,37 @@ import {
 } from "../oauth";
 import { removeCredential } from "../oauth/store";
 import { providerDestinationResolvedError } from "../lib/destination-policy";
-import { enrichProviderFromCatalog, listKeyLoginProviders } from "../oauth/key-providers";
+import {
+  enrichProviderFromCatalog,
+  listKeyLoginProviders,
+} from "../oauth/key-providers";
 import { deriveProviderPresets } from "../providers/derive";
 import { providerCodexAccountMode } from "../providers/registry";
 import { routedSlug, slugEquals } from "../providers/slug-codec";
-import { clearProviderQuotaCache, fetchProviderQuotaReports } from "../providers/quota";
+import {
+  clearProviderQuotaCache,
+  fetchProviderQuotaReports,
+} from "../providers/quota";
 import { isCanonicalOpenAiForwardProvider } from "../providers/openai-tiers";
 import { clearThreadAccountMap } from "../codex/routing";
 import { primeCodexPoolQuotas } from "../codex/auth-api";
-import { DEFAULT_PROVIDER_CONTEXT_CAP, globalContextCapValue, providerContextCap, providerContextCaps, setAllProviderContextCaps, setGlobalContextCapValue, setProviderContextCap } from "../providers/context-cap";
+import {
+  DEFAULT_PROVIDER_CONTEXT_CAP,
+  globalContextCapValue,
+  providerContextCap,
+  providerContextCaps,
+  setAllProviderContextCaps,
+  setGlobalContextCapValue,
+  setProviderContextCap,
+} from "../providers/context-cap";
 import { resolveCodexHomeDir } from "../codex/home";
 import { readUsageEntries } from "../usage/log";
 import { getUsageDebugLogEntries } from "../usage/debug";
-import { parseRange, parseUsageSurface, summarizeUsage } from "../usage/summary";
+import {
+  parseRange,
+  parseUsageSurface,
+  summarizeUsage,
+} from "../usage/summary";
 import { stripCodexRuntimeProviderFields } from "../codex/auth-context";
 import { getProviderRegistryEntry } from "../providers/registry";
 import { getDebugLogEntries } from "../lib/debug-log-buffer";
@@ -47,13 +70,35 @@ import {
   setDebugSettings,
   type DebugFlag,
 } from "../lib/debug-settings";
-import type { OcxClaudeCodeConfig, OcxClaudeDesktopProfile, OcxConfig, OcxCustomModel, OcxProviderConfig } from "../types";
+import type {
+  OcxClaudeCodeConfig,
+  OcxClaudeDesktopProfile,
+  OcxConfig,
+  OcxCustomModel,
+  OcxProviderConfig,
+} from "../types";
 import type { DesktopProfileModel } from "../claude/desktop-profile";
 import { drainAndShutdown } from "./lifecycle";
-import { filterRequestLogs, getRequestLogEntries, type RequestLogEntry } from "./request-log";
-import { estimateComboCost, estimateRequestCost, normalizeCostTokens, tokensPerSecond } from "../usage/cost";
+import {
+  filterRequestLogs,
+  getRequestLogEntries,
+  type RequestLogEntry,
+} from "./request-log";
+import {
+  estimateComboCost,
+  estimateRequestCost,
+  normalizeCostTokens,
+  tokensPerSecond,
+} from "../usage/cost";
 import type { PersistedUsageAttempt } from "../usage/log";
-import { isAllowedManagementOrigin, jsonResponse, providerManagementConfigError, publicProviderBaseUrl, safeConfigDTO } from "./auth-cors";
+import {
+  isAllowedManagementOrigin,
+  jsonResponse,
+  providerManagementConfigError,
+  publicProviderBaseUrl,
+  safeConfigDTO,
+} from "./auth-cors";
+import { RequestBodyTooLargeError } from "../lib/request-body";
 import { applySystemEnvToggle } from "./system-env";
 
 import type { ManagementApiDeps } from "./management/context";
@@ -81,7 +126,9 @@ import { fetchAllModels } from "./management/shared";
 // installed npm version instead of a stale hardcode.
 export const VERSION = (() => {
   try {
-    return JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version as string;
+    return JSON.parse(
+      readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
+    ).version as string;
   } catch {
     return "0.0.0";
   }
@@ -95,106 +142,158 @@ export async function handleManagementAPI(
   routeOpts: ManagementRouteOptions = {},
 ): Promise<Response | null> {
   if (!isAllowedManagementOrigin(req, config)) {
-    return jsonResponse({ error: "cross-origin request blocked" }, 403, req, config);
+    return jsonResponse(
+      { error: "cross-origin request blocked" },
+      403,
+      req,
+      config,
+    );
   }
-  // Management bodies are small JSON (provider names, key ids, settings). Reject oversized
-  // payloads before any handler buffers them — the data plane has its own decompression cap.
-  if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
-    const contentLength = Number(req.headers.get("content-length") ?? "0");
-    if (Number.isFinite(contentLength) && contentLength > 2 * 1024 * 1024) {
-      return jsonResponse({ error: "request body too large" }, 413, req, config);
-    }
-  }
-  async function refreshCodexCatalogBestEffort(): Promise<void> {
-    if (deps.refreshCodexCatalog) return deps.refreshCodexCatalog();
-    try {
-      const { refreshCodexModelCatalog } = await import("../codex/refresh");
-      await refreshCodexModelCatalog(config);
-    } catch {
-      /* catalog absent */
-    }
-  }
-
-  async function syncClaudeAgentDefsBestEffort(): Promise<void> {
-    try {
-      const { injectClaudeAgentDefs } = await import("../claude/agents-inject");
-      if (config.claudeCode?.enabled === false || config.claudeCode?.injectAgents === false) {
-        injectClaudeAgentDefs(config, {});
-        return;
-      }
+  // Management bodies are small JSON (provider names, key ids, settings). Every inbound
+  // body read goes through readJsonBodyCapped, which enforces a streamed 2 MiB cap —
+  // chunked/misdeclared lengths can no longer bypass it. Too-large reads surface here
+  // as one 413 envelope regardless of which route was parsing.
+  try {
+    async function refreshCodexCatalogBestEffort(): Promise<void> {
+      if (deps.refreshCodexCatalog) return deps.refreshCodexCatalog();
       try {
-        const [models, { buildClaudeContextWindows }, { visibleNativeSlugs }] = await Promise.all([
-          fetchAllModels(config),
-          import("../claude/context-windows"),
-          import("../codex/catalog"),
-        ]);
-        injectClaudeAgentDefs(config, buildClaudeContextWindows([...visibleNativeSlugs(config)], models));
+        const { refreshCodexModelCatalog } = await import("../codex/refresh");
+        await refreshCodexModelCatalog(config);
       } catch {
-        // Keep routes available through a provider-discovery blip. A later
-        // launch-time sync restores any context markers missing from this pass.
-        injectClaudeAgentDefs(config, {});
+        /* catalog absent */
       }
-    } catch { /* best-effort */ }
-  }
-  const ctx: ManagementContext = { req, url, config, deps, refreshCodexCatalogBestEffort, syncClaudeAgentDefsBestEffort };
-  const listenPort = routeOpts.listenPort ?? config.port ?? 10100;
-  const routed =
-    (await handleProvenanceRoutes(ctx, {
-      listenPort,
-      managementAuthAvailable: routeOpts.managementAuthAvailable ?? true,
-      authenticated: routeOpts.provenanceAuthenticated ?? true,
-    }))
-    ?? (await handleConfigRoutes(ctx))
-    ??     (await handleLogsUsageRoutes(ctx))
-    ??     (await handleProviderRoutes(ctx))
-    ??     (await handleModelRoutes(ctx))
-    ??     (await handleAgentSettingsRoutes(ctx))
-    ??     (await handleOauthAccountRoutes(ctx))
-    ??     (await handleComboRoutes(ctx))
-    ??     (await handleSystemRoutes(ctx))
-    ??     (await handleCacheRoutes(ctx))
-    ??     (await handleRouterRoutes(ctx));
-  if (routed) return routed;
-
-  if (url.pathname === "/api/stop" && req.method === "POST") {
-    const { restoreNativeCodex } = await import("../codex/inject");
-    const { stopServiceIfInstalled, isServiceOwnershipError } = await import("../service");
-    try {
-      stopServiceIfInstalled();
-    } catch (err) {
-      if (isServiceOwnershipError(err)) {
-        // The installed service belongs to another CODEX_HOME/OPENCODEX_HOME: it would respawn
-        // this proxy immediately, and its shared config is not ours to tear down. Refuse the
-        // stop instead of half-performing it. 409, not 500 — the request is well-formed.
-        return jsonResponse({ success: false, message: err.message }, 409, req, config);
-      }
-      throw err;
     }
-    const { readRuntimePort } = await import("../config");
-    const proxyOnly = readRuntimePort(process.pid)?.proxyOnly === true;
-    const restore = proxyOnly ? { success: true, message: "Client configuration unchanged." } : restoreNativeCodex();
-    // Both managed configs come down together on an explicit teardown. The daemon's own
-    // syncCleanup skips this when OCX_SERVICE is set (so a crash/respawn keeps the fence),
-    // which is exactly why an intentional stop has to do it here.
-    const { stripGrokConfig } = await import("../grok/inject");
-    const grok = proxyOnly ? { ok: true, message: "" } : stripGrokConfig();
-    setTimeout(async () => {
-      await drainAndShutdown(undefined, config.shutdownTimeoutMs ?? 5000);
-      process.exit(0);
-    }, 200);
-    const grokNote = grok.ok ? "" : ` Grok config cleanup failed: ${grok.message}`;
-    return jsonResponse(restore.success
-      ? { success: true, message: proxyOnly ? "Proxy stopping; client configuration unchanged." : `Proxy stopping, native Codex restored.${grokNote}` }
-      : { success: false, message: `Proxy stopping, but native Codex restore failed: ${restore.message}. Run \`ocx restore\`.${grokNote}` });
-  }
 
-  if (url.pathname.startsWith("/api/codex-auth/")) {
-    const { handleCodexAuthAPI } = await import("../codex/auth-api");
-    return handleCodexAuthAPI(req, url, config);
-  }
+    async function syncClaudeAgentDefsBestEffort(): Promise<void> {
+      try {
+        const { injectClaudeAgentDefs } =
+          await import("../claude/agents-inject");
+        if (
+          config.claudeCode?.enabled === false ||
+          config.claudeCode?.injectAgents === false
+        ) {
+          injectClaudeAgentDefs(config, {});
+          return;
+        }
+        try {
+          const [
+            models,
+            { buildClaudeContextWindows },
+            { visibleNativeSlugs },
+          ] = await Promise.all([
+            fetchAllModels(config),
+            import("../claude/context-windows"),
+            import("../codex/catalog"),
+          ]);
+          injectClaudeAgentDefs(
+            config,
+            buildClaudeContextWindows([...visibleNativeSlugs(config)], models),
+          );
+        } catch {
+          // Keep routes available through a provider-discovery blip. A later
+          // launch-time sync restores any context markers missing from this pass.
+          injectClaudeAgentDefs(config, {});
+        }
+      } catch {
+        /* best-effort */
+      }
+    }
+    const ctx: ManagementContext = {
+      req,
+      url,
+      config,
+      deps,
+      refreshCodexCatalogBestEffort,
+      syncClaudeAgentDefsBestEffort,
+    };
+    const listenPort = routeOpts.listenPort ?? config.port ?? 10100;
+    const routed =
+      (await handleProvenanceRoutes(ctx, {
+        listenPort,
+        managementAuthAvailable: routeOpts.managementAuthAvailable ?? true,
+        authenticated: routeOpts.provenanceAuthenticated ?? true,
+      })) ??
+      (await handleConfigRoutes(ctx)) ??
+      (await handleLogsUsageRoutes(ctx)) ??
+      (await handleProviderRoutes(ctx)) ??
+      (await handleModelRoutes(ctx)) ??
+      (await handleAgentSettingsRoutes(ctx)) ??
+      (await handleOauthAccountRoutes(ctx)) ??
+      (await handleComboRoutes(ctx)) ??
+      (await handleSystemRoutes(ctx)) ??
+      (await handleCacheRoutes(ctx)) ??
+      (await handleRouterRoutes(ctx));
+    if (routed) return routed;
 
-  return null;
+    if (url.pathname === "/api/stop" && req.method === "POST") {
+      const { restoreNativeCodex } = await import("../codex/inject");
+      const { stopServiceIfInstalled, isServiceOwnershipError } =
+        await import("../service");
+      try {
+        stopServiceIfInstalled();
+      } catch (err) {
+        if (isServiceOwnershipError(err)) {
+          // The installed service belongs to another CODEX_HOME/OPENCODEX_HOME: it would respawn
+          // this proxy immediately, and its shared config is not ours to tear down. Refuse the
+          // stop instead of half-performing it. 409, not 500 — the request is well-formed.
+          return jsonResponse(
+            { success: false, message: err.message },
+            409,
+            req,
+            config,
+          );
+        }
+        throw err;
+      }
+      const { readRuntimePort } = await import("../config");
+      const proxyOnly = readRuntimePort(process.pid)?.proxyOnly === true;
+      const restore = proxyOnly
+        ? { success: true, message: "Client configuration unchanged." }
+        : restoreNativeCodex();
+      // Both managed configs come down together on an explicit teardown. The daemon's own
+      // syncCleanup skips this when OCX_SERVICE is set (so a crash/respawn keeps the fence),
+      // which is exactly why an intentional stop has to do it here.
+      const { stripGrokConfig } = await import("../grok/inject");
+      const grok = proxyOnly ? { ok: true, message: "" } : stripGrokConfig();
+      setTimeout(async () => {
+        await drainAndShutdown(undefined, config.shutdownTimeoutMs ?? 5000);
+        process.exit(0);
+      }, 200);
+      const grokNote = grok.ok
+        ? ""
+        : ` Grok config cleanup failed: ${grok.message}`;
+      return jsonResponse(
+        restore.success
+          ? {
+              success: true,
+              message: proxyOnly
+                ? "Proxy stopping; client configuration unchanged."
+                : `Proxy stopping, native Codex restored.${grokNote}`,
+            }
+          : {
+              success: false,
+              message: `Proxy stopping, but native Codex restore failed: ${restore.message}. Run \`ocx restore\`.${grokNote}`,
+            },
+      );
+    }
+
+    if (url.pathname.startsWith("/api/codex-auth/")) {
+      const { handleCodexAuthAPI } = await import("../codex/auth-api");
+      return handleCodexAuthAPI(req, url, config);
+    }
+
+    return null;
+  } catch (err) {
+    if (err instanceof RequestBodyTooLargeError) {
+      return jsonResponse(
+        { error: "request body too large" },
+        413,
+        req,
+        config,
+      );
+    }
+    throw err;
+  }
 }
-
 
 export { buildClaudeDesktopState, fetchAllModels } from "./management/shared";

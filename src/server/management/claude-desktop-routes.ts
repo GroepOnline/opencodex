@@ -1,6 +1,10 @@
 import { readAppliedDesktop3pLibrary } from "../../claude/desktop-3p";
 import { saveConfigPreservingClaudeCode } from "../../config";
 import { jsonResponse, withNoStore } from "../auth-cors";
+import {
+  readJsonBodyCapped,
+  RequestBodyTooLargeError,
+} from "../../lib/request-body";
 import { buildClaudeDesktopState } from "./shared";
 import type { ManagementContext } from "./context";
 
@@ -26,8 +30,9 @@ export async function handleClaudeDesktopRoutes(
   if (url.pathname === "/api/claude-desktop" && req.method === "PUT") {
     let body: { profile?: unknown };
     try {
-      body = await req.json();
-    } catch {
+      body = await readJsonBodyCapped(req);
+    } catch (err) {
+      if (err instanceof RequestBodyTooLargeError) throw err;
       return jsonResponse({ error: "invalid JSON body" }, 400);
     }
     try {
@@ -82,7 +87,8 @@ export async function handleClaudeDesktopRoutes(
         desktopProfile: state.profile,
       };
       saveConfigPreservingClaudeCode(config);
-      const { writeDesktop3pConfigAsync } = await import("../../claude/desktop-3p");
+      const { writeDesktop3pConfigAsync } =
+        await import("../../claude/desktop-3p");
       const { visibleNativeSlugs } = await import("../../codex/catalog");
       const routed = state.models
         .filter(

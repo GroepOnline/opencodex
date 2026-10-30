@@ -111,6 +111,10 @@ import {
   publicProviderBaseUrl,
   safeConfigDTO,
 } from "../auth-cors";
+import {
+  readJsonBodyCapped,
+  RequestBodyTooLargeError,
+} from "../../lib/request-body";
 import { applySystemEnvToggle } from "../system-env";
 
 import {
@@ -262,8 +266,9 @@ export async function handleModelRoutes(
   if (url.pathname === "/api/disabled-models" && req.method === "PUT") {
     let body: { models?: unknown };
     try {
-      body = await req.json();
-    } catch {
+      body = await readJsonBodyCapped(req);
+    } catch (err) {
+      if (err instanceof RequestBodyTooLargeError) throw err;
       return jsonResponse({ error: "invalid JSON body" }, 400);
     }
     const disabled = Array.isArray(body.models)
@@ -283,8 +288,9 @@ export async function handleModelRoutes(
   if (url.pathname === "/api/model-visibility" && req.method === "PUT") {
     let parsedBody: unknown;
     try {
-      parsedBody = await req.json();
-    } catch {
+      parsedBody = await readJsonBodyCapped(req);
+    } catch (err) {
+      if (err instanceof RequestBodyTooLargeError) throw err;
       return jsonResponse({ error: "invalid JSON body" }, 400);
     }
     if (!isPlainRecord(parsedBody))
@@ -457,8 +463,9 @@ export async function handleModelRoutes(
       reasoningEfforts?: unknown;
     };
     try {
-      body = await req.json();
-    } catch {
+      body = await readJsonBodyCapped(req);
+    } catch (err) {
+      if (err instanceof RequestBodyTooLargeError) throw err;
       return jsonResponse({ error: "invalid JSON body" }, 400);
     }
     const provider =
@@ -536,8 +543,9 @@ export async function handleModelRoutes(
       modelId?: unknown;
     };
     try {
-      body = await req.json();
-    } catch {
+      body = await readJsonBodyCapped(req);
+    } catch (err) {
+      if (err instanceof RequestBodyTooLargeError) throw err;
       return jsonResponse({ error: "invalid JSON body" }, 400);
     }
     const list = config.customModels ?? [];
@@ -637,8 +645,9 @@ export async function handleModelRoutes(
   if (url.pathname === "/api/selected-models" && req.method === "PUT") {
     let body: { provider?: unknown; models?: unknown };
     try {
-      body = await req.json();
-    } catch {
+      body = await readJsonBodyCapped(req);
+    } catch (err) {
+      if (err instanceof RequestBodyTooLargeError) throw err;
       return jsonResponse({ error: "invalid JSON body" }, 400);
     }
     const provider = typeof body.provider === "string" ? body.provider : "";

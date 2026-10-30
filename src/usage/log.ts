@@ -8,6 +8,7 @@ import {
   readFileSync,
   readSync,
   appendFileSync,
+  statSync,
 } from "node:fs";
 import { join } from "node:path";
 import { maskClientAddress } from "../lib/client-ip";
@@ -521,6 +522,21 @@ export interface UsageAppendObservation {
 
 export type UsageAppendObserver = (observation: UsageAppendObservation) => void;
 
+interface BufferedUsageRow {
+  /** Log path captured at append time; a later config-dir switch cannot misdirect the row. */
+  path: string;
+  /** Config dir the path belongs to, captured alongside it. */
+  dir: string;
+  /**
+   * Config-dir generation at append time (dev:ino:birthtimeMs). A deleted-then-
+   * recreated directory reuses the same path string; rows queued under the old
+   * generation must drop at flush instead of writing into the replacement.
+   */
+  dirId: string;
+  line: string;
+  entry: PersistedUsageEntry;
+}
+
 /**
  * Internal infrastructure bound, not a dynamic plugin system. The process registers a
  * small fixed set of observers (runtime metrics today); overflow is a programming error
@@ -530,9 +546,11 @@ const MAX_USAGE_APPEND_OBSERVERS = 8;
 const usageAppendObservers: UsageAppendObserver[] = [];
 
 /**
- * Subscribe to successful usage appends. Observers are invoked synchronously, in
- * registration order, strictly AFTER the row is durably appended; a failed append
- * never notifies. Returns an idempotent unsubscribe function.
+ * Subscribe to successful usage appends. Observers are invoked in registration
+ * order, strictly AFTER the row is durably appended. Writes are buffered (see
+ * appendUsageEntry), so notification may fire on a later event-loop turn than the
+ * append call itself; a failed append never notifies. Returns an idempotent
+ * unsubscribe function.
  */
 export function subscribeUsageAppends(
   observer: UsageAppendObserver,
@@ -585,22 +603,135 @@ function notifyUsageAppendObservers(entry: PersistedUsageEntry): void {
   }
 }
 
+/**
+ * Buffered usage.jsonl writer.
+ *
+ * appendFileSync-per-request put an open/write/close + chmod burst on the hot
+ * request path. Instead, appendUsageEntry only normalizes and queues the line;
+ * rows flush as one batched write on an unref'd interval, immediately once
+ * USAGE_LOG_FLUSH_ROW_THRESHOLD rows are pending, before every read entry point
+ * (readers always observe their own writes), on graceful drain, and at process
+ * exit. A write failure never reaches the request path: the failed batch is
+ * dropped and counted (telemetry loss stays observable, memory stays bounded).
+ */
+const USAGE_LOG_FLUSH_INTERVAL_MS = 250;
+const USAGE_LOG_FLUSH_ROW_THRESHOLD = 64;
+const USAGE_LOG_MAX_BUFFERED_ROWS = 4_096;
+
+const bufferedUsageRows: BufferedUsageRow[] = [];
+let usageLogFlushTimer: ReturnType<typeof setTimeout> | null = null;
+let usageLogExitHookInstalled = false;
+const usageLogWriterStats = {
+  flushedRows: 0,
+  droppedRows: 0,
+  writeFailures: 0,
+  lastError: "",
+};
+
+/** Test/debug observability into the buffered writer. */
+export function usageLogWriterStatsForTests(): Readonly<
+  typeof usageLogWriterStats
+> & { bufferedRows: number } {
+  return { ...usageLogWriterStats, bufferedRows: bufferedUsageRows.length };
+}
+
+function scheduleUsageLogFlush(): void {
+  if (usageLogFlushTimer !== null) return;
+  usageLogFlushTimer = setTimeout(() => {
+    usageLogFlushTimer = null;
+    flushUsageLog();
+  }, USAGE_LOG_FLUSH_INTERVAL_MS);
+  // Telemetry must not keep a dying process alive; the exit hook still flushes.
+  usageLogFlushTimer.unref?.();
+}
+
+function enforceUsageLogBufferBound(): void {
+  const overflow = bufferedUsageRows.length - USAGE_LOG_MAX_BUFFERED_ROWS;
+  if (overflow <= 0) return;
+  bufferedUsageRows.splice(0, overflow);
+  usageLogWriterStats.droppedRows += overflow;
+}
+
+/**
+ * Durably append every buffered row in FIFO order, batching rows that share a
+ * captured log path into a single write. Never throws: a failed batch is dropped
+ * (counted in usageLogWriterStatsForTests) and emits no append observation,
+ * because the observer contract is "strictly after durable append". Read entry
+ * points and shutdown call this directly.
+ */
+export function flushUsageLog(): void {
+  if (usageLogFlushTimer !== null) {
+    clearTimeout(usageLogFlushTimer);
+    usageLogFlushTimer = null;
+  }
+  if (bufferedUsageRows.length === 0) return;
+  let start = 0;
+  while (start < bufferedUsageRows.length) {
+    let end = start + 1;
+    while (
+      end < bufferedUsageRows.length &&
+      bufferedUsageRows[end]!.path === bufferedUsageRows[start]!.path &&
+      bufferedUsageRows[end]!.dirId === bufferedUsageRows[start]!.dirId
+    ) {
+      end += 1;
+    }
+    const batch = bufferedUsageRows.slice(start, end);
+    try {
+      // A queued row whose config dir was deleted (and maybe recreated) must not
+      // write into the replacement generation.
+      const stat = statSync(batch[0]!.dir);
+      if (`${stat.dev}:${stat.ino}:${stat.birthtimeMs}` !== batch[0]!.dirId) {
+        usageLogWriterStats.droppedRows += batch.length;
+        start = end;
+        continue;
+      }
+      appendFileSync(batch[0]!.path, batch.map((row) => row.line).join(""), {
+        encoding: "utf-8",
+        mode: 0o600,
+      });
+      try {
+        chmodSync(batch[0]!.path, 0o600);
+      } catch {
+        /* best-effort on platforms that ignore chmod */
+      }
+      usageLogWriterStats.flushedRows += batch.length;
+      for (const row of batch) notifyUsageAppendObservers(row.entry);
+    } catch (err) {
+      usageLogWriterStats.writeFailures += 1;
+      usageLogWriterStats.droppedRows += batch.length;
+      usageLogWriterStats.lastError =
+        err instanceof Error ? err.message : String(err);
+    }
+    start = end;
+  }
+  bufferedUsageRows.length = 0;
+}
+
+function ensureUsageLogExitHook(): void {
+  if (usageLogExitHookInstalled) return;
+  usageLogExitHookInstalled = true;
+  // "exit" also covers process.exit() callers that bypass drainAndShutdown; the
+  // flush is synchronous, which is all the exit event permits anyway.
+  process.on("exit", () => flushUsageLog());
+}
+
 export function appendUsageEntry(entry: PersistedUsageEntry): void {
   ensureUsageLogDir();
-  const path = usageLogPath();
+  const dir = getConfigDir();
+  const stat = statSync(dir);
   const normalized = normalizeUsageEntry(entry);
-  appendFileSync(path, `${JSON.stringify(normalized)}\n`, {
-    encoding: "utf-8",
-    mode: 0o600,
+  bufferedUsageRows.push({
+    path: join(dir, "usage.jsonl"),
+    dir,
+    dirId: `${stat.dev}:${stat.ino}:${stat.birthtimeMs}`,
+    line: `${JSON.stringify(normalized)}\n`,
+    entry: normalized,
   });
-  try {
-    chmodSync(path, 0o600);
-  } catch {
-    /* best-effort on platforms that ignore chmod */
-  }
-  // Notify only after the exact normalized row was appended successfully; an append
-  // failure throws above and emits nothing.
-  notifyUsageAppendObservers(normalized);
+  enforceUsageLogBufferBound();
+  ensureUsageLogExitHook();
+  if (bufferedUsageRows.length >= USAGE_LOG_FLUSH_ROW_THRESHOLD)
+    flushUsageLog();
+  else scheduleUsageLogFlush();
 }
 
 export type UsageLogRevision = {
@@ -630,6 +761,9 @@ export function usageReadCacheStatsForTests(): Readonly<
 }
 
 export function resetUsageReadCacheForTests(): void {
+  // Drain leftovers first: queued rows carry their captured path, so rows appended
+  // under a previous OPENCODEX_HOME still land in their own log, never the next one.
+  flushUsageLog();
   usageReadCacheStats = { fullReads: 0, tailReads: 0, parsedLines: 0 };
   managementUsageReadInflight = null;
 }
@@ -685,6 +819,7 @@ export function usageLogRevisionKey(revision: UsageLogRevision | null): string {
 }
 
 export function currentUsageLogRevision(): UsageLogRevision | null {
+  flushUsageLog();
   const path = usageLogPath();
   if (!existsSync(path)) return null;
   let fd: number | undefined;
@@ -742,6 +877,7 @@ export async function readUsageSnapshotForManagement(): Promise<{
   entries: PersistedUsageEntry[];
   revision: UsageLogRevision | null;
 }> {
+  flushUsageLog();
   const path = usageLogPath();
   if (!existsSync(path)) return { entries: [], revision: null };
   const observed = currentUsageLogRevision();
@@ -770,6 +906,7 @@ export async function readUsageEntriesForManagement(): Promise<
 }
 
 export function readUsageEntries(): PersistedUsageEntry[] {
+  flushUsageLog();
   const path = usageLogPath();
   if (!existsSync(path)) return [];
   const lines = readFileSync(path, "utf-8").split(/\r?\n/);
@@ -818,6 +955,7 @@ function parseUsageLines(lines: string[]): PersistedUsageEntry[] {
  */
 export function readRecentUsageEntries(limit: number): PersistedUsageEntry[] {
   if (!Number.isFinite(limit) || limit <= 0) return [];
+  flushUsageLog();
   const path = usageLogPath();
   if (!existsSync(path)) return [];
   let fd: number | undefined;
