@@ -26,6 +26,9 @@ import {
 } from "../usage/cost";
 import type { PersistedUsageAttempt, UsageStatus } from "../usage/log";
 import type { OcxUsage } from "../types";
+import { captureClickhouseEvent } from "./clickhouse-server";
+import { captureDatadogEvent } from "./datadog-server";
+import { sanitizeTelemetryProperties } from "./sanitize";
 
 /**
  * PostHog host. When OCX_POSTHOG_KEY is set, the host defaults to the official
@@ -63,75 +66,10 @@ interface QueuedEvent {
   attempts: number;
 }
 
-/**
- * The only property keys telemetry may emit — an allowlist, so a caller cannot
- * leak PII or credential material through an undocumented field. A new metric
- * has to be added here (and to the file header) before it can be captured.
- */
-const ALLOWED_PROPERTY_KEYS = new Set([
-  // Request outcome.
-  "provider",
-  "model",
-  "adapter",
-  "status",
-  "outcome",
-  // Latency.
-  "durationMs",
-  "firstOutputMs",
-  // Token counts.
-  "inputTokens",
-  "outputTokens",
-  "cachedTokens",
-  "reasoningTokens",
-  // Errors and codex account-pool outcomes.
-  "errorCode",
-  "accountMode",
-  "cooldownMs",
-  // Quota and budget thresholds.
-  "type",
-  "threshold",
-  "actual",
-  // Canonical PostHog AI observability properties. Content fields are intentionally absent.
-  "$ai_trace_id",
-  "$ai_session_id",
-  "$ai_generation_id",
-  "$ai_model",
-  "$ai_provider",
-  "$ai_latency",
-  "$ai_time_to_first_token",
-  "$ai_input_tokens",
-  "$ai_output_tokens",
-  "$ai_total_cost_usd",
-  "$ai_http_status",
-  "$ai_is_error",
-  "$ai_error",
-  "$ai_stream",
-  "$ai_product",
-  // OCX-only privacy-safe dimensions for fleet diagnostics.
-  "surface",
-  "usageStatus",
-  "usageEstimated",
-]);
-
-/** Keep only allowlisted metric keys with primitive values, capping string length. */
 function sanitizeProperties(
   props: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
-  if (!props || typeof props !== "object") return {};
-  const clean: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(props)) {
-    if (!ALLOWED_PROPERTY_KEYS.has(key)) continue;
-    if (typeof value === "string" && value.length > 200) {
-      clean[key] = value.slice(0, 200);
-    } else if (typeof value === "number" && Number.isFinite(value)) {
-      clean[key] = value;
-    } else if (typeof value === "boolean") {
-      clean[key] = value;
-    } else if (typeof value === "string") {
-      clean[key] = value;
-    }
-  }
-  return clean;
+  return sanitizeTelemetryProperties(props);
 }
 
 /** Stable anonymous distinct_id stored on disk — no hostnames, no usernames. */
@@ -364,11 +302,9 @@ export function aiGenerationProperties(
 export function captureRequestTelemetry(
   entry: AiGenerationTelemetryInput,
 ): void {
-  const client = getServerPosthog();
-  if (!client) return;
   try {
     const isError = requestIsError(entry);
-    client.capture(TELEMETRY_EVENTS.REQUEST_TERMINAL, {
+    const fleet = {
       provider: entry.provider,
       model: entry.resolvedModel ?? entry.model,
       status: entry.status,
@@ -384,13 +320,18 @@ export function captureRequestTelemetry(
           }
         : {}),
       ...(entry.errorCode ? { errorCode: entry.errorCode } : {}),
-    });
+      ...(entry.surface ? { surface: entry.surface } : {}),
+    };
+    const client = getServerPosthog();
+    client?.capture(TELEMETRY_EVENTS.REQUEST_TERMINAL, fleet);
     // HTTP 101 is the terminal record for a successful WebSocket transport upgrade,
     // not a completed model generation. Keep the fleet request event, but do not
     // contaminate canonical PostHog generation counts with protocol handshakes.
-    if (entry.status !== 101) {
+    if (client && entry.status !== 101) {
       client.capture("$ai_generation", aiGenerationProperties(entry));
     }
+    captureDatadogEvent(TELEMETRY_EVENTS.REQUEST_TERMINAL, fleet);
+    captureClickhouseEvent(TELEMETRY_EVENTS.REQUEST_TERMINAL, fleet);
   } catch {
     // Telemetry is best-effort and must never affect gateway request completion.
   }

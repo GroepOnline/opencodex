@@ -7,6 +7,8 @@ import "@fontsource/instrument-serif/400.css";
 import "@fontsource/instrument-serif/400-italic.css";
 import App from "./App";
 import { LanguageProvider } from "./i18n/provider";
+import { initClickhouse } from "./clickhouse";
+import { initDatadog } from "./datadog";
 import { initPostHog } from "./posthog";
 import { captureReactError, initSentry } from "./sentry-sdk";
 import "./styles/app-base.css";
@@ -21,6 +23,8 @@ import "./styles/pages-configure.css";
 
 initSentry();
 initPostHog();
+initDatadog();
+initClickhouse();
 
 // ChefGroep design language ships two complete skins (design-system §14).
 // devin (warm, default) is the :root skin; strak (cool, sharp) is opt-in via

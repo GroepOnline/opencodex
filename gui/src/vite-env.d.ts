@@ -4,6 +4,12 @@ interface ImportMetaEnv {
   readonly VITE_API_BASE?: string;
   readonly VITE_POSTHOG_KEY?: string;
   readonly VITE_POSTHOG_HOST?: string;
+  readonly VITE_SENTRY_DSN?: string;
+  readonly VITE_SENTRY_ENVIRONMENT?: string;
+  readonly VITE_SENTRY_RELEASE?: string;
+  readonly VITE_DATADOG_CLIENT_TOKEN?: string;
+  readonly VITE_DATADOG_SITE?: string;
+  readonly VITE_CLICKHOUSE_URL?: string;
 }
 
 interface ImportMeta {
@@ -18,6 +24,12 @@ interface ImportMetaEnv {
   readonly VITE_API_BASE?: string;
   readonly VITE_POSTHOG_KEY?: string;
   readonly VITE_POSTHOG_HOST?: string;
+  readonly VITE_SENTRY_DSN?: string;
+  readonly VITE_SENTRY_ENVIRONMENT?: string;
+  readonly VITE_SENTRY_RELEASE?: string;
+  readonly VITE_DATADOG_CLIENT_TOKEN?: string;
+  readonly VITE_DATADOG_SITE?: string;
+  readonly VITE_CLICKHOUSE_URL?: string;
 }
 
 interface ImportMeta {

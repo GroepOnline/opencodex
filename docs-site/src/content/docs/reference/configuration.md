@@ -20,6 +20,28 @@ Server: `OCX_SENTRY_DSN` (fallback `SENTRY_DSN`),
 
 GUI: `VITE_SENTRY_DSN`, `VITE_SENTRY_ENVIRONMENT`, `VITE_SENTRY_RELEASE`.
 
+## Optional telemetry environment variables
+
+Every sink stays off until its own variable is set. Failures are ignored so a
+telemetry outage cannot fail a proxy request. Payloads are allowlisted metric
+fields (provider, model, status, latency, token counts, error codes). Request
+bodies, headers, API keys, and account identifiers are not sent.
+
+| Variable                                          | Surface   | Meaning                                                                                       |
+| ------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------- |
+| `OCX_POSTHOG_KEY` / `OCX_POSTHOG_HOST`            | Server    | PostHog project key. Host defaults to `https://eu.i.posthog.com`.                             |
+| `VITE_POSTHOG_KEY` / `VITE_POSTHOG_HOST`          | Dashboard | Same for the browser SDK. Unset means the SDK is not loaded.                                  |
+| `OCX_SENTRY_DSN` (`SENTRY_DSN` fallback)          | Server    | Sentry DSN. Environment and release are optional and must be a known label or a version/sha.  |
+| `VITE_SENTRY_DSN`                                 | Dashboard | Browser Sentry. No replay and no request bodies.                                              |
+| `OCX_DATADOG_API_KEY` (`DD_API_KEY` fallback)     | Server    | Datadog HTTP log intake (`DD-API-KEY`).                                                       |
+| `OCX_DATADOG_SITE` (`DD_SITE` fallback)           | Server    | Site parameter such as `datadoghq.eu` (the default). Unknown sites are not contacted.         |
+| `VITE_DATADOG_CLIENT_TOKEN` / `VITE_DATADOG_SITE` | Dashboard | Public browser client token. Do not put an API key here.                                      |
+| `OCX_CLICKHOUSE_URL`                              | Server    | ClickHouse HTTP origin, for example `http://127.0.0.1:8123`. Userinfo in the URL is rejected. |
+| `OCX_CLICKHOUSE_PASSWORD_FILE`                    | Server    | Password file. Prefer this over `OCX_CLICKHOUSE_PASSWORD`.                                    |
+| `VITE_CLICKHOUSE_URL`                             | Dashboard | Passwordless `http://127.0.0.1:8123` or `http://localhost:8123` only.                         |
+
+`docker compose --profile observability up` starts a loopback ClickHouse beside the proxy. From inside that network set `OCX_CLICKHOUSE_URL=http://clickhouse:8123`.
+
 ## Reserved OpenAI providers
 
 `openai` and `openai-apikey` are fixed reserved ids. `openai.codexAccountMode` is `"pool"` by
