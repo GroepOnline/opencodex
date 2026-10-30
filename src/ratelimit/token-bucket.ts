@@ -11,6 +11,9 @@ export const RATE_LIMIT_SURFACES = [
   "search",
   "live",
   "model-discovery",
+  // Cross-surface: one shared bucket per socket address for REJECTED credentials.
+  // No route charges it via commit(); only AdmissionGate.authFailed() consumes.
+  "failed-auth",
 ] as const;
 
 export type RateLimitSurface = (typeof RATE_LIMIT_SURFACES)[number];
@@ -55,18 +58,25 @@ interface BucketState {
 const SURFACE_ORDER: readonly RateLimitSurface[] = RATE_LIMIT_SURFACES;
 
 function validatePositiveFinite(value: number, name: string): number {
-  if (!Number.isFinite(value) || value <= 0) throw new RangeError(`${name} must be greater than zero`);
+  if (!Number.isFinite(value) || value <= 0)
+    throw new RangeError(`${name} must be greater than zero`);
   return value;
 }
 
 function validatePositiveInteger(value: number, name: string): number {
-  if (!Number.isInteger(value) || value < 1) throw new RangeError(`${name} must be a positive integer`);
+  if (!Number.isInteger(value) || value < 1)
+    throw new RangeError(`${name} must be a positive integer`);
   return value;
 }
 
-export function validateRateLimitPolicy(policy: RateLimitPolicy): RateLimitPolicy {
+export function validateRateLimitPolicy(
+  policy: RateLimitPolicy,
+): RateLimitPolicy {
   return Object.freeze({
-    requestsPerMinute: validatePositiveFinite(policy.requestsPerMinute, "requestsPerMinute"),
+    requestsPerMinute: validatePositiveFinite(
+      policy.requestsPerMinute,
+      "requestsPerMinute",
+    ),
     burst: validatePositiveInteger(policy.burst, "burst"),
   });
 }
@@ -83,12 +93,18 @@ function statsKey(
   return `${surface}\0${source}\0${result}`;
 }
 
-function bucketKey(surface: RateLimitSurface, principal: RateLimitPrincipal): string {
+function bucketKey(
+  surface: RateLimitSurface,
+  principal: RateLimitPrincipal,
+): string {
   return `${surface}\0${principal.fingerprint}`;
 }
 
 function samePolicy(left: RateLimitPolicy, right: RateLimitPolicy): boolean {
-  return left.requestsPerMinute === right.requestsPerMinute && left.burst === right.burst;
+  return (
+    left.requestsPerMinute === right.requestsPerMinute &&
+    left.burst === right.burst
+  );
 }
 
 /**
@@ -170,8 +186,13 @@ export class TokenBucketLimiter {
 
     const refillPerMs = policy.requestsPerMinute / 60_000;
     const deficit = Math.max(0, normalizedCost - state.tokens);
-    const retryAfterSeconds = allowed ? 0 : Math.max(1, Math.ceil(deficit / refillPerMs / 1000));
-    const resetAfterSeconds = Math.max(0, Math.ceil((policy.burst - state.tokens) / refillPerMs / 1000));
+    const retryAfterSeconds = allowed
+      ? 0
+      : Math.max(1, Math.ceil(deficit / refillPerMs / 1000));
+    const resetAfterSeconds = Math.max(
+      0,
+      Math.ceil((policy.burst - state.tokens) / refillPerMs / 1000),
+    );
     const decision: RateLimitDecision = {
       allowed,
       surface,
@@ -187,11 +208,17 @@ export class TokenBucketLimiter {
   }
 
   statsSnapshot(): readonly RateLimitStatsRow[] {
-    return Object.freeze([...this.stats.values()]
-      .map(row => Object.freeze({ ...row }))
-      .sort((left, right) => SURFACE_ORDER.indexOf(left.surface) - SURFACE_ORDER.indexOf(right.surface)
-        || left.source.localeCompare(right.source)
-        || left.result.localeCompare(right.result)));
+    return Object.freeze(
+      [...this.stats.values()]
+        .map((row) => Object.freeze({ ...row }))
+        .sort(
+          (left, right) =>
+            SURFACE_ORDER.indexOf(left.surface) -
+              SURFACE_ORDER.indexOf(right.surface) ||
+            left.source.localeCompare(right.source) ||
+            left.result.localeCompare(right.result),
+        ),
+    );
   }
 
   bucketCounts(): Readonly<{ principals: number; overflowSurfaces: number }> {
@@ -210,7 +237,9 @@ export class TokenBucketLimiter {
 
   private monotonicNow(): number {
     const sampled = this.nowSource();
-    const finite = Number.isFinite(sampled) ? Math.max(0, sampled) : this.lastNowMs;
+    const finite = Number.isFinite(sampled)
+      ? Math.max(0, sampled)
+      : this.lastNowMs;
     this.lastNowMs = Math.max(this.lastNowMs, finite);
     return this.lastNowMs;
   }
@@ -220,16 +249,24 @@ export class TokenBucketLimiter {
    * refill is committed do we install the new policy. Increasing burst never mints tokens;
    * decreasing burst clamps existing balance to the new capacity.
    */
-  private applyPolicy(state: BucketState, nextPolicy: RateLimitPolicy, now: number): void {
+  private applyPolicy(
+    state: BucketState,
+    nextPolicy: RateLimitPolicy,
+    now: number,
+  ): void {
     this.refill(state, state.policy, now);
     if (samePolicy(state.policy, nextPolicy)) return;
     state.tokens = Math.min(nextPolicy.burst, Math.max(0, state.tokens));
     state.policy = nextPolicy;
   }
 
-  private refill(state: BucketState, policy: RateLimitPolicy, now: number): void {
+  private refill(
+    state: BucketState,
+    policy: RateLimitPolicy,
+    now: number,
+  ): void {
     const elapsedMs = Math.max(0, now - state.updatedAtMs);
-    const refill = elapsedMs * policy.requestsPerMinute / 60_000;
+    const refill = (elapsedMs * policy.requestsPerMinute) / 60_000;
     state.tokens = Math.min(policy.burst, Math.max(0, state.tokens + refill));
     state.updatedAtMs = now;
   }

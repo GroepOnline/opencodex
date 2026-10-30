@@ -234,7 +234,10 @@ const LIVE_SIDEBAND_PENDING_MAX = 32;
  */
 async function logCacheHitRequest(
   hit: CacheHit,
-  clientAttribution: Pick<RequestLogContext, "clientAddress" | "clientUserAgent">,
+  clientAttribution: Pick<
+    RequestLogContext,
+    "clientAddress" | "clientUserAgent"
+  >,
 ): Promise<void> {
   const start = Date.now();
   const requestId = nextRequestLogId(start);
@@ -551,7 +554,8 @@ export function startServer(port?: number) {
         }
         // WebSocket request rate is charged at handshake time via commit(), which runs only
         // after auth and Origin pass; long-lived stream concurrency is the separate reservation
-        // below. Invalid credentials always answer 401 and never touch the limiter.
+        // below. Invalid credentials answer 401 and charge only the shared per-IP failed-auth
+        // bucket, which upgrades the rejection to 429 once its budget is exhausted.
         const wsGate = admission.gate(
           "responses-websocket",
           req,
@@ -560,7 +564,8 @@ export function startServer(port?: number) {
         if (wsGate.preAuthDeny)
           return withCors(wsGate.preAuthDeny, req, config);
         const apiAuthError = requireResponsesApiAuth(req, config);
-        if (apiAuthError) return withCors(apiAuthError, req, config);
+        if (apiAuthError)
+          return withCors(wsGate.authFailed() ?? apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
             formatErrorResponse(
@@ -658,8 +663,8 @@ export function startServer(port?: number) {
       if (url.pathname === "/metrics" && req.method === "GET") {
         // /metrics is a management surface (structure/plugin-metrics-ratelimit-benchmarks.md §3):
         // it shares the management admission bucket with /api/*, charged only after the
-        // management auth and Origin checks pass. Unauthenticated probes always get 401 and
-        // never consume (or mint) limiter state.
+        // management auth and Origin checks pass. Unauthenticated probes get 401 charged only
+        // to the shared per-IP failed-auth bucket — never the caller's admission budget.
         const metricsGate = admission.gate("management", req, requestServer);
         if (metricsGate.preAuthDeny)
           return withManagementCors(metricsGate.preAuthDeny, req, config);
@@ -668,7 +673,12 @@ export function startServer(port?: number) {
           managementAuth,
           config,
         );
-        if (apiAuthError) return withManagementCors(apiAuthError, req, config);
+        if (apiAuthError)
+          return withManagementCors(
+            metricsGate.authFailed() ?? apiAuthError,
+            req,
+            config,
+          );
         if (!isAllowedManagementOrigin(req, config)) {
           return withManagementCors(
             formatErrorResponse(
@@ -732,7 +742,8 @@ export function startServer(port?: number) {
           managementAuth,
           config,
         );
-        if (apiAuthError) return wrapManagement(apiAuthError);
+        if (apiAuthError)
+          return wrapManagement(mgmtGate.authFailed() ?? apiAuthError);
         // Origin precedence: handleManagementAPI enforces the same guard, but only after this
         // block would have charged the limiter. Reject cross-origin here (same payload shape as
         // management-api.ts) so a 403 can never consume the caller's admission budget.
@@ -781,7 +792,8 @@ export function startServer(port?: number) {
         // set (Authorization / x-api-key / x-opencodex-api-key) is safe here and required by
         // remote OpenAI-style bearer clients and Claude gateway discovery (anthropic-version).
         const apiAuthError = requireApiAuth(req, config);
-        if (apiAuthError) return withCors(apiAuthError, req, config);
+        if (apiAuthError)
+          return withCors(modelsGate.authFailed() ?? apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
             formatErrorResponse(
@@ -955,7 +967,8 @@ export function startServer(port?: number) {
         );
         if (modelsGate.preAuthDeny) return noStoreCors(modelsGate.preAuthDeny);
         const apiAuthError = requireDataPlaneAdmissionAuth(req, config);
-        if (apiAuthError) return noStoreCors(apiAuthError);
+        if (apiAuthError)
+          return noStoreCors(modelsGate.authFailed() ?? apiAuthError);
         if (!isAllowedRequestOrigin(req, config)) {
           return noStoreCors(
             formatErrorResponse(
@@ -1004,7 +1017,12 @@ export function startServer(port?: number) {
         if (compactGate.preAuthDeny)
           return withCors(compactGate.preAuthDeny, req, config);
         const apiAuthError = requireResponsesApiAuth(req, config);
-        if (apiAuthError) return withCors(apiAuthError, req, config);
+        if (apiAuthError)
+          return withCors(
+            compactGate.authFailed() ?? apiAuthError,
+            req,
+            config,
+          );
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
             formatErrorResponse(
@@ -1023,7 +1041,7 @@ export function startServer(port?: number) {
         const logCtx: RequestLogContext = {
           model: "unknown",
           provider: "unknown",
-          ...captureClientAttribution(req, requestServer)
+          ...captureClientAttribution(req, requestServer),
         };
         await beginTrace(logCtx, req);
         let response: Response;
@@ -1070,7 +1088,8 @@ export function startServer(port?: number) {
         if (imagesGate.preAuthDeny)
           return withCors(imagesGate.preAuthDeny, req, config);
         const apiAuthError = requireApiAuth(req, config);
-        if (apiAuthError) return withCors(apiAuthError, req, config);
+        if (apiAuthError)
+          return withCors(imagesGate.authFailed() ?? apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
             formatErrorResponse(
@@ -1089,7 +1108,7 @@ export function startServer(port?: number) {
         const logCtx: RequestLogContext = {
           model: "image_gen",
           provider: "unknown",
-          ...captureClientAttribution(req, requestServer)
+          ...captureClientAttribution(req, requestServer),
         };
         const endpoint = url.pathname.endsWith("/edits")
           ? ("edits" as const)
@@ -1111,8 +1130,16 @@ export function startServer(port?: number) {
         req.method === "GET" &&
         url.pathname.startsWith("/v1/opencodex/artifacts/")
       ) {
+        // No per-surface request bucket exists for artifacts; the gate is used only for its
+        // shared per-IP failed-auth budget so this route is not a throttle bypass.
+        const artifactsGate = admission.gate("failed-auth", req, requestServer);
         const apiAuthError = requireApiAuth(req, config);
-        if (apiAuthError) return withCors(apiAuthError, req, config);
+        if (apiAuthError)
+          return withCors(
+            artifactsGate.authFailed() ?? apiAuthError,
+            req,
+            config,
+          );
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
             formatErrorResponse(
@@ -1171,7 +1198,8 @@ export function startServer(port?: number) {
         if (searchGate.preAuthDeny)
           return withCors(searchGate.preAuthDeny, req, config);
         const apiAuthError = requireApiAuth(req, config);
-        if (apiAuthError) return withCors(apiAuthError, req, config);
+        if (apiAuthError)
+          return withCors(searchGate.authFailed() ?? apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
             formatErrorResponse(
@@ -1190,7 +1218,7 @@ export function startServer(port?: number) {
         const logCtx: RequestLogContext = {
           model: "web_search",
           provider: "unknown",
-          ...captureClientAttribution(req, requestServer)
+          ...captureClientAttribution(req, requestServer),
         };
         const response = await handleSearch(req, config, logCtx);
         addFinalRequestLog(
@@ -1218,7 +1246,12 @@ export function startServer(port?: number) {
         if (responsesGate.preAuthDeny)
           return withCors(responsesGate.preAuthDeny, req, config);
         const apiAuthError = requireResponsesApiAuth(req, config);
-        if (apiAuthError) return withCors(apiAuthError, req, config);
+        if (apiAuthError)
+          return withCors(
+            responsesGate.authFailed() ?? apiAuthError,
+            req,
+            config,
+          );
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
             formatErrorResponse(
@@ -1240,7 +1273,10 @@ export function startServer(port?: number) {
           "responses",
         );
         if (responsesCacheProbe && "hit" in responsesCacheProbe) {
-          await logCacheHitRequest(responsesCacheProbe, captureClientAttribution(req, requestServer));
+          await logCacheHitRequest(
+            responsesCacheProbe,
+            captureClientAttribution(req, requestServer),
+          );
           return withCors(responsesCacheProbe.hit, req, config);
         }
         const responsesWorkReq = responsesCacheProbe?.request ?? req;
@@ -1249,7 +1285,7 @@ export function startServer(port?: number) {
         const logCtx: RequestLogContext = {
           model: "unknown",
           provider: "unknown",
-          ...captureClientAttribution(req, requestServer)
+          ...captureClientAttribution(req, requestServer),
         };
         await beginTrace(logCtx, responsesWorkReq);
         let logged = false;
@@ -1310,11 +1346,12 @@ export function startServer(port?: number) {
           return withCors(countTokensGate.preAuthDeny, req, config);
         if (!hasValidApiAuth(req, config)) {
           return withCors(
-            anthropicErrorResponse(
-              401,
-              "opencodex API key required",
-              "authentication_error",
-            ),
+            countTokensGate.authFailed() ??
+              anthropicErrorResponse(
+                401,
+                "opencodex API key required",
+                "authentication_error",
+              ),
             req,
             config,
           );
@@ -1351,11 +1388,12 @@ export function startServer(port?: number) {
           return withCors(messagesGate.preAuthDeny, req, config);
         if (!hasValidApiAuth(req, config)) {
           return withCors(
-            anthropicErrorResponse(
-              401,
-              "opencodex API key required",
-              "authentication_error",
-            ),
+            messagesGate.authFailed() ??
+              anthropicErrorResponse(
+                401,
+                "opencodex API key required",
+                "authentication_error",
+              ),
             req,
             config,
           );
@@ -1381,7 +1419,10 @@ export function startServer(port?: number) {
           "messages",
         );
         if (messagesCacheProbe && "hit" in messagesCacheProbe) {
-          await logCacheHitRequest(messagesCacheProbe, captureClientAttribution(req, requestServer));
+          await logCacheHitRequest(
+            messagesCacheProbe,
+            captureClientAttribution(req, requestServer),
+          );
           return withCors(messagesCacheProbe.hit, req, config);
         }
         const messagesWorkReq = messagesCacheProbe?.request ?? req;
@@ -1390,7 +1431,7 @@ export function startServer(port?: number) {
         const logCtx: RequestLogContext = {
           model: "unknown",
           provider: "unknown",
-          ...captureClientAttribution(req, requestServer)
+          ...captureClientAttribution(req, requestServer),
         };
         await beginTrace(logCtx, messagesWorkReq);
         // Logging is finalized inside handleClaudeMessages (Responses-vocab tap on the
@@ -1416,7 +1457,8 @@ export function startServer(port?: number) {
         if (chatGate.preAuthDeny)
           return withCors(chatGate.preAuthDeny, req, config);
         const apiAuthError = requireResponsesApiAuth(req, config);
-        if (apiAuthError) return withCors(apiAuthError, req, config);
+        if (apiAuthError)
+          return withCors(chatGate.authFailed() ?? apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
             formatErrorResponse(
@@ -1438,7 +1480,10 @@ export function startServer(port?: number) {
           "chat-completions",
         );
         if (chatCacheProbe && "hit" in chatCacheProbe) {
-          await logCacheHitRequest(chatCacheProbe, captureClientAttribution(req, requestServer));
+          await logCacheHitRequest(
+            chatCacheProbe,
+            captureClientAttribution(req, requestServer),
+          );
           return withCors(chatCacheProbe.hit, req, config);
         }
         const chatWorkReq = chatCacheProbe?.request ?? req;
@@ -1447,7 +1492,7 @@ export function startServer(port?: number) {
         const logCtx: RequestLogContext = {
           model: "unknown",
           provider: "unknown",
-          ...captureClientAttribution(req, requestServer)
+          ...captureClientAttribution(req, requestServer),
         };
         await beginTrace(logCtx, chatWorkReq);
         const response = await runWithTrace(logCtx, () =>
@@ -1475,7 +1520,8 @@ export function startServer(port?: number) {
         if (liveGate.preAuthDeny)
           return withCors(liveGate.preAuthDeny, req, config);
         const apiAuthError = requireApiAuth(req, config);
-        if (apiAuthError) return withCors(apiAuthError, req, config);
+        if (apiAuthError)
+          return withCors(liveGate.authFailed() ?? apiAuthError, req, config);
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
             formatErrorResponse(
@@ -1494,7 +1540,7 @@ export function startServer(port?: number) {
         const logCtx: RequestLogContext = {
           model: "gpt-live",
           provider: "unknown",
-          ...captureClientAttribution(req, requestServer)
+          ...captureClientAttribution(req, requestServer),
         };
         await beginTrace(logCtx, req);
         const response = await runWithTrace(logCtx, () =>
@@ -1530,7 +1576,12 @@ export function startServer(port?: number) {
         if (sidebandGate.preAuthDeny)
           return withCors(sidebandGate.preAuthDeny, req, config);
         const apiAuthError = requireApiAuth(req, config);
-        if (apiAuthError) return withCors(apiAuthError, req, config);
+        if (apiAuthError)
+          return withCors(
+            sidebandGate.authFailed() ?? apiAuthError,
+            req,
+            config,
+          );
         if (!isAllowedRequestOrigin(req, config)) {
           return withCors(
             formatErrorResponse(
@@ -1549,7 +1600,7 @@ export function startServer(port?: number) {
         const logCtx: RequestLogContext = {
           model: "gpt-live",
           provider: "unknown",
-          ...captureClientAttribution(req, requestServer)
+          ...captureClientAttribution(req, requestServer),
         };
         const resolved = await resolveLiveSidebandUpgrade(
           req,
@@ -1755,7 +1806,7 @@ export function startServer(port?: number) {
           const logCtx: RequestLogContext = {
             model: "unknown",
             provider: "unknown",
-            ...(ws.data.clientAttribution ?? {})
+            ...(ws.data.clientAttribution ?? {}),
           };
           let logged = false;
           const finalizeLog = (
