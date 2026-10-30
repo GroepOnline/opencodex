@@ -52,9 +52,7 @@ describe("container image", () => {
     const compose = await Bun.file(
       join(repoRoot, "deploy/container/compose.example.yml"),
     ).text();
-    expect(dockerfile).toContain(
-      'CMD ["bun", "run", "scripts/container-health.ts"]',
-    );
+    expect(dockerfile).toContain('CMD ["bun", "scripts/container-health.ts"]');
     expect(dockerfile).toContain(
       'ENTRYPOINT ["/usr/bin/tini", "--", "/app/scripts/container-entrypoint.sh"]',
     );
