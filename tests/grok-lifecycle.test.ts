@@ -122,7 +122,7 @@ describe("Grok fence lifecycle wiring", () => {
     );
     expect(detailEchoes).toHaveLength(2);
     expect(
-      stopFn.match(/if \(detail\) console\.error\(`   \$\{detail\}`\);/g),
+      stopFn.match(/if \(detail\) console\.error\(` {3}\$\{detail\}`\);/g),
     ).toHaveLength(2);
   });
 
