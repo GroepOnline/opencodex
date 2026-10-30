@@ -3,6 +3,7 @@ import { formatErrorResponse } from "../bridge";
 import { anthropicErrorResponse } from "../claude/outbound";
 import {
   DEFAULT_RATE_LIMIT_WEBSOCKET_CONCURRENCY,
+  rateLimitFingerprinter,
   TokenBucketLimiter,
   WebSocketConcurrencyLimiter,
   type ConcurrencyLimits,
@@ -16,7 +17,10 @@ import {
 } from "../ratelimit";
 import type { OcxConfig } from "../types";
 import { effectiveBindHostname, isLoopbackHostname } from "./auth-cors";
-import { resolveManagementRateLimitPrincipal, type ManagementAuthState } from "./management-auth";
+import {
+  resolveManagementRateLimitPrincipal,
+  type ManagementAuthState,
+} from "./management-auth";
 import { resolveDataPlaneRateLimitPrincipal } from "./rate-limit-auth";
 import type { WsData } from "./ws-bridge";
 
@@ -26,16 +30,21 @@ import type { WsData } from "./ws-bridge";
  * exposed bind without throttling ordinary interactive Codex/Claude sessions. Each surface can
  * be overridden through `config.rateLimit.surfaces`.
  */
-export const DEFAULT_RATE_LIMIT_SURFACE_POLICIES: Readonly<Record<RateLimitSurface, RateLimitPolicy>> = Object.freeze({
-  "management": Object.freeze({ requestsPerMinute: 240, burst: 60 }),
+export const DEFAULT_RATE_LIMIT_SURFACE_POLICIES: Readonly<
+  Record<RateLimitSurface, RateLimitPolicy>
+> = Object.freeze({
+  management: Object.freeze({ requestsPerMinute: 240, burst: 60 }),
   "responses-http": Object.freeze({ requestsPerMinute: 300, burst: 60 }),
   "responses-websocket": Object.freeze({ requestsPerMinute: 60, burst: 20 }),
   "chat-completions": Object.freeze({ requestsPerMinute: 300, burst: 60 }),
   "claude-messages": Object.freeze({ requestsPerMinute: 300, burst: 60 }),
-  "images": Object.freeze({ requestsPerMinute: 60, burst: 10 }),
-  "search": Object.freeze({ requestsPerMinute: 120, burst: 30 }),
-  "live": Object.freeze({ requestsPerMinute: 60, burst: 10 }),
+  images: Object.freeze({ requestsPerMinute: 60, burst: 10 }),
+  search: Object.freeze({ requestsPerMinute: 120, burst: 30 }),
+  live: Object.freeze({ requestsPerMinute: 60, burst: 10 }),
   "model-discovery": Object.freeze({ requestsPerMinute: 120, burst: 30 }),
+  // Deliberately tight: this bucket exists to bound credential guessing on an
+  // exposed bind, so it is far stricter than any admitted-traffic surface.
+  "failed-auth": Object.freeze({ requestsPerMinute: 10, burst: 10 }),
 });
 
 export { DEFAULT_RATE_LIMIT_WEBSOCKET_CONCURRENCY } from "../ratelimit";
@@ -56,15 +65,27 @@ export interface RateLimitAggregateSnapshot {
  * Per-request admission gate for one surface.
  *
  * Authentication and Origin checks always retain their existing precedence. `gate()` allocates
- * no limiter state and `preAuthDeny` is kept only as a compatibility seam for the current router;
- * it is always null. `commit()` resolves the already-validated credential domain and consumes one
- * request token only after the caller's existing auth/origin checks passed.
+ * no limiter state for the request surface. `preAuthDeny` is a read-only peek at the shared
+ * failed-auth bucket: when that budget is already exhausted the router can reject with 429 BEFORE
+ * running credential validation, so an exhausted guesser can no longer force full auth work per
+ * request. `commit()` resolves the already-validated credential domain and consumes one request
+ * token only after the caller's existing auth/origin checks passed.
  */
 export interface AdmissionGate {
-  /** Compatibility seam for current router call sites; auth-first admission never pre-denies. */
-  readonly preAuthDeny: null;
+  /** Pre-auth 429 when the shared failed-auth bucket is exhausted. Never allocates or consumes. */
+  readonly preAuthDeny: Response | null;
   /** Charge the authenticated principal after auth+origin pass. Null = admitted. Idempotent. */
   commit(): Response | null;
+  /**
+   * Charge one token from the shared failed-auth bucket keyed on the trusted socket address
+   * (separate `failed-auth` surface, never the caller's credential budget). Call exactly once
+   * when the request's credential check REJECTED; pass the rejection response so only true
+   * credential failures (HTTP 401) consume — availability errors such as 503 never do.
+   * The returned 429 replaces the auth error once the budget is exhausted, bounding pre-auth
+   * credential guessing. Successful and credential-free requests never touch this bucket.
+   * Idempotent per gate.
+   */
+  authFailed(authError?: Response): Response | null;
   /**
    * Reserve a WebSocket concurrency slot BEFORE the handshake completes. The caller must release
    * on upgrade failure and store the idempotent release handle on socket data for every close path.
@@ -75,7 +96,11 @@ export interface AdmissionGate {
 
 export interface ServerAdmissionControl {
   readonly enabled: boolean;
-  gate(surface: RateLimitSurface, req: Request, requestServer: Server<WsData>): AdmissionGate;
+  gate(
+    surface: RateLimitSurface,
+    req: Request,
+    requestServer: Server<WsData>,
+  ): AdmissionGate;
   /** Aggregate-only counters for the metrics lane. Never exposes principals. */
   snapshot(): RateLimitAggregateSnapshot;
   /** Explicit test/shutdown boundary: clears every bucket, reservation, and counter. */
@@ -89,20 +114,33 @@ interface ResolvedRateLimitSettings {
   websocket: ConcurrencyLimits;
 }
 
-function rateLimitHeaders(decision: Pick<RateLimitDecision, "limit" | "remaining" | "retryAfterSeconds" | "resetAfterSeconds">): Record<string, string> {
+function rateLimitHeaders(
+  decision: Pick<
+    RateLimitDecision,
+    "limit" | "remaining" | "retryAfterSeconds" | "resetAfterSeconds"
+  >,
+): Record<string, string> {
   return {
     "Retry-After": String(Math.max(1, Math.ceil(decision.retryAfterSeconds))),
     "RateLimit-Limit": String(Math.floor(decision.limit)),
     "RateLimit-Remaining": String(Math.max(0, Math.floor(decision.remaining))),
-    "RateLimit-Reset": String(Math.max(0, Math.ceil(decision.resetAfterSeconds))),
+    "RateLimit-Reset": String(
+      Math.max(0, Math.ceil(decision.resetAfterSeconds)),
+    ),
   };
 }
 
-function withRateLimitHeaders(response: Response, headers: Record<string, string>): Response {
+function withRateLimitHeaders(
+  response: Response,
+  headers: Record<string, string>,
+): Response {
   const merged = new Headers(response.headers);
   for (const [name, value] of Object.entries(headers)) merged.set(name, value);
   merged.set("Cache-Control", "no-store");
-  return new Response(response.body, { status: response.status, headers: merged });
+  return new Response(response.body, {
+    status: response.status,
+    headers: merged,
+  });
 }
 
 /**
@@ -110,13 +148,20 @@ function withRateLimitHeaders(response: Response, headers: Record<string, string
  * shape for `/api/*`, and the OpenAI error envelope everywhere else. The message never carries
  * principal or fingerprint material.
  */
-export function rateLimitedResponse(surface: RateLimitSurface, decision: RateLimitDecision): Response {
+export function rateLimitedResponse(
+  surface: RateLimitSurface,
+  decision: RateLimitDecision,
+): Response {
   const message = `Rate limit exceeded; retry after ${Math.max(1, Math.ceil(decision.retryAfterSeconds))} seconds`;
-  const base = surface === "management"
-    ? Response.json({ error: "rate limit exceeded; retry later" }, { status: 429 })
-    : surface === "claude-messages"
-      ? anthropicErrorResponse(429, message, "rate_limit_error")
-      : formatErrorResponse(429, "rate_limit_error", message);
+  const base =
+    surface === "management"
+      ? Response.json(
+          { error: "rate limit exceeded; retry later" },
+          { status: 429 },
+        )
+      : surface === "claude-messages"
+        ? anthropicErrorResponse(429, message, "rate_limit_error")
+        : formatErrorResponse(429, "rate_limit_error", message);
   return withRateLimitHeaders(base, rateLimitHeaders(decision));
 }
 
@@ -124,26 +169,42 @@ function concurrencyDeniedResponse(
   limits: ConcurrencyLimits,
   reservation: Extract<ConcurrencyReservation, { accepted: false }>,
 ): Response {
-  const limit = reservation.reason === "global_limit" ? limits.global : limits.perPrincipal;
-  const retryAfterSeconds = Math.max(1, Math.ceil(reservation.retryAfterSeconds));
-  const base = formatErrorResponse(429, "rate_limit_error", `Too many concurrent WebSocket connections; retry after ${retryAfterSeconds} seconds`);
-  return withRateLimitHeaders(base, rateLimitHeaders({
-    limit,
-    remaining: 0,
-    retryAfterSeconds,
-    resetAfterSeconds: retryAfterSeconds,
-  }));
+  const limit =
+    reservation.reason === "global_limit" ? limits.global : limits.perPrincipal;
+  const retryAfterSeconds = Math.max(
+    1,
+    Math.ceil(reservation.retryAfterSeconds),
+  );
+  const base = formatErrorResponse(
+    429,
+    "rate_limit_error",
+    `Too many concurrent WebSocket connections; retry after ${retryAfterSeconds} seconds`,
+  );
+  return withRateLimitHeaders(
+    base,
+    rateLimitHeaders({
+      limit,
+      remaining: 0,
+      retryAfterSeconds,
+      resetAfterSeconds: retryAfterSeconds,
+    }),
+  );
 }
 
 function isLoopbackSocketAddress(address: string | null | undefined): boolean {
   const normalized = address?.trim().toLowerCase();
   if (!normalized) return false;
-  return normalized === "::1"
-    || normalized.startsWith("127.")
-    || normalized.startsWith("::ffff:127.");
+  return (
+    normalized === "::1" ||
+    normalized.startsWith("127.") ||
+    normalized.startsWith("::ffff:127.")
+  );
 }
 
-function trustedRemoteAddress(requestServer: Server<WsData>, req: Request): string | null {
+function trustedRemoteAddress(
+  requestServer: Server<WsData>,
+  req: Request,
+): string | null {
   try {
     return requestServer.requestIP(req)?.address ?? null;
   } catch {
@@ -155,7 +216,9 @@ function resolveSettings(config: OcxConfig): ResolvedRateLimitSettings | null {
   const rateLimit = config.rateLimit;
   if (rateLimit?.enabled !== true) return null;
   const policies = {} as Record<RateLimitSurface, RateLimitPolicy>;
-  for (const [surface, fallback] of Object.entries(DEFAULT_RATE_LIMIT_SURFACE_POLICIES) as Array<[RateLimitSurface, RateLimitPolicy]>) {
+  for (const [surface, fallback] of Object.entries(
+    DEFAULT_RATE_LIMIT_SURFACE_POLICIES,
+  ) as Array<[RateLimitSurface, RateLimitPolicy]>) {
     const override = rateLimit.surfaces?.[surface];
     policies[surface] = override
       ? { requestsPerMinute: override.requestsPerMinute, burst: override.burst }
@@ -168,8 +231,12 @@ function resolveSettings(config: OcxConfig): ResolvedRateLimitSettings | null {
     boundLoopback: isLoopbackHostname(effectiveBindHostname(config)),
     policies,
     websocket: {
-      perPrincipal: rateLimit.websocket?.perPrincipal ?? DEFAULT_RATE_LIMIT_WEBSOCKET_CONCURRENCY.perPrincipal,
-      global: rateLimit.websocket?.global ?? DEFAULT_RATE_LIMIT_WEBSOCKET_CONCURRENCY.global,
+      perPrincipal:
+        rateLimit.websocket?.perPrincipal ??
+        DEFAULT_RATE_LIMIT_WEBSOCKET_CONCURRENCY.perPrincipal,
+      global:
+        rateLimit.websocket?.global ??
+        DEFAULT_RATE_LIMIT_WEBSOCKET_CONCURRENCY.global,
     },
   };
 }
@@ -177,7 +244,12 @@ function resolveSettings(config: OcxConfig): ResolvedRateLimitSettings | null {
 const NOOP_GATE: AdmissionGate = Object.freeze({
   preAuthDeny: null,
   commit: () => null,
-  reserveConcurrency: () => ({ release() { /* nothing reserved */ } }),
+  authFailed: () => null,
+  reserveConcurrency: () => ({
+    release() {
+      /* nothing reserved */
+    },
+  }),
 });
 
 /**
@@ -190,9 +262,14 @@ export function createServerAdmissionControl(
   managementAuth: ManagementAuthState,
 ): ServerAdmissionControl {
   const settings = resolveSettings(config);
-  const tokenLimiter = new TokenBucketLimiter(settings
-    ? { maxBuckets: config.rateLimit?.maxBuckets, staleAfterMs: config.rateLimit?.staleAfterMs }
-    : {});
+  const tokenLimiter = new TokenBucketLimiter(
+    settings
+      ? {
+          maxBuckets: config.rateLimit?.maxBuckets,
+          staleAfterMs: config.rateLimit?.staleAfterMs,
+        }
+      : {},
+  );
   const wsLimiter = new WebSocketConcurrencyLimiter();
 
   return {
@@ -202,32 +279,76 @@ export function createServerAdmissionControl(
       const address = trustedRemoteAddress(requestServer, req);
       // Loopback bypass keys ONLY on the trusted socket address or the bound loopback listener.
       // `Origin` and forwarded headers are caller-controlled and are never consulted here.
-      if (settings.loopbackBypass && (settings.boundLoopback || isLoopbackSocketAddress(address))) {
+      if (
+        settings.loopbackBypass &&
+        (settings.boundLoopback || isLoopbackSocketAddress(address))
+      ) {
         return NOOP_GATE;
       }
 
       let principal: RateLimitPrincipal | null = null;
       const authenticatedPrincipal = (): RateLimitPrincipal => {
         if (principal) return principal;
-        principal = surface === "management"
-          ? resolveManagementRateLimitPrincipal(req, managementAuth, address)
-          : resolveDataPlaneRateLimitPrincipal(req, config, address);
+        principal =
+          surface === "management"
+            ? resolveManagementRateLimitPrincipal(req, managementAuth, address)
+            : resolveDataPlaneRateLimitPrincipal(req, config, address);
         return principal;
       };
 
       const policy = settings.policies[surface];
+      const failedAuthPolicy = settings.policies["failed-auth"];
+      // Failed auth means no validated credential exists yet: the bucket keys on the
+      // trusted socket address (or one shared anonymous bucket), so a caller rotating
+      // made-up keys still hits a single bounded budget.
+      const failedAuthPrincipal = address?.trim()
+        ? rateLimitFingerprinter.remoteAddress(address.trim())
+        : rateLimitFingerprinter.anonymous();
+      const failedAuthPeek = tokenLimiter.peek(
+        "failed-auth",
+        failedAuthPrincipal,
+        failedAuthPolicy,
+      );
       let charged = false;
+      let authFailureCharged = false;
       return {
-        preAuthDeny: null,
+        preAuthDeny: failedAuthPeek.allowed
+          ? null
+          : rateLimitedResponse(surface, failedAuthPeek),
+        authFailed: (authError?: Response) => {
+          // Only true credential rejections (401) consume the shared budget.
+          // Availability failures (503 management-unavailable) must not drain it.
+          if (authError && authError.status !== 401) return null;
+          if (authFailureCharged) return null;
+          authFailureCharged = true;
+          const decision = tokenLimiter.consume(
+            "failed-auth",
+            failedAuthPrincipal,
+            failedAuthPolicy,
+          );
+          return decision.allowed
+            ? null
+            : rateLimitedResponse(surface, decision);
+        },
         commit: () => {
           if (charged) return null;
           charged = true;
-          const decision = tokenLimiter.consume(surface, authenticatedPrincipal(), policy);
-          return decision.allowed ? null : rateLimitedResponse(surface, decision);
+          const decision = tokenLimiter.consume(
+            surface,
+            authenticatedPrincipal(),
+            policy,
+          );
+          return decision.allowed
+            ? null
+            : rateLimitedResponse(surface, decision);
         },
         reserveConcurrency: () => {
-          const reservation = wsLimiter.reserve(authenticatedPrincipal(), settings.websocket);
-          if (!reservation.accepted) return concurrencyDeniedResponse(settings.websocket, reservation);
+          const reservation = wsLimiter.reserve(
+            authenticatedPrincipal(),
+            settings.websocket,
+          );
+          if (!reservation.accepted)
+            return concurrencyDeniedResponse(settings.websocket, reservation);
           return { release: reservation.release };
         },
       };

@@ -53,7 +53,10 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CODEX_CONFIG_PATH } from "../src/codex/paths";
-import { installIsolatedCodexHome, type IsolatedCodexHome } from "./helpers/isolated-codex-home";
+import {
+  installIsolatedCodexHome,
+  type IsolatedCodexHome,
+} from "./helpers/isolated-codex-home";
 
 describe("request-log service-tier metadata cache", () => {
   let home: IsolatedCodexHome;
@@ -63,7 +66,10 @@ describe("request-log service-tier metadata cache", () => {
 
   beforeEach(() => {
     home = installIsolatedCodexHome("ocx-request-log-catalog-");
-    catalogPath = join(fs.realpathSync.native(home.path), "opencodex-catalog.json");
+    catalogPath = join(
+      fs.realpathSync.native(home.path),
+      "opencodex-catalog.json",
+    );
     now = Date.now();
     clock = spyOn(Date, "now").mockImplementation(() => now);
   });
@@ -90,14 +96,18 @@ describe("request-log service-tier metadata cache", () => {
       expect(initialReads).toBeGreaterThan(0);
       expect(initialStats).toBeGreaterThan(0);
       expect(catalogModelSupportsServiceTier("model", "priority")).toBe(true);
-      expect(catalogModelSupportsServiceTier("missing", "priority")).toBeUndefined();
+      expect(
+        catalogModelSupportsServiceTier("missing", "priority"),
+      ).toBeUndefined();
       expect(reads.mock.calls.length).toBe(initialReads);
       expect(stats.mock.calls.length).toBe(initialStats);
       expect(exists.mock.calls.length).toBe(initialExists);
 
       now += 1_001;
       expect(catalogModelSupportsServiceTier("model", "priority")).toBe(true);
-      expect(reads.mock.calls.filter(call => call[0] === catalogPath)).toHaveLength(1);
+      expect(
+        reads.mock.calls.filter((call) => call[0] === catalogPath),
+      ).toHaveLength(1);
       expect(stats.mock.calls.length).toBeGreaterThan(initialStats);
     } finally {
       reads.mockRestore();
@@ -119,7 +129,12 @@ describe("request-log service-tier metadata cache", () => {
     expect(catalogModelSupportsServiceTier("model", "standard")).toBe(true);
 
     const previousTime = fs.statSync(catalogPath).mtime;
-    writeModels([{ slug: "model", service_tiers: [{ id: "priority" }, { id: "standard" }] }]);
+    writeModels([
+      {
+        slug: "model",
+        service_tiers: [{ id: "priority" }, { id: "standard" }],
+      },
+    ]);
     fs.utimesSync(catalogPath, previousTime, previousTime);
     now += 1_001;
     expect(catalogModelSupportsServiceTier("model", "priority")).toBe(true);
@@ -132,7 +147,10 @@ describe("request-log service-tier metadata cache", () => {
     expect(catalogModelSupportsServiceTier("model", "priority")).toBe(true);
     const previous = fs.statSync(catalogPath);
     const replacement = join(home.path, "replacement.json");
-    writeModels([{ slug: "model", service_tiers: [{ id: "standard" }] }], replacement);
+    writeModels(
+      [{ slug: "model", service_tiers: [{ id: "standard" }] }],
+      replacement,
+    );
     fs.utimesSync(replacement, timestamp, timestamp);
     fs.renameSync(replacement, catalogPath);
     expect(fs.statSync(catalogPath).mtimeMs).toBe(previous.mtimeMs);
@@ -147,10 +165,16 @@ describe("request-log service-tier metadata cache", () => {
     fs.utimesSync(catalogPath, timestamp, timestamp);
     expect(catalogModelSupportsServiceTier("model", "priority")).toBe(true);
     const otherPath = join(home.path, "other.json");
-    writeModels([{ slug: "model", service_tiers: [{ id: "standard" }] }], otherPath);
+    writeModels(
+      [{ slug: "model", service_tiers: [{ id: "standard" }] }],
+      otherPath,
+    );
     fs.utimesSync(otherPath, timestamp, timestamp);
     expect(fs.statSync(otherPath).size).toBe(fs.statSync(catalogPath).size);
-    fs.writeFileSync(join(home.path, "config.toml"), 'model_catalog_json = "other.json"\n');
+    fs.writeFileSync(
+      join(home.path, "config.toml"),
+      'model_catalog_json = "other.json"\n',
+    );
     now += 1_001;
     expect(catalogModelSupportsServiceTier("model", "priority")).toBe(false);
   });
@@ -159,7 +183,11 @@ describe("request-log service-tier metadata cache", () => {
     writeModels([
       null,
       "ignored",
-      { slug: "first", id: "shared", service_tiers: [{ id: "priority" }, null, { id: 7 }] },
+      {
+        slug: "first",
+        id: "shared",
+        service_tiers: [{ id: "priority" }, null, { id: 7 }],
+      },
       { slug: "shared", id: "second", service_tiers: [{ id: "standard" }] },
       { slug: "unsupported", service_tiers: {} },
     ]);
@@ -168,30 +196,42 @@ describe("request-log service-tier metadata cache", () => {
     expect(catalogModelSupportsServiceTier("shared", "standard")).toBe(false);
     expect(catalogModelSupportsServiceTier("second", "standard")).toBe(true);
     expect(catalogModelSupportsServiceTier("first", "PRIORITY")).toBe(false);
-    expect(catalogModelSupportsServiceTier("unsupported", "priority")).toBe(false);
-    expect(catalogModelSupportsServiceTier("missing", "priority")).toBeUndefined();
+    expect(catalogModelSupportsServiceTier("unsupported", "priority")).toBe(
+      false,
+    );
+    expect(
+      catalogModelSupportsServiceTier("missing", "priority"),
+    ).toBeUndefined();
     expect(catalogModelSupportsServiceTier("first", undefined)).toBeUndefined();
     expect(catalogModelSupportsServiceTier("first", "")).toBeUndefined();
   });
 
   test("returns unknown for missing or unparsable files and recovers after repair", () => {
-    expect(catalogModelSupportsServiceTier("model", "priority")).toBeUndefined();
+    expect(
+      catalogModelSupportsServiceTier("model", "priority"),
+    ).toBeUndefined();
     writeModels([{ slug: "model", service_tiers: [{ id: "priority" }] }]);
     now += 1_001;
     expect(catalogModelSupportsServiceTier("model", "priority")).toBe(true);
     fs.writeFileSync(catalogPath, "not json");
     now += 1_001;
-    expect(catalogModelSupportsServiceTier("model", "priority")).toBeUndefined();
+    expect(
+      catalogModelSupportsServiceTier("model", "priority"),
+    ).toBeUndefined();
     writeModels([{ slug: "model" }]);
     now += 1_001;
     expect(catalogModelSupportsServiceTier("model", "priority")).toBe(false);
     fs.unlinkSync(catalogPath);
     now += 1_001;
-    expect(catalogModelSupportsServiceTier("model", "priority")).toBeUndefined();
+    expect(
+      catalogModelSupportsServiceTier("model", "priority"),
+    ).toBeUndefined();
     for (const raw of ["null", "{}", '{"models":{}}']) {
       fs.writeFileSync(catalogPath, raw);
       now += 1_001;
-      expect(catalogModelSupportsServiceTier("model", "priority")).toBeUndefined();
+      expect(
+        catalogModelSupportsServiceTier("model", "priority"),
+      ).toBeUndefined();
     }
   });
 
@@ -200,17 +240,25 @@ describe("request-log service-tier metadata cache", () => {
     let source = 'service_tier = "fast"\n';
     let mtimeMs = 1;
     let ino = 1;
-    const reads = spyOn(fs, "readFileSync").mockImplementation((() => source) as typeof fs.readFileSync);
-    const stats = spyOn(fs, "statSync").mockImplementation((() => (
-      { mtimeMs, size: source.length, ino }
-    )) as typeof fs.statSync);
+    const reads = spyOn(fs, "readFileSync").mockImplementation(
+      (() => source) as typeof fs.readFileSync,
+    );
+    const stats = spyOn(fs, "statSync").mockImplementation((() => ({
+      mtimeMs,
+      size: source.length,
+      ino,
+    })) as typeof fs.statSync);
     try {
       expect(readConfiguredCodexServiceTier()).toBe("fast");
       expect(readConfiguredCodexServiceTier()).toBe("fast");
-      expect(reads.mock.calls.filter(call => call[0] === CODEX_CONFIG_PATH)).toHaveLength(1);
+      expect(
+        reads.mock.calls.filter((call) => call[0] === CODEX_CONFIG_PATH),
+      ).toHaveLength(1);
       now += 1_001;
       expect(readConfiguredCodexServiceTier()).toBe("fast");
-      expect(reads.mock.calls.filter(call => call[0] === CODEX_CONFIG_PATH)).toHaveLength(1);
+      expect(
+        reads.mock.calls.filter((call) => call[0] === CODEX_CONFIG_PATH),
+      ).toHaveLength(1);
       source = 'service_tier = "auto"\n';
       mtimeMs += 1;
       now += 1_001;
@@ -225,11 +273,18 @@ describe("request-log service-tier metadata cache", () => {
       source = "service_tier = [invalid\n";
       now += 1_001;
       expect(readConfiguredCodexServiceTier()).toBeUndefined();
-      stats.mockImplementation(() => { throw new Error("missing config"); });
+      stats.mockImplementation(() => {
+        throw new Error("missing config");
+      });
       now += 1_001;
       expect(readConfiguredCodexServiceTier()).toBeUndefined();
-      stats.mockImplementation((() => ({ mtimeMs: 3, size: source.length })) as typeof fs.statSync);
-      reads.mockImplementation(() => { throw new Error("unreadable config"); });
+      stats.mockImplementation((() => ({
+        mtimeMs: 3,
+        size: source.length,
+      })) as typeof fs.statSync);
+      reads.mockImplementation(() => {
+        throw new Error("unreadable config");
+      });
       now += 1_001;
       expect(readConfiguredCodexServiceTier()).toBeUndefined();
     } finally {
@@ -568,10 +623,20 @@ describe("request log metadata", () => {
       headers: { "user-agent": "droid/1.2.3" },
     });
     const server = { requestIP: () => ({ address: " 100.65.83.86 " }) };
+    // The peer address is truncated to its /24 prefix at capture — Logs and
+    // usage.jsonl never see the exact client host.
     expect(captureClientAttribution(req, server)).toEqual({
-      clientAddress: "100.65.83.86",
+      clientAddress: "100.65.83.0",
       clientUserAgent: "droid/1.2.3",
     });
+    const v6 = { requestIP: () => ({ address: "2001:db8:abcd:1234:5678::9" }) };
+    expect(captureClientAttribution(req, v6).clientAddress).toBe(
+      "2001:db8:abcd::",
+    );
+    const mapped = { requestIP: () => ({ address: "::ffff:100.65.83.86" }) };
+    expect(captureClientAttribution(req, mapped).clientAddress).toBe(
+      "::ffff:100.65.83.0",
+    );
   });
 
   test("captureClientAttribution degrades on synthetic requests and caps field lengths", () => {
@@ -599,14 +664,42 @@ describe("request log metadata", () => {
     expect(captured).toEqual({ clientUserAgent: "mystery-cli/9.9" });
     expect(JSON.stringify(captured)).not.toContain(secret);
     expect(JSON.stringify(captured)).not.toContain("other-fixture");
-    expect(captureClientAttribution(new Headers({ "user-agent": `Bearer ${secret}` }))).toEqual({});
-    expect(captureClientAttribution(new Headers({ "user-agent": "unversioned-private-metadata" }))).toEqual({});
-    const fakeProductKey = ["sk", "fixture", "somecredential", "1234567"].join("-");
+    expect(
+      captureClientAttribution(
+        new Headers({ "user-agent": `Bearer ${secret}` }),
+      ),
+    ).toEqual({});
+    expect(
+      captureClientAttribution(
+        new Headers({ "user-agent": "unversioned-private-metadata" }),
+      ),
+    ).toEqual({});
+    const fakeProductKey = ["sk", "fixture", "somecredential", "1234567"].join(
+      "-",
+    );
     const fakeGithubKey = ["ghp", "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456"].join("_");
-    expect(captureClientAttribution(new Headers({ "user-agent": `${fakeProductKey}/1.2` }))).toEqual({});
-    expect(captureClientAttribution(new Headers({ "user-agent": `${fakeGithubKey}/1.2` }))).toEqual({});
-    expect(captureClientAttribution(new Headers({ "user-agent": "codex_cli_rs/0.74.0 token=fixture" }))).toEqual({ clientUserAgent: "codex_cli_rs/0.74.0" });
-    expect(captureClientAttribution(new Headers({ "user-agent": "@anthropic-ai/sdk/0.74.0; token=fixture" }))).toEqual({ clientUserAgent: "@anthropic-ai/sdk/0.74.0" });
+    expect(
+      captureClientAttribution(
+        new Headers({ "user-agent": `${fakeProductKey}/1.2` }),
+      ),
+    ).toEqual({});
+    expect(
+      captureClientAttribution(
+        new Headers({ "user-agent": `${fakeGithubKey}/1.2` }),
+      ),
+    ).toEqual({});
+    expect(
+      captureClientAttribution(
+        new Headers({ "user-agent": "codex_cli_rs/0.74.0 token=fixture" }),
+      ),
+    ).toEqual({ clientUserAgent: "codex_cli_rs/0.74.0" });
+    expect(
+      captureClientAttribution(
+        new Headers({
+          "user-agent": "@anthropic-ai/sdk/0.74.0; token=fixture",
+        }),
+      ),
+    ).toEqual({ clientUserAgent: "@anthropic-ai/sdk/0.74.0" });
     expect(captureClientAttribution(new Headers())).toEqual({});
   });
 
@@ -627,18 +720,31 @@ describe("request log metadata", () => {
       };
       addFinalRequestLog("ocx-client", 1, logCtx, 200);
       const [logged] = getRequestLogEntries();
-      expect(logged?.clientAddress).toBe("100.65.83.86");
+      // A caller that bypasses the capture boundary with a raw address still gets the
+      // masked prefix everywhere — in-memory ring, usage.jsonl, and rehydrated reads.
+      expect(logged?.clientAddress).toBe("100.65.83.0");
       expect(logged?.clientUserAgent).toBe("droid/1.2.3");
       const [persisted] = readUsageEntries();
-      expect(readFileSync(usageLogPath(), "utf8")).not.toContain(secret);
-      expect(persisted?.clientAddress).toBe("100.65.83.86");
+      const persistedRaw = readFileSync(usageLogPath(), "utf8");
+      expect(persistedRaw).not.toContain(secret);
+      expect(persistedRaw).not.toContain("100.65.83.86");
+      expect(persisted?.clientAddress).toBe("100.65.83.0");
       expect(persisted?.clientUserAgent).toBe("droid/1.2.3");
       const roundTripped = requestLogEntryFromPersistedUsage(persisted!);
-      expect(roundTripped.clientAddress).toBe("100.65.83.86");
+      expect(roundTripped.clientAddress).toBe("100.65.83.0");
       expect(roundTripped.clientUserAgent).toBe("droid/1.2.3");
-      const legacy = requestLogEntryFromPersistedUsage({ ...persisted!, clientUserAgent: rawUserAgent });
+      const legacy = requestLogEntryFromPersistedUsage({
+        ...persisted!,
+        clientUserAgent: rawUserAgent,
+      });
       expect(legacy.clientUserAgent).toBe("droid/1.2.3");
       expect(JSON.stringify(legacy)).not.toContain(secret);
+      // Rows written before masking shipped rehydrate through the same boundary.
+      const legacyAddress = requestLogEntryFromPersistedUsage({
+        ...persisted!,
+        clientAddress: "100.65.83.86",
+      });
+      expect(legacyAddress.clientAddress).toBe("100.65.83.0");
 
       // A credential disguised as a conventional product/version name must never
       // survive even if a caller bypasses the capture boundary with a raw logCtx.
@@ -646,14 +752,21 @@ describe("request log metadata", () => {
         ["sk", "abcDEF1234567890"].join("-"),
         ["ghp", "AbcDEF123456789012345"].join("_"),
       ]) {
-        addFinalRequestLog(`ocx-credential-product-${credentialProduct.length}`, 3, {
-          model: "m",
-          provider: "p",
-          clientUserAgent: `${credentialProduct}/1.0`,
-        }, 200);
+        addFinalRequestLog(
+          `ocx-credential-product-${credentialProduct.length}`,
+          3,
+          {
+            model: "m",
+            provider: "p",
+            clientUserAgent: `${credentialProduct}/1.0`,
+          },
+          200,
+        );
         expect(getRequestLogEntries().at(-1)?.clientUserAgent).toBeUndefined();
         expect(readUsageEntries().at(-1)?.clientUserAgent).toBeUndefined();
-        expect(readFileSync(usageLogPath(), "utf8")).not.toContain(credentialProduct);
+        expect(readFileSync(usageLogPath(), "utf8")).not.toContain(
+          credentialProduct,
+        );
       }
     } finally {
       if (previousHome === undefined) delete process.env.OPENCODEX_HOME;

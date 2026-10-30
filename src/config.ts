@@ -699,6 +699,9 @@ const RATE_LIMIT_SURFACE_NAMES = [
   "search",
   "live",
   "model-discovery",
+  // Cross-surface: shared per-socket bucket for REJECTED credentials only.
+  // Charged via AdmissionGate.authFailed(), never through commit().
+  "failed-auth",
 ] as const;
 
 const rateLimitSurfacePolicySchema = z.object({
