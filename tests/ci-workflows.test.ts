@@ -4028,7 +4028,7 @@ describe("GitHub Actions hardening", () => {
       "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
     );
     expect(text).toContain(
-      "docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0",
+      "docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0",
     );
     expect(text).toContain(
       "docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0",
@@ -4116,7 +4116,7 @@ describe("GitHub Actions hardening", () => {
 
     expect(login!.if).toBeUndefined();
     expect(login!.uses).toBe(
-      "docker/login-action@dbcb813823bdd20940b903addbd779551569679f",
+      "docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6",
     );
     expect(imageBuild!.uses).toBe(
       "docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc",
