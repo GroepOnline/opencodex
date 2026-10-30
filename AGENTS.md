@@ -127,9 +127,16 @@ non-trivial change. CI runs these on Linux, Windows, and macOS.
 
 `.cursor/environment.json` is the Cloud Agent environment source of truth for
 this repository. The default base image does not include Bun. `install`
-bootstraps the Bun version pinned in `.bun-version` into `$HOME/.bun/bin` when it is missing, links `bun` and
-`bunx` into `/usr/local/bin` so non-login agent shells can find them, then runs
-frozen-lockfile installs for the repo root and `gui/`.
+reads the Bun version pinned in `.bun-version`, installs it into `$HOME/.bun/bin`
+when that exact version is missing, links `bun` and `bunx` into `/usr/local/bin`
+so non-login agent shells can find them, runs frozen-lockfile installs for the
+repo root and `gui/`, then builds `gui/dist` so the proxy can serve the dashboard.
+
+`start` launches the gateway with `bun run src/cli/index.ts start --port 10100 --proxy-only`
+when `http://127.0.0.1:10100/healthz` is not already an OpenCodex identity.
+`--proxy-only` leaves Codex config, shell hooks, and client launchers unchanged.
+The process stays in the foreground. A second boot skips startup when `/healthz`
+already reports `"service":"opencodex"`.
 
 ## Live checkouts
 
