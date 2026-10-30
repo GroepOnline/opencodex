@@ -20,6 +20,16 @@ import { gunzipSync, inflateRawSync, inflateSync, zstdDecompressSync } from "nod
  */
 export const MAX_DECOMPRESSED_BODY_BYTES = 256 * 1024 * 1024;
 
+/**
+ * Cap the INBOUND (still-compressed) wire body too. `decodeRequestBody` bounds decompressed
+ * output, but `req.arrayBuffer()` buffered the raw body first with no limit at all — an
+ * unbounded memory sink on the authenticated data-plane surface. Any payload that can decode
+ * within {@link MAX_DECOMPRESSED_BODY_BYTES} compresses to at most that size plus a few percent
+ * of codec overhead, so the same ceiling plus a small margin never rejects a body that could
+ * have decoded successfully.
+ */
+export const MAX_COMPRESSED_BODY_BYTES = MAX_DECOMPRESSED_BODY_BYTES + 1024 * 1024;
+
 export class UnsupportedContentEncodingError extends Error {
   constructor(readonly encoding: string) {
     super(`Unsupported content-encoding: ${encoding}`);
@@ -29,6 +39,12 @@ export class UnsupportedContentEncodingError extends Error {
 export class DecompressedBodyTooLargeError extends Error {
   constructor(readonly bytes: number, limit: number = MAX_DECOMPRESSED_BODY_BYTES) {
     super(`Decompressed request body exceeds ${limit} bytes`);
+  }
+}
+
+export class CompressedBodyTooLargeError extends Error {
+  constructor(readonly bytes: number, limit: number = MAX_COMPRESSED_BODY_BYTES) {
+    super(`Compressed request body exceeds ${limit} bytes`);
   }
 }
 
@@ -77,9 +93,50 @@ export function decodeRequestBody(
   return assertBodySizeWithinLimit(decoded, maxBytes);
 }
 
+/** Read the raw wire body with a hard byte cap so oversized payloads abort before full buffering. */
+async function readCappedRequestBody(req: Request, maxBytes: number): Promise<Uint8Array> {
+  // A declared length over the cap fails fast without reading; the streamed count stays
+  // authoritative because the header may be absent or wrong.
+  const declared = Number(req.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    throw new CompressedBodyTooLargeError(declared, maxBytes);
+  }
+  const stream = req.body;
+  if (!stream) return new Uint8Array(0);
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value || value.byteLength === 0) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {});
+        throw new CompressedBodyTooLargeError(total, maxBytes);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // already released / cancelled
+    }
+  }
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return merged;
+}
+
 /** Parse a JSON request body, transparently decoding compressed payloads. */
 export async function readJsonRequestBody(req: Request): Promise<unknown> {
   const encoding = req.headers.get("content-encoding");
-  const decoded = decodeRequestBody(new Uint8Array(await req.arrayBuffer()), encoding);
+  const decoded = decodeRequestBody(await readCappedRequestBody(req, MAX_COMPRESSED_BODY_BYTES), encoding);
   return JSON.parse(new TextDecoder().decode(decoded));
 }

@@ -4094,17 +4094,38 @@ describe("GitHub Actions hardening", () => {
       "docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc",
     );
     expect(imageBuild!.with?.push).toBe(false);
-    expect(imageBuild!.with?.load).toBe(true);
-    expect(imageBuild!.with?.platforms).toBe("linux/amd64");
-    expect(
-      imageSteps.some((step) =>
-        [step.uses, step.name].some(
-          (value) =>
-            value?.includes("setup-qemu-action") ||
-            value?.includes("setup-buildx-action"),
-        ),
-      ),
-    ).toBe(false);
+    // A multi-arch manifest list cannot load into docker; the smoke build below
+    // is the amd64-only load:true build that materializes a runnable image.
+    expect(imageBuild!.with?.load ?? false).toBe(false);
+    expect(imageBuild!.with?.platforms).toBe("linux/amd64,linux/arm64");
+    const imageQemu = imageSteps.find((step) => step.name === "Set up QEMU");
+    const imageBuildx = imageSteps.find(
+      (step) => step.name === "Set up Buildx",
+    );
+    expect(imageQemu?.uses).toBe(
+      "docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1",
+    );
+    expect(imageQemu?.with?.platforms).toBe("arm64");
+    expect(imageBuildx?.uses).toBe(
+      "docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069",
+    );
+    expect(imageSteps.indexOf(imageQemu!)).toBeLessThan(
+      imageSteps.indexOf(imageBuildx!),
+    );
+    expect(imageSteps.indexOf(imageBuildx!)).toBeLessThan(
+      imageSteps.indexOf(imageBuild!),
+    );
+    const smokeBuild = imageSteps.find((step) => step.id === "smoke-build");
+    expect(smokeBuild?.uses).toBe(
+      "docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc",
+    );
+    expect(smokeBuild?.with?.push).toBe(false);
+    expect(smokeBuild?.with?.load).toBe(true);
+    expect(smokeBuild?.with?.platforms).toBe("linux/amd64");
+    const smoke = imageSteps.find((step) => step.name === "Smoke test image");
+    expect(smoke?.run ?? "").toContain("docker run");
+    expect(smoke?.run ?? "").toContain("OPENCODEX_SMOKE_EXPECT_SHA");
+    expect(smoke?.run ?? "").toContain("scripts/healthz-smoke.sh");
     expect(publishBuild!.with?.push).toBe(true);
     expect(publishBuild!.with?.load).toBe(false);
     expect(publishBuild!.with?.platforms).toBe("linux/amd64,linux/arm64");
@@ -4127,9 +4148,9 @@ describe("GitHub Actions hardening", () => {
       publishSteps.indexOf(publishBuild!),
     );
     expect(imageBuild!.with?.provenance).toBe(false);
-    expect(publishBuild!.with?.provenance).toBe(false);
+    expect(publishBuild!.with?.provenance).toBe("mode=max");
     expect(imageBuild!.with?.sbom).toBe(false);
-    expect(publishBuild!.with?.sbom).toBe(false);
+    expect(publishBuild!.with?.sbom).toBe(true);
     expect(String(imageBuild!.with?.["build-args"] ?? "")).toContain(
       "VCS_REF=${{ github.sha }}",
     );

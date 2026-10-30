@@ -1,13 +1,16 @@
 # syntax=docker/dockerfile:1.7
 
 ARG BUN_VERSION=1.4.3
+# Multi-arch manifest-list digest for oven/bun:1.4.3-slim; update with BUN_VERSION bumps
+# (docker buildx imagetools inspect oven/bun:<version>-slim).
+ARG BUN_IMAGE_DIGEST=sha256:14a223fa35747ec728bce300ef85888bc5f7958164d15bbba6a54b22b52a3288
 
-FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION}-slim AS root-deps
+FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION}-slim@${BUN_IMAGE_DIGEST} AS root-deps
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
-FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION}-slim AS gui-deps
+FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION}-slim@${BUN_IMAGE_DIGEST} AS gui-deps
 WORKDIR /app/gui
 COPY gui/package.json gui/bun.lock ./
 RUN bun install --frozen-lockfile
@@ -22,13 +25,13 @@ RUN bun run typecheck \
  && cd gui && bun run build \
  && cd .. && bun run prepare:package
 
-FROM oven/bun:${BUN_VERSION}-slim AS prod-deps
+FROM oven/bun:${BUN_VERSION}-slim@${BUN_IMAGE_DIGEST} AS prod-deps
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --production --frozen-lockfile \
  && rm -rf /root/.bun/install/cache /tmp/*
 
-FROM oven/bun:${BUN_VERSION}-slim AS runtime
+FROM oven/bun:${BUN_VERSION}-slim@${BUN_IMAGE_DIGEST} AS runtime
 ARG VCS_REF=unknown
 ARG VERSION=dev
 ARG BUILD_DATE=unknown
