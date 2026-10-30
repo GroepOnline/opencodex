@@ -750,12 +750,15 @@ export async function readUsageSnapshotForManagement(): Promise<{
     const shared = await managementUsageReadInflight.promise;
     return { entries: shared.entries.slice(), revision: shared.revision };
   }
-  const promise = readUsageEntriesFullCooperatively(path);
-  managementUsageReadInflight = { key, promise };
+  const inflight = {
+    key,
+    promise: readUsageEntriesFullCooperatively(path),
+  };
+  managementUsageReadInflight = inflight;
   try {
-    return await promise;
+    return await inflight.promise;
   } finally {
-    if (managementUsageReadInflight?.promise === promise)
+    if (managementUsageReadInflight === inflight)
       managementUsageReadInflight = null;
   }
 }
