@@ -631,20 +631,22 @@ export function startServer(port?: number) {
         // live on authenticated GET /api/providers and GET /api/config — never here.
         // service/pid/port let CLI liveness reject foreign 200s and verify pid identity.
         const cooldowns = activeProviderCooldowns(config);
-        return jsonResponse(
-          {
-            status: "ok",
-            service: "opencodex",
-            version: VERSION,
-            gitSha: GIT_SHA,
-            uptime: process.uptime(),
-            pid: process.pid,
-            port: listenPort,
-            providerCooldowns: Object.keys(cooldowns).length,
-          },
-          200,
-          req,
-          config,
+        return withNoStore(
+          jsonResponse(
+            {
+              status: "ok",
+              service: "opencodex",
+              version: VERSION,
+              gitSha: GIT_SHA,
+              uptime: process.uptime(),
+              pid: process.pid,
+              port: listenPort,
+              providerCooldowns: Object.keys(cooldowns).length,
+            },
+            200,
+            req,
+            config,
+          ),
         );
       }
 

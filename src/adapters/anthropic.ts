@@ -1,4 +1,8 @@
-import type { AdapterRateLimitInfo, IncomingMeta, ProviderAdapter } from "./base";
+import type {
+  AdapterRateLimitInfo,
+  IncomingMeta,
+  ProviderAdapter,
+} from "./base";
 import { parseAnthropicRateLimit } from "../availability/rate-limit-parse";
 import { readCappedResponseJson } from "../lib/bounded-body";
 import { debugDroppedFrame } from "../lib/debug";
@@ -15,13 +19,24 @@ import type {
   OcxToolResultMessage,
   OcxUsage,
 } from "../types";
-import { isAllowedToolChoice, namespacedToolName, resolveToolChoiceWireName, toolAllowedByChoice } from "../types";
-import { ANTHROPIC_OAUTH_BETA, CLAUDE_CODE_SYSTEM_INSTRUCTION, applyClaudeToolPrefix, stripClaudeToolPrefix } from "../oauth/anthropic";
+import {
+  isAllowedToolChoice,
+  namespacedToolName,
+  resolveToolChoiceWireName,
+  toolAllowedByChoice,
+} from "../types";
+import {
+  ANTHROPIC_OAUTH_BETA,
+  CLAUDE_CODE_SYSTEM_INSTRUCTION,
+  applyClaudeToolPrefix,
+  stripClaudeToolPrefix,
+} from "../oauth/anthropic";
 import { parseDataUrl } from "./image";
 import { enforceAnthropicImageLimits } from "./anthropic-image-guard";
 import { normalizeAnthropicImages } from "./anthropic-image-normalize";
 import { neutralizeIdentity } from "./identity";
 import { CLAUDE_CODE_HEADERS, claudeCodeSessionId } from "./client-fingerprint";
+import { applyCloudflareAiGatewayHeaders } from "../providers/cloudflare-gateway";
 import { buildNonOpenAIToolCatalogNudgeForTools } from "./tool-catalog-nudge";
 import { decodeServerSentEvents } from "../lib/sse-decoder";
 
@@ -30,7 +45,14 @@ function toAnthropicContentPart(p: OcxContentPart): unknown {
   if (p.type === "image") {
     const data = parseDataUrl(p.imageUrl);
     return data
-      ? { type: "image", source: { type: "base64", media_type: data.mediaType, data: data.base64 } }
+      ? {
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: data.mediaType,
+            data: data.base64,
+          },
+        }
       : { type: "image", source: { type: "url", url: p.imageUrl } };
   }
   return { type: "text", text: p.text };
@@ -53,10 +75,14 @@ const COMPAT_TOOL_PREFIX = "cx_";
 type CacheControl = { type: "ephemeral"; ttl?: "1h" | "5m" };
 const MAX_CACHE_BREAKPOINTS = 4;
 
-function resolveCacheControl(retention: "none" | "short" | "long" | undefined): CacheControl | undefined {
+function resolveCacheControl(
+  retention: "none" | "short" | "long" | undefined,
+): CacheControl | undefined {
   const r = retention ?? "short";
   if (r === "none") return undefined;
-  return r === "long" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
+  return r === "long"
+    ? { type: "ephemeral", ttl: "1h" }
+    : { type: "ephemeral" };
 }
 // ---------------------------------------------------------------------------
 // Prompt-caching breakpoint placement (ported from jawcode)
@@ -70,13 +96,19 @@ function resolveCacheControl(retention: "none" | "short" | "long" | undefined): 
 //   4. last user message           — the new turn's content
 // ---------------------------------------------------------------------------
 
-function applyCacheControlToLast<T extends Record<string, unknown>>(blocks: T[], cc: CacheControl): void {
+function applyCacheControlToLast<T extends Record<string, unknown>>(
+  blocks: T[],
+  cc: CacheControl,
+): void {
   if (blocks.length === 0) return;
   const i = blocks.length - 1;
   blocks[i] = { ...blocks[i], cache_control: cc };
 }
 
-function applyCacheControlToLastText(blocks: Array<Record<string, unknown>>, cc: CacheControl): void {
+function applyCacheControlToLastText(
+  blocks: Array<Record<string, unknown>>,
+  cc: CacheControl,
+): void {
   for (let i = blocks.length - 1; i >= 0; i--) {
     if (blocks[i].type === "text") {
       blocks[i] = { ...blocks[i], cache_control: cc };
@@ -107,7 +139,12 @@ function applyPromptCaching(
   if (messages) {
     for (const msg of messages) {
       if (Array.isArray(msg.content)) {
-        if ((msg.content as Array<Record<string, unknown>>).some(b => b.cache_control != null)) return;
+        if (
+          (msg.content as Array<Record<string, unknown>>).some(
+            (b) => b.cache_control != null,
+          )
+        )
+          return;
       }
     }
   }
@@ -142,7 +179,10 @@ function applyPromptCaching(
     if (typeof msg.content === "string") {
       msg.content = [{ type: "text", text: msg.content, cache_control: cc }];
     } else if (Array.isArray(msg.content) && msg.content.length > 0) {
-      applyCacheControlToLastText(msg.content as Array<Record<string, unknown>>, cc);
+      applyCacheControlToLastText(
+        msg.content as Array<Record<string, unknown>>,
+        cc,
+      );
     }
     used++;
   }
@@ -154,7 +194,10 @@ function applyPromptCaching(
     if (typeof msg.content === "string") {
       msg.content = [{ type: "text", text: msg.content, cache_control: cc }];
     } else if (Array.isArray(msg.content) && msg.content.length > 0) {
-      applyCacheControlToLastText(msg.content as Array<Record<string, unknown>>, cc);
+      applyCacheControlToLastText(
+        msg.content as Array<Record<string, unknown>>,
+        cc,
+      );
     }
   }
 }
@@ -174,13 +217,17 @@ function countBreakpoints(body: Record<string, unknown>): number {
   const messages = body.messages as Array<Record<string, unknown>> | undefined;
   if (messages) {
     for (const msg of messages) {
-      if (Array.isArray(msg.content)) count(msg.content as Array<Record<string, unknown>>);
+      if (Array.isArray(msg.content))
+        count(msg.content as Array<Record<string, unknown>>);
     }
   }
   return total;
 }
 
-function enforceCacheControlLimit(body: Record<string, unknown>, limit = MAX_CACHE_BREAKPOINTS): void {
+function enforceCacheControlLimit(
+  body: Record<string, unknown>,
+  limit = MAX_CACHE_BREAKPOINTS,
+): void {
   const total = countBreakpoints(body);
   if (total <= limit) return;
   let excess = total - limit;
@@ -192,7 +239,10 @@ function enforceCacheControlLimit(body: Record<string, unknown>, limit = MAX_CAC
       if (!Array.isArray(msg.content)) continue;
       for (const block of msg.content as Array<Record<string, unknown>>) {
         if (excess <= 0) break;
-        if (block.cache_control) { delete block.cache_control; excess--; }
+        if (block.cache_control) {
+          delete block.cache_control;
+          excess--;
+        }
       }
     }
   }
@@ -200,11 +250,16 @@ function enforceCacheControlLimit(body: Record<string, unknown>, limit = MAX_CAC
     if (!blocks) return;
     for (const b of blocks) {
       if (excess <= 0) break;
-      if (b.cache_control) { delete b.cache_control; excess--; }
+      if (b.cache_control) {
+        delete b.cache_control;
+        excess--;
+      }
     }
   };
-  if (excess > 0) stripBlocks(body.system as Array<Record<string, unknown>> | undefined);
-  if (excess > 0) stripBlocks(body.tools as Array<Record<string, unknown>> | undefined);
+  if (excess > 0)
+    stripBlocks(body.system as Array<Record<string, unknown>> | undefined);
+  if (excess > 0)
+    stripBlocks(body.tools as Array<Record<string, unknown>> | undefined);
 }
 
 // ---------------------------------------------------------------------------
@@ -222,7 +277,8 @@ function normalizeTtlOrdering(body: Record<string, unknown>): void {
   const messages = body.messages as Array<Record<string, unknown>> | undefined;
   if (messages) {
     for (const msg of messages) {
-      if (Array.isArray(msg.content)) collect(msg.content as Array<Record<string, unknown>>);
+      if (Array.isArray(msg.content))
+        collect(msg.content as Array<Record<string, unknown>>);
     }
   }
   // Walk forward: once we see a 5-min (no ttl / ttl:"5m"), any subsequent 1h must be demoted.
@@ -238,9 +294,16 @@ function normalizeTtlOrdering(body: Record<string, unknown>): void {
   }
 }
 
-function isLikelyRealAnthropicThinkingSignature(signature: string | undefined): signature is string {
+function isLikelyRealAnthropicThinkingSignature(
+  signature: string | undefined,
+): signature is string {
   if (typeof signature !== "string" || signature.length < 16) return false;
-  if (/^(fc|call|msg|rs|resp|reasoning|item|ws|tool|func|function)[-_]/i.test(signature)) return false;
+  if (
+    /^(fc|call|msg|rs|resp|reasoning|item|ws|tool|func|function)[-_]/i.test(
+      signature,
+    )
+  )
+    return false;
   return /^[A-Za-z0-9+/_=-]+$/.test(signature);
 }
 
@@ -248,7 +311,9 @@ function usesNativeAnthropicEndpoint(provider: OcxProviderConfig): boolean {
   try {
     return new URL(provider.baseUrl).hostname === "api.anthropic.com";
   } catch {
-    throw new Error(`anthropic provider has malformed baseUrl: ${provider.baseUrl}`);
+    throw new Error(
+      `anthropic provider has malformed baseUrl: ${provider.baseUrl}`,
+    );
   }
 }
 
@@ -259,13 +324,19 @@ function anthropicKeyUsesBearer(provider: OcxProviderConfig): boolean {
 /** Map a Responses reasoning effort to an Anthropic extended-thinking budget (tokens, >= 1024). */
 function reasoningBudget(effort: string): number {
   switch (effort) {
-    case "minimal": return 1024;
-    case "low": return 4096;
-    case "high": return 16384;
-    case "xhigh": return 24576;
-    case "max": return 32000;
+    case "minimal":
+      return 1024;
+    case "low":
+      return 4096;
+    case "high":
+      return 16384;
+    case "xhigh":
+      return 24576;
+    case "max":
+      return 32000;
     case "medium":
-    default: return 8192;
+    default:
+      return 8192;
   }
 }
 
@@ -276,7 +347,10 @@ function reasoningBudget(effort: string): number {
  * shapes must stay. Verified against api.anthropic.com: sonnet-5, fable-5, opus-4-7 and opus-4-8
  * require adaptive; haiku-4-5 and sonnet-4-5 reject it; opus-4-6/sonnet-4-6 accept both.
  */
-const ADAPTIVE_THINKING_FAMILY_MINIMUMS: Record<string, readonly [major: number, minor: number]> = {
+const ADAPTIVE_THINKING_FAMILY_MINIMUMS: Record<
+  string,
+  readonly [major: number, minor: number]
+> = {
   sonnet: [5, 0],
   opus: [4, 7],
   fable: [0, 0],
@@ -299,9 +373,13 @@ function adaptiveEffort(effort: string): string {
   return effort === "minimal" ? "low" : effort;
 }
 
-function usageFromAnthropic(usage: Record<string, number> | undefined): OcxUsage | undefined {
+function usageFromAnthropic(
+  usage: Record<string, number> | undefined,
+): OcxUsage | undefined {
   if (!usage) return undefined;
-  const hasCache = usage.cache_read_input_tokens !== undefined || usage.cache_creation_input_tokens !== undefined;
+  const hasCache =
+    usage.cache_read_input_tokens !== undefined ||
+    usage.cache_creation_input_tokens !== undefined;
   const read = usage.cache_read_input_tokens ?? 0;
   const write = usage.cache_creation_input_tokens ?? 0;
   // Anthropic reports input_tokens EXCLUSIVE of cache read/write; normalize to the
@@ -309,11 +387,13 @@ function usageFromAnthropic(usage: Record<string, number> | undefined): OcxUsage
   return {
     inputTokens: (usage.input_tokens ?? 0) + read + write,
     outputTokens: usage.output_tokens ?? 0,
-    ...(hasCache ? {
-      cachedInputTokens: read,
-      cacheReadInputTokens: read,
-      cacheCreationInputTokens: write,
-    } : {}),
+    ...(hasCache
+      ? {
+          cachedInputTokens: read,
+          cacheReadInputTokens: read,
+          cacheCreationInputTokens: write,
+        }
+      : {}),
   };
 }
 
@@ -328,20 +408,29 @@ function mergeAnthropicUsage(
   return { ...base, ...next };
 }
 
-function buildToolNameTransforms(provider: OcxProviderConfig): { toWire: (name: string) => string; fromWire: (name: string) => string } {
+function buildToolNameTransforms(provider: OcxProviderConfig): {
+  toWire: (name: string) => string;
+  fromWire: (name: string) => string;
+} {
   if (provider.authMode === "oauth") {
     return { toWire: applyClaudeToolPrefix, fromWire: stripClaudeToolPrefix };
   }
   if (provider.escapeBuiltinToolNames === true) {
     return {
-      toWire: (name) => name.startsWith(COMPAT_TOOL_PREFIX) ? name : COMPAT_TOOL_PREFIX + name,
-      fromWire: (name) => name.startsWith(COMPAT_TOOL_PREFIX) ? name.slice(COMPAT_TOOL_PREFIX.length) : name,
+      toWire: (name) =>
+        name.startsWith(COMPAT_TOOL_PREFIX) ? name : COMPAT_TOOL_PREFIX + name,
+      fromWire: (name) =>
+        name.startsWith(COMPAT_TOOL_PREFIX)
+          ? name.slice(COMPAT_TOOL_PREFIX.length)
+          : name,
     };
   }
   return { toWire: (name) => name, fromWire: (name) => name };
 }
 
-function toAnthropicToolResult(msg: OcxToolResultMessage): Record<string, unknown> {
+function toAnthropicToolResult(
+  msg: OcxToolResultMessage,
+): Record<string, unknown> {
   // Anthropic tool_result accepts a string OR content blocks — render images natively
   // (e.g. Codex view_image output) instead of dropping them.
   let content: string | unknown[];
@@ -351,7 +440,13 @@ function toAnthropicToolResult(msg: OcxToolResultMessage): Record<string, unknow
   } else {
     const parts = (msg.content as OcxContentPart[])
       .map(toAnthropicContentPart)
-      .filter(p => !((p as { type?: string }).type === "text" && !(p as { text?: string }).text));
+      .filter(
+        (p) =>
+          !(
+            (p as { type?: string }).type === "text" &&
+            !(p as { text?: string }).text
+          ),
+      );
     content = parts.length > 0 ? parts : "(empty tool output)";
   }
   return {
@@ -363,10 +458,11 @@ function toAnthropicToolResult(msg: OcxToolResultMessage): Record<string, unknow
 }
 
 function orphanToolResultText(msg: OcxToolResultMessage): string {
-  const label = msg.toolName ? `${msg.toolName} (${msg.toolCallId})` : msg.toolCallId;
-  const content = typeof msg.content === "string"
-    ? msg.content
-    : JSON.stringify(msg.content);
+  const label = msg.toolName
+    ? `${msg.toolName} (${msg.toolCallId})`
+    : msg.toolCallId;
+  const content =
+    typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
   return `[tool_result without adjacent tool_use: ${label}]\n${content}`;
 }
 
@@ -377,9 +473,12 @@ function messagesToAnthropicFormat(
   const toolCatalogNudge = buildNonOpenAIToolCatalogNudgeForTools(
     parsed.context.tools,
     parsed.options.toolChoice,
-    tool => toolNames.toWire(namespacedToolName(tool.namespace, tool.name)),
+    (tool) => toolNames.toWire(namespacedToolName(tool.namespace, tool.name)),
   );
-  const systemParts = [...(parsed.context.systemPrompt ?? []), ...(toolCatalogNudge ? [toolCatalogNudge] : [])];
+  const systemParts = [
+    ...(parsed.context.systemPrompt ?? []),
+    ...(toolCatalogNudge ? [toolCatalogNudge] : []),
+  ];
   const system = systemParts.length
     ? neutralizeIdentity(systemParts.join("\n\n")) || undefined
     : undefined;
@@ -397,7 +496,13 @@ function messagesToAnthropicFormat(
         } else {
           const parts = (msg.content as OcxContentPart[])
             .map(toAnthropicContentPart)
-            .filter(p => !((p as { type?: string }).type === "text" && !(p as { text?: string }).text));
+            .filter(
+              (p) =>
+                !(
+                  (p as { type?: string }).type === "text" &&
+                  !(p as { text?: string }).text
+                ),
+            );
           content = parts.length > 0 ? parts : "(empty)";
         }
         messages.push({ role: "user", content });
@@ -420,13 +525,22 @@ function messagesToAnthropicFormat(
               preface.push({ type: "redacted_thinking", data });
             }
             if (isLikelyRealAnthropicThinkingSignature(t.signature)) {
-              preface.push({ type: "thinking", thinking: t.thinking, signature: t.signature });
+              preface.push({
+                type: "thinking",
+                thinking: t.thinking,
+                signature: t.signature,
+              });
             }
           } else if (part.type === "toolCall") {
             const tc = part as OcxToolCall;
             const flatName = namespacedToolName(tc.namespace, tc.name);
             toolUseIds.push(tc.id);
-            toolUses.push({ type: "tool_use", id: tc.id, name: toolNames.toWire(flatName), input: tc.arguments });
+            toolUses.push({
+              type: "tool_use",
+              id: tc.id,
+              name: toolNames.toWire(flatName),
+              input: tc.arguments,
+            });
           }
         }
         // Anthropic treats text/thinking after tool_use as ending the tool turn, which makes
@@ -440,13 +554,19 @@ function messagesToAnthropicFormat(
           const orphanBlocks: Record<string, unknown>[] = [];
           const seen = new Set<string>();
           let j = i + 1;
-          while (j < parsed.context.messages.length && parsed.context.messages[j].role === "toolResult") {
+          while (
+            j < parsed.context.messages.length &&
+            parsed.context.messages[j].role === "toolResult"
+          ) {
             const tr = parsed.context.messages[j] as OcxToolResultMessage;
             if (requiredIds.has(tr.toolCallId) && !seen.has(tr.toolCallId)) {
               resultBlocks.push(toAnthropicToolResult(tr));
               seen.add(tr.toolCallId);
             } else {
-              orphanBlocks.push({ type: "text", text: orphanToolResultText(tr) });
+              orphanBlocks.push({
+                type: "text",
+                text: orphanToolResultText(tr),
+              });
             }
             j++;
           }
@@ -460,7 +580,10 @@ function messagesToAnthropicFormat(
               });
             }
           }
-          messages.push({ role: "user", content: [...resultBlocks, ...orphanBlocks] });
+          messages.push({
+            role: "user",
+            content: [...resultBlocks, ...orphanBlocks],
+          });
           i = j - 1;
         }
         break;
@@ -468,7 +591,10 @@ function messagesToAnthropicFormat(
       case "toolResult": {
         // A standalone Anthropic tool_result is invalid unless it immediately follows an
         // assistant tool_use. Preserve the information as text instead of sending a 400-prone block.
-        messages.push({ role: "user", content: orphanToolResultText(msg as OcxToolResultMessage) });
+        messages.push({
+          role: "user",
+          content: orphanToolResultText(msg as OcxToolResultMessage),
+        });
         break;
       }
     }
@@ -480,23 +606,29 @@ function messagesToAnthropicFormat(
   // first iterations can all reach this; Kiro uses the same "(continue)" nudge precedent (src/adapters/kiro.ts:283).
   if (messages.length === 0) {
     messages.push({ role: "user", content: "(continue)" });
-  } else if ((messages[messages.length - 1] as { role?: string }).role === "assistant") {
+  } else if (
+    (messages[messages.length - 1] as { role?: string }).role === "assistant"
+  ) {
     messages.push({ role: "user", content: "(continue)" });
   }
 
   return { system, messages };
 }
 
-function toolsToAnthropicFormat(parsed: OcxParsedRequest, toolNames: { toWire: (name: string) => string }): unknown[] | undefined {
-  if (!parsed.context.tools || parsed.context.tools.length === 0) return undefined;
+function toolsToAnthropicFormat(
+  parsed: OcxParsedRequest,
+  toolNames: { toWire: (name: string) => string },
+): unknown[] | undefined {
+  if (!parsed.context.tools || parsed.context.tools.length === 0)
+    return undefined;
   const allowed = isAllowedToolChoice(parsed.options.toolChoice)
     ? new Set(parsed.options.toolChoice.allowedTools)
     : undefined;
   const tools = allowed
-    ? parsed.context.tools.filter(t => toolAllowedByChoice(t, allowed))
+    ? parsed.context.tools.filter((t) => toolAllowedByChoice(t, allowed))
     : parsed.context.tools;
   if (tools.length === 0) return undefined;
-  const converted = tools.map(t => ({
+  const converted = tools.map((t) => ({
     name: toolNames.toWire(namespacedToolName(t.namespace, t.name)),
     description: t.description,
     input_schema: normalizeAnthropicInputSchema(t.parameters),
@@ -509,11 +641,22 @@ function toolsToAnthropicFormat(parsed: OcxParsedRequest, toolNames: { toWire: (
 // annotation for the ChatGPT backend only. Anthropic input_schema is strict
 // JSON Schema; strip the marker defensively everywhere it can appear as a
 // schema keyword, while preserving properties literally named "encrypted".
-const ENCRYPTED_MARKER_NAME_BAG_KEYS = new Set(["properties", "patternProperties", "$defs", "definitions"]);
-const ENCRYPTED_MARKER_LITERAL_VALUE_KEYS = new Set(["const", "default", "enum", "examples"]);
+const ENCRYPTED_MARKER_NAME_BAG_KEYS = new Set([
+  "properties",
+  "patternProperties",
+  "$defs",
+  "definitions",
+]);
+const ENCRYPTED_MARKER_LITERAL_VALUE_KEYS = new Set([
+  "const",
+  "default",
+  "enum",
+  "examples",
+]);
 
 function stripEncryptedMarker(node: unknown, inNameBag = false): unknown {
-  if (Array.isArray(node)) return node.map(item => stripEncryptedMarker(item));
+  if (Array.isArray(node))
+    return node.map((item) => stripEncryptedMarker(item));
   if (!node || typeof node !== "object") return node;
 
   const out: Record<string, unknown> = {};
@@ -531,25 +674,32 @@ function stripEncryptedMarker(node: unknown, inNameBag = false): unknown {
   return out;
 }
 
-function normalizeAnthropicInputSchema(schema: unknown): Record<string, unknown> {
+function normalizeAnthropicInputSchema(
+  schema: unknown,
+): Record<string, unknown> {
   const stripped = stripEncryptedMarker(schema);
-  const obj = stripped && typeof stripped === "object" && !Array.isArray(stripped)
-    ? stripped as Record<string, unknown>
-    : {};
+  const obj =
+    stripped && typeof stripped === "object" && !Array.isArray(stripped)
+      ? (stripped as Record<string, unknown>)
+      : {};
   // Anthropic rejects root-level missing type and oneOf/anyOf/allOf in input_schema.
   // Normalize the root only: ensure type:"object" + properties, flatten root composition
   // while preserving nested schemas. Mirrors kiro-tools.ts ensureRootObjectType.
   // Known limitation: Object.assign on branch properties means later branches overwrite
   // earlier ones when the same property name appears with different schemas.
   const compositionKeys = ["oneOf", "anyOf", "allOf"] as const;
-  const hasRootComposition = compositionKeys.some(key => Array.isArray(obj[key]));
+  const hasRootComposition = compositionKeys.some((key) =>
+    Array.isArray(obj[key]),
+  );
   const type = obj.type;
-  const rootObjectType = type === "object" || (Array.isArray(type) && type.includes("object"));
+  const rootObjectType =
+    type === "object" || (Array.isArray(type) && type.includes("object"));
 
   if (!hasRootComposition) {
-    const normalized: Record<string, unknown> = rootObjectType && type === "object"
-      ? { ...obj }
-      : { ...obj, type: "object" };
+    const normalized: Record<string, unknown> =
+      rootObjectType && type === "object"
+        ? { ...obj }
+        : { ...obj, type: "object" };
     if (normalized.properties === undefined || normalized.properties === null) {
       normalized.properties = {};
     }
@@ -558,11 +708,16 @@ function normalizeAnthropicInputSchema(schema: unknown): Record<string, unknown>
 
   const properties: Record<string, unknown> = {};
   const required = new Set<string>();
-  if (obj.properties && typeof obj.properties === "object" && !Array.isArray(obj.properties)) {
+  if (
+    obj.properties &&
+    typeof obj.properties === "object" &&
+    !Array.isArray(obj.properties)
+  ) {
     Object.assign(properties, obj.properties as Record<string, unknown>);
   }
   if (Array.isArray(obj.required)) {
-    for (const item of obj.required) if (typeof item === "string") required.add(item);
+    for (const item of obj.required)
+      if (typeof item === "string") required.add(item);
   }
 
   for (const key of compositionKeys) {
@@ -570,13 +725,19 @@ function normalizeAnthropicInputSchema(schema: unknown): Record<string, unknown>
     if (!Array.isArray(variants)) continue;
     const mergeRequired = key === "allOf";
     for (const variant of variants) {
-      if (!variant || typeof variant !== "object" || Array.isArray(variant)) continue;
+      if (!variant || typeof variant !== "object" || Array.isArray(variant))
+        continue;
       const v = variant as Record<string, unknown>;
-      if (v.properties && typeof v.properties === "object" && !Array.isArray(v.properties)) {
+      if (
+        v.properties &&
+        typeof v.properties === "object" &&
+        !Array.isArray(v.properties)
+      ) {
         Object.assign(properties, v.properties as Record<string, unknown>);
       }
       if (mergeRequired && Array.isArray(v.required)) {
-        for (const item of v.required) if (typeof item === "string") required.add(item);
+        for (const item of v.required)
+          if (typeof item === "string") required.add(item);
       }
     }
   }
@@ -593,25 +754,37 @@ function normalizeAnthropicInputSchema(schema: unknown): Record<string, unknown>
   return normalized;
 }
 
-export function createAnthropicAdapter(provider: OcxProviderConfig, cacheRetention?: "none" | "short" | "long"): ProviderAdapter {
+export function createAnthropicAdapter(
+  provider: OcxProviderConfig,
+  cacheRetention?: "none" | "short" | "long",
+): ProviderAdapter {
   const isOAuth = provider.authMode === "oauth";
   const toolNames = buildToolNameTransforms(provider);
   return {
     name: "anthropic",
 
     async buildRequest(parsed: OcxParsedRequest, incoming?: IncomingMeta) {
-      if (typeof provider.apiKey !== "string" || provider.apiKey.trim() === "") {
+      if (
+        typeof provider.apiKey !== "string" ||
+        provider.apiKey.trim() === ""
+      ) {
         if (isOAuth) {
-          throw new Error("anthropic oauth token missing — run ocx login anthropic");
+          throw new Error(
+            "anthropic oauth token missing — run ocx login anthropic",
+          );
         }
-        throw new Error("anthropic provider requires a non-empty apiKey (authMode: key)");
+        throw new Error(
+          "anthropic provider requires a non-empty apiKey (authMode: key)",
+        );
       }
 
       const { system, messages } = messagesToAnthropicFormat(parsed, toolNames);
       // Primary image layer: resize/re-encode to fit Anthropic limits without dropping
       // (anthropic-image-normalize.ts); the guard below remains the deterministic backstop.
       // imageTierBias > 0 = upstream-413 tightened retry (030): start every image one tier lower.
-      await normalizeAnthropicImages(messages, { tierBias: incoming?.imageTierBias ?? 0 });
+      await normalizeAnthropicImages(messages, {
+        tierBias: incoming?.imageTierBias ?? 0,
+      });
       // Anthropic rejects many-image requests (>20 images) carrying any image over
       // 2000px per side; see anthropic-image-guard.ts for the full limit policy.
       enforceAnthropicImageLimits(messages);
@@ -633,29 +806,40 @@ export function createAnthropicAdapter(provider: OcxProviderConfig, cacheRetenti
         body.system = [{ type: "text", text: system }];
       }
       if (tools) body.tools = tools;
-      if (parsed.options.temperature !== undefined) body.temperature = parsed.options.temperature;
+      if (parsed.options.temperature !== undefined)
+        body.temperature = parsed.options.temperature;
       if (parsed.options.topP !== undefined) body.top_p = parsed.options.topP;
-      if (parsed.options.stopSequences) body.stop_sequences = parsed.options.stopSequences;
+      if (parsed.options.stopSequences)
+        body.stop_sequences = parsed.options.stopSequences;
 
       // `reasoning` is a Codex effort string; "none" is the disable sentinel (see parser.ts
       // REASONING_EFFORTS). A bare truthy check would treat "none" as truthy and wrongly enable
       // extended thinking (and strip temperature/top_p), so gate on a real, non-disable effort.
-      if (typeof parsed.options.reasoning === "string" && parsed.options.reasoning !== "none") {
+      if (
+        typeof parsed.options.reasoning === "string" &&
+        parsed.options.reasoning !== "none"
+      ) {
         if (usesAdaptiveThinking(parsed.modelId)) {
           // Adaptive-thinking models replace the token budget with an effort knob and reject
           // `thinking.type: "enabled"` outright. `max_tokens` still caps thinking plus visible
           // output, so high effort needs the same total-token headroom as budget thinking or a
           // default 8192-token request can spend everything on thought and return empty text.
           body.thinking = { type: "adaptive" };
-          body.output_config = { effort: adaptiveEffort(parsed.options.reasoning) };
+          body.output_config = {
+            effort: adaptiveEffort(parsed.options.reasoning),
+          };
           const explicitMaxOut = parsed.options.maxOutputTokens;
           const wantBudget = reasoningBudget(parsed.options.reasoning);
           const floor = wantBudget + OUTPUT_HEADROOM;
           // Preserve explicit caller limits as-is; for omitted limits use the adaptive ceiling
           // so effort=max (budget=32k) still leaves OUTPUT_HEADROOM tokens for visible output.
-          body.max_tokens = explicitMaxOut !== undefined
-            ? explicitMaxOut
-            : Math.min(ADAPTIVE_THINKING_CEILING, Math.max(DEFAULT_MAX_TOKENS, floor));
+          body.max_tokens =
+            explicitMaxOut !== undefined
+              ? explicitMaxOut
+              : Math.min(
+                  ADAPTIVE_THINKING_CEILING,
+                  Math.max(DEFAULT_MAX_TOKENS, floor),
+                );
         } else {
           // Anthropic requires max_tokens > thinking.budget_tokens (max_tokens caps thinking +
           // visible output) and budget_tokens >= 1024. Codex sends the SAME value for both, which
@@ -663,8 +847,14 @@ export function createAnthropicAdapter(provider: OcxProviderConfig, cacheRetenti
           // always exceeds the budget within a model-safe ceiling, reserving room for visible output.
           const maxOut = parsed.options.maxOutputTokens ?? DEFAULT_MAX_TOKENS;
           const wantBudget = reasoningBudget(parsed.options.reasoning);
-          const maxTokens = Math.min(REASONING_MAX_TOKENS_CEILING, Math.max(maxOut, wantBudget + OUTPUT_HEADROOM));
-          const budget = Math.max(MIN_THINKING_BUDGET, Math.min(wantBudget, maxTokens - OUTPUT_FLOOR));
+          const maxTokens = Math.min(
+            REASONING_MAX_TOKENS_CEILING,
+            Math.max(maxOut, wantBudget + OUTPUT_HEADROOM),
+          );
+          const budget = Math.max(
+            MIN_THINKING_BUDGET,
+            Math.min(wantBudget, maxTokens - OUTPUT_FLOOR),
+          );
           body.max_tokens = maxTokens;
           body.thinking = { type: "enabled", budget_tokens: budget };
         }
@@ -673,13 +863,23 @@ export function createAnthropicAdapter(provider: OcxProviderConfig, cacheRetenti
         delete body.top_p;
       }
 
-      if (parsed.options.toolChoice && (tools || parsed.options.toolChoice === "none")) {
+      if (
+        parsed.options.toolChoice &&
+        (tools || parsed.options.toolChoice === "none")
+      ) {
         const tc = parsed.options.toolChoice;
         if (tc === "auto") body.tool_choice = { type: "auto" };
         else if (tc === "none") body.tool_choice = { type: "none" };
         else if (tc === "required") body.tool_choice = { type: "any" };
-        else if (isAllowedToolChoice(tc)) body.tool_choice = { type: tc.mode === "required" ? "any" : "auto" };
-        else if (typeof tc === "object" && "name" in tc) body.tool_choice = { type: "tool", name: toolNames.toWire(resolveToolChoiceWireName(parsed.context.tools, tc.name)) };
+        else if (isAllowedToolChoice(tc))
+          body.tool_choice = { type: tc.mode === "required" ? "any" : "auto" };
+        else if (typeof tc === "object" && "name" in tc)
+          body.tool_choice = {
+            type: "tool",
+            name: toolNames.toWire(
+              resolveToolChoiceWireName(parsed.context.tools, tc.name),
+            ),
+          };
       }
 
       const base = provider.baseUrl.replace(/\/v1\/?$/, "");
@@ -689,12 +889,14 @@ export function createAnthropicAdapter(provider: OcxProviderConfig, cacheRetenti
       const braceClose = braceStart === -1 ? -1 : url.indexOf("}", braceStart);
       const hasUnresolvedPlaceholder = braceStart !== -1 && braceClose !== -1;
       if (hasUnresolvedPlaceholder) {
-        throw new Error(`anthropic baseUrl contains unresolved ${url.slice(braceStart, (braceClose ?? -1) + 1)}`);
+        throw new Error(
+          `anthropic baseUrl contains unresolved ${url.slice(braceStart, (braceClose ?? -1) + 1)}`,
+        );
       }
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         "anthropic-version": "2023-06-01",
-        "Accept": parsed.stream ? "text/event-stream" : "application/json",
+        Accept: parsed.stream ? "text/event-stream" : "application/json",
         "User-Agent": "@anthropic-ai/sdk/0.74.0",
       };
       if (isOAuth) {
@@ -704,20 +906,27 @@ export function createAnthropicAdapter(provider: OcxProviderConfig, cacheRetenti
         // header set is a non-first-party signature. (cch billing-header signing is intentionally
         // out of scope — brittle and version-coupled.)
         Object.assign(headers, CLAUDE_CODE_HEADERS);
-        headers["X-Claude-Code-Session-Id"] = claudeCodeSessionId(provider.apiKey);
+        headers["X-Claude-Code-Session-Id"] = claudeCodeSessionId(
+          provider.apiKey,
+        );
         headers["x-client-request-id"] = crypto.randomUUID();
       } else {
-        if (anthropicKeyUsesBearer(provider)) headers["Authorization"] = `Bearer ${provider.apiKey}`;
+        if (anthropicKeyUsesBearer(provider))
+          headers["Authorization"] = `Bearer ${provider.apiKey}`;
         else headers["x-api-key"] = provider.apiKey;
       }
       if (provider.headers) Object.assign(headers, provider.headers);
+      applyCloudflareAiGatewayHeaders(headers, provider.baseUrl);
 
       // Prompt caching: native Anthropic supports top-level automatic caching, which
       // follows the moving final block across turns. Keep one breakpoint slot free for it.
       const cc = resolveCacheControl(cacheRetention);
-      const automaticPromptCaching = cc && usesNativeAnthropicEndpoint(provider);
+      const automaticPromptCaching =
+        cc && usesNativeAnthropicEndpoint(provider);
       if (automaticPromptCaching) body.cache_control = cc;
-      const explicitLimit = automaticPromptCaching ? MAX_CACHE_BREAKPOINTS - 1 : MAX_CACHE_BREAKPOINTS;
+      const explicitLimit = automaticPromptCaching
+        ? MAX_CACHE_BREAKPOINTS - 1
+        : MAX_CACHE_BREAKPOINTS;
       applyPromptCaching(body, cc, {
         maxExplicitBreakpoints: explicitLimit,
         skipLastUser: !!automaticPromptCaching,
@@ -751,7 +960,9 @@ export function createAnthropicAdapter(provider: OcxProviderConfig, cacheRetenti
         };
       };
 
-      for await (const record of decodeServerSentEvents(response.body, { includeComments: true })) {
+      for await (const record of decodeServerSentEvents(response.body, {
+        includeComments: true,
+      })) {
         if (record.kind === "comment") {
           yield { type: "heartbeat" };
           continue;
@@ -768,80 +979,107 @@ export function createAnthropicAdapter(provider: OcxProviderConfig, cacheRetenti
         }
 
         switch (record.event || data.type) {
-              case "message_start": {
-                const message = data.message as { usage?: Record<string, number> } | undefined;
-                pendingUsage = mergeAnthropicUsage(pendingUsage, message?.usage);
-                break;
-              }
-              case "content_block_start": {
-                const block = data.content_block as { type: string; id?: string; name?: string; data?: string } | undefined;
-                if (!block) break;
-                currentBlockType = block.type;
-                if (block.type === "tool_use") {
-                  currentToolCallId = block.id ?? "";
-                  currentToolCallName = toolNames.fromWire(block.name ?? "");
-                  yield { type: "tool_call_start", id: currentToolCallId, name: currentToolCallName };
-                }
-                if (block.type === "redacted_thinking" && typeof block.data === "string") {
-                  // Opaque redacted block: replay verbatim later or tool-use turns 400.
-                  yield { type: "redacted_thinking", data: block.data };
-                }
-                break;
-              }
-              case "content_block_delta": {
-                const delta = data.delta as Record<string, unknown> | undefined;
-                if (!delta) break;
-                if (delta.type === "text_delta" && typeof delta.text === "string") {
-                  yield { type: "text_delta", text: delta.text };
-                } else if (delta.type === "thinking_delta" && typeof delta.thinking === "string") {
-                  yield { type: "thinking_delta", thinking: delta.thinking };
-                } else if (delta.type === "reasoning_delta" && typeof delta.reasoning === "string") {
-                  // Some Anthropic-compatible reasoning models use `reasoning` names for the
-                  // otherwise equivalent thinking block. Preserve it as raw reasoning and keep
-                  // later text blocks independent.
-                  yield { type: "thinking_delta", thinking: delta.reasoning };
-                } else if (delta.type === "signature_delta" && typeof delta.signature === "string" && (currentBlockType === "thinking" || currentBlockType === "reasoning")) {
-                  // Arrives once, just before the thinking block's content_block_stop; block-scoped
-                  // so a stray signature on a non-thinking block can never be captured.
-                  yield { type: "thinking_signature", signature: delta.signature };
-                } else if (delta.type === "input_json_delta" && typeof delta.partial_json === "string") {
-                  yield { type: "tool_call_delta", arguments: delta.partial_json };
-                }
-                break;
-              }
-              case "content_block_stop": {
-                if (currentBlockType === "tool_use") {
-                  yield { type: "tool_call_end" };
-                  currentToolCallId = "";
-                }
-                currentBlockType = "";
-                break;
-              }
-              case "message_delta": {
-                const usage = data.usage as Record<string, number> | undefined;
-                pendingUsage = mergeAnthropicUsage(pendingUsage, usage);
-                const delta = data.delta as { stop_reason?: unknown } | undefined;
-                if (typeof delta?.stop_reason === "string") pendingStopReason = delta.stop_reason;
-                break;
-              }
-              case "message_stop": {
-                yield* emitDone();
-                break;
-              }
-              case "error": {
-                const err = data.error as { message?: string } | undefined;
-                yield { type: "error", message: err?.message ?? "Anthropic error" };
-                return;
-              }
+          case "message_start": {
+            const message = data.message as
+              { usage?: Record<string, number> } | undefined;
+            pendingUsage = mergeAnthropicUsage(pendingUsage, message?.usage);
+            break;
+          }
+          case "content_block_start": {
+            const block = data.content_block as
+              | { type: string; id?: string; name?: string; data?: string }
+              | undefined;
+            if (!block) break;
+            currentBlockType = block.type;
+            if (block.type === "tool_use") {
+              currentToolCallId = block.id ?? "";
+              currentToolCallName = toolNames.fromWire(block.name ?? "");
+              yield {
+                type: "tool_call_start",
+                id: currentToolCallId,
+                name: currentToolCallName,
+              };
+            }
+            if (
+              block.type === "redacted_thinking" &&
+              typeof block.data === "string"
+            ) {
+              // Opaque redacted block: replay verbatim later or tool-use turns 400.
+              yield { type: "redacted_thinking", data: block.data };
+            }
+            break;
+          }
+          case "content_block_delta": {
+            const delta = data.delta as Record<string, unknown> | undefined;
+            if (!delta) break;
+            if (delta.type === "text_delta" && typeof delta.text === "string") {
+              yield { type: "text_delta", text: delta.text };
+            } else if (
+              delta.type === "thinking_delta" &&
+              typeof delta.thinking === "string"
+            ) {
+              yield { type: "thinking_delta", thinking: delta.thinking };
+            } else if (
+              delta.type === "reasoning_delta" &&
+              typeof delta.reasoning === "string"
+            ) {
+              // Some Anthropic-compatible reasoning models use `reasoning` names for the
+              // otherwise equivalent thinking block. Preserve it as raw reasoning and keep
+              // later text blocks independent.
+              yield { type: "thinking_delta", thinking: delta.reasoning };
+            } else if (
+              delta.type === "signature_delta" &&
+              typeof delta.signature === "string" &&
+              (currentBlockType === "thinking" ||
+                currentBlockType === "reasoning")
+            ) {
+              // Arrives once, just before the thinking block's content_block_stop; block-scoped
+              // so a stray signature on a non-thinking block can never be captured.
+              yield { type: "thinking_signature", signature: delta.signature };
+            } else if (
+              delta.type === "input_json_delta" &&
+              typeof delta.partial_json === "string"
+            ) {
+              yield { type: "tool_call_delta", arguments: delta.partial_json };
+            }
+            break;
+          }
+          case "content_block_stop": {
+            if (currentBlockType === "tool_use") {
+              yield { type: "tool_call_end" };
+              currentToolCallId = "";
+            }
+            currentBlockType = "";
+            break;
+          }
+          case "message_delta": {
+            const usage = data.usage as Record<string, number> | undefined;
+            pendingUsage = mergeAnthropicUsage(pendingUsage, usage);
+            const delta = data.delta as { stop_reason?: unknown } | undefined;
+            if (typeof delta?.stop_reason === "string")
+              pendingStopReason = delta.stop_reason;
+            break;
+          }
+          case "message_stop": {
+            yield* emitDone();
+            break;
+          }
+          case "error": {
+            const err = data.error as { message?: string } | undefined;
+            yield { type: "error", message: err?.message ?? "Anthropic error" };
+            return;
+          }
         }
       }
       if (!emittedDone) {
         if (pendingStopReason !== undefined) {
-          const stopReason = pendingStopReason === "max_tokens"
-            ? "max_tokens"
-            : pendingStopReason === "refusal" || pendingStopReason === "content_filter"
-              ? "content_filter"
-              : undefined;
+          const stopReason =
+            pendingStopReason === "max_tokens"
+              ? "max_tokens"
+              : pendingStopReason === "refusal" ||
+                  pendingStopReason === "content_filter"
+                ? "content_filter"
+                : undefined;
           emittedDone = true;
           yield {
             type: "done",
@@ -849,37 +1087,74 @@ export function createAnthropicAdapter(provider: OcxProviderConfig, cacheRetenti
             ...(stopReason ? { stopReason } : {}),
           };
         } else {
-          yield { type: "error", message: "upstream stream ended before message_stop — possible truncation" };
+          yield {
+            type: "error",
+            message:
+              "upstream stream ended before message_stop — possible truncation",
+          };
         }
       }
     },
 
     async parseResponse(response: Response): Promise<AdapterEvent[]> {
-      const json = await readCappedResponseJson<Record<string, unknown>>(response);
+      const json =
+        await readCappedResponseJson<Record<string, unknown>>(response);
       const events: AdapterEvent[] = [];
-      const content = json.content as { type: string; text?: string; id?: string; name?: string; input?: unknown; thinking?: string; reasoning?: string; signature?: string; data?: string }[] | undefined;
+      const content = json.content as
+        | {
+            type: string;
+            text?: string;
+            id?: string;
+            name?: string;
+            input?: unknown;
+            thinking?: string;
+            reasoning?: string;
+            signature?: string;
+            data?: string;
+          }[]
+        | undefined;
       if (content) {
         for (const block of content) {
           if (block.type === "text" && block.text) {
             events.push({ type: "text_delta", text: block.text });
-          } else if (block.type === "thinking" && typeof block.thinking === "string") {
+          } else if (
+            block.type === "thinking" &&
+            typeof block.thinking === "string"
+          ) {
             events.push({ type: "thinking_delta", thinking: block.thinking });
             if (typeof block.signature === "string" && block.signature) {
-              events.push({ type: "thinking_signature", signature: block.signature });
+              events.push({
+                type: "thinking_signature",
+                signature: block.signature,
+              });
             }
-          } else if (block.type === "reasoning" && typeof block.reasoning === "string") {
+          } else if (
+            block.type === "reasoning" &&
+            typeof block.reasoning === "string"
+          ) {
             events.push({ type: "thinking_delta", thinking: block.reasoning });
-          } else if (block.type === "redacted_thinking" && typeof block.data === "string") {
+          } else if (
+            block.type === "redacted_thinking" &&
+            typeof block.data === "string"
+          ) {
             events.push({ type: "redacted_thinking", data: block.data });
           } else if (block.type === "tool_use") {
-            events.push({ type: "tool_call_start", id: block.id ?? "", name: toolNames.fromWire(block.name ?? "") });
-            events.push({ type: "tool_call_delta", arguments: JSON.stringify(block.input ?? {}) });
+            events.push({
+              type: "tool_call_start",
+              id: block.id ?? "",
+              name: toolNames.fromWire(block.name ?? ""),
+            });
+            events.push({
+              type: "tool_call_delta",
+              arguments: JSON.stringify(block.input ?? {}),
+            });
             events.push({ type: "tool_call_end" });
           }
         }
       }
       const usage = json.usage as Record<string, number> | undefined;
-      const stopReason = typeof json.stop_reason === "string" ? json.stop_reason : undefined;
+      const stopReason =
+        typeof json.stop_reason === "string" ? json.stop_reason : undefined;
       events.push({
         type: "done",
         usage: usageFromAnthropic(usage),
@@ -890,9 +1165,11 @@ export function createAnthropicAdapter(provider: OcxProviderConfig, cacheRetenti
 
     // Fase C: teach the failover core Anthropic's rate-limit signaling
     // (anthropic-ratelimit-* + per-account spend cap that must NOT rotate-retry).
-    rateLimitFromHeaders(status: number, headers: Headers): AdapterRateLimitInfo | null {
+    rateLimitFromHeaders(
+      status: number,
+      headers: Headers,
+    ): AdapterRateLimitInfo | null {
       return parseAnthropicRateLimit(status, headers);
     },
-
   };
 }

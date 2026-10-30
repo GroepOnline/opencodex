@@ -1,17 +1,41 @@
 import { createHash } from "node:crypto";
-import type { AdapterRateLimitInfo, IncomingMeta, ProviderAdapter } from "./base";
+import type {
+  AdapterRateLimitInfo,
+  IncomingMeta,
+  ProviderAdapter,
+} from "./base";
 import { parseOpenAIRateLimit } from "../availability/rate-limit-parse";
-import { namespacedToolName, type AdapterEvent, type OcxParsedRequest, type OcxProviderConfig, type OcxUsage } from "../types";
+import {
+  namespacedToolName,
+  type AdapterEvent,
+  type OcxParsedRequest,
+  type OcxProviderConfig,
+  type OcxUsage,
+} from "../types";
 import { catalogModelSupportsReasoningSummaries } from "../codex/catalog";
-import { COMPACT_PROMPT, decodeCompactionSummary, SUMMARY_PREFIX } from "../responses/compaction";
+import {
+  COMPACT_PROMPT,
+  decodeCompactionSummary,
+  SUMMARY_PREFIX,
+} from "../responses/compaction";
 import { collectResponsesToolGroups } from "../responses/tool-groups";
 import { debugDroppedFrame, debugProviderDiagnostic } from "../lib/debug";
-import { readCappedResponseJson, UpstreamBodyTooLargeError } from "../lib/bounded-body";
+import {
+  readCappedResponseJson,
+  UpstreamBodyTooLargeError,
+} from "../lib/bounded-body";
 import { decodeServerSentEvents } from "../lib/sse-decoder";
 import { supportsNativeRemoteCompactionV2 } from "../providers/openai-tiers";
 import { OCX_REASONING_PREFIX } from "../responses/reasoning-envelope";
-import { configuredReasoningEfforts, isCodexReasoningEffort, mapReasoningEffort, modelRecordValue, reasoningEffortMapFor } from "../reasoning-effort";
+import {
+  configuredReasoningEfforts,
+  isCodexReasoningEffort,
+  mapReasoningEffort,
+  modelRecordValue,
+  reasoningEffortMapFor,
+} from "../reasoning-effort";
 import { observeOpenAiResponsesPromptCache } from "../prompt-cache/observability";
+import { applyCloudflareAiGatewayHeaders } from "../providers/cloudflare-gateway";
 
 // Headers relayed verbatim from the caller in OAuth-passthrough ("forward") mode.
 // Exported so the web-search sidecar reuses the exact same forwarded-auth set for its ChatGPT call.
@@ -41,14 +65,16 @@ export function sanitizeReasoningInputContent(body: unknown): unknown {
   if (!Array.isArray(raw.input)) return body;
 
   let changed = false;
-  const input = raw.input.map(item => {
+  const input = raw.input.map((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return item;
     const rec = item as Record<string, unknown>;
     if (rec.type !== "reasoning") return item;
     const hasRawContent = Array.isArray(rec.content) && rec.content.length > 0;
     // ocxr1 envelopes are proxy-minted (Anthropic signatures), not OpenAI encryption — the native
     // backend cannot decrypt them and would reject the request. Strip regardless of content shape.
-    const hasOcxEnvelope = typeof rec.encrypted_content === "string" && rec.encrypted_content.startsWith(OCX_REASONING_PREFIX);
+    const hasOcxEnvelope =
+      typeof rec.encrypted_content === "string" &&
+      rec.encrypted_content.startsWith(OCX_REASONING_PREFIX);
     if (!hasRawContent && !hasOcxEnvelope) return item;
     changed = true;
     // Routed models can produce raw `reasoning_text` output items. Codex echoes those in later
@@ -62,18 +88,31 @@ export function sanitizeReasoningInputContent(body: unknown): unknown {
   return changed ? { ...raw, input } : body;
 }
 
-function normalizeConfiguredReasoningEffort(body: unknown, provider: OcxProviderConfig, modelId: string): unknown {
-  if (!isPlainObject(body) || !isPlainObject(body.reasoning) || !("effort" in body.reasoning)) return body;
+function normalizeConfiguredReasoningEffort(
+  body: unknown,
+  provider: OcxProviderConfig,
+  modelId: string,
+): unknown {
+  if (
+    !isPlainObject(body) ||
+    !isPlainObject(body.reasoning) ||
+    !("effort" in body.reasoning)
+  )
+    return body;
   const supported = configuredReasoningEfforts(provider, modelId);
   const wireMap = reasoningEffortMapFor(provider, modelId);
   // Passthrough preserves unconfigured wire values; explicit capabilities use the same
   // mapping and opt-outs as bridged requests, including an empty per-model effort ladder.
   if (supported === undefined && wireMap === undefined) return body;
   const current = body.reasoning.effort;
-  const effort = supported?.length === 0
-    ? undefined
-    : typeof current === "string" && (isCodexReasoningEffort(current) || !Object.values(wireMap ?? {}).includes(current))
-      ? mapReasoningEffort(provider, modelId, current) : current;
+  const effort =
+    supported?.length === 0
+      ? undefined
+      : typeof current === "string" &&
+          (isCodexReasoningEffort(current) ||
+            !Object.values(wireMap ?? {}).includes(current))
+        ? mapReasoningEffort(provider, modelId, current)
+        : current;
   if (effort === current) return body;
   const reasoning = { ...body.reasoning };
   if (effort === undefined) delete reasoning.effort;
@@ -84,7 +123,10 @@ function normalizeConfiguredReasoningEffort(body: unknown, provider: OcxProvider
   return next;
 }
 
-function stripUnsupportedReasoningSummaryDelivery(body: unknown, modelId: string): unknown {
+function stripUnsupportedReasoningSummaryDelivery(
+  body: unknown,
+  modelId: string,
+): unknown {
   if (catalogModelSupportsReasoningSummaries(modelId) !== false) return body;
   if (!isPlainObject(body) || !isPlainObject(body.stream_options)) return body;
   if (!("reasoning_summary_delivery" in body.stream_options)) return body;
@@ -92,7 +134,8 @@ function stripUnsupportedReasoningSummaryDelivery(body: unknown, modelId: string
   const streamOptions = { ...body.stream_options };
   delete streamOptions.reasoning_summary_delivery;
   const next = { ...body };
-  if (Object.keys(streamOptions).length > 0) next.stream_options = streamOptions;
+  if (Object.keys(streamOptions).length > 0)
+    next.stream_options = streamOptions;
   else delete next.stream_options;
   return next;
 }
@@ -110,11 +153,12 @@ function stripInvalidItemIds(body: unknown): unknown {
     web_search_call: "ws_",
   };
   let changed = false;
-  const input = body.input.map(item => {
+  const input = body.input.map((item) => {
     if (!isPlainObject(item) || typeof item.type !== "string") return item;
     const validPrefix = validPrefixes[item.type];
     if (!validPrefix) return item;
-    if (typeof item.id === "string" && item.id.startsWith(validPrefix)) return item;
+    if (typeof item.id === "string" && item.id.startsWith(validPrefix))
+      return item;
     if (!("id" in item)) return item;
     changed = true;
     const next = { ...item };
@@ -136,7 +180,7 @@ function stripItemIdsWhenUnstored(body: unknown): unknown {
   if (!Array.isArray(body.input)) return body;
 
   let changed = false;
-  const input = body.input.map(item => {
+  const input = body.input.map((item) => {
     if (!isPlainObject(item) || !("id" in item)) return item;
     changed = true;
     const next = { ...item };
@@ -157,16 +201,26 @@ function scrubOcxCompactionItems(body: unknown): unknown {
   if (!isPlainObject(body) || !Array.isArray(body.input)) return body;
 
   let changed = false;
-  const input = body.input.map(item => {
+  const input = body.input.map((item) => {
     if (!isPlainObject(item)) return item;
-    if (item.type !== "compaction" && item.type !== "compaction_summary" && item.type !== "context_compaction") return item;
-    const decoded = typeof item.encrypted_content === "string" ? decodeCompactionSummary(item.encrypted_content) : null;
+    if (
+      item.type !== "compaction" &&
+      item.type !== "compaction_summary" &&
+      item.type !== "context_compaction"
+    )
+      return item;
+    const decoded =
+      typeof item.encrypted_content === "string"
+        ? decodeCompactionSummary(item.encrypted_content)
+        : null;
     if (decoded === null) return item;
     changed = true;
     return {
       type: "message",
       role: "user",
-      content: [{ type: "input_text", text: `${SUMMARY_PREFIX}\n\n${decoded}` }],
+      content: [
+        { type: "input_text", text: `${SUMMARY_PREFIX}\n\n${decoded}` },
+      ],
     };
   });
 
@@ -181,8 +235,14 @@ function scrubOcxCompactionItems(body: unknown): unknown {
  * maps a model-slug matcher to the hosted tool types that must be stripped before forwarding.
  * Extend this when another native slug rejects a hosted tool (e.g. `code_interpreter`).
  */
-const UNSUPPORTED_HOSTED_TOOLS: ReadonlyArray<{ match: (model: string) => boolean; tools: ReadonlySet<string> }> = [
-  { match: model => model.includes("codex-spark"), tools: new Set(["image_generation", "tool_search"]) },
+const UNSUPPORTED_HOSTED_TOOLS: ReadonlyArray<{
+  match: (model: string) => boolean;
+  tools: ReadonlySet<string>;
+}> = [
+  {
+    match: (model) => model.includes("codex-spark"),
+    tools: new Set(["image_generation", "tool_search"]),
+  },
 ];
 
 /**
@@ -198,9 +258,18 @@ function stripUnsupportedReasoningParams(body: unknown): unknown {
   if (!isPlainObject(body.reasoning)) return body;
   const reasoning = body.reasoning as Record<string, unknown>;
   // Spark supports reasoning.effort but rejects context, summary, and generate_summary.
-  const { context: _ctx, summary: _sum, generate_summary: _gs, ...rest } = reasoning;
-  if (_ctx === undefined && _sum === undefined && _gs === undefined) return body;
-  return { ...body, reasoning: Object.keys(rest).length > 0 ? rest : undefined };
+  const {
+    context: _ctx,
+    summary: _sum,
+    generate_summary: _gs,
+    ...rest
+  } = reasoning;
+  if (_ctx === undefined && _sum === undefined && _gs === undefined)
+    return body;
+  return {
+    ...body,
+    reasoning: Object.keys(rest).length > 0 ? rest : undefined,
+  };
 }
 
 /**
@@ -213,13 +282,20 @@ function stripDisabledReasoningSummaries(
   provider: OcxProviderConfig,
   modelId: string,
 ): unknown {
-  if (modelRecordValue(provider.modelSupportsReasoningSummaries, modelId) !== false || !isPlainObject(body)) {
+  if (
+    modelRecordValue(provider.modelSupportsReasoningSummaries, modelId) !==
+      false ||
+    !isPlainObject(body)
+  ) {
     return body;
   }
 
   let changed = false;
   let streamOptions = body.stream_options;
-  if (isPlainObject(streamOptions) && Object.hasOwn(streamOptions, "reasoning_summary_delivery")) {
+  if (
+    isPlainObject(streamOptions) &&
+    Object.hasOwn(streamOptions, "reasoning_summary_delivery")
+  ) {
     const { reasoning_summary_delivery: _delivery, ...rest } = streamOptions;
     streamOptions = rest;
     changed = true;
@@ -227,7 +303,11 @@ function stripDisabledReasoningSummaries(
 
   let reasoning = body.reasoning;
   if (isPlainObject(reasoning)) {
-    const { summary: _summary, generate_summary: _generateSummary, ...rest } = reasoning;
+    const {
+      summary: _summary,
+      generate_summary: _generateSummary,
+      ...rest
+    } = reasoning;
     if (_summary !== undefined || _generateSummary !== undefined) {
       reasoning = rest;
       changed = true;
@@ -255,9 +335,18 @@ function normalizeConfiguredReasoningSummaryDelivery(
   provider: OcxProviderConfig,
   modelId: string,
 ): unknown {
-  const delivery = modelRecordValue(provider.modelReasoningSummaryDelivery, modelId);
-  if (delivery === undefined || !isPlainObject(body) || !isPlainObject(body.stream_options)) return body;
-  if (!Object.hasOwn(body.stream_options, "reasoning_summary_delivery")) return body;
+  const delivery = modelRecordValue(
+    provider.modelReasoningSummaryDelivery,
+    modelId,
+  );
+  if (
+    delivery === undefined ||
+    !isPlainObject(body) ||
+    !isPlainObject(body.stream_options)
+  )
+    return body;
+  if (!Object.hasOwn(body.stream_options, "reasoning_summary_delivery"))
+    return body;
   if (body.stream_options.reasoning_summary_delivery === delivery) return body;
   return {
     ...body,
@@ -287,7 +376,11 @@ function stripSparkCompatibility(body: unknown): unknown {
 
   let changed = false;
 
-  const SPARK_SAFE_TOOL_TYPES = new Set(["function", "web_search", "web_search_preview"]);
+  const SPARK_SAFE_TOOL_TYPES = new Set([
+    "function",
+    "web_search",
+    "web_search_preview",
+  ]);
 
   let tools = body.tools;
   if (Array.isArray(tools)) {
@@ -298,14 +391,18 @@ function stripSparkCompatibility(body: unknown): unknown {
         if (Array.isArray(t.tools)) {
           for (const inner of t.tools) flattened.push(inner);
         }
-      } else if (isPlainObject(t) && typeof t.type === "string" && !SPARK_SAFE_TOOL_TYPES.has(t.type)) {
+      } else if (
+        isPlainObject(t) &&
+        typeof t.type === "string" &&
+        !SPARK_SAFE_TOOL_TYPES.has(t.type)
+      ) {
         changed = true;
       } else {
         flattened.push(t);
       }
     }
     // Strip defer_loading from promoted/remaining function tools.
-    tools = flattened.map(t => {
+    tools = flattened.map((t) => {
       if (isPlainObject(t) && t.type === "function" && "defer_loading" in t) {
         const { defer_loading: _, ...rest } = t;
         changed = true;
@@ -317,19 +414,29 @@ function stripSparkCompatibility(body: unknown): unknown {
 
   // Clean input items: strip namespace, drop tool_search_call/tool_search_output.
   const SPARK_UNSUPPORTED_INPUT_TYPES = new Set([
-    "tool_search_call", "tool_search_output",
-    "custom_tool_call", "custom_tool_call_output",
+    "tool_search_call",
+    "tool_search_output",
+    "custom_tool_call",
+    "custom_tool_call_output",
   ]);
   let input = body.input;
   if (Array.isArray(input)) {
     const cleaned: unknown[] = [];
     for (const item of input) {
-      if (isPlainObject(item) && typeof item.type === "string" && SPARK_UNSUPPORTED_INPUT_TYPES.has(item.type)) {
+      if (
+        isPlainObject(item) &&
+        typeof item.type === "string" &&
+        SPARK_UNSUPPORTED_INPUT_TYPES.has(item.type)
+      ) {
         changed = true;
         continue;
       }
       // Process additional_tools items: filter their inner tools array the same way.
-      if (isPlainObject(item) && item.type === "additional_tools" && Array.isArray(item.tools)) {
+      if (
+        isPlainObject(item) &&
+        item.type === "additional_tools" &&
+        Array.isArray(item.tools)
+      ) {
         const innerTools = item.tools as unknown[];
         const filteredInner: unknown[] = [];
         for (const t of innerTools) {
@@ -338,15 +445,23 @@ function stripSparkCompatibility(body: unknown): unknown {
             if (Array.isArray(t.tools)) {
               for (const fn of t.tools) filteredInner.push(fn);
             }
-          } else if (isPlainObject(t) && typeof t.type === "string" && !SPARK_SAFE_TOOL_TYPES.has(t.type)) {
+          } else if (
+            isPlainObject(t) &&
+            typeof t.type === "string" &&
+            !SPARK_SAFE_TOOL_TYPES.has(t.type)
+          ) {
             changed = true; // drop custom, tool_search, etc.
           } else {
             filteredInner.push(t);
           }
         }
         // Strip defer_loading from remaining function tools.
-        const cleanedInner = filteredInner.map(t => {
-          if (isPlainObject(t) && t.type === "function" && "defer_loading" in t) {
+        const cleanedInner = filteredInner.map((t) => {
+          if (
+            isPlainObject(t) &&
+            t.type === "function" &&
+            "defer_loading" in t
+          ) {
             const { defer_loading: _, ...rest } = t;
             changed = true;
             return rest;
@@ -369,10 +484,18 @@ function stripSparkCompatibility(body: unknown): unknown {
 
   // Force parallel_tool_calls off for Spark.
   const extraOverrides: Record<string, unknown> = {};
-  if (body.parallel_tool_calls === true) { extraOverrides.parallel_tool_calls = false; changed = true; }
+  if (body.parallel_tool_calls === true) {
+    extraOverrides.parallel_tool_calls = false;
+    changed = true;
+  }
 
   return changed
-    ? { ...body, ...(tools !== body.tools ? { tools } : {}), ...(input !== body.input ? { input } : {}), ...extraOverrides }
+    ? {
+        ...body,
+        ...(tools !== body.tools ? { tools } : {}),
+        ...(input !== body.input ? { input } : {}),
+        ...extraOverrides,
+      }
     : body;
 }
 
@@ -382,7 +505,8 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 
 const MAX_RESPONSES_CALL_ID_LENGTH = 64;
 const REPAIRED_CALL_ID_PREFIX = "call_ocx_";
-const REPAIRED_CALL_ID_DIGEST_LENGTH = MAX_RESPONSES_CALL_ID_LENGTH - REPAIRED_CALL_ID_PREFIX.length;
+const REPAIRED_CALL_ID_DIGEST_LENGTH =
+  MAX_RESPONSES_CALL_ID_LENGTH - REPAIRED_CALL_ID_PREFIX.length;
 
 /**
  * The ChatGPT Responses backend rejects input `call_id` values longer than 64 characters. Codex
@@ -399,12 +523,13 @@ function repairOversizedReplayCallIds(body: unknown): unknown {
   const occupied = new Set<string>();
   for (const item of body.input) {
     if (!isPlainObject(item) || typeof item.call_id !== "string") continue;
-    if (item.call_id.length <= MAX_RESPONSES_CALL_ID_LENGTH) occupied.add(item.call_id);
+    if (item.call_id.length <= MAX_RESPONSES_CALL_ID_LENGTH)
+      occupied.add(item.call_id);
   }
 
   const aliases = new Map<string, string>();
   let changed = false;
-  const input = body.input.map(item => {
+  const input = body.input.map((item) => {
     if (!isPlainObject(item) || typeof item.call_id !== "string") return item;
     const original = item.call_id;
     if (original.length <= MAX_RESPONSES_CALL_ID_LENGTH) return item;
@@ -433,12 +558,16 @@ function repairOversizedReplayCallIds(body: unknown): unknown {
 function toolOutputText(output: unknown): string {
   if (typeof output === "string") return output;
   if (!Array.isArray(output)) return JSON.stringify(output ?? "");
-  return output.map(part => {
-    if (!isPlainObject(part)) return "";
-    if (typeof part.text === "string") return part.text;
-    if (part.type === "refusal" && typeof part.refusal === "string") return `[refusal] ${part.refusal}`;
-    return "";
-  }).filter(Boolean).join("\n");
+  return output
+    .map((part) => {
+      if (!isPlainObject(part)) return "";
+      if (typeof part.text === "string") return part.text;
+      if (part.type === "refusal" && typeof part.refusal === "string")
+        return `[refusal] ${part.refusal}`;
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
 }
 
 /**
@@ -455,7 +584,10 @@ function toolOutputText(output: unknown): string {
  *   reasoning chain is intact and must be preserved.
  * Runs on every forward request; with intact pairs it returns the original reference.
  */
-function repairOrphanedInputItems(body: unknown, dropReasoning: boolean): unknown {
+function repairOrphanedInputItems(
+  body: unknown,
+  dropReasoning: boolean,
+): unknown {
   if (!isPlainObject(body) || !Array.isArray(body.input)) return body;
   const input = body.input;
 
@@ -463,26 +595,40 @@ function repairOrphanedInputItems(body: unknown, dropReasoning: boolean): unknow
   const customCallIds = new Set<string>();
   for (const item of input) {
     if (!isPlainObject(item) || typeof item.call_id !== "string") continue;
-    if (item.type === "function_call" || item.type === "local_shell_call") functionCallIds.add(item.call_id);
+    if (item.type === "function_call" || item.type === "local_shell_call")
+      functionCallIds.add(item.call_id);
     else if (item.type === "custom_tool_call") customCallIds.add(item.call_id);
   }
 
   let changed = false;
   const repaired: unknown[] = [];
   for (const item of input) {
-    if (!isPlainObject(item)) { repaired.push(item); continue; }
-    if (dropReasoning && item.type === "reasoning") { changed = true; continue; }
+    if (!isPlainObject(item)) {
+      repaired.push(item);
+      continue;
+    }
+    if (dropReasoning && item.type === "reasoning") {
+      changed = true;
+      continue;
+    }
     const isFnOutput = item.type === "function_call_output";
     const isCustomOutput = item.type === "custom_tool_call_output";
     if (isFnOutput || isCustomOutput) {
       const callId = typeof item.call_id === "string" ? item.call_id : "";
-      const paired = isFnOutput ? functionCallIds.has(callId) : customCallIds.has(callId);
+      const paired = isFnOutput
+        ? functionCallIds.has(callId)
+        : customCallIds.has(callId);
       if (!paired) {
         changed = true;
         repaired.push({
           type: "message",
           role: "user",
-          content: [{ type: "input_text", text: `[tool output for ${callId || "unknown call"}]\n${toolOutputText(item.output)}` }],
+          content: [
+            {
+              type: "input_text",
+              text: `[tool output for ${callId || "unknown call"}]\n${toolOutputText(item.output)}`,
+            },
+          ],
         });
         continue;
       }
@@ -505,7 +651,12 @@ function repairOrphanedInputItems(body: unknown, dropReasoning: boolean): unknow
  *   unexpanded requests: the platform `/v1/responses` supports real server-side storage.
  */
 function stripPreviousResponseId(body: unknown, strip: boolean): unknown {
-  if (!strip || !isPlainObject(body) || !Object.prototype.hasOwnProperty.call(body, "previous_response_id")) return body;
+  if (
+    !strip ||
+    !isPlainObject(body) ||
+    !Object.prototype.hasOwnProperty.call(body, "previous_response_id")
+  )
+    return body;
   const { previous_response_id: _previousResponseId, ...rest } = body;
   return rest;
 }
@@ -521,7 +672,11 @@ function stripPreviousResponseId(body: unknown, strip: boolean): unknown {
  * when the body carries none of these fields, keeping the common Codex path
  * allocation-free.
  */
-const UNSUPPORTED_FORWARD_PARAMS = ["max_output_tokens", "metadata", "safety_identifier"] as const;
+const UNSUPPORTED_FORWARD_PARAMS = [
+  "max_output_tokens",
+  "metadata",
+  "safety_identifier",
+] as const;
 
 function stripUnsupportedForwardParams(body: unknown): unknown {
   if (!isPlainObject(body)) return body;
@@ -545,8 +700,10 @@ const IMAGE_GEN_WIRE_PREFIX = `${IMAGE_GEN_NAMESPACE}__`;
 
 /** Remove a supported client prefix before constructing the canonical image-gen wire alias. */
 function imageGenLocalName(name: string): string {
-  if (name.startsWith(IMAGE_GEN_DOTTED_PREFIX)) return name.slice(IMAGE_GEN_DOTTED_PREFIX.length);
-  if (name.startsWith(IMAGE_GEN_WIRE_PREFIX)) return name.slice(IMAGE_GEN_WIRE_PREFIX.length);
+  if (name.startsWith(IMAGE_GEN_DOTTED_PREFIX))
+    return name.slice(IMAGE_GEN_DOTTED_PREFIX.length);
+  if (name.startsWith(IMAGE_GEN_WIRE_PREFIX))
+    return name.slice(IMAGE_GEN_WIRE_PREFIX.length);
   return name;
 }
 
@@ -557,9 +714,11 @@ function imageGenWireName(name: string): string {
 
 /** Match client image-gen declarations across namespace, legacy dotted, and canonical wire forms. */
 function isImageGenClientName(name: string): boolean {
-  return name === IMAGE_GEN_NAMESPACE
-    || name.startsWith(IMAGE_GEN_DOTTED_PREFIX)
-    || name.startsWith(IMAGE_GEN_WIRE_PREFIX);
+  return (
+    name === IMAGE_GEN_NAMESPACE ||
+    name.startsWith(IMAGE_GEN_DOTTED_PREFIX) ||
+    name.startsWith(IMAGE_GEN_WIRE_PREFIX)
+  );
 }
 
 /** Identify declarations that should activate image-gen request normalization. */
@@ -578,26 +737,32 @@ function declaresImageGenClientTool(tool: unknown): boolean {
  * non-empty namespace containing named function tools is safe to lower. Malformed, empty, and
  * future namespace shapes stay untouched instead of silently losing client capabilities.
  */
-function flattenImageGenNamespace(tool: unknown): Record<string, unknown>[] | undefined {
+function flattenImageGenNamespace(
+  tool: unknown,
+): Record<string, unknown>[] | undefined {
   if (
-    !isPlainObject(tool)
-    || tool.type !== "namespace"
-    || tool.name !== IMAGE_GEN_NAMESPACE
-    || !Array.isArray(tool.tools)
-    || tool.tools.length === 0
-  ) return undefined;
+    !isPlainObject(tool) ||
+    tool.type !== "namespace" ||
+    tool.name !== IMAGE_GEN_NAMESPACE ||
+    !Array.isArray(tool.tools) ||
+    tool.tools.length === 0
+  )
+    return undefined;
 
   for (const innerTool of tool.tools) {
     if (
-      !isPlainObject(innerTool)
-      || innerTool.type !== "function"
-      || typeof innerTool.name !== "string"
-      || innerTool.name.length === 0
-    ) return undefined;
+      !isPlainObject(innerTool) ||
+      innerTool.type !== "function" ||
+      typeof innerTool.name !== "string" ||
+      innerTool.name.length === 0
+    )
+      return undefined;
   }
 
-  return tool.tools.map(innerTool => {
-    const functionTool = innerTool as Record<string, unknown> & { name: string };
+  return tool.tools.map((innerTool) => {
+    const functionTool = innerTool as Record<string, unknown> & {
+      name: string;
+    };
     return {
       ...functionTool,
       name: imageGenWireName(functionTool.name),
@@ -608,17 +773,22 @@ function flattenImageGenNamespace(tool: unknown): Record<string, unknown>[] | un
 /** Convert a legacy dotted function declaration while preserving all other function metadata. */
 function normalizeFlatImageGenFunction(tool: unknown): unknown {
   if (
-    !isPlainObject(tool)
-    || tool.type !== "function"
-    || typeof tool.name !== "string"
-    || !tool.name.startsWith(IMAGE_GEN_DOTTED_PREFIX)
-  ) return tool;
+    !isPlainObject(tool) ||
+    tool.type !== "function" ||
+    typeof tool.name !== "string" ||
+    !tool.name.startsWith(IMAGE_GEN_DOTTED_PREFIX)
+  )
+    return tool;
   return { ...tool, name: imageGenWireName(tool.name) };
 }
 
 /** Return the image-gen function name used for stable cross-container deduplication. */
 function imageGenFunctionName(tool: unknown): string | undefined {
-  if (!isPlainObject(tool) || tool.type !== "function" || typeof tool.name !== "string") {
+  if (
+    !isPlainObject(tool) ||
+    tool.type !== "function" ||
+    typeof tool.name !== "string"
+  ) {
     return undefined;
   }
   return isImageGenClientName(tool.name) ? tool.name : undefined;
@@ -627,18 +797,26 @@ function imageGenFunctionName(tool: unknown): string | undefined {
 /** True only when a declaration can yield a callable upstream-safe image-gen function alias. */
 function declaresUsableImageGenAlias(tool: unknown): boolean {
   if (flattenImageGenNamespace(tool)) return true;
-  if (!isPlainObject(tool) || tool.type !== "function" || typeof tool.name !== "string") {
+  if (
+    !isPlainObject(tool) ||
+    tool.type !== "function" ||
+    typeof tool.name !== "string"
+  ) {
     return false;
   }
   if (tool.name.startsWith(IMAGE_GEN_DOTTED_PREFIX)) {
     return tool.name.length > IMAGE_GEN_DOTTED_PREFIX.length;
   }
-  return tool.name.startsWith(IMAGE_GEN_WIRE_PREFIX)
-    && tool.name.length > IMAGE_GEN_WIRE_PREFIX.length;
+  return (
+    tool.name.startsWith(IMAGE_GEN_WIRE_PREFIX) &&
+    tool.name.length > IMAGE_GEN_WIRE_PREFIX.length
+  );
 }
 
 /** Collect client tool-choice names and the exact upstream aliases declared for them. */
-function imageGenToolChoiceAliases(toolGroups: unknown[][]): Map<string, string> {
+function imageGenToolChoiceAliases(
+  toolGroups: unknown[][],
+): Map<string, string> {
   const aliases = new Map<string, string>();
 
   for (const group of toolGroups) {
@@ -647,22 +825,29 @@ function imageGenToolChoiceAliases(toolGroups: unknown[][]): Map<string, string>
       if (flattened) {
         for (const candidate of flattened) {
           const wireName = candidate.name as string;
-          aliases.set(`${IMAGE_GEN_DOTTED_PREFIX}${imageGenLocalName(wireName)}`, wireName);
+          aliases.set(
+            `${IMAGE_GEN_DOTTED_PREFIX}${imageGenLocalName(wireName)}`,
+            wireName,
+          );
           aliases.set(wireName, wireName);
         }
         continue;
       }
-      if (!isPlainObject(tool) || tool.type !== "function" || typeof tool.name !== "string") {
+      if (
+        !isPlainObject(tool) ||
+        tool.type !== "function" ||
+        typeof tool.name !== "string"
+      ) {
         continue;
       }
       if (
-        tool.name.startsWith(IMAGE_GEN_DOTTED_PREFIX)
-        && tool.name.length > IMAGE_GEN_DOTTED_PREFIX.length
+        tool.name.startsWith(IMAGE_GEN_DOTTED_PREFIX) &&
+        tool.name.length > IMAGE_GEN_DOTTED_PREFIX.length
       ) {
         aliases.set(tool.name, imageGenWireName(tool.name));
       } else if (
-        tool.name.startsWith(IMAGE_GEN_WIRE_PREFIX)
-        && tool.name.length > IMAGE_GEN_WIRE_PREFIX.length
+        tool.name.startsWith(IMAGE_GEN_WIRE_PREFIX) &&
+        tool.name.length > IMAGE_GEN_WIRE_PREFIX.length
       ) {
         aliases.set(tool.name, tool.name);
       }
@@ -681,13 +866,20 @@ function normalizeImageGenToolChoice(
 
   if (toolChoice.type === "function" && typeof toolChoice.name === "string") {
     const alias = aliases.get(toolChoice.name);
-    return alias && alias !== toolChoice.name ? { ...toolChoice, name: alias } : toolChoice;
+    return alias && alias !== toolChoice.name
+      ? { ...toolChoice, name: alias }
+      : toolChoice;
   }
 
-  if (toolChoice.type !== "allowed_tools" || !Array.isArray(toolChoice.tools)) return toolChoice;
+  if (toolChoice.type !== "allowed_tools" || !Array.isArray(toolChoice.tools))
+    return toolChoice;
   let changed = false;
-  const tools = toolChoice.tools.map(tool => {
-    if (!isPlainObject(tool) || tool.type !== "function" || typeof tool.name !== "string") {
+  const tools = toolChoice.tools.map((tool) => {
+    if (
+      !isPlainObject(tool) ||
+      tool.type !== "function" ||
+      typeof tool.name !== "string"
+    ) {
       return tool;
     }
     const alias = aliases.get(tool.name);
@@ -700,15 +892,25 @@ function normalizeImageGenToolChoice(
 
 /** Identify replayed image-gen calls that require upstream wire encoding. */
 function declaresImageGenFunctionCall(item: unknown): boolean {
-  if (!isPlainObject(item) || item.type !== "function_call" || typeof item.name !== "string") {
+  if (
+    !isPlainObject(item) ||
+    item.type !== "function_call" ||
+    typeof item.name !== "string"
+  ) {
     return false;
   }
-  return item.namespace === IMAGE_GEN_NAMESPACE || isImageGenClientName(item.name);
+  return (
+    item.namespace === IMAGE_GEN_NAMESPACE || isImageGenClientName(item.name)
+  );
 }
 
 /** Encode native or legacy replay calls to the same flat name used by tool declarations. */
 function normalizeImageGenFunctionCall(item: unknown): unknown {
-  if (!declaresImageGenFunctionCall(item) || !isPlainObject(item) || typeof item.name !== "string") {
+  if (
+    !declaresImageGenFunctionCall(item) ||
+    !isPlainObject(item) ||
+    typeof item.name !== "string"
+  ) {
     return item;
   }
   if (item.namespace === IMAGE_GEN_NAMESPACE) {
@@ -739,10 +941,14 @@ function normalizeImageGenClientTools(body: unknown): unknown {
   if (!isPlainObject(body)) return body;
 
   const toolGroups = collectResponsesToolGroups(body);
-  const hasImageGenClientTool = toolGroups.some(group => group.some(declaresImageGenClientTool))
-    || (Array.isArray(body.input) && body.input.some(declaresImageGenFunctionCall));
+  const hasImageGenClientTool =
+    toolGroups.some((group) => group.some(declaresImageGenClientTool)) ||
+    (Array.isArray(body.input) &&
+      body.input.some(declaresImageGenFunctionCall));
   if (!hasImageGenClientTool) return body;
-  const hasUsableImageGenAlias = toolGroups.some(group => group.some(declaresUsableImageGenAlias));
+  const hasUsableImageGenAlias = toolGroups.some((group) =>
+    group.some(declaresUsableImageGenAlias),
+  );
   const toolChoiceAliases = imageGenToolChoiceAliases(toolGroups);
 
   const seenFunctionNames = new Set<string>();
@@ -752,9 +958,9 @@ function normalizeImageGenClientTools(body: unknown): unknown {
 
     for (const tool of tools) {
       if (
-        hasUsableImageGenAlias
-        && isPlainObject(tool)
-        && tool.type === HOSTED_IMAGE_GENERATION_TOOL
+        hasUsableImageGenAlias &&
+        isPlainObject(tool) &&
+        tool.type === HOSTED_IMAGE_GENERATION_TOOL
       ) {
         groupChanged = true;
         continue;
@@ -790,8 +996,12 @@ function normalizeImageGenClientTools(body: unknown): unknown {
   let input = body.input;
   if (Array.isArray(body.input)) {
     let nestedChanged = false;
-    const mappedInput = body.input.map(item => {
-      if (isPlainObject(item) && item.type === "additional_tools" && Array.isArray(item.tools)) {
+    const mappedInput = body.input.map((item) => {
+      if (
+        isPlainObject(item) &&
+        item.type === "additional_tools" &&
+        Array.isArray(item.tools)
+      ) {
         const nestedTools = normalizeGroup(item.tools);
         if (nestedTools === item.tools) return item;
         nestedChanged = true;
@@ -807,7 +1017,10 @@ function normalizeImageGenClientTools(body: unknown): unknown {
     }
   }
 
-  const toolChoice = normalizeImageGenToolChoice(body.tool_choice, toolChoiceAliases);
+  const toolChoice = normalizeImageGenToolChoice(
+    body.tool_choice,
+    toolChoiceAliases,
+  );
   changed ||= toolChoice !== body.tool_choice;
 
   if (!changed) return body;
@@ -815,7 +1028,9 @@ function normalizeImageGenClientTools(body: unknown): unknown {
     ...body,
     ...(Array.isArray(body.tools) ? { tools } : {}),
     ...(Array.isArray(body.input) ? { input } : {}),
-    ...(Object.prototype.hasOwnProperty.call(body, "tool_choice") ? { tool_choice: toolChoice } : {}),
+    ...(Object.prototype.hasOwnProperty.call(body, "tool_choice")
+      ? { tool_choice: toolChoice }
+      : {}),
   };
 }
 
@@ -827,13 +1042,14 @@ function normalizeImageGenClientTools(body: unknown): unknown {
 function stripUnsupportedHostedTools(body: unknown): unknown {
   if (!isPlainObject(body) || !Array.isArray(body.tools)) return body;
   const model = typeof body.model === "string" ? body.model : "";
-  const unsupported = UNSUPPORTED_HOSTED_TOOLS.filter(e => e.match(model));
+  const unsupported = UNSUPPORTED_HOSTED_TOOLS.filter((e) => e.match(model));
   if (unsupported.length === 0) return body;
 
-  const tools = body.tools.filter(t => {
-    const type = isPlainObject(t) && typeof t.type === "string" ? t.type : undefined;
+  const tools = body.tools.filter((t) => {
+    const type =
+      isPlainObject(t) && typeof t.type === "string" ? t.type : undefined;
     if (!type) return true;
-    return !unsupported.some(e => e.tools.has(type));
+    return !unsupported.some((e) => e.tools.has(type));
   });
   return tools.length === body.tools.length ? body : { ...body, tools };
 }
@@ -846,7 +1062,8 @@ function stripInputImagesDeep(value: unknown): unknown {
     return { type: "input_text", text: "[image omitted for compaction]" };
   }
   const out: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value)) out[key] = stripInputImagesDeep(entry);
+  for (const [key, entry] of Object.entries(value))
+    out[key] = stripInputImagesDeep(entry);
   return out;
 }
 
@@ -862,44 +1079,63 @@ function stripInputImagesDeep(value: unknown): unknown {
  */
 function buildRoutedCompactionBody(body: unknown): unknown {
   if (!isPlainObject(body)) return body;
-  const { tools: _tools, tool_choice: _toolChoice, parallel_tool_calls: _parallel, ...rest } = body;
+  const {
+    tools: _tools,
+    tool_choice: _toolChoice,
+    parallel_tool_calls: _parallel,
+    ...rest
+  } = body;
   const input = Array.isArray(body.input) ? body.input : [];
-  const kept = input.filter(item => !isPlainObject(item)
-    // `additional_tools` is how Codex Desktop's responses-lite shape carries tools;
-    // leaving it in would break the no-tools invariant even with `tools` removed.
-    || (item.type !== "compaction_trigger" && item.type !== "additional_tools"));
+  const kept = input.filter(
+    (item) =>
+      !isPlainObject(item) ||
+      // `additional_tools` is how Codex Desktop's responses-lite shape carries tools;
+      // leaving it in would break the no-tools invariant even with `tools` removed.
+      (item.type !== "compaction_trigger" && item.type !== "additional_tools"),
+  );
   return {
     ...rest,
     input: [
       ...(stripInputImagesDeep(kept) as unknown[]),
-      { type: "message", role: "user", content: [{ type: "input_text", text: COMPACT_PROMPT }] },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: COMPACT_PROMPT }],
+      },
     ],
   };
 }
 
 /** Read the Responses `usage` block, if the gateway sent one. */
 function usageFromResponsesPayload(payload: unknown): OcxUsage | undefined {
-  if (!isPlainObject(payload) || !isPlainObject(payload.usage)) return undefined;
+  if (!isPlainObject(payload) || !isPlainObject(payload.usage))
+    return undefined;
   const usage = payload.usage;
-  const inputTokens = typeof usage.input_tokens === "number" ? usage.input_tokens : 0;
-  const outputTokens = typeof usage.output_tokens === "number" ? usage.output_tokens : 0;
+  const inputTokens =
+    typeof usage.input_tokens === "number" ? usage.input_tokens : 0;
+  const outputTokens =
+    typeof usage.output_tokens === "number" ? usage.output_tokens : 0;
   if (inputTokens === 0 && outputTokens === 0) return undefined;
   return {
     inputTokens,
     outputTokens,
-    ...(typeof usage.total_tokens === "number" ? { totalTokens: usage.total_tokens } : {}),
+    ...(typeof usage.total_tokens === "number"
+      ? { totalTokens: usage.total_tokens }
+      : {}),
   };
 }
 
 function responsesPayloadText(response: unknown): string {
   if (!isPlainObject(response) || !Array.isArray(response.output)) return "";
   return response.output
-    .filter(item => isPlainObject(item) && item.type === "message")
-    .flatMap(item => (Array.isArray((item as Record<string, unknown>).content)
-      ? (item as { content: unknown[] }).content
-      : []))
-    .filter(part => isPlainObject(part) && part.type === "output_text")
-    .map(part => String((part as { text?: unknown }).text ?? ""))
+    .filter((item) => isPlainObject(item) && item.type === "message")
+    .flatMap((item) =>
+      Array.isArray((item as Record<string, unknown>).content)
+        ? (item as { content: unknown[] }).content
+        : [],
+    )
+    .filter((part) => isPlainObject(part) && part.type === "output_text")
+    .map((part) => String((part as { text?: unknown }).text ?? ""))
     .join("");
 }
 
@@ -909,17 +1145,22 @@ function responsesErrorMessage(payload: unknown): string {
   if (typeof err === "string") return err;
   if (isPlainObject(err) && typeof err.message === "string") return err.message;
   const incomplete = payload.incomplete_details;
-  if (isPlainObject(incomplete) && typeof incomplete.reason === "string") return incomplete.reason;
+  if (isPlainObject(incomplete) && typeof incomplete.reason === "string")
+    return incomplete.reason;
   return "upstream compaction failed";
 }
 
-export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): ProviderAdapter & { passthrough: true } {
+export function createResponsesPassthroughAdapter(
+  provider: OcxProviderConfig,
+): ProviderAdapter & { passthrough: true } {
   return {
     name: "openai-responses",
     passthrough: true as const,
 
     buildRequest(parsed: OcxParsedRequest, incoming?: IncomingMeta) {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
       let url: string;
 
       if (provider.authMode === "forward") {
@@ -927,15 +1168,23 @@ export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): 
         url = `${provider.baseUrl}/responses`;
         if (provider.headers) Object.assign(headers, provider.headers); // static headers first…
         const runtimeProvider = provider as {
-          _codexAccountOverride?: { accessToken: string; chatgptAccountId: string };
+          _codexAccountOverride?: {
+            accessToken: string;
+            chatgptAccountId: string;
+          };
           _codexAccountRequired?: boolean;
         };
-        if (runtimeProvider._codexAccountRequired && !runtimeProvider._codexAccountOverride) {
-          throw new Error("Codex pool account auth is required but unavailable");
+        if (
+          runtimeProvider._codexAccountRequired &&
+          !runtimeProvider._codexAccountOverride
+        ) {
+          throw new Error(
+            "Codex pool account auth is required but unavailable",
+          );
         }
         for (const h of FORWARD_HEADERS) {
           const v = incoming?.headers.get(h);
-          if (v) headers[h] = v;                                        // …so forwarded auth always wins.
+          if (v) headers[h] = v; // …so forwarded auth always wins.
         }
         const override = runtimeProvider._codexAccountOverride;
         if (override) {
@@ -950,12 +1199,16 @@ export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): 
           const base = provider.baseUrl.replace(/\/$/, "");
           url = `${base}${provider.responsesPath}`;
         }
-        if (provider.apiKey) headers["Authorization"] = `Bearer ${provider.apiKey}`;
+        if (provider.apiKey)
+          headers["Authorization"] = `Bearer ${provider.apiKey}`;
         if (provider.headers) Object.assign(headers, provider.headers);
       }
+      applyCloudflareAiGatewayHeaders(headers, provider.baseUrl);
 
       const forward = provider.authMode === "forward";
-      const unexpandedMiss = !!parsed.previousResponseId && parsed._previousResponseInputExpanded !== true;
+      const unexpandedMiss =
+        !!parsed.previousResponseId &&
+        parsed._previousResponseInputExpanded !== true;
       let outBody = stripPreviousResponseId(
         parsed._rawBody,
         forward || parsed._previousResponseInputExpanded === true,
@@ -963,22 +1216,45 @@ export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): 
       if (forward) {
         outBody = repairOrphanedInputItems(outBody, unexpandedMiss);
         outBody = stripUnsupportedForwardParams(outBody);
-      }
-      else outBody = normalizeImageGenClientTools(outBody);
+      } else outBody = normalizeImageGenClientTools(outBody);
       if (forward || parsed._previousResponseInputExpanded === true) {
         outBody = repairOversizedReplayCallIds(outBody);
       }
-      outBody = normalizeConfiguredReasoningEffort(outBody, provider, parsed.modelId);
-      outBody = stripUnsupportedReasoningSummaryDelivery(outBody, parsed.modelId);
+      outBody = normalizeConfiguredReasoningEffort(
+        outBody,
+        provider,
+        parsed.modelId,
+      );
+      outBody = stripUnsupportedReasoningSummaryDelivery(
+        outBody,
+        parsed.modelId,
+      );
       // Same predicate as the routedCompaction gate in handleResponses(): an
       // authMode check would let a noncanonical custom forward provider skip this
       // rewrite while the server still routes it as a summarizer turn (#422).
-      if (parsed._compactionRequest === true && !supportsNativeRemoteCompactionV2("", provider)) {
+      if (
+        parsed._compactionRequest === true &&
+        !supportsNativeRemoteCompactionV2("", provider)
+      ) {
         outBody = buildRoutedCompactionBody(outBody);
       }
-      const sanitizedBody = stripSparkCompatibility(stripUnsupportedReasoningParams(stripItemIdsWhenUnstored(stripInvalidItemIds(stripUnsupportedHostedTools(sanitizeReasoningInputContent(scrubOcxCompactionItems(outBody)))))));
+      const sanitizedBody = stripSparkCompatibility(
+        stripUnsupportedReasoningParams(
+          stripItemIdsWhenUnstored(
+            stripInvalidItemIds(
+              stripUnsupportedHostedTools(
+                sanitizeReasoningInputContent(scrubOcxCompactionItems(outBody)),
+              ),
+            ),
+          ),
+        ),
+      );
       const finalBody = stripDisabledReasoningSummaries(
-        normalizeConfiguredReasoningSummaryDelivery(sanitizedBody, provider, parsed.modelId),
+        normalizeConfiguredReasoningSummaryDelivery(
+          sanitizedBody,
+          provider,
+          parsed.modelId,
+        ),
         provider,
         parsed.modelId,
       );
@@ -996,7 +1272,10 @@ export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): 
     // an ordinary one so the bridge can build the single compaction item (#422).
     async *parseStream(response: Response): AsyncGenerator<AdapterEvent> {
       if (!response.body) {
-        yield { type: "error", message: "passthrough adapter received no response body" };
+        yield {
+          type: "error",
+          message: "passthrough adapter received no response body",
+        };
         return;
       }
       let deltas = "";
@@ -1023,10 +1302,16 @@ export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): 
             break;
           case "response.failed":
           case "error":
-            yield { type: "error", message: responsesErrorMessage(payload.response ?? payload) };
+            yield {
+              type: "error",
+              message: responsesErrorMessage(payload.response ?? payload),
+            };
             return;
           case "response.incomplete":
-            yield { type: "incomplete", reason: responsesErrorMessage(payload.response ?? payload) };
+            yield {
+              type: "incomplete",
+              reason: responsesErrorMessage(payload.response ?? payload),
+            };
             return;
           case "response.completed":
             snapshot = responsesPayloadText(payload.response);
@@ -1034,7 +1319,10 @@ export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): 
             break;
         }
       }
-      if (malformedFrames > 0) debugProviderDiagnostic("openai-responses", "malformed-frames", { count: malformedFrames });
+      if (malformedFrames > 0)
+        debugProviderDiagnostic("openai-responses", "malformed-frames", {
+          count: malformedFrames,
+        });
       // Gateways differ in which of these they emit; prefer the authoritative
       // completed snapshot so text is never double-counted.
       const text = snapshot || doneText || deltas;
@@ -1044,12 +1332,18 @@ export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): 
 
     async parseResponse(response: Response): Promise<AdapterEvent[]> {
       let payload: unknown;
-      try { payload = await readCappedResponseJson(response); } catch (error) {
+      try {
+        payload = await readCappedResponseJson(response);
+      } catch (error) {
         if (error instanceof UpstreamBodyTooLargeError) throw error;
-        return [{ type: "error", message: "malformed upstream compaction response" }];
+        return [
+          { type: "error", message: "malformed upstream compaction response" },
+        ];
       }
       if (!isPlainObject(payload)) {
-        return [{ type: "error", message: "malformed upstream compaction response" }];
+        return [
+          { type: "error", message: "malformed upstream compaction response" },
+        ];
       }
       if (payload.error || payload.status === "failed") {
         return [{ type: "error", message: responsesErrorMessage(payload) }];
@@ -1061,14 +1355,25 @@ export function createResponsesPassthroughAdapter(provider: OcxProviderConfig): 
       if (!text) {
         // A completed turn with no usable text cannot become a summary; saying so is
         // better than installing an empty compaction as replacement history.
-        return [{ type: "error", message: "upstream compaction returned no summary text" }];
+        return [
+          {
+            type: "error",
+            message: "upstream compaction returned no summary text",
+          },
+        ];
       }
       const usage = usageFromResponsesPayload(payload);
-      return [{ type: "text_delta", text }, { type: "done", ...(usage ? { usage } : {}) }];
+      return [
+        { type: "text_delta", text },
+        { type: "done", ...(usage ? { usage } : {}) },
+      ];
     },
 
     // Fase C: teach the failover core OpenAI-style rate-limit signaling (x-ratelimit-* + retry-after).
-    rateLimitFromHeaders(status: number, headers: Headers): AdapterRateLimitInfo | null {
+    rateLimitFromHeaders(
+      status: number,
+      headers: Headers,
+    ): AdapterRateLimitInfo | null {
       return parseOpenAIRateLimit(status, headers);
     },
   };

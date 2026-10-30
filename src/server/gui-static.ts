@@ -6,15 +6,21 @@ import type { GuiSessionBootstrap } from "./management-auth";
 /** opencodex version, read from the packaged package.json (same source as the server bootstrap). */
 const VERSION = (() => {
   try {
-    return JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version as string;
+    return JSON.parse(
+      readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
+    ).version as string;
   } catch {
     return "0.0.0";
   }
 })();
 
 const MIME_TYPES: Record<string, string> = {
-  ".html": "text/html", ".js": "application/javascript", ".css": "text/css",
-  ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png",
+  ".html": "text/html",
+  ".js": "application/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
   ".ico": "image/x-icon",
 };
 
@@ -29,7 +35,10 @@ function findGuiDist(): string | null {
   return null;
 }
 
-export function resolveGuiFilePath(guiDist: string, pathname: string): string | null {
+export function resolveGuiFilePath(
+  guiDist: string,
+  pathname: string,
+): string | null {
   let decodedPath: string;
   try {
     decodedPath = decodeURIComponent(pathname);
@@ -38,9 +47,10 @@ export function resolveGuiFilePath(guiDist: string, pathname: string): string | 
   }
   if (decodedPath.includes("\0")) return null;
 
-  const relativePath = decodedPath === "/" || decodedPath === ""
-    ? "index.html"
-    : decodedPath.replace(/\\/g, "/").replace(/^\/+/, "");
+  const relativePath =
+    decodedPath === "/" || decodedPath === ""
+      ? "index.html"
+      : decodedPath.replace(/\\/g, "/").replace(/^\/+/, "");
   const root = resolve(guiDist);
   const filePath = resolve(root, relativePath);
   const rel = relative(root, filePath);
@@ -64,16 +74,42 @@ function htmlResponse(path: string, session?: GuiSessionBootstrap): Response {
       `<meta name="opencodex-session-csrf" content="${session.csrfToken}">`,
       `<meta name="opencodex-session-origin" content="${session.origin}">`,
     ].join("");
-    html = html.includes("</head>") ? html.replace("</head>", `${bootstrap}</head>`) : `${bootstrap}${html}`;
+    html = html.includes("</head>")
+      ? html.replace("</head>", `${bootstrap}</head>`)
+      : `${bootstrap}${html}`;
   }
   return new Response(html, {
     headers: {
       "Content-Type": "text/html",
       "Cache-Control": "no-store",
+      "Cloudflare-CDN-Cache-Control": "no-store",
       Pragma: "no-cache",
       ...browserSecurityHeaders(),
     },
   });
+}
+
+/**
+ * Fingerprinted Vite assets can sit on Cloudflare for a year. HTML is never
+ * cached: it can carry the dashboard session bootstrap. Other static files
+ * get a short shared lifetime.
+ *
+ * https://developers.cloudflare.com/cache/concepts/cdn-cache-control/
+ */
+export function guiAssetCacheHeaders(filePath: string): Record<string, string> {
+  const base = filePath.split(/[/\\]/).pop() ?? "";
+  const fingerprinted =
+    /[/\\]assets[/\\][^/\\]+[-.][A-Za-z0-9_-]{8,}\.(?:js|css|svg|png|woff2?)$/.test(
+      filePath,
+    );
+  const cache =
+    fingerprinted && base.length > 0
+      ? "public, max-age=31536000, immutable"
+      : "public, max-age=300";
+  return {
+    "Cache-Control": cache,
+    "Cloudflare-CDN-Cache-Control": cache,
+  };
 }
 
 export function serveGuiFile(
@@ -99,7 +135,11 @@ export function serveGuiFile(
   const contentType = MIME_TYPES[ext] || "application/octet-stream";
   if (ext === ".html") return htmlResponse(filePath, session);
   return new Response(Bun.file(filePath), {
-    headers: { "Content-Type": contentType, ...browserSecurityHeaders() },
+    headers: {
+      "Content-Type": contentType,
+      ...guiAssetCacheHeaders(filePath),
+      ...browserSecurityHeaders(),
+    },
   });
 }
 
@@ -110,7 +150,8 @@ export function rootFallbackPayload() {
     version: VERSION,
     dashboard: {
       available: false,
-      reason: "GUI build not found. Run `bun run build:gui` from the opencodex repo, or use `ocx gui` from a packaged install.",
+      reason:
+        "GUI build not found. Run `bun run build:gui` from the opencodex repo, or use `ocx gui` from a packaged install.",
     },
     endpoints: {
       health: "/healthz",
