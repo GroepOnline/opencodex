@@ -886,7 +886,7 @@ describe("GitHub Actions hardening", () => {
     expect(productionSteps[0]?.run).toContain('if [ -z "$APP_ID" ]');
     const appToken = productionSteps[1]!;
     expect(appToken.uses).toBe(
-      "actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349",
+      "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510",
     );
     expect(appToken.with).toMatchObject({
       owner: "GroepOnline",
