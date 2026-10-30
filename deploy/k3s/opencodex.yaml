@@ -1,0 +1,99 @@
+# Local k3s manifest for the OpenCodex proxy. Apply with scripts/local-runtime.sh up.
+# The API token is a Secret created from deploy/container/.secrets/api-token.
+# This file does not contain a token, a live host, or an image digest.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: opencodex
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opencodex
+  namespace: opencodex
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opencodex
+  template:
+    metadata:
+      labels:
+        app: opencodex
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: opencodex
+          image: opencodex:local
+          imagePullPolicy: Never
+          args:
+            [
+              "bun",
+              "run",
+              "src/cli/index.ts",
+              "start",
+              "--port",
+              "10100",
+              "--proxy-only",
+            ]
+          ports:
+            - name: http
+              containerPort: 10100
+          env:
+            - name: OPENCODEX_HOME
+              value: /var/lib/opencodex
+            - name: OPENCODEX_BIND_HOST
+              value: "0.0.0.0"
+            - name: OPENCODEX_HEALTH_HOST
+              value: 127.0.0.1
+            - name: OPENCODEX_HEALTH_PORT
+              value: "10100"
+            - name: OPENCODEX_API_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: opencodex-api-token
+                  key: token
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/opencodex
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+      volumes:
+        - name: state
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opencodex
+  namespace: opencodex
+spec:
+  type: ClusterIP
+  selector:
+    app: opencodex
+  ports:
+    - name: http
+      port: 10100
+      targetPort: http

@@ -34,6 +34,21 @@ services:
       OIDC_CLIENT_SECRET_FILE: ${OIDC_CLIENT_SECRET_FILE:-}
       OIDC_ALLOWED_HOSTS: ${OIDC_ALLOWED_HOSTS:-}
       OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-http://127.0.0.1:10100/oauth/callback}
+      # Optional telemetry. Empty values leave the sink disabled. Never put a
+      # literal key in this file; use the operator's .env (gitignored).
+      OCX_SENTRY_DSN: ${OCX_SENTRY_DSN:-}
+      OCX_SENTRY_ENVIRONMENT: ${OCX_SENTRY_ENVIRONMENT:-}
+      OCX_SENTRY_RELEASE: ${OCX_SENTRY_RELEASE:-}
+      OCX_POSTHOG_KEY: ${OCX_POSTHOG_KEY:-}
+      OCX_POSTHOG_HOST: ${OCX_POSTHOG_HOST:-}
+      OCX_DATADOG_API_KEY: ${OCX_DATADOG_API_KEY:-}
+      OCX_DATADOG_SITE: ${OCX_DATADOG_SITE:-}
+      OCX_CLICKHOUSE_URL: ${OCX_CLICKHOUSE_URL:-}
+      OCX_CLICKHOUSE_DATABASE: ${OCX_CLICKHOUSE_DATABASE:-}
+      OCX_CLICKHOUSE_TABLE: ${OCX_CLICKHOUSE_TABLE:-}
+      OCX_CLICKHOUSE_USER: ${OCX_CLICKHOUSE_USER:-}
+      OCX_CLICKHOUSE_PASSWORD_FILE: ${OCX_CLICKHOUSE_PASSWORD_FILE:-}
+      OCX_CF_AIG_CACHE: ${OCX_CF_AIG_CACHE:-}
     secrets:
       - opencodex_api_token
     volumes:
@@ -55,6 +70,36 @@ services:
       retries: 4
       start_period: 20s
 
+  # Optional local ClickHouse. Not started by `docker compose up` unless the
+  # observability profile is selected. Loopback only; no password in this file.
+  # From the proxy container set OCX_CLICKHOUSE_URL=http://clickhouse:8123
+  clickhouse:
+    profiles: ["observability"]
+    image: clickhouse/clickhouse-server:25.8
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: opencodex
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./deploy/container/clickhouse-local.xml:/etc/clickhouse-server/users.d/local-access.xml:ro
+    ports:
+      - "127.0.0.1:8123:8123"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+
 secrets:
   opencodex_api_token:
     file: ${OPENCODEX_API_TOKEN_FILE:?path to runtime token file}
+
+volumes:
+  clickhouse-data:
