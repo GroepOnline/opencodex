@@ -135,8 +135,9 @@ repo root and `gui/`, then builds `gui/dist` so the proxy can serve the dashboar
 `start` launches the gateway with `bun run src/cli/index.ts start --port 10100 --proxy-only`
 when `http://127.0.0.1:10100/healthz` is not already an OpenCodex identity.
 `--proxy-only` leaves Codex config, shell hooks, and client launchers unchanged.
-The process stays in the foreground. A second boot skips startup when `/healthz`
-already reports `"service":"opencodex"`.
+The process stays in the foreground. A second boot skips startup only when
+`/healthz` is valid JSON with both `status: "ok"` and `service: "opencodex"`.
+Malformed, unavailable, or foreign responses do not suppress startup.
 
 ## Live checkouts
 
