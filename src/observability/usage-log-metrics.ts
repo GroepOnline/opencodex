@@ -1,15 +1,20 @@
 /**
  * Runtime-metrics bridge for usage appends.
  *
- * Metrics observe the append boundary in src/usage/log.ts: appendUsageEntry emits
- * a bounded structural observation synchronously after each successful append.
+ * Metrics observe the append boundary in src/usage/log.ts. Appends are buffered,
+ * so the bounded structural observation fires at flush time — a later event-loop
+ * turn than the append call — and only for rows that were durably written. Rows
+ * dropped on a write failure or a config-dir generation change never notify.
  * Scrapes serve the in-memory registry only and perform zero usage-log filesystem
  * I/O, so no change to the file on disk can replay or corrupt counters.
  *
  * Existing usage.jsonl history is never replayed; a process restart starts
  * counters at zero and only rows appended by this process are counted.
  */
-import { subscribeUsageAppends, type UsageAppendObservation } from "../usage/log";
+import {
+  subscribeUsageAppends,
+  type UsageAppendObservation,
+} from "../usage/log";
 import { runtimeMetrics } from "./metrics";
 
 let unsubscribeUsageAppends: (() => void) | null = null;

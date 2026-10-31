@@ -379,6 +379,7 @@ export function requestLogEntryFromPersistedUsage(
 ): RequestLogEntry {
   const terminalStatus = asTerminalStatus(entry.terminalStatus);
   const closeReason = asCloseReason(entry.closeReason);
+  const maskedClientAddress = maskClientAddress(entry.clientAddress);
   return {
     requestId: entry.requestId,
     timestamp: entry.timestamp,
@@ -390,9 +391,7 @@ export function requestLogEntryFromPersistedUsage(
       ? { firstOutputMs: entry.firstOutputMs }
       : {}),
     ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
-    ...(maskClientAddress(entry.clientAddress)
-      ? { clientAddress: maskClientAddress(entry.clientAddress) }
-      : {}),
+    ...(maskedClientAddress ? { clientAddress: maskedClientAddress } : {}),
     ...(sanitizeClientUserAgent(entry.clientUserAgent)
       ? { clientUserAgent: sanitizeClientUserAgent(entry.clientUserAgent) }
       : {}),
@@ -555,6 +554,7 @@ export function addRequestLog(entry: RequestLogEntry) {
           }
         : {};
     const account = providerAccountLabel(entry.provider);
+    const maskedClientAddress = maskClientAddress(entry.clientAddress);
     appendUsageEntry({
       requestId: entry.requestId,
       timestamp: entry.timestamp,
@@ -563,9 +563,7 @@ export function addRequestLog(entry: RequestLogEntry) {
       ...(entry.adapter ? { adapter: entry.adapter } : {}),
       ...(entry.promptCache ? { promptCache: { ...entry.promptCache } } : {}),
       ...(isKnownUsageSurface(entry.surface) ? { surface: entry.surface } : {}),
-      ...(maskClientAddress(entry.clientAddress)
-        ? { clientAddress: maskClientAddress(entry.clientAddress) }
-        : {}),
+      ...(maskedClientAddress ? { clientAddress: maskedClientAddress } : {}),
       ...(sanitizeClientUserAgent(entry.clientUserAgent)
         ? { clientUserAgent: sanitizeClientUserAgent(entry.clientUserAgent) }
         : {}),
@@ -1287,6 +1285,7 @@ export function addFinalRequestLog(
       status: effectiveStatus,
       timestamp: start,
     });
+    const maskedClientAddress = maskClientAddress(logCtx.clientAddress);
     addLog({
       requestId,
       timestamp: start,
@@ -1297,9 +1296,7 @@ export function addFinalRequestLog(
       ...(account ? { account } : {}),
       ...(providerAccountId ? { providerAccountId } : {}),
       ...(logCtx.surface ? { surface: logCtx.surface } : {}),
-      ...(maskClientAddress(logCtx.clientAddress)
-        ? { clientAddress: maskClientAddress(logCtx.clientAddress) }
-        : {}),
+      ...(maskedClientAddress ? { clientAddress: maskedClientAddress } : {}),
       ...(sanitizeClientUserAgent(logCtx.clientUserAgent)
         ? { clientUserAgent: sanitizeClientUserAgent(logCtx.clientUserAgent) }
         : {}),
