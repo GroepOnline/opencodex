@@ -530,7 +530,7 @@ describe("GitHub Actions hardening", () => {
       "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
     );
     expect(workflow).toContain(
-      "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+      "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
     );
     // Both test paths must go through the canonical isolated-environment entry points, never a
     // bare `bun test` that inherits the runner's real HOME and configuration.
@@ -1038,7 +1038,7 @@ describe("GitHub Actions hardening", () => {
       "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
     );
     expect(workflow).toContain(
-      "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e",
+      "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
     );
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
 
