@@ -130,9 +130,11 @@ this repository. The default base image does not include Bun. `install`
 reads the Bun version pinned in `.bun-version`, installs it into `$HOME/.bun/bin`
 when that exact version is missing, links `bun` and `bunx` into `/usr/local/bin`
 so non-login agent shells can find them, runs frozen-lockfile installs for the
-repo root and `gui/`, then builds `gui/dist` so the proxy can serve the dashboard.
+repo root and `gui/` to warm the dependency cache.
 
-`start` launches the gateway with `bun run src/cli/index.ts start --port 10100 --proxy-only`
+After the feature-branch checkout, `start` refreshes the root and GUI lockfile
+installs and rebuilds `gui/dist` from the checked-out code so the dashboard
+matches that branch rather than the base image. `start` then launches the gateway with `bun run src/cli/index.ts start --port 10100 --proxy-only`
 when `http://127.0.0.1:10100/healthz` is not already an OpenCodex identity.
 `--proxy-only` leaves Codex config, shell hooks, and client launchers unchanged.
 The process stays in the foreground. A second boot skips startup only when
