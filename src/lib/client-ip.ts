@@ -88,7 +88,12 @@ function maskIpv6(input: string): string | undefined {
   if (!hextets) return undefined;
   // IPv4-mapped (::ffff:a.b.c.d) carries its identity in the embedded quad —
   // truncating at /48 would erase it entirely, so mask the quad instead.
-  if (hextets.slice(0, 5).every((h) => h === "0") && hextets[5] === "ffff") {
+  // Compare numerically: "0:0:0:0:0:ffff:x" and "0000::ffff:x" spell the same
+  // mapped address and must take this branch, not the generic /48 erase.
+  if (
+    hextets.slice(0, 5).every((h) => Number.parseInt(h, 16) === 0) &&
+    Number.parseInt(hextets[5]!, 16) === 0xffff
+  ) {
     const high = Number.parseInt(hextets[6]!, 16);
     const low = Number.parseInt(hextets[7]!, 16);
     return `::ffff:${high >> 8}.${high & 0xff}.${low >> 8}.0`;
