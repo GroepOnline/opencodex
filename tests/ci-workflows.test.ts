@@ -457,7 +457,7 @@ describe("GitHub Actions hardening", () => {
     );
     expect(upload?.["continue-on-error"]).toBe(true);
     expect(upload?.uses).toBe(
-      "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+      "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
     );
     expect(upload?.with).toEqual({
       name: "test-coverage-ubuntu-shard-1",
@@ -4097,7 +4097,7 @@ describe("GitHub Actions hardening", () => {
       (step) => step.name === "Upload immutable release image identity",
     );
     expect(upload?.uses).toBe(
-      "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+      "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
     );
     expect(upload?.if).toBe("startsWith(github.ref, 'refs/tags/v')");
     expect(upload?.with).toMatchObject({
