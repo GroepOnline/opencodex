@@ -516,6 +516,7 @@ Each API surface has its own token bucket per caller. The surface names accepted
 | `search`              | `POST /v1/alpha/search`                                              | 120 / 30            |
 | `live`                | `POST /v1/live`, `POST /v1/realtime/calls`, live sideband WebSockets | 60 / 10             |
 | `model-discovery`     | `GET /v1/models`                                                     | 120 / 30            |
+| `failed-auth`         | rejected credentials on any endpoint (shared per-socket bucket)      | 10 / 10             |
 
 ### How callers are identified
 
@@ -529,8 +530,14 @@ by the raw credential. The identity used, in order of preference:
 4. a shared anonymous bucket.
 
 An invalid or made-up key never earns its own bucket: it is rejected with `401` by the existing
-auth layer before any limiter state is allocated or consumed. The remote-address and anonymous
-identities apply only to callers the server actually admits without a credential. `Origin`,
+auth layer and consumes one token from a separate `failed-auth` bucket keyed on the trusted
+socket address. That bucket is shared across every endpoint (including `GET
+/v1/opencodex/artifacts/*`, which has no request-rate surface of its own), is deliberately
+tight — 10 rejections per minute by default — and replaces the `401` with a `429` once
+exhausted, bounding pre-auth credential guessing on an exposed bind without ever touching an
+admitted caller's budget. Successful and credential-free requests are never charged against
+it. The remote-address and anonymous identities apply only to callers the server actually
+admits without a credential. `Origin`,
 forwarded-IP headers, emails, model ids, and request bodies are never used as identity, and the
 HMAC secret is process-local — it is not part of `config.json` and is never logged or exported.
 
@@ -581,7 +588,7 @@ any reason.
 | `codexAccountMode?`                | `"pool" \| "direct"`                                                                        | Only for canonical `openai`; defaults to Pool when omitted. Direct short-circuits pool state.                                                                                                                                                                                                                                                                                                                            |
 | `refreshPolicy?`                   | `"proactive" \| "lazy-only" \| "disabled"`                                                  | Override this OAuth provider's Token Guardian policy.                                                                                                                                                                                                                                                                                                                                                                    |
 | `reasoningEfforts?`                | `string[]`                                                                                  | Provider-wide Codex reasoning labels to advertise and send (`low`, `medium`, `high`, `xhigh`, `max`, `ultra`).                                                                                                                                                                                                                                                                                                           |
-| `modelReasoningEfforts?`           | `Record<string,string[]>`                                                                   | Model-specific reasoning labels. An empty list hides the effort control and removes a stale caller `reasoning.effort` in Responses passthrough. Configured ladders and wire aliases also normalize explicitly supplied efforts; absent efforts are not injected.                                                                                                                                                                                                                                                                                                                                  |
+| `modelReasoningEfforts?`           | `Record<string,string[]>`                                                                   | Model-specific reasoning labels. An empty list hides the effort control and removes a stale caller `reasoning.effort` in Responses passthrough. Configured ladders and wire aliases also normalize explicitly supplied efforts; absent efforts are not injected.                                                                                                                                                         |
 | `modelSupportsReasoningSummaries?` | `Record<string,boolean>`                                                                    | Model-specific reasoning-summary capability. Set a model to `false` to stop advertising summaries and strip summary-delivery fields before an `openai-responses` request.                                                                                                                                                                                                                                                |
 | `modelReasoningSummaryDelivery?`   | `Record<string,"sequential" \| "sequential_cutoff" \| "concurrent" \| "concurrent_cutoff">` | Model-specific Responses delivery enum. A configured model stays summary-capable and only an existing `stream_options.reasoning_summary_delivery` is rewritten; do not combine it with a `false` summary capability for the same model.                                                                                                                                                                                  |
 | `modelAdapters?`                   | `Record<string,string>`                                                                     | Per-model wire override for a gateway that fronts models speaking different wires. Keys are upstream native model ids; values must be `openai-chat` or `openai-responses`. Useful when one model needs the Responses API for hosted tools such as `web_search` while its siblings are fine on chat completions. Models the upstream pins to a single wire, and the canonical ChatGPT forward provider, reject overrides. |

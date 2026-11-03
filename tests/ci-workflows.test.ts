@@ -530,7 +530,7 @@ describe("GitHub Actions hardening", () => {
       "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
     );
     expect(workflow).toContain(
-      "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+      "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
     );
     // Both test paths must go through the canonical isolated-environment entry points, never a
     // bare `bun test` that inherits the runner's real HOME and configuration.
@@ -886,7 +886,7 @@ describe("GitHub Actions hardening", () => {
     expect(productionSteps[0]?.run).toContain('if [ -z "$APP_ID" ]');
     const appToken = productionSteps[1]!;
     expect(appToken.uses).toBe(
-      "actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349",
+      "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510",
     );
     expect(appToken.with).toMatchObject({
       owner: "GroepOnline",
@@ -1038,7 +1038,7 @@ describe("GitHub Actions hardening", () => {
       "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
     );
     expect(workflow).toContain(
-      "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e",
+      "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
     );
     expect(workflow).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
 
@@ -4028,7 +4028,7 @@ describe("GitHub Actions hardening", () => {
       "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
     );
     expect(text).toContain(
-      "docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0",
+      "docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0",
     );
     expect(text).toContain(
       "docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0",
@@ -4116,7 +4116,7 @@ describe("GitHub Actions hardening", () => {
 
     expect(login!.if).toBeUndefined();
     expect(login!.uses).toBe(
-      "docker/login-action@dbcb813823bdd20940b903addbd779551569679f",
+      "docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6",
     );
     expect(imageBuild!.uses).toBe(
       "docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc",
@@ -4232,7 +4232,7 @@ describe("GitHub Actions hardening", () => {
       "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
     );
     expect(workflow).toContain(
-      "millionco/react-doctor@013f7373f91a3b9e68bd1dc7d4d354f4b041b117",
+      "millionco/react-doctor@695e46eee203a5d1855020191aa7e9c010a1250e",
     );
     expect(workflow).not.toMatch(
       /^\s*-\s+uses:\s+\S+@(?![0-9a-f]{40}(?=[ \t]*(?:#.*)?$))\S+/m,

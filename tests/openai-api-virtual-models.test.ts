@@ -13,7 +13,7 @@ import {
 import { PROVIDER_REGISTRY } from "../src/providers/registry";
 import { saveConfig } from "../src/config";
 import { startServer } from "../src/server";
-import { usageLogPath } from "../src/usage/log";
+import { flushUsageLog, usageLogPath } from "../src/usage/log";
 import { clearKeyPoolCooldowns, resolveOutcome } from "../src/availability";
 import type { OcxConfig } from "../src/types";
 
@@ -42,7 +42,12 @@ describe("OpenAI API virtual model resolution", () => {
   }
 
   // 2. Base models are NOT virtual
-  for (const base of ["gpt-5.5", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]) {
+  for (const base of [
+    "gpt-5.5",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
+  ]) {
     test(`base model ${base} is not virtual on openai-apikey`, () => {
       expect(resolveOpenAiVirtualModel("openai-apikey", base)).toBeUndefined();
     });
@@ -51,19 +56,26 @@ describe("OpenAI API virtual model resolution", () => {
   // 3. Non-API providers never resolve virtuals
   for (const provider of ["openai", "anthropic", "cursor"]) {
     test(`${provider} never resolves virtual models`, () => {
-      expect(resolveOpenAiVirtualModel(provider, "gpt-5.6-sol-pro")).toBeUndefined();
+      expect(
+        resolveOpenAiVirtualModel(provider, "gpt-5.6-sol-pro"),
+      ).toBeUndefined();
     });
   }
 
   // 4. Unknown -pro suffix is not virtual
   test("unknown model with -pro suffix is not virtual", () => {
-    expect(resolveOpenAiVirtualModel("openai-apikey", "gpt-99-pro")).toBeUndefined();
+    expect(
+      resolveOpenAiVirtualModel("openai-apikey", "gpt-99-pro"),
+    ).toBeUndefined();
   });
 
-  test.each(["__proto__", "constructor", "toString"])("prototype key %s is an ordinary no-match", model => {
-    expect(resolveOpenAiVirtualModel("openai-apikey", model)).toBeUndefined();
-    expect(resolveOpenAiCompactModel("openai-apikey", model)).toBeUndefined();
-  });
+  test.each(["__proto__", "constructor", "toString"])(
+    "prototype key %s is an ordinary no-match",
+    (model) => {
+      expect(resolveOpenAiVirtualModel("openai-apikey", model)).toBeUndefined();
+      expect(resolveOpenAiCompactModel("openai-apikey", model)).toBeUndefined();
+    },
+  );
 });
 
 describe("applyOpenAiVirtualModel", () => {
@@ -73,8 +85,15 @@ describe("applyOpenAiVirtualModel", () => {
       _rawBody: { model: "gpt-5.6-sol-pro", reasoning: { effort: "high" } },
       options: { reasoning: "high" },
     } as any;
-    const route = { providerName: "openai-apikey", modelId: "gpt-5.6-sol-pro", provider: {} } as any;
-    const logCtx = { model: "gpt-5.6-sol-pro", provider: "openai-apikey" } as any;
+    const route = {
+      providerName: "openai-apikey",
+      modelId: "gpt-5.6-sol-pro",
+      provider: {},
+    } as any;
+    const logCtx = {
+      model: "gpt-5.6-sol-pro",
+      provider: "openai-apikey",
+    } as any;
     applyOpenAiVirtualModel(parsed, route, logCtx);
     expect(parsed.modelId).toBe("gpt-5.6-sol");
     expect(parsed._rawBody.model).toBe("gpt-5.6-sol");
@@ -90,28 +109,77 @@ describe("applyOpenAiVirtualModel", () => {
     expect(parsed._rawBody.reasoning).toEqual({ effort: "high", mode: "pro" });
   });
 
-  test.each([undefined, null])("omitted/null reasoning becomes mode pro", reasoning => {
-    const raw: Record<string, unknown> = { model: "gpt-5.6-luna-pro" };
-    if (reasoning !== undefined) raw.reasoning = reasoning;
-    const parsed = { modelId: "gpt-5.6-luna-pro", _rawBody: raw, options: {} } as any; // justified: focused mutation fixture
-    const route = { providerName: "openai-apikey", modelId: "gpt-5.6-luna-pro", provider: {} } as any; // justified: focused mutation fixture
-    const logCtx = { model: "gpt-5.6-luna-pro", requestedModel: "openai-apikey/gpt-5.6-luna-pro", provider: "openai-apikey" } as any; // justified: focused mutation fixture
-    expect(applyOpenAiVirtualModel(parsed, route, logCtx)?.wireModelId).toBe("gpt-5.6-luna");
-    expect(raw.reasoning).toEqual({ mode: "pro" });
-  });
+  test.each([undefined, null])(
+    "omitted/null reasoning becomes mode pro",
+    (reasoning) => {
+      const raw: Record<string, unknown> = { model: "gpt-5.6-luna-pro" };
+      if (reasoning !== undefined) raw.reasoning = reasoning;
+      const parsed = {
+        modelId: "gpt-5.6-luna-pro",
+        _rawBody: raw,
+        options: {},
+      } as any; // justified: focused mutation fixture
+      const route = {
+        providerName: "openai-apikey",
+        modelId: "gpt-5.6-luna-pro",
+        provider: {},
+      } as any; // justified: focused mutation fixture
+      const logCtx = {
+        model: "gpt-5.6-luna-pro",
+        requestedModel: "openai-apikey/gpt-5.6-luna-pro",
+        provider: "openai-apikey",
+      } as any; // justified: focused mutation fixture
+      expect(applyOpenAiVirtualModel(parsed, route, logCtx)?.wireModelId).toBe(
+        "gpt-5.6-luna",
+      );
+      expect(raw.reasoning).toEqual({ mode: "pro" });
+    },
+  );
 
   test("conflicting mode is replaced while supported reasoning fields survive", () => {
-    const raw = { model: "gpt-5.6-terra-pro", reasoning: { mode: "other", effort: "max", summary: "auto", generate_summary: "concise" } };
-    const parsed = { modelId: "gpt-5.6-terra-pro", _rawBody: raw, options: {} } as any; // justified: focused mutation fixture
-    const route = { providerName: "openai-apikey", modelId: "gpt-5.6-terra-pro", provider: {} } as any; // justified: focused mutation fixture
-    const logCtx = { model: "gpt-5.6-terra-pro", provider: "openai-apikey" } as any; // justified: focused mutation fixture
+    const raw = {
+      model: "gpt-5.6-terra-pro",
+      reasoning: {
+        mode: "other",
+        effort: "max",
+        summary: "auto",
+        generate_summary: "concise",
+      },
+    };
+    const parsed = {
+      modelId: "gpt-5.6-terra-pro",
+      _rawBody: raw,
+      options: {},
+    } as any; // justified: focused mutation fixture
+    const route = {
+      providerName: "openai-apikey",
+      modelId: "gpt-5.6-terra-pro",
+      provider: {},
+    } as any; // justified: focused mutation fixture
+    const logCtx = {
+      model: "gpt-5.6-terra-pro",
+      provider: "openai-apikey",
+    } as any; // justified: focused mutation fixture
     applyOpenAiVirtualModel(parsed, route, logCtx);
-    expect(raw.reasoning).toEqual({ mode: "pro", effort: "max", summary: "auto", generate_summary: "concise" });
+    expect(raw.reasoning).toEqual({
+      mode: "pro",
+      effort: "max",
+      summary: "auto",
+      generate_summary: "concise",
+    });
   });
 
   test("non-virtual model is unchanged", () => {
-    const parsed = { modelId: "gpt-5.6-sol", _rawBody: { model: "gpt-5.6-sol" }, options: {} } as any;
-    const route = { providerName: "openai-apikey", modelId: "gpt-5.6-sol", provider: {} } as any;
+    const parsed = {
+      modelId: "gpt-5.6-sol",
+      _rawBody: { model: "gpt-5.6-sol" },
+      options: {},
+    } as any;
+    const route = {
+      providerName: "openai-apikey",
+      modelId: "gpt-5.6-sol",
+      provider: {},
+    } as any;
     const logCtx = { model: "gpt-5.6-sol", provider: "openai-apikey" } as any;
     applyOpenAiVirtualModel(parsed, route, logCtx);
     expect(parsed.modelId).toBe("gpt-5.6-sol");
@@ -121,20 +189,34 @@ describe("applyOpenAiVirtualModel", () => {
 
 describe("resolveOpenAiCompactModel", () => {
   test("Pro virtual returns base wire model", () => {
-    const result = resolveOpenAiCompactModel("openai-apikey", "gpt-5.6-sol-pro");
-    expect(result).toEqual({ selectedModelId: "gpt-5.6-sol-pro", wireModelId: "gpt-5.6-sol", reasoningMode: "pro" });
+    const result = resolveOpenAiCompactModel(
+      "openai-apikey",
+      "gpt-5.6-sol-pro",
+    );
+    expect(result).toEqual({
+      selectedModelId: "gpt-5.6-sol-pro",
+      wireModelId: "gpt-5.6-sol",
+      reasoningMode: "pro",
+    });
   });
 
   test("base model returns itself", () => {
-    expect(resolveOpenAiCompactModel("openai-apikey", "gpt-5.6-sol")).toBeUndefined();
+    expect(
+      resolveOpenAiCompactModel("openai-apikey", "gpt-5.6-sol"),
+    ).toBeUndefined();
   });
 });
 
 describe("validateOpenAiVirtualModelDefinition", () => {
   test("returns a pure normalized resolution without mutating the definition", () => {
-    const definition = { wireModelId: "gpt-5.6-sol", reasoningMode: "pro" as const };
+    const definition = {
+      wireModelId: "gpt-5.6-sol",
+      reasoningMode: "pro" as const,
+    };
     const before = structuredClone(definition);
-    expect(validateOpenAiVirtualModelDefinition("gpt-5.6-sol-pro", definition)).toEqual({
+    expect(
+      validateOpenAiVirtualModelDefinition("gpt-5.6-sol-pro", definition),
+    ).toEqual({
       selectedModelId: "gpt-5.6-sol-pro",
       wireModelId: "gpt-5.6-sol",
       reasoningMode: "pro",
@@ -148,15 +230,18 @@ describe("validateOpenAiVirtualModelDefinition", () => {
     { definition: [] },
     { definition: {} },
     { definition: { wireModelId: "", reasoningMode: "pro" } },
-    { definition: { wireModelId: " openai/gpt-5.6-sol", reasoningMode: "pro" } },
+    {
+      definition: { wireModelId: " openai/gpt-5.6-sol", reasoningMode: "pro" },
+    },
     { definition: { wireModelId: "openai/gpt-5.6-sol", reasoningMode: "pro" } },
     { definition: { wireModelId: 5, reasoningMode: "pro" } },
     { definition: { wireModelId: "gpt-5.6-sol", reasoningMode: "max" } },
     { definition: { wireModelId: "gpt-5.6-sol-pro", reasoningMode: "pro" } },
   ])("rejects malformed synthetic definitions", ({ definition }) => {
     const registryBefore = JSON.stringify(PROVIDER_REGISTRY);
-    expect(() => validateOpenAiVirtualModelDefinition("gpt-5.6-sol-pro", definition))
-      .toThrow(InvalidOpenAiVirtualModelRegistryError);
+    expect(() =>
+      validateOpenAiVirtualModelDefinition("gpt-5.6-sol-pro", definition),
+    ).toThrow(InvalidOpenAiVirtualModelRegistryError);
     expect(JSON.stringify(PROVIDER_REGISTRY)).toBe(registryBefore);
   });
 });
@@ -181,69 +266,142 @@ describe("OpenAI API compact transport", () => {
       },
     });
 
-    type UpstreamMode = "ok" | "upstream-400" | "upstream-500" | "connect-error" | "fetch-abort" | "body-abort" | "body-error" | "declared-overflow" | "chunked-overflow";
+    type UpstreamMode =
+      | "ok"
+      | "upstream-400"
+      | "upstream-500"
+      | "connect-error"
+      | "fetch-abort"
+      | "body-abort"
+      | "body-error"
+      | "declared-overflow"
+      | "chunked-overflow";
     let mode: UpstreamMode = "ok";
     let cancelled = 0;
     let signalUpstreamStarted: (() => void) | undefined;
-    const captures: Array<{ url: string; authorization: string | null; body: Record<string, unknown> }> = [];
+    const captures: Array<{
+      url: string;
+      authorization: string | null;
+      body: Record<string, unknown>;
+    }> = [];
     globalThis.fetch = async (input, init) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      if (url !== "https://api.openai.com/v1/responses/compact") throw new Error(`unexpected upstream URL: ${url}`);
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (url !== "https://api.openai.com/v1/responses/compact")
+        throw new Error(`unexpected upstream URL: ${url}`);
       const headers = new Headers(init?.headers);
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       captures.push({ url, authorization: headers.get("authorization"), body });
-      if (mode === "upstream-400") return new Response("upstream bad request", { status: 400, headers: { "content-type": "text/plain" } });
-      if (mode === "upstream-500") return new Response("upstream server failure", { status: 500, headers: { "content-type": "text/plain" } });
+      if (mode === "upstream-400")
+        return new Response("upstream bad request", {
+          status: 400,
+          headers: { "content-type": "text/plain" },
+        });
+      if (mode === "upstream-500")
+        return new Response("upstream server failure", {
+          status: 500,
+          headers: { "content-type": "text/plain" },
+        });
       if (mode === "connect-error") throw new Error("connect failed");
       if (mode === "fetch-abort") {
         signalUpstreamStarted?.();
         return await new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+          init?.signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("aborted", "AbortError")),
+            { once: true },
+          );
         });
       }
       if (mode === "body-abort") {
         signalUpstreamStarted?.();
-        return new Response(new ReadableStream({
-          start(controller) {
-            controller.enqueue(new TextEncoder().encode("partial"));
-            init?.signal?.addEventListener("abort", () => controller.error(new DOMException("aborted", "AbortError")), { once: true });
-          },
-        }));
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("partial"));
+              init?.signal?.addEventListener(
+                "abort",
+                () =>
+                  controller.error(new DOMException("aborted", "AbortError")),
+                { once: true },
+              );
+            },
+          }),
+        );
       }
       if (mode === "body-error") {
-        return new Response(new ReadableStream({ start(controller) { controller.error(new Error("read failed")); } }));
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new Error("read failed"));
+            },
+          }),
+        );
       }
       if (mode === "declared-overflow") {
-        return new Response(new ReadableStream({
-          start(controller) { controller.enqueue(new TextEncoder().encode("must-not-relay")); },
-          cancel() { cancelled += 1; },
-        }), { headers: { "content-length": String(32 * 1024 * 1024 + 1) } });
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("must-not-relay"));
+            },
+            cancel() {
+              cancelled += 1;
+            },
+          }),
+          { headers: { "content-length": String(32 * 1024 * 1024 + 1) } },
+        );
       }
       if (mode === "chunked-overflow") {
-        return new Response(new ReadableStream({
-          start(controller) {
-            controller.enqueue(new Uint8Array(16 * 1024 * 1024));
-            controller.enqueue(new Uint8Array(16 * 1024 * 1024));
-            controller.enqueue(new Uint8Array(1));
-          },
-          cancel() { cancelled += 1; },
-        }));
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new Uint8Array(16 * 1024 * 1024));
+              controller.enqueue(new Uint8Array(16 * 1024 * 1024));
+              controller.enqueue(new Uint8Array(1));
+            },
+            cancel() {
+              cancelled += 1;
+            },
+          }),
+        );
       }
-      return new Response(JSON.stringify({ output: [], model: body.model }), { headers: { "content-type": "application/json" } });
+      return new Response(JSON.stringify({ output: [], model: body.model }), {
+        headers: { "content-type": "application/json" },
+      });
     };
 
     const server = startServer(0);
-    const readLogs = () => originalFetch(new URL("/api/logs", server.url), { headers: managementHeaders() })
-      .then(response => response.json()) as Promise<Array<Record<string, unknown>>>;
-    const readUsage = (): Array<Record<string, unknown>> => existsSync(usageLogPath())
-      ? readFileSync(usageLogPath(), "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line) as Record<string, unknown>)
-      : [];
-    const compact = (model: string, signal?: AbortSignal) => originalFetch(new URL("/v1/responses/compact", server.url), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model, input: [], reasoning: { effort: "high" } }),
-      signal,
-    });
+    const readLogs = () =>
+      originalFetch(new URL("/api/logs", server.url), {
+        headers: managementHeaders(),
+      }).then((response) => response.json()) as Promise<
+        Array<Record<string, unknown>>
+      >;
+    const readUsage = (): Array<Record<string, unknown>> => {
+      flushUsageLog();
+      return existsSync(usageLogPath())
+        ? readFileSync(usageLogPath(), "utf8")
+            .trim()
+            .split("\n")
+            .filter(Boolean)
+            .map((line) => JSON.parse(line) as Record<string, unknown>)
+        : [];
+    };
+    const compact = (model: string, signal?: AbortSignal) =>
+      originalFetch(new URL("/v1/responses/compact", server.url), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model,
+          input: [],
+          reasoning: { effort: "high" },
+        }),
+        signal,
+      });
 
     try {
       for (const [virtual, base] of [
@@ -256,7 +414,10 @@ describe("OpenAI API compact transport", () => {
         const response = await compact(`openai-apikey/${virtual}`);
         expect(response.status).toBe(200);
         expect(await response.json()).toMatchObject({ model: base });
-        expect(captures.at(-1)).toMatchObject({ authorization: "Bearer sk-platform", body: { model: base } });
+        expect(captures.at(-1)).toMatchObject({
+          authorization: "Bearer sk-platform",
+          body: { model: base },
+        });
         expect(captures.at(-1)?.body.reasoning).toBeUndefined();
         const logs = await readLogs();
         expect(logs).toHaveLength(beforeLogs + 1);
@@ -270,7 +431,12 @@ describe("OpenAI API compact transport", () => {
         });
         const usage = readUsage();
         expect(usage).toHaveLength(beforeUsage + 1);
-        expect(usage.at(-1)).toMatchObject({ provider: "openai-apikey", model: virtual, requestedModel: `openai-apikey/${virtual}`, resolvedModel: base });
+        expect(usage.at(-1)).toMatchObject({
+          provider: "openai-apikey",
+          model: virtual,
+          requestedModel: `openai-apikey/${virtual}`,
+          resolvedModel: base,
+        });
       }
 
       for (const [nextMode, expectedStatus, expectedText] of [
@@ -309,22 +475,35 @@ describe("OpenAI API compact transport", () => {
       expect(captures).toHaveLength(beforeCapture);
       expect(await readLogs()).toHaveLength(beforeLocal + 1);
       expect(readUsage()).toHaveLength(beforeLocalUsage + 1);
-      expect(readUsage().at(-1)).toMatchObject({ status: 400, model: "unknown", provider: "unknown" });
+      expect(readUsage().at(-1)).toMatchObject({
+        status: 400,
+        model: "unknown",
+        provider: "unknown",
+      });
 
       for (const abortMode of ["fetch-abort", "body-abort"] as const) {
         mode = abortMode;
         const before = (await readLogs()).length;
         const beforeUsage = readUsage().length;
-        const started = new Promise<void>(resolve => { signalUpstreamStarted = resolve; });
+        const started = new Promise<void>((resolve) => {
+          signalUpstreamStarted = resolve;
+        });
         const controller = new AbortController();
-        const pending = compact("openai-apikey/gpt-5.6-sol-pro", controller.signal);
+        const pending = compact(
+          "openai-apikey/gpt-5.6-sol-pro",
+          controller.signal,
+        );
         await started;
         controller.abort();
         await pending.catch(() => undefined);
         await Bun.sleep(10);
         const logs = await readLogs();
         expect(logs).toHaveLength(before + 1);
-        expect(logs.at(-1)).toMatchObject({ status: 499, model: "gpt-5.6-sol-pro", resolvedModel: "gpt-5.6-sol" });
+        expect(logs.at(-1)).toMatchObject({
+          status: 499,
+          model: "gpt-5.6-sol-pro",
+          resolvedModel: "gpt-5.6-sol",
+        });
         const usage = readUsage();
         expect(usage).toHaveLength(beforeUsage + 1);
         expect(usage.at(-1)).toMatchObject({
@@ -393,21 +572,38 @@ describe("OpenAI API compact Availability first-pick", () => {
 
     const authorizations: string[] = [];
     globalThis.fetch = async (input, init) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      if (url !== "https://api.openai.com/v1/responses/compact") throw new Error(`unexpected upstream URL: ${url}`);
-      authorizations.push(new Headers(init?.headers).get("authorization") ?? "");
-      return new Response(JSON.stringify({ output: [], model: "gpt-5.6-sol" }), {
-        headers: { "content-type": "application/json" },
-      });
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (url !== "https://api.openai.com/v1/responses/compact")
+        throw new Error(`unexpected upstream URL: ${url}`);
+      authorizations.push(
+        new Headers(init?.headers).get("authorization") ?? "",
+      );
+      return new Response(
+        JSON.stringify({ output: [], model: "gpt-5.6-sol" }),
+        {
+          headers: { "content-type": "application/json" },
+        },
+      );
     };
 
     const server = startServer(0);
     try {
-      const response = await originalFetch(new URL("/v1/responses/compact", server.url), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model: "openai-apikey/gpt-5.6-sol", input: [] }),
-      });
+      const response = await originalFetch(
+        new URL("/v1/responses/compact", server.url),
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            model: "openai-apikey/gpt-5.6-sol",
+            input: [],
+          }),
+        },
+      );
       expect(response.status).toBe(200);
       expect(authorizations).toEqual(["Bearer key-beta-444555666777"]);
     } finally {
@@ -441,10 +637,17 @@ describe("OpenAI API Pro transport identities", () => {
         },
       },
     });
-    const captures: Array<{ body: Record<string, unknown>; headers: Headers }> = [];
+    const captures: Array<{ body: Record<string, unknown>; headers: Headers }> =
+      [];
     globalThis.fetch = async (input, init) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      if (url !== "https://api.openai.com/v1/responses") throw new Error(`unexpected upstream URL: ${url}`);
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (url !== "https://api.openai.com/v1/responses")
+        throw new Error(`unexpected upstream URL: ${url}`);
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       const headers = new Headers(init?.headers);
       captures.push({ body, headers });
@@ -457,20 +660,34 @@ describe("OpenAI API Pro transport identities", () => {
         usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
       };
       if (body.stream === true) {
-        return new Response([
-          `event: response.created\ndata: ${JSON.stringify({ type: "response.created", response: { ...payload, status: "in_progress" } })}\n\n`,
-          `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: payload })}\n\n`,
-        ].join(""), { headers: { "content-type": "text/event-stream" } });
+        return new Response(
+          [
+            `event: response.created\ndata: ${JSON.stringify({ type: "response.created", response: { ...payload, status: "in_progress" } })}\n\n`,
+            `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: payload })}\n\n`,
+          ].join(""),
+          { headers: { "content-type": "text/event-stream" } },
+        );
       }
       return Response.json(payload);
     };
 
     const server = startServer(0);
-    const readUsage = (): Array<Record<string, unknown>> => existsSync(usageLogPath())
-      ? readFileSync(usageLogPath(), "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line) as Record<string, unknown>)
-      : [];
-    const readLogs = () => originalFetch(new URL("/api/logs", server.url), { headers: managementHeaders() })
-      .then(response => response.json()) as Promise<Array<Record<string, unknown>>>;
+    const readUsage = (): Array<Record<string, unknown>> => {
+      flushUsageLog();
+      return existsSync(usageLogPath())
+        ? readFileSync(usageLogPath(), "utf8")
+            .trim()
+            .split("\n")
+            .filter(Boolean)
+            .map((line) => JSON.parse(line) as Record<string, unknown>)
+        : [];
+    };
+    const readLogs = () =>
+      originalFetch(new URL("/api/logs", server.url), {
+        headers: managementHeaders(),
+      }).then((response) => response.json()) as Promise<
+        Array<Record<string, unknown>>
+      >;
     const expectOnePersisted = async (
       beforeLogs: number,
       beforeUsage: number,
@@ -480,36 +697,76 @@ describe("OpenAI API Pro transport identities", () => {
     ): Promise<void> => {
       const logs = await readLogs();
       expect(logs).toHaveLength(beforeLogs + 1);
-      expect(logs.at(-1)).toMatchObject({ provider: "openai-apikey", model: virtual, requestedModel: selected, resolvedModel: base, status: 200 });
+      expect(logs.at(-1)).toMatchObject({
+        provider: "openai-apikey",
+        model: virtual,
+        requestedModel: selected,
+        resolvedModel: base,
+        status: 200,
+      });
       const usage = readUsage();
       expect(usage).toHaveLength(beforeUsage + 1);
-      expect(usage.at(-1)).toMatchObject({ provider: "openai-apikey", model: virtual, requestedModel: selected, resolvedModel: base, status: 200 });
+      expect(usage.at(-1)).toMatchObject({
+        provider: "openai-apikey",
+        model: virtual,
+        requestedModel: selected,
+        resolvedModel: base,
+        status: 200,
+      });
     };
-    const request = (model: string, stream: boolean) => originalFetch(new URL("/v1/responses", server.url), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model, input: "hello", stream, reasoning: { effort: "high" } }),
-    });
-    const wsFixtureSecret = ["sk", "fixture", "never", "retain", "123456"].join("-");
+    const request = (model: string, stream: boolean) =>
+      originalFetch(new URL("/v1/responses", server.url), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model,
+          input: "hello",
+          stream,
+          reasoning: { effort: "high" },
+        }),
+      });
+    const wsFixtureSecret = ["sk", "fixture", "never", "retain", "123456"].join(
+      "-",
+    );
     const wsTurn = (model: string) => {
       const url = new URL("/v1/responses", server.url);
       url.protocol = "ws:";
       const ws = new WebSocket(url, {
-        headers: { "user-agent": `mystery-ws-cli/7.6.1 Bearer ${wsFixtureSecret}` },
+        headers: {
+          "user-agent": `mystery-ws-cli/7.6.1 Bearer ${wsFixtureSecret}`,
+        },
       } as unknown as string[]);
       return new Promise<string>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error("OpenAI API Pro websocket timeout")), 2000);
-        ws.addEventListener("open", () => {
-          ws.send(JSON.stringify({ type: "response.create", model, input: "hello", reasoning: { effort: "high" } }));
-        }, { once: true });
-        ws.addEventListener("message", event => {
+        const timer = setTimeout(
+          () => reject(new Error("OpenAI API Pro websocket timeout")),
+          2000,
+        );
+        ws.addEventListener(
+          "open",
+          () => {
+            ws.send(
+              JSON.stringify({
+                type: "response.create",
+                model,
+                input: "hello",
+                reasoning: { effort: "high" },
+              }),
+            );
+          },
+          { once: true },
+        );
+        ws.addEventListener("message", (event) => {
           const text = typeof event.data === "string" ? event.data : "";
           if (!text.includes('"type":"response.completed"')) return;
           clearTimeout(timer);
           ws.close();
           resolve(text);
         });
-        ws.addEventListener("error", () => reject(new Error("OpenAI API Pro websocket failed")), { once: true });
+        ws.addEventListener(
+          "error",
+          () => reject(new Error("OpenAI API Pro websocket failed")),
+          { once: true },
+        );
       });
     };
 
@@ -525,7 +782,13 @@ describe("OpenAI API Pro transport identities", () => {
         const json = await request(selected, false);
         expect(json.status).toBe(200);
         expect(await json.json()).toMatchObject({ model: base });
-        await expectOnePersisted(beforeJsonLogs, beforeJsonUsage, selected, virtual, base);
+        await expectOnePersisted(
+          beforeJsonLogs,
+          beforeJsonUsage,
+          selected,
+          virtual,
+          base,
+        );
 
         const beforeSseLogs = (await readLogs()).length;
         const beforeSseUsage = readUsage().length;
@@ -534,14 +797,26 @@ describe("OpenAI API Pro transport identities", () => {
         const sseText = await sse.text();
         expect(sseText).toContain(`\"model\":\"${base}\"`);
         expect(sseText).not.toContain(`\"model\":\"${virtual}\"`);
-        await expectOnePersisted(beforeSseLogs, beforeSseUsage, selected, virtual, base);
+        await expectOnePersisted(
+          beforeSseLogs,
+          beforeSseUsage,
+          selected,
+          virtual,
+          base,
+        );
 
         const beforeWsLogs = (await readLogs()).length;
         const beforeWsUsage = readUsage().length;
         const wsText = await wsTurn(selected);
         expect(wsText).toContain(`\"model\":\"${base}\"`);
         expect(wsText).not.toContain(`\"model\":\"${virtual}\"`);
-        await expectOnePersisted(beforeWsLogs, beforeWsUsage, selected, virtual, base);
+        await expectOnePersisted(
+          beforeWsLogs,
+          beforeWsUsage,
+          selected,
+          virtual,
+          base,
+        );
         const wsLog = (await readLogs()).at(-1);
         const wsUsage = readUsage().at(-1);
         expect(wsLog?.clientAddress).toBeTruthy();
@@ -552,8 +827,13 @@ describe("OpenAI API Pro transport identities", () => {
         expect(JSON.stringify(wsUsage)).not.toContain(wsFixtureSecret);
 
         for (const capture of captures.slice(-3)) {
-          expect(capture.body).toMatchObject({ model: base, reasoning: { effort: "high", mode: "pro" } });
-          expect(capture.headers.get("authorization")).toBe("Bearer sk-platform");
+          expect(capture.body).toMatchObject({
+            model: base,
+            reasoning: { effort: "high", mode: "pro" },
+          });
+          expect(capture.headers.get("authorization")).toBe(
+            "Bearer sk-platform",
+          );
           expect(capture.headers.get("chatgpt-account-id")).toBeNull();
           expect(capture.headers.get("x-codex-account-id")).toBeNull();
         }
@@ -561,17 +841,27 @@ describe("OpenAI API Pro transport identities", () => {
 
       const prototypeHttp = await request("openai-apikey/constructor", false);
       expect(prototypeHttp.status).toBe(200);
-      expect(await prototypeHttp.json()).toMatchObject({ model: "constructor" });
+      expect(await prototypeHttp.json()).toMatchObject({
+        model: "constructor",
+      });
       const prototypeWs = await wsTurn("openai-apikey/toString");
       expect(prototypeWs).toContain('"model":"toString"');
 
       for (const invalidReasoning of ["high", ["high"]]) {
         const before = captures.length;
-        const response = await originalFetch(new URL("/v1/responses", server.url), {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ model: "openai-apikey/gpt-5.6-sol-pro", input: "hello", stream: false, reasoning: invalidReasoning }),
-        });
+        const response = await originalFetch(
+          new URL("/v1/responses", server.url),
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              model: "openai-apikey/gpt-5.6-sol-pro",
+              input: "hello",
+              stream: false,
+              reasoning: invalidReasoning,
+            }),
+          },
+        );
         expect(response.status).toBe(400);
         expect(captures).toHaveLength(before);
       }

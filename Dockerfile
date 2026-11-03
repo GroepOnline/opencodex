@@ -73,7 +73,7 @@ EXPOSE 10100
 STOPSIGNAL SIGTERM
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=4 \
-  CMD ["bun", "run", "scripts/container-health.ts"]
+  CMD ["bun", "scripts/container-health.ts"]
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/app/scripts/container-entrypoint.sh"]
 CMD ["bun", "run", "src/cli/index.ts", "start", "--port", "10100"]

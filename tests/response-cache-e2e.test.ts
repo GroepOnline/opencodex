@@ -13,10 +13,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { saveConfig } from "../src/config";
 import { startServer } from "../src/server";
-import { clearRequestLogsForTests, getRequestLogEntries } from "../src/server/request-log";
-import { usageLogPath } from "../src/usage/log";
+import {
+  clearRequestLogsForTests,
+  getRequestLogEntries,
+} from "../src/server/request-log";
+import { flushUsageLog, usageLogPath } from "../src/usage/log";
 import type { OcxConfig } from "../src/types";
-import { installIsolatedCodexHome, type IsolatedCodexHome } from "./helpers/isolated-codex-home";
+import {
+  installIsolatedCodexHome,
+  type IsolatedCodexHome,
+} from "./helpers/isolated-codex-home";
 import { managementFetch } from "./helpers/management-auth";
 
 let testDir = "";
@@ -56,7 +62,10 @@ function mockJsonUpstream() {
     async fetch(req) {
       const url = new URL(req.url);
       if (!url.pathname.endsWith("/chat/completions")) {
-        return Response.json({ error: { message: `unexpected path ${url.pathname}` } }, { status: 404 });
+        return Response.json(
+          { error: { message: `unexpected path ${url.pathname}` } },
+          { status: 404 },
+        );
       }
       await req.json().catch(() => ({}));
       upstreamHits += 1;
@@ -65,7 +74,9 @@ function mockJsonUpstream() {
         `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 3, completion_tokens: 1 } })}\n\n`,
         "data: [DONE]\n\n",
       ];
-      return new Response(frames.join(""), { headers: { "Content-Type": "text/event-stream" } });
+      return new Response(frames.join(""), {
+        headers: { "Content-Type": "text/event-stream" },
+      });
     },
   });
 }
@@ -75,7 +86,12 @@ function mockConfig(baseUrl: string): OcxConfig {
     port: 0,
     defaultProvider: "mock",
     providers: {
-      mock: { adapter: "openai-chat", baseUrl, apiKey: "k", allowPrivateNetwork: true },
+      mock: {
+        adapter: "openai-chat",
+        baseUrl,
+        apiKey: "k",
+        allowPrivateNetwork: true,
+      },
     },
     responseCache: { enabled: true, ttlMs: 60_000, maxEntries: 16 },
   } as OcxConfig;
@@ -92,18 +108,23 @@ test("identical non-streaming request hits the cache on the second call", async 
       stream: false,
       messages: [{ role: "user", content: "ping" }],
     });
-    const post = () => fetch(new URL("/v1/chat/completions", server.url), {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: "Bearer caller", "user-agent": "mystery-cli/9.9 token=fixture-secret-never-log" },
-      body,
-    });
+    const post = () =>
+      fetch(new URL("/v1/chat/completions", server.url), {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer caller",
+          "user-agent": "mystery-cli/9.9 token=fixture-secret-never-log",
+        },
+        body,
+      });
 
     const first = await post();
     expect(first.status).toBe(200);
     expect(first.headers.get("x-cache")).toBeNull(); // cold miss went upstream
     expect(upstreamHits).toBe(1);
     // Give the async store() clone-read a tick to land in the cache.
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 50));
 
     const second = await post();
     expect(second.status).toBe(200);
@@ -116,12 +137,20 @@ test("identical non-streaming request hits the cache on the second call", async 
     expect(hitLog?.clientAddress).toBeTruthy();
     expect(hitLog?.clientUserAgent).toBe("mystery-cli/9.9");
     expect(getRequestLogEntries().at(-2)?.clientAddress).toBeTruthy();
-    const apiLogs = await (await managementFetch(new URL("/api/logs", server.url))).json() as Array<{ clientAddress?: string; clientUserAgent?: string }>;
+    const apiLogs = (await (
+      await managementFetch(new URL("/api/logs", server.url))
+    ).json()) as Array<{ clientAddress?: string; clientUserAgent?: string }>;
     expect(apiLogs.at(-1)?.clientAddress).toBeTruthy();
     expect(apiLogs.at(-1)?.clientUserAgent).toBe("mystery-cli/9.9");
     expect(JSON.stringify(apiLogs)).not.toContain("fixture-secret-never-log");
-    expect(readFileSync(usageLogPath(), "utf8")).not.toContain("fixture-secret-never-log");
-    const replayed = await second.json() as { object: string; choices: Array<{ message: { content: string } }> };
+    flushUsageLog();
+    expect(readFileSync(usageLogPath(), "utf8")).not.toContain(
+      "fixture-secret-never-log",
+    );
+    const replayed = (await second.json()) as {
+      object: string;
+      choices: Array<{ message: { content: string } }>;
+    };
     expect(replayed.object).toBe("chat.completion");
     expect(replayed.choices[0]?.message.content).toBe("pong");
   } finally {
@@ -140,24 +169,27 @@ test("anonymous loopback non-streaming requests share the local cache scope", as
       stream: false,
       messages: [{ role: "user", content: "anon-ping" }],
     });
-    const post = () => fetch(new URL("/v1/chat/completions", server.url), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body,
-    });
+    const post = () =>
+      fetch(new URL("/v1/chat/completions", server.url), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      });
 
     const first = await post();
     expect(first.status).toBe(200);
     expect(first.headers.get("x-cache")).toBeNull();
     expect(upstreamHits).toBe(1);
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 50));
 
     const second = await post();
     expect(second.status).toBe(200);
     expect(second.headers.get("x-cache")).toBe("HIT");
     expect(upstreamHits).toBe(1);
 
-    const view = await (await managementFetch(new URL("/api/response-cache", server.url))).json() as {
+    const view = (await (
+      await managementFetch(new URL("/api/response-cache", server.url))
+    ).json()) as {
       size: number;
       stats: { stores: number; hits: number };
     };
@@ -184,7 +216,9 @@ test("stream:true with cache enabled still streams (body not drained by the prob
         `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`,
         "data: [DONE]\n\n",
       ];
-      return new Response(frames.join(""), { headers: { "Content-Type": "text/event-stream" } });
+      return new Response(frames.join(""), {
+        headers: { "Content-Type": "text/event-stream" },
+      });
     },
   });
   saveConfig(mockConfig(`${upstream.url.toString().replace(/\/$/, "")}/v1`));
@@ -200,7 +234,9 @@ test("stream:true with cache enabled still streams (body not drained by the prob
       }),
     });
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-type") ?? "").toContain("text/event-stream");
+    expect(response.headers.get("content-type") ?? "").toContain(
+      "text/event-stream",
+    );
     const text = await response.text();
     expect(text).toContain("chat.completion.chunk");
     expect(text).toContain("data: [DONE]");
@@ -215,20 +251,26 @@ test("management endpoints report stats and clear the cache", async () => {
   saveConfig(mockConfig(`${upstream.url.toString().replace(/\/$/, "")}/v1`));
   const server = startServer(0);
   try {
-    const post = () => fetch(new URL("/v1/chat/completions", server.url), {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: "Bearer caller" },
-      body: JSON.stringify({
-        model: "mock/test-model",
-        stream: false,
-        messages: [{ role: "user", content: "stats" }],
-      }),
-    });
+    const post = () =>
+      fetch(new URL("/v1/chat/completions", server.url), {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer caller",
+        },
+        body: JSON.stringify({
+          model: "mock/test-model",
+          stream: false,
+          messages: [{ role: "user", content: "stats" }],
+        }),
+      });
     await post();
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 50));
     await post();
 
-    const view = await (await managementFetch(new URL("/api/response-cache", server.url))).json() as {
+    const view = (await (
+      await managementFetch(new URL("/api/response-cache", server.url))
+    ).json()) as {
       enabled: boolean;
       size: number;
       stats: { hits: number; misses: number; stores: number };
@@ -241,14 +283,20 @@ test("management endpoints report stats and clear the cache", async () => {
     expect(view.stats.hits).toBeGreaterThanOrEqual(1);
     expect(view.stats.misses).toBeGreaterThanOrEqual(1);
 
-    const cleared = await (await managementFetch(new URL("/api/response-cache/clear", server.url), { method: "POST" })).json() as {
+    const cleared = (await (
+      await managementFetch(new URL("/api/response-cache/clear", server.url), {
+        method: "POST",
+      })
+    ).json()) as {
       success: boolean;
       cleared: number;
     };
     expect(cleared.success).toBe(true);
     expect(cleared.cleared).toBe(1);
 
-    const after = await (await managementFetch(new URL("/api/response-cache", server.url))).json() as { size: number };
+    const after = (await (
+      await managementFetch(new URL("/api/response-cache", server.url))
+    ).json()) as { size: number };
     expect(after.size).toBe(0);
   } finally {
     server.stop(true);

@@ -12,6 +12,7 @@ import { join } from "node:path";
 import {
   appendUsageEntry,
   currentUsageLogRevision,
+  flushUsageLog,
   readRecentUsageEntries,
   readUsageEntries,
   readUsageEntriesForManagement,
@@ -59,18 +60,29 @@ describe("usage log", () => {
 
   test("sanitizes User-Agent during direct writes and legacy reads", async () => {
     const secret = "fixture-sensitive-marker-12345";
-    const row = JSON.parse(persistedLine("ua-privacy")) as Parameters<typeof appendUsageEntry>[0];
-    appendUsageEntry({ ...row, clientUserAgent: `unknown-cli/2.4.6 Bearer ${secret}` });
+    const row = JSON.parse(persistedLine("ua-privacy")) as Parameters<
+      typeof appendUsageEntry
+    >[0];
+    appendUsageEntry({
+      ...row,
+      clientUserAgent: `unknown-cli/2.4.6 Bearer ${secret}`,
+    });
+    flushUsageLog();
     expect(readFileSync(usageLogPath(), "utf8")).not.toContain(secret);
     expect(readUsageEntries()[0]?.clientUserAgent).toBe("unknown-cli/2.4.6");
 
     // Records written by an older version must not leak through the usage APIs.
-    writeFileSync(usageLogPath(), JSON.stringify({
-      ...row,
-      requestId: "legacy-ua",
-      clientUserAgent: `unknown-cli/2.4.6 token=${secret}`,
-    }) + "\n");
-    expect(readRecentUsageEntries(1)[0]?.clientUserAgent).toBe("unknown-cli/2.4.6");
+    writeFileSync(
+      usageLogPath(),
+      JSON.stringify({
+        ...row,
+        requestId: "legacy-ua",
+        clientUserAgent: `unknown-cli/2.4.6 token=${secret}`,
+      }) + "\n",
+    );
+    expect(readRecentUsageEntries(1)[0]?.clientUserAgent).toBe(
+      "unknown-cli/2.4.6",
+    );
     const [management] = await readUsageEntriesForManagement();
     expect(management?.clientUserAgent).toBe("unknown-cli/2.4.6");
     expect(JSON.stringify(management)).not.toContain(secret);
@@ -225,6 +237,7 @@ describe("usage log", () => {
       },
     };
     appendUsageEntry(entry);
+    flushUsageLog();
     const expected = {
       ...entry,
       adapter: "openai-responses",
@@ -388,6 +401,7 @@ describe("usage log", () => {
       body: "parent body secret",
       messages: ["parent message secret"],
     } as unknown as Parameters<typeof appendUsageEntry>[0]);
+    flushUsageLog();
 
     const raw = readFileSync(usageLogPath(), "utf-8");
     for (const forbidden of [
@@ -653,6 +667,7 @@ describe("usage log", () => {
       totalTokens: 13,
     });
 
+    flushUsageLog();
     expect(existsSync(usageLogPath())).toBe(true);
     const raw = readFileSync(usageLogPath(), "utf-8");
     expect(raw).toContain('"requestId":"ocx-1"');
@@ -704,6 +719,7 @@ describe("usage log", () => {
       profileArn: "arn:aws:codewhisperer:us-east-1:123456789012:profile/demo",
       surface: "codex",
     } as unknown as Parameters<typeof appendUsageEntry>[0]);
+    flushUsageLog();
 
     const raw = readFileSync(usageLogPath(), "utf-8");
     for (const leaked of [

@@ -1,6 +1,10 @@
 import { slugEquals } from "../../providers/slug-codec";
 import type { OcxClaudeCodeConfig } from "../../types";
 import { jsonResponse } from "../auth-cors";
+import {
+  readJsonBodyCapped,
+  RequestBodyTooLargeError,
+} from "../../lib/request-body";
 import { applySystemEnvToggle } from "../system-env";
 import { fetchAllModels } from "./shared";
 import type { ManagementContext } from "./context";
@@ -128,8 +132,9 @@ export async function handleClaudeCodeRoutes(
     // and older GUIs stay safe; GUI saves omit them and the spread preserves them.
     let parsedBody: unknown;
     try {
-      parsedBody = await req.json();
-    } catch {
+      parsedBody = await readJsonBodyCapped(req);
+    } catch (err) {
+      if (err instanceof RequestBodyTooLargeError) throw err;
       return jsonResponse({ error: "invalid JSON body" }, 400);
     }
     const isPlainObject = (

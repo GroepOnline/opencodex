@@ -1,4 +1,5 @@
 import { flushResponseState } from "../responses/state";
+import { flushUsageLog } from "../usage/log";
 import { closeServerSentry } from "../telemetry/sentry-server";
 import { setStorageCleanupPolicyLiveSink } from "../storage/policy";
 import {
@@ -17,12 +18,26 @@ let draining = false;
 let recyclingForExit = false;
 let _serverRef: ReturnType<typeof Bun.serve> | undefined;
 
-export function setServerRef(server: ReturnType<typeof Bun.serve> | undefined): void { _serverRef = server; }
-export function setDraining(value: boolean): void { draining = value; }
-export function registerTurn(ac: AbortController): void { activeTurns.add(ac); }
-export function unregisterTurn(ac: AbortController): void { activeTurns.delete(ac); }
-export function isDraining(): boolean { return draining; }
-export function getActiveTurnCount(): number { return activeTurns.size; }
+export function setServerRef(
+  server: ReturnType<typeof Bun.serve> | undefined,
+): void {
+  _serverRef = server;
+}
+export function setDraining(value: boolean): void {
+  draining = value;
+}
+export function registerTurn(ac: AbortController): void {
+  activeTurns.add(ac);
+}
+export function unregisterTurn(ac: AbortController): void {
+  activeTurns.delete(ac);
+}
+export function isDraining(): boolean {
+  return draining;
+}
+export function getActiveTurnCount(): number {
+  return activeTurns.size;
+}
 /** Live listen port of the Bun server, when started. */
 export function getServerListenPort(): number | undefined {
   const port = _serverRef?.port;
@@ -33,8 +48,12 @@ export function getServerListenPort(): number | undefined {
  * must keep Codex/Grok/system-env injection so the replacement process inherits
  * a working fence — unlike an intentional `ocx stop` teardown.
  */
-export function markRecyclingForExit(): void { recyclingForExit = true; }
-export function isRecyclingForExit(): boolean { return recyclingForExit; }
+export function markRecyclingForExit(): void {
+  recyclingForExit = true;
+}
+export function isRecyclingForExit(): boolean {
+  return recyclingForExit;
+}
 
 export function trackStreamLifetime(
   body: ReadableStream<Uint8Array>,
@@ -54,11 +73,19 @@ export function trackStreamLifetime(
     async pull(controller) {
       try {
         const { done, value } = await reader.read();
-        if (done) { finish(); controller.close(); return; }
+        if (done) {
+          finish();
+          controller.close();
+          return;
+        }
         controller.enqueue(value);
       } catch (err) {
         finish();
-        try { controller.error(err); } catch { /* already closed */ }
+        try {
+          controller.error(err);
+        } catch {
+          /* already closed */
+        }
       }
     },
     cancel(reason) {
@@ -80,7 +107,9 @@ export async function drainAndShutdown(
     await Bun.sleep(100);
   }
   if (activeTurns.size > 0) {
-    console.warn(`⚠️  Aborting ${activeTurns.size} in-flight turn(s) after ${timeoutMs}ms deadline`);
+    console.warn(
+      `⚠️  Aborting ${activeTurns.size} in-flight turn(s) after ${timeoutMs}ms deadline`,
+    );
     for (const ac of activeTurns) {
       ac.abort(new Error("server shutdown"));
     }
@@ -89,6 +118,8 @@ export async function drainAndShutdown(
   // Debounced replay-state snapshot may still be pending; flush so the last completed turn's
   // previous_response_id chain survives the restart this shutdown is usually part of.
   await flushResponseState();
+  // Buffered usage.jsonl rows: persist the tail of the request log before sockets close.
+  flushUsageLog();
   // Tear down opt-in storage policy timers / worker / live-config sink so they cannot fire after stop.
   stopStorageCleanupScheduler();
   abortStorageCleanupPolicyJob();

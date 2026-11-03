@@ -9,7 +9,9 @@ import {
 } from "../src/observability/usage-log-metrics";
 import {
   appendUsageEntry,
+  flushUsageLog,
   subscribeUsageAppends,
+  usageLogWriterStatsForTests,
   usageLogPath,
   type PersistedUsageEntry,
   type UsageAppendObservation,
@@ -19,7 +21,9 @@ const previousHome = process.env.OPENCODEX_HOME;
 let testHome = "";
 const cleanups: Array<() => void> = [];
 
-function subscribe(observer: (observation: UsageAppendObservation) => void): () => void {
+function subscribe(
+  observer: (observation: UsageAppendObservation) => void,
+): () => void {
   const unsubscribe = subscribeUsageAppends(observer);
   cleanups.push(unsubscribe);
   return unsubscribe;
@@ -38,7 +42,9 @@ function fixedProcess() {
   };
 }
 
-function usageEntry(overrides: Partial<PersistedUsageEntry> = {}): PersistedUsageEntry {
+function usageEntry(
+  overrides: Partial<PersistedUsageEntry> = {},
+): PersistedUsageEntry {
   return {
     requestId: "secret-request-id",
     timestamp: 100,
@@ -80,33 +86,49 @@ afterEach(() => {
 describe("usage append observers", () => {
   test("counts only appends made after registration; existing history is never replayed", () => {
     appendUsageEntry(usageEntry({ requestId: "historical" }));
+    // The buffered writer defers the durable append: flush so the row is existing
+    // on-disk history before the observer registers, never a live notification.
+    flushUsageLog();
 
     const metrics = new RuntimeMetrics(fixedProcess, () => 10);
     const seen: UsageAppendObservation[] = [];
-    subscribe(observation => {
+    subscribe((observation) => {
       seen.push(observation);
       metrics.recordRequest(observation);
     });
 
-    appendUsageEntry(usageEntry({ requestId: "live", status: 429, terminalStatus: "failed" }));
+    appendUsageEntry(
+      usageEntry({ requestId: "live", status: 429, terminalStatus: "failed" }),
+    );
+    flushUsageLog();
 
     expect(seen).toHaveLength(1);
     expect(metrics.snapshot().requests).toEqual([
-      { surface: "codex", statusClass: "4xx", terminalStatus: "failed", count: 1 },
+      {
+        surface: "codex",
+        statusClass: "4xx",
+        terminalStatus: "failed",
+        count: 1,
+      },
     ]);
     // Both rows are on disk; only the post-registration one was observed.
-    expect(readFileSync(usageLogPath(), "utf8").trim().split("\n")).toHaveLength(2);
+    expect(
+      readFileSync(usageLogPath(), "utf8").trim().split("\n"),
+    ).toHaveLength(2);
   });
 
   test("a successful append emits exactly one safe structural observation", () => {
     const seen: UsageAppendObservation[] = [];
-    subscribe(observation => seen.push(observation));
+    subscribe((observation) => seen.push(observation));
 
-    appendUsageEntry(usageEntry({
-      surface: "claude",
-      errorCode: "secret-error-code",
-      upstreamError: "Bearer secret-token",
-    }));
+    appendUsageEntry(
+      usageEntry({
+        surface: "claude",
+        errorCode: "secret-error-code",
+        upstreamError: "Bearer secret-token",
+      }),
+    );
+    flushUsageLog();
 
     expect(seen).toHaveLength(1);
     expect(seen[0]).toEqual({
@@ -138,42 +160,56 @@ describe("usage append observers", () => {
 
   test("raw dimensions never reach the Prometheus output through the observer", () => {
     const metrics = new RuntimeMetrics(fixedProcess, () => 10);
-    subscribe(observation => metrics.recordRequest(observation));
+    subscribe((observation) => metrics.recordRequest(observation));
 
-    appendUsageEntry(usageEntry({ provider: "Bearer secret", model: "secret-model-id" }));
+    appendUsageEntry(
+      usageEntry({ provider: "Bearer secret", model: "secret-model-id" }),
+    );
+    flushUsageLog();
 
     expect(metrics.snapshot().requests[0]!.count).toBe(1);
     const output = metrics.prometheus();
     expect(output).not.toContain("secret");
     expect(output).not.toContain("Bearer");
-    expect(output).toContain('opencodex_requests_total{surface="codex",status_class="2xx",terminal_status="completed"} 1');
+    expect(output).toContain(
+      'opencodex_requests_total{surface="codex",status_class="2xx",terminal_status="completed"} 1',
+    );
   });
 
   test("an append failure emits nothing", () => {
     const seen: UsageAppendObservation[] = [];
-    subscribe(observation => seen.push(observation));
+    subscribe((observation) => seen.push(observation));
 
-    // Occupy the log path with a directory so appendFileSync fails (EISDIR).
+    // Occupy the log path with a directory so the batched write fails (EISDIR).
+    // The buffered writer is error-tolerant by contract: append never throws,
+    // the failed batch is dropped without emitting an observation, and the
+    // failure is visible through the writer stats.
     mkdirSync(usageLogPath(), { recursive: true });
-    expect(() => appendUsageEntry(usageEntry())).toThrow();
+    const droppedBefore = usageLogWriterStatsForTests().droppedRows;
+    expect(() => appendUsageEntry(usageEntry())).not.toThrow();
+    expect(() => flushUsageLog()).not.toThrow();
     expect(seen).toHaveLength(0);
+    const stats = usageLogWriterStatsForTests();
+    expect(stats.writeFailures).toBeGreaterThan(0);
+    expect(stats.droppedRows).toBeGreaterThan(droppedBefore);
   });
 
   test("observer failures are isolated and ordering follows registration", () => {
     const order: string[] = [];
     const firstSeen: UsageAppendObservation[] = [];
     const secondSeen: UsageAppendObservation[] = [];
-    subscribe(observation => {
+    subscribe((observation) => {
       order.push("first");
       firstSeen.push(observation);
       throw new Error("observer defect");
     });
-    subscribe(observation => {
+    subscribe((observation) => {
       order.push("second");
       secondSeen.push(observation);
     });
 
     expect(() => appendUsageEntry(usageEntry())).not.toThrow();
+    flushUsageLog();
 
     expect(order).toEqual(["first", "second"]);
     expect(secondSeen).toHaveLength(1);
@@ -215,22 +251,35 @@ describe("usage append observers", () => {
     ensureUsageLogMetricsObserver();
 
     appendUsageEntry(usageEntry());
+    flushUsageLog();
 
     expect(runtimeMetrics.snapshot().requests).toEqual([
-      { surface: "codex", statusClass: "2xx", terminalStatus: "completed", count: 1 },
+      {
+        surface: "codex",
+        statusClass: "2xx",
+        terminalStatus: "completed",
+        count: 1,
+      },
     ]);
-    expect(runtimeMetrics.snapshot().tokens).toContainEqual({ surface: "codex", type: "input", count: 10 });
+    expect(runtimeMetrics.snapshot().tokens).toContainEqual({
+      surface: "codex",
+      type: "input",
+      count: 10,
+    });
   });
 
   test("malformed structural fields are dropped at the boundary, not forwarded", () => {
     const seen: UsageAppendObservation[] = [];
-    subscribe(observation => seen.push(observation));
+    subscribe((observation) => seen.push(observation));
 
-    appendUsageEntry(usageEntry({
-      firstOutputMs: -1,
-      terminalStatus: "exotic-terminal",
-      surface: "untrusted-surface" as PersistedUsageEntry["surface"],
-    }));
+    appendUsageEntry(
+      usageEntry({
+        firstOutputMs: -1,
+        terminalStatus: "exotic-terminal",
+        surface: "untrusted-surface" as PersistedUsageEntry["surface"],
+      }),
+    );
+    flushUsageLog();
 
     expect(seen).toHaveLength(1);
     expect(seen[0]).toEqual({

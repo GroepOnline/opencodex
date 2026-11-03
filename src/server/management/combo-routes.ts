@@ -4,6 +4,10 @@ import {
 } from "../../codex/account-namespace-match";
 import { saveConfigPreservingClaudeCode } from "../../config";
 import { jsonResponse } from "../auth-cors";
+import {
+  readJsonBodyCapped,
+  RequestBodyTooLargeError,
+} from "../../lib/request-body";
 import { isPlainRecord } from "./shared";
 import type { ManagementContext } from "./context";
 
@@ -41,8 +45,9 @@ export async function handleComboRoutes(
   if (url.pathname === "/api/combos" && req.method === "PUT") {
     let rawBody: unknown;
     try {
-      rawBody = await req.json();
-    } catch {
+      rawBody = await readJsonBodyCapped(req);
+    } catch (err) {
+      if (err instanceof RequestBodyTooLargeError) throw err;
       return jsonResponse({ error: "invalid JSON body" }, 400);
     }
     if (!isPlainRecord(rawBody)) {

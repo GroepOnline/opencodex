@@ -1,5 +1,9 @@
 import { saveConfigPreservingClaudeCode } from "../../config";
 import { jsonResponse } from "../auth-cors";
+import {
+  readJsonBodyCapped,
+  RequestBodyTooLargeError,
+} from "../../lib/request-body";
 import { fetchGrokCandidateModels } from "./shared";
 import type { ManagementContext } from "./context";
 
@@ -45,8 +49,9 @@ export async function handleGrokRoutes(
   if (url.pathname === "/api/grok/selection" && req.method === "PUT") {
     let body: { excluded?: unknown };
     try {
-      body = await req.json();
-    } catch {
+      body = await readJsonBodyCapped(req);
+    } catch (err) {
+      if (err instanceof RequestBodyTooLargeError) throw err;
       return jsonResponse({ error: "invalid JSON body" }, 400);
     }
     const raw = body.excluded;
