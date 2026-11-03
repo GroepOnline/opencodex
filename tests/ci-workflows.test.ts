@@ -3463,7 +3463,7 @@ describe("GitHub Actions hardening", () => {
       "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
     );
     expect(workflow).toContain(
-      "withastro/action@3eafd002e65cc31b4f0eae0bb05450d521562247",
+      "withastro/action@a8b97df764791eb61fbf3338ef713b0e61ae05c5",
     );
     expect(workflow).toContain(
       "actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346",
