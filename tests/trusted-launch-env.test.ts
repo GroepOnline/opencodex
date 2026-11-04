@@ -114,8 +114,8 @@ describe("trusted launch environment provenance", () => {
     const result = spawnSync(process.execPath, [probe], { cwd: dir, env, encoding: "utf8" });
     expect(result.status).toBe(0);
     const observed = JSON.parse(result.stdout.trim());
-    expect(observed.adminToken).toBeNull();
-    expect(observed.apiToken).toBeNull();
+    expect(observed.adminTokenPresent).toBe(false);
+    expect(observed.apiTokenPresent).toBe(false);
     expect(observed.opencodexHome).toBeNull();
     expect(observed.codexCliPath).toBeNull();
     expect(observed.bunPath).toBeNull();
@@ -126,6 +126,25 @@ describe("trusted launch environment provenance", () => {
     expect(observed.baseUrlTrusted).toBe(false);
     expect(observed.adminTokenTrusted).toBe(false);
     expect(observed.trustedMarker).toBe("PATH,HOME");
+  });
+
+  test("does not expose inherited admission credentials in probe stdout", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ocx-trusted-env-probe-"));
+    tempDirs.push(dir);
+    const env = {
+      ...process.env,
+      OPENCODEX_ADMIN_AUTH_TOKEN: "probe-admin-canary-no-log",
+      OPENCODEX_API_AUTH_TOKEN: "probe-api-canary-no-log",
+    };
+    delete env[TRUSTED_LAUNCH_ENV_MARKER];
+    const probe = join(import.meta.dir, "fixtures", "trusted-launch-env-probe.ts");
+    const result = spawnSync(process.execPath, [probe], { cwd: dir, env, encoding: "utf8" });
+    expect(result.status).toBe(0);
+    const observed = JSON.parse(result.stdout.trim());
+    expect(observed.adminTokenPresent).toBe(true);
+    expect(observed.apiTokenPresent).toBe(true);
+    expect(result.stdout).not.toContain("probe-admin-canary-no-log");
+    expect(result.stdout).not.toContain("probe-api-canary-no-log");
   });
 
   test("parses malformed and empty markers fail-closed", () => {
