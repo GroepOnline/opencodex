@@ -1,0 +1,291 @@
+<div id="ocx-release-evidence">
+  <style>
+    #ocx-release-evidence {
+      color: var(--foreground);
+      font:
+        13px/1.45 ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+      padding: 10px 4px 16px;
+    }
+    #ocx-release-evidence * {
+      box-sizing: border-box;
+    }
+    #ocx-release-evidence h2,
+    #ocx-release-evidence h3,
+    #ocx-release-evidence p {
+      margin: 0;
+    }
+    #ocx-release-evidence .title {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: end;
+      margin-bottom: 18px;
+    }
+    #ocx-release-evidence .title h2 {
+      font-size: 19px;
+      letter-spacing: -0.02em;
+    }
+    #ocx-release-evidence .title p {
+      color: var(--muted-foreground);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+    }
+    #ocx-release-evidence .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      align-items: stretch;
+      gap: 18px;
+      margin-bottom: 20px;
+    }
+    #ocx-release-evidence .step {
+      position: relative;
+      border-top: 3px solid light-dark(#11875d, #44d49f);
+      padding: 10px 8px 8px 0;
+      min-height: 84px;
+    }
+    #ocx-release-evidence .step:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      right: -15px;
+      top: 31px;
+      color: var(--muted-foreground);
+      font-size: 18px;
+    }
+    #ocx-release-evidence .step b {
+      display: block;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    #ocx-release-evidence .step span {
+      display: block;
+      color: var(--muted-foreground);
+      font-size: 11px;
+      overflow-wrap: anywhere;
+    }
+    #ocx-release-evidence .section {
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+      margin-top: 14px;
+    }
+    #ocx-release-evidence .section h3 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 10px;
+    }
+    #ocx-release-evidence .proofs {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px 18px;
+    }
+    #ocx-release-evidence .proof {
+      min-height: 58px;
+    }
+    #ocx-release-evidence .proof strong {
+      display: block;
+      color: light-dark(#087a55, #44d49f);
+      font-size: 16px;
+    }
+    #ocx-release-evidence .proof span {
+      display: block;
+      color: var(--muted-foreground);
+      font-size: 11px;
+    }
+    #ocx-release-evidence .lanes {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    #ocx-release-evidence .lane {
+      border-left: 3px solid light-dark(#11875d, #44d49f);
+      padding-left: 10px;
+    }
+    #ocx-release-evidence .lane.preserved {
+      border-left-color: light-dark(#a66a00, #e5ad45);
+    }
+    #ocx-release-evidence .lane b {
+      display: block;
+      margin-bottom: 5px;
+    }
+    #ocx-release-evidence .lane span {
+      color: var(--muted-foreground);
+      display: block;
+      font-size: 11px;
+    }
+    #ocx-release-evidence .digest {
+      margin-top: 12px;
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 10px;
+      overflow-wrap: anywhere;
+    }
+    #ocx-release-evidence .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 14px;
+      color: var(--muted-foreground);
+      font-size: 10px;
+    }
+    #ocx-release-evidence .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-right: 5px;
+      border-radius: 50%;
+      background: light-dark(#11875d, #44d49f);
+    }
+    #ocx-release-evidence .dot.amber {
+      background: light-dark(#a66a00, #e5ad45);
+    }
+    @media (max-width: 720px) {
+      #ocx-release-evidence .title {
+        align-items: start;
+        flex-direction: column;
+        gap: 4px;
+      }
+      #ocx-release-evidence .flow {
+        grid-template-columns: 1fr;
+        gap: 4px;
+      }
+      #ocx-release-evidence .step {
+        min-height: 0;
+        padding-left: 10px;
+        border-top: 0;
+        border-left: 3px solid light-dark(#11875d, #44d49f);
+      }
+      #ocx-release-evidence .step:not(:last-child)::after {
+        content: "↓";
+        right: 8px;
+        top: auto;
+        bottom: -12px;
+      }
+      #ocx-release-evidence .proofs {
+        grid-template-columns: 1fr 1fr;
+      }
+      #ocx-release-evidence .lanes {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+
+  <div class="title">
+    <h2>OpenCodex 1.4.2 — evidence chain</h2>
+    <p>exact SHA 529bb6a9c0ab2650f883e88c9373002ed1eb14f7</p>
+  </div>
+
+  <div class="flow" aria-label="Release evidence chain">
+    <div class="step">
+      <b>Source</b><span>PR #207 + #208 merged</span><span>0 open PRs</span>
+    </div>
+    <div class="step">
+      <b>Verify</b><span>11/11 platform jobs</span
+      ><span>6,858 local tests passed</span>
+    </div>
+    <div class="step">
+      <b>Publish</b><span>npm · GitHub · Homebrew</span
+      ><span>release run 34196583300</span>
+    </div>
+    <div class="step">
+      <b>Artifact</b><span>immutable GHCR digest</span
+      ><span>container run 34196586065</span>
+    </div>
+    <div class="step">
+      <b>Live fleet</b><span>deploy run 34197003090</span
+      ><span>Azure + AWS path verified</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Observed production proof</h3>
+    <div class="proofs">
+      <div class="proof">
+        <strong>200</strong><span>/healthz · version 1.4.2 · exact SHA</span>
+      </div>
+      <div class="proof">
+        <strong>200 / 401</strong
+        ><span>/v1/models authenticated / unauthenticated</span>
+      </div>
+      <div class="proof">
+        <strong>85</strong><span>authenticated models returned</span>
+      </div>
+      <div class="proof">
+        <strong>200</strong
+        ><span>/api/storage · 7 buckets · no scan error</span>
+      </div>
+      <div class="proof">
+        <strong>4 / 4</strong><span>dashboard assets returned 200</span>
+      </div>
+      <div class="proof">
+        <strong>Bun 1.4.0</strong><span>observed inside live container</span>
+      </div>
+      <div class="proof">
+        <strong>0:1000:640</strong><span>runtime token owner:group:mode</span>
+      </div>
+      <div class="proof">
+        <strong>PASS</strong><span>AWS fleet → Tailnet → central proxy</span>
+      </div>
+    </div>
+    <div class="digest">
+      ghcr.io/groeponline/opencodex@sha256:860790c2e9208bc0556b30ad696905b19879ad112f21721d12d84dc4c1a83517
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Verification depth</h3>
+    <div class="proofs">
+      <div class="proof">
+        <strong>11 / 11</strong
+        ><span>Linux, macOS, Windows, installs, security, workflow lint</span>
+      </div>
+      <div class="proof">
+        <strong>6,858 / 0</strong
+        ><span>local pass / fail · 5 environment skips</span>
+      </div>
+      <div class="proof">
+        <strong>17</strong
+        ><span
+          >storage worker parity, lifecycle, timeout, zero-write tests</span
+        >
+      </div>
+      <div class="proof">
+        <strong>156</strong><span>documentation pages built</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Worktree disposition</h3>
+    <div class="lanes">
+      <div class="lane">
+        <b>Removed — 13 completed worktrees · ≈5.2 GiB</b
+        ><span
+          >Includes cooperative-storage-scan, fleet-pipeline-hardening,
+          pr195-tool-wire, release-141-verified and release-142-storage.</span
+        ><span>Branches and commits remain recoverable.</span>
+      </div>
+      <div class="lane preserved">
+        <b>Preserved — 4 visible historical worktrees</b
+        ><span
+          >macos-platform-repair, pr193-client-artifact, pr194-claude-tunnel,
+          pr197-gui.</span
+        ><span
+          >Retained because their histories are non-equivalent; no
+          inference-based deletion.</span
+        >
+      </div>
+    </div>
+    <div class="legend">
+      <span><i class="dot"></i>verified / integrated / safely removed</span
+      ><span
+        ><i class="dot amber"></i>preserved for explicit historical review</span
+      >
+    </div>
+  </div>
+</div>
