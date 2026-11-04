@@ -87,12 +87,26 @@ export function buildWinswXml(entry: WinswEntry, env: NodeJS.ProcessEnv = proces
   })();
   // Services never bake `--port 0` (parsePortOption rejects it); treat as default.
   const safeListenPort = listenPort > 0 && listenPort <= 65535 ? listenPort : 10100;
+  // A key is trusted only if WinSW explicitly bakes it or it was present in
+  // the installer environment. Never whitelist absent optional home overrides.
+  const systemEnvKeys = ["USERPROFILE", "APPDATA", "LOCALAPPDATA", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT"];
+  const inheritedSystemKeys = systemEnvKeys.filter(name =>
+    Object.entries(env).some(([key, value]) => key.toUpperCase() === name && typeof value === "string" && value !== ""),
+  );
+  const trustedEnvNames = [
+    "PATH",
+    ...inheritedSystemKeys,
+    ...(env.CODEX_HOME?.trim() ? ["CODEX_HOME"] : []),
+    ...(env.OPENCODEX_HOME?.trim() ? ["OPENCODEX_HOME"] : []),
+    "OCX_API_TOKEN_FILE",
+  ];
   const envLines = [
     `  <env name="OCX_SERVICE" value="1"/>`,
     `  <env name="OCX_API_TOKEN_FILE" value="${xmlEscape(serviceApiTokenFilePath())}"/>`,
     `  <env name="PATH" value="${xmlEscape(env.PATH ?? "")}"/>`,
     env.CODEX_HOME?.trim() ? `  <env name="CODEX_HOME" value="${xmlEscape(currentCodexHomeAbsolute())}"/>` : null,
     env.OPENCODEX_HOME?.trim() ? `  <env name="OPENCODEX_HOME" value="${xmlEscape(getConfigDir())}"/>` : null,
+    `  <env name="OCX_PRE_BUN_TRUSTED_ENV" value="${trustedEnvNames.join(",")}"/>`,
   ].filter((line): line is string => Boolean(line));
   return `<?xml version="1.0" encoding="UTF-8"?>
 <service>
@@ -114,8 +128,7 @@ ${envLines.join("\n")}
     <user>${xmlEscape(user)}</user>
     <allowservicelogon>true</allowservicelogon>
   </serviceaccount>
-      <env name="OCX_PRE_BUN_TRUSTED_ENV" value="PATH,USERPROFILE,APPDATA,LOCALAPPDATA,SYSTEMROOT,WINDIR,COMSPEC,PATHEXT,CODEX_HOME,OPENCODEX_HOME,OCX_API_TOKEN_FILE" />
-    </service>
+</service>
 `;
 }
 
