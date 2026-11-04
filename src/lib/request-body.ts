@@ -85,6 +85,29 @@ export async function readJsonBodyCapped<T = unknown>(
 }
 
 /**
+ * Capped raw-text read for callers that need the undecoded body (for example a
+ * cache probe that rebuilds the Request rather than parsing it). Same streamed
+ * cap semantics as {@link readJsonBodyCapped}: a declared `content-length` over
+ * the cap fails fast without consuming the stream, streamed bytes stay
+ * authoritative, and over-cap throws {@link RequestBodyTooLargeError}.
+ */
+export async function readTextBodyCapped(
+  req: Request,
+  maxBytes: number = JSON_REQUEST_BODY_MAX_BYTES,
+): Promise<string> {
+  const declared = Number(req.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    throw new RequestBodyTooLargeError(maxBytes);
+  }
+  const chunks = await readRequestBodyChunks(req, maxBytes);
+  const decoder = new TextDecoder();
+  let text = "";
+  for (const chunk of chunks) text += decoder.decode(chunk, { stream: true });
+  text += decoder.decode();
+  return text;
+}
+
+/**
  * Tolerant variant for sites that treated `req.json().catch(() => fallback)` as
  * "no usable body": unreadable or malformed JSON yields `fallback`, but an
  * over-cap body still throws {@link RequestBodyTooLargeError} so callers can

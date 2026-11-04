@@ -457,7 +457,7 @@ describe("GitHub Actions hardening", () => {
     );
     expect(upload?.["continue-on-error"]).toBe(true);
     expect(upload?.uses).toBe(
-      "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+      "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
     );
     expect(upload?.with).toEqual({
       name: "test-coverage-ubuntu-shard-1",
@@ -829,7 +829,7 @@ describe("GitHub Actions hardening", () => {
       'echo "image_run_id=${image_run_id}" >> "$GITHUB_OUTPUT"',
     );
     expect(download.uses).toBe(
-      "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+      "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
     );
     expect(download.with?.name).toBe("release-image");
     expect(download.with?.repository).toBe("${{ github.repository }}");
@@ -3463,7 +3463,7 @@ describe("GitHub Actions hardening", () => {
       "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
     );
     expect(workflow).toContain(
-      "withastro/action@3eafd002e65cc31b4f0eae0bb05450d521562247",
+      "withastro/action@a8b97df764791eb61fbf3338ef713b0e61ae05c5",
     );
     expect(workflow).toContain(
       "actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346",
@@ -4097,7 +4097,7 @@ describe("GitHub Actions hardening", () => {
       (step) => step.name === "Upload immutable release image identity",
     );
     expect(upload?.uses).toBe(
-      "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+      "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
     );
     expect(upload?.if).toBe("startsWith(github.ref, 'refs/tags/v')");
     expect(upload?.with).toMatchObject({

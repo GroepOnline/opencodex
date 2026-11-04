@@ -2151,8 +2151,19 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     adapter: "openai-chat",
     authKind: "key",
     freeTier: true,
-    // OpenAI-compatible /v1/models is not supported (HTTP 405); catalog search is a different API.
-    liveModels: false,
+    // OpenAI-compatible /v1/models is not supported (HTTP 405); discovery uses the account's
+    // ai/models/search catalog instead — a sibling of the {account_id}-resolved base path, so
+    // the relative path inherits whichever account the operator configured. Rows carry the real
+    // id in `name` under a `result` envelope, and only "Text Generation" tasks are chat-callable.
+    liveModels: true,
+    modelDiscovery: {
+      path: "../models/search",
+      envelopeKeys: ["result"],
+      idField: "name",
+      filter: {
+        allOf: [{ path: ["task", "name"], equalsAny: ["Text Generation"] }],
+      },
+    },
     dashboardUrl: "https://dash.cloudflare.com/?to=/:account/ai/workers-ai",
     defaultModel: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
     models: [
@@ -2165,17 +2176,49 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "@cf/moonshotai/kimi-k2.7-code",
       "@cf/qwen/qwq-32b",
     ],
-    // Live-verified 2026-10-18 against developers.cloudflare.com/workers-ai/models/*.
-    // These are host caps (llama-3.3-70b and qwq-32b are 24k on Workers AI).
+    // Live-verified 2026-11-03 against ai/models/search `context_window` properties — these are
+    // Workers AI host caps, not the upstream vendors' model cards (llama-3.3-70b and qwq-32b
+    // are 24k here, gemma-7b-lora just 3.5k).
     modelContextWindows: {
+      "@cf/aisingapore/gemma-sea-lion-v4-27b-it": 128_000,
+      "@cf/cloudflare/clairic": 65_536,
+      "@cf/cloudflare/clef": 65_536,
+      "@cf/cloudflare/clef-flash": 24_576,
+      "@cf/cloudflare/clef-omni": 65_536,
+      "@cf/daily-co/phonellm-mini-alpha-2": 262_140,
+      "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b": 80_000,
+      "@cf/deepseek-ai/deepseek-v4-flash-0731": 1_048_576,
+      "@cf/deepseek-ai/deepseek-v4-pro-0813": 1_048_576,
+      "@cf/deepseek-ai/deepseek-v4.1-flash-1017": 1_048_576,
+      "@cf/google/gemma-2b-it-lora": 8_192,
+      "@cf/google/gemma-4-26b-a4b-it": 256_000,
+      "@cf/google/gemma-7b-it-lora": 3_500,
+      "@cf/ibm-granite/granite-4.0-h-micro": 131_000,
+      "@cf/meta-llama/llama-2-7b-chat-hf-lora": 8_192,
+      "@cf/meta/llama-3.1-8b-instruct-fp8": 32_000,
+      "@cf/meta/llama-3.2-11b-vision-instruct": 128_000,
+      "@cf/meta/llama-3.2-1b-instruct": 60_000,
+      "@cf/meta/llama-3.2-3b-instruct": 80_000,
       "@cf/meta/llama-3.3-70b-instruct-fp8-fast": 24_000,
+      "@cf/meta/llama-4-scout-17b-16e-instruct": 131_000,
+      "@cf/meta/llama-guard-3-8b": 131_072,
+      "@cf/mistral/mistral-7b-instruct-v0.2-lora": 15_000,
+      "@cf/mistralai/mistral-small-3.1-24b-instruct": 128_000,
+      "@cf/moonshotai/kimi-k2.6": 262_144,
+      "@cf/moonshotai/kimi-k2.7-code": 262_144,
+      "@cf/nvidia/nemotron-3-120b-a12b": 256_000,
       "@cf/openai/gpt-oss-120b": 128_000,
       "@cf/openai/gpt-oss-20b": 128_000,
-      "@cf/zai-org/glm-5.3-flash": 1_048_576,
-      "@cf/zai-org/glm-5.3": 1_048_576,
-      "@cf/deepseek-ai/deepseek-v4-pro-0813": 1_048_576,
-      "@cf/moonshotai/kimi-k2.7-code": 262_144,
+      "@cf/qwen/qwen2.5-coder-32b-instruct": 32_768,
+      "@cf/qwen/qwen3-30b-a3b-fp8": 32_768,
+      "@cf/qwen/qwen3.8-27b": 262_144,
       "@cf/qwen/qwq-32b": 24_000,
+      "@cf/swiss-ai/apertus-v1.5-8b": 262_144,
+      "@cf/utter-project/eurollm-9b-it": 32_000,
+      "@cf/zai-org/glm-4.7-flash": 131_072,
+      "@cf/zai-org/glm-5.2": 262_144,
+      "@cf/zai-org/glm-5.3": 1_048_576,
+      "@cf/zai-org/glm-5.3-flash": 1_048_576,
     },
     // Reasoning ladders from the per-model docs pages (2026-10-18):
     // gpt-oss: reasoning_effort low|medium(default)|high. glm-5.3: max|high|low,

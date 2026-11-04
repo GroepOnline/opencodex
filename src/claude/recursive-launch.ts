@@ -162,6 +162,7 @@ export function prepareRecursiveClaudeLaunch(
   }
 
   const env: RecursiveClaudeEnv = { ...base, [REAL_COMMAND_ENV]: realCommand };
+  appendTrustedLaunchEnvMarker(env, REAL_COMMAND_ENV);
   const key = installationKey(platform, realCommand, deps.runtimePath, deps.entryPath);
   const shimDir = pathApi.join(deps.configDir, "claude-launcher", key);
   const shimPath = pathApi.join(shimDir, platform === "win32" ? "claude.cmd" : "claude");

@@ -181,7 +181,7 @@ export function buildClaudeEnv(
   // the user's Claude login. Only inject a token when the proxy actually requires an
   // admission key; otherwise Claude Code keeps its own OAuth and sends it to us —
   // native claude models then pass through verbatim (see server/claude-messages.ts).
-  if ((config.apiKeys?.length ?? 0) > 0) {
+  if ((config.apiKeys?.length ?? 0) > 0 && isManagedClaudeAdmissionRoute(env.ANTHROPIC_BASE_URL, port)) {
     setDefault("ANTHROPIC_AUTH_TOKEN", config.apiKeys![0].key);
   }
   // Detection reads the SANITIZED launch env — the exact object spawned below — so the

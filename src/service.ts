@@ -1216,9 +1216,6 @@ export function buildWindowsServiceScript(
   port = resolveServiceListenPort(),
 ): string {
   const { bun, cli } = entry;
-if not defined OCX_PRE_BUN_TRUSTED_ENV (
-  for /f "delims=" %%V in ('powershell.exe -NoProfile -Command "(Get-ChildItem Env: | ForEach-Object Name) -join ','"') do set "OCX_PRE_BUN_TRUSTED_ENV=%%V"
-)
   const bunRuntime = durableBunRuntime();
   const path = process.env.PATH ?? "";
   const lines = [
@@ -1242,6 +1239,10 @@ if not defined OCX_PRE_BUN_TRUSTED_ENV (
     'if exist "%OCX_API_TOKEN_FILE%" (',
     '  set /p OPENCODEX_API_AUTH_TOKEN=<"%OCX_API_TOKEN_FILE%"',
     ")",
+    "if not defined OCX_PRE_BUN_TRUSTED_ENV (",
+    `  for /f "delims=" %%V in ('powershell.exe -NoProfile -Command "(Get-ChildItem Env: | ForEach-Object Name) -join ','"') do set "OCX_PRE_BUN_TRUSTED_ENV=%%V"`,
+    ")",
+    'set "OCX_PRE_BUN_TRUSTED_ENV=%OCX_PRE_BUN_TRUSTED_ENV%,PATH,CODEX_HOME,OPENCODEX_HOME,OCX_API_TOKEN_FILE,OPENCODEX_API_AUTH_TOKEN"',
     ":loop",
     '>>"%OCX_SERVICE_LOG%" echo [%DATE% %TIME%] opencodex service wrapper start',
     '>>"%OCX_SERVICE_LOG%" echo bun="%OCX_BUN%"',

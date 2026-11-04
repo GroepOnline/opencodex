@@ -32,6 +32,15 @@ describe("maskClientAddress", () => {
     expect(maskClientAddress("0:0:0:0:0:ffff:10.0.0.9")).toBe(
       "::ffff:10.0.0.0",
     );
+    // Zero-padded spellings of the same mapped address take the same branch —
+    // a "0000" hextet must not drop the row into the generic /48 erase.
+    expect(maskClientAddress("0000:0000:0000:0000:0000:ffff:1.2.3.4")).toBe(
+      "::ffff:1.2.3.0",
+    );
+    expect(maskClientAddress("0:00:000:0:0000:ffff:10.0.0.9")).toBe(
+      "::ffff:10.0.0.0",
+    );
+    expect(maskClientAddress("0000::FFFF:10.0.0.9")).toBe("::ffff:10.0.0.0");
     // v4-translated (NAT64) is not v4-mapped: the /48 truncation applies.
     expect(maskClientAddress("64:ff9b::1.2.3.4")).toBe("64:ff9b:0::");
   });

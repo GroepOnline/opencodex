@@ -80,6 +80,7 @@ export function isProtectedLaunchEnvName(name) {
 
 export function initializeTrustedLaunchEnv(env = process.env) {
   const names = parseTrustedLaunchEnvMarker(env?.[TRUSTED_LAUNCH_ENV_MARKER]);
+  // shortcut: direct Bun has no pre-dotenv snapshot; use the Node launcher in untrusted projects.
   if (names === null) return null;
 
   for (const name of Object.keys(env)) {

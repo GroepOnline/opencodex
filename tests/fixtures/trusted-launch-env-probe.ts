@@ -7,7 +7,7 @@ import {
 console.log(JSON.stringify({
   adminToken: process.env.OPENCODEX_ADMIN_AUTH_TOKEN ?? null,
   apiToken: process.env.OPENCODEX_API_AUTH_TOKEN ?? null,
-  opencodeHome: process.env.OPENCODEX_HOME ?? null,
+  opencodexHome: process.env.OPENCODEX_HOME ?? null,
   codexCliPath: process.env.CODEX_CLI_PATH ?? null,
   bunPath: process.env.OPENCODEX_BUN_PATH ?? null,
   tokenFile: process.env.OCX_API_TOKEN_FILE ?? null,

@@ -356,7 +356,7 @@ function normalizedStringList(value: unknown, maxItems = 32, maxLength = 64): st
 function modelCapabilities(item: ProviderModelsApiItem): string[] | undefined {
   const metadata = plainRecord(item.metadata);
   const metadataCapabilities = metadata?.capabilities;
-  const capabilityRecord = plainRecord(metadataCapabilities) ?? plainRecord(item.capabilities);
+  const capabilityRecord = catalogItemCapabilityRecord(item);
   const out = new Set<string>();
   for (const list of [item.capabilities, item.features, item.supported_features, metadataCapabilities]) {
     for (const capability of normalizedStringList(list) ?? []) out.add(capability);
@@ -386,7 +386,7 @@ function modelInputModalities(
   capabilities: readonly string[] | undefined,
 ): string[] | undefined {
   const metadata = plainRecord(item.metadata);
-  const capabilityRecord = plainRecord(metadata?.capabilities) ?? plainRecord(item.capabilities);
+  const capabilityRecord = catalogItemCapabilityRecord(item);
   const explicit = normalizedStringList(
     item.input_modalities
       ?? item.modalities
@@ -403,9 +403,59 @@ function modelInputModalities(
   return undefined;
 }
 
+/** Cloudflare ai/models/search rows carry capability hints as {property_id, value} pairs. */
+function catalogItemProperties(item: ProviderModelsApiItem): Record<string, unknown> | undefined {
+  const raw = item.properties;
+  if (!Array.isArray(raw)) return undefined;
+  const out: Record<string, unknown> = {};
+  for (let i = 0; i < raw.length && i < 128; i++) {
+    const row = plainRecord(raw[i]);
+    if (!row) continue;
+    const key = row.property_id;
+    if (typeof key === "string" && key.length > 0 && key.length <= 64 && out[key] === undefined) {
+      out[key] = row.value;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Mirrors Cloudflare boolean capability properties onto canonical capability-record fields. */
+function catalogItemPropertyCapabilities(item: ProviderModelsApiItem): Record<string, unknown> | undefined {
+  const properties = catalogItemProperties(item);
+  if (!properties) return undefined;
+  const out: Record<string, unknown> = {};
+  for (const [propertyId, capability] of [
+    ["vision", "vision"],
+    ["function_calling", "tools"],
+    ["reasoning", "reasoning"],
+  ] as const) {
+    if (properties[propertyId] === true || properties[propertyId] === "true") {
+      out[capability] = true;
+    } else if (properties[propertyId] === false || properties[propertyId] === "false") {
+      out[capability] = false;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function catalogItemCapabilityRecord(item: ProviderModelsApiItem): Record<string, unknown> | undefined {
+  return plainRecord(plainRecord(item.metadata)?.capabilities) ?? plainRecord(item.capabilities)
+    ?? catalogItemPropertyCapabilities(item);
+}
+
+function positiveCatalogPropertyNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) return value;
+  if (typeof value === "string" && /^\d{1,9}$/.test(value)) {
+    const parsed = Number(value);
+    return parsed > 0 ? parsed : undefined;
+  }
+  return undefined;
+}
+
 export function catalogHintsFromModelsApiItem(providerName: string, item: ProviderModelsApiItem): Partial<CatalogModel> {
   const metadata = plainRecord(item.metadata);
-  const capabilityRecord = plainRecord(metadata?.capabilities) ?? plainRecord(item.capabilities);
+  const properties = catalogItemProperties(item);
+  const capabilityRecord = catalogItemCapabilityRecord(item);
   const limits = plainRecord(metadata?.limits);
   const contextWindow =
     positiveSafeInteger(
@@ -415,8 +465,13 @@ export function catalogHintsFromModelsApiItem(providerName: string, item: Provid
       item.context_size,
       item.max_model_len,
       item.max_context_length,
+      positiveCatalogPropertyNumber(properties?.context_window),
     );
-  const maxInputTokens = positiveSafeInteger(limits?.max_input_tokens, item.max_input_tokens);
+  const maxInputTokens = positiveSafeInteger(
+    limits?.max_input_tokens,
+    item.max_input_tokens,
+    positiveCatalogPropertyNumber(properties?.max_input_tokens),
+  );
   const maxOutputTokens = positiveSafeInteger(
     limits?.max_output_tokens,
     item.max_output_tokens,

@@ -379,6 +379,58 @@ describe("registry-owned provider model discovery", () => {
   });
 });
 
+describe("cloudflare-workers-ai catalog discovery", () => {
+  const cfConfig: OcxProviderConfig = {
+    adapter: "openai-chat",
+    baseUrl: "https://api.cloudflare.com/client/v4/accounts/acc123/ai/v1",
+    authMode: "key",
+  };
+
+  test("resolves the sibling ai/models/search catalog against the configured account", () => {
+    const request = buildModelsRequest(cfConfig, "cf-key", "cloudflare-workers-ai");
+    expect(request.url).toBe("https://api.cloudflare.com/client/v4/accounts/acc123/ai/models/search");
+    expect(request.headers.Authorization).toBe("Bearer cf-key");
+  });
+
+  test("extracts rows by `name`, keeps Text Generation tasks, drops other tasks", () => {
+    const discovery = resolveProviderModelDiscovery("cloudflare-workers-ai", cfConfig);
+    const result = extractProviderModelItems({
+      success: true,
+      errors: [],
+      result: [
+        {
+          id: "fe8904cf",
+          name: "@cf/zai-org/glm-5.3",
+          task: { name: "Text Generation" },
+          properties: [{ property_id: "context_window", value: "1048576" }],
+        },
+        { id: "aa11", name: "@cf/black-forest-labs/flux-1-schnell", task: { name: "Text-to-Image" } },
+        { id: "bb22", name: "@cf/baai/bge-base-en-v1.5", task: { name: "Text Embeddings" } },
+      ],
+    }, discovery);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.items.map(item => item.id)).toEqual(["@cf/zai-org/glm-5.3"]);
+  });
+
+  test("maps {property_id,value} pairs onto context, modalities, and capabilities", () => {
+    const hints = catalogHintsFromModelsApiItem("cloudflare-workers-ai", {
+      id: "@cf/meta/llama-4-scout-17b-16e-instruct",
+      properties: [
+        { property_id: "context_window", value: "131000" },
+        { property_id: "vision", value: "true" },
+        { property_id: "function_calling", value: "true" },
+        { property_id: "reasoning", value: "false" },
+      ],
+    });
+    expect(hints.contextWindow).toBe(131_000);
+    expect(hints.inputModalities).toEqual(["text", "image"]);
+    expect(hints.capabilities).toContain("vision");
+    expect(hints.capabilities).toContain("tools");
+    expect(hints.capabilities).not.toContain("reasoning");
+  });
+});
+
 describe("same-named custom provider preservation", () => {
   test("keeps an opted-in fixed key-provider collision on its configured destination and adapter", async () => {
     await withTogetherDiscovery({}, () => {
