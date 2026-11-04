@@ -8,10 +8,10 @@ mode, and an optional model list. Providers live under `providers` in `~/.openco
 
 ## OpenAI account modes
 
-| Provider id | Use | Credential/account rule |
-| --- | --- | --- |
-| `openai` | Codex login | Pool(default) selects main plus added accounts; Direct uses the current caller/main login only. |
-| `openai-apikey` | OpenAI API | Configured API key/key pool only; never reads Codex accounts. |
+| Provider id     | Use         | Credential/account rule                                                                         |
+| --------------- | ----------- | ----------------------------------------------------------------------------------------------- |
+| `openai`        | Codex login | Pool(default) selects main plus added accounts; Direct uses the current caller/main login only. |
+| `openai-apikey` | OpenAI API  | Configured API key/key pool only; never reads Codex accounts.                                   |
 
 Use bare `gpt-5.6-sol` with the Pool/Direct option on the Providers page, or
 `openai-apikey/gpt-5.6-sol` for API. The credential routes never fall through into one another.
@@ -33,11 +33,11 @@ is retained once at `~/.opencodex/config.json.pre-openai-tiers-v2.bak`; restore 
 Provider configs accept three `authMode` values (`key` is the default). The built-in registry also
 labels local presets separately; those normally omit both `authMode` and `apiKey`.
 
-| `authMode` | How it authenticates | Used by |
-| --- | --- | --- |
-| `key` | Sends your API key (`Authorization: Bearer …`, or `x-api-key` / `api-key` per adapter). The key may be a literal or an `${ENV_VAR}` reference. | Most providers. |
-| `forward` | Relays **your incoming Codex auth headers** verbatim to the provider — no key stored. This is the ChatGPT-login passthrough. | OpenAI (`openai-responses` adapter). |
-| `oauth` | Resolves a stored OAuth access token (auto-refreshed before expiry) and uses it as the bearer key. | xAI, Anthropic, Kimi, Kiro, Google Antigravity, Cursor, GitHub Copilot. |
+| `authMode` | How it authenticates                                                                                                                           | Used by                                                                 |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `key`      | Sends your API key (`Authorization: Bearer …`, or `x-api-key` / `api-key` per adapter). The key may be a literal or an `${ENV_VAR}` reference. | Most providers.                                                         |
+| `forward`  | Relays **your incoming Codex auth headers** verbatim to the provider — no key stored. This is the ChatGPT-login passthrough.                   | OpenAI (`openai-responses` adapter).                                    |
+| `oauth`    | Resolves a stored OAuth access token (auto-refreshed before expiry) and uses it as the bearer key.                                             | xAI, Anthropic, Kimi, Kiro, Google Antigravity, Cursor, GitHub Copilot. |
 
 ## 1. ChatGPT login (forward / passthrough)
 
@@ -73,22 +73,22 @@ ocx login xai          # xAI Grok
 ocx login anthropic    # Anthropic Claude (Pro/Max)
 ocx login kimi         # Moonshot Kimi
 ocx login kiro         # import kiro-cli credentials (or token fallback)
-ocx login google-antigravity
+ocx login google-antigravity  # imports a signed-in `agy` session, else browser OAuth
 ocx login cursor       # standalone Cursor PKCE login
 ocx login github-copilot  # GitHub device flow → Copilot token (Copilot Pro/Business)
 ocx login chatgpt      # standalone ChatGPT OAuth login
 ocx logout <provider>
 ```
 
-| Provider | Adapter | Base URL | Notes |
-| --- | --- | --- | --- |
-| `xai` | `openai-chat` | `https://api.x.ai/v1` | Live-first Grok catalog; `grok-4.5` is the fallback default. |
-| `anthropic` | `anthropic` | `https://api.anthropic.com` | Claude models; live model list fetched from `/v1/models`. |
-| `kimi` | `openai-chat` | `https://api.kimi.com/coding/v1` | Kimi K2.7/K2.6/K2.5 coding models. |
-| `kiro` | `kiro` | `https://runtime.us-east-1.kiro.dev` | Initial login imports the installed, signed-in `kiro-cli` session (install with `curl -fsSL https://cli.kiro.dev/install | bash`, then run `kiro-cli login`). **Add account** logs `kiro-cli` out, starts a fresh browser login that switches the account used by `kiro-cli`, and stores account-scoped profile metadata. Existing OpenCodex accounts are preserved, and cancellation or failure restores the previous `kiro-cli` session. |
-| `google-antigravity` | `google` | `https://daily-cloudcode-pa.googleapis.com` | Google OAuth over the Cloud Code Assist wire. |
-| `cursor` | `cursor` | `https://api2.cursor.sh` | Experimental PKCE login, live HTTP/2 transport, and account-filtered model discovery. |
-| `github-copilot` | `openai-chat` | `https://api.githubcopilot.com` | Experimental. GitHub device flow + `copilot_internal` exchange (VS Code OAuth client). Requires an active Copilot subscription; not an official third-party API. |
+| Provider             | Adapter       | Base URL                                    | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------- | ------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `xai`                | `openai-chat` | `https://api.x.ai/v1`                       | Live-first Grok catalog; `grok-4.5` is the fallback default.                                                                                                                                                                                                                                                                                                                                                                          |
+| `anthropic`          | `anthropic`   | `https://api.anthropic.com`                 | Claude models; live model list fetched from `/v1/models`.                                                                                                                                                                                                                                                                                                                                                                             |
+| `kimi`               | `openai-chat` | `https://api.kimi.com/coding/v1`            | Kimi K2.7/K2.6/K2.5 coding models.                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `kiro`               | `kiro`        | `https://runtime.us-east-1.kiro.dev`        | Initial login imports the installed, signed-in `kiro-cli` session (install with `curl -fsSL https://cli.kiro.dev/install                                                                                                                                                                                                                                                                                                              | bash`, then run `kiro-cli login`). **Add account** logs `kiro-cli`out, starts a fresh browser login that switches the account used by`kiro-cli`, and stores account-scoped profile metadata. Existing OpenCodex accounts are preserved, and cancellation or failure restores the previous `kiro-cli` session. |
+| `google-antigravity` | `google`      | `https://daily-cloudcode-pa.googleapis.com` | Google OAuth over the Cloud Code Assist wire. Login **imports first**: a signed-in `agy` (Antigravity CLI) session at `~/.gemini/antigravity-cli/antigravity-oauth-token` is adopted without a browser round-trip — the refresh token is always exchanged and the Cloud Code Assist project re-discovered, so a stale on-disk access token is never persisted. **Add account** skips the import to choose a different Google account. |
+| `cursor`             | `cursor`      | `https://api2.cursor.sh`                    | Experimental PKCE login, live HTTP/2 transport, and account-filtered model discovery.                                                                                                                                                                                                                                                                                                                                                 |
+| `github-copilot`     | `openai-chat` | `https://api.githubcopilot.com`             | Experimental. GitHub device flow + `copilot_internal` exchange (VS Code OAuth client). Requires an active Copilot subscription; not an official third-party API.                                                                                                                                                                                                                                                                      |
 
 For the canonical Kimi Coding Plan presets (`kimi` account login and `kimi-code` API key),
 opencodex forwards only a caller-supplied stable `prompt_cache_key` to the Chat Completions request;
@@ -189,36 +189,36 @@ opencodex ships 54 built-in presets: 43 key-based, seven OAuth, three local, and
 ChatGPT-forward preset. The dashboard's **Add provider** picker opens a key provider's dashboard,
 validates the key, and stores it. Notable entries:
 
-| Provider | Base URL |
-| --- | --- |
-| **OpenAI (API key)** | `https://api.openai.com/v1` |
-| **Anthropic (API key)** | `https://api.anthropic.com` |
-| **OpenRouter** | `https://openrouter.ai/api/v1` |
-| **Ollama Cloud** | `https://ollama.com/v1` |
-| Google Gemini · Google Vertex AI | `https://generativelanguage.googleapis.com` · `https://aiplatform.googleapis.com` |
-| Azure OpenAI | `https://{resource}.openai.azure.com/openai` |
-| Umans AI · Neuralwatt | `https://api.code.umans.ai` · `https://api.neuralwatt.com/v1` |
-| Mistral | `https://api.mistral.ai/v1` |
-| MiniMax · MiniMax (CN) | `https://api.minimax.io/v1` · `https://api.minimaxi.com/v1` |
-| DeepSeek | `https://api.deepseek.com` |
-| Cerebras | `https://api.cerebras.ai/v1` |
-| Together | `https://api.together.xyz/v1` |
-| Fireworks | `https://api.fireworks.ai/inference/v1` |
-| Moonshot (Kimi API) · Kimi (coding) | `https://api.moonshot.ai/v1` · `https://api.kimi.com/coding/v1` |
-| Hugging Face | `https://router.huggingface.co/v1` |
-| NVIDIA NIM | `https://integrate.api.nvidia.com/v1` |
-| Z.AI (GLM Coding) | `https://api.z.ai/api/coding/paas/v4` |
-| Zhipu AI (BigModel) | `https://open.bigmodel.cn/api/paas/v4` |
-| Qwen Cloud | Token plan (default): `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1` · Pay as you go: `https://dashscope.aliyuncs.com/compatible-mode/v1` · or Custom |
-| Tencent Cloud Coding Plan | `https://api.lkeap.cloud.tencent.com/coding/v3` |
-| SiliconFlow | `https://api.siliconflow.cn/v1` |
-| Xiaomi MiMo | `https://api.xiaomimimo.com/v1` |
-| Xiaomi MiMo Token Plan | `https://token-plan-cn.xiaomimimo.com/v1` |
-| Kilo | `https://api.kilo.ai/api/gateway` |
-| GitLab Duo | `https://cloud.gitlab.com/ai/v1/proxy/openai/v1` |
-| Cloudflare AI Gateway | `https://gateway.ai.cloudflare.com/v1/{account-id}/{gateway}/anthropic` |
-| **OmniRoute** | `https://api.omniroute.online/v1` (self-host: `http://127.0.0.1:20128/v1` + `allowPrivateNetwork: true`) |
-| …and more | opencode zen, Vercel AI Gateway, Venice, NanoGPT, Synthetic, Qianfan, Alibaba, Parallel, ZenMux, LiteLLM |
+| Provider                            | Base URL                                                                                                                                                                        |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **OpenAI (API key)**                | `https://api.openai.com/v1`                                                                                                                                                     |
+| **Anthropic (API key)**             | `https://api.anthropic.com`                                                                                                                                                     |
+| **OpenRouter**                      | `https://openrouter.ai/api/v1`                                                                                                                                                  |
+| **Ollama Cloud**                    | `https://ollama.com/v1`                                                                                                                                                         |
+| Google Gemini · Google Vertex AI    | `https://generativelanguage.googleapis.com` · `https://aiplatform.googleapis.com`                                                                                               |
+| Azure OpenAI                        | `https://{resource}.openai.azure.com/openai`                                                                                                                                    |
+| Umans AI · Neuralwatt               | `https://api.code.umans.ai` · `https://api.neuralwatt.com/v1`                                                                                                                   |
+| Mistral                             | `https://api.mistral.ai/v1`                                                                                                                                                     |
+| MiniMax · MiniMax (CN)              | `https://api.minimax.io/v1` · `https://api.minimaxi.com/v1`                                                                                                                     |
+| DeepSeek                            | `https://api.deepseek.com`                                                                                                                                                      |
+| Cerebras                            | `https://api.cerebras.ai/v1`                                                                                                                                                    |
+| Together                            | `https://api.together.xyz/v1`                                                                                                                                                   |
+| Fireworks                           | `https://api.fireworks.ai/inference/v1`                                                                                                                                         |
+| Moonshot (Kimi API) · Kimi (coding) | `https://api.moonshot.ai/v1` · `https://api.kimi.com/coding/v1`                                                                                                                 |
+| Hugging Face                        | `https://router.huggingface.co/v1`                                                                                                                                              |
+| NVIDIA NIM                          | `https://integrate.api.nvidia.com/v1`                                                                                                                                           |
+| Z.AI (GLM Coding)                   | `https://api.z.ai/api/coding/paas/v4`                                                                                                                                           |
+| Zhipu AI (BigModel)                 | `https://open.bigmodel.cn/api/paas/v4`                                                                                                                                          |
+| Qwen Cloud                          | Token plan (default): `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1` · Pay as you go: `https://dashscope.aliyuncs.com/compatible-mode/v1` · or Custom |
+| Tencent Cloud Coding Plan           | `https://api.lkeap.cloud.tencent.com/coding/v3`                                                                                                                                 |
+| SiliconFlow                         | `https://api.siliconflow.cn/v1`                                                                                                                                                 |
+| Xiaomi MiMo                         | `https://api.xiaomimimo.com/v1`                                                                                                                                                 |
+| Xiaomi MiMo Token Plan              | `https://token-plan-cn.xiaomimimo.com/v1`                                                                                                                                       |
+| Kilo                                | `https://api.kilo.ai/api/gateway`                                                                                                                                               |
+| GitLab Duo                          | `https://cloud.gitlab.com/ai/v1/proxy/openai/v1`                                                                                                                                |
+| Cloudflare AI Gateway               | `https://gateway.ai.cloudflare.com/v1/{account-id}/{gateway}/anthropic`                                                                                                         |
+| **OmniRoute**                       | `https://api.omniroute.online/v1` (self-host: `http://127.0.0.1:20128/v1` + `allowPrivateNetwork: true`)                                                                        |
+| …and more                           | opencode zen, Vercel AI Gateway, Venice, NanoGPT, Synthetic, Qianfan, Alibaba, Parallel, ZenMux, LiteLLM                                                                        |
 
 Most use the `openai-chat` adapter with a bearer key; a few that expose only an Anthropic-compatible
 endpoint (e.g. **Cloudflare AI Gateway**) use the `anthropic` adapter (`x-api-key`).
@@ -265,12 +265,12 @@ new-session behavior.
 GPT-5.6 Sol/Terra/Luna are seeded in provider fallback lists so `ocx sync` can keep the models
 visible even while live catalogs lag:
 
-| Codex route | Seeded model ids | Codex-visible context |
-| --- | --- | --- |
-| Codex login (Pool or Direct) | `gpt-5.6-*` | 372,000 |
-| OpenAI (API key) | `openai-apikey/gpt-5.6-*` plus `*-pro` | 1,050,000 (922,000 max input) |
-| OpenRouter | `openrouter/openai/gpt-5.6-sol`, `openrouter/openai/gpt-5.6-terra`, `openrouter/openai/gpt-5.6-luna` | 1,050,000 |
-| Cursor | `cursor/gpt-5.6-sol`, `cursor/gpt-5.6-terra`, `cursor/gpt-5.6-luna` | 1,000,000 |
+| Codex route                  | Seeded model ids                                                                                     | Codex-visible context         |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------- | ----------------------------- |
+| Codex login (Pool or Direct) | `gpt-5.6-*`                                                                                          | 372,000                       |
+| OpenAI (API key)             | `openai-apikey/gpt-5.6-*` plus `*-pro`                                                               | 1,050,000 (922,000 max input) |
+| OpenRouter                   | `openrouter/openai/gpt-5.6-sol`, `openrouter/openai/gpt-5.6-terra`, `openrouter/openai/gpt-5.6-luna` | 1,050,000                     |
+| Cursor                       | `cursor/gpt-5.6-sol`, `cursor/gpt-5.6-terra`, `cursor/gpt-5.6-luna`                                  | 1,000,000                     |
 
 The native GPT-5.6 entries preserve the pinned upstream reasoning ladders (for example, Luna has
 `max` but no `ultra`). Routed entries use their provider metadata and reasoning mappings. All four
@@ -328,11 +328,11 @@ OmniRoute is a free OpenAI-compatible gateway preset (`omniroute/...` model ids)
 
 Point opencodex at a local OpenAI-compatible server — usually with a blank key:
 
-| Provider | Base URL |
-| --- | --- |
+| Provider       | Base URL                    |
+| -------------- | --------------------------- |
 | Ollama (local) | `http://localhost:11434/v1` |
-| vLLM | `http://localhost:8000/v1` |
-| LM Studio | `http://localhost:1234/v1` |
+| vLLM           | `http://localhost:8000/v1`  |
+| LM Studio      | `http://localhost:1234/v1`  |
 
 ## Any OpenAI-compatible endpoint
 

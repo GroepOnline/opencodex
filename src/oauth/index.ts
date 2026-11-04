@@ -1,26 +1,83 @@
-import type { KiroOAuthMetadata, OAuthController, OAuthCredentials } from "./types";
+import type {
+  KiroOAuthMetadata,
+  OAuthController,
+  OAuthCredentials,
+} from "./types";
 import { validateManualCallbackInput } from "./callback-server";
 import type { OcxConfig, OcxProviderConfig, RefreshPolicy } from "../types";
 import { loadConfig, resolveEnvValue, saveConfig } from "../config";
 import { maskEmail } from "../lib/privacy";
-import { KiroTokenRefreshError, environmentKiroRoutingMetadata, loginKiro, refreshKiroToken, settleKiroLoginTransaction } from "./kiro";
-import { applyExpiredAccountDisables, getAccountCredential, getAccountSet, removeAccount, saveAccountCredential, saveCredential, setActiveAccount, getCredential, credentialGeneration, createOAuthRefreshIntentLock, mergeAccountCredential, markAccountNeedsReauthIfGeneration, readOAuthRefreshIntent, writeOAuthRefreshIntent, clearOAuthRefreshIntent } from "./store";
+import {
+  KiroTokenRefreshError,
+  environmentKiroRoutingMetadata,
+  loginKiro,
+  refreshKiroToken,
+  settleKiroLoginTransaction,
+} from "./kiro";
+import {
+  applyExpiredAccountDisables,
+  getAccountCredential,
+  getAccountSet,
+  removeAccount,
+  saveAccountCredential,
+  saveCredential,
+  setActiveAccount,
+  getCredential,
+  credentialGeneration,
+  createOAuthRefreshIntentLock,
+  mergeAccountCredential,
+  markAccountNeedsReauthIfGeneration,
+  readOAuthRefreshIntent,
+  writeOAuthRefreshIntent,
+  clearOAuthRefreshIntent,
+} from "./store";
 import { isAccountDisabledForRouting } from "./account-expiry";
-import { loginXai, refreshXaiToken, XAI_LOCAL_CLI_DETACH_WARNING, XaiTokenRequestError } from "./xai";
-import { ANTHROPIC_OAUTH_BETA, AnthropicTokenError, loginAnthropic, refreshAnthropicToken } from "./anthropic";
+import {
+  loginXai,
+  refreshXaiToken,
+  XAI_LOCAL_CLI_DETACH_WARNING,
+  XaiTokenRequestError,
+} from "./xai";
+import {
+  ANTHROPIC_OAUTH_BETA,
+  AnthropicTokenError,
+  loginAnthropic,
+  refreshAnthropicToken,
+} from "./anthropic";
 import { loginKimi, refreshKimiToken } from "./kimi";
 import { loginChatGPT, refreshChatGPTToken } from "./chatgpt";
-import { loginAntigravity, refreshAntigravityToken } from "./google-antigravity";
+import {
+  loginAntigravity,
+  loginAntigravityWithImport,
+  refreshAntigravityToken,
+} from "./google-antigravity";
 import { loginCursor, refreshCursorToken } from "./cursor";
 import { autoEnableOAuthAccountPoolOnSecondAccount } from "./auto-enable-pool";
-import { loginGithubCopilot, refreshGithubCopilotToken, validateCopilotApiBaseUrl } from "./github-copilot";
-import { deriveOAuthDefaultModel, deriveOAuthProviderConfig } from "../providers/derive";
+import {
+  loginGithubCopilot,
+  refreshGithubCopilotToken,
+  validateCopilotApiBaseUrl,
+} from "./github-copilot";
+import {
+  deriveOAuthDefaultModel,
+  deriveOAuthProviderConfig,
+} from "../providers/derive";
 import { apiKeyPoolEntryId, sanitizeApiKeyValue } from "../providers/api-keys";
-import { effectiveGoogleMode, getProviderRegistryEntry, providerMatchesRegistryTransport } from "../providers/registry";
+import {
+  effectiveGoogleMode,
+  getProviderRegistryEntry,
+  providerMatchesRegistryTransport,
+} from "../providers/registry";
 import { resolveProviderModelDiscoveryUrl } from "../providers/model-discovery";
 import { resolveProviderTransport } from "../providers/xai-transport";
 import { globalProviderCredentialResolver } from "../provider-security/resolve";
-import { detectClaudeCodeToken, detectGrokCliToken, hasComparableGrokIdentity, isSameGrokIdentity, shouldAdoptGrokGeneration } from "./local-token-detect";
+import {
+  detectClaudeCodeToken,
+  detectGrokCliToken,
+  hasComparableGrokIdentity,
+  isSameGrokIdentity,
+  shouldAdoptGrokGeneration,
+} from "./local-token-detect";
 import { logOAuthEvent } from "./log";
 export {
   CODEX_HEALTH_UNAVAILABLE_NOTE,
@@ -41,7 +98,11 @@ export {
   type OAuthHealthEntry,
   type OAuthHealthLabel,
 } from "./health";
-export { OAUTH_REFRESH_LOCK_WAIT_MS, peekAuthStore, peekOAuthRefreshIntent } from "./store";
+export {
+  OAUTH_REFRESH_LOCK_WAIT_MS,
+  peekAuthStore,
+  peekOAuthRefreshIntent,
+} from "./store";
 import { codexAccountNamespaceProviderCollisionError } from "../codex/account-namespace-match";
 
 const REFRESH_SKEW_MS = 60_000;
@@ -55,15 +116,40 @@ export interface OAuthAccessSnapshot {
 }
 
 const tokenRefreshes = new Map<string, Promise<OAuthAccessSnapshot>>();
-const XAI_PERMANENT_FAILURE_TTL_MS=30_000;
-const permanentRefreshFailures=new Map<string,number>();
-interface XaiRefreshDeps { intentLock?:ReturnType<typeof createOAuthRefreshIntentLock>; now?:()=>number; afterPrePersistRead?:()=>void|Promise<void> }
-interface AnthropicRefreshDeps { intentLock?:ReturnType<typeof createOAuthRefreshIntentLock>; now?:()=>number; afterPrePersistRead?:()=>void|Promise<void> }
-interface GenericRefreshDeps { intentLock?:ReturnType<typeof createOAuthRefreshIntentLock>; afterPrePersistRead?:()=>void|Promise<void> }
-function verdictKey(p:string,a:string,c:OAuthCredentials){return `${p}\0${a}\0${credentialGeneration(c)}`;}
-function cached(p:string,a:string,c:OAuthCredentials,now:()=>number){const k=verdictKey(p,a,c),u=permanentRefreshFailures.get(k);if(u===undefined)return false;if(u<=now()){permanentRefreshFailures.delete(k);return false;}return true;}
+const XAI_PERMANENT_FAILURE_TTL_MS = 30_000;
+const permanentRefreshFailures = new Map<string, number>();
+interface XaiRefreshDeps {
+  intentLock?: ReturnType<typeof createOAuthRefreshIntentLock>;
+  now?: () => number;
+  afterPrePersistRead?: () => void | Promise<void>;
+}
+interface AnthropicRefreshDeps {
+  intentLock?: ReturnType<typeof createOAuthRefreshIntentLock>;
+  now?: () => number;
+  afterPrePersistRead?: () => void | Promise<void>;
+}
+interface GenericRefreshDeps {
+  intentLock?: ReturnType<typeof createOAuthRefreshIntentLock>;
+  afterPrePersistRead?: () => void | Promise<void>;
+}
+function verdictKey(p: string, a: string, c: OAuthCredentials) {
+  return `${p}\0${a}\0${credentialGeneration(c)}`;
+}
+function cached(p: string, a: string, c: OAuthCredentials, now: () => number) {
+  const k = verdictKey(p, a, c),
+    u = permanentRefreshFailures.get(k);
+  if (u === undefined) return false;
+  if (u <= now()) {
+    permanentRefreshFailures.delete(k);
+    return false;
+  }
+  return true;
+}
 
-export interface LoginOpts { forceLogin?: boolean; /** When set, persist into this account slot and require matching identity. */ reauthAccountId?: string }
+export interface LoginOpts {
+  forceLogin?: boolean;
+  /** When set, persist into this account slot and require matching identity. */ reauthAccountId?: string;
+}
 
 export interface LoginFlowLifecycle {
   /** Runs after background credential/config persistence settles, before status becomes done. */
@@ -96,20 +182,25 @@ function oauthConfig(id: string): OcxProviderConfig {
 
 function oauthDefaultModel(id: string): string {
   const model = deriveOAuthDefaultModel(id);
-  if (!model) throw new Error(`OAuth provider missing default model in registry: ${id}`);
+  if (!model)
+    throw new Error(`OAuth provider missing default model in registry: ${id}`);
   return model;
 }
 
 export const OAUTH_PROVIDERS: Record<string, OAuthProviderDef> = {
   xai: {
     // forceLogin skips the local grok-cli import so a SECOND account can be chosen in the browser.
-    login: (ctrl, opts) => loginXai(ctrl, { importLocal: opts?.forceLogin ? "off" : "fallback" }),
+    login: (ctrl, opts) =>
+      loginXai(ctrl, { importLocal: opts?.forceLogin ? "off" : "fallback" }),
     refresh: refreshXaiToken,
     providerConfig: oauthConfig("xai"),
     defaultModel: oauthDefaultModel("xai"),
   },
   anthropic: {
-    login: (ctrl, opts) => loginAnthropic(ctrl, { importLocal: opts?.forceLogin ? "off" : "fallback" }),
+    login: (ctrl, opts) =>
+      loginAnthropic(ctrl, {
+        importLocal: opts?.forceLogin ? "off" : "fallback",
+      }),
     refresh: refreshAnthropicToken,
     providerConfig: oauthConfig("anthropic"),
     defaultModel: oauthDefaultModel("anthropic"),
@@ -125,12 +216,20 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderDef> = {
   },
   kiro: {
     login: (ctrl, opts) => loginKiro(ctrl, { forceLogin: opts?.forceLogin }),
-    refresh: (rt, signal, credential) => refreshKiroToken(rt, signal, credential),
+    refresh: (rt, signal, credential) =>
+      refreshKiroToken(rt, signal, credential),
     providerConfig: oauthConfig("kiro"),
     defaultModel: oauthDefaultModel("kiro"),
   },
   "google-antigravity": {
-    login: (ctrl, opts) => loginAntigravity(ctrl, { forceAccountSelect: opts?.forceLogin === true }),
+    // Import-first: an already signed-in `agy` CLI session is adopted without a browser
+    // round-trip. forceLogin (GUI "Add account" / reauth) skips the import so a SECOND
+    // Google account can be chosen instead of re-importing the current one.
+    login: (ctrl, opts) =>
+      loginAntigravityWithImport(ctrl, {
+        importLocal: opts?.forceLogin ? "off" : "fallback",
+        forceAccountSelect: opts?.forceLogin === true,
+      }),
     refresh: refreshAntigravityToken,
     providerConfig: oauthConfig("google-antigravity"),
     defaultModel: oauthDefaultModel("google-antigravity"),
@@ -138,7 +237,8 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderDef> = {
   cursor: {
     // forceLogin (GUI "Add account" / reauth) opens the browser account picker so a second
     // Cursor identity can be appended under multiauth instead of refreshing the active row.
-    login: (ctrl, opts) => loginCursor(ctrl, { forceAccountSelect: opts?.forceLogin === true }),
+    login: (ctrl, opts) =>
+      loginCursor(ctrl, { forceAccountSelect: opts?.forceLogin === true }),
     refresh: refreshCursorToken,
     providerConfig: oauthConfig("cursor"),
     defaultModel: oauthDefaultModel("cursor"),
@@ -154,7 +254,11 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderDef> = {
   chatgpt: {
     login: loginChatGPT,
     refresh: (rt) => refreshChatGPTToken(rt),
-    providerConfig: { adapter: "openai-responses", baseUrl: "https://chatgpt.com/backend-api/codex", authMode: "forward" as const },
+    providerConfig: {
+      adapter: "openai-responses",
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      authMode: "forward" as const,
+    },
     defaultModel: "gpt-5.4",
   },
 };
@@ -176,7 +280,10 @@ function isRefreshPolicy(value: unknown): value is RefreshPolicy {
  * `config.providers[provider].refreshPolicy` if set, else the provider def's risk-tiered default,
  * else "lazy-only". The guardian acts only when this resolves to "proactive".
  */
-export function resolveRefreshPolicy(provider: string, config: OcxConfig): RefreshPolicy {
+export function resolveRefreshPolicy(
+  provider: string,
+  config: OcxConfig,
+): RefreshPolicy {
   const override = config.providers[provider]?.refreshPolicy;
   if (isRefreshPolicy(override)) return override;
   const def = OAUTH_PROVIDERS[provider];
@@ -184,12 +291,16 @@ export function resolveRefreshPolicy(provider: string, config: OcxConfig): Refre
 }
 
 /** The discovered project id stored on an OAuth credential (Antigravity CCA), if any. */
-export function getOAuthCredentialProjectId(provider: string): string | undefined {
+export function getOAuthCredentialProjectId(
+  provider: string,
+): string | undefined {
   return getCredential(provider)?.projectId;
 }
 
 /** Allowlisted Copilot API origin from the active credential, if still valid. */
-export function getOAuthCredentialApiBaseUrl(provider: string): string | undefined {
+export function getOAuthCredentialApiBaseUrl(
+  provider: string,
+): string | undefined {
   return validateCopilotApiBaseUrl(getCredential(provider)?.apiBaseUrl);
 }
 
@@ -214,13 +325,20 @@ export class OAuthLoginRequiredError extends Error {
 
 /** Operator-owned seat expiry with auto-disable; not a re-login signal. */
 export class OAuthAccountDisabledError extends Error {
-  constructor(public readonly provider: string, public readonly accountId: string) {
+  constructor(
+    public readonly provider: string,
+    public readonly accountId: string,
+  ) {
     super(`${provider} account is expired and disabled`);
     this.name = "OAuthAccountDisabledError";
   }
 }
 
-function accessSnapshot(provider: string, accountId: string, cred: OAuthCredentials): OAuthAccessSnapshot {
+function accessSnapshot(
+  provider: string,
+  accountId: string,
+  cred: OAuthCredentials,
+): OAuthAccessSnapshot {
   const storedKiroRouting = {
     ...(cred.kiro?.profileArn ? { profileArn: cred.kiro.profileArn } : {}),
     ...(cred.kiro?.apiRegion ? { apiRegion: cred.kiro.apiRegion } : {}),
@@ -235,9 +353,10 @@ function accessSnapshot(provider: string, accountId: string, cred: OAuthCredenti
     // may use explicit environment routing, but never borrow the currently signed-in local CLI account.
     ...(provider === "kiro"
       ? {
-          kiro: Object.keys(storedKiroRouting).length > 0
-            ? storedKiroRouting
-            : environmentKiroRoutingMetadata() ?? {},
+          kiro:
+            Object.keys(storedKiroRouting).length > 0
+              ? storedKiroRouting
+              : (environmentKiroRoutingMetadata() ?? {}),
         }
       : {}),
   };
@@ -250,29 +369,49 @@ async function resolveAccessSnapshotForAccount(
 ): Promise<OAuthAccessSnapshot> {
   const def = OAUTH_PROVIDERS[provider];
   if (!def) throw new UnsupportedOAuthProviderError(provider);
-  const account = getAccountSet(provider)?.accounts.find(row => row.id === accountId);
+  const account = getAccountSet(provider)?.accounts.find(
+    (row) => row.id === accountId,
+  );
   if (account && isAccountDisabledForRouting(account)) {
     throw new OAuthAccountDisabledError(provider, accountId);
   }
   const cred = getAccountCredential(provider, accountId);
   if (!cred) throw new OAuthLoginRequiredError(provider);
   const current = accessSnapshot(provider, accountId, cred);
-  if (rejectedGeneration !== undefined && current.generation !== rejectedGeneration) return current;
-  if (rejectedGeneration === undefined && cred.expires > Date.now() + REFRESH_SKEW_MS) return current;
+  if (
+    rejectedGeneration !== undefined &&
+    current.generation !== rejectedGeneration
+  )
+    return current;
+  if (
+    rejectedGeneration === undefined &&
+    cred.expires > Date.now() + REFRESH_SKEW_MS
+  )
+    return current;
 
   const key = `${provider}\u0000${accountId}`;
   const existing = tokenRefreshes.get(key);
   if (existing) {
-    logOAuthEvent("OAuth refresh joined existing operation", { provider, accountId });
+    logOAuthEvent("OAuth refresh joined existing operation", {
+      provider,
+      accountId,
+    });
     return existing;
   }
 
   const refresh = (async (): Promise<OAuthAccessSnapshot> => {
-    const accessToken = await refreshAndPersistAccessToken(provider, accountId, def, cred);
+    const accessToken = await refreshAndPersistAccessToken(
+      provider,
+      accountId,
+      def,
+      cred,
+    );
     const persisted = getAccountCredential(provider, accountId);
     if (!persisted) throw new OAuthLoginRequiredError(provider);
     if (persisted.access !== accessToken) {
-      throw new Error(`OAuth refresh persisted an unexpected access token for ${provider}`);
+      throw new Error(
+        `OAuth refresh persisted an unexpected access token for ${provider}`,
+      );
     }
     return accessSnapshot(provider, accountId, persisted);
   })().finally(() => {
@@ -282,7 +421,9 @@ async function resolveAccessSnapshotForAccount(
   return refresh;
 }
 
-export async function getValidAccessTokenSnapshot(provider: string): Promise<OAuthAccessSnapshot> {
+export async function getValidAccessTokenSnapshot(
+  provider: string,
+): Promise<OAuthAccessSnapshot> {
   // Latch/demote expired seats on the request path so a healthy same-provider sibling
   // succeeds even when account pools are off (GRO-1497).
   await applyExpiredAccountDisables();
@@ -297,8 +438,13 @@ const FORCE_REFRESH_PROVIDERS = new Set(["xai", "github-copilot", "kiro"]);
 export async function forceRefreshOAuthAccessSnapshot(
   rejected: OAuthAccessSnapshot,
 ): Promise<OAuthAccessSnapshot> {
-  if (!FORCE_REFRESH_PROVIDERS.has(rejected.provider)) throw new UnsupportedOAuthProviderError(rejected.provider);
-  return resolveAccessSnapshotForAccount(rejected.provider, rejected.accountId, rejected.generation);
+  if (!FORCE_REFRESH_PROVIDERS.has(rejected.provider))
+    throw new UnsupportedOAuthProviderError(rejected.provider);
+  return resolveAccessSnapshotForAccount(
+    rejected.provider,
+    rejected.accountId,
+    rejected.generation,
+  );
 }
 
 /** Return a valid access token for the ACTIVE account, refreshing + persisting if expired. */
@@ -311,47 +457,173 @@ export async function getValidAccessToken(provider: string): Promise<string> {
  * (provider, account), and the rotated credential is persisted for THAT account only —
  * a guardian refresh of a background account never switches the active account.
  */
-export async function getValidAccessTokenForAccount(provider: string, accountId: string): Promise<string> {
-  return (await resolveAccessSnapshotForAccount(provider, accountId)).accessToken;
+export async function getValidAccessTokenForAccount(
+  provider: string,
+  accountId: string,
+): Promise<string> {
+  return (await resolveAccessSnapshotForAccount(provider, accountId))
+    .accessToken;
 }
 
 /** Terminal refresh failures (revoked/rotated-away grants) — retrying cannot succeed. */
 function isTerminalRefreshError(err: unknown): boolean {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  return msg.includes("invalid_grant")
-    || msg.includes("refresh_token_reused")
-    || msg.includes("revoked")
+  return (
+    msg.includes("invalid_grant") ||
+    msg.includes("refresh_token_reused") ||
+    msg.includes("revoked") ||
     // GitHub Copilot refresh surfaces allowlisted OAuth codes (github-copilot.ts):
-    || msg.includes("access_denied")
-    || msg.includes("expired_token");
+    msg.includes("access_denied") ||
+    msg.includes("expired_token")
+  );
 }
-function terminal(error:unknown):boolean{
-  if(error instanceof XaiTokenRequestError)return ["invalid_grant","refresh_token_reused","revoked_token"].includes(error.oauthError??"");
-  if(error instanceof AnthropicTokenError)return (error.httpStatus===400||error.httpStatus===401)&&["invalid_grant","refresh_token_reused","revoked","revoked_token","refresh_token_revoked"].includes(error.oauthError??"");
-  if(error instanceof KiroTokenRefreshError)return (error.httpStatus===400||error.httpStatus===401)&&error.oauthError!==undefined;
+function terminal(error: unknown): boolean {
+  if (error instanceof XaiTokenRequestError)
+    return ["invalid_grant", "refresh_token_reused", "revoked_token"].includes(
+      error.oauthError ?? "",
+    );
+  if (error instanceof AnthropicTokenError)
+    return (
+      (error.httpStatus === 400 || error.httpStatus === 401) &&
+      [
+        "invalid_grant",
+        "refresh_token_reused",
+        "revoked",
+        "revoked_token",
+        "refresh_token_revoked",
+      ].includes(error.oauthError ?? "")
+    );
+  if (error instanceof KiroTokenRefreshError)
+    return (
+      (error.httpStatus === 400 || error.httpStatus === 401) &&
+      error.oauthError !== undefined
+    );
   return isTerminalRefreshError(error);
 }
-function authoritative(stored:OAuthCredentials,active:boolean,now:()=>number):OAuthCredentials{if(stored.source!=="local-cli")return stored;const disk=detectGrokCliToken();if(!disk)return stored;const allowed=isSameGrokIdentity(stored,disk)||(active&&!hasComparableGrokIdentity(stored,disk));return allowed&&shouldAdoptGrokGeneration(stored,disk,now(),REFRESH_SKEW_MS)?disk:stored;}
-function merged(fresh: OAuthCredentials, previous: OAuthCredentials): OAuthCredentials {
+function authoritative(
+  stored: OAuthCredentials,
+  active: boolean,
+  now: () => number,
+): OAuthCredentials {
+  if (stored.source !== "local-cli") return stored;
+  const disk = detectGrokCliToken();
+  if (!disk) return stored;
+  const allowed =
+    isSameGrokIdentity(stored, disk) ||
+    (active && !hasComparableGrokIdentity(stored, disk));
+  return allowed &&
+    shouldAdoptGrokGeneration(stored, disk, now(), REFRESH_SKEW_MS)
+    ? disk
+    : stored;
+}
+function merged(
+  fresh: OAuthCredentials,
+  previous: OAuthCredentials,
+): OAuthCredentials {
   return {
     ...fresh,
     // RFC 6749 §6: a refresh response may omit refresh_token, in which case the previous one stays valid.
-    ...(!fresh.refresh && previous.refresh ? { refresh: previous.refresh } : {}),
-    source: previous.source === "local-cli" ? "oauth" : fresh.source ?? previous.source ?? "oauth",
-    ...(fresh.projectId === undefined && previous.projectId ? { projectId: previous.projectId } : {}),
-    ...(fresh.apiBaseUrl === undefined && previous.apiBaseUrl ? { apiBaseUrl: previous.apiBaseUrl } : {}),
-    ...(fresh.email === undefined && previous.email ? { email: previous.email } : {}),
-    ...(fresh.accountId === undefined && previous.accountId ? { accountId: previous.accountId } : {}),
-    ...(fresh.kiro === undefined && previous.kiro ? { kiro: previous.kiro } : {}),
+    ...(!fresh.refresh && previous.refresh
+      ? { refresh: previous.refresh }
+      : {}),
+    source:
+      previous.source === "local-cli"
+        ? "oauth"
+        : (fresh.source ?? previous.source ?? "oauth"),
+    ...(fresh.projectId === undefined && previous.projectId
+      ? { projectId: previous.projectId }
+      : {}),
+    ...(fresh.apiBaseUrl === undefined && previous.apiBaseUrl
+      ? { apiBaseUrl: previous.apiBaseUrl }
+      : {}),
+    ...(fresh.email === undefined && previous.email
+      ? { email: previous.email }
+      : {}),
+    ...(fresh.accountId === undefined && previous.accountId
+      ? { accountId: previous.accountId }
+      : {}),
+    ...(fresh.kiro === undefined && previous.kiro
+      ? { kiro: previous.kiro }
+      : {}),
   };
 }
-export async function refreshXaiAccountWithLock(provider:string,accountId:string,def:OAuthProviderDef,callerCredential:OAuthCredentials,deps:XaiRefreshDeps={}):Promise<string>{const now=deps.now??Date.now;const guard=await(deps.intentLock??createOAuthRefreshIntentLock(provider,accountId)).acquire();try{const stored=getAccountCredential(provider,accountId);if(!stored)throw new OAuthLoginRequiredError(provider);const active=getAccountSet(provider)?.activeAccountId===accountId,candidate=authoritative(stored,active,now);if(credentialGeneration(candidate)!==credentialGeneration(callerCredential)&&candidate.expires>now()+REFRESH_SKEW_MS){if(credentialGeneration(candidate)!==credentialGeneration(stored)){const o=await mergeAccountCredential(provider,accountId,candidate,{expectedGeneration:credentialGeneration(stored),afterPrePersistRead:deps.afterPrePersistRead});if(o.superseded){if(o.stored.expires>now()+REFRESH_SKEW_MS)return o.stored.access;throw new OAuthLoginRequiredError(provider);}}return candidate.access;}if(cached(provider,accountId,candidate,now))throw new OAuthLoginRequiredError(provider);const generation=credentialGeneration(candidate);try{const fresh=merged(await def.refresh(candidate.refresh),candidate);const o=await mergeAccountCredential(provider,accountId,fresh,{expectedGeneration:generation,afterPrePersistRead:deps.afterPrePersistRead});if(o.superseded){if(o.stored.expires>now()+REFRESH_SKEW_MS)return o.stored.access;throw new OAuthLoginRequiredError(provider);}permanentRefreshFailures.delete(verdictKey(provider,accountId,candidate));if(candidate.source==="local-cli")console.warn(XAI_LOCAL_CLI_DETACH_WARNING);return fresh.access;}catch(error){if(!terminal(error))throw error;permanentRefreshFailures.set(verdictKey(provider,accountId,candidate),now()+XAI_PERMANENT_FAILURE_TTL_MS);await markAccountNeedsReauthIfGeneration(provider,accountId,generation);throw new OAuthLoginRequiredError(provider);}}finally{guard.release();}}
+export async function refreshXaiAccountWithLock(
+  provider: string,
+  accountId: string,
+  def: OAuthProviderDef,
+  callerCredential: OAuthCredentials,
+  deps: XaiRefreshDeps = {},
+): Promise<string> {
+  const now = deps.now ?? Date.now;
+  const guard = await (
+    deps.intentLock ?? createOAuthRefreshIntentLock(provider, accountId)
+  ).acquire();
+  try {
+    const stored = getAccountCredential(provider, accountId);
+    if (!stored) throw new OAuthLoginRequiredError(provider);
+    const active = getAccountSet(provider)?.activeAccountId === accountId,
+      candidate = authoritative(stored, active, now);
+    if (
+      credentialGeneration(candidate) !==
+        credentialGeneration(callerCredential) &&
+      candidate.expires > now() + REFRESH_SKEW_MS
+    ) {
+      if (credentialGeneration(candidate) !== credentialGeneration(stored)) {
+        const o = await mergeAccountCredential(provider, accountId, candidate, {
+          expectedGeneration: credentialGeneration(stored),
+          afterPrePersistRead: deps.afterPrePersistRead,
+        });
+        if (o.superseded) {
+          if (o.stored.expires > now() + REFRESH_SKEW_MS)
+            return o.stored.access;
+          throw new OAuthLoginRequiredError(provider);
+        }
+      }
+      return candidate.access;
+    }
+    if (cached(provider, accountId, candidate, now))
+      throw new OAuthLoginRequiredError(provider);
+    const generation = credentialGeneration(candidate);
+    try {
+      const fresh = merged(await def.refresh(candidate.refresh), candidate);
+      const o = await mergeAccountCredential(provider, accountId, fresh, {
+        expectedGeneration: generation,
+        afterPrePersistRead: deps.afterPrePersistRead,
+      });
+      if (o.superseded) {
+        if (o.stored.expires > now() + REFRESH_SKEW_MS) return o.stored.access;
+        throw new OAuthLoginRequiredError(provider);
+      }
+      permanentRefreshFailures.delete(
+        verdictKey(provider, accountId, candidate),
+      );
+      if (candidate.source === "local-cli")
+        console.warn(XAI_LOCAL_CLI_DETACH_WARNING);
+      return fresh.access;
+    } catch (error) {
+      if (!terminal(error)) throw error;
+      permanentRefreshFailures.set(
+        verdictKey(provider, accountId, candidate),
+        now() + XAI_PERMANENT_FAILURE_TTL_MS,
+      );
+      await markAccountNeedsReauthIfGeneration(provider, accountId, generation);
+      throw new OAuthLoginRequiredError(provider);
+    }
+  } finally {
+    guard.release();
+  }
+}
 
-function newerClaudeCredential(stored: OAuthCredentials, now: number): OAuthCredentials | undefined {
+function newerClaudeCredential(
+  stored: OAuthCredentials,
+  now: number,
+): OAuthCredentials | undefined {
   if (stored.source !== "local-cli") return undefined;
   const disk = detectClaudeCodeToken();
   if (!disk || disk.expires <= now + REFRESH_SKEW_MS) return undefined;
-  return credentialGeneration(disk) !== credentialGeneration(stored) ? disk : undefined;
+  return credentialGeneration(disk) !== credentialGeneration(stored)
+    ? disk
+    : undefined;
 }
 
 export async function refreshAnthropicAccountWithLock(
@@ -362,11 +634,15 @@ export async function refreshAnthropicAccountWithLock(
   deps: AnthropicRefreshDeps = {},
 ): Promise<string> {
   const now = deps.now ?? Date.now;
-  const guard = await (deps.intentLock ?? createOAuthRefreshIntentLock(provider, accountId)).acquire();
+  const guard = await (
+    deps.intentLock ?? createOAuthRefreshIntentLock(provider, accountId)
+  ).acquire();
   try {
     const stored = getAccountCredential(provider, accountId);
     if (!stored) throw new OAuthLoginRequiredError(provider);
-    const account = getAccountSet(provider)?.accounts.find(candidate => candidate.id === accountId);
+    const account = getAccountSet(provider)?.accounts.find(
+      (candidate) => candidate.id === accountId,
+    );
     const generation = credentialGeneration(stored);
     const pendingIntent = readOAuthRefreshIntent(provider, accountId);
     const disk = newerClaudeCredential(stored, now());
@@ -376,22 +652,33 @@ export async function refreshAnthropicAccountWithLock(
         afterPrePersistRead: deps.afterPrePersistRead,
       });
       if (outcome.superseded) {
-        if (pendingIntent) clearOAuthRefreshIntent(provider, accountId, pendingIntent.generation);
-        if (outcome.stored.expires > now() + REFRESH_SKEW_MS) return outcome.stored.access;
+        if (pendingIntent)
+          clearOAuthRefreshIntent(
+            provider,
+            accountId,
+            pendingIntent.generation,
+          );
+        if (outcome.stored.expires > now() + REFRESH_SKEW_MS)
+          return outcome.stored.access;
         throw new OAuthLoginRequiredError(provider);
       }
-      if (pendingIntent) clearOAuthRefreshIntent(provider, accountId, pendingIntent.generation);
+      if (pendingIntent)
+        clearOAuthRefreshIntent(provider, accountId, pendingIntent.generation);
       return disk.access;
     }
     if (pendingIntent?.uncertain || pendingIntent?.generation === generation) {
       await markAccountNeedsReauthIfGeneration(provider, accountId, generation);
       throw new OAuthLoginRequiredError(provider);
     }
-    if (pendingIntent) clearOAuthRefreshIntent(provider, accountId, pendingIntent.generation);
+    if (pendingIntent)
+      clearOAuthRefreshIntent(provider, accountId, pendingIntent.generation);
     if (account?.needsReauth) {
       throw new OAuthLoginRequiredError(provider);
     }
-    if (credentialGeneration(stored) !== credentialGeneration(callerCredential) && stored.expires > now() + REFRESH_SKEW_MS) {
+    if (
+      credentialGeneration(stored) !== credentialGeneration(callerCredential) &&
+      stored.expires > now() + REFRESH_SKEW_MS
+    ) {
       return stored.access;
     }
 
@@ -404,7 +691,8 @@ export async function refreshAnthropicAccountWithLock(
       });
       if (outcome.superseded) {
         clearOAuthRefreshIntent(provider, accountId, generation);
-        if (outcome.stored.expires > now() + REFRESH_SKEW_MS) return outcome.stored.access;
+        if (outcome.stored.expires > now() + REFRESH_SKEW_MS)
+          return outcome.stored.access;
         throw new OAuthLoginRequiredError(provider);
       }
       clearOAuthRefreshIntent(provider, accountId, generation);
@@ -428,29 +716,41 @@ export async function refreshGenericAccountWithLock(
   deps: GenericRefreshDeps = {},
 ): Promise<string> {
   logOAuthEvent("OAuth refresh started", { provider, accountId });
-  const guard = await (deps.intentLock ?? createOAuthRefreshIntentLock(provider, accountId)).acquire();
+  const guard = await (
+    deps.intentLock ?? createOAuthRefreshIntentLock(provider, accountId)
+  ).acquire();
   try {
     const stored = getAccountCredential(provider, accountId);
     if (!stored) throw new OAuthLoginRequiredError(provider);
     if (
-      credentialGeneration(stored) !== credentialGeneration(callerCredential)
-      && stored.expires > Date.now() + REFRESH_SKEW_MS
+      credentialGeneration(stored) !== credentialGeneration(callerCredential) &&
+      stored.expires > Date.now() + REFRESH_SKEW_MS
     ) {
-      logOAuthEvent("OAuth refresh joined existing operation", { provider, accountId });
+      logOAuthEvent("OAuth refresh joined existing operation", {
+        provider,
+        accountId,
+      });
       return stored.access;
     }
     const generation = credentialGeneration(stored);
     try {
-      const fresh = merged(await def.refresh(stored.refresh, undefined, stored), stored);
+      const fresh = merged(
+        await def.refresh(stored.refresh, undefined, stored),
+        stored,
+      );
       const outcome = await mergeAccountCredential(provider, accountId, fresh, {
         expectedGeneration: generation,
         afterPrePersistRead: deps.afterPrePersistRead,
       });
       if (outcome.superseded) {
-        if (outcome.stored.expires > Date.now() + REFRESH_SKEW_MS) return outcome.stored.access;
+        if (outcome.stored.expires > Date.now() + REFRESH_SKEW_MS)
+          return outcome.stored.access;
         throw new OAuthLoginRequiredError(provider);
       }
-      logOAuthEvent("OAuth credentials rotated and persisted", { provider, accountId });
+      logOAuthEvent("OAuth credentials rotated and persisted", {
+        provider,
+        accountId,
+      });
       return fresh.access;
     } catch (error) {
       if (!terminal(error)) throw error;
@@ -468,8 +768,10 @@ async function refreshAndPersistAccessToken(
   def: OAuthProviderDef,
   cred: OAuthCredentials,
 ): Promise<string> {
-  if (provider === "xai") return refreshXaiAccountWithLock(provider, accountId, def, cred);
-  if (provider === "anthropic") return refreshAnthropicAccountWithLock(provider, accountId, def, cred);
+  if (provider === "xai")
+    return refreshXaiAccountWithLock(provider, accountId, def, cred);
+  if (provider === "anthropic")
+    return refreshAnthropicAccountWithLock(provider, accountId, def, cred);
   return refreshGenericAccountWithLock(provider, accountId, def, cred);
 }
 
@@ -478,7 +780,10 @@ async function refreshAndPersistAccessToken(
  * codex-catalog.ts:fetchProviderModels so OAuth providers' models are listed once logged in.
  * Returns undefined for forward-mode or oauth-not-logged-in (caller skips).
  */
-export async function resolveModelsAuthToken(name: string, prov: OcxProviderConfig): Promise<string | undefined> {
+export async function resolveModelsAuthToken(
+  name: string,
+  prov: OcxProviderConfig,
+): Promise<string | undefined> {
   if (prov.authMode === "forward") return undefined;
   if (prov.authMode === "oauth") {
     try {
@@ -490,7 +795,10 @@ export async function resolveModelsAuthToken(name: string, prov: OcxProviderConf
   const credentialRef = prov.credentialRef?.trim();
   if (credentialRef) {
     try {
-      const resolved = await globalProviderCredentialResolver.resolveCredentialRef(credentialRef);
+      const resolved =
+        await globalProviderCredentialResolver.resolveCredentialRef(
+          credentialRef,
+        );
       return resolved.apiKey;
     } catch {
       return undefined;
@@ -499,14 +807,17 @@ export async function resolveModelsAuthToken(name: string, prov: OcxProviderConf
   return resolveEnvValue(prov.apiKey);
 }
 
-function modelDiscoveryTransportSeed(providerName: string, prov: OcxProviderConfig): OcxProviderConfig {
+function modelDiscoveryTransportSeed(
+  providerName: string,
+  prov: OcxProviderConfig,
+): OcxProviderConfig {
   const entry = getProviderRegistryEntry(providerName);
   if (
-    prov.authMode !== "oauth"
-    || entry?.authKind !== "oauth"
-    || entry.allowBaseUrlOverride === true
-    || /\{[^}]*\}/.test(entry.baseUrl)
-    || !providerMatchesRegistryTransport(providerName, prov)
+    prov.authMode !== "oauth" ||
+    entry?.authKind !== "oauth" ||
+    entry.allowBaseUrlOverride === true ||
+    /\{[^}]*\}/.test(entry.baseUrl) ||
+    !providerMatchesRegistryTransport(providerName, prov)
   ) {
     return prov;
   }
@@ -526,28 +837,42 @@ function modelDiscoveryTransportSeed(providerName: string, prov: OcxProviderConf
  * Everyone else uses the OpenAI-style `/models` + Bearer with a `{ data: [{ id, owned_by? }] }`
  * response.
  */
-export function buildModelsRequest(prov: OcxProviderConfig, apiKey: string | undefined, providerName = ""): { url: string; headers: Record<string, string> } {
+export function buildModelsRequest(
+  prov: OcxProviderConfig,
+  apiKey: string | undefined,
+  providerName = "",
+): { url: string; headers: Record<string, string> } {
   const transportSeed = modelDiscoveryTransportSeed(providerName, prov);
   const effectiveProvider = resolveProviderTransport(
     providerName,
     transportSeed,
     undefined,
-    providerName === "github-copilot" ? getOAuthCredentialApiBaseUrl(providerName) : undefined,
+    providerName === "github-copilot"
+      ? getOAuthCredentialApiBaseUrl(providerName)
+      : undefined,
   );
-  const headers: Record<string, string> = { ...(effectiveProvider.headers ?? {}) };
-  const discoveryUrl = (defaultUrl: string): string => resolveProviderModelDiscoveryUrl(
-    providerName,
-    prov,
-    effectiveProvider.baseUrl,
-    defaultUrl,
-  );
+  const headers: Record<string, string> = {
+    ...(effectiveProvider.headers ?? {}),
+  };
+  const discoveryUrl = (defaultUrl: string): string =>
+    resolveProviderModelDiscoveryUrl(
+      providerName,
+      prov,
+      effectiveProvider.baseUrl,
+      defaultUrl,
+    );
   if (effectiveGoogleMode(providerName, effectiveProvider) === "ai-studio") {
     // Generative Language API: API key goes in x-goog-api-key (never Authorization: Bearer),
     // models live under /v1beta (v1 misses preview models), and pageSize maxes at 1000 —
     // enough to list everything without a pageToken loop. Vertex/antigravity keep the
     // generic branch (they fall back to their static model lists).
     if (apiKey) headers["x-goog-api-key"] = apiKey;
-    return { url: discoveryUrl(`${effectiveProvider.baseUrl}/v1beta/models?pageSize=1000`), headers };
+    return {
+      url: discoveryUrl(
+        `${effectiveProvider.baseUrl}/v1beta/models?pageSize=1000`,
+      ),
+      headers,
+    };
   }
   if (effectiveProvider.adapter === "anthropic") {
     const base = effectiveProvider.baseUrl.replace(/\/v1\/?$/, "");
@@ -556,7 +881,8 @@ export function buildModelsRequest(prov: OcxProviderConfig, apiKey: string | und
       headers["anthropic-beta"] = ANTHROPIC_OAUTH_BETA;
       if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
     } else if (apiKey) {
-      if (effectiveProvider.apiKeyTransport === "bearer") headers["Authorization"] = `Bearer ${apiKey}`;
+      if (effectiveProvider.apiKeyTransport === "bearer")
+        headers["Authorization"] = `Bearer ${apiKey}`;
       else headers["x-api-key"] = apiKey;
     }
     return { url: discoveryUrl(`${base}/v1/models?limit=1000`), headers };
@@ -577,7 +903,8 @@ export function buildModelsRequest(prov: OcxProviderConfig, apiKey: string | und
  */
 function cloneProviderField(value: unknown): unknown {
   if (Array.isArray(value)) return [...value];
-  if (value && typeof value === "object") return JSON.parse(JSON.stringify(value));
+  if (value && typeof value === "object")
+    return JSON.parse(JSON.stringify(value));
   return value;
 }
 
@@ -608,7 +935,8 @@ export function reconcileOAuthProviders(config: OcxConfig): boolean {
     if (!def || prov.authMode !== "oauth") continue;
     const preset = def.providerConfig;
     for (const field of OAUTH_RECONCILE_FIELDS) {
-      if (JSON.stringify(prov[field]) === JSON.stringify(preset[field])) continue;
+      if (JSON.stringify(prov[field]) === JSON.stringify(preset[field]))
+        continue;
       if (preset[field] !== undefined) {
         prov[field] = cloneProviderField(preset[field]) as never;
       } else {
@@ -617,7 +945,11 @@ export function reconcileOAuthProviders(config: OcxConfig): boolean {
       changed = true;
     }
     // Heal a defaultModel that no longer exists in the refreshed list (e.g. a deprecated snapshot).
-    if (prov.defaultModel && preset.defaultModel && !(prov.models ?? []).includes(prov.defaultModel)) {
+    if (
+      prov.defaultModel &&
+      preset.defaultModel &&
+      !(prov.models ?? []).includes(prov.defaultModel)
+    ) {
       prov.defaultModel = preset.defaultModel;
       changed = true;
     }
@@ -627,7 +959,9 @@ export function reconcileOAuthProviders(config: OcxConfig): boolean {
 }
 
 /** Runtime guards: provider config is intentionally passthrough, so persisted fields may be malformed. */
-function preservableApiKeyPool(value: unknown): NonNullable<OcxProviderConfig["apiKeyPool"]> | undefined {
+function preservableApiKeyPool(
+  value: unknown,
+): NonNullable<OcxProviderConfig["apiKeyPool"]> | undefined {
   if (!Array.isArray(value)) return undefined;
   const pool: NonNullable<OcxProviderConfig["apiKeyPool"]> = [];
   const ids = new Set<string>();
@@ -638,10 +972,13 @@ function preservableApiKeyPool(value: unknown): NonNullable<OcxProviderConfig["a
     const id = typeof candidate.id === "string" ? candidate.id.trim() : "";
     const key = sanitizeApiKeyValue(candidate.key);
     if (!id || !key || ids.has(id) || keys.has(key)) continue;
-    const label = typeof candidate.label === "string" ? candidate.label : undefined;
-    const addedAt = typeof candidate.addedAt === "number" && Number.isFinite(candidate.addedAt)
-      ? candidate.addedAt
-      : undefined;
+    const label =
+      typeof candidate.label === "string" ? candidate.label : undefined;
+    const addedAt =
+      typeof candidate.addedAt === "number" &&
+      Number.isFinite(candidate.addedAt)
+        ? candidate.addedAt
+        : undefined;
     ids.add(id);
     keys.add(key);
     pool.push({
@@ -678,29 +1015,40 @@ export function upsertOAuthProvider(config: OcxConfig, provider: string): void {
   if (provider === "chatgpt") return;
   const def = OAUTH_PROVIDERS[provider];
   if (!def) return;
-  const namespaceCollision = codexAccountNamespaceProviderCollisionError(config.codexAccountNamespaces, provider);
+  const namespaceCollision = codexAccountNamespaceProviderCollisionError(
+    config.codexAccountNamespaces,
+    provider,
+  );
   if (namespaceCollision) throw new Error(namespaceCollision);
   const existing = config.providers[provider];
   const next: OcxProviderConfig = { ...def.providerConfig };
-  if (existing && getProviderRegistryEntry(provider)?.allowKeyAuthOverride === true) {
+  if (
+    existing &&
+    getProviderRegistryEntry(provider)?.allowKeyAuthOverride === true
+  ) {
     // Shared sanitizeApiKeyValue trim / no-CRLF checks from api-key pool writes.
     let storedApiKey = sanitizeApiKeyValue(existing.apiKey);
     const storedApiKeyPool = preservableApiKeyPool(existing.apiKeyPool);
     // Unsafe/blank active key with a usable pool: promote the first safe pool entry so
     // key billing keeps working instead of falling back to oauth while pool keys remain.
-    if (storedApiKey === undefined && storedApiKeyPool && storedApiKeyPool.length > 0) {
+    if (
+      storedApiKey === undefined &&
+      storedApiKeyPool &&
+      storedApiKeyPool.length > 0
+    ) {
       storedApiKey = storedApiKeyPool[0]!.key;
     }
     if (storedApiKey !== undefined) {
       const pool = storedApiKeyPool ? [...storedApiKeyPool] : [];
       // Keep routing and listProviderApiKeys in sync: never leave a hidden active key that
       // is absent from the pool (listing would fall back to pool[0] as "active").
-      if (!pool.some(entry => entry.key === storedApiKey)) {
+      if (!pool.some((entry) => entry.key === storedApiKey)) {
         pool.push({ id: apiKeyPoolEntryId(storedApiKey), key: storedApiKey });
       }
       next.apiKey = storedApiKey;
       next.apiKeyPool = pool;
-      const previousModeAllowsKey = existing.authMode === "key" || existing.authMode === undefined;
+      const previousModeAllowsKey =
+        existing.authMode === "key" || existing.authMode === undefined;
       if (previousModeAllowsKey) next.authMode = "key";
     }
   }
@@ -731,7 +1079,10 @@ async function rollbackForcedKiroAccountWrite(
     await (deps.removeAccount ?? removeAccount)(provider, account.id);
   }
   if (previousActiveId && getAccountCredential(provider, previousActiveId)) {
-    await (deps.setActiveAccount ?? setActiveAccount)(provider, previousActiveId);
+    await (deps.setActiveAccount ?? setActiveAccount)(
+      provider,
+      previousActiveId,
+    );
   }
 }
 
@@ -756,13 +1107,21 @@ export async function runLogin(
   }
   // loginKiro keys its pending CLI-session transaction by object identity. Keep this exact object
   // for settlement even when source normalization below creates a derived credential object.
-  const shouldRollbackKiroAccounts = provider === "kiro" && opts?.forceLogin === true;
-  const previousKiroAccounts = shouldRollbackKiroAccounts ? getAccountSet(provider) : undefined;
+  const shouldRollbackKiroAccounts =
+    provider === "kiro" && opts?.forceLogin === true;
+  const previousKiroAccounts = shouldRollbackKiroAccounts
+    ? getAccountSet(provider)
+    : undefined;
   const previousKiroActiveId = previousKiroAccounts?.activeAccountId;
-  const previousKiroAccountIds = new Set(previousKiroAccounts?.accounts.map(account => account.id) ?? []);
+  const previousKiroAccountIds = new Set(
+    previousKiroAccounts?.accounts.map((account) => account.id) ?? [],
+  );
   const rawCred = await def.login(ctrl, opts);
-  const cred: OAuthCredentials = rawCred.source ? rawCred : { ...rawCred, source: "oauth" };
-  const settleKiroTransaction = deps.settleKiroLoginTransaction ?? settleKiroLoginTransaction;
+  const cred: OAuthCredentials = rawCred.source
+    ? rawCred
+    : { ...rawCred, source: "oauth" };
+  const settleKiroTransaction =
+    deps.settleKiroLoginTransaction ?? settleKiroLoginTransaction;
   try {
     // Validate the provider row before credential persistence. A namespace claimed during the
     // credential write is handled again below before the latest row is re-upserted.
@@ -773,19 +1132,29 @@ export async function runLogin(
     let accountCountBeforeWrite: number | null = null;
     if (opts?.reauthAccountId) {
       const existing = getAccountCredential(provider, opts.reauthAccountId);
-      if (!existing) throw new Error(`Unknown account for reauth: ${opts.reauthAccountId}`);
+      if (!existing)
+        throw new Error(`Unknown account for reauth: ${opts.reauthAccountId}`);
       if (!existing.accountId && !existing.email) {
-        throw new Error("Could not verify signed-in account identity for reauth.");
+        throw new Error(
+          "Could not verify signed-in account identity for reauth.",
+        );
       }
-      const identityMatches = existing.accountId && cred.accountId
-        ? existing.accountId === cred.accountId
-        : existing.email && cred.email
-          ? existing.email.toLowerCase() === cred.email.toLowerCase()
-          : false;
+      const identityMatches =
+        existing.accountId && cred.accountId
+          ? existing.accountId === cred.accountId
+          : existing.email && cred.email
+            ? existing.email.toLowerCase() === cred.email.toLowerCase()
+            : false;
       if (!identityMatches) {
-        throw new Error("Signed-in account does not match the selected account. Sign in with the same account.");
+        throw new Error(
+          "Signed-in account does not match the selected account. Sign in with the same account.",
+        );
       }
-      await (deps.saveAccountCredential ?? saveAccountCredential)(provider, opts.reauthAccountId, cred);
+      await (deps.saveAccountCredential ?? saveAccountCredential)(
+        provider,
+        opts.reauthAccountId,
+        cred,
+      );
     } else {
       accountCountBeforeWrite = getAccountSet(provider)?.accounts.length ?? 0;
       await (deps.saveCredential ?? saveCredential)(provider, cred, {
@@ -797,7 +1166,11 @@ export async function runLogin(
       // and active-key switches survive. A late namespace claim wins over provider creation.
       const latestConfig = loadLatestConfig();
       if (accountCountBeforeWrite !== null) {
-        autoEnableOAuthAccountPoolOnSecondAccount(latestConfig, provider, accountCountBeforeWrite);
+        autoEnableOAuthAccountPoolOnSecondAccount(
+          latestConfig,
+          provider,
+          accountCountBeforeWrite,
+        );
       }
       const lateCollision = codexAccountNamespaceProviderCollisionError(
         latestConfig.codexAccountNamespaces,
@@ -805,8 +1178,8 @@ export async function runLogin(
       );
       if (lateCollision) {
         throw new Error(
-          `${lateCollision}. The credential for "${provider}" was saved, but the provider entry was not written. `
-          + "Rename the account selector, then re-run the login.",
+          `${lateCollision}. The credential for "${provider}" was saved, but the provider entry was not written. ` +
+            "Rename the account selector, then re-run the login.",
         );
       }
       upsertOAuthProvider(latestConfig, provider);
@@ -816,7 +1189,12 @@ export async function runLogin(
     const errors: unknown[] = [error];
     if (shouldRollbackKiroAccounts) {
       try {
-        await rollbackForcedKiroAccountWrite(provider, previousKiroActiveId, previousKiroAccountIds, deps);
+        await rollbackForcedKiroAccountWrite(
+          provider,
+          previousKiroActiveId,
+          previousKiroAccountIds,
+          deps,
+        );
       } catch (rollbackError) {
         errors.push(rollbackError);
       }
@@ -837,7 +1215,8 @@ export async function runLogin(
   settleKiroTransaction(rawCred, true);
   if (provider !== "chatgpt") {
     try {
-      const { clearAccountQuotaCache, clearProviderQuotaCache } = await import("../providers/quota");
+      const { clearAccountQuotaCache, clearProviderQuotaCache } =
+        await import("../providers/quota");
       clearProviderQuotaCache();
       clearAccountQuotaCache(provider);
     } catch {
@@ -882,9 +1261,15 @@ function ensureManualCodeSlot(provider: string): ManualCodeSlot {
 }
 
 /** Wait for a GUI/CLI paste of the OAuth redirect URL or code (or return a stashed early submit). */
-function waitForManualLoginCode(provider: string, signal: AbortSignal, expectedState?: string): Promise<string> {
+function waitForManualLoginCode(
+  provider: string,
+  signal: AbortSignal,
+  expectedState?: string,
+): Promise<string> {
   if (signal.aborted) {
-    return Promise.reject(new Error(`OAuth callback cancelled: ${signal.reason}`));
+    return Promise.reject(
+      new Error(`OAuth callback cancelled: ${signal.reason}`),
+    );
   }
   const slot = ensureManualCodeSlot(provider);
   if (expectedState !== undefined) slot.expectedState = expectedState;
@@ -912,7 +1297,10 @@ function waitForManualLoginCode(provider: string, signal: AbortSignal, expectedS
  * Returns ok:false when no login is waiting (or input is empty). Invalid pastes are accepted
  * here and re-prompted by the OAuth callback loop if they cannot be parsed / fail state checks.
  */
-export function submitManualLoginCode(provider: string, input: string): { ok: true } | { ok: false; error: string } {
+export function submitManualLoginCode(
+  provider: string,
+  input: string,
+): { ok: true } | { ok: false; error: string } {
   const trimmed = input.trim();
   if (!trimmed) return { ok: false, error: "empty code" };
   const st = loginState.get(provider);
@@ -948,21 +1336,33 @@ export interface OAuthAccountSummary {
   disabledByExpiry?: boolean;
 }
 
-export function getLoginStatus(provider: string): { loggedIn: boolean; email?: string; source?: OAuthCredentials["source"]; error?: string; done: boolean; activeAccountId?: string; accounts?: OAuthAccountSummary[] } {
+export function getLoginStatus(provider: string): {
+  loggedIn: boolean;
+  email?: string;
+  source?: OAuthCredentials["source"];
+  error?: string;
+  done: boolean;
+  activeAccountId?: string;
+  accounts?: OAuthAccountSummary[];
+} {
   const cred = getCredential(provider);
   const st = loginState.get(provider);
   const set = getAccountSet(provider);
-  const accounts: OAuthAccountSummary[] | undefined = set?.accounts.map(a => ({
-    id: a.id,
-    ...(a.alias ? { alias: a.alias } : {}),
-    email: maskEmail(a.credential.email) ?? undefined,
-    active: a.id === set.activeAccountId,
-    ...(a.needsReauth ? { needsReauth: true } : {}),
-    expiresAt: a.credential.expires,
-    ...(typeof a.accountExpiresAt === "number" ? { accountExpiresAt: a.accountExpiresAt } : {}),
-    ...(a.autoDisableOnExpiry ? { autoDisableOnExpiry: true } : {}),
-    ...(a.disabledByExpiry ? { disabledByExpiry: true } : {}),
-  }));
+  const accounts: OAuthAccountSummary[] | undefined = set?.accounts.map(
+    (a) => ({
+      id: a.id,
+      ...(a.alias ? { alias: a.alias } : {}),
+      email: maskEmail(a.credential.email) ?? undefined,
+      active: a.id === set.activeAccountId,
+      ...(a.needsReauth ? { needsReauth: true } : {}),
+      expiresAt: a.credential.expires,
+      ...(typeof a.accountExpiresAt === "number"
+        ? { accountExpiresAt: a.accountExpiresAt }
+        : {}),
+      ...(a.autoDisableOnExpiry ? { autoDisableOnExpiry: true } : {}),
+      ...(a.disabledByExpiry ? { disabledByExpiry: true } : {}),
+    }),
+  );
   return {
     loggedIn: !!cred,
     email: maskEmail(cred?.email) ?? undefined,
@@ -974,10 +1374,18 @@ export function getLoginStatus(provider: string): { loggedIn: boolean; email?: s
 }
 
 /** Token-safe per-provider login state for the CLI `ocx status` logins section (no tokens, masked email). */
-export function oauthLoginSummary(): Array<{ provider: string; loggedIn: boolean; email?: string }> {
-  return listOAuthProviders().map(provider => {
+export function oauthLoginSummary(): Array<{
+  provider: string;
+  loggedIn: boolean;
+  email?: string;
+}> {
+  return listOAuthProviders().map((provider) => {
     const status = getLoginStatus(provider);
-    return { provider, loggedIn: status.loggedIn, ...(status.email ? { email: status.email } : {}) };
+    return {
+      provider,
+      loggedIn: status.loggedIn,
+      ...(status.email ? { email: status.email } : {}),
+    };
   });
 }
 
@@ -1023,7 +1431,8 @@ export async function startLoginFlow(
       },
       onProgress: () => {},
       // GUI fallback when the browser cannot hit the loopback callback server.
-      onManualCodeInput: (expectedState?: string) => waitForManualLoginCode(provider, abort.signal, expectedState),
+      onManualCodeInput: (expectedState?: string) =>
+        waitForManualLoginCode(provider, abort.signal, expectedState),
       signal: abort.signal,
     };
     const settle = async (error?: unknown): Promise<void> => {
@@ -1041,7 +1450,12 @@ export async function startLoginFlow(
         loginState.set(provider, { done: true });
         // Local-token import (grok-cli / Claude Code keychain) completes WITHOUT firing onAuth —
         // resolve so the GUI call returns instead of hanging.
-        if (!urlResolved) resolve({ url: "", instructions: "Logged in via an existing local CLI/keychain token — no browser needed." });
+        if (!urlResolved)
+          resolve({
+            url: "",
+            instructions:
+              "Logged in via an existing local CLI/keychain token — no browser needed.",
+          });
         return;
       }
 
@@ -1054,16 +1468,18 @@ export async function startLoginFlow(
     };
     // Background: runLogin persists the credential + provider entry to disk. The lifecycle hook
     // lets a long-lived server config adopt that settled state before clients observe done=true.
-    void runLogin(provider, ctrl, opts).then(
-      () => settle(),
-      (e: unknown) => settle(e),
-    ).catch((e: unknown) => {
-      // settle catches lifecycle failures, so this is only a defensive promise-boundary guard.
-      loginAbort.delete(provider);
-      clearManualCodeSlot(provider);
-      const msg = e instanceof Error ? e.message : String(e);
-      loginState.set(provider, { done: true, error: msg });
-      if (!urlResolved) reject(e);
-    });
+    void runLogin(provider, ctrl, opts)
+      .then(
+        () => settle(),
+        (e: unknown) => settle(e),
+      )
+      .catch((e: unknown) => {
+        // settle catches lifecycle failures, so this is only a defensive promise-boundary guard.
+        loginAbort.delete(provider);
+        clearManualCodeSlot(provider);
+        const msg = e instanceof Error ? e.message : String(e);
+        loginState.set(provider, { done: true, error: msg });
+        if (!urlResolved) reject(e);
+      });
   });
 }

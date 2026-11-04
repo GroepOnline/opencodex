@@ -1,5 +1,6 @@
 /**
- * Local token auto-detection — reads an existing Grok CLI credential (~/.grok/auth.json).
+ * Local token auto-detection — reads an existing Grok CLI credential (~/.grok/auth.json)
+ * and an existing Antigravity CLI session (~/.gemini/antigravity-cli/antigravity-oauth-token).
  * Read-only: never writes to external credential stores.
  * Ported from jawcode packages/ai/src/utils/oauth/local-token-detect.ts (xAI portion).
  */
@@ -12,19 +13,77 @@ import type { OAuthCredentials } from "./types";
 const XAI_AUTH_KEY_PREFIX = "https://auth.x.ai::";
 const CLAUDE_KEYCHAIN_SERVICE = "Claude Code-credentials";
 
+/**
+ * The Antigravity CLI (`agy`) stores its OAuth session here. The file is
+ * `{ token: { access_token, refresh_token, expiry }, auth_method, id_token }` — the
+ * shape is the CLI's own, not ours, so every field is validated before use.
+ */
+export function antigravityCliTokenPath(): string {
+  return join(
+    process.env.HOME ?? homedir(),
+    ".gemini",
+    "antigravity-cli",
+    "antigravity-oauth-token",
+  );
+}
+
+/**
+ * Read the signed-in `agy` session. Only the refresh token is load-bearing: the access
+ * token is refreshed and the CCA project re-discovered by the caller, because a stale
+ * on-disk access token would otherwise persist a credential that every request rejects.
+ * No identity (email/accountId) is available here without a network call, so the caller
+ * must still resolve one before persisting — the auth store treats identity-less
+ * credentials as "replace the active account".
+ */
+export function detectAntigravityCliToken(): {
+  refresh: string;
+  expires: number;
+} | null {
+  const path = antigravityCliTokenPath();
+  if (!existsSync(path)) return null;
+  try {
+    const raw = JSON.parse(readFileSync(path, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    const token = raw["token"];
+    if (!token || typeof token !== "object") return null;
+    const record = token as Record<string, unknown>;
+    const refresh =
+      typeof record["refresh_token"] === "string"
+        ? record["refresh_token"].trim()
+        : "";
+    if (!refresh) return null;
+    const expiry =
+      typeof record["expiry"] === "string"
+        ? Date.parse(record["expiry"])
+        : Number.NaN;
+    return { refresh, expires: Number.isFinite(expiry) ? expiry : 0 };
+  } catch {
+    return null;
+  }
+}
+
 export function detectGrokCliToken(): OAuthCredentials | null {
   const authPath = join(process.env.HOME ?? homedir(), ".grok", "auth.json");
   if (!existsSync(authPath)) return null;
 
   try {
-    const raw = JSON.parse(readFileSync(authPath, "utf8")) as Record<string, Record<string, unknown>>;
+    const raw = JSON.parse(readFileSync(authPath, "utf8")) as Record<
+      string,
+      Record<string, unknown>
+    >;
 
-    const entry = Object.entries(raw).find(([key]) => key.startsWith(XAI_AUTH_KEY_PREFIX))?.[1];
+    const entry = Object.entries(raw).find(([key]) =>
+      key.startsWith(XAI_AUTH_KEY_PREFIX),
+    )?.[1];
     if (!entry?.key || !entry?.refresh_token) return null;
 
     const accessToken = entry.key as string;
     const refreshToken = entry.refresh_token as string;
-    const expiresAt = entry.expires_at ? new Date(entry.expires_at as string).getTime() : 0;
+    const expiresAt = entry.expires_at
+      ? new Date(entry.expires_at as string).getTime()
+      : 0;
 
     return {
       refresh: refreshToken,
@@ -39,13 +98,23 @@ export function detectGrokCliToken(): OAuthCredentials | null {
   }
 }
 
-export function hasComparableGrokIdentity(stored: OAuthCredentials, disk: OAuthCredentials): boolean {
-  return Boolean((stored.accountId && disk.accountId) || (stored.email && disk.email));
+export function hasComparableGrokIdentity(
+  stored: OAuthCredentials,
+  disk: OAuthCredentials,
+): boolean {
+  return Boolean(
+    (stored.accountId && disk.accountId) || (stored.email && disk.email),
+  );
 }
 
-export function isSameGrokIdentity(stored: OAuthCredentials, disk: OAuthCredentials): boolean {
-  if (stored.accountId && disk.accountId) return stored.accountId === disk.accountId;
-  if (stored.email && disk.email) return stored.email.toLowerCase() === disk.email.toLowerCase();
+export function isSameGrokIdentity(
+  stored: OAuthCredentials,
+  disk: OAuthCredentials,
+): boolean {
+  if (stored.accountId && disk.accountId)
+    return stored.accountId === disk.accountId;
+  if (stored.email && disk.email)
+    return stored.email.toLowerCase() === disk.email.toLowerCase();
   return false;
 }
 
@@ -71,9 +140,14 @@ function claudeConfigDir(): string {
 function readClaudeKeychain(): string | null {
   if (process.platform !== "darwin") return null;
   try {
-    return execSync(`security find-generic-password -s "${CLAUDE_KEYCHAIN_SERVICE}" -w`, {
-      encoding: "utf8", timeout: 5000, stdio: ["pipe", "pipe", "pipe"],
-    }).trim();
+    return execSync(
+      `security find-generic-password -s "${CLAUDE_KEYCHAIN_SERVICE}" -w`,
+      {
+        encoding: "utf8",
+        timeout: 5000,
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    ).trim();
   } catch {
     return null;
   }
@@ -99,16 +173,28 @@ export function readClaudeCredentialsFile(): string | null {
 function readClaudeSecureStorage(): string | null {
   // An explicit config-dir override identifies a separate Claude installation/profile.
   // Do not let the default macOS Keychain entry shadow that requested credential file.
-  if (process.env.CLAUDE_CONFIG_DIR?.trim()) return readClaudeCredentialsFile() ?? readClaudeKeychain();
+  if (process.env.CLAUDE_CONFIG_DIR?.trim())
+    return readClaudeCredentialsFile() ?? readClaudeKeychain();
   return readClaudeKeychain() ?? readClaudeCredentialsFile();
 }
 
 export function parseClaudeOauthPayload(raw: string): OAuthCredentials | null {
   try {
-    const data = JSON.parse(raw) as { claudeAiOauth?: { accessToken?: string; refreshToken?: string; expiresAt?: number } };
+    const data = JSON.parse(raw) as {
+      claudeAiOauth?: {
+        accessToken?: string;
+        refreshToken?: string;
+        expiresAt?: number;
+      };
+    };
     const o = data.claudeAiOauth;
     if (!o?.accessToken || !o?.refreshToken) return null;
-    return { access: o.accessToken, refresh: o.refreshToken, expires: o.expiresAt ?? 0, source: "local-cli" };
+    return {
+      access: o.accessToken,
+      refresh: o.refreshToken,
+      expires: o.expiresAt ?? 0,
+      source: "local-cli",
+    };
   } catch {
     return null;
   }
