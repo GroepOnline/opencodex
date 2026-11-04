@@ -1242,7 +1242,12 @@ export function buildWindowsServiceScript(
     "if not defined OCX_PRE_BUN_TRUSTED_ENV (",
     `  for /f "delims=" %%V in ('powershell.exe -NoProfile -Command "(Get-ChildItem Env: | ForEach-Object Name) -join ','"') do set "OCX_PRE_BUN_TRUSTED_ENV=%%V"`,
     ")",
-    'set "OCX_PRE_BUN_TRUSTED_ENV=%OCX_PRE_BUN_TRUSTED_ENV%,PATH,CODEX_HOME,OPENCODEX_HOME,OCX_API_TOKEN_FILE,OPENCODEX_API_AUTH_TOKEN"',
+    // Unconditionally trust only values the wrapper itself always sets. The
+    // optional home overrides and token are trusted only if defined pre-Bun.
+    'set "OCX_PRE_BUN_TRUSTED_ENV=%OCX_PRE_BUN_TRUSTED_ENV%,PATH,OCX_API_TOKEN_FILE"',
+    'if defined CODEX_HOME set "OCX_PRE_BUN_TRUSTED_ENV=%OCX_PRE_BUN_TRUSTED_ENV%,CODEX_HOME"',
+    'if defined OPENCODEX_HOME set "OCX_PRE_BUN_TRUSTED_ENV=%OCX_PRE_BUN_TRUSTED_ENV%,OPENCODEX_HOME"',
+    'if defined OPENCODEX_API_AUTH_TOKEN set "OCX_PRE_BUN_TRUSTED_ENV=%OCX_PRE_BUN_TRUSTED_ENV%,OPENCODEX_API_AUTH_TOKEN"',
     ":loop",
     '>>"%OCX_SERVICE_LOG%" echo [%DATE% %TIME%] opencodex service wrapper start',
     '>>"%OCX_SERVICE_LOG%" echo bun="%OCX_BUN%"',
