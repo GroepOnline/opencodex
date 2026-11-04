@@ -114,7 +114,8 @@ ${envLines.join("\n")}
     <user>${xmlEscape(user)}</user>
     <allowservicelogon>true</allowservicelogon>
   </serviceaccount>
-</service>
+      <env name="OCX_PRE_BUN_TRUSTED_ENV" value="PATH,USERPROFILE,APPDATA,LOCALAPPDATA,SYSTEMROOT,WINDIR,COMSPEC,PATHEXT,CODEX_HOME,OPENCODEX_HOME,OCX_API_TOKEN_FILE" />
+    </service>
 `;
 }
 

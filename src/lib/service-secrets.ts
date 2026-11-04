@@ -1,3 +1,4 @@
+import { trustedLaunchEnvValue } from "./trusted-launch-env.mjs";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { getConfigDir } from "../config";
@@ -14,7 +15,8 @@ export function serviceApiTokenFilePath(): string {
  */
 export function loadServiceTokenFromFile(env: Record<string, string | undefined>): string | null {
   if (env.OPENCODEX_API_AUTH_TOKEN?.trim()) return null;
-  const file = env.OCX_API_TOKEN_FILE?.trim();
+  const configuredFile = trustedLaunchEnvValue("OCX_API_TOKEN_FILE", env)?.trim();
+  const file = configuredFile || (env.OCX_PRE_BUN_TRUSTED_ENV !== undefined ? serviceApiTokenFilePath() : undefined);
   if (!file) return null;
   try {
     const token = readFileSync(file, "utf8").trim();

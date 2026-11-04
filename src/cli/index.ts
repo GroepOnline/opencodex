@@ -173,6 +173,7 @@ async function handleStart(options: { block?: boolean } = {}) {
   // auth path reads OPENCODEX_API_AUTH_TOKEN from the environment.
   const serviceToken = loadServiceTokenFromFile(process.env);
   if (serviceToken) process.env.OPENCODEX_API_AUTH_TOKEN = serviceToken;
+      appendTrustedLaunchEnvMarker(process.env, "OPENCODEX_API_AUTH_TOKEN");
   const requestedPort = parsePortOption();
   const proxyOnly = args.includes("--proxy-only");
   const syncCodex = !proxyOnly && existsSync(CODEX_CONFIG_PATH);

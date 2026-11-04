@@ -1216,6 +1216,9 @@ export function buildWindowsServiceScript(
   port = resolveServiceListenPort(),
 ): string {
   const { bun, cli } = entry;
+if not defined OCX_PRE_BUN_TRUSTED_ENV (
+  for /f "delims=" %%V in ('powershell.exe -NoProfile -Command "(Get-ChildItem Env: | ForEach-Object Name) -join ','"') do set "OCX_PRE_BUN_TRUSTED_ENV=%%V"
+)
   const bunRuntime = durableBunRuntime();
   const path = process.env.PATH ?? "";
   const lines = [
