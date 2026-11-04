@@ -23,6 +23,7 @@ describe("recursive ocx claude launcher", () => {
       const nativeClaude = "/usr/local/bin/claude";
       const launch = prepareRecursiveClaudeLaunch({
         PATH: "/usr/local/bin:/usr/bin",
+        OCX_PRE_BUN_TRUSTED_ENV: "PATH",
         ANTHROPIC_AUTH_TOKEN: "secret-never-written",
       }, {
         platform: "linux",
@@ -42,6 +43,7 @@ describe("recursive ocx claude launcher", () => {
       expect(launch.shimPath!.endsWith("claude")).toBe(true);
       expect(launch.env.PATH).toBe(`${posix.dirname(launch.shimPath!)}:/usr/local/bin:/usr/bin`);
       expect(launch.env.OPENCODEX_CLAUDE_REAL_COMMAND).toBe(nativeClaude);
+      expect(launch.env.OCX_PRE_BUN_TRUSTED_ENV).toBe("OPENCODEX_CLAUDE_REAL_COMMAND,PATH");
 
       const shim = readFileSync(launch.shimPath!, "utf8");
       expect(shim).toContain(`export OPENCODEX_CLAUDE_REAL_COMMAND='${nativeClaude}'`);

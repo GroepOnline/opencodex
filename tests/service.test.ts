@@ -775,6 +775,18 @@ describe("Windows service task", () => {
     expect(script).not.toContain('"C:\\Bun&Dir\\100%bun^\\bun.exe"');
   });
 
+  test("trusts optional Windows service values only when defined before Bun loads dotenv", () => {
+    const script = buildWindowsServiceScript({
+      bun: "C:\\\\OpenCodex\\\\bun.exe",
+      cli: "C:\\\\OpenCodex\\\\cli.ts",
+    });
+    expect(script).toContain('set "OCX_PRE_BUN_TRUSTED_ENV=%OCX_PRE_BUN_TRUSTED_ENV%,PATH,OCX_API_TOKEN_FILE"');
+    for (const name of ["CODEX_HOME", "OPENCODEX_HOME", "OPENCODEX_API_AUTH_TOKEN"]) {
+      expect(script).toContain(`if defined ${name} set "OCX_PRE_BUN_TRUSTED_ENV=%OCX_PRE_BUN_TRUSTED_ENV%,${name}"`);
+    }
+    expect(script).not.toContain("PATH,CODEX_HOME,OPENCODEX_HOME,OCX_API_TOKEN_FILE,OPENCODEX_API_AUTH_TOKEN");
+  });
+
   test("switches the wrapper console to UTF-8 and sleeps via ping (timeout dies without console stdin)", () => {
     const script = buildWindowsServiceScript({
       bun: "C:\\OpenCodex\\bun.exe",

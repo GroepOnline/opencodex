@@ -34,6 +34,24 @@ describe("winsw xml", () => {
     expect(xml).not.toContain("OPENCODEX_API_AUTH_TOKEN");
   });
 
+  test("places trusted env before service account and excludes absent optional homes", () => {
+    const xml = buildWinswXml(entry, env);
+    const line = /<env name="OCX_PRE_BUN_TRUSTED_ENV" value="([^"]+)"\/>/.exec(xml);
+    expect(line).not.toBeNull();
+    const trusted = line![1]!.split(",");
+    expect(trusted).toContain("PATH");
+    expect(trusted).toContain("OCX_API_TOKEN_FILE");
+    expect(trusted).not.toContain("CODEX_HOME");
+    expect(trusted).not.toContain("OPENCODEX_HOME");
+    expect(xml.indexOf(line![0]!)).toBeLessThan(xml.indexOf("<logpath>"));
+    expect(xml.indexOf(line![0]!)).toBeLessThan(xml.indexOf("<serviceaccount>"));
+
+    const withHomes = buildWinswXml(entry, { ...env, CODEX_HOME: "C:\\\\Codex", OPENCODEX_HOME: "C:\\\\OpenCodex" });
+    const homeMarker = /<env name="OCX_PRE_BUN_TRUSTED_ENV" value="([^"]+)"\/>/.exec(withHomes)?.[1];
+    expect(homeMarker?.split(",")).toContain("CODEX_HOME");
+    expect(homeMarker?.split(",")).toContain("OPENCODEX_HOME");
+  });
+
   test("escapes executable/arguments and configures restart + graceful stop", () => {
     const xml = buildWinswXml(entry, env);
 
@@ -220,6 +238,10 @@ describe("app-side service token loading", () => {
       expect(loadServiceTokenFromFile({ OCX_API_TOKEN_FILE: file })).toBe("tok-123");
       expect(loadServiceTokenFromFile({ OCX_API_TOKEN_FILE: file, OPENCODEX_API_AUTH_TOKEN: "already" })).toBeNull();
       expect(loadServiceTokenFromFile({})).toBeNull();
+      // A provenance marker alone must not enable reading the default token file.
+      expect(loadServiceTokenFromFile({ OCX_PRE_BUN_TRUSTED_ENV: "PATH" })).toBeNull();
+      expect(loadServiceTokenFromFile({ OCX_PRE_BUN_TRUSTED_ENV: "PATH", OCX_API_TOKEN_FILE: file })).toBeNull();
+      expect(loadServiceTokenFromFile({ OCX_PRE_BUN_TRUSTED_ENV: "OCX_API_TOKEN_FILE", OCX_API_TOKEN_FILE: file })).toBe("tok-123");
       expect(loadServiceTokenFromFile({ OCX_API_TOKEN_FILE: join(dir, "missing") })).toBeNull();
     } finally {
       rmSync(dir, { recursive: true, force: true });

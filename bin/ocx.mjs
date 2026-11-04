@@ -17,6 +17,11 @@ import { fileURLToPath } from "node:url";
 import { npmInvocation } from "../src/update/npm-invocation.mjs";
 import { handoffWindowsTrayForUpdate, planWindowsTrayUpdate } from "../src/update/tray-update-plan.mjs";
 import { foregroundRestartAdvice } from "../src/update/restart-advice.mjs";
+import { captureTrustedLaunchEnvMarker, initializeTrustedLaunchEnv, TRUSTED_LAUNCH_ENV_MARKER } from "../src/lib/trusted-launch-env.mjs";
+
+const trustedLaunchEnvMarker = captureTrustedLaunchEnvMarker(process.env);
+process.env[TRUSTED_LAUNCH_ENV_MARKER] = trustedLaunchEnvMarker;
+initializeTrustedLaunchEnv(process.env);
 
 const PKG = "@groeponline/opencodex";
 const require = createRequire(import.meta.url);
@@ -395,7 +400,11 @@ const preBunAnthropicSlots = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"]
   .filter(name => typeof process.env[name] === "string" && process.env[name] !== "");
 const child = spawn(bun, [cliPath, ...process.argv.slice(2)], {
   stdio: "inherit",
-  env: { ...process.env, OCX_PRE_BUN_ANTHROPIC_ENV: preBunAnthropicSlots.join(",") },
+  env: {
+    ...process.env,
+    OCX_PRE_BUN_ANTHROPIC_ENV: preBunAnthropicSlots.join(","),
+    [TRUSTED_LAUNCH_ENV_MARKER]: trustedLaunchEnvMarker,
+  },
 });
 
 // Windows has no real POSIX signals (no SIGHUP); forwarding is best-effort there.

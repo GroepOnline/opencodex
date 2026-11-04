@@ -15,6 +15,7 @@
  * carries opencode's documented `{env:VAR}` reference and the real value is passed
  * only through the child process environment.
  */
+import { appendTrustedLaunchEnvMarker, trustedLaunchEnvValue } from "../lib/trusted-launch-env.mjs";
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -644,8 +645,10 @@ export function projectConfigOverridesProvider(cwd: string): string | null {
 }
 
 function serviceTokenLookupEnv(env: OpencodeLaunchEnv): OpencodeLaunchEnv {
-  if (env.OCX_API_TOKEN_FILE?.trim()) return env;
-  return { ...env, OCX_API_TOKEN_FILE: serviceApiTokenFilePath() };
+  if (trustedLaunchEnvValue("OCX_API_TOKEN_FILE", env)?.trim()) return env;
+  const lookupEnv = { ...env, OCX_API_TOKEN_FILE: serviceApiTokenFilePath()  };
+  appendTrustedLaunchEnvMarker(lookupEnv, "OCX_API_TOKEN_FILE");
+  return lookupEnv;
 }
 
 /**
@@ -693,7 +696,7 @@ export function opencodeApiKey(
   config: OcxConfig,
   env: OpencodeLaunchEnv = process.env,
 ): string {
-  const envToken = env.OPENCODEX_API_AUTH_TOKEN?.trim();
+  const envToken = trustedLaunchEnvValue("OPENCODEX_API_AUTH_TOKEN", env)?.trim();
   if (envToken) return envToken;
   const serviceToken = loadServiceTokenFromFile(serviceTokenLookupEnv(env));
   if (serviceToken) return serviceToken;

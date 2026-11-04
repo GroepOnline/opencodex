@@ -12,6 +12,17 @@ edits to the `claudeCode` subtree are preserved across those saves; other keys (
 opencodex backs it up to `config.json.invalid-<timestamp>`, prints a console warning, and starts with
 defaults. Missing files also fall back to a default (a single `openai` forward provider).
 
+## Project environment files and launcher trust
+
+When launched through the npm/Node entrypoint, OpenCodex preserves exported host
+settings but ignores privileged paths, executable overrides and admission credentials
+introduced only by a project's `.env` file. Ordinary provider configuration remains
+available from project environment files. OpenCodex's own admission key is injected
+into Claude only for the managed loopback route, never an arbitrary provider URL.
+
+Use the npm/Node entrypoint in untrusted project directories. Direct Bun execution
+cannot reconstruct which variables existed before Bun loaded project environment files.
+
 ## Optional Sentry environment variables
 
 Server: `OCX_SENTRY_DSN` (fallback `SENTRY_DSN`),

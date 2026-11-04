@@ -92,6 +92,14 @@ function Start-OcxCommand([string[]]$CommandArgs) {
     $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
     $psi.EnvironmentVariables["CODEX_HOME"] = $CodexHome
     $psi.EnvironmentVariables["OPENCODEX_HOME"] = $OpenCodexHome
+    $trustedMarker = $psi.EnvironmentVariables["OCX_PRE_BUN_TRUSTED_ENV"]
+    $trustedNames = if ($null -eq $trustedMarker) {
+      @($psi.EnvironmentVariables.Keys)
+    } else {
+      @($trustedMarker -split ',' | Where-Object { $_ })
+    }
+    $trustedNames += @("CODEX_HOME", "OPENCODEX_HOME")
+    $psi.EnvironmentVariables["OCX_PRE_BUN_TRUSTED_ENV"] = ($trustedNames | Select-Object -Unique) -join ','
     $process = [System.Diagnostics.Process]::Start($psi)
     if ($null -ne $process) { $process.Dispose() }
     Write-ActionLog "dispatched $($CommandArgs -join ' ')"

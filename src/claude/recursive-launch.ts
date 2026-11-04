@@ -1,3 +1,4 @@
+import { appendTrustedLaunchEnvMarker, trustedLaunchEnvValue } from "../lib/trusted-launch-env.mjs";
 import { createHash } from "node:crypto";
 import { accessSync, chmodSync, constants, existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { posix, win32 } from "node:path";
@@ -47,7 +48,7 @@ export function resolveNativeClaudeCommand(
   exists: (path: string) => boolean = existsSync,
   isExecutable: (path: string) => boolean = path => isExecutableDefault(path, platform),
 ): string | null {
-  const pinned = env[REAL_COMMAND_ENV]?.trim();
+  const pinned = trustedLaunchEnvValue(REAL_COMMAND_ENV, env)?.trim();
   if (pinned && exists(pinned) && isExecutable(pinned)) return pinned;
 
   const pathKey = pathVariableName(env);
@@ -161,6 +162,7 @@ export function prepareRecursiveClaudeLaunch(
   }
 
   const env: RecursiveClaudeEnv = { ...base, [REAL_COMMAND_ENV]: realCommand };
+  appendTrustedLaunchEnvMarker(env, REAL_COMMAND_ENV);
   const key = installationKey(platform, realCommand, deps.runtimePath, deps.entryPath);
   const shimDir = pathApi.join(deps.configDir, "claude-launcher", key);
   const shimPath = pathApi.join(shimDir, platform === "win32" ? "claude.cmd" : "claude");
