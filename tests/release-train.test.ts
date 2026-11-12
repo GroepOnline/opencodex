@@ -95,13 +95,13 @@ describe("OpenCodex automated release train", () => {
     ) as {
       jobs: {
         publish: {
-          steps: Array<{
+          steps: {
             name: string;
             if?: string;
             "working-directory"?: string;
             run?: string;
             env?: Record<string, string>;
-          }>;
+          }[];
         };
       };
     };

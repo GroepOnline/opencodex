@@ -288,7 +288,7 @@ async function watchRun(id: string | number): Promise<void> {
       await $`gh run view ${String(id)} --json conclusion,jobs,status,url`.text();
     const run = JSON.parse(raw) as {
       conclusion: string | null;
-      jobs: Array<{ conclusion: string | null; name: string }>;
+      jobs: { conclusion: string | null; name: string }[];
       status: string;
       url: string;
     };
