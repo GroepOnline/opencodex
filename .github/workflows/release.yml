@@ -49,6 +49,11 @@ permissions:
   contents: write # create the matching GitHub Release + version tag after npm publish
   actions: read # verify the release commit already passed Cross-platform CI
   pull-requests: read # credit-takeovers looks up landing/source PR authors via gh api
+  # The publish job inherits this block, including id-token. rollout and
+  # production-dispatch set their own permissions and therefore do not receive
+  # id-token. Do not add a permissions block on publish: it replaces this set.
+  # npm Trusted Publishing matches workflow filename release.yml and repository
+  # GroepOnline/opencodex, not the display name "Release".
   id-token: write # OIDC auth for Trusted Publishing + automatic provenance attestation
 
 concurrency:
@@ -57,6 +62,7 @@ concurrency:
 
 jobs:
   publish:
+    # Inherits the workflow permissions above, including id-token: write.
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -342,7 +348,9 @@ jobs:
             exit 0
           fi
           echo "need_token_fallback=true" >> "$GITHUB_OUTPUT"
-          echo "::warning::OIDC publish failed (code $code); token fallback step will retry"
+          # Plain stdout, not a workflow annotation. gh run watch reprints every
+          # annotation on each poll, which made this single failure look repeated.
+          echo "OIDC publish failed (code $code); token fallback runs once"
 
       # TEMPORARY (GRO-1004): FIRST_PUBLISH_NPM_TOKEN. Also the org-token fallback
       # when OIDC still fails. Isolated so lifecycle scripts never inherit the secret.
@@ -373,8 +381,15 @@ jobs:
               "//registry.npmjs.org/:_authToken=\${NODE_AUTH_TOKEN}" \
               > "$NPM_CONFIG_USERCONFIG"
           fi
-          echo "::warning::retrying with NPM_TOKEN"
+          echo "retrying with NPM_TOKEN once"
+          set +e
           NODE_AUTH_TOKEN="$NPM_TOKEN" "$npm_bin" publish --tag "$NPM_DIST_TAG" --access public --ignore-scripts
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            echo "::error::token fallback failed once (code $code); this job does not retry npm publish"
+            exit "$code"
+          fi
 
       # Confirm the registry actually has the new version (real publishes only).
       - name: Post-publish registry smoke

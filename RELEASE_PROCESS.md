@@ -16,7 +16,8 @@ Releasable merges on `main` trigger `.github/workflows/release-train.yml`.
 The baseline is the latest **published GitHub Release** rather than the highest git
 tag, because this repository retains historic upstream v2.x tags unrelated to the
 current published v1.x package.
-An hourly reconciliation catches missed events. The train is serialized and
+A daily reconciliation (`17 6 * * *` UTC) catches missed events. A push to
+`main` still releases immediately. The train is serialized and
 restricted to `main`, and skips docs-only changes.
 Unpublished release candidates can resume at their exact commit with
 `bun scripts/release.ts --resume --publish` without another version bump.
@@ -50,7 +51,8 @@ What the helper does:
 4. **Dispatch** — re-verifies the live remote head still equals the release commit (the
    `expected-sha` guard), then dispatches `release.yml` with `dry-run=true` (default) or
    `dry-run=false` with `--publish`.
-5. **Watch** — streams the Release workflow run to completion.
+5. **Watch** — waits for the Release workflow run and prints each status change once.
+   It does not replay the child run's annotations.
 
 A dry run builds + packs the tarball but does **not** publish. Re-run with `--publish` for real.
 
@@ -81,11 +83,15 @@ A dry run builds + packs the tarball but does **not** publish. Re-run with `--pu
 The Release workflow (manual dispatch, `concurrency: release`):
 
 - Verifies `GITHUB_SHA` equals `expected-sha` (when supplied).
-- Publishes to npm via **Trusted Publishing (OIDC)** on a GitHub-hosted runner. If the OIDC
-  `npm publish` exits non-zero for any reason (an OIDC rejection, but also a transient network or
-  registry error), an isolated `Publish token fallback` step retries with the `NPM_TOKEN` secret
-  and `--ignore-scripts`. Neither that fallback nor the `first-publish` path generates a
-  provenance attestation, so re-running OIDC is always preferable to shipping a fallback publish.
+- Publishes to npm via **Trusted Publishing (OIDC)** on a GitHub-hosted runner. The `publish`
+  job inherits `id-token: write` from the workflow permissions and must not set its own
+  `permissions` block, because that would replace the inherited set. npm matches the workflow
+  **filename** `release.yml` and the repository `GroepOnline/opencodex`, not the display name
+  `Release`. Leave the publisher environment blank unless this job declares the same environment.
+  If the OIDC `npm publish` exits non-zero, an isolated `Publish token fallback` step runs **once**
+  with the `NPM_TOKEN` secret and `--ignore-scripts`. The job does not loop that fallback. Neither
+  that fallback nor the `first-publish` path generates a provenance attestation, so fixing the
+  trusted publisher is preferable to shipping a fallback publish.
   The one-time `first-publish` dispatch input skips OIDC entirely and
   publishes only through that token step. No other workflow may reference that secret (enforced by
   `tests/ci-workflows.test.ts`); revoke it once OIDC succeeds and the fallback step is removed.
@@ -100,7 +106,6 @@ Release, the workflow waits for public npm metadata, the expected Git commit, ta
 both CLI bin entries, and the correct dist-tag. A timeout is **not** permission to retry npm
 publishing or create an unverified GitHub Release: first reconcile the npm version and its
 gitHead against the audited commit. This avoids repeating the partial 1.5.2 release.
-
 
 After a real publish the `rollout` job continues only the immutable artifact chain on the
 exact tag. The tag is pushed with `GITHUB_TOKEN`, and GitHub never starts `push` runs for refs

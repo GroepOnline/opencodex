@@ -277,7 +277,47 @@ async function watchLatest(): Promise<void> {
  */
 async function watchRun(id: string | number): Promise<void> {
   console.log(`→ watching Release run ${id}`);
-  await $`gh run watch ${String(id)} --exit-status --interval 10`;
+  // Do not use `gh run watch`. It reprints every annotation on each poll, so
+  // one OIDC fallback line in the child Release run looks like repeated
+  // publish retries in this train log. Report status changes, then the
+  // conclusion, once.
+  const deadline = Date.now() + 150 * 60 * 1000;
+  let previous = "";
+  while (Date.now() < deadline) {
+    const raw =
+      await $`gh run view ${String(id)} --json conclusion,jobs,status,url`.text();
+    const run = JSON.parse(raw) as {
+      conclusion: string | null;
+      jobs: Array<{ conclusion: string | null; name: string }>;
+      status: string;
+      url: string;
+    };
+    const summary = `${run.status}/${run.conclusion ?? "pending"}`;
+    if (summary !== previous) {
+      console.log(`→ Release run ${id} ${summary} ${run.url}`);
+      previous = summary;
+    }
+    if (run.status === "completed") {
+      if (run.conclusion === "success") return;
+      const failed = run.jobs
+        .filter(
+          (job) =>
+            job.conclusion !== null &&
+            job.conclusion !== "success" &&
+            job.conclusion !== "skipped",
+        )
+        .map((job) => `${job.name}=${job.conclusion}`)
+        .join(", ");
+      console.error(
+        `✗ Release run ${id} ended ${run.conclusion ?? "unknown"}${failed ? `: ${failed}` : ""}`,
+      );
+      console.error(run.url);
+      process.exit(1);
+    }
+    await Bun.sleep(10_000);
+  }
+  console.error(`✗ timed out watching Release run ${id}`);
+  process.exit(1);
 }
 
 /**
@@ -453,9 +493,11 @@ if (!version) {
       : "patch";
   const current = await readPackageVersion();
   version = resume ? current : bumpVersion(current, bump);
-  console.log(resume
-    ? `→ resuming release candidate ${version} on the current main SHA`
-    : `→ no explicit version: bumping ${bump} → ${version}`);
+  console.log(
+    resume
+      ? `→ resuming release candidate ${version} on the current main SHA`
+      : `→ no explicit version: bumping ${bump} → ${version}`,
+  );
 }
 if (!/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(version)) {
   console.error(

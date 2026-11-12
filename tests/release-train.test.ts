@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-const read = (path: string) => Bun.file(new URL("../" + path, import.meta.url)).text();
+const read = (path: string) =>
+  Bun.file(new URL("../" + path, import.meta.url)).text();
 
 describe("OpenCodex automated release train", () => {
   test("only trusted main gets write tokens, with a serialized train", async () => {
@@ -9,21 +10,38 @@ describe("OpenCodex automated release train", () => {
       on: Record<string, unknown>;
       permissions: Record<string, string>;
       concurrency: { group: string; "cancel-in-progress": boolean };
-      jobs: Record<string, {
-        if: string;
-        "timeout-minutes": number;
-        permissions: Record<string, string>;
-      }>;
+      jobs: Record<
+        string,
+        {
+          if: string;
+          "timeout-minutes": number;
+          permissions: Record<string, string>;
+        }
+      >;
     };
     expect(workflow.permissions).toEqual({});
     expect(workflow.on).toHaveProperty("push");
     expect(workflow.on).toHaveProperty("schedule");
+    expect(workflow.on.schedule).toEqual([{ cron: "17 6 * * *" }]);
+    expect(text).not.toContain('"17 * * * *"');
+    expect(text).toContain("next push or daily run");
     expect(workflow.on).toHaveProperty("workflow_dispatch");
-    expect(workflow.concurrency).toEqual({ group: "ocx-release-train-main", "cancel-in-progress": false });
+    expect(workflow.concurrency).toEqual({
+      group: "ocx-release-train-main",
+      "cancel-in-progress": false,
+    });
     const job = workflow.jobs.publish!;
-    expect(job.if).toBe("github.repository == 'GroepOnline/opencodex' && github.ref == 'refs/heads/main'");
+    expect(job.if).toBe(
+      "github.repository == 'GroepOnline/opencodex' && github.ref == 'refs/heads/main'",
+    );
     expect(job["timeout-minutes"]).toBe(180);
-    expect(job.permissions).toEqual({ contents: "write", actions: "write", packages: "read" });
+    expect(job.permissions).toEqual({
+      contents: "write",
+      actions: "write",
+      packages: "read",
+    });
+    // npm OIDC belongs to release.yml. This job only dispatches that workflow.
+    expect(job.permissions).not.toHaveProperty("id-token");
     expect(text).not.toMatch(/uses:\s+\S+@(?:v\d+|main|master)\b/);
   });
 
@@ -35,11 +53,19 @@ describe("OpenCodex automated release train", () => {
     expect(script).toContain('const resume = args.includes("--resume")');
     expect(script).toContain("gh workflow run");
     expect(script).toContain("SERVICE_WORKFLOW");
-    expect(script).toContain("await assertUnusedReleaseVersion(packageName, version)");
+    expect(script).toContain(
+      "await assertUnusedReleaseVersion(packageName, version)",
+    );
     expect(script).toContain("await watchRun(releaseRun.databaseId)");
+    expect(script).not.toContain("await $`gh run watch");
+    expect(script).toContain(
+      "gh run view ${String(id)} --json conclusion,jobs,status,url",
+    );
     expect(workflow).toContain("gh run download");
     expect(workflow).toContain("docker buildx imagetools inspect --raw");
-    expect(workflow).toContain('index("amd64") != null and index("arm64") != null');
+    expect(workflow).toContain(
+      'index("amd64") != null and index("arm64") != null',
+    );
     expect(workflow).toContain(".imageRunId == $run");
     expect(workflow).toContain(".sourceSha == $sha");
     expect(workflow).toContain('test("^sha256:[0-9a-f]{64}$")');
@@ -52,7 +78,9 @@ describe("OpenCodex automated release train", () => {
     expect(text).toContain('if [ "$current_sha" != "$remote_sha" ]; then');
     // Inherited upstream v2.x git tags must never outrank our v1.x GH Releases.
     expect(text).toContain("gh release view --json tagName --jq .tagName");
-    expect(text).toContain('git merge-base --is-ancestor "$latest_tag" "$current_sha"');
+    expect(text).toContain(
+      'git merge-base --is-ancestor "$latest_tag" "$current_sha"',
+    );
     expect(text).not.toContain("git tag --merged HEAD --list");
     expect(text).toContain("git diff --name-only");
     expect(text).toContain("No releasable changes");
@@ -62,19 +90,31 @@ describe("OpenCodex automated release train", () => {
   });
 
   test("frozen GUI dependencies are installed before the release preflight can publish", async () => {
-    const release = Bun.YAML.parse(await read(".github/workflows/release-train.yml")) as {
-      jobs: { publish: { steps: Array<{
-        name: string;
-        if?: string;
-        "working-directory"?: string;
-        run?: string;
-        env?: Record<string, string>;
-      }> } };
+    const release = Bun.YAML.parse(
+      await read(".github/workflows/release-train.yml"),
+    ) as {
+      jobs: {
+        publish: {
+          steps: Array<{
+            name: string;
+            if?: string;
+            "working-directory"?: string;
+            run?: string;
+            env?: Record<string, string>;
+          }>;
+        };
+      };
     };
     const steps = release.jobs.publish.steps;
-    const rootIndex = steps.findIndex(step => step.name === "Install release dependencies");
-    const guiIndex = steps.findIndex(step => step.name === "Install GUI release dependencies");
-    const publishIndex = steps.findIndex(step => step.name === "Publish npm, GitHub Release and GHCR image");
+    const rootIndex = steps.findIndex(
+      (step) => step.name === "Install release dependencies",
+    );
+    const guiIndex = steps.findIndex(
+      (step) => step.name === "Install GUI release dependencies",
+    );
+    const publishIndex = steps.findIndex(
+      (step) => step.name === "Publish npm, GitHub Release and GHCR image",
+    );
 
     expect(rootIndex).toBeGreaterThan(-1);
     expect(guiIndex).toBeGreaterThan(rootIndex);
@@ -89,8 +129,10 @@ describe("OpenCodex automated release train", () => {
     const ci = Bun.YAML.parse(await read(".github/workflows/ci.yml")) as {
       jobs: { test: { steps: Array<{ name: string; run?: string }> } };
     };
-    expect(ci.jobs.test.steps.find(step => step.name === "Install GUI dependencies")?.run)
-      .toContain("bun install --frozen-lockfile");
+    expect(
+      ci.jobs.test.steps.find(
+        (step) => step.name === "Install GUI dependencies",
+      )?.run,
+    ).toContain("bun install --frozen-lockfile");
   });
-
 });

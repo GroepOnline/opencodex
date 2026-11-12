@@ -155,5 +155,6 @@ describe("install scripts", () => {
     expect(script).toContain("--commit");
     expect(script).toContain("createdAt,databaseId,headSha,status,url");
     expect(script).toContain("await watchRun(releaseRun.databaseId)");
+    expect(script).not.toContain("await $`gh run watch");
   });
 });
