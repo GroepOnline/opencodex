@@ -782,7 +782,16 @@ describe("GitHub Actions hardening", () => {
     expect(rollout?.["runs-on"]).toBe("ubuntu-latest");
     // Top-level and publish stay actions:read; only the rollout job may dispatch.
     expect(workflow.permissions?.actions).toBe("read");
+    expect(workflow.permissions).toMatchObject({
+      contents: "write",
+      actions: "read",
+      "pull-requests": "read",
+      "id-token": "write",
+    });
+    // publish must inherit id-token. A job permissions block would replace it.
     expect(publish?.permissions).toBeUndefined();
+    expect(rollout?.permissions).not.toHaveProperty("id-token");
+    expect(production?.permissions).not.toHaveProperty("id-token");
     expect(rollout?.needs).toBe("publish");
     expect(rollout?.if).toBe("github.event.inputs.dry-run != 'true'");
     expect(rollout?.permissions).toEqual({
@@ -1012,7 +1021,10 @@ describe("GitHub Actions hardening", () => {
       "printf 'registry=https://registry.npmjs.org/\\n'",
     );
     expect(workflow).toContain("OIDC publish failed");
+    expect(workflow).toContain("token fallback runs once");
+    expect(workflow).not.toContain("token fallback step will retry");
     expect(workflow).toContain("retrying with NPM_TOKEN");
+    expect(workflow).toContain("this job does not retry npm publish");
     expect(workflow).toContain("--ignore-scripts");
     expect(workflow).toContain("need_token_fallback");
     const oidcStep = workflow.slice(

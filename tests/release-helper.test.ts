@@ -202,7 +202,13 @@ if (args[0] === "workflow" && args[1] === "run") {
   process.exit(0);
 }
 
-if (args[0] === "run" && args[1] === "watch") {
+if (args[0] === "run" && args[1] === "view") {
+  stdout(JSON.stringify({
+    conclusion: "success",
+    jobs: [{ conclusion: "success", name: "publish" }],
+    status: "completed",
+    url: "https://example.test/release",
+  }));
   process.exit(0);
 }
 
@@ -394,12 +400,16 @@ describe("release helper", () => {
   test("a failed canonical test-runner preflight aborts before privacy scan or release mutations", () => {
     const { calls, result } = runRelease("9.9.9", { testExitCode: 1 });
     expect(result.status).not.toBe(0);
-    expect(calls.filter(call => call.name === "bun" && call.args[0] === "run")).toEqual([
-      { name: "bun", args: ["run", "test"] },
-    ]);
-    expect(findCallIndex(calls, "npm", call => call.args[0] === "version")).toBe(-1);
+    expect(
+      calls.filter((call) => call.name === "bun" && call.args[0] === "run"),
+    ).toEqual([{ name: "bun", args: ["run", "test"] }]);
+    expect(
+      findCallIndex(calls, "npm", (call) => call.args[0] === "version"),
+    ).toBe(-1);
     for (const command of ["add", "commit", "push"]) {
-      expect(findCallIndex(calls, "git", call => call.args[0] === command)).toBe(-1);
+      expect(
+        findCallIndex(calls, "git", (call) => call.args[0] === command),
+      ).toBe(-1);
     }
   });
 

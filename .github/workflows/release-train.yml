@@ -19,9 +19,10 @@ on:
       - "bin/**"
       - "gui/**"
       - "scripts/**"
-  # Reconcile missed main events and bot-authored bump commits.
+  # Reconcile missed main events once a day. A push to main still releases
+  # immediately; this schedule must not retry a stuck publish every hour.
   schedule:
-    - cron: "17 * * * *"
+    - cron: "17 6 * * *"
   workflow_dispatch:
 
 permissions: {}
@@ -67,7 +68,7 @@ jobs:
           current_sha="$(git rev-parse HEAD)"
           remote_sha="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
           if [ "$current_sha" != "$remote_sha" ]; then
-            echo "::notice::main moved; the next push/hourly run will reconcile it"
+            echo "::notice::main moved; the next push or daily run will reconcile it"
             echo "ship=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
