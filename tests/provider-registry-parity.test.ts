@@ -800,13 +800,18 @@ describe("provider registry parity", () => {
     );
     expect(cf?.noReasoningModels).toEqual([
       "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-      "@cf/qwen/qwq-32b",
     ]);
     expect(cf?.models).toEqual([
       "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
       "@cf/openai/gpt-oss-120b",
       "@cf/openai/gpt-oss-20b",
       "@cf/zai-org/glm-5.3",
+    ]);
+    const cloudflareFreeDirectory = FREE_PROVIDER_DIRECTORY.find(
+      (entry) => entry.id === "cloudflare-ai",
+    );
+    expect(cloudflareFreeDirectory?.models).toEqual([
+      "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
     ]);
     expect(cf?.models).not.toContain(
       "@cf/mistralai/mistral-small-3.1-24b-instruct",

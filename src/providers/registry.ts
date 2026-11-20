@@ -2203,7 +2203,6 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     // gpt-oss: reasoning_effort low|medium(default)|high. glm-5.3: max|high|low,
     // default max, cannot be disabled; upstream aliases none/minimal/medium/xhigh -> max.
     // Llama 3.3 Fast takes no reasoning input.
-    // QWQ stays guarded until discovery stops returning it.
     modelReasoningEfforts: {
       "@cf/openai/gpt-oss-120b": ["low", "medium", "high"],
       "@cf/openai/gpt-oss-20b": ["low", "medium", "high"],
@@ -2225,10 +2224,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
         max: "max",
       },
     },
-    noReasoningModels: [
-      "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-      "@cf/qwen/qwq-32b",
-    ],
+    noReasoningModels: ["@cf/meta/llama-3.3-70b-instruct-fp8-fast"],
     note: "Workers AI · Free tier included · Account ID required in base URL · glm-5.3 needs Workers Paid",
   },
   // FREEZE 2026-07-10: /models was auth-gated under key login. OAuth device-flow + copilot_internal
