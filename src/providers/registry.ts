@@ -2,26 +2,26 @@ import type { CodexAccountMode, OcxProviderConfig } from "../types";
 import {
   KIRO_MODELS,
   KIRO_MODEL_CONTEXT_WINDOWS,
-  KIRO_MODEL_REASONING_EFFORTS
+  KIRO_MODEL_REASONING_EFFORTS,
 } from "./kiro-models";
 import {
   ANTIGRAVITY_MODELS,
   ANTIGRAVITY_MODEL_CONTEXT_WINDOWS,
-  ANTIGRAVITY_MODEL_EFFORTS
+  ANTIGRAVITY_MODEL_EFFORTS,
 } from "./antigravity-models";
 import type { ProviderBaseUrlChoice } from "./base-url-choices";
 import {
   QWEN_CLOUD_BASE_URL_CHOICES,
   QWEN_CLOUD_TOKEN_PLAN_BASE_URL,
   ALIBABA_INTL_BASE_URL_CHOICES,
-  ALIBABA_INTL_TOKEN_PLAN_BASE_URL
+  ALIBABA_INTL_TOKEN_PLAN_BASE_URL,
 } from "./base-url-choices";
 import {
   CURSOR_STATIC_MODELS,
   cursorModelContextWindows,
   cursorModelIds,
   cursorModelInputModalities,
-  cursorModelReasoningEfforts
+  cursorModelReasoningEfforts,
 } from "../adapters/cursor/discovery";
 import type { ProviderCompat } from "./compat";
 
@@ -31,7 +31,7 @@ export type {
   ProviderCompat,
   ThinkingFormat,
   MaxTokensField,
-  SessionAffinityFormat
+  SessionAffinityFormat,
 } from "./compat";
 
 export type ProviderModelDiscoveryScalar = string | number | boolean;
@@ -252,14 +252,14 @@ const ANTHROPIC_MODELS = [
   "claude-opus-4-7",
   "claude-opus-4-6",
   "claude-sonnet-4-6",
-  "claude-haiku-4-5"
+  "claude-haiku-4-5",
 ];
 const ANTHROPIC_MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   "claude-sonnet-5": 1_000_000,
   "claude-fable-5": 1_000_000,
   "claude-opus-5": 1_000_000,
   "claude-opus-4-8": 1_000_000,
-  "claude-haiku-4-5": 200_000
+  "claude-haiku-4-5": 200_000,
 };
 
 const ZAI_GLM_52_MODELS = ["glm-5.2", "glm-5.2[1m]"];
@@ -274,7 +274,7 @@ const MINIMAX_MODELS = [
   "MiniMax-M2.5-highspeed",
   "MiniMax-M2.1",
   "MiniMax-M2.1-highspeed",
-  "MiniMax-M2"
+  "MiniMax-M2",
 ];
 const MINIMAX_MODEL_CONTEXT_WINDOWS: Record<string, number> =
   Object.fromEntries(
@@ -288,43 +288,43 @@ const MINIMAX_M3_REASONING_EFFORT_MAP: Record<string, string> = {
   medium: "adaptive",
   high: "adaptive",
   xhigh: "adaptive",
-  max: "adaptive"
+  max: "adaptive",
 };
 const OPENAI_GPT56_MODELS = [
   "gpt-5.6",
   "gpt-5.6-sol",
   "gpt-5.6-terra",
-  "gpt-5.6-luna"
+  "gpt-5.6-luna",
 ];
 const OPENAI_GPT56_PRO_MODELS = [
   "gpt-5.6-sol-pro",
   "gpt-5.6-terra-pro",
-  "gpt-5.6-luna-pro"
+  "gpt-5.6-luna-pro",
 ];
 const OPENAI_API_GPT56_CONTEXT_WINDOW = 1_050_000;
 const OPENAI_CODEX_GPT56_CONTEXT_WINDOW = 372_000;
 const OPENAI_GPT56_CONTEXT_WINDOWS = {
   "gpt-5.6-sol": OPENAI_CODEX_GPT56_CONTEXT_WINDOW,
   "gpt-5.6-terra": OPENAI_CODEX_GPT56_CONTEXT_WINDOW,
-  "gpt-5.6-luna": OPENAI_CODEX_GPT56_CONTEXT_WINDOW
+  "gpt-5.6-luna": OPENAI_CODEX_GPT56_CONTEXT_WINDOW,
 };
 const OPENAI_API_GPT56_CONTEXT_WINDOWS: Record<string, number> = {
   ...Object.fromEntries(
     [...OPENAI_GPT56_MODELS, ...OPENAI_GPT56_PRO_MODELS].map((id) => [
       id,
-      OPENAI_API_GPT56_CONTEXT_WINDOW
+      OPENAI_API_GPT56_CONTEXT_WINDOW,
     ]),
   ),
-  "gpt-5.5": OPENAI_API_GPT56_CONTEXT_WINDOW
+  "gpt-5.5": OPENAI_API_GPT56_CONTEXT_WINDOW,
 };
 const OPENAI_API_GPT56_MAX_INPUT_TOKENS: Record<string, number> = {
   ...Object.fromEntries(
     [...OPENAI_GPT56_MODELS, ...OPENAI_GPT56_PRO_MODELS].map((id) => [
       id,
-      922_000
+      922_000,
     ]),
   ),
-  "gpt-5.5": 922_000
+  "gpt-5.5": 922_000,
 };
 const OPENAI_API_GPT56_VIRTUAL_MODELS: Record<
   string,
@@ -332,14 +332,14 @@ const OPENAI_API_GPT56_VIRTUAL_MODELS: Record<
 > = {
   "gpt-5.6-sol-pro": { wireModelId: "gpt-5.6-sol", reasoningMode: "pro" },
   "gpt-5.6-terra-pro": { wireModelId: "gpt-5.6-terra", reasoningMode: "pro" },
-  "gpt-5.6-luna-pro": { wireModelId: "gpt-5.6-luna", reasoningMode: "pro" }
+  "gpt-5.6-luna-pro": { wireModelId: "gpt-5.6-luna", reasoningMode: "pro" },
 };
 const OPENAI_API_GPT56_REASONING_EFFORTS = [
   "low",
   "medium",
   "high",
   "xhigh",
-  "max"
+  "max",
 ];
 const OPENROUTER_GPT56_MODELS = OPENAI_GPT56_MODELS.map((id) => `openai/${id}`);
 // OpenRouter's live /endpoints routes report 1,050,000; keep this separate from the
@@ -348,7 +348,7 @@ const OPENROUTER_GPT56_CONTEXT_WINDOW = 1_050_000;
 const OPENROUTER_GPT56_CONTEXT_WINDOWS = {
   "openai/gpt-5.6-sol": OPENROUTER_GPT56_CONTEXT_WINDOW,
   "openai/gpt-5.6-terra": OPENROUTER_GPT56_CONTEXT_WINDOW,
-  "openai/gpt-5.6-luna": OPENROUTER_GPT56_CONTEXT_WINDOW
+  "openai/gpt-5.6-luna": OPENROUTER_GPT56_CONTEXT_WINDOW,
 };
 
 /**
@@ -370,7 +370,7 @@ const OMNIROUTE_MODELS = [
   "claude-opus-4-5-thinking",
   "claude-sonnet-4-5-thinking",
   "gemini-3.1-pro-high",
-  "gemini-3-flash"
+  "gemini-3-flash",
 ];
 const OMNIROUTE_MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   "cc/claude-opus-4-8": 1_000_000,
@@ -380,7 +380,7 @@ const OMNIROUTE_MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   "claude-opus-4-5-thinking": 200_000,
   "claude-sonnet-4-5-thinking": 200_000,
   "gemini-3.1-pro-high": 1_000_000,
-  "gemini-3-flash": 1_000_000
+  "gemini-3-flash": 1_000_000,
 };
 
 /**
@@ -397,7 +397,7 @@ const THINKING_TOGGLE_MAP: Record<string, string> = {
   medium: "enabled",
   high: "enabled",
   xhigh: "enabled",
-  max: "enabled"
+  max: "enabled",
 };
 /**
  * Xiaomi MiMo Open Platform chat contract (docs 2026-07-15/16):
@@ -414,7 +414,7 @@ const XIAOMI_CHAT_MODELS = ["mimo-v2.5-pro", "mimo-v2.5"];
 const XIAOMI_THINKING_TOGGLE_MODELS = [
   "mimo-v2.5-pro",
   "mimo-v2.5",
-  "mimo-v2.5-pro-ultraspeed"
+  "mimo-v2.5-pro-ultraspeed",
 ];
 const XIAOMI_TEXT_ONLY_MODELS = ["mimo-v2.5-pro", "mimo-v2.5-pro-ultraspeed"];
 const XIAOMI_CONTEXT_WINDOW = 1_048_576;
@@ -435,7 +435,7 @@ const XIAOMI_CHAT_FIELDS = {
   modelInputModalities: {
     "mimo-v2.5-pro": ["text"],
     "mimo-v2.5": ["text", "image"],
-    "mimo-v2.5-pro-ultraspeed": ["text"]
+    "mimo-v2.5-pro-ultraspeed": ["text"],
   } as Record<string, string[]>,
   thinkingToggleModels: XIAOMI_THINKING_TOGGLE_MODELS,
   modelReasoningEfforts: Object.fromEntries(
@@ -446,7 +446,7 @@ const XIAOMI_CHAT_FIELDS = {
   ),
   preserveReasoningContentModels: XIAOMI_THINKING_TOGGLE_MODELS,
   // Text-only chat ids: catalog still advertises image so Codex attachments reach the vision sidecar.
-  noVisionModels: XIAOMI_TEXT_ONLY_MODELS
+  noVisionModels: XIAOMI_TEXT_ONLY_MODELS,
 };
 const OPENCODE_GO_THINKING_TOGGLE_MODELS = [
   "mimo-v2.5",
@@ -454,7 +454,7 @@ const OPENCODE_GO_THINKING_TOGGLE_MODELS = [
   "mimo-v2-omni",
   "mimo-v2-pro",
   "glm-5",
-  "glm-5.1"
+  "glm-5.1",
 ];
 /**
  * Zhipu's domestic BigModel platform. Text families first, then the vision member: modalities are
@@ -467,18 +467,18 @@ const ZHIPU_BIGMODEL_TEXT_MODELS = [
   "glm-4.7",
   "glm-4.7-flash",
   "glm-5",
-  "glm-5.1"
+  "glm-5.1",
 ];
 const ZHIPU_BIGMODEL_MODELS = [...ZHIPU_BIGMODEL_TEXT_MODELS, "glm-4.6v"];
 const ZHIPU_BIGMODEL_INPUT_MODALITIES: Record<string, string[]> = {
   ...Object.fromEntries(ZHIPU_BIGMODEL_TEXT_MODELS.map((id) => [id, ["text"]])),
-  "glm-4.6v": ["text", "image"]
+  "glm-4.6v": ["text", "image"],
 };
 const ZHIPU_BIGMODEL_THINKING_TOGGLE_MODELS = [
   "glm-4.6",
   "glm-4.7",
   "glm-5",
-  "glm-5.1"
+  "glm-5.1",
 ];
 const THINKING_BUDGET_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 const THINKING_BUDGET_MODELS = [
@@ -487,13 +487,13 @@ const THINKING_BUDGET_MODELS = [
   "qwen3.5-plus",
   "qwen3.6-plus",
   "qwen3.7-max",
-  "qwen3.7-plus"
+  "qwen3.7-plus",
 ];
 const OPENCODE_GO_THINKING_BUDGET_MODELS = [
   "qwen3.5-plus",
   "qwen3.6-plus",
   "qwen3.7-max",
-  "qwen3.7-plus"
+  "qwen3.7-plus",
 ];
 const DEEPSEEK_THINKING_MODELS = ["deepseek-v4-pro", "deepseek-v4-flash"];
 const OPENCODE_FREE_DEEPSEEK_MODELS = ["deepseek-v4-flash-free"];
@@ -505,7 +505,7 @@ const DEEPSEEK_THINKING_REASONING_MAP: Record<string, string> = {
   medium: "high",
   high: "high",
   xhigh: "max",
-  max: "max"
+  max: "max",
 };
 // 260719 Alibaba Token Plan Personal Edition (China/Beijing). Keep it distinct from
 // Coding Plan: the products use different exact allowlists and different base URLs.
@@ -517,13 +517,13 @@ const ALIBABA_TOKEN_PLAN_MODELS = [
   "qwen3.7-plus",
   "qwen3.6-flash",
   "glm-5.2",
-  "deepseek-v4-pro"
+  "deepseek-v4-pro",
 ];
 const ALIBABA_TOKEN_PLAN_QWEN_MODELS = [
   "qwen3.8-max-preview",
   "qwen3.7-max",
   "qwen3.7-plus",
-  "qwen3.6-flash"
+  "qwen3.6-flash",
 ];
 const ALIBABA_TOKEN_PLAN_INPUT_MODALITIES: Record<string, string[]> = {
   "qwen3.8-max-preview": ["text", "image"],
@@ -531,7 +531,7 @@ const ALIBABA_TOKEN_PLAN_INPUT_MODALITIES: Record<string, string[]> = {
   "qwen3.7-plus": ["text", "image"],
   "qwen3.6-flash": ["text", "image"],
   "glm-5.2": ["text"],
-  "deepseek-v4-pro": ["text"]
+  "deepseek-v4-pro": ["text"],
 };
 
 // 260721 Alibaba Token Plan International (ap-southeast-1 / Singapore, hardened 260721).
@@ -553,14 +553,14 @@ const ALIBABA_INTL_TOKEN_PLAN_MODELS = [
   "glm-5.2",
   "glm-5.1",
   "glm-5",
-  "MiniMax-M2.5"
+  "MiniMax-M2.5",
 ];
 const ALIBABA_INTL_TOKEN_PLAN_QWEN_MODELS = [
   "qwen3.8-max-preview",
   "qwen3.7-max",
   "qwen3.7-plus",
   "qwen3.6-plus",
-  "qwen3.6-flash"
+  "qwen3.6-flash",
 ];
 
 // 260722 Tencent Cloud Coding Plan. The plan's model set is explicitly dynamic; these are the
@@ -572,7 +572,7 @@ const TENCENT_CODING_PLAN_MODELS = [
   "tc-code-latest",
   "glm-5",
   "kimi-k2.5",
-  "minimax-m2.5"
+  "minimax-m2.5",
 ];
 const ALIBABA_INTL_TOKEN_PLAN_INPUT_MODALITIES: Record<string, string[]> = {
   "qwen3.8-max-preview": ["text", "image"],
@@ -589,7 +589,7 @@ const ALIBABA_INTL_TOKEN_PLAN_INPUT_MODALITIES: Record<string, string[]> = {
   "glm-5.2": ["text"],
   "glm-5.1": ["text"],
   "glm-5": ["text"],
-  "MiniMax-M2.5": ["text"]
+  "MiniMax-M2.5": ["text"],
 };
 
 // 260717 Kimi K3: the subscription endpoint uses one upstream id (`k3`) for both
@@ -605,13 +605,13 @@ const KIMI_LEGACY_API_MODELS = [
   "kimi-k2.7-code",
   "kimi-k2.7-code-highspeed",
   "kimi-k2.6",
-  "kimi-k2.5"
+  "kimi-k2.5",
 ];
 const KIMI_API_MODELS = ["kimi-k3", ...KIMI_LEGACY_API_MODELS];
 const KIMI_CODING_MODELS = [
   ...KIMI_CODING_K3_MODELS,
   ...KIMI_LEGACY_API_MODELS,
-  "kimi-for-coding"
+  "kimi-for-coding",
 ];
 const KIMI_THINKING_MODELS = KIMI_CODING_MODELS;
 const KIMI_CODING_NO_REASONING_MODELS = KIMI_CODING_MODELS.filter(
@@ -627,12 +627,12 @@ const KIMI_CODING_K3_REASONING_EFFORT_MAP: Record<string, string> = {
   medium: "high",
   high: "high",
   xhigh: "max",
-  max: "max"
+  max: "max",
 };
 const KIMI_CODING_REASONING_EFFORTS = Object.fromEntries(
   KIMI_CODING_MODELS.map((id) => [
     id,
-    KIMI_CODING_K3_MODELS.includes(id) ? KIMI_CODING_K3_REASONING_EFFORTS : []
+    KIMI_CODING_K3_MODELS.includes(id) ? KIMI_CODING_K3_REASONING_EFFORTS : [],
   ]),
 );
 const KIMI_CODING_DEFAULT_REASONING_EFFORTS = Object.fromEntries(
@@ -648,13 +648,13 @@ const KIMI_LOCKED_PARAMETER_MODELS = KIMI_CODING_MODELS;
 const KIMI_AUTO_TOOL_CHOICE_ONLY_MODELS = [
   "kimi-k2.7-code",
   "kimi-k2.7-code-highspeed",
-  "kimi-for-coding"
+  "kimi-for-coding",
 ];
 const KIMI_API_MODEL_CONTEXT_WINDOWS: Record<string, number> =
   Object.fromEntries(
     KIMI_API_MODELS.map((id) => [
       id,
-      id === "kimi-k3" ? KIMI_K3_1M_CONTEXT_WINDOW : 262_144
+      id === "kimi-k3" ? KIMI_K3_1M_CONTEXT_WINDOW : 262_144,
     ]),
   );
 const KIMI_API_MODEL_INPUT_MODALITIES = { "kimi-k3": ["text", "image"] };
@@ -665,12 +665,12 @@ const KIMI_API_MODEL_INPUT_MODALITIES = { "kimi-k3": ["text", "image"] };
 const NVIDIA_NIM_KIMI_THINKING_MODELS = [
   "moonshotai/kimi-k2.6",
   "moonshotai/kimi-k2.5",
-  "moonshotai/kimi-k2-thinking"
+  "moonshotai/kimi-k2-thinking",
 ];
 const NVIDIA_NIM_KIMI_MODELS = [
   ...NVIDIA_NIM_KIMI_THINKING_MODELS,
   "moonshotai/kimi-k2-instruct",
-  "moonshotai/kimi-k2-instruct-0905"
+  "moonshotai/kimi-k2-instruct-0905",
 ];
 const KIMI_CODING_MODEL_CONTEXT_WINDOWS: Record<string, number> =
   Object.fromEntries(
@@ -678,7 +678,7 @@ const KIMI_CODING_MODEL_CONTEXT_WINDOWS: Record<string, number> =
       id,
       id === "k3[1m]"
         ? KIMI_K3_1M_CONTEXT_WINDOW
-        : KIMI_K3_STANDARD_CONTEXT_WINDOW
+        : KIMI_K3_STANDARD_CONTEXT_WINDOW,
     ]),
   );
 const KIMI_CODING_MODEL_INPUT_MODALITIES = Object.fromEntries(
@@ -690,7 +690,7 @@ const NEURALWATT_REASONING_HISTORY_MODELS = [
   "kimi-k2.6",
   "kimi-k2.7-code",
   "qwen3.5-397b",
-  "qwen3.6-35b"
+  "qwen3.6-35b",
 ];
 const UMANS_MODELS = [
   "umans-coder",
@@ -698,7 +698,7 @@ const UMANS_MODELS = [
   "umans-flash",
   "umans-glm-5.2",
   "umans-glm-5.1",
-  "umans-qwen3.6-35b-a3b"
+  "umans-qwen3.6-35b-a3b",
 ];
 const UMANS_REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 const UMANS_GLM_REASONING_EFFORTS = ["high", "xhigh", "max"];
@@ -709,13 +709,13 @@ const UMANS_MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   "umans-flash": 262_144,
   "umans-glm-5.2": 405_504,
   "umans-glm-5.1": 202_752,
-  "umans-qwen3.6-35b-a3b": 262_144
+  "umans-qwen3.6-35b-a3b": 262_144,
 };
 const UMANS_MODEL_INPUT_MODALITIES: Record<string, string[]> =
   Object.fromEntries(
     UMANS_MODELS.map((id) => [
       id,
-      UMANS_TEXT_ONLY_MODELS.includes(id) ? ["text"] : ["text", "image"]
+      UMANS_TEXT_ONLY_MODELS.includes(id) ? ["text"] : ["text", "image"],
     ]),
   );
 
@@ -733,7 +733,7 @@ const CLINE_PASS_MODELS = [
   "cline-pass/mimo-v2.5-pro",
   "cline-pass/minimax-m3",
   "cline-pass/qwen3.7-max",
-  "cline-pass/qwen3.7-plus"
+  "cline-pass/qwen3.7-plus",
 ];
 const CLINE_PASS_MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   "cline-pass/glm-5.2": 1_048_576,
@@ -746,7 +746,7 @@ const CLINE_PASS_MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   "cline-pass/mimo-v2.5-pro": 1_050_000,
   "cline-pass/minimax-m3": 1_048_576,
   "cline-pass/qwen3.7-max": 1_000_000,
-  "cline-pass/qwen3.7-plus": 1_000_000
+  "cline-pass/qwen3.7-plus": 1_000_000,
 };
 const CLINE_PASS_IMAGE_MODELS = new Set([
   "cline-pass/kimi-k3",
@@ -754,7 +754,7 @@ const CLINE_PASS_IMAGE_MODELS = new Set([
   "cline-pass/kimi-k2.6",
   "cline-pass/mimo-v2.5",
   "cline-pass/minimax-m3",
-  "cline-pass/qwen3.7-plus"
+  "cline-pass/qwen3.7-plus",
 ]);
 const CLINE_PASS_TEXT_ONLY_MODELS = CLINE_PASS_MODELS.filter(
   (id) => !CLINE_PASS_IMAGE_MODELS.has(id),
@@ -763,7 +763,7 @@ const CLINE_PASS_MODEL_INPUT_MODALITIES: Record<string, string[]> =
   Object.fromEntries(
     CLINE_PASS_MODELS.map((id) => [
       id,
-      CLINE_PASS_IMAGE_MODELS.has(id) ? ["text", "image"] : ["text"]
+      CLINE_PASS_IMAGE_MODELS.has(id) ? ["text", "image"] : ["text"],
     ]),
   );
 
@@ -776,7 +776,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     authKind: "forward",
     codexAccountMode: "pool",
     featured: true,
-    note: "Codex login account pool (default) or Direct main-account mode via codexAccountMode"
+    note: "Codex login account pool (default) or Direct main-account mode via codexAccountMode",
   },
   {
     id: "cursor",
@@ -803,7 +803,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     // content marker), so the vision sidecar covers ALL cursor models regardless of what the
     // upstream model could natively do. Live-discovered models outside the static list fall back
     // to the same marker until they appear here.
-    noVisionModels: cursorModelIds(CURSOR_STATIC_MODELS)
+    noVisionModels: cursorModelIds(CURSOR_STATIC_MODELS),
   },
   {
     id: "xai",
@@ -834,7 +834,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "grok-4.20-0309-reasoning",
       "grok-4.20-0309-non-reasoning",
       "grok-build-0.1",
-      "grok-composer-2.5-fast"
+      "grok-composer-2.5-fast",
     ],
     defaultModel: "grok-4.5",
     // Vision lineup per docs.x.ai model-capabilities/images/understanding: the grok-4.x chat
@@ -847,12 +847,12 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "grok-4.5": ["text", "image"],
       "grok-4.3": ["text", "image"],
       "grok-4.20-0309-reasoning": ["text", "image"],
-      "grok-4.20-0309-non-reasoning": ["text", "image"]
+      "grok-4.20-0309-non-reasoning": ["text", "image"],
     },
     noReasoningModels: [
       "grok-4.20-0309-non-reasoning",
       "grok-build-0.1",
-      "grok-composer-2.5-fast"
+      "grok-composer-2.5-fast",
     ],
     // Replay assistant reasoning_content for grok reasoning models: xAI documents dropped
     // reasoning_content as the top cause of prompt-cache misses on multi-turn conversations
@@ -861,7 +861,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     preserveReasoningContentModels: [
       "grok-4.5",
       "grok-4.3",
-      "grok-4.20-0309-reasoning"
+      "grok-4.20-0309-reasoning",
     ],
     // grok-4.5 reasoning is always-on with low/medium/high control (no off tier upstream).
     modelReasoningEfforts: { "grok-4.5": ["low", "medium", "high"] },
@@ -870,9 +870,9 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "grok-4.3": 1_000_000,
       "grok-4.20-0309-reasoning": 1_000_000,
       "grok-4.20-0309-non-reasoning": 1_000_000,
-      "grok-build-0.1": 256_000
+      "grok-build-0.1": 256_000,
     },
-    noVisionModels: ["grok-build-0.1", "grok-composer-2.5-fast"]
+    noVisionModels: ["grok-build-0.1", "grok-composer-2.5-fast"],
   },
   {
     id: "anthropic",
@@ -886,7 +886,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     note: "Log in with your Claude account",
     models: [...ANTHROPIC_MODELS],
     modelContextWindows: { ...ANTHROPIC_MODEL_CONTEXT_WINDOWS },
-    defaultModel: "claude-sonnet-5"
+    defaultModel: "claude-sonnet-5",
   },
   {
     id: "anthropic-apikey",
@@ -902,7 +902,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     models: [...ANTHROPIC_MODELS],
     liveModels: true,
     modelContextWindows: { ...ANTHROPIC_MODEL_CONTEXT_WINDOWS },
-    defaultModel: "claude-sonnet-5"
+    defaultModel: "claude-sonnet-5",
   },
   {
     id: "kimi",
@@ -934,7 +934,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     noTopPModels: KIMI_LOCKED_PARAMETER_MODELS,
     noPenaltyModels: KIMI_LOCKED_PARAMETER_MODELS,
     autoToolChoiceOnlyModels: KIMI_AUTO_TOOL_CHOICE_ONLY_MODELS,
-    preserveReasoningContentModels: KIMI_THINKING_MODELS
+    preserveReasoningContentModels: KIMI_THINKING_MODELS,
   },
   {
     id: "kiro",
@@ -952,7 +952,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     liveModels: false,
     // Per-model context metadata is maintained next to the Kiro model list.
     modelContextWindows: KIRO_MODEL_CONTEXT_WINDOWS,
-    modelReasoningEfforts: KIRO_MODEL_REASONING_EFFORTS
+    modelReasoningEfforts: KIRO_MODEL_REASONING_EFFORTS,
   },
   {
     id: "openai-apikey",
@@ -975,10 +975,10 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     modelReasoningEfforts: Object.fromEntries(
       [...OPENAI_GPT56_MODELS, ...OPENAI_GPT56_PRO_MODELS].map((id) => [
         id,
-        OPENAI_API_GPT56_REASONING_EFFORTS
+        OPENAI_API_GPT56_REASONING_EFFORTS,
       ]),
     ),
-    virtualModels: OPENAI_API_GPT56_VIRTUAL_MODELS
+    virtualModels: OPENAI_API_GPT56_VIRTUAL_MODELS,
   },
   {
     id: "umans",
@@ -999,10 +999,10 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "umans-flash": UMANS_REASONING_EFFORTS,
       "umans-glm-5.2": UMANS_GLM_REASONING_EFFORTS,
       "umans-glm-5.1": UMANS_GLM_REASONING_EFFORTS,
-      "umans-qwen3.6-35b-a3b": UMANS_REASONING_EFFORTS
+      "umans-qwen3.6-35b-a3b": UMANS_REASONING_EFFORTS,
     },
     noVisionModels: UMANS_TEXT_ONLY_MODELS,
-    escapeBuiltinToolNames: true
+    escapeBuiltinToolNames: true,
   },
   {
     id: "opencode-go",
@@ -1025,18 +1025,18 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       ...Object.fromEntries(
         OPENCODE_GO_THINKING_TOGGLE_MODELS.map((id) => [
           id,
-          THINKING_TOGGLE_EFFORTS
+          THINKING_TOGGLE_EFFORTS,
         ]),
       ),
       ...Object.fromEntries(
         OPENCODE_GO_THINKING_BUDGET_MODELS.map((id) => [
           id,
-          THINKING_BUDGET_EFFORTS
+          THINKING_BUDGET_EFFORTS,
         ]),
       ),
       ...Object.fromEntries(
         DEEPSEEK_THINKING_MODELS.map((id) => [id, DEEPSEEK_THINKING_EFFORTS]),
-      )
+      ),
     },
     modelDefaultReasoningEfforts: { "kimi-k3": "max" },
     // glm-5.2 uses identity labels now that `max` is a native Codex level (no alias map);
@@ -1046,15 +1046,15 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       ...Object.fromEntries(
         OPENCODE_GO_THINKING_TOGGLE_MODELS.map((id) => [
           id,
-          THINKING_TOGGLE_MAP
+          THINKING_TOGGLE_MAP,
         ]),
       ),
       ...Object.fromEntries(
         DEEPSEEK_THINKING_MODELS.map((id) => [
           id,
-          DEEPSEEK_THINKING_REASONING_MAP
+          DEEPSEEK_THINKING_REASONING_MAP,
         ]),
-      )
+      ),
     },
     thinkingToggleModels: OPENCODE_GO_THINKING_TOGGLE_MODELS,
     thinkingBudgetModels: THINKING_BUDGET_MODELS,
@@ -1072,12 +1072,12 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "mimo-v2.5-pro",
       "minimax-m2.5",
       "minimax-m2.7",
-      "qwen3.7-max"
+      "qwen3.7-max",
     ],
     noTemperatureModels: [
       "kimi-k3",
       "kimi-k2.7-code",
-      "kimi-k2.7-code-highspeed"
+      "kimi-k2.7-code-highspeed",
     ],
     noTopPModels: ["kimi-k3", "kimi-k2.7-code", "kimi-k2.7-code-highspeed"],
     noPenaltyModels: ["kimi-k3", "kimi-k2.7-code", "kimi-k2.7-code-highspeed"],
@@ -1088,8 +1088,8 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "kimi-k3",
       "kimi-k2.7-code",
       "kimi-k2.7-code-highspeed",
-      ...DEEPSEEK_THINKING_MODELS
-    ]
+      ...DEEPSEEK_THINKING_MODELS,
+    ],
   },
   {
     id: "neuralwatt",
@@ -1112,7 +1112,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "qwen3.5-397b",
       "qwen3.5-397b-fast",
       "qwen3.6-35b",
-      "qwen3.6-35b-fast"
+      "qwen3.6-35b-fast",
     ],
     // Neuralwatt's /v1/models metadata is authoritative; these static hints are the offline fallback.
     modelReasoningEfforts: {
@@ -1128,7 +1128,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "qwen3.5-397b": THINKING_BUDGET_EFFORTS,
       "qwen3.5-397b-fast": [],
       "qwen3.6-35b": THINKING_BUDGET_EFFORTS,
-      "qwen3.6-35b-fast": []
+      "qwen3.6-35b-fast": [],
     },
     thinkingBudgetModels: THINKING_BUDGET_MODELS,
     noReasoningModels: [
@@ -1136,7 +1136,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "glm-5.2-short-fast",
       "kimi-k2.6-fast",
       "qwen3.5-397b-fast",
-      "qwen3.6-35b-fast"
+      "qwen3.6-35b-fast",
     ],
     noVisionModels: [
       "glm-5.2",
@@ -1144,13 +1144,13 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "glm-5.2-short",
       "glm-5.2-short-fast",
       "qwen3.5-397b",
-      "qwen3.5-397b-fast"
+      "qwen3.5-397b-fast",
     ],
     noTemperatureModels: ["kimi-k2.7-code"],
     noTopPModels: ["kimi-k2.7-code"],
     noPenaltyModels: ["kimi-k2.7-code"],
     autoToolChoiceOnlyModels: ["kimi-k2.7-code"],
-    preserveReasoningContentModels: NEURALWATT_REASONING_HISTORY_MODELS
+    preserveReasoningContentModels: NEURALWATT_REASONING_HISTORY_MODELS,
   },
   {
     id: "openrouter",
@@ -1164,8 +1164,8 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     models: ["anthropic/claude-sonnet-5", ...OPENROUTER_GPT56_MODELS],
     modelContextWindows: {
       "anthropic/claude-sonnet-5": 1_000_000,
-      ...OPENROUTER_GPT56_CONTEXT_WINDOWS
-    }
+      ...OPENROUTER_GPT56_CONTEXT_WINDOWS,
+    },
   },
   {
     id: "tokenharbor",
@@ -1185,9 +1185,9 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     modelContextWindows: {
       "deepseek-v4-flash:free": 1_000_000,
       "mimo-v2.5:free": 1_048_576,
-      "qwen3.8-27b:free": 262_144
+      "qwen3.8-27b:free": 262_144,
     },
-    note: "Universal-key OpenAI-compatible gateway with live model discovery. Current permanent free access includes DeepSeek V4 Flash, MiMo V2.5 and Qwen3.8 27B. Free routes are opt-in and may retain prompts/responses; default to public-only. Paid routes are described by Token Harbor as ZDR. Kater/ChefFactory remains cost/privacy routing authority; do not delegate company policy to TH Orchestra."
+    note: "Universal-key OpenAI-compatible gateway with live model discovery. Current permanent free access includes DeepSeek V4 Flash, MiMo V2.5 and Qwen3.8 27B. Free routes are opt-in and may retain prompts/responses; default to public-only. Paid routes are described by Token Harbor as ZDR. Kater/ChefFactory remains cost/privacy routing authority; do not delegate company policy to TH Orchestra.",
   },
   {
     // OrcaRouter: OpenAI-compatible adaptive router (api.orcarouter.ai). Model ids are
@@ -1207,7 +1207,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "anthropic/claude-opus-4.8",
       "google/gemini-3.5-flash",
       "deepseek/deepseek-v4-pro",
-      "orcarouter/auto"
+      "orcarouter/auto",
     ],
     // Text-only models → the vision sidecar describes images instead.
     noVisionModels: ["deepseek/deepseek-v4-pro"],
@@ -1220,13 +1220,13 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     //   returned 200), so no noTemperatureModels entry is warranted here.
     modelReasoningEfforts: {
       "openai/gpt-5.5": ["low", "medium", "high", "xhigh"],
-      "deepseek/deepseek-v4-pro": DEEPSEEK_THINKING_EFFORTS
+      "deepseek/deepseek-v4-pro": DEEPSEEK_THINKING_EFFORTS,
     },
     modelReasoningEffortMap: {
-      "deepseek/deepseek-v4-pro": DEEPSEEK_THINKING_REASONING_MAP
+      "deepseek/deepseek-v4-pro": DEEPSEEK_THINKING_REASONING_MAP,
     },
     preserveReasoningContentModels: ["deepseek/deepseek-v4-pro"],
-    note: "OpenAI-compatible adaptive router. Default is a tool-capable model; orcarouter/auto (adaptive routing) is also selectable. Full catalog: https://www.orcarouter.ai/models"
+    note: "OpenAI-compatible adaptive router. Default is a tool-capable model; orcarouter/auto (adaptive routing) is also selectable. Full catalog: https://www.orcarouter.ai/models",
   },
   {
     // BizRouter: Korean enterprise LLM gateway (api.bizrouter.ai). Model ids are
@@ -1244,9 +1244,9 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     models: [
       "openai/gpt-5.6-sol",
       "anthropic/claude-sonnet-5",
-      "google/gemini-3.5-flash"
+      "google/gemini-3.5-flash",
     ],
-    note: "Korean enterprise LLM gateway. Per-key allowed models are discovered live from /v1/models. Full catalog: https://bizrouter.ai/models"
+    note: "Korean enterprise LLM gateway. Per-key allowed models are discovered live from /v1/models. Full catalog: https://bizrouter.ai/models",
   },
   {
     // NEAR AI Cloud (cloud-api.near.ai): OpenAI-compatible inference with live
@@ -1260,7 +1260,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     dashboardUrl: "https://docs.near.ai",
     liveModels: true,
     freeTier: true,
-    note: "Requires a NEAR account with free tier."
+    note: "Requires a NEAR account with free tier.",
   },
   {
     // UnoRouter (api.unorouter.com): OpenAI-compatible router with live /v1/models.
@@ -1273,7 +1273,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     authKind: "key",
     dashboardUrl: "https://unorouter.com/en/token",
     liveModels: true,
-    freeTier: true
+    freeTier: true,
   },
   {
     // ChatAnywhere (api.chatanywhere.tech): community free-key gateway with live
@@ -1286,7 +1286,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     authKind: "key",
     dashboardUrl: "https://github.com/chatanywhere/GPT_API_free",
     liveModels: true,
-    freeTier: true
+    freeTier: true,
   },
   {
     // UncloseAI hermes endpoint (hermes.ai.unturf.com): public keyless OpenAI-compatible
@@ -1301,7 +1301,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     dashboardUrl: "https://uncloseai.com/inference.html",
     liveModels: true,
     freeTier: true,
-    note: "Hermes endpoint is public (3 rps/IP); the qwen endpoint needs a key."
+    note: "Hermes endpoint is public (3 rps/IP); the qwen endpoint needs a key.",
   },
   {
     // LLM7 (api.llm7.io): keyless public OpenAI-compatible endpoint with live
@@ -1315,7 +1315,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     dashboardUrl: "https://github.com/chigwell/llm7.io",
     liveModels: true,
     freeTier: true,
-    note: "Keyless public endpoint; treat as public-only."
+    note: "Keyless public endpoint; treat as public-only.",
   },
   {
     // NavyAI (api.navy): keyless endpoint with token_multiplier: 0 free models in the
@@ -1329,7 +1329,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     dashboardUrl: "https://api.navy",
     liveModels: true,
     freeTier: true,
-    note: "Keyless endpoint with free models in the live list; treat as public-only."
+    note: "Keyless endpoint with free models in the live list; treat as public-only.",
   },
   {
     id: "groq",
@@ -1338,7 +1338,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     baseUrl: "https://api.groq.com/openai/v1",
     authKind: "key",
     featured: true,
-    dashboardUrl: "https://console.groq.com/keys"
+    dashboardUrl: "https://console.groq.com/keys",
   },
   // 2026-07-10 Gemini API refresh: Tier-2 ai.google.dev evidence recorded in
   // devlog/_plan/260710_provider_hardening/001_research_frontier.md.
@@ -1355,25 +1355,25 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "gemini-3.6-flash",
       "gemini-3.5-flash",
       "gemini-3.5-flash-lite",
-      "gemini-3.1-pro-preview"
+      "gemini-3.1-pro-preview",
     ],
     modelContextWindows: {
       "gemini-3.6-flash": 1_048_576,
       "gemini-3.5-flash": 1_000_000,
       "gemini-3.5-flash-lite": 1_048_576,
       // Combo members (e.g. google-combo) require a positive contextWindow on every target.
-      "gemini-3.1-pro-preview": 1_048_576
+      "gemini-3.1-pro-preview": 1_048_576,
     },
     modelInputModalities: {
       "gemini-3.6-flash": ["text", "image"],
       "gemini-3.5-flash": ["text", "image"],
       "gemini-3.5-flash-lite": ["text", "image"],
-      "gemini-3.1-pro-preview": ["text", "image"]
+      "gemini-3.1-pro-preview": ["text", "image"],
     },
     modelReasoningEfforts: {
       "gemini-3.6-flash": ["minimal", "low", "medium", "high"],
       "gemini-3.5-flash": ["minimal", "low", "medium", "high"],
-      "gemini-3.1-pro-preview": ["low", "medium", "high"]
+      "gemini-3.1-pro-preview": ["low", "medium", "high"],
     },
     // AI Studio GET /v1beta/models returns `{ models: [{ name: "models/gemini-…" }] }`, not OpenAI `{ data: [{ id }] }`.
     // Live discovery must parse that shape; otherwise catalog sync degrades to the static seed on every start.
@@ -1392,16 +1392,16 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
               "imagen",
               "veo",
               "tts",
-              "gemini-2.0-flash-lite-preview-image-generation"
+              "gemini-2.0-flash-lite-preview-image-generation",
             ],
-            caseInsensitive: true
-          }
-        ]
-      }
+            caseInsensitive: true,
+          },
+        ],
+      },
     },
     liveModels: true,
     jawcodeBundle: "google",
-    extraMetadataAliases: ["gemini"]
+    extraMetadataAliases: ["gemini"],
   },
   // 2026-07-10: defaultModel is frozen pending Vertex-specific Tier-2 evidence; Gemini API
   // evidence from ai.google.dev does not establish Vertex publisher availability.
@@ -1415,7 +1415,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     defaultModel: "gemini-3-pro",
     googleMode: "vertex",
     jawcodeBundle: "google",
-    extraMetadataAliases: ["gemini-vertex"]
+    extraMetadataAliases: ["gemini-vertex"],
   },
   {
     id: "google-antigravity",
@@ -1432,7 +1432,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     // Cloud Code Assist has no OpenAI-style /models; GET falls through to HTTP 404 every start.
     liveModels: false,
     jawcodeBundle: "google",
-    extraMetadataAliases: ["antigravity", "gemini-antigravity"]
+    extraMetadataAliases: ["antigravity", "gemini-antigravity"],
   },
   {
     id: "azure-openai",
@@ -1441,7 +1441,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     baseUrl: "https://{resource}.openai.azure.com/openai",
     authKind: "key",
     featured: true,
-    dashboardUrl: "https://portal.azure.com"
+    dashboardUrl: "https://portal.azure.com",
   },
   {
     id: "ollama",
@@ -1452,7 +1452,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     allowPrivateNetworkByDefault: true,
     allowBaseUrlOverride: true,
     featured: true,
-    note: "Local — key usually blank"
+    note: "Local — key usually blank",
   },
   {
     id: "vllm",
@@ -1463,7 +1463,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     allowPrivateNetworkByDefault: true,
     allowBaseUrlOverride: true,
     featured: true,
-    note: "Local — key usually blank"
+    note: "Local — key usually blank",
   },
   {
     id: "lm-studio",
@@ -1474,7 +1474,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     allowPrivateNetworkByDefault: true,
     allowBaseUrlOverride: true,
     featured: true,
-    note: "Local — no key needed"
+    note: "Local — no key needed",
   },
   {
     id: "deepseek",
@@ -1490,7 +1490,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     defaultModel: "deepseek-v4-flash",
     modelContextWindows: {
       "deepseek-v4-flash": 1_000_000,
-      "deepseek-v4-pro": 1_000_000
+      "deepseek-v4-pro": 1_000_000,
     },
     /* [Decision Log]
     - 목적: DeepSeek V4 thinking mode multi-turn/tool-call requests must replay prior assistant reasoning_content.
@@ -1503,14 +1503,14 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     modelReasoningEffortMap: Object.fromEntries(
       DEEPSEEK_THINKING_MODELS.map((id) => [
         id,
-        DEEPSEEK_THINKING_REASONING_MAP
+        DEEPSEEK_THINKING_REASONING_MAP,
       ]),
     ),
     preserveReasoningContentModels: DEEPSEEK_THINKING_MODELS,
     // Issue #88: every DeepSeek API model is text-only input (no image support upstream) — the
     // vision sidecar describes attached images for them, and the catalog advertises image input
     // on their behalf (same treatment as opencode-go's DeepSeek V4 entries above).
-    noVisionModels: [...DEEPSEEK_THINKING_MODELS]
+    noVisionModels: [...DEEPSEEK_THINKING_MODELS],
   },
   // llama-3.3-70b was deprecated by Cerebras on 2026-02-16. Evidence: devlog/_plan/260710_provider_hardening/003_research_aggregators.md.
   {
@@ -1520,7 +1520,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     adapter: "openai-chat",
     authKind: "key",
     dashboardUrl: "https://cloud.cerebras.ai/platform/apikeys",
-    defaultModel: "gpt-oss-120b"
+    defaultModel: "gpt-oss-120b",
   },
   // Cohere's OpenAI Compatibility API supports the OpenAI SDK at this base URL.
   // Trial/evaluation API keys are free but rate-limited.
@@ -1532,7 +1532,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     baseUrl: "https://api.together.xyz/v1",
     adapter: "openai-chat",
     authKind: "key",
-    dashboardUrl: "https://api.together.xyz/settings/api-keys"
+    dashboardUrl: "https://api.together.xyz/settings/api-keys",
   },
   {
     id: "fireworks",
@@ -1540,7 +1540,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     baseUrl: "https://api.fireworks.ai/inference/v1",
     adapter: "openai-chat",
     authKind: "key",
-    dashboardUrl: "https://fireworks.ai/account/api-keys"
+    dashboardUrl: "https://fireworks.ai/account/api-keys",
   },
   {
     id: "firepass",
@@ -1549,7 +1549,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     adapter: "openai-chat",
     authKind: "key",
     dashboardUrl: "https://fireworks.ai/account/api-keys",
-    note: "Model data frozen pending Tier-2 entitlement proof"
+    note: "Model data frozen pending Tier-2 entitlement proof",
   },
   {
     // ClinePass subscription API. Uses a Cline API key and the full cline-pass/<model> upstream
@@ -1568,7 +1568,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     noVisionModels: CLINE_PASS_TEXT_ONLY_MODELS,
     reasoningEfforts: ["low"],
     preserveCustomDestination: true,
-    note: "ClinePass subscription API. Uses a Cline API key and the full cline-pass/<model> upstream slug; quota is shared across the account's rolling 5-hour, weekly, and monthly limits."
+    note: "ClinePass subscription API. Uses a Cline API key and the full cline-pass/<model> upstream slug; quota is shared across the account's rolling 5-hour, weekly, and monthly limits.",
   },
   {
     id: "moonshot",
@@ -1588,7 +1588,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     noTopPModels: KIMI_API_MODELS,
     noPenaltyModels: KIMI_API_MODELS,
     autoToolChoiceOnlyModels: ["kimi-k2.7-code", "kimi-k2.7-code-highspeed"],
-    preserveReasoningContentModels: KIMI_API_MODELS
+    preserveReasoningContentModels: KIMI_API_MODELS,
   },
   {
     id: "huggingface",
@@ -1596,7 +1596,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     baseUrl: "https://router.huggingface.co/v1",
     adapter: "openai-chat",
     authKind: "key",
-    dashboardUrl: "https://huggingface.co/settings/tokens"
+    dashboardUrl: "https://huggingface.co/settings/tokens",
   },
   // 260715 NIM hardening (issue #126, devlog/_plan/260715_issue126_nim_kimi):
   // - NIM kimi rejects `parallel_tool_calls: true` with 400 "This model only supports single
@@ -1621,7 +1621,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       NVIDIA_NIM_KIMI_MODELS.map((id) => [id, []]),
     ),
     preserveReasoningContentModels: NVIDIA_NIM_KIMI_THINKING_MODELS,
-    note: "Free tier on NVIDIA NIM — API key still required (get a free key at build.nvidia.com)."
+    note: "Free tier on NVIDIA NIM — API key still required (get a free key at build.nvidia.com).",
   },
   {
     id: "venice",
@@ -1629,7 +1629,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     baseUrl: "https://api.venice.ai/api/v1",
     adapter: "openai-chat",
     authKind: "key",
-    dashboardUrl: "https://venice.ai/settings/api"
+    dashboardUrl: "https://venice.ai/settings/api",
   },
   // 260710 GLM-5.2 context and path-specific ids: Tier-2 evidence in
   // devlog/_plan/260710_provider_hardening/002_research_cn.md.
@@ -1650,7 +1650,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     modelReasoningEfforts: Object.fromEntries(
       ZAI_GLM_52_MODELS.map((id) => [id, ZAI_GLM_52_REASONING_EFFORTS]),
     ),
-    preserveReasoningContentModels: ZAI_GLM_52_MODELS
+    preserveReasoningContentModels: ZAI_GLM_52_MODELS,
   },
   // Zhipu's domestic BigModel platform: OpenAI-compatible pay-as-you-go on open.bigmodel.cn — a
   // different host and billing product from the `zai` coding-plan subscription above.
@@ -1683,20 +1683,20 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     modelReasoningEfforts: Object.fromEntries(
       ZHIPU_BIGMODEL_THINKING_TOGGLE_MODELS.map((id) => [
         id,
-        THINKING_TOGGLE_EFFORTS
+        THINKING_TOGGLE_EFFORTS,
       ]),
     ),
     modelReasoningEffortMap: Object.fromEntries(
       ZHIPU_BIGMODEL_THINKING_TOGGLE_MODELS.map((id) => [
         id,
-        THINKING_TOGGLE_MAP
+        THINKING_TOGGLE_MAP,
       ]),
     ),
     preserveReasoningContentModels: ZHIPU_BIGMODEL_THINKING_TOGGLE_MODELS,
     // GET /api/paas/v4/models has not been observed to answer on this host; omitting liveModels
     // makes provider-fetch treat discovery as live and yields an empty picker at runtime.
     liveModels: false,
-    note: "Domestic BigModel pay-as-you-go endpoint (open.bigmodel.cn)"
+    note: "Domestic BigModel pay-as-you-go endpoint (open.bigmodel.cn)",
   },
   {
     id: "nanogpt",
@@ -1704,7 +1704,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     baseUrl: "https://nano-gpt.com/api/v1",
     adapter: "openai-chat",
     authKind: "key",
-    dashboardUrl: "https://nano-gpt.com/api"
+    dashboardUrl: "https://nano-gpt.com/api",
   },
   {
     id: "synthetic",
@@ -1712,7 +1712,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     baseUrl: "https://api.synthetic.new/openai/v1",
     adapter: "openai-chat",
     authKind: "key",
-    dashboardUrl: "https://synthetic.new"
+    dashboardUrl: "https://synthetic.new",
   },
   // SiliconFlow publishes an OpenAI-compatible chat endpoint and a dynamic model catalog. Do not
   // freeze reasoning controls here: enable_thinking/thinking_budget support and limits vary by
@@ -1726,7 +1726,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     authKind: "key",
     dashboardUrl: "https://cloud.siliconflow.cn/account/ak",
     liveModels: true,
-    note: "OpenAI-compatible live model catalog; reasoning controls vary by model."
+    note: "OpenAI-compatible live model catalog; reasoning controls vary by model.",
   },
   // Qwen Cloud: token plan is the preset default; GUI offers pay-as-you-go + custom via baseUrlChoices.
   // Formerly `qwen-portal` / portal.qwen.ai — that host is outdated.
@@ -1739,7 +1739,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     allowBaseUrlOverride: true,
     baseUrlChoices: QWEN_CLOUD_BASE_URL_CHOICES,
     dashboardUrl: "https://docs.qwencloud.com",
-    note: "Pick token plan, pay as you go, or a custom compatible-mode base URL"
+    note: "Pick token plan, pay as you go, or a custom compatible-mode base URL",
   },
   {
     id: "tencent-coding-plan",
@@ -1755,7 +1755,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       TENCENT_CODING_PLAN_MODELS.map((id) => [id, ["text"]]),
     ),
     noVisionModels: TENCENT_CODING_PLAN_MODELS,
-    note: "Coding tools only. Tencent forbids general API automation, custom backends, and non-interactive batch use."
+    note: "Coding tools only. Tencent forbids general API automation, custom backends, and non-interactive batch use.",
   },
   // 2026-07-10: docs unverified; model data frozen. Evidence: devlog/_plan/260710_provider_hardening/002_research_cn.md.
   {
@@ -1764,7 +1764,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     baseUrl: "https://qianfan.baidubce.com/v2",
     adapter: "openai-chat",
     authKind: "key",
-    dashboardUrl: "https://console.bce.baidu.com/iam/#/iam/apikey/list"
+    dashboardUrl: "https://console.bce.baidu.com/iam/#/iam/apikey/list",
   },
   // 2026-07-10: docs unverified; model data frozen. Evidence: devlog/_plan/260710_provider_hardening/002_research_cn.md.
   {
@@ -1773,7 +1773,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     baseUrl: "https://coding-intl.dashscope.aliyuncs.com/v1",
     adapter: "openai-chat",
     authKind: "key",
-    dashboardUrl: "https://dashscope.console.aliyun.com/apiKey"
+    dashboardUrl: "https://dashscope.console.aliyun.com/apiKey",
   },
   {
     id: "alibaba-token-plan",
@@ -1794,20 +1794,20 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "qwen3.7-plus": 1_000_000,
       "qwen3.6-flash": 1_000_000,
       "glm-5.2": 1_000_000,
-      "deepseek-v4-pro": 1_000_000
+      "deepseek-v4-pro": 1_000_000,
     },
     modelReasoningEfforts: {
       ...Object.fromEntries(
         ALIBABA_TOKEN_PLAN_QWEN_MODELS.map((id) => [
           id,
-          THINKING_BUDGET_EFFORTS
+          THINKING_BUDGET_EFFORTS,
         ]),
       ),
       "glm-5.2": ZAI_GLM_52_REASONING_EFFORTS,
-      "deepseek-v4-pro": DEEPSEEK_THINKING_EFFORTS
+      "deepseek-v4-pro": DEEPSEEK_THINKING_EFFORTS,
     },
     modelReasoningEffortMap: {
-      "deepseek-v4-pro": DEEPSEEK_THINKING_REASONING_MAP
+      "deepseek-v4-pro": DEEPSEEK_THINKING_REASONING_MAP,
     },
     thinkingBudgetModels: ALIBABA_TOKEN_PLAN_QWEN_MODELS,
     preserveReasoningContentModels: [
@@ -1816,9 +1816,9 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "qwen3.8-max-preview",
       "qwen3.7-max",
       "qwen3.7-plus",
-      "qwen3.6-flash"
+      "qwen3.6-flash",
     ],
-    noVisionModels: ["glm-5.2", "deepseek-v4-pro"]
+    noVisionModels: ["glm-5.2", "deepseek-v4-pro"],
   },
   {
     id: "alibaba-token-plan-intl",
@@ -1850,23 +1850,23 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "glm-5.2": 1_000_000,
       "glm-5.1": 1_000_000,
       "glm-5": 1_000_000,
-      "MiniMax-M2.5": 204_800
+      "MiniMax-M2.5": 204_800,
     },
     modelReasoningEfforts: {
       ...Object.fromEntries(
         ALIBABA_INTL_TOKEN_PLAN_QWEN_MODELS.map((id) => [
           id,
-          THINKING_BUDGET_EFFORTS
+          THINKING_BUDGET_EFFORTS,
         ]),
       ),
       "qwen3.8-max-preview": ["low", "high", "xhigh"],
       "glm-5.2": ZAI_GLM_52_REASONING_EFFORTS,
       "deepseek-v4-pro": DEEPSEEK_THINKING_EFFORTS,
-      "deepseek-v4-flash": DEEPSEEK_THINKING_EFFORTS
+      "deepseek-v4-flash": DEEPSEEK_THINKING_EFFORTS,
     },
     modelReasoningEffortMap: {
       "deepseek-v4-pro": DEEPSEEK_THINKING_REASONING_MAP,
-      "deepseek-v4-flash": DEEPSEEK_THINKING_REASONING_MAP
+      "deepseek-v4-flash": DEEPSEEK_THINKING_REASONING_MAP,
     },
     thinkingBudgetModels: ALIBABA_INTL_TOKEN_PLAN_QWEN_MODELS,
     preserveReasoningContentModels: [
@@ -1877,7 +1877,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "qwen3.7-max",
       "qwen3.7-plus",
       "qwen3.6-plus",
-      "qwen3.6-flash"
+      "qwen3.6-flash",
     ],
     noVisionModels: [
       "deepseek-v4-pro",
@@ -1886,7 +1886,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "glm-5.2",
       "glm-5.1",
       "glm-5",
-      "MiniMax-M2.5"
+      "MiniMax-M2.5",
     ],
     noReasoningModels: [
       "kimi-k2.7-code",
@@ -1895,9 +1895,9 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "deepseek-v3.2",
       "glm-5.1",
       "glm-5",
-      "MiniMax-M2.5"
+      "MiniMax-M2.5",
     ],
-    modelDefaultReasoningEfforts: { "qwen3.8-max-preview": "xhigh" }
+    modelDefaultReasoningEfforts: { "qwen3.8-max-preview": "xhigh" },
   },
   // NEEDS_HUMAN 2026-07-10: kept for config compatibility, but this is a dashboard URL,
   // no /models endpoint is documented, and tools are silently ignored upstream per docs.parallel.ai.
@@ -1908,7 +1908,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     baseUrl: "https://platform.parallel.ai",
     adapter: "openai-chat",
     authKind: "key",
-    dashboardUrl: "https://platform.parallel.ai"
+    dashboardUrl: "https://platform.parallel.ai",
   },
   // ZenMux native ids are vendor-namespaced (`<vendor>/<model>`), verified live against
   // https://zenmux.ai/api/v1/models on 2026-07-18. The static seed doubles as the
@@ -1921,7 +1921,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     adapter: "openai-chat",
     authKind: "key",
     dashboardUrl: "https://zenmux.ai",
-    models: ["moonshotai/kimi-k3-free", "moonshotai/kimi-k3"]
+    models: ["moonshotai/kimi-k3-free", "moonshotai/kimi-k3"],
   },
   {
     id: "litellm",
@@ -1933,7 +1933,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     allowPrivateNetworkByDefault: true,
     allowBaseUrlOverride: true,
     // A self-hosted proxy may legitimately run without a master key.
-    keyOptional: true
+    keyOptional: true,
   },
   {
     id: "ollama-cloud",
@@ -1951,7 +1951,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "kimi-k2.6",
       "minimax-m3",
       "qwen3.5:397b",
-      "gemma4:31b"
+      "gemma4:31b",
     ],
     defaultModel: "glm-5.2",
     noVisionModels: [
@@ -1967,8 +1967,8 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "deepseek-v4-pro",
       "deepseek-v4-flash",
       "gpt-oss",
-      "qwen3-coder:480b"
-    ]
+      "qwen3-coder:480b",
+    ],
   },
   // FREEZE 2026-07-10: codestral-latest is unconfirmed behind auth. Evidence: devlog/_plan/260710_provider_hardening/003_research_aggregators.md.
   {
@@ -1978,7 +1978,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     adapter: "openai-chat",
     authKind: "key",
     dashboardUrl: "https://console.mistral.ai/api-keys",
-    defaultModel: "codestral-latest"
+    defaultModel: "codestral-latest",
   },
   {
     id: "minimax",
@@ -1998,7 +1998,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     thinkingToggleModels: ["MiniMax-M3"],
     jawcodeBundle: "minimax",
     metadataModelIdNormalize: "case-insensitive",
-    note: "Subscription Key or API Key"
+    note: "Subscription Key or API Key",
   },
   {
     id: "minimax-cn",
@@ -2018,7 +2018,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     thinkingToggleModels: ["MiniMax-M3"],
     jawcodeBundle: "minimax",
     metadataModelIdNormalize: "case-insensitive",
-    note: "中国区 Subscription Key"
+    note: "中国区 Subscription Key",
   },
   {
     id: "kimi-code",
@@ -2042,7 +2042,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     noTopPModels: KIMI_LOCKED_PARAMETER_MODELS,
     noPenaltyModels: KIMI_LOCKED_PARAMETER_MODELS,
     autoToolChoiceOnlyModels: KIMI_AUTO_TOOL_CHOICE_ONLY_MODELS,
-    preserveReasoningContentModels: KIMI_THINKING_MODELS
+    preserveReasoningContentModels: KIMI_THINKING_MODELS,
   },
   {
     id: "opencode-zen",
@@ -2050,7 +2050,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     baseUrl: "https://opencode.ai/zen/v1",
     adapter: "openai-chat",
     authKind: "key",
-    dashboardUrl: "https://opencode.ai/auth"
+    dashboardUrl: "https://opencode.ai/auth",
   },
   {
     id: "vercel-ai-gateway",
@@ -2058,7 +2058,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     baseUrl: "https://ai-gateway.vercel.sh/v1",
     adapter: "openai-chat",
     authKind: "key",
-    dashboardUrl: "https://vercel.com/dashboard"
+    dashboardUrl: "https://vercel.com/dashboard",
   },
   {
     id: "opencode-free",
@@ -2072,22 +2072,22 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     note: "No key needed — public desktop tier. OpenCode currently advertises about 200 Big Pickle/free-model requests per 5 hours. Free models are discovered live from Zen. Data use: per OpenCode's Zen docs (https://opencode.ai/docs/zen/), prompts sent to free models may be retained and used for training/improvement — do not send confidential material through this provider.",
     dashboardUrl: "https://opencode.ai",
     staticHeaders: {
-      "x-opencode-client": "desktop"
+      "x-opencode-client": "desktop",
     },
     modelReasoningEfforts: Object.fromEntries(
       OPENCODE_FREE_DEEPSEEK_MODELS.map((id) => [
         id,
-        DEEPSEEK_THINKING_EFFORTS
+        DEEPSEEK_THINKING_EFFORTS,
       ]),
     ),
     modelReasoningEffortMap: Object.fromEntries(
       OPENCODE_FREE_DEEPSEEK_MODELS.map((id) => [
         id,
-        DEEPSEEK_THINKING_REASONING_MAP
+        DEEPSEEK_THINKING_REASONING_MAP,
       ]),
     ),
     preserveReasoningContentModels: OPENCODE_FREE_DEEPSEEK_MODELS,
-    noVisionModels: OPENCODE_FREE_DEEPSEEK_MODELS
+    noVisionModels: OPENCODE_FREE_DEEPSEEK_MODELS,
   },
   {
     id: "xiaomi",
@@ -2096,7 +2096,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     featured: true,
     dashboardUrl: XIAOMI_DASHBOARD_URL,
     note: "Pay-as-you-go (`sk-…`). OpenAI Chat Completions; 1M context, thinking toggle, tool-call reasoning replay. Token Plan keys live on the Xiaomi Token Plan preset.",
-    ...XIAOMI_CHAT_FIELDS
+    ...XIAOMI_CHAT_FIELDS,
   },
   {
     id: "xiaomi-token-plan",
@@ -2104,7 +2104,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     baseUrl: XIAOMI_TOKEN_PLAN_BASE_URL,
     dashboardUrl: XIAOMI_DASHBOARD_URL,
     note: "Token Plan (`tp-…`) on token-plan-cn.xiaomimimo.com — same models as Xiaomi MiMo, different host and billing.",
-    ...XIAOMI_CHAT_FIELDS
+    ...XIAOMI_CHAT_FIELDS,
   },
   {
     id: "kilo",
@@ -2112,7 +2112,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     baseUrl: "https://api.kilo.ai/api/gateway",
     adapter: "openai-chat",
     authKind: "key",
-    dashboardUrl: "https://kilo.ai"
+    dashboardUrl: "https://kilo.ai",
   },
   {
     id: "mimo-free",
@@ -2127,7 +2127,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     dashboardUrl: "https://xiaomimimo.com",
     defaultModel: "mimo-auto",
     models: ["mimo-auto"],
-    note: "No key needed — uses Xiaomi MiMo's free public tier (limited-time offer). A JWT is bootstrapped automatically with an anonymous random client id stored locally. The endpoint contract mirrors the official MiMoCode client and is not publicly documented — Xiaomi may change or restrict it at any time. Prompts may be processed/retained by Xiaomi; do not send confidential material."
+    note: "No key needed — uses Xiaomi MiMo's free public tier (limited-time offer). A JWT is bootstrapped automatically with an anonymous random client id stored locally. The endpoint contract mirrors the official MiMoCode client and is not publicly documented — Xiaomi may change or restrict it at any time. Prompts may be processed/retained by Xiaomi; do not send confidential material.",
   },
   {
     id: "cloudflare-ai-gateway",
@@ -2136,7 +2136,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "https://gateway.ai.cloudflare.com/v1/{account-id}/{gateway}/anthropic",
     adapter: "anthropic",
     authKind: "key",
-    dashboardUrl: "https://dash.cloudflare.com/?to=/:account/ai/ai-gateway"
+    dashboardUrl: "https://dash.cloudflare.com/?to=/:account/ai/ai-gateway",
   },
   {
     // Cloudflare Workers AI: OpenAI-compatible endpoint. The base URL contains {account_id}
@@ -2161,8 +2161,8 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       envelopeKeys: ["result"],
       idField: "name",
       filter: {
-        allOf: [{ path: ["task", "name"], equalsAny: ["Text Generation"] }]
-      }
+        allOf: [{ path: ["task", "name"], equalsAny: ["Text Generation"] }],
+      },
     },
     dashboardUrl: "https://dash.cloudflare.com/?to=/:account/ai/workers-ai",
     defaultModel: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
@@ -2170,7 +2170,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
       "@cf/openai/gpt-oss-120b",
       "@cf/openai/gpt-oss-20b",
-      "@cf/zai-org/glm-5.3"
+      "@cf/zai-org/glm-5.3",
     ],
     // Live-verified 2026-11-03 against ai/models/search `context_window` properties — these are
     // Workers AI host caps, not the upstream vendors' model cards (llama-3.3-70b and qwq-32b
@@ -2198,7 +2198,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "@cf/swiss-ai/apertus-v1.5-8b": 262_144,
       "@cf/utter-project/eurollm-9b-it": 32_000,
       "@cf/zai-org/glm-4.7-flash": 131_072,
-      "@cf/zai-org/glm-5.3": 1_048_576
+      "@cf/zai-org/glm-5.3": 1_048_576,
     },
     // Reasoning ladders from the per-model docs pages (2026-10-18):
     // gpt-oss: reasoning_effort low|medium(default)|high. glm-5.3: max|high|low,
@@ -2208,12 +2208,12 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     modelReasoningEfforts: {
       "@cf/openai/gpt-oss-120b": ["low", "medium", "high"],
       "@cf/openai/gpt-oss-20b": ["low", "medium", "high"],
-      "@cf/zai-org/glm-5.3": ["low", "high", "max"]
+      "@cf/zai-org/glm-5.3": ["low", "high", "max"],
     },
     modelDefaultReasoningEfforts: {
       "@cf/openai/gpt-oss-120b": "medium",
       "@cf/openai/gpt-oss-20b": "medium",
-      "@cf/zai-org/glm-5.3": "max"
+      "@cf/zai-org/glm-5.3": "max",
     },
     modelReasoningEffortMap: {
       "@cf/zai-org/glm-5.3": {
@@ -2223,13 +2223,11 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
         medium: "max",
         high: "high",
         xhigh: "max",
-        max: "max"
-      }
+        max: "max",
+      },
     },
-    noReasoningModels: [
-      "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
-    ],
-    note: "Workers AI · Free tier included · Account ID required in base URL · glm-5.3 needs Workers Paid"
+    noReasoningModels: ["@cf/meta/llama-3.3-70b-instruct-fp8-fast"],
+    note: "Workers AI · Free tier included · Account ID required in base URL · glm-5.3 needs Workers Paid",
   },
   // FREEZE 2026-07-10: /models was auth-gated under key login. OAuth device-flow + copilot_internal
   // exchange (issue #151) unlocks live discovery; static seed is a cold-start fallback only.
@@ -2248,10 +2246,10 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "gpt-4.1",
       "gpt-4.1-mini",
       "claude-sonnet-4",
-      "gemini-2.5-pro"
+      "gemini-2.5-pro",
     ],
     defaultModel: "gpt-4o",
-    note: "Experimental unofficial Copilot bridge. Logs in via GitHub device flow using the public VS Code OAuth client id, then exchanges for a short-lived Copilot API token (copilot_internal). Requires an active Copilot subscription. GitHub may tighten or revoke this path; do not send confidential material you would not paste into Copilot Chat."
+    note: "Experimental unofficial Copilot bridge. Logs in via GitHub device flow using the public VS Code OAuth client id, then exchanges for a short-lived Copilot API token (copilot_internal). Requires an active Copilot subscription. GitHub may tighten or revoke this path; do not send confidential material you would not paste into Copilot Chat.",
   },
   // FREEZE 2026-07-10: no public OpenAI-compatible endpoint is documented. Evidence: devlog/_plan/260710_provider_hardening/003_research_aggregators.md.
   {
@@ -2260,7 +2258,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     baseUrl: "https://cloud.gitlab.com/ai/v1/proxy/openai/v1",
     adapter: "openai-chat",
     authKind: "key",
-    dashboardUrl: "https://gitlab.com/-/user_settings/personal_access_tokens"
+    dashboardUrl: "https://gitlab.com/-/user_settings/personal_access_tokens",
   },
   // Meta Model API by dev.meta.ai — Llama / Muse Spark family. OpenAI-compatible endpoint
   // at https://api.meta.ai/v1, authenticated with Bearer $MODEL_API_KEY. Models are
@@ -2282,14 +2280,14 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     modelContextWindows: {
       "muse-spark-1.2": 1_048_576,
       "muse-spark-1.1": 1_048_576,
-      "muse-spark-1.2-contributor": 1_048_576
+      "muse-spark-1.2-contributor": 1_048_576,
     },
     modelInputModalities: {
       "muse-spark-1.2": ["text", "image"],
       "muse-spark-1.1": ["text", "image"],
-      "muse-spark-1.2-contributor": ["text", "image"]
+      "muse-spark-1.2-contributor": ["text", "image"],
     },
-    note: "Meta Model API — Muse Spark. Standard tier (privacy-respecting) and discounted contributor tier. Get a key at dev.meta.ai."
+    note: "Meta Model API — Muse Spark. Standard tier (privacy-respecting) and discounted contributor tier. Get a key at dev.meta.ai.",
   },
   {
     // OmniRoute: open-source OpenAI-compatible gateway (https://github.com/diegosouzapw/OmniRoute).
@@ -2316,16 +2314,16 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     noReasoningModels: [
       "auto",
       "cc/claude-haiku-4-5-20251001",
-      "gemini-3-flash"
+      "gemini-3-flash",
     ],
     compat: {
       thinkingFormat: "openai",
       sessionAffinity: "none",
       supportsStrictMode: true,
-      maxTokensField: "max_tokens"
+      maxTokensField: "max_tokens",
     },
-    note: "Free gateway — 90+ free models behind one key. Self-host with diegosouzapw/omniroute bound to 127.0.0.1:20128, set allowPrivateNetwork:true, and use placeholder key sk_omniroute when REQUIRE_API_KEY=false. Models stay under omniroute/... (no silent rewrite of mimo/opencode free ids). auto is not the default."
-  }
+    note: "Free gateway — 90+ free models behind one key. Self-host with diegosouzapw/omniroute bound to 127.0.0.1:20128, set allowPrivateNetwork:true, and use placeholder key sk_omniroute when REQUIRE_API_KEY=false. Models stay under omniroute/... (no silent rewrite of mimo/opencode free ids). auto is not the default.",
+  },
 ];
 
 export function getProviderRegistryEntry(
