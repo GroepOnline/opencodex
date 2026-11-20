@@ -774,6 +774,15 @@ describe("provider registry parity", () => {
     expect(cf?.modelContextWindows?.["@cf/zai-org/glm-5.3"]).toBe(1_048_576);
   });
 
+  test("Cloudflare Workers AI omits retired context metadata", () => {
+    const cf = PROVIDER_REGISTRY.find(
+      (entry) => entry.id === "cloudflare-workers-ai",
+    );
+    expect(
+      cf?.modelContextWindows?.["@cf/mistralai/mistral-small-3.1-24b-instruct"],
+    ).toBeUndefined();
+  });
+
   test("Cloudflare Workers AI marks reasoning ladders and effort-stripped models", () => {
     const cf = PROVIDER_REGISTRY.find(
       (entry) => entry.id === "cloudflare-workers-ai",

@@ -2190,7 +2190,6 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "@cf/meta/llama-4-scout-17b-16e-instruct": 131_000,
       "@cf/meta/llama-guard-3-8b": 131_072,
       "@cf/mistral/mistral-7b-instruct-v0.2-lora": 15_000,
-      "@cf/mistralai/mistral-small-3.1-24b-instruct": 128_000,
       "@cf/openai/gpt-oss-120b": 128_000,
       "@cf/openai/gpt-oss-20b": 128_000,
       "@cf/qwen/qwen2.5-coder-32b-instruct": 32_768,
