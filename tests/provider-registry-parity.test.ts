@@ -800,6 +800,7 @@ describe("provider registry parity", () => {
     );
     expect(cf?.noReasoningModels).toEqual([
       "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      "@cf/qwen/qwq-32b",
     ]);
     expect(cf?.models).toEqual([
       "@cf/meta/llama-3.3-70b-instruct-fp8-fast",

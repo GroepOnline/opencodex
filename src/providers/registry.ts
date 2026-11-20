@@ -2143,7 +2143,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     // which must be resolved by the user at setup time. Model IDs use the @cf/ prefix.
     // Live-verified 2026-10-18 against the ai/models/search catalog and
     // developers.cloudflare.com/workers-ai/models/*. Retired in this pass: glm-5.2
-    // (superseded by glm-5.3/5.3-flash), deepseek-r1-distill-qwen-32b and
+    // (superseded by glm-5.3), deepseek-r1-distill-qwen-32b and
     // mistral-small-3.1-24b-instruct (old generation; catalog refresh 2026-05-08).
     id: "cloudflare-workers-ai",
     label: "Cloudflare Workers AI",
@@ -2173,8 +2173,8 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
       "@cf/zai-org/glm-5.3",
     ],
     // Live-verified 2026-11-03 against ai/models/search `context_window` properties — these are
-    // Workers AI host caps, not the upstream vendors' model cards (llama-3.3-70b and qwq-32b
-    // are 24k here, gemma-7b-lora just 3.5k).
+    // Workers AI host caps, not upstream model cards.
+    // Llama 3.3 70B is 24k here.
     modelContextWindows: {
       "@cf/aisingapore/gemma-sea-lion-v4-27b-it": 128_000,
       "@cf/cloudflare/clairic": 65_536,
@@ -2202,8 +2202,8 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     // Reasoning ladders from the per-model docs pages (2026-10-18):
     // gpt-oss: reasoning_effort low|medium(default)|high. glm-5.3: max|high|low,
     // default max, cannot be disabled; upstream aliases none/minimal/medium/xhigh -> max.
-    // llama-3.3-fast takes no reasoning input and stays in noReasoningModels.
-    // Retiring models that previously also stripped effort were removed in this pass.
+    // Llama 3.3 Fast takes no reasoning input.
+    // QWQ stays guarded until discovery stops returning it.
     modelReasoningEfforts: {
       "@cf/openai/gpt-oss-120b": ["low", "medium", "high"],
       "@cf/openai/gpt-oss-20b": ["low", "medium", "high"],
@@ -2225,7 +2225,10 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
         max: "max",
       },
     },
-    noReasoningModels: ["@cf/meta/llama-3.3-70b-instruct-fp8-fast"],
+    noReasoningModels: [
+      "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      "@cf/qwen/qwq-32b",
+    ],
     note: "Workers AI · Free tier included · Account ID required in base URL · glm-5.3 needs Workers Paid",
   },
   // FREEZE 2026-07-10: /models was auth-gated under key login. OAuth device-flow + copilot_internal
