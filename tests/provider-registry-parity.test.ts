@@ -764,16 +764,23 @@ describe("provider registry parity", () => {
     ]);
   });
 
-  test("Cloudflare Workers AI keeps host context caps (llama 24k, glm-5.3-flash 1M)", () => {
+  test("Cloudflare Workers AI keeps host context caps (llama 24k, glm-5.3 1M)", () => {
     const cf = PROVIDER_REGISTRY.find(
       (entry) => entry.id === "cloudflare-workers-ai",
     );
     expect(
       cf?.modelContextWindows?.["@cf/meta/llama-3.3-70b-instruct-fp8-fast"],
     ).toBe(24_000);
-    expect(cf?.modelContextWindows?.["@cf/zai-org/glm-5.3-flash"]).toBe(
-      1_048_576,
+    expect(cf?.modelContextWindows?.["@cf/zai-org/glm-5.3"]).toBe(1_048_576);
+  });
+
+  test("Cloudflare Workers AI omits retired context metadata", () => {
+    const cf = PROVIDER_REGISTRY.find(
+      (entry) => entry.id === "cloudflare-workers-ai",
     );
+    expect(
+      cf?.modelContextWindows?.["@cf/mistralai/mistral-small-3.1-24b-instruct"],
+    ).toBeUndefined();
   });
 
   test("Cloudflare Workers AI marks reasoning ladders and effort-stripped models", () => {
@@ -791,12 +798,21 @@ describe("provider registry parity", () => {
     expect(cf?.modelReasoningEffortMap?.["@cf/zai-org/glm-5.3"]?.medium).toBe(
       "max",
     );
-    expect(cf?.noReasoningModels).toContain("@cf/qwen/qwq-32b");
-    // Retired models must stay out of the seed.
-    expect(cf?.models).not.toContain("@cf/zai-org/glm-5.2");
-    expect(cf?.models).not.toContain(
-      "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+    expect(cf?.noReasoningModels).toEqual([
+      "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    ]);
+    expect(cf?.models).toEqual([
+      "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      "@cf/openai/gpt-oss-120b",
+      "@cf/openai/gpt-oss-20b",
+      "@cf/zai-org/glm-5.3",
+    ]);
+    const cloudflareFreeDirectory = FREE_PROVIDER_DIRECTORY.find(
+      (entry) => entry.id === "cloudflare-ai",
     );
+    expect(cloudflareFreeDirectory?.models).toEqual([
+      "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    ]);
     expect(cf?.models).not.toContain(
       "@cf/mistralai/mistral-small-3.1-24b-instruct",
     );

@@ -201,7 +201,7 @@ const CONNECTABLE: Record<string, ConnectableOverride> = {
         "https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/",
       discovery: "static",
       liveModels: false,
-      models: ["@cf/meta/llama-3.3-70b-instruct-fp8-fast", "@cf/qwen/qwq-32b"],
+      models: ["@cf/meta/llama-3.3-70b-instruct-fp8-fast"],
     },
   ),
   cohere: openAi(
